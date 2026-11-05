@@ -16,6 +16,10 @@ import {
   RepoIcon,
   SearchIcon,
   ShareIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+  StackIcon,
+  TableIcon,
   TerminalIcon,
   WorkflowIcon,
   ZapIcon,
@@ -25,6 +29,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { AnsatzSketchIcon } from "../../../components/icons";
+import { getLanguageInfo } from "../../../components/morsel/constants";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
@@ -52,10 +57,12 @@ export interface PlaygroundNavbarProps {
   isDirty?: boolean;
   isSimulating?: boolean;
   publishLabel?: string;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
   onTitleChange?: (newTitle: string) => void;
   onSelectExample: (ex: HeroExample) => void;
   onSelectLang?: (lang: string) => void;
-  onViewChange?: (view: "diagram" | "code" | "split" | "simulation") => void;
+  onViewChange?: (view: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => void;
   onSimulate?: () => void;
   onOpenInVsCode?: () => void;
   onOpenTemplates?: () => void;
@@ -75,6 +82,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   isDirty = false,
   isSimulating = false,
   publishLabel,
+  isSidebarOpen,
+  onToggleSidebar,
   onTitleChange,
   onSelectExample,
   onSelectLang,
@@ -124,6 +133,21 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   return (
     <NavbarContainer>
       <NavLeft>
+        {onToggleSidebar && (
+          <IconButton
+            icon={isSidebarOpen === false ? SidebarExpandIcon : SidebarCollapseIcon}
+            size="small"
+            variant="invisible"
+            aria-label={isSidebarOpen === false ? "Show Libraries sidebar" : "Hide Libraries sidebar"}
+            title={
+              isSidebarOpen === false
+                ? `Show Libraries sidebar (${isMac ? "⌘B" : "Ctrl+B"})`
+                : `Hide Libraries sidebar (${isMac ? "⌘B" : "Ctrl+B"})`
+            }
+            onClick={onToggleSidebar}
+            style={{ height: 32, width: 32, borderRadius: 6, marginRight: 4 }}
+          />
+        )}
         <BrandLink
           href={branding.docsBaseUrl || "https://modelscript.org"}
           target="_blank"
@@ -399,40 +423,105 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         )}
       </NavLeft>
 
-      {onViewChange && (
-        <NavCenter>
-          <SegmentedControl size="small" aria-label="Workbench View">
-            <SegmentedControl.Button
-              selected={currentView === "diagram"}
-              leadingVisual={WorkflowIcon}
-              onClick={() => onViewChange("diagram")}
-            >
-              Diagram
-            </SegmentedControl.Button>
-            <SegmentedControl.Button
-              selected={currentView === "code"}
-              leadingVisual={CodeIcon}
-              onClick={() => onViewChange("code")}
-            >
-              Code
-            </SegmentedControl.Button>
-            <SegmentedControl.Button
-              selected={currentView === "split" || currentView === "split-columns" || currentView === "split-rows"}
-              leadingVisual={ColumnsIcon}
-              onClick={() => onViewChange("split")}
-            >
-              Split
-            </SegmentedControl.Button>
-            <SegmentedControl.Button
-              selected={currentView === "simulation" || currentView === "plot"}
-              leadingVisual={GraphIcon}
-              onClick={() => onViewChange("simulation")}
-            >
-              Simulation
-            </SegmentedControl.Button>
-          </SegmentedControl>
-        </NavCenter>
-      )}
+      {onViewChange &&
+        (() => {
+          const langInfo = getLanguageInfo(currentLang);
+          const supportsDiagram = langInfo?.supportsDiagram ?? true;
+          const supportsSimulation = langInfo?.supportsSimulation ?? true;
+          const supports3d = Boolean(langInfo?.supports3d || currentView === "3d");
+          const inspectorLabel =
+            langInfo?.id === "owl2" ? "Reasoner" : langInfo?.id === "sysml2" ? "Requirements" : "Inspector";
+
+          const viewTabs: Array<{
+            id: "diagram" | "3d" | "simulation" | "inspector" | "code" | "split";
+            label: string;
+            icon: any;
+            onClick: () => void;
+          }> = [];
+
+          if (supportsDiagram) {
+            viewTabs.push({
+              id: "diagram",
+              label: "Diagram",
+              icon: WorkflowIcon,
+              title: "Diagram schematic view (⌥1)",
+              onClick: () => onViewChange("diagram"),
+            });
+          }
+          if (supports3d) {
+            viewTabs.push({
+              id: "3d",
+              label: "3D",
+              icon: StackIcon,
+              title: "3D CAD & multibody animation (⌥2)",
+              onClick: () => onViewChange("3d"),
+            });
+          }
+          if (supportsSimulation) {
+            viewTabs.push({
+              id: "simulation",
+              label: "Simulation",
+              icon: GraphIcon,
+              title: "Simulation plots & variables (⌥3)",
+              onClick: () => onViewChange("simulation"),
+            });
+          }
+          viewTabs.push({
+            id: "inspector",
+            label: inspectorLabel,
+            icon: TableIcon,
+            title: `${inspectorLabel} table & properties (⌥4)`,
+            onClick: () => onViewChange("inspector"),
+          });
+          viewTabs.push({
+            id: "code",
+            label: "Code",
+            icon: CodeIcon,
+            title: "Source code editor (⌥5)",
+            onClick: () => onViewChange("code"),
+          });
+          viewTabs.push({
+            id: "split",
+            label: "Split",
+            icon: ColumnsIcon,
+            title: "Side-by-side diagram & code split (⌥6)",
+            onClick: () => onViewChange("split"),
+          });
+
+          const selectedIndex = viewTabs.findIndex(
+            (t) =>
+              t.id === currentView ||
+              (t.id === "simulation" && currentView === "plot") ||
+              (t.id === "split" && (currentView === "split-columns" || currentView === "split-rows")),
+          );
+
+          return (
+            <NavCenter>
+              <SegmentedControl
+                size="small"
+                aria-label="Workbench View"
+                onChange={(index) => {
+                  const target = viewTabs[index];
+                  if (target) {
+                    target.onClick();
+                  }
+                }}
+              >
+                {viewTabs.map((tab, idx) => (
+                  <SegmentedControl.Button
+                    key={tab.id}
+                    selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
+                    leadingVisual={tab.icon}
+                    title={tab.title}
+                    onClick={tab.onClick}
+                  >
+                    {tab.label}
+                  </SegmentedControl.Button>
+                ))}
+              </SegmentedControl>
+            </NavCenter>
+          );
+        })()}
 
       <NavRight>
         {/* Primary Run Simulation CTA */}
@@ -445,12 +534,22 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             disabled={isSimulating}
             style={{
               fontWeight: 600,
-              backgroundColor: isSimulating ? "#047857" : "#059669",
-              borderColor: "#047857",
+              height: 32,
+              borderRadius: 6,
+              background: isSimulating
+                ? "var(--color-neutral-muted, #4b5563)"
+                : "linear-gradient(180deg, #10b981 0%, #059669 100%)",
+              borderColor: isSimulating ? "transparent" : "#047857",
+              boxShadow: isSimulating ? "none" : "0 1px 2px rgba(5, 150, 105, 0.2)",
               color: "#ffffff",
-              minWidth: 70,
+              minWidth: 74,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              transition: "all 0.15s ease",
             }}
-            title={isSimulating ? "Simulation running…" : "Run Simulation (F5)"}
+            title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⇧↵" : "F5"})`}
           >
             {isSimulating ? "Running…" : "Run"}
           </Button>
@@ -464,6 +563,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
           aria-label={`Search models & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
           title={`Search models, packages & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
+          style={{ height: 32, width: 32, borderRadius: 6 }}
         />
 
         {/* Promote to Multi-File VS Code Workbench */}
@@ -475,6 +575,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             onClick={onOpenInVsCode}
             title="Promote this model to the full multi-file VS Code Workbench"
             className="nav-hide-lg"
+            style={{ height: 32, borderRadius: 6 }}
           >
             <NavText>Open in VS Code</NavText>
           </Button>
@@ -482,7 +583,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 
         {/* Unified Share & Export Menu */}
         <ActionMenu>
-          <ActionMenu.Button size="small" leadingVisual={ShareIcon}>
+          <ActionMenu.Button size="small" leadingVisual={ShareIcon} style={{ height: 32, borderRadius: 6 }}>
             <NavText>Share</NavText>
           </ActionMenu.Button>
           <ActionMenu.Overlay width="medium">

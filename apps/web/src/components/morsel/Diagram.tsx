@@ -76,6 +76,7 @@ type DiagramGraphInstance = {
 
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const isInternalSelectionRef = useRef<string | null>(null);
 
   // Use a ref for props so callbacks in event listeners have access to latest props
   const propsRef = useRef(props);
@@ -140,9 +141,11 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }
       },
       onSelect: (id) => {
+        isInternalSelectionRef.current = id;
         if (propsRef.current.onSelect) propsRef.current.onSelect(id);
       },
       onShowProperties: (id, cachedProps, isLoading) => {
+        isInternalSelectionRef.current = id;
         if (propsRef.current.onShowProperties) {
           propsRef.current.onShowProperties(id, cachedProps, isLoading);
         }
@@ -260,23 +263,29 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
       if (!g) return;
       if (!props.selectedName || isEphemeralDiagramNode(props.selectedName)) {
+        isInternalSelectionRef.current = null;
         g.cleanSelection?.();
       } else {
+        const isInternal = isInternalSelectionRef.current === props.selectedName;
+        isInternalSelectionRef.current = null;
+
         const cell = g.getCellById(props.selectedName);
         if (cell) {
-          g.cleanSelection?.();
-          g.select?.(cell);
-          try {
-            const cellView = g.findViewByCell(cell);
-            if (cellView?.container) {
-              cellView.container.classList.add("modelscript-anchor-halo");
-              setTimeout(() => {
-                cellView.container?.classList.remove("modelscript-anchor-halo");
-              }, 5400);
+          if (!isInternal) {
+            g.cleanSelection?.();
+            g.select?.(cell);
+            try {
+              const cellView = g.findViewByCell(cell);
+              if (cellView?.container) {
+                cellView.container.classList.add("modelscript-anchor-halo");
+                setTimeout(() => {
+                  cellView.container?.classList.remove("modelscript-anchor-halo");
+                }, 5400);
+              }
+              g.centerCell?.(cell, { animation: { duration: 300 } });
+            } catch {
+              // fallback if animation unsupported
             }
-            g.centerCell?.(cell, { animation: { duration: 300 } });
-          } catch {
-            // fallback if animation unsupported
           }
         }
       }

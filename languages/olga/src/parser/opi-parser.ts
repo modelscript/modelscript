@@ -74,9 +74,15 @@ export function parseOpi(xmlText: string): OlgaModel {
   const rootLower = root?.name.toLowerCase() ?? "";
   if (
     !root ||
-    (rootLower !== "model" && rootLower !== "olgaproject" && rootLower !== "olgacase" && rootLower !== "case")
+    (rootLower !== "model" &&
+      rootLower !== "olgaproject" &&
+      rootLower !== "olgacase" &&
+      rootLower !== "case" &&
+      rootLower !== "olgamodel")
   ) {
-    throw new Error(`Expected root tag <Model>, <OlgaProject>, or <OlgaCase>, found <${root?.name ?? "null"}>`);
+    throw new Error(
+      `Expected root tag <Model>, <OlgaProject>, <OlgaCase>, or <OlgaModel>, found <${root?.name ?? "null"}>`,
+    );
   }
 
   const title = getAttr(root, "Title") ?? getAttr(root, "Name") ?? "Untitled Olga Case";

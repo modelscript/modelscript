@@ -1057,7 +1057,7 @@ export class WorkspaceManager {
                 if ((annName === "Placement" || annName === "placement") && db.query && child.id != null) {
                   try {
                     const salsaPlacement = db.query("componentPlacement", child.id);
-                    if (salsaPlacement !== undefined) {
+                    if (salsaPlacement != null) {
                       compAnnCache.set(annName, salsaPlacement);
                       return salsaPlacement;
                     }

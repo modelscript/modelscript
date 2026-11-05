@@ -28,12 +28,17 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib }) => {
       : null;
   const domains = inferPackageDomains(lib);
   const timeAgoText = formatTimeAgo(lib.publishedAt);
+  const hasVisibleRecommendation = Boolean(
+    lib.recommendationReason &&
+    !lib.recommendationReason.startsWith("Matches #") &&
+    (!lib.dependentsCount || !lib.recommendationReason.startsWith("Used by ")),
+  );
   const hasFooterMeta = Boolean(
     distinctAuthor ||
     lib.license ||
     (typeof lib.totalDownloads === "number" && lib.totalDownloads > 0) ||
     (typeof lib.dependentsCount === "number" && lib.dependentsCount > 0) ||
-    lib.recommendationReason ||
+    hasVisibleRecommendation ||
     timeAgoText,
   );
 
@@ -149,7 +154,7 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib }) => {
                   Used by {lib.dependentsCount} {lib.dependentsCount === 1 ? "package" : "packages"}
                 </Text>
               )}
-              {lib.recommendationReason && (
+              {hasVisibleRecommendation && (
                 <Text style={{ fontSize: "11px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
                   {lib.recommendationReason}
                 </Text>

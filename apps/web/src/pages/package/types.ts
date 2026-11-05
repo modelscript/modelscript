@@ -274,24 +274,23 @@ export const Divider = styled.hr`
 `;
 
 export const InstallBox = styled.div`
-  background: var(--color-pre-bg);
-  border: 1px solid var(--color-border-glass);
+  background: var(--ms-surface-hover, var(--color-pre-bg));
+  border: 1px solid var(--ms-border, var(--color-border-glass));
   border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--color-accent-cyan);
+  font-size: 12.5px;
+  color: var(--ms-brand, var(--color-accent-cyan));
   cursor: pointer;
-  box-shadow: var(--glow-ai-sm);
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 
   &:hover {
-    border-color: rgba(6, 182, 212, 0.45);
-    box-shadow: 0 0 16px rgba(6, 182, 212, 0.3);
+    border-color: var(--ms-brand, rgba(6, 182, 212, 0.45));
+    background: var(--ms-surface-selected, var(--color-pre-bg));
   }
 
   code {
@@ -502,15 +501,15 @@ export const SparklineBar = styled.div<{ $heightPct: number; $active?: boolean |
   height: ${(p) => Math.max(p.$heightPct, 8)}%;
   background: ${(p) =>
     p.$active
-      ? "linear-gradient(180deg, var(--color-accent-cyan, #06b6d4) 0%, rgba(6, 182, 212, 0.4) 100%)"
-      : "var(--color-border, rgba(255, 255, 255, 0.1))"};
+      ? "linear-gradient(180deg, var(--ms-brand, #06b6d4) 0%, color-mix(in srgb, var(--ms-brand, #06b6d4) 35%, transparent) 100%)"
+      : "var(--ms-border, rgba(255, 255, 255, 0.1))"};
   border-radius: 2px 2px 0 0;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   cursor: pointer;
 
   &:hover {
-    background: var(--color-accent-cyan, #06b6d4);
-    box-shadow: 0 0 6px rgba(6, 182, 212, 0.6);
+    background: var(--ms-brand-hover, var(--ms-brand, #06b6d4));
+    box-shadow: 0 0 6px color-mix(in srgb, var(--ms-brand) 50%, transparent);
   }
 `;
 
@@ -521,16 +520,17 @@ export const DependentBadge = styled(Link)`
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 12px;
-  background: var(--color-glass-bg);
-  border: 1px solid var(--color-glass-border);
-  color: var(--color-text-primary);
+  background: var(--ms-surface-hover, var(--color-glass-bg));
+  border: 1px solid var(--ms-border, var(--color-glass-border));
+  color: var(--ms-text-1, var(--color-text-primary));
   text-decoration: none;
   transition: all 0.15s ease;
 
   &:hover {
-    border-color: var(--color-accent-cyan);
-    color: var(--color-accent-cyan);
-    background: var(--color-glass-bg-hover);
+    border-color: var(--ms-brand, var(--color-accent-cyan));
+    color: var(--ms-brand, var(--color-accent-cyan));
+    background: var(--ms-surface-selected, var(--color-glass-bg-hover));
+    text-decoration: none;
   }
 `;
 
@@ -552,14 +552,12 @@ export const DiagramWrap = styled.div`
 `;
 
 export const HeaderBar = styled.div`
-  max-width: none;
   width: 100%;
-  margin: 0 auto;
-  padding: 32px 40px 0;
+  padding: 20px 24px 0;
   box-sizing: border-box;
 
   @media (max-width: 900px) {
-    padding: 20px 16px 0;
+    padding: 16px 16px 0;
   }
 `;
 
@@ -588,8 +586,8 @@ export const MobileTreeToggle = styled.button`
 `;
 
 export const TreeSidebar = styled.div<{ $mobileOpen?: boolean | undefined; $collapsed?: boolean | undefined }>`
-  width: ${(props) => (props.$collapsed ? "0px" : "270px")};
-  min-width: ${(props) => (props.$collapsed ? "0px" : "270px")};
+  width: ${(props) => (props.$collapsed ? "0px" : "230px")};
+  min-width: ${(props) => (props.$collapsed ? "0px" : "230px")};
   opacity: ${(props) => (props.$collapsed ? 0 : 1)};
   visibility: ${(props) => (props.$collapsed ? "hidden" : "visible")};
   pointer-events: ${(props) => (props.$collapsed ? "none" : "auto")};

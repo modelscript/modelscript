@@ -68,7 +68,7 @@ export interface MorselEditorProps {
   onDialectChange?: ((dialect: string) => void) | undefined;
   onAnchorClick?: ((anchor: { elementId: string; kind: "component" }) => void) | undefined;
   onSimulationStatus?: ((status: string, data?: unknown) => void) | undefined;
-  onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code") => void) | undefined;
+  onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => void) | undefined;
   onParametersChange?: ((params: Record<string, number>) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
 }
@@ -167,42 +167,62 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [contextVersion, setContextVersion] = useState(0);
 
   useEffect(() => {
-    if (!props.initialView) return;
-    if (props.initialView === "code-only" || props.initialView === "code") {
+    const handleToggle = () => {
+      setTreeVisible((v) => {
+        const next = !v;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: next } }));
+        }
+        return next;
+      });
+    };
+    window.addEventListener("morsel:toggle-sidebar", handleToggle);
+    return () => window.removeEventListener("morsel:toggle-sidebar", handleToggle);
+  }, []);
+
+  const applyViewMode = useCallback((targetView: string) => {
+    if (targetView === "code-only" || targetView === "code") {
       setView(View.CODE);
       setShowCadView(false);
       setShowResultsView(false);
       setShowAnalysisView(false);
-    } else if (props.initialView === "diagram-only" || props.initialView === "diagram") {
+    } else if (targetView === "diagram-only" || targetView === "diagram") {
       setView(View.DIAGRAM);
       setShowCadView(false);
       setShowResultsView(false);
       setShowAnalysisView(false);
-    } else if (props.initialView === "cad-only" || props.initialView === "cad" || props.initialView === "3d") {
+    } else if (targetView === "cad-only" || targetView === "cad" || targetView === "3d") {
       setView(View.DIAGRAM);
       setShowCadView(true);
       setShowResultsView(false);
       setShowAnalysisView(false);
-    } else if (
-      props.initialView === "plot-only" ||
-      props.initialView === "plot" ||
-      props.initialView === "simulation"
-    ) {
+    } else if (targetView === "plot-only" || targetView === "plot" || targetView === "simulation") {
       setView(View.DIAGRAM);
       setShowCadView(false);
       setShowResultsView(true);
       setShowAnalysisView(false);
-    } else if (props.initialView === "inspector") {
+    } else if (targetView === "inspector") {
       setView(View.DIAGRAM);
       setShowCadView(false);
       setShowResultsView(false);
       setShowAnalysisView(true);
-    } else if (props.initialView === "split-rows") {
-      setView(View.SPLIT_ROWS);
-    } else if (props.initialView === "split-columns") {
+    } else if (targetView === "split" || targetView === "split-columns") {
       setView(View.SPLIT_COLUMNS);
+      setShowCadView(false);
+      setShowResultsView(false);
+      setShowAnalysisView(false);
+    } else if (targetView === "split-rows") {
+      setView(View.SPLIT_ROWS);
+      setShowCadView(false);
+      setShowResultsView(false);
+      setShowAnalysisView(false);
     }
-  }, [props.initialView]);
+  }, []);
+
+  useEffect(() => {
+    if (!props.initialView) return;
+    applyViewMode(props.initialView);
+  }, [props.initialView, applyViewMode]);
 
   useEffect(() => {
     if (props.initialAnchor?.elementId) {
@@ -355,6 +375,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [parameterOverrides, props.onParametersChange]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
+  const [isSplitResizerHovered, setIsSplitResizerHovered] = useState(false);
+  const [isSplitResizerDragging, setIsSplitResizerDragging] = useState(false);
   const [treeWidth, setTreeWidth] = useState(300);
   const [propertiesWidth, setPropertiesWidth] = useState(props.embed ? 240 : 300);
   const { theme, toggleTheme } = useSiteTheme();
@@ -726,40 +748,22 @@ export default function MorselEditor(props: MorselEditorProps) {
           void handleSimulate();
           break;
         case "view:diagram":
-          setShowCadView(false);
-          setShowResultsView(false);
-          setShowAnalysisView(false);
-          setView(View.DIAGRAM);
+          applyViewMode("diagram");
           break;
         case "view:3d":
-          setShowResultsView(false);
-          setShowAnalysisView(false);
-          setShowCadView(true);
-          setView(View.DIAGRAM);
+          applyViewMode("3d");
           break;
         case "view:simulation":
-          setShowCadView(false);
-          setShowAnalysisView(false);
-          setShowResultsView(true);
-          setView(View.DIAGRAM);
+          applyViewMode("simulation");
           break;
         case "view:inspector":
-          setShowCadView(false);
-          setShowResultsView(false);
-          setShowAnalysisView(true);
-          setView(View.DIAGRAM);
+          applyViewMode("inspector");
           break;
         case "view:code":
-          setShowCadView(false);
-          setShowResultsView(false);
-          setShowAnalysisView(false);
-          setView(View.CODE);
+          applyViewMode("code");
           break;
         case "view:split":
-          setShowCadView(false);
-          setShowResultsView(false);
-          setShowAnalysisView(false);
-          setView(View.SPLIT_COLUMNS);
+          applyViewMode("split");
           break;
         case "share":
           setShareDialogOpen(true);
@@ -791,30 +795,36 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (!props.embed) {
         setTreeVisible(true);
       }
-      if (!props.initialView || props.initialView === "split-columns" || props.initialView === "split-rows") {
+      if (
+        !props.initialView ||
+        props.initialView === "split" ||
+        props.initialView === "split-columns" ||
+        props.initialView === "split-rows"
+      ) {
         setView((prev) => (prev === View.CODE ? View.SPLIT_COLUMNS : prev));
       }
     }
   }, [isNarrow, mobileTab, props.embed, props.initialView]);
 
+  const currentActiveView: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split" = showResultsView
+    ? "simulation"
+    : showCadView
+      ? "3d"
+      : showAnalysisView
+        ? "inspector"
+        : view === View.CODE
+          ? "code"
+          : isSplit(view)
+            ? "split"
+            : "diagram";
+
+  const lastNotifiedViewRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (showResultsView) {
-      setShowAnalysisView(false);
-      setShowCadView(false);
-      if (props.hideCenterFloatingToolbar && view === View.CODE) {
-        setView(View.DIAGRAM);
-      }
-      props.onActiveViewChange?.("simulation");
-    } else if (showCadView) {
-      props.onActiveViewChange?.("3d");
-    } else if (showAnalysisView) {
-      props.onActiveViewChange?.("inspector");
-    } else if (view === View.CODE) {
-      props.onActiveViewChange?.("code");
-    } else {
-      props.onActiveViewChange?.("diagram");
-    }
-  }, [showResultsView, showCadView, showAnalysisView, props.hideCenterFloatingToolbar, props.onActiveViewChange, view]);
+    if (lastNotifiedViewRef.current === currentActiveView) return;
+    lastNotifiedViewRef.current = currentActiveView;
+    props.onActiveViewChange?.(currentActiveView);
+  }, [currentActiveView, props.onActiveViewChange]);
 
   useEffect(() => {
     if (content) {
@@ -1121,6 +1131,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         >
           <MorselLeftSidebar
             treeVisible={treeVisible}
+            setTreeVisible={setTreeVisible}
             isNarrow={isNarrow}
             treeWidth={treeWidth}
             setTreeWidth={setTreeWidth}
@@ -1140,7 +1151,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             onTreeSelect={handleTreeSelect}
             onTreeHighlight={handleTreeHighlight}
             contextVersion={contextVersion}
-            language={language}
+            language={dialect}
             diagramData={diagramData}
             selectedComponent={selectedComponent}
             onSelectComponent={handleSelectComponent}
@@ -1242,32 +1253,44 @@ export default function MorselEditor(props: MorselEditorProps) {
               hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
               showAnalysisView={showAnalysisView}
               setShowAnalysisView={setShowAnalysisView}
+              loadingProgress={loadingProgress}
             />
 
             {/* Split Resizer */}
             {isSplit(view) && !isNarrow && (
               <div
                 role="separator"
-                aria-orientation="vertical"
+                aria-orientation={view === View.SPLIT_COLUMNS ? "vertical" : "horizontal"}
                 aria-valuenow={Math.round(splitRatio * 100)}
                 aria-valuemin={20}
                 aria-valuemax={80}
                 aria-label="Resize split panes"
                 tabIndex={0}
                 style={{
-                  width: view === View.SPLIT_COLUMNS ? 6 : "100%",
-                  height: view === View.SPLIT_ROWS ? 6 : "100%",
+                  width: view === View.SPLIT_COLUMNS ? 10 : "100%",
+                  height: view === View.SPLIT_ROWS ? 10 : "100%",
+                  marginLeft: view === View.SPLIT_COLUMNS ? -5 : 0,
+                  marginRight: view === View.SPLIT_COLUMNS ? -5 : 0,
+                  marginTop: view === View.SPLIT_ROWS ? -5 : 0,
+                  marginBottom: view === View.SPLIT_ROWS ? -5 : 0,
                   cursor: view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
                   backgroundColor: "transparent",
                   display: "flex",
+                  position: "relative",
+                  zIndex: 10,
+                  outline: "none",
+                  userSelect: "none",
                   borderLeft:
-                    view === View.SPLIT_COLUMNS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
+                    view === View.SPLIT_COLUMNS && !isSplitResizerHovered && !isSplitResizerDragging
+                      ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`
+                      : "none",
                   borderTop:
-                    view === View.SPLIT_ROWS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
-                  transition: "background-color 0.15s",
+                    view === View.SPLIT_ROWS && !isSplitResizerHovered && !isSplitResizerDragging
+                      ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`
+                      : "none",
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
@@ -1276,10 +1299,20 @@ export default function MorselEditor(props: MorselEditorProps) {
                   } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
                     e.preventDefault();
                     setSplitRatio((prev) => Math.min(0.8, Number((prev + 0.05).toFixed(2))));
+                  } else if (e.key === "Home") {
+                    e.preventDefault();
+                    setSplitRatio(0.2);
+                  } else if (e.key === "End") {
+                    e.preventDefault();
+                    setSplitRatio(0.8);
                   }
+                }}
+                onDoubleClick={() => {
+                  setSplitRatio(0.5);
                 }}
                 onTouchStart={() => {
                   isDraggingSplit.current = true;
+                  setIsSplitResizerDragging(true);
                   document.body.style.userSelect = "none";
                 }}
                 onTouchMove={(e) => {
@@ -1299,11 +1332,13 @@ export default function MorselEditor(props: MorselEditorProps) {
                 }}
                 onTouchEnd={() => {
                   isDraggingSplit.current = false;
+                  setIsSplitResizerDragging(false);
                   document.body.style.userSelect = "";
                 }}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   isDraggingSplit.current = true;
+                  setIsSplitResizerDragging(true);
                   const onMouseMove = (ev: MouseEvent) => {
                     if (!isDraggingSplit.current || !splitContainerRef.current) return;
                     const rect = splitContainerRef.current.getBoundingClientRect();
@@ -1319,6 +1354,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   };
                   const onMouseUp = () => {
                     isDraggingSplit.current = false;
+                    setIsSplitResizerDragging(false);
                     document.removeEventListener("mousemove", onMouseMove);
                     document.removeEventListener("mouseup", onMouseUp);
                     document.body.style.cursor = "";
@@ -1329,14 +1365,41 @@ export default function MorselEditor(props: MorselEditorProps) {
                   document.body.style.cursor = view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize";
                   document.body.style.userSelect = "none";
                 }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
-              />
+                onMouseEnter={() => setIsSplitResizerHovered(true)}
+                onMouseLeave={() => setIsSplitResizerHovered(false)}
+              >
+                {/* Active highlight line centered on the split */}
+                <div
+                  style={{
+                    width: view === View.SPLIT_COLUMNS ? 2 : "100%",
+                    height: view === View.SPLIT_ROWS ? 2 : "100%",
+                    backgroundColor:
+                      isSplitResizerHovered || isSplitResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+                    transition: "background-color 0.15s ease",
+                  }}
+                />
+                {/* Subtle grab pill in the center */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: view === View.SPLIT_COLUMNS ? 4 : 28,
+                    height: view === View.SPLIT_COLUMNS ? 28 : 4,
+                    borderRadius: 999,
+                    backgroundColor:
+                      isSplitResizerHovered || isSplitResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+                    boxShadow:
+                      isSplitResizerHovered || isSplitResizerDragging
+                        ? "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)"
+                        : "none",
+                    opacity: isSplitResizerHovered || isSplitResizerDragging ? 1 : 0,
+                    transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
             )}
 
             {/* Code Editor */}

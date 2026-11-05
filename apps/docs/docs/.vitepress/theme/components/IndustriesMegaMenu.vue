@@ -33,7 +33,7 @@ const feature: MegaMenuFeature = {
 const footerLinks: MegaMenuFooterLink[] = [
   { label: "All industries", href: "/industries/", icon: "globe" },
   { label: `Browse all ${LANGUAGE_COUNT} languages & formats`, href: "/languages/overview", icon: "layers" },
-  { label: "Try it in Ansatz Sketch", href: "/sketch", icon: "terminal", target: "_self" },
+  { label: "Try it in Sketch", href: "/sketch", icon: "terminal", target: "_self" },
 ];
 </script>
 

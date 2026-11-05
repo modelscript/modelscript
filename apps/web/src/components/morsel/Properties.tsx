@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { evaluatePropertyPredicate, validatePropertyValue } from "@modelscript/diagram";
-import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
-import { Button, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
+import {
+  ConflictManager,
+  evaluatePropertyPredicate,
+  validatePropertyValue,
+  type PropertyChoice,
+  type PropertyConflict,
+  type PropertyFieldConfig,
+  type PropertyGroupConfig,
+  type PropertyTabConfig,
+} from "@modelscript/diagram";
+import { ChevronDownIcon, ChevronRightIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import { Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Spinner from "../Spinner";
 import { ComponentIcon } from "./ComponentList";
 import type { Translations } from "./util/i18n";
@@ -13,6 +22,30 @@ import type { ComponentProperties, PropertyData } from "./util/lsp-bridge";
 function formatUnit(unit: string): string {
   if (unit === "Ohm") return "Ω";
   return unit;
+}
+
+function formatDescription(desc?: string) {
+  if (!desc) return null;
+  const formulaMatch = desc.match(/^(.*?)\s*(\([a-zA-Z0-9_]+\s*=\s*[^)]+\))$/);
+  if (formulaMatch) {
+    return (
+      <>
+        <span>{formulaMatch[1]} </span>
+        <code
+          style={{
+            fontSize: 10,
+            padding: "1px 4px",
+            borderRadius: 3,
+            background: "rgba(128,128,128,0.15)",
+            fontFamily: "var(--fontStack-monospace, monospace)",
+          }}
+        >
+          {formulaMatch[2]}
+        </code>
+      </>
+    );
+  }
+  return desc;
 }
 
 interface PropertiesWidgetProps {
@@ -88,6 +121,7 @@ function ParameterRow({
         {isBoolean ? (
           <ToggleSwitch
             size="small"
+            statusLabelPosition="hidden"
             checked={isChecked}
             aria-labelledby={`param-label-${parameter.name}`}
             onClick={() => {
@@ -138,10 +172,17 @@ function ParameterRow({
       </div>
       {parameter.localizedDescription && (
         <div
-          className="f6 color-fg-muted text-italic"
-          style={{ marginTop: 2, fontSize: 11, paddingLeft: 0, opacity: 0.6 }}
+          className="f6 color-fg-muted"
+          style={{
+            marginTop: 2,
+            fontSize: 11,
+            paddingLeft: 0,
+            lineHeight: 1.35,
+            opacity: 0.75,
+            wordBreak: "break-word",
+          }}
         >
-          {parameter.localizedDescription}
+          {formatDescription(parameter.localizedDescription)}
         </div>
       )}
     </div>
@@ -152,12 +193,16 @@ function SchemaFieldRow({
   field,
   currentValue,
   contextValues,
+  conflict,
   onParameterChange,
+  onResolveConflict,
 }: {
   field: any;
   currentValue: any;
   contextValues: Record<string, any>;
+  conflict?: PropertyConflict | null | undefined;
   onParameterChange?: ((name: string, value: string) => void) | undefined;
+  onResolveConflict?: ((resolution: "keep_local" | "accept_remote") => void) | undefined;
 }) {
   const isEnabled = evaluatePropertyPredicate(field.enabledIf, contextValues) && !field.readOnly;
   const [localVal, setLocalVal] = useState<string>(String(currentValue ?? field.defaultValue ?? ""));
@@ -178,6 +223,15 @@ function SchemaFieldRow({
 
   const validationErr = validatePropertyValue(field, localVal, contextValues);
   const unitStr = field.unit ? formatUnit(field.unit) : undefined;
+  const defaultValueStr =
+    field.defaultValue !== undefined && field.defaultValue !== null ? String(field.defaultValue) : "";
+  const isOverridden = localVal !== "" && localVal !== "-" && defaultValueStr !== "" && localVal !== defaultValueStr;
+
+  const handleReset = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLocalVal(defaultValueStr);
+    onParameterChange?.(field.key, defaultValueStr);
+  };
 
   return (
     <div
@@ -185,128 +239,223 @@ function SchemaFieldRow({
         display: "flex",
         flexDirection: "column",
         padding: "6px 16px",
-        opacity: isEnabled ? 1 : 0.5,
+        opacity: isEnabled ? 1 : 0.45,
       }}
     >
       <div className="d-flex flex-row flex-justify-between flex-items-center" onClick={(e) => e.stopPropagation()}>
-        <label
-          id={`schema-field-${field.key}`}
-          className="f6 color-fg-muted"
-          style={{
-            marginRight: 8,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: "calc(100% - 130px)",
-          }}
-          title={field.description || ""}
-        >
-          {field.label || field.key} {unitStr ? `[${unitStr}]` : ""}
-        </label>
+        <div className="d-flex flex-items-center" style={{ maxWidth: "calc(100% - 130px)", overflow: "hidden" }}>
+          {isOverridden && (
+            <span
+              title={`Modified from default (${defaultValueStr})`}
+              style={{
+                display: "inline-block",
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: "var(--fgColor-accent, #58a6ff)",
+                marginRight: 6,
+                flexShrink: 0,
+              }}
+            />
+          )}
+          <label
+            id={`schema-field-${field.key}`}
+            className="f6"
+            style={{
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              color: isOverridden ? "var(--fgColor-default, #c9d1d9)" : "var(--fgColor-muted, #8b949e)",
+              fontWeight: isOverridden ? 600 : 400,
+            }}
+            title={field.description || ""}
+          >
+            {field.label || field.key}
+          </label>
+        </div>
 
-        {field.kind === "boolean" ? (
-          <ToggleSwitch
-            size="small"
-            aria-labelledby={`schema-field-${field.key}`}
-            checked={localVal === "true" || localVal === "1"}
-            disabled={!isEnabled}
-            onClick={() => {
-              if (!isEnabled) return;
-              const next = localVal === "true" || localVal === "1" ? "false" : "true";
-              setLocalVal(next);
-              onParameterChange?.(field.key, next);
-            }}
-            onChange={() => {}}
-          />
-        ) : field.kind === "choice" && Array.isArray(field.choices) ? (
-          <select
-            value={localVal}
-            disabled={!isEnabled}
-            onChange={(e) => {
-              setLocalVal(e.target.value);
-              onParameterChange?.(field.key, e.target.value);
-            }}
-            style={{
-              width: 130,
-              height: 26,
-              fontSize: 12,
-              borderRadius: 4,
-              border: "1px solid var(--borderColor-default, #30363d)",
-              background: "var(--bgColor-muted, #161b22)",
-              color: "var(--fgColor-default, #c9d1d9)",
-              padding: "2px 6px",
-            }}
-          >
-            {field.choices.map((c: any) => {
-              const val = typeof c === "string" ? c : c.value;
-              const lbl = typeof c === "string" ? c : c.label;
-              return (
-                <option key={val} value={val}>
-                  {lbl}
-                </option>
-              );
-            })}
-          </select>
-        ) : field.kind === "color" ? (
-          <input
-            type="color"
-            value={localVal || "#000000"}
-            disabled={!isEnabled}
-            onChange={(e) => {
-              setLocalVal(e.target.value);
-              onParameterChange?.(field.key, e.target.value);
-            }}
-            style={{
-              width: 40,
-              height: 24,
-              padding: 2,
-              borderRadius: 4,
-              border: "1px solid var(--borderColor-default, #30363d)",
-              background: "transparent",
-              cursor: isEnabled ? "pointer" : "not-allowed",
-            }}
-          />
-        ) : field.kind === "codeBlock" ? (
-          <pre
-            style={{
-              maxHeight: 120,
-              overflow: "auto",
-              fontSize: 11,
-              padding: "4px 8px",
-              background: "var(--bgColor-muted, #161b22)",
-              borderRadius: 4,
-              width: "100%",
-            }}
-          >
-            {localVal}
-          </pre>
-        ) : (
-          <TextInput
-            size="small"
-            type="text"
-            inputMode={field.kind === "number" ? "decimal" : undefined}
-            disabled={!isEnabled}
-            value={localVal}
-            onChange={(e) => setLocalVal(e.target.value)}
-            trailingVisual={
-              unitStr
-                ? () => (
-                    <span style={{ fontSize: 11, color: "var(--fgColor-muted, #656d76)", whiteSpace: "nowrap" }}>
-                      {unitStr}
-                    </span>
-                  )
-                : undefined
-            }
-            style={{ width: 130, height: 24, fontSize: 12 }}
-          />
-        )}
+        <div className="d-flex flex-items-center" style={{ gap: 4 }}>
+          {isOverridden && (
+            <button
+              type="button"
+              title={`Revert to default (${defaultValueStr})`}
+              aria-label={`Revert ${field.label || field.key} to default`}
+              onClick={handleReset}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px 4px",
+                fontSize: "12px",
+                color: "var(--fgColor-muted, #8b949e)",
+                lineHeight: 1,
+                borderRadius: 4,
+              }}
+            >
+              ↺
+            </button>
+          )}
+
+          {field.kind === "boolean" ? (
+            <ToggleSwitch
+              size="small"
+              statusLabelPosition="hidden"
+              aria-labelledby={`schema-field-${field.key}`}
+              checked={localVal === "true" || localVal === "1"}
+              disabled={!isEnabled}
+              onClick={() => {
+                if (!isEnabled) return;
+                const next = localVal === "true" || localVal === "1" ? "false" : "true";
+                setLocalVal(next);
+                onParameterChange?.(field.key, next);
+              }}
+              onChange={() => {}}
+            />
+          ) : field.kind === "choice" && Array.isArray(field.choices) ? (
+            <select
+              value={localVal}
+              disabled={!isEnabled}
+              onChange={(e) => {
+                setLocalVal(e.target.value);
+                onParameterChange?.(field.key, e.target.value);
+              }}
+              style={{
+                width: 130,
+                height: 26,
+                fontSize: 12,
+                borderRadius: 4,
+                border: "1px solid var(--borderColor-default, #30363d)",
+                background: "var(--bgColor-muted, #161b22)",
+                color: "var(--fgColor-default, #c9d1d9)",
+                padding: "2px 6px",
+              }}
+            >
+              {field.choices.map((c: PropertyChoice | string) => {
+                const val = typeof c === "string" ? c : c.value;
+                const lbl = typeof c === "string" ? c : c.label;
+                return (
+                  <option key={val} value={val}>
+                    {lbl}
+                  </option>
+                );
+              })}
+            </select>
+          ) : field.kind === "color" ? (
+            <input
+              type="color"
+              value={localVal || "#000000"}
+              disabled={!isEnabled}
+              onChange={(e) => {
+                setLocalVal(e.target.value);
+                onParameterChange?.(field.key, e.target.value);
+              }}
+              style={{
+                width: 40,
+                height: 24,
+                padding: 2,
+                borderRadius: 4,
+                border: "1px solid var(--borderColor-default, #30363d)",
+                background: "transparent",
+                cursor: isEnabled ? "pointer" : "not-allowed",
+              }}
+            />
+          ) : field.kind === "codeBlock" ? (
+            <pre
+              style={{
+                maxHeight: 120,
+                overflow: "auto",
+                fontSize: 11,
+                padding: "4px 8px",
+                background: "var(--bgColor-muted, #161b22)",
+                borderRadius: 4,
+                width: "100%",
+              }}
+            >
+              {localVal}
+            </pre>
+          ) : (
+            <TextInput
+              size="small"
+              type="text"
+              inputMode={field.kind === "number" ? "decimal" : undefined}
+              disabled={!isEnabled}
+              value={localVal}
+              onChange={(e) => setLocalVal(e.target.value)}
+              trailingVisual={
+                unitStr
+                  ? () => (
+                      <span style={{ fontSize: 11, color: "var(--fgColor-muted, #656d76)", whiteSpace: "nowrap" }}>
+                        {unitStr}
+                      </span>
+                    )
+                  : undefined
+              }
+              style={{ width: 130, height: 24, fontSize: 12 }}
+            />
+          )}
+        </div>
       </div>
+      {conflict && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 6,
+            background: "rgba(248, 81, 73, 0.12)",
+            border: "1px solid var(--fgColor-danger, #f85149)",
+            borderRadius: 4,
+            padding: "4px 8px",
+            marginTop: 4,
+            fontSize: 11,
+          }}
+        >
+          <span>
+            ⚡ External change: <strong>{conflict.remoteValue}</strong>
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => onResolveConflict?.("keep_local")}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--fgColor-danger, #f85149)",
+                borderRadius: 3,
+                color: "var(--fgColor-default, #c9d1d9)",
+                fontSize: 10,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
+            >
+              Keep Mine ({conflict.localValue})
+            </button>
+            <button
+              type="button"
+              onClick={() => onResolveConflict?.("accept_remote")}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--fgColor-danger, #f85149)",
+                borderRadius: 3,
+                color: "var(--fgColor-default, #c9d1d9)",
+                fontSize: 10,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
+            >
+              Use {conflict.remoteValue}
+            </button>
+          </div>
+        </div>
+      )}
       {validationErr && (
         <div style={{ color: "var(--fgColor-danger, #f85149)", fontSize: 11, marginTop: 2 }}>{validationErr}</div>
       )}
       {field.description && (
-        <div className="f6 color-fg-muted text-italic" style={{ marginTop: 2, fontSize: 11, opacity: 0.6 }}>
-          {field.description}
+        <div
+          className="f6 color-fg-muted"
+          style={{ marginTop: 2, fontSize: 11, lineHeight: 1.35, opacity: 0.75, wordBreak: "break-word" }}
+        >
+          {formatDescription(field.description)}
         </div>
       )}
     </div>
@@ -358,14 +507,67 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     return () => clearTimeout(timeoutId);
   }, [localDescription, properties?.description, onDescriptionChange]);
 
+  // Optimistic local values map with 3-way bidirectional conflict management
+  const conflictMgrRef = useRef<ConflictManager>(new ConflictManager());
+  const [, setConflictVersion] = useState(0);
+  const [localValues, setLocalValues] = useState<Record<string, unknown>>(() => properties?.values || {});
+  const [filterText, setFilterText] = useState("");
+
+  useEffect(() => {
+    conflictMgrRef.current.reset(properties?.values || {});
+    setConflictVersion(0);
+  }, [properties?.name]);
+
+  useEffect(() => {
+    if (properties?.values) {
+      const remote: Record<string, string> = {};
+      for (const [k, v] of Object.entries(properties.values)) {
+        remote[k] = String(v ?? "");
+      }
+      conflictMgrRef.current.syncRemote(remote);
+      setLocalValues({ ...conflictMgrRef.current.getLocalValues() });
+      setConflictVersion((v) => v + 1);
+    }
+  }, [properties?.values]);
+
+  const handleParameterChangeWrapper = useCallback(
+    (name: string, val: string) => {
+      conflictMgrRef.current.recordLocalChange(name, val);
+      setLocalValues((prev) => ({ ...prev, [name]: val }));
+      setConflictVersion((v) => v + 1);
+      onParameterChange?.(name, val);
+    },
+    [onParameterChange],
+  );
+
+  // Live icon SVG that immediately updates matching parameter labels in the icon preview
+  const liveIconSvg = useMemo(() => {
+    const rawSvg = properties?.iconSvg;
+    const propName = properties?.name;
+    if (!rawSvg) return "";
+    let svg = rawSvg;
+    for (const [key, val] of Object.entries(localValues)) {
+      if (val !== undefined && val !== "") {
+        const regex = new RegExp(`(<text[^>]*>\\s*${key}\\s*=\\s*)([^<]+)(</text>)`, "gi");
+        svg = svg.replace(regex, `$1${val}$3`);
+      }
+    }
+    if (localName && propName) {
+      const nameRegex = new RegExp(`(<text[^>]*>\\s*)${propName}(\\s*</text>)`, "gi");
+      svg = svg.replace(nameRegex, `$1${localName}$2`);
+    }
+    return svg;
+  }, [properties, localValues, localName]);
+
   // Schema tabs management
   const schema = properties?.schema;
-  const values = properties?.values || {};
-  const visibleTabs = (schema?.tabs || []).filter((t: any) => evaluatePropertyPredicate(t.visibleIf, values));
+  const visibleTabs = (schema?.tabs || []).filter((t: PropertyTabConfig) =>
+    evaluatePropertyPredicate(t.visibleIf, localValues),
+  );
   const [activeTabId, setActiveTabId] = useState<string>(visibleTabs[0]?.id || "");
 
   useEffect(() => {
-    if (visibleTabs.length > 0 && !visibleTabs.some((t: any) => t.id === activeTabId)) {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t: PropertyTabConfig) => t.id === activeTabId)) {
       setActiveTabId(visibleTabs[0]!.id);
     }
   }, [visibleTabs, activeTabId]);
@@ -477,9 +679,9 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
         </summary>
         <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>
-            {properties.iconSvg && (
+            {(liveIconSvg || properties.iconSvg) && (
               <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                <ComponentIcon iconSvg={properties.iconSvg} size={80} darkMode={colorMode === "dark"} />
+                <ComponentIcon iconSvg={liveIconSvg || properties.iconSvg} size={80} darkMode={colorMode === "dark"} />
               </div>
             )}
             <div
@@ -561,22 +763,25 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               />
             </div>
           ) : (
-            <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
-              <Button
-                variant="invisible"
-                size="small"
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+              <button
+                type="button"
                 onClick={() => setDescriptionEditing(true)}
                 style={{
-                  fontSize: 12,
-                  color: "var(--fgColor-muted, #656d76)",
-                  padding: "12px 24px",
-                  borderRadius: "8px",
-                  border: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                  background: "transparent",
+                  border: `1px dashed ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+                  borderRadius: 6,
+                  padding: "6px 12px",
+                  fontSize: 11,
+                  color: "var(--fgColor-muted, #8b949e)",
+                  cursor: "pointer",
                   width: "100%",
+                  textAlign: "center",
+                  transition: "all 0.15s ease",
                 }}
               >
-                {translations.addDescription}
-              </Button>
+                + {translations.addDescription || "Add description"}
+              </button>
             </div>
           )}
         </div>
@@ -623,29 +828,92 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           {/* Active Tab Groups */}
           {activeTab && (
             <div style={{ paddingBottom: 8 }}>
-              {(activeTab.groups || [])
-                .filter((grp: any) => evaluatePropertyPredicate(grp.visibleIf, values))
-                .map((grp: any) => (
-                  <details key={grp.id} open className="border-bottom">
-                    <summary className="p-2 cursor-pointer f6 text-bold color-fg-muted" style={{ listStyle: "none" }}>
-                      <ChevronDownIcon className="mr-1" />
-                      {grp.label}
-                    </summary>
-                    <div style={{ paddingBottom: 8 }}>
-                      {(grp.fields || [])
-                        .filter((fld: any) => evaluatePropertyPredicate(fld.visibleIf, values))
-                        .map((fld: any) => (
-                          <SchemaFieldRow
-                            key={fld.key}
-                            field={fld}
-                            currentValue={values[fld.key]}
-                            contextValues={values}
-                            onParameterChange={onParameterChange}
-                          />
-                        ))}
-                    </div>
-                  </details>
-                ))}
+              {(() => {
+                const activeGroups = (activeTab.groups || []).filter((grp: PropertyGroupConfig) =>
+                  evaluatePropertyPredicate(grp.visibleIf, localValues),
+                );
+                const totalFieldsInActiveTab = activeGroups.reduce(
+                  (acc: number, grp: PropertyGroupConfig) =>
+                    acc +
+                    (grp.fields || []).filter((fld: PropertyFieldConfig) =>
+                      evaluatePropertyPredicate(fld.visibleIf, localValues),
+                    ).length,
+                  0,
+                );
+
+                return (
+                  <>
+                    {totalFieldsInActiveTab > 4 && (
+                      <div style={{ padding: "8px 16px 4px 16px" }}>
+                        <TextInput
+                          size="small"
+                          block
+                          leadingVisual={SearchIcon}
+                          placeholder="Filter parameters..."
+                          value={filterText}
+                          onChange={(e) => setFilterText(e.target.value)}
+                          trailingAction={
+                            filterText ? (
+                              <TextInput.Action
+                                icon={XIcon}
+                                aria-label="Clear filter"
+                                onClick={() => setFilterText("")}
+                              />
+                            ) : undefined
+                          }
+                          style={{ fontSize: 11, height: 26 }}
+                        />
+                      </div>
+                    )}
+
+                    {activeGroups.map((grp: PropertyGroupConfig) => {
+                      const visibleFields = (grp.fields || [])
+                        .filter((fld: PropertyFieldConfig) => evaluatePropertyPredicate(fld.visibleIf, localValues))
+                        .filter((fld: PropertyFieldConfig) => {
+                          if (!filterText) return true;
+                          const q = filterText.toLowerCase();
+                          return (
+                            fld.key.toLowerCase().includes(q) ||
+                            (fld.label && fld.label.toLowerCase().includes(q)) ||
+                            (fld.description && fld.description.toLowerCase().includes(q))
+                          );
+                        });
+
+                      if (visibleFields.length === 0 && filterText) return null;
+
+                      return (
+                        <details key={grp.id} open className="border-bottom">
+                          <summary
+                            className="p-2 cursor-pointer f6 text-bold color-fg-muted"
+                            style={{ listStyle: "none" }}
+                          >
+                            <ChevronDownIcon className="mr-1" />
+                            {grp.label}
+                          </summary>
+                          <div style={{ paddingBottom: 8 }}>
+                            {visibleFields.map((fld: PropertyFieldConfig) => (
+                              <SchemaFieldRow
+                                key={fld.key}
+                                field={fld}
+                                currentValue={localValues[fld.key] ?? fld.defaultValue}
+                                contextValues={localValues}
+                                conflict={conflictMgrRef.current.getConflict(fld.key)}
+                                onParameterChange={handleParameterChangeWrapper}
+                                onResolveConflict={(resolution) => {
+                                  const chosenValue = conflictMgrRef.current.resolveConflict(fld.key, resolution);
+                                  setLocalValues((prev) => ({ ...prev, [fld.key]: chosenValue }));
+                                  setConflictVersion((v) => v + 1);
+                                  onParameterChange?.(fld.key, chosenValue);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </details>
+                      );
+                    })}
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>

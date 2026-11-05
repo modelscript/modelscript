@@ -150,6 +150,19 @@ const HomeFeedPage: React.FC = () => {
     return () => window.removeEventListener("modelscript:post-created", handlePostCreated);
   }, []);
 
+  useEffect(() => {
+    const handleUserMutedOrBlocked = (e: any) => {
+      const blockedUsername = e?.detail?.username;
+      if (blockedUsername) {
+        setPosts((prev) =>
+          prev.filter((p) => p.username !== blockedUsername && p.author?.username !== blockedUsername),
+        );
+      }
+    };
+    window.addEventListener("modelscript:user-muted-or-blocked", handleUserMutedOrBlocked);
+    return () => window.removeEventListener("modelscript:user-muted-or-blocked", handleUserMutedOrBlocked);
+  }, []);
+
   const isFiltering = activeFilter !== "all" || activeTag !== null;
 
   return (

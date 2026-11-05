@@ -493,12 +493,51 @@ interface SearchState {
   done: boolean;
 }
 
-// ────────────────────────────────────────────────────────────────────
-// Main tree widget
-// ────────────────────────────────────────────────────────────────────
+function inferLanguageFromUri(uri: string): string | null {
+  if (!uri) return null;
+  const lower = uri.toLowerCase();
+  if (lower.endsWith(".mo") || lower.endsWith(".mos")) return "modelica";
+  if (lower.endsWith(".sysml") || lower.endsWith(".sysml2") || lower.endsWith(".kerml")) return "sysml2";
+  if (lower.endsWith(".owl") || lower.endsWith(".ttl") || lower.endsWith(".ofn") || lower.endsWith(".fss"))
+    return "owl2";
+  if (lower.endsWith(".step") || lower.endsWith(".stp") || lower.endsWith(".p21")) return "step";
+  if (lower.endsWith(".scad")) return "scad";
+  if (lower.endsWith(".cir") || lower.endsWith(".sp") || lower.endsWith(".net") || lower.endsWith(".lib"))
+    return "spice";
+  if (lower.endsWith(".csv")) return "csv";
+  if (lower.endsWith(".urdf") || lower.endsWith(".sdf") || lower.endsWith(".xacro")) return "urdf";
+  return null;
+}
+
+function isLanguageCompatible(nodeLanguage: string | undefined, nodeName: string, activeLanguage: string): boolean {
+  const normActive = activeLanguage.toLowerCase();
+  const normNodeLang = (nodeLanguage || "").toLowerCase();
+  const normNodeName = nodeName.toLowerCase();
+
+  // Modelica family
+  if (normActive === "modelica" || normActive === "modelscript") {
+    if (normNodeName === "modelica" || normNodeName === "complex" || normNodeName === "modelicaservices") return true;
+    if (normNodeLang === "modelica" || normNodeLang === "modelscript") return true;
+    return false;
+  }
+
+  // SysML family
+  if (normActive === "sysml" || normActive === "sysml2" || normActive === "kerml") {
+    if (normNodeName === "sysml" || normNodeName === "kerml") return true;
+    if (normNodeLang === "sysml" || normNodeLang === "sysml2" || normNodeLang === "kerml") return true;
+    return false;
+  }
+
+  // Exact or prefix match
+  if (normNodeLang && normNodeLang === normActive) return true;
+  if (normNodeName && normNodeName === normActive) return true;
+
+  return false;
+}
 
 const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   const filter = props.filter?.toLowerCase() ?? "";
+  const effectiveLanguage = props.language || inferLanguageFromUri(props.uri);
   const [rootNodes, setRootNodes] = React.useState<TreeNodeInfo[]>([]);
   const [searchState, setSearchState] = React.useState<SearchState>({
     results: [],
@@ -556,6 +595,9 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   if (filter) {
     // Search results
     for (const node of searchState.results) {
+      if (effectiveLanguage && node.language && !isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+        continue;
+      }
       elements.push(
         <TreeNode
           key={node.compositeName ?? node.name}
@@ -634,6 +676,15 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   } else {
     // Root tree nodes
     for (const node of rootNodes) {
+      if (effectiveLanguage && node.id.startsWith("__LIB__:")) {
+        if (!isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+          continue;
+        }
+      } else if (effectiveLanguage && node.language && node.uri && node.uri !== props.uri) {
+        if (!isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+          continue;
+        }
+      }
       elements.push(
         <TreeNode
           key={node.id}

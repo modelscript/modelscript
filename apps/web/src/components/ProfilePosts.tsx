@@ -47,7 +47,7 @@ function saveStoredPinnedIds(username: string, pinned: Set<string>, unpinned: Se
 
 export interface ProfilePostsProps {
   username: string;
-  type?: "posts" | "replies" | "artifacts" | undefined;
+  type?: "posts" | "replies" | "reposts" | "artifacts" | undefined;
   isOwnProfile?: boolean | undefined;
   pinnedPostId?: number | string | null | undefined;
   onPinChange?: ((postId: number | string, pinned: boolean) => void) | undefined;
@@ -185,6 +185,17 @@ export default function ProfilePosts({
     return () => window.removeEventListener("modelscript:toggle-pin-post", onExternalPinEvent);
   }, [username, posts, isPostPinned, handleTogglePin]);
 
+  useEffect(() => {
+    const handleUserMutedOrBlocked = (e: any) => {
+      const blockedUsername = e?.detail?.username;
+      if (blockedUsername && blockedUsername === username) {
+        setPosts([]);
+      }
+    };
+    window.addEventListener("modelscript:user-muted-or-blocked", handleUserMutedOrBlocked);
+    return () => window.removeEventListener("modelscript:user-muted-or-blocked", handleUserMutedOrBlocked);
+  }, [username]);
+
   const sortedPosts = useMemo(() => {
     if (type !== "posts") return posts;
     const pinned: PostItem[] = [];
@@ -211,11 +222,26 @@ export default function ProfilePosts({
     return (
       <Box p={4} textAlign="center">
         <Text as="h2" style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "8px" }}>
-          No {type === "replies" ? "replies" : type === "artifacts" ? "artifacts" : "posts"} yet
+          No{" "}
+          {type === "replies"
+            ? "replies"
+            : type === "reposts"
+              ? "reposts"
+              : type === "artifacts"
+                ? "artifacts"
+                : "posts"}{" "}
+          yet
         </Text>
         <Text color="var(--color-fg-muted)">
-          When @{username} has {type === "replies" ? "replies" : type === "artifacts" ? "model artifacts" : "posts"},
-          they will show up here.
+          When @{username} has{" "}
+          {type === "replies"
+            ? "replies"
+            : type === "reposts"
+              ? "reposts"
+              : type === "artifacts"
+                ? "model artifacts"
+                : "posts"}
+          , they will show up here.
         </Text>
       </Box>
     );

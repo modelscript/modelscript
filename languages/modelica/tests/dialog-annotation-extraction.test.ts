@@ -123,6 +123,66 @@ describe("Modelica Dialog(...) Annotation Extraction & Property Schema", () => {
     assert.strictEqual(tStartField.enabledIf, "use_HeatPort");
   });
 
+  it("infers 1/K for LinearTemperatureCoefficient and evaluates live component parameters in iconSvg", () => {
+    const resistorCls = {
+      name: "Resistor",
+      classKind: "model",
+      elements: [
+        {
+          kind: "Component",
+          name: "R",
+          description: "Resistance",
+          variability: ModelicaVariability.PARAMETER,
+          modification: { expression: "1" },
+          classInstance: { name: "Modelica.Units.SI.Resistance" },
+        },
+        {
+          kind: "Component",
+          name: "alpha",
+          description: "Temperature coefficient",
+          variability: ModelicaVariability.PARAMETER,
+          modification: { expression: "0" },
+          classInstance: { name: "Modelica.Units.SI.LinearTemperatureCoefficient" },
+        },
+      ],
+      annotation: (name: string) =>
+        name === "Icon"
+          ? {
+              graphics: [
+                {
+                  "@type": "Text",
+                  textString: "R=%R",
+                  extent: [
+                    [-50, -50],
+                    [50, 50],
+                  ],
+                },
+              ],
+            }
+          : null,
+    };
+
+    const circuit = {
+      name: "Circuit",
+      components: [
+        {
+          name: "R1",
+          classInstance: resistorCls,
+          modification: {
+            getModificationArgument: (name: string) => (name === "R" ? { expression: "100" } : null),
+          },
+        },
+      ],
+    };
+
+    const props = buildComponentProperties(circuit as any, "R1");
+    assert.ok(props);
+    const alphaField = props.schema?.tabs?.[0]?.groups?.[0]?.fields?.find((f: any) => f.key === "alpha");
+    assert.strictEqual(alphaField?.unit, "1/K", "LinearTemperatureCoefficient must have unit 1/K");
+    assert.ok(props.iconSvg, "iconSvg must be generated");
+    assert.ok(props.iconSvg.includes("R=100"), "iconSvg must evaluate component's R=100 parameter");
+  });
+
   it("computes surgical parameter edits on AST modifications", () => {
     // Mock class instance with AST declaration node
     const classInstance = {

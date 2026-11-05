@@ -22,7 +22,7 @@ interface ActiveSession {
 
 export function mcpRouter(database: LibraryDatabase): Router {
   const router = createRouter();
-  router.use(defaultApiLimiter);
+  router.use("/mcp", defaultApiLimiter);
   const sessions = new Map<string, ActiveSession>();
 
   function resolveAuth(req: Request): number | null {

@@ -516,12 +516,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLastLoggedOutUser(snapshot);
       setJustLoggedOut(options?.redirect !== false);
 
-      api.post("/auth/logout").catch(() => {});
+      const activeToken =
+        token ||
+        (typeof localStorage !== "undefined" ? localStorage.getItem(TOKEN_KEY) || localStorage.getItem("token") : null);
+      if (activeToken) {
+        api.post("/auth/logout", {}, { headers: { Authorization: `Bearer ${activeToken}` } }).catch(() => {});
+      } else {
+        api.post("/auth/logout").catch(() => {});
+      }
       void clearOfflineCache();
       try {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        localStorage.removeItem(USER_CACHE_KEY);
       } catch {
         // ignore storage errors
       }
@@ -535,7 +543,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.dispatchEvent(new CustomEvent("modelscript:logged-out", { detail: { user: snapshot } }));
       }
     },
-    [user],
+    [user, token],
   );
 
   return (

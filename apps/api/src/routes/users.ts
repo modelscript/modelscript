@@ -250,17 +250,103 @@ export function usersRouter(
     // Check if the current user follows, blocks, or mutes this profile (if authenticated)
     let isFollowing = false;
     let isBlocked = false;
+    let isBlockedBy = false;
     let isMuted = false;
     const currentUserId = req.user?.id;
     if (currentUserId && currentUserId !== profile.id) {
       isFollowing = database.isFollowing(currentUserId, profile.id);
       isBlocked = database.isUserBlocked(currentUserId, profile.id);
+      isBlockedBy = database.isUserBlocked(profile.id, currentUserId);
       isMuted = database.isUserMuted(currentUserId, profile.id);
     }
 
+    const loc = database.getUserAccountLocation(profile.id);
+    const usernameChanges = database.getUsernameChanges(profile.id);
+    const profileWithMeta = {
+      ...profile,
+      account_based_in: loc ? loc.countryName : null,
+      account_country_code: loc ? loc.countryCode : null,
+      username_changes_count: usernameChanges.count,
+    };
+
     const linkedAccounts = database.getPublicOAuthAccounts(profile.id);
 
-    res.json({ profile, isFollowing, isBlocked, isMuted, linkedAccounts });
+    res.json({ profile: profileWithMeta, isFollowing, isBlocked, isBlockedBy, isMuted, linkedAccounts });
+  });
+
+  /**
+   * GET /api/v1/users/:username/about
+   */
+  router.get("/:username/about", optionalAuth, async (req: Request, res: Response) => {
+    const rawUsername = (req.params["username"] as string) || "";
+    const username = rawUsername.startsWith("@") ? rawUsername.slice(1) : rawUsername;
+    let profile = database.getFullProfileByUsername(username);
+
+    if (!profile && username.includes("@")) {
+      try {
+        const { resolveActorHandle } = await import("./federation.js");
+        const resolved = await resolveActorHandle(username, database);
+        if (resolved && resolved.user) {
+          profile = database.getFullProfileByUsername(resolved.user.username);
+        }
+      } catch {}
+    }
+
+    if (!profile) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const currentUserId = req.user?.id;
+    let isBlocked = false;
+    let isBlockedBy = false;
+    if (currentUserId && currentUserId !== profile.id) {
+      isBlocked = database.isUserBlocked(currentUserId, profile.id);
+      isBlockedBy = database.isUserBlocked(profile.id, currentUserId);
+    }
+
+    const loc = database.getUserAccountLocation(profile.id);
+    const usernameChanges = database.getUsernameChanges(profile.id);
+    const linkedAccounts = database.getPublicOAuthAccounts(profile.id);
+    const isVerified = linkedAccounts.some((acc) => acc.provider === "twitter" || acc.provider === "github");
+
+    res.json({
+      profile: {
+        id: profile.id,
+        username: profile.username,
+        display_name: profile.display_name || profile.username,
+        avatar_url: profile.avatar_url,
+        account_type: profile.account_type || "user",
+        created_at: profile.created_at,
+      },
+      username: profile.username,
+      displayName: profile.display_name || profile.username,
+      avatarUrl: profile.avatar_url,
+      accountType: profile.account_type || "user",
+      createdAt: profile.created_at,
+      joinedAt: profile.created_at,
+      basedIn: loc ? loc.countryName : null,
+      countryCode: loc?.countryCode || null,
+      locationDetails: loc
+        ? {
+            countryCode: loc.countryCode,
+            countryName: loc.countryName,
+            regionCode: loc.regionCode,
+            lastUpdated: loc.updatedAt,
+          }
+        : null,
+      usernameChanges: {
+        count: usernameChanges.count,
+        history: usernameChanges.history.map((h) => ({
+          oldUsername: h.oldUsername,
+          newUsername: h.newUsername,
+          changedAt: h.changedAt,
+        })),
+      },
+      isVerified,
+      isBlocked,
+      isBlockedBy,
+    });
   });
 
   /**
@@ -1156,6 +1242,11 @@ export function usersRouter(
       return;
     }
 
+    if (database.isUserBlocked(followerId, targetUser.id) || database.isUserBlocked(targetUser.id, followerId)) {
+      res.status(403).json({ error: "Cannot follow this user due to a block relationship" });
+      return;
+    }
+
     const fullTarget = database.getUserFederationInfo(targetUser.id);
     const isRemote = Boolean(fullTarget?.remote_domain);
     const isLockedLocal = !isRemote && Boolean(fullTarget?.locked);
@@ -1285,7 +1376,7 @@ export function usersRouter(
   /**
    * DELETE /api/v1/users/:username/block
    */
-  router.delete("/:username/block", requireAuth, (req: Request, res: Response) => {
+  const handleUnblockUser = (req: Request, res: Response) => {
     const blockerId = req.user!.id;
     const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
@@ -1320,7 +1411,14 @@ export function usersRouter(
     }
 
     res.json({ success: true, blocked: false });
-  });
+  };
+
+  /**
+   * DELETE /api/v1/users/:username/block
+   * POST /api/v1/users/:username/unblock
+   */
+  router.delete("/:username/block", requireAuth, handleUnblockUser);
+  router.post("/:username/unblock", requireAuth, handleUnblockUser);
 
   /**
    * POST /api/v1/users/:username/mute
@@ -1346,10 +1444,7 @@ export function usersRouter(
     }
   });
 
-  /**
-   * DELETE /api/v1/users/:username/mute
-   */
-  router.delete("/:username/mute", requireAuth, (req: Request, res: Response) => {
+  const handleUnmuteUser = (req: Request, res: Response) => {
     const muterId = req.user!.id;
     const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
@@ -1358,7 +1453,14 @@ export function usersRouter(
     }
     database.unmuteUser(muterId, targetUser.id);
     res.json({ success: true, muted: false });
-  });
+  };
+
+  /**
+   * DELETE /api/v1/users/:username/mute
+   * POST /api/v1/users/:username/unmute
+   */
+  router.delete("/:username/mute", requireAuth, handleUnmuteUser);
+  router.post("/:username/unmute", requireAuth, handleUnmuteUser);
 
   /**
    * POST /api/v1/users/:username/report

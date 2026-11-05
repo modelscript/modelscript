@@ -42,7 +42,7 @@ const related = computed(() => {
             <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
               Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
             </a>
-            <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/sketch" target="_self">Open Ansatz Sketch</a>
+            <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/sketch" target="_self">Open Sketch</a>
           </div>
         </div>
 

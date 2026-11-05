@@ -16,8 +16,12 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: Try Ansatz Sketch
+      text: Try Sketch
       link: /sketch
+      target: _self
+    - theme: alt
+      text: Studio
+      link: /studio
       target: _self
     - theme: alt
       text: Explore Industries
@@ -37,5 +41,7 @@ hero:
 <HomeCapabilities />
 
 <HomeSurfaces />
+
+<HomeVsCode />
 
 <HomeCta />

@@ -1,0 +1,178 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+
+/**
+ * Universal design tokens for the ModelScript Diagram Properties Inspector.
+ * Bridges VS Code Webview CSS variables (--vscode-*) and Web Application CSS variables (--bgColor-*, --fgColor-*).
+ */
+
+:root {
+  --ms-prop-bg: var(--vscode-sideBar-background, var(--bgColor-default, #181a1f));
+  --ms-prop-fg: var(--vscode-foreground, var(--fgColor-default, #c9d1d9));
+  --ms-prop-fg-muted: var(--vscode-descriptionForeground, var(--fgColor-muted, #8b949e));
+  --ms-prop-border: var(--vscode-sideBarSectionHeader-border, var(--borderColor-default, #30363d));
+  --ms-prop-accent: var(--vscode-panelTitle-activeBorder, var(--fgColor-accent, #58a6ff));
+  --ms-prop-input-bg: var(--vscode-input-background, var(--bgColor-muted, #21262d));
+  --ms-prop-input-fg: var(--vscode-input-foreground, var(--fgColor-default, #c9d1d9));
+  --ms-prop-input-border: var(--vscode-input-border, var(--borderColor-default, #30363d));
+  --ms-prop-dropdown-bg: var(--vscode-dropdown-background, var(--bgColor-muted, #21262d));
+  --ms-prop-dropdown-fg: var(--vscode-dropdown-foreground, var(--fgColor-default, #c9d1d9));
+  --ms-prop-dropdown-border: var(--vscode-dropdown-border, var(--borderColor-default, #30363d));
+  --ms-prop-error: var(--vscode-errorForeground, var(--fgColor-danger, #f85149));
+  --ms-prop-conflict-bg: rgba(248, 81, 73, 0.12);
+  --ms-prop-conflict-border: #f85149;
+  --ms-prop-font-mono: var(
+    --vscode-editor-font-family,
+    ui-monospace,
+    SFMono-Regular,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace
+  );
+}
+
+.ms-properties-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--ms-prop-fg);
+  background: var(--ms-prop-bg);
+  font-size: 12px;
+  overflow-y: auto;
+  user-select: none;
+}
+
+.ms-prop-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ms-prop-border);
+}
+
+.ms-prop-icon-wrapper {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+}
+
+.ms-prop-label {
+  font-size: 11px;
+  color: var(--ms-prop-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ms-prop-label.is-modified {
+  color: var(--ms-prop-fg);
+  font-weight: 600;
+}
+
+.ms-prop-dot-modified {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--ms-prop-accent);
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.ms-prop-btn-revert {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--ms-prop-fg-muted);
+  line-height: 1;
+  border-radius: 3px;
+  transition: color 0.15s ease;
+}
+
+.ms-prop-btn-revert:hover {
+  color: var(--ms-prop-accent);
+}
+
+.ms-prop-tabs-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--ms-prop-border);
+  padding: 0 12px;
+  overflow-x: auto;
+}
+
+.ms-prop-tab-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ms-prop-fg-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+}
+
+.ms-prop-tab-btn.active {
+  border-bottom-color: var(--ms-prop-accent);
+  color: var(--ms-prop-fg);
+}
+
+.ms-prop-group {
+  margin-bottom: 1px;
+  border-bottom: 1px solid var(--ms-prop-border);
+}
+
+.ms-prop-group-summary {
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--ms-prop-fg-muted);
+  padding: 8px 16px;
+  list-style: none;
+}
+
+.ms-prop-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 16px;
+  transition: opacity 0.15s ease;
+}
+
+.ms-prop-row.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ms-prop-conflict-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: var(--ms-prop-conflict-bg);
+  border: 1px solid var(--ms-prop-conflict-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.ms-prop-btn-conflict {
+  background: transparent;
+  border: 1px solid var(--ms-prop-conflict-border);
+  border-radius: 3px;
+  color: var(--ms-prop-fg);
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.ms-prop-btn-conflict:hover {
+  background: rgba(248, 81, 73, 0.2);
+}

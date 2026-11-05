@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, LinkExternalIcon } from "@primer/octicons-react";
-import { Heading, Text } from "@primer/react";
+import { Button, Heading, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ClassDetail, ClassSummary, JobStatus } from "../../api";
@@ -23,9 +23,8 @@ import { ClassEquationsTab, ClassSourceTab } from "./components/ClassCodeTabs";
 import { ClassDetailHeader } from "./components/ClassDetailHeader";
 import { ClassOverviewTab } from "./components/ClassOverviewTab";
 import { ClassParametersSection } from "./components/ClassParametersSection";
-import { ClassRightSidebar } from "./components/ClassRightSidebar";
-import { ContentGrid, GlassCard, TypeLink, TypeMono } from "./styles";
-import type { ClassTabId, DigitalThreadTwinInfo } from "./types";
+import { ContentWrap, GlassCard, TypeLink, TypeMono } from "./styles";
+import type { ClassTabId } from "./types";
 
 export interface ClassDetailViewProps {
   name: string;
@@ -53,6 +52,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
   const [cls, setCls] = useState<ClassDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorDescription, setErrorDescription] = useState<string | null>(null);
   const [jobStatusState, setJobStatusState] = useState<JobStatus | null>(propJobStatus ?? null);
   const [retryCount, setRetryCount] = useState(0);
   const [diagramLoaded, setDiagramLoaded] = useState(false);
@@ -124,40 +124,6 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
     return [];
   }, [cls]);
 
-  // Extract digital thread twin counterpart references
-  const twinInfo: DigitalThreadTwinInfo | null = useMemo(() => {
-    if (!cls) return null;
-    let twinTarget: string | null = null;
-    let cadTarget: string | null = null;
-
-    if (cls.description) {
-      const tm = cls.description.match(/twin\s*=\s*["']([^"']+)["']/i);
-      if (tm) twinTarget = tm[1]!;
-      const cm = cls.description.match(/CAD\s*=\s*["']([^"']+)["']/i);
-      if (cm) cadTarget = cm[1]!;
-    }
-
-    for (const comp of cls.components) {
-      for (const mod of comp.modifiers || []) {
-        if (mod.modifier_name === "twin" && mod.modifier_value) {
-          twinTarget = mod.modifier_value.replace(/['"]/g, "");
-        }
-        if ((mod.modifier_name === "CAD" || mod.modifier_name === "cad") && mod.modifier_value) {
-          cadTarget = mod.modifier_value.replace(/['"]/g, "");
-        }
-      }
-      if (comp.description) {
-        const tm = comp.description.match(/twin\s*=\s*["']([^"']+)["']/i);
-        if (tm && !twinTarget) twinTarget = tm[1]!;
-        const cm = comp.description.match(/CAD\s*=\s*["']([^"']+)["']/i);
-        if (cm && !cadTarget) cadTarget = cm[1]!;
-      }
-    }
-
-    if (!twinTarget && !cadTarget) return null;
-    return { twinTarget, cadTarget };
-  }, [cls]);
-
   const fetchClassDetail = useCallback(async () => {
     if (!name || !version || !className) return;
     if (name === "Modelica" && (className === "Demo" || className.startsWith("Demo."))) {
@@ -169,8 +135,35 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
       const data = await getClassDetail(name, version, className);
       setCls(data);
       setError(null);
-    } catch (err) {
-      setError("Failed to load class details");
+      setErrorDescription(null);
+    } catch (err: unknown) {
+      const axiosError = err as {
+        response?: { status?: number | undefined; data?: { error?: string } | string | undefined } | undefined;
+        message?: string | undefined;
+      };
+      const status = axiosError?.response?.status;
+      const respData = axiosError?.response?.data;
+      const serverMsg =
+        typeof respData === "object" && respData && "error" in respData && typeof respData.error === "string"
+          ? respData.error
+          : typeof respData === "string"
+            ? respData
+            : undefined;
+
+      if (status === 429) {
+        setError("Too many requests");
+        setErrorDescription(serverMsg || "Rate limit reached. Please wait a few seconds and try again.");
+      } else if (status === 404) {
+        setError("Class not found");
+        setErrorDescription(serverMsg || `The class "${className}" was not found in ${name}@${version}.`);
+      } else {
+        setError("Failed to load class details");
+        setErrorDescription(
+          serverMsg ||
+            axiosError?.message ||
+            "The class may not exist, is still being processed, or the server is unavailable.",
+        );
+      }
       console.error(err);
     } finally {
       setLoading(false);
@@ -228,24 +221,34 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
   if (loading && !cls) {
     return (
       <Box p={4} display="flex" flexDirection="column" gap={3}>
-        <Box mb={3}>
+        <Box mb={2}>
           <div className="skeleton" style={{ width: "260px", height: "18px", borderRadius: "4px" }} />
         </Box>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
-          <div className="skeleton" style={{ width: "320px", height: "36px", borderRadius: "6px" }} />
-          <div className="skeleton" style={{ width: "80px", height: "24px", borderRadius: "6px" }} />
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "16px",
+            marginBottom: "12px",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div className="skeleton" style={{ width: "320px", height: "32px", borderRadius: "6px" }} />
+              <div className="skeleton" style={{ width: "80px", height: "22px", borderRadius: "6px" }} />
+            </div>
+            <div className="skeleton" style={{ width: "80%", height: "16px", borderRadius: "4px" }} />
+            <div className="skeleton" style={{ width: "100%", height: "36px", borderRadius: "8px" }} />
+          </div>
+          <div className="skeleton" style={{ width: "72px", height: "72px", borderRadius: "14px", flexShrink: 0 }} />
         </div>
-        <div className="skeleton" style={{ width: "100%", height: "42px", borderRadius: "8px" }} />
-        <ContentGrid $treeCollapsed={treeCollapsed} style={{ marginTop: "24px" }}>
+        <ContentWrap style={{ marginTop: "16px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div className="skeleton" style={{ width: "100%", height: "260px", borderRadius: "12px" }} />
             <div className="skeleton" style={{ width: "100%", height: "200px", borderRadius: "12px" }} />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div className="skeleton" style={{ width: "100%", height: "160px", borderRadius: "12px" }} />
-            <div className="skeleton" style={{ width: "100%", height: "220px", borderRadius: "12px" }} />
-          </div>
-        </ContentGrid>
+        </ContentWrap>
       </Box>
     );
   }
@@ -266,14 +269,17 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
         <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 22, margin: 0 }}>
           {error || "Class not found"}
         </Heading>
-        <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
-          The class may not exist, is still being processed, or the server is unavailable.
+        <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 440 }}>
+          {errorDescription || "The class may not exist, is still being processed, or the server is unavailable."}
         </Text>
-        {name && version && (
-          <TypeLink to={`/packages/${name}/${version}`} style={{ marginTop: 8, fontSize: 14 }}>
-            Back to {name}@{version}
-          </TypeLink>
-        )}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+          <Button onClick={() => fetchClassDetail()}>Try Again</Button>
+          {name && version && (
+            <TypeLink to={`/packages/${name}/${version}`} style={{ fontSize: 14 }}>
+              Back to {name}@{version}
+            </TypeLink>
+          )}
+        </div>
       </Box>
     );
   }
@@ -302,108 +308,74 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
         treeCollapsed={treeCollapsed}
         onToggleTreeCollapse={onToggleTreeCollapse}
         onOpenLogs={onOpenLogs}
+        allClasses={allClasses}
       />
 
       {/* ── Body ── */}
-      <ContentGrid $treeCollapsed={treeCollapsed}>
-        {/* ── Main column ── */}
-        <div style={{ minWidth: 0 }}>
-          {activeTab === "overview" && (
-            <ClassOverviewTab
-              cls={cls}
-              className={className}
-              libraryName={name}
-              version={version}
-              allClasses={allClasses}
-              diagramLoaded={diagramLoaded}
-              setDiagramLoaded={setDiagramLoaded}
-              diagramError={diagramError}
-              setDiagramError={setDiagramError}
-              retryCount={retryCount}
-              setRetryCount={setRetryCount}
-              jobStatus={jobStatusState}
-              categorized={categorized}
-              renderTypeCell={renderTypeCell}
-              onViewParameters={() => setActiveTab("parameters")}
-            />
-          )}
+      <ContentWrap>
+        {activeTab === "overview" && (
+          <ClassOverviewTab
+            cls={cls}
+            className={className}
+            libraryName={name}
+            version={version}
+            allClasses={allClasses}
+            diagramLoaded={diagramLoaded}
+            setDiagramLoaded={setDiagramLoaded}
+            diagramError={diagramError}
+            setDiagramError={setDiagramError}
+            retryCount={retryCount}
+            setRetryCount={setRetryCount}
+            jobStatus={jobStatusState}
+            categorized={categorized}
+            renderTypeCell={renderTypeCell}
+            onViewParameters={() => setActiveTab("parameters")}
+          />
+        )}
 
-          {activeTab === "parameters" && (
-            <>
-              {cls.components.length === 0 ? (
-                <GlassCard>
-                  <Text style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}>
-                    No parameters, ports, or subcomponents declared on this class.
-                  </Text>
-                </GlassCard>
-              ) : (
-                <ClassParametersSection
-                  parameters={categorized.parameters}
-                  connectors={categorized.connectors}
-                  submodels={categorized.submodels}
-                  renderTypeCell={renderTypeCell}
-                  libraryName={name}
-                  version={version}
-                />
-              )}
-            </>
-          )}
+        {activeTab === "parameters" && (
+          <>
+            {cls.components.length === 0 ? (
+              <GlassCard>
+                <Text style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                  No parameters, ports, or subcomponents declared on this class.
+                </Text>
+              </GlassCard>
+            ) : (
+              <ClassParametersSection
+                parameters={categorized.parameters}
+                connectors={categorized.connectors}
+                submodels={categorized.submodels}
+                renderTypeCell={renderTypeCell}
+                libraryName={name}
+                version={version}
+              />
+            )}
+          </>
+        )}
 
-          {activeTab === "equations" && (
-            <ClassEquationsTab equations={equations} className={className} components={cls.components} cls={cls} />
-          )}
+        {activeTab === "equations" && (
+          <ClassEquationsTab equations={equations} className={className} components={cls.components} cls={cls} />
+        )}
 
-          {hasCae && activeTab === "studies" && (
-            <PackageStudiesTab
-              name={name}
-              version={version}
-              rootClassName={className}
-              targetModelFilter={className}
-              bundledStudies={linkedStudies.bundledStudies}
-              linkedTemplates={linkedStudies.linkedTemplates}
-              compatibleTemplates={linkedStudies.compatibleTemplates}
-              linkedJobs={linkedStudies.linkedJobs}
-              onRefresh={fetchLinkedClassStudies}
-            />
-          )}
+        {hasCae && activeTab === "studies" && (
+          <PackageStudiesTab
+            name={name}
+            version={version}
+            rootClassName={className}
+            targetModelFilter={className}
+            bundledStudies={linkedStudies.bundledStudies}
+            linkedTemplates={linkedStudies.linkedTemplates}
+            compatibleTemplates={linkedStudies.compatibleTemplates}
+            linkedJobs={linkedStudies.linkedJobs}
+            onRefresh={fetchLinkedClassStudies}
+          />
+        )}
 
-          {activeTab === "source" && (
-            <ClassSourceTab sourceCode={cls.sourceCode} sourceFile={cls.sourceFile} className={className} />
-          )}
-        </div>
-
-        {/* ── Right Sidebar ── */}
-        <ClassRightSidebar
-          className={className}
-          libraryName={name}
-          version={version}
-          cls={cls}
-          allClasses={allClasses}
-          retryCount={retryCount}
-          twinInfo={twinInfo}
-          onSelectMember={(targetUrl, memberName) => {
-            if (targetUrl && targetUrl.includes("/classes/")) {
-              navigate(targetUrl);
-            } else {
-              setActiveTab("parameters");
-              if (memberName) {
-                setTimeout(() => {
-                  const rowEl = document.getElementById(`member-${memberName}`);
-                  if (rowEl) {
-                    rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
-                    rowEl.style.transition = "background-color 0.4s ease";
-                    rowEl.style.backgroundColor = "rgba(6, 182, 212, 0.18)";
-                    setTimeout(() => {
-                      rowEl.style.backgroundColor = "";
-                    }, 1600);
-                  }
-                }, 60);
-              }
-            }
-          }}
-          onNavigate={(path) => navigate(path)}
-        />
-      </ContentGrid>
+        {activeTab === "source" && (
+          <ClassSourceTab sourceCode={cls.sourceCode} sourceFile={cls.sourceFile} className={className} />
+        )}
+      </ContentWrap>
     </>
   );
 };

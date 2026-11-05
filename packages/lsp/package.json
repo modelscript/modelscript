@@ -154,6 +154,7 @@
     "@modelscript/opendrive": "*",
     "@modelscript/opendss": "*",
     "@modelscript/openscenario": "*",
+    "@modelscript/oscal": "*",
     "@modelscript/owl2": "*",
     "@modelscript/pdb": "*",
     "@modelscript/phreeqc": "*",

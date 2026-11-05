@@ -19,10 +19,11 @@ import {
   getPackageLockfileExportUrl,
   type DataPackageLockJsonSummary,
   type DataPackageResourceSummary,
+  type PackageDependent,
 } from "../../../api";
 import Box from "../../../components/Box";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
-import { DepRow, GlassCard, SectionTitle } from "../types";
+import { DependentBadge, DepRow, GlassCard, SectionTitle } from "../types";
 
 export interface PackageDependenciesTabProps {
   name?: string | undefined;
@@ -30,6 +31,7 @@ export interface PackageDependenciesTabProps {
   dependencies: Record<string, string>;
   devDependencies?: Record<string, string> | undefined;
   resources?: DataPackageResourceSummary[] | undefined;
+  dependents?: PackageDependent[] | undefined;
 }
 
 function renderDepRow(dep: string, range: string, kindLabel: string) {
@@ -118,6 +120,7 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
   dependencies,
   devDependencies,
   resources,
+  dependents,
 }) => {
   const hasAdvancedExports = useFeatureFlag("package_advanced_exports");
   const [lockfile, setLockfile] = useState<DataPackageLockJsonSummary | null>(null);
@@ -356,6 +359,29 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
             >
               {JSON.stringify(lockfile, null, 2)}
             </pre>
+          </GlassCard>
+        </>
+      )}
+
+      {dependents && dependents.length > 0 && (
+        <>
+          <SectionTitle
+            as="h3"
+            style={{ marginTop: 24, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <PackageIcon size={16} />
+            Used by ({dependents.length})
+          </SectionTitle>
+          <GlassCard style={{ padding: 16 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {dependents.map((dep) => (
+                <DependentBadge key={dep.name} to={`/packages/${dep.name}/${dep.version}`}>
+                  <PackageIcon size={12} />
+                  <span>{dep.name}</span>
+                  <span style={{ opacity: 0.65, fontSize: 11 }}>v{dep.version}</span>
+                </DependentBadge>
+              ))}
+            </div>
           </GlassCard>
         </>
       )}

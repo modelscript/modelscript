@@ -35,6 +35,7 @@ import {
   type RouterPortConfig,
 } from "./port-router.js";
 import type { ReactiveAnimationBinding } from "./protocol.js";
+import { alignNodeSelectionBox, getEdgeToolConfig, syncAllNodeSelectionBoxes } from "./selection-handles.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import { computeEdgeNetIds, computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
 import * as Spinner from "./spinner.js";
@@ -107,6 +108,7 @@ export interface Cell {
   setMarkup(markup: unknown): void;
   setAttrs(attrs: Record<string, unknown>): void;
   attr(path: string, val?: unknown): unknown;
+  prop?: ((path: string, val?: unknown, options?: unknown) => unknown) | undefined;
   setVisible?: ((visible: boolean) => void) | undefined;
   addChild(child: Cell): void;
   getChildren?: (() => Cell[] | null | undefined) | undefined;
@@ -169,6 +171,9 @@ export interface Graph {
   fromJSON(data: { nodes: unknown[]; edges: unknown[] }): void;
   clearCells(): void;
   clientToLocal(x: number, y: number): PointLike;
+  matrix?: (() => { a: number; d: number; e: number; f: number }) | undefined;
+  coord?: { localToGraphRect?: (rect: RectLike) => RectLike } | undefined;
+  getPlugin?: ((name: string) => unknown) | undefined;
 }
 
 interface GraphConstructor {
@@ -227,13 +232,16 @@ const DagreLayout: DagreLayoutConstructor =
   antvLayoutModule.DagreLayout || (class {} as unknown as DagreLayoutConstructor);
 
 export {
+  alignNodeSelectionBox,
   clearActiveDropPlaceholder,
   computeEdgeNetIds,
   dropComponentGhost,
   ensureDiagramStyles,
   getActiveDropPlaceholder,
+  getEdgeToolConfig,
   getTypicalNodeSize,
   isEphemeralDiagramNode,
+  syncAllNodeSelectionBoxes,
   type DropPlaceholderOptions,
 };
 
@@ -324,6 +332,8 @@ export interface DiagramRendererOptions {
   isDark?: boolean | undefined;
   /** Whether edges can connect directly to node bodies in addition to port magnets. */
   allowNodeConnection?: boolean | undefined;
+  /** Default connector style for newly created and unspecified edges (e.g. "normal" or { name: "rounded", args: { radius: 8 } }). */
+  defaultConnector?: unknown | undefined;
   /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
   onAction?: ((action: Record<string, unknown> | InteractiveWriteAction) => void) | undefined;
   /** Callback invoked when the selected component node changes (or `null` when deselected). */
@@ -420,6 +430,9 @@ const propertyCache = new Map<string, unknown>();
 
 /** Whether the currently rendered diagram is read-only (disables canvas node/edge mutations) */
 let isCurrentDiagramReadOnly = false;
+
+/** Active diagram's language or metadata default connector (e.g. "normal" for Modelica, or "rounded" for SysML2) */
+let activeDefaultConnector: unknown | undefined;
 
 export { translateConnectedEdgeStubs };
 
@@ -661,7 +674,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         return g.createEdge({
           zIndex: 1000,
           router: { name: "port-orthogonal-astar" },
-          connector: { name: "rounded", args: { radius: 8 } },
+          connector: activeDefaultConnector ??
+            currentOptions?.defaultConnector ?? { name: "rounded", args: { radius: 8 } },
           attrs: {
             line: {
               stroke: isDark ? "#569cd6" : "#005fb8",
@@ -676,19 +690,66 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     },
   });
 
-  g.use(
-    new Selection({
-      enabled: true,
-      showNodeSelectionBox: true,
-      showEdgeSelectionBox: true,
-      rubberband: true,
-      multiple: true,
-      modifiers: ["ctrl", "meta", "shift"],
-      multipleSelectionModifiers: ["ctrl", "meta", "shift"],
-      pointerEvents: "none",
-      filter: (cell: Cell) => !isEphemeralDiagramNode(cell.id),
-    }),
-  );
+  const selectionPlugin = new Selection({
+    enabled: true,
+    showNodeSelectionBox: true,
+    showEdgeSelectionBox: false,
+    rubberband: true,
+    multiple: true,
+    modifiers: ["ctrl", "meta", "shift"],
+    multipleSelectionModifiers: ["ctrl", "meta", "shift"],
+    pointerEvents: "none",
+    filter: (cell: Cell) => !isEphemeralDiagramNode(cell.id),
+  });
+  g.use(selectionPlugin);
+
+  // Hook into SelectionImpl to align and rotate node selection boxes
+  const selectionImpl = (selectionPlugin as unknown as { selectionImpl?: Record<string, unknown> }).selectionImpl as
+    | {
+        container?: HTMLElement | undefined;
+        createSelectionBox?: ((cell: Cell) => void) | undefined;
+        repositionSelectionBoxesInPlace?: (() => void) | undefined;
+      }
+    | undefined;
+
+  if (selectionImpl) {
+    const origCreateSelectionBox = selectionImpl.createSelectionBox?.bind(selectionImpl);
+    if (origCreateSelectionBox) {
+      selectionImpl.createSelectionBox = (cell: Cell) => {
+        origCreateSelectionBox(cell);
+        if (cell && typeof cell.isNode === "function" && cell.isNode()) {
+          const box = selectionImpl.container?.querySelector(`[data-cell-id="${cell.id}"]`) as HTMLElement | null;
+          if (box) {
+            alignNodeSelectionBox(box, cell as Node, g);
+          }
+        }
+      };
+    }
+
+    const origReposition = selectionImpl.repositionSelectionBoxesInPlace?.bind(selectionImpl);
+    if (origReposition) {
+      selectionImpl.repositionSelectionBoxesInPlace = () => {
+        origReposition();
+        syncAllNodeSelectionBoxes(g, selectionImpl.container);
+      };
+    }
+  }
+
+  const updateNodeBox = ({ node, cell }: { node?: Node; cell?: Cell } = {}) => {
+    const n = (node || cell) as Node | undefined;
+    if (!n || typeof n.isNode !== "function" || !n.isNode()) return;
+    const container = selectionImpl?.container || g.container?.querySelector(".x6-widget-selection");
+    const box = container?.querySelector(`[data-cell-id="${n.id}"]`) as HTMLElement | null;
+    if (box) {
+      alignNodeSelectionBox(box, n, g);
+    }
+  };
+
+  g.on("node:change:angle", updateNodeBox);
+  g.on("node:rotate", updateNodeBox);
+  g.on("node:rotated", updateNodeBox);
+  g.on("node:change:position", updateNodeBox);
+  g.on("node:change:size", updateNodeBox);
 
   g.use(
     new Transform({
@@ -697,57 +758,41 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }),
   );
 
-  // ── Selection change events — add/remove edge tools ──
+  const refreshSelectedEdgeTools = () => {
+    const selectedEdges = (typeof g.getSelectedCells === "function" ? g.getSelectedCells() : []).filter(
+      (c: Cell) => typeof c.isEdge === "function" && c.isEdge(),
+    );
+    selectedEdges.forEach((edge: Cell) => {
+      edge.removeTools();
+      edge.addTools(getEdgeToolConfig(edge, g, isDark));
+    });
+  };
+
+  // ── Selection change events — add/remove edge tools & align node selection boxes ──
   g.on("selection:changed", ({ added, removed }: { added: Cell[]; removed: Cell[] }) => {
     added.forEach((cell: Cell) => {
-      if (cell.isEdge()) {
+      if (typeof cell.isEdge === "function" && cell.isEdge()) {
         cell.removeTools();
-        cell.addTools([
-          {
-            name: "vertices",
-            args: {
-              attrs: {
-                fill: isDark ? "#888" : "#666",
-                stroke: "transparent",
-                strokeWidth: 6,
-                r: 4,
-              },
-              snapRadius: 10,
-              removeRedundancies: true,
-              stopPropagation: false,
-            },
-          },
-          {
-            name: "segments",
-            args: {
-              attrs: {
-                fill: isDark ? "#888" : "#666",
-                stroke: "transparent",
-                strokeWidth: 1,
-                width: 10,
-                height: 2,
-                rx: 1,
-                ry: 1,
-                x: -5,
-                y: -1,
-              },
-              snapRadius: 10,
-              removeRedundancies: true,
-              stopPropagation: false,
-            },
-          },
-        ]);
+        cell.addTools(getEdgeToolConfig(cell, g, isDark));
+      } else if (typeof cell.isNode === "function" && cell.isNode()) {
+        const container = selectionImpl?.container || g.container?.querySelector(".x6-widget-selection");
+        const box = container?.querySelector(`[data-cell-id="${cell.id}"]`) as HTMLElement | null;
+        if (box) {
+          alignNodeSelectionBox(box, cell as Node, g);
+        }
       }
     });
     removed.forEach((cell: Cell) => {
-      if (cell.isEdge()) {
+      if (typeof cell.isEdge === "function" && cell.isEdge()) {
         cell.removeTools();
       }
     });
   });
 
-  // ── Viewport Level-of-Detail (LOD) ──
+  // ── Viewport Level-of-Detail (LOD) & Scale/Translate Sync ──
   g.on("scale", ({ sx }: { sx: number }) => {
+    syncAllNodeSelectionBoxes(g, selectionImpl?.container);
+    refreshSelectedEdgeTools();
     if (!container) return;
     if (sx < 0.25) {
       container.classList.add("x6-lod-minimal");
@@ -759,6 +804,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       container.classList.remove("x6-lod-minimal");
       container.classList.remove("x6-lod-low");
     }
+  });
+
+  g.on("translate", () => {
+    syncAllNodeSelectionBoxes(g, selectionImpl?.container);
   });
 
   // ── Placement Mode (Drag and Drop in VS Code) ──
@@ -1985,6 +2034,8 @@ export interface RenderDiagramInput {
         breadcrumbs?: { id: string; label: string }[] | undefined;
         currentModule?: string | undefined;
         readOnly?: boolean | undefined;
+        defaultConnector?: unknown | undefined;
+        [key: string]: unknown;
       }
     | undefined;
   className?: string | undefined;
@@ -2091,6 +2142,7 @@ export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
 
 function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
   isCurrentDiagramReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
+  activeDefaultConnector = data.metadata?.defaultConnector ?? currentOptions?.defaultConnector;
 
   // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives.
   // Retain the drop placeholder if incoming data does not yet contain the newly dropped component
@@ -2322,7 +2374,9 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
       source: resolvedSource,
       target: resolvedTarget,
       vertices: edge.vertices,
-      connector: edge.connector ?? { name: "rounded", args: { radius: 8 } },
+      connector: edge.connector ??
+        activeDefaultConnector ??
+        currentOptions?.defaultConnector ?? { name: "rounded", args: { radius: 8 } },
       router: edge.router ?? (edge.connector === "smooth" ? { name: "normal" } : { name: "port-orthogonal-astar" }),
     };
     // Polyglot edges pass attrs as a full selector-keyed object;
@@ -2855,6 +2909,28 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
           }
           if (nodeData.attrs) {
             cell.setAttrs(nodeData.attrs);
+          }
+
+          // Update ports if changed (e.g. conditional ports like heatPort toggled via parameters)
+          interface DiagramPortLike {
+            id?: string;
+            name?: string;
+            args?: { x?: number; y?: number; angle?: number };
+          }
+          const currentPorts = (cell.getPorts?.() || []) as DiagramPortLike[];
+          const newPortItems: DiagramPortLike[] = nodeData.ports
+            ? Array.isArray(nodeData.ports)
+              ? (nodeData.ports as DiagramPortLike[])
+              : (nodeData.ports as { items?: DiagramPortLike[] })?.items || []
+            : [];
+          const currentSig = currentPorts
+            .map((p) => `${p.id}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
+            .join(";");
+          const newSig = newPortItems
+            .map((p) => `${p.id || p.name}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
+            .join(";");
+          if (currentSig !== newSig) {
+            cell.prop?.("ports", nodeData.ports ?? { items: [], groups: {} }, { rewrite: true });
           }
         }
 
@@ -3708,10 +3784,12 @@ export * from "./lps-diagram-builder.js";
 export * from "./olga-diagram-builder.js";
 export * from "./opendss-diagram-builder.js";
 export * from "./openscenario-diagram-builder.js";
+export * from "./oscal-diagram-builder.js";
 export * from "./plcopen-diagram-builder.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-ilp-solver.js";
 export * from "./port-router.js";
+export * from "./properties/index.js";
 export * from "./property-evaluator.js";
 export * from "./property-sheet-controller.js";
 export * from "./property-validator.js";

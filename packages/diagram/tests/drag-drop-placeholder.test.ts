@@ -44,6 +44,11 @@ test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) =
       assert.match(mockStyle.textContent, /transform:\s*scale\(1\.18\)/);
       assert.match(mockStyle.textContent, /transform-box:\s*fill-box\s*!important/);
       assert.match(mockStyle.textContent, /transform-origin:\s*center center\s*!important/);
+      assert.doesNotMatch(mockStyle.textContent, /\.modelscript-anchor-halo\s*\{[^}]*stroke:\s*#06b6d4/);
+      assert.match(
+        mockStyle.textContent,
+        /\.modelscript-anchor-halo text,\s*\.modelscript-anchor-halo tspan\s*\{[^}]*stroke:\s*none\s*!important;/,
+      );
     } finally {
       delete (globalThis as any).document;
     }

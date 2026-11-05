@@ -67,7 +67,60 @@ export const NavCenter = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+
+  /* Modernized, sleek engineering workbench segmented control */
+  ul[data-size="small"] {
+    background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.04));
+    border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+    height: 32px;
+    box-sizing: border-box;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Segmented control items */
+  li {
+    margin: 0 !important;
+  }
+
+  li::after {
+    display: none !important; /* Remove harsh 1px tick separators */
+  }
+
+  /* Button styling */
+  button {
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    height: 100% !important;
+    padding: 0 10px !important;
+  }
+
+  /* Inactive button hover */
+  button:not([aria-current="true"]):hover {
+    background-color: var(--color-action-list-item-default-hover-bg, rgba(125, 125, 125, 0.08)) !important;
+    color: var(--color-fg-default) !important;
+  }
+
+  /* Active selected button styling with ModelScript brand cyan accent */
+  button[aria-current="true"] {
+    font-weight: 600 !important;
+    background-color: var(--color-canvas-default, #ffffff) !important;
+    color: var(--ms-brand, #0891b2) !important;
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(0, 0, 0, 0.06) !important;
+  }
+
+  button[aria-current="true"] svg {
+    color: var(--ms-brand, #0891b2) !important;
+    fill: var(--ms-brand, #0891b2) !important;
+  }
 
   @media (max-width: 960px) {
     display: none;

@@ -350,7 +350,10 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                       maxWidth: "100%",
                     }}
                   >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span
+                      className="profile-name-text"
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
                       {displayPost.display_name || displayPost.username}
                     </span>
                     {displayPost.account_type === "rss" && (
@@ -370,6 +373,8 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                   to={`/@${displayPost.username}`}
                   className="handle-text"
                   onClick={(e) => e.stopPropagation()}
+                  onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                  onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
                   style={{
                     fontSize: "13.5px",
                     color: "var(--color-text-muted)",

@@ -1216,9 +1216,13 @@ export class ParserService {
         const customDeps: { name: string; version: string }[] = [];
         for (const dep of projectDependencies) {
           if (dep.name === "Modelica") {
-            initialTargets.add("modelica");
+            if (initialTargets.size === 0 || initialTargets.has("modelica") || initialTargets.has("modelscript")) {
+              initialTargets.add("modelica");
+            }
           } else if (dep.name === "SysML") {
-            initialTargets.add("sysml2");
+            if (initialTargets.size === 0 || initialTargets.has("sysml2") || initialTargets.has("sysml")) {
+              initialTargets.add("sysml2");
+            }
           } else {
             customDeps.push(dep);
           }

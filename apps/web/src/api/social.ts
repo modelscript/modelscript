@@ -2,6 +2,38 @@
 
 import { api } from "./client";
 
+export interface UserAboutData {
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  accountType: string;
+  createdAt: string;
+  joinedAt: string;
+  basedIn: {
+    countryCode: string | null;
+    countryName: string | null;
+    regionCode?: string | null;
+    lastUpdated?: string | null;
+  } | null;
+  usernameChanges: {
+    count: number;
+    lastChangedAt: string | null;
+    history: {
+      oldUsername: string;
+      newUsername: string;
+      changedAt: string;
+    }[];
+  };
+  isVerified?: boolean;
+  isBlocked?: boolean;
+  isBlockedBy?: boolean;
+}
+
+export const getUserAbout = async (username: string): Promise<UserAboutData> => {
+  const { data } = await api.get(`/users/${encodeURIComponent(username)}/about`);
+  return data;
+};
+
 export const getUserProfile = async (username: string): Promise<any> => {
   const { data } = await api.get(`/users/${encodeURIComponent(username)}`);
   return data;
@@ -125,7 +157,7 @@ export const getUserSuggestions = async (limit = 4): Promise<{ suggestions: any[
 
 export const getUserPosts = async (
   username: string,
-  type?: "posts" | "replies" | "artifacts" | "articles",
+  type?: "posts" | "replies" | "reposts" | "artifacts" | "articles",
   limit?: number,
 ): Promise<{ posts: any[] }> => {
   const params: Record<string, string | number> = {};

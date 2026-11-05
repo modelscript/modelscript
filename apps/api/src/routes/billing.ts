@@ -25,7 +25,7 @@ function escapeHtml(str: string): string {
 
 export function billingRouter(database: LibraryDatabase): Router {
   const router = express.Router();
-  router.use(defaultApiLimiter);
+  router.use("/billing", defaultApiLimiter);
 
   // ── GET /api/v1/billing/wallet ──
   // Current wallet balance, account tier, and summary stats

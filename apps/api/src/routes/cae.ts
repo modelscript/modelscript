@@ -46,7 +46,7 @@ const upload = multer({
 
 export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
-  router.use(defaultApiLimiter);
+  router.use("/cae", defaultApiLimiter);
   const runner = new CaeSolverRunner();
   const activeStreamers = new Map<string, CaeTelemetryStreamer>();
   const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);

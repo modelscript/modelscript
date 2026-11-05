@@ -174,8 +174,11 @@ export function ensureDiagramStyles(): void {
 
     .modelscript-anchor-halo {
       animation: diagram-anchor-pulse 1.8s ease-out 3;
-      stroke: #06b6d4 !important;
-      stroke-width: 2.5px !important;
+    }
+
+    .modelscript-anchor-halo text,
+    .modelscript-anchor-halo tspan {
+      stroke: none !important;
     }
 
     [data-cell-id="__drop_placeholder__"],
@@ -197,6 +200,81 @@ export function ensureDiagramStyles(): void {
     [data-cell-id="__drop_placeholder__"],
     [data-cell-id="__drop_placeholder__"] * {
       pointer-events: none !important;
+    }
+
+    /* Unified selection box & transform controls */
+    .x6-widget-selection-box,
+    .x6-widget-selection-inner {
+      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
+      box-shadow: none !important;
+      border-radius: 4px;
+      background-color: rgba(2, 132, 199, 0.05);
+    }
+
+    .x6-widget-selection-box-node {
+      margin: -5px 0 0 -5px !important;
+      padding: 4px !important;
+      box-sizing: content-box !important;
+      transform-origin: center center !important;
+    }
+
+    .x6-widget-selection-box-edge {
+      display: none !important;
+    }
+
+    .x6-widget-transform {
+      border: none !important;
+    }
+
+    .x6-widget-transform > div {
+      background-color: var(--vscode-editor-background, #ffffff) !important;
+      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
+      border-radius: 50% !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+
+    .x6-widget-transform > div:hover {
+      background-color: var(--vscode-focusBorder, #0284c7) !important;
+    }
+
+    .x6-widget-transform-rotate {
+      background-color: var(--vscode-editor-background, #ffffff) !important;
+      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
+      border-radius: 50% !important;
+    }
+
+    /* Edge Selection and Vertex/Segment Handle Controls */
+    .x6-edge.x6-edge-selected path.connection,
+    .x6-edge.x6-edge-selected path[stroke] {
+      stroke: var(--vscode-focusBorder, #0284c7) !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 3px rgba(2, 132, 199, 0.4));
+    }
+
+    .x6-edge-tool-vertex circle,
+    circle.x6-edge-tool-vertex {
+      cursor: grab !important;
+      transition: fill 0.15s ease, r 0.15s ease;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+    }
+
+    .x6-edge-tool-vertex circle:hover,
+    circle.x6-edge-tool-vertex:hover {
+      fill: var(--vscode-focusBorder, #0284c7) !important;
+      cursor: grab !important;
+    }
+
+    .x6-edge-tool-segment rect,
+    rect.x6-edge-tool-segment {
+      cursor: move !important;
+      transition: fill 0.15s ease;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+    }
+
+    .x6-edge-tool-segment rect:hover,
+    rect.x6-edge-tool-segment:hover {
+      fill: var(--vscode-focusBorder, #0284c7) !important;
+      cursor: move !important;
     }
   `;
   document.head.appendChild(style);

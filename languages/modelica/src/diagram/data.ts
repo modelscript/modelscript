@@ -461,6 +461,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
               "font-size": Math.max(6, Math.min(10, absHeight * 0.4)),
               "font-family": "sans-serif",
               "font-weight": "bold",
+              stroke: "none",
             },
             children: component.name ?? "?",
           },
@@ -586,17 +587,35 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
           }
           const connectorClassInstance = connector.classInstance;
           if (
-            !connectorClassInstance ||
-            (connectorClassInstance["classKind"] !== ModelicaClassKind.CONNECTOR &&
-              connectorClassInstance["classKind"] !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
-              connectorClassInstance["classKind"] !== undefined)
+            connectorClassInstance &&
+            connectorClassInstance["classKind"] !== ModelicaClassKind.CONNECTOR &&
+            connectorClassInstance["classKind"] !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+            connectorClassInstance["classKind"] !== undefined
           ) {
             continue;
           }
           const connectorTransform = computePortPlacement(connector, connPlacement);
           if (!connectorTransform) continue;
 
-          const connectorMarkup = renderIconX6(connectorClassInstance, undefined, false, undefined, false);
+          let connectorMarkup = connectorClassInstance
+            ? renderIconX6(connectorClassInstance, undefined, false, undefined, false)
+            : null;
+          if (!connectorMarkup) {
+            const domainColor = inferModelicaDomainColor(connector.name ?? "", undefined, componentClassInstance);
+            const colorStr = `rgb(${domainColor[0]}, ${domainColor[1]}, ${domainColor[2]})`;
+            connectorMarkup = {
+              tagName: "rect",
+              attrs: {
+                x: -5,
+                y: -5,
+                width: 10,
+                height: 10,
+                fill: colorStr,
+                stroke: colorStr,
+                "stroke-width": 1,
+              },
+            };
+          }
           const a = connectorTransform.rotate * (Math.PI / 180);
           const extCenterOffX =
             connectorTransform.translateX - connectorTransform.originX + connectorTransform.width / 2;
@@ -787,7 +806,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         ?.map((p: IPoint) => convertPoint(p))
         .map((p: [number, number]) => ({ x: p[0], y: p[1] })),
       router: hasExplicitBends ? undefined : { name: "port-orthogonal-astar" },
-      connector: line?.smooth === Smooth.BEZIER ? "smooth" : undefined,
+      connector: line?.smooth === Smooth.BEZIER ? "smooth" : "normal",
       data: explicitLinePoints ? { points: explicitLinePoints } : undefined,
       attrs: {
         line: {
@@ -924,6 +943,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     edges,
     coordinateSystem: { x: csX, y: csY, width: bgWidth, height: bgHeight },
     diagramBackground,
+    metadata: {
+      language: "modelica",
+      defaultConnector: "normal",
+    },
   };
 }
 
@@ -1690,8 +1713,15 @@ export function evaluateMacroExpression(
           }
         }
       }
+    } else if (!compVal && typeof compCst.text === "string") {
+      const match = compCst.text.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
+      if (match && match[1]) {
+        compVal = match[1].trim();
+      }
     }
-  } else if (componentInstance) {
+  }
+
+  if (!compVal && componentInstance) {
     const compArgExpr = compNode?.modification?.getModificationArgument?.(name)?.expression;
     compVal = formatPropertyValue(compArgExpr);
     if (!compVal && typeof compNode?.text === "string") {
@@ -1699,6 +1729,10 @@ export function evaluateMacroExpression(
       if (match && match[1]) {
         compVal = match[1].trim();
       }
+    }
+    const compInstanceVals = (componentInstance as { values?: Record<string, unknown> }).values;
+    if (!compVal && compInstanceVals && compInstanceVals[name] !== undefined) {
+      compVal = String(compInstanceVals[name]);
     }
   }
 
@@ -1852,7 +1886,7 @@ function renderTextX6(
         tagName: "text",
         textContent,
         attrs: {
-          style: `dominant-baseline: central; fill: ${textColor}; font-family: ${fontName}; font-size: ${fontSize}px; font-style: ${fontStyle}; font-weight: ${fontWeight}; text-decoration: ${textDecoration}; text-anchor: ${textAnchor};`,
+          style: `dominant-baseline: central; fill: ${textColor}; stroke: none; font-family: ${fontName}; font-size: ${fontSize}px; font-style: ${fontStyle}; font-weight: ${fontWeight}; text-decoration: ${textDecoration}; text-anchor: ${textAnchor};`,
           x: textX,
           y: textY,
         },
@@ -2289,22 +2323,28 @@ function bakeVectorEffect(markup: X6Markup, scale: number): void {
   }
 }
 
-export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePorts = false): string | undefined {
+export function getClassIconSvg(
+  cls: ModelicaClassInstance,
+  size = 16,
+  includePorts = false,
+  componentInstance?: ModelicaComponentInstance,
+): string | undefined {
   if (!cls) return undefined;
 
   const clsObj = cls as { fullName?: string; entry?: { fullName?: string; name?: string } };
-  const identityKey = !includePorts
-    ? cls.id !== undefined
-      ? `id:${cls.id}:${size}`
-      : (clsObj.fullName ?? clsObj.entry?.fullName ?? clsObj.entry?.name ?? cls.name) + `:${size}`
-    : null;
+  const identityKey =
+    !includePorts && !componentInstance
+      ? cls.id !== undefined
+        ? `id:${cls.id}:${size}`
+        : (clsObj.fullName ?? clsObj.entry?.fullName ?? clsObj.entry?.name ?? cls.name) + `:${size}`
+      : null;
 
   if (identityKey && standaloneIconSvgCache.has(identityKey)) {
     return standaloneIconSvgCache.get(identityKey);
   }
 
   try {
-    const markup = renderIconX6(cls, undefined, includePorts);
+    const markup = renderIconX6(cls, componentInstance, includePorts);
     if (!markup || !hasGraphicElements(markup)) return undefined;
 
     // Patch root SVG for standalone icon use: add xmlns, fixed size, viewBox
@@ -2693,11 +2733,13 @@ export function buildComponentProperties(
         unit = formatUnit(rawUnit);
       } else {
         const typeSpec = element.declaration?.metadata?.typeSpecifier ?? element.classInstance?.name ?? "";
-        if (typeSpec.includes("Resistance")) unit = "Ω";
+        if (typeSpec.includes("LinearTemperatureCoefficient")) unit = "1/K";
+        else if (typeSpec.includes("Resistance")) unit = "Ω";
         else if (typeSpec.includes("Inductance")) unit = "H";
         else if (typeSpec.includes("Capacitance")) unit = "F";
         else if (typeSpec.includes("Voltage") || typeSpec.includes("Potential")) unit = "V";
         else if (typeSpec.includes("Current")) unit = "A";
+        else if (typeSpec.includes("TemperatureSlope")) unit = "K/s";
         else if (typeSpec.includes("Temperature")) unit = "K";
         else if (typeSpec.includes("Time")) unit = "s";
         else if (typeSpec.includes("Frequency")) unit = "Hz";
@@ -2882,7 +2924,7 @@ export function buildComponentProperties(
   if (docRevisions) values["docRevisions"] = docRevisions;
 
   // Render icon SVG
-  const iconSvg = getClassIconSvg(componentClassInstance, 80, true);
+  const iconSvg = getClassIconSvg(componentClassInstance, 80, true, component);
 
   // Assemble tabs
   const tabs: PropertyTabConfig[] = [];

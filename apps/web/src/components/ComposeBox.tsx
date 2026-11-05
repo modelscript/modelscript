@@ -163,6 +163,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(Boolean(autoFocus));
   const [showRecipientsModal, setShowRecipientsModal] = useState(false);
+  const [excludedUsers, setExcludedUsers] = useState<Set<string>>(new Set());
   const [fetchedReplyToPost, setFetchedReplyToPost] = useState<{
     id?: string | number | undefined;
     username?: string | undefined;

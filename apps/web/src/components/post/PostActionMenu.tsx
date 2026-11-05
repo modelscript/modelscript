@@ -404,6 +404,14 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
                 try {
                   await muteUser(displayPost.username);
                   toast.info(`Muted @${displayPost.username}`);
+                  onPostDeleted?.();
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("modelscript:user-muted-or-blocked", {
+                        detail: { username: displayPost.username, action: "mute" },
+                      }),
+                    );
+                  }
                 } catch (err) {
                   console.error(err);
                 }
@@ -440,6 +448,14 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
                 try {
                   await blockUser(displayPost.username);
                   toast.info(`Blocked @${displayPost.username}`);
+                  onPostDeleted?.();
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("modelscript:user-muted-or-blocked", {
+                        detail: { username: displayPost.username, action: "block" },
+                      }),
+                    );
+                  }
                 } catch (err) {
                   console.error(err);
                 }

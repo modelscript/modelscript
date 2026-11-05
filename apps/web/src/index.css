@@ -575,6 +575,12 @@ body {
   font-weight: 400;
   font-family: inherit;
   line-height: var(--leading-md);
+  text-decoration: none !important;
+}
+
+a.handle-text:hover,
+.handle-text:hover {
+  text-decoration: none !important;
 }
 
 @keyframes rotate {

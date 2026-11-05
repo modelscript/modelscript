@@ -343,12 +343,17 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                   const totalDownloads = typeof anyPkg.totalDownloads === "number" ? anyPkg.totalDownloads : 0;
                   const dependentsCount = typeof anyPkg.dependentsCount === "number" ? anyPkg.dependentsCount : 0;
                   const recommendationReason = anyPkg.recommendationReason as string | undefined;
+                  const hasVisibleRecommendation = Boolean(
+                    recommendationReason &&
+                    !recommendationReason.startsWith("Matches #") &&
+                    (!dependentsCount || !recommendationReason.startsWith("Used by ")),
+                  );
                   const hasFooterMeta = Boolean(
                     distinctAuthor ||
                     license ||
                     totalDownloads > 0 ||
                     dependentsCount > 0 ||
-                    recommendationReason ||
+                    hasVisibleRecommendation ||
                     timeAgoText,
                   );
 
@@ -462,7 +467,7 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                                   Used by {dependentsCount} {dependentsCount === 1 ? "package" : "packages"}
                                 </Text>
                               )}
-                              {recommendationReason && (
+                              {hasVisibleRecommendation && (
                                 <Text style={{ fontSize: "11px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
                                   {recommendationReason}
                                 </Text>

@@ -165,7 +165,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
                   gap: "4px",
                 }}
               >
-                <span>{displayName}</span>
+                <span className="profile-name-text">{displayName}</span>
                 {quotePost.account_type === "rss" && <RssIcon size={14} color="var(--color-fg-muted)" />}
               </Text>
             </ProfileNameLink>
@@ -274,7 +274,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
                       gap: "4px",
                     }}
                   >
-                    <span>{nestedDisplayName}</span>
+                    <span className="profile-name-text">{nestedDisplayName}</span>
                     {nestedQuote.account_type === "rss" && <RssIcon size={12} color="var(--color-fg-muted)" />}
                   </Text>
                 </ProfileNameLink>

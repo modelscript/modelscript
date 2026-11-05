@@ -31,7 +31,7 @@ const columns: MegaMenuColumn[] = [
     label: "Workbenches & Surfaces",
     items: [
       {
-        name: "Ansatz Sketch",
+        name: "Sketch",
         tagline: "Zero-install drafting, schematics & live simulator",
         href: "/sketch",
         icon: "play",

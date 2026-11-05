@@ -445,10 +445,9 @@ const AppShell: React.FC = () => {
   // Make workbench layout only for multi-section Articles on /status/:id
   const isInspectorLayout = location.pathname.includes("/status/") && isNotebookInspector;
 
-  // Make full screen layout for /packages/* and /repos/* detail pages
+  // Make full screen layout for /repos/* detail pages
   const isFullScreenLayout =
-    (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
-    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/");
+    location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/";
 
   const showsRightPanel = !isStandaloneRoute && !isWideLayout && !isFullScreenLayout && !isInspectorLayout;
 

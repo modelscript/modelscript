@@ -114,7 +114,8 @@ export function buildOpenScenarioDiagram(scen: OscScenarioLike): OscDiagramGraph
 
   // 2. Entities (Ego, Target, Obstacles)
   for (const ent of scen.entities) {
-    const role = ent.role ?? (ent.name.toLowerCase().includes("ego") ? "ego" : "target");
+    const entName = ent.name || "Entity";
+    const role = ent.role ?? (entName.toLowerCase().includes("ego") ? "ego" : "target");
     const color = getEntityColor(role);
 
     // Map entity X (0 to roadLen) to diagram X (rx to rx + roadW)
@@ -122,7 +123,7 @@ export function buildOpenScenarioDiagram(scen: OscScenarioLike): OscDiagramGraph
     const laneIdx = (ent.lane ?? 2) - 1;
     const entY = ry + laneIdx * laneW + (laneW - 20) / 2;
 
-    const entCellId = `ent_${ent.name}`;
+    const entCellId = `ent_${entName}`;
     cells.push({
       id: entCellId,
       shape: "rect",

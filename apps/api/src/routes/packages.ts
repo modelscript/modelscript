@@ -509,16 +509,16 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       if (isDeprecated) recommendationScore -= 80;
 
       const textHaystack = `${name} ${description ?? ""} ${domains.join(" ")}`.toLowerCase();
-      let matchedTopicReason: string | null = null;
       let matchedPersonaReason: string | null = null;
 
       if (snapshot.activeTopics.size > 0) {
         let topicMatches = 0;
         for (const topic of snapshot.activeTopics) {
-          if (topic.length >= 2 && (domains.some((d) => d.toLowerCase() === topic) || textHaystack.includes(topic))) {
-            topicMatches += 1;
-            if (!matchedTopicReason) {
-              matchedTopicReason = `Matches #${topic}`;
+          if (topic.length >= 2) {
+            const isDomainMatch = domains.some((d) => d.toLowerCase() === topic);
+            const topicPattern = new RegExp(`\\b${topic.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`, "i");
+            if (isDomainMatch || topicPattern.test(textHaystack)) {
+              topicMatches += 1;
             }
           }
         }
@@ -527,12 +527,13 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       if (snapshot.dismissedTopics.size > 0) {
         for (const dismissed of snapshot.dismissedTopics) {
-          if (
-            dismissed.length >= 2 &&
-            (domains.some((d) => d.toLowerCase() === dismissed) || name.toLowerCase().includes(dismissed))
-          ) {
-            recommendationScore -= 60;
-            break;
+          if (dismissed.length >= 2) {
+            const isDomainMatch = domains.some((d) => d.toLowerCase() === dismissed);
+            const dismissedPattern = new RegExp(`\\b${dismissed.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`, "i");
+            if (isDomainMatch || dismissedPattern.test(name)) {
+              recommendationScore -= 60;
+              break;
+            }
           }
         }
       }
@@ -550,9 +551,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       let recommendationReason: string | undefined;
-      if (matchedTopicReason) {
-        recommendationReason = matchedTopicReason;
-      } else if (matchedPersonaReason) {
+      if (matchedPersonaReason) {
         recommendationReason = matchedPersonaReason;
       } else if (dependentsCount > 0) {
         recommendationReason = `Used by ${dependentsCount} ${dependentsCount === 1 ? "package" : "packages"}`;

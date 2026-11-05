@@ -19,6 +19,24 @@ export function formatPageTitle(title?: string): string {
   return title ? `${title} | ${activeBrandName}` : activeBrandName;
 }
 
+/**
+ * Formats browser window title for profile pages based on the active tab and user identifier.
+ * When on the "Posts" tab (default), displays the user label (e.g. "Name (@user)").
+ * When on any other tab, displays "${tab} by ${userLabel}" (e.g. "Replies by Name (@user)").
+ */
+export function formatProfileTitle(tab?: string | null, userLabel?: string | null): string {
+  const cleanUser = userLabel?.trim() || "";
+  const rawTab = tab?.trim() || "Posts";
+  const normalized = rawTab.charAt(0).toUpperCase() + rawTab.slice(1);
+  const canonicalTab =
+    normalized.toLowerCase() === "reply" ? "Replies" : normalized.toLowerCase() === "repost" ? "Reposts" : normalized;
+
+  if (canonicalTab.toLowerCase() === "posts") {
+    return cleanUser || "Profile";
+  }
+  return cleanUser ? `${canonicalTab} by ${cleanUser}` : canonicalTab;
+}
+
 export function usePageTitle(title: string) {
   useEffect(() => {
     const prevTitle = document.title;

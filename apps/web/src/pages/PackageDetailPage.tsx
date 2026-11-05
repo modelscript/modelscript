@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, ArrowLeftIcon } from "@primer/octicons-react";
-import { Heading, Label, Text } from "@primer/react";
+import { Heading, Text } from "@primer/react";
 import React, { Suspense, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styledImport, { keyframes } from "styled-components";
@@ -14,7 +14,6 @@ import { resolvePackageParams } from "../util/url";
 import { ClassDetailView } from "./class-detail";
 import { PackageHeader } from "./package/components/PackageHeader";
 import { PackageManageModals } from "./package/components/PackageManageModals";
-import { PackageRightSidebar } from "./package/components/PackageRightSidebar";
 import { PackageTreeSidebar } from "./package/components/PackageTreeSidebar";
 import { usePackageData } from "./package/hooks/usePackageData";
 import { usePackageManagement } from "./package/hooks/usePackageManagement";
@@ -65,42 +64,32 @@ const MainContentWrap = styled.div`
   flex-direction: column;
 `;
 
-const ContentGrid = styled.div<{ $treeCollapsed?: boolean | undefined }>`
-  max-width: none;
-  margin: 0 auto;
-  padding: 0 40px 60px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 40px;
+const ContentWrap = styled.div`
   width: 100%;
+  padding: 0 24px 60px;
   box-sizing: border-box;
-  animation: ${fadeIn} 0.4s ease;
-
-  @media (max-width: 1200px) {
-    grid-template-columns: ${(props) => (props.$treeCollapsed ? "minmax(0, 1fr) 280px" : "minmax(0, 1fr)")};
-    gap: 28px;
-    padding: 0 24px 48px;
-  }
+  animation: ${fadeIn} 0.3s ease;
 
   @media (max-width: 960px) {
-    grid-template-columns: minmax(0, 1fr);
     padding: 0 16px 40px;
-    gap: 24px;
   }
 `;
 
 const TabBar = styled.div`
   display: flex;
-  gap: 0;
-  border-bottom: 2px solid var(--color-border);
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border-default, var(--ms-divider));
   margin-bottom: 24px;
-  max-width: none;
   width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 0 40px;
+  padding: 0 24px;
   box-sizing: border-box;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 45;
@@ -111,29 +100,62 @@ const TabBar = styled.div`
 
   @media (max-width: 960px) {
     padding: 0 16px;
+    gap: 4px;
   }
 `;
 
 const Tab = styled.button<{ $active: boolean }>`
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 20px;
+  gap: 8px;
+  height: 48px;
+  padding: 0 16px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: ${({ $active }) => ($active ? 650 : 500)};
   border: none;
   background: none;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  border-bottom: 2px solid ${({ $active }) => ($active ? "var(--color-accent-emphasis)" : "transparent")};
-  margin-bottom: -2px;
-  color: ${({ $active }) => ($active ? "var(--color-accent-emphasis)" : "var(--color-text-muted)")};
+  color: ${({ $active }) =>
+    $active ? "var(--color-fg-default, var(--ms-text-1))" : "var(--color-fg-muted, var(--ms-text-2))"};
   transition: all 0.15s ease;
+  border-radius: 8px 8px 0 0;
 
   &:hover {
-    color: var(--color-text-primary);
+    color: var(--color-text-heading, var(--ms-text-heading));
+    background-color: var(--color-canvas-subtle, var(--ms-surface-hover));
   }
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 12px;
+    right: 12px;
+    height: 3px;
+    background: var(--gradient-cta, var(--ms-brand));
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.45);
+    border-radius: 9999px;
+    display: ${({ $active }) => ($active ? "block" : "none")};
+  }
+`;
+
+const TabCountBadge = styled.span<{ $active?: boolean | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  line-height: 14px;
+  border-radius: 9999px;
+  background: ${(p) =>
+    p.$active ? "var(--ms-brand-soft, rgba(6, 182, 212, 0.15))" : "var(--ms-surface-hover, rgba(255, 255, 255, 0.06))"};
+  color: ${(p) =>
+    p.$active ? "var(--ms-brand, var(--color-accent-cyan, #06b6d4))" : "var(--color-text-muted, var(--ms-text-3))"};
+  transition: all 0.15s ease;
 `;
 
 /* ─── skeleton ─── */
@@ -148,31 +170,41 @@ const PackageDetailSkeleton: React.FC = () => (
     </TreeSidebar>
     <MainContentWrap>
       <HeaderBar>
-        <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "16px" }}>
-          <div className="skeleton" style={{ width: "52px", height: "52px", borderRadius: "10px" }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "24px",
+            marginBottom: "16px",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
             <div className="skeleton" style={{ width: "240px", height: "28px" }} />
-            <div className="skeleton" style={{ width: "160px", height: "14px" }} />
+            <div className="skeleton" style={{ width: "420px", height: "16px" }} />
+            <div className="skeleton" style={{ width: "320px", height: "14px" }} />
           </div>
+          <div className="skeleton" style={{ width: "80px", height: "80px", borderRadius: "16px", flexShrink: 0 }} />
         </div>
         <div
-          style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--color-border)", paddingBottom: "12px" }}
+          style={{
+            display: "flex",
+            gap: "12px",
+            borderBottom: "1px solid var(--ms-divider, var(--color-border))",
+            paddingBottom: "12px",
+          }}
         >
           <div className="skeleton" style={{ width: "80px", height: "20px" }} />
           <div className="skeleton" style={{ width: "80px", height: "20px" }} />
           <div className="skeleton" style={{ width: "80px", height: "20px" }} />
         </div>
       </HeaderBar>
-      <ContentGrid style={{ marginTop: "24px" }}>
+      <ContentWrap style={{ marginTop: "24px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div className="skeleton" style={{ width: "100%", height: "160px", borderRadius: "12px" }} />
           <div className="skeleton" style={{ width: "100%", height: "280px", borderRadius: "12px" }} />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div className="skeleton" style={{ width: "100%", height: "180px", borderRadius: "12px" }} />
-          <div className="skeleton" style={{ width: "100%", height: "140px", borderRadius: "12px" }} />
-        </div>
-      </ContentGrid>
+      </ContentWrap>
     </MainContentWrap>
   </PageWrap>
 );
@@ -221,6 +253,7 @@ interface PackageDetailContentProps {
 }
 
 const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }) => {
+  const { user } = useAuth();
   const { name, version, className } = resolvePackageParams(rawParams);
   const navigate = useNavigate();
   usePageTitle(
@@ -246,12 +279,16 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId = rawTab && visibleTabs.some((t) => t.id === rawTab) ? rawTab : "readme";
-  const { user } = useAuth();
-
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
   const [treeCollapsed, setTreeCollapsed] = useState(false);
   const [treeSearchFilter, setTreeSearchFilter] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<PolyglotDomain>("all");
+
+  React.useEffect(() => {
+    if (className) {
+      setTreeCollapsed(false);
+    }
+  }, [className]);
   const [artifactTabDomainFilter, setArtifactTabDomainFilter] = useState<PolyglotDomain>("all");
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [compareTargetVersion, setCompareTargetVersion] = useState<string | undefined>(undefined);
@@ -400,11 +437,20 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
               onAcceptPendingTransfer={mgmt.handleAcceptPendingTransfer}
               onCancelPendingTransfer={mgmt.handleCancelPendingTransfer}
               versionList={pkg.versionList}
+              latestVersion={pkg.latestVersion}
               treeCollapsed={treeCollapsed}
               onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
               jobStatus={pkg.jobStatus}
               hasLogs={(pkg.jobInfo?.logs?.length ?? 0) > 0}
               onOpenLogs={() => setLogsModalOpen(true)}
+              installCmd={pkg.installCmd}
+              contentHash={pkg.contentHash}
+              packageSignature={pkg.packageSignature}
+              packageStats={pkg.packageStats}
+              packageOwner={
+                pkg.packument?.author?.name || pkg.collaborators.find((c) => c.permission === "owner")?.username
+              }
+              modelicaVersion={pkg.currentManifest?.modelscript?.modelicaVersion}
             />
 
             {/* ── Tab Bar ── */}
@@ -433,24 +479,16 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
                         : tab.icon}
                     <span>{tab.label}</span>
                     {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
-                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                        {pkg.artifactViewers.length}
-                      </Label>
+                      <TabCountBadge $active={activeTab === tab.id}>{pkg.artifactViewers.length}</TabCountBadge>
                     )}
                     {tab.id === "studies" && studiesCount > 0 && (
-                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                        {studiesCount}
-                      </Label>
+                      <TabCountBadge $active={activeTab === tab.id}>{studiesCount}</TabCountBadge>
                     )}
                     {tab.id === "versions" && pkg.versionList.length > 0 && (
-                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                        {pkg.versionList.length}
-                      </Label>
+                      <TabCountBadge $active={activeTab === tab.id}>{pkg.versionList.length}</TabCountBadge>
                     )}
                     {tab.id === "dependencies" && depCount > 0 && (
-                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                        {depCount}
-                      </Label>
+                      <TabCountBadge $active={activeTab === tab.id}>{depCount}</TabCountBadge>
                     )}
                   </Tab>
                 );
@@ -458,137 +496,110 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
             </TabBar>
 
             {/* ── Body ── */}
-            <ContentGrid $treeCollapsed={treeCollapsed}>
-              {/* ── Main column ── */}
-              <div>
-                {activeTab === "readme" && (
-                  <PackageReadmeTab
-                    name={name!}
-                    version={version!}
-                    rootClassName={pkg.rootClassName}
-                    rootClass={pkg.rootClass}
-                    packument={pkg.packument}
-                    classes={pkg.classes}
-                    availableDomains={pkg.availableDomains}
-                    onNavigateToDigitalThread={() => setTab("digital-thread")}
-                    jobStatus={pkg.jobStatus || undefined}
-                  />
-                )}
+            <ContentWrap>
+              {activeTab === "readme" && (
+                <PackageReadmeTab
+                  name={name!}
+                  version={version!}
+                  rootClassName={pkg.rootClassName}
+                  rootClass={pkg.rootClass}
+                  packument={pkg.packument}
+                  classes={pkg.classes}
+                  availableDomains={pkg.availableDomains}
+                  onNavigateToDigitalThread={() => setTab("digital-thread")}
+                  jobStatus={pkg.jobStatus || undefined}
+                />
+              )}
 
-                {activeTab === "versions" && (
-                  <PackageVersionsTab
-                    name={name!}
-                    version={version!}
-                    versionList={pkg.versionList}
-                    packument={pkg.packument}
-                    onCompare={(v) => {
-                      setCompareTargetVersion(v);
-                      setTab("compare");
-                    }}
-                  />
-                )}
+              {activeTab === "versions" && (
+                <PackageVersionsTab
+                  name={name!}
+                  version={version!}
+                  versionList={pkg.versionList}
+                  packument={pkg.packument}
+                  packageStats={pkg.packageStats}
+                  onCompare={(v) => {
+                    setCompareTargetVersion(v);
+                    setTab("compare");
+                  }}
+                />
+              )}
 
-                {hasCompareTab && activeTab === "compare" && name && version && (
-                  <PackageCompareTab
-                    name={name}
-                    version={version}
-                    versionList={pkg.versionList}
-                    initialBaseVersion={compareTargetVersion}
-                    baseVersion={compareTargetVersion}
-                  />
-                )}
+              {hasCompareTab && activeTab === "compare" && name && version && (
+                <PackageCompareTab
+                  name={name}
+                  version={version}
+                  versionList={pkg.versionList}
+                  initialBaseVersion={compareTargetVersion}
+                  baseVersion={compareTargetVersion}
+                />
+              )}
 
-                {hasDigitalThread && activeTab === "digital-thread" && (
-                  <PackageDigitalThreadTab
-                    name={name!}
-                    version={version!}
-                    classes={pkg.classes}
-                    rootClass={pkg.rootClass}
-                    artifactViewers={pkg.artifactViewers}
-                    onOpenArtifact={handleOpenArtifact}
-                    onNavigateToClass={(c) => {
-                      navigate(`/packages/${name}/${version}/classes/${c}`);
-                    }}
-                  />
-                )}
+              {hasDigitalThread && activeTab === "digital-thread" && (
+                <PackageDigitalThreadTab
+                  name={name!}
+                  version={version!}
+                  classes={pkg.classes}
+                  rootClass={pkg.rootClass}
+                  artifactViewers={pkg.artifactViewers}
+                  onOpenArtifact={handleOpenArtifact}
+                  onNavigateToClass={(c) => {
+                    navigate(`/packages/${name}/${version}/classes/${c}`);
+                  }}
+                />
+              )}
 
-                {hasArtifactsTab && activeTab === "artifacts" && (
-                  <PackageArtifactsTab
-                    name={name!}
-                    version={version!}
-                    availableDomains={pkg.availableDomains}
-                    artifactTabDomainFilter={artifactTabDomainFilter}
-                    setArtifactTabDomainFilter={setArtifactTabDomainFilter}
-                    displayedArtifactViewers={pkg.displayedArtifactViewers}
-                    fallbackArtifacts={pkg.artifacts}
-                    linkedStudies={pkg.linkedStudies}
-                    onViewArtifactStudies={
-                      hasCae
-                        ? (artifactPath) => {
-                            setSearchParams({ tab: "studies", artifact: artifactPath });
-                          }
-                        : undefined
-                    }
-                  />
-                )}
+              {hasArtifactsTab && activeTab === "artifacts" && (
+                <PackageArtifactsTab
+                  name={name!}
+                  version={version!}
+                  availableDomains={pkg.availableDomains}
+                  artifactTabDomainFilter={artifactTabDomainFilter}
+                  setArtifactTabDomainFilter={setArtifactTabDomainFilter}
+                  displayedArtifactViewers={pkg.displayedArtifactViewers}
+                  fallbackArtifacts={pkg.artifacts}
+                  linkedStudies={pkg.linkedStudies}
+                  onViewArtifactStudies={
+                    hasCae
+                      ? (artifactPath) => {
+                          setSearchParams({ tab: "studies", artifact: artifactPath });
+                        }
+                      : undefined
+                  }
+                />
+              )}
 
-                {hasCae && activeTab === "studies" && (
-                  <PackageStudiesTab
-                    name={name!}
-                    version={version!}
-                    rootClassName={pkg.rootClassName}
-                    targetArtifactFilter={searchParams.get("artifact") || undefined}
-                    targetModelFilter={searchParams.get("model") || undefined}
-                    onClearArtifactFilter={() => {
-                      setSearchParams({ tab: "studies" });
-                    }}
-                    bundledStudies={pkg.linkedStudies.bundledStudies}
-                    linkedTemplates={pkg.linkedStudies.linkedTemplates}
-                    compatibleTemplates={pkg.linkedStudies.compatibleTemplates}
-                    linkedJobs={pkg.linkedStudies.linkedJobs}
-                    onRefresh={() => {
-                      pkg.fetchData();
-                    }}
-                  />
-                )}
+              {hasCae && activeTab === "studies" && (
+                <PackageStudiesTab
+                  name={name!}
+                  version={version!}
+                  rootClassName={pkg.rootClassName}
+                  targetArtifactFilter={searchParams.get("artifact") || undefined}
+                  targetModelFilter={searchParams.get("model") || undefined}
+                  onClearArtifactFilter={() => {
+                    setSearchParams({ tab: "studies" });
+                  }}
+                  bundledStudies={pkg.linkedStudies.bundledStudies}
+                  linkedTemplates={pkg.linkedStudies.linkedTemplates}
+                  compatibleTemplates={pkg.linkedStudies.compatibleTemplates}
+                  linkedJobs={pkg.linkedStudies.linkedJobs}
+                  onRefresh={() => {
+                    pkg.fetchData();
+                  }}
+                />
+              )}
 
-                {activeTab === "dependencies" && (
-                  <PackageDependenciesTab
-                    name={name}
-                    version={version}
-                    dependencies={pkg.dependencies}
-                    devDependencies={pkg.currentManifest?.devDependencies}
-                    resources={pkg.libraryDetail?.resources}
-                  />
-                )}
-              </div>
-
-              {/* ── Sidebar ── */}
-              <PackageRightSidebar
-                name={name!}
-                version={version!}
-                installCmd={pkg.installCmd}
-                packument={pkg.packument}
-                libraryDetail={pkg.libraryDetail}
-                currentManifest={pkg.currentManifest}
-                publishedAt={pkg.publishedAt}
-                contentHash={pkg.contentHash}
-                packageSignature={pkg.packageSignature}
-                availableDomains={pkg.availableDomains}
-                packageStats={pkg.packageStats}
-                dependents={pkg.dependents}
-                linkedStudies={pkg.linkedStudies}
-                onOpenStudiesTab={() => setTab("studies")}
-                packageOwner={pkg.packageOwner}
-                collaborators={pkg.collaborators}
-                canManage={pkg.canManage}
-                onOpenManageCollaborators={() => {
-                  mgmt.setActionError(null);
-                  mgmt.setManageModal("collaborators");
-                }}
-                hasSalsaIndex={Boolean(pkg.libraryDetail?.salsaIndexed)}
-              />
-            </ContentGrid>
+              {activeTab === "dependencies" && (
+                <PackageDependenciesTab
+                  name={name}
+                  version={version}
+                  dependencies={pkg.dependencies}
+                  devDependencies={pkg.currentManifest?.devDependencies}
+                  resources={pkg.libraryDetail?.resources}
+                  dependents={pkg.dependents}
+                />
+              )}
+            </ContentWrap>
           </>
         )}
       </MainContentWrap>

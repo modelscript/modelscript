@@ -23,14 +23,17 @@ test("GenericDSLDiagramBackend & Diagram Dispatch", async (t) => {
 
   const genericBackend = new GenericDSLDiagramBackend({
     getDocumentText: (uri) => (uri === dummyDocUri ? "step A -> step B" : undefined),
-    getDiagramConfig: () => ({
-      nodes: {
-        Step: {
-          label: "Step",
-          shape: "rect",
-        },
-      },
-    }),
+    getDiagramConfig: (uri) =>
+      uri === dummyDocUri
+        ? {
+            nodes: {
+              Step: {
+                label: "Step",
+                shape: "rect",
+              },
+            },
+          }
+        : undefined,
     getSyntaxNames: () => ({ 1: "Step" }),
     getRawAstData: () => ({
       nodes: [
@@ -547,5 +550,52 @@ test("GenericDSLDiagramBackend & Diagram Dispatch", async (t) => {
     assert.ok(updatedLayout.elements.Automobile, "New element name should exist");
     assert.strictEqual(updatedLayout.elements.Automobile.x, 250);
     assert.strictEqual(updatedLayout.elements.Automobile.y, 350);
+  });
+
+  await t.test(
+    "should throw an error saying diagrams are not supported when language lacks diagram capability",
+    async () => {
+      const unsupportedBackend = new GenericDSLDiagramBackend({
+        getDocumentText: () => "plain text without diagram config or AST",
+      });
+
+      await assert.rejects(
+        async () => {
+          await unsupportedBackend.getData({
+            uri: "file:///workspace/readme.txt",
+          });
+        },
+        {
+          message: /Diagram view is not supported for/,
+        },
+      );
+    },
+  );
+
+  await t.test(
+    "should return empty diagram without synthesizing fake RootModel when supported language has zero components",
+    async () => {
+      const emptySupportedBackend = new GenericDSLDiagramBackend({
+        getDocumentText: () => "// just comments, no components",
+        getDiagramConfig: () => ({ nodes: {} }),
+      });
+
+      const data = await emptySupportedBackend.getData({
+        uri: "file:///workspace/empty.dsl",
+      });
+
+      assert.ok(data);
+      assert.strictEqual(data.nodes.length, 0, "Must not synthesize fake RootModel node");
+      assert.strictEqual(data.edges.length, 0);
+    },
+  );
+
+  await t.test("should report accurate diagram support in dispatch.supports()", () => {
+    assert.strictEqual(dispatch.supports("file:///workspace/model.mo"), true);
+    assert.strictEqual(dispatch.supports("file:///workspace/system.sysml"), true);
+    assert.strictEqual(dispatch.supports("file:///workspace/model.scad"), true);
+    assert.strictEqual(dispatch.supports("file:///workspace/kernel.f90"), true);
+    assert.strictEqual(dispatch.supports("file:///workspace/policy.oscal.json"), true);
+    assert.strictEqual(dispatch.supports("file:///workspace/unknown.xyz"), false);
   });
 });

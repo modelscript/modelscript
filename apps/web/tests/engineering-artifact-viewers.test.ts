@@ -105,4 +105,30 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
       "FeaDeckViewer must provide Stress, Deform, and Quality 3D inspection modes in the viewport HUD",
     );
   });
+
+  it("wires dynamic client-side OSCAL Authorization Boundary SVG rendering in PolyglotArtifactViewer", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const polyglotSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/PolyglotArtifactViewer.tsx"),
+      "utf8",
+    );
+
+    assert.ok(
+      polyglotSrc.includes('import { renderOscalBoundarySvg } from "@modelscript/diagram/oscal-diagram-builder"'),
+      "PolyglotArtifactViewer must import renderOscalBoundarySvg",
+    );
+    assert.ok(
+      polyglotSrc.includes('import { parseOscal } from "@modelscript/oscal"'),
+      "PolyglotArtifactViewer must import parseOscal",
+    );
+    assert.ok(
+      polyglotSrc.includes('if (normalizedLang === "oscal") {'),
+      "PolyglotArtifactViewer must handle oscal in renderSourceToDiagramSvg",
+    );
+    assert.ok(
+      polyglotSrc.includes("renderOscalBoundarySvg(diagramDoc)"),
+      "PolyglotArtifactViewer must render OSCAL boundary SVG from source",
+    );
+  });
 });

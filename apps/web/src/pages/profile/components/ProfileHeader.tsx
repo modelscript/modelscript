@@ -3,8 +3,10 @@
 import {
   ArrowLeftIcon,
   CalendarIcon,
+  ChevronRightIcon,
   XIcon as CloseIcon,
   GlobeIcon,
+  HistoryIcon,
   HubotIcon,
   InfoIcon,
   KebabHorizontalIcon,
@@ -18,7 +20,9 @@ import {
 } from "@primer/octicons-react";
 import { Button, Heading, Text } from "@primer/react";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import styled from "styled-components";
+import { getUserAbout, type UserAboutData } from "../../../api";
 import Box from "../../../components/Box";
 import FederatedDomainPill from "../../../components/FederatedDomainPill";
 import FollowButton from "../../../components/FollowButton";
@@ -29,6 +33,104 @@ import { getAvatarUrl, getBannerUrl } from "../../../util/avatar";
 import { parseFederatedHandle } from "../../../util/federation";
 import { safeCssImageUrl, sanitizeHttpUrl } from "../../../util/url";
 import type { LinkedAccount, ProfileData } from "../types";
+
+function formatMonthYear(isoDate?: string | null): string {
+  if (!isoDate) return "";
+  try {
+    const d = new Date(isoDate);
+    if (Number.isNaN(d.getTime())) return isoDate;
+    return d.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return isoDate;
+  }
+}
+
+const JoinedDateContainer = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+`;
+
+const JoinedDateLink = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-fg-muted);
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: var(--color-fg-default);
+    text-decoration: underline;
+
+    .chevron {
+      color: var(--color-fg-default);
+    }
+  }
+
+  .chevron {
+    color: var(--color-fg-muted);
+    transition: color 0.15s ease;
+  }
+`;
+
+const StatLink = styled(Link)`
+  color: var(--color-fg-muted);
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 20px;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+const StatCount = styled.span`
+  color: var(--color-fg-default);
+  font-weight: 700;
+`;
+
+const StatLabel = styled.span`
+  color: var(--color-fg-muted);
+`;
+
+const AboutHoverCard = styled.div`
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1000;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  background-color: var(--color-canvas-overlay, var(--color-canvas-default, #ffffff));
+  border: 1px solid var(--color-border-default, #d0d7de);
+  border-radius: 16px;
+  box-shadow: var(--color-shadow-large, 0 12px 28px 0 rgba(0, 0, 0, 0.2), 0 2px 4px 0 rgba(0, 0, 0, 0.1));
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  cursor: pointer;
+  text-decoration: none;
+  animation: fadeInAboutCard 0.15s ease-out;
+
+  @keyframes fadeInAboutCard {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+`;
 
 const XIcon: React.FC = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -70,12 +172,61 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   onEditProfile,
 }) => {
   const parsed = parseFederatedHandle(profile.username);
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [confirmingBlock, setConfirmingBlock] = React.useState(false);
   const [showAvatarModal, setShowAvatarModal] = React.useState(false);
+  const [showBannerModal, setShowBannerModal] = React.useState(false);
   const avatarBgImage = safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined));
+  const bannerBgImage = safeCssImageUrl(getBannerUrl(profile.username, profile.banner_url));
 
   const blockMenuContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const [aboutData, setAboutData] = React.useState<UserAboutData | null>(null);
+  const [aboutLoading, setAboutLoading] = React.useState(false);
+  const [showHoverCard, setShowHoverCard] = React.useState(false);
+  const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  React.useEffect(() => {
+    setAboutData(null);
+    setShowHoverCard(false);
+  }, [profile.username]);
+
+  React.useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const fetchAbout = React.useCallback(async () => {
+    if (aboutData || aboutLoading) return;
+    setAboutLoading(true);
+    try {
+      const data = await getUserAbout(profile.username);
+      setAboutData(data);
+    } catch {
+      // silently ignore
+    } finally {
+      setAboutLoading(false);
+    }
+  }, [profile.username, aboutData, aboutLoading]);
+
+  const handleMouseEnterJoined = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    setShowHoverCard(true);
+    void fetchAbout();
+  };
+
+  const handleMouseLeaveJoined = () => {
+    hideTimeoutRef.current = setTimeout(() => {
+      setShowHoverCard(false);
+    }, 250);
+  };
 
   useClickOutside(
     blockMenuContainerRef,
@@ -93,15 +244,16 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   }, [showBlockMenu]);
 
   React.useEffect(() => {
-    if (!showAvatarModal) return;
+    if (!showAvatarModal && !showBannerModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setShowAvatarModal(false);
+        setShowBannerModal(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAvatarModal]);
+  }, [showAvatarModal, showBannerModal]);
 
   return (
     <>
@@ -127,7 +279,13 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
             {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
           </Heading>
-          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: "16px" }}>
+          <Text
+            style={{
+              fontSize: "13px",
+              lineHeight: "16px",
+              color: "var(--color-fg-muted, var(--color-text-muted, #536471))",
+            }}
+          >
             {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
               profile.post_count || 0,
             )}{" "}
@@ -137,15 +295,35 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       </StickyHeader>
 
       <Box
+        role="button"
+        tabIndex={0}
+        aria-label={`View ${profile.display_name || profile.username}'s header photo`}
+        onClick={() => setShowBannerModal(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setShowBannerModal(true);
+          }
+        }}
         style={{
+          position: "relative",
+          zIndex: 0,
           height: "clamp(124px, 32vw, 200px)",
           backgroundColor: "var(--color-canvas-subtle)",
-          backgroundImage: safeCssImageUrl(getBannerUrl(profile.username, profile.banner_url)) || "none",
+          backgroundImage: bannerBgImage || "none",
           backgroundSize: "cover",
           backgroundPosition: "center",
+          cursor: "pointer",
+          transition: "filter 0.15s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.filter = "brightness(0.92)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.filter = "none";
         }}
       />
-      <Box px={4} style={{ marginTop: "clamp(-65px, -11vw, -44px)" }}>
+      <Box px={4} style={{ marginTop: "clamp(-65px, -11vw, -44px)", position: "relative", zIndex: 1 }}>
         <Box
           display="flex"
           justifyContent="space-between"
@@ -164,6 +342,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               }
             }}
             style={{
+              position: "relative",
+              zIndex: 2,
               width: "clamp(88px, 24vw, 134px)",
               height: "clamp(88px, 24vw, 134px)",
               borderRadius: "50%",
@@ -237,14 +417,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                     >
                       <button
                         onClick={() => {
-                          const joinedText = profile.created_at
-                            ? ` • Joined ${new Date(profile.created_at).toLocaleDateString()}`
-                            : "";
-                          showToast(
-                            `@${profile.username} (${profile.account_type || "standard"} account)${joinedText}`,
-                            "info",
-                          );
                           setShowBlockMenu(false);
+                          navigate(`/@${profile.username}/about`);
                         }}
                         style={{
                           width: "100%",
@@ -316,6 +490,11 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                       </button>
                       <button
                         onClick={() => {
+                          if (isBlocked) {
+                            onOpenUnblockModal();
+                            setShowBlockMenu(false);
+                            return;
+                          }
                           if (!confirmingBlock) {
                             setConfirmingBlock(true);
                             return;
@@ -336,7 +515,11 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                           display: "flex",
                           alignItems: "center",
                           gap: "12px",
-                          color: confirmingBlock ? "#ffffff" : "var(--color-danger-fg)",
+                          color: confirmingBlock
+                            ? "#ffffff"
+                            : isBlocked
+                              ? "var(--color-fg-default)"
+                              : "var(--color-danger-fg)",
                         }}
                         onMouseEnter={(e) => {
                           if (!confirmingBlock) {
@@ -350,7 +533,11 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                         }}
                       >
                         <NoEntryIcon size={20} />{" "}
-                        {confirmingBlock ? `Confirm block @${profile.username}?` : `Block @${profile.username}`}
+                        {isBlocked
+                          ? `Unblock @${profile.username}`
+                          : confirmingBlock
+                            ? `Confirm block @${profile.username}?`
+                            : `Block @${profile.username}`}
                       </button>
                       <button
                         onClick={() => {
@@ -439,7 +626,13 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         </Heading>
 
         <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
-          <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
+          <Text
+            style={{
+              fontSize: "15px",
+              lineHeight: "20px",
+              color: "var(--color-fg-muted, var(--color-text-muted, #536471))",
+            }}
+          >
             @{parsed.localUsername}
           </Text>
           {parsed.isFederated && parsed.remoteDomain && <FederatedDomainPill domain={parsed.remoteDomain} />}
@@ -528,45 +721,117 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </Box>
           )}
           {profile.account_type !== "rss" && (
-            <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
-              <CalendarIcon size={16} />{" "}
-              <Text style={{ fontSize: "15px", lineHeight: "20px" }}>
-                Joined {new Date(profile.created_at).toLocaleDateString()}
-              </Text>
-            </Box>
+            <JoinedDateContainer onMouseEnter={handleMouseEnterJoined} onMouseLeave={handleMouseLeaveJoined}>
+              <JoinedDateLink to={`/@${profile.username}/about`} title="About this account">
+                <CalendarIcon size={16} />
+                <span>Joined {formatMonthYear(profile.created_at)}</span>
+                <ChevronRightIcon size={14} className="chevron" />
+              </JoinedDateLink>
+
+              {showHoverCard && (
+                <AboutHoverCard
+                  onMouseEnter={handleMouseEnterJoined}
+                  onMouseLeave={handleMouseLeaveJoined}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/@${profile.username}/about`);
+                  }}
+                >
+                  <Text
+                    style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-fg-default)", lineHeight: "20px" }}
+                  >
+                    About this account
+                  </Text>
+                  <Box display="flex" flexDirection="column" gap={3}>
+                    <Box display="flex" alignItems="center" gap={3}>
+                      <Box
+                        style={{
+                          color: "var(--color-fg-default)",
+                          display: "flex",
+                          alignItems: "center",
+                          width: "20px",
+                        }}
+                      >
+                        <CalendarIcon size={18} />
+                      </Box>
+                      <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                        Joined {formatMonthYear(profile.created_at)}
+                      </Text>
+                    </Box>
+
+                    {Boolean(
+                      aboutData?.basedIn?.countryName && aboutData.basedIn.countryName !== "Not yet established",
+                    ) && (
+                      <Box display="flex" alignItems="center" gap={3} justifyContent="space-between">
+                        <Box display="flex" alignItems="center" gap={3}>
+                          <Box
+                            style={{
+                              color: "var(--color-fg-default)",
+                              display: "flex",
+                              alignItems: "center",
+                              width: "20px",
+                            }}
+                          >
+                            <LocationIcon size={18} />
+                          </Box>
+                          <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                            Account based in {aboutData?.basedIn?.countryName}
+                          </Text>
+                        </Box>
+                        <InfoIcon size={16} color="var(--color-fg-muted)" />
+                      </Box>
+                    )}
+
+                    {parsed.isFederated && parsed.remoteDomain && (
+                      <Box display="flex" alignItems="center" gap={3}>
+                        <Box
+                          style={{
+                            color: "var(--color-fg-default)",
+                            display: "flex",
+                            alignItems: "center",
+                            width: "20px",
+                          }}
+                        >
+                          <GlobeIcon size={18} />
+                        </Box>
+                        <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                          Federated via {parsed.remoteDomain}
+                        </Text>
+                      </Box>
+                    )}
+
+                    {(aboutData?.usernameChanges?.count ?? 0) > 0 && (
+                      <Box display="flex" alignItems="center" gap={3}>
+                        <Box
+                          style={{
+                            color: "var(--color-fg-default)",
+                            display: "flex",
+                            alignItems: "center",
+                            width: "20px",
+                          }}
+                        >
+                          <HistoryIcon size={18} />
+                        </Box>
+                        <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                          {`${aboutData?.usernameChanges?.count} former username${aboutData?.usernameChanges?.count === 1 ? "" : "s"}`}
+                        </Text>
+                      </Box>
+                    )}
+                  </Box>
+                </AboutHoverCard>
+              )}
+            </JoinedDateContainer>
           )}
         </Box>
 
         {profile.account_type !== "rss" && (
           <Box mt={3} display="flex" gap={4}>
-            <Link
-              to={`/@${profile.username}/following`}
-              style={{
-                textDecoration: "none",
-                color: "var(--color-fg-default)",
-                fontSize: "15px",
-                lineHeight: "20px",
-              }}
-            >
-              <Text style={{ fontWeight: 700, fontSize: "15px", lineHeight: "20px" }}>{profile.following_count}</Text>{" "}
-              <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
-                Following
-              </Text>
-            </Link>
-            <Link
-              to={`/@${profile.username}/followers`}
-              style={{
-                textDecoration: "none",
-                color: "var(--color-fg-default)",
-                fontSize: "15px",
-                lineHeight: "20px",
-              }}
-            >
-              <Text style={{ fontWeight: 700, fontSize: "15px", lineHeight: "20px" }}>{profile.follower_count}</Text>{" "}
-              <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
-                Followers
-              </Text>
-            </Link>
+            <StatLink to={`/@${profile.username}/following`}>
+              <StatCount>{profile.following_count}</StatCount> <StatLabel>Following</StatLabel>
+            </StatLink>
+            <StatLink to={`/@${profile.username}/followers`}>
+              <StatCount>{profile.follower_count}</StatCount> <StatLabel>Followers</StatLabel>
+            </StatLink>
           </Box>
         )}
       </Box>
@@ -633,6 +898,64 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           >
             {!avatarBgImage && profile.username.charAt(0).toUpperCase()}
           </div>
+        </div>
+      )}
+
+      {showBannerModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${profile.display_name || profile.username}'s header photo`}
+          onClick={() => setShowBannerModal(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1000,
+            backgroundColor: "rgba(0, 0, 0, 0.9)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+        >
+          <CircleIconButton
+            aria-label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowBannerModal(false);
+            }}
+            style={{
+              position: "fixed",
+              top: "16px",
+              left: "16px",
+              width: "40px",
+              height: "40px",
+              backgroundColor: "rgba(0, 0, 0, 0.65)",
+              color: "#ffffff",
+            }}
+          >
+            <CloseIcon size={20} />
+          </CircleIconButton>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(1200px, 95vw)",
+              maxHeight: "85vh",
+              aspectRatio: "3 / 1",
+              backgroundColor: "var(--color-canvas-subtle)",
+              backgroundImage: bannerBgImage || "none",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              borderRadius: "16px",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.6)",
+              overflow: "hidden",
+            }}
+          />
         </div>
       )}
     </>

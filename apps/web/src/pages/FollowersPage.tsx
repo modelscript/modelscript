@@ -123,7 +123,7 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
   emptyMessage,
 }) => {
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, token } = useAuth();
 
   return (
     <Box>
@@ -200,7 +200,10 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
                 </Link>
                 {currentUser?.username !== u.username && (
                   <Box ml={3} flexShrink={0}>
-                    <FollowButton username={u.username} initialIsFollowing={Boolean(u.is_following)} />
+                    <FollowButton
+                      username={u.username}
+                      initialIsFollowing={Boolean(currentUser && token && u.is_following)}
+                    />
                   </Box>
                 )}
               </UserRow>

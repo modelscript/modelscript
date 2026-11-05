@@ -70,12 +70,12 @@ const StyledFollowBtn = styled.button<{ $isFollowing: boolean; $size?: string | 
 const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowing, onToggle, size, isRssFeed }) => {
   const { token, user } = useAuth();
   const navigate = useNavigate();
-  const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
+  const [isFollowing, setIsFollowing] = useState(() => Boolean(user && token && initialIsFollowing));
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
-    setIsFollowing(initialIsFollowing);
-  }, [initialIsFollowing, username]);
+    setIsFollowing(Boolean(user && token && initialIsFollowing));
+  }, [initialIsFollowing, username, user, token]);
 
   if (user?.username === username) return null; // Don't show follow button for self
 
@@ -103,9 +103,11 @@ const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowin
     }
   };
 
+  const effectiveIsFollowing = Boolean(user && token && isFollowing);
+
   return (
-    <StyledFollowBtn onClick={toggleFollow} disabled={loading} $isFollowing={isFollowing} $size={size}>
-      {isFollowing ? (isRssFeed ? "Subscribed" : "Following") : isRssFeed ? "Subscribe" : "Follow"}
+    <StyledFollowBtn onClick={toggleFollow} disabled={loading} $isFollowing={effectiveIsFollowing} $size={size}>
+      {effectiveIsFollowing ? (isRssFeed ? "Subscribed" : "Following") : isRssFeed ? "Subscribe" : "Follow"}
     </StyledFollowBtn>
   );
 };

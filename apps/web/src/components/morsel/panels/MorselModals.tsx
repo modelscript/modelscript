@@ -254,17 +254,31 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: colorMode === "dark" ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.85)",
+            backgroundColor: colorMode === "dark" ? "rgba(13, 17, 23, 0.98)" : "rgba(255, 255, 255, 0.98)",
             zIndex: 9999,
-            gap: 12,
+            gap: 16,
+            backdropFilter: "blur(12px)",
           }}
         >
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
             <img
-              src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-              alt="Ansatz"
-              style={{ marginBottom: 8 }}
+              src={colorMode === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
+              alt="ModelScript"
+              width={38}
+              height={38}
+              style={{ borderRadius: "8px", display: "block" }}
             />
+            <span
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: colorMode === "dark" ? "#f0f6fc" : "#1f2328",
+                fontFamily: "var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)",
+              }}
+            >
+              ModelScript
+            </span>
           </div>
           <div
             style={{

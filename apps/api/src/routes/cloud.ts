@@ -105,7 +105,7 @@ export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
 
 export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
-  router.use(defaultApiLimiter);
+  router.use("/cloud", defaultApiLimiter);
   const hpcEngine = new HpcEngine();
   const caeRunner = new CaeSolverRunner(hpcEngine);
 

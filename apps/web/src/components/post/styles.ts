@@ -214,8 +214,27 @@ export const SignatureBadge = styled.button.attrs({ type: "button" })`
 export const ProfileNameLink = styled(Link)`
   color: inherit;
   text-decoration: none;
+  cursor: pointer;
+
   &:hover {
     text-decoration: underline;
+  }
+
+  &:hover .profile-name-text,
+  &:hover > span:first-child:not([class*="Avatar"]),
+  &:hover > * > span:first-child:not([class*="Avatar"]),
+  &:hover span.name-text {
+    text-decoration: underline;
+  }
+
+  &:hover [class*="Avatar"],
+  &:hover [class*="Avatar"] * {
+    text-decoration: none !important;
+  }
+
+  &:hover span:has(svg),
+  &:hover svg {
+    text-decoration: none !important;
   }
 `;
 

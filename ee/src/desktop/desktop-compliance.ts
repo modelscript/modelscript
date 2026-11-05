@@ -122,7 +122,7 @@ export function verifyBlackboxFmuEntitlement(): BlackboxFmuEntitlementResult {
  */
 export function createEnterpriseDesktopRouter(): Router {
   const router = Router();
-  router.use(desktopComplianceLimiter);
+  router.use("/ee/desktop", desktopComplianceLimiter);
 
   router.get(
     "/ee/desktop/compliance",

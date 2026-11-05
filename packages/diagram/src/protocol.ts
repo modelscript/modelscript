@@ -374,6 +374,7 @@ export interface DiagramData {
   isLoading?: boolean | undefined;
   availableViews?: { id: string; label: string; description?: string | undefined }[] | undefined;
   activeView?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 // ── Diagram Edit Actions ──

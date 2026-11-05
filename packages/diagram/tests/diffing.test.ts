@@ -100,4 +100,60 @@ describe("Diagram Diffing & Ephemeral Cell Exclusion", () => {
 
     assert.strictEqual(topologyChanged, true, "Topology change should be detected when a node is added");
   });
+
+  it("should diff and rewrite node ports when conditional ports change (e.g. useHeatPort)", () => {
+    let rewrittenPorts: any = null;
+    const fakeCell = {
+      id: "R1",
+      isNode: () => true,
+      isEdge: () => false,
+      getPosition: () => ({ x: 100, y: 100 }),
+      getSize: () => ({ width: 40, height: 20 }),
+      getAngle: () => 0,
+      getPorts: () => [
+        { id: "p", args: { x: 0, y: 10, angle: 0 } },
+        { id: "n", args: { x: 40, y: 10, angle: 0 } },
+      ],
+      prop: (name: string, val: any, _options: any) => {
+        if (name === "ports") rewrittenPorts = val;
+      },
+    };
+
+    const nodeDataWithHeatPort = {
+      id: "R1",
+      x: 100,
+      y: 100,
+      width: 40,
+      height: 20,
+      ports: {
+        groups: { absolute: { position: "absolute" } },
+        items: [
+          { id: "p", args: { x: 0, y: 10, angle: 0 } },
+          { id: "n", args: { x: 40, y: 10, angle: 0 } },
+          { id: "heatPort", args: { x: 20, y: 20, angle: 0 } },
+        ],
+      },
+    };
+
+    const currentPorts = fakeCell.getPorts();
+    const newPortItems = nodeDataWithHeatPort.ports.items;
+    const currentSig = currentPorts
+      .map((p: any) => `${p.id}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
+      .join(";");
+    const newSig = newPortItems
+      .map((p: any) => `${p.id || p.name}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
+      .join(";");
+
+    assert.notStrictEqual(currentSig, newSig, "Port signature should differ when heatPort is enabled");
+    if (currentSig !== newSig) {
+      fakeCell.prop("ports", nodeDataWithHeatPort.ports, { rewrite: true });
+    }
+
+    assert.ok(rewrittenPorts, "Ports should be rewritten on the cell");
+    assert.deepStrictEqual(
+      rewrittenPorts.items.map((p: any) => p.id),
+      ["p", "n", "heatPort"],
+      "Cell should receive the updated port set including heatPort",
+    );
+  });
 });

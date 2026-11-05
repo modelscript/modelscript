@@ -97,6 +97,31 @@ export const baselineMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_users_actor_url ON users(actor_url);
       CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
+      CREATE TABLE IF NOT EXISTS username_history (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        old_username TEXT NOT NULL,
+        new_username TEXT NOT NULL,
+        changed_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_username_history_user_id ON username_history(user_id);
+      CREATE INDEX IF NOT EXISTS idx_username_history_changed_at ON username_history(changed_at);
+
+      CREATE TABLE IF NOT EXISTS user_account_locations (
+        user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        confirmed_country_code  TEXT,
+        confirmed_region_code   TEXT,
+        candidate_country_code  TEXT,
+        candidate_region_code   TEXT,
+        candidate_streak        INTEGER NOT NULL DEFAULT 0,
+        candidate_first_seen_at TEXT,
+        candidate_last_seen_at  TEXT,
+        total_requests          INTEGER NOT NULL DEFAULT 0,
+        last_request_at         TEXT,
+        updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_account_locations_country ON user_account_locations(confirmed_country_code);
+
       CREATE TABLE IF NOT EXISTS library_releases (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
         library_name       TEXT NOT NULL,

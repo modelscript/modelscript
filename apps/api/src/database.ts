@@ -669,6 +669,36 @@ export class LibraryDatabase {
       `);
     } catch {}
 
+    // Self-healing: Reconcile dist_tags so 'latest' always points to the highest semver version
+    try {
+      const allPkgs = this.#db.prepare(`SELECT id, name FROM packages`).all() as { id: number; name: string }[];
+      for (const p of allPkgs) {
+        const verRows = this.#db.prepare(`SELECT version FROM package_versions WHERE package_id = ?`).all(p.id) as {
+          version: string;
+        }[];
+        if (verRows.length > 0) {
+          const sorted = verRows
+            .map((r) => r.version)
+            .sort((a, b) => {
+              if (semver.valid(a) && semver.valid(b)) return semver.rcompare(a, b);
+              return b.localeCompare(a);
+            });
+          const highestVer = sorted[0]!;
+          const currentLatestRow = this.#db
+            .prepare(`SELECT version FROM dist_tags WHERE package_id = ? AND tag = 'latest'`)
+            .get(p.id) as { version: string } | undefined;
+          if (
+            !currentLatestRow ||
+            (semver.valid(highestVer) &&
+              semver.valid(currentLatestRow.version) &&
+              semver.gt(highestVer, currentLatestRow.version))
+          ) {
+            this.setDistTag(p.id, "latest", highestVer);
+          }
+        }
+      }
+    } catch {}
+
     // Self-healing: Reconcile package description and readme with the latest tagged version
     try {
       this.#db.exec(`
@@ -968,6 +998,31 @@ export class LibraryDatabase {
           client_secret TEXT NOT NULL,
           registered_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS username_history (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          old_username TEXT NOT NULL,
+          new_username TEXT NOT NULL,
+          changed_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_username_history_user_id ON username_history(user_id);
+        CREATE INDEX IF NOT EXISTS idx_username_history_changed_at ON username_history(changed_at);
+
+        CREATE TABLE IF NOT EXISTS user_account_locations (
+          user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          confirmed_country_code  TEXT,
+          confirmed_region_code   TEXT,
+          candidate_country_code  TEXT,
+          candidate_region_code   TEXT,
+          candidate_streak        INTEGER NOT NULL DEFAULT 0,
+          candidate_first_seen_at TEXT,
+          candidate_last_seen_at  TEXT,
+          total_requests          INTEGER NOT NULL DEFAULT 0,
+          last_request_at         TEXT,
+          updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_account_locations_country ON user_account_locations(confirmed_country_code);
       `);
     } catch {}
   }
@@ -2412,10 +2467,238 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE users SET ${setClause} WHERE id = ?`).run(...values, userId);
   }
 
-  updateAccount(userId: number, username: string, email: string) {
+  updateAccount(
+    userId: number,
+    usernameOrUpdates: string | { username?: string; email?: string },
+    maybeEmail?: string,
+  ) {
+    let username: string | undefined;
+    let email: string | undefined;
+    if (typeof usernameOrUpdates === "object" && usernameOrUpdates !== null) {
+      username = usernameOrUpdates.username;
+      email = usernameOrUpdates.email;
+    } else {
+      username = usernameOrUpdates;
+      email = maybeEmail;
+    }
+    const existing = this.#db.prepare(`SELECT username, email FROM users WHERE id = ?`).get(userId) as
+      | { username: string; email: string }
+      | undefined;
+    if (!existing) return;
+
+    const trimmedUsername = (username !== undefined ? username : existing.username).trim();
+    const trimmedEmail = (email !== undefined ? email : existing.email).trim().toLowerCase();
+
+    if (existing.username && existing.username !== trimmedUsername) {
+      this.recordUsernameChange(userId, existing.username, trimmedUsername);
+    }
     this.#db
       .prepare(`UPDATE users SET username = ?, email = ? WHERE id = ?`)
-      .run(username.trim(), email.trim().toLowerCase(), userId);
+      .run(trimmedUsername, trimmedEmail, userId);
+  }
+
+  recordUsernameChange(userId: number, oldUsername: string, newUsername: string): void {
+    if (!userId || !oldUsername || !newUsername || oldUsername === newUsername) return;
+    try {
+      this.#db
+        .prepare(
+          `INSERT INTO username_history (user_id, old_username, new_username, changed_at) VALUES (?, ?, ?, datetime('now'))`,
+        )
+        .run(userId, oldUsername.trim(), newUsername.trim());
+    } catch (err) {
+      console.error("Failed to record username change:", err);
+    }
+  }
+
+  getUsernameChanges(userId: number): {
+    count: number;
+    lastChangedAt: string | null;
+    history: { oldUsername: string; newUsername: string; changedAt: string }[];
+  } {
+    try {
+      const rows = this.#db
+        .prepare(
+          `SELECT old_username, new_username, changed_at FROM username_history WHERE user_id = ? ORDER BY id DESC`,
+        )
+        .all(userId) as { old_username: string; new_username: string; changed_at: string }[];
+
+      return {
+        count: rows.length,
+        lastChangedAt: rows.length > 0 ? rows[0]!.changed_at : null,
+        history: rows.map((r) => ({
+          oldUsername: r.old_username,
+          old_username: r.old_username,
+          newUsername: r.new_username,
+          new_username: r.new_username,
+          changedAt: r.changed_at,
+          changed_at: r.changed_at,
+        })),
+      };
+    } catch {
+      return { count: 0, lastChangedAt: null, history: [] };
+    }
+  }
+
+  recordUserLocationRequest(
+    userId: number,
+    countryCode: string,
+    regionCode?: string | null,
+    thresholdN: number = 5,
+  ): { changed: boolean; confirmedCountry: string | null; confirmedCountryCode: string | null } {
+    if (!userId || !countryCode || countryCode.length !== 2) {
+      return { changed: false, confirmedCountry: null, confirmedCountryCode: null };
+    }
+    const cleanCountry = countryCode.trim().toUpperCase();
+    if (cleanCountry === "XX" || cleanCountry === "T1") {
+      return { changed: false, confirmedCountry: null, confirmedCountryCode: null };
+    }
+
+    const now = new Date().toISOString();
+    interface UserLocationRecord {
+      confirmed_country_code?: string | null;
+      confirmed_region_code?: string | null;
+      candidate_country_code?: string | null;
+      candidate_region_code?: string | null;
+      candidate_streak?: number;
+    }
+    const row = this.#db.prepare(`SELECT * FROM user_account_locations WHERE user_id = ?`).get(userId) as
+      | UserLocationRecord
+      | undefined;
+
+    if (!row) {
+      this.#db
+        .prepare(
+          `INSERT INTO user_account_locations (
+            user_id, confirmed_country_code, confirmed_region_code,
+            candidate_country_code, candidate_region_code, candidate_streak,
+            candidate_first_seen_at, candidate_last_seen_at,
+            total_requests, last_request_at, updated_at
+          ) VALUES (?, ?, ?, NULL, NULL, 0, NULL, NULL, 1, ?, ?)`,
+        )
+        .run(userId, cleanCountry, regionCode || null, now, now);
+      return { changed: true, confirmedCountry: cleanCountry, confirmedCountryCode: cleanCountry };
+    }
+
+    const confirmed = row.confirmed_country_code;
+
+    if (!confirmed) {
+      this.#db
+        .prepare(
+          `UPDATE user_account_locations SET
+            confirmed_country_code = ?,
+            confirmed_region_code = ?,
+            candidate_country_code = NULL,
+            candidate_region_code = NULL,
+            candidate_streak = 0,
+            total_requests = total_requests + 1,
+            last_request_at = ?,
+            updated_at = ?
+          WHERE user_id = ?`,
+        )
+        .run(cleanCountry, regionCode || null, now, now, userId);
+      return { changed: true, confirmedCountry: cleanCountry, confirmedCountryCode: cleanCountry };
+    }
+
+    if (cleanCountry === confirmed) {
+      this.#db
+        .prepare(
+          `UPDATE user_account_locations SET
+            candidate_country_code = NULL,
+            candidate_region_code = NULL,
+            candidate_streak = 0,
+            candidate_first_seen_at = NULL,
+            candidate_last_seen_at = NULL,
+            total_requests = total_requests + 1,
+            last_request_at = ?
+          WHERE user_id = ?`,
+        )
+        .run(now, userId);
+      return { changed: false, confirmedCountry: confirmed, confirmedCountryCode: confirmed };
+    }
+
+    const candidateCountry = row.candidate_country_code;
+    let candidateStreak = Number(row.candidate_streak || 0);
+
+    if (candidateCountry === cleanCountry) {
+      candidateStreak += 1;
+      if (candidateStreak >= thresholdN) {
+        this.#db
+          .prepare(
+            `UPDATE user_account_locations SET
+              confirmed_country_code = ?,
+              confirmed_region_code = ?,
+              candidate_country_code = NULL,
+              candidate_region_code = NULL,
+              candidate_streak = 0,
+              candidate_first_seen_at = NULL,
+              candidate_last_seen_at = NULL,
+              total_requests = total_requests + 1,
+              last_request_at = ?,
+              updated_at = ?
+            WHERE user_id = ?`,
+          )
+          .run(cleanCountry, regionCode || null, now, now, userId);
+        return { changed: true, confirmedCountry: cleanCountry, confirmedCountryCode: cleanCountry };
+      } else {
+        this.#db
+          .prepare(
+            `UPDATE user_account_locations SET
+              candidate_streak = ?,
+              candidate_last_seen_at = ?,
+              total_requests = total_requests + 1,
+              last_request_at = ?
+            WHERE user_id = ?`,
+          )
+          .run(candidateStreak, now, now, userId);
+        return { changed: false, confirmedCountry: confirmed, confirmedCountryCode: confirmed };
+      }
+    } else {
+      this.#db
+        .prepare(
+          `UPDATE user_account_locations SET
+            candidate_country_code = ?,
+            candidate_region_code = ?,
+            candidate_streak = 1,
+            candidate_first_seen_at = ?,
+            candidate_last_seen_at = ?,
+            total_requests = total_requests + 1,
+            last_request_at = ?
+          WHERE user_id = ?`,
+        )
+        .run(cleanCountry, regionCode || null, now, now, now, userId);
+      return { changed: false, confirmedCountry: confirmed, confirmedCountryCode: confirmed };
+    }
+  }
+
+  getUserAccountLocation(userId: number): {
+    countryCode: string | null;
+    countryName: string | null;
+    regionCode: string | null;
+    updatedAt: string | null;
+  } | null {
+    try {
+      const row = this.#db
+        .prepare(
+          `SELECT confirmed_country_code, confirmed_region_code, updated_at FROM user_account_locations WHERE user_id = ?`,
+        )
+        .get(userId) as
+        | { confirmed_country_code?: string | null; confirmed_region_code?: string | null; updated_at?: string | null }
+        | undefined;
+      if (!row || !row.confirmed_country_code) return null;
+      let countryName = row.confirmed_country_code;
+      try {
+        const dn = new Intl.DisplayNames(["en"], { type: "region" });
+        countryName = dn.of(row.confirmed_country_code) || row.confirmed_country_code;
+      } catch {}
+      return {
+        countryCode: row.confirmed_country_code,
+        countryName,
+        regionCode: row.confirmed_region_code || null,
+        updatedAt: row.updated_at || null,
+      };
+    } catch {
+      return null;
+    }
   }
 
   updatePassword(userId: number, passwordHash: string) {
@@ -4305,14 +4588,16 @@ export class LibraryDatabase {
 
   getUserTimeline(username: string, currentUserId?: number, limit: number = 20, type?: string): PostRow[] {
     let typeFilter = "";
-    if (type === "replies") {
+    if (type === "replies" || type === "reply") {
       typeFilter = "AND p.reply_to_id IS NOT NULL";
-    } else if (type === "artifacts") {
+    } else if (type === "reposts" || type === "repost") {
+      typeFilter = "AND p.repost_of_id IS NOT NULL";
+    } else if (type === "artifacts" || type === "artifact") {
       typeFilter = "AND p.artifact_view_id IS NOT NULL";
-    } else if (type === "articles") {
+    } else if (type === "articles" || type === "article") {
       typeFilter = `AND p.reply_to_id IS NULL AND p.repost_of_id IS NULL
         AND CASE WHEN json_valid(p.metadata) THEN json_extract(p.metadata, '$.notebook.isNotebook') END = 1`;
-    } else if (type === "posts") {
+    } else if (type === "posts" || type === "post") {
       typeFilter = "AND p.reply_to_id IS NULL";
     }
 
@@ -4344,7 +4629,9 @@ export class LibraryDatabase {
       .all(uid, uid, uid, username, ...visFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = posts
+      .map((p) => this.hydratePost(p, currentUserId)!)
+      .filter((p) => !p.repost_of_id || Boolean(p.repost_post));
     return this.applyContentFiltersToPosts(hydrated, "account", currentUserId);
   }
 
@@ -5038,11 +5325,14 @@ export class LibraryDatabase {
       LEFT JOIN users pu ON p.author_id = pu.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
       WHERE n.user_id = ? ${typeClause}
+        AND n.actor_id NOT IN (SELECT muted_id FROM user_mutes WHERE muter_id = ?)
+        AND n.actor_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND n.actor_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
       ORDER BY n.created_at DESC
       LIMIT ?
     `,
       )
-      .all(userId, limit) as NotificationRow[];
+      .all(userId, userId, userId, userId, limit) as NotificationRow[];
 
     return rows.map((r) => {
       if (r.metadata && typeof r.metadata === "string") {
@@ -11711,14 +12001,23 @@ export class LibraryDatabase {
     const versions = this.getPackageVersions(pkg.id);
     if (versions.length === 0) return null;
 
+    const sortedVersions = [...versions].sort((a, b) => {
+      if (semver.valid(a.version) && semver.valid(b.version)) return semver.rcompare(a.version, b.version);
+      return (b.published_at || "").localeCompare(a.published_at || "");
+    });
+
     const distTags = this.getDistTags(pkg.id);
+    if (!distTags["latest"] && sortedVersions.length > 0) {
+      distTags["latest"] = sortedVersions[0]!.version;
+    }
+
     const time: Record<string, string> = {
       created: pkg.created_at,
       modified: pkg.modified_at,
     };
 
     const versionsObj: Record<string, unknown> = {};
-    for (const v of versions) {
+    for (const v of sortedVersions) {
       time[v.version] = v.published_at;
       const manifest = JSON.parse(v.manifest) as Record<string, unknown>;
       // Ensure dist info is present
@@ -12105,9 +12404,13 @@ export class LibraryDatabase {
       if (remaining.length === 0) {
         this.#db.prepare(`DELETE FROM packages WHERE id = ?`).run(pkg.id);
       } else {
-        // Re-point "latest" to the newest remaining version
-        if (remaining[0]) {
-          this.setDistTag(pkg.id, "latest", remaining[0].version);
+        // Re-point "latest" to the newest remaining version by semver
+        const sorted = [...remaining].sort((a, b) => {
+          if (semver.valid(a.version) && semver.valid(b.version)) return semver.rcompare(a.version, b.version);
+          return (b.published_at || "").localeCompare(a.published_at || "");
+        });
+        if (sorted[0]) {
+          this.setDistTag(pkg.id, "latest", sorted[0].version);
         }
       }
     })();

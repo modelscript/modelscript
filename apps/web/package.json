@@ -30,6 +30,7 @@
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/opensim": "*",
+    "@modelscript/oscal": "*",
     "@modelscript/qif": "*",
     "@modelscript/reqif": "*",
     "@modelscript/sima": "*",

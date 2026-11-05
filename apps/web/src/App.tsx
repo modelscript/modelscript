@@ -71,6 +71,7 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 }
 
 // Lazy-loaded pages for optimal initial bundle transfer
+const AboutAccountPage = lazyWithRetry(() => import("./pages/AboutAccountPage"));
 const AdminPage = lazyWithRetry(() => import("./pages/AdminPage"));
 const BookmarksPage = lazyWithRetry(() => import("./pages/BookmarksPage"));
 const EditProfilePage = lazyWithRetry(() => import("./pages/EditProfilePage"));
@@ -765,6 +766,7 @@ function App() {
                     <Route path="/posts/:id" element={<PostDetailPage />} />
                     {/* Backward-compatible redirects: /users/:username -> /@:username */}
                     <Route path="/users/:username" element={<LegacyUserRedirect />} />
+                    <Route path="/users/:username/about" element={<LegacyUserRedirect />} />
                     <Route path="/users/:username/status/:id" element={<LegacyUserRedirect />} />
                     <Route path="/users/:username/status/:id/activity" element={<LegacyUserRedirect />} />
                     <Route path="/users/:username/followers" element={<LegacyUserRedirect />} />
@@ -772,6 +774,7 @@ function App() {
 
                     {/* Canonical user profile and status routes with '@' guard */}
                     <Route path="/:username" element={<UserRootRouteGuard element={<ProfilePage />} />} />
+                    <Route path="/:username/about" element={<UserRootRouteGuard element={<AboutAccountPage />} />} />
                     <Route path="/:username/status/:id" element={<UserRootRouteGuard element={<PostDetailPage />} />} />
                     <Route
                       path="/:username/status/:id/activity"

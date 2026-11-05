@@ -5,11 +5,27 @@ import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import net from "node:net";
 import { LibraryDatabase } from "../database.js";
+import { locationService } from "../services/location.js";
 
 let sharedAuthDatabase: LibraryDatabase | null = null;
 
 export function setAuthDatabase(database: LibraryDatabase) {
   sharedAuthDatabase = database;
+}
+
+export function trackUserLocationFromRequest(req: Request, userId: number): void {
+  if (!sharedAuthDatabase || !userId || locationService.isBotUserAgent(req.headers["user-agent"])) {
+    return;
+  }
+  try {
+    const geo = locationService.resolveRequestGeo(req);
+    if (geo?.countryCode) {
+      const thresholdN = Number(process.env["ACCOUNT_LOCATION_THRESHOLD_N"]) || 5;
+      sharedAuthDatabase.recordUserLocationRequest(userId, geo.countryCode, geo.regionCode, thresholdN);
+    }
+  } catch {
+    // Ignore location tracking errors
+  }
 }
 
 const isProd = process.env["NODE_ENV"] === "production";
@@ -354,6 +370,7 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
     account_type: user.account_type || (isAdmin ? "admin" : "user"),
   };
 
+  trackUserLocationFromRequest(req, user.id);
   return true;
 }
 
@@ -489,6 +506,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     }
 
     req.user = decoded;
+    trackUserLocationFromRequest(req, decoded.id);
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -649,9 +667,11 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
         decoded.account_type = decoded.accountType;
         decoded.role = decoded.role || decoded.accountType;
         req.user = decoded;
+        trackUserLocationFromRequest(req, decoded.id);
       }
     } else {
       req.user = decoded;
+      trackUserLocationFromRequest(req, decoded.id);
     }
   } catch {
     // Ignore invalid or expired token for optional auth

@@ -771,6 +771,69 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       display: none;
       z-index: 1000;
     }
+    /* Unified selection box & transform controls */
+    .x6-widget-selection-box,
+    .x6-widget-selection-inner {
+      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
+      box-shadow: none !important;
+      border-radius: 4px;
+      background-color: rgba(2, 132, 199, 0.05);
+    }
+    .x6-widget-selection-box-node {
+      margin: -5px 0 0 -5px !important;
+      padding: 4px !important;
+      box-sizing: content-box !important;
+      transform-origin: center center !important;
+    }
+    .x6-widget-selection-box-edge {
+      display: none !important;
+    }
+    .x6-widget-transform {
+      border: none !important;
+    }
+    .x6-widget-transform > div {
+      background-color: var(--vscode-editor-background, #ffffff) !important;
+      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
+      border-radius: 50% !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+    .x6-widget-transform > div:hover {
+      background-color: var(--vscode-focusBorder, #0284c7) !important;
+    }
+    .x6-widget-transform-rotate {
+      background-color: var(--vscode-editor-background, #ffffff) !important;
+      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
+      border-radius: 50% !important;
+    }
+    /* Edge Selection and Vertex/Segment Handle Controls */
+    .x6-edge.x6-edge-selected path.connection,
+    .x6-edge.x6-edge-selected path[stroke] {
+      stroke: var(--vscode-focusBorder, #0284c7) !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 3px rgba(2, 132, 199, 0.4));
+    }
+    .x6-edge-tool-vertex circle,
+    circle.x6-edge-tool-vertex {
+      cursor: grab !important;
+      transition: fill 0.15s ease, r 0.15s ease;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+    }
+    .x6-edge-tool-vertex circle:hover,
+    circle.x6-edge-tool-vertex:hover {
+      fill: var(--vscode-focusBorder, #0284c7) !important;
+      cursor: grab !important;
+    }
+    .x6-edge-tool-segment rect,
+    rect.x6-edge-tool-segment {
+      cursor: move !important;
+      transition: fill 0.15s ease;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+    }
+    .x6-edge-tool-segment rect:hover,
+    rect.x6-edge-tool-segment:hover {
+      fill: var(--vscode-focusBorder, #0284c7) !important;
+      cursor: move !important;
+    }
     #toolbar {
       position: absolute;
       top: 10px;
@@ -874,15 +937,33 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       100% { opacity: 1; transform: scale(1); }
     }
 
+    :root {
+      --ms-prop-bg: var(--vscode-sideBar-background, #252526);
+      --ms-prop-fg: var(--vscode-foreground, #ccc);
+      --ms-prop-fg-muted: var(--vscode-descriptionForeground, #888);
+      --ms-prop-border: var(--vscode-sideBarSectionHeader-border, #454545);
+      --ms-prop-accent: var(--vscode-panelTitle-activeBorder, #007acc);
+      --ms-prop-input-bg: var(--vscode-input-background, #3c3c3c);
+      --ms-prop-input-fg: var(--vscode-input-foreground, #ccc);
+      --ms-prop-input-border: var(--vscode-input-border, transparent);
+      --ms-prop-dropdown-bg: var(--vscode-dropdown-background, #3c3c3c);
+      --ms-prop-dropdown-fg: var(--vscode-dropdown-foreground, #ccc);
+      --ms-prop-dropdown-border: var(--vscode-dropdown-border, #454545);
+      --ms-prop-error: var(--vscode-errorForeground, #f85149);
+      --ms-prop-conflict-bg: rgba(248, 81, 73, 0.12);
+      --ms-prop-conflict-border: #f85149;
+      --ms-prop-font-mono: var(--vscode-editor-font-family, monospace);
+    }
+
     #properties-panel {
       position: absolute;
       top: 0;
-      right: -320px;
-      width: 320px;
+      right: -340px;
+      width: 340px;
       height: 100vh;
-      background: var(--vscode-sideBar-background, #252526);
-      border-left: 1px solid var(--vscode-sideBarSectionHeader-border, #454545);
-      color: var(--vscode-foreground, #ccc);
+      background: var(--ms-prop-bg);
+      border-left: 1px solid var(--ms-prop-border);
+      color: var(--ms-prop-fg);
       transition: right 0.2s ease-in-out;
       box-sizing: border-box;
       display: flex;
@@ -894,7 +975,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     #properties-panel.open {
       right: 0;
     }
-    .prop-icon-wrapper svg, .prop-icon-wrapper img, .prop-icon-wrapper image {
+    .prop-icon-wrapper svg, .prop-icon-wrapper img, .prop-icon-wrapper image,
+    .ms-prop-icon-wrapper svg, .ms-prop-icon-wrapper img, .ms-prop-icon-wrapper image {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
@@ -903,9 +985,114 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     #properties-panel > .panel-body {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 0;
     }
-    /* Simple form UI */
+    .ms-prop-label {
+      font-size: 11px;
+      color: var(--ms-prop-fg-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ms-prop-label.is-modified {
+      color: var(--ms-prop-fg);
+      font-weight: 600;
+    }
+    .ms-prop-dot-modified {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--ms-prop-accent);
+      margin-right: 6px;
+      flex-shrink: 0;
+    }
+    .ms-prop-btn-revert {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 0 4px;
+      font-size: 12px;
+      color: var(--ms-prop-fg-muted);
+      line-height: 1;
+      border-radius: 3px;
+      transition: color 0.15s ease;
+    }
+    .ms-prop-btn-revert:hover {
+      color: var(--ms-prop-accent);
+    }
+    .ms-prop-tabs-bar {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--ms-prop-border);
+      padding: 0 12px;
+      overflow-x: auto;
+    }
+    .ms-prop-tab-btn {
+      padding: 6px 10px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--ms-prop-fg-muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      text-transform: uppercase;
+      transition: all 0.15s ease;
+    }
+    .ms-prop-tab-btn.active {
+      border-bottom-color: var(--ms-prop-accent);
+      color: var(--ms-prop-fg);
+    }
+    .ms-prop-group {
+      margin-bottom: 1px;
+      border-bottom: 1px solid var(--ms-prop-border);
+    }
+    .ms-prop-group-summary {
+      cursor: pointer;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      color: var(--ms-prop-fg-muted);
+      padding: 8px 16px;
+      list-style: none;
+    }
+    .ms-prop-row {
+      display: flex;
+      flex-direction: column;
+      padding: 6px 16px;
+      transition: opacity 0.15s ease;
+    }
+    .ms-prop-row.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    .ms-prop-conflict-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: var(--ms-prop-conflict-bg);
+      border: 1px solid var(--ms-prop-conflict-border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      margin-top: 4px;
+      font-size: 11px;
+    }
+    .ms-prop-btn-conflict {
+      background: transparent;
+      border: 1px solid var(--ms-prop-conflict-border);
+      border-radius: 3px;
+      color: var(--ms-prop-fg);
+      font-size: 10px;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+    .ms-prop-btn-conflict:hover {
+      background: rgba(248, 81, 73, 0.2);
+    }
+    /* Simple form UI legacy */
     .prop-group {
       margin-bottom: 12px;
     }

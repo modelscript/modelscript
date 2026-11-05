@@ -16,6 +16,7 @@ import {
   getClasses,
   getJobStatus,
   getLibraryDetail,
+  getLibraryVersions,
   getPackageCollaborators,
   getPackageDependents,
   getPackageStats,
@@ -25,6 +26,7 @@ import {
   type ClassDetail,
   type ClassSummary,
   type JobInfo,
+  type Library,
   type LibraryVersion,
   type NpmPackument,
   type NpmVersionManifest,
@@ -39,6 +41,7 @@ import {
   type StudyDefinitionPayload,
 } from "../../../api/compute";
 import { buildClassTree, filterClassTree } from "../../../components/classTreeUtils";
+import { sortVersionsDescending } from "../../../util/semver";
 import { classifyArtifactDomain, type PolyglotDomain } from "../types";
 
 export interface DomainMeta {
@@ -74,6 +77,7 @@ export function usePackageData(
     linkedJobs: [],
   });
   const [libraryDetail, setLibraryDetail] = useState<LibraryVersion | null>(null);
+  const [libraryVersions, setLibraryVersions] = useState<Library | null>(null);
   const [collaborators, setCollaborators] = useState<PackageCollaborator[]>([]);
   const [canManageServer, setCanManageServer] = useState(false);
   const [pendingTransfers, setPendingTransfers] = useState<PendingPackageTransfer[]>([]);
@@ -91,26 +95,38 @@ export function usePackageData(
   const fetchData = useCallback(async () => {
     if (!name || !version) return;
     try {
-      const [rootCls, classList, npmData, viewers, stats, depData, libDetail, collabData, transfers, linkedData] =
-        await Promise.all([
-          getClassDetail(name, version, name)
-            .catch(() => (rootClassName !== name ? getClassDetail(name, version, rootClassName) : null))
-            .catch(() => null),
-          getClasses(name, version).catch(() => []),
-          getPackument(name).catch(() => null),
-          getArtifactViewers(name, version).catch(() => []),
-          getPackageStats(name, 30).catch(() => null),
-          getPackageDependents(name).catch(() => null),
-          getLibraryDetail(name, version).catch(() => null),
-          getPackageCollaborators(name).catch(() => null),
-          user ? getPendingPackageTransfers().catch(() => []) : Promise.resolve([]),
-          getLinkedPackageStudies({ package: name, version }).catch(() => ({
-            bundledStudies: [],
-            linkedTemplates: [],
-            compatibleTemplates: [],
-            linkedJobs: [],
-          })),
-        ]);
+      const [
+        rootCls,
+        classList,
+        npmData,
+        viewers,
+        stats,
+        depData,
+        libDetail,
+        collabData,
+        transfers,
+        linkedData,
+        libVersions,
+      ] = await Promise.all([
+        getClassDetail(name, version, name)
+          .catch(() => (rootClassName !== name ? getClassDetail(name, version, rootClassName) : null))
+          .catch(() => null),
+        getClasses(name, version).catch(() => []),
+        getPackument(name).catch(() => null),
+        getArtifactViewers(name, version).catch(() => []),
+        getPackageStats(name, 30).catch(() => null),
+        getPackageDependents(name).catch(() => null),
+        getLibraryDetail(name, version).catch(() => null),
+        getPackageCollaborators(name).catch(() => null),
+        user ? getPendingPackageTransfers().catch(() => []) : Promise.resolve([]),
+        getLinkedPackageStudies({ package: name, version }).catch(() => ({
+          bundledStudies: [],
+          linkedTemplates: [],
+          compatibleTemplates: [],
+          linkedJobs: [],
+        })),
+        getLibraryVersions(name).catch(() => null),
+      ]);
       setRootClass(rootCls);
       setClasses(classList);
       setPackument(npmData);
@@ -119,6 +135,7 @@ export function usePackageData(
       setDependents(depData?.dependents || []);
       setLinkedStudies(linkedData);
       setLibraryDetail(libDetail);
+      setLibraryVersions(libVersions);
       setCollaborators(collabData?.collaborators || []);
       setCanManageServer(Boolean(libDetail?.canManage || collabData?.canManage));
       setPendingTransfers(transfers.filter((t) => t.package_name === name));
@@ -163,16 +180,37 @@ export function usePackageData(
     return () => clearInterval(interval);
   }, [name, version, jobStatus, fetchData]);
 
-  // Derived data from packument
+  // Derived data from packument & library
   const currentManifest: NpmVersionManifest | null =
     packument && version ? (packument.versions[version] ?? null) : null;
-  const versionList = packument
-    ? Object.keys(packument.versions).sort((a, b) => {
-        const ta = packument.time?.[a] ?? "";
-        const tb = packument.time?.[b] ?? "";
-        return tb.localeCompare(ta);
-      })
-    : [];
+
+  const rawVersions = useMemo(() => {
+    if (packument && Object.keys(packument.versions).length > 0) {
+      return Object.keys(packument.versions);
+    }
+    if (libraryVersions?.versions && libraryVersions.versions.length > 0) {
+      return libraryVersions.versions;
+    }
+    if (libraryDetail?.version) {
+      return [libraryDetail.version];
+    }
+    if (version) {
+      return [version];
+    }
+    return [];
+  }, [packument, libraryVersions, libraryDetail, version]);
+
+  const versionList = useMemo(() => {
+    return sortVersionsDescending(Array.from(new Set(rawVersions)));
+  }, [rawVersions]);
+
+  const latestVersion = useMemo(() => {
+    const distTagLatest = packument?.["dist-tags"]?.["latest"];
+    if (distTagLatest && versionList.includes(distTagLatest)) {
+      return distTagLatest;
+    }
+    return versionList[0] || version || "";
+  }, [packument, versionList, version]);
   const artifacts = currentManifest?.modelscript?.artifacts ?? [];
   const dependencies = currentManifest?.dependencies ?? {};
   const publishedAt = libraryDetail?.publishedAt ?? packument?.time?.[version ?? ""] ?? packument?.time?.modified ?? "";
@@ -334,6 +372,7 @@ export function usePackageData(
     fetchData,
     currentManifest,
     versionList,
+    latestVersion,
     artifacts,
     dependencies,
     publishedAt,

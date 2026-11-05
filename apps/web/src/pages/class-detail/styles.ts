@@ -105,36 +105,28 @@ export const Divider = styled.hr`
   margin: 24px 0;
 `;
 
-export const ContentGrid = styled.div<{ $treeCollapsed?: boolean | undefined }>`
-  max-width: none;
-  margin: 0 auto;
-  padding: 28px 40px 60px;
-  display: grid;
-  grid-template-columns: ${(props) => (props.$treeCollapsed ? "minmax(0, 1fr) 280px" : "1fr 320px")};
-  gap: 40px;
+export const ContentWrap = styled.div`
   width: 100%;
+  margin: 0 auto;
+  padding: 20px 24px 60px;
   box-sizing: border-box;
-  animation: ${fadeIn} 0.4s ease;
-
-  @media (max-width: 960px) {
-    grid-template-columns: 1fr;
-  }
+  animation: ${fadeIn} 0.25s ease;
 
   @media (max-width: 768px) {
-    padding: 20px 20px 40px;
-    gap: 24px;
+    padding: 16px 16px 40px;
   }
 `;
 
+export const ContentGrid = ContentWrap;
+
 export const HeaderBar = styled.div`
-  max-width: none;
   width: 100%;
   margin: 0 auto;
-  padding: 28px 40px 20px;
+  padding: 20px 24px 16px;
   box-sizing: border-box;
 
   @media (max-width: 768px) {
-    padding: 20px 20px 16px;
+    padding: 16px 16px 12px;
   }
 `;
 
@@ -142,7 +134,7 @@ export const TabBar = styled.div`
   display: flex;
   gap: 4px;
   width: 100%;
-  padding: 0 40px;
+  padding: 0 24px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--color-border);
   overflow-x: auto;
@@ -155,7 +147,7 @@ export const TabBar = styled.div`
   transition: background-color 0.25s ease;
 
   @media (max-width: 768px) {
-    padding: 0 20px;
+    padding: 0 16px;
   }
 `;
 

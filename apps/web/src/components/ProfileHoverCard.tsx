@@ -63,6 +63,47 @@ const Avatar = styled.div<AvatarProps>`
   }
 `;
 
+const HoverCardAvatarLink = styled(Link)`
+  text-decoration: none;
+  display: inline-block;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(0.85);
+    text-decoration: none;
+  }
+
+  & * {
+    text-decoration: none !important;
+  }
+`;
+
+const HoverCardNameLink = styled(Link)`
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--color-fg-default);
+  text-decoration: none;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:hover .profile-name-text,
+  &:hover span {
+    text-decoration: underline;
+  }
+`;
+
 interface FollowButtonProps {
   $following: boolean;
   $blocked?: boolean | undefined;
@@ -117,6 +158,10 @@ const StatLink = styled(Link)`
 const StatCount = styled.span`
   color: var(--color-fg-default);
   font-weight: 700;
+`;
+
+const StatLabel = styled.span`
+  color: var(--color-fg-muted);
 `;
 
 const ModalOverlay = styled.div`
@@ -178,12 +223,13 @@ export default function ProfileHoverCard({
   }, [username]);
 
   const fetchProfile = async () => {
+    if (!username) return;
     if (data && data.username === username) return;
     try {
       const json = await getUserProfile(username);
       setData(json.profile);
-      setIsFollowing(Boolean(json.isFollowing));
-      setIsBlocked(Boolean(json.isBlocked));
+      setIsFollowing(Boolean(user && json.isFollowing));
+      setIsBlocked(Boolean(user && json.isBlocked));
     } catch (e) {}
   };
 
@@ -305,38 +351,42 @@ export default function ProfileHoverCard({
                 <BannerHeader $url={getBannerUrl(data.username, data.banner_url)} />
                 <Box style={{ padding: "0 16px 16px 16px", marginTop: "-28px" }}>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                    <Avatar
-                      $url={getAvatarUrl(data.username, data.avatar_url || undefined)}
-                      $letter={data.username?.charAt(0).toUpperCase()}
-                    />
+                    <HoverCardAvatarLink
+                      to={`/@${data.username}`}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`${data.display_name || data.username}'s profile`}
+                    >
+                      <Avatar
+                        $url={getAvatarUrl(data.username, data.avatar_url || undefined)}
+                        $letter={data.username?.charAt(0).toUpperCase()}
+                      />
+                    </HoverCardAvatarLink>
                     {user?.username !== data.username && (
                       <FollowButton
-                        $following={isFollowing}
+                        $following={Boolean(user && isFollowing)}
                         $blocked={isBlocked}
                         onClick={isBlocked ? handleBlockClick : handleFollowToggle}
                       >
-                        {isBlocked ? "Blocked" : isFollowing ? "Following" : "Follow"}
+                        {isBlocked ? "Blocked" : user && isFollowing ? "Following" : "Follow"}
                       </FollowButton>
                     )}
                   </Box>
                   <Box mt={2}>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: "15px",
-                        lineHeight: "20px",
-                        color: "var(--color-fg-default)",
-                      }}
-                    >
-                      {data.display_name || data.username}
-                    </div>
+                    <HoverCardNameLink to={`/@${data.username}`} onClick={(e) => e.stopPropagation()}>
+                      <span className="profile-name-text">{data.display_name || data.username}</span>
+                    </HoverCardNameLink>
                     {(() => {
                       const parsed = parseFederatedHandle(data.username);
                       return (
-                        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt="2px">
-                          <div className="handle-text" style={{ fontSize: "15px", lineHeight: "20px" }}>
+                        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                          <Link
+                            to={`/@${data.username}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="handle-text"
+                            style={{ fontSize: "15px", lineHeight: "20px", textDecoration: "none" }}
+                          >
                             @{parsed.localUsername}
-                          </div>
+                          </Link>
                           {parsed.isFederated && parsed.remoteDomain && (
                             <FederatedDomainPill domain={parsed.remoteDomain} />
                           )}
@@ -349,12 +399,10 @@ export default function ProfileHoverCard({
 
                   <Box display="flex" gap={3} mt={2}>
                     <StatLink to={`/@${data.username}/following`}>
-                      <StatCount>{data.following_count}</StatCount>{" "}
-                      <span style={{ color: "var(--color-fg-muted)" }}>Following</span>
+                      <StatCount>{data.following_count}</StatCount> <StatLabel>Following</StatLabel>
                     </StatLink>
                     <StatLink to={`/@${data.username}/followers`}>
-                      <StatCount>{data.follower_count}</StatCount>{" "}
-                      <span style={{ color: "var(--color-fg-muted)" }}>Followers</span>
+                      <StatCount>{data.follower_count}</StatCount> <StatLabel>Followers</StatLabel>
                     </StatLink>
                   </Box>
 

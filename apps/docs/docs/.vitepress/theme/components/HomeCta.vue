@@ -36,7 +36,10 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
             <MsIcon name="shield" :size="16" /> Plans &amp; Pricing
           </a>
           <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/sketch" target="_self">
-            <MsIcon name="play" :size="16" /> Try Ansatz Sketch
+            <MsIcon name="play" :size="16" /> Try Sketch
+          </a>
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/studio" target="_self">
+            <MsIcon name="layers" :size="16" /> Launch Studio
           </a>
           <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener">
             <MsIcon name="github" :size="16" /> GitHub

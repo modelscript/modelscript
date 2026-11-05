@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Button } from "@primer/react";
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createArtifactView, getArtifactView } from "../api";
 import { useAuth } from "../AuthContext";
@@ -1040,16 +1040,61 @@ export const PlaygroundPage: React.FC = () => {
     setCurrentLang(nextDialect);
   };
 
-  const [currentView, setCurrentView] = useState<"diagram" | "code" | "split" | "simulation">(
-    viewParam === "code" || viewParam === "simulation" || viewParam === "split" ? viewParam : "diagram",
+  type PlaygroundView = "diagram" | "code" | "split" | "simulation" | "3d" | "inspector";
+  const [currentView, setCurrentView] = useState<PlaygroundView>(
+    viewParam === "code" ||
+      viewParam === "simulation" ||
+      viewParam === "split" ||
+      viewParam === "3d" ||
+      viewParam === "inspector"
+      ? (viewParam as PlaygroundView)
+      : "diagram",
   );
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const handleSidebarChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ open?: boolean }>;
+      if (typeof customEvent.detail?.open === "boolean") {
+        setIsSidebarOpen(customEvent.detail.open);
+      }
+    };
+    window.addEventListener("morsel:sidebar-changed", handleSidebarChange);
+    return () => window.removeEventListener("morsel:sidebar-changed", handleSidebarChange);
+  }, []);
+
+  const handleToggleSidebar = () => {
+    setIsSidebarOpen((v) => !v);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("morsel:toggle-sidebar"));
+    }
+  };
   const [simulateTriggerCount, setSimulateTriggerCount] = useState(0);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  const handleViewChange = (nextView: "diagram" | "code" | "split" | "simulation") => {
-    setCurrentView(nextView);
-    handleActiveViewChange(nextView as any);
-  };
+  const handleActiveViewChange = useCallback(
+    (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => {
+      setCurrentView((prev) => (prev === nextView ? prev : (nextView as any)));
+      setPayload((prev) => {
+        if (prev?.view === nextView) return prev;
+        return {
+          ...(prev || { v: 1 }),
+          lang: currentLang,
+          code: currentCode,
+          title: currentTitle,
+          view: nextView,
+        };
+      });
+    },
+    [setCurrentView, currentLang, currentCode, currentTitle],
+  );
+
+  const handleViewChange = useCallback(
+    (nextView: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => {
+      handleActiveViewChange(nextView);
+    },
+    [handleActiveViewChange],
+  );
 
   const handleRunSimulation = () => {
     if (currentView !== "simulation" && currentView !== "split") {
@@ -1057,22 +1102,6 @@ export const PlaygroundPage: React.FC = () => {
       handleActiveViewChange("simulation");
     }
     setSimulateTriggerCount((c) => c + 1);
-  };
-
-  const handleActiveViewChange = (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code") => {
-    if (nextView === "diagram" || nextView === "simulation" || nextView === "code") {
-      setCurrentView(nextView);
-    }
-    setPayload((prev) => {
-      if (prev?.view === nextView) return prev;
-      return {
-        ...(prev || { v: 1 }),
-        lang: currentLang,
-        code: currentCode,
-        title: currentTitle,
-        view: nextView,
-      };
-    });
   };
 
   const handleParametersChange = (nextParams: Record<string, number>) => {
@@ -1107,6 +1136,8 @@ export const PlaygroundPage: React.FC = () => {
         isDirty={isDirty}
         isSimulating={isSimulating}
         publishLabel={publishLabel}
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={handleToggleSidebar}
         onTitleChange={handleTitleChange}
         onSelectExample={handleSelectExample}
         onSelectLang={handleSelectLang}
@@ -1204,6 +1235,7 @@ export const PlaygroundPage: React.FC = () => {
             initialCode={currentCode}
             embed={false}
             hideFloatingDock={true}
+            hideCenterFloatingToolbar={true}
             initialDialect={currentLang}
             initialView={currentView}
             initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}

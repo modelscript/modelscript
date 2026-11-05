@@ -4,18 +4,82 @@ import {
   BeakerIcon,
   BookIcon,
   FileCodeIcon,
+  PackageIcon,
   SidebarExpandIcon,
   SlidersIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
 import { Heading, IconButton, Label, Text } from "@primer/react";
 import React from "react";
+import { Link } from "react-router-dom";
+import styledImport from "styled-components";
+import { getIconUrl, type ClassSummary } from "../../../api";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
-import { formatFormalSignature } from "../../../components/classTreeUtils";
+import { formatFormalSignature, resolveTypeTargetUrl } from "../../../components/classTreeUtils";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { HeaderBar, TabBar, TabButton, TabCountBadge } from "../styles";
 import type { ClassDetail, ClassTabId, JobStatus } from "../types";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
+
+const HeroRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+
+  @media (max-width: 640px) {
+    flex-direction: column-reverse;
+    gap: 14px;
+  }
+`;
+
+const HeroLeft = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const HeroIconCard = styled.div`
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+  background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.04)));
+  border: 1px solid var(--ms-border, var(--color-border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+  padding: 6px;
+  box-sizing: border-box;
+
+  &:hover {
+    border-color: var(--ms-brand, var(--color-accent-cyan, #06b6d4));
+    transform: translateY(-2px);
+  }
+
+  img,
+  svg {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  @media (max-width: 640px) {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+  }
+`;
 
 export interface ClassDetailHeaderProps {
   libraryName: string;
@@ -31,6 +95,7 @@ export interface ClassDetailHeaderProps {
   treeCollapsed?: boolean | undefined;
   onToggleTreeCollapse?: (() => void) | undefined;
   onOpenLogs?: (() => void) | undefined;
+  allClasses?: ClassSummary[] | undefined;
 }
 
 export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
@@ -47,6 +112,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   treeCollapsed,
   onToggleTreeCollapse,
   onOpenLogs,
+  allClasses = [],
 }) => {
   const flagCae = useFeatureFlag("cae_cloud_solver");
   const showStudies = hasCae ?? flagCae;
@@ -55,6 +121,11 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
     classKind: cls.classKind,
     baseClasses: cls.baseClasses,
   });
+
+  const [imgError, setImgError] = React.useState(false);
+  React.useEffect(() => {
+    setImgError(false);
+  }, [className, libraryName, version]);
 
   const rootPkgName = libraryName.includes("/") ? libraryName.split("/")[1]! : libraryName;
   const segments = className.split(".");
@@ -93,17 +164,18 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
             ]}
           />
         </Box>
-        <Box display="flex" alignItems="center" justifyContent="space-between" gap="16px" flexWrap="wrap">
-          <Box style={{ width: "100%" }}>
+
+        <HeroRow>
+          <HeroLeft>
             <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
-              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
+              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 26, margin: 0 }}>
                 {className}
               </Heading>
               <Label
                 variant="accent"
                 style={{
-                  fontSize: 13,
-                  padding: "2px 10px",
+                  fontSize: 12,
+                  padding: "2px 8px",
                   background: "var(--color-accent-blue-bg)",
                   color: "var(--color-accent-blue)",
                   border: "1px solid var(--color-accent-blue-border)",
@@ -130,28 +202,89 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
                 </Label>
               )}
             </Box>
+
+            {cls.extends && cls.extends.length > 0 && (
+              <Box display="flex" alignItems="center" gap="6px" flexWrap="wrap">
+                <Text style={{ fontSize: 11, color: "var(--color-text-muted)", fontWeight: 600 }}>Extends:</Text>
+                {cls.extends.map((base) => {
+                  const targetUrl = resolveTypeTargetUrl(base, libraryName, version, allClasses, className);
+                  return targetUrl ? (
+                    <Link key={base} to={targetUrl} style={{ textDecoration: "none" }}>
+                      <Label
+                        variant="secondary"
+                        style={{
+                          fontSize: 11,
+                          cursor: "pointer",
+                          borderColor: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
+                          color: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
+                        }}
+                      >
+                        {base}
+                      </Label>
+                    </Link>
+                  ) : (
+                    <Label key={base} variant="secondary" style={{ fontSize: 11 }}>
+                      {base}
+                    </Label>
+                  );
+                })}
+              </Box>
+            )}
+
             {cls.description && (
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "6px 0 0" }}>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14.5, margin: "2px 0 0" }}>
                 {cls.description}
               </Text>
             )}
+
             <div
               style={{
-                marginTop: 10,
+                marginTop: 6,
                 padding: "8px 12px",
                 borderRadius: 8,
-                background: "var(--color-glass-bg)",
-                border: "1px solid var(--color-border)",
+                background: "var(--ms-surface-hover, var(--color-glass-bg))",
+                border: "1px solid var(--ms-border, var(--color-border))",
                 fontFamily: "var(--font-mono, monospace)",
-                fontSize: 12.5,
+                fontSize: 12,
                 color: "var(--color-text-primary)",
                 overflowX: "auto",
               }}
             >
               {signature}
             </div>
-          </Box>
-        </Box>
+          </HeroLeft>
+
+          <HeroIconCard title={`${className} (${cls.classKind})`}>
+            {!imgError ? (
+              <img
+                src={getIconUrl(libraryName, version, className)}
+                alt={`${className} icon`}
+                onError={() => setImgError(true)}
+                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+              />
+            ) : (
+              <Box
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                justifyContent="center"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                <PackageIcon size={26} />
+                <span
+                  style={{
+                    fontSize: "9px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    textTransform: "uppercase",
+                    marginTop: "2px",
+                  }}
+                >
+                  {cls.classKind}
+                </span>
+              </Box>
+            )}
+          </HeroIconCard>
+        </HeroRow>
       </HeaderBar>
 
       {/* ── Javadoc Navigation Tabs ── */}

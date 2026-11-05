@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronDownIcon, ChevronRightIcon, PlusIcon, SearchIcon, ServerIcon, XIcon } from "@primer/octicons-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  SearchIcon,
+  ServerIcon,
+  SidebarCollapseIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { Button, IconButton, TextInput } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
@@ -18,6 +26,7 @@ import { VariablesTree } from "../VariablesTree";
 
 export interface MorselLeftSidebarProps {
   treeVisible: boolean;
+  setTreeVisible?: (v: boolean | ((prev: boolean) => boolean)) => void;
   isNarrow: boolean;
   treeWidth: number;
   setTreeWidth: (w: number) => void;
@@ -63,10 +72,11 @@ export type MobileSidebarSection = "parameters" | "variables" | "components" | "
 
 export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   treeVisible,
+  setTreeVisible,
   isNarrow,
   treeWidth,
   setTreeWidth,
-  colorMode,
+  colorMode: _colorMode,
   showResultsView,
   translations,
   libraryFilter,
@@ -106,6 +116,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   const { hasCapability } = useCapabilities();
   const isCaeComputeEnabled = hasCapability("caeCompute");
   const isDraggingTree = useRef(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
   const [mobileSection, setMobileSection] = useState<MobileSidebarSection>(() =>
     simulationParameters.length > 0 ? "parameters" : showResultsView ? "variables" : "components",
@@ -124,6 +136,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   return (
     <>
       <div
+        className={isNarrow ? undefined : "border-right"}
         style={{
           width: isNarrow ? "100%" : treeWidth,
           display: "flex",
@@ -134,6 +147,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
           maxWidth: isNarrow ? "100%" : 600,
           flexShrink: 0,
           overflow: "hidden",
+          boxSizing: "border-box",
         }}
       >
         {isNarrow && (
@@ -292,6 +306,21 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   ref={addLibraryButtonRef}
                   onClick={onOpenAddLibrary}
                 />
+                {setTreeVisible && (
+                  <IconButton
+                    icon={SidebarCollapseIcon}
+                    aria-label={translations.collapseTree || "Collapse Libraries sidebar"}
+                    title={translations.collapseTree || "Collapse Libraries sidebar"}
+                    size="small"
+                    variant="invisible"
+                    onClick={() => {
+                      setTreeVisible(false);
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: false } }));
+                      }
+                    }}
+                  />
+                )}
               </div>
             </div>
             <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
@@ -424,30 +453,63 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
       </div>
       {!isNarrow && (
         <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={treeWidth}
+          aria-valuemin={200}
+          aria-valuemax={600}
+          aria-label={translations.collapseTree || "Resize sidebar"}
+          tabIndex={0}
           style={{
-            width: 6,
+            width: 10,
+            marginLeft: -5,
+            marginRight: -5,
             cursor: "col-resize",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            backgroundColor: "transparent",
             display: "flex",
+            position: "relative",
+            zIndex: 10,
+            backgroundColor: "transparent",
+            outline: "none",
+            userSelect: "none",
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              setTreeWidth(Math.max(200, Math.min(600, treeWidth - 10)));
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              setTreeWidth(Math.max(200, Math.min(600, treeWidth + 10)));
+            } else if (e.key === "Home") {
+              e.preventDefault();
+              setTreeWidth(200);
+            } else if (e.key === "End") {
+              e.preventDefault();
+              setTreeWidth(600);
+            }
+          }}
+          onDoubleClick={() => {
+            setTreeWidth(260);
           }}
           onMouseDown={(e) => {
             e.preventDefault();
             isDraggingTree.current = true;
+            setIsDragging(true);
             const startX = e.clientX;
             const startWidth = treeWidth;
 
-            const onMouseMove = (e: MouseEvent) => {
+            const onMouseMove = (ev: MouseEvent) => {
               if (!isDraggingTree.current) return;
-              const deltaX = e.clientX - startX;
+              const deltaX = ev.clientX - startX;
               const newWidth = Math.max(200, Math.min(600, startWidth + deltaX));
               setTreeWidth(newWidth);
             };
 
             const onMouseUp = () => {
               isDraggingTree.current = false;
+              setIsDragging(false);
               document.removeEventListener("mousemove", onMouseMove);
               document.removeEventListener("mouseup", onMouseUp);
               document.body.style.cursor = "auto";
@@ -459,16 +521,68 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor =
-              colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+          onTouchStart={(e) => {
+            const touch = e.touches[0];
+            if (!touch) return;
+            isDraggingTree.current = true;
+            setIsDragging(true);
+            const startX = touch.clientX;
+            const startWidth = treeWidth;
+
+            const onTouchMove = (ev: TouchEvent) => {
+              if (!isDraggingTree.current) return;
+              const t = ev.touches[0];
+              if (!t) return;
+              const deltaX = t.clientX - startX;
+              const newWidth = Math.max(200, Math.min(600, startWidth + deltaX));
+              setTreeWidth(newWidth);
+            };
+
+            const onTouchEnd = () => {
+              isDraggingTree.current = false;
+              setIsDragging(false);
+              document.removeEventListener("touchmove", onTouchMove);
+              document.removeEventListener("touchend", onTouchEnd);
+              document.body.style.userSelect = "auto";
+            };
+
+            document.addEventListener("touchmove", onTouchMove, { passive: true });
+            document.addEventListener("touchend", onTouchEnd);
+            document.body.style.userSelect = "none";
           }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-          }}
-        />
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {/* Active highlight line centered on the border */}
+          <div
+            style={{
+              width: 2,
+              height: "100%",
+              backgroundColor: isHovered || isDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+              transition: "background-color 0.15s ease",
+            }}
+          />
+          {/* Subtle grab pill in the vertical center */}
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 4,
+              height: 28,
+              borderRadius: 999,
+              backgroundColor: isHovered || isDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+              boxShadow:
+                isHovered || isDragging
+                  ? "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)"
+                  : "none",
+              opacity: isHovered || isDragging ? 1 : 0,
+              transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
       )}
-      <div className="border-left" />
     </>
   );
 };

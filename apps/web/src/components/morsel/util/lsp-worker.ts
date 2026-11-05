@@ -133,6 +133,16 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
               useLocalMsl: true,
               lazyLoadParsers: true,
               initialLanguageId: initialLanguageId ?? "modelica",
+              projectDependencies: (() => {
+                const norm = (initialLanguageId || "modelica").toLowerCase();
+                if (norm === "sysml" || norm === "sysml2") {
+                  return [{ name: "SysML", version: "2026.3.0" }];
+                }
+                if (norm === "modelica" || norm === "modelscript") {
+                  return [{ name: "Modelica", version: "4.1.0" }];
+                }
+                return [];
+              })(),
             },
           }),
           startupErrorPromise,

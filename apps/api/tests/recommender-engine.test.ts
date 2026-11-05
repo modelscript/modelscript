@@ -9,6 +9,10 @@ import request from "supertest";
 
 process.env["NODE_ENV"] = "test";
 
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env["JWT_SECRET"] || "ansatz-dev-jwt-secret-do-not-use-in-prod";
+
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
 import { extractHashtags, extractTopics } from "../src/util/extract-topics.js";
@@ -302,6 +306,22 @@ test("Recommender Engine Suite: Home, Explore, Trending, Related Topics, Who to 
         alphaPkgs.findIndex((p) => p.name === "AardvarkScratch") <
           alphaPkgs.findIndex((p) => p.name === "ZeusThermoCore"),
       );
+
+      // Verify that active topic #ibr does not falsely match words containing "ibr" (e.g. "library")
+      // and that "Matches #" is never returned as recommendationReason on packages
+      db.updateUserTopic(alice.id, "ibr", true);
+      const aliceToken = jwt.sign({ id: alice.id, username: alice.username, email: alice.email }, JWT_SECRET);
+      const authRes = await request(app)
+        .get("/api/v1/libraries")
+        .set("Authorization", `Bearer ${aliceToken}`)
+        .expect(200);
+      const authPkgs = authRes.body.packages as { name: string; recommendationReason?: string }[];
+      for (const p of authPkgs) {
+        assert.ok(
+          !p.recommendationReason?.includes("Matches #"),
+          `Package ${p.name} had unexpected recommendationReason: ${p.recommendationReason}`,
+        );
+      }
     },
   );
 });

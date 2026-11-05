@@ -174,7 +174,7 @@ export function verifyComplianceAttestation(
  */
 export function createDhfAttestationRouter(): Router {
   const router = express.Router();
-  router.use(dhfLimiter);
+  router.use("/ee/compliance", dhfLimiter);
 
   router.post(
     "/ee/compliance/attest",

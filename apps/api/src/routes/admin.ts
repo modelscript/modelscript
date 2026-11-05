@@ -96,7 +96,7 @@ export function adminRouter(
   featureFlagService?: FeatureFlagService,
 ): Router {
   const router = express.Router();
-  router.use(defaultApiLimiter);
+  router.use(["/instance", "/setup", "/admin"], defaultApiLimiter);
 
   // ── Public Instance Banner & First-Run Setup Wizard ──
 

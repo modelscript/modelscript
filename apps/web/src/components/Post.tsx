@@ -4,7 +4,7 @@ import { PinIcon, SyncIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { bookmarkPost, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
 import { parseFederatedHandle } from "../util/federation";
@@ -127,6 +127,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   const parsedQuoteAuthor = useMemo(
     () => (displayPost.quote_post ? parseFederatedHandle(displayPost.quote_post.username) : null),
     [displayPost.quote_post],
+  );
+  const reposterUsername = useMemo(
+    () => (post.repost_post && post.username ? post.username.replace(/^@+/, "") : ""),
+    [post.repost_post, post.username],
   );
 
   const remoteOriginUrl = useMemo(() => {
@@ -607,13 +611,17 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
                   <SyncIcon size={15} />
                 </Box>
                 <Box flex={1} style={{ minWidth: 0 }}>
-                  <Link
-                    to={`/@${post.username}`}
-                    style={{ color: "inherit", textDecoration: "none", fontWeight: 700 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {post.display_name || post.username} reposted
-                  </Link>
+                  {reposterUsername ? (
+                    <ProfileHoverCard username={reposterUsername}>
+                      <ProfileNameLink to={`/@${reposterUsername}`} onClick={(e) => e.stopPropagation()}>
+                        {post.display_name || post.username} reposted
+                      </ProfileNameLink>
+                    </ProfileHoverCard>
+                  ) : (
+                    <ProfileNameLink to={`/@${post.username || ""}`} onClick={(e) => e.stopPropagation()}>
+                      {post.display_name || post.username} reposted
+                    </ProfileNameLink>
+                  )}
                 </Box>
               </Box>
             )}

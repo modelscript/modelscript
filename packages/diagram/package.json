@@ -33,6 +33,10 @@
       "types": "./dist/protocol.d.ts",
       "default": "./dist/protocol.js"
     },
+    "./properties": {
+      "types": "./dist/properties/index.d.ts",
+      "default": "./dist/properties/index.js"
+    },
     "./builder": {
       "types": "./dist/polyglot-diagram-builder.d.ts",
       "default": "./dist/polyglot-diagram-builder.js"

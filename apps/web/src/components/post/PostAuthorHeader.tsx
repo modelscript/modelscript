@@ -93,7 +93,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span className="profile-name-text" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                     {displayPost.display_name || displayPost.username}
                   </span>
                   {displayPost.account_type === "rss" && (
@@ -111,18 +111,21 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             </ProfileHoverCard>
           </div>
           <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
-            <Text
+            <Link
+              to={`/@${displayPost.username}`}
               className="handle-text"
               style={{
                 fontSize: "15px",
                 lineHeight: "20px",
+                textDecoration: "none",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}
+              onClick={(e) => e.stopPropagation()}
             >
               @{parsedAuthor.localUsername}
-            </Text>
+            </Link>
             {parsedAuthor.isFederated && parsedAuthor.remoteDomain && (
               <FederatedDomainPill domain={parsedAuthor.remoteDomain} />
             )}
@@ -203,7 +206,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
               gap: "4px",
             }}
           >
-            <span>{displayPost.display_name || displayPost.username}</span>
+            <span className="profile-name-text">{displayPost.display_name || displayPost.username}</span>
             {displayPost.account_type === "rss" && (
               <span style={{ display: "inline-flex", color: "var(--color-fg-muted)", flexShrink: 0 }}>
                 <RssIcon size={14} />

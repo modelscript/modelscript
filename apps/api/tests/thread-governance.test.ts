@@ -13,6 +13,14 @@ import { threadRouter } from "../src/routes/thread.js";
 test("Digital Twin Merge Request Governance & Regulatory Audit Trail API", async (t) => {
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    const username = req.body?.proposedBy || req.body?.resolvedBy || "systems_engineer_alice";
+    (req as { user?: { username: string; email: string } }).user = {
+      username,
+      email: `${username}@modelscript.org`,
+    };
+    next();
+  });
   app.use("/api/v1/threads", threadRouter());
 
   const server = http.createServer(app);
@@ -21,6 +29,9 @@ test("Digital Twin Merge Request Governance & Regulatory Audit Trail API", async
   const port = address.port;
 
   t.after(() => {
+    if (typeof (server as any).closeAllConnections === "function") {
+      (server as any).closeAllConnections();
+    }
     server.close();
   });
 
@@ -123,39 +134,42 @@ test("Digital Twin Merge Request Governance & Regulatory Audit Trail API", async
       });
     });
 
-    // Wait for connection
-    await new Promise((r) => setTimeout(r, 50));
+    try {
+      // Wait for connection
+      await new Promise((r) => setTimeout(r, 50));
 
-    // Submit new proposal via REST
-    const postRes = await request(app)
-      .post("/api/v1/threads/proposals")
-      .send({
-        threadId: "thread_thermal_102",
-        title: "Adjust cooling plate fin spacing for DO-178C avionics cooling",
-        proposedBy: "thermal_engineer",
-        diffSummary: { spacing: 2.5 },
-        safetyStandard: "DO-178C",
+      // Submit new proposal via REST
+      const postRes = await request(app)
+        .post("/api/v1/threads/proposals")
+        .send({
+          threadId: "thread_thermal_102",
+          title: "Adjust cooling plate fin spacing for DO-178C avionics cooling",
+          proposedBy: "thermal_engineer",
+          diffSummary: { spacing: 2.5 },
+          safetyStandard: "DO-178C",
+        });
+      assert.strictEqual(postRes.status, 201);
+      const newPropId = postRes.body.proposal.id;
+
+      // Review proposal
+      await request(app).post(`/api/v1/threads/proposals/${newPropId}/review`).send({
+        status: "applied",
+        resolvedBy: "lead_architect",
+        comment: "Applied to baseline.",
       });
-    assert.strictEqual(postRes.status, 201);
-    const newPropId = postRes.body.proposal.id;
 
-    // Review proposal
-    await request(app).post(`/api/v1/threads/proposals/${newPropId}/review`).send({
-      status: "applied",
-      resolvedBy: "lead_architect",
-      comment: "Applied to baseline.",
-    });
+      // Wait for SSE delivery
+      await new Promise((r) => setTimeout(r, 60));
 
-    // Wait for SSE delivery
-    await new Promise((r) => setTimeout(r, 60));
-    req.destroy();
+      const createdEvent = receivedEvents.find((e) => e.event === "proposal_created");
+      assert.ok(createdEvent, "SSE received proposal_created event");
+      assert.strictEqual(createdEvent.data.proposal.thread_id, "thread_thermal_102");
 
-    const createdEvent = receivedEvents.find((e) => e.event === "proposal_created");
-    assert.ok(createdEvent, "SSE received proposal_created event");
-    assert.strictEqual(createdEvent.data.proposal.thread_id, "thread_thermal_102");
-
-    const reviewedEvent = receivedEvents.find((e) => e.event === "proposal_reviewed");
-    assert.ok(reviewedEvent, "SSE received proposal_reviewed event");
-    assert.strictEqual(reviewedEvent.data.proposal.status, "applied");
+      const reviewedEvent = receivedEvents.find((e) => e.event === "proposal_reviewed");
+      assert.ok(reviewedEvent, "SSE received proposal_reviewed event");
+      assert.strictEqual(reviewedEvent.data.proposal.status, "applied");
+    } finally {
+      req.destroy();
+    }
   });
 });

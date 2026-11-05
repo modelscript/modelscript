@@ -913,6 +913,59 @@ const SplitPostButtonDivider = styled.div`
   }
 `;
 
+const GuestSketchButtonLink = styled(Link)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 40px;
+  background: var(--ms-brand);
+  border-radius: 10px;
+  box-shadow: var(--ms-brand-shadow);
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid var(--color-accent-blue-border, transparent);
+  color: var(--ms-brand-contrast, #ffffff);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--ms-brand) 88%, #ffffff);
+    box-shadow: 0 10px 28px -6px color-mix(in srgb, var(--ms-brand) 55%, transparent);
+    color: var(--ms-brand-contrast, #ffffff);
+    text-decoration: none;
+  }
+
+  &:active {
+    background-color: color-mix(in srgb, var(--ms-brand) 88%, #000000);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: -2px;
+    z-index: 2;
+  }
+
+  @media (max-width: 1280px) {
+    width: 44px;
+    height: 42px;
+    padding: 0;
+    gap: 0;
+    border-radius: 12px;
+  }
+`;
+
 interface SidebarLinkItem {
   to: string;
   icon: any;
@@ -1224,7 +1277,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onSketchClick }) => {
           {registryLinks.map((link) => renderLinkItem(link, false))}
         </div>
 
-        {user && (
+        {user ? (
           <Box mt={2} width="100%" px={1} className="post-btn-container">
             <SplitPostButtonContainer className="post-split-btn-group" data-testid="sidebar-split-post-button">
               <SplitPostButtonAction
@@ -1251,6 +1304,20 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onSketchClick }) => {
                 <span className="post-text">Sketch</span>
               </SplitSketchButtonLink>
             </SplitPostButtonContainer>
+          </Box>
+        ) : (
+          <Box mt={2} width="100%" px={1} className="post-btn-container">
+            <GuestSketchButtonLink
+              to="/sketch"
+              onClick={handleSketchClick}
+              className="post-split-btn-sketch"
+              aria-label="Ansatz Sketch"
+              title="Ansatz Sketch"
+              data-testid="sidebar-guest-sketch-button"
+            >
+              <AnsatzSketchIcon size={16} variant="triangle" color="currentColor" className="post-split-icon" />
+              <span className="post-text">Sketch</span>
+            </GuestSketchButtonLink>
           </Box>
         )}
       </Box>

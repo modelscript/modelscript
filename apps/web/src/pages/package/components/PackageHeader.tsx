@@ -3,18 +3,32 @@
 import {
   AlertFillIcon,
   AlertIcon,
+  CheckIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
+  FileZipIcon,
   GearIcon,
   PeopleIcon,
   PlusIcon,
+  ShieldCheckIcon,
   SidebarExpandIcon,
   SyncIcon,
   TerminalIcon,
   TrashIcon,
+  VerifiedIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, Flash, Heading, IconButton, Label, Text } from "@primer/react";
-import React from "react";
-import { useNavigate } from "react-router-dom";
-import { getIconUrl, type PackageCollaborator, type PendingPackageTransfer } from "../../../api";
+import { ActionList, ActionMenu, Button, Flash, Heading, Label, Text } from "@primer/react";
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import styledImport from "styled-components";
+import {
+  getIconUrl,
+  getPackageDownloadUrl,
+  type PackageCollaborator,
+  type PackageStats,
+  type PendingPackageTransfer,
+} from "../../../api";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
 import { CiteButton } from "../../../components/citations/CiteButton";
@@ -23,22 +37,247 @@ import { buildCitationFromPackage } from "../../../util/citations";
 import { HeaderBar, timeAgo } from "../types";
 import type { ManageModalType } from "./PackageManageModals";
 
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
+
+const HeroRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 12px;
+
+  @media (max-width: 640px) {
+    flex-direction: column-reverse;
+    gap: 16px;
+  }
+`;
+
+const HeroLeft = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const HeroIconCard = styled.div`
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.04)));
+  border: 1px solid var(--ms-border, var(--color-border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+
+  &:hover {
+    border-color: var(--ms-brand, var(--color-accent-cyan, #06b6d4));
+    transform: translateY(-2px);
+  }
+
+  @media (max-width: 640px) {
+    width: 60px;
+    height: 60px;
+    border-radius: 12px;
+  }
+`;
+
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
+const MetaStrip = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--ms-text-3, var(--color-text-muted));
+  margin-top: 4px;
+`;
+
+const MetaItem = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+`;
+
+const HashPill = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--ms-surface-hover, var(--color-canvas-subtle));
+  border: 1px solid var(--ms-border, var(--color-border));
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ms-text-2, var(--color-text-primary));
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: var(--ms-brand, var(--color-accent-cyan));
+    color: var(--ms-text-1, var(--color-text-primary));
+    background: var(--ms-surface-selected);
+  }
+`;
+
+const ActionRibbon = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  margin-bottom: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ms-divider, var(--color-border-subtle));
+`;
+
+const InstallPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  background: var(--ms-surface-hover, var(--color-canvas-subtle));
+  border: 1px solid var(--ms-border, var(--color-border));
+  border-radius: 8px;
+  overflow: hidden;
+  height: 34px;
+  box-sizing: border-box;
+  max-width: 100%;
+`;
+
+const InstallModeToggle = styled.div`
+  display: inline-flex;
+  background: var(--ms-surface-hover, rgba(0, 0, 0, 0.1));
+  height: 100%;
+  border-right: 1px solid var(--ms-border, var(--color-border));
+  padding: 2px;
+  box-sizing: border-box;
+`;
+
+const InstallModeBtn = styled.button<{ $active: boolean }>`
+  background: ${(p) => (p.$active ? "var(--ms-bg-card, var(--color-bg-card))" : "transparent")};
+  border: none;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  font-weight: ${(p) => (p.$active ? 700 : 500)};
+  color: ${(p) =>
+    p.$active ? "var(--ms-text-1, var(--color-text-primary))" : "var(--ms-text-3, var(--color-text-muted))"};
+  cursor: pointer;
+  height: 100%;
+  transition: all 0.15s ease;
+`;
+
+const InstallCode = styled.button`
+  background: transparent;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: var(--ms-text-1, var(--color-text-primary));
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+  height: 100%;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--ms-surface-selected);
+  }
+
+  .copy-icon {
+    color: var(--ms-text-3, var(--color-text-muted));
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+`;
+
+const ActionButtonsRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const OpenIdeButton = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--ms-brand);
+  color: var(--ms-brand-contrast, #ffffff) !important;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ms-brand) 30%, transparent);
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--ms-brand-hover, var(--ms-brand));
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--ms-brand) 40%, transparent);
+    transform: translateY(-1px);
+    text-decoration: none;
+  }
+`;
+
+const DownloadZipButton = styled.a`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--ms-surface-hover, var(--color-canvas-subtle));
+  border: 1px solid var(--ms-border, var(--color-border));
+  color: var(--ms-text-1, var(--color-text-primary));
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--ms-surface-selected);
+    border-color: var(--ms-border-strong);
+    color: var(--ms-text-1);
+    text-decoration: none;
+  }
+`;
+
 export interface PackageHeaderProps {
   name: string;
   version: string;
-  rootClassName?: string | null;
-  description?: string | null;
-  publishedAt?: string | null;
+  rootClassName?: string | null | undefined;
+  description?: string | null | undefined;
+  publishedAt?: string | null | undefined;
   license?: string | null | undefined;
   classCount?: number | undefined;
   canManage: boolean;
   isCurrentYanked: boolean;
-  currentYankReason?: string | null;
+  currentYankReason?: string | null | undefined;
   isCurrentDeprecated: boolean;
-  currentDeprecateReason?: string | null;
+  currentDeprecateReason?: string | null | undefined;
   pendingTransfers: PendingPackageTransfer[];
   user: { id: number; username: string } | null;
-  actionSuccess: string | null;
+  actionSuccess: string | null | undefined;
   setActionSuccess: (msg: string | null) => void;
   actionLoading: boolean;
   setActionError: (msg: string | null) => void;
@@ -48,11 +287,18 @@ export interface PackageHeaderProps {
   onAcceptPendingTransfer: (transferId: number) => void;
   onCancelPendingTransfer: (transferId: number) => void;
   versionList?: string[] | undefined;
+  latestVersion?: string | null | undefined;
   treeCollapsed?: boolean | undefined;
   onToggleTreeCollapse?: (() => void) | undefined;
   jobStatus?: string | null | undefined;
   hasLogs?: boolean | undefined;
   onOpenLogs?: (() => void) | undefined;
+  installCmd?: string | undefined;
+  contentHash?: string | null | undefined;
+  packageSignature?: string | null | undefined;
+  packageStats?: PackageStats | null | undefined;
+  packageOwner?: string | null | undefined;
+  modelicaVersion?: string | null | undefined;
 }
 
 export const PackageHeader: React.FC<PackageHeaderProps> = ({
@@ -80,29 +326,89 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   onAcceptPendingTransfer,
   onCancelPendingTransfer,
   versionList,
+  latestVersion,
   treeCollapsed,
   onToggleTreeCollapse,
   jobStatus,
   hasLogs,
   onOpenLogs,
+  installCmd,
+  contentHash,
+  packageSignature,
+  packageStats,
+  packageOwner,
+  modelicaVersion,
 }) => {
   const navigate = useNavigate();
-  const isLatestVersion = Boolean(versionList && versionList.length > 0 && versionList[0] === version);
+  const effectiveLatest = latestVersion || (versionList && versionList.length > 0 ? versionList[0] : null);
+  const isLatestVersion = Boolean(effectiveLatest && effectiveLatest === version);
+
+  const [copiedInstall, setCopiedInstall] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
+  const [installTab, setInstallTab] = useState<"cli" | "manifest" | "import">("cli");
+
+  const importIdentifier =
+    name
+      .replace(/^@[^/]+\//, "")
+      .replace(/[^a-zA-Z0-9]+(.)/g, (_, c: string) => c.toUpperCase())
+      .replace(/^[a-z]/, (c) => c.toUpperCase())
+      .replace(/[^a-zA-Z0-9_$]/g, "") || "Model";
+  const importSpecifier = name.startsWith("@") ? name : `@modelscript/${name}`;
+
+  const currentSnippet =
+    installTab === "cli"
+      ? installCmd || `msx install ${name}`
+      : installTab === "manifest"
+        ? `"${name}": "^${version}"`
+        : `import { ${importIdentifier} } from "${importSpecifier}";`;
+
+  const normalizedHash = contentHash ? contentHash.replace(/^sha256:/i, "") : null;
+  const fullDigest = normalizedHash ? `sha256:${normalizedHash}` : null;
+
+  const handleCopyInstall = () => {
+    navigator.clipboard.writeText(currentSnippet);
+    setCopiedInstall(true);
+    setTimeout(() => setCopiedInstall(false), 2000);
+  };
+
+  const handleCopyHash = () => {
+    if (fullDigest) {
+      navigator.clipboard.writeText(fullDigest);
+      setCopiedHash(true);
+      setTimeout(() => setCopiedHash(false), 2000);
+    }
+  };
+
+  const downloads30d = packageStats?.daily?.reduce((acc, d) => acc + d.downloads, 0) ?? 0;
 
   return (
     <>
       <HeaderBar>
-        <Box mb={3} display="flex" alignItems="center" gap="8px">
+        {/* ── Breadcrumbs & Collapse Toggle ── */}
+        <Box mb={2} display="flex" alignItems="center" gap="8px" flexWrap="wrap">
           {treeCollapsed && onToggleTreeCollapse && (
-            <IconButton
-              icon={SidebarExpandIcon}
+            <Button
               size="small"
               variant="invisible"
+              leadingVisual={SidebarExpandIcon}
               onClick={onToggleTreeCollapse}
               aria-label="Browse symbols"
-              title="Browse symbols"
-              style={{ color: "var(--color-accent-cyan, #06b6d4)" }}
-            />
+              title="Expand symbol explorer"
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
+                padding: "2px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--ms-border, var(--color-border))",
+                background: "var(--ms-surface-hover, rgba(255,255,255,0.04))",
+              }}
+            >
+              Browse Symbols
+              {typeof classCount === "number" && classCount > 0 && (
+                <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.8 }}>({classCount.toLocaleString()})</span>
+              )}
+            </Button>
           )}
           <Breadcrumbs
             items={[
@@ -112,171 +418,226 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
             ]}
           />
         </Box>
-        <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap="16px" mb={3} flexWrap="wrap">
-          <Box display="flex" alignItems="center" gap="16px" style={{ minWidth: 0, flex: 1 }}>
-            <div
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 12,
-                background: "var(--color-canvas-subtle, rgba(255,255,255,0.04))",
-                border: "1px solid var(--color-border)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <InvertedSvg
-                src={getIconUrl(name, version, rootClassName || name)}
-                alt=""
-                width={38}
-                height={38}
-                style={{ flexShrink: 0 }}
-              />
-            </div>
-            <Box style={{ minWidth: 0 }}>
-              <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
-                <Heading
-                  as="h1"
-                  style={{
-                    color: "var(--color-text-heading)",
-                    fontWeight: 700,
-                    fontSize: 26,
-                    lineHeight: 1.2,
-                    margin: 0,
-                  }}
-                >
-                  {name}
-                </Heading>
-                {versionList && versionList.length > 1 ? (
-                  <ActionMenu>
-                    <ActionMenu.Button
-                      size="small"
-                      style={{
-                        fontSize: 12,
-                        padding: "2px 8px",
-                        fontWeight: 600,
-                        fontFamily: "var(--font-mono, monospace)",
-                        borderRadius: 6,
-                        background: "var(--color-canvas-subtle)",
-                        border: "1px solid var(--color-border)",
-                        color: "var(--color-text-primary)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      v{version}
-                    </ActionMenu.Button>
-                    <ActionMenu.Overlay align="start">
-                      <ActionList style={{ maxHeight: 260, overflowY: "auto" }}>
-                        <ActionList.Group title="Release Versions">
-                          {versionList.map((v) => (
-                            <ActionList.Item
-                              key={v}
-                              selected={v === version}
-                              onSelect={() => {
-                                if (v !== version) {
-                                  navigate(`/packages/${name}/${v}`);
-                                }
-                              }}
-                            >
-                              v{v}
-                              {v === versionList[0] && (
-                                <ActionList.TrailingVisual>
-                                  <Label variant="accent" style={{ fontSize: 10 }}>
-                                    latest
-                                  </Label>
-                                </ActionList.TrailingVisual>
-                              )}
-                            </ActionList.Item>
-                          ))}
-                        </ActionList.Group>
-                      </ActionList>
-                    </ActionMenu.Overlay>
-                  </ActionMenu>
-                ) : (
-                  <Label
-                    variant="secondary"
-                    style={{ fontSize: 12, padding: "2px 8px", fontFamily: "var(--font-mono, monospace)" }}
+
+        {/* ── Hero Row: Title & Meta (Left) + Floating Icon Card (Right) ── */}
+        <HeroRow>
+          <HeroLeft>
+            <TitleRow>
+              <Heading
+                as="h1"
+                style={{
+                  color: "var(--ms-text-1, var(--color-text-heading))",
+                  fontWeight: 700,
+                  fontSize: 26,
+                  lineHeight: 1.2,
+                  margin: 0,
+                }}
+              >
+                {name}
+              </Heading>
+              {versionList && versionList.length > 1 ? (
+                <ActionMenu>
+                  <ActionMenu.Button
+                    size="small"
+                    style={{
+                      fontSize: 12,
+                      padding: "2px 8px",
+                      fontWeight: 600,
+                      fontFamily: "var(--font-mono, monospace)",
+                      borderRadius: 6,
+                      background: "var(--ms-surface-hover, var(--color-canvas-subtle))",
+                      border: "1px solid var(--ms-border, var(--color-border))",
+                      color: "var(--ms-text-1, var(--color-text-primary))",
+                      cursor: "pointer",
+                    }}
                   >
                     v{version}
-                  </Label>
-                )}
-                {isLatestVersion && (
-                  <Label variant="success" style={{ fontSize: 11, padding: "0 6px" }}>
-                    latest
-                  </Label>
-                )}
-              </Box>
-              {description && (
-                <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: "4px 0 0" }}>
-                  {description}
-                </Text>
-              )}
-              <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap" style={{ marginTop: 4 }}>
-                {publishedAt && (
-                  <Text as="span" style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
-                    Published {timeAgo(publishedAt)}
-                  </Text>
-                )}
-                {license && (
-                  <>
-                    <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>·</span>
-                    <Text as="span" style={{ color: "var(--color-text-tertiary)", fontSize: 12, fontWeight: 500 }}>
-                      {license}
-                    </Text>
-                  </>
-                )}
-                {typeof classCount === "number" && classCount > 0 && (
-                  <>
-                    <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>·</span>
-                    <Text as="span" style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
-                      {classCount.toLocaleString()} {classCount === 1 ? "symbol" : "symbols"}
-                    </Text>
-                  </>
-                )}
-              </Box>
-            </Box>
-          </Box>
-
-          <Box display="flex" alignItems="center" gap="8px" style={{ alignSelf: "center" }}>
-            {onOpenLogs &&
-              (hasLogs || jobStatus === "failed" || jobStatus === "pending" || jobStatus === "running") && (
-                <Button
-                  size="small"
-                  leadingVisual={TerminalIcon}
-                  onClick={onOpenLogs}
-                  title="View background ingestion & indexing logs"
+                  </ActionMenu.Button>
+                  <ActionMenu.Overlay align="start">
+                    <ActionList style={{ maxHeight: 260, overflowY: "auto" }}>
+                      <ActionList.Group title="Release Versions">
+                        {versionList.map((v) => (
+                          <ActionList.Item
+                            key={v}
+                            selected={v === version}
+                            onSelect={() => {
+                              if (v !== version) {
+                                navigate(`/packages/${name}/${v}`);
+                              }
+                            }}
+                          >
+                            v{v}
+                            {v === effectiveLatest && (
+                              <ActionList.TrailingVisual>
+                                <Label variant="accent" style={{ fontSize: 10 }}>
+                                  latest
+                                </Label>
+                              </ActionList.TrailingVisual>
+                            )}
+                          </ActionList.Item>
+                        ))}
+                      </ActionList.Group>
+                    </ActionList>
+                  </ActionMenu.Overlay>
+                </ActionMenu>
+              ) : (
+                <Label
+                  variant="secondary"
+                  style={{ fontSize: 12, padding: "2px 8px", fontFamily: "var(--font-mono, monospace)" }}
                 >
-                  Logs
-                  {jobStatus === "failed" && (
-                    <Label variant="danger" style={{ marginLeft: 6, fontSize: 10 }}>
-                      Failed
-                    </Label>
-                  )}
-                  {(jobStatus === "pending" || jobStatus === "running") && (
-                    <Label variant="attention" style={{ marginLeft: 6, fontSize: 10 }}>
-                      Live
-                    </Label>
-                  )}
-                </Button>
+                  v{version}
+                </Label>
               )}
+              {isLatestVersion && (
+                <Label variant="success" style={{ fontSize: 11, padding: "0 6px" }}>
+                  latest
+                </Label>
+              )}
+              {packageSignature && (
+                <Label variant="success" style={{ fontSize: 11, padding: "0 6px" }}>
+                  <VerifiedIcon size={11} /> Verified
+                </Label>
+              )}
+            </TitleRow>
+
+            {description && (
+              <Text
+                as="p"
+                style={{
+                  color: "var(--ms-text-2, var(--color-text-muted))",
+                  fontSize: 14,
+                  margin: "2px 0 0",
+                  lineHeight: 1.45,
+                }}
+              >
+                {description}
+              </Text>
+            )}
+
+            <MetaStrip>
+              {publishedAt && <MetaItem>Published {timeAgo(publishedAt)}</MetaItem>}
+              {license && (
+                <MetaItem>
+                  <span>•</span>
+                  <span style={{ fontWeight: 600, color: "var(--ms-text-1)" }}>{license}</span>
+                </MetaItem>
+              )}
+              {modelicaVersion && (
+                <MetaItem>
+                  <span>•</span>
+                  <span>Modelica {modelicaVersion}</span>
+                </MetaItem>
+              )}
+              {typeof classCount === "number" && classCount > 0 && (
+                <MetaItem>
+                  <span>•</span>
+                  <span>
+                    {classCount.toLocaleString()} {classCount === 1 ? "symbol" : "symbols"}
+                  </span>
+                </MetaItem>
+              )}
+              {downloads30d > 0 && (
+                <MetaItem>
+                  <span>•</span>
+                  <DownloadIcon size={12} />
+                  <span>{downloads30d.toLocaleString()} (30d)</span>
+                </MetaItem>
+              )}
+              {packageOwner && (
+                <MetaItem>
+                  <span>•</span>
+                  <PeopleIcon size={12} />
+                  <Link to={`/${packageOwner}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    @{packageOwner}
+                  </Link>
+                </MetaItem>
+              )}
+              {normalizedHash && (
+                <HashPill
+                  type="button"
+                  onClick={handleCopyHash}
+                  title={`Click to copy digest: sha256:${normalizedHash}`}
+                >
+                  <ShieldCheckIcon size={12} fill="var(--color-success-fg, #2da44e)" />
+                  <span>sha256:{normalizedHash.slice(0, 10)}…</span>
+                  {copiedHash ? (
+                    <CheckIcon size={11} fill="var(--color-success-fg, #2da44e)" />
+                  ) : (
+                    <CopyIcon size={11} />
+                  )}
+                </HashPill>
+              )}
+            </MetaStrip>
+          </HeroLeft>
+
+          {/* ── Floating Package Icon Card (Right) ── */}
+          <HeroIconCard>
+            <InvertedSvg
+              src={getIconUrl(name, version, rootClassName || name)}
+              alt=""
+              width={56}
+              height={56}
+              style={{ flexShrink: 0 }}
+            />
+          </HeroIconCard>
+        </HeroRow>
+
+        {/* ── Action & Install Ribbon ── */}
+        <ActionRibbon>
+          <InstallPill>
+            <InstallModeToggle>
+              {(["cli", "manifest", "import"] as const).map((tab) => (
+                <InstallModeBtn key={tab} type="button" $active={installTab === tab} onClick={() => setInstallTab(tab)}>
+                  {tab.toUpperCase()}
+                </InstallModeBtn>
+              ))}
+            </InstallModeToggle>
+            <InstallCode type="button" onClick={handleCopyInstall} title="Click to copy install snippet">
+              <code>
+                {installTab === "cli" && <span style={{ opacity: 0.6 }}>&gt;&nbsp;</span>}
+                {currentSnippet}
+              </code>
+              <span className="copy-icon">{copiedInstall ? <CheckIcon size={14} /> : <CopyIcon size={14} />}</span>
+            </InstallCode>
+          </InstallPill>
+
+          <ActionButtonsRow>
+            <OpenIdeButton
+              to={`/ide#memfs:package-${name || "model"}?libs=${encodeURIComponent(`${name}@${version || "latest"}`)}`}
+            >
+              <CodeIcon size={14} />
+              <span>Open in Web IDE</span>
+            </OpenIdeButton>
+
+            {name && version && (
+              <DownloadZipButton
+                href={getPackageDownloadUrl(name, version)}
+                download
+                title={`Download ${name} v${version} source archive (.zip)`}
+              >
+                <FileZipIcon size={14} style={{ color: "#eab308" }} />
+                <span>Source (.zip)</span>
+              </DownloadZipButton>
+            )}
+
             <CiteButton
               target={buildCitationFromPackage({
                 name,
                 version,
-                description,
-                license,
-                publishedAt,
+                description: description || undefined,
+                author: packageOwner,
+                license: license || undefined,
+                publishedAt: publishedAt || undefined,
               })}
-              label="Cite Package"
+              label="Cite"
               variant="button"
               testId="package-header-cite-btn"
             />
+
             {canManage && (
               <ActionMenu>
                 <ActionMenu.Button size="small" leadingVisual={GearIcon}>
-                  Manage Release
+                  Manage
                 </ActionMenu.Button>
                 <ActionMenu.Overlay align="end">
                   <ActionList>
@@ -359,14 +720,36 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
                       <ActionList.LeadingVisual>
                         <TrashIcon size={14} />
                       </ActionList.LeadingVisual>
-                      Unpublish Release (v{version})
+                      Unpublish Release
                     </ActionList.Item>
                   </ActionList>
                 </ActionMenu.Overlay>
               </ActionMenu>
             )}
-          </Box>
-        </Box>
+
+            {onOpenLogs &&
+              (hasLogs || jobStatus === "failed" || jobStatus === "pending" || jobStatus === "running") && (
+                <Button
+                  size="small"
+                  leadingVisual={TerminalIcon}
+                  onClick={onOpenLogs}
+                  title="View background ingestion & indexing logs"
+                >
+                  Logs
+                  {jobStatus === "failed" && (
+                    <Label variant="danger" style={{ marginLeft: 6, fontSize: 10 }}>
+                      Failed
+                    </Label>
+                  )}
+                  {(jobStatus === "pending" || jobStatus === "running") && (
+                    <Label variant="attention" style={{ marginLeft: 6, fontSize: 10 }}>
+                      Live
+                    </Label>
+                  )}
+                </Button>
+              )}
+          </ActionButtonsRow>
+        </ActionRibbon>
       </HeaderBar>
 
       {/* Alerts & Notifications */}

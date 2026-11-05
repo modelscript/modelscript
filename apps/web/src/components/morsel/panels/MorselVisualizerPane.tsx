@@ -12,11 +12,13 @@ import {
   StackIcon,
   TableIcon,
   WorkflowIcon,
+  XIcon,
 } from "@primer/octicons-react";
 import { Button, IconButton, SegmentedControl } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { HERO_EXAMPLES } from "../../../pages/playground/constants";
 import Spinner from "../../Spinner";
 import type { CadComponent } from "../cad-viewer";
@@ -311,6 +313,7 @@ export interface MorselVisualizerPaneProps {
   hideCenterFloatingToolbar?: boolean | undefined;
   showAnalysisView?: boolean | undefined;
   setShowAnalysisView?: ((v: boolean) => void) | undefined;
+  loadingProgress?: number | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -382,12 +385,22 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   hideCenterFloatingToolbar = false,
   showAnalysisView: controlledShowAnalysisView,
   setShowAnalysisView: controlledSetShowAnalysisView,
+  loadingProgress,
 }) => {
   const { hasCapability } = useCapabilities();
+  const _isCaeComputeEnabled = useFeatureFlag("cae_cloud_solver");
   const isCosimMqttEnabled = hasCapability("cosimMqtt");
   const isTimescaleEnabled = hasCapability("timescaleHistorian");
   const showCosimSection = isCosimMqttEnabled || isTimescaleEnabled;
   const isDraggingProperties = useRef(false);
+  const [isPropResizerHovered, setIsPropResizerHovered] = useState(false);
+  const [isPropResizerDragging, setIsPropResizerDragging] = useState(false);
+  const [isEmptyStateDismissed, setIsEmptyStateDismissed] = useState(false);
+
+  useEffect(() => {
+    setIsEmptyStateDismissed(false);
+  }, [dialect]);
+
   const [internalShowAnalysisView, setInternalShowAnalysisView] = useState(false);
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
@@ -458,6 +471,31 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     setShowResultsView,
     setShowCadView,
   ]);
+
+  const showEmptyState =
+    !isEmptyStateDismissed &&
+    (loadingProgress === undefined || loadingProgress >= 100) &&
+    (!diagramData?.nodes || diagramData.nodes.length === 0) &&
+    !isDiagramLoading &&
+    !showResultsView &&
+    !showCadView &&
+    !showAnalysisView;
+
+  const starterExamples = useMemo(() => {
+    const matches = HERO_EXAMPLES.filter((ex) => ex.lang === dialect);
+    return matches.length > 0 ? matches.slice(0, 3) : HERO_EXAMPLES.slice(0, 3);
+  }, [dialect]);
+
+  useEffect(() => {
+    if (!showEmptyState) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsEmptyStateDismissed(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showEmptyState]);
 
   const [backendHistorianSessions, setBackendHistorianSessions] = useState<HistorianSession[]>([]);
 
@@ -601,8 +639,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         </div>
       )}
 
-      {/* Floating View Switcher & Actions */}
+      {/* Floating View Switcher & Actions (Only in standalone embedded mode without top workbench navbar) */}
       {!hideCenterFloatingToolbar &&
+        !isPlaygroundRoute &&
         (!isNarrow ||
           (!showResultsView && !showCadView && !showAnalysisView) ||
           cadComponents.length > 0 ||
@@ -917,6 +956,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
       {/* Compact corner Diagram/Icon switcher when center floating HUD is hidden (e.g. inline artifact card) */}
       {hideCenterFloatingToolbar &&
+        !isPlaygroundRoute &&
         !showResultsView &&
         !showCadView &&
         !showAnalysisView &&
@@ -989,8 +1029,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             zIndex: !showResultsView && !showCadView && !showAnalysisView ? 1 : 0,
           }}
         >
-          {/* Hierarchical Drill-Down Breadcrumbs Bar */}
-          {drillDownPath && drillDownPath.length > 0 && (
+          {/* Hierarchical Drill-Down Breadcrumbs Bar (only when floating toolbar is active) */}
+          {!hideCenterFloatingToolbar && !isPlaygroundRoute && drillDownPath && drillDownPath.length > 0 && (
             <div
               style={{
                 position: "absolute",
@@ -1052,77 +1092,336 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             </div>
           )}
 
-          <div className="flex-1 overflow-hidden" style={{ minWidth: 0, position: "relative" }}>
-            <Suspense fallback={null}>
-              <DiagramEditor
-                ref={diagramEditorRef}
-                diagramData={diagramData}
-                diagramClassName={selectedTreeClassName}
-                selectedName={selectedComponent}
-                theme={colorMode === "dark" ? "vs-dark" : "light"}
-                isLoading={isDiagramLoading}
-                onRenderComplete={(data) => {
-                  if (!data?.isLoading) {
-                    setIsDiagramLoading(false);
-                  }
+          <div
+            className="flex-1 overflow-hidden"
+            style={{
+              minWidth: 0,
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+            }}
+          >
+            {/* Docked Canvas Sub-Header Bar */}
+            {(hideCenterFloatingToolbar || isPlaygroundRoute) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "4px 12px",
+                  minHeight: 36,
+                  borderBottom:
+                    colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.06)",
+                  backgroundColor: colorMode === "dark" ? "rgba(13, 17, 23, 0.65)" : "rgba(246, 248, 250, 0.75)",
+                  backdropFilter: "blur(8px)",
+                  gap: 8,
+                  flexShrink: 0,
+                  zIndex: 10,
                 }}
-                onSelect={handleSelectComponent}
-                onShowProperties={handleSelectComponent}
-                onNodeDoubleClick={onNodeDoubleClick}
-                onDrop={async (className, x, y) => {
-                  enqueueDiagramAction({ type: "addComponent", className, x, y });
-                }}
-                onConnect={async (source, target, points) => {
-                  enqueueDiagramAction({ type: "connect", source, target, points });
-                }}
-                onMove={async (items) => {
-                  enqueueDiagramAction({ type: "move", items });
-                }}
-                onResize={async (name, x, y, width, height, rotation, edges) => {
-                  enqueueDiagramAction({
-                    type: "resize",
-                    item: { name, x, y, width, height, rotation, edges },
-                  });
-                }}
-                onEdgeMove={async (edges) => {
-                  enqueueDiagramAction({ type: "moveEdge", edges });
-                }}
-                onEdgeDelete={async (source, target) => {
-                  enqueueDiagramAction({ type: "disconnect", source, target });
-                }}
-                onComponentDelete={async (name) => {
-                  enqueueDiagramAction({ type: "deleteComponents", names: [name] });
-                }}
-                onComponentsDelete={async (names) => {
-                  enqueueDiagramAction({ type: "deleteComponents", names });
-                }}
-                onUndo={() => {
-                  if (isSpatialEditPending) isSpatialEditPending.current = false;
-                  editorRef.current?.focus();
-                  const prev = editorRef.current?.getValue();
-                  editorRef.current?.trigger("diagram", "undo", null);
-                  if (prev !== editorRef.current?.getValue()) {
-                    setIsDiagramLoading(true);
-                  }
-                }}
-                onRedo={() => {
-                  if (isSpatialEditPending) isSpatialEditPending.current = false;
-                  editorRef.current?.focus();
-                  const prev = editorRef.current?.getValue();
-                  editorRef.current?.trigger("diagram", "redo", null);
-                  if (prev !== editorRef.current?.getValue()) {
-                    setIsDiagramLoading(true);
-                  }
-                }}
-              />
-            </Suspense>
+              >
+                {/* Left: Sidebar Expand & Breadcrumbs */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
+                  {!treeVisible && setTreeVisible && (
+                    <IconButton
+                      icon={SidebarExpandIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label={translations.toggleTree || "Expand Libraries"}
+                      title={translations.toggleTree || "Expand Libraries"}
+                      onClick={() => {
+                        setTreeVisible(true);
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: true } }));
+                        }
+                      }}
+                    />
+                  )}
+                  {drillDownPath && drillDownPath.length > 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => onDrillRoot?.()}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: colorMode === "dark" ? "#58a6ff" : "#0969da",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: "0 2px",
+                          fontSize: 12,
+                        }}
+                      >
+                        Root
+                      </button>
+                      {drillDownPath.map((seg, idx) => (
+                        <React.Fragment key={`${seg}-${idx}`}>
+                          <span style={{ color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>›</span>
+                          <button
+                            type="button"
+                            onClick={() => onDrillUp?.(idx)}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color:
+                                idx === drillDownPath.length - 1
+                                  ? colorMode === "dark"
+                                    ? "#e6edf3"
+                                    : "#1f2328"
+                                  : colorMode === "dark"
+                                    ? "#58a6ff"
+                                    : "#0969da",
+                              fontWeight: idx === drillDownPath.length - 1 ? 600 : 500,
+                              cursor: "pointer",
+                              padding: "0 2px",
+                              fontSize: 12,
+                            }}
+                          >
+                            {seg}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: colorMode === "dark" ? "#8b949e" : "#656d76",
+                        letterSpacing: "0.02em",
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {selectedTreeClassName || activeLangInfo.label}
+                    </span>
+                  )}
+                </div>
 
-            {(!diagramData?.nodes || diagramData.nodes.length === 0) &&
-              !isDiagramLoading &&
-              !showResultsView &&
-              !showCadView &&
-              !showAnalysisView && (
+                {/* Right: Diagram Type Selector, Add Element, Auto-Layout */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  {activeLangInfo.diagramTypes && activeLangInfo.diagramTypes.length > 1 && setDiagramType && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 2,
+                        padding: 2,
+                        borderRadius: 6,
+                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      {activeLangInfo.diagramTypes.map((dt) => {
+                        const isSelected = effectiveDiagramType === dt.id;
+                        return (
+                          <button
+                            key={dt.id}
+                            type="button"
+                            onClick={() => setDiagramType(dt.id)}
+                            style={{
+                              border: "none",
+                              borderRadius: 4,
+                              padding: "2px 8px",
+                              fontSize: 11,
+                              fontWeight: isSelected ? 600 : 400,
+                              cursor: "pointer",
+                              backgroundColor: isSelected
+                                ? colorMode === "dark"
+                                  ? "rgba(6, 182, 212, 0.2)"
+                                  : "#ffffff"
+                                : "transparent",
+                              color: isSelected
+                                ? colorMode === "dark"
+                                  ? "#22d3ee"
+                                  : "#0e7490"
+                                : colorMode === "dark"
+                                  ? "#8b949e"
+                                  : "#656d76",
+                            }}
+                          >
+                            {dt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPalette((v) => !v)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 999,
+                      border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 40%, transparent)",
+                      background: showPalette ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : "transparent",
+                      color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Open interactive element & stencil palette"
+                  >
+                    <PlusIcon size={12} />
+                    <span>Add Element</span>
+                  </button>
+
+                  {onAutoLayout && activeLangInfo.supportsDiagram && (
+                    <IconButton
+                      icon={FlowchartIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label={translations.autoLayout || "Auto-layout diagram"}
+                      title={translations.autoLayout || "Auto-layout diagram"}
+                      onClick={onAutoLayout}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Collapsible Stencil Palette Bar */}
+            {(hideCenterFloatingToolbar || isPlaygroundRoute) && showPalette && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  padding: "6px 12px",
+                  borderBottom:
+                    colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.06)",
+                  backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.95)" : "rgba(255, 255, 255, 0.95)",
+                  backdropFilter: "blur(12px)",
+                  flexShrink: 0,
+                  zIndex: 9,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: colorMode === "dark" ? "#8b949e" : "#656d76",
+                    marginRight: 4,
+                  }}
+                >
+                  {activeLangInfo.label} Palette:
+                </span>
+                {stencils.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      onInsertStencilSnippet?.(item.snippet, item.className);
+                    }}
+                    style={{
+                      border:
+                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.12)" : "1px solid rgba(0, 0, 0, 0.12)",
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)",
+                      color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                    }}
+                    title={`Insert ${item.label} into ${activeLangInfo.label} document`}
+                  >
+                    + {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div
+              style={{ flex: 1, position: "relative", overflow: "hidden", minHeight: 0 }}
+              onClick={() => {
+                if (showEmptyState) {
+                  setIsEmptyStateDismissed(true);
+                }
+              }}
+            >
+              <Suspense fallback={null}>
+                <DiagramEditor
+                  ref={diagramEditorRef}
+                  diagramData={diagramData}
+                  diagramClassName={selectedTreeClassName}
+                  selectedName={selectedComponent}
+                  theme={colorMode === "dark" ? "vs-dark" : "light"}
+                  isLoading={isDiagramLoading}
+                  onRenderComplete={(data) => {
+                    if (!data?.isLoading) {
+                      setIsDiagramLoading(false);
+                    }
+                  }}
+                  onSelect={(name, cachedProps, isLoading) => {
+                    if (showEmptyState) {
+                      setIsEmptyStateDismissed(true);
+                    }
+                    handleSelectComponent(name, cachedProps, isLoading);
+                  }}
+                  onShowProperties={handleSelectComponent}
+                  onNodeDoubleClick={onNodeDoubleClick}
+                  onDrop={async (className, x, y) => {
+                    setIsEmptyStateDismissed(true);
+                    enqueueDiagramAction({ type: "addComponent", className, x, y });
+                  }}
+                  onConnect={async (source, target, points) => {
+                    enqueueDiagramAction({ type: "connect", source, target, points });
+                  }}
+                  onMove={async (items) => {
+                    enqueueDiagramAction({ type: "move", items });
+                  }}
+                  onResize={async (name, x, y, width, height, rotation, edges) => {
+                    enqueueDiagramAction({
+                      type: "resize",
+                      item: { name, x, y, width, height, rotation, edges },
+                    });
+                  }}
+                  onEdgeMove={async (edges) => {
+                    enqueueDiagramAction({ type: "moveEdge", edges });
+                  }}
+                  onEdgeDelete={async (source, target) => {
+                    enqueueDiagramAction({ type: "disconnect", source, target });
+                  }}
+                  onComponentDelete={async (name) => {
+                    enqueueDiagramAction({ type: "deleteComponents", names: [name] });
+                  }}
+                  onComponentsDelete={async (names) => {
+                    enqueueDiagramAction({ type: "deleteComponents", names });
+                  }}
+                  onUndo={() => {
+                    if (isSpatialEditPending) isSpatialEditPending.current = false;
+                    editorRef.current?.focus();
+                    const prev = editorRef.current?.getValue();
+                    editorRef.current?.trigger("diagram", "undo", null);
+                    if (prev !== editorRef.current?.getValue()) {
+                      setIsDiagramLoading(true);
+                    }
+                  }}
+                  onRedo={() => {
+                    if (isSpatialEditPending) isSpatialEditPending.current = false;
+                    editorRef.current?.focus();
+                    const prev = editorRef.current?.getValue();
+                    editorRef.current?.trigger("diagram", "redo", null);
+                    if (prev !== editorRef.current?.getValue()) {
+                      setIsDiagramLoading(true);
+                    }
+                  }}
+                />
+              </Suspense>
+
+              {showEmptyState && (
                 <div
+                  role="dialog"
+                  aria-label="Design your physical system"
                   style={{
                     position: "absolute",
                     top: "50%",
@@ -1132,99 +1431,273 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     flexDirection: "column",
                     alignItems: "center",
                     textAlign: "center",
-                    maxWidth: "420px",
+                    maxWidth: "460px",
                     width: "calc(100% - 48px)",
-                    padding: "24px",
-                    borderRadius: "14px",
-                    background: colorMode === "dark" ? "rgba(13, 17, 23, 0.88)" : "rgba(255, 255, 255, 0.92)",
+                    padding: "28px 24px 22px 24px",
+                    borderRadius: "16px",
+                    background: colorMode === "dark" ? "rgba(13, 17, 23, 0.94)" : "rgba(255, 255, 255, 0.95)",
                     border:
-                      colorMode === "dark" ? "1px solid rgba(48, 54, 61, 0.8)" : "1px solid rgba(208, 215, 222, 0.8)",
-                    backdropFilter: "blur(14px)",
-                    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.2)",
+                      colorMode === "dark" ? "1px solid rgba(48, 54, 61, 0.85)" : "1px solid rgba(208, 215, 222, 0.9)",
+                    backdropFilter: "blur(20px)",
+                    boxShadow:
+                      colorMode === "dark"
+                        ? "0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05)"
+                        : "0 20px 48px -12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)",
                     pointerEvents: "auto",
                     zIndex: 10,
                   }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <div
+                  {/* Close Button */}
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    title="Close (Esc)"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsEmptyStateDismissed(true);
+                    }}
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: "50%",
+                      position: "absolute",
+                      top: 14,
+                      right: 14,
+                      width: 28,
+                      height: 28,
+                      borderRadius: "6px",
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--color-fg-muted, #8b949e)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      marginBottom: 12,
-                      background: colorMode === "dark" ? "rgba(6, 182, 212, 0.15)" : "rgba(6, 182, 212, 0.1)",
+                      cursor: "pointer",
+                      padding: 0,
+                      transition: "background 0.15s ease, color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background =
+                        colorMode === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.06)";
+                      e.currentTarget.style.color = "var(--color-fg-default, #c9d1d9)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "var(--color-fg-muted, #8b949e)";
+                    }}
+                  >
+                    <XIcon size={16} />
+                  </button>
+
+                  {/* Icon Badge */}
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: 14,
+                      background:
+                        colorMode === "dark"
+                          ? "linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(59, 130, 246, 0.15) 100%)"
+                          : "linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%)",
+                      border:
+                        colorMode === "dark" ? "1px solid rgba(6, 182, 212, 0.3)" : "1px solid rgba(6, 182, 212, 0.25)",
+                      boxShadow: "0 4px 16px rgba(6, 182, 212, 0.15)",
                       color: "var(--color-accent-cyan, #06b6d4)",
                     }}
                   >
-                    <WorkflowIcon size={22} />
+                    <WorkflowIcon size={24} />
                   </div>
+
+                  {/* Title */}
                   <div
                     style={{
-                      fontSize: "15px",
+                      fontSize: "17px",
                       fontWeight: 700,
                       color: "var(--color-fg-default)",
-                      marginBottom: 6,
+                      letterSpacing: "-0.01em",
+                      marginBottom: 8,
                     }}
                   >
                     Design your physical system
                   </div>
+
+                  {/* Subtitle */}
                   <div
                     style={{
-                      fontSize: "12px",
+                      fontSize: "13px",
                       color: "var(--color-fg-muted)",
                       lineHeight: 1.5,
-                      marginBottom: 16,
+                      marginBottom: 20,
+                      maxWidth: "380px",
                     }}
                   >
                     Drag components from the library on the left, or kickstart with a curated multi-physics model:
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
-                    {HERO_EXAMPLES.slice(0, 3).map((ex) => (
+
+                  {/* Curated Starters */}
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", marginBottom: 16 }}
+                  >
+                    {starterExamples.map((ex) => (
                       <button
                         key={ex.id}
                         type="button"
                         onClick={() => {
+                          setIsEmptyStateDismissed(true);
                           if (editorRef.current) {
                             editorRef.current.setValue(ex.code);
                           }
                         }}
                         style={{
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          padding: "6px 12px",
-                          borderRadius: "20px",
-                          border: "1px solid var(--color-border-default, #30363d)",
-                          background: colorMode === "dark" ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.04)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px 14px",
+                          borderRadius: "10px",
+                          border:
+                            colorMode === "dark"
+                              ? "1px solid rgba(48, 54, 61, 0.8)"
+                              : "1px solid rgba(208, 215, 222, 0.9)",
+                          background: colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)",
                           color: "var(--color-fg-default)",
                           cursor: "pointer",
+                          textAlign: "left",
                           transition: "all 0.15s ease",
+                          width: "100%",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--color-accent-fg, #0969da)";
+                          e.currentTarget.style.background =
+                            colorMode === "dark" ? "rgba(33, 38, 45, 0.9)" : "rgba(255, 255, 255, 1)";
+                          e.currentTarget.style.transform = "translateY(-1px)";
+                          e.currentTarget.style.boxShadow =
+                            colorMode === "dark" ? "0 4px 12px rgba(0, 0, 0, 0.3)" : "0 4px 12px rgba(0, 0, 0, 0.06)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor =
+                            colorMode === "dark" ? "rgba(48, 54, 61, 0.8)" : "rgba(208, 215, 222, 0.9)";
+                          e.currentTarget.style.background =
+                            colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)";
+                          e.currentTarget.style.transform = "none";
+                          e.currentTarget.style.boxShadow = "none";
                         }}
                       >
-                        ⚡ {ex.title}
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{ fontSize: "16px", lineHeight: 1 }}>
+                            {ex.category === "Electrical"
+                              ? "⚡"
+                              : ex.category === "Mechanics"
+                                ? "⚙️"
+                                : ex.category === "Nonlinear Dynamics"
+                                  ? "🌀"
+                                  : ex.category === "SysML v2"
+                                    ? "📐"
+                                    : "🚀"}
+                          </span>
+                          <span style={{ fontSize: "13px", fontWeight: 600 }}>{ex.title}</span>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.04em",
+                            padding: "2px 8px",
+                            borderRadius: "12px",
+                            background: colorMode === "dark" ? "rgba(56, 189, 248, 0.12)" : "rgba(9, 105, 218, 0.08)",
+                            color: colorMode === "dark" ? "#38bdf8" : "#0969da",
+                          }}
+                        >
+                          {ex.category}
+                        </span>
                       </button>
                     ))}
                   </div>
+
+                  {/* Footer Helper */}
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--color-fg-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      opacity: 0.85,
+                    }}
+                  >
+                    <span>
+                      Click canvas or press{" "}
+                      <kbd
+                        style={{
+                          padding: "1px 5px",
+                          fontSize: "10px",
+                          borderRadius: "4px",
+                          background: colorMode === "dark" ? "#21262d" : "#e1e4e8",
+                          border: colorMode === "dark" ? "1px solid #30363d" : "1px solid #d0d7de",
+                          fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace",
+                        }}
+                      >
+                        Esc
+                      </kbd>{" "}
+                      to start with a blank canvas
+                    </span>
+                  </div>
                 </div>
               )}
+            </div>
           </div>
 
           {selectedComponent && (
             <>
               <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-valuenow={propertiesWidth}
+                aria-valuemin={200}
+                aria-valuemax={800}
+                aria-label="Resize properties panel"
+                tabIndex={0}
                 style={{
-                  width: 6,
+                  width: 10,
+                  marginLeft: -5,
+                  marginRight: -5,
                   cursor: "col-resize",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
-                  backgroundColor: "transparent",
                   display: "flex",
+                  position: "relative",
+                  zIndex: 10,
+                  backgroundColor: "transparent",
+                  outline: "none",
+                  userSelect: "none",
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    setPropertiesWidth(Math.max(200, Math.min(800, propertiesWidth + 10)));
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    setPropertiesWidth(Math.max(200, Math.min(800, propertiesWidth - 10)));
+                  } else if (e.key === "Home") {
+                    e.preventDefault();
+                    setPropertiesWidth(800);
+                  } else if (e.key === "End") {
+                    e.preventDefault();
+                    setPropertiesWidth(200);
+                  }
+                }}
+                onDoubleClick={() => {
+                  setPropertiesWidth(300);
                 }}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   isDraggingProperties.current = true;
+                  setIsPropResizerDragging(true);
                   const startX = e.clientX;
                   const startWidth = propertiesWidth;
                   const onMouseMove = (ev: MouseEvent) => {
@@ -1235,6 +1708,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   };
                   const onMouseUp = () => {
                     isDraggingProperties.current = false;
+                    setIsPropResizerDragging(false);
                     document.removeEventListener("mousemove", onMouseMove);
                     document.removeEventListener("mouseup", onMouseUp);
                     document.body.style.cursor = "auto";
@@ -1245,14 +1719,69 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   document.body.style.cursor = "col-resize";
                   document.body.style.userSelect = "none";
                 }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+                onTouchStart={(e) => {
+                  const touch = e.touches[0];
+                  if (!touch) return;
+                  isDraggingProperties.current = true;
+                  setIsPropResizerDragging(true);
+                  const startX = touch.clientX;
+                  const startWidth = propertiesWidth;
+
+                  const onTouchMove = (ev: TouchEvent) => {
+                    if (!isDraggingProperties.current) return;
+                    const t = ev.touches[0];
+                    if (!t) return;
+                    const deltaX = startX - t.clientX;
+                    const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
+                    setPropertiesWidth(newWidth);
+                  };
+
+                  const onTouchEnd = () => {
+                    isDraggingProperties.current = false;
+                    setIsPropResizerDragging(false);
+                    document.removeEventListener("touchmove", onTouchMove);
+                    document.removeEventListener("touchend", onTouchEnd);
+                    document.body.style.userSelect = "auto";
+                  };
+
+                  document.addEventListener("touchmove", onTouchMove, { passive: true });
+                  document.addEventListener("touchend", onTouchEnd);
+                  document.body.style.userSelect = "none";
                 }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
-              />
+                onMouseEnter={() => setIsPropResizerHovered(true)}
+                onMouseLeave={() => setIsPropResizerHovered(false)}
+              >
+                {/* Active highlight line centered on the border */}
+                <div
+                  style={{
+                    width: 2,
+                    height: "100%",
+                    backgroundColor:
+                      isPropResizerHovered || isPropResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+                    transition: "background-color 0.15s ease",
+                  }}
+                />
+                {/* Subtle grab pill in the vertical center */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    width: 4,
+                    height: 28,
+                    borderRadius: 999,
+                    backgroundColor:
+                      isPropResizerHovered || isPropResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+                    boxShadow:
+                      isPropResizerHovered || isPropResizerDragging
+                        ? "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)"
+                        : "none",
+                    opacity: isPropResizerHovered || isPropResizerDragging ? 1 : 0,
+                    transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
               <PropertiesWidget
                 properties={selectedComponentProperties}
                 isLoading={isPropertiesLoading}

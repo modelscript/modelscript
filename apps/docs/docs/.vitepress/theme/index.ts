@@ -15,6 +15,7 @@ import HomeIndustries from "./components/HomeIndustries.vue";
 import HomeStats from "./components/HomeStats.vue";
 import HomeSurfaces from "./components/HomeSurfaces.vue";
 import HomeThread from "./components/HomeThread.vue";
+import HomeVsCode from "./components/HomeVsCode.vue";
 import IndustriesIndex from "./components/IndustriesIndex.vue";
 import IndustriesMegaMenu from "./components/IndustriesMegaMenu.vue";
 import IndustryPage from "./components/IndustryPage.vue";
@@ -55,6 +56,7 @@ export default {
     app.component("HomeIndustries", HomeIndustries);
     app.component("HomeThread", HomeThread);
     app.component("HomeSurfaces", HomeSurfaces);
+    app.component("HomeVsCode", HomeVsCode);
     app.component("HomeCapabilities", HomeCapabilities);
     app.component("HomeCta", HomeCta);
     app.component("IndustriesMegaMenu", IndustriesMegaMenu);

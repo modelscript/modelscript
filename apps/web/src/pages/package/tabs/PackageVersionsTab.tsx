@@ -12,10 +12,10 @@ import {
 import { Button, Label, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
-import { getPackageDownloadUrl, type NpmPackument } from "../../../api";
+import { getPackageDownloadUrl, type NpmPackument, type PackageStats } from "../../../api";
 import Box from "../../../components/Box";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
-import { formatDate, GlassCard, SectionTitle, timeAgo, VersionRow } from "../types";
+import { formatDate, GlassCard, SectionTitle, SparklineBar, SparklineContainer, timeAgo, VersionRow } from "../types";
 
 export interface PackageVersionsTabProps {
   name: string;
@@ -23,6 +23,7 @@ export interface PackageVersionsTabProps {
   versionList: string[];
   packument?: NpmPackument | null | undefined;
   onCompare: (version?: string) => void;
+  packageStats?: PackageStats | null | undefined;
 }
 
 export const PackageVersionsTab: React.FC<PackageVersionsTabProps> = ({
@@ -31,12 +32,52 @@ export const PackageVersionsTab: React.FC<PackageVersionsTabProps> = ({
   versionList,
   packument,
   onCompare,
+  packageStats,
 }) => {
   const hasCompare = useFeatureFlag("package_version_compare");
   const latestTagVersion = packument?.["dist-tags"]?.["latest"] || versionList[0];
 
   return (
     <>
+      {packageStats?.daily &&
+        packageStats.daily.some((d) => d.downloads > 0) &&
+        (() => {
+          const maxVal = Math.max(...packageStats.daily.map((d) => d.downloads), 1);
+          const total = packageStats.totalDownloads ?? 0;
+          return (
+            <GlassCard style={{ padding: "16px 20px", marginBottom: 20 }}>
+              <div
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 650, color: "var(--ms-text-1, var(--color-text-heading))" }}>
+                  30-Day Download Trend
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ms-text-3, var(--color-text-muted))" }}>
+                  All-time downloads:{" "}
+                  <strong
+                    style={{
+                      color: "var(--ms-text-1, var(--color-text-primary))",
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  >
+                    {total.toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+              <SparklineContainer>
+                {packageStats.daily.map((d) => (
+                  <SparklineBar
+                    key={d.date}
+                    $heightPct={(d.downloads / maxVal) * 100}
+                    $active={d.downloads > 0}
+                    title={`${d.date}: ${d.downloads} download${d.downloads === 1 ? "" : "s"}`}
+                  />
+                ))}
+              </SparklineContainer>
+            </GlassCard>
+          );
+        })()}
+
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={2}>
         <Box display="flex" alignItems="center" gap="8px">
           <HistoryIcon size={16} fill="var(--color-text-muted)" />

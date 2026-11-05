@@ -2171,91 +2171,19 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       }
 
       if (nodes.length === 0) {
-        const lines = docText.split(/\r?\n/);
-        const seenIds = new Set<string>();
-        const pushNode = (rawName: string, kind: string, detail = "") => {
-          const cleanName = rawName.trim().replace(/^["'<]+|["'>;,{]+$/g, "");
-          if (!cleanName || seenIds.has(cleanName)) return;
-          seenIds.add(cleanName);
-          const idx = nodes.length;
-          const col = idx % 3;
-          const row = Math.floor(idx / 3);
-          const palette: Record<string, { stroke: string; fill: string }> = {
-            Section: { stroke: "#4f46e5", fill: "#eef2ff" },
-            Block: { stroke: "#0d9488", fill: "#f0fdfa" },
-            Parameter: { stroke: "#0284c7", fill: "#f0f9ff" },
-            Channel: { stroke: "#059669", fill: "#ecfdf5" },
-          };
-          const colors = palette[kind] ?? { stroke: "#0284c7", fill: "#f8fafc" };
-          nodes.push(
-            makeStyledNode({
-              id: cleanName,
-              name: cleanName,
-              kind,
-              stereotype: kind.toLowerCase(),
-              subtitle: detail || undefined,
-              stroke: colors.stroke,
-              fill: colors.fill,
-              x: 80 + col * 240,
-              y: 80 + row * 130,
-            }),
-          );
-        };
-
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (!line || line.startsWith("//") || line.startsWith("/*") || line.startsWith("!")) continue;
-          // Section headers: [SECTION] or *CARD
-          const secMatch = /^\[([A-Za-z0-9_ -]+)\]$/.exec(line) ?? /^\*([A-Za-z0-9_ ]+)/.exec(line);
-          if (secMatch) {
-            pushNode(secMatch[1]!.trim(), "Section");
-            continue;
-          }
-          // STEP entity: #10 = ADVANCED_BREP_SHAPE_REPRESENTATION('name', ...)
-          const stepMatch = /^(#\d+)\s*=\s*([A-Z0-9_]+)\s*\((?:'([^']*)')?/.exec(line);
-          if (stepMatch && nodes.length < 16) {
-            pushNode(stepMatch[3] || stepMatch[1]!, stepMatch[2]!, stepMatch[1]!);
-            continue;
-          }
-          // C / Fortran / SCAD / ModelScript declarations
-          const declMatch =
-            /^(?:subroutine|function|program|module|model|study|part|block|class|struct|void|double|int|real)\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(
-              line,
-            ) ?? /^([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*\{/.exec(line);
-          if (declMatch) {
-            pushNode(declMatch[1]!, "Block");
-            continue;
-          }
-          // XML element with id/name
-          const xmlMatch = /<([A-Za-z0-9_:-]+)[^>]*\b(?:id|name|SHORT-NAME)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (xmlMatch && nodes.length < 16) {
-            pushNode(xmlMatch[2]!, xmlMatch[1]!);
-            continue;
-          }
-          // Key = Value directive (CFD / CCSDS / SIMA)
-          const kvMatch = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*([^\r\n;#%]+)/.exec(line);
-          if (kvMatch && nodes.length < 12) {
-            pushNode(kvMatch[1]!, "Parameter", kvMatch[2]!.trim().slice(0, 24));
-            continue;
-          }
-        }
-
-        // CSV header fallback
-        if (nodes.length === 0 && lines.length > 0) {
-          const firstLine = lines.find((l) => l.trim().length > 0 && !l.trim().startsWith("#")) ?? "";
-          if (firstLine.includes(",")) {
-            for (const colName of firstLine.split(",").slice(0, 10)) {
-              pushNode(colName.trim(), "Channel");
-            }
-          }
-        }
-
-        if (nodes.length === 0) {
-          pushNode(plugin?.name || "RootModel", "Model");
-        }
-
-        for (let i = 0; i < nodes.length - 1; i++) {
-          edges.push(makeStyledEdge(`edge_${i}_${i + 1}`, nodes[i]!.id, nodes[i + 1]!.id));
+        const hasGrammarOrSymbols = Boolean(
+          config ||
+          isScad ||
+          isFortran ||
+          plugin?.customHandlers?.symbols ||
+          plugin?.languageDef?.diagram ||
+          plugin?.id === "modelica" ||
+          plugin?.id === "sysml2" ||
+          plugin?.id === "owl2",
+        );
+        if (!hasGrammarOrSymbols) {
+          const langLabel = plugin?.name || plugin?.id || "this file type";
+          throw new Error(`Diagram view is not supported for ${langLabel}.`);
         }
       }
 
@@ -2981,6 +2909,162 @@ export interface DiagramDispatchDeps {
   urdf?: DiagramBackend | undefined;
   customBackends?: Map<string | RegExp, DiagramBackend> | undefined;
 }
+
+const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParams) => Promise<unknown>> = {
+  simpack: async (text) => {
+    const { parseSpckXml, parseSimDeck, buildSimpackDiagram } = await import("@modelscript/simpack");
+    const isXml = text.trimStart().startsWith("<");
+    const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+    return buildSimpackDiagram(model);
+  },
+  gensys: async (text) => {
+    const { parseGensysDeck, buildGensysDiagram } = await import("@modelscript/gensys");
+    return buildGensysDiagram(parseGensysDeck(text));
+  },
+  adams: async (text) => {
+    const { parseAdams, buildAdamsDiagram } = await import("@modelscript/adams");
+    return buildAdamsDiagram(parseAdams(text));
+  },
+  urdf: async (text) => {
+    const { parseUrdf, buildUrdfDiagram } = await import("@modelscript/urdf");
+    return buildUrdfDiagram(parseUrdf(text));
+  },
+  aspen: async (text) => {
+    const { parseAspen } = await import("@modelscript/aspen");
+    const { buildAspenDiagram } = await import("@modelscript/diagram/aspen-diagram-builder");
+    return buildAspenDiagram(parseAspen(text) as any);
+  },
+  swmm: async (text) => {
+    const { parseSwmm } = await import("@modelscript/swmm");
+    const { buildSwmmDiagram } = await import("@modelscript/diagram/swmm-diagram-builder");
+    return buildSwmmDiagram(parseSwmm(text) as any);
+  },
+  eclipse: async (text) => {
+    const { parseEclipse } = await import("@modelscript/eclipse");
+    const { buildEclipseDiagram } = await import("@modelscript/diagram/eclipse-diagram-builder");
+    return buildEclipseDiagram(parseEclipse(text) as any);
+  },
+  jsbsim: async (text) => {
+    const { parseJsbsim } = await import("@modelscript/jsbsim");
+    const { buildJsbsimDiagram } = await import("@modelscript/diagram/jsbsim-diagram-builder");
+    const doc = parseJsbsim(text) as any;
+    return buildJsbsimDiagram(doc.fdm ?? doc);
+  },
+  lps: async (text) => {
+    const { parseLps } = await import("@modelscript/lps");
+    const { buildLpsDiagram } = await import("@modelscript/diagram/lps-diagram-builder");
+    return buildLpsDiagram(parseLps(text) as any);
+  },
+  olga: async (text) => {
+    const { parseOpi } = await import("@modelscript/olga");
+    const { buildOlgaDiagram } = await import("@modelscript/diagram/olga-diagram-builder");
+    return buildOlgaDiagram(parseOpi(text) as any);
+  },
+  opendss: async (text) => {
+    const { parseOpenDss } = await import("@modelscript/opendss");
+    const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
+    return buildOpenDssDiagram(parseOpenDss(text) as any);
+  },
+  openscenario: async (text) => {
+    const { parseOpenScenario } = await import("@modelscript/openscenario");
+    const { buildOpenScenarioDiagram } = await import("@modelscript/diagram/openscenario-diagram-builder");
+    return buildOpenScenarioDiagram(parseOpenScenario(text) as any);
+  },
+  psse: async (text, params) => {
+    const { parseRaw, solvePowerFlow, isLikelyDyrContent, parseDyr } = await import("@modelscript/psse");
+    const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
+    if (params.uri.endsWith(".dyr") || isLikelyDyrContent(text)) {
+      const dyr = parseDyr(text);
+      if (dyr.records.length > 0) {
+        const buses = new Map<number, any>();
+        const generators: any[] = [];
+        for (const rec of dyr.records) {
+          if (!buses.has(rec.ibus)) {
+            buses.set(rec.ibus, {
+              i: rec.ibus,
+              name: `BUS ${rec.ibus}`,
+              baseKv: 138,
+              ide: 2,
+              vm: 1.0,
+            });
+          }
+          generators.push({
+            i: rec.ibus,
+            id: `${rec.model}_${rec.id}`,
+            pg: rec.con[0] ?? 0,
+            qg: 0,
+            stat: 1,
+          });
+        }
+        return buildPsseDiagram({
+          title1: "PSS/E Dynamic Equipment Models (.dyr)",
+          buses,
+          branches: [],
+          generators,
+        });
+      }
+    }
+    const parsed = parseRaw(text);
+    const pf = parsed.buses.size > 0 ? solvePowerFlow(parsed) : undefined;
+    return buildPsseDiagram(parsed as any, pf as any);
+  },
+  relap5: async (text) => {
+    const { parseRelap5 } = await import("@modelscript/relap5");
+    const { buildRelap5Diagram } = await import("@modelscript/diagram/relap5-diagram-builder");
+    return buildRelap5Diagram(parseRelap5(text) as any);
+  },
+  sbml: async (text) => {
+    const { parseSbml } = await import("@modelscript/sbml");
+    const { buildSbmlDiagram } = await import("@modelscript/diagram/sbml-diagram-builder");
+    const doc = parseSbml(text) as any;
+    return buildSbmlDiagram(doc.model ?? doc);
+  },
+  touchstone: async (text) => {
+    const { parseTouchstone } = await import("@modelscript/touchstone");
+    const { buildTouchstoneDiagram } = await import("@modelscript/diagram/touchstone-diagram-builder");
+    const doc = parseTouchstone(text) as any;
+    return buildTouchstoneDiagram({ portCount: doc.numPorts ?? doc.portCount ?? 2, ...doc });
+  },
+  easy5: async (text) => {
+    const { parseEasy5 } = await import("@modelscript/easy5");
+    const { buildEasy5Diagram } = await import("@modelscript/diagram/easy5-diagram-builder");
+    return buildEasy5Diagram(parseEasy5(text));
+  },
+  rocets: async (text) => {
+    const { parseRocetsDeck } = await import("@modelscript/rocets");
+    const { buildRocetsDiagram } = await import("@modelscript/diagram/rocets-diagram-builder");
+    return buildRocetsDiagram(parseRocetsDeck(text));
+  },
+  gtsuite: async (text, params) => {
+    const { parseGtmModel, buildGtSuiteDiagramData } = await import("@modelscript/gtsuite");
+    return buildGtSuiteDiagramData(parseGtmModel(text, params.uri));
+  },
+  ssp: async (text) => {
+    const { parseSsd, buildSspDiagramData } = (await import("@modelscript/ssp")) as any;
+    return typeof buildSspDiagramData === "function" ? buildSspDiagramData(parseSsd(text)) : null;
+  },
+  autosar: async (text) => {
+    const { parseArxml } = await import("@modelscript/autosar");
+    const { buildAutosarDiagram } = await import("@modelscript/diagram/autosar-diagram-builder");
+    return buildAutosarDiagram(parseArxml(text) as never);
+  },
+  "verilog-a": async (text) => {
+    const { parseVerilogA } = await import("@modelscript/verilog-a");
+    const { buildVerilogADiagram } = await import("@modelscript/diagram/verilog-a-diagram-builder");
+    return buildVerilogADiagram(parseVerilogA(text) as never);
+  },
+  plcopen: async (text, params) => {
+    const { parsePlcopen } = await import("@modelscript/plcopen");
+    const { buildPlcopenDiagram } = await import("@modelscript/diagram/plcopen-diagram-builder");
+    return buildPlcopenDiagram(parsePlcopen(text, params.uri) as never).diagram;
+  },
+  oscal: async (text, params) => {
+    const { parseOscal } = await import("@modelscript/oscal");
+    const { buildOscalDiagram } = await import("@modelscript/diagram/oscal-diagram-builder");
+    const doc = parseOscal(text, params.uri);
+    return buildOscalDiagram(doc as any);
+  },
+};
 
 /**
  * Creates a dispatch object that routes diagram requests to the
@@ -4962,7 +5046,17 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
             },
           } as any;
         }
-        return backends.generic ? await backends.generic.getData(params) : null;
+        return {
+          nodes: [],
+          edges: [],
+          coordinateSystem: null,
+          diagramBackground: null,
+          readOnly: true,
+          metadata: {
+            readOnly: true,
+            domain: domainName,
+          },
+        } as any;
       },
       async getComponentProperties(params: DiagramGetComponentPropertiesParams): Promise<ComponentPropertyData | null> {
         return backends.generic ? await backends.generic.getComponentProperties(params) : null;
@@ -4975,157 +5069,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       },
     });
 
-    const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParams) => Promise<unknown>> = {
-      simpack: async (text) => {
-        const { parseSpckXml, parseSimDeck, buildSimpackDiagram } = await import("@modelscript/simpack");
-        const isXml = text.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
-        return buildSimpackDiagram(model);
-      },
-      gensys: async (text) => {
-        const { parseGensysDeck, buildGensysDiagram } = await import("@modelscript/gensys");
-        return buildGensysDiagram(parseGensysDeck(text));
-      },
-      adams: async (text) => {
-        const { parseAdams, buildAdamsDiagram } = await import("@modelscript/adams");
-        return buildAdamsDiagram(parseAdams(text));
-      },
-      urdf: async (text) => {
-        const { parseUrdf, buildUrdfDiagram } = await import("@modelscript/urdf");
-        return buildUrdfDiagram(parseUrdf(text));
-      },
-      aspen: async (text) => {
-        const { parseAspen } = await import("@modelscript/aspen");
-        const { buildAspenDiagram } = await import("@modelscript/diagram/aspen-diagram-builder");
-        return buildAspenDiagram(parseAspen(text) as any);
-      },
-      swmm: async (text) => {
-        const { parseSwmm } = await import("@modelscript/swmm");
-        const { buildSwmmDiagram } = await import("@modelscript/diagram/swmm-diagram-builder");
-        return buildSwmmDiagram(parseSwmm(text) as any);
-      },
-      eclipse: async (text) => {
-        const { parseEclipse } = await import("@modelscript/eclipse");
-        const { buildEclipseDiagram } = await import("@modelscript/diagram/eclipse-diagram-builder");
-        return buildEclipseDiagram(parseEclipse(text) as any);
-      },
-      jsbsim: async (text) => {
-        const { parseJsbsim } = await import("@modelscript/jsbsim");
-        const { buildJsbsimDiagram } = await import("@modelscript/diagram/jsbsim-diagram-builder");
-        const doc = parseJsbsim(text) as any;
-        return buildJsbsimDiagram(doc.fdm ?? doc);
-      },
-      lps: async (text) => {
-        const { parseLps } = await import("@modelscript/lps");
-        const { buildLpsDiagram } = await import("@modelscript/diagram/lps-diagram-builder");
-        return buildLpsDiagram(parseLps(text) as any);
-      },
-      olga: async (text) => {
-        const { parseOpi } = await import("@modelscript/olga");
-        const { buildOlgaDiagram } = await import("@modelscript/diagram/olga-diagram-builder");
-        return buildOlgaDiagram(parseOpi(text) as any);
-      },
-      opendss: async (text) => {
-        const { parseOpenDss } = await import("@modelscript/opendss");
-        const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
-        return buildOpenDssDiagram(parseOpenDss(text) as any);
-      },
-      openscenario: async (text) => {
-        const { parseOpenScenario } = await import("@modelscript/openscenario");
-        const { buildOpenScenarioDiagram } = await import("@modelscript/diagram/openscenario-diagram-builder");
-        return buildOpenScenarioDiagram(parseOpenScenario(text) as any);
-      },
-      psse: async (text, params) => {
-        const { parseRaw, solvePowerFlow, isLikelyDyrContent, parseDyr } = await import("@modelscript/psse");
-        const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
-        if (params.uri.endsWith(".dyr") || isLikelyDyrContent(text)) {
-          const dyr = parseDyr(text);
-          if (dyr.records.length > 0) {
-            const buses = new Map<number, any>();
-            const generators: any[] = [];
-            for (const rec of dyr.records) {
-              if (!buses.has(rec.ibus)) {
-                buses.set(rec.ibus, {
-                  i: rec.ibus,
-                  name: `BUS ${rec.ibus}`,
-                  baseKv: 138,
-                  ide: 2,
-                  vm: 1.0,
-                });
-              }
-              generators.push({
-                i: rec.ibus,
-                id: `${rec.model}_${rec.id}`,
-                pg: rec.con[0] ?? 0,
-                qg: 0,
-                stat: 1,
-              });
-            }
-            return buildPsseDiagram({
-              title1: "PSS/E Dynamic Equipment Models (.dyr)",
-              buses,
-              branches: [],
-              generators,
-            });
-          }
-        }
-        const parsed = parseRaw(text);
-        const pf = parsed.buses.size > 0 ? solvePowerFlow(parsed) : undefined;
-        return buildPsseDiagram(parsed as any, pf as any);
-      },
-      relap5: async (text) => {
-        const { parseRelap5 } = await import("@modelscript/relap5");
-        const { buildRelap5Diagram } = await import("@modelscript/diagram/relap5-diagram-builder");
-        return buildRelap5Diagram(parseRelap5(text) as any);
-      },
-      sbml: async (text) => {
-        const { parseSbml } = await import("@modelscript/sbml");
-        const { buildSbmlDiagram } = await import("@modelscript/diagram/sbml-diagram-builder");
-        const doc = parseSbml(text) as any;
-        return buildSbmlDiagram(doc.model ?? doc);
-      },
-      touchstone: async (text) => {
-        const { parseTouchstone } = await import("@modelscript/touchstone");
-        const { buildTouchstoneDiagram } = await import("@modelscript/diagram/touchstone-diagram-builder");
-        const doc = parseTouchstone(text) as any;
-        return buildTouchstoneDiagram({ portCount: doc.numPorts ?? doc.portCount ?? 2, ...doc });
-      },
-      easy5: async (text) => {
-        const { parseEasy5 } = await import("@modelscript/easy5");
-        const { buildEasy5Diagram } = await import("@modelscript/diagram/easy5-diagram-builder");
-        return buildEasy5Diagram(parseEasy5(text));
-      },
-      rocets: async (text) => {
-        const { parseRocetsDeck } = await import("@modelscript/rocets");
-        const { buildRocetsDiagram } = await import("@modelscript/diagram/rocets-diagram-builder");
-        return buildRocetsDiagram(parseRocetsDeck(text));
-      },
-      gtsuite: async (text, params) => {
-        const { parseGtmModel, buildGtSuiteDiagramData } = await import("@modelscript/gtsuite");
-        return buildGtSuiteDiagramData(parseGtmModel(text, params.uri));
-      },
-      ssp: async (text) => {
-        const { parseSsd, buildSspDiagramData } = (await import("@modelscript/ssp")) as any;
-        return typeof buildSspDiagramData === "function" ? buildSspDiagramData(parseSsd(text)) : null;
-      },
-      autosar: async (text) => {
-        const { parseArxml } = await import("@modelscript/autosar");
-        const { buildAutosarDiagram } = await import("@modelscript/diagram/autosar-diagram-builder");
-        return buildAutosarDiagram(parseArxml(text) as never);
-      },
-      "verilog-a": async (text) => {
-        const { parseVerilogA } = await import("@modelscript/verilog-a");
-        const { buildVerilogADiagram } = await import("@modelscript/diagram/verilog-a-diagram-builder");
-        return buildVerilogADiagram(parseVerilogA(text) as never);
-      },
-      plcopen: async (text, params) => {
-        const { parsePlcopen } = await import("@modelscript/plcopen");
-        const { buildPlcopenDiagram } = await import("@modelscript/diagram/plcopen-diagram-builder");
-        return buildPlcopenDiagram(parsePlcopen(text, params.uri) as never).diagram;
-      },
-    };
-
-    const pluginId = plugin?.id?.toLowerCase();
+    const pluginId = plugin?.id?.toLowerCase() || (/\.oscal(\.(json|ya?ml|xml))?$/i.test(uri) ? "oscal" : undefined);
     if (pluginId) {
       if ((backends as Record<string, unknown>)[pluginId]) {
         return (backends as Record<string, unknown>)[pluginId] as DiagramBackend;
@@ -5170,6 +5114,31 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
       const backend = getBackend(params.uri);
       return backend.drillDown ? await backend.drillDown(params) : null;
+    },
+
+    supports(uri: string): boolean {
+      for (const matcher of custom.keys()) {
+        if (typeof matcher === "string" ? uri.includes(matcher) : matcher.test(uri)) {
+          return true;
+        }
+      }
+      const plugin = globalLanguageRegistry.getPluginForUri(uri);
+      const pluginId = plugin?.id?.toLowerCase() || (/\.oscal(\.(json|ya?ml|xml))?$/i.test(uri) ? "oscal" : undefined);
+      if (pluginId) {
+        if ((backends as Record<string, unknown>)[pluginId]) return true;
+        if (DOMAIN_BUILDERS[pluginId]) return true;
+      }
+      if (uri.endsWith(".mo") || pluginId === "modelica") return true;
+      if (uri.endsWith(".sysml") || pluginId === "sysml2") return true;
+      if (uri.endsWith(".owl") || uri.endsWith(".ofn") || uri.endsWith(".owx") || pluginId === "owl2") {
+        return true;
+      }
+      if (/\.scad($|\?|#)/i.test(uri) || plugin?.id === "scad") return true;
+      if (/\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(uri) || plugin?.id === "fortran") return true;
+      if (plugin?.customHandlers?.symbols) return true;
+      const config = (backends.generic as any)?.deps?.getDiagramConfig?.(uri);
+      if (config) return true;
+      return false;
     },
   };
 }

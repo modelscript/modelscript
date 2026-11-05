@@ -43,6 +43,16 @@ describe("Studio Landing Page UI/UX & Git Target Resolution", () => {
     );
   });
 
+  it("renders 'Ansatz Sketch' as a prominent clickable card tile pointing to /sketch", () => {
+    assert.ok(content.includes("Ansatz Sketch"), "IdeWorkspacePage must render Ansatz Sketch tile");
+    assert.ok(
+      content.includes('data-testid="studio-sketch-tile"'),
+      "IdeWorkspacePage must provide data-testid='studio-sketch-tile' on Sketch tile",
+    );
+    assert.ok(content.includes('navigate("/sketch")'), "Ansatz Sketch tile must navigate to /sketch");
+    assert.ok(content.includes("AnsatzSketchIcon"), "Ansatz Sketch tile must render AnsatzSketchIcon");
+  });
+
   it("renders 'New Blank Workspace' as a clickable card tile without a redundant bottom button", () => {
     assert.ok(content.includes("Start a Workspace"), "IdeWorkspacePage must render 'Start a Workspace' section");
     assert.ok(content.includes("ActionTilesGrid"), "IdeWorkspacePage must render ActionTilesGrid");

@@ -93,4 +93,19 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
       "SidebarProps must accept optional onSketchClick handler",
     );
   });
+
+  it("renders a prominent full-width green Sketch button when logged out without split or post button", () => {
+    assert.ok(
+      content.includes("<GuestSketchButtonLink"),
+      "Sidebar.tsx must render GuestSketchButtonLink for logged-out visitors",
+    );
+    assert.ok(
+      content.includes('data-testid="sidebar-guest-sketch-button"'),
+      "Sidebar.tsx must provide data-testid='sidebar-guest-sketch-button' for the logged-out Sketch action",
+    );
+    assert.ok(
+      content.includes("background: var(--ms-brand)"),
+      "GuestSketchButtonLink must use brand background matching the logged-in button",
+    );
+  });
 });

@@ -520,18 +520,39 @@ end Circuit;`;
               ],
             }), // Has > 2 explicit points
           },
+          {
+            lhs: "R1.p",
+            rhs: "C1.p",
+            annotation: () => ({
+              smooth: "Bezier",
+              points: [
+                [0, 0],
+                [10, 10],
+                [20, 20],
+              ],
+            }), // Explicitly smooth Bézier curve
+          },
         ],
       };
 
       const diagram = await buildDiagramData(fakeStub as any);
-      assert.strictEqual(diagram.edges.length, 2);
+      assert.strictEqual(diagram.edges.length, 3);
 
-      // Edge 1 (unannotated) must have port-orthogonal-astar router
+      // Edge 1 (unannotated) must have port-orthogonal-astar router and normal (sharp orthogonal) connector
       assert.deepStrictEqual(diagram.edges[0]!.router, { name: "port-orthogonal-astar" });
+      assert.strictEqual(diagram.edges[0]!.connector, "normal");
 
-      // Edge 2 (has > 2 explicit points) preserves author's waypoints with undefined router (normal)
+      // Edge 2 (has > 2 explicit points) preserves author's waypoints with undefined router and normal connector
       assert.strictEqual(diagram.edges[1]!.router, undefined);
       assert.strictEqual(diagram.edges[1]!.vertices?.length, 2);
+      assert.strictEqual(diagram.edges[1]!.connector, "normal");
+
+      // Edge 3 (smooth = Smooth.Bezier) uses smooth connector
+      assert.strictEqual(diagram.edges[2]!.connector, "smooth");
+
+      // Modelica diagram metadata specifies defaultConnector: "normal"
+      assert.strictEqual(diagram.metadata?.language, "modelica");
+      assert.strictEqual(diagram.metadata?.defaultConnector, "normal");
     });
 
     it("computeEdgePointEdits and computeConnectRemove handle real GLR CST connect_equation wrapped in some_equation", () => {

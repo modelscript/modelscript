@@ -3,6 +3,7 @@
 import { renderDicomRtBevSvg, renderDicomRtDvhSvg } from "@modelscript/diagram/dicom-rt-diagram-builder";
 import { renderIgtlTransformTreeSvg } from "@modelscript/diagram/igtl-diagram-builder";
 import { renderOpenSimTopologySvg } from "@modelscript/diagram/opensim-diagram-builder";
+import { renderOscalBoundarySvg } from "@modelscript/diagram/oscal-diagram-builder";
 import { parsePlcopenTextToProject, renderPlcopenSvg } from "@modelscript/diagram/plcopen-diagram-builder";
 import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
 import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
@@ -10,6 +11,7 @@ import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import { parseDicomRt } from "@modelscript/dicom-rt/parser";
 import { parseIgtl } from "@modelscript/igtl/parser";
 import { parseOpenSim } from "@modelscript/opensim/parser";
+import { parseOscal } from "@modelscript/oscal";
 import { parseQif } from "@modelscript/qif/parser";
 import { BeakerIcon, CheckIcon, CodeIcon, CopyIcon, DownloadIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
@@ -141,7 +143,8 @@ export function renderSourceToDiagramSvg(
     normalizedLang !== "qif" &&
     normalizedLang !== "opensim" &&
     normalizedLang !== "dicom-rt" &&
-    normalizedLang !== "igtl";
+    normalizedLang !== "igtl" &&
+    normalizedLang !== "oscal";
   const cacheKey = `${normalizedLang}|${_fallbackTitle}|${usesThemeInBuilder ? (isDark ? "d" : "l") : "*"}|${content}`;
   const cachedDiagram = diagramSourceCache.get(cacheKey);
   if (cachedDiagram !== undefined) {
@@ -270,6 +273,38 @@ export function renderSourceToDiagramSvg(
       }
     } catch {
       // Fall through to generic polyglot extractor if IGTL parse fails
+    }
+  }
+
+  if (normalizedLang === "oscal") {
+    try {
+      const doc = parseOscal(content, _fallbackTitle);
+      const components = doc.systemImplementation?.components ?? doc.components ?? [];
+      const implementedReqs = doc.controlImplementation?.implementedRequirements ?? doc.implementedRequirements ?? [];
+      const findings = doc.findings ?? [];
+      const poamItems = doc.poamItems ?? [];
+      const diagramDoc = {
+        kind: doc.kind,
+        uuid: doc.uuid,
+        title: doc.metadata?.title || _fallbackTitle,
+        systemName: doc.systemCharacteristics?.systemName ?? doc.metadata?.title ?? _fallbackTitle,
+        securitySensitivityLevel: doc.systemCharacteristics?.securitySensitivityLevel ?? "moderate",
+        components,
+        implementedRequirements: implementedReqs,
+        findings,
+        poamItems,
+      };
+      const rawSvg = renderOscalBoundarySvg(diagramDoc);
+      const nodeCount = Math.max(1, components.length);
+      const edgeCount = Math.max(1, implementedReqs.length);
+      setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+      return {
+        svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+        nodeCount,
+        edgeCount,
+      };
+    } catch {
+      // Fall through to generic polyglot extractor if OSCAL parse fails
     }
   }
 

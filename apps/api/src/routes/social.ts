@@ -345,6 +345,15 @@ export function socialRouter(
   ): boolean => {
     const currentUserId = req.user?.id;
     const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+    if (
+      !isAdmin &&
+      currentUserId &&
+      post.author_id &&
+      currentUserId !== post.author_id &&
+      (database.isUserBlocked(post.author_id, currentUserId) || database.isUserBlocked(currentUserId, post.author_id))
+    ) {
+      return false;
+    }
     if (!post.visibility || post.visibility === "public" || post.visibility === "unlisted") return true;
     if (isAdmin || (currentUserId !== undefined && currentUserId === post.author_id)) return true;
     if (post.visibility === "followers") {
@@ -477,6 +486,14 @@ export function socialRouter(
           return;
         }
 
+        if (
+          database.isUserBlocked(parentPost.author_id, authorId) ||
+          database.isUserBlocked(authorId, parentPost.author_id)
+        ) {
+          res.status(403).json({ error: "Cannot reply to this post due to a block relationship" });
+          return;
+        }
+
         const author = database.getUserById(authorId);
 
         if (parentPost.reply_visibility === "following") {
@@ -503,6 +520,14 @@ export function socialRouter(
         const quotedPost = database.getPost(quote_post_id, authorId);
         if (!quotedPost || !canViewPost(quotedPost, req)) {
           res.status(403).json({ error: "Cannot quote a private or restricted post" });
+          return;
+        }
+
+        if (
+          database.isUserBlocked(quotedPost.author_id, authorId) ||
+          database.isUserBlocked(authorId, quotedPost.author_id)
+        ) {
+          res.status(403).json({ error: "Cannot quote this post due to a block relationship" });
           return;
         }
       }
@@ -1079,6 +1104,11 @@ export function socialRouter(
         return;
       }
 
+      if (!canViewPost(post, req)) {
+        res.status(403).json({ error: "Forbidden: You do not have permission to view this post" });
+        return;
+      }
+
       if (post.visibility === "followers") {
         const isAllowed =
           currentUserId === post.author_id ||
@@ -1292,10 +1322,22 @@ export function socialRouter(
    * GET /api/v1/social/users/:username/posts
    */
   router.get("/users/:username/posts", optionalAuth, (req: Request, res: Response) => {
-    const username = req.params["username"] as string;
+    const rawUsername = req.params["username"] as string;
+    const username = rawUsername?.startsWith("@") ? rawUsername.slice(1) : rawUsername;
     const currentUserId = req.user?.id;
     const limit = Math.min(Math.max(Number(req.query["limit"]) || 20, 1), 500);
     const type = req.query["type"] as string | undefined;
+
+    const targetUser = database.getUserByUsername(username);
+    if (targetUser && currentUserId && targetUser.id !== currentUserId) {
+      if (
+        database.isUserBlocked(targetUser.id, currentUserId) ||
+        database.isUserBlocked(currentUserId, targetUser.id)
+      ) {
+        res.json({ posts: [] });
+        return;
+      }
+    }
 
     try {
       const posts = database.getUserTimeline(username, currentUserId, limit, type);

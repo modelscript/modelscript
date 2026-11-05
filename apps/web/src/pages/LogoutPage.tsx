@@ -3,13 +3,10 @@
 import {
   ArrowRightIcon,
   CheckCircleFillIcon,
-  CodeIcon,
   LockIcon,
   MoonIcon,
-  PackageIcon,
   PersonAddIcon,
   RepoIcon,
-  ShieldCheckIcon,
   SignInIcon,
   SunIcon,
   TelescopeIcon,
@@ -179,11 +176,11 @@ const MainStage = styled.main`
 const ConfirmationCard = styled.section`
   position: relative;
   width: 100%;
-  max-width: 500px;
+  max-width: 440px;
   background: var(--surface-overlay);
   border: 1px solid var(--color-border-glass);
-  border-radius: 22px;
-  padding: 36px 32px 30px;
+  border-radius: 20px;
+  padding: 32px 28px 28px;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   box-shadow:
@@ -201,8 +198,8 @@ const ConfirmationCard = styled.section`
     content: "";
     position: absolute;
     top: 0;
-    left: 12%;
-    right: 12%;
+    left: 15%;
+    right: 15%;
     height: 2px;
     background: linear-gradient(
       90deg,
@@ -216,15 +213,15 @@ const ConfirmationCard = styled.section`
   }
 
   @media (max-width: 540px) {
-    padding: 28px 20px 24px;
-    border-radius: 18px;
+    padding: 24px 20px 22px;
+    border-radius: 16px;
   }
 `;
 
 const EmblemContainer = styled.div`
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   display: grid;
   place-items: center;
   margin-bottom: 16px;
@@ -232,12 +229,12 @@ const EmblemContainer = styled.div`
 
 const EmblemHalo = styled.div`
   position: absolute;
-  inset: -6px;
-  border-radius: 24px;
+  inset: -4px;
+  border-radius: 20px;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--ms-success, #10b981) 24%, transparent) 0%,
-    color-mix(in srgb, var(--ms-brand, #0891b2) 12%, transparent) 60%,
+    color-mix(in srgb, var(--ms-success, #10b981) 22%, transparent) 0%,
+    color-mix(in srgb, var(--ms-brand, #0891b2) 10%, transparent) 60%,
     transparent 100%
   );
   animation: ${haloPulse} 3.2s ease-in-out infinite;
@@ -245,9 +242,9 @@ const EmblemHalo = styled.div`
 
 const EmblemTile = styled.div`
   position: relative;
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
+  width: 50px;
+  height: 50px;
+  border-radius: 15px;
   display: grid;
   place-items: center;
   color: var(--ms-success, #10b981);
@@ -263,45 +260,21 @@ const EmblemTile = styled.div`
   animation: ${checkPop} 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
 `;
 
-const StatusBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ms-success, #10b981);
-  background: color-mix(in srgb, var(--ms-success, #10b981) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ms-success, #10b981) 28%, transparent);
-  margin-bottom: 12px;
-
-  .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--ms-success, #10b981);
-    box-shadow: 0 0 8px var(--ms-success, #10b981);
-  }
-`;
-
 const Title = styled.h1`
-  margin: 0 0 8px 0;
-  font-size: 26px;
+  margin: 0 0 6px 0;
+  font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.025em;
   color: var(--color-text-heading);
-  line-height: 1.2;
+  line-height: 1.25;
 `;
 
 const Subtitle = styled.p`
   margin: 0 0 20px 0;
-  font-size: 14.5px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--color-text-muted);
-  max-width: 410px;
+  max-width: 380px;
 `;
 
 const UserSessionChip = styled.div`
@@ -310,8 +283,8 @@ const UserSessionChip = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 11px 14px;
-  margin-bottom: 16px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
   border-radius: 14px;
   background: var(--color-canvas-subtle);
   border: 1px solid var(--color-border);
@@ -320,8 +293,8 @@ const UserSessionChip = styled.div`
 `;
 
 const UserAvatar = styled.div<{ $url?: string | undefined }>`
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   flex-shrink: 0;
   background: ${(p) =>
@@ -330,7 +303,7 @@ const UserAvatar = styled.div<{ $url?: string | undefined }>`
       : "linear-gradient(135deg, var(--ms-brand), var(--ms-accent-indigo))"};
   color: #ffffff;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -344,7 +317,7 @@ const UserDetails = styled.div`
   flex: 1;
 
   .user-name {
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--color-text-heading);
     white-space: nowrap;
@@ -353,7 +326,7 @@ const UserDetails = styled.div`
   }
 
   .user-handle {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--color-text-muted);
     white-space: nowrap;
     overflow: hidden;
@@ -365,9 +338,9 @@ const SignedOutPill = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--color-text-muted);
   background: var(--ms-surface-hover);
@@ -375,55 +348,26 @@ const SignedOutPill = styled.span`
   flex-shrink: 0;
 `;
 
-const AssurancePanel = styled.div`
+const ActionContainer = styled.div`
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 13px 15px;
-  margin-bottom: 22px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--color-canvas-subtle) 75%, transparent);
-  border: 1px solid var(--color-border);
-  box-sizing: border-box;
-  text-align: left;
-`;
-
-const AssuranceRow = styled.div`
-  display: flex;
-  align-items: center;
   gap: 10px;
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
-  line-height: 1.35;
-
-  .icon {
-    color: var(--ms-brand);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  strong {
-    color: var(--color-text-primary);
-    font-weight: 600;
-  }
 `;
 
 const PrimaryExploreButton = styled(Link)`
   width: 100%;
-  height: 46px;
+  height: 44px;
   border-radius: 999px;
   background: var(--ms-brand);
   color: var(--ms-brand-contrast, #ffffff) !important;
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
   text-decoration: none !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   box-shadow: var(--ms-brand-shadow);
   border: 1px solid transparent;
   box-sizing: border-box;
@@ -441,18 +385,6 @@ const PrimaryExploreButton = styled(Link)`
     background: var(--ms-brand-active);
     transform: translateY(0);
   }
-
-  .kbd-hint {
-    margin-left: 4px;
-    padding: 2px 6px;
-    border-radius: 5px;
-    font-size: 10.5px;
-    font-family: var(--font-mono, monospace);
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.18);
-    color: #ffffff;
-    line-height: 1.1;
-  }
 `;
 
 const SecondaryActionsGrid = styled.div`
@@ -460,7 +392,6 @@ const SecondaryActionsGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 10px;
 
   @media (max-width: 440px) {
     grid-template-columns: 1fr;
@@ -468,18 +399,18 @@ const SecondaryActionsGrid = styled.div`
 `;
 
 const SecondaryActionLink = styled(Link)`
-  height: 40px;
+  height: 38px;
   border-radius: 999px;
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-primary) !important;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   text-decoration: none !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   transition:
     border-color 0.15s ease,
     color 0.15s ease,
@@ -491,80 +422,6 @@ const SecondaryActionLink = styled(Link)`
     color: var(--ms-brand) !important;
     background: var(--ms-surface-hover);
     transform: translateY(-1px);
-  }
-`;
-
-const SectionDivider = styled.div`
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 22px 0 14px;
-  color: var(--color-text-tertiary);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-
-  &::before,
-  &::after {
-    content: "";
-    flex: 1;
-    border-bottom: 1px solid var(--color-border);
-  }
-`;
-
-const QuickDestinationsGrid = styled.div`
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-
-  @media (max-width: 480px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-const DestinationTile = styled(Link)`
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  padding: 11px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-  background: var(--color-canvas-subtle);
-  text-decoration: none !important;
-  text-align: left;
-  transition:
-    border-color 0.16s ease,
-    background-color 0.16s ease,
-    transform 0.16s ease;
-
-  &:hover {
-    border-color: var(--ms-brand);
-    background: var(--ms-surface-hover);
-    transform: translateY(-1px);
-  }
-
-  .dest-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12.5px;
-    font-weight: 700;
-    color: var(--color-text-heading);
-  }
-
-  .dest-icon {
-    color: var(--ms-brand);
-    display: inline-flex;
-  }
-
-  .dest-desc {
-    font-size: 11px;
-    line-height: 1.35;
-    color: var(--color-text-muted);
   }
 `;
 
@@ -668,19 +525,13 @@ export const LogoutPage: React.FC = () => {
           <EmblemContainer aria-hidden="true">
             <EmblemHalo />
             <EmblemTile>
-              <CheckCircleFillIcon size={30} />
+              <CheckCircleFillIcon size={26} />
             </EmblemTile>
           </EmblemContainer>
 
-          <StatusBadge>
-            <span className="dot" />
-            Session Ended Securely
-          </StatusBadge>
-
           <Title>You&apos;ve been signed out</Title>
           <Subtitle>
-            Your {brandName} session has been safely closed and local authentication credentials have been removed from
-            this browser.
+            Your {brandName} session has safely ended. Local credentials and private workspace caches have been cleared.
           </Subtitle>
 
           {lastLoggedOutUser && (
@@ -705,86 +556,32 @@ export const LogoutPage: React.FC = () => {
             </UserSessionChip>
           )}
 
-          <AssurancePanel>
-            <AssuranceRow>
-              <span className="icon">
-                <ShieldCheckIcon size={15} />
-              </span>
-              <span>
-                <strong>Active session revoked</strong> — server and browser tokens invalidated
-              </span>
-            </AssuranceRow>
-            <AssuranceRow>
-              <span className="icon">
-                <LockIcon size={15} />
-              </span>
-              <span>
-                <strong>Local cache cleared</strong> — offline drafts and private state wiped
-              </span>
-            </AssuranceRow>
-            <AssuranceRow>
-              <span className="icon">
-                <TelescopeIcon size={15} />
-              </span>
-              <span>
-                <strong>Public access ready</strong> — explore models, packages, and simulations freely
-              </span>
-            </AssuranceRow>
-          </AssurancePanel>
+          <ActionContainer>
+            <PrimaryExploreButton
+              to="/explore"
+              data-testid="logout-explore-button"
+              onClick={() => clearJustLoggedOut()}
+            >
+              <TelescopeIcon size={16} />
+              <span>Continue to Explore</span>
+              <ArrowRightIcon size={15} />
+            </PrimaryExploreButton>
 
-          <PrimaryExploreButton to="/explore" data-testid="logout-explore-button" onClick={() => clearJustLoggedOut()}>
-            <TelescopeIcon size={18} />
-            <span>Continue to Explore</span>
-            <ArrowRightIcon size={16} />
-            <span className="kbd-hint" aria-hidden="true">
-              E
-            </span>
-          </PrimaryExploreButton>
-
-          <SecondaryActionsGrid>
-            <SecondaryActionLink to={loginHref} data-testid="logout-signin-button" onClick={() => clearJustLoggedOut()}>
-              <SignInIcon size={15} />
-              <span>Sign back in</span>
-            </SecondaryActionLink>
-            <SecondaryActionLink to="/signup" data-testid="logout-signup-button" onClick={() => clearJustLoggedOut()}>
-              <PersonAddIcon size={15} />
-              <span>Create account</span>
-            </SecondaryActionLink>
-          </SecondaryActionsGrid>
-
-          <SectionDivider>Or jump directly to</SectionDivider>
-
-          <QuickDestinationsGrid>
-            <DestinationTile to="/explore" onClick={() => clearJustLoggedOut()}>
-              <div className="dest-header">
-                <span className="dest-icon">
-                  <TelescopeIcon size={14} />
-                </span>
-                <span>Explore</span>
-              </div>
-              <span className="dest-desc">Trending simulations &amp; community feed</span>
-            </DestinationTile>
-
-            <DestinationTile to="/packages" onClick={() => clearJustLoggedOut()}>
-              <div className="dest-header">
-                <span className="dest-icon">
-                  <PackageIcon size={14} />
-                </span>
-                <span>Packages</span>
-              </div>
-              <span className="dest-desc">Standard libraries &amp; verified models</span>
-            </DestinationTile>
-
-            <DestinationTile to="/playground" onClick={() => clearJustLoggedOut()}>
-              <div className="dest-header">
-                <span className="dest-icon">
-                  <CodeIcon size={14} />
-                </span>
-                <span>Playground</span>
-              </div>
-              <span className="dest-desc">Interactive 44-language solver studio</span>
-            </DestinationTile>
-          </QuickDestinationsGrid>
+            <SecondaryActionsGrid>
+              <SecondaryActionLink
+                to={loginHref}
+                data-testid="logout-signin-button"
+                onClick={() => clearJustLoggedOut()}
+              >
+                <SignInIcon size={14} />
+                <span>Sign back in</span>
+              </SecondaryActionLink>
+              <SecondaryActionLink to="/signup" data-testid="logout-signup-button" onClick={() => clearJustLoggedOut()}>
+                <PersonAddIcon size={14} />
+                <span>Create account</span>
+              </SecondaryActionLink>
+            </SecondaryActionsGrid>
+          </ActionContainer>
         </ConfirmationCard>
       </MainStage>
 

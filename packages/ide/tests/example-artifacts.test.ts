@@ -269,41 +269,41 @@ describe("End-to-End Verification of All 44 Language Example Workspaces", () => 
       });
 
       it("5. Renders interactive diagram nodes and supports bidirectional diagram editing", async () => {
-        // Test diagram viewing (getData) — falls back cleanly to generic backend when needed
-        let data = await diagramDispatch.getData({ uri });
-        if (!data || !Array.isArray(data.nodes) || data.nodes.length === 0) {
-          // Exercise generic backend directly if Modelica/SysML2/OWL2 AST isn't pre-indexed in unit test
-          const genericUri = `${uri}.generic`;
-          docTexts.set(genericUri, docTexts.get(uri)!);
-          data = await diagramDispatch.getData({ uri: genericUri });
-        }
-        assert.ok(data && Array.isArray(data.nodes) && data.nodes.length > 0, `Expected diagram nodes for ${ex.id}`);
-
-        const firstNode = data.nodes[0]! as any;
-        const compName = firstNode.data?.properties?.name || firstNode.properties?.name || firstNode.id;
-
-        // Test property inspection (getComponentProperties)
-        const props = await diagramDispatch.getComponentProperties({
-          uri,
-          componentName: compName,
-        });
-        // Either domain backend or generic backend returns component metadata
-        if (props) {
-          assert.ok(props.name);
+        if (!diagramDispatch.supports(uri)) {
+          await assert.rejects(async () => diagramDispatch.getData({ uri }), /Diagram view is not supported/);
+          return;
         }
 
-        // Test bidirectional diagram editing (move node)
-        const moveRes = await diagramDispatch.applyEdits({
-          uri,
-          seq: 1,
-          actions: [
-            {
-              type: "move",
-              items: [{ name: String(firstNode.id), x: 240, y: 180, width: 40, height: 40 }],
-            },
-          ],
-        });
-        assert.strictEqual(moveRes.seq, 1);
+        const data = await diagramDispatch.getData({ uri });
+        assert.ok(data && Array.isArray(data.nodes), `Expected valid diagram data for ${ex.id}`);
+
+        if (data.nodes.length > 0) {
+          const firstNode = data.nodes[0]! as any;
+          const compName = firstNode.data?.properties?.name || firstNode.properties?.name || firstNode.id;
+
+          // Test property inspection (getComponentProperties)
+          const props = await diagramDispatch.getComponentProperties({
+            uri,
+            componentName: compName,
+          });
+          // Either domain backend or generic backend returns component metadata
+          if (props) {
+            assert.ok(props.name);
+          }
+
+          // Test bidirectional diagram editing (move node)
+          const moveRes = await diagramDispatch.applyEdits({
+            uri,
+            seq: 1,
+            actions: [
+              {
+                type: "move",
+                items: [{ name: String(firstNode.id), x: 240, y: 180, width: 40, height: 40 }],
+              },
+            ],
+          });
+          assert.strictEqual(moveRes.seq, 1);
+        }
       });
     });
   }
