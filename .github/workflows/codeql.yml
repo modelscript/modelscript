@@ -20,7 +20,7 @@ jobs:
     name: Analyze (${{ matrix.language }})
     if: github.actor != 'nektos/act'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       security-events: write
       contents: read

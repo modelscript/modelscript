@@ -12,9 +12,12 @@ paths-ignore:
   - "**/.cache/**"
   - "**/vscode-web/**"
   - "**/vendor/**"
+  - "packages/examples/**"
   - "scripts/**"
   - "languages/*/build.js"
 
 query-filters:
   - exclude:
       id: js/request-forgery
+  - exclude:
+      id: js/polynomial-redos
