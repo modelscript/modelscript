@@ -68,6 +68,7 @@ interface FollowButtonProps {
   $blocked?: boolean | undefined;
 }
 const FollowButton = styled.button<FollowButtonProps>`
+  margin-top: 38px;
   border-radius: 9999px;
   font-weight: 700;
   font-size: 14px;
@@ -303,7 +304,7 @@ export default function ProfileHoverCard({
               <>
                 <BannerHeader $url={getBannerUrl(data.username, data.banner_url)} />
                 <Box style={{ padding: "0 16px 16px 16px", marginTop: "-28px" }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="flex-end">
+                  <Box display="flex" justifyContent="space-between" alignItems="flex-start">
                     <Avatar
                       $url={getAvatarUrl(data.username, data.avatar_url || undefined)}
                       $letter={data.username?.charAt(0).toUpperCase()}

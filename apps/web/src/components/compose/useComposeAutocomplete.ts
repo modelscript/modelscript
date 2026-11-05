@@ -23,6 +23,41 @@ export interface UseComposeAutocompleteParams {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
+export interface ReplyRecipientSource {
+  author?: { username?: string | null | undefined } | null | undefined;
+  username?: string | null | undefined;
+  author_username?: string | null | undefined;
+  user?: { username?: string | null | undefined } | null | undefined;
+  content?: string | null | undefined;
+  [key: string]: unknown;
+}
+
+export function resolveReplyRecipients(
+  replyToPost: ReplyRecipientSource | null | undefined,
+  currentUsername?: string,
+): string[] {
+  if (!replyToPost) return [];
+  const rawAuthor =
+    replyToPost.author?.username || replyToPost.username || replyToPost.author_username || replyToPost.user?.username;
+  const authorUsername = rawAuthor ? String(rawAuthor).replace(/^@+/, "").trim() : "";
+  const cleanCurrentUser = currentUsername ? String(currentUsername).replace(/^@+/, "").trim() : undefined;
+
+  const matches = (replyToPost.content?.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g) || [])
+    .map((m: string) => m.replace(/^@+/, "").trim())
+    .filter((u: string) => Boolean(u) && u !== cleanCurrentUser && u !== authorUsername);
+
+  const result: string[] = [];
+  if (authorUsername) {
+    result.push(authorUsername);
+  }
+  for (const m of matches) {
+    if (!result.includes(m)) {
+      result.push(m);
+    }
+  }
+  return result;
+}
+
 export function useComposeAutocomplete({
   user,
   token,
@@ -43,12 +78,7 @@ export function useComposeAutocomplete({
   const [remoteActorSuggestions, setRemoteActorSuggestions] = useState<Map<string, any>>(new Map());
 
   const allMentionedUsers = useMemo(() => {
-    if (!replyToPost) return [];
-    const matches = (replyToPost.content?.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g) || []).map((m: string) =>
-      m.slice(1),
-    );
-    const unique = Array.from(new Set([replyToPost.username, ...matches])).filter((u: string) => u !== user?.username);
-    return unique;
+    return resolveReplyRecipients(replyToPost, user?.username);
   }, [replyToPost, user?.username]);
 
   useEffect(() => {

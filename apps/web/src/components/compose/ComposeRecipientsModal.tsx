@@ -23,6 +23,23 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
   setExcludedUsers,
   onClose,
 }) => {
+  const rawAuthor =
+    replyToPost?.author?.username ||
+    replyToPost?.username ||
+    replyToPost?.author_username ||
+    replyToPost?.user?.username ||
+    "";
+  const authorUsername = rawAuthor ? String(rawAuthor).replace(/^@+/, "").trim() : "";
+  const avatarUrl = replyToPost?.avatar_url || replyToPost?.author?.avatar_url || replyToPost?.user?.avatar_url;
+  const displayName =
+    replyToPost?.display_name ||
+    replyToPost?.author?.display_name ||
+    replyToPost?.author?.displayName ||
+    replyToPost?.author_display_name ||
+    authorUsername;
+
+  const others = allMentionedUsers.filter((u) => u !== authorUsername);
+
   const modal = (
     <>
       <div
@@ -76,7 +93,7 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
         <Box p={3}>
           <Box display="flex" alignItems="center" mb={3}>
             <img
-              src={getAvatarUrl(replyToPost.username, replyToPost.avatar_url)}
+              src={getAvatarUrl(authorUsername, avatarUrl)}
               alt="avatar"
               style={{
                 width: "40px",
@@ -89,65 +106,65 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
               }}
             />
             <Box flex={1}>
-              <div style={{ fontWeight: "bold" }}>{replyToPost.username}</div>
-              <div style={{ color: "var(--color-text-muted)", fontSize: "14px" }}>@{replyToPost.username}</div>
+              <div style={{ fontWeight: "bold" }}>{displayName || authorUsername}</div>
+              {authorUsername && (
+                <div style={{ color: "var(--color-text-muted)", fontSize: "14px" }}>@{authorUsername}</div>
+              )}
             </Box>
             <Box>
               <input type="checkbox" checked disabled style={{ width: "20px", height: "20px" }} />
             </Box>
           </Box>
 
-          {allMentionedUsers.length > 1 && (
+          {others.length > 0 && (
             <>
               <Box borderBottom="1px solid var(--color-border)" my={3} />
               <Heading as="h3" style={{ fontSize: "18px", marginBottom: "16px" }}>
                 Others in this conversation
               </Heading>
-              {allMentionedUsers
-                .filter((u) => u !== replyToPost.username)
-                .map((u) => (
-                  <Box
-                    key={u}
-                    display="flex"
-                    alignItems="center"
-                    mb={3}
-                    onClick={() => {
-                      const newSet = new Set(excludedUsers);
-                      if (newSet.has(u)) newSet.delete(u);
-                      else newSet.add(u);
-                      setExcludedUsers(newSet);
+              {others.map((u) => (
+                <Box
+                  key={u}
+                  display="flex"
+                  alignItems="center"
+                  mb={3}
+                  onClick={() => {
+                    const newSet = new Set(excludedUsers);
+                    if (newSet.has(u)) newSet.delete(u);
+                    else newSet.add(u);
+                    setExcludedUsers(newSet);
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(255, 255, 255, 0.05)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: "bold",
+                      marginRight: "12px",
                     }}
-                    style={{ cursor: "pointer" }}
                   >
-                    <div
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "50%",
-                        backgroundColor: "rgba(255, 255, 255, 0.05)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: "bold",
-                        marginRight: "12px",
-                      }}
-                    >
-                      {u.charAt(0).toUpperCase()}
-                    </div>
-                    <Box flex={1}>
-                      <div style={{ fontWeight: "bold" }}>{u}</div>
-                      <div style={{ color: "var(--color-text-muted)", fontSize: "14px" }}>@{u}</div>
-                    </Box>
-                    <Box>
-                      <input
-                        type="checkbox"
-                        checked={!excludedUsers.has(u)}
-                        readOnly
-                        style={{ width: "20px", height: "20px" }}
-                      />
-                    </Box>
+                    {u.charAt(0).toUpperCase()}
+                  </div>
+                  <Box flex={1}>
+                    <div style={{ fontWeight: "bold" }}>{u}</div>
+                    <div style={{ color: "var(--color-text-muted)", fontSize: "14px" }}>@{u}</div>
                   </Box>
-                ))}
+                  <Box>
+                    <input
+                      type="checkbox"
+                      checked={!excludedUsers.has(u)}
+                      readOnly
+                      style={{ width: "20px", height: "20px" }}
+                    />
+                  </Box>
+                </Box>
+              ))}
             </>
           )}
         </Box>

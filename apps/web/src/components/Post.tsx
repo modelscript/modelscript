@@ -552,7 +552,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
       <div
         ref={postContainerRef}
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest("a, button")) return;
+          if ((e.target as HTMLElement).closest("a, button, [data-quoted-post='true']")) return;
           if (showPostMenu) return;
           navigate(`/@${displayPost.username}/status/${displayPost.id}`);
         }}

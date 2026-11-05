@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   createArtifactView,
   createPost,
@@ -19,7 +20,9 @@ import {
   parseNotebookFromContent,
   serializeCellsToMarkdown,
 } from "../../util/notebook";
+import { getPostUrl } from "../../util/url";
 import type { SpatialPin } from "../artifacts/spatial-pin";
+import { useToast } from "../ToastContext";
 import { type AttachContext, extractArtifactSourceText, toEditableView, useAttachFlow } from "./attach";
 
 export interface AttachedMorselDraft {
@@ -113,6 +116,8 @@ export function useComposeSubmit({
   onArtifactEdited,
 }: UseComposeSubmitParams) {
   const [submitting, setSubmitting] = useState(false);
+  const toast = useToast();
+  const navigate = useNavigate();
 
   const attachCtx = useMemo<AttachContext>(
     () => ({
@@ -301,9 +306,35 @@ export function useComposeSubmit({
       setNotebookTopics([]);
       setNotebookCells([{ id: "md-1", type: "markdown", content: "" }]);
       setIsNotebookMode(false);
+
+      const post = data?.post;
+      const postUrl = getPostUrl(post);
+
+      toast.toast({
+        type: "success",
+        title: editPostId ? "Post updated" : replyToPost ? "Reply posted" : "Post published",
+        message: editPostId
+          ? "Your changes have been saved."
+          : replyToPost
+            ? "Your reply is now live."
+            : "Your post is now live.",
+        duration: 6000,
+        action: postUrl
+          ? {
+              label: "View post",
+              href: postUrl,
+              onClick: () => {
+                navigate(postUrl);
+              },
+            }
+          : undefined,
+      });
+
       onPostCreated?.(data.post);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
+      const errObj = err as { response?: { data?: { error?: string } }; message?: string } | undefined;
+      toast.error(errObj?.response?.data?.error || errObj?.message || "Failed to publish post. Please try again.");
     } finally {
       setSubmitting(false);
     }

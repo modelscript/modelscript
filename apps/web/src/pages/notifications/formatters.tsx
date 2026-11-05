@@ -21,21 +21,7 @@ import ProfileHoverCard from "../../components/ProfileHoverCard";
 import { parseFederatedHandle } from "../../util/federation";
 import type { NotificationActor } from "./types";
 
-export function formatRelativeTime(dateString: string): string {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return `${Math.max(1, diffInSeconds)}s`;
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
-
-  if (now.getFullYear() !== date.getFullYear()) {
-    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  }
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
+export { formatRelativeTime } from "../../util/date";
 
 export function formatPostContent(content: string) {
   if (!content) return null;

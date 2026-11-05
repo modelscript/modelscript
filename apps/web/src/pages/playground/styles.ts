@@ -31,7 +31,19 @@ export const PlaygroundNavbar = styled.header`
     gap: 6px;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 1200px) {
+    .nav-hide-lg {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .nav-hide-md {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 680px) {
     .nav-hide-sm {
       display: none !important;
     }

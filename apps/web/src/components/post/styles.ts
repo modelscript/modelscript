@@ -2,6 +2,7 @@
 
 import { Link } from "react-router-dom";
 import styledImport from "styled-components";
+import { parseUtcDate } from "../../util/date";
 import { safeCssImageUrl } from "../../util/url";
 
 const styled: typeof styledImport =
@@ -223,10 +224,32 @@ export const QuoteWrapper = styled.div`
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  transition: background-color 0.2s;
+  cursor: pointer;
+  background-color: transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  user-select: text;
+
   &:hover {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--surface-row-hover);
+    border-color: var(--color-border-muted, var(--color-border));
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-emphasis);
+    outline-offset: 2px;
+  }
+`;
+
+export const NestedQuoteWrapper = styled.div`
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 3.5px solid var(--ms-border-strong, var(--color-border-strong, #8b949e));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 1px;
 `;
 
 export const ViewsLink = styled.button.attrs({ type: "button" })`
@@ -236,6 +259,21 @@ export const ViewsLink = styled.button.attrs({ type: "button" })`
   font: inherit;
   color: inherit;
   cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+export const TimestampButton = styled.button.attrs({ type: "button" })`
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
   &:hover {
     text-decoration: underline;
   }
@@ -344,24 +382,22 @@ export interface PostProps {
   isPinned?: boolean | undefined;
 }
 
-export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return `${Math.max(1, diffInSeconds)}s`;
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
-
-  if (now.getFullYear() !== date.getFullYear()) {
-    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  }
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
+export { formatEditorialDate, formatRelativeTime, formatTooltipDate, parseUtcDate } from "../../util/date";
 
 export function formatNumber(num: number): string {
   if (!num) return "0";
   if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
   if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, "") + "K";
   return num.toString();
+}
+
+export function formatFullTimestamp(dateString?: string | null): string {
+  if (!dateString) return "";
+  try {
+    const d = parseUtcDate(dateString);
+    if (isNaN(d.getTime())) return "";
+    return `${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+  } catch {
+    return "";
+  }
 }

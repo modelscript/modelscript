@@ -117,22 +117,15 @@ export interface PageHeaderProps {
  * optional back button, title (+ icon/badge/subtitle), right-aligned actions,
  * and an optional sticky region below for search fields.
  */
-const PageHeader: React.FC<PageHeaderProps> = ({
-  title,
-  icon,
-  subtitle,
-  badge,
-  back,
-  actions,
-  children,
-  divider = true,
-  progress,
-}) => {
+const PageHeader = React.forwardRef<HTMLElement, PageHeaderProps>(function PageHeader(
+  { title, icon, subtitle, badge, back, actions, children, divider = true, progress },
+  ref,
+) {
   const navigate = useNavigate();
   const onBack = typeof back === "function" ? back : () => navigate(-1);
 
   return (
-    <Root $divider={divider}>
+    <Root ref={ref} data-page-header="true" $divider={divider}>
       <Row>
         {back && (
           <CircleIconButton type="button" onClick={onBack} aria-label="Go back">
@@ -157,6 +150,6 @@ const PageHeader: React.FC<PageHeaderProps> = ({
       )}
     </Root>
   );
-};
+});
 
 export default PageHeader;

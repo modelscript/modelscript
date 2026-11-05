@@ -12,16 +12,16 @@ import {
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { UNSAFE_LocationContext, UNSAFE_NavigationContext } from "react-router-dom";
-import type { AiPolishMode } from "../api";
+import { getPost, type AiPolishMode } from "../api";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
 import {
-  type ComposerAiEngineMode,
   getPreferredAiEngine,
   runComposerAiDraft,
   runComposerAiPolish,
   setPreferredAiEngine,
+  type ComposerAiEngineMode,
 } from "../util/composer-ai";
 import { createCellId, estimateReadingTimeMinutes, type NotebookCell } from "../util/notebook";
 import Box from "./Box";
@@ -163,7 +163,35 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(Boolean(autoFocus));
   const [showRecipientsModal, setShowRecipientsModal] = useState(false);
-  const [excludedUsers, setExcludedUsers] = useState<Set<string>>(new Set());
+  const [fetchedReplyToPost, setFetchedReplyToPost] = useState<{
+    id?: string | number | undefined;
+    username?: string | undefined;
+    author_username?: string | undefined;
+    author?: { username?: string | undefined } | undefined;
+    user?: { username?: string | undefined } | undefined;
+    [key: string]: unknown;
+  } | null>(null);
+
+  useEffect(() => {
+    setFetchedReplyToPost(null);
+    const authorUsername =
+      replyToPost?.author?.username ||
+      replyToPost?.username ||
+      replyToPost?.author_username ||
+      replyToPost?.user?.username;
+
+    if (replyToPost?.id && !authorUsername) {
+      getPost(replyToPost.id)
+        .then((res) => {
+          if (res?.post) {
+            setFetchedReplyToPost(res.post);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [replyToPost]);
+
+  const effectiveReplyToPost = fetchedReplyToPost || replyToPost;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -175,7 +203,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     token,
     content,
     setContent,
-    replyToPost,
+    replyToPost: effectiveReplyToPost,
     isNotebookMode: notebook.isNotebookMode,
     activeCellId: notebook.activeCellId,
     notebookCells: notebook.notebookCells,
@@ -547,7 +575,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     visibility: postVisibility,
     replyVisibility,
     quotePost,
-    replyToPost,
+    replyToPost: effectiveReplyToPost,
     editPostId,
     forkedFromArtifactId,
     pendingPin,
@@ -838,13 +866,15 @@ export default function ComposeBox(props: ComposeBoxProps) {
     return [];
   }, [notebook.isNotebookMode, notebook.notebookCells, artifactId]);
 
+  const effectiveMinRows = quotePost ? 1 : minRows;
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      const minHeightPx = minRows > 1 ? minRows * 24 + 10 : 0;
+      const minHeightPx = effectiveMinRows > 1 ? effectiveMinRows * 24 + 10 : 0;
       textareaRef.current.style.height = `${Math.max(textareaRef.current.scrollHeight, minHeightPx)}px`;
     }
-  }, [content, minRows]);
+  }, [content, effectiveMinRows]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
@@ -1302,9 +1332,9 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
   return (
     <>
-      {showRecipientsModal && replyToPost && (
+      {showRecipientsModal && effectiveReplyToPost && (
         <ComposeRecipientsModal
-          replyToPost={replyToPost}
+          replyToPost={effectiveReplyToPost}
           allMentionedUsers={autocomplete.allMentionedUsers}
           excludedUsers={excludedUsers}
           setExcludedUsers={setExcludedUsers}
@@ -1351,7 +1381,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
               boxSizing: "border-box",
             }}
           >
-            {replyToPost && !hideInput && (
+            {effectiveReplyToPost && !hideInput && includedUsers.length > 0 && (
               <Box
                 mb={2}
                 ml={13}
@@ -1451,12 +1481,19 @@ export default function ComposeBox(props: ComposeBoxProps) {
                             backdropRef.current.scrollLeft = e.currentTarget.scrollLeft;
                           }
                         }}
-                        placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
-                        rows={minRows}
+                        placeholder={
+                          placeholder ||
+                          (effectiveReplyToPost
+                            ? "Post your reply"
+                            : quotePost
+                              ? "Add a comment..."
+                              : "What is happening?!")
+                        }
+                        rows={effectiveMinRows}
                         autoFocus={autoFocus}
                         style={{
-                          marginBottom: replyToPost ? "0px" : "8px",
-                          minHeight: minRows > 1 ? `${minRows * 24 + 10}px` : undefined,
+                          marginBottom: effectiveReplyToPost || quotePost ? "2px" : "8px",
+                          minHeight: effectiveMinRows > 1 ? `${effectiveMinRows * 24 + 10}px` : undefined,
                         }}
                         onKeyDown={(e) => {
                           const hasMentions = Boolean(
@@ -1587,7 +1624,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
                   <ComposeQuoteAndPin pendingPin={pendingPin} quotePost={quotePost} />
 
-                  {!replyToPost && (
+                  {!effectiveReplyToPost && (
                     <ComposeVisibilityMenu
                       replyVisibility={replyVisibility}
                       setReplyVisibility={setReplyVisibility}
@@ -1603,6 +1640,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       isNotebookMode={notebook.isNotebookMode}
                       handleToggleNotebookMode={notebook.handleToggleNotebookMode}
                       onOpenDrafts={!isModal ? effectiveOnOpenDrafts : undefined}
+                      isQuote={Boolean(quotePost)}
                     />
                   )}
                 </div>
@@ -1632,7 +1670,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   artifactId={artifactId}
                   hasNotebookContent={submitHandler.hasNotebookContent}
                   editPostId={editPostId}
-                  replyToPost={replyToPost}
+                  replyToPost={effectiveReplyToPost}
+                  quotePost={quotePost}
                   textareaRef={textareaRef}
                   onInsertEmoji={handleInsertEmoji}
                   onAiDraft={() => void handleAiDraft(artifactId, attachedArtifactView)}

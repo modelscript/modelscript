@@ -10,6 +10,7 @@ import { safeCssImageUrl } from "../../util/url";
 import Box from "../Box";
 import { RenderContent } from "../Post";
 import WorldMap from "../WorldMap";
+import { formatRelativeTime } from "./styles";
 
 export interface PostAnalyticsData {
   view_count?: number;
@@ -101,26 +102,6 @@ const ModalAvatar = styled.div<{ $url?: string | undefined }>`
   flex-shrink: 0;
   border: 1px solid var(--color-border-subtle);
 `;
-
-function formatRelativeTime(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (diffInSeconds < 60) return `${Math.max(1, diffInSeconds)}s`;
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) return `${diffInMinutes}m`;
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}h`;
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}d`;
-
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
-}
 
 function formatNumber(num: number): string {
   if (!num) return "0";

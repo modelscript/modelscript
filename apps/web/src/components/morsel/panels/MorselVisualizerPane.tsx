@@ -2,26 +2,22 @@
 
 import type { DynamicBindingConfig } from "@modelscript/cad";
 import {
-  ColumnsIcon,
   FlowchartIcon,
   PauseIcon,
   PlayIcon,
   PlusIcon,
   PulseIcon,
-  RowsIcon,
-  ServerIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
   StackIcon,
   TableIcon,
-  UnwrapIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
 import { Button, IconButton, SegmentedControl } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
-import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { HERO_EXAMPLES } from "../../../pages/playground/constants";
 import Spinner from "../../Spinner";
 import type { CadComponent } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
@@ -378,20 +374,18 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   handleVariablesLoaded,
   treeVisible,
   setTreeVisible,
-  setView,
+  setView: _setView,
   onAutoLayout,
   onSimulate,
-  onOpenCloudModal,
-  onFlatten,
+  onOpenCloudModal: _onOpenCloudModal,
+  onFlatten: _onFlatten,
   hideCenterFloatingToolbar = false,
   showAnalysisView: controlledShowAnalysisView,
   setShowAnalysisView: controlledSetShowAnalysisView,
 }) => {
   const { hasCapability } = useCapabilities();
-  const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
   const isCosimMqttEnabled = hasCapability("cosimMqtt");
   const isTimescaleEnabled = hasCapability("timescaleHistorian");
-  const isCaeComputeEnabled = hasCloudSolverFlag && hasCapability("caeCompute");
   const showCosimSection = isCosimMqttEnabled || isTimescaleEnabled;
   const isDraggingProperties = useRef(false);
   const [internalShowAnalysisView, setInternalShowAnalysisView] = useState(false);
@@ -400,7 +394,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const [showPalette, setShowPalette] = useState(false);
   const activeLangInfo = getLanguageInfo(dialect);
   const stencils = useMemo(() => getStencilsForDialect(dialect), [dialect]);
-  const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
+  const isPlaygroundRoute =
+    typeof window !== "undefined" &&
+    (window.location.pathname.startsWith("/playground") || window.location.pathname.startsWith("/sketch"));
 
   const supports3dView = activeLangInfo.supports3d || cadComponents.length > 0 || Boolean(vtkBuffer);
   const centerViewTabs = useMemo(() => {
@@ -844,135 +840,19 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 </Button>
               )}
 
-              {isPlaygroundRoute && !isNarrow && (
+              {isPlaygroundRoute && !isNarrow && onAutoLayout && activeLangInfo.supportsDiagram && (
                 <>
                   <div
                     style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
                   />
-                  {onAutoLayout && activeLangInfo.supportsDiagram && (
-                    <IconButton
-                      icon={FlowchartIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.autoLayout}
-                      title={translations.autoLayout}
-                      onClick={onAutoLayout}
-                    />
-                  )}
-                  {setView && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 2,
-                        padding: 2,
-                        borderRadius: 8,
-                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
-                      }}
-                    >
-                      <IconButton
-                        icon={WorkflowIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label={translations.diagramView}
-                        title={translations.diagramView}
-                        onClick={() => setView(MorselView.DIAGRAM)}
-                        style={
-                          view === MorselView.DIAGRAM
-                            ? {
-                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                                borderRadius: 6,
-                              }
-                            : {}
-                        }
-                      />
-                      <IconButton
-                        icon={ColumnsIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label={translations.splitViewColumns}
-                        title={translations.splitViewColumns}
-                        onClick={() => setView(MorselView.SPLIT_COLUMNS)}
-                        style={
-                          view === MorselView.SPLIT_COLUMNS
-                            ? {
-                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                                borderRadius: 6,
-                              }
-                            : {}
-                        }
-                      />
-                      <IconButton
-                        icon={RowsIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label={translations.splitViewRows}
-                        title={translations.splitViewRows}
-                        onClick={() => setView(MorselView.SPLIT_ROWS)}
-                        style={
-                          view === MorselView.SPLIT_ROWS
-                            ? {
-                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                                borderRadius: 6,
-                              }
-                            : {}
-                        }
-                      />
-                      <IconButton
-                        icon={UnwrapIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label={translations.codeView}
-                        title={translations.codeView}
-                        onClick={() => setView(MorselView.CODE)}
-                        style={
-                          (view as MorselView) === MorselView.CODE
-                            ? {
-                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                                borderRadius: 6,
-                              }
-                            : {}
-                        }
-                      />
-                    </div>
-                  )}
-                  {activeLangInfo.supportsSimulation && (onSimulate || onOpenCloudModal || onFlatten) && (
-                    <>
-                      <div
-                        style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
-                      />
-                      {onSimulate && (
-                        <IconButton
-                          icon={PlayIcon}
-                          size="small"
-                          variant="invisible"
-                          aria-label={translations.simulateModel}
-                          title={translations.simulateModel}
-                          onClick={onSimulate}
-                        />
-                      )}
-                      {onOpenCloudModal && isCaeComputeEnabled && (
-                        <IconButton
-                          icon={ServerIcon}
-                          size="small"
-                          variant="invisible"
-                          aria-label="Run on Ansatz Cloud HPC"
-                          title="Run on Ansatz Cloud HPC"
-                          onClick={onOpenCloudModal}
-                        />
-                      )}
-                      {onFlatten && (
-                        <IconButton
-                          icon={StackIcon}
-                          size="small"
-                          variant="invisible"
-                          aria-label={translations.flattenModel}
-                          title={translations.flattenModel}
-                          onClick={onFlatten}
-                        />
-                      )}
-                    </>
-                  )}
+                  <IconButton
+                    icon={FlowchartIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={translations.autoLayout}
+                    title={translations.autoLayout}
+                    onClick={onAutoLayout}
+                  />
                 </>
               )}
             </div>
@@ -1172,7 +1052,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             </div>
           )}
 
-          <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+          <div className="flex-1 overflow-hidden" style={{ minWidth: 0, position: "relative" }}>
             <Suspense fallback={null}>
               <DiagramEditor
                 ref={diagramEditorRef}
@@ -1236,6 +1116,98 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 }}
               />
             </Suspense>
+
+            {(!diagramData?.nodes || diagramData.nodes.length === 0) &&
+              !isDiagramLoading &&
+              !showResultsView &&
+              !showCadView &&
+              !showAnalysisView && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    textAlign: "center",
+                    maxWidth: "420px",
+                    width: "calc(100% - 48px)",
+                    padding: "24px",
+                    borderRadius: "14px",
+                    background: colorMode === "dark" ? "rgba(13, 17, 23, 0.88)" : "rgba(255, 255, 255, 0.92)",
+                    border:
+                      colorMode === "dark" ? "1px solid rgba(48, 54, 61, 0.8)" : "1px solid rgba(208, 215, 222, 0.8)",
+                    backdropFilter: "blur(14px)",
+                    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.2)",
+                    pointerEvents: "auto",
+                    zIndex: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: 12,
+                      background: colorMode === "dark" ? "rgba(6, 182, 212, 0.15)" : "rgba(6, 182, 212, 0.1)",
+                      color: "var(--color-accent-cyan, #06b6d4)",
+                    }}
+                  >
+                    <WorkflowIcon size={22} />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      color: "var(--color-fg-default)",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Design your physical system
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-fg-muted)",
+                      lineHeight: 1.5,
+                      marginBottom: 16,
+                    }}
+                  >
+                    Drag components from the library on the left, or kickstart with a curated multi-physics model:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+                    {HERO_EXAMPLES.slice(0, 3).map((ex) => (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => {
+                          if (editorRef.current) {
+                            editorRef.current.setValue(ex.code);
+                          }
+                        }}
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          padding: "6px 12px",
+                          borderRadius: "20px",
+                          border: "1px solid var(--color-border-default, #30363d)",
+                          background: colorMode === "dark" ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.04)",
+                          color: "var(--color-fg-default)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        ⚡ {ex.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
           </div>
 
           {selectedComponent && (

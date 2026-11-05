@@ -103,6 +103,18 @@ export type {
   UserRow,
 };
 
+export function normalizeUtcTimestamp(ts?: string | number | Date | null): string {
+  if (!ts) return new Date().toISOString();
+  if (ts instanceof Date) return ts.toISOString();
+  if (typeof ts === "number") return new Date(ts).toISOString();
+  const trimmed = String(ts).trim();
+  if (!trimmed) return new Date().toISOString();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(trimmed)) {
+    return trimmed.replace(" ", "T") + "Z";
+  }
+  return trimmed;
+}
+
 function resolveDefaultDbDir(): string {
   const envDir =
     process.env["DB_DIR"] ||
@@ -3471,6 +3483,17 @@ export class LibraryDatabase {
       p.id = String(p.id);
       p.id_str = String(p.id);
     }
+    if (p.created_at) {
+      p.created_at = normalizeUtcTimestamp(p.created_at);
+    }
+    if (p.updated_at) {
+      p.updated_at = normalizeUtcTimestamp(p.updated_at);
+    }
+    if ((p as { published_at?: string }).published_at) {
+      (p as { published_at?: string }).published_at = normalizeUtcTimestamp(
+        (p as { published_at?: string }).published_at,
+      );
+    }
     if (p.artifact_view_id !== undefined && p.artifact_view_id !== null) {
       p.artifact_view_id = String(p.artifact_view_id);
     }
@@ -5028,6 +5051,9 @@ export class LibraryDatabase {
         } catch {
           // Keep as string
         }
+      }
+      if (r.created_at) {
+        r.created_at = normalizeUtcTimestamp(r.created_at);
       }
       return r;
     });
@@ -9052,9 +9078,13 @@ export class LibraryDatabase {
   }
 
   getArtifactView(id: number | string): ArtifactViewRow | undefined {
-    return this.#db.prepare(`SELECT *, CAST(id AS TEXT) as id FROM artifact_views WHERE id = ?`).get(id) as
+    const row = this.#db.prepare(`SELECT *, CAST(id AS TEXT) as id FROM artifact_views WHERE id = ?`).get(id) as
       | ArtifactViewRow
       | undefined;
+    if (row && row.created_at) {
+      row.created_at = normalizeUtcTimestamp(row.created_at);
+    }
+    return row;
   }
 
   createArtifactView(

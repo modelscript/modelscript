@@ -47,6 +47,7 @@ export interface ComposeToolbarProps {
   hasNotebookContent: boolean;
   editPostId?: string | number | null | undefined;
   replyToPost?: unknown;
+  quotePost?: unknown | undefined;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null> | undefined;
   onInsertEmoji?: ((emoji: string) => void) | undefined;
   onAiDraft?: (() => void) | undefined;
@@ -84,6 +85,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   hasNotebookContent,
   editPostId,
   replyToPost,
+  quotePost,
   textareaRef,
   onInsertEmoji,
   onAiDraft,
@@ -148,12 +150,14 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   const hasTextToPolish = Boolean(content.trim() || hasNotebookContent);
   const isAiRunning = Boolean(aiBusy);
   const hasEnteredContent = Boolean(content.trim() || artifactId !== null || hasNotebookContent);
-  const isExpanded = Boolean(isInputFocused || hasEnteredContent);
+  const isReply = Boolean(replyToPost);
+  const isExpanded = Boolean(!isReply && (isInputFocused || hasEnteredContent));
   const hasAiPills = Boolean(
-    (artifactId !== null && onAiDraft) ||
-    (isAiPolishFeatureEnabled && onAiPolish) ||
-    (canUndoAi && onUndoAi) ||
-    (aiLastSourceLabel && !isAiRunning),
+    !isReply &&
+    ((artifactId !== null && onAiDraft) ||
+      (isAiPolishFeatureEnabled && onAiPolish) ||
+      (canUndoAi && onUndoAi) ||
+      (aiLastSourceLabel && !isAiRunning)),
   );
 
   return (
@@ -164,9 +168,9 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
         backgroundColor: isModal ? "transparent" : "var(--color-bg-primary)",
         zIndex: 10,
         paddingBottom: "0px",
-        paddingTop: isExpanded ? "12px" : "4px",
-        borderTop: !isExpanded ? "none" : "1px solid var(--color-border)",
-        marginTop: isModal ? "auto" : undefined,
+        paddingTop: isReply ? "4px" : isExpanded ? "12px" : "4px",
+        borderTop: isReply || isModal || !isExpanded ? "none" : "1px solid var(--color-border)",
+        marginTop: isModal ? (quotePost ? "4px" : "auto") : undefined,
       }}
     >
       {isExpanded && hasAiPills && (
@@ -468,8 +472,8 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
         >
           <ActionIconButton
             onClick={() => setShowMorselModal(true)}
-            aria-label="Add Morsel Diagram"
-            title="Add Morsel Diagram & Simulation (attach multiple to build an Article)"
+            aria-label="Add model"
+            title="Add model — an interactive, simulatable diagram (attach multiple to build an Article)"
           >
             <PulseIcon size={20} />
           </ActionIconButton>

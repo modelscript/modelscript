@@ -21,7 +21,7 @@ import { buildCitationFromPost } from "../../util/citations";
 import AnimatedCount from "../AnimatedCount";
 import Box from "../Box";
 import { CitationModal } from "../citations/CitationModal";
-import { ActionButton, MenuButton, ViewsLink, formatNumber } from "./styles";
+import { ActionButton, MenuButton, ViewsLink, formatNumber, parseUtcDate } from "./styles";
 
 export interface PostActionsBarProps {
   displayPost: any;
@@ -379,30 +379,8 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
     </Box>
   );
 
-  const citeButton = (
-    <Tooltip text="Cite post (APA, MLA, IEEE, BibTeX, RIS...)" direction="n">
-      <ActionButton
-        aria-label="Cite post"
-        data-testid={`cite-post-btn-${displayPost.id}`}
-        $color="var(--color-accent-cyan)"
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          setShowRepostMenu(false);
-          setShowShareMenu(false);
-          setShowCitationModal(true);
-        }}
-      >
-        <div className="icon-wrapper">
-          <QuoteIcon size={17} />
-        </div>
-      </ActionButton>
-    </Tooltip>
-  );
-
   const bookmarkAndShareButtons = (
     <Box display="flex" gap={0} alignItems="center">
-      {citeButton}
       {bookmarkButton}
       {shareButtonAndMenu}
     </Box>
@@ -413,13 +391,13 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
       <>
         <Box display="flex" alignItems="center" fontSize="15px" mb={2} mt={3}>
           <span className="handle-text">
-            {new Date(displayPost.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            {parseUtcDate(displayPost.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           </span>
           <span className="handle-text" style={{ margin: "0 4px" }}>
             ·
           </span>
           <span className="handle-text">
-            {new Date(displayPost.created_at).toLocaleDateString([], {
+            {parseUtcDate(displayPost.created_at).toLocaleDateString([], {
               month: "short",
               day: "numeric",
               year: "numeric",
@@ -459,7 +437,6 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
           {replyButton}
           {repostButtonAndMenu}
           {likeButton}
-          {citeButton}
           {bookmarkButton}
           {shareButtonAndMenu}
         </Box>

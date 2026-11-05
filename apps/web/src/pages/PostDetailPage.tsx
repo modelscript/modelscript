@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Heading } from "@primer/react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getPost, getPostParents, getPostReplies } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
+import { updateStickyScrollVars } from "../components/ScrollToTop";
 import Spinner from "../components/Spinner";
 import type { PostItem } from "../types/api";
 import {
@@ -19,6 +20,8 @@ import {
 import { useOembedDiscovery, usePageTitle } from "../util/title";
 import type { ActiveBotTypingState } from "./post-detail";
 import { PostDetailThreadView } from "./post-detail";
+
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
 const PostDetailPage: React.FC = () => {
   const { id } = useParams();
@@ -249,20 +252,117 @@ const PostDetailPage: React.FC = () => {
     return () => window.removeEventListener("modelscript:post-updated", handlePostUpdated);
   }, [post]);
 
-  useEffect(() => {
-    if (!loading && post && parents.length > 0 && mainPostRef.current) {
-      setTimeout(() => {
-        if (mainPostRef.current) {
-          const y = mainPostRef.current.getBoundingClientRect().top + window.scrollY - 53;
-          window.scrollTo({ top: y, behavior: "smooth" });
-        }
-      }, 50);
+  const headerRef = useRef<HTMLElement>(null);
+  const parentsContainerRef = useRef<HTMLDivElement>(null);
+  const hasUserScrolledRef = useRef(false);
+  const isAligningRef = useRef(false);
+
+  const alignPostToTop = useCallback(() => {
+    if (!mainPostRef.current) return;
+
+    let headerBottom = 0;
+    if (headerRef.current) {
+      headerBottom = headerRef.current.getBoundingClientRect().bottom;
+    } else {
+      const headerEl = document.querySelector<HTMLElement>("header[data-page-header='true'], header");
+      if (headerEl) {
+        headerBottom = headerEl.getBoundingClientRect().bottom;
+      } else {
+        const devHeader =
+          parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dev-header-height") || "0") || 0;
+        headerBottom = devHeader + 54;
+      }
     }
-  }, [loading, post, parents.length]);
+
+    const postRect = mainPostRef.current.getBoundingClientRect();
+    const currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const targetScrollY = Math.round(currentScrollY + postRect.top - headerBottom);
+
+    if (Math.abs(currentScrollY - targetScrollY) > 0.5) {
+      isAligningRef.current = true;
+      window.scrollTo({ top: Math.max(0, targetScrollY), behavior: "instant" });
+      updateStickyScrollVars(targetScrollY);
+      requestAnimationFrame(() => {
+        isAligningRef.current = false;
+      });
+    }
+  }, []);
+
+  useIsomorphicLayoutEffect(() => {
+    if (loading || !post) return;
+
+    hasUserScrolledRef.current = false;
+
+    if (parents.length > 0) {
+      alignPostToTop();
+      const frame = requestAnimationFrame(() => {
+        if (!hasUserScrolledRef.current) {
+          alignPostToTop();
+        }
+      });
+      return () => cancelAnimationFrame(frame);
+    } else {
+      window.scrollTo({ top: 0, behavior: "instant" });
+      updateStickyScrollVars(0);
+    }
+  }, [loading, post, parents.length, alignPostToTop]);
+
+  useEffect(() => {
+    if (loading || !post || parents.length === 0) return;
+
+    const onUserScrollGesture = () => {
+      if (!isAligningRef.current) {
+        hasUserScrolledRef.current = true;
+      }
+    };
+
+    window.addEventListener("wheel", onUserScrollGesture, { passive: true });
+    window.addEventListener("touchmove", onUserScrollGesture, { passive: true });
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) {
+        hasUserScrolledRef.current = true;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, { passive: true });
+
+    let resizeObserver: ResizeObserver | null = null;
+    const parentsEl = parentsContainerRef.current;
+
+    if (typeof ResizeObserver !== "undefined" && parentsEl) {
+      resizeObserver = new ResizeObserver(() => {
+        if (!hasUserScrolledRef.current) {
+          alignPostToTop();
+        }
+      });
+      resizeObserver.observe(parentsEl);
+    }
+
+    const handleImageLoad = () => {
+      if (!hasUserScrolledRef.current) {
+        alignPostToTop();
+      }
+    };
+    if (parentsEl) {
+      parentsEl.addEventListener("load", handleImageLoad, true);
+    }
+
+    return () => {
+      window.removeEventListener("wheel", onUserScrollGesture);
+      window.removeEventListener("touchmove", onUserScrollGesture);
+      window.removeEventListener("keydown", onKeyDown);
+      if (parentsEl) {
+        parentsEl.removeEventListener("load", handleImageLoad, true);
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, [loading, post, parents.length, alignPostToTop]);
 
   useEffect(() => {
     async function fetchPost() {
       if (!id) return;
+      setLoading(true);
       try {
         const [postData, repliesData, parentsData] = await Promise.all([
           getPost(id),
@@ -301,6 +401,7 @@ const PostDetailPage: React.FC = () => {
   return (
     <Box minHeight="100dvh" style={{ paddingBottom: "200px" }}>
       <PageHeader
+        ref={headerRef}
         back
         title={isNotebook ? "Article" : "Post"}
         subtitle={
@@ -338,6 +439,7 @@ const PostDetailPage: React.FC = () => {
         replies={replies}
         user={user}
         mainPostRef={mainPostRef}
+        parentsContainerRef={parentsContainerRef}
         activeBotTyping={activeBotTyping}
         onReplyCreated={(reply) => setReplies((prev) => [...prev, reply])}
       />

@@ -50,6 +50,7 @@ export interface PlaygroundNavbarProps {
   currentLang?: string;
   currentView?: string;
   isDirty?: boolean;
+  isSimulating?: boolean;
   publishLabel?: string;
   onTitleChange?: (newTitle: string) => void;
   onSelectExample: (ex: HeroExample) => void;
@@ -72,6 +73,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   currentLang = "modelica",
   currentView = "diagram",
   isDirty = false,
+  isSimulating = false,
   publishLabel,
   onTitleChange,
   onSelectExample,
@@ -117,7 +119,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
     ext: getExtensionForDialect(currentLang),
   };
 
-  const effectivePublishLabel = publishLabel || (fromArtifactParam ? "Fork to Feed" : "Post to Feed");
+  const effectivePublishLabel = publishLabel || (fromArtifactParam ? "Post your fork" : "Post");
 
   return (
     <NavbarContainer>
@@ -126,7 +128,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           href={branding.docsBaseUrl || "https://modelscript.org"}
           target="_blank"
           rel="noopener noreferrer"
-          title="ModelScript Playground — Ansatz Sketch"
+          title="Ansatz Sketch"
           aria-label="ModelScript Homepage"
         >
           <img
@@ -137,7 +139,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             style={{ borderRadius: "5px", flexShrink: 0, display: "block" }}
           />
           <span
-            className="nav-hide-sm"
+            className="nav-hide-md"
             style={{ fontWeight: 700, letterSpacing: "-0.01em", color: "var(--color-fg-default)" }}
           >
             ModelScript
@@ -163,12 +165,13 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             border: "1px solid var(--color-border-subtle, rgba(255,255,255,0.1))",
             background: "var(--color-canvas-subtle)",
             transition: "all 0.15s ease",
+            flexShrink: 0,
           }}
           title="Return to Ansatz Platform"
           aria-label="Back to Ansatz Platform"
         >
           <ArrowLeftIcon size={12} />
-          <span className="nav-hide-sm">Ansatz</span>
+          <span className="nav-hide-md">Ansatz</span>
         </Link>
 
         {fromArtifactParam && (
@@ -187,6 +190,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               border: "1px solid rgba(245, 158, 11, 0.3)",
               textDecoration: "none",
               fontWeight: 600,
+              flexShrink: 0,
             }}
             title={`Forked from Artifact #${fromArtifactParam}`}
           >
@@ -195,7 +199,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         )}
 
         {/* Preset Example Picker & Inline Title Rename */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
           {isEditingTitle ? (
             <input
               type="text"
@@ -232,7 +236,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 <span
                   style={{
                     display: "inline-block",
-                    maxWidth: "clamp(84px, 24vw, 180px)",
+                    minWidth: 120,
+                    maxWidth: "clamp(120px, 20vw, 240px)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -351,7 +356,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             leadingVisual={CrossReferenceIcon}
             onClick={onOpenTemplates}
             title="Browse starter engineering templates"
-            className="nav-hide-sm"
+            className="nav-hide-md"
           >
             <NavText>Templates</NavText>
           </Button>
@@ -435,33 +440,31 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           <Button
             size="small"
             variant="primary"
-            leadingVisual={PlayIcon}
+            leadingVisual={isSimulating ? undefined : PlayIcon}
             onClick={onSimulate}
+            disabled={isSimulating}
             style={{
               fontWeight: 600,
-              backgroundColor: "#059669",
+              backgroundColor: isSimulating ? "#047857" : "#059669",
               borderColor: "#047857",
               color: "#ffffff",
+              minWidth: 70,
             }}
-            title="Run Simulation (F5)"
+            title={isSimulating ? "Simulation running…" : "Run Simulation (F5)"}
           >
-            Run
+            {isSimulating ? "Running…" : "Run"}
           </Button>
         )}
 
         {/* Global Search / Command Palette */}
-        <Button
+        <IconButton
           size="small"
           variant="invisible"
-          leadingVisual={SearchIcon}
+          icon={SearchIcon}
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
+          aria-label={`Search models & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
           title={`Search models, packages & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
-          className="nav-hide-sm"
-        >
-          <span style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
-            {isMac ? "⌘K" : "Ctrl+K"}
-          </span>
-        </Button>
+        />
 
         {/* Promote to Multi-File VS Code Workbench */}
         {onOpenInVsCode && (
@@ -471,26 +474,45 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             leadingVisual={TerminalIcon}
             onClick={onOpenInVsCode}
             title="Promote this model to the full multi-file VS Code Workbench"
-            className="nav-hide-sm"
+            className="nav-hide-lg"
           >
             <NavText>Open in VS Code</NavText>
           </Button>
         )}
 
-        {/* Export Menu */}
+        {/* Unified Share & Export Menu */}
         <ActionMenu>
-          <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
-            <NavText>Export</NavText>
+          <ActionMenu.Button size="small" leadingVisual={ShareIcon}>
+            <NavText>Share</NavText>
           </ActionMenu.Button>
           <ActionMenu.Overlay width="medium">
             <ActionList>
+              <ActionList.Item onSelect={onOpenShare}>
+                <ActionList.LeadingVisual>
+                  <ShareIcon />
+                </ActionList.LeadingVisual>
+                Share Link & Embeds…
+                <ActionList.Description variant="inline">URL, iframe, custom tag</ActionList.Description>
+              </ActionList.Item>
+              <ActionList.Item onSelect={onCopyEmbed}>
+                <ActionList.LeadingVisual>
+                  <CodeIcon />
+                </ActionList.LeadingVisual>
+                Copy Embed Snippet
+              </ActionList.Item>
+              <ActionList.Divider />
+              <ActionList.Item onSelect={onDownloadModel}>
+                <ActionList.LeadingVisual>
+                  <DownloadIcon />
+                </ActionList.LeadingVisual>
+                Download Model ({currentLangOption.ext})
+              </ActionList.Item>
               {onSaveToArtifact && (
                 <ActionList.Item onSelect={onSaveToArtifact}>
                   <ActionList.LeadingVisual>
                     <BookmarkIcon />
                   </ActionList.LeadingVisual>
-                  Save as Ansatz Artifact
-                  <ActionList.Description variant="inline">Store in your cloud library</ActionList.Description>
+                  Save to Cloud Library
                 </ActionList.Item>
               )}
               {onCreateRepo && (
@@ -498,31 +520,12 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                   <ActionList.LeadingVisual>
                     <RepoIcon />
                   </ActionList.LeadingVisual>
-                  Create Ansatz Repository…
-                  <ActionList.Description variant="inline">Publish as git repo</ActionList.Description>
+                  Create Git Repository…
                 </ActionList.Item>
               )}
-              {(onSaveToArtifact || onCreateRepo) && <ActionList.Divider />}
-              <ActionList.Item onSelect={onDownloadModel}>
-                <ActionList.LeadingVisual>
-                  <DownloadIcon />
-                </ActionList.LeadingVisual>
-                Download Model ({currentLangOption.ext})
-              </ActionList.Item>
-              <ActionList.Item onSelect={onCopyEmbed}>
-                <ActionList.LeadingVisual>
-                  <CodeIcon />
-                </ActionList.LeadingVisual>
-                Copy Embed Widget (HTML)
-              </ActionList.Item>
             </ActionList>
           </ActionMenu.Overlay>
         </ActionMenu>
-
-        {/* Share Button */}
-        <Button size="small" variant="default" leadingVisual={ShareIcon} onClick={onOpenShare}>
-          <NavText>Share</NavText>
-        </Button>
 
         {/* Publish / Save Edit / Reply / Fork to Feed & Ansatz Profile Menu */}
         {user ? (

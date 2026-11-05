@@ -2422,13 +2422,20 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
   // Add diagram background if present
   if (data.coordinateSystem) {
     const cs = data.coordinateSystem;
+    const isIconMode = (data.diagramType || "").toLowerCase() === "icon";
+    const boundaryStroke = isIconMode
+      ? isDark
+        ? "rgba(56, 189, 248, 0.45)"
+        : "rgba(2, 132, 199, 0.45)"
+      : isDark
+        ? "rgba(148, 163, 184, 0.16)"
+        : "rgba(100, 116, 139, 0.16)";
 
     const children: unknown[] = [
       {
         tagName: "rect",
         attrs: {
-          style:
-            "fill: transparent; stroke: #999; stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none;",
+          style: `fill: transparent; stroke: ${boundaryStroke}; stroke-width: 1px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none;`,
           width: cs.width,
           height: cs.height,
         },
@@ -2460,6 +2467,7 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
 
   // Add axes node
   if (data.coordinateSystem) {
+    const axisStroke = isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(100, 116, 139, 0.16)";
     nodes.push({
       id: "__diagram_axes__",
       x: 0,
@@ -2481,8 +2489,9 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
               y1: "0",
               x2: "100000",
               y2: "0",
-              stroke: "#999",
+              stroke: axisStroke,
               "stroke-width": "1",
+              "stroke-dasharray": "6 4",
               "vector-effect": "non-scaling-stroke",
               "pointer-events": "none",
             },
@@ -2494,8 +2503,9 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
               y1: "-100000",
               x2: "0",
               y2: "100000",
-              stroke: "#999",
+              stroke: axisStroke,
               "stroke-width": "1",
+              "stroke-dasharray": "6 4",
               "vector-effect": "non-scaling-stroke",
               "pointer-events": "none",
             },

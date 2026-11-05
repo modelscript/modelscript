@@ -8,6 +8,7 @@ import { createArtifactView } from "../../api";
 import { createCellId, type NotebookCell, type TutorialDifficulty } from "../../util/notebook";
 import Box from "../Box";
 import ComposeBox from "../ComposeBox";
+import { useToast } from "../ToastContext";
 import { ConfirmSaveModal } from "./ConfirmSaveModal";
 import { deleteDraft, getDrafts, upsertDraft } from "./drafts";
 import { DraftsView } from "./DraftsView";
@@ -23,6 +24,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   pendingPin: initialPendingPin,
   initialState,
 }) => {
+  const toast = useToast();
   const [view, setView] = useState<"compose" | "drafts" | "confirm_save">("compose");
   const [pendingAction, setPendingAction] = useState<"close" | "view_drafts" | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -112,15 +114,21 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
       if (effectiveForkId) {
         viewConfigObj["forkedFromArtifactId"] = effectiveForkId;
       }
+      const resolvedDialect = dialect || "modelica";
+      const finalTitle = title || "Model";
       createArtifactView({
-        artifact_type: "morsel",
+        artifact_type: resolvedDialect === "modelica" ? "modelica-diagram" : resolvedDialect,
+        dialect: resolvedDialect,
+        title: finalTitle,
         view_config: JSON.stringify(viewConfigObj),
-        title: `⚡ ${title || "Interactive Morsel Model"}`,
       })
         .then((data) => {
           setArtifactId(data.id);
         })
-        .catch(console.error);
+        .catch((err) => {
+          console.error("Failed to attach model artifact:", err);
+          toast.error("Could not attach the model to your post. Please try again.");
+        });
     } else if (initialState.packagePayload && artifactId === null) {
       const pkg = initialState.packagePayload;
       createArtifactView({
@@ -132,7 +140,10 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         .then((data) => {
           setArtifactId(data.id);
         })
-        .catch(console.error);
+        .catch((err) => {
+          console.error("Failed to attach model artifact:", err);
+          toast.error("Could not attach the model to your post. Please try again.");
+        });
     } else if (initialState.repoPayload && artifactId === null) {
       const repo = initialState.repoPayload;
       createArtifactView({
@@ -150,7 +161,10 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         .then((data) => {
           setArtifactId(data.id);
         })
-        .catch(console.error);
+        .catch((err) => {
+          console.error("Failed to attach model artifact:", err);
+          toast.error("Could not attach the model to your post. Please try again.");
+        });
     }
   }, [initialState]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -608,7 +622,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                   )}
                 </button>
               </Header>
-              <Body>
+              <Body style={currentQuotePost ? { padding: "12px 18px 12px", gap: "8px" } : undefined}>
                 {initialState?.forkedFromArtifactId && (
                   <div
                     style={{
@@ -635,7 +649,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                     display: editorLayout === "split" ? "grid" : "flex",
                     gridTemplateColumns: editorLayout === "split" ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
                     flexDirection: editorLayout === "split" ? undefined : "column",
-                    gap: "16px",
+                    gap: currentQuotePost ? "8px" : "16px",
                     alignItems: editorLayout === "split" ? "start" : "stretch",
                     flex: 1,
                   }}
@@ -696,7 +710,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       quotePost={currentQuotePost}
                       replyToPost={currentReplyToPost}
                       pendingPin={currentPendingPin}
-                      minRows={3}
+                      minRows={currentQuotePost ? 1 : 3}
                       autoFocus={true}
                       isModal={true}
                       hideInput={editorLayout === "preview"}

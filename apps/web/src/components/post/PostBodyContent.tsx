@@ -13,7 +13,7 @@ import PostArtifactSlider, { extractShortPostSlides } from "./PostArtifactSlider
 import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
 import { PostMarkdownContent } from "./PostMarkdownContent";
 import { PostNotebookHeader } from "./PostNotebookHeader";
-import { ContentWarningBox } from "./styles";
+import { ContentWarningBox, parseUtcDate } from "./styles";
 
 export interface PostBodyContentProps {
   displayPost: any;
@@ -58,7 +58,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   const wasUpdated =
     displayPost.updated_at &&
     displayPost.created_at &&
-    new Date(displayPost.updated_at).getTime() - new Date(displayPost.created_at).getTime() > 5000;
+    parseUtcDate(displayPost.updated_at).getTime() - parseUtcDate(displayPost.created_at).getTime() > 5000;
 
   const cwBanner = contentWarning ? (
     <ContentWarningBox>

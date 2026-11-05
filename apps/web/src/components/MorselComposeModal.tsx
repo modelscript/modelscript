@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ScreenFullIcon, ScreenNormalIcon, XIcon, ZapIcon } from "@primer/octicons-react";
+import { LinkExternalIcon, ScreenFullIcon, ScreenNormalIcon, XIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text } from "@primer/react";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView } from "../api";
+import { HERO_EXAMPLES } from "../pages/playground/constants";
 import { getLanguageInfo, useVisibleMorselLanguages } from "./morsel/constants";
 import MorselEditor from "./morsel/Morsel";
+import { compressMorselPayload } from "./morsel/util/permalink";
 
 const ModalBackdrop = styled.div`
   position: fixed;
@@ -140,6 +142,12 @@ end MySystem;`,
   const [attaching, setAttaching] = useState(false);
   const [dialect, setDialect] = useState<string>(initialDialect);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [modelTitle, setModelTitle] = useState(() => {
+    const match = initialCode.match(
+      /(?:model|package|class|block|part\s+def|module|program|subroutine|Ontology|robot|System|Task)\s+([A-Za-z0-9_]+)/i,
+    );
+    return match ? match[1]! : "MySystem";
+  });
 
   if (!isOpen) return null;
 
@@ -157,46 +165,55 @@ end MySystem;`,
     setAttachError(null);
     if (isDefaultTemplate && nextLangInfo.defaultCode) {
       setCode(nextLangInfo.defaultCode);
+      const match = nextLangInfo.defaultCode.match(
+        /(?:model|package|class|block|part\s+def|module|program|subroutine|Ontology|robot|System|Task)\s+([A-Za-z0-9_]+)/i,
+      );
+      if (match) setModelTitle(match[1]!);
     }
   };
 
   const handleAttach = async () => {
     const langInfo = getLanguageInfo(dialect);
-    const defaultTitle = `${langInfo.label || langInfo.name} Model`;
-    // Extract model / class / package / module name from code if possible
-    const match = code.match(
-      /(?:model|package|class|block|part\s+def|module|program|subroutine|Ontology|robot|System|Task)\s+([A-Za-z0-9_]+)/i,
-    );
-    const title = match ? match[1]! : defaultTitle;
+    const finalTitle = modelTitle.trim() || `${langInfo.label || langInfo.name} Model`;
     setAttaching(true);
     setAttachError(null);
     try {
       const created = await createArtifactView({
         artifact_type: dialect === "modelica" ? "modelica-diagram" : dialect,
         dialect,
-        title: title || defaultTitle,
-        view_config: JSON.stringify({ code, title, dialect }),
+        title: finalTitle,
+        view_config: JSON.stringify({ code, title: finalTitle, dialect }),
       });
       if (!created?.id) {
-        throw new Error("Failed to create Morsel artifact view: missing artifact ID.");
+        throw new Error("Failed to create model artifact: missing artifact ID.");
       }
       onAttach({
         id: created.id,
         code,
-        title,
+        title: finalTitle,
         dialect,
       });
       onClose();
     } catch (err: any) {
-      console.error("Failed to create Morsel artifact view:", err);
+      console.error("Failed to create model artifact view:", err);
       const errMsg =
         err?.response?.data?.error ||
         err?.message ||
-        "Failed to save Morsel artifact. Please check your connection and try again.";
+        "Failed to save model artifact. Please check your connection and try again.";
       setAttachError(errMsg);
     } finally {
       setAttaching(false);
     }
+  };
+
+  const handleOpenInFullSketch = () => {
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: dialect,
+      code,
+      title: modelTitle.trim() || "Model",
+    });
+    window.open(`/sketch#m=${hash}`, "_blank", "noopener,noreferrer");
   };
 
   const modal = (
@@ -204,10 +221,26 @@ end MySystem;`,
       <ModalContent $isFullScreen={isFullScreen} onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <HeaderLeft>
-            <Badge>⚡ Morsel Editor</Badge>
-            <Text style={{ fontSize: "13px", fontWeight: "bold", color: "var(--color-fg-default)" }}>
-              Construct Diagram & Simulation
-            </Text>
+            <Badge>⚡ Sketch</Badge>
+            <input
+              type="text"
+              value={modelTitle}
+              onChange={(e) => setModelTitle(e.target.value)}
+              placeholder="Model title…"
+              aria-label="Model title"
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "var(--color-fg-default, #f0f6fc)",
+                background: "var(--color-canvas-default, #0d1117)",
+                border: "1px solid var(--color-border-default, #30363d)",
+                borderRadius: "6px",
+                padding: "3px 8px",
+                minWidth: "120px",
+                maxWidth: "180px",
+                outline: "none",
+              }}
+            />
             <DialectSelect
               value={dialect}
               onChange={(e) => handleDialectChange(e.target.value)}
@@ -219,9 +252,39 @@ end MySystem;`,
                 </option>
               ))}
             </DialectSelect>
+            <DialectSelect
+              defaultValue=""
+              onChange={(e) => {
+                const ex = HERO_EXAMPLES.find((x) => x.id === e.target.value);
+                if (ex) {
+                  setCode(ex.code);
+                  setModelTitle(ex.title);
+                  if (ex.lang && ex.lang !== dialect) {
+                    setDialect(ex.lang);
+                  }
+                }
+              }}
+              aria-label="Starter template"
+            >
+              <option value="" disabled>
+                Template…
+              </option>
+              {HERO_EXAMPLES.map((ex) => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.title} ({ex.category})
+                </option>
+              ))}
+            </DialectSelect>
           </HeaderLeft>
 
           <HeaderRight>
+            <IconButton
+              aria-label="Open in full Sketch workbench"
+              icon={LinkExternalIcon}
+              size="small"
+              onClick={handleOpenInFullSketch}
+              title="Open in full Sketch workbench"
+            />
             <IconButton
               aria-label={isFullScreen ? "Exit Full Screen" : "Full Screen"}
               icon={isFullScreen ? ScreenNormalIcon : ScreenFullIcon}
@@ -238,7 +301,8 @@ end MySystem;`,
             initialCode={code}
             initialDialect={dialect}
             onDialectChange={handleDialectChange}
-            embed={true}
+            embed={false}
+            hideFloatingDock={true}
             onCodeChange={(newCode: string) => {
               setCode(newCode);
             }}

@@ -486,7 +486,7 @@ export const PlaygroundPage: React.FC = () => {
           if (cancelled) return;
           const art = res?.artifactView || res;
           if (!art) {
-            toast.error("Failed to load artifact into Playground");
+            toast.error("Failed to load model into Sketch");
             setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
             setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
             return;
@@ -594,7 +594,7 @@ export const PlaygroundPage: React.FC = () => {
         } catch (err) {
           console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", effectiveArtifactId, err);
           if (!cancelled) {
-            toast.error("Failed to load artifact into Playground");
+            toast.error("Failed to load model into Sketch");
             setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
             setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
           }
@@ -1044,6 +1044,7 @@ export const PlaygroundPage: React.FC = () => {
     viewParam === "code" || viewParam === "simulation" || viewParam === "split" ? viewParam : "diagram",
   );
   const [simulateTriggerCount, setSimulateTriggerCount] = useState(0);
+  const [isSimulating, setIsSimulating] = useState(false);
 
   const handleViewChange = (nextView: "diagram" | "code" | "split" | "simulation") => {
     setCurrentView(nextView);
@@ -1093,8 +1094,8 @@ export const PlaygroundPage: React.FC = () => {
     : replyToPostId
       ? "Reply to Post"
       : resolvedFromArtifact
-        ? "Fork to Feed"
-        : "Post to Feed";
+        ? "Post your fork"
+        : "Post";
 
   return (
     <PlaygroundContainer>
@@ -1104,6 +1105,7 @@ export const PlaygroundPage: React.FC = () => {
         currentLang={currentLang}
         currentView={currentView}
         isDirty={isDirty}
+        isSimulating={isSimulating}
         publishLabel={publishLabel}
         onTitleChange={handleTitleChange}
         onSelectExample={handleSelectExample}
@@ -1194,13 +1196,14 @@ export const PlaygroundPage: React.FC = () => {
             }}
           >
             <Spinner size="large" />
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading artifact into Playground…</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Sketch…</div>
           </div>
         ) : (
           <MorselEditor
             dataUrl={null}
             initialCode={currentCode}
             embed={false}
+            hideFloatingDock={true}
             initialDialect={currentLang}
             initialView={currentView}
             initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
@@ -1210,6 +1213,10 @@ export const PlaygroundPage: React.FC = () => {
             onCodeChange={handleCodeChange}
             onActiveViewChange={handleActiveViewChange}
             onParametersChange={handleParametersChange}
+            onSimulationStatus={(status: { status?: string } | string | null | undefined) => {
+              const s = typeof status === "string" ? status : status?.status;
+              setIsSimulating(s === "pending" || s === "processing");
+            }}
             onDialectChange={(dialect: string) => {
               setCurrentLang(dialect);
             }}

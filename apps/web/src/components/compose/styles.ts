@@ -198,11 +198,36 @@ export const ComposeInput = styled.textarea`
 `;
 
 export const QuoteWrapper = styled.div`
-  margin-top: 8px;
-  padding: 12px;
+  margin-top: 6px;
+  padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background-color: rgba(255, 255, 255, 0.02);
+`;
+
+export const NestedQuoteWrapper = styled.div`
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 3.5px solid var(--ms-border-strong, var(--color-border-strong, #8b949e));
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-radius: 1px;
+`;
+
+export const TimestampButton = styled.button.attrs({ type: "button" })`
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+  }
 `;
 
 export const NotebookContainer = styled.div`
@@ -688,11 +713,18 @@ export const SlashMenuItemButton = styled.button<{ $selected?: boolean | undefin
   }
 `;
 
+import { parseUtcDate } from "../../util/date";
+
 export function formatRelativeTime(dateString: string): string {
   if (!dateString) return "";
-  const date = new Date(dateString);
+  const date = parseUtcDate(dateString);
+  if (Number.isNaN(date.getTime())) return "";
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diffInSeconds < 0 && diffInSeconds >= -60) return "Just now";
+  if (diffInSeconds < 0) {
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
   if (diffInSeconds < 60) return "Just now";
   const diffInMinutes = Math.floor(diffInSeconds / 60);
   if (diffInMinutes < 60) return `${diffInMinutes}m`;
@@ -701,4 +733,15 @@ export function formatRelativeTime(dateString: string): string {
   const diffInDays = Math.floor(diffInHours / 24);
   if (diffInDays < 7) return `${diffInDays}d`;
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export function formatFullTimestamp(dateString?: string | null): string {
+  if (!dateString) return "";
+  try {
+    const d = parseUtcDate(dateString);
+    if (isNaN(d.getTime())) return "";
+    return `${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+  } catch {
+    return "";
+  }
 }

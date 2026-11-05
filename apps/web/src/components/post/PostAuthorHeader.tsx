@@ -9,7 +9,15 @@ import Box from "../Box";
 import FederatedDomainPill from "../FederatedDomainPill";
 import ProfileHoverCard from "../ProfileHoverCard";
 import { PostActionMenu } from "./PostActionMenu";
-import { ActionButton, AiBadge, HoverAvatar, ProfileNameLink, SignatureBadge, formatRelativeTime } from "./styles";
+import {
+  ActionButton,
+  AiBadge,
+  HoverAvatar,
+  ProfileNameLink,
+  SignatureBadge,
+  formatFullTimestamp,
+  formatRelativeTime,
+} from "./styles";
 
 export interface PostAuthorHeaderProps {
   displayPost: any;
@@ -246,12 +254,10 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
       <Text className="handle-text" style={{ fontSize: "15px", lineHeight: "20px", flexShrink: 0 }}>
         ·
       </Text>
-      <Tooltip
-        text={`${new Date(displayPost.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${new Date(displayPost.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`}
-        direction="s"
-      >
-        <button
-          type="button"
+      <Tooltip text={formatFullTimestamp(displayPost.created_at)} direction="s">
+        <Link
+          to={`/@${displayPost.username}/status/${displayPost.id}`}
+          onClick={(e) => e.stopPropagation()}
           style={{
             background: "none",
             border: "none",
@@ -262,6 +268,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             lineHeight: "20px",
             display: "inline-flex",
             alignItems: "center",
+            textDecoration: "none",
           }}
         >
           <Text
@@ -270,7 +277,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           >
             {formatRelativeTime(displayPost.created_at)}
           </Text>
-        </button>
+        </Link>
       </Tooltip>
       <Box flex={1} />
       <Box position="relative" mr={1} style={{ zIndex: showPostMenu ? 200 : undefined, flexShrink: 0 }}>

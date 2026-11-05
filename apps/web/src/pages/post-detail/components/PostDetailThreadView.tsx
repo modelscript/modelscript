@@ -16,6 +16,7 @@ export interface PostDetailThreadViewProps {
   replies: PostItem[];
   user: any;
   mainPostRef: React.RefObject<HTMLDivElement | null>;
+  parentsContainerRef?: React.RefObject<HTMLDivElement | null> | undefined;
   activeBotTyping: ActiveBotTypingState | null;
   onReplyCreated: (reply: PostItem) => void;
 }
@@ -26,42 +27,52 @@ export const PostDetailThreadView: React.FC<PostDetailThreadViewProps> = ({
   replies,
   user,
   mainPostRef,
+  parentsContainerRef,
   activeBotTyping,
   onReplyCreated,
 }) => {
   return (
     <>
-      {parents.map((parent) => (
-        <Post key={parent.id} post={parent} isThread={true} />
-      ))}
-
-      <div ref={mainPostRef}>
-        <Post post={post} isDetail={true} />
+      <div ref={parentsContainerRef} data-thread-parents="true">
+        {parents.map((parent) => (
+          <Post key={parent.id} post={parent} isThread={true} />
+        ))}
       </div>
 
-      <div id="article-discussion" style={{ scrollMarginTop: "70px" }}>
-        {user && (
-          <ReplyInputContainer>
-            <ComposeBox replyToPost={post} onPostCreated={onReplyCreated} />
-          </ReplyInputContainer>
-        )}
+      <div
+        data-thread-target-container="true"
+        style={{
+          minHeight: parents.length > 0 ? "calc(100dvh - var(--dev-header-height, 0px) - 54px)" : undefined,
+        }}
+      >
+        <div ref={mainPostRef} data-thread-target-post="true">
+          <Post post={post} isDetail={true} />
+        </div>
 
-        {replies.length > 0 ? (
-          <Box>
-            {replies.map((reply) => (
-              <Post key={reply.id} post={reply} />
-            ))}
-            {activeBotTyping && (
-              <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
-            )}
-          </Box>
-        ) : activeBotTyping ? (
-          <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
-        ) : (
-          <Box p={4} textAlign="center">
-            <Text color="var(--color-fg-muted)">No replies yet.</Text>
-          </Box>
-        )}
+        <div id="article-discussion" style={{ scrollMarginTop: "70px" }}>
+          {user && (
+            <ReplyInputContainer>
+              <ComposeBox replyToPost={post} onPostCreated={onReplyCreated} />
+            </ReplyInputContainer>
+          )}
+
+          {replies.length > 0 ? (
+            <Box>
+              {replies.map((reply) => (
+                <Post key={reply.id} post={reply} />
+              ))}
+              {activeBotTyping && (
+                <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
+              )}
+            </Box>
+          ) : activeBotTyping ? (
+            <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
+          ) : (
+            <Box p={4} textAlign="center">
+              <Text color="var(--color-fg-muted)">No replies yet.</Text>
+            </Box>
+          )}
+        </div>
       </div>
     </>
   );

@@ -4,9 +4,11 @@
  * Formats an ISO date string into an accurate, human-readable relative time
  * (e.g., "just now", "12 minutes ago", "3 hours ago", "2 days ago", "last month").
  */
+import { parseUtcDate } from "../../util/date";
+
 export function getRelativeTime(dateString?: string | null): string {
   if (!dateString) return "recently";
-  const parsed = new Date(dateString).getTime();
+  const parsed = parseUtcDate(dateString).getTime();
   if (Number.isNaN(parsed)) return "recently";
 
   const diffMs = parsed - Date.now();

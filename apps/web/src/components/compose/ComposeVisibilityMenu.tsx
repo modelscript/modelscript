@@ -29,6 +29,7 @@ export interface ComposeVisibilityMenuProps {
   isNotebookMode?: boolean | undefined;
   handleToggleNotebookMode?: (() => void) | undefined;
   onOpenDrafts?: (() => void) | undefined;
+  isQuote?: boolean | undefined;
 }
 
 export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
@@ -42,6 +43,7 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
   isNotebookMode,
   handleToggleNotebookMode,
   onOpenDrafts,
+  isQuote,
 }) => {
   const isVisible = visible || showVisibilityMenu;
   const menuContainerRef = useRef<HTMLDivElement>(null);
@@ -75,8 +77,8 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
       >
         <div style={{ overflow: "hidden", minHeight: 0 }}>
           <Box
-            mt={2}
-            mb={2}
+            mt={isQuote ? 1 : 2}
+            mb={isQuote ? 1 : 2}
             display="flex"
             alignItems="center"
             justifyContent="space-between"

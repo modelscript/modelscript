@@ -18,7 +18,16 @@ import FederatedDomainPill from "../FederatedDomainPill";
 import ProfileHoverCard from "../ProfileHoverCard";
 import { PostActionMenu } from "./PostActionMenu";
 import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
-import { ActionButton, AiBadge, HoverAvatar, ProfileNameLink, SignatureBadge, formatRelativeTime } from "./styles";
+import {
+  ActionButton,
+  AiBadge,
+  HoverAvatar,
+  ProfileNameLink,
+  SignatureBadge,
+  formatEditorialDate,
+  formatRelativeTime,
+  formatTooltipDate,
+} from "./styles";
 
 export interface PostNotebookHeaderProps {
   notebookData: {
@@ -39,17 +48,6 @@ export interface PostNotebookHeaderProps {
   notebookHeadings: { slug: string; level: number; text: string }[];
   onHeadingClick: (slug: string) => void;
   authorHeaderProps?: PostAuthorHeaderProps | undefined;
-}
-
-function formatEditorialDate(dateString: string | undefined): string {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
@@ -421,10 +419,7 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
               >
                 {displayPost.created_at && (
                   <>
-                    <Tooltip
-                      text={`${new Date(displayPost.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${new Date(displayPost.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`}
-                      direction="s"
-                    >
+                    <Tooltip text={formatTooltipDate(displayPost.created_at)} direction="s">
                       <button
                         type="button"
                         style={{
@@ -452,10 +447,7 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                 {wasUpdated && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <Tooltip
-                      text={`Last updated ${new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${new Date(updatedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`}
-                      direction="s"
-                    >
+                    <Tooltip text={`Last updated ${formatTooltipDate(updatedAt)}`} direction="s">
                       <button
                         type="button"
                         style={{

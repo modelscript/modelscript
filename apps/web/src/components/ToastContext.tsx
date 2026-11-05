@@ -12,12 +12,13 @@ export interface ToastOptions {
   id?: string | undefined;
   type?: ToastType | undefined;
   title?: string | undefined;
-  message: string;
+  message: React.ReactNode;
   duration?: number | undefined; // ms, defaults to 4000
   action?:
     | {
         label: string;
-        onClick: () => void;
+        onClick?: (() => void) | undefined;
+        href?: string | undefined;
       }
     | undefined;
 }
@@ -35,12 +36,12 @@ interface ToastTimerEntry {
 
 export interface ToastContextValue {
   toast: (options: string | ToastOptions) => string;
-  show: (message: string, options?: { type?: ToastType | undefined; title?: string | undefined }) => string;
-  showToast: (message: string, type?: ToastType, title?: string) => string;
-  success: (message: string, title?: string) => string;
-  error: (message: string, title?: string) => string;
-  info: (message: string, title?: string) => string;
-  warning: (message: string, title?: string) => string;
+  show: (message: React.ReactNode, options?: { type?: ToastType | undefined; title?: string | undefined }) => string;
+  showToast: (message: React.ReactNode, type?: ToastType, title?: string) => string;
+  success: (message: React.ReactNode, title?: string) => string;
+  error: (message: React.ReactNode, title?: string) => string;
+  info: (message: React.ReactNode, title?: string) => string;
+  warning: (message: React.ReactNode, title?: string) => string;
   dismiss: (id: string) => void;
 }
 
@@ -166,25 +167,48 @@ const Message = styled.div`
   color: var(--color-text-muted, #94a3b8);
   line-height: 1.4;
   word-break: break-word;
+
+  a {
+    color: var(--color-accent-cyan, #06b6d4);
+    text-decoration: underline;
+    font-weight: 500;
+
+    &:hover {
+      color: #38bdf8;
+    }
+  }
 `;
 
-const ActionButton = styled.button`
+const actionCommonStyles = css`
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--color-border);
   color: var(--color-text-primary);
   border-radius: var(--radius-sm, 6px);
-  padding: 4px 8px;
+  padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   margin-top: 6px;
   align-self: flex-start;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   transition: all 0.15s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.15);
     border-color: var(--color-accent-cyan);
+    color: var(--color-text-primary);
   }
+`;
+
+const ActionButton = styled.button`
+  ${actionCommonStyles}
+`;
+
+const ActionLink = styled.a`
+  ${actionCommonStyles}
 `;
 
 const CloseButton = styled.button`
@@ -305,27 +329,33 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [clearToastTimer, dismiss],
   );
 
-  const success = useCallback((message: string, title?: string) => toast({ type: "success", message, title }), [toast]);
-
-  const error = useCallback(
-    (message: string, title?: string) => toast({ type: "error", message, title, duration: 6000 }),
+  const success = useCallback(
+    (message: React.ReactNode, title?: string) => toast({ type: "success", message, title }),
     [toast],
   );
 
-  const info = useCallback((message: string, title?: string) => toast({ type: "info", message, title }), [toast]);
+  const error = useCallback(
+    (message: React.ReactNode, title?: string) => toast({ type: "error", message, title, duration: 6000 }),
+    [toast],
+  );
+
+  const info = useCallback(
+    (message: React.ReactNode, title?: string) => toast({ type: "info", message, title }),
+    [toast],
+  );
 
   const warning = useCallback(
-    (message: string, title?: string) => toast({ type: "warning", message, title, duration: 5000 }),
+    (message: React.ReactNode, title?: string) => toast({ type: "warning", message, title, duration: 5000 }),
     [toast],
   );
 
   const showToast = useCallback(
-    (message: string, type: ToastType = "info", title?: string) => toast({ type, message, title }),
+    (message: React.ReactNode, type: ToastType = "info", title?: string) => toast({ type, message, title }),
     [toast],
   );
 
   const show = useCallback(
-    (message: string, options?: { type?: ToastType | undefined; title?: string | undefined }) =>
+    (message: React.ReactNode, options?: { type?: ToastType | undefined; title?: string | undefined }) =>
       toast({ type: options?.type || "info", message, title: options?.title }),
     [toast],
   );
@@ -358,17 +388,37 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             <ContentWrap>
               {t.title && <Title>{t.title}</Title>}
               <Message>{t.message}</Message>
-              {t.action && (
-                <ActionButton
-                  type="button"
-                  onClick={() => {
-                    t.action?.onClick();
-                    dismiss(t.id);
-                  }}
-                >
-                  {t.action.label}
-                </ActionButton>
-              )}
+              {t.action &&
+                (t.action.href ? (
+                  <ActionLink
+                    href={t.action.href}
+                    onClick={(e) => {
+                      if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
+                        e.preventDefault();
+                        if (t.action?.onClick) {
+                          t.action.onClick();
+                        } else if (typeof window !== "undefined") {
+                          window.location.assign(t.action.href!);
+                        }
+                      } else {
+                        t.action?.onClick?.();
+                      }
+                      dismiss(t.id);
+                    }}
+                  >
+                    {t.action.label}
+                  </ActionLink>
+                ) : (
+                  <ActionButton
+                    type="button"
+                    onClick={() => {
+                      t.action?.onClick?.();
+                      dismiss(t.id);
+                    }}
+                  >
+                    {t.action.label}
+                  </ActionButton>
+                ))}
             </ContentWrap>
             <CloseButton type="button" aria-label="Dismiss notification" onClick={() => dismiss(t.id)}>
               <XIcon size={14} />
@@ -380,10 +430,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
+const fallbackToastContext: ToastContextValue = {
+  toast: () => "",
+  show: () => "",
+  showToast: () => "",
+  success: () => "",
+  error: () => "",
+  info: () => "",
+  warning: () => "",
+  dismiss: () => {},
+};
+
 export function useToast(): ToastContextValue {
   const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error("useToast must be used within a ToastProvider");
-  }
-  return context;
+  return context || fallbackToastContext;
 }

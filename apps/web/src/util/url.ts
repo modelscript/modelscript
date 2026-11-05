@@ -133,3 +133,29 @@ export function encodePackagePath(name: string): string {
   }
   return encodeURIComponent(name);
 }
+
+/**
+ * Resolves the canonical router URL for a post or status update.
+ * If the author username is present, returns `/@username/status/:id`.
+ * Otherwise falls back to `/posts/:id`.
+ */
+export function getPostUrl(
+  post:
+    | {
+        id?: string | number | null | undefined;
+        username?: string | null | undefined;
+        author?: { username?: string | null | undefined } | null | undefined;
+      }
+    | null
+    | undefined,
+): string | null {
+  if (!post || post.id === undefined || post.id === null) return null;
+  const rawUsername = post.author?.username || post.username;
+  if (rawUsername) {
+    const cleanUsername = String(rawUsername).replace(/^@+/, "").trim();
+    if (cleanUsername) {
+      return `/@${cleanUsername}/status/${post.id}`;
+    }
+  }
+  return `/posts/${post.id}`;
+}

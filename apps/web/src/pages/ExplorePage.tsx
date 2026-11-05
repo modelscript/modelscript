@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { parseUtcDate } from "../util/date";
 import { usePageTitle } from "../util/title";
 import type { ExploreLandingTab, PackageData, PersonData, PostData, RepoData, SearchTab, TopicData } from "./explore";
 import { ExploreLandingView, ExploreSearchResultsView, ExploreTopicView } from "./explore";
@@ -422,13 +423,16 @@ const ExplorePage: React.FC = () => {
     const engA = (a as unknown as { engagement_score?: number }).engagement_score || 0;
     const engB = (b as unknown as { engagement_score?: number }).engagement_score || 0;
     if (engB !== engA) return engB - engA;
-    return (new Date(b.created_at as string).getTime() || 0) - (new Date(a.created_at as string).getTime() || 0);
+    return (
+      (parseUtcDate(b.created_at as string).getTime() || 0) - (parseUtcDate(a.created_at as string).getTime() || 0)
+    );
   });
 
   const latestPosts = posts
     .filter(matchesQuery)
     .sort(
-      (a, b) => (new Date(b.created_at as string).getTime() || 0) - (new Date(a.created_at as string).getTime() || 0),
+      (a, b) =>
+        (parseUtcDate(b.created_at as string).getTime() || 0) - (parseUtcDate(a.created_at as string).getTime() || 0),
     );
 
   const mediaPosts = posts.filter((p) => matchesQuery(p) && hasPostMedia(p));
