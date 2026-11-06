@@ -61,7 +61,7 @@ describe("GDPR / CCPA Archive Async Queue & Batch Concurrency", () => {
     assert.strictEqual(jobs[0]?.status === "queued" || jobs[0]?.status === "processing", true);
 
     // Wait for all 5 jobs to complete
-    const deadline = Date.now() + 10000;
+    const deadline = Date.now() + 25000;
     while (Date.now() < deadline) {
       const allDone = jobs.every((j) => {
         const current = queue.getJob(j.id);

@@ -11,9 +11,20 @@ import {
   preprocessPdfFile,
 } from "../services/artifact-preprocessor.js";
 
-const uploadDir = path.join(process.cwd(), "data", "uploads");
+const uploadDir =
+  process.env["UPLOAD_DIR"] ||
+  (process.env["DATA_DIR"]
+    ? path.join(process.env["DATA_DIR"], "uploads")
+    : path.join(process.cwd(), "data", "uploads"));
+
 if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+  try {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+      console.warn(`[storage] Warning: could not create upload directory '${uploadDir}':`, err);
+    }
+  }
 }
 
 /** Only accept a plain (dotted) Modelica identifier path as a class hint; anything else is ignored. */

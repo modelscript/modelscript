@@ -17,7 +17,11 @@ export interface PreprocessOptions {
   primaryClass?: string | undefined;
 }
 
-const DEFAULT_UPLOAD_DIR = path.resolve(process.cwd(), "data", "uploads");
+const DEFAULT_UPLOAD_DIR =
+  process.env["UPLOAD_DIR"] ||
+  (process.env["DATA_DIR"]
+    ? path.join(process.env["DATA_DIR"], "uploads")
+    : path.resolve(process.cwd(), "data", "uploads"));
 
 /**
  * Extract PDF page count, metadata, and render a first-page PNG thumbnail.

@@ -2082,7 +2082,11 @@ export function socialRouter(
       typeof parsed["thumbnailUrl"] === "string" ? parsed["thumbnailUrl"] : undefined;
 
     if (inlineCode.trim().length > 0 && !parsed["svg"] && artifactType) {
-      const uploadDir = path.resolve(process.cwd(), "data", "uploads");
+      const uploadDir =
+        process.env["UPLOAD_DIR"] ||
+        (process.env["DATA_DIR"]
+          ? path.join(process.env["DATA_DIR"], "uploads")
+          : path.resolve(process.cwd(), "data", "uploads"));
       try {
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });

@@ -51,6 +51,34 @@ if [ -f "${TARGET_DIR}/scripts/backup.sh" ]; then
   chmod +x "${TARGET_DIR}/scripts/backup.sh" "${TARGET_DIR}/scripts/restore.sh" 2>/dev/null || true
   "${TARGET_DIR}/scripts/backup.sh" "pre-deploy" || true
   LATEST_BACKUP="$(ls -1t "${TARGET_DIR}/backups"/snapshot-pre-deploy-*.db 2>/dev/null | head -n1 || true)"
+  # Retain only the 5 most recent database snapshots to prevent disk exhaustion
+  if [ -d "${TARGET_DIR}/backups" ]; then
+    ls -1dt "${TARGET_DIR}/backups"/snapshot-*.db 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
+  fi
+fi
+
+# Step 2b: Host disk headroom sentinel & proactive Docker cleanup
+echo "==> Auditing host disk headroom..."
+# 1. Prune stopped containers, dangling builder caches, and untagged dangling images
+docker container prune -f >/dev/null 2>&1 || true
+docker builder prune -f --keep-storage=1GB >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+
+# 2. Check available disk space on TARGET_DIR
+AVAIL_KB=$(df -k "${TARGET_DIR}" 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)
+echo "    Available disk space: $((AVAIL_KB / 1024)) MB"
+
+# If available space is below 8 GB (8388608 KB), prune unreferenced images older than 12h
+if [ "${AVAIL_KB:-0}" -lt 8388608 ]; then
+  echo "⚠️  Low disk space (<8GB). Pruning unreferenced historical Docker images..."
+  docker image prune -af --filter "until=12h" >/dev/null 2>&1 || true
+fi
+
+# Re-check: If still under 4 GB, perform aggressive system prune of all unreferenced images
+AVAIL_KB=$(df -k "${TARGET_DIR}" 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)
+if [ "${AVAIL_KB:-0}" -lt 4194304 ]; then
+  echo "⚠️  Critical disk space (<4GB). Performing aggressive Docker system prune..."
+  docker system prune -af --volumes=false >/dev/null 2>&1 || true
 fi
 
 # Step 3: Pull target Docker images
@@ -62,6 +90,7 @@ echo "==> Normalizing volume permissions for unprivileged node user (uid 1000)..
 for vol in api-data api-backups api-uploads api-thumbnails api-packages; do
   vol_dir=$(docker volume inspect "modelscript_${vol}" --format '{{.Mountpoint}}' 2>/dev/null || docker volume inspect "${vol}" --format '{{.Mountpoint}}' 2>/dev/null || true)
   if [ -n "${vol_dir}" ] && [ -d "${vol_dir}" ]; then
+    mkdir -p "${vol_dir}/uploads" "${vol_dir}/libraries" "${vol_dir}/backups" 2>/dev/null || true
     chown -R 1000:1000 "${vol_dir}" 2>/dev/null || true
   fi
 done
@@ -149,8 +178,8 @@ if [ "${ROLLOUT_FAILED}" = "true" ]; then
 fi
 
 # Step 7: Success & image cleanup
-echo "==> Pruning historical container images older than 72 hours..."
-docker image prune -f --filter 'until=72h' >/dev/null 2>&1 || true
+echo "==> Pruning historical container images older than 24 hours..."
+docker image prune -af --filter 'until=24h' >/dev/null 2>&1 || true
 
 echo "================================================================================"
 echo "✓ DEPLOYMENT COMPLETE: ${IMAGE_TAG} successfully active on production!"

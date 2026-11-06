@@ -635,4 +635,5 @@ jobs:
 
           # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback
           ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin >/dev/null 2>&1 || true && \
+            docker system prune -af --filter 'until=24h' --volumes=false >/dev/null 2>&1 || true && \
             IMAGE_TAG=sha-${GITHUB_SHA} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/deploy.sh"
