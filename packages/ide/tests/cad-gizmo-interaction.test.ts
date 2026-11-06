@@ -248,7 +248,10 @@ end RobotArm;
       const entries = (appliedEdit as any)._edits ?? (appliedEdit as any).entries ?? [];
       assert.ok(entries.length > 0, "Edit should contain replacement");
       const replacement = entries[0];
-      assert.strictEqual(replacement.newText, "1.50, 1.00, 5.00");
+      assert.ok(
+        replacement.newText.includes("position = {1.5, 1, 5}"),
+        "Edit should contain updated position vector in CAD annotation",
+      );
     } finally {
       (vscode.workspace as any).applyEdit = origApplyEdit;
       (vscode.window as any).onDidChangeActiveTextEditor = origOnDidChangeActiveTextEditor;

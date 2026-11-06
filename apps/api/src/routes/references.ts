@@ -2117,9 +2117,17 @@ export function referencesRouter(database: LibraryDatabase): Router {
         } else if (typeof localFilePath === "string" && localFilePath.trim()) {
           const raw = localFilePath.trim();
           const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
-          const allowedRoots = [cacheDir, path.resolve(os.tmpdir()), path.resolve(process.cwd())];
+          const tmpDir = path.resolve(os.tmpdir());
+          const cwdDir = path.resolve(process.cwd());
           const resolved = path.resolve(raw);
-          if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+          if (
+            !resolved.startsWith(cacheDir + path.sep) &&
+            !resolved.startsWith(tmpDir + path.sep) &&
+            !resolved.startsWith(cwdDir + path.sep) &&
+            resolved !== cacheDir &&
+            resolved !== tmpDir &&
+            resolved !== cwdDir
+          ) {
             res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
             return;
           }
@@ -2356,9 +2364,17 @@ export function referencesRouter(database: LibraryDatabase): Router {
         if (localFilePath) {
           const raw = String(localFilePath).trim();
           const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
-          const allowedRoots = [cacheDir, path.resolve(os.tmpdir()), path.resolve(process.cwd())];
+          const tmpDir = path.resolve(os.tmpdir());
+          const cwdDir = path.resolve(process.cwd());
           const resolved = path.resolve(raw);
-          if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+          if (
+            !resolved.startsWith(cacheDir + path.sep) &&
+            !resolved.startsWith(tmpDir + path.sep) &&
+            !resolved.startsWith(cwdDir + path.sep) &&
+            resolved !== cacheDir &&
+            resolved !== tmpDir &&
+            resolved !== cwdDir
+          ) {
             res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
             return;
           }

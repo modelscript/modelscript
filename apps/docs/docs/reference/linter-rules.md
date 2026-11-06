@@ -97,7 +97,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
 
 ::: info Not yet listed
-These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [OpenUSD](../languages/usd.md). See each language guide for details.
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: cgmes, [OpenUSD](../languages/usd.md). See each language guide for details.
 :::
 
 ## Modelica {#modelica}

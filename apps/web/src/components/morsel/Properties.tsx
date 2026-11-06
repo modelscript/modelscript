@@ -14,7 +14,7 @@ import { ChevronRightIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MorselIcon } from "../icons";
+import { AnsatzSketchIcon } from "../icons";
 import Spinner from "../Spinner";
 import { ComponentIcon } from "./ComponentList";
 import type { Translations } from "./util/i18n";
@@ -945,7 +945,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             color: "var(--ms-brand, #0891b2)",
           }}
         >
-          <MorselIcon size={24} />
+          <AnsatzSketchIcon size={24} variant="triangle" />
         </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-fg-default)", marginBottom: 6 }}>
           {translations.noComponentSelected}

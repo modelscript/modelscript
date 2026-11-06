@@ -630,7 +630,7 @@ function buildClassAdapter(
             ? (queryDB.cstText(child.startOffset, child.endOffset, child) ?? "")
             : "";
         const m = connText.match(
-          /\bconnect\s*\(\s*([^,()]+(?:\[[^\]]*\])?(?:\.[^,()]+)*)\s*,\s*([^,()]+(?:\[[^\]]*\])?(?:\.[^,()]+)*)\s*\)/,
+          /\bconnect\s*\(\s*((?:[a-zA-Z0-9_]+|'[^']+')(?:\[[^\]]*\])?(?:\.(?:[a-zA-Z0-9_]+|'[^']+')(?:\[[^\]]*\])?)*)\s*,\s*((?:[a-zA-Z0-9_]+|'[^']+')(?:\[[^\]]*\])?(?:\.(?:[a-zA-Z0-9_]+|'[^']+')(?:\[[^\]]*\])?)*)\s*\)/,
         );
         if (m) {
           if (!lhs && m[1]) lhs = m[1].trim();
@@ -1162,12 +1162,22 @@ export async function processLibrary(
           if (/\bDocumentation\s*\(/.test(ownSrc)) {
             const docMatch = ownSrc.match(/\bDocumentation\s*\([\s\S]*?\binfo\s*=\s*"((?:[^"\\]|\\.)*)"\s*[,)]/);
             if (docMatch && docMatch[1] !== undefined) {
-              documentation = docMatch[1]
-                .replace(/\\"/g, '"')
-                .replace(/\\\\/g, "\\")
-                .replace(/\\n/g, "\n")
-                .replace(/\\r/g, "\r")
-                .replace(/\\t/g, "\t");
+              documentation = docMatch[1].replace(/\\(["\\nrt])/g, (_, ch) => {
+                switch (ch) {
+                  case '"':
+                    return '"';
+                  case "\\":
+                    return "\\";
+                  case "n":
+                    return "\n";
+                  case "r":
+                    return "\r";
+                  case "t":
+                    return "\t";
+                  default:
+                    return ch;
+                }
+              });
             } else {
               if (!cstNode) cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
               if (cstNode) {

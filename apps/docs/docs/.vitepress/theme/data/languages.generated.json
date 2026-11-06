@@ -821,7 +821,12 @@
       "summary",
       "diagram",
       "netlist",
-      "solve"
+      "solve",
+      "opf",
+      "fault",
+      "modes",
+      "n1",
+      "cpf"
     ],
     "capabilities": {
       "parse": true,
@@ -850,6 +855,8 @@
       "summary",
       "lint",
       "powerflow",
+      "opf",
+      "d-opf",
       "to-dae",
       "to-modelica"
     ],

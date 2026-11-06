@@ -13,6 +13,16 @@ const DANGEROUS_TAGS_REGEX =
 const EVENT_HANDLER_REGEX = /\s+on[a-z]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi;
 const DANGEROUS_URL_REGEX = /\s+(?:href|src|xlink:href)\s*=\s*["']?\s*(?:javascript|vbscript|data):[^"'\s>]*/gi;
 
+function stripRepeatedly(input: string, pattern: RegExp): string {
+  let prev: string;
+  let curr = input;
+  do {
+    prev = curr;
+    curr = curr.replace(pattern, "");
+  } while (curr !== prev);
+  return curr;
+}
+
 export function sanitizeRemoteHtml(input: string | undefined | null): string {
   if (!input || typeof input !== "string") return "";
   let clean = input;
@@ -27,11 +37,10 @@ export function sanitizeRemoteHtml(input: string | undefined | null): string {
   let iterations = 0;
   do {
     prev = clean;
-    clean = clean
-      .replace(DANGEROUS_BLOCK_REGEX, "")
-      .replace(DANGEROUS_TAGS_REGEX, "")
-      .replace(EVENT_HANDLER_REGEX, "")
-      .replace(DANGEROUS_URL_REGEX, "");
+    clean = stripRepeatedly(clean, DANGEROUS_BLOCK_REGEX);
+    clean = stripRepeatedly(clean, DANGEROUS_TAGS_REGEX);
+    clean = stripRepeatedly(clean, EVENT_HANDLER_REGEX);
+    clean = stripRepeatedly(clean, DANGEROUS_URL_REGEX);
     iterations++;
   } while (clean !== prev && iterations < 30);
 

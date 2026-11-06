@@ -2155,17 +2155,35 @@ export async function ingestOpenAlexFromS3OrFile(
   if (options.localFilePath) {
     const rawPath = options.localFilePath.trim();
     const cacheDir = path.resolve(options.cacheDir || getOpenAlexCacheDirectory(database));
-    const allowedRoots = [cacheDir, path.resolve(os.tmpdir()), path.resolve(process.cwd())];
+    const tmpDir = path.resolve(os.tmpdir());
+    const cwdDir = path.resolve(process.cwd());
     const resolvedPath = path.resolve(rawPath);
-    const isAllowed = allowedRoots.some((root) => resolvedPath === root || resolvedPath.startsWith(root + path.sep));
-    if (!isAllowed) {
+    if (
+      !resolvedPath.startsWith(cacheDir + path.sep) &&
+      !resolvedPath.startsWith(tmpDir + path.sep) &&
+      !resolvedPath.startsWith(cwdDir + path.sep) &&
+      resolvedPath !== cacheDir &&
+      resolvedPath !== tmpDir &&
+      resolvedPath !== cwdDir
+    ) {
       throw new Error(`Access denied: local file path outside allowed directory: ${rawPath}`);
     }
-    if (!fs.existsSync(resolvedPath)) {
+
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(resolvedPath);
+    } catch {
       throw new Error(`Local OpenAlex snapshot file not found: ${resolvedPath}`);
     }
-    const realPath = fs.realpathSync(resolvedPath);
-    if (!allowedRoots.some((root) => realPath === root || realPath.startsWith(root + path.sep))) {
+
+    if (
+      !realPath.startsWith(cacheDir + path.sep) &&
+      !realPath.startsWith(tmpDir + path.sep) &&
+      !realPath.startsWith(cwdDir + path.sep) &&
+      realPath !== cacheDir &&
+      realPath !== tmpDir &&
+      realPath !== cwdDir
+    ) {
       throw new Error(`Access denied: resolved symlink points outside allowed directory: ${rawPath}`);
     }
     const isGzipped = realPath.endsWith(".gz");

@@ -626,6 +626,55 @@
     "subcommands": []
   },
   {
+    "name": "cgmes",
+    "specs": [
+      "cgmes <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, convert and solve ENTSO-E CIM / CGMES European grid models",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, to-psse, to-modelica, solve)",
+        "choices": [
+          "inspect",
+          "lint",
+          "to-psse",
+          "to-modelica",
+          "solve"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "CGMES XML/RDF profile file(s) to process (EQ, TP, SSH, SV)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Target output file path"
+      },
+      {
+        "name": "alg",
+        "aliases": [],
+        "type": "string",
+        "description": "Solver algorithm for solve action: nr, helm, dc-opf, ac-opf",
+        "default": "ac-opf"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "cloud",
     "specs": [
       "cloud <action> [target]"
@@ -3725,7 +3774,7 @@
           "register <pubkey>"
         ],
         "aliases": [],
-        "describe": "Register an Ed25519 public key and enable Signed Account status",
+        "describe": "Register an Ed25519 public key and enable Verified Account status",
         "positionals": [
           {
             "name": "pubkey",
@@ -4837,12 +4886,14 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (inspect, lint, powerflow, to-dae, to-modelica)",
+        "description": "Action to perform (inspect, lint, powerflow, opf, to-dae, to-modelica)",
         "choices": [
           "inspect",
           "summary",
           "lint",
           "powerflow",
+          "opf",
+          "d-opf",
           "to-dae",
           "to-modelica"
         ]
@@ -5765,7 +5816,7 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (lint, summary, diagram, netlist, solve)",
+        "description": "Action to perform (lint, summary, diagram, netlist, solve, opf, fault, modes, n1)",
         "choices": [
           "inspect",
           "to-dae",
@@ -5774,7 +5825,12 @@
           "summary",
           "diagram",
           "netlist",
-          "solve"
+          "solve",
+          "opf",
+          "fault",
+          "modes",
+          "n1",
+          "cpf"
         ]
       },
       {
@@ -5793,7 +5849,7 @@
           "output"
         ],
         "type": "string",
-        "description": "Output file path (e.g. for SVG diagram)"
+        "description": "Output file path (e.g. for SVG diagram or report)"
       },
       {
         "name": "algorithm",
@@ -5801,12 +5857,26 @@
           "alg"
         ],
         "type": "string",
-        "description": "Power flow algorithm: 'nr' (Newton-Raphson) or 'fdpf' (Fast Decoupled)",
+        "description": "Power flow algorithm: 'nr' (Newton-Raphson), 'fdpf' (Fast Decoupled), or 'helm' (Holomorphic Embedding)",
         "choices": [
           "nr",
-          "fdpf"
+          "fdpf",
+          "helm"
         ],
         "default": "nr"
+      },
+      {
+        "name": "formulation",
+        "aliases": [
+          "form"
+        ],
+        "type": "string",
+        "description": "OPF formulation: 'dc' (linearized) or 'ac' (nonlinear)",
+        "choices": [
+          "dc",
+          "ac"
+        ],
+        "default": "dc"
       },
       {
         "name": "tol",
@@ -5819,7 +5889,7 @@
         "name": "max-iter",
         "aliases": [],
         "type": "number",
-        "description": "Maximum allowable power flow iterations",
+        "description": "Maximum allowable power flow iterations / HELM orders",
         "default": 25
       }
     ],

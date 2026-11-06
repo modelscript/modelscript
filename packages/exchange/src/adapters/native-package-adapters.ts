@@ -58,6 +58,8 @@ export const EXTENSION_TO_LANGUAGE_ID: Record<string, string> = {
   ".omm": "ccsds",
   ".opm": "ccsds",
   ".tdm": "ccsds",
+  ".cgmes": "cgmes",
+  ".cim": "cgmes",
   ".cfg": "cfd",
   ".foam": "cfd",
   ".su2": "cfd",

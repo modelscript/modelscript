@@ -601,6 +601,66 @@ Ti-6Al-4V Aerospace Actuator Bracket Static Stress Study
 *END STEP`,
   },
 
+  usd: {
+    filename: "RoboticManipulator.usda",
+    title: "OpenUSD UsdPhysics Articulated Robotic Manipulator Stage",
+    description:
+      "Hierarchical UTF-8 ASCII OpenUSD stage defining rigid bodies, revolute joint limits, diagonal inertia tensors, and time-sampled joint trajectories.",
+    viewLabel: "3D Digital Twin Prim Hierarchy & UsdPhysics DAG",
+    code: `#usda 1.0
+(
+    defaultPrim = "IndustrialArm"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+def Xform "IndustrialArm" (
+    kind = "assembly"
+)
+{
+    def Xform "base_link" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 12.5
+        float3 physics:diagonalInertia = (1.2, 1.2, 0.6)
+
+        def Cube "visual_base"
+        {
+            double size = 1.0
+            double3 xformOp:scale = (0.25, 0.25, 0.4)
+            uniform token[] xformOpOrder = ["xformOp:scale"]
+        }
+    }
+
+    def Xform "link_1" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 4.8
+        float3 physics:diagonalInertia = (0.45, 0.45, 0.12)
+
+        double3 xformOp:translate.timeSamples = {
+            0.0: (0.0, 0.0, 0.4),
+            0.5: (0.1, 0.0, 0.6),
+            1.0: (0.2, 0.0, 0.7),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PhysicsRevoluteJoint "shoulder_joint"
+    {
+        rel physics:body0 = </IndustrialArm/base_link>
+        rel physics:body1 = </IndustrialArm/link_1>
+        uniform token physics:axis = "Z"
+        float physics:lowerLimit = -3.14159
+        float physics:upperLimit = 3.14159
+    }
+}`,
+  },
+
   csv: {
     filename: "BatteryPackDriveCycle.csv",
     title: "EV Battery Pack WLTP Telemetry Time-Series",
@@ -2529,6 +2589,93 @@ function renderFeaCantileverSvg(_code: string, theme: "dark" | "light"): string 
 </svg>`;
 }
 
+function renderUsdStageSvg(_code: string, theme: "dark" | "light"): string {
+  const isDark = theme === "dark";
+  const bg = isDark ? "#0f172a" : "#f8fafc";
+  const panelBg = isDark ? "#1e293b" : "#ffffff";
+  const border = isDark ? "#334155" : "#cbd5e1";
+  const text = isDark ? "#f8fafc" : "#0f172a";
+  const muted = isDark ? "#94a3b8" : "#64748b";
+  const cyan = isDark ? "#38bdf8" : "#0284c7";
+  const emerald = "#10b981";
+  const amber = "#f59e0b";
+  const purple = isDark ? "#c084fc" : "#9333ea";
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" width="760" height="300" style="background-color: ${bg};">
+  <rect x="0" y="0" width="760" height="300" fill="${bg}"/>
+
+  <!-- Left Panel: 3D Digital Twin & UsdPhysics Kinematics -->
+  <rect x="20" y="20" width="370" height="260" rx="10" fill="${panelBg}" stroke="${border}" stroke-width="1.5"/>
+  <text x="36" y="44" fill="${muted}" font-family="Inter, sans-serif" font-size="10" font-weight="600" letter-spacing="0.06em">3D DIGITAL TWIN &amp; USDPHYSICS STAGE</text>
+
+  <!-- Ground Plane Grid -->
+  <line x1="50" y1="230" x2="350" y2="230" stroke="${border}" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="120" y1="250" x2="310" y2="190" stroke="${border}" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Base Link Cube: (mass = 12.5 kg) -->
+  <polygon points="175,170 235,188 175,206 115,188" fill="${isDark ? "#1e3a8a" : "#bae6fd"}" stroke="${cyan}" stroke-width="1.8"/>
+  <polygon points="115,188 175,206 175,236 115,218" fill="${isDark ? "#172554" : "#7dd3fc"}" stroke="${cyan}" stroke-width="1.8"/>
+  <polygon points="235,188 175,206 175,236 235,218" fill="${isDark ? "#1e40af" : "#38bdf8"}" stroke="${cyan}" stroke-width="1.8"/>
+  <text x="175" y="222" text-anchor="middle" fill="${isDark ? "#ffffff" : "#0f172a"}" font-family="Inter, sans-serif" font-size="10" font-weight="700">base_link</text>
+
+  <!-- Revolute Joint Axis Indicator (Z-Axis) -->
+  <ellipse cx="175" cy="160" rx="28" ry="10" fill="none" stroke="${amber}" stroke-width="1.8" stroke-dasharray="4 2"/>
+  <polygon points="203,160 200,154 206,155" fill="${amber}"/>
+  <line x1="175" y1="175" x2="175" y2="135" stroke="${amber}" stroke-width="2"/>
+  <text x="214" y="164" fill="${amber}" font-family="Inter, sans-serif" font-size="9.5" font-weight="700">j1: axis="Z"</text>
+
+  <!-- Link 1 Arm -->
+  <polygon points="175,100 240,118 175,136 110,118" fill="${isDark ? "#065f46" : "#a7f3d0"}" stroke="${emerald}" stroke-width="1.8"/>
+  <polygon points="110,118 175,136 175,150 110,132" fill="${isDark ? "#047857" : "#6ee7b7"}" stroke="${emerald}" stroke-width="1.8"/>
+  <polygon points="240,118 175,136 175,150 240,132" fill="${isDark ? "#059669" : "#34d399"}" stroke="${emerald}" stroke-width="1.8"/>
+  <text x="175" y="126" text-anchor="middle" fill="${isDark ? "#ffffff" : "#0f172a"}" font-family="Inter, sans-serif" font-size="10" font-weight="700">link_1 (4.8 kg)</text>
+
+  <!-- Trajectory Arc with Keyframes -->
+  <path d="M 175 100 Q 220 75 270 95" fill="none" stroke="${purple}" stroke-width="1.8" stroke-dasharray="3 3"/>
+  <circle cx="175" cy="100" r="3.5" fill="${purple}"/>
+  <circle cx="225" cy="85" r="3.5" fill="${purple}"/>
+  <circle cx="270" cy="95" r="3.5" fill="${purple}"/>
+  <text x="280" y="98" fill="${purple}" font-family="Inter, sans-serif" font-size="9.5" font-weight="600">t = [0.0, 0.5, 1.0] s</text>
+
+  <!-- Stage Units & Coordinate Tokens -->
+  <text x="36" y="260" fill="${muted}" font-family="Inter, sans-serif" font-size="9.5">metersPerUnit = 1.0 | upAxis = "Z"</text>
+
+  <!-- Right Panel: Scenegraph Prim Hierarchy & Schemas -->
+  <rect x="405" y="20" width="335" height="260" rx="10" fill="${panelBg}" stroke="${border}" stroke-width="1.5"/>
+  <text x="421" y="44" fill="${muted}" font-family="Inter, sans-serif" font-size="10" font-weight="600" letter-spacing="0.06em">OPENUSD STAGE SCENEGRAPH &amp; APIS</text>
+
+  <!-- Stage Root Prim -->
+  <rect x="421" y="60" width="300" height="32" rx="6" fill="${bg}" stroke="${border}" stroke-width="1.2"/>
+  <text x="435" y="80" fill="${text}" font-family="Inter, sans-serif" font-size="11" font-weight="700">def Xform "IndustrialArm"</text>
+  <text x="705" y="80" text-anchor="end" fill="${cyan}" font-family="Inter, sans-serif" font-size="9.5">assembly</text>
+
+  <!-- Branch to base_link -->
+  <line x1="440" y1="92" x2="440" y2="114" stroke="${border}" stroke-width="1.5"/>
+  <line x1="440" y1="114" x2="455" y2="114" stroke="${border}" stroke-width="1.5"/>
+  <rect x="455" y="100" width="266" height="36" rx="6" fill="${bg}" stroke="${cyan}" stroke-width="1.2"/>
+  <text x="467" y="117" fill="${cyan}" font-family="Inter, sans-serif" font-size="10.5" font-weight="700">base_link</text>
+  <text x="467" y="130" fill="${muted}" font-family="Inter, sans-serif" font-size="9">PhysicsRigidBodyAPI | mass = 12.5 kg</text>
+
+  <!-- Branch to link_1 -->
+  <line x1="440" y1="114" x2="440" y2="158" stroke="${border}" stroke-width="1.5"/>
+  <line x1="440" y1="158" x2="455" y2="158" stroke="${border}" stroke-width="1.5"/>
+  <rect x="455" y="144" width="266" height="36" rx="6" fill="${bg}" stroke="${emerald}" stroke-width="1.2"/>
+  <text x="467" y="161" fill="${emerald}" font-family="Inter, sans-serif" font-size="10.5" font-weight="700">link_1</text>
+  <text x="467" y="174" fill="${muted}" font-family="Inter, sans-serif" font-size="9">PhysicsMassAPI | timeSamples trajectory</text>
+
+  <!-- Branch to shoulder_joint -->
+  <line x1="440" y1="158" x2="440" y2="202" stroke="${border}" stroke-width="1.5"/>
+  <line x1="440" y1="202" x2="455" y2="202" stroke="${border}" stroke-width="1.5"/>
+  <rect x="455" y="188" width="266" height="36" rx="6" fill="${bg}" stroke="${amber}" stroke-width="1.2"/>
+  <text x="467" y="205" fill="${amber}" font-family="Inter, sans-serif" font-size="10.5" font-weight="700">PhysicsRevoluteJoint "shoulder_joint"</text>
+  <text x="467" y="218" fill="${muted}" font-family="Inter, sans-serif" font-size="9">rel: base_link → link_1 | [−π, +π] rad</text>
+
+  <!-- Lowering Badge -->
+  <rect x="455" y="236" width="266" height="28" rx="6" fill="${isDark ? "#1e293b" : "#f1f5f9"}" stroke="${purple}" stroke-width="1"/>
+  <text x="588" y="254" text-anchor="middle" fill="${purple}" font-family="Inter, sans-serif" font-size="10" font-weight="600">lowerUsdToDae: Lowers to DAE arena</text>
+</svg>`;
+}
+
 function renderCsvTelemetrySvg(code: string, theme: "dark" | "light"): string {
   const isDark = theme === "dark";
   const bg = isDark ? "#0f172a" : "#f8fafc";
@@ -3004,6 +3151,12 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
       return {
         svgDark: renderFeaCantileverSvg(code, "dark"),
         svgLight: renderFeaCantileverSvg(code, "light"),
+      };
+
+    case "usd":
+      return {
+        svgDark: renderUsdStageSvg(code, "dark"),
+        svgLight: renderUsdStageSvg(code, "light"),
       };
 
     case "csv":

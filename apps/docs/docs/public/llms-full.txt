@@ -6388,10 +6388,11 @@ Tooling for Siemens **PSS/E** power transmission cases (`.raw`, `.dyr`, `.sav`),
 Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)
 
 Options:
-  - `--out, -o, --output <string>`: Output file path (e.g. for SVG diagram)
-  - `--algorithm, --alg <string>`: Power flow algorithm: 'nr' (Newton-Raphson) or 'fdpf' (Fast Decoupled) (default: "nr")
+  - `--out, -o, --output <string>`: Output file path (e.g. for SVG diagram or report)
+  - `--algorithm, --alg <string>`: Power flow algorithm: 'nr' (Newton-Raphson), 'fdpf' (Fast Decoupled), or 'helm' (Holomorphic Embedding) (default: "nr")
+  - `--formulation, --form <string>`: OPF formulation: 'dc' (linearized) or 'ac' (nonlinear) (default: "dc")
   - `--tol <number>`: Convergence tolerance in p.u. (default: 0.0001)
-  - `--max-iter <number>`: Maximum allowable power flow iterations (default: 25)
+  - `--max-iter <number>`: Maximum allowable power flow iterations / HELM orders (default: 25)
 
 | Action        | Description                                                                                |
 | :------------ | :----------------------------------------------------------------------------------------- |
@@ -14710,7 +14711,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
 
 ::: info Not yet listed
-These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [OpenUSD](../languages/usd.md). See each language guide for details.
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: cgmes, [OpenUSD](../languages/usd.md). See each language guide for details.
 :::
 
 ## Modelica {#modelica}
