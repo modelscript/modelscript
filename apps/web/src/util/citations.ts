@@ -434,11 +434,12 @@ export function exportCitation(target: CitationTarget, format: CitationExportFor
   }
 
   if (format === "cff") {
+    const escapeYamlString = (val: string) => val.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const lines: string[] = [
       "cff-version: 1.2.0",
       'message: "If you use this work, please cite it as below."',
       `type: ${target.entityType === "package" || target.entityType === "repo" ? "software" : "article"}`,
-      `title: "${target.title.replace(/"/g, '\\"')}"`,
+      `title: "${escapeYamlString(target.title)}"`,
       "authors:",
     ];
     for (const a of authors) {
@@ -446,8 +447,8 @@ export function exportCitation(target: CitationTarget, format: CitationExportFor
       const parts = clean.split(/\s+/);
       const family = a.family || parts[parts.length - 1] || clean;
       const given = a.given || (parts.length > 1 ? parts.slice(0, -1).join(" ") : "");
-      lines.push(`  - family-names: "${family.replace(/"/g, '\\"')}"`);
-      if (given) lines.push(`    given-names: "${given.replace(/"/g, '\\"')}"`);
+      lines.push(`  - family-names: "${escapeYamlString(family)}"`);
+      if (given) lines.push(`    given-names: "${escapeYamlString(given)}"`);
       if (a.orcid) lines.push(`    orcid: "https://orcid.org/${a.orcid}"`);
     }
     if (target.doi) lines.push(`doi: "${target.doi}"`);

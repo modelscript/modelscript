@@ -1,41 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context } from "@modelscript/modelica/context";
-import { registerWindow } from "@svgdotjs/svg.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import v8 from "node:v8";
-import { createSVGWindow } from "svgdom";
-import xmlFormat from "xml-formatter";
 
 import type { ClassMetadata, ComponentMetadata } from "../database.js";
 import { NodeFileSystem } from "./filesystem.js";
-
-interface HeadlessSvgWindow {
-  document?: {
-    documentElement?: {
-      childNodes?: { length: number };
-    } | null;
-    body?: {
-      innerHTML?: string;
-    } | null;
-  } | null;
-}
-
-/** Initialize the headless SVG environment once. */
-let svgWindowInitialized = false;
-let globalSvgWindow: HeadlessSvgWindow | null = null;
-function ensureSvgWindow(): void {
-  if (svgWindowInitialized) return;
-  const win = createSVGWindow();
-  registerWindow(
-    win as unknown as Parameters<typeof registerWindow>[0],
-    win.document as unknown as Parameters<typeof registerWindow>[1],
-  );
-  globalSvgWindow = win as unknown as HeadlessSvgWindow;
-  svgWindowInitialized = true;
-}
 
 /** Initialize the WASM GLR parser once. */
 let parserPromise: Promise<void> | null = null;
@@ -418,8 +390,10 @@ function getOwnSourceExcludingNestedClasses(context: Context, symbolId: number):
   const db = context.queryEngine.toQueryDB();
   const sym = db.symbol(symbolId);
   if (!sym) return "";
-  const cstNode = db.cstNode(symbolId) as CstNodeLike | null;
-  const fullText = cstNode?.text ?? "";
+  const fullText =
+    typeof sym.startOffset === "number" && typeof sym.endOffset === "number" && sym.endOffset > sym.startOffset
+      ? db.cstText(sym.startOffset, sym.endOffset, sym)
+      : ((db.cstNode(symbolId) as CstNodeLike | null)?.text ?? "");
   if (!fullText) return `${sym.name}:${classKindFromEntry(sym)}:${String(sym.metadata?.["description"] ?? "")}`;
 
   const children = db.childrenOf(symbolId) || [];
@@ -560,7 +534,8 @@ function buildClassAdapter(
   visited = new Set<number>(),
 ): ClassAdapter | null {
   if (visited.has(symbolId)) return null;
-  const cached = adapterCache.get(symbolId);
+  const cacheKey = depth === 0 ? symbolId : -symbolId;
+  const cached = adapterCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
   visited.add(symbolId);
@@ -568,7 +543,7 @@ function buildClassAdapter(
   const queryDB = context.queryEngine.toQueryDB();
   const entry = queryDB.symbol(symbolId);
   if (!entry) {
-    adapterCache.set(symbolId, null);
+    adapterCache.set(cacheKey, null);
     return null;
   }
   const cstNode = queryDB.cstNode(symbolId) as CstNodeLike | null;
@@ -579,8 +554,7 @@ function buildClassAdapter(
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
-      const isConnector =
-        child.metadata?.["causality"] === "connector" || classKindFromEntry(child) === "connector";
+      const isConnector = child.metadata?.["causality"] === "connector" || classKindFromEntry(child) === "connector";
 
       // Depth-bounding: components of components (depth >= 1) are only needed if they are
       // interface connectors (pins/ports). Internal subcomponents of subcomponents are never
@@ -645,22 +619,32 @@ function buildClassAdapter(
           },
         },
       });
-    } else if (
-      (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) &&
-      depth === 0
-    ) {
+    } else if ((child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) && depth === 0) {
+      let lhs = child.metadata?.["lhs"] ? String(child.metadata["lhs"]) : "";
+      let rhs = child.metadata?.["rhs"] ? String(child.metadata["rhs"]) : "";
+      if (!lhs || !rhs) {
+        const connText =
+          typeof child.startOffset === "number" &&
+          typeof child.endOffset === "number" &&
+          child.endOffset > child.startOffset
+            ? (queryDB.cstText(child.startOffset, child.endOffset, child) ?? "")
+            : "";
+        const m = connText.match(
+          /\bconnect\s*\(\s*([^,()]+(?:\[[^\]]*\])?(?:\.[^,()]+)*)\s*,\s*([^,()]+(?:\[[^\]]*\])?(?:\.[^,()]+)*)\s*\)/,
+        );
+        if (m) {
+          if (!lhs && m[1]) lhs = m[1].trim();
+          if (!rhs && m[2]) rhs = m[2].trim();
+        }
+      }
       const connCst = queryDB.cstNode(child.id) as CstNodeLike | null;
-      let lhs = "";
-      let rhs = "";
-      if (connCst) {
+      if ((!lhs || !rhs) && connCst) {
         const cRefs = (connCst.children || []).filter(
           (c: CstNodeLike) => c.type === "component_reference" || c.type === "ComponentReference",
         );
-        if (cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
-        if (cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
+        if (!lhs && cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
+        if (!rhs && cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
       }
-      if (!lhs && child.metadata?.["lhs"]) lhs = String(child.metadata["lhs"]);
-      if (!rhs && child.metadata?.["rhs"]) rhs = String(child.metadata["rhs"]);
       connectEquations.push({
         lhs,
         rhs,
@@ -741,7 +725,7 @@ function buildClassAdapter(
     return evaluator.evaluate(cstNode, name);
   };
 
-  adapterCache.set(symbolId, adapter);
+  adapterCache.set(cacheKey, adapter);
   return adapter;
 }
 
@@ -766,14 +750,10 @@ export async function processLibrary(
   onReady?: (context: Context) => Promise<void>,
   options?: ProcessLibraryOptions,
 ): Promise<Context> {
-  ensureSvgWindow();
   await ensureParser();
 
-  const { renderIcon, renderDiagram, AnnotationEvaluator } = await import("@modelscript/modelica/diagram");
-  const formatXml = (xml: string) =>
-    (xmlFormat as unknown as (input: string, opts?: { collapseContent?: boolean }) => string)(xml, {
-      collapseContent: true,
-    });
+  const { renderIconSvgString, renderDiagramSvgString, AnnotationEvaluator } =
+    await import("@modelscript/modelica/diagram");
 
   const context = new Context(new NodeFileSystem(), undefined, 50_000);
 
@@ -841,7 +821,7 @@ export async function processLibrary(
   const isLowMem = os.totalmem() <= 2.5 * 1024 * 1024 * 1024 || v8Limit <= 2048 * 1024 * 1024;
   const HEAP_LIMIT = isLowMem
     ? Math.min(Math.floor(v8Limit * 0.55), 700 * 1024 * 1024)
-    : Math.min(5 * 1024 * 1024 * 1024, Math.floor(v8Limit * 0.70));
+    : Math.min(5 * 1024 * 1024 * 1024, Math.floor(v8Limit * 0.7));
   let classesProcessed = 0;
   let classesReused = 0;
 
@@ -867,6 +847,7 @@ export async function processLibrary(
   const ownSourceCache = new Map<number, string>();
   const iconHashMemo = new Map<number, string>();
   const diagramHashMemo = new Map<number, string>();
+  const sharedAdapterCache = new Map<number, ClassAdapter | null>();
 
   function getOwnSource(symbolId: number): string {
     let cached = ownSourceCache.get(symbolId);
@@ -927,8 +908,11 @@ export async function processLibrary(
       const pChildren = queryDB.childrenOf(currParentId) || [];
       for (const pch of pChildren) {
         if (pch.kind === "Component" || pch.kind === "Variable") {
-          const pchCst = queryDB.cstNode(pch.id) as CstNodeLike | null;
-          h.update(`scope-const:${pch.name}:${pchCst?.text ?? String(pch.metadata?.["typeSpecifier"] ?? "")}\n`);
+          const pchText =
+            typeof pch.startOffset === "number" && typeof pch.endOffset === "number" && pch.endOffset > pch.startOffset
+              ? queryDB.cstText(pch.startOffset, pch.endOffset, pch)
+              : ((queryDB.cstNode(pch.id) as CstNodeLike | null)?.text ?? "");
+          h.update(`scope-const:${pch.name}:${pchText || String(pch.metadata?.["typeSpecifier"] ?? "")}\n`);
         }
       }
       if (pSym.parentId === currParentId || pSym.parentId === null || pSym.parentId === undefined) break;
@@ -1070,7 +1054,7 @@ export async function processLibrary(
           classesProcessed++;
           classesReused++;
         } else {
-          const cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
+          const ownSrc = getOwnSource(classId);
           const classKind = classKindFromEntry(sym);
           const baseClasses: string[] = [];
           const components: ComponentMetadata[] = [];
@@ -1080,21 +1064,35 @@ export async function processLibrary(
               const baseName = (child.metadata?.["typeSpecifier"] as string) || child.name;
               if (baseName) baseClasses.push(baseName);
             } else if (child.kind === "Component" || child.kind === "Variable") {
-              const compCst = queryDB.cstNode(child.id) as CstNodeLike | null;
+              const compText =
+                typeof child.startOffset === "number" &&
+                typeof child.endOffset === "number" &&
+                child.endOffset > child.startOffset
+                  ? (queryDB.cstText(child.startOffset, child.endOffset, child) ?? "")
+                  : "";
+              const preAnnCompText = compText
+                .replace(/\bannotation\s*\([\s\S]*$/, "")
+                .replace(/"(?:[^"\\]|\\.)*"/g, "");
+              const needsCompCstForMod = preAnnCompText.includes("(") || preAnnCompText.includes("=");
+
               let compDesc: string | null = cleanModelicaDescription(
                 (child.metadata?.["description"] as string) ?? null,
               );
-              if (!compDesc && compCst?.children) {
-                const descChild = compCst.children.find(
-                  (c: CstNodeLike) =>
-                    c.type === "description" || c.type === "comment" || c.type === "description_string",
-                );
-                const descStrNode =
-                  descChild?.children?.find(
-                    (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
-                  ) ?? descChild;
-                if (descStrNode?.text) {
-                  compDesc = cleanModelicaDescription(descStrNode.text);
+              let compCst: CstNodeLike | null = null;
+              if (!compDesc && compText.includes('"')) {
+                compCst = queryDB.cstNode(child.id) as CstNodeLike | null;
+                if (compCst?.children) {
+                  const descChild = compCst.children.find(
+                    (c: CstNodeLike) =>
+                      c.type === "description" || c.type === "comment" || c.type === "description_string",
+                  );
+                  const descStrNode =
+                    descChild?.children?.find(
+                      (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
+                    ) ?? descChild;
+                  if (descStrNode?.text) {
+                    compDesc = cleanModelicaDescription(descStrNode.text);
+                  }
                 }
               }
 
@@ -1112,7 +1110,10 @@ export async function processLibrary(
                 } catch {}
               }
 
-              const modifiers = extractModifiers(null, compCst);
+              if (needsCompCstForMod && !compCst) {
+                compCst = queryDB.cstNode(child.id) as CstNodeLike | null;
+              }
+              const modifiers = needsCompCstForMod ? extractModifiers(null, compCst) : [];
 
               components.push({
                 name: child.name ?? "",
@@ -1126,42 +1127,59 @@ export async function processLibrary(
           }
 
           let description: string | null = cleanModelicaDescription((sym.metadata?.["description"] as string) ?? null);
-          if (!description && cstNode?.children) {
-            // Check for description_string in long_class_specifier or children
-            const walkForDesc = (n: CstNodeLike | null | undefined): string | null => {
-              if (!n) return null;
-              if (n.type === "annotation_clause" || n.type === "AnnotationClause" || n.type === "composition") {
+          let cstNode: CstNodeLike | null = null;
+          if (!description && ownSrc.includes('"')) {
+            cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
+            if (cstNode?.children) {
+              // Check for description_string in long_class_specifier or children
+              const walkForDesc = (n: CstNodeLike | null | undefined): string | null => {
+                if (!n) return null;
+                if (n.type === "annotation_clause" || n.type === "AnnotationClause" || n.type === "composition") {
+                  return null;
+                }
+                if (n.type === "description_string" || n.type === "string_comment") {
+                  return cleanModelicaDescription(n.text);
+                }
+                if (n.type === "description" || n.type === "comment") {
+                  const strNode = n.children?.find(
+                    (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
+                  );
+                  if (strNode?.text) return cleanModelicaDescription(strNode.text);
+                  return cleanModelicaDescription(n.text);
+                }
+                for (const ch of n.children || []) {
+                  if (ch.type === "composition" || ch.type === "annotation_clause") continue;
+                  const d = walkForDesc(ch);
+                  if (d) return d;
+                }
                 return null;
-              }
-              if (n.type === "description_string" || n.type === "string_comment") {
-                return cleanModelicaDescription(n.text);
-              }
-              if (n.type === "description" || n.type === "comment") {
-                const strNode = n.children?.find(
-                  (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
-                );
-                if (strNode?.text) return cleanModelicaDescription(strNode.text);
-                return cleanModelicaDescription(n.text);
-              }
-              for (const ch of n.children || []) {
-                if (ch.type === "composition" || ch.type === "annotation_clause") continue;
-                const d = walkForDesc(ch);
-                if (d) return d;
-              }
-              return null;
-            };
-            description = walkForDesc(cstNode);
+              };
+              description = walkForDesc(cstNode);
+            }
           }
 
           let documentation: string | null = null;
-          if (cstNode) {
-            try {
-              const evaluator = new (AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor)();
-              const doc = evaluator.evaluate(cstNode, "Documentation");
-              if (doc?.info) {
-                documentation = doc.info;
+          if (/\bDocumentation\s*\(/.test(ownSrc)) {
+            const docMatch = ownSrc.match(/\bDocumentation\s*\([\s\S]*?\binfo\s*=\s*"((?:[^"\\]|\\.)*)"\s*[,)]/);
+            if (docMatch && docMatch[1] !== undefined) {
+              documentation = docMatch[1]
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, "\\")
+                .replace(/\\n/g, "\n")
+                .replace(/\\r/g, "\r")
+                .replace(/\\t/g, "\t");
+            } else {
+              if (!cstNode) cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
+              if (cstNode) {
+                try {
+                  const evaluator = new (AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor)();
+                  const doc = evaluator.evaluate(cstNode, "Documentation");
+                  if (doc?.info) {
+                    documentation = doc.info;
+                  }
+                } catch {}
               }
-            } catch {}
+            }
           }
 
           const memoryTight = isMemoryTight();
@@ -1180,35 +1198,20 @@ export async function processLibrary(
                 context,
                 classId,
                 AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor,
+                0,
+                sharedAdapterCache,
               );
               if (adapter) {
                 if (!canReuseIcon) {
-                  const icon = renderIcon(adapter as unknown as Parameters<typeof renderIcon>[0]);
-                  if (icon) {
-                    const svgStr = formatXml(icon.svg());
-                    if (hasVisualContent(svgStr)) iconSvg = svgStr;
-                    icon.remove();
-                    icon.clear();
-                  }
+                  const svgStr = renderIconSvgString(adapter as unknown as Parameters<typeof renderIconSvgString>[0]);
+                  if (svgStr && hasVisualContent(svgStr)) iconSvg = svgStr;
                 }
-                const diagram = renderDiagram(adapter as unknown as Parameters<typeof renderDiagram>[0]);
-                if (diagram) {
-                  const svgStr = formatXml(diagram.svg());
-                  if (hasVisualContent(svgStr)) diagramSvg = svgStr;
-                  diagram.remove();
-                  diagram.clear();
-                }
+                const svgStr = renderDiagramSvgString(
+                  adapter as unknown as Parameters<typeof renderDiagramSvgString>[0],
+                );
+                if (svgStr && hasVisualContent(svgStr)) diagramSvg = svgStr;
               }
             } catch {}
-
-            if (globalSvgWindow?.document) {
-              if (globalSvgWindow.document.documentElement?.childNodes) {
-                globalSvgWindow.document.documentElement.childNodes.length = 0;
-              }
-              if (globalSvgWindow.document.body) {
-                globalSvgWindow.document.body.innerHTML = "";
-              }
-            }
           }
 
           const metadata: ClassMetadata = {
@@ -1228,16 +1231,9 @@ export async function processLibrary(
 
         if (classesProcessed % 50 === 0 || isMemoryTight()) {
           context.pruneCaches();
+          sharedAdapterCache.clear();
           queryDB.flushVolatile?.();
           queryDB.clearMemos?.();
-          if (globalSvgWindow?.document) {
-            if (globalSvgWindow.document.documentElement?.childNodes) {
-              globalSvgWindow.document.documentElement.childNodes.length = 0;
-            }
-            if (globalSvgWindow.document.body) {
-              globalSvgWindow.document.body.innerHTML = "";
-            }
-          }
           tryGC();
         }
 

@@ -1490,6 +1490,16 @@ export function authRouter(database: LibraryDatabase): Router {
         res.redirect(`${frontendUrl}/login?error=DisallowedFediverseDomain`);
         return;
       }
+      const FEDIVERSE_DOMAIN_REGEX =
+        /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+      if (!FEDIVERSE_DOMAIN_REGEX.test(targetDomain)) {
+        if (wantsJson) {
+          res.status(400).json({ error: "Invalid Fediverse domain.", code: "INVALID_FEDIVERSE_DOMAIN" });
+          return;
+        }
+        res.redirect(`${frontendUrl}/login?error=InvalidFediverseDomain`);
+        return;
+      }
 
       void (async () => {
         try {
@@ -1549,7 +1559,20 @@ export function authRouter(database: LibraryDatabase): Router {
             scope: "read:accounts",
             state: signedState,
           });
-          res.redirect(`https://${targetDomain}/oauth/authorize?${authorizeParams.toString()}`);
+          const redirectHost = client.domain;
+          if (!redirectHost || !FEDIVERSE_DOMAIN_REGEX.test(redirectHost)) {
+            throw new Error("Invalid Fediverse authorization target domain");
+          }
+          const authorizeUrl = new URL(`https://${redirectHost}/oauth/authorize`);
+          authorizeUrl.search = authorizeParams.toString();
+          if (wantsJson) {
+            res.json({
+              redirectUrl: authorizeUrl.href,
+              state: signedState,
+            });
+            return;
+          }
+          res.redirect(authorizeUrl.href);
         } catch (err) {
           console.error("[FediverseAuth] Dynamic client registration error:", err);
           res.redirect(
@@ -2076,10 +2099,10 @@ export function authRouter(database: LibraryDatabase): Router {
             if (provider === "fediverse" && remoteDomain) {
               finalUsername = `${username}_${remoteDomain.replace(/[^a-z0-9]/g, "_")}`;
               if (database.getUserByUsername(finalUsername)) {
-                finalUsername = `${finalUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
+                finalUsername = `${finalUsername}_${crypto.randomInt(1000, 10000)}`;
               }
             } else {
-              finalUsername = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
+              finalUsername = `${username}_${crypto.randomInt(1000, 10000)}`;
             }
           }
           user = database.registerFederatedUser(finalUsername, email, provider, providerUserId, {

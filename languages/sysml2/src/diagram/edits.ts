@@ -823,7 +823,7 @@ function findStatementRange(lines: string[], startLine: number): { startLine: nu
   let endLine = startLine;
   // Match common SysML v2 declaration prefixes including visibility, features, and doc comments
   const declKeywordRegex =
-    /^(?:(?:public|private|protected|abstract|readonly|derived|constant|ref|in|out|inout)\s+)*(?:doc\s+\/\*[\s\S]*?\*\/\s*)*(?:part|attribute|port|action|state|calc|requirement|constraint|use case|verification|analysis case|case|connection|interface|allocation|flow|item|enum|concern|view|viewpoint|rendering|occurrence|package|import)\b/;
+    /^(?:(?:public|private|protected|abstract|readonly|derived|constant|ref|in|out|inout)\s+)*(?:doc\s+\/\*(?:[^*]|\*(?!\/))*\*\/\s*)*(?:part|attribute|port|action|state|calc|requirement|constraint|use case|verification|analysis case|case|connection|interface|allocation|flow|item|enum|concern|view|viewpoint|rendering|occurrence|package|import)\b/;
 
   let line = lines[startLine]!.trim();
   while (startLine > 0 && !declKeywordRegex.test(line)) {

@@ -3,6 +3,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { LibraryDatabase } from "../database.js";
@@ -2114,9 +2115,17 @@ export function referencesRouter(database: LibraryDatabase): Router {
             partitionUrl: rawTargetUrl,
           });
         } else if (typeof localFilePath === "string" && localFilePath.trim()) {
+          const raw = localFilePath.trim();
+          const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
+          const allowedRoots = [cacheDir, path.resolve(os.tmpdir()), path.resolve(process.cwd())];
+          const resolved = path.resolve(raw);
+          if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+            res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
+            return;
+          }
           ingestRes = await ingestOpenAlexFromS3OrFile(database, {
             ...filterOpts,
-            localFilePath: localFilePath.trim(),
+            localFilePath: resolved,
             partitionUrl: rawTargetUrl,
           });
         } else {
@@ -2343,10 +2352,22 @@ export function referencesRouter(database: LibraryDatabase): Router {
       }
 
       if (s3PartitionUrl || localFilePath) {
+        let safeLocalPath: string | undefined;
+        if (localFilePath) {
+          const raw = String(localFilePath).trim();
+          const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
+          const allowedRoots = [cacheDir, path.resolve(os.tmpdir()), path.resolve(process.cwd())];
+          const resolved = path.resolve(raw);
+          if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+            res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
+            return;
+          }
+          safeLocalPath = resolved;
+        }
         const result = await ingestOpenAlexFromS3OrFile(database, {
           ...filterOpts,
           s3PartitionUrl: s3PartitionUrl ? s3UriToHttpsUrl(String(s3PartitionUrl)) : undefined,
-          localFilePath: localFilePath ? String(localFilePath) : undefined,
+          localFilePath: safeLocalPath,
         });
         res.status(201).json(result);
         return;

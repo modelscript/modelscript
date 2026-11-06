@@ -3,14 +3,12 @@
 import type { DiagramData } from "@modelscript/diagram";
 import { renderDiagramDataToSvg } from "@modelscript/diagram/svg";
 import { Context } from "@modelscript/modelica/context";
-import { renderDiagram, renderIcon } from "@modelscript/modelica/diagram";
+import { renderDiagramSvgString, renderIconSvgString } from "@modelscript/modelica/diagram";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { registerWindow } from "@svgdotjs/svg.js";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createSVGWindow } from "svgdom";
 import xmlFormat from "xml-formatter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
@@ -211,11 +209,11 @@ export const Render: CommandModule<{}, RenderArgs> = {
       return;
     }
 
-    const window = createSVGWindow();
-    registerWindow(window, window.document);
-    const svg = args.icon ? renderIcon(instance) : renderDiagram(instance);
-    if (svg) {
-      emitSvg(svg.svg());
+    const svgStr = args.icon
+      ? renderIconSvgString(instance as unknown as Parameters<typeof renderIconSvgString>[0])
+      : renderDiagramSvgString(instance as unknown as Parameters<typeof renderDiagramSvgString>[0]);
+    if (svgStr) {
+      emitSvg(svgStr);
     }
   },
 };

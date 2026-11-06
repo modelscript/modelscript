@@ -148,7 +148,7 @@ export class CanvasContextPool {
     try {
       sub.onSleep(snapshotUrl);
     } catch (err) {
-      console.warn(`[CanvasContextPool] Error putting context ${id} to sleep:`, err);
+      console.warn("[CanvasContextPool] Error putting context %s to sleep:", id, err);
     }
   }
 

@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 741,
+      "explicitAny": 755,
       "tsComments": 0
     },
     "ee": {
@@ -74,6 +74,10 @@
       "tsComments": 0
     },
     "languages/cfd": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cgmes": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -146,7 +150,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3223,
+      "explicitAny": 3243,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -338,7 +342,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 2039,
+      "explicitAny": 2082,
       "tsComments": 0
     },
     "packages/mcp": {
@@ -350,7 +354,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 736,
+      "explicitAny": 739,
       "tsComments": 0
     },
     "packages/simulate": {

@@ -305,10 +305,16 @@ export function reconcilePropertiesDOM(
         groupEl = document.createElement("details");
         groupEl.className = "ms-prop-group-details ms-prop-group";
         groupEl.setAttribute("data-group-id", group.id);
-        groupEl.innerHTML = `
-          <summary class="ms-prop-group-summary">${group.label}</summary>
-          <div class="ms-prop-group-fields" style="display:flex;flex-direction:column;padding-bottom:8px;"></div>
-        `;
+        const summary = document.createElement("summary");
+        summary.className = "ms-prop-group-summary";
+        summary.textContent = group.label;
+        const fields = document.createElement("div");
+        fields.className = "ms-prop-group-fields";
+        fields.style.display = "flex";
+        fields.style.flexDirection = "column";
+        fields.style.paddingBottom = "8px";
+        groupEl.appendChild(summary);
+        groupEl.appendChild(fields);
         groupEl.addEventListener("toggle", () => {
           folds[group.id] = groupEl!.open;
         });

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
@@ -1228,21 +1229,22 @@ export function exportScholarlyCitations(
       citationKey: "ansatz",
       sourcePageUrl: "/sources",
     };
+    const escapeYamlString = (val: string) => val.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const lines: string[] = [
       "cff-version: 1.2.0",
       'message: "If you use this work, please cite it as below."',
       `type: ${w.workType === "software" || w.workType === "package" ? "software" : "article"}`,
-      `title: "${w.title.replace(/"/g, '\\"')}"`,
+      `title: "${escapeYamlString(w.title)}"`,
       "authors:",
     ];
     for (const a of w.authors && w.authors.length > 0 ? w.authors : [{ name: "Ansatz Contributors" }]) {
       const parts = a.name.trim().split(/\s+/);
       const family = a.family || parts[parts.length - 1] || a.name;
       const given = a.given || (parts.length > 1 ? parts.slice(0, -1).join(" ") : "");
-      lines.push(`  - family-names: "${family.replace(/"/g, '\\"')}"`);
-      if (given) lines.push(`    given-names: "${given.replace(/"/g, '\\"')}"`);
+      lines.push(`  - family-names: "${escapeYamlString(family)}"`);
+      if (given) lines.push(`    given-names: "${escapeYamlString(given)}"`);
       if (a.orcid) lines.push(`    orcid: "https://orcid.org/${a.orcid}"`);
-      if (a.affiliation) lines.push(`    affiliation: "${a.affiliation.replace(/"/g, '\\"')}"`);
+      if (a.affiliation) lines.push(`    affiliation: "${escapeYamlString(a.affiliation)}"`);
     }
     if (w.doi) lines.push(`doi: "${w.doi}"`);
     if (w.publicationDate) lines.push(`date-released: "${w.publicationDate.slice(0, 10)}"`);
@@ -2151,17 +2153,28 @@ export async function ingestOpenAlexFromS3OrFile(
   },
 ): Promise<OpenAlexSnapshotIngestResult> {
   if (options.localFilePath) {
-    const filePath = options.localFilePath.trim();
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`Local OpenAlex snapshot file not found: ${filePath}`);
+    const rawPath = options.localFilePath.trim();
+    const cacheDir = path.resolve(options.cacheDir || getOpenAlexCacheDirectory(database));
+    const allowedRoots = [cacheDir, path.resolve(os.tmpdir()), path.resolve(process.cwd())];
+    const resolvedPath = path.resolve(rawPath);
+    const isAllowed = allowedRoots.some((root) => resolvedPath === root || resolvedPath.startsWith(root + path.sep));
+    if (!isAllowed) {
+      throw new Error(`Access denied: local file path outside allowed directory: ${rawPath}`);
     }
-    const isGzipped = filePath.endsWith(".gz");
-    const fileStream = fs.createReadStream(filePath);
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`Local OpenAlex snapshot file not found: ${resolvedPath}`);
+    }
+    const realPath = fs.realpathSync(resolvedPath);
+    if (!allowedRoots.some((root) => realPath === root || realPath.startsWith(root + path.sep))) {
+      throw new Error(`Access denied: resolved symlink points outside allowed directory: ${rawPath}`);
+    }
+    const isGzipped = realPath.endsWith(".gz");
+    const fileStream = fs.createReadStream(realPath);
     return ingestOpenAlexJsonlStream(fileStream, database, {
       ...options,
       isGzipped,
-      sourceLabel: filePath,
-      partitionUrl: options.partitionUrl || filePath,
+      sourceLabel: realPath,
+      partitionUrl: options.partitionUrl || realPath,
       onAbortStream: () => fileStream.destroy(),
     });
   }

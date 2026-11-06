@@ -74,10 +74,25 @@ export const ARROW_OPEN: u8 = 1;
 export const ARROW_FILLED: u8 = 2;
 export const ARROW_HALF: u8 = 3;
 
+export const BORDER_NONE: u8 = 0;
+export const BORDER_RAISED: u8 = 1;
+export const BORDER_SUNKEN: u8 = 2;
+export const BORDER_ENGRAVED: u8 = 3;
+
+export const CLOSURE_NONE: u8 = 0;
+export const CLOSURE_CHORD: u8 = 1;
+export const CLOSURE_RADIAL: u8 = 2;
+export const CLOSURE_AUTOMATIC: u8 = 3;
+
+export const TEXT_STYLE_BOLD: u8 = 1;
+export const TEXT_STYLE_ITALIC: u8 = 2;
+export const TEXT_STYLE_UNDERLINE: u8 = 4;
+
 // ── Unmanaged Linear Graphics Arena ─────────────────────────────────────────
-const MAX_GRAPHICS: i32 = 256;
-const MAX_POINTS: i32 = 4096;
-const SVG_BUFFER_CAP: u32 = 262144; // 256 KB
+const MAX_GRAPHICS: i32 = 2048;
+const MAX_POINTS: i32 = 32768;
+const SVG_BUFFER_CAP: u32 = 1048576; // 1 MB
+const TEXT_POOL_CAP: u32 = 65536; // 64K u16 code units (128 KB)
 
 @unmanaged
 class GraphicSlot {
@@ -92,12 +107,22 @@ class GraphicSlot {
   radius: f64;
   fontSize: f64;
   arrowSize: f64;
+  startAngle: f64;
+  endAngle: f64;
   strokeColor: i32;
   fillColor: i32;
   pointsOffset: i32;
   pointsCount: i32;
   textOffset: u32;
   textLen: u32;
+  poolTextOffset: u32;
+  poolTextLen: u32;
+  fontNamePoolOffset: u32;
+  fontNamePoolLen: u32;
+  fileNamePoolOffset: u32;
+  fileNamePoolLen: u32;
+  imageSourcePoolOffset: u32;
+  imageSourcePoolLen: u32;
   kind: u8;
   fillPattern: u8;
   linePattern: u8;
@@ -106,12 +131,18 @@ class GraphicSlot {
   textAlignment: u8;
   arrowStart: u8;
   arrowEnd: u8;
+  borderPattern: u8;
+  closure: u8;
+  textStyleMask: u8;
+  hasEndAngle: u8;
 }
 
 let g_graphicsBuf: usize = 0;
 let g_pointsXBuf: usize = 0;
 let g_pointsYBuf: usize = 0;
 let g_digitBuf: usize = 0;
+let g_textPoolBuf: usize = 0;
+let g_textPoolLen: u32 = 0;
 let g_svgBuffer: usize = 0;
 let g_svgLen: u32 = 0;
 
@@ -131,10 +162,12 @@ let g_colG: i32 = 0;
 let g_colB: i32 = 0;
 let g_colIdx: i32 = 0;
 let g_arrowIdx: i32 = 0;
+let g_posArgIdx: i32 = 0;
 
 let g_foundIconMod: u64 = 0;
 let g_iconClauseCount: i32 = 0;
 let g_scanTargetDiagram: bool = false;
+let g_layerGraphicStart: i32 = 0;
 
 // Placement & Transformation state
 let g_foundPlacementMod: u64 = 0;
@@ -194,6 +227,7 @@ const ARRAY_MODE_POINT_LIST: i32 = 3;
 const ARRAY_MODE_COLOR_RGB: i32 = 4;
 const ARRAY_MODE_GRAPHIC_ITEMS: i32 = 5;
 const ARRAY_MODE_ARROWS: i32 = 6;
+const ARRAY_MODE_TEXT_STYLES: i32 = 7;
 
 const MOD_MODE_FIND_ICON: i32 = 1;
 const MOD_MODE_ICON_PROPS: i32 = 2;
@@ -211,6 +245,7 @@ function ensureAnnotationArena(): void {
     g_pointsXBuf = atomicChunkAlloc((MAX_POINTS as u32) * sizeof<f64>());
     g_pointsYBuf = atomicChunkAlloc((MAX_POINTS as u32) * sizeof<f64>());
     g_digitBuf = atomicChunkAlloc(32);
+    g_textPoolBuf = atomicChunkAlloc(TEXT_POOL_CAP * sizeof<u16>());
   }
 }
 
@@ -248,6 +283,16 @@ function setPointY(ptIdx: i32, val: f64): void {
 }
 
 @inline
+function getPoolChar(charIdx: u32): u16 {
+  return load<u16>(g_textPoolBuf + (charIdx as usize) * sizeof<u16>());
+}
+
+@inline
+function setPoolChar(charIdx: u32, ch: u16): void {
+  store<u16>(g_textPoolBuf + (charIdx as usize) * sizeof<u16>(), ch);
+}
+
+@inline
 function writeByte(b: u8): void {
   if (g_svgLen < SVG_BUFFER_CAP - 1) {
     store<u8>(g_svgBuffer + (g_svgLen++), b);
@@ -258,6 +303,30 @@ function writeString(str: string): void {
   let len = str.length;
   for (let i = 0; i < len; ++i) {
     writeByte(str.charCodeAt(i) as u8);
+  }
+}
+
+function writeXmlEscapedPoolText(poolOff: u32, poolLen: u32): void {
+  for (let i: u32 = 0; i < poolLen; ++i) {
+    let ch = getPoolChar(poolOff + i);
+    if (ch == 38) {
+      writeString("&amp;");
+    } else if (ch == 60) {
+      writeString("&lt;");
+    } else if (ch == 62) {
+      writeString("&gt;");
+    } else if (ch == 34) {
+      writeString("&quot;");
+    } else if (ch < 128) {
+      writeByte(ch as u8);
+    } else if (ch < 0x800) {
+      writeByte((0xc0 | (ch >> 6)) as u8);
+      writeByte((0x80 | (ch & 0x3f)) as u8);
+    } else {
+      writeByte((0xe0 | (ch >> 12)) as u8);
+      writeByte((0x80 | ((ch >> 6) & 0x3f)) as u8);
+      writeByte((0x80 | (ch & 0x3f)) as u8);
+    }
   }
 }
 
@@ -325,11 +394,271 @@ function writeColorRgb(packed: i32, defaultVal: string): void {
   writeString(")");
 }
 
+function brightenPackedColor(packed: i32, factor: f64): i32 {
+  if (packed < 0) packed = 0;
+  let r = (packed >> 16) & 0xff;
+  let g = (packed >> 8) & 0xff;
+  let b = packed & 0xff;
+  let nr = Math.min(255.0, Math.round((r as f64) + (255.0 - (r as f64)) * factor)) as i32;
+  let ng = Math.min(255.0, Math.round((g as f64) + (255.0 - (g as f64)) * factor)) as i32;
+  let nb = Math.min(255.0, Math.round((b as f64) + (255.0 - (b as f64)) * factor)) as i32;
+  return ((nr & 0xff) << 16) | ((ng & 0xff) << 8) | (nb & 0xff);
+}
+
 // ── CST Parsing & Extraction Helpers ────────────────────────────────────────
 
 @inline
 function isSpaceChar(c: i32): bool {
   return c == 32 || c == 9 || c == 10 || c == 13;
+}
+
+@inline
+function isIdentStart(c: i32): bool {
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
+}
+
+@inline
+function isIdentPart(c: i32): bool {
+  return isIdentStart(c) || (c >= 48 && c <= 57) || c == 46;
+}
+
+let g_exprPos: u32 = 0;
+
+@inline
+function skipExprSpaces(text: SourceTextView, n: u32): void {
+  while (g_exprPos < n && isSpaceChar(text.charAt(g_exprPos))) {
+    g_exprPos++;
+  }
+}
+
+function textSpanMatches(text: SourceTextView, start: u32, end: u32, target: string): bool {
+  let tLen = target.length as u32;
+  if (end - start != tLen) return false;
+  for (let i: u32 = 0; i < tLen; ++i) {
+    if (text.charAt(start + i) != target.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
+function textSpanEndsWith(text: SourceTextView, start: u32, end: u32, suffix: string): bool {
+  let sLen = suffix.length as u32;
+  if (end - start < sLen) return false;
+  let offset = end - sLen;
+  for (let i: u32 = 0; i < sLen; ++i) {
+    if (text.charAt(offset + i) != suffix.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
+function parseExprPrimary(text: SourceTextView, n: u32): f64 {
+  skipExprSpaces(text, n);
+  if (g_exprPos >= n) {
+    g_bailOut = true;
+    return 0.0;
+  }
+  let c = text.charAt(g_exprPos);
+
+  // Parenthesized sub-expression: ( expr )
+  if (c == 40) {
+    g_exprPos++;
+    let val = parseExprAddSub(text, n);
+    if (g_bailOut) return 0.0;
+    skipExprSpaces(text, n);
+    if (g_exprPos >= n || text.charAt(g_exprPos) != 41) {
+      g_bailOut = true;
+      return 0.0;
+    }
+    g_exprPos++;
+    return val;
+  }
+
+  // Constant or built-in math function: pi, Modelica.Constants.pi, sin(...), cos(...), etc.
+  if (isIdentStart(c)) {
+    let idStart = g_exprPos;
+    while (g_exprPos < n && isIdentPart(text.charAt(g_exprPos))) {
+      g_exprPos++;
+    }
+    let idEnd = g_exprPos;
+    skipExprSpaces(text, n);
+    if (g_exprPos < n && text.charAt(g_exprPos) == 40) {
+      g_exprPos++;
+      let arg = parseExprAddSub(text, n);
+      if (g_bailOut) return 0.0;
+      skipExprSpaces(text, n);
+      if (g_exprPos >= n || text.charAt(g_exprPos) != 41) {
+        g_bailOut = true;
+        return 0.0;
+      }
+      g_exprPos++;
+      if (textSpanMatches(text, idStart, idEnd, "cos") || textSpanEndsWith(text, idStart, idEnd, ".cos")) {
+        return Math.cos(arg);
+      }
+      if (textSpanMatches(text, idStart, idEnd, "sin") || textSpanEndsWith(text, idStart, idEnd, ".sin")) {
+        return Math.sin(arg);
+      }
+      if (textSpanMatches(text, idStart, idEnd, "tan") || textSpanEndsWith(text, idStart, idEnd, ".tan")) {
+        return Math.tan(arg);
+      }
+      if (textSpanMatches(text, idStart, idEnd, "sqrt") || textSpanEndsWith(text, idStart, idEnd, ".sqrt")) {
+        return arg >= 0.0 ? Math.sqrt(arg) : 0.0;
+      }
+      if (textSpanMatches(text, idStart, idEnd, "abs") || textSpanEndsWith(text, idStart, idEnd, ".abs")) {
+        return Math.abs(arg);
+      }
+      g_bailOut = true;
+      return 0.0;
+    }
+    if (textSpanMatches(text, idStart, idEnd, "pi") || textSpanEndsWith(text, idStart, idEnd, ".pi")) {
+      return 3.141592653589793;
+    }
+    g_bailOut = true;
+    return 0.0;
+  }
+
+  // Numeric literal
+  let intPart: f64 = 0.0;
+  let hasDigits = false;
+  while (g_exprPos < n) {
+    let d = text.charAt(g_exprPos);
+    if (d >= 48 && d <= 57) {
+      intPart = intPart * 10.0 + ((d - 48) as f64);
+      hasDigits = true;
+      g_exprPos++;
+    } else {
+      break;
+    }
+  }
+  let fracPart: f64 = 0.0;
+  let fracDiv: f64 = 1.0;
+  if (g_exprPos < n && text.charAt(g_exprPos) == 46) {
+    g_exprPos++;
+    while (g_exprPos < n) {
+      let d = text.charAt(g_exprPos);
+      if (d >= 48 && d <= 57) {
+        fracPart = fracPart * 10.0 + ((d - 48) as f64);
+        fracDiv *= 10.0;
+        hasDigits = true;
+        g_exprPos++;
+      } else {
+        break;
+      }
+    }
+  }
+  if (!hasDigits) {
+    g_bailOut = true;
+    return 0.0;
+  }
+  let expSign: i32 = 1;
+  let expVal: i32 = 0;
+  if (g_exprPos < n && (text.charAt(g_exprPos) == 101 || text.charAt(g_exprPos) == 69)) {
+    g_exprPos++;
+    if (g_exprPos < n) {
+      let ec = text.charAt(g_exprPos);
+      if (ec == 45) {
+        expSign = -1;
+        g_exprPos++;
+      } else if (ec == 43) {
+        g_exprPos++;
+      }
+    }
+    let hasExpDigits = false;
+    while (g_exprPos < n) {
+      let ec = text.charAt(g_exprPos);
+      if (ec >= 48 && ec <= 57) {
+        expVal = expVal * 10 + ((ec - 48) as i32);
+        hasExpDigits = true;
+        g_exprPos++;
+      } else {
+        break;
+      }
+    }
+    if (!hasExpDigits) {
+      g_bailOut = true;
+      return 0.0;
+    }
+  }
+  let val = intPart + (fracDiv > 1.0 ? fracPart / fracDiv : 0.0);
+  if (expVal != 0) {
+    val *= Math.pow(10.0, (expSign * expVal) as f64);
+  }
+  return val;
+}
+
+function parseExprPower(text: SourceTextView, n: u32): f64 {
+  let base = parseExprPrimary(text, n);
+  if (g_bailOut) return 0.0;
+  skipExprSpaces(text, n);
+  if (g_exprPos < n && text.charAt(g_exprPos) == 94) {
+    g_exprPos++;
+    let exp = parseExprUnary(text, n);
+    if (g_bailOut) return 0.0;
+    return Math.pow(base, exp);
+  }
+  return base;
+}
+
+function parseExprUnary(text: SourceTextView, n: u32): f64 {
+  skipExprSpaces(text, n);
+  if (g_exprPos >= n) {
+    g_bailOut = true;
+    return 0.0;
+  }
+  let c = text.charAt(g_exprPos);
+  if (c == 45) {
+    g_exprPos++;
+    return -parseExprUnary(text, n);
+  }
+  if (c == 43) {
+    g_exprPos++;
+    return parseExprUnary(text, n);
+  }
+  return parseExprPower(text, n);
+}
+
+function parseExprMulDiv(text: SourceTextView, n: u32): f64 {
+  let left = parseExprUnary(text, n);
+  if (g_bailOut) return 0.0;
+  while (g_exprPos < n) {
+    skipExprSpaces(text, n);
+    if (g_exprPos >= n) break;
+    let op = text.charAt(g_exprPos);
+    if (op == 42 || op == 47) {
+      g_exprPos++;
+      let right = parseExprUnary(text, n);
+      if (g_bailOut) return 0.0;
+      if (op == 42) {
+        left *= right;
+      } else if (right != 0.0) {
+        left /= right;
+      } else {
+        g_bailOut = true;
+        return 0.0;
+      }
+    } else {
+      break;
+    }
+  }
+  return left;
+}
+
+function parseExprAddSub(text: SourceTextView, n: u32): f64 {
+  let left = parseExprMulDiv(text, n);
+  if (g_bailOut) return 0.0;
+  while (g_exprPos < n) {
+    skipExprSpaces(text, n);
+    if (g_exprPos >= n) break;
+    let op = text.charAt(g_exprPos);
+    if (op == 43 || op == 45) {
+      g_exprPos++;
+      let right = parseExprMulDiv(text, n);
+      if (g_bailOut) return 0.0;
+      if (op == 43) left += right;
+      else left -= right;
+    } else {
+      break;
+    }
+  }
+  return left;
 }
 
 function parseNumberStrict(loc: u64): f64 {
@@ -345,86 +674,84 @@ function parseNumberStrict(loc: u64): f64 {
   }
   let text = SourceTextView.at(src, byteLen, inputEncoding == 1 || inputEncoding == 2);
   let n = text.charCount;
-  let i: u32 = 0;
-  while (i < n && isSpaceChar(text.charAt(i))) i++;
-  let sign: f64 = 1.0;
-  if (i < n) {
-    let c = text.charAt(i);
-    if (c == 45) {
-      sign = -1.0;
-      i++;
-    } else if (c == 43) {
-      i++;
-    }
-  }
-  while (i < n && isSpaceChar(text.charAt(i))) i++;
-  let intPart: f64 = 0.0;
-  let hasDigits = false;
-  while (i < n) {
-    let c = text.charAt(i);
-    if (c >= 48 && c <= 57) {
-      intPart = intPart * 10.0 + ((c - 48) as f64);
-      hasDigits = true;
-      i++;
-    } else {
-      break;
-    }
-  }
-  let fracPart: f64 = 0.0;
-  let fracDiv: f64 = 1.0;
-  if (i < n && text.charAt(i) == 46) {
-    i++;
-    while (i < n) {
-      let c = text.charAt(i);
-      if (c >= 48 && c <= 57) {
-        fracPart = fracPart * 10.0 + ((c - 48) as f64);
-        fracDiv *= 10.0;
-        hasDigits = true;
-        i++;
-      } else {
-        break;
-      }
-    }
-  }
-  let expSign: i32 = 1;
-  let expVal: i32 = 0;
-  if (i < n && (text.charAt(i) == 101 || text.charAt(i) == 69)) {
-    i++;
-    if (i < n) {
-      let ec = text.charAt(i);
-      if (ec == 45) {
-        expSign = -1;
-        i++;
-      } else if (ec == 43) {
-        i++;
-      }
-    }
-    let hasExpDigits = false;
-    while (i < n) {
-      let ec = text.charAt(i);
-      if (ec >= 48 && ec <= 57) {
-        expVal = expVal * 10 + ((ec - 48) as i32);
-        hasExpDigits = true;
-        i++;
-      } else {
-        break;
-      }
-    }
-    if (!hasExpDigits) {
-      g_bailOut = true;
-      return 0.0;
-    }
-  }
-  while (i < n && isSpaceChar(text.charAt(i))) i++;
-  if (!hasDigits || i < n) {
+  g_exprPos = 0;
+  let val = parseExprAddSub(text, n);
+  if (g_bailOut) return 0.0;
+  skipExprSpaces(text, n);
+  if (g_exprPos < n) {
     g_bailOut = true;
     return 0.0;
   }
-  let val = sign * (intPart + (fracDiv > 1.0 ? fracPart / fracDiv : 0.0));
-  if (expVal != 0) {
-    val *= Math.pow(10.0, (expSign * expVal) as f64);
-  }
   return val;
+}
+
+let g_parsedPoolOff: u32 = 0;
+let g_parsedPoolLen: u32 = 0;
+let g_parsedSrcOff: u32 = 0;
+let g_parsedSrcLen: u32 = 0;
+
+function parseStringLiteralToPool(loc: u64): bool {
+  if (locIsNull(loc)) {
+    g_bailOut = true;
+    return false;
+  }
+  let src = locBytes(loc);
+  let byteLen = locByteLen(loc);
+  if (src == 0 || byteLen == 0) {
+    g_bailOut = true;
+    return false;
+  }
+  let text = SourceTextView.at(src, byteLen, inputEncoding == 1 || inputEncoding == 2);
+  let n = text.charCount;
+  let start: u32 = 0;
+  while (start < n && isSpaceChar(text.charAt(start))) start++;
+  let end: u32 = n;
+  while (end > start && isSpaceChar(text.charAt(end - 1))) end--;
+
+  if (end - start < 2 || text.charAt(start) != 34 || text.charAt(end - 1) != 34) {
+    g_bailOut = true;
+    return false;
+  }
+
+  let poolStart = g_textPoolLen;
+  let i = start + 1;
+  let innerEnd = end - 1;
+  while (i < innerEnd) {
+    let c = text.charAt(i);
+    if (c == 34) {
+      // Unescaped quote inside expression -> e.g. "a" + "b" string concatenation
+      g_textPoolLen = poolStart;
+      g_bailOut = true;
+      return false;
+    }
+    if (c == 92) {
+      // Backslash escape
+      i++;
+      if (i >= innerEnd) {
+        g_textPoolLen = poolStart;
+        g_bailOut = true;
+        return false;
+      }
+      let esc = text.charAt(i);
+      if (esc == 110) c = 10;
+      else if (esc == 114) c = 13;
+      else if (esc == 116) c = 9;
+      else c = esc;
+    }
+    if (g_textPoolLen >= TEXT_POOL_CAP) {
+      g_textPoolLen = poolStart;
+      g_bailOut = true;
+      return false;
+    }
+    setPoolChar(g_textPoolLen++, c as u16);
+    i++;
+  }
+
+  g_parsedPoolOff = poolStart;
+  g_parsedPoolLen = g_textPoolLen - poolStart;
+  g_parsedSrcOff = locOffset(loc) + start + 1;
+  g_parsedSrcLen = innerEnd - (start + 1);
+  return true;
 }
 
 function visitArrayElements(loc: u64, mode: i32, slotIdx: i32): void {
@@ -489,6 +816,11 @@ function visitArrayElements(loc: u64, mode: i32, slotIdx: i32): void {
             else if (g_arrowIdx == 1) getSlot(slotIdx).arrowEnd = arrVal;
             else g_bailOut = true;
             g_arrowIdx++;
+          }
+        } else if (mode == ARRAY_MODE_TEXT_STYLES) {
+          let stMask = parseTextStyleItem(ch);
+          if (!g_bailOut) {
+            getSlot(slotIdx).textStyleMask |= stMask;
           }
         }
       } else {
@@ -626,6 +958,54 @@ function parseTextAlignment(loc: u64): u8 {
   return ALIGN_CENTER;
 }
 
+function parseBorderPattern(loc: u64): u8 {
+  if (locIsNull(loc)) return BORDER_NONE;
+  let lastId = locFindLastDescendant(loc, SyntaxType.IDENTIFIER);
+  let target = !locIsNull(lastId) ? lastId : loc;
+  if (locMatches(target, "None")) return BORDER_NONE;
+  if (locMatches(target, "Raised")) return BORDER_RAISED;
+  if (locMatches(target, "Sunken")) return BORDER_SUNKEN;
+  if (locMatches(target, "Engraved")) return BORDER_ENGRAVED;
+  g_bailOut = true;
+  return BORDER_NONE;
+}
+
+function parseEllipseClosure(loc: u64): u8 {
+  if (locIsNull(loc)) return CLOSURE_NONE;
+  let lastId = locFindLastDescendant(loc, SyntaxType.IDENTIFIER);
+  let target = !locIsNull(lastId) ? lastId : loc;
+  if (locMatches(target, "None")) return CLOSURE_NONE;
+  if (locMatches(target, "Chord")) return CLOSURE_CHORD;
+  if (locMatches(target, "Radial")) return CLOSURE_RADIAL;
+  if (locMatches(target, "Automatic")) return CLOSURE_AUTOMATIC;
+  g_bailOut = true;
+  return CLOSURE_NONE;
+}
+
+function parseTextStyleItem(loc: u64): u8 {
+  if (locIsNull(loc)) return 0;
+  let lastId = locFindLastDescendant(loc, SyntaxType.IDENTIFIER);
+  let target = !locIsNull(lastId) ? lastId : loc;
+  if (locMatches(target, "Bold")) return TEXT_STYLE_BOLD;
+  if (locMatches(target, "Italic")) return TEXT_STYLE_ITALIC;
+  if (locMatches(target, "Underline")) return TEXT_STYLE_UNDERLINE;
+  g_bailOut = true;
+  return 0;
+}
+
+function parseTextStyles(loc: u64, slotIdx: i32): void {
+  if (locIsNull(loc)) {
+    g_bailOut = true;
+    return;
+  }
+  getSlot(slotIdx).textStyleMask = 0;
+  let arrArgs = locType(loc) == SyntaxType.ARRAY_ARGUMENTS ? loc : locFindDescendant(loc, SyntaxType.ARRAY_ARGUMENTS);
+  if (locIsNull(arrArgs)) {
+    return;
+  }
+  visitArrayElements(arrArgs, ARRAY_MODE_TEXT_STYLES, slotIdx);
+}
+
 function parseArrow(loc: u64): u8 {
   if (locIsNull(loc)) return ARROW_NONE;
   let lastId = locFindLastDescendant(loc, SyntaxType.IDENTIFIER);
@@ -703,33 +1083,115 @@ function applyGraphicProp(ident: u64, argVal: u64, slotIdx: i32): void {
       g_bailOut = true;
     }
   } else if (locMatches(ident, "textString") || locMatches(ident, "string")) {
-    let strLit = locType(argVal) == SyntaxType.STRING_LITERAL ? argVal : locFindDescendant(argVal, SyntaxType.STRING_LITERAL);
-    if (!locIsNull(strLit)) {
-      let off = locOffset(strLit);
-      let len = locLen(strLit);
-      if (len >= 2) {
-        slot.textOffset = off + 1;
-        slot.textLen = len - 2;
-      }
-    } else {
-      g_bailOut = true;
+    if (parseStringLiteralToPool(argVal)) {
+      slot.textOffset = g_parsedSrcOff;
+      slot.textLen = g_parsedSrcLen;
+      slot.poolTextOffset = g_parsedPoolOff;
+      slot.poolTextLen = g_parsedPoolLen;
     }
+  } else if (locMatches(ident, "fontName")) {
+    if (parseStringLiteralToPool(argVal)) {
+      slot.fontNamePoolOffset = g_parsedPoolOff;
+      slot.fontNamePoolLen = g_parsedPoolLen;
+    }
+  } else if (locMatches(ident, "textStyle")) {
+    parseTextStyles(argVal, slotIdx);
   } else if (locMatches(ident, "fontSize")) {
     slot.fontSize = parseNumberStrict(argVal);
   } else if (locMatches(ident, "horizontalAlignment")) {
     slot.textAlignment = parseTextAlignment(argVal);
   } else if (locMatches(ident, "borderPattern")) {
-    let lastId = locFindLastDescendant(argVal, SyntaxType.IDENTIFIER);
-    if (locIsNull(lastId) || !locMatches(lastId, "None")) {
-      g_bailOut = true;
-    }
+    slot.borderPattern = parseBorderPattern(argVal);
+  } else if (locMatches(ident, "startAngle")) {
+    slot.startAngle = parseNumberStrict(argVal);
+  } else if (locMatches(ident, "endAngle")) {
+    slot.endAngle = parseNumberStrict(argVal);
+    slot.hasEndAngle = 1;
+  } else if (locMatches(ident, "closure")) {
+    slot.closure = parseEllipseClosure(argVal);
   } else if (locMatches(ident, "arrow")) {
     parseArrows(argVal, slotIdx);
   } else if (locMatches(ident, "arrowSize")) {
     slot.arrowSize = parseNumberStrict(argVal);
+  } else if (locMatches(ident, "fileName")) {
+    if (parseStringLiteralToPool(argVal)) {
+      slot.fileNamePoolOffset = g_parsedPoolOff;
+      slot.fileNamePoolLen = g_parsedPoolLen;
+    }
+  } else if (locMatches(ident, "imageSource")) {
+    if (parseStringLiteralToPool(argVal)) {
+      slot.imageSourcePoolOffset = g_parsedPoolOff;
+      slot.imageSourcePoolLen = g_parsedPoolLen;
+    }
+  } else if (locMatches(ident, "index")) {
+    let _idx = parseNumberStrict(argVal);
+  } else if (locStartsWith(ident, "__")) {
+    // Ignore vendor-specific extensions on graphic items
   } else {
     g_bailOut = true;
   }
+}
+
+function processPositionalGraphicArg(funcArg: u64, slotIdx: i32): void {
+  let argVal = locFindDescendant(funcArg, SyntaxType.EXPRESSION);
+  if (locIsNull(argVal)) argVal = funcArg;
+  if (locIsNull(argVal)) {
+    g_bailOut = true;
+    return;
+  }
+
+  let slot = getSlot(slotIdx);
+  let kind = slot.kind;
+
+  // 1. Optional leading boolean `visible`
+  if (g_posArgIdx == 0 && (locMatches(argVal, "true") || locMatches(argVal, "false"))) {
+    slot.visible = locMatches(argVal, "true") ? 1 : 0;
+    g_posArgIdx = 1;
+    return;
+  }
+
+  // 2. Primary geometry (`points` for Line/Polygon, `extent` for Rectangle/Ellipse/Text/Bitmap)
+  if (g_posArgIdx <= 1) {
+    if (kind == GRAPHIC_LINE || kind == GRAPHIC_POLYGON) {
+      parsePoints(argVal, slotIdx);
+      g_posArgIdx = 2;
+      return;
+    } else if (
+      kind == GRAPHIC_RECTANGLE ||
+      kind == GRAPHIC_ELLIPSE ||
+      kind == GRAPHIC_TEXT ||
+      kind == GRAPHIC_BITMAP
+    ) {
+      if (parseExtentToScratch(argVal)) {
+        slot.x1 = g_extX1;
+        slot.y1 = g_extY1;
+        slot.x2 = g_extX2;
+        slot.y2 = g_extY2;
+      }
+      g_posArgIdx = 2;
+      return;
+    }
+  }
+
+  // 3. String literal (`textString` for Text, `fileName` for Bitmap)
+  let strLit = locType(argVal) == SyntaxType.STRING_LITERAL ? argVal : locFindDescendant(argVal, SyntaxType.STRING_LITERAL);
+  if (!locIsNull(strLit) && g_posArgIdx == 2) {
+    if (kind == GRAPHIC_TEXT && parseStringLiteralToPool(argVal)) {
+      slot.textOffset = g_parsedSrcOff;
+      slot.textLen = g_parsedSrcLen;
+      slot.poolTextOffset = g_parsedPoolOff;
+      slot.poolTextLen = g_parsedPoolLen;
+      g_posArgIdx = 3;
+      return;
+    } else if (kind == GRAPHIC_BITMAP && parseStringLiteralToPool(argVal)) {
+      slot.fileNamePoolOffset = g_parsedPoolOff;
+      slot.fileNamePoolLen = g_parsedPoolLen;
+      g_posArgIdx = 3;
+      return;
+    }
+  }
+
+  g_bailOut = true;
 }
 
 function processNamedGraphicArg(namedArg: u64, slotIdx: i32): void {
@@ -752,8 +1214,7 @@ function visitCallArgs(loc: u64, slotIdx: i32): void {
       if (t == SyntaxType.NAMED_ARGUMENT) {
         processNamedGraphicArg(ch, slotIdx);
       } else if (t == SyntaxType.FUNCTION_ARGUMENT) {
-        // Positional argument on graphic item -> bail out to TS evaluator
-        g_bailOut = true;
+        processPositionalGraphicArg(ch, slotIdx);
       } else {
         visitCallArgs(ch, slotIdx);
       }
@@ -784,11 +1245,25 @@ function initGraphicSlot(slotIdx: i32, kind: u8): void {
   slot.pointsCount = 0;
   slot.textOffset = 0;
   slot.textLen = 0;
+  slot.poolTextOffset = 0;
+  slot.poolTextLen = 0;
+  slot.fontNamePoolOffset = 0;
+  slot.fontNamePoolLen = 0;
+  slot.fileNamePoolOffset = 0;
+  slot.fileNamePoolLen = 0;
+  slot.imageSourcePoolOffset = 0;
+  slot.imageSourcePoolLen = 0;
   slot.fontSize = 0.0;
   slot.arrowSize = 0.0;
+  slot.startAngle = 0.0;
+  slot.endAngle = 360.0;
   slot.textAlignment = ALIGN_CENTER;
   slot.arrowStart = ARROW_NONE;
   slot.arrowEnd = ARROW_NONE;
+  slot.borderPattern = BORDER_NONE;
+  slot.closure = CLOSURE_NONE;
+  slot.textStyleMask = 0;
+  slot.hasEndAngle = 0;
 }
 
 function parseGraphicItem(exprLoc: u64): void {
@@ -817,6 +1292,7 @@ function parseGraphicItem(exprLoc: u64): void {
   else if (locMatches(compRef, "Line")) kind = GRAPHIC_LINE;
   else if (locMatches(compRef, "Ellipse")) kind = GRAPHIC_ELLIPSE;
   else if (locMatches(compRef, "Text")) kind = GRAPHIC_TEXT;
+  else if (locMatches(compRef, "Bitmap")) kind = GRAPHIC_BITMAP;
   else {
     g_bailOut = true;
     return;
@@ -824,6 +1300,7 @@ function parseGraphicItem(exprLoc: u64): void {
 
   let slotIdx = g_graphicCount;
   initGraphicSlot(slotIdx, kind);
+  g_posArgIdx = 0;
 
   visitCallArgs(callArgs, slotIdx);
   if (!g_bailOut) {
@@ -850,11 +1327,21 @@ function visitClassModArgs(loc: u64, mode: i32): void {
               if (locMatches(nameLoc, "Icon") || locMatches(nameLoc, "icon")) {
                 g_foundIconMod = ch;
                 g_iconClauseCount++;
+                g_hasIcon = true;
+                let iconMod = locFindDescendant(ch, SyntaxType.CLASS_MODIFICATION);
+                if (!locIsNull(iconMod)) {
+                  visitClassModArgs(iconMod, MOD_MODE_ICON_PROPS);
+                }
               }
             } else {
               if (locMatches(nameLoc, "Diagram") || locMatches(nameLoc, "diagram")) {
                 g_foundIconMod = ch;
                 g_iconClauseCount++;
+                g_hasIcon = true;
+                let diagMod = locFindDescendant(ch, SyntaxType.CLASS_MODIFICATION);
+                if (!locIsNull(diagMod)) {
+                  visitClassModArgs(diagMod, MOD_MODE_ICON_PROPS);
+                }
               }
             }
           } else if (mode == MOD_MODE_ICON_PROPS) {
@@ -865,10 +1352,13 @@ function visitClassModArgs(loc: u64, mode: i32): void {
                 visitClassModArgs(csMod, MOD_MODE_COORDSYS_PROPS);
               }
             } else if (locMatches(nameLoc, "graphics")) {
+              g_graphicCount = g_layerGraphicStart;
               let arrArgs = locFindDescendant(ch, SyntaxType.ARRAY_ARGUMENTS);
               if (!locIsNull(arrArgs)) {
                 visitArrayElements(arrArgs, ARRAY_MODE_GRAPHIC_ITEMS, 0);
               }
+            } else if (locStartsWith(nameLoc, "__")) {
+              // Ignore vendor-specific extensions inside Icon/Diagram
             } else {
               g_bailOut = true;
             }
@@ -897,7 +1387,7 @@ function visitClassModArgs(loc: u64, mode: i32): void {
                 g_gridY = g_tmpY1;
                 g_hasGrid = true;
               }
-            } else if (locMatches(nameLoc, "initialScale")) {
+            } else if (locMatches(nameLoc, "initialScale") || locStartsWith(nameLoc, "__")) {
               // Allowed coordinateSystem properties not affecting SVG bounds
             } else {
               g_bailOut = true;
@@ -906,6 +1396,11 @@ function visitClassModArgs(loc: u64, mode: i32): void {
             if (locMatches(nameLoc, "Placement") || locMatches(nameLoc, "placement")) {
               g_foundPlacementMod = ch;
               g_placementClauseCount++;
+              g_hasPlacement = true;
+              let plMod = locFindDescendant(ch, SyntaxType.CLASS_MODIFICATION);
+              if (!locIsNull(plMod)) {
+                visitClassModArgs(plMod, MOD_MODE_PLACEMENT_PROPS);
+              }
             }
           } else if (mode == MOD_MODE_PLACEMENT_PROPS) {
             if (locMatches(nameLoc, "visible")) {
@@ -942,6 +1437,8 @@ function visitClassModArgs(loc: u64, mode: i32): void {
               } else {
                 g_bailOut = true;
               }
+            } else if (locStartsWith(nameLoc, "__")) {
+              // Ignore vendor-specific Placement extensions
             } else {
               g_bailOut = true;
             }
@@ -977,6 +1474,8 @@ function visitClassModArgs(loc: u64, mode: i32): void {
               } else {
                 g_bailOut = true;
               }
+            } else if (locStartsWith(nameLoc, "__")) {
+              // Ignore vendor-specific transformation extensions
             } else {
               g_bailOut = true;
             }
@@ -1012,6 +1511,8 @@ function visitClassModArgs(loc: u64, mode: i32): void {
               } else {
                 g_bailOut = true;
               }
+            } else if (locStartsWith(nameLoc, "__")) {
+              // Ignore vendor-specific iconTransformation extensions
             } else {
               g_bailOut = true;
             }
@@ -1019,6 +1520,15 @@ function visitClassModArgs(loc: u64, mode: i32): void {
             if (locMatches(nameLoc, "Line") || locMatches(nameLoc, "line")) {
               g_foundLineMod = ch;
               g_lineClauseCount++;
+              if (!g_hasConnectLine) {
+                g_hasConnectLine = true;
+                initGraphicSlot(0, GRAPHIC_LINE);
+                g_graphicCount = 1;
+              }
+              let lineMod = locFindDescendant(ch, SyntaxType.CLASS_MODIFICATION);
+              if (!locIsNull(lineMod)) {
+                visitClassModArgs(lineMod, MOD_MODE_CONNECT_LINE_PROPS);
+              }
             }
           } else if (mode == MOD_MODE_CONNECT_LINE_PROPS) {
             let valLoc = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
@@ -1129,10 +1639,12 @@ function findTopClassDefs(loc: u64): void {
   }
 }
 
-function scanClassGraphicsLayer(classNodePtr: u32, startOffset: u32, isDiagram: bool): i32 {
+export function annotation_beginLayer(isDiagram: u8): void {
   ensureAnnotationArena();
   g_graphicCount = 0;
+  g_layerGraphicStart = 0;
   g_totalPoints = 0;
+  g_textPoolLen = 0;
   g_coordX1 = -100.0;
   g_coordY1 = -100.0;
   g_coordX2 = 100.0;
@@ -1146,9 +1658,18 @@ function scanClassGraphicsLayer(classNodePtr: u32, startOffset: u32, isDiagram: 
   g_bailOut = false;
   g_foundIconMod = 0;
   g_iconClauseCount = 0;
-  g_scanTargetDiagram = isDiagram;
+  g_scanTargetDiagram = isDiagram != 0;
+}
 
-  if (classNodePtr == 0) return 0;
+export function annotation_appendClassLayer(classNodePtr: u32, startOffset: u32, isDiagram: u8): i32 {
+  ensureAnnotationArena();
+  if (g_bailOut) return -1;
+  g_scanTargetDiagram = isDiagram != 0;
+  g_layerGraphicStart = g_graphicCount;
+  g_foundIconMod = 0;
+  g_iconClauseCount = 0;
+
+  if (classNodePtr == 0) return g_graphicCount;
 
   let actualOffset = startOffset > 0 ? startOffset : getNodePadding(classNodePtr);
   let rootLoc = locMake(classNodePtr, actualOffset);
@@ -1162,27 +1683,19 @@ function scanClassGraphicsLayer(classNodePtr: u32, startOffset: u32, isDiagram: 
       g_bailOut = true;
       return -1;
     } else {
-      return 0;
+      return g_graphicCount;
     }
   }
 
   findIconClauseInClass(rootLoc, true);
-
-  if (g_iconClauseCount > 1) {
-    g_bailOut = true;
-    return -1;
-  }
-
-  if (locIsNull(g_foundIconMod)) return 0;
-  g_hasIcon = true;
-
-  let iconMod = locFindDescendant(g_foundIconMod, SyntaxType.CLASS_MODIFICATION);
-  if (locIsNull(iconMod)) return 0;
-
-  visitClassModArgs(iconMod, MOD_MODE_ICON_PROPS);
   if (g_bailOut) return -1;
 
   return g_graphicCount;
+}
+
+function scanClassGraphicsLayer(classNodePtr: u32, startOffset: u32, isDiagram: bool): i32 {
+  annotation_beginLayer(isDiagram ? 1 : 0);
+  return annotation_appendClassLayer(classNodePtr, startOffset, isDiagram ? 1 : 0);
 }
 
 export function annotation_scanIcon(classNodePtr: u32, startOffset: u32): i32 {
@@ -1232,20 +1745,8 @@ export function annotation_scanPlacement(compNodePtr: u32, startOffset: u32): i3
   let rootLoc = locMake(compNodePtr, actualOffset);
 
   findLeafAnnotationClause(rootLoc, MOD_MODE_FIND_PLACEMENT);
-
-  if (g_placementClauseCount > 1) {
-    g_bailOut = true;
-    return -1;
-  }
-
-  if (locIsNull(g_foundPlacementMod)) return 0;
-  g_hasPlacement = true;
-
-  let plMod = locFindDescendant(g_foundPlacementMod, SyntaxType.CLASS_MODIFICATION);
-  if (locIsNull(plMod)) return 1;
-
-  visitClassModArgs(plMod, MOD_MODE_PLACEMENT_PROPS);
   if (g_bailOut) return -1;
+  if (!g_hasPlacement) return 0;
 
   return 1;
 }
@@ -1254,6 +1755,7 @@ export function annotation_scanConnectLine(eqNodePtr: u32, startOffset: u32): i3
   ensureAnnotationArena();
   g_graphicCount = 0;
   g_totalPoints = 0;
+  g_textPoolLen = 0;
   g_bailOut = false;
   g_foundLineMod = 0;
   g_lineClauseCount = 0;
@@ -1265,41 +1767,57 @@ export function annotation_scanConnectLine(eqNodePtr: u32, startOffset: u32): i3
   let rootLoc = locMake(eqNodePtr, actualOffset);
 
   findLeafAnnotationClause(rootLoc, MOD_MODE_FIND_CONNECT_LINE);
-
-  if (g_lineClauseCount > 1) {
-    g_bailOut = true;
-    return -1;
-  }
-
-  if (locIsNull(g_foundLineMod)) return 0;
-  g_hasConnectLine = true;
-
-  initGraphicSlot(0, GRAPHIC_LINE);
-  g_graphicCount = 1;
-
-  let lineMod = locFindDescendant(g_foundLineMod, SyntaxType.CLASS_MODIFICATION);
-  if (locIsNull(lineMod)) return 1;
-
-  visitClassModArgs(lineMod, MOD_MODE_CONNECT_LINE_PROPS);
   if (g_bailOut) {
     g_graphicCount = 0;
     return -1;
   }
+  if (!g_hasConnectLine) return 0;
 
   return 1;
 }
 
 // ── In-WASM SVG Serializer ──────────────────────────────────────────────────
 
-export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, size: f32): u32 {
-  let count = annotation_scanIcon(classNodePtr, startOffset);
-  if (count <= 0) return 0;
+function poolTextHasPercentMacro(poolOff: u32, poolLen: u32): bool {
+  for (let i: u32 = 0; i < poolLen; ++i) {
+    if (getPoolChar(poolOff + i) == 37) return true; // '%'
+  }
+  return false;
+}
 
+function writeSlotFillAttr(slot: GraphicSlot, idx: i32): void {
+  let fp = slot.fillPattern;
+  let fillColorPacked = slot.fillColor >= 0 ? slot.fillColor : slot.strokeColor;
+  writeString('" fill="');
+  if (fp == FILL_SOLID) {
+    writeColorRgb(fillColorPacked, "rgb(0,0,0)");
+  } else if (fp == FILL_HORIZ_CYLINDER || fp == FILL_VERT_CYLINDER || fp == FILL_SPHERE) {
+    writeString("url(#ms-grad-");
+    writeInt(idx);
+    writeString(")");
+  } else if (fp >= FILL_HORIZONTAL && fp <= FILL_CROSSDIAG) {
+    writeString("url(#ms-pat-");
+    writeInt(idx);
+    writeString(")");
+  } else {
+    writeString("none");
+  }
+}
+
+function renderCurrentIconSvg(size: f32): u32 {
+  let count = g_graphicCount;
+  if (count <= 0 || g_bailOut) return 0;
+
+  let needsDefs = false;
   for (let i = 0; i < count; ++i) {
     let slot = getSlot(i);
-    if (slot.kind == GRAPHIC_TEXT || slot.kind == GRAPHIC_BITMAP) return 0;
-    if (slot.fillPattern != FILL_NONE && slot.fillPattern != FILL_SOLID) return 0;
-    if (slot.smooth == SMOOTH_BEZIER) return 0;
+    if (slot.kind == GRAPHIC_BITMAP) return 0;
+    if (slot.kind == GRAPHIC_TEXT && poolTextHasPercentMacro(slot.poolTextOffset, slot.poolTextLen)) {
+      return 0;
+    }
+    if (slot.fillPattern >= FILL_HORIZONTAL && slot.fillPattern <= FILL_SPHERE) {
+      needsDefs = true;
+    }
   }
 
   ensureSvgBuffer();
@@ -1329,7 +1847,71 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
   writeFloat(vw + padX * 2.0, 2);
   writeString(" ");
   writeFloat(vh + padY * 2.0, 2);
-  writeString('" preserveAspectRatio="none" overflow="visible"><g transform="translate(');
+  writeString('" preserveAspectRatio="none" overflow="visible">');
+
+  if (needsDefs) {
+    writeString("<defs>");
+    for (let i = 0; i < count; ++i) {
+      let slot = getSlot(i);
+      let fp = slot.fillPattern;
+      let fillCol = slot.fillColor >= 0 ? slot.fillColor : slot.strokeColor;
+      let lineCol = slot.strokeColor >= 0 ? slot.strokeColor : 0;
+      if (fp == FILL_HORIZ_CYLINDER || fp == FILL_VERT_CYLINDER) {
+        let midCol = brightenPackedColor(fillCol, 0.35);
+        writeString('<linearGradient id="ms-grad-');
+        writeInt(i);
+        if (fp == FILL_HORIZ_CYLINDER) {
+          writeString('" x1="0%" y1="0%" x2="0%" y2="100%">');
+        } else {
+          writeString('" x1="0%" y1="0%" x2="100%" y2="0%">');
+        }
+        writeString('<stop offset="0%" stop-color="');
+        writeColorRgb(lineCol, "rgb(0,0,0)");
+        writeString('"/><stop offset="30%" stop-color="');
+        writeColorRgb(midCol, "rgb(128,128,128)");
+        writeString('"/><stop offset="50%" stop-color="');
+        writeColorRgb(fillCol, "rgb(200,200,200)");
+        writeString('"/><stop offset="70%" stop-color="');
+        writeColorRgb(midCol, "rgb(128,128,128)");
+        writeString('"/><stop offset="100%" stop-color="');
+        writeColorRgb(lineCol, "rgb(0,0,0)");
+        writeString('"/></linearGradient>');
+      } else if (fp == FILL_SPHERE) {
+        let hiCol = brightenPackedColor(fillCol, 0.55);
+        writeString('<radialGradient id="ms-grad-');
+        writeInt(i);
+        writeString('" cx="50%" cy="50%" r="50%" fx="35%" fy="35%"><stop offset="0%" stop-color="');
+        writeColorRgb(hiCol, "rgb(255,255,255)");
+        writeString('"/><stop offset="55%" stop-color="');
+        writeColorRgb(fillCol, "rgb(180,180,180)");
+        writeString('"/><stop offset="100%" stop-color="');
+        writeColorRgb(lineCol, "rgb(0,0,0)");
+        writeString('"/></radialGradient>');
+      } else if (fp >= FILL_HORIZONTAL && fp <= FILL_CROSSDIAG) {
+        writeString('<pattern id="ms-pat-');
+        writeInt(i);
+        writeString('" width="8" height="8" patternUnits="userSpaceOnUse">');
+        if (slot.fillColor >= 0) {
+          writeString('<rect width="8" height="8" fill="');
+          writeColorRgb(slot.fillColor, "none");
+          writeString('"/>');
+        }
+        writeString('<path d="');
+        if (fp == FILL_HORIZONTAL) writeString("M 0 4 H 8");
+        else if (fp == FILL_VERTICAL) writeString("M 4 0 V 8");
+        else if (fp == FILL_CROSS) writeString("M 0 4 H 8 M 4 0 V 8");
+        else if (fp == FILL_FORWARD) writeString("M 0 8 L 8 0");
+        else if (fp == FILL_BACKWARD) writeString("M 0 0 L 8 8");
+        else writeString("M 0 8 L 8 0 M 0 0 L 8 8");
+        writeString('" stroke="');
+        writeColorRgb(lineCol, "rgb(0,0,0)");
+        writeString('" stroke-width="1" fill="none"/></pattern>');
+      }
+    }
+    writeString("</defs>");
+  }
+
+  writeString('<g transform="translate(');
   writeFloat(-vx + padX, 2);
   writeString(", ");
   writeFloat(-vy + padY, 2);
@@ -1362,9 +1944,6 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
     else if (slot.linePattern == LINE_DOT) dashArray = "1, 2";
     else if (slot.linePattern == LINE_DASHDOT) dashArray = "4, 2, 1, 2";
     else if (slot.linePattern == LINE_DASHDOTDOT) dashArray = "4, 2, 1, 2, 1, 2";
-
-    let isSolidFill = slot.fillPattern == FILL_SOLID;
-    let fillColorPacked = slot.fillColor >= 0 ? slot.fillColor : slot.strokeColor;
 
     if (kind == GRAPHIC_RECTANGLE) {
       let x1 = slot.x1;
@@ -1438,9 +2017,7 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
         writeFloat(rx, 2);
         writeString(" Z");
       }
-      writeString('" fill="');
-      if (isSolidFill) writeColorRgb(fillColorPacked, "rgb(0,0,0)");
-      else writeString("none");
+      writeSlotFillAttr(slot, i);
       writeString('" stroke="');
       if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
       else writeString("none");
@@ -1478,14 +2055,42 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
         }
         writeString('"/>');
       } else if (ptCount > 2) {
-        writeString('<polyline points="');
-        for (let p = 0; p < ptCount; ++p) {
-          if (p > 0) writeString(" ");
-          writeFloat(getPointX(offset + p), 2);
-          writeString(",");
-          writeFloat(-getPointY(offset + p), 2);
+        if (slot.smooth == SMOOTH_BEZIER) {
+          writeString('<path d="M ');
+          writeFloat(getPointX(offset), 2);
+          writeString(" ");
+          writeFloat(-getPointY(offset), 2);
+          let m0x = (getPointX(offset) + getPointX(offset + 1)) * 0.5;
+          let m0y = (-getPointY(offset) - getPointY(offset + 1)) * 0.5;
+          writeString(" L ");
+          writeFloat(m0x, 2);
+          writeString(" ");
+          writeFloat(m0y, 2);
+          for (let p = 1; p < ptCount - 1; ++p) {
+            let cpx = getPointX(offset + p);
+            let cpy = -getPointY(offset + p);
+            let ex = p == ptCount - 2 ? getPointX(offset + p + 1) : (cpx + getPointX(offset + p + 1)) * 0.5;
+            let ey = p == ptCount - 2 ? -getPointY(offset + p + 1) : (cpy - getPointY(offset + p + 1)) * 0.5;
+            writeString(" Q ");
+            writeFloat(cpx, 2);
+            writeString(" ");
+            writeFloat(cpy, 2);
+            writeString(" ");
+            writeFloat(ex, 2);
+            writeString(" ");
+            writeFloat(ey, 2);
+          }
+          writeString('" fill="none" stroke="');
+        } else {
+          writeString('<polyline points="');
+          for (let p = 0; p < ptCount; ++p) {
+            if (p > 0) writeString(" ");
+            writeFloat(getPointX(offset + p), 2);
+            writeString(",");
+            writeFloat(-getPointY(offset + p), 2);
+          }
+          writeString('" fill="none" stroke="');
         }
-        writeString('" fill="none" stroke="');
         if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
         else writeString("none");
         if (hasStroke) {
@@ -1502,16 +2107,42 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
       let offset = slot.pointsOffset;
       let ptCount = slot.pointsCount;
       if (ptCount >= 3) {
-        writeString('<polygon points="');
-        for (let p = 0; p < ptCount; ++p) {
-          if (p > 0) writeString(" ");
-          writeFloat(getPointX(offset + p), 2);
-          writeString(",");
-          writeFloat(-getPointY(offset + p), 2);
+        if (slot.smooth == SMOOTH_BEZIER) {
+          let x0 = getPointX(offset);
+          let y0 = -getPointY(offset);
+          let x1 = getPointX(offset + 1);
+          let y1 = -getPointY(offset + 1);
+          writeString('<path d="M ');
+          writeFloat((x0 + x1) * 0.5, 2);
+          writeString(" ");
+          writeFloat((y0 + y1) * 0.5, 2);
+          for (let p = 1; p <= ptCount; ++p) {
+            let currIdx = p % ptCount;
+            let nextIdx = (p + 1) % ptCount;
+            let cpx = getPointX(offset + currIdx);
+            let cpy = -getPointY(offset + currIdx);
+            let nx = getPointX(offset + nextIdx);
+            let ny = -getPointY(offset + nextIdx);
+            writeString(" Q ");
+            writeFloat(cpx, 2);
+            writeString(" ");
+            writeFloat(cpy, 2);
+            writeString(" ");
+            writeFloat((cpx + nx) * 0.5, 2);
+            writeString(" ");
+            writeFloat((cpy + ny) * 0.5, 2);
+          }
+          writeString(" Z");
+        } else {
+          writeString('<polygon points="');
+          for (let p = 0; p < ptCount; ++p) {
+            if (p > 0) writeString(" ");
+            writeFloat(getPointX(offset + p), 2);
+            writeString(",");
+            writeFloat(-getPointY(offset + p), 2);
+          }
         }
-        writeString('" fill="');
-        if (isSolidFill) writeColorRgb(fillColorPacked, "rgb(0,0,0)");
-        else writeString("none");
+        writeSlotFillAttr(slot, i);
         writeString('" stroke="');
         if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
         else writeString("none");
@@ -1545,9 +2176,7 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
       writeFloat(rx, 2);
       writeString('" ry="');
       writeFloat(ry, 2);
-      writeString('" fill="');
-      if (isSolidFill) writeColorRgb(fillColorPacked, "rgb(0,0,0)");
-      else writeString("none");
+      writeSlotFillAttr(slot, i);
       writeString('" stroke="');
       if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
       else writeString("none");
@@ -1560,6 +2189,40 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
         }
       }
       writeString('"/>');
+    } else if (kind == GRAPHIC_TEXT && slot.poolTextLen > 0) {
+      let x1 = slot.x1;
+      let y1 = -slot.y1;
+      let x2 = slot.x2;
+      let y2 = -slot.y2;
+      let bw = Math.abs(x2 - x1);
+      let bh = Math.abs(y2 - y1);
+      let bx = Math.min(x1, x2);
+      let by = Math.min(y1, y2);
+      let tx = bx + bw * 0.5;
+      let anchor = "middle";
+      if (slot.textAlignment == ALIGN_LEFT) {
+        tx = bx;
+        anchor = "start";
+      } else if (slot.textAlignment == ALIGN_RIGHT) {
+        tx = bx + bw;
+        anchor = "end";
+      }
+      let ty = by + bh * 0.5;
+      let fSize = slot.fontSize > 0.0 ? slot.fontSize : Math.max(8.0, bh * 0.7);
+
+      writeString('<text x="');
+      writeFloat(tx, 2);
+      writeString('" y="');
+      writeFloat(ty, 2);
+      writeString('" text-anchor="');
+      writeString(anchor);
+      writeString('" dominant-baseline="central" font-family="sans-serif" font-size="');
+      writeFloat(fSize, 2);
+      writeString('" fill="');
+      writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
+      writeString('">');
+      writeXmlEscapedPoolText(slot.poolTextOffset, slot.poolTextLen);
+      writeString("</text>");
     }
 
     writeString("</g>");
@@ -1571,10 +2234,24 @@ export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, si
   return g_svgLen - 1;
 }
 
+export function annotation_renderIconSvg(classNodePtr: u32, startOffset: u32, size: f32): u32 {
+  let count = annotation_scanIcon(classNodePtr, startOffset);
+  if (count <= 0) return 0;
+  return renderCurrentIconSvg(size);
+}
+
+export function annotation_renderAccumulatedIconSvg(size: f32): u32 {
+  return renderCurrentIconSvg(size);
+}
+
 // ── Public Boundary Exports ──────────────────────────────────────────────────
 
 export function annotation_getSvgBufferPtr(): usize {
   return g_svgBuffer;
+}
+
+export function annotation_getTextPoolPtr(): usize {
+  return g_textPoolBuf;
 }
 
 export function annotation_hasIcon(): u8 {
@@ -1711,6 +2388,46 @@ export function annotation_getGraphicTextLen(index: i32): u32 {
   return 0;
 }
 
+export function annotation_getGraphicPoolTextOffset(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).poolTextOffset;
+  return 0;
+}
+
+export function annotation_getGraphicPoolTextLen(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).poolTextLen;
+  return 0;
+}
+
+export function annotation_getGraphicFontNamePoolOffset(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).fontNamePoolOffset;
+  return 0;
+}
+
+export function annotation_getGraphicFontNamePoolLen(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).fontNamePoolLen;
+  return 0;
+}
+
+export function annotation_getGraphicFileNamePoolOffset(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).fileNamePoolOffset;
+  return 0;
+}
+
+export function annotation_getGraphicFileNamePoolLen(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).fileNamePoolLen;
+  return 0;
+}
+
+export function annotation_getGraphicImageSourcePoolOffset(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).imageSourcePoolOffset;
+  return 0;
+}
+
+export function annotation_getGraphicImageSourcePoolLen(index: i32): u32 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).imageSourcePoolLen;
+  return 0;
+}
+
 export function annotation_getGraphicFontSize(index: i32): f64 {
   if (index >= 0 && index < g_graphicCount) return getSlot(index).fontSize;
   return 0.0;
@@ -1719,6 +2436,36 @@ export function annotation_getGraphicFontSize(index: i32): f64 {
 export function annotation_getGraphicTextAlignment(index: i32): u8 {
   if (index >= 0 && index < g_graphicCount) return getSlot(index).textAlignment;
   return ALIGN_CENTER;
+}
+
+export function annotation_getGraphicBorderPattern(index: i32): u8 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).borderPattern;
+  return BORDER_NONE;
+}
+
+export function annotation_getGraphicStartAngle(index: i32): f64 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).startAngle;
+  return 0.0;
+}
+
+export function annotation_getGraphicEndAngle(index: i32): f64 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).endAngle;
+  return 360.0;
+}
+
+export function annotation_getGraphicHasEndAngle(index: i32): u8 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).hasEndAngle;
+  return 0;
+}
+
+export function annotation_getGraphicClosure(index: i32): u8 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).closure;
+  return CLOSURE_NONE;
+}
+
+export function annotation_getGraphicTextStyleMask(index: i32): u8 {
+  if (index >= 0 && index < g_graphicCount) return getSlot(index).textStyleMask;
+  return 0;
 }
 
 export function annotation_getGraphicArrowStart(index: i32): u8 {

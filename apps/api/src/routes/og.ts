@@ -33,9 +33,10 @@ export function ogRouter(database: LibraryDatabase): Router {
   }
 
   // ── Post OpenGraph Card ──
+  // ── Post OpenGraph Card ──
   const handlePostOg = (req: Request, res: Response): void => {
     const rawId = getParam(req.params["id"]).replace(/\.(svg|png)$/, "");
-    if (!rawId || !rawId.trim()) {
+    if (!rawId || !/^[a-zA-Z0-9_-]+$/.test(rawId.trim())) {
       res.status(400).send("Invalid post ID");
       return;
     }
@@ -48,8 +49,13 @@ export function ogRouter(database: LibraryDatabase): Router {
         ? rawPost
         : undefined;
 
+    if (!post) {
+      res.status(404).send("Post not found");
+      return;
+    }
+
     let viewType: string | null = null;
-    if (post?.artifact_view_id) {
+    if (post.artifact_view_id) {
       try {
         const art = database.getArtifactView(post.artifact_view_id);
         if (art?.view_type) viewType = art.view_type;
@@ -59,30 +65,26 @@ export function ogRouter(database: LibraryDatabase): Router {
     }
 
     const svg = renderPostOgSvg(
-      post
-        ? {
-            id: post.id,
-            title: post.title,
-            content: post.content,
-            username: post.username,
-            display_name: post.display_name,
-            created_at: post.created_at,
-            thumbnail_url: post.thumbnail_url,
-            artifact_view_id: post.artifact_view_id,
-            view_type: viewType,
-            like_count: post.like_count,
-            reply_count: post.reply_count,
-          }
-        : {
-            id: postId,
-            title: `${brandName} Engineering Simulation`,
-            content: "Interactive physical modeling and cyber-physical systems simulation.",
-          },
+      {
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        username: post.username,
+        display_name: post.display_name,
+        created_at: post.created_at,
+        thumbnail_url: post.thumbnail_url,
+        artifact_view_id: post.artifact_view_id,
+        view_type: viewType,
+        like_count: post.like_count,
+        reply_count: post.reply_count,
+      },
       host,
       brandName,
     );
 
     res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader(
       "Cache-Control",
       isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",
@@ -122,6 +124,8 @@ export function ogRouter(database: LibraryDatabase): Router {
     );
 
     res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader(
       "Cache-Control",
       isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",
@@ -164,6 +168,8 @@ export function ogRouter(database: LibraryDatabase): Router {
     );
 
     res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader(
       "Cache-Control",
       isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",

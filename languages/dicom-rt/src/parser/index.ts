@@ -1386,7 +1386,13 @@ function parseDicomRtDsl(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function stripTags(xml: string): string {
-  return xml.replace(/<[^>]+>/g, "");
+  let prev: string;
+  let curr = xml;
+  do {
+    prev = curr;
+    curr = curr.replace(/<[^>]+>/g, "");
+  } while (curr !== prev);
+  return curr;
 }
 
 function parseOptionalNum(val: string | undefined): number | undefined {

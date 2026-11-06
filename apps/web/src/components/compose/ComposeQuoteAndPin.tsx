@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { getPost } from "../../api";
 import type { SpatialPin } from "../artifacts/spatial-pin";
 import Box from "../Box";
+import { Avatar } from "../post/styles";
 import ProfileHoverCard from "../ProfileHoverCard";
 import { NestedQuoteWrapper, QuoteWrapper, TimestampButton, formatFullTimestamp, formatRelativeTime } from "./styles";
 
@@ -102,19 +103,11 @@ export const ComposeQuoteAndPin: React.FC<ComposeQuoteAndPinProps> = ({ pendingP
                   onClick={(e) => e.stopPropagation()}
                   style={{ textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center" }}
                 >
-                  <img
-                    src={quotePost.avatar_url}
-                    alt=""
-                    style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }}
-                  />
+                  <Avatar $url={quotePost.avatar_url} style={{ width: 18, height: 18 }} />
                 </Link>
               </ProfileHoverCard>
             ) : quotePost.avatar_url ? (
-              <img
-                src={quotePost.avatar_url}
-                alt=""
-                style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }}
-              />
+              <Avatar $url={quotePost.avatar_url} style={{ width: 18, height: 18 }} />
             ) : null}
             {cleanUsername ? (
               <ProfileHoverCard username={cleanUsername}>
@@ -172,19 +165,11 @@ export const ComposeQuoteAndPin: React.FC<ComposeQuoteAndPinProps> = ({ pendingP
                       onClick={(e) => e.stopPropagation()}
                       style={{ textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center" }}
                     >
-                      <img
-                        src={nestedQuote.avatar_url}
-                        alt=""
-                        style={{ width: 16, height: 16, borderRadius: "50%", objectFit: "cover" }}
-                      />
+                      <Avatar $url={nestedQuote.avatar_url} style={{ width: 16, height: 16 }} />
                     </Link>
                   </ProfileHoverCard>
                 ) : nestedQuote.avatar_url ? (
-                  <img
-                    src={nestedQuote.avatar_url}
-                    alt=""
-                    style={{ width: 16, height: 16, borderRadius: "50%", objectFit: "cover" }}
-                  />
+                  <Avatar $url={nestedQuote.avatar_url} style={{ width: 16, height: 16 }} />
                 ) : null}
                 {cleanNestedUser ? (
                   <ProfileHoverCard username={cleanNestedUser}>

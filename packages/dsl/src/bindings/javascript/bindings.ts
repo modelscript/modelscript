@@ -5218,11 +5218,70 @@ export class SyntaxNode {
       visited.add(this.ptr);
     }
     if (this.parent !== null && (start < this.startIndex || end > this.endIndex)) return null;
-    for (const kid of this.children) {
-      if (kid.ptr === this.ptr) continue;
-      if (start >= kid.startIndex && end <= kid.endIndex) {
-        const res = kid.descendantForIndex(start, end, visited);
-        if (res) return res;
+    if (this._cachedChildren !== null) {
+      for (const kid of this._cachedChildren) {
+        if (kid.ptr === this.ptr) continue;
+        if (start >= kid.startIndex && end <= kid.endIndex) {
+          const res = kid.descendantForIndex(start, end, visited);
+          if (res) return res;
+        }
+      }
+      return this;
+    }
+    if (this.ptr === 0) return this;
+
+    const mem32 = this.tree.mem32;
+    const exports = this.tree.facade?.exports;
+    const syntaxNames = this.tree.facade?.syntaxNames || SYNTAX_NAMES;
+    const encDiv = this._encodingDiv;
+    const rawStart = start * encDiv;
+    const rawEnd = end * encDiv;
+
+    let currentChildPtr = mem32[(this.ptr + 12) >>> 2];
+    let currentOffset = this._startOffset + this._cachedPad;
+    const stack: { nextChildPtr: number; nextOffset: number }[] = [];
+
+    while (true) {
+      if (currentChildPtr !== 0) {
+        const typeFlags = mem32[currentChildPtr >>> 2];
+        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2];
+        const rawPad = typeFlags >>> 22;
+        const isFat = (envHashPadding >>> 23) & 1;
+        const pad = isFat
+          ? mem32[(currentChildPtr + 28) >>> 2] ||
+            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2] : rawPad)
+          : rawPad;
+        const len = envHashPadding & 0x007fffff;
+        const childRawStart = currentOffset + pad;
+        const childRawEnd = childRawStart + len;
+        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2];
+        const nextOffset = childRawEnd;
+
+        if (rawStart >= childRawStart && rawEnd <= childRawEnd) {
+          const typeId = typeFlags & 0x03ff;
+          const isInvisible = (typeFlags & (1 << 14)) !== 0;
+          const name = (syntaxNames && syntaxNames[typeId]) || `node_${typeId}`;
+          if (isInvisible || name.startsWith("_")) {
+            stack.push({ nextChildPtr, nextOffset });
+            currentChildPtr = mem32[(currentChildPtr + 12) >>> 2];
+            currentOffset = childRawStart;
+            continue;
+          } else if (currentChildPtr !== this.ptr) {
+            const kid = new SyntaxNode(this.tree, currentChildPtr, currentOffset, this, pad, len, typeId, -1);
+            const res = kid.descendantForIndex(start, end, visited);
+            if (res) return res;
+          }
+        } else if (childRawStart > rawEnd && stack.length === 0) {
+          break;
+        }
+
+        currentOffset = nextOffset;
+        currentChildPtr = nextChildPtr;
+      } else {
+        if (stack.length === 0) break;
+        const state = stack.pop()!;
+        currentChildPtr = state.nextChildPtr;
+        currentOffset = state.nextOffset;
       }
     }
     return this;

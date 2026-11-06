@@ -1397,12 +1397,16 @@ const WASM_LINE_PATTERNS = ["None", "Solid", "Dash", "Dot", "DashDot", "DashDotD
 const WASM_SMOOTH_MODES = ["None", "Bezier"];
 const WASM_TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
 const WASM_ARROWS = ["None", "Open", "Filled", "Half"];
+const WASM_BORDER_PATTERNS = ["None", "Raised", "Sunken", "Engraved"];
+const WASM_CLOSURES = ["None", "Chord", "Radial", "Automatic"];
 
 function unpackWasmColor(packed: number): [number, number, number] {
   return [(packed >> 16) & 0xff, (packed >> 8) & 0xff, packed & 0xff];
 }
 
 interface WasmAnnotationExports {
+  annotation_beginLayer?: (isDiagram: number) => void;
+  annotation_appendClassLayer?: (ptr: number, startIdx: number, isDiagram: number) => number;
   annotation_scanIcon: (ptr: number, startIdx: number) => number;
   annotation_scanDiagram: (ptr: number, startIdx: number) => number;
   annotation_scanPlacement?: (ptr: number, startIdx: number) => number;
@@ -1417,6 +1421,7 @@ interface WasmAnnotationExports {
   annotation_hasGrid?: () => number;
   annotation_getGridX?: () => number;
   annotation_getGridY?: () => number;
+  annotation_getGraphicCount?: () => number;
   annotation_getGraphicKind: (i: number) => number;
   annotation_getGraphicStroke: (i: number) => number;
   annotation_getGraphicFill: (i: number) => number;
@@ -1442,8 +1447,22 @@ interface WasmAnnotationExports {
   annotation_getGraphicArrowSize?: (i: number) => number;
   annotation_getGraphicTextOffset: (i: number) => number;
   annotation_getGraphicTextLen: (i: number) => number;
+  annotation_getGraphicPoolTextOffset?: (i: number) => number;
+  annotation_getGraphicPoolTextLen?: (i: number) => number;
+  annotation_getGraphicFontNamePoolOffset?: (i: number) => number;
+  annotation_getGraphicFontNamePoolLen?: (i: number) => number;
+  annotation_getGraphicFileNamePoolOffset?: (i: number) => number;
+  annotation_getGraphicFileNamePoolLen?: (i: number) => number;
+  annotation_getGraphicImageSourcePoolOffset?: (i: number) => number;
+  annotation_getGraphicImageSourcePoolLen?: (i: number) => number;
   annotation_getGraphicFontSize: (i: number) => number;
   annotation_getGraphicTextAlignment: (i: number) => number;
+  annotation_getGraphicBorderPattern?: (i: number) => number;
+  annotation_getGraphicStartAngle?: (i: number) => number;
+  annotation_getGraphicEndAngle?: (i: number) => number;
+  annotation_getGraphicHasEndAngle?: (i: number) => number;
+  annotation_getGraphicClosure?: (i: number) => number;
+  annotation_getGraphicTextStyleMask?: (i: number) => number;
   annotation_getPlacementVisible: () => number;
   annotation_getPlacementIconVisible: () => number;
   annotation_hasTransformation: () => number;
@@ -1469,12 +1488,18 @@ interface WasmAnnotationExports {
   annotation_iconTransHasRotation: () => number;
   annotation_getIconTransRotation: () => number;
   annotation_renderIconSvg?: (ptr: number, startIdx: number, size: number) => number;
+  annotation_renderAccumulatedIconSvg?: (size: number) => number;
   annotation_getSvgBufferPtr?: () => number;
+  annotation_getTextPoolPtr?: () => number;
   getInputBuffer?: () => number;
   lsp_getInputBuffer?: () => number;
 }
 
-function ensureWasmAnnotationBuffer(ast: unknown): { exports: WasmAnnotationExports; src: string } | null {
+function ensureWasmAnnotationBuffer(ast: unknown): {
+  exports: WasmAnnotationExports;
+  src: string;
+  wasmMemory?: { buffer: ArrayBuffer };
+} | null {
   const astNode = ast as
     | {
         ptr?: number;
@@ -1524,7 +1549,27 @@ function ensureWasmAnnotationBuffer(ast: unknown): { exports: WasmAnnotationExpo
     facade.loadSource(src);
     facade._activeAnnotationSource = src;
   }
-  return { exports, src };
+  return facade.wasmMemory ? { exports, src, wasmMemory: facade.wasmMemory } : { exports, src };
+}
+
+function readPoolString(
+  exports: WasmAnnotationExports,
+  wasmMemory: { buffer: ArrayBuffer } | undefined,
+  poolOff: number,
+  poolLen: number,
+): string {
+  if (poolLen <= 0) return "";
+  const poolPtr = exports.annotation_getTextPoolPtr?.() ?? 0;
+  if (!wasmMemory || poolPtr <= 0) return "";
+  const u16 = new Uint16Array(wasmMemory.buffer, poolPtr + poolOff * 2, poolLen);
+  if (poolLen <= 2048) {
+    return String.fromCharCode(...u16);
+  }
+  let out = "";
+  for (let i = 0; i < poolLen; i += 2048) {
+    out += String.fromCharCode(...u16.subarray(i, Math.min(poolLen, i + 2048)));
+  }
+  return out;
 }
 
 export interface WasmGraphicItem {
@@ -1537,22 +1582,35 @@ export interface WasmGraphicItem {
   fillColor?: [number, number, number];
   fillPattern?: string;
   pattern?: string;
+  borderPattern?: string;
   lineThickness?: number;
   thickness?: number;
   radius?: number;
   smooth?: string;
+  startAngle?: number;
+  endAngle?: number;
+  closure?: string;
   arrow?: [string, string];
   arrowSize?: number;
   textString?: string;
   string?: string;
   fontSize?: number;
+  fontName?: string;
+  textStyle?: string[];
   horizontalAlignment?: string;
+  fileName?: string;
+  imageSource?: string;
   visible?: boolean;
   origin?: [number, number];
   rotation?: number;
 }
 
-function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: number): WasmGraphicItem | undefined {
+function readWasmGraphicSlot(
+  exports: WasmAnnotationExports,
+  src: string,
+  i: number,
+  wasmMemory?: { buffer: ArrayBuffer },
+): WasmGraphicItem | undefined {
   const kind: number = exports.annotation_getGraphicKind(i);
   const stroke: number = exports.annotation_getGraphicStroke(i);
   const fill: number = exports.annotation_getGraphicFill(i);
@@ -1563,6 +1621,7 @@ function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: num
   const ox: number = exports.annotation_getGraphicOriginX(i);
   const oy: number = exports.annotation_getGraphicOriginY(i);
   const rot: number = exports.annotation_getGraphicRotation(i);
+  const borderPatIdx: number = exports.annotation_getGraphicBorderPattern?.(i) ?? 0;
 
   let item: WasmGraphicItem | undefined;
   if (kind === 1) {
@@ -1578,6 +1637,7 @@ function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: num
       lineThickness: thickness,
       radius: exports.annotation_getGraphicRadius(i),
     };
+    if (borderPatIdx !== 0) item.borderPattern = WASM_BORDER_PATTERNS[borderPatIdx] ?? "None";
     if (fill >= 0) item.fillColor = unpackWasmColor(fill);
   } else if (kind === 2) {
     item = {
@@ -1591,6 +1651,13 @@ function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: num
       pattern: linePat,
       lineThickness: thickness,
     };
+    const startAng = exports.annotation_getGraphicStartAngle?.(i) ?? 0;
+    const endAng = exports.annotation_getGraphicEndAngle?.(i) ?? 360;
+    const hasEndAng = (exports.annotation_getGraphicHasEndAngle?.(i) ?? 0) !== 0;
+    const closureIdx = exports.annotation_getGraphicClosure?.(i) ?? 0;
+    if (startAng !== 0) item.startAngle = startAng;
+    if (hasEndAng || endAng !== 360) item.endAngle = endAng;
+    if (closureIdx !== 0) item.closure = WASM_CLOSURES[closureIdx] ?? "None";
     if (fill >= 0) item.fillColor = unpackWasmColor(fill);
   } else if (kind === 3) {
     const ptOff: number = exports.annotation_getGraphicPointsOffset(i);
@@ -1634,17 +1701,15 @@ function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: num
     };
     if (fill >= 0) item.fillColor = unpackWasmColor(fill);
   } else if (kind === 5) {
-    const textOff: number = exports.annotation_getGraphicTextOffset(i);
-    const textLen: number = exports.annotation_getGraphicTextLen(i);
-    let nextIdx = textOff + textLen + 1;
-    while (nextIdx < src.length && src.charCodeAt(nextIdx) <= 32) nextIdx++;
-    const nextCh = src.charCodeAt(nextIdx);
-    if (textOff > 0 && nextCh !== 44 && nextCh !== 41) {
-      return undefined;
-    }
-    const textVal = textOff > 0 ? src.substring(textOff, textOff + textLen) : "";
-    if (textVal.includes("\\") || textVal.includes('"')) {
-      return undefined;
+    let textVal = "";
+    if (wasmMemory && typeof exports.annotation_getGraphicPoolTextLen === "function") {
+      const poolOff = exports.annotation_getGraphicPoolTextOffset?.(i) ?? 0;
+      const poolLen = exports.annotation_getGraphicPoolTextLen(i);
+      textVal = readPoolString(exports, wasmMemory, poolOff, poolLen);
+    } else {
+      const textOff: number = exports.annotation_getGraphicTextOffset(i);
+      const textLen: number = exports.annotation_getGraphicTextLen(i);
+      textVal = textOff > 0 ? src.substring(textOff, textOff + textLen) : "";
     }
     item = {
       "@type": "Text",
@@ -1662,7 +1727,50 @@ function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: num
       fontSize: exports.annotation_getGraphicFontSize(i),
       horizontalAlignment: WASM_TEXT_ALIGNMENTS[exports.annotation_getGraphicTextAlignment(i)] ?? "Center",
     };
+    const fnLen = exports.annotation_getGraphicFontNamePoolLen?.(i) ?? 0;
+    if (fnLen > 0 && wasmMemory) {
+      item.fontName = readPoolString(
+        exports,
+        wasmMemory,
+        exports.annotation_getGraphicFontNamePoolOffset?.(i) ?? 0,
+        fnLen,
+      );
+    }
+    const styleMask = exports.annotation_getGraphicTextStyleMask?.(i) ?? 0;
+    if (styleMask !== 0) {
+      const styles: string[] = [];
+      if ((styleMask & 1) !== 0) styles.push("Bold");
+      if ((styleMask & 2) !== 0) styles.push("Italic");
+      if ((styleMask & 4) !== 0) styles.push("Underline");
+      item.textStyle = styles;
+    }
     if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+  } else if (kind === 6) {
+    item = {
+      "@type": "Bitmap",
+      extent: [
+        [exports.annotation_getGraphicRectX1(i), exports.annotation_getGraphicRectY1(i)],
+        [exports.annotation_getGraphicRectX2(i), exports.annotation_getGraphicRectY2(i)],
+      ],
+    };
+    const fileLen = exports.annotation_getGraphicFileNamePoolLen?.(i) ?? 0;
+    if (fileLen > 0 && wasmMemory) {
+      item.fileName = readPoolString(
+        exports,
+        wasmMemory,
+        exports.annotation_getGraphicFileNamePoolOffset?.(i) ?? 0,
+        fileLen,
+      );
+    }
+    const imgLen = exports.annotation_getGraphicImageSourcePoolLen?.(i) ?? 0;
+    if (imgLen > 0 && wasmMemory) {
+      item.imageSource = readPoolString(
+        exports,
+        wasmMemory,
+        exports.annotation_getGraphicImageSourcePoolOffset?.(i) ?? 0,
+        imgLen,
+      );
+    }
   } else {
     return undefined;
   }
@@ -1781,7 +1889,7 @@ function evaluateGraphicsLayerWasm(ast: unknown, isDiagram: boolean): WasmGraphi
   if (count > 0) {
     const graphics: WasmGraphicItem[] = [];
     for (let i = 0; i < count; i++) {
-      const item = readWasmGraphicSlot(exports, ctx.src, i);
+      const item = readWasmGraphicSlot(exports, ctx.src, i, ctx.wasmMemory);
       if (!item) return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, undefined);
       graphics.push(item);
     }
@@ -1789,6 +1897,77 @@ function evaluateGraphicsLayerWasm(ast: unknown, isDiagram: boolean): WasmGraphi
   }
 
   return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, layer);
+}
+
+/**
+ * Evaluates and merges an ordered list of base-to-derived class AST/CST locations directly in WASM.
+ */
+export function evaluateInheritedLayerWasm(asts: unknown[], isDiagram: boolean): WasmGraphicLayer | null | undefined {
+  if (!asts || asts.length === 0) return null;
+  if (asts.length === 1) return evaluateGraphicsLayerWasm(asts[0], isDiagram);
+
+  let activeExports: WasmAnnotationExports | undefined;
+  let activeMem: { buffer: ArrayBuffer } | undefined;
+  let initialized = false;
+  let lastSrc = "";
+
+  for (let idx = 0; idx < asts.length; idx++) {
+    const astNode = asts[idx] as
+      | { ptr?: number; startIndex?: number; tree?: { sourceCode?: string; facade?: unknown } }
+      | null
+      | undefined;
+    if (!astNode || typeof astNode.ptr !== "number" || astNode.ptr <= 0) return undefined;
+    const ctx = ensureWasmAnnotationBuffer(astNode);
+    if (!ctx) return undefined;
+    if (!initialized) {
+      if (
+        typeof ctx.exports.annotation_beginLayer !== "function" ||
+        typeof ctx.exports.annotation_appendClassLayer !== "function"
+      ) {
+        return undefined;
+      }
+      ctx.exports.annotation_beginLayer(isDiagram ? 1 : 0);
+      activeExports = ctx.exports;
+      activeMem = ctx.wasmMemory;
+      initialized = true;
+    }
+    lastSrc = ctx.src;
+    const count = ctx.exports.annotation_appendClassLayer!(astNode.ptr, astNode.startIndex ?? 0, isDiagram ? 1 : 0);
+    if (count < 0) return undefined;
+  }
+
+  if (!activeExports) return undefined;
+  if (activeExports.annotation_hasIcon() === 0) return null;
+
+  const totalCount = activeExports.annotation_getGraphicCount?.() ?? 0;
+  const layer: WasmGraphicLayer = { "@type": isDiagram ? "Diagram" : "Icon" };
+  if (activeExports.annotation_hasCoordSys() !== 0) {
+    layer.coordinateSystem = {
+      "@type": "coordinateSystem",
+      extent: [
+        [activeExports.annotation_getCoordX1(), activeExports.annotation_getCoordY1()],
+        [activeExports.annotation_getCoordX2(), activeExports.annotation_getCoordY2()],
+      ],
+      preserveAspectRatio: activeExports.annotation_getPreserveAspectRatio() !== 0,
+    };
+    if (typeof activeExports.annotation_hasGrid === "function" && activeExports.annotation_hasGrid() !== 0) {
+      const gx = typeof activeExports.annotation_getGridX === "function" ? activeExports.annotation_getGridX() : 0;
+      const gy = typeof activeExports.annotation_getGridY === "function" ? activeExports.annotation_getGridY() : 0;
+      layer.coordinateSystem.grid = [gx, gy];
+    }
+  }
+
+  if (totalCount > 0) {
+    const graphics: WasmGraphicItem[] = [];
+    for (let i = 0; i < totalCount; i++) {
+      const item = readWasmGraphicSlot(activeExports, lastSrc, i, activeMem);
+      if (!item) return undefined;
+      graphics.push(item);
+    }
+    layer.graphics = graphics;
+  }
+
+  return layer;
 }
 
 /**
@@ -2002,12 +2181,12 @@ export function evaluateConnectLineWasm(ast: unknown): unknown {
   if (status < 0) return setWasmAstCache(astNode.tree, astNode.ptr, 3, undefined);
   if (status === 0) return setWasmAstCache(astNode.tree, astNode.ptr, 3, null);
 
-  return setWasmAstCache(astNode.tree, astNode.ptr, 3, readWasmGraphicSlot(exports, ctx.src, 0));
+  return setWasmAstCache(astNode.tree, astNode.ptr, 3, readWasmGraphicSlot(exports, ctx.src, 0, ctx.wasmMemory));
 }
 
 /**
  * Renders a standalone class Icon directly to a UTF-8 SVG string inside WebAssembly linear memory.
- * Returns `undefined` if the class has no standalone Icon or requires TypeScript fallback (e.g. Text macros, gradients).
+ * Returns `undefined` if the class has no standalone Icon or requires TypeScript fallback (e.g. Text macros).
  */
 export function renderIconSvgWasm(ast: unknown, size = 16): string | undefined {
   const astNode = ast as
@@ -2029,6 +2208,52 @@ export function renderIconSvgWasm(ast: unknown, size = 16): string | undefined {
   const wasmMem = astNode.tree?.facade?.wasmMemory;
   if (!wasmMem || svgPtr <= 0) return undefined;
   const bytes = new Uint8Array(wasmMem.buffer, svgPtr, svgLen);
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Renders a multi-layer inherited class Icon directly to a UTF-8 SVG string inside WebAssembly linear memory.
+ */
+export function renderInheritedIconSvgWasm(asts: unknown[], size = 16): string | undefined {
+  if (!asts || asts.length === 0) return undefined;
+  if (asts.length === 1) return renderIconSvgWasm(asts[0], size);
+
+  let activeExports: WasmAnnotationExports | undefined;
+  let activeMem: { buffer: ArrayBuffer } | undefined;
+  let initialized = false;
+
+  for (let idx = 0; idx < asts.length; idx++) {
+    const astNode = asts[idx] as
+      | { ptr?: number; startIndex?: number; tree?: { facade?: { wasmMemory?: { buffer: ArrayBuffer } } } }
+      | null
+      | undefined;
+    if (!astNode || typeof astNode.ptr !== "number" || astNode.ptr <= 0) return undefined;
+    const ctx = ensureWasmAnnotationBuffer(astNode);
+    if (!ctx) return undefined;
+    if (!initialized) {
+      if (
+        typeof ctx.exports.annotation_beginLayer !== "function" ||
+        typeof ctx.exports.annotation_appendClassLayer !== "function" ||
+        typeof ctx.exports.annotation_renderAccumulatedIconSvg !== "function" ||
+        typeof ctx.exports.annotation_getSvgBufferPtr !== "function"
+      ) {
+        return undefined;
+      }
+      ctx.exports.annotation_beginLayer(0);
+      activeExports = ctx.exports;
+      activeMem = ctx.wasmMemory;
+      initialized = true;
+    }
+    const count = ctx.exports.annotation_appendClassLayer!(astNode.ptr, astNode.startIndex ?? 0, 0);
+    if (count < 0) return undefined;
+  }
+
+  if (!activeExports || !activeMem) return undefined;
+  const svgLen: number = activeExports.annotation_renderAccumulatedIconSvg!(size);
+  if (svgLen <= 0) return undefined;
+  const svgPtr: number = activeExports.annotation_getSvgBufferPtr!();
+  if (svgPtr <= 0) return undefined;
+  const bytes = new Uint8Array(activeMem.buffer, svgPtr, svgLen);
   return new TextDecoder().decode(bytes);
 }
 
