@@ -110,7 +110,26 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+      const target = e.target as HTMLElement | null;
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        (target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.tagName === "SELECT" ||
+            target.tagName === "BUTTON" ||
+            target.isContentEditable ||
+            Boolean(target.closest?.(".monaco-editor, [contenteditable='true'], input, textarea, select")))) ||
+        (active &&
+          (active.tagName === "INPUT" ||
+            active.tagName === "TEXTAREA" ||
+            active.tagName === "SELECT" ||
+            active.tagName === "BUTTON" ||
+            active.isContentEditable ||
+            Boolean(active.closest?.(".monaco-editor, [contenteditable='true'], input, textarea, select"))))
+      ) {
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         handlePlayPause();

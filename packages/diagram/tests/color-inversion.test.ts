@@ -2,7 +2,13 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { adaptColorForDarkMode, adaptSvgColors, invertColorHelmlab, invertSvgColors } from "../src/color-inversion.js";
+import {
+  adaptColorForDarkMode,
+  adaptSvgColors,
+  adaptX6Markup,
+  invertColorHelmlab,
+  invertSvgColors,
+} from "../src/color-inversion.js";
 
 describe("Dark Mode Perceptual Color Adaptation Engine", () => {
   describe("Modelica Brand & Semantic Accent Colors (Hue & Chroma Preservation)", () => {
@@ -257,5 +263,100 @@ describe("Dark Mode Perceptual Color Adaptation Engine", () => {
       assert.strictEqual(invertSvgColors("<svg fill='#000'></svg>", false), "<svg fill='#000'></svg>");
     });
   });
-});
 
+  describe("X6 Markup Tree Adaptation for Dark Mode Canvas (adaptX6Markup)", () => {
+    it("inverts Modelica parameter value text (rgb(0,0,0)) to off-white and adds paint-order halo", () => {
+      const markup = {
+        tagName: "g",
+        children: [
+          {
+            tagName: "text",
+            textContent: "R=100",
+            attrs: {
+              style: "dominant-baseline: central; fill: rgb(0, 0, 0); stroke: none; font-size: 10px;",
+              x: 10,
+              y: 20,
+            },
+          },
+        ],
+      };
+
+      const adapted = adaptX6Markup(markup, true) as any;
+      const textNode = adapted.children[0];
+      assert.ok(textNode, "Text node must exist");
+      assert.ok(!textNode.attrs.style.includes("fill: rgb(0, 0, 0)"), "Black text must not remain black");
+      assert.ok(textNode.attrs.style.includes("paint-order: stroke fill"), "Must add paint-order halo for contrast");
+      assert.ok(textNode.attrs.style.includes("stroke: #121212"), "Must use canvas targetBg for halo");
+    });
+
+    it("shifts Modelica electrical blue lines (rgb(0,0,255)) to luminous cerulean", () => {
+      const markup = {
+        tagName: "path",
+        attrs: {
+          d: "M 0 0 L 10 10",
+          stroke: "rgb(0, 0, 255)",
+          style: "stroke: rgb(0, 0, 255) !important;",
+        },
+      };
+
+      const adapted = adaptX6Markup(markup, true) as any;
+      assert.ok(!adapted.attrs.stroke.includes("0, 0, 255"), "Dark blue stroke must be adapted");
+      const m = adapted.attrs.stroke.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      assert.ok(m, `Expected rgb stroke, got ${adapted.attrs.stroke}`);
+      const [, r, g, b] = m.map(Number);
+      assert.ok(b! >= 200, "Blue channel must be high");
+      assert.ok(g! >= 90, "Green channel must be elevated for cerulean contrast");
+    });
+
+    it("inverts resistor white body fill (rgb(255,255,255)) to an elevated dark surface tone", () => {
+      const markup = {
+        tagName: "rect",
+        attrs: {
+          x: -10,
+          y: -20,
+          width: 20,
+          height: 40,
+          fill: "rgb(255, 255, 255)",
+          stroke: "rgb(0, 0, 255)",
+        },
+      };
+
+      const adapted = adaptX6Markup(markup, true) as any;
+      assert.notStrictEqual(adapted.attrs.fill, "rgb(255, 255, 255)", "Must not remain glaring white");
+      assert.notStrictEqual(adapted.attrs.fill, "none", "Component body must retain fill to mask grid lines");
+      const m = adapted.attrs.fill.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      assert.ok(m, `Expected rgb fill, got ${adapted.attrs.fill}`);
+      const [, r] = m.map(Number);
+      assert.ok(r! >= 20 && r! <= 55, `Elevated surface fill expected 20-55, got ${r}`);
+    });
+
+    it("strips full-canvas bounding background rects to fill='none'", () => {
+      const markup = {
+        tagName: "rect",
+        attrs: {
+          x: -100,
+          y: -100,
+          width: 200,
+          height: 200,
+          fill: "#ffffff",
+        },
+      };
+
+      const adapted = adaptX6Markup(markup, true) as any;
+      assert.strictEqual(adapted.attrs.fill, "none", "Full canvas background rect must become transparent");
+    });
+
+    it("returns markup unchanged when isDark is false", () => {
+      const markup = {
+        tagName: "text",
+        textContent: "L=0.5",
+        attrs: {
+          style: "fill: rgb(0, 0, 0);",
+        },
+      };
+
+      const adapted = adaptX6Markup(markup, false) as any;
+      assert.strictEqual(adapted.attrs.style, "fill: rgb(0, 0, 0);");
+    });
+  });
+});

@@ -526,6 +526,47 @@ export class ValidationService {
       };
     };
 
+    const pushSyntaxRange = (
+      range: Range,
+      message: string,
+      source = plugin?.name ? plugin.name.toLowerCase() : "modelscript",
+    ) => {
+      if (range.end.line <= range.start.line) {
+        syntaxDiags.push({
+          severity: DiagnosticSeverity.Error,
+          range: clampRangeToLine(range),
+          message,
+          source,
+        });
+        return;
+      }
+      // If multi-line syntax error range, emit a diagnostic for each non-empty line in the range
+      // so squiggly lines appear on each affected line instead of being clamped away to line 1
+      for (let line = range.start.line; line <= range.end.line; line++) {
+        const nextLineOffset = textDocument.offsetAt({ line: line + 1, character: 0 });
+        const lineText = textDocument.getText({
+          start: { line, character: 0 },
+          end: textDocument.positionAt(nextLineOffset),
+        });
+        const trimmed = lineText.trim();
+        if (!trimmed) continue;
+        const startChar = line === range.start.line ? range.start.character : lineText.search(/\S/);
+        const endChar =
+          line === range.end.line ? Math.max(range.end.character, startChar + 1) : lineText.trimEnd().length;
+        if (endChar > startChar) {
+          syntaxDiags.push({
+            severity: DiagnosticSeverity.Error,
+            range: {
+              start: { line, character: Math.max(0, startChar) },
+              end: { line, character: Math.max(startChar + 1, endChar) },
+            },
+            message,
+            source,
+          });
+        }
+      }
+    };
+
     // 1. Native WASM GLR parser diagnostics
     const facade = plugin?.facade ?? rootNode?.tree?.facade ?? this.parserService.facade;
     if (facade && typeof facade.getDiagnostics === "function") {
@@ -551,13 +592,7 @@ export class ValidationService {
                     end: textDocument.positionAt(endOff),
                   };
                 }
-                range = clampRangeToLine(range);
-                syntaxDiags.push({
-                  severity: DiagnosticSeverity.Error,
-                  range,
-                  message: d.message || "Syntax error",
-                  source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
-                });
+                pushSyntaxRange(range, d.message || "Syntax error");
               } else {
                 // Lint diagnostics — capture now while WASM state is valid
                 wasmLintDiags.push(d);
@@ -612,16 +647,12 @@ export class ValidationService {
           source: "modelscript",
         });
       } else if (node.type === "ERROR") {
-        const clamped = clampRangeToLine({ start, end });
-        start = clamped.start;
-        end = clamped.end;
         const textSnippet = textDocument.getText({ start, end });
-        syntaxDiags.push({
-          severity: DiagnosticSeverity.Error,
-          range: { start, end },
-          message: textSnippet ? `Syntax error near '${textSnippet}'` : "Syntax error",
-          source: "modelscript",
-        });
+        pushSyntaxRange(
+          { start, end },
+          textSnippet ? `Syntax error near '${textSnippet.slice(0, 30)}'` : "Syntax error",
+          "modelscript",
+        );
 
         // Don't descend further into this ERROR node's children to prevent duplicate noisy diagnostics
         while (!cursor.gotoNextSibling()) {
@@ -918,7 +949,8 @@ export class ValidationService {
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     const langId =
       plugin?.id ??
-      (doc.languageId || (uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim") ? "modelica" : "sysml2"));
+      (doc.languageId ||
+        (uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim") ? "modelica" : "sysml2"));
     const isModelica = langId === "modelica";
 
     let cached = this.documentManager.documentTrees.get(uri) ?? this.documentManager.documentTrees.get(effectiveUri);
@@ -986,7 +1018,7 @@ export class ValidationService {
     const prevIndexedText = this.lastIndexedText.get(effectiveUri) ?? this.lastIndexedText.get(uri);
     const hasInstances = Boolean(
       this.workspaceManager.documentInstances.get(uri)?.length ||
-        this.workspaceManager.documentInstances.get(effectiveUri)?.length,
+      this.workspaceManager.documentInstances.get(effectiveUri)?.length,
     );
     if (prevIndexedText === text && hasInstances) {
       return false;
@@ -1041,8 +1073,7 @@ export class ValidationService {
         }
       }
 
-      const changedIdsObj =
-        typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null;
+      const changedIdsObj = typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null;
       changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
       structuralChangedIds = changedIdsObj ? (changedIdsObj as any).structuralChangedIds : null;
       changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
@@ -4089,12 +4120,13 @@ export class ValidationService {
             if (!foundLoc && typeof issue.eqIdx === "number" && issue.eqIdx >= 0) {
               const eqSec = findCstNodesByType(classCst, "equation_section")[0];
               if (eqSec) {
-                const eqNodes = (eqSec.children || []).filter((c: any) =>
-                  c.type &&
-                  c.type !== "equation_section" &&
-                  c.type !== "annotation_clause" &&
-                  c.type !== ";" &&
-                  c.type !== "equation",
+                const eqNodes = (eqSec.children || []).filter(
+                  (c: any) =>
+                    c.type &&
+                    c.type !== "equation_section" &&
+                    c.type !== "annotation_clause" &&
+                    c.type !== ";" &&
+                    c.type !== "equation",
                 );
                 if (issue.eqIdx < eqNodes.length) {
                   const targetEq = eqNodes[issue.eqIdx];
@@ -4103,9 +4135,11 @@ export class ValidationService {
                   foundLoc = true;
                 } else {
                   // Equation belongs to an imported/subcomponent model: anchor to the "equation" keyword node
-                  const eqKeyword = (eqSec.children || []).find((c: any) => c.type === "equation" || c.text === "equation");
+                  const eqKeyword = (eqSec.children || []).find(
+                    (c: any) => c.type === "equation" || c.text === "equation",
+                  );
                   issueOffset = eqKeyword ? eqKeyword.startIndex : eqSec.startIndex;
-                  issueLength = eqKeyword ? (eqKeyword.endIndex - eqKeyword.startIndex) : 8;
+                  issueLength = eqKeyword ? eqKeyword.endIndex - eqKeyword.startIndex : 8;
                   foundLoc = true;
                 }
               }

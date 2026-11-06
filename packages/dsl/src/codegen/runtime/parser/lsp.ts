@@ -659,6 +659,10 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
             if (childOff > dStart && childOff < dEnd) {
               dStart = childOff;
             }
+            let cLen = getNodeByteLength(child);
+            if (cLen > 0 && childOff + cLen <= dEnd) {
+              dEnd = childOff + cLen;
+            }
           } else {
             let secondChild = getNodeNextSibling(firstChild);
             if (secondChild != 0) {
@@ -822,7 +826,18 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
           chk = getNodeNextSibling(chk);
         }
         
-        let isPureErrorGroup = (type == 0) && allocatedDiag;
+        let hasNl = false;
+        let scanP = nodeStart;
+        while (scanP < nodeEnd && scanP < inputLength) {
+          let ch = peekChar(scanP);
+          if (ch == 10 || ch == 13) {
+            hasNl = true;
+            break;
+          }
+          let cl = peekCharLen(scanP);
+          scanP += cl > 0 ? cl : 1;
+        }
+        let isPureErrorGroup = (type == 0) && allocatedDiag && !hasNl;
         let childInError = inError || isPureErrorGroup;
         let childInTainted = inTainted || isTainted || hasChildError;
 

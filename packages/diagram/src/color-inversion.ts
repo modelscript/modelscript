@@ -245,6 +245,12 @@ export function adaptColorForDarkMode(
       const strokeL = Math.max(0.65, L);
       [outR, outG, outB] = oklchToSrgb(strokeL, Math.min(C, 0.28), h);
     }
+  } else if (role === "fill" && isNeutral && L >= 0.85) {
+    // Component bodies with white/neutral fills in dark mode (e.g. Resistor box, SineVoltage circle):
+    // Invert to an elevated dark surface tone (L ≈ 0.20-0.24) so they are subtly distinct from the dark canvas
+    // while preventing the "white glare" artifact.
+    const invertedL = Math.max(0.18, Math.min(0.24, targetBgL + 0.1));
+    [outR, outG, outB] = oklchToSrgb(invertedL, 0, 0);
   } else if (isNeutral) {
     // Non-linear inversion: black (L=0) maps to 0.93 (#ececec), white (L=1) maps to 0.13 (#1a1a1a).
     const invertedL = Math.max(0.12, Math.min(0.93, 0.93 - L * 0.8));
@@ -335,8 +341,7 @@ export function adaptSvgColors(str: string, options?: boolean | DarkModeColorOpt
       const h = hStr ? (hStr.endsWith("%") ? 200 : parseFloat(hStr)) : 0;
 
       const isFullCanvas =
-        (w >= 180 || attrs.includes('width="100%"')) &&
-        (h >= 180 || attrs.includes('height="100%"'));
+        (w >= 180 || attrs.includes('width="100%"')) && (h >= 180 || attrs.includes('height="100%"'));
 
       if (isFullCanvas) {
         const fillM = attrs.match(/\bfill=["']([^"']+)["']/i);
@@ -350,7 +355,7 @@ export function adaptSvgColors(str: string, options?: boolean | DarkModeColorOpt
         const styleFillVal = styleFillM ? styleFillM[1] : undefined;
         if (styleFillVal && !styleFillVal.startsWith("url(")) {
           if (isLightPaperColor(styleFillVal.trim())) {
-            return match.replace(/(\bstyle=["'][^"']*\bfill:\s*)[^;]+(;?[^"']*["'])/i, '$1none$2');
+            return match.replace(/(\bstyle=["'][^"']*\bfill:\s*)[^;]+(;?[^"']*["'])/i, "$1none$2");
           }
         }
       }
@@ -416,4 +421,136 @@ export function adaptSvgColors(str: string, options?: boolean | DarkModeColorOpt
  */
 export function invertSvgColors(str: string, isDarkOrOptions?: boolean | DarkModeColorOptions): string {
   return adaptSvgColors(str, isDarkOrOptions);
+}
+
+/**
+ * Adapt a style property string for dark mode.
+ */
+export function adaptCssStyleProperty(
+  styleStr: string,
+  options?: DarkModeColorOptions,
+  role: "text" | "stroke" | "fill" | "general" = "general",
+): string {
+  let res = styleStr;
+  // Replace fill: <color>
+  res = res.replace(/(\bfill:\s*)([^;!]+)(!?)/gi, (_match, prefix, colorVal, excl) => {
+    const trimmed = colorVal.trim();
+    if (trimmed === "none" || trimmed === "transparent" || trimmed.startsWith("url(")) return _match;
+    const adapted = adaptColorForDarkMode(trimmed, options, role === "text" ? "text" : "fill");
+    return `${prefix}${adapted}${excl ? " " + excl : ""}`;
+  });
+
+  // Replace stroke: <color>
+  res = res.replace(/(\bstroke:\s*)([^;!]+)(!?)/gi, (_match, prefix, colorVal, excl) => {
+    const trimmed = colorVal.trim();
+    if (trimmed === "none" || trimmed === "transparent" || trimmed.startsWith("url(")) return _match;
+    const adapted = adaptColorForDarkMode(trimmed, options, "stroke");
+    return `${prefix}${adapted}${excl ? " " + excl : ""}`;
+  });
+
+  // Replace stop-color: <color>
+  res = res.replace(/(\bstop-color:\s*)([^;!]+)(!?)/gi, (_match, prefix, colorVal, excl) => {
+    const trimmed = colorVal.trim();
+    const adapted = adaptColorForDarkMode(trimmed, options, "general");
+    return `${prefix}${adapted}${excl ? " " + excl : ""}`;
+  });
+
+  return res;
+}
+
+/**
+ * Recursively adapts an X6Markup tree (single node, array, or nested children) for dark mode.
+ * - Inverts black/dark text to crisp off-white with an automatic contrast halo (`paint-order`).
+ * - Shifts saturated dark lines/wires (e.g. Modelica blue #0000ff) to luminous cerulean tones.
+ * - Inverts solid white component fill boxes (#ffffff) to dark elevated surface tones.
+ * - Strips/renders full-bleed icon bounding rects transparent.
+ */
+export function adaptX6Markup(markup: unknown, options?: boolean | DarkModeColorOptions): unknown {
+  const opts: DarkModeColorOptions = typeof options === "boolean" ? { isDark: options } : (options ?? { isDark: true });
+  if (opts.isDark === false || !markup) return markup;
+
+  if (Array.isArray(markup)) {
+    return markup.map((item) => adaptX6Markup(item, opts));
+  }
+
+  if (typeof markup !== "object") return markup;
+
+  const node = markup as Record<string, unknown>;
+  const tagName = typeof node["tagName"] === "string" ? node["tagName"].toLowerCase() : "";
+  const isText = tagName === "text";
+  const isRect = tagName === "rect";
+
+  const result: Record<string, unknown> = { ...node };
+
+  // 1. Process attrs
+  if (node["attrs"] && typeof node["attrs"] === "object") {
+    const attrs = { ...(node["attrs"] as Record<string, unknown>) };
+
+    // Style string inside attrs
+    if (typeof attrs["style"] === "string") {
+      attrs["style"] = adaptCssStyleProperty(attrs["style"], opts, isText ? "text" : "general");
+    }
+
+    // Fill attribute
+    if (typeof attrs["fill"] === "string") {
+      const f = attrs["fill"].trim();
+      if (f !== "none" && f !== "transparent" && !f.startsWith("url(")) {
+        const wStr = String(attrs["width"] ?? "");
+        const hStr = String(attrs["height"] ?? "");
+        const w = parseFloat(wStr);
+        const h = parseFloat(hStr);
+        const isFullCanvas = (w >= 180 || wStr.includes("%")) && (h >= 180 || hStr.includes("%"));
+        if (isRect && isFullCanvas && isLightPaperColor(f)) {
+          attrs["fill"] = "none";
+        } else {
+          attrs["fill"] = adaptColorForDarkMode(f, opts, isText ? "text" : "fill");
+        }
+      }
+    }
+
+    // Stroke attribute
+    if (typeof attrs["stroke"] === "string") {
+      const s = attrs["stroke"].trim();
+      if (s !== "none" && s !== "transparent" && !s.startsWith("url(")) {
+        attrs["stroke"] = adaptColorForDarkMode(s, opts, "stroke");
+      }
+    }
+
+    // Text halo: add paint-order so text is cleanly outlined over wires and grid
+    if (isText) {
+      const targetBg = opts.targetBg ?? "#121212";
+      const existingStyle = typeof attrs["style"] === "string" ? attrs["style"] : "";
+      if (!existingStyle.includes("paint-order")) {
+        attrs["style"] =
+          `${existingStyle ? existingStyle.trim().replace(/;?$/, "; ") : ""}paint-order: stroke fill; stroke: ${targetBg}; stroke-width: 3px; stroke-linejoin: round; stroke-linecap: round;`;
+      }
+    }
+
+    result["attrs"] = attrs;
+  }
+
+  // 2. Process style property if directly on node
+  if (node["style"] && typeof node["style"] === "object") {
+    const styleObj = { ...(node["style"] as Record<string, unknown>) };
+    if (typeof styleObj["fill"] === "string" && styleObj["fill"] !== "none" && styleObj["fill"] !== "transparent") {
+      styleObj["fill"] = adaptColorForDarkMode(styleObj["fill"], opts, isText ? "text" : "fill");
+    }
+    if (
+      typeof styleObj["stroke"] === "string" &&
+      styleObj["stroke"] !== "none" &&
+      styleObj["stroke"] !== "transparent"
+    ) {
+      styleObj["stroke"] = adaptColorForDarkMode(styleObj["stroke"], opts, "stroke");
+    }
+    result["style"] = styleObj;
+  } else if (typeof node["style"] === "string") {
+    result["style"] = adaptCssStyleProperty(node["style"], opts, isText ? "text" : "general");
+  }
+
+  // 3. Process children recursively
+  if (Array.isArray(node["children"])) {
+    result["children"] = node["children"].map((child) => adaptX6Markup(child, opts));
+  }
+
+  return result;
 }

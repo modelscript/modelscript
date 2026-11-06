@@ -114,7 +114,13 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
         target.tagName === "TEXTAREA" ||
         target.tagName === "SELECT" ||
         target.tagName === "BUTTON" ||
-        target.isContentEditable
+        target.isContentEditable ||
+        Boolean(target.closest?.(".monaco-editor, [contenteditable='true'], input, textarea, select")) ||
+        Boolean(
+          (document.activeElement as HTMLElement)?.closest?.(
+            ".monaco-editor, [contenteditable='true'], input, textarea, select",
+          ),
+        )
       ) {
         return;
       }

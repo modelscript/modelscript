@@ -3689,10 +3689,11 @@ function recoverHeadHypotheses(head: ParseHead, tok: i32, pos: u32): void {
     didRecover = recoverMissingToken(head, tok, pos);
     repairedByInsertion = didRecover;
   }
-  if (!didRecover && (head.prev != null || head.inErrorState)) {
-    didRecover = recoverStackSummary(head, tok, pos);
+  if (head.prev != null || head.inErrorState) {
+    let summaryRecovered = recoverStackSummary(head, tok, pos);
+    if (summaryRecovered) didRecover = true;
   }
-  if ((!didRecover || repairedByInsertion) && configEnableBranchA1) {
+  if (configEnableBranchA1) {
     recoverSkipToken(head, tok, pos);
   }
 }
@@ -3725,8 +3726,10 @@ export function advanceGLR(): void {
     resetPausedHeads();
 
     // 2. Process all heads at frontierPos
-    for (let i: u32 = 0; i < activeHeadsCount; i++) {
-      let head: ParseHead = changetype<ParseHead>(t_activeHeads[i]);
+    let i: u32 = 0;
+    while (i < activeHeadsCount) {
+      for (; i < activeHeadsCount; i++) {
+        let head: ParseHead = changetype<ParseHead>(t_activeHeads[i]);
       if (head.isDead) continue;
       if (head.pos > furthestDyingPos || (head.pos == furthestDyingPos && bestDyingHead == 0)) {
         furthestDyingPos = head.pos;
@@ -3972,60 +3975,61 @@ export function advanceGLR(): void {
         }
       }
     }
-    // Tree-sitter Strategy: Compare best paused head against advanced heads in nextHeads
-    let minNextCost = INFINITE_COST;
-    for (let ni: u32 = 0; ni < nextHeadsCount; ni++) {
-      let nh = changetype<ParseHead>(t_nextHeads[ni]);
-      if (nh.errorCost < minNextCost) minNextCost = nh.errorCost;
-    }
-
-    let bestPausedHead: ParseHead | null = null;
-    let bestPausedCost = INFINITE_COST;
-    let bestPausedPrec: i32 = -999999;
-    if (pausedHeadsCount > 0) {
-      for (let p: u32 = 0; p < pausedHeadsCount; p++) {
-        let cand = changetype<ParseHead>(t_pausedHeads[p]);
-        if (cand.errorCost < bestPausedCost || (cand.errorCost == bestPausedCost && cand.dynamicPrec > bestPausedPrec)) {
-          bestPausedHead = cand;
-          bestPausedCost = cand.errorCost;
-          bestPausedPrec = cand.dynamicPrec;
+      // Tree-sitter Strategy: Compare best paused head against advanced heads in nextHeads
+      if (pausedHeadsCount > 0) {
+        let minNextCost = INFINITE_COST;
+        for (let ni: u32 = 0; ni < nextHeadsCount; ni++) {
+          let nh = changetype<ParseHead>(t_nextHeads[ni]);
+          if (nh.errorCost < minNextCost) minNextCost = nh.errorCost;
         }
-      }
-    }
 
-    // Resume best paused head if all heads stalled; OR if paused head has strictly lower error cost than advanced heads!
-    if (bestPausedHead != null && (nextHeadsCount == 0 || bestPausedCost < minNextCost)) {
-      bestPausedHead.isPaused = false;
-      let resumeTok = bestPausedHead.pausedLookahead;
-      debugLog(9202, changetype<u32>(bestPausedHead), resumeTok, nextHeadsCount);
-      if (resumeTok != TOKEN_EOF) {
-        getFrontierToken(bestPausedHead.pos, bestPausedHead.scannerState);
-        recoverHeadHypotheses(bestPausedHead, resumeTok, bestPausedHead.pos);
-      } else {
-        recoverEofAccept(bestPausedHead, bestPausedHead.pos);
-      }
-
-      // If all active heads stalled, also resume up to 2 other viable paused heads
-      if (nextHeadsCount == 0 && pausedHeadsCount > 1) {
-        let resumedCount: u32 = 1;
-        for (let p: u32 = 0; p < pausedHeadsCount && resumedCount < 3; p++) {
+        let bestPausedHead: ParseHead | null = null;
+        let bestPausedCost = INFINITE_COST;
+        let bestPausedPrec: i32 = -999999;
+        for (let p: u32 = 0; p < pausedHeadsCount; p++) {
           let cand = changetype<ParseHead>(t_pausedHeads[p]);
-          if (cand != bestPausedHead && cand.errorCost <= bestPausedCost + 500) {
-            cand.isPaused = false;
-            let cTok = cand.pausedLookahead;
-            debugLog(9202, changetype<u32>(cand), cTok, nextHeadsCount);
-            if (cTok != TOKEN_EOF) {
-              getFrontierToken(cand.pos, cand.scannerState);
-              recoverHeadHypotheses(cand, cTok, cand.pos);
-            } else {
-              recoverEofAccept(cand, cand.pos);
-            }
-            resumedCount++;
+          if (cand.errorCost < bestPausedCost || (cand.errorCost == bestPausedCost && cand.dynamicPrec > bestPausedPrec)) {
+            bestPausedHead = cand;
+            bestPausedCost = cand.errorCost;
+            bestPausedPrec = cand.dynamicPrec;
           }
         }
+
+        // Resume best paused head if all heads stalled; OR if paused head has strictly lower error cost than advanced heads!
+        if (bestPausedHead != null && (nextHeadsCount == 0 || bestPausedCost < minNextCost)) {
+          bestPausedHead.isPaused = false;
+          let resumeTok = bestPausedHead.pausedLookahead;
+          debugLog(9202, changetype<u32>(bestPausedHead), resumeTok, nextHeadsCount);
+          if (resumeTok != TOKEN_EOF) {
+            getFrontierToken(bestPausedHead.pos, bestPausedHead.scannerState);
+            recoverHeadHypotheses(bestPausedHead, resumeTok, bestPausedHead.pos);
+          } else {
+            recoverEofAccept(bestPausedHead, bestPausedHead.pos);
+          }
+
+          // If all active heads stalled, also resume up to 2 other viable paused heads
+          if (nextHeadsCount == 0 && pausedHeadsCount > 1) {
+            let resumedCount: u32 = 1;
+            for (let p: u32 = 0; p < pausedHeadsCount && resumedCount < 3; p++) {
+              let cand = changetype<ParseHead>(t_pausedHeads[p]);
+              if (cand != bestPausedHead && cand.errorCost <= bestPausedCost + 500) {
+                cand.isPaused = false;
+                let cTok = cand.pausedLookahead;
+                debugLog(9202, changetype<u32>(cand), cTok, nextHeadsCount);
+                if (cTok != TOKEN_EOF) {
+                  getFrontierToken(cand.pos, cand.scannerState);
+                  recoverHeadHypotheses(cand, cTok, cand.pos);
+                } else {
+                  recoverEofAccept(cand, cand.pos);
+                }
+                resumedCount++;
+              }
+            }
+          }
+        }
+        pausedHeadsCount = 0;
       }
     }
-    pausedHeadsCount = 0;
 
     // 3. Condense and prune next heads (Top-K heap extraction)
     if (nextHeadsCount > MAX_PARALLEL_HEADS) {
@@ -4328,10 +4332,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0, false);
       let lastTokNode = 0;
 
-      // Report a single monolithic error for the entire unparsed remainder
-      // instead of creating a squiggle for every individual garbage token.
+      // Report unexpected token error at the failure point
       if (inputLength > p) {
-        reportGlobalError(p as u32, inputLength as u32);
+        let firstTokLen: u32 = lexLen > 0 ? (lexLen as u32) : 1;
+        if (p + firstTokLen > inputLength) firstTokLen = inputLength > p ? inputLength - p : 1;
+        reportGlobalError(p as u32, (p + firstTokLen) as u32);
       }
 
       // Force lexer to accept any token during garbage collection

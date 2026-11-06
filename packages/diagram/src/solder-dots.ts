@@ -532,12 +532,121 @@ export function computeWireCrossings(
 }
 
 /**
- * Builds an ephemeral diagram node for a wire crossing jumpover arc.
+ * Visual styling options for non-connected orthogonal wire crossings.
+ * - "none": Modern EDA standard (KiCad, Altium, Modelica Spec) — straight orthogonal lines (+).
+ *           Connections are strictly denoted by solder dots at T-junctions.
+ * - "micro-arc": Proportional semicircular bridge hop (PSCAD, OpenDSS, Simulink, Ladder Logic).
+ * - "gap": Technical air-gap break on the crossing line (P&ID ISA-5.1, fluid networks).
+ * - "auto": Inferred from diagram metadata language (default).
  */
-export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolean) {
-  const size = 10;
+export type WireCrossingStyle = "none" | "micro-arc" | "gap" | "auto";
+
+/**
+ * Resolves the appropriate wire crossing style based on language domain conventions
+ * or explicit user/diagram preference.
+ */
+export function resolveWireCrossingStyle(
+  language?: string | null | undefined,
+  userPreference?: WireCrossingStyle | string | null | undefined,
+): "none" | "micro-arc" | "gap" {
+  if (userPreference && userPreference !== "auto") {
+    if (userPreference === "none" || userPreference === "micro-arc" || userPreference === "gap") {
+      return userPreference;
+    }
+  }
+
+  const lang = (language ?? "").toLowerCase().trim();
+
+  // Languages where bridge hops / micro-arcs are traditional:
+  // - Power systems & grid simulation (PSCAD, OpenDSS, PSSE)
+  // - Industrial automation & ladder logic (PLCOpen, AutomationML)
+  // - Control block diagrams (Simulink, EASY5, ROCETS, JSBSim)
+  const MICRO_ARC_LANGUAGES = new Set([
+    "pscad",
+    "opendss",
+    "psse",
+    "plcopen",
+    "automationml",
+    "simulink",
+    "easy5",
+    "rocets",
+    "jsbsim",
+  ]);
+
+  // Languages where air-gap / wire breaks are traditional (P&ID / fluid networks):
+  const AIR_GAP_LANGUAGES = new Set(["relap5", "olga", "lps", "aspen", "epanet", "swmm", "eclipse"]);
+
+  if (MICRO_ARC_LANGUAGES.has(lang)) {
+    return "micro-arc";
+  }
+  if (AIR_GAP_LANGUAGES.has(lang)) {
+    return "gap";
+  }
+
+  // Modern EDA standard (Modelica, SPICE, Verilog-A, SysML v2, SSP, ReqIF, OSCAL, etc.)
+  // Straight orthogonal crossings (+) without hops. Connections explicitly indicated by solder dots.
+  return "none";
+}
+
+export interface WireCrossingNodeOptions {
+  size?: number | undefined;
+  style?: WireCrossingStyle | undefined;
+  strokeWidth?: number | undefined;
+}
+
+/**
+ * Builds an ephemeral diagram node for a wire crossing jumpover arc or technical air-gap.
+ */
+export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolean, options?: WireCrossingNodeOptions) {
+  const size = options?.size ?? 6;
+  const style = options?.style ?? "micro-arc";
   const half = size / 2;
   const bg = isDark ? "#1e1e1e" : "#ffffff";
+  const strokeWidth = options?.strokeWidth ?? 1.0;
+
+  if (style === "gap") {
+    const maskW = Math.max(2, strokeWidth * 2.5);
+    const maskH = Math.max(3, strokeWidth * 3);
+    return {
+      id: crossing.id,
+      type: "wire-crossing",
+      x: crossing.x - half,
+      y: crossing.y - half,
+      width: size,
+      height: size,
+      angle: 0,
+      opacity: 1,
+      zIndex: 25,
+      autoLayout: false,
+      markup: [
+        {
+          tagName: "rect",
+          selector: "mask",
+          attrs: {
+            x: half - maskW / 2,
+            y: half - maskH / 2,
+            width: maskW,
+            height: maskH,
+            fill: bg,
+            stroke: "none",
+            pointerEvents: "none",
+          },
+        },
+      ],
+      attrs: {
+        mask: { fill: bg, stroke: "none", pointerEvents: "none" },
+      },
+      ports: { items: [], groups: {} },
+    };
+  }
+
+  // Refined micro-arc style:
+  // Proportional semicircle with non-scaling stroke and compact grid-preserving mask
+  const maskW = Math.max(2, strokeWidth * 2);
+  const maskH = Math.max(2.5, strokeWidth * 2.5);
+  const r = half;
+  const arcPath = `M 0 ${half} A ${r} ${r} 0 0 1 ${size} ${half}`;
+
   return {
     id: crossing.id,
     type: "wire-crossing",
@@ -554,10 +663,10 @@ export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolea
         tagName: "rect",
         selector: "mask",
         attrs: {
-          x: 2,
-          y: 1,
-          width: 6,
-          height: 8,
+          x: half - maskW / 2,
+          y: half - maskH / 2,
+          width: maskW,
+          height: maskH,
           fill: bg,
           stroke: "none",
           pointerEvents: "none",
@@ -567,17 +676,26 @@ export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolea
         tagName: "path",
         selector: "arc",
         attrs: {
-          d: "M 0 5 A 4 4 0 0 1 10 5",
+          d: arcPath,
           fill: "none",
           stroke: crossing.color,
-          strokeWidth: 1.5,
+          strokeWidth: strokeWidth,
+          "vector-effect": "non-scaling-stroke",
+          strokeLinecap: "round",
           pointerEvents: "none",
         },
       },
     ],
     attrs: {
       mask: { fill: bg, stroke: "none", pointerEvents: "none" },
-      arc: { stroke: crossing.color, strokeWidth: 1.5, fill: "none", pointerEvents: "none" },
+      arc: {
+        stroke: crossing.color,
+        strokeWidth: strokeWidth,
+        fill: "none",
+        pointerEvents: "none",
+        "vector-effect": "non-scaling-stroke",
+        strokeLinecap: "round",
+      },
     },
     ports: { items: [], groups: {} },
   };

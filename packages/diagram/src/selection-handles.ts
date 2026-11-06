@@ -83,18 +83,73 @@ export function syncAllNodeSelectionBoxes(graph: GraphLike, selectionContainer?:
   });
 }
 
+import type { EdgeSelectionStyle, ResolvedEdgeSelectionStyle } from "./protocol.js";
+
+export type { EdgeSelectionStyle, ResolvedEdgeSelectionStyle };
+
+/**
+ * Resolves the appropriate edge selection strategy based on language domain conventions
+ * or explicit user/diagram preference.
+ */
+export function resolveEdgeSelectionStyle(
+  language?: string | null | undefined,
+  userPreference?: EdgeSelectionStyle | string | null | undefined,
+): ResolvedEdgeSelectionStyle {
+  if (userPreference && userPreference !== "auto") {
+    if (
+      userPreference === "minimalist" ||
+      userPreference === "hud" ||
+      userPreference === "trace" ||
+      userPreference === "halo"
+    ) {
+      return userPreference;
+    }
+  }
+
+  const lang = (language ?? "").toLowerCase().trim();
+
+  // 1. Physical circuits, electronics, EDA, and electrical power grids:
+  // Strict 1.5px non-scaling stroke, zero raster blur, solder dot preservation
+  if (/^(modelica|mo|spice|cir|verilog-a|pscad|pscx|psse|raw|opendss|dss|touchstone|s2p|ibis|ibs)$/i.test(lang)) {
+    return "minimalist";
+  }
+
+  // 2. Systems engineering, control blocks, flight dynamics, and state machines:
+  // Directional signals, bus routes, quick rerouting/disconnect micro-HUD
+  if (
+    /^(sysml|sysml2|simulink|slx|mdl|easy5|plcopen|autosar|arxml|aml|automationml|jsbsim|rocets|ccsds)$/i.test(lang)
+  ) {
+    return "hud";
+  }
+
+  // 3. Fluid networks, piping & instrumentation, chemical process, hydrology:
+  // Line weight represents pipe diameter/flow capacity; flow trace animation
+  if (/^(olga|genkey|lps|aspen|relap5|r5|swmm|inp|epanet|energyplus|idf|cantera|phreeqc|gproms)$/i.test(lang)) {
+    return "trace";
+  }
+
+  // 4. Default for ontologies, concept graphs, and general diagrams
+  return "halo";
+}
+
 /**
  * Returns refined edge tool configurations for vertices and segments.
  * Dynamically scales handle dimensions based on graph zoom to prevent unsightly oversized handles.
+ * In "minimalist" mode (e.g. Modelica, SPICE), segment midpoint drag pills are omitted to avoid schematic clutter.
  */
-export function getEdgeToolConfig(_edge: unknown, graph: GraphLike, dark: boolean): unknown[] {
+export function getEdgeToolConfig(
+  _edge: unknown,
+  graph: GraphLike,
+  dark: boolean,
+  style?: ResolvedEdgeSelectionStyle,
+): unknown[] {
   const curZoom = typeof graph.zoom === "function" ? graph.zoom() : 1;
-  // Scale handles to maintain a crisp, refined size on screen (~4px radius, 8px diameter)
+  // Scale handles to maintain a crisp, refined size on screen (~3px radius, 6px diameter)
   const vertexRadius = Math.max(1.2, Math.min(3, 3.5 / (curZoom || 1)));
   const segW = Math.max(4, Math.min(10, 10 / (curZoom || 1)));
   const segH = Math.max(1.2, Math.min(2.5, 3 / (curZoom || 1)));
 
-  return [
+  const tools: unknown[] = [
     {
       name: "vertices",
       args: {
@@ -109,7 +164,11 @@ export function getEdgeToolConfig(_edge: unknown, graph: GraphLike, dark: boolea
         stopPropagation: false,
       },
     },
-    {
+  ];
+
+  // In minimalist mode, suppress segment pills entirely to maintain strict schematic drafting standards
+  if (style !== "minimalist") {
+    tools.push({
       name: "segments",
       args: {
         attrs: {
@@ -127,6 +186,8 @@ export function getEdgeToolConfig(_edge: unknown, graph: GraphLike, dark: boolea
         removeRedundancies: true,
         stopPropagation: false,
       },
-    },
-  ];
+    });
+  }
+
+  return tools;
 }

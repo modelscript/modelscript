@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   computeSolderDots,
   computeWireCrossings,
+  resolveWireCrossingStyle,
   solderDotToDiagramNode,
   wireCrossingToDiagramNode,
 } from "../src/solder-dots.js";
@@ -336,11 +337,49 @@ test("Topological Solder Dot Junction Engine", async (t) => {
 
     const node = wireCrossingToDiagramNode(crossings[0], true);
     assert.strictEqual(node.type, "wire-crossing");
-    assert.strictEqual(node.x, 45); // 50 - half(5)
-    assert.strictEqual(node.y, 45);
-    assert.strictEqual(node.width, 10);
-    assert.strictEqual(node.height, 10);
+    assert.strictEqual(node.x, 47); // 50 - half(3) for refined 6px micro-arc
+    assert.strictEqual(node.y, 47);
+    assert.strictEqual(node.width, 6);
+    assert.strictEqual(node.height, 6);
     assert.strictEqual(node.attrs?.arc?.stroke, "#1890ff");
+    assert.strictEqual(node.attrs?.arc?.strokeWidth, 1.0);
+    assert.strictEqual(node.attrs?.arc?.["vector-effect"], "non-scaling-stroke");
+
+    // Also verify air-gap style
+    const gapNode = wireCrossingToDiagramNode(crossings[0], true, { style: "gap" });
+    assert.strictEqual(gapNode.type, "wire-crossing");
+    assert.strictEqual(
+      gapNode.markup.some((m) => m.selector === "arc"),
+      false,
+    );
+  });
+
+  await t.test("should resolve language-aware crossing styles according to domain standards", () => {
+    // Modern EDA standard (no bridge hops, straight lines + solder dots)
+    assert.strictEqual(resolveWireCrossingStyle("modelica"), "none");
+    assert.strictEqual(resolveWireCrossingStyle("spice"), "none");
+    assert.strictEqual(resolveWireCrossingStyle("verilog-a"), "none");
+    assert.strictEqual(resolveWireCrossingStyle("sysml2"), "none");
+    assert.strictEqual(resolveWireCrossingStyle("ssp"), "none");
+    assert.strictEqual(resolveWireCrossingStyle("reqif"), "none");
+
+    // Micro-arc bridge hops
+    assert.strictEqual(resolveWireCrossingStyle("pscad"), "micro-arc");
+    assert.strictEqual(resolveWireCrossingStyle("opendss"), "micro-arc");
+    assert.strictEqual(resolveWireCrossingStyle("psse"), "micro-arc");
+    assert.strictEqual(resolveWireCrossingStyle("plcopen"), "micro-arc");
+    assert.strictEqual(resolveWireCrossingStyle("simulink"), "micro-arc");
+    assert.strictEqual(resolveWireCrossingStyle("easy5"), "micro-arc");
+
+    // Technical air-gap breaks (P&ID)
+    assert.strictEqual(resolveWireCrossingStyle("relap5"), "gap");
+    assert.strictEqual(resolveWireCrossingStyle("swmm"), "gap");
+    assert.strictEqual(resolveWireCrossingStyle("epanet"), "gap");
+
+    // Explicit user preference overrides language default
+    assert.strictEqual(resolveWireCrossingStyle("modelica", "micro-arc"), "micro-arc");
+    assert.strictEqual(resolveWireCrossingStyle("pscad", "none"), "none");
+    assert.strictEqual(resolveWireCrossingStyle("modelica", "gap"), "gap");
   });
 
   await t.test("should not create jumpover when crossing is within tolerance of an existing solder dot", () => {
@@ -390,5 +429,53 @@ test("Topological Solder Dot Junction Engine", async (t) => {
 
     const crossings = computeWireCrossings(edges, [], { portPoints: [{ x: 50, y: 50 }] });
     assert.strictEqual(crossings.length, 0, "Wire crossing at a component port must be suppressed");
+  });
+
+  await t.test("resolveWireCrossingStyle controls wire crossing generation", () => {
+    const edges = [
+      {
+        id: "e_h",
+        points: [
+          { x: 0, y: 50 },
+          { x: 100, y: 50 },
+        ],
+        color: "#0000ff",
+      },
+      {
+        id: "e_v",
+        points: [
+          { x: 50, y: 0 },
+          { x: 50, y: 100 },
+        ],
+        color: "#0000ff",
+      },
+    ];
+
+    const dots = computeSolderDots(edges);
+
+    // 1. Modelica: style is "none" -> crossings suppressed
+    const styleModelica = resolveWireCrossingStyle("modelica");
+    assert.strictEqual(styleModelica, "none");
+    const crossingsModelica = styleModelica === "none" ? [] : computeWireCrossings(edges, dots);
+    assert.strictEqual(crossingsModelica.length, 0, "Modelica must suppress wire crossing nodes");
+
+    // 2. PSCAD: style is "micro-arc" -> refined micro-arc generated
+    const stylePscad = resolveWireCrossingStyle("pscad");
+    assert.strictEqual(stylePscad, "micro-arc");
+    const crossingsPscad = stylePscad === "none" ? [] : computeWireCrossings(edges, dots);
+    assert.strictEqual(crossingsPscad.length, 1, "PSCAD must detect wire crossing");
+    const pscadNode = wireCrossingToDiagramNode(crossingsPscad[0], true, { style: stylePscad });
+    assert.strictEqual(pscadNode.width, 6, "Must be refined 6px micro-arc");
+    assert.strictEqual(pscadNode.attrs?.arc?.strokeWidth, 1.0);
+
+    // 3. RELAP5: style is "gap" -> air-gap generated
+    const styleRelap5 = resolveWireCrossingStyle("relap5");
+    assert.strictEqual(styleRelap5, "gap");
+    const gapNode = wireCrossingToDiagramNode(crossingsPscad[0], true, { style: styleRelap5 });
+    assert.strictEqual(gapNode.width, 6);
+    assert.strictEqual(
+      gapNode.markup.some((m) => m.selector === "arc"),
+      false,
+    );
   });
 });

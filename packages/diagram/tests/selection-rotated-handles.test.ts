@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import {
   alignNodeSelectionBox,
   getEdgeToolConfig,
+  resolveEdgeSelectionStyle,
   syncAllNodeSelectionBoxes,
   type GraphLike,
   type NodeLike,
@@ -159,5 +160,67 @@ describe("Diagram Selection Handles and Box Rotation", () => {
     const vertToolDark = toolsDark.find((t) => t.name === "vertices");
     assert.strictEqual(vertToolDark?.args.attrs.fill, "#1e293b");
     assert.strictEqual(vertToolDark?.args.attrs.stroke, "#38bdf8");
+  });
+
+  it("resolves language-adaptive edge selection styles", () => {
+    // Physical circuits & EDA -> Minimalist
+    assert.strictEqual(resolveEdgeSelectionStyle("modelica"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("mo"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("spice"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("cir"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("pscad"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("opendss"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("verilog-a"), "minimalist");
+
+    // Systems, Block Diagrams & Controls -> Floating HUD
+    assert.strictEqual(resolveEdgeSelectionStyle("sysml"), "hud");
+    assert.strictEqual(resolveEdgeSelectionStyle("sysml2"), "hud");
+    assert.strictEqual(resolveEdgeSelectionStyle("simulink"), "hud");
+    assert.strictEqual(resolveEdgeSelectionStyle("slx"), "hud");
+    assert.strictEqual(resolveEdgeSelectionStyle("easy5"), "hud");
+    assert.strictEqual(resolveEdgeSelectionStyle("plcopen"), "hud");
+
+    // Fluids & Process Networks -> Flow Trace
+    assert.strictEqual(resolveEdgeSelectionStyle("olga"), "trace");
+    assert.strictEqual(resolveEdgeSelectionStyle("swmm"), "trace");
+    assert.strictEqual(resolveEdgeSelectionStyle("lps"), "trace");
+    assert.strictEqual(resolveEdgeSelectionStyle("epanet"), "trace");
+
+    // Ontologies, Knowledge Graphs & Default -> Precision Halo
+    assert.strictEqual(resolveEdgeSelectionStyle("owl2"), "halo");
+    assert.strictEqual(resolveEdgeSelectionStyle("oscal"), "halo");
+    assert.strictEqual(resolveEdgeSelectionStyle(undefined), "halo");
+
+    // Explicit user preference overrides language default
+    assert.strictEqual(resolveEdgeSelectionStyle("modelica", "hud"), "hud");
+    assert.strictEqual(resolveEdgeSelectionStyle("sysml2", "minimalist"), "minimalist");
+    assert.strictEqual(resolveEdgeSelectionStyle("modelica", "auto"), "minimalist");
+  });
+
+  it("omits segment midpoint handles in minimalist mode to avoid schematic clutter", () => {
+    const mockGraph = { zoom: () => 1.0 } as unknown as GraphLike;
+
+    // Minimalist mode (e.g. Modelica)
+    const toolsMinimal = getEdgeToolConfig({} as any, mockGraph, false, "minimalist") as { name: string }[];
+    assert.ok(
+      toolsMinimal.find((t) => t.name === "vertices"),
+      "Vertices handles must be present",
+    );
+    assert.strictEqual(
+      toolsMinimal.find((t) => t.name === "segments"),
+      undefined,
+      "Segment handles must be omitted in minimalist mode",
+    );
+
+    // HUD / Halo mode
+    const toolsHud = getEdgeToolConfig({} as any, mockGraph, false, "hud") as { name: string }[];
+    assert.ok(
+      toolsHud.find((t) => t.name === "vertices"),
+      "Vertices handles must be present",
+    );
+    assert.ok(
+      toolsHud.find((t) => t.name === "segments"),
+      "Segment handles must be present in HUD mode",
+    );
   });
 });

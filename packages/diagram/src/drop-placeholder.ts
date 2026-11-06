@@ -257,11 +257,16 @@ export function ensureDiagramStyles(): void {
     }
 
     /* Edge Selection and Vertex/Segment Handle Controls */
-    .x6-edge.x6-edge-selected path.connection,
-    .x6-edge.x6-edge-selected path[stroke] {
+    @keyframes x6-edge-flow {
+      to {
+        stroke-dashoffset: -20;
+      }
+    }
+
+    /* Universal base for all styles: crisp non-scaling stroke (prevents zoom blowout) */
+    .x6-edge.x6-edge-selected path.connection {
       stroke: var(--vscode-focusBorder, #0284c7) !important;
-      stroke-width: 2.5px !important;
-      filter: drop-shadow(0 0 3px rgba(2, 132, 199, 0.4));
+      vector-effect: non-scaling-stroke !important;
     }
 
     .x6-edge-tool-vertex circle,
@@ -280,7 +285,7 @@ export function ensureDiagramStyles(): void {
     .x6-edge-tool-segment rect,
     rect.x6-edge-tool-segment {
       cursor: move !important;
-      transition: fill 0.15s ease;
+      transition: opacity 0.15s ease, fill 0.15s ease;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
     }
 
@@ -288,6 +293,66 @@ export function ensureDiagramStyles(): void {
     rect.x6-edge-tool-segment:hover {
       fill: var(--vscode-focusBorder, #0284c7) !important;
       cursor: move !important;
+    }
+
+    /* ⚡ Minimalist CAD (Modelica, SPICE, PSCAD): Strict 1.5px non-scaling stroke, zero raster blur */
+    [data-edge-selection="minimalist"] .x6-edge.x6-edge-selected path.connection {
+      stroke-width: 1.5px !important;
+      filter: none !important;
+    }
+    [data-edge-selection="minimalist"] .x6-edge-tool-vertex circle,
+    [data-edge-selection="minimalist"] circle.x6-edge-tool-vertex {
+      r: 3px !important;
+      stroke-width: 1.5px !important;
+    }
+    [data-edge-selection="minimalist"] .x6-edge-tool-segment,
+    [data-edge-selection="minimalist"] rect.x6-edge-tool-segment {
+      display: none !important;
+    }
+
+    /* 📐 Interactive HUD (SysML v2, Simulink): Sleek 1.8px line, hover-only segment handles */
+    [data-edge-selection="hud"] .x6-edge.x6-edge-selected path.connection {
+      stroke-width: 1.8px !important;
+      filter: drop-shadow(0 0 1.5px rgba(2, 132, 199, 0.35)) !important;
+    }
+    [data-edge-selection="hud"] .x6-edge-tool-segment rect,
+    [data-edge-selection="hud"] rect.x6-edge-tool-segment {
+      opacity: 0.15;
+    }
+    [data-edge-selection="hud"] .x6-edge:hover .x6-edge-tool-segment rect,
+    [data-edge-selection="hud"] .x6-edge:hover rect.x6-edge-tool-segment {
+      opacity: 1;
+    }
+
+    /* 🌊 Flow Trace (Olga, Fluids, SWMM): Animated marching dash to preserve physical conduit diameters */
+    [data-edge-selection="trace"] .x6-edge.x6-edge-selected path.connection {
+      stroke-width: 1.8px !important;
+      stroke-dasharray: 6, 4 !important;
+      animation: x6-edge-flow 1.2s linear infinite !important;
+      filter: drop-shadow(0 0 2px rgba(2, 132, 199, 0.45)) !important;
+    }
+
+    /* 🌐 Precision Halo (Default / Ontologies): Crisp 1.5px core with soft translucent casing */
+    [data-edge-selection="halo"] .x6-edge.x6-edge-selected path.connection,
+    :not([data-edge-selection]) .x6-edge.x6-edge-selected path.connection {
+      stroke-width: 1.5px !important;
+      filter: drop-shadow(0 0 2px rgba(2, 132, 199, 0.5)) !important;
+    }
+    [data-edge-selection="halo"] .x6-edge-tool-segment rect,
+    :not([data-edge-selection]) .x6-edge-tool-segment rect {
+      opacity: 0.35;
+    }
+    [data-edge-selection="halo"] .x6-edge:hover .x6-edge-tool-segment rect,
+    :not([data-edge-selection]) .x6-edge:hover rect.x6-edge-tool-segment {
+      opacity: 1;
+    }
+
+    /* Highlight connected ports when an edge is selected */
+    .x6-port.x6-port-edge-selected circle,
+    .x6-port.x6-port-edge-selected rect {
+      stroke: var(--vscode-focusBorder, #0284c7) !important;
+      stroke-width: 2px !important;
+      filter: drop-shadow(0 0 3px rgba(2, 132, 199, 0.6)) !important;
     }
     /* Level-of-Detail (LOD) Rules */
     .x6-lod-low text,

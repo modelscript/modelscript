@@ -361,6 +361,17 @@ export interface DiagramEdge {
   };
 }
 
+/**
+ * Edge selection visual strategies:
+ * - "minimalist": Strict 1.5px non-scaling CAD line, no raster blur, port snap rings, corner-only handles (Modelica, SPICE, PSCAD).
+ * - "hud": Sleek 1.8px line, hover-only midpoint drag handles, floating action pill for reroute/disconnect (SysML v2, Simulink, Block Diagrams).
+ * - "trace": Animated conduit flow trace / marching dash (Fluids, P&ID, Hydraulics - Olga, SWMM, LPS).
+ * - "halo": 1.5px core line with subtle 4px translucent casing halo (Ontologies, Knowledge Graphs, General schematics).
+ * - "auto": Inferred from diagram language domain conventions (default).
+ */
+export type EdgeSelectionStyle = "minimalist" | "hud" | "trace" | "halo" | "auto";
+export type ResolvedEdgeSelectionStyle = "minimalist" | "hud" | "trace" | "halo";
+
 export interface CoordinateSystemBoundsStyle {
   stroke?: string | undefined;
   strokeWidth?: number | undefined;

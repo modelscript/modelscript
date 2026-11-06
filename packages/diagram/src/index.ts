@@ -15,6 +15,7 @@ import {
   type AlignmentType,
   type ArrowKeyDirection,
 } from "./alignment.js";
+import { adaptColorForDarkMode, adaptX6Markup } from "./color-inversion.js";
 import { hideContextMenu, showContextMenu } from "./context-menu.js";
 import {
   clearActiveDropPlaceholder,
@@ -48,15 +49,24 @@ import {
   type RouterPortConfig,
 } from "./port-router.js";
 import type { CoordinateSystem, ReactiveAnimationBinding } from "./protocol.js";
-import { alignNodeSelectionBox, getEdgeToolConfig, syncAllNodeSelectionBoxes } from "./selection-handles.js";
+import {
+  alignNodeSelectionBox,
+  getEdgeToolConfig,
+  resolveEdgeSelectionStyle,
+  syncAllNodeSelectionBoxes,
+  type EdgeSelectionStyle,
+  type ResolvedEdgeSelectionStyle,
+} from "./selection-handles.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import {
   computeEdgeNetIds,
   computeSolderDots,
   computeWireCrossings,
+  resolveWireCrossingStyle,
   solderDotToDiagramNode,
   wireCrossingToDiagramNode,
   type EdgePath,
+  type WireCrossingStyle,
 } from "./solder-dots.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout, type SwimlanePartition } from "./swimlane-layout.js";
@@ -463,6 +473,12 @@ export interface DiagramRendererOptions {
   snapGrid?: number | undefined;
   /** Default connector style for newly created and unspecified edges (e.g. "normal" or { name: "rounded", args: { radius: 8 } }). */
   defaultConnector?: unknown | undefined;
+  /** Wire crossing style ("none" | "micro-arc" | "gap" | "auto"). */
+  wireCrossingStyle?: WireCrossingStyle | undefined;
+  /** Edge selection visual strategy ("minimalist" | "hud" | "trace" | "halo" | "auto"). */
+  edgeSelectionStyle?: EdgeSelectionStyle | undefined;
+  /** Target language ID (e.g. "modelica", "pscad", "spice"). */
+  language?: string | undefined;
   /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
   onAction?: ((action: Record<string, unknown> | InteractiveWriteAction) => void) | undefined;
   /** Callback invoked when the selected component node changes (or `null` when deselected). */
@@ -487,6 +503,7 @@ interface ContainerDiagramInstance {
   options: DiagramRendererOptions;
   selectedNodeId: string | null;
   cleanupListeners?: (() => void) | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 const containerInstances = new Map<HTMLElement, ContainerDiagramInstance>();
@@ -496,6 +513,13 @@ function getOptionsForGraph(g?: Graph | null): DiagramRendererOptions | null {
     return containerInstances.get(g.container)!.options;
   }
   return currentOptions;
+}
+
+function getMetadataForGraph(g?: Graph | null): Record<string, unknown> | null {
+  if (g?.container && containerInstances.has(g.container)) {
+    return containerInstances.get(g.container)!.metadata ?? null;
+  }
+  return activeDiagramMetadata ?? null;
 }
 
 /**
@@ -564,6 +588,9 @@ let isCurrentDiagramReadOnly = false;
 
 /** Active diagram's language or metadata default connector (e.g. "normal" for Modelica, or "rounded" for SysML2) */
 let activeDefaultConnector: unknown | undefined;
+
+/** Active diagram metadata (language, wireCrossingStyle, etc.) */
+let activeDiagramMetadata: Record<string, unknown> | undefined;
 
 export { translateConnectedEdgeStubs };
 
@@ -726,6 +753,9 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
   const containerH = container.clientHeight > 0 ? container.clientHeight : 600;
+
+  const initialEdgeStyle = resolveEdgeSelectionStyle(currentOptions?.language, currentOptions?.edgeSelectionStyle);
+  container.setAttribute("data-edge-selection", initialEdgeStyle);
 
   const g: Graph = new Graph({
     container,
@@ -898,9 +928,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     const selectedEdges = (typeof g.getSelectedCells === "function" ? g.getSelectedCells() : []).filter(
       (c: Cell) => typeof c.isEdge === "function" && c.isEdge(),
     );
+    const activeStyle = (container?.getAttribute("data-edge-selection") as ResolvedEdgeSelectionStyle) ?? "halo";
     selectedEdges.forEach((edge: Cell) => {
       edge.removeTools();
-      edge.addTools(getEdgeToolConfig(edge, g, isDark));
+      edge.addTools(getEdgeToolConfig(edge, g, isDark, activeStyle));
     });
   };
 
@@ -1039,8 +1070,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
     for (const node of selectedNodes) {
       const data = node.getData?.() || {};
-      const className =
-        (data.properties?.className as string | undefined) || (data["className"] as string | undefined);
+      const className = (data.properties?.className as string | undefined) || (data["className"] as string | undefined);
       if (!className) continue;
       const p = node.getPosition();
       const s = node.getSize();
@@ -1113,9 +1143,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       return;
     }
 
-    const paramBtn = alignmentToolbar?.querySelector(
-      "[data-action='edit-param'], [data-align='edit-param']",
-    ) as HTMLElement | null | undefined;
+    const paramBtn = alignmentToolbar?.querySelector("[data-action='edit-param'], [data-align='edit-param']") as
+      | HTMLElement
+      | null
+      | undefined;
     if (!paramBtn) return;
 
     const input = document.createElement("input");
@@ -1352,15 +1383,40 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
   };
 
+  // Helper to toggle connected port highlights on edge selection
+  const setEdgePortHighlight = (cell: Cell, active: boolean) => {
+    if (typeof (cell as Edge).getSource !== "function") return;
+    const edge = cell as Edge;
+    const src = edge.getSource?.();
+    const tgt = edge.getTarget?.();
+    [src, tgt].forEach((terminal) => {
+      if (!terminal?.cell || !terminal?.port) return;
+      const node = g.getCellById?.(terminal.cell);
+      if (!node) return;
+      const view = g.findViewByCell?.(node);
+      if (!view?.container) return;
+      const portEl = view.container.querySelector(`[data-port="${terminal.port}"]`);
+      if (portEl) {
+        if (active) {
+          portEl.classList.add("x6-port-edge-selected");
+        } else {
+          portEl.classList.remove("x6-port-edge-selected");
+        }
+      }
+    });
+  };
+
   // ── Selection change events — add/remove edge tools & align node selection boxes ──
   g.on("selection:changed", ({ added, removed }: { added: Cell[]; removed: Cell[] }) => {
+    const activeStyle = (container?.getAttribute("data-edge-selection") as ResolvedEdgeSelectionStyle) ?? "halo";
     added.forEach((cell: Cell) => {
       if (typeof cell.isEdge === "function" && cell.isEdge()) {
         cell.removeTools();
-        cell.addTools(getEdgeToolConfig(cell, g, isDark));
+        cell.addTools(getEdgeToolConfig(cell, g, isDark, activeStyle));
+        setEdgePortHighlight(cell, true);
       } else if (typeof cell.isNode === "function" && cell.isNode()) {
-        const container = selectionImpl?.container || g.container?.querySelector(".x6-widget-selection");
-        const box = container?.querySelector(`[data-cell-id="${cell.id}"]`) as HTMLElement | null;
+        const selContainer = selectionImpl?.container || g.container?.querySelector(".x6-widget-selection");
+        const box = selContainer?.querySelector(`[data-cell-id="${cell.id}"]`) as HTMLElement | null;
         if (box) {
           alignNodeSelectionBox(box, cell as Node, g);
         }
@@ -1369,6 +1425,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     removed.forEach((cell: Cell) => {
       if (typeof cell.isEdge === "function" && cell.isEdge()) {
         cell.removeTools();
+        setEdgePortHighlight(cell, false);
       }
     });
     syncAlignmentToolbar();
@@ -2549,10 +2606,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const mod = isMac ? e.metaKey : e.ctrlKey;
 
       // ── 3-Gear Precision Arrow Key Shifting (Normal: 2px, Shift: 10px, Alt: 1px) ──
-      if (
-        !mod &&
-        (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")
-      ) {
+      if (!mod && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         const selectedNodes = g
           .getSelectedCells()
           .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
@@ -2709,9 +2763,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         };
         const alignType = alignMap[e.key.toLowerCase()];
         if (alignType) {
-          const btn = alignmentToolbar?.querySelector(
-            `[data-action="${alignType}"], [data-align="${alignType}"]`,
-          ) as HTMLButtonElement | null | undefined;
+          const btn = alignmentToolbar?.querySelector(`[data-action="${alignType}"], [data-align="${alignType}"]`) as
+            | HTMLButtonElement
+            | null
+            | undefined;
           if (btn) {
             e.preventDefault();
             btn.click();
@@ -2720,6 +2775,13 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     }
   };
+
+  let onSpaceKeyDown: ((e: KeyboardEvent) => void) | null = null;
+  let onSpaceKeyUp: ((e: KeyboardEvent) => void) | null = null;
+  let onContainerMouseDownCapture: ((e: MouseEvent) => void) | null = null;
+  let onWindowMouseMoveCapture: ((e: MouseEvent) => void) | null = null;
+  let onWindowMouseUpCapture: ((e: MouseEvent) => void) | null = null;
+  let onWindowBlur: (() => void) | null = null;
 
   if (typeof document !== "undefined") {
     document.addEventListener("keydown", onAltKeyDown);
@@ -2732,16 +2794,32 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     let spacePanStartX = 0;
     let spacePanStartY = 0;
 
-    const onSpaceKeyDown = (e: KeyboardEvent) => {
+    const isTargetEditable = (el: Element | null): boolean => {
+      if (!el) return false;
+      const htmlEl = el as HTMLElement;
+      if (
+        htmlEl.tagName === "INPUT" ||
+        htmlEl.tagName === "TEXTAREA" ||
+        htmlEl.tagName === "SELECT" ||
+        htmlEl.isContentEditable ||
+        Boolean(htmlEl.closest?.(".monaco-editor, [contenteditable='true'], input, textarea, select"))
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    onSpaceKeyDown = (e: KeyboardEvent) => {
       if (e.key === " " || e.code === "Space") {
-        const active = document.activeElement;
-        if (
-          active &&
-          (active.tagName === "INPUT" ||
-            active.tagName === "TEXTAREA" ||
-            active.tagName === "SELECT" ||
-            (active as HTMLElement).isContentEditable)
-        ) {
+        if (isTargetEditable(document.activeElement) || isTargetEditable(e.target as Element)) {
+          return;
+        }
+        const isOverContainer = Boolean(
+          (typeof container.matches === "function" && container.matches(":hover")) ||
+          (e.target && container.contains(e.target as unknown as globalThis.Node)) ||
+          (document.activeElement && container.contains(document.activeElement)),
+        );
+        if (!isOverContainer) {
           return;
         }
         if (!isSpacePressed) {
@@ -2752,7 +2830,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     };
 
-    const onSpaceKeyUp = (e: KeyboardEvent) => {
+    onSpaceKeyUp = (e: KeyboardEvent) => {
       if (e.key === " " || e.code === "Space") {
         isSpacePressed = false;
         isSpacePanning = false;
@@ -2761,7 +2839,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     };
 
-    const onContainerMouseDownCapture = (e: MouseEvent) => {
+    onContainerMouseDownCapture = (e: MouseEvent) => {
       if (isSpacePressed) {
         isSpacePanning = true;
         spacePanStartX = e.clientX;
@@ -2772,7 +2850,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     };
 
-    const onWindowMouseMoveCapture = (e: MouseEvent) => {
+    onWindowMouseMoveCapture = (e: MouseEvent) => {
       if (isSpacePanning) {
         const dx = e.clientX - spacePanStartX;
         const dy = e.clientY - spacePanStartY;
@@ -2785,7 +2863,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     };
 
-    const onWindowMouseUpCapture = (e: MouseEvent) => {
+    onWindowMouseUpCapture = (e: MouseEvent) => {
       if (isSpacePanning) {
         isSpacePanning = false;
         container.classList.remove("x6-hand-panning-active");
@@ -2797,7 +2875,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     };
 
-    const onWindowBlur = () => {
+    onWindowBlur = () => {
       isSpacePressed = false;
       isSpacePanning = false;
       container.classList.remove("x6-hand-panning");
@@ -3101,11 +3179,19 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     cleanupListeners: () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("keydown", onWindowEscape);
+        if (onWindowMouseMoveCapture) window.removeEventListener("mousemove", onWindowMouseMoveCapture, true);
+        if (onWindowMouseUpCapture) window.removeEventListener("mouseup", onWindowMouseUpCapture, true);
+        if (onWindowBlur) window.removeEventListener("blur", onWindowBlur);
       }
       if (typeof document !== "undefined") {
         document.removeEventListener("keydown", onAltKeyDown);
         document.removeEventListener("keyup", onAltKeyUp);
         document.removeEventListener("keydown", onDocKeyDown);
+        if (onSpaceKeyDown) document.removeEventListener("keydown", onSpaceKeyDown);
+        if (onSpaceKeyUp) document.removeEventListener("keyup", onSpaceKeyUp);
+      }
+      if (onContainerMouseDownCapture) {
+        container.removeEventListener("mousedown", onContainerMouseDownCapture, true);
       }
     },
   });
@@ -3364,6 +3450,20 @@ export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
 export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
   isCurrentDiagramReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
   activeDefaultConnector = data.metadata?.defaultConnector ?? currentOptions?.defaultConnector;
+  activeDiagramMetadata = data.metadata as Record<string, unknown> | undefined;
+  if (g?.container && containerInstances.has(g.container)) {
+    containerInstances.get(g.container)!.metadata = activeDiagramMetadata;
+  }
+
+  // Resolve and apply language-adaptive edge selection style
+  const opts = getOptionsForGraph(g);
+  const lang = (data.metadata?.["language"] as string | undefined) ?? (data.diagramType as string) ?? opts?.language;
+  const userEdgePref =
+    (activeDiagramMetadata?.["edgeSelectionStyle"] as EdgeSelectionStyle) ?? opts?.edgeSelectionStyle;
+  const resolvedEdgeStyle = resolveEdgeSelectionStyle(lang, userEdgePref);
+  if (g.container) {
+    g.container.setAttribute("data-edge-selection", resolvedEdgeStyle);
+  }
 
   // Dynamically configure canvas grid from coordinateSystem if specified
   if (data.coordinateSystem?.grid) {
@@ -3488,6 +3588,28 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       };
     }
 
+    const effectiveMarkup =
+      isDark && node.markup ? adaptX6Markup(node.markup, { isDark, targetBg: "#121212" }) : node.markup;
+    const portsObj =
+      isDark && normalizedPorts && typeof normalizedPorts === "object"
+        ? (normalizedPorts as { items?: unknown[] })
+        : undefined;
+    const effectivePorts =
+      portsObj && Array.isArray(portsObj.items)
+        ? {
+            ...portsObj,
+            items: portsObj.items.map((item) => {
+              if (!item || typeof item !== "object") return item;
+              const portItem = item as Record<string, unknown>;
+              if (!portItem["markup"]) return item;
+              return {
+                ...portItem,
+                markup: adaptX6Markup(portItem["markup"], { isDark, targetBg: "#121212" }),
+              };
+            }),
+          }
+        : normalizedPorts;
+
     const nodeData: RenderNodeData = {
       id: node.id,
       x: node.x ?? 0,
@@ -3497,8 +3619,8 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       angle: node.angle,
       zIndex: node.zIndex,
       opacity: node.opacity,
-      markup: node.markup,
-      ports: normalizedPorts,
+      markup: effectiveMarkup,
+      ports: effectivePorts,
       data: {
         properties: node.properties,
         animations: node.animations as ReactiveAnimationBinding[] | undefined,
@@ -3533,6 +3655,33 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
             if (ef === "#cbd5e1" || ef === "#e2e8f0" || ef === "#f8fafc") {
               attrsCopy[selKey] = { ...selVal, fill: "#334155" };
             }
+          }
+        }
+      } else {
+        for (const [selKey, selVal] of Object.entries(attrsCopy)) {
+          if (selVal && typeof selVal === "object") {
+            const valObj = { ...(selVal as Record<string, unknown>) };
+            const isTextSel =
+              selKey === "label" || selKey === "subtitle" || selKey === "stereotype" || selKey.includes("text");
+            if (typeof valObj["fill"] === "string" && valObj["fill"] !== "none" && valObj["fill"] !== "transparent") {
+              valObj["fill"] = adaptColorForDarkMode(
+                valObj["fill"],
+                { isDark: true, targetBg: "#121212" },
+                isTextSel ? "text" : "fill",
+              );
+            }
+            if (
+              typeof valObj["stroke"] === "string" &&
+              valObj["stroke"] !== "none" &&
+              valObj["stroke"] !== "transparent"
+            ) {
+              valObj["stroke"] = adaptColorForDarkMode(
+                valObj["stroke"],
+                { isDark: true, targetBg: "#121212" },
+                "stroke",
+              );
+            }
+            attrsCopy[selKey] = valObj;
           }
         }
       }
@@ -3642,13 +3791,71 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       | undefined;
     if (edgeAttrs?.line) {
       const lineCopy = { ...edgeAttrs.line };
-      const tm = lineCopy["targetMarker"] as Record<string, unknown> | undefined;
-      if (!isDark && tm && typeof tm === "object" && tm["fill"] === "#1e1e1e") {
-        lineCopy["targetMarker"] = { ...tm, fill: "#ffffff" };
+      if (isDark) {
+        if (
+          typeof lineCopy["stroke"] === "string" &&
+          lineCopy["stroke"] !== "none" &&
+          lineCopy["stroke"] !== "transparent"
+        ) {
+          lineCopy["stroke"] = adaptColorForDarkMode(
+            lineCopy["stroke"],
+            { isDark: true, targetBg: "#121212" },
+            "stroke",
+          );
+        }
+        if (typeof lineCopy["strokeWidth"] === "number" && lineCopy["strokeWidth"] < 1.5) {
+          lineCopy["strokeWidth"] = 1.75;
+        }
+        const sm = lineCopy["sourceMarker"] as Record<string, unknown> | undefined;
+        if (sm && typeof sm === "object") {
+          const smCopy = { ...sm };
+          if (typeof smCopy["fill"] === "string" && smCopy["fill"] !== "none") {
+            smCopy["fill"] = adaptColorForDarkMode(smCopy["fill"], { isDark: true, targetBg: "#121212" }, "fill");
+          }
+          if (typeof smCopy["stroke"] === "string" && smCopy["stroke"] !== "none") {
+            smCopy["stroke"] = adaptColorForDarkMode(smCopy["stroke"], { isDark: true, targetBg: "#121212" }, "stroke");
+          }
+          lineCopy["sourceMarker"] = smCopy;
+        }
+        const tm = lineCopy["targetMarker"] as Record<string, unknown> | undefined;
+        if (tm && typeof tm === "object") {
+          const tmCopy = { ...tm };
+          if (typeof tmCopy["fill"] === "string" && tmCopy["fill"] !== "none") {
+            tmCopy["fill"] = adaptColorForDarkMode(tmCopy["fill"], { isDark: true, targetBg: "#121212" }, "fill");
+          }
+          if (typeof tmCopy["stroke"] === "string" && tmCopy["stroke"] !== "none") {
+            tmCopy["stroke"] = adaptColorForDarkMode(tmCopy["stroke"], { isDark: true, targetBg: "#121212" }, "stroke");
+          }
+          lineCopy["targetMarker"] = tmCopy;
+        }
+      } else {
+        const tm = lineCopy["targetMarker"] as Record<string, unknown> | undefined;
+        if (tm && typeof tm === "object" && tm["fill"] === "#1e1e1e") {
+          lineCopy["targetMarker"] = { ...tm, fill: "#ffffff" };
+        }
       }
       edgeData.attrs = { "z-index": "-10", line: lineCopy };
     } else if (edgeAttrs) {
-      edgeData.attrs = edgeAttrs;
+      if (isDark) {
+        const adaptedEdgeAttrs: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(edgeAttrs)) {
+          if (v && typeof v === "object") {
+            const vObj = { ...(v as Record<string, unknown>) };
+            if (typeof vObj["stroke"] === "string" && vObj["stroke"] !== "none") {
+              vObj["stroke"] = adaptColorForDarkMode(vObj["stroke"], { isDark: true, targetBg: "#121212" }, "stroke");
+            }
+            if (typeof vObj["fill"] === "string" && vObj["fill"] !== "none") {
+              vObj["fill"] = adaptColorForDarkMode(vObj["fill"], { isDark: true, targetBg: "#121212" }, "fill");
+            }
+            adaptedEdgeAttrs[k] = vObj;
+          } else {
+            adaptedEdgeAttrs[k] = v;
+          }
+        }
+        edgeData.attrs = adaptedEdgeAttrs as RenderEdgeData["attrs"];
+      } else {
+        edgeData.attrs = edgeAttrs;
+      }
     } else {
       edgeData.attrs = {
         line: {
@@ -3781,7 +3988,9 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       }
     }
     if (data.diagramBackground) {
-      children.push(data.diagramBackground);
+      children.push(
+        isDark ? adaptX6Markup(data.diagramBackground, { isDark, targetBg: "#121212" }) : data.diagramBackground,
+      );
     }
     nodes.push({
       id: "__diagram_background__",
@@ -3809,7 +4018,8 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     const cs = data.coordinateSystem;
     const showAxes = cs.axesStyle?.visible !== false;
     if (showAxes) {
-      const axisStroke = cs.axesStyle?.stroke ?? "#999";
+      const defaultAxisStroke = isDark ? "rgba(255, 255, 255, 0.12)" : "#999";
+      const axisStroke = cs.axesStyle?.stroke ?? defaultAxisStroke;
       const axisWidth = String(cs.axesStyle?.strokeWidth ?? 1);
       const axisDash = cs.axesStyle?.strokeDasharray;
       const boundsOnly = cs.axesStyle?.boundsOnly === true;
@@ -4366,7 +4576,9 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     scheduleUpdateSolderDots(g);
     scheduleViewportCulling(g);
     updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
-    const hud = (g.container as HTMLElement | undefined)?.querySelector?.("#modelscript-minimap-hud") as HTMLElement | null;
+    const hud = (g.container as HTMLElement | undefined)?.querySelector?.(
+      "#modelscript-minimap-hud",
+    ) as HTMLElement | null;
     if (hud) {
       updateMinimapHud(hud, g);
     }
@@ -4485,7 +4697,9 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   updateSolderDots(g);
   scheduleUpdateSolderDots(g);
   scheduleViewportCulling(g);
-  const hud = (g.container as HTMLElement | undefined)?.querySelector?.("#modelscript-minimap-hud") as HTMLElement | null;
+  const hud = (g.container as HTMLElement | undefined)?.querySelector?.(
+    "#modelscript-minimap-hud",
+  ) as HTMLElement | null;
   if (hud) {
     updateMinimapHud(hud, g);
   }
@@ -4493,7 +4707,9 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     if (graph === g && !g.disposed) {
       updateSolderDots(g);
       scheduleViewportCulling(g);
-      const h = (g.container as HTMLElement | undefined)?.querySelector?.("#modelscript-minimap-hud") as HTMLElement | null;
+      const h = (g.container as HTMLElement | undefined)?.querySelector?.(
+        "#modelscript-minimap-hud",
+      ) as HTMLElement | null;
       if (h) {
         updateMinimapHud(h, g);
       }
@@ -4927,8 +5143,16 @@ export function updateSolderDots(g: Graph) {
     }
   }
 
+  const opts = getOptionsForGraph(g);
+  const isDark = opts?.isDark ?? true;
+  const meta = getMetadataForGraph(g);
+  const lang =
+    (meta?.["language"] as string | undefined) ?? (opts as { language?: string } | null | undefined)?.language;
+  const userCrossingPref = (meta?.["wireCrossingStyle"] as WireCrossingStyle | undefined) ?? opts?.wireCrossingStyle;
+  const crossingStyle = resolveWireCrossingStyle(lang, userCrossingPref);
+
   const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints });
-  const crossings = computeWireCrossings(allPaths, dots, { portPoints });
+  const crossings = crossingStyle === "none" ? [] : computeWireCrossings(allPaths, dots, { portPoints });
   const existingDotIds = new Set<string>(existingDots.map((n: Node) => n.id));
   const newDotIds = new Set<string>();
   const existingCrossingIds = new Set<string>(existingCrossings.map((n: Node) => n.id));
@@ -4936,8 +5160,6 @@ export function updateSolderDots(g: Graph) {
 
   const dotSize = 3;
   const radius = dotSize / 2;
-  const opts = getOptionsForGraph(g);
-  const isDark = opts?.isDark ?? true;
 
   g.batchUpdate("solder-dots", () => {
     // Solder dots
@@ -4967,10 +5189,11 @@ export function updateSolderDots(g: Graph) {
       }
     }
 
-    // Wire crossing jumpovers
+    // Wire crossing jumpovers / air-gaps
+    const crossingSize = 6;
+    const half = crossingSize / 2;
     for (const crossing of crossings) {
       newCrossingIds.add(crossing.id);
-      const half = 5; // size is 10
       const targetX = crossing.x - half;
       const targetY = crossing.y - half;
 
@@ -4983,8 +5206,18 @@ export function updateSolderDots(g: Graph) {
         if (existing.attr("arc/stroke") !== crossing.color) {
           existing.attr("arc/stroke", crossing.color);
         }
+        const curSize = existing.getSize();
+        if (curSize.width !== crossingSize || curSize.height !== crossingSize) {
+          existing.resize?.(crossingSize, crossingSize);
+        }
       } else {
-        g.addNode(wireCrossingToDiagramNode(crossing, isDark) as unknown as Record<string, unknown>);
+        g.addNode(
+          wireCrossingToDiagramNode(crossing, isDark, {
+            style: crossingStyle,
+            size: crossingSize,
+            strokeWidth: 1.0,
+          }) as unknown as Record<string, unknown>,
+        );
       }
     }
 
@@ -5369,3 +5602,11 @@ export {
   type CodeThumbnailOptions,
   type DialectMeta,
 } from "./code-thumbnail-builder.js";
+
+export { resolveWireCrossingStyle, type WireCrossingStyle } from "./solder-dots.js";
+
+export {
+  resolveEdgeSelectionStyle,
+  type EdgeSelectionStyle,
+  type ResolvedEdgeSelectionStyle,
+} from "./selection-handles.js";

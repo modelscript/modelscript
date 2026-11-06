@@ -1864,7 +1864,7 @@ end ThermalSystem;`;
 
     // 1. Line 1 syntax errors only
     const syntaxErrors = diags.filter((d: any) => d.severity === 1);
-    expect(syntaxErrors).toHaveLength(2);
+    expect(syntaxErrors).toHaveLength(3);
     expect(syntaxErrors.every((e: any) => e.range.start.line === 0)).toBe(true);
 
     // 2. Zero errors on Line 2 (Real voltage = 12.0;)
