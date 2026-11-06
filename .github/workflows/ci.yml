@@ -537,9 +537,37 @@ jobs:
             appliance.tags=ghcr.io/modelscript/appliance:latest
             appliance.tags=ghcr.io/modelscript/appliance:sha-${{ github.sha }}
 
+  ci_status_gate:
+    name: CI Status Gate
+    if: always()
+    needs:
+      - lint
+      - build
+      - test
+      - modelica_testsuite
+      - cross_os_smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify All Required Jobs Succeeded
+        run: |
+          echo "Checking status of required CI jobs..."
+          echo "  lint: ${{ needs.lint.result }}"
+          echo "  build: ${{ needs.build.result }}"
+          echo "  test: ${{ needs.test.result }}"
+          echo "  modelica_testsuite: ${{ needs.modelica_testsuite.result }}"
+          echo "  cross_os_smoke: ${{ needs.cross_os_smoke.result }}"
+          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.cross_os_smoke.result }}"; do
+            if [ "$res" != "success" ] && [ "$res" != "skipped" ]; then
+              echo "Error: Required job finished with status '$res'"
+              exit 1
+            fi
+          done
+          echo "All required CI jobs succeeded or were skipped cleanly."
+
   deploy_production:
     name: Deploy Stack to modelscript.org & ansatz.social
-    needs: [docker_build, test]
+    environment: production
+    needs: [docker_build, test, ci_status_gate]
     if: >-
       github.ref == 'refs/heads/main' &&
       github.event_name != 'pull_request' &&
