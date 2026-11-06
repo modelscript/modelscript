@@ -52,4 +52,6 @@ export interface SeedPostSpec {
   hoursAgo?: number | undefined;
   /** Alias for hoursAgo */
   createdHoursAgo?: number | undefined;
+  /** Whether this post carries a cryptographic W3C Data Integrity proof and signature */
+  signed?: boolean | undefined;
 }

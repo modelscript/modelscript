@@ -1414,6 +1414,9 @@ interface WasmAnnotationExports {
   annotation_getCoordX2: () => number;
   annotation_getCoordY2: () => number;
   annotation_getPreserveAspectRatio: () => number;
+  annotation_hasGrid?: () => number;
+  annotation_getGridX?: () => number;
+  annotation_getGridY?: () => number;
   annotation_getGraphicKind: (i: number) => number;
   annotation_getGraphicStroke: (i: number) => number;
   annotation_getGraphicFill: (i: number) => number;
@@ -1698,6 +1701,7 @@ export interface WasmGraphicLayer {
     "@type": "coordinateSystem";
     extent: [[number, number], [number, number]];
     preserveAspectRatio: boolean;
+    grid?: [number, number] | undefined;
   };
   graphics?: WasmGraphicItem[];
 }
@@ -1767,6 +1771,11 @@ function evaluateGraphicsLayerWasm(ast: unknown, isDiagram: boolean): WasmGraphi
       ],
       preserveAspectRatio: exports.annotation_getPreserveAspectRatio() !== 0,
     };
+    if (typeof exports.annotation_hasGrid === "function" && exports.annotation_hasGrid() !== 0) {
+      const gx = typeof exports.annotation_getGridX === "function" ? exports.annotation_getGridX() : 0;
+      const gy = typeof exports.annotation_getGridY === "function" ? exports.annotation_getGridY() : 0;
+      layer.coordinateSystem.grid = [gx, gy];
+    }
   }
 
   if (count > 0) {

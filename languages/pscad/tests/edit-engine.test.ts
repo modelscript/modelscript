@@ -211,6 +211,35 @@ describe("pscad diagram actions (corpus)", () => {
       }
     }
     const attached = (m: typeof before) => m.wires.filter((w) => w.startPortId || w.endPortId).length;
-    assert.ok(attached(after) >= attached(before) - 1, "attachment preserved");
+    assert.ok(attached(after) >= attached(before), "attachment preserved");
+  });
+
+  it("stretches 2-point wire with orthogonal dogleg when component moves diagonally", () => {
+    const planned = planDiagramActions(sample, [
+      {
+        type: "move",
+        items: [{ name: "cmp_20", x: 136, y: 86, width: 60, height: 40 }],
+      },
+    ]);
+    assert.deepEqual(planned.unresolved, []);
+    assert.ok(planned.edits.length >= 1);
+    const wireOp = planned.edits.find((e) => e.newText.includes("<Wire"));
+    // Applying edits gives an orthogonal wire
+    const lines = sample.split("\n");
+    const off = (p: { line: number; character: number }) =>
+      lines.slice(0, p.line).reduce((n, l) => n + l.length + 1, 0) + p.character;
+    let out = sample;
+    for (const e of [...planned.edits].sort((a, b) => off(b.range.start) - off(a.range.start))) {
+      out = out.slice(0, off(e.range.start)) + e.newText + out.slice(off(e.range.end));
+    }
+    const after = parsePscx(out).rootModule;
+    assert.equal(after.wires.length, 1);
+    const w = after.wires[0]!;
+    assert.ok(w.vertices.length >= 2);
+    for (let k = 1; k < w.vertices.length; k++) {
+      const a = w.vertices[k - 1]!;
+      const b = w.vertices[k]!;
+      assert.ok(a.x === b.x || a.y === b.y, `segment ${k} must be axis-aligned: (${a.x},${a.y}) -> (${b.x},${b.y})`);
+    }
   });
 });

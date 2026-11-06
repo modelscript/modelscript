@@ -1190,19 +1190,42 @@ export async function pregenerateServerSvgThumbnail(
       }
 
       case "fortran":
+      case "f90":
+      case "f95":
+      case "f08":
+      case "f18":
       case "c":
+      case "cpp":
       case "scad":
       case "csg":
       case "ccsds":
       case "energyplus":
       case "reqif": {
+        let svgCode: string | undefined;
+        if (inlineCode) {
+          try {
+            const { renderUniversalCodeThumbnailSvg } = await import("@modelscript/diagram/code-thumbnail-builder");
+            svgCode = renderUniversalCodeThumbnailSvg(inlineCode, {
+              dialect: viewType,
+              title: baseTitle,
+            });
+            if (svgCode) {
+              result.svg = svgCode;
+            }
+          } catch {
+            // Fall through if diagram builder unavailable
+          }
+        }
         result.metadata = {
           dialect: viewType,
+          previewMode: "code",
         };
         result.viewConfigAdditions = {
           code: inlineCode,
           title: baseTitle,
           dialect: viewType,
+          previewMode: "code",
+          ...(svgCode ? { svg: svgCode } : {}),
         };
         break;
       }
@@ -1749,6 +1772,7 @@ export async function pregenerateServerSvgThumbnail(
           rowCount: rows.length,
           columnCount: headers.length,
           columns: headers,
+          svg: result.svg,
         };
         break;
       }
@@ -1758,6 +1782,48 @@ export async function pregenerateServerSvgThumbnail(
     }
   } catch (err) {
     console.warn("[ArtifactPreprocessor] Pre-processing failed:", viewType, originalFilename, err);
+  }
+
+  // Universal Stage 4 fallback: If no diagram/simulation SVG was produced for a code/model artifact, generate the code editor thumbnail
+  if (
+    !result.svg &&
+    inlineCode &&
+    ![
+      "pdf",
+      "audio",
+      "video",
+      "youtube_video",
+      "picture",
+      "csv",
+      "tsv",
+      "dataset",
+      "dataset-table",
+      "json-table",
+      "link-preview",
+    ].includes(viewType)
+  ) {
+    try {
+      const { renderUniversalCodeThumbnailSvg } = await import("@modelscript/diagram/code-thumbnail-builder");
+      result.svg = renderUniversalCodeThumbnailSvg(inlineCode, {
+        dialect: viewType,
+        title: baseTitle,
+      });
+      result.metadata = {
+        ...(result.metadata || {}),
+        previewMode: (result.metadata?.["previewMode"] as string) || "code",
+        dialect: (result.metadata?.["dialect"] as string) || viewType,
+      };
+      result.viewConfigAdditions = {
+        ...(result.viewConfigAdditions || {}),
+        previewMode: (result.viewConfigAdditions?.["previewMode"] as string) || "code",
+        dialect: (result.viewConfigAdditions?.["dialect"] as string) || viewType,
+        svg: result.svg,
+        code: inlineCode,
+        title: baseTitle,
+      };
+    } catch {
+      // Fallback best effort
+    }
   }
 
   // If vector SVG was generated and an upload directory is available, save the thumbnail

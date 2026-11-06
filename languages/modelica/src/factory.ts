@@ -126,6 +126,22 @@ const wasmModelicaIndexerHooks: any[] = [
       typePrefix: "parent.parent.type_prefix",
       typeSpecifier: "parent.parent.type_specifier",
       description: "description.description_string",
+      modification: "declaration.modification",
+      value: "declaration.modification.modification_expression",
+      expression: "declaration.modification.modification_expression",
+    },
+  },
+  {
+    ruleName: "component_declaration1",
+    kind: "Component",
+    namePath: "declaration.name",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {
+      description: "description.description_string",
+      modification: "declaration.modification",
+      value: "declaration.modification.modification_expression",
+      expression: "declaration.modification.modification_expression",
     },
   },
   {

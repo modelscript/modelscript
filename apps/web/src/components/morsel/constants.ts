@@ -526,6 +526,35 @@ END_PROGRAM
     supports3d: true,
   },
   {
+    id: "usd",
+    name: "OpenUSD (Universal Scene Description)",
+    tier: "preview",
+    ext: "usda",
+    extensions: [".usd", ".usda", ".usdz"],
+    family: "c",
+    defaultCode: `#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Mesh "Box"
+    {
+        float3[] points = [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        color3f[] primvars:displayColor = [(0.2, 0.6, 1.0)]
+    }
+}
+`,
+    supportsDiagram: false,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
     id: "adams",
     name: "MSC Adams",
     tier: "beta",

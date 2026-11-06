@@ -173,6 +173,8 @@ export class SimulationPanel {
   private readonly liveMode: boolean;
   /** URI of the source model document associated with the simulation. */
   public sourceUri?: string | undefined;
+  /** Target class name associated with this simulation panel. */
+  public targetClassName?: string | undefined;
   /** Language client used to dispatch re-simulation requests with parameter overrides. */
   public client?: LanguageClient | undefined;
   /** Whether the webview frontend has finished initializing and sent its `ready` signal. */
@@ -197,7 +199,7 @@ export class SimulationPanel {
    * Executes a simulation for the active text editor document via the LSP server
    * and opens or updates the simulation results webview panel.
    */
-  static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
+  static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient, targetClassName?: string) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showWarningMessage("Open a model file to run a simulation.");
@@ -207,6 +209,17 @@ export class SimulationPanel {
     // Send simulate request to LSP
     const uri = editor.document.uri.toString();
 
+    let className = targetClassName;
+    if (!className) {
+      const docText = editor.document.getText();
+      const wm = docText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+      const pkg = wm?.[1]?.trim();
+      const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+      if (m?.[1]) {
+        className = pkg ? `${pkg}.${m[1]}` : m[1];
+      }
+    }
+
     // Show progress
     await vscode.window.withProgress(
       {
@@ -215,7 +228,10 @@ export class SimulationPanel {
         cancellable: false,
       },
       async () => {
-        const result: SimulationResult = await client.sendRequest("modelscript/simulate", { uri });
+        const result: SimulationResult = await client.sendRequest("modelscript/simulate", {
+          uri,
+          ...(className ? { className } : {}),
+        });
 
         if (result.error) {
           vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
@@ -230,6 +246,7 @@ export class SimulationPanel {
         // Create or reuse panel
         if (SimulationPanel.currentPanel) {
           SimulationPanel.currentPanel.sourceUri = uri;
+          SimulationPanel.currentPanel.targetClassName = className;
           SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
           SimulationPanel.currentPanel.postResults(result);
           return;
@@ -249,6 +266,7 @@ export class SimulationPanel {
         SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
         SimulationPanel.currentPanel.client = client;
         SimulationPanel.currentPanel.sourceUri = uri;
+        SimulationPanel.currentPanel.targetClassName = className;
         SimulationPanel.currentPanel.postResults(result);
       },
     );
@@ -328,9 +346,12 @@ export class SimulationPanel {
     result: SimulationResult,
     uri: string,
     client?: LanguageClient,
+    targetClassName?: string,
   ): void {
+    const clsName = targetClassName || result.projectName;
     if (SimulationPanel.currentPanel) {
       SimulationPanel.currentPanel.sourceUri = uri;
+      if (clsName) SimulationPanel.currentPanel.targetClassName = clsName;
       if (client) SimulationPanel.currentPanel.client = client;
       SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
       SimulationPanel.currentPanel.postResults(result);
@@ -350,6 +371,7 @@ export class SimulationPanel {
 
     SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
     SimulationPanel.currentPanel.sourceUri = uri;
+    if (clsName) SimulationPanel.currentPanel.targetClassName = clsName;
     if (client) SimulationPanel.currentPanel.client = client;
     SimulationPanel.currentPanel.postResults(result);
   }
@@ -662,9 +684,23 @@ export class SimulationPanel {
                   projectName: res?.project ?? "pscad_model",
                 };
               } else {
+                let className = this.targetClassName;
+                if (!className) {
+                  const docText = vscode.window.activeTextEditor?.document.getText();
+                  if (docText) {
+                    const wm = docText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+                    const pkg = wm?.[1]?.trim();
+                    const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+                    if (m?.[1]) {
+                      className = pkg ? `${pkg}.${m[1]}` : m[1];
+                      this.targetClassName = className;
+                    }
+                  }
+                }
                 try {
                   const simulateRes = await this.client.sendRequest<SimulationResult>("modelscript/simulate", {
                     uri,
+                    ...(className ? { className } : {}),
                     startTime: msg.payload?.startTime,
                     stopTime: msg.payload?.stopTime,
                     interval: msg.payload?.interval,
@@ -693,6 +729,7 @@ export class SimulationPanel {
                     languageId: activeDoc?.languageId ?? "modelica",
                     uri,
                     inputs: {
+                      ...(className ? { name: className } : {}),
                       documentText: activeDoc?.getText(),
                       startTime: msg.payload?.startTime,
                       stopTime: msg.payload?.stopTime,

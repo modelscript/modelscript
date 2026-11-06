@@ -179,6 +179,9 @@ let g_coordX2: f64 = 100.0;
 let g_coordY2: f64 = 100.0;
 let g_preserveAspectRatio: bool = true;
 let g_hasCoordSys: bool = false;
+let g_hasGrid: bool = false;
+let g_gridX: f64 = 0.0;
+let g_gridY: f64 = 0.0;
 let g_hasIcon: bool = false;
 let g_bailOut: bool = false;
 
@@ -887,7 +890,14 @@ function visitClassModArgs(loc: u64, mode: i32): void {
                 else if (locMatches(parVal, "true")) g_preserveAspectRatio = true;
                 else g_bailOut = true;
               }
-            } else if (locMatches(nameLoc, "initialScale") || locMatches(nameLoc, "grid")) {
+            } else if (locMatches(nameLoc, "grid")) {
+              let gridVal = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
+              if (!locIsNull(gridVal) && parsePointPairIntoScratch(gridVal)) {
+                g_gridX = g_tmpX1;
+                g_gridY = g_tmpY1;
+                g_hasGrid = true;
+              }
+            } else if (locMatches(nameLoc, "initialScale")) {
               // Allowed coordinateSystem properties not affecting SVG bounds
             } else {
               g_bailOut = true;
@@ -1129,6 +1139,9 @@ function scanClassGraphicsLayer(classNodePtr: u32, startOffset: u32, isDiagram: 
   g_coordY2 = 100.0;
   g_preserveAspectRatio = true;
   g_hasCoordSys = false;
+  g_hasGrid = false;
+  g_gridX = 0.0;
+  g_gridY = 0.0;
   g_hasIcon = false;
   g_bailOut = false;
   g_foundIconMod = 0;
@@ -1584,6 +1597,9 @@ export function annotation_getCoordX1(): f64 { return g_coordX1; }
 export function annotation_getCoordY1(): f64 { return g_coordY1; }
 export function annotation_getCoordX2(): f64 { return g_coordX2; }
 export function annotation_getCoordY2(): f64 { return g_coordY2; }
+export function annotation_hasGrid(): i32 { return g_hasGrid ? 1 : 0; }
+export function annotation_getGridX(): f64 { return g_gridX; }
+export function annotation_getGridY(): f64 { return g_gridY; }
 
 export function annotation_getGraphicKind(index: i32): u8 {
   if (index >= 0 && index < g_graphicCount) return getSlot(index).kind;

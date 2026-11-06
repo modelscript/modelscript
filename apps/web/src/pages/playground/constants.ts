@@ -67,6 +67,7 @@ export const ALL_PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
   { id: "opendrive", label: "OpenDRIVE Road Network", ext: ".xodr" },
   { id: "openscenario", label: "OpenSCENARIO", ext: ".xosc" },
   { id: "urdf", label: "URDF Robotics", ext: ".urdf" },
+  { id: "usd", label: "OpenUSD Digital Twin", ext: ".usda" },
   { id: "adams", label: "ADAMS Multibody", ext: ".adm" },
   { id: "sima", label: "SIMA Offshore Mooring", ext: ".sima" },
   { id: "olga", label: "OLGA Multiphase Flow", ext: ".opi" },

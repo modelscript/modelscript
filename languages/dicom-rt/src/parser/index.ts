@@ -9,6 +9,7 @@
  * JSON representations with exact line/column/offset source tracking.
  */
 
+import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   ContourGeometricType,
   DicomRtDocument,
@@ -111,6 +112,43 @@ function createEmptyDocument(range: DicomRtSourceRange, uri?: string): DicomRtDo
 // 1. DICOM-RT XML Parser
 // ─────────────────────────────────────────────────────────────────────────────
 
+function localName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchTag(el: XmlElement, name: string): boolean {
+  return localName(el.name).toLowerCase() === name.toLowerCase();
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  const target = name.toLowerCase();
+  const attr = el.attributes.find(
+    (a: XmlAttribute) => localName(a.name).toLowerCase() === target || a.name.toLowerCase() === target,
+  );
+  return attr?.value;
+}
+
+function getChild(el: XmlElement | null | undefined, name: string): XmlElement | undefined {
+  if (!el) return undefined;
+  return el.children.find((c: XmlElement) => matchTag(c, name));
+}
+
+function findDescendants(el: XmlElement | null | undefined, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  const res: XmlElement[] = [];
+  if (!el) return res;
+  for (const c of el.children) {
+    if (predicate(c)) res.push(c);
+    res.push(...findDescendants(c, predicate));
+  }
+  return res;
+}
+
+function getChildText(el: XmlElement | null | undefined, name: string): string | undefined {
+  const child = getChild(el, name);
+  return child ? child.text.trim() : undefined;
+}
+
 function parseDicomRtXml(
   text: string,
   lineOffsets: number[],
@@ -124,122 +162,140 @@ function parseDicomRtXml(
     throw new Error("Malformed DICOM-RT XML document: unclosed <DicomRtPlan> element.");
   }
 
+  const parsed = parseXml(text);
+  if (!parsed.root) {
+    throw new Error("Malformed DICOM-RT XML document: unclosed <DicomRtPlan> element.");
+  }
+
+  const rootElement =
+    matchTag(parsed.root, "DicomRtPlan") || matchTag(parsed.root, "RTPlan")
+      ? parsed.root
+      : (findDescendants(parsed.root, (e) => matchTag(e, "DicomRtPlan") || matchTag(e, "RTPlan"))[0] ?? parsed.root);
+
   const doc = createEmptyDocument(fullRange, uri);
 
-  // Extract root <DicomRtPlan> or <RTPlan> attributes
-  const rootMatch = /<(?:DicomRtPlan|RTPlan)\b([^>]*)>/i.exec(text);
-  if (rootMatch) {
-    const attrs = parseXmlAttributes(rootMatch[1] ?? "");
-    const planId = attrs.get("planId") ?? attrs.get("id") ?? attrs.get("sopInstanceUid");
-    if (planId) doc.planId = planId;
-    const planLabel = attrs.get("planLabel") ?? attrs.get("label") ?? attrs.get("name");
-    if (planLabel) doc.planLabel = planLabel;
-    const patientId = attrs.get("patientId") ?? attrs.get("patient");
-    if (patientId) doc.patientId = patientId;
-    const forUid = attrs.get("frameOfReferenceUid") ?? attrs.get("forUid");
-    if (forUid) doc.frameOfReferenceUid = forUid;
-    const structForUid = attrs.get("structFrameOfReferenceUid");
-    if (structForUid) doc.structFrameOfReferenceUid = structForUid;
-    const doseForUid = attrs.get("doseFrameOfReferenceUid");
-    if (doseForUid) doc.doseFrameOfReferenceUid = doseForUid;
+  // Extract root <DicomRtPlan> or <RTPlan> attributes / child tags
+  const planId =
+    getAttr(rootElement, "planId") ??
+    getAttr(rootElement, "id") ??
+    getAttr(rootElement, "sopInstanceUid") ??
+    getChildText(rootElement, "PlanId") ??
+    getChildText(rootElement, "RTPlanName");
+  if (planId) doc.planId = planId;
 
-    const rxDose = attrs.get("prescribedDoseGy") ?? attrs.get("prescribedDose") ?? attrs.get("targetDoseGy");
-    if (rxDose !== undefined && !Number.isNaN(Number(rxDose))) {
-      doc.prescribedDoseGy = Number(rxDose);
-    }
-    const fractions = attrs.get("fractions") ?? attrs.get("numberOfFractions") ?? attrs.get("numberOfFractionsPlanned");
-    if (fractions !== undefined && !Number.isNaN(Number(fractions))) {
-      doc.fractions = Number(fractions);
-    }
+  const planLabel =
+    getAttr(rootElement, "planLabel") ??
+    getAttr(rootElement, "label") ??
+    getAttr(rootElement, "name") ??
+    getChildText(rootElement, "PlanLabel") ??
+    getChildText(rootElement, "RTPlanLabel");
+  if (planLabel) doc.planLabel = planLabel;
+
+  const patientId =
+    getAttr(rootElement, "patientId") ??
+    getAttr(rootElement, "patient") ??
+    getChildText(rootElement, "PatientId") ??
+    getChildText(rootElement, "PatientID");
+  if (patientId) doc.patientId = patientId;
+
+  const forUid =
+    getAttr(rootElement, "frameOfReferenceUid") ??
+    getAttr(rootElement, "forUid") ??
+    getChildText(rootElement, "FrameOfReferenceUID") ??
+    getChildText(rootElement, "FrameOfReferenceUid");
+  if (forUid) doc.frameOfReferenceUid = forUid;
+
+  const structForUid = getAttr(rootElement, "structFrameOfReferenceUid");
+  if (structForUid) doc.structFrameOfReferenceUid = structForUid;
+
+  const doseForUid = getAttr(rootElement, "doseFrameOfReferenceUid");
+  if (doseForUid) doc.doseFrameOfReferenceUid = doseForUid;
+
+  const rxDose =
+    getAttr(rootElement, "prescribedDoseGy") ??
+    getAttr(rootElement, "prescribedDose") ??
+    getAttr(rootElement, "targetDoseGy") ??
+    getChildText(rootElement, "PrescribedDoseGy") ??
+    getChildText(rootElement, "TargetPrescriptionDose");
+  if (rxDose !== undefined && !Number.isNaN(Number(rxDose))) {
+    doc.prescribedDoseGy = Number(rxDose);
   }
 
-  // Also check top-level child tags for metadata if provided as elements
-  const planIdTag = extractTagText(text, "PlanId") ?? extractTagText(text, "RTPlanName");
-  if (planIdTag && !rootMatch?.at(1)?.includes("planId")) doc.planId = stripTags(planIdTag).trim();
-  const planLabelTag = extractTagText(text, "PlanLabel") ?? extractTagText(text, "RTPlanLabel");
-  if (planLabelTag && !rootMatch?.at(1)?.includes("planLabel")) doc.planLabel = stripTags(planLabelTag).trim();
-  const patientIdTag = extractTagText(text, "PatientId") ?? extractTagText(text, "PatientID");
-  if (patientIdTag && !rootMatch?.at(1)?.includes("patientId")) doc.patientId = stripTags(patientIdTag).trim();
-  const forUidTag = extractTagText(text, "FrameOfReferenceUID") ?? extractTagText(text, "FrameOfReferenceUid");
-  if (forUidTag && !rootMatch?.at(1)?.includes("frameOfReferenceUid")) {
-    doc.frameOfReferenceUid = stripTags(forUidTag).trim();
-  }
-  const rxTag = extractTagText(text, "PrescribedDoseGy") ?? extractTagText(text, "TargetPrescriptionDose");
-  if (rxTag && !Number.isNaN(Number(rxTag.trim()))) {
-    doc.prescribedDoseGy = Number(rxTag.trim());
-  }
-  const fracTag = extractTagText(text, "Fractions") ?? extractTagText(text, "NumberOfFractionsPlanned");
-  if (fracTag && !Number.isNaN(Number(fracTag.trim()))) {
-    doc.fractions = Number(fracTag.trim());
+  const fractions =
+    getAttr(rootElement, "fractions") ??
+    getAttr(rootElement, "numberOfFractions") ??
+    getAttr(rootElement, "numberOfFractionsPlanned") ??
+    getChildText(rootElement, "Fractions") ??
+    getChildText(rootElement, "NumberOfFractionsPlanned");
+  if (fractions !== undefined && !Number.isNaN(Number(fractions))) {
+    doc.fractions = Number(fractions);
   }
 
   // Check <StructureSet> frameOfReferenceUid
-  const structSetMatch = /<StructureSet\b([^>]*)>/i.exec(text);
-  if (structSetMatch) {
-    const sAttrs = parseXmlAttributes(structSetMatch[1] ?? "");
+  const structSetEl = findDescendants(rootElement, (e) => matchTag(e, "StructureSet"))[0];
+  if (structSetEl) {
     const sForUid =
-      sAttrs.get("frameOfReferenceUid") ?? sAttrs.get("structFrameOfReferenceUid") ?? sAttrs.get("forUid");
+      getAttr(structSetEl, "frameOfReferenceUid") ??
+      getAttr(structSetEl, "structFrameOfReferenceUid") ??
+      getAttr(structSetEl, "forUid");
     if (sForUid) {
       doc.structFrameOfReferenceUid = sForUid;
     }
   }
 
   // Parse <ROI> elements
-  const roiRegex = /<ROI\b([^>]*)(?:\/>|>([\s\S]*?)<\/ROI>)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = roiRegex.exec(text)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const body = match[2] ?? "";
-    const range = makeRange(match.index, match.index + match[0].length, lineOffsets);
-    const bodyOffset = match.index + match[0].indexOf(">") + 1;
+  const roiElements = findDescendants(rootElement, (e) => matchTag(e, "ROI"));
+  for (const roiEl of roiElements) {
+    const range = makeRange(roiEl.start, roiEl.end, lineOffsets);
 
     const roiNumberStr =
-      attrs.get("roiNumber") ??
-      attrs.get("number") ??
-      attrs.get("id") ??
-      extractTagText(body, "ROINumber") ??
+      getAttr(roiEl, "roiNumber") ??
+      getAttr(roiEl, "number") ??
+      getAttr(roiEl, "id") ??
+      getChildText(roiEl, "ROINumber") ??
       String(doc.structures.length + 1);
     const roiNumber = Number(roiNumberStr.replace(/\D+/g, "")) || doc.structures.length + 1;
     const name = (
-      attrs.get("name") ??
-      attrs.get("roiName") ??
-      extractTagText(body, "ROIName") ??
-      extractTagText(body, "Name") ??
+      getAttr(roiEl, "name") ??
+      getAttr(roiEl, "roiName") ??
+      getChildText(roiEl, "ROIName") ??
+      getChildText(roiEl, "Name") ??
       `ROI_${roiNumber}`
     ).trim();
 
     const typeRaw =
-      attrs.get("interpretedType") ??
-      attrs.get("type") ??
-      attrs.get("rtRoiInterpretedType") ??
-      extractTagText(body, "RTROIInterpretedType") ??
-      extractTagText(body, "InterpretedType") ??
+      getAttr(roiEl, "interpretedType") ??
+      getAttr(roiEl, "type") ??
+      getAttr(roiEl, "rtRoiInterpretedType") ??
+      getChildText(roiEl, "RTROIInterpretedType") ??
+      getChildText(roiEl, "InterpretedType") ??
       inferRoiTypeFromName(name);
     const interpretedType = normalizeRoiType(typeRaw);
 
     const volStr =
-      attrs.get("volumeCc") ??
-      attrs.get("volume") ??
-      extractTagText(body, "VolumeCc") ??
-      extractTagText(body, "ROIVolume") ??
+      getAttr(roiEl, "volumeCc") ??
+      getAttr(roiEl, "volume") ??
+      getChildText(roiEl, "VolumeCc") ??
+      getChildText(roiEl, "ROIVolume") ??
       "0";
     const volumeCc = Number(volStr) || 0;
 
-    const colorRaw = attrs.get("color") ?? attrs.get("displayColor") ?? extractTagText(body, "ROIDisplayColor");
+    const colorRaw =
+      getAttr(roiEl, "color") ?? getAttr(roiEl, "displayColor") ?? getChildText(roiEl, "ROIDisplayColor");
     const color = parseColorRgb(colorRaw);
 
     const maxLimitStr =
-      attrs.get("maxDoseLimitGy") ??
-      attrs.get("maxDoseLimit") ??
-      attrs.get("maxDoseGy") ??
-      extractTagText(body, "MaxDoseLimitGy");
+      getAttr(roiEl, "maxDoseLimitGy") ??
+      getAttr(roiEl, "maxDoseLimit") ??
+      getAttr(roiEl, "maxDoseGy") ??
+      getChildText(roiEl, "MaxDoseLimitGy");
     const meanLimitStr =
-      attrs.get("meanDoseLimitGy") ??
-      attrs.get("meanDoseLimit") ??
-      attrs.get("meanDoseGy") ??
-      extractTagText(body, "MeanDoseLimitGy");
+      getAttr(roiEl, "meanDoseLimitGy") ??
+      getAttr(roiEl, "meanDoseLimit") ??
+      getAttr(roiEl, "meanDoseGy") ??
+      getChildText(roiEl, "MeanDoseLimitGy");
 
-    const contours = parseXmlContours(body, bodyOffset, lineOffsets);
+    const contours = parseXmlContoursFromEl(roiEl, lineOffsets);
 
     const roi: RtRoiStructure = {
       roiNumber,
@@ -261,72 +317,69 @@ function parseDicomRtXml(
   }
 
   // Parse <Beam> elements
-  const beamRegex = /<Beam\b([^>]*)(?:\/>|>([\s\S]*?)<\/Beam>)/gi;
-  while ((match = beamRegex.exec(text)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const body = match[2] ?? "";
-    const range = makeRange(match.index, match.index + match[0].length, lineOffsets);
-    const bodyOffset = match.index + match[0].indexOf(">") + 1;
+  const beamElements = findDescendants(rootElement, (e) => matchTag(e, "Beam"));
+  for (const beamEl of beamElements) {
+    const range = makeRange(beamEl.start, beamEl.end, lineOffsets);
 
     const beamNumStr =
-      attrs.get("beamNumber") ??
-      attrs.get("number") ??
-      attrs.get("id") ??
-      extractTagText(body, "BeamNumber") ??
+      getAttr(beamEl, "beamNumber") ??
+      getAttr(beamEl, "number") ??
+      getAttr(beamEl, "id") ??
+      getChildText(beamEl, "BeamNumber") ??
       String(doc.beams.length + 1);
     const beamNumber = Number(beamNumStr.replace(/\D+/g, "")) || doc.beams.length + 1;
     const name = (
-      attrs.get("name") ??
-      attrs.get("beamName") ??
-      extractTagText(body, "BeamName") ??
-      extractTagText(body, "Name") ??
+      getAttr(beamEl, "name") ??
+      getAttr(beamEl, "beamName") ??
+      getChildText(beamEl, "BeamName") ??
+      getChildText(beamEl, "Name") ??
       `Beam_${beamNumber}`
     ).trim();
 
     const modRaw =
-      attrs.get("modality") ??
-      attrs.get("radiationType") ??
-      extractTagText(body, "RadiationType") ??
-      extractTagText(body, "Modality") ??
+      getAttr(beamEl, "modality") ??
+      getAttr(beamEl, "radiationType") ??
+      getChildText(beamEl, "RadiationType") ??
+      getChildText(beamEl, "Modality") ??
       "PHOTON";
     const modality = normalizeModality(modRaw);
 
     const delivRaw =
-      attrs.get("treatmentDeliveryType") ??
-      attrs.get("deliveryType") ??
-      extractTagText(body, "TreatmentDeliveryType") ??
+      getAttr(beamEl, "treatmentDeliveryType") ??
+      getAttr(beamEl, "deliveryType") ??
+      getChildText(beamEl, "TreatmentDeliveryType") ??
       "TREATMENT";
     const treatmentDeliveryType = normalizeDeliveryType(delivRaw);
 
     const energyStr =
-      attrs.get("energyMeV") ??
-      attrs.get("energy") ??
-      attrs.get("nominalBeamEnergy") ??
-      extractTagText(body, "NominalBeamEnergy") ??
-      extractTagText(body, "EnergyMeV") ??
+      getAttr(beamEl, "energyMeV") ??
+      getAttr(beamEl, "energy") ??
+      getAttr(beamEl, "nominalBeamEnergy") ??
+      getChildText(beamEl, "NominalBeamEnergy") ??
+      getChildText(beamEl, "EnergyMeV") ??
       "6.0";
     const energyMeV = Number(energyStr);
 
     const muStr =
-      attrs.get("metersetMu") ??
-      attrs.get("beamMeterset") ??
-      attrs.get("mu") ??
-      attrs.get("meterset") ??
-      extractTagText(body, "BeamMeterset") ??
-      extractTagText(body, "MetersetMu") ??
+      getAttr(beamEl, "metersetMu") ??
+      getAttr(beamEl, "beamMeterset") ??
+      getAttr(beamEl, "mu") ??
+      getAttr(beamEl, "meterset") ??
+      getChildText(beamEl, "BeamMeterset") ??
+      getChildText(beamEl, "MetersetMu") ??
       "100.0";
     const metersetMu = Number(muStr);
 
     const doseRateStr =
-      attrs.get("doseRateMuPerMin") ??
-      attrs.get("doseRate") ??
-      attrs.get("nominalDoseRate") ??
-      extractTagText(body, "DoseRateSet") ??
-      extractTagText(body, "DoseRateMuPerMin") ??
+      getAttr(beamEl, "doseRateMuPerMin") ??
+      getAttr(beamEl, "doseRate") ??
+      getAttr(beamEl, "nominalDoseRate") ??
+      getChildText(beamEl, "DoseRateSet") ??
+      getChildText(beamEl, "DoseRateMuPerMin") ??
       "600.0";
     const doseRateMuPerMin = Number(doseRateStr) || 600.0;
 
-    const controlPoints = parseXmlControlPoints(body, bodyOffset, lineOffsets);
+    const controlPoints = parseXmlControlPointsFromEl(beamEl, lineOffsets);
 
     const beam: RtBeam = {
       beamNumber,
@@ -344,67 +397,82 @@ function parseDicomRtXml(
   }
 
   // Check <DoseDistribution> frameOfReferenceUid
-  const doseDistMatch = /<DoseDistribution\b([^>]*)>/i.exec(text);
-  if (doseDistMatch) {
-    const dAttrs = parseXmlAttributes(doseDistMatch[1] ?? "");
-    const dForUid = dAttrs.get("frameOfReferenceUid") ?? dAttrs.get("doseFrameOfReferenceUid") ?? dAttrs.get("forUid");
+  const doseDistEl = findDescendants(rootElement, (e) => matchTag(e, "DoseDistribution"))[0];
+  if (doseDistEl) {
+    const dForUid =
+      getAttr(doseDistEl, "frameOfReferenceUid") ??
+      getAttr(doseDistEl, "doseFrameOfReferenceUid") ??
+      getAttr(doseDistEl, "forUid");
     if (dForUid) {
       doc.doseFrameOfReferenceUid = dForUid;
     }
   }
 
   // Parse <DVH> elements
-  const dvhRegex = /<DVH\b([^>]*)(?:\/>|>([\s\S]*?)<\/DVH>)/gi;
-  while ((match = dvhRegex.exec(text)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const body = match[2] ?? "";
-    const range = makeRange(match.index, match.index + match[0].length, lineOffsets);
+  const dvhElements = findDescendants(rootElement, (e) => matchTag(e, "DVH"));
+  for (const dvhEl of dvhElements) {
+    const range = makeRange(dvhEl.start, dvhEl.end, lineOffsets);
 
     const roiNumStr =
-      attrs.get("roiNumber") ??
-      attrs.get("referencedRoiNumber") ??
-      attrs.get("roi") ??
-      extractTagText(body, "ReferencedROINumber") ??
+      getAttr(dvhEl, "roiNumber") ??
+      getAttr(dvhEl, "referencedRoiNumber") ??
+      getAttr(dvhEl, "roi") ??
+      getChildText(dvhEl, "ReferencedROINumber") ??
       String(doc.dvhs.length + 1);
     const roiNumber = Number(roiNumStr.replace(/\D+/g, "")) || doc.dvhs.length + 1;
     const matchedStruct = doc.structures.find((s) => s.roiNumber === roiNumber);
     const roiName = (
-      attrs.get("roiName") ??
-      attrs.get("name") ??
-      extractTagText(body, "ROIName") ??
+      getAttr(dvhEl, "roiName") ??
+      getAttr(dvhEl, "name") ??
+      getChildText(dvhEl, "ROIName") ??
       matchedStruct?.name ??
       `ROI_${roiNumber}`
     ).trim();
 
-    const bins = parseXmlDvhBins(body, attrs.get("bins") ?? attrs.get("dvhData"));
+    const bins = parseXmlDvhBinsFromEl(dvhEl);
     const interpolated = computeMetricsFromBins(bins);
 
     const d98Gy =
-      parseOptionalNum(attrs.get("d98Gy") ?? attrs.get("d98") ?? extractTagText(body, "D98Gy")) ?? interpolated.d98Gy;
+      parseOptionalNum(getAttr(dvhEl, "d98Gy") ?? getAttr(dvhEl, "d98") ?? getChildText(dvhEl, "D98Gy")) ??
+      interpolated.d98Gy;
     const d95Gy =
-      parseOptionalNum(attrs.get("d95Gy") ?? attrs.get("d95") ?? extractTagText(body, "D95Gy")) ?? interpolated.d95Gy;
+      parseOptionalNum(getAttr(dvhEl, "d95Gy") ?? getAttr(dvhEl, "d95") ?? getChildText(dvhEl, "D95Gy")) ??
+      interpolated.d95Gy;
     const d50Gy =
-      parseOptionalNum(attrs.get("d50Gy") ?? attrs.get("d50") ?? extractTagText(body, "D50Gy")) ?? interpolated.d50Gy;
+      parseOptionalNum(getAttr(dvhEl, "d50Gy") ?? getAttr(dvhEl, "d50") ?? getChildText(dvhEl, "D50Gy")) ??
+      interpolated.d50Gy;
     const d2Gy =
-      parseOptionalNum(attrs.get("d2Gy") ?? attrs.get("d2") ?? extractTagText(body, "D2Gy")) ?? interpolated.d2Gy;
+      parseOptionalNum(getAttr(dvhEl, "d2Gy") ?? getAttr(dvhEl, "d2") ?? getChildText(dvhEl, "D2Gy")) ??
+      interpolated.d2Gy;
     const meanDoseGy =
       parseOptionalNum(
-        attrs.get("meanDoseGy") ?? attrs.get("meanDose") ?? attrs.get("mean") ?? extractTagText(body, "DVHMeanDose"),
+        getAttr(dvhEl, "meanDoseGy") ??
+          getAttr(dvhEl, "meanDose") ??
+          getAttr(dvhEl, "mean") ??
+          getChildText(dvhEl, "DVHMeanDose"),
       ) ?? interpolated.meanDoseGy;
     const maxDoseGy =
       parseOptionalNum(
-        attrs.get("maxDoseGy") ?? attrs.get("maxDose") ?? attrs.get("max") ?? extractTagText(body, "DVHMaximumDose"),
+        getAttr(dvhEl, "maxDoseGy") ??
+          getAttr(dvhEl, "maxDose") ??
+          getAttr(dvhEl, "max") ??
+          getChildText(dvhEl, "DVHMaximumDose"),
       ) ?? interpolated.maxDoseGy;
     const minDoseGy =
       parseOptionalNum(
-        attrs.get("minDoseGy") ?? attrs.get("minDose") ?? attrs.get("min") ?? extractTagText(body, "DVHMinimumDose"),
+        getAttr(dvhEl, "minDoseGy") ??
+          getAttr(dvhEl, "minDose") ??
+          getAttr(dvhEl, "min") ??
+          getChildText(dvhEl, "DVHMinimumDose"),
       ) ?? interpolated.minDoseGy;
     const v20GyPercent =
       parseOptionalNum(
-        attrs.get("v20GyPercent") ?? attrs.get("v20Gy") ?? attrs.get("v20") ?? extractTagText(body, "V20GyPercent"),
+        getAttr(dvhEl, "v20GyPercent") ??
+          getAttr(dvhEl, "v20Gy") ??
+          getAttr(dvhEl, "v20") ??
+          getChildText(dvhEl, "V20GyPercent"),
       ) ?? interpolated.v20GyPercent;
 
-    // Synthesize bins if empty so downstream DVH consumers always have a valid curve
     const finalBins =
       bins.length > 0 ? bins : synthesizeBinsFromSummary({ minDoseGy, d98Gy, d95Gy, d50Gy, d2Gy, maxDoseGy });
 
@@ -427,28 +495,22 @@ function parseDicomRtXml(
   return doc;
 }
 
-function parseXmlContours(body: string, bodyOffset: number, lineOffsets: number[]): RtContourSlice[] {
+function parseXmlContoursFromEl(roiEl: XmlElement, lineOffsets: number[]): RtContourSlice[] {
   const slices: RtContourSlice[] = [];
-  const contourRegex = /<Contour\b([^>]*)(?:\/>|>([\s\S]*?)<\/Contour>)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = contourRegex.exec(body)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const cBody = match[2] ?? "";
-    const startOffset = bodyOffset + match.index;
-    const endOffset = startOffset + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
-    const zAttr = attrs.get("z") ?? attrs.get("sliceZ") ?? extractTagText(cBody, "Z");
+  const contourElements = findDescendants(roiEl, (e) => matchTag(e, "Contour"));
+  for (const cEl of contourElements) {
+    const range = makeRange(cEl.start, cEl.end, lineOffsets);
+    const zAttr = getAttr(cEl, "z") ?? getAttr(cEl, "sliceZ") ?? getChildText(cEl, "Z");
     const geomRaw =
-      attrs.get("geometricType") ??
-      attrs.get("type") ??
-      extractTagText(cBody, "ContourGeometricType") ??
+      getAttr(cEl, "geometricType") ??
+      getAttr(cEl, "type") ??
+      getChildText(cEl, "ContourGeometricType") ??
       "CLOSED_PLANAR";
     const geometricType = normalizeGeometricType(geomRaw);
 
     const defaultZ = zAttr !== undefined && !Number.isNaN(Number(zAttr)) ? Number(zAttr) : 0;
-    const pointsAttr = attrs.get("points") ?? attrs.get("contourData") ?? extractTagText(cBody, "ContourData");
-    const points = parseContourPoints(pointsAttr ?? cBody, defaultZ);
+    const pointsAttr = getAttr(cEl, "points") ?? getAttr(cEl, "contourData") ?? getChildText(cEl, "ContourData");
+    const points = parseContourPointsFromEl(cEl, pointsAttr, defaultZ);
     const z = zAttr !== undefined && !Number.isNaN(Number(zAttr)) ? Number(zAttr) : (points[0]?.[2] ?? 0);
 
     slices.push({
@@ -461,18 +523,19 @@ function parseXmlContours(body: string, bodyOffset: number, lineOffsets: number[
   return slices;
 }
 
-function parseContourPoints(raw: string, defaultZ: number): [number, number, number][] {
+function parseContourPointsFromEl(
+  cEl: XmlElement,
+  pointsAttr: string | undefined,
+  defaultZ: number,
+): [number, number, number][] {
   const points: [number, number, number][] = [];
 
-  // Check if there are <Point x="..." y="..." z="..."/> tags
-  if (/<Point\b/i.test(raw)) {
-    const ptRegex = /<Point\b([^>]*)\/?>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = ptRegex.exec(raw)) !== null) {
-      const pAttrs = parseXmlAttributes(m[1] ?? "");
-      const x = Number(pAttrs.get("x") ?? "0");
-      const y = Number(pAttrs.get("y") ?? "0");
-      const z = pAttrs.get("z") !== undefined ? Number(pAttrs.get("z")) : defaultZ;
+  const pointEls = findDescendants(cEl, (e) => matchTag(e, "Point"));
+  if (pointEls.length > 0) {
+    for (const p of pointEls) {
+      const x = Number(getAttr(p, "x") ?? "0");
+      const y = Number(getAttr(p, "y") ?? "0");
+      const z = getAttr(p, "z") !== undefined ? Number(getAttr(p, "z")) : defaultZ;
       if (!Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z)) {
         points.push([x, y, z]);
       }
@@ -480,10 +543,15 @@ function parseContourPoints(raw: string, defaultZ: number): [number, number, num
     if (points.length > 0) return points;
   }
 
+  const raw = pointsAttr ?? cEl.text;
+  return parseContourPoints(raw, defaultZ);
+}
+
+function parseContourPoints(raw: string, defaultZ: number): [number, number, number][] {
+  const points: [number, number, number][] = [];
   const cleaned = stripTags(raw).trim();
   if (!cleaned) return points;
 
-  // Semicolon-separated points: "x1,y1,z1; x2,y2,z2" or "x1,y1; x2,y2"
   if (cleaned.includes(";")) {
     const segments = cleaned
       .split(";")
@@ -505,7 +573,6 @@ function parseContourPoints(raw: string, defaultZ: number): [number, number, num
     return points;
   }
 
-  // Otherwise flat list of numbers (3D triplets)
   const nums = cleaned
     .split(/[\s,\\]+/)
     .map((s) => s.trim())
@@ -520,73 +587,67 @@ function parseContourPoints(raw: string, defaultZ: number): [number, number, num
   return points;
 }
 
-function parseXmlControlPoints(body: string, bodyOffset: number, lineOffsets: number[]): RtControlPoint[] {
+function parseXmlControlPointsFromEl(beamEl: XmlElement, lineOffsets: number[]): RtControlPoint[] {
   const cps: RtControlPoint[] = [];
-  const cpRegex = /<ControlPoint\b([^>]*)(?:\/>|>([\s\S]*?)<\/ControlPoint>)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = cpRegex.exec(body)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const cpBody = match[2] ?? "";
-    const startOffset = bodyOffset + match.index;
-    const endOffset = startOffset + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-    const cpBodyOffset = startOffset + match[0].indexOf(">") + 1;
+  const cpElements = findDescendants(beamEl, (e) => matchTag(e, "ControlPoint"));
+  for (const cpEl of cpElements) {
+    const range = makeRange(cpEl.start, cpEl.end, lineOffsets);
 
     const idxStr =
-      attrs.get("index") ??
-      attrs.get("controlPointIndex") ??
-      extractTagText(cpBody, "ControlPointIndex") ??
+      getAttr(cpEl, "index") ??
+      getAttr(cpEl, "controlPointIndex") ??
+      getChildText(cpEl, "ControlPointIndex") ??
       String(cps.length);
     const index = Number(idxStr);
 
     const weightStr =
-      attrs.get("cumulativeMetersetWeight") ??
-      attrs.get("cumMetersetWeight") ??
-      attrs.get("weight") ??
-      extractTagText(cpBody, "CumulativeMetersetWeight") ??
+      getAttr(cpEl, "cumulativeMetersetWeight") ??
+      getAttr(cpEl, "cumMetersetWeight") ??
+      getAttr(cpEl, "weight") ??
+      getChildText(cpEl, "CumulativeMetersetWeight") ??
       "0.0";
     const cumulativeMetersetWeight = Number(weightStr);
 
     const gantryStr =
-      attrs.get("gantryAngleDeg") ??
-      attrs.get("gantryAngle") ??
-      attrs.get("gantry") ??
-      extractTagText(cpBody, "GantryAngle") ??
+      getAttr(cpEl, "gantryAngleDeg") ??
+      getAttr(cpEl, "gantryAngle") ??
+      getAttr(cpEl, "gantry") ??
+      getChildText(cpEl, "GantryAngle") ??
       "0.0";
     const gantryAngleDeg = Number(gantryStr) || 0;
 
     const collStr =
-      attrs.get("collimatorAngleDeg") ??
-      attrs.get("collimatorAngle") ??
-      attrs.get("beamLimitingDeviceAngle") ??
-      attrs.get("collimator") ??
-      extractTagText(cpBody, "BeamLimitingDeviceAngle") ??
+      getAttr(cpEl, "collimatorAngleDeg") ??
+      getAttr(cpEl, "collimatorAngle") ??
+      getAttr(cpEl, "beamLimitingDeviceAngle") ??
+      getAttr(cpEl, "collimator") ??
+      getChildText(cpEl, "BeamLimitingDeviceAngle") ??
       "0.0";
     const collimatorAngleDeg = Number(collStr) || 0;
 
     const couchStr =
-      attrs.get("couchAngleDeg") ??
-      attrs.get("couchAngle") ??
-      attrs.get("patientSupportAngle") ??
-      attrs.get("couch") ??
-      extractTagText(cpBody, "PatientSupportAngle") ??
+      getAttr(cpEl, "couchAngleDeg") ??
+      getAttr(cpEl, "couchAngle") ??
+      getAttr(cpEl, "patientSupportAngle") ??
+      getAttr(cpEl, "couch") ??
+      getChildText(cpEl, "PatientSupportAngle") ??
       "0.0";
     const couchAngleDeg = Number(couchStr) || 0;
 
     const jawX = parsePairMm(
-      attrs.get("jawX_mm") ?? attrs.get("jawX") ?? extractTagText(cpBody, "JawX"),
-      attrs.get("jawX1"),
-      attrs.get("jawX2"),
+      getAttr(cpEl, "jawX_mm") ?? getAttr(cpEl, "jawX") ?? getChildText(cpEl, "JawX"),
+      getAttr(cpEl, "jawX1"),
+      getAttr(cpEl, "jawX2"),
       [-50, 50],
     );
     const jawY = parsePairMm(
-      attrs.get("jawY_mm") ?? attrs.get("jawY") ?? extractTagText(cpBody, "JawY"),
-      attrs.get("jawY1"),
-      attrs.get("jawY2"),
+      getAttr(cpEl, "jawY_mm") ?? getAttr(cpEl, "jawY") ?? getChildText(cpEl, "JawY"),
+      getAttr(cpEl, "jawY1"),
+      getAttr(cpEl, "jawY2"),
       [-50, 50],
     );
 
-    const mlcLeaves = parseXmlMlcLeaves(cpBody, cpBodyOffset, lineOffsets);
+    const mlcLeaves = parseXmlMlcLeavesFromEl(cpEl, lineOffsets);
 
     cps.push({
       index: Number.isNaN(index) ? cps.length : index,
@@ -603,20 +664,18 @@ function parseXmlControlPoints(body: string, bodyOffset: number, lineOffsets: nu
   return cps;
 }
 
-function parseXmlMlcLeaves(cpBody: string, cpBodyOffset: number, lineOffsets: number[]): MlcLeafPair[] {
+function parseXmlMlcLeavesFromEl(cpEl: XmlElement, lineOffsets: number[]): MlcLeafPair[] {
   const leaves: MlcLeafPair[] = [];
-  const leafRegex =
-    /<(?:MLCLeafPair|MlcLeafPair|LeafPair)\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:MLCLeafPair|MlcLeafPair|LeafPair)>)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = leafRegex.exec(cpBody)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const startOffset = cpBodyOffset + match.index;
-    const endOffset = startOffset + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
-    const pairIdxStr = attrs.get("pairIndex") ?? attrs.get("index") ?? attrs.get("pair") ?? String(leaves.length + 1);
-    const bankAStr = attrs.get("bankA_mm") ?? attrs.get("bankA") ?? attrs.get("a") ?? "-20.0";
-    const bankBStr = attrs.get("bankB_mm") ?? attrs.get("bankB") ?? attrs.get("b") ?? "20.0";
+  const leafElements = findDescendants(cpEl, (e) => {
+    const t = localName(e.name).toLowerCase();
+    return t === "mlcleafpair" || t === "leafpair";
+  });
+  for (const leafEl of leafElements) {
+    const range = makeRange(leafEl.start, leafEl.end, lineOffsets);
+    const pairIdxStr =
+      getAttr(leafEl, "pairIndex") ?? getAttr(leafEl, "index") ?? getAttr(leafEl, "pair") ?? String(leaves.length + 1);
+    const bankAStr = getAttr(leafEl, "bankA_mm") ?? getAttr(leafEl, "bankA") ?? getAttr(leafEl, "a") ?? "-20.0";
+    const bankBStr = getAttr(leafEl, "bankB_mm") ?? getAttr(leafEl, "bankB") ?? getAttr(leafEl, "b") ?? "20.0";
 
     leaves.push({
       pairIndex: Number(pairIdxStr) || leaves.length + 1,
@@ -628,21 +687,26 @@ function parseXmlMlcLeaves(cpBody: string, cpBodyOffset: number, lineOffsets: nu
   return leaves;
 }
 
-function parseXmlDvhBins(body: string, binsAttr?: string): RtDoseBin[] {
+function parseXmlDvhBinsFromEl(dvhEl: XmlElement): RtDoseBin[] {
   const bins: RtDoseBin[] = [];
-  const binRegex = /<(?:DoseBin|Bin|DVHBin)\b([^>]*)\/?>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = binRegex.exec(body)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const doseGy = Number(attrs.get("doseGy") ?? attrs.get("dose") ?? "0");
-    const volumePercent = Number(attrs.get("volumePercent") ?? attrs.get("volume") ?? attrs.get("pct") ?? "0");
+  const binElements = findDescendants(dvhEl, (e) => {
+    const t = localName(e.name).toLowerCase();
+    return t === "dosebin" || t === "bin" || t === "dvhbin";
+  });
+  for (const b of binElements) {
+    const doseGy = Number(getAttr(b, "doseGy") ?? getAttr(b, "dose") ?? "0");
+    const volumePercent = Number(getAttr(b, "volumePercent") ?? getAttr(b, "volume") ?? getAttr(b, "pct") ?? "0");
     if (!Number.isNaN(doseGy) && !Number.isNaN(volumePercent)) {
       bins.push({ doseGy, volumePercent });
     }
   }
   if (bins.length > 0) return bins;
 
-  const rawText = binsAttr ?? extractTagText(body, "DVHData") ?? stripTags(body).trim();
+  const rawText =
+    getAttr(dvhEl, "bins") ??
+    getAttr(dvhEl, "dvhData") ??
+    getChildText(dvhEl, "DVHData") ??
+    stripTags(dvhEl.text).trim();
   if (!rawText) return bins;
 
   if (rawText.includes(";")) {
@@ -669,7 +733,6 @@ function parseXmlDvhBins(body: string, binsAttr?: string): RtDoseBin[] {
   for (let i = 0; i + 1 < nums.length; i += 2) {
     const dStepOrDose = nums[i]!;
     const vol = nums[i + 1]!;
-    // In DICOM (3004,0058) DVHData, odd elements are dose bin widths or dose values
     cumDose = i === 0 ? dStepOrDose : cumDose + dStepOrDose;
     bins.push({ doseGy: dStepOrDose >= cumDose ? dStepOrDose : cumDose, volumePercent: vol });
   }
@@ -1321,26 +1384,6 @@ function parseDicomRtDsl(
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-function parseXmlAttributes(attrString: string): Map<string, string> {
-  const map = new Map<string, string>();
-  const attrRegex = /([A-Za-z_][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  let m: RegExpExecArray | null;
-  while ((m = attrRegex.exec(attrString)) !== null) {
-    const key = m[1];
-    const val = m[2] ?? m[3] ?? "";
-    if (key) {
-      map.set(key, val);
-    }
-  }
-  return map;
-}
-
-function extractTagText(xml: string, tagName: string): string | undefined {
-  const regex = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
-  const m = regex.exec(xml);
-  return m?.[1];
-}
 
 function stripTags(xml: string): string {
   return xml.replace(/<[^>]+>/g, "");

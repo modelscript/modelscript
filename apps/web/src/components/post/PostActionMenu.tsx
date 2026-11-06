@@ -3,6 +3,7 @@
 import {
   BlockedIcon,
   GraphIcon,
+  HistoryIcon,
   LinkExternalIcon,
   MuteIcon,
   PencilIcon,
@@ -33,6 +34,7 @@ export interface PostActionMenuProps {
   canEditPost: boolean;
   isNotebook: boolean;
   onOpenEditModal: () => void;
+  onOpenRevisionModal?: (() => void) | undefined;
   onPostDeleted?: (() => void) | undefined;
   displayPost: any;
   token: string | null;
@@ -47,6 +49,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
   canEditPost,
   isNotebook,
   onOpenEditModal,
+  onOpenRevisionModal,
   onPostDeleted,
   displayPost,
   token,
@@ -293,6 +296,23 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
               }}
             >
               <PencilIcon size={16} /> {isNotebook ? "Edit article" : "Edit post"}
+            </MenuButton>
+          )}
+          {Boolean(
+            displayPost?.updated_at &&
+            displayPost?.created_at &&
+            new Date(displayPost.updated_at).getTime() - new Date(displayPost.created_at).getTime() > 1000 &&
+            onOpenRevisionModal,
+          ) && (
+            <MenuButton
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onClose();
+                onOpenRevisionModal?.();
+              }}
+            >
+              <HistoryIcon size={16} /> View edit history
             </MenuButton>
           )}
           {isOwnPost &&

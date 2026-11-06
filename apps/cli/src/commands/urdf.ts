@@ -8,6 +8,8 @@ import {
   urdfToAdams,
   urdfToModelica,
   urdfToSimpack,
+  urdfToUsd,
+  urdfToUsdz,
 } from "@modelscript/urdf";
 import fs from "node:fs";
 import path from "node:path";
@@ -15,16 +17,29 @@ import type { CommandModule } from "yargs";
 
 import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
 
-const URDF_ACTIONS = ["inspect", "summary", "lint", "rnea", "to-modelica", "to-simpack", "to-adams", "to-dae"] as const;
+const URDF_ACTIONS = [
+  "inspect",
+  "summary",
+  "lint",
+  "rnea",
+  "simulate",
+  "to-modelica",
+  "to-simpack",
+  "to-adams",
+  "to-dae",
+  "to-usd",
+] as const;
 
 export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "urdf <action> [files...]",
-  describe: "Inspect, validate, solve kinematics, and project ROS URDF & SDFormat robot models (.urdf, .sdf, .xacro)",
+  describe:
+    "Inspect, validate, solve kinematics, simulate, and project ROS URDF & SDFormat robot models (.urdf, .sdf, .xacro)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: inspect | summary | lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
+        describe:
+          "Action to perform: inspect | summary | lint | rnea | simulate | to-modelica | to-simpack | to-adams | to-dae | to-usd",
         choices: URDF_ACTIONS,
         demandOption: true,
       })
@@ -37,6 +52,29 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
         alias: ["o", "output"],
         type: "string",
         describe: "Output file path",
+      })
+      .option("usdz", {
+        type: "boolean",
+        default: false,
+        describe: "Package as 64-byte aligned OpenUSD ZIP archive (.usdz)",
+      })
+      .option("format", {
+        type: "string",
+        default: "csv",
+        choices: ["csv", "json"],
+        describe: "Simulation output format",
+      })
+      .option("stop-time", {
+        alias: ["stopTime"],
+        type: "number",
+        default: 1.0,
+        describe: "Simulation stop time in seconds",
+      })
+      .option("step-size", {
+        alias: ["stepSize", "interval"],
+        type: "number",
+        default: 0.01,
+        describe: "Simulation communication step size in seconds",
       })
       .option("gravity", {
         type: "number",
@@ -113,6 +151,74 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
           break;
         }
 
+        case "simulate": {
+          const gravity = (argv["gravity"] as number) ?? 9.80665;
+          const dae = lowerUrdfToDae(robot, undefined, { gravity });
+          const stopTime = (argv["stop-time"] as number) ?? (argv["stopTime"] as number) ?? 1.0;
+          const startTime = (argv["start-time"] as number) ?? (argv["startTime"] as number) ?? 0.0;
+          const step =
+            (argv["step-size"] as number) ?? (argv["stepSize"] as number) ?? (argv["interval"] as number) ?? 0.01;
+          const format = String(argv["format"] ?? "csv").toLowerCase();
+
+          const { simulateArenaAsync } = await import("@modelscript/simulate");
+          const { initBltWasm } = await import("@modelscript/runtime");
+          await initBltWasm();
+          const outputStringIds: number[] = [];
+          for (let i = 0; i < dae.varCount; i++) {
+            const name = dae.getVarName(i);
+            if (!name.startsWith("$") && !name.startsWith("der(")) {
+              outputStringIds.push(dae.getVarNameId(i));
+            }
+          }
+
+          const result = await simulateArenaAsync(dae, {
+            startTime,
+            stopTime,
+            step,
+            outputStringIds,
+          });
+
+          if (format === "json") {
+            const rows = result.t.map((time: number, i: number) => {
+              const row: Record<string, number> = { time };
+              result.states.forEach((name: string, vIndex: number) => {
+                row[name] = result.y[i]?.[vIndex] ?? 0;
+              });
+              return row;
+            });
+            const jsonOut = {
+              model: robot.name,
+              time: Array.from(result.t),
+              rows,
+            };
+            const jsonStr = JSON.stringify(jsonOut, null, 2);
+            if (out) {
+              fs.writeFileSync(path.resolve(process.cwd(), out), jsonStr, "utf-8");
+              console.log(`[URDF Simulation] Results written to ${out}`);
+            } else {
+              console.log(jsonStr);
+            }
+          } else {
+            const header = ["time", ...result.states].join(",");
+            const rows: string[] = [header];
+            for (let stepIdx = 0; stepIdx < result.t.length; stepIdx++) {
+              const row = [
+                result.t[stepIdx]!.toFixed(6),
+                ...result.states.map((_: string, vIndex: number) => String(result.y[stepIdx]?.[vIndex] ?? 0)),
+              ];
+              rows.push(row.join(","));
+            }
+            const csvStr = rows.join("\n");
+            if (out) {
+              fs.writeFileSync(path.resolve(process.cwd(), out), csvStr, "utf-8");
+              console.log(`[URDF Simulation] Results written to ${out}`);
+            } else {
+              console.log(csvStr);
+            }
+          }
+          break;
+        }
+
         case "to-modelica": {
           const mo = urdfToModelica(robot);
           if (out) {
@@ -165,6 +271,32 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
               JSON.stringify({ model: robot.name, variables: dae.varCount, equations: dae.eqCount }, null, 2),
               "utf-8",
             );
+          }
+          break;
+        }
+
+        case "to-usd": {
+          const isUsdz = Boolean(argv["usdz"]) || (typeof out === "string" && out.endsWith(".usdz"));
+          if (isUsdz) {
+            const usdzBytes = urdfToUsdz(robot, { stageName: robot.name });
+            if (out) {
+              const outPath = path.resolve(process.cwd(), out);
+              fs.writeFileSync(outPath, usdzBytes);
+              console.log(`[URDF -> OpenUSD] 64-byte aligned package written to ${out}`);
+            } else {
+              console.log(
+                `[URDF -> OpenUSD] Generated ${usdzBytes.length} bytes 64-byte aligned USDZ archive for '${robot.name}'.`,
+              );
+            }
+          } else {
+            const usda = urdfToUsd(robot, { stageName: robot.name });
+            if (out) {
+              const outPath = path.resolve(process.cwd(), out);
+              fs.writeFileSync(outPath, usda, "utf-8");
+              console.log(`[URDF -> OpenUSD] Scene written to ${out}`);
+            } else {
+              console.log(usda);
+            }
           }
           break;
         }

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { findXmlNode, findXmlNodes, parseMiniXml, unescapeXmlEntities } from "./xml-utils.js";
+
 /**
  * @modelscript/diagram — Simulink Block Diagram Visualizer & X6 Graph Builder.
  *
@@ -175,48 +177,47 @@ export function parseSimulinkTextToSystem(source: string, fallbackTitle = "Simul
   const trimmed = source.trim();
 
   if (trimmed.startsWith("<")) {
-    const sysNameMatch = /<ModelInformation\b[^>]*name=["']([^"']+)["']/i.exec(source);
-    const modelName = sysNameMatch?.[1] || fallbackTitle;
+    const root = parseMiniXml(source);
+    const modelInfo = findXmlNode(root, "ModelInformation");
+    const modelName = modelInfo?.attrs["name"] || modelInfo?.attrs["Name"] || fallbackTitle;
     const sidToName = new Map<string, string>();
-    const blockRe = /<Block\b([^>]*)>([\s\S]*?)<\/Block>/gi;
-    let bm: RegExpExecArray | null;
-    while ((bm = blockRe.exec(source)) !== null) {
-      const attrs = bm[1] || "";
-      const body = bm[2] || "";
-      const bType = /\bBlockType=["']([^"']+)["']/i.exec(attrs)?.[1] || "SubSystem";
-      const bName = /\bName=["']([^"']+)["']/i.exec(attrs)?.[1] || `Block_${blocks.length + 1}`;
-      const sid = /\bSID=["']([^"']+)["']/i.exec(attrs)?.[1];
+
+    const blockNodes = findXmlNodes(root, "Block");
+    for (const bNode of blockNodes) {
+      const bType = bNode.attrs["BlockType"] || bNode.attrs["blocktype"] || "SubSystem";
+      const bName = bNode.attrs["Name"] || bNode.attrs["name"] || `Block_${blocks.length + 1}`;
+      const sid = bNode.attrs["SID"] || bNode.attrs["sid"];
       if (sid) sidToName.set(sid, bName);
+
       const params: Record<string, string> = {};
-      const pRe = /<P\b([^>]*)>([\s\S]*?)<\/P>/gi;
-      let pm: RegExpExecArray | null;
-      while ((pm = pRe.exec(body)) !== null) {
-        const pAttrs = pm[1] || "";
-        const pName = /\bName=["']([^"']+)["']/i.exec(pAttrs)?.[1];
-        if (pName) {
-          params[pName] = pm[2]!.trim();
+      for (const pNode of bNode.children) {
+        if (pNode.tag.toLowerCase() === "p") {
+          const pName = pNode.attrs["Name"] || pNode.attrs["name"];
+          if (pName) {
+            params[pName] = unescapeXmlEntities(pNode.text.trim());
+          }
         }
       }
       blocks.push({ name: bName, type: bType, id: sid || bName, parameters: params });
     }
-    const lineRe = /<Line\b[^>]*>([\s\S]*?)<\/Line>/gi;
-    let lm: RegExpExecArray | null;
-    while ((lm = lineRe.exec(source)) !== null) {
-      const body = lm[1] || "";
+
+    const lineNodes = findXmlNodes(root, "Line");
+    for (const lNode of lineNodes) {
       const pMap: Record<string, string> = {};
-      const pRe = /<P\b([^>]*)>([\s\S]*?)<\/P>/gi;
-      let pm: RegExpExecArray | null;
-      while ((pm = pRe.exec(body)) !== null) {
-        const pAttrs = pm[1] || "";
-        const pName = /\bName=["']([^"']+)["']/i.exec(pAttrs)?.[1];
-        if (pName) {
-          pMap[pName] = pm[2]!.trim();
+      for (const pNode of lNode.children) {
+        if (pNode.tag.toLowerCase() === "p") {
+          const pName = pNode.attrs["Name"] || pNode.attrs["name"];
+          if (pName) {
+            pMap[pName] = unescapeXmlEntities(pNode.text.trim());
+          }
         }
       }
+
       let srcBlock = pMap["SrcBlock"] || "";
       let srcPort = Number(pMap["SrcPort"] || 1);
       let dstBlock = pMap["DstBlock"] || "";
       let dstPort = Number(pMap["DstPort"] || 1);
+
       if (!srcBlock && pMap["Src"]) {
         const sm = /^([^#]+)#out:(\d+)/i.exec(pMap["Src"]);
         if (sm) {
@@ -231,16 +232,43 @@ export function parseSimulinkTextToSystem(source: string, fallbackTitle = "Simul
           dstPort = Number(dm[2]);
         }
       }
-      if (srcBlock && dstBlock) {
+
+      const branchNodes = findXmlNodes(lNode, "Branch");
+      const branches: SimulinkBranchLike[] = [];
+      for (const brNode of branchNodes) {
+        const brPMap: Record<string, string> = {};
+        for (const pNode of brNode.children) {
+          if (pNode.tag.toLowerCase() === "p") {
+            const pName = pNode.attrs["Name"] || pNode.attrs["name"];
+            if (pName) brPMap[pName] = unescapeXmlEntities(pNode.text.trim());
+          }
+        }
+        let bDst = brPMap["DstBlock"] || "";
+        let bPort = Number(brPMap["DstPort"] || 1);
+        if (!bDst && brPMap["Dst"]) {
+          const dm = /^([^#]+)#in:(\d+)/i.exec(brPMap["Dst"]);
+          if (dm) {
+            bDst = sidToName.get(dm[1]!) || dm[1]!;
+            bPort = Number(dm[2]);
+          }
+        }
+        if (bDst) {
+          branches.push({ dstBlock: bDst, dstPort: bPort });
+        }
+      }
+
+      if (srcBlock && (dstBlock || branches.length > 0)) {
         lines.push({
           id: `line_${lines.length + 1}`,
           srcBlock,
           srcPort,
-          dstBlock,
-          dstPort,
+          dstBlock: dstBlock || undefined,
+          dstPort: dstPort || undefined,
+          branches: branches.length > 0 ? branches : undefined,
         });
       }
     }
+
     return {
       name: modelName,
       rootSystem: { name: modelName, blocks, lines },

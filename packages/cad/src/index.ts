@@ -90,6 +90,20 @@ export { assembly, part } from "./assembly.js";
 // STEP compiler
 export { compileAssemblyToStep, compileToStep } from "./step-compiler.js";
 
+// OpenUSD & USDZ compiler
+export {
+  compileAssemblyToUsd,
+  compileAssemblyToUsdz,
+  compileToUsd,
+  compileToUsdz,
+  computeCrc32,
+  createUsdzArchive,
+  formatUsdGeomMesh,
+  formatUsdMatrix4d,
+  sanitizeUsdIdentifier,
+  type UsdExportOptions,
+} from "./usd-compiler.js";
+
 // CSG OpenCascade Worker
 export { CSGWorker, type CSGExecutionGraph, type CSGNode } from "./worker.js";
 

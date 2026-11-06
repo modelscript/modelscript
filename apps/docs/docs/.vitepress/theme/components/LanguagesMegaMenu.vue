@@ -65,8 +65,8 @@ const columns: MegaMenuColumn[] = [
     label: "Geometry, Multibody & Process",
     items: [
       {
-        name: "STEP CAD, QIF & OpenSCAD",
-        tagline: "ISO 10303 AP242 B-Rep, ISO 23952 QIF metrology & CSG",
+        name: "STEP CAD, QIF & OpenUSD",
+        tagline: "ISO 10303 AP242 B-Rep, OpenUSD digital twins, QIF & CSG",
         href: "/languages/step",
         icon: "cube",
         accent: "#2dd4bf",

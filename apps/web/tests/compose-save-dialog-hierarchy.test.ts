@@ -139,11 +139,15 @@ describe("Compose Modal Multi-Level Blur & Stacking Hierarchy", () => {
 
     const prevWindow = (globalThis as any).window;
     const prevDocument = (globalThis as any).document;
+    const prevDocumentCtor = (globalThis as any).Document;
+    const prevDocumentFragment = (globalThis as any).DocumentFragment;
     const prevLocalStorage = (globalThis as any).localStorage;
     const prevActEnv = (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
 
     (globalThis as any).window = dom.window;
     (globalThis as any).document = dom.window.document;
+    (globalThis as any).Document = dom.window.Document;
+    (globalThis as any).DocumentFragment = dom.window.DocumentFragment;
     (globalThis as any).Element = dom.window.Element;
     (globalThis as any).HTMLElement = dom.window.HTMLElement;
     (globalThis as any).HTMLHeadingElement = dom.window.HTMLHeadingElement;
@@ -311,6 +315,8 @@ describe("Compose Modal Multi-Level Blur & Stacking Hierarchy", () => {
     } finally {
       (globalThis as any).window = prevWindow;
       (globalThis as any).document = prevDocument;
+      (globalThis as any).Document = prevDocumentCtor;
+      (globalThis as any).DocumentFragment = prevDocumentFragment;
       (globalThis as any).localStorage = prevLocalStorage;
       (globalThis as any).IS_REACT_ACT_ENVIRONMENT = prevActEnv;
     }

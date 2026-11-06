@@ -576,4 +576,73 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     assert.ok(hashtagsRes.body.polished.includes("#"));
     assert.ok(Array.isArray(hashtagsRes.body.hashtags) && hashtagsRes.body.hashtags.length > 0);
   });
+
+  await t.test(
+    "Post and Artifact Edit Enhancements: artifact detach, content warning, title persistence, and revisions",
+    async () => {
+      // 1. Create an artifact view and test in-place title update
+      const artRes = await request(app)
+        .post("/api/v1/social/artifact-views")
+        .set("Authorization", `Bearer ${authorToken}`)
+        .send({
+          artifact_type: "modelica-code",
+          view_config: JSON.stringify({ code: "model M end M;" }),
+          title: "Initial Artifact Title",
+        });
+      assert.strictEqual(artRes.status, 201);
+      const createdArtId = artRes.body.id;
+
+      // Verify updating the artifact view updates both the title and view_config
+      const updateArtRes = await request(app)
+        .put(`/api/v1/social/artifact-views/${createdArtId}`)
+        .set("Authorization", `Bearer ${authorToken}`)
+        .send({
+          title: "Updated Artifact Title",
+          view_config: JSON.stringify({ code: "model M2 end M2;" }),
+        });
+      assert.strictEqual(updateArtRes.status, 200);
+      const getArtRes = await request(app).get(`/api/v1/social/artifact-views/${createdArtId}`);
+      assert.strictEqual(getArtRes.body.artifactView.title, "Updated Artifact Title");
+      assert.ok(getArtRes.body.artifactView.view_config.includes("M2"));
+
+      // 2. Create post with the artifact and a content warning
+      const postRes = await request(app)
+        .post("/api/v1/social/posts")
+        .set("Authorization", `Bearer ${authorToken}`)
+        .send({
+          content: "Original Post Content with Artifact",
+          artifact_view_id: createdArtId,
+          content_warning: "Initial CW",
+        });
+      assert.strictEqual(postRes.status, 201);
+      const createdPostId = postRes.body.post.id;
+      assert.strictEqual(postRes.body.post.artifact_view_id, createdArtId);
+      assert.strictEqual(postRes.body.post.content_warning, "Initial CW");
+
+      // 3. Edit post: update content warning and detach artifact with artifact_view_id: null
+      const editPostRes = await request(app)
+        .put(`/api/v1/social/posts/${createdPostId}`)
+        .set("Authorization", `Bearer ${authorToken}`)
+        .send({
+          content: "Updated Post Content without Artifact",
+          artifact_view_id: null,
+          content_warning: "Updated CW",
+        });
+      assert.strictEqual(editPostRes.status, 200);
+      assert.strictEqual(editPostRes.body.post.content, "Updated Post Content without Artifact");
+      assert.strictEqual(editPostRes.body.post.artifact_view_id, null);
+      assert.strictEqual(editPostRes.body.post.content_warning, "Updated CW");
+
+      // Re-fetch post from GET endpoint to confirm database column persisted
+      const getPostRes = await request(app).get(`/api/v1/social/posts/${createdPostId}`);
+      assert.strictEqual(getPostRes.status, 200);
+      assert.strictEqual(getPostRes.body.post.artifact_view_id, null);
+      assert.strictEqual(getPostRes.body.post.content_warning, "Updated CW");
+
+      // 4. Test revisions endpoint: GET /api/v1/social/posts/:id/revisions
+      const revsRes = await request(app).get(`/api/v1/social/posts/${createdPostId}/revisions`);
+      assert.strictEqual(revsRes.status, 200);
+      assert.ok(Array.isArray(revsRes.body.revisions));
+    },
+  );
 });

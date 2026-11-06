@@ -310,6 +310,27 @@
     "ruleCount": 8
   },
   {
+    "slug": "usd",
+    "name": "OpenUSD",
+    "sidebar": "OpenUSD (Universal Scene Description)",
+    "ext": ".usd / .usda / .usdz",
+    "role": "Universal Scene Description 3D stages & UsdPhysics digital twins",
+    "group": "geometry",
+    "pkgName": "@modelscript/usd",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
     "slug": "csv",
     "name": "CSV",
     "sidebar": "CSV Telemetry",
@@ -1155,16 +1176,18 @@
       "summary",
       "lint",
       "rnea",
+      "simulate",
       "to-modelica",
       "to-simpack",
       "to-adams",
-      "to-dae"
+      "to-dae",
+      "to-usd"
     ],
     "capabilities": {
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "Modelica",
         "SIMPACK",

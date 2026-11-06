@@ -186,6 +186,7 @@ function embedPlacedSvg(targetGroup: G, childSvg: Svg, transform: TransformData 
       const signY = transform.scaleY < 0 ? -1 : 1;
       const counterRot = -transform.rotate;
       for (const textEl of Array.from(childSvg.node.querySelectorAll("text"))) {
+        if (textEl.getAttribute("data-component-label") !== "true") continue;
         if (textEl.getAttribute("data-unflipped") === "true") continue;
         const tx = parseFloat(textEl.getAttribute("x") ?? "0") || 0;
         const ty = parseFloat(textEl.getAttribute("y") ?? "0") || 0;
@@ -642,6 +643,8 @@ export function renderText(
   }
 
   const shape = svg.plain(str);
+  const isComponentLabel =
+    rawStr.includes("%") || rawStr.includes("%name") || rawStr.includes("%class") || rawStr.includes("%comment");
   shape.attr({
     x: textX,
     y: textY,
@@ -649,6 +652,7 @@ export function renderText(
     "text-anchor": textAnchor,
     "font-size": fontSize,
     "font-family": graphicItem.fontName || "sans-serif",
+    ...(isComponentLabel ? { "data-component-label": "true" } : {}),
   });
   applyTextColor(shape, graphicItem);
   applyTextStyle(shape, graphicItem);
@@ -892,7 +896,18 @@ export function applyLineThickness(shape: Shape, graphicItem: IFilledShape | ILi
   } else {
     lineThickness = (graphicItem as IFilledShape).lineThickness;
   }
-  shape.attr("stroke-width", Math.max(1, lineThickness ?? 1));
+  const isLine = graphicItem["@type"] === "Line";
+  let th: number;
+  if (lineThickness != null && lineThickness > 0) {
+    if (lineThickness <= 0.25) {
+      th = isLine ? 1.0 : 0.85;
+    } else {
+      th = Math.round(lineThickness * 3.5 * 10) / 10;
+    }
+  } else {
+    th = isLine ? 1.25 : 0.85;
+  }
+  shape.attr("stroke-width", th);
   shape.attr("vector-effect", "non-scaling-stroke");
 }
 

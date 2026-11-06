@@ -211,4 +211,60 @@ describe("Headless SVG Renderer (Zero DOM)", () => {
     assert.ok(svg.includes("«class»"), "Must render header stereotype from markup.children");
     assert.ok(!svg.includes('transform="translate(0, 0)"'), "Unplaced nodes should be auto-gridded away from (0, 0)");
   });
+
+  it("renders semicircular wire jumpover bridge in SVG and suppresses it over solder dots", () => {
+    // 2 crossing edges:
+    // e_h from (0, 100) to (200, 100) [horizontal]
+    // e_v from (100, 0) to (100, 200) [vertical]
+    const crossingDiagram: DiagramData = {
+      nodes: [
+        { id: "n_left", x: 0, y: 100, width: 20, height: 20, ports: { items: [{ id: "p", args: { x: 20, y: 10 } }] } },
+        {
+          id: "n_right",
+          x: 180,
+          y: 100,
+          width: 20,
+          height: 20,
+          ports: { items: [{ id: "p", args: { x: 0, y: 10 } }] },
+        },
+        { id: "n_top", x: 100, y: 0, width: 20, height: 20, ports: { items: [{ id: "p", args: { x: 10, y: 20 } }] } },
+        {
+          id: "n_bottom",
+          x: 100,
+          y: 180,
+          width: 20,
+          height: 20,
+          ports: { items: [{ id: "p", args: { x: 10, y: 0 } }] },
+        },
+      ],
+      edges: [
+        {
+          id: "e_h",
+          source: { cell: "n_left", port: "p" },
+          target: { cell: "n_right", port: "p" },
+          connector: "jumpover",
+          vertices: [],
+        },
+        {
+          id: "e_v",
+          source: { cell: "n_top", port: "p" },
+          target: { cell: "n_bottom", port: "p" },
+          connector: "jumpover",
+          vertices: [],
+        },
+      ],
+    };
+
+    const svgWithJump = renderPolyglotDiagramToSvg(crossingDiagram);
+    assert.ok(svgWithJump.includes("A 5 5"), "Must render jumpover arc bridge in SVG");
+
+    // Now add a solder dot at the crossing (110, 110)
+    const diagramWithSolderDot: DiagramData = {
+      ...crossingDiagram,
+      nodes: [...crossingDiagram.nodes, { id: "solder_dot_1", x: 107, y: 107, width: 6, height: 6 }],
+    };
+
+    const svgWithDot = renderPolyglotDiagramToSvg(diagramWithSolderDot);
+    assert.ok(!svgWithDot.includes("A 5 5"), "Must suppress jumpover arc when a solder dot is present at the junction");
+  });
 });

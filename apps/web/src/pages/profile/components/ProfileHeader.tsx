@@ -20,6 +20,7 @@ import {
 } from "@primer/octicons-react";
 import { Button, Heading, Text } from "@primer/react";
 import React from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { getUserAbout, type UserAboutData } from "../../../api";
@@ -28,6 +29,7 @@ import FederatedDomainPill from "../../../components/FederatedDomainPill";
 import FollowButton from "../../../components/FollowButton";
 import { CircleIconButton, StickyHeader } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
+import VerifiedAccountBadge from "../../../components/VerifiedAccountBadge";
 import { useClickOutside } from "../../../hooks/useClickOutside";
 import { getAvatarUrl, getBannerUrl } from "../../../util/avatar";
 import { parseFederatedHandle } from "../../../util/federation";
@@ -185,11 +187,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   const [aboutData, setAboutData] = React.useState<UserAboutData | null>(null);
   const [aboutLoading, setAboutLoading] = React.useState(false);
   const [showHoverCard, setShowHoverCard] = React.useState(false);
+  const [hoverCardCoords, setHoverCardCoords] = React.useState<{ top: number; left: number } | null>(null);
   const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const joinedDateRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     setAboutData(null);
     setShowHoverCard(false);
+    setHoverCardCoords(null);
   }, [profile.username]);
 
   React.useEffect(() => {
@@ -199,6 +204,42 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       }
     };
   }, []);
+
+  const updateHoverCardCoords = React.useCallback(() => {
+    if (!joinedDateRef.current) return;
+    const rect = joinedDateRef.current.getBoundingClientRect();
+    const cardWidth = 320;
+    const padding = 16;
+    let left = rect.left + window.scrollX;
+    if (left + cardWidth > window.innerWidth + window.scrollX - padding) {
+      left = Math.max(window.scrollX + padding, window.innerWidth + window.scrollX - cardWidth - padding);
+    }
+    setHoverCardCoords({
+      top: rect.bottom + window.scrollY + 8,
+      left,
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!showHoverCard) return;
+    updateHoverCardCoords();
+    const handleScrollOrResize = () => {
+      if (joinedDateRef.current) {
+        const rect = joinedDateRef.current.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+          setShowHoverCard(false);
+          return;
+        }
+      }
+      updateHoverCardCoords();
+    };
+    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [showHoverCard, updateHoverCardCoords]);
 
   const fetchAbout = React.useCallback(async () => {
     if (aboutData || aboutLoading) return;
@@ -218,6 +259,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
     }
+    updateHoverCardCoords();
     setShowHoverCard(true);
     void fetchAbout();
   };
@@ -278,6 +320,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
             {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
             {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
+            {Boolean(profile.signing_verified) && <VerifiedAccountBadge username={profile.username} size={18} />}
           </Heading>
           <Text
             style={{
@@ -605,6 +648,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
           {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
           {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
+          {Boolean(profile.signing_verified) && <VerifiedAccountBadge username={profile.username} size={20} />}
           {linkedAccounts.some((acc) => acc.provider === "twitter") && (
             <span
               style={{
@@ -721,48 +765,41 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </Box>
           )}
           {profile.account_type !== "rss" && (
-            <JoinedDateContainer onMouseEnter={handleMouseEnterJoined} onMouseLeave={handleMouseLeaveJoined}>
-              <JoinedDateLink to={`/@${profile.username}/about`} title="About this account">
+            <JoinedDateContainer
+              ref={joinedDateRef}
+              onMouseEnter={handleMouseEnterJoined}
+              onMouseLeave={handleMouseLeaveJoined}
+            >
+              <JoinedDateLink to={`/@${profile.username}/about`} aria-label="About this account">
                 <CalendarIcon size={16} />
                 <span>Joined {formatMonthYear(profile.created_at)}</span>
                 <ChevronRightIcon size={14} className="chevron" />
               </JoinedDateLink>
 
-              {showHoverCard && (
-                <AboutHoverCard
-                  onMouseEnter={handleMouseEnterJoined}
-                  onMouseLeave={handleMouseLeaveJoined}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/@${profile.username}/about`);
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-fg-default)", lineHeight: "20px" }}
-                  >
-                    About this account
-                  </Text>
-                  <Box display="flex" flexDirection="column" gap={3}>
-                    <Box display="flex" alignItems="center" gap={3}>
-                      <Box
+              {showHoverCard &&
+                hoverCardCoords &&
+                (() => {
+                  const cardElement = (
+                    <AboutHoverCard
+                      style={hoverCardCoords ? { top: hoverCardCoords.top, left: hoverCardCoords.left } : undefined}
+                      onMouseEnter={handleMouseEnterJoined}
+                      onMouseLeave={handleMouseLeaveJoined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/@${profile.username}/about`);
+                      }}
+                    >
+                      <Text
                         style={{
+                          fontSize: "16px",
+                          fontWeight: 700,
                           color: "var(--color-fg-default)",
-                          display: "flex",
-                          alignItems: "center",
-                          width: "20px",
+                          lineHeight: "20px",
                         }}
                       >
-                        <CalendarIcon size={18} />
-                      </Box>
-                      <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
-                        Joined {formatMonthYear(profile.created_at)}
+                        About this account
                       </Text>
-                    </Box>
-
-                    {Boolean(
-                      aboutData?.basedIn?.countryName && aboutData.basedIn.countryName !== "Not yet established",
-                    ) && (
-                      <Box display="flex" alignItems="center" gap={3} justifyContent="space-between">
+                      <Box display="flex" flexDirection="column" gap={3}>
                         <Box display="flex" alignItems="center" gap={3}>
                           <Box
                             style={{
@@ -772,54 +809,76 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                               width: "20px",
                             }}
                           >
-                            <LocationIcon size={18} />
+                            <CalendarIcon size={18} />
                           </Box>
                           <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
-                            Account based in {aboutData?.basedIn?.countryName}
+                            Joined {formatMonthYear(profile.created_at)}
                           </Text>
                         </Box>
-                        <InfoIcon size={16} color="var(--color-fg-muted)" />
-                      </Box>
-                    )}
 
-                    {parsed.isFederated && parsed.remoteDomain && (
-                      <Box display="flex" alignItems="center" gap={3}>
-                        <Box
-                          style={{
-                            color: "var(--color-fg-default)",
-                            display: "flex",
-                            alignItems: "center",
-                            width: "20px",
-                          }}
-                        >
-                          <GlobeIcon size={18} />
-                        </Box>
-                        <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
-                          Federated via {parsed.remoteDomain}
-                        </Text>
-                      </Box>
-                    )}
+                        {Boolean(
+                          aboutData?.basedIn?.countryName && aboutData.basedIn.countryName !== "Not yet established",
+                        ) && (
+                          <Box display="flex" alignItems="center" gap={3} justifyContent="space-between">
+                            <Box display="flex" alignItems="center" gap={3}>
+                              <Box
+                                style={{
+                                  color: "var(--color-fg-default)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  width: "20px",
+                                }}
+                              >
+                                <LocationIcon size={18} />
+                              </Box>
+                              <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                                Account based in {aboutData?.basedIn?.countryName}
+                              </Text>
+                            </Box>
+                            <InfoIcon size={16} color="var(--color-fg-muted)" />
+                          </Box>
+                        )}
 
-                    {(aboutData?.usernameChanges?.count ?? 0) > 0 && (
-                      <Box display="flex" alignItems="center" gap={3}>
-                        <Box
-                          style={{
-                            color: "var(--color-fg-default)",
-                            display: "flex",
-                            alignItems: "center",
-                            width: "20px",
-                          }}
-                        >
-                          <HistoryIcon size={18} />
-                        </Box>
-                        <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
-                          {`${aboutData?.usernameChanges?.count} former username${aboutData?.usernameChanges?.count === 1 ? "" : "s"}`}
-                        </Text>
+                        {parsed.isFederated && parsed.remoteDomain && (
+                          <Box display="flex" alignItems="center" gap={3}>
+                            <Box
+                              style={{
+                                color: "var(--color-fg-default)",
+                                display: "flex",
+                                alignItems: "center",
+                                width: "20px",
+                              }}
+                            >
+                              <GlobeIcon size={18} />
+                            </Box>
+                            <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                              Federated via {parsed.remoteDomain}
+                            </Text>
+                          </Box>
+                        )}
+
+                        {(aboutData?.usernameChanges?.count ?? 0) > 0 && (
+                          <Box display="flex" alignItems="center" gap={3}>
+                            <Box
+                              style={{
+                                color: "var(--color-fg-default)",
+                                display: "flex",
+                                alignItems: "center",
+                                width: "20px",
+                              }}
+                            >
+                              <HistoryIcon size={18} />
+                            </Box>
+                            <Text style={{ fontSize: "14px", color: "var(--color-fg-default)", lineHeight: "18px" }}>
+                              {`${aboutData?.usernameChanges?.count} former username${aboutData?.usernameChanges?.count === 1 ? "" : "s"}`}
+                            </Text>
+                          </Box>
+                        )}
                       </Box>
-                    )}
-                  </Box>
-                </AboutHoverCard>
-              )}
+                    </AboutHoverCard>
+                  );
+                  return typeof document !== "undefined" ? createPortal(cardElement, document.body) : cardElement;
+                })()}
             </JoinedDateContainer>
           )}
         </Box>

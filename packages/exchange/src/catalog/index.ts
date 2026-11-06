@@ -32,9 +32,15 @@ export function getStdlibsForLanguage(language: string): StdlibEntry[] {
 /**
  * Finds all standard libraries belonging to a specific domain pack.
  */
-export function getStdlibsByPack(pack: StdlibPackId | "all"): StdlibEntry[] {
+export function getStdlibsByPack(pack: StdlibPackId | "all" | string): StdlibEntry[] {
   if (pack === "all") {
     return catalogJson.libraries;
+  }
+  const norm = pack.toLowerCase().trim();
+  if (norm === "modelica" || norm === "msl") {
+    return catalogJson.libraries.filter(
+      (lib) => lib.language.toLowerCase() === "modelica" || lib.packageName.toLowerCase() === "modelica",
+    );
   }
   return catalogJson.libraries.filter((lib) => lib.pack === pack);
 }

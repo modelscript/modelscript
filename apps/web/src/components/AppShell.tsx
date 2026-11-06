@@ -111,7 +111,9 @@ const MainColumn = styled.main<{
     props.$isWideLayout || props.$isFullScreenLayout || props.$isInspectorLayout ? "1" : "0 1 740px"};
   width: 100%;
   max-width: ${(props) =>
-    props.$isFullScreenLayout ? "100%" : props.$isInspectorLayout || props.$isWideLayout ? "1090px" : "740px"};
+    props.$isFullScreenLayout ? "100%" : props.$isInspectorLayout || props.$isWideLayout ? "1066px" : "740px"};
+  margin-right: ${(props) =>
+    (props.$isWideLayout || props.$isInspectorLayout) && !props.$isFullScreenLayout ? "24px" : "0px"};
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
@@ -130,6 +132,7 @@ const MainColumn = styled.main<{
         : "calc(120px + env(safe-area-inset-bottom, 0px))"}; /* Leave space for bottom bar + banner */
     border-left: none;
     border-right: none;
+    margin-right: 0px;
   }
 `;
 
@@ -420,8 +423,13 @@ const AppShell: React.FC = () => {
   // Standalone full-bleed layout for /playground and /sketch (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
   const isStandaloneRoute = location.pathname.startsWith("/playground") || location.pathname.startsWith("/sketch");
 
-  // Make wide layout for /settings/* and /admin/* (no right panel)
-  const isWideLayout = location.pathname.startsWith("/settings") || location.pathname.startsWith("/admin");
+  // Make wide layout for /settings/*, /admin/*, and /packages/* detail pages (no right panel, extends to edge of right nav)
+  const isWideLayout =
+    location.pathname.startsWith("/settings") ||
+    location.pathname.startsWith("/admin") ||
+    (location.pathname.startsWith("/packages") &&
+      location.pathname !== "/packages" &&
+      location.pathname !== "/packages/");
 
   const [isNotebookInspector, setIsNotebookInspector] = React.useState(false);
 
@@ -624,12 +632,16 @@ const AppShell: React.FC = () => {
                 <SidebarWrapper>
                   <Sidebar onPostClick={() => setIsComposeOpen(true)} />
                 </SidebarWrapper>
-                <MainColumn $isWideLayout={isWideLayout} $isFullScreenLayout={isFullScreenLayout}>
+                <MainColumn
+                  $isWideLayout={isWideLayout}
+                  $isFullScreenLayout={isFullScreenLayout}
+                  $isInspectorLayout={isInspectorLayout}
+                >
                   <ErrorBoundary>
                     <Outlet context={{ openCompose: handleOpenComposeContext }} />
                   </ErrorBoundary>
                 </MainColumn>
-                {!isWideLayout && !isFullScreenLayout && (
+                {showsRightPanel && (
                   <RightPanelWrapper data-tour-id="tour-right-panel">
                     <RightPanel
                       clusterInfo={clusterStatus}

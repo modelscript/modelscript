@@ -43,13 +43,12 @@ const styled: typeof styledImport =
 const HeroRow = styled.div`
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 20px;
   margin-bottom: 12px;
 
   @media (max-width: 640px) {
-    flex-direction: column-reverse;
-    gap: 16px;
+    flex-direction: column;
+    gap: 14px;
   }
 `;
 
@@ -62,9 +61,9 @@ const HeroLeft = styled.div`
 `;
 
 const HeroIconCard = styled.div`
-  width: 80px;
-  height: 80px;
-  border-radius: 16px;
+  width: 100px;
+  height: 100px;
+  border-radius: 18px;
   background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.04)));
   border: 1px solid var(--ms-border, var(--color-border));
   display: flex;
@@ -82,8 +81,8 @@ const HeroIconCard = styled.div`
   }
 
   @media (max-width: 640px) {
-    width: 60px;
-    height: 60px;
+    width: 64px;
+    height: 64px;
     border-radius: 12px;
   }
 `;
@@ -419,8 +418,18 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
           />
         </Box>
 
-        {/* ── Hero Row: Title & Meta (Left) + Floating Icon Card (Right) ── */}
+        {/* ── Hero Row: Package Icon (Left) + Title & Meta (Right) ── */}
         <HeroRow>
+          <HeroIconCard>
+            <InvertedSvg
+              src={getIconUrl(name, version, rootClassName || name)}
+              alt=""
+              width={72}
+              height={72}
+              style={{ flexShrink: 0 }}
+            />
+          </HeroIconCard>
+
           <HeroLeft>
             <TitleRow>
               <Heading
@@ -569,17 +578,6 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
               )}
             </MetaStrip>
           </HeroLeft>
-
-          {/* ── Floating Package Icon Card (Right) ── */}
-          <HeroIconCard>
-            <InvertedSvg
-              src={getIconUrl(name, version, rootClassName || name)}
-              alt=""
-              width={56}
-              height={56}
-              style={{ flexShrink: 0 }}
-            />
-          </HeroIconCard>
         </HeroRow>
 
         {/* ── Action & Install Ribbon ── */}

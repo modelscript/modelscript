@@ -1117,100 +1117,100 @@ export class ValidationService {
     await currentLock;
 
     try {
-      const oldTree = oldCached?.tree as unknown as
-        | {
-            rootPtr?: number;
-            rootNode?: { id?: number; tree?: { facade?: unknown } };
-            facade?: unknown;
-            edit?: (e: unknown) => void;
+      try {
+        const oldTree = oldCached?.tree as unknown as
+          | {
+              rootPtr?: number;
+              rootNode?: { id?: number; tree?: { facade?: unknown } };
+              facade?: unknown;
+              edit?: (e: unknown) => void;
+            }
+          | null
+          | undefined;
+        const oldRootPtr = oldTree?.rootPtr ?? oldTree?.rootNode?.id ?? 0;
+        const activeFacade = (plugin?.facade ??
+          oldTree?.facade ??
+          oldTree?.rootNode?.tree?.facade ??
+          this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
+        const isOldTreeActiveInWasm = Boolean(oldRootPtr && activeFacade && activeFacade.lastAstRoot === oldRootPtr);
+
+        if (oldCached && oldCached.text !== text && isOldTreeActiveInWasm) {
+          const edit = computeTreeEdit(oldCached.text, text);
+          if (typeof oldTree?.edit === "function") {
+            oldTree.edit(edit as never);
           }
-        | null
-        | undefined;
-      const oldRootPtr = oldTree?.rootPtr ?? oldTree?.rootNode?.id ?? 0;
-      const activeFacade = (plugin?.facade ??
-        oldTree?.facade ??
-        oldTree?.rootNode?.tree?.facade ??
-        this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
-      const isOldTreeActiveInWasm = Boolean(oldRootPtr && activeFacade && activeFacade.lastAstRoot === oldRootPtr);
+          if (parser) {
+            tree = parser.parse(
+              processedText,
+              oldCached.tree as never,
+              edit.startIndex,
+              edit.oldEndIndex,
+              edit.newEndIndex,
+              uri,
+            );
+          } else if (this.parserService.sharedContext && isModelica) {
+            tree = this.parserService.sharedContext.parse(".mo", processedText, oldCached.tree as never, {
+              editStart: edit.startIndex,
+              editOldEnd: edit.oldEndIndex,
+              editNewEnd: edit.newEndIndex,
+            });
+          }
+          editRanges = [
+            {
+              startOffset: edit.startIndex,
+              endOffset: edit.newEndIndex,
+            },
+          ];
+        } else if (oldCached && oldCached.text === text && isOldTreeActiveInWasm) {
+          tree = oldCached.tree;
+          if (activeFacade && typeof activeFacade.loadSource === "function") {
+            activeFacade.loadSource(text);
+          }
+        } else {
+          if (parser) {
+            tree = parser.parse(processedText);
+          } else if (this.parserService.sharedContext && isModelica) {
+            tree = this.parserService.sharedContext.parse(".mo", processedText);
+          }
+        }
+      } catch (err: any) {
+        this.connection.console.error(`[validate] Parser error for ${uri}: ${err.message}`);
+      }
 
-      if (oldCached && oldCached.text !== text && isOldTreeActiveInWasm) {
-        const edit = computeTreeEdit(oldCached.text, text);
-        if (typeof oldTree?.edit === "function") {
-          oldTree.edit(edit as never);
-        }
-        if (parser) {
-          tree = parser.parse(
-            processedText,
-            oldCached.tree as never,
-            edit.startIndex,
-            edit.oldEndIndex,
-            edit.newEndIndex,
-            uri,
-          );
-        } else if (this.parserService.sharedContext && isModelica) {
-          tree = this.parserService.sharedContext.parse(".mo", processedText, oldCached.tree as never, {
-            editStart: edit.startIndex,
-            editOldEnd: edit.oldEndIndex,
-            editNewEnd: edit.newEndIndex,
-          });
-        }
-        editRanges = [
-          {
-            startOffset: edit.startIndex,
-            endOffset: edit.newEndIndex,
-          },
-        ];
-      } else if (oldCached && oldCached.text === text && isOldTreeActiveInWasm) {
-        tree = oldCached.tree;
-        if (activeFacade && typeof activeFacade.loadSource === "function") {
-          activeFacade.loadSource(text);
-        }
-      } else {
-        if (parser) {
-          tree = parser.parse(processedText);
-        } else if (this.parserService.sharedContext && isModelica) {
-          tree = this.parserService.sharedContext.parse(".mo", processedText);
+      if (!tree) {
+        this.connection.sendDiagnostics({ uri, diagnostics: [] });
+        return;
+      }
+
+      if (oldCached?.tree && oldCached.tree !== tree) {
+        oldCached.tree.delete?.();
+      }
+      const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+      const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
+      const docEntry = {
+        text,
+        tree,
+        classCache: oldCached?.classCache ?? new Map(),
+      };
+      this.documentManager.documentTrees.set(uri, docEntry);
+      this.documentManager.documentTrees.set(normUri, docEntry);
+      this.documentManager.documentTrees.set(oneSlashUri, docEntry);
+
+      if (this.workspaceManager.unifiedWorkspace) {
+        this.workspaceManager.unifiedWorkspace.setDocumentTree(uri, tree);
+        this.workspaceManager.unifiedWorkspace.setDocumentTree(normUri, tree);
+        this.workspaceManager.unifiedWorkspace.setDocumentTree(oneSlashUri, tree);
+        const uDoc =
+          this.workspaceManager.unifiedWorkspace.getDocument(uri) ??
+          this.workspaceManager.unifiedWorkspace.getDocument(normUri) ??
+          this.workspaceManager.unifiedWorkspace.getDocument(oneSlashUri);
+        if (uDoc) {
+          uDoc.text = text;
+          uDoc.tree = tree;
         }
       }
-    } catch (err: any) {
-      this.connection.console.error(`[validate] Parser error for ${uri}: ${err.message}`);
-    }
 
-    if (!tree) {
-      this.connection.sendDiagnostics({ uri, diagnostics: [] });
-      return;
-    }
-
-    if (oldCached?.tree && oldCached.tree !== tree) {
-      oldCached.tree.delete?.();
-    }
-    const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
-    const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
-    const docEntry = {
-      text,
-      tree,
-      classCache: oldCached?.classCache ?? new Map(),
-    };
-    this.documentManager.documentTrees.set(uri, docEntry);
-    this.documentManager.documentTrees.set(normUri, docEntry);
-    this.documentManager.documentTrees.set(oneSlashUri, docEntry);
-
-    if (this.workspaceManager.unifiedWorkspace) {
-      this.workspaceManager.unifiedWorkspace.setDocumentTree(uri, tree);
-      this.workspaceManager.unifiedWorkspace.setDocumentTree(normUri, tree);
-      this.workspaceManager.unifiedWorkspace.setDocumentTree(oneSlashUri, tree);
-      const uDoc =
-        this.workspaceManager.unifiedWorkspace.getDocument(uri) ??
-        this.workspaceManager.unifiedWorkspace.getDocument(normUri) ??
-        this.workspaceManager.unifiedWorkspace.getDocument(oneSlashUri);
-      if (uDoc) {
-        uDoc.text = text;
-        uDoc.tree = tree;
-      }
-    }
-
-    // 3. Collect syntax + lint diagnostics immediately (while WASM state is valid)
-    try {
+      // 3. Collect syntax + lint diagnostics immediately (while WASM state is valid)
       const res = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
       syntaxDiags = res.syntaxDiags;
       wasmLintDiags = res.wasmLintDiags;

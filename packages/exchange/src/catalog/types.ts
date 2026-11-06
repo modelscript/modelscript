@@ -13,6 +13,8 @@ export type StdlibDomain =
 
 export type StdlibPackId =
   | "core"
+  | "modelica"
+  | "msl"
   | "power-energy"
   | "mobility-auto"
   | "fluids-process"

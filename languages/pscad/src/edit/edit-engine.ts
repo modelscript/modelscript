@@ -132,7 +132,7 @@ function findWire(model: PscadProjectModel, id: string) {
   return undefined;
 }
 
-function findElementById(root: XmlElement, id: string, tagNames?: Set<string>): XmlElement | undefined {
+export function findElementById(root: XmlElement, id: string, tagNames?: Set<string>): XmlElement | undefined {
   if (attr(root, "id") === id && (!tagNames || tagNames.has(root.name))) {
     return root;
   }

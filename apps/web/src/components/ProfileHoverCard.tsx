@@ -12,6 +12,7 @@ import { parseFederatedHandle } from "../util/federation";
 import { safeCssImageUrl } from "../util/url";
 import Box from "./Box";
 import FederatedDomainPill from "./FederatedDomainPill";
+import VerifiedAccountBadge from "./VerifiedAccountBadge";
 
 const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
@@ -372,9 +373,12 @@ export default function ProfileHoverCard({
                     )}
                   </Box>
                   <Box mt={2}>
-                    <HoverCardNameLink to={`/@${data.username}`} onClick={(e) => e.stopPropagation()}>
-                      <span className="profile-name-text">{data.display_name || data.username}</span>
-                    </HoverCardNameLink>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <HoverCardNameLink to={`/@${data.username}`} onClick={(e) => e.stopPropagation()}>
+                        <span className="profile-name-text">{data.display_name || data.username}</span>
+                      </HoverCardNameLink>
+                      {Boolean(data.signing_verified) && <VerifiedAccountBadge username={data.username} size={15} />}
+                    </Box>
                     {(() => {
                       const parsed = parseFederatedHandle(data.username);
                       return (

@@ -3,7 +3,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseUrdf } from "../src/parser/index.js";
-import { urdfToAdams, urdfToCadShapes, urdfToModelica, urdfToSimpack } from "../src/projections/index.js";
+import {
+  urdfToAdams,
+  urdfToCadShapes,
+  urdfToModelica,
+  urdfToSimpack,
+  urdfToUsd,
+  urdfToUsdz,
+} from "../src/projections/index.js";
 
 const ROBOT_XML = `<?xml version="1.0"?>
 <robot name="scara">
@@ -54,5 +61,45 @@ describe("URDF Projections (@modelscript/urdf)", () => {
     assert.ok(shapes.length >= 2);
     assert.equal(shapes[0]?.type, "cylinder");
     assert.equal(shapes[1]?.type, "box");
+  });
+
+  it("should project to OpenUSD with UsdPhysics and animated trajectory", () => {
+    const robot = parseUrdf(ROBOT_XML);
+    const usda = urdfToUsd(robot, {
+      stageName: "ScaraRobot",
+      trajectory: {
+        times: [0.0, 0.5, 1.0],
+        jointPositions: {
+          j1: [0.0, 0.785, 1.57],
+        },
+      },
+    });
+
+    assert.ok(usda.startsWith("#usda 1.0"));
+    assert.ok(usda.includes('defaultPrim = "ScaraRobot"'));
+    assert.ok(usda.includes('def Xform "base_link"'));
+    assert.ok(usda.includes('prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]'));
+    assert.ok(usda.includes('def PhysicsRevoluteJoint "j1"'));
+    assert.ok(usda.includes("rel physics:body0 = </ScaraRobot/base_link>"));
+    assert.ok(usda.includes("rel physics:body1 = </ScaraRobot/link_1>"));
+    assert.ok(usda.includes('uniform token physics:axis = "Z"'));
+    assert.ok(usda.includes("double3 xformOp:translate.timeSamples = {"));
+    assert.ok(usda.includes("quatf xformOp:orient.timeSamples = {"));
+  });
+
+  it("should project to 64-byte aligned USDZ package", () => {
+    const robot = parseUrdf(ROBOT_XML);
+    const usdz = urdfToUsdz(robot, { stageName: "ScaraPackage" });
+    assert.ok(usdz instanceof Uint8Array);
+    assert.ok(usdz.length > 200);
+
+    const view = new DataView(usdz.buffer, usdz.byteOffset, usdz.byteLength);
+    assert.equal(view.getUint32(0, true), 0x04034b50); // ZIP LFH signature
+
+    const fileNameLen = view.getUint16(26, true);
+    const extraLen = view.getUint16(28, true);
+    const dataOffset = 30 + fileNameLen + extraLen;
+
+    assert.equal(dataOffset % 64, 0, "USDZ payload MUST be aligned to a 64-byte boundary");
   });
 });

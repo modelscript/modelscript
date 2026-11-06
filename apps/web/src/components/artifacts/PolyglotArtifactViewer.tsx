@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderUniversalCodeThumbnailSvg } from "@modelscript/diagram/code-thumbnail-builder";
 import { renderDicomRtBevSvg, renderDicomRtDvhSvg } from "@modelscript/diagram/dicom-rt-diagram-builder";
 import { renderIgtlTransformTreeSvg } from "@modelscript/diagram/igtl-diagram-builder";
 import { renderOpenSimTopologySvg } from "@modelscript/diagram/opensim-diagram-builder";
@@ -13,10 +14,11 @@ import { parseIgtl } from "@modelscript/igtl/parser";
 import { parseOpenSim } from "@modelscript/opensim/parser";
 import { parseOscal } from "@modelscript/oscal";
 import { parseQif } from "@modelscript/qif/parser";
+import { parseUrdf, renderUrdfSvg } from "@modelscript/urdf";
 import { BeakerIcon, CheckIcon, CodeIcon, CopyIcon, DownloadIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import DOMPurify from "dompurify";
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
@@ -26,7 +28,6 @@ import { DraftingTriangleIcon } from "../icons";
 import { registerAllModelscriptLanguages } from "../morsel/util/monaco-lsp-adapter";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
-import FortranViewer from "./FortranViewer";
 import QifViewer from "./QifViewer";
 import ReqifViewer from "./ReqifViewer";
 import StudyTemplateViewer from "./StudyTemplateViewer";
@@ -305,6 +306,25 @@ export function renderSourceToDiagramSvg(
       };
     } catch {
       // Fall through to generic polyglot extractor if OSCAL parse fails
+    }
+  }
+
+  if (normalizedLang === "urdf") {
+    try {
+      const robot = parseUrdf(content);
+      if (robot.links.size > 0) {
+        const rawSvg = renderUrdfSvg(robot, { theme: isDark ? "dark" : "light" });
+        const nodeCount = Math.max(1, robot.links.size);
+        const edgeCount = Math.max(1, robot.joints.size);
+        setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+        return {
+          svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+          nodeCount,
+          edgeCount,
+        };
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if URDF parse fails
     }
   }
 
@@ -1311,7 +1331,22 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
   const isMultiFile = Boolean(viewConfig?.files && Object.keys(viewConfig.files).length > 1);
 
   const svgMarkup = useMemo(() => {
+    if (viewConfig?.svg && typeof viewConfig.svg === "string") {
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
+    }
+
     if (isCodeOnlyDialect) {
+      if (rawCode.trim()) {
+        try {
+          const generated = renderUniversalCodeThumbnailSvg(rawCode, {
+            dialect,
+            title,
+          });
+          return sanitizeSvgMarkup(generated, { isFullScreen, isDark });
+        } catch {
+          return "";
+        }
+      }
       return "";
     }
 
@@ -1321,24 +1356,56 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
       if (built.svg) return built.svg;
     }
 
-    if (viewConfig?.svg && typeof viewConfig.svg === "string") {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
-    }
-
     if (!rawCode.trim()) {
       return "";
     }
 
     const built = renderSourceToDiagramSvg(rawCode, dialect, title, isDark, isFullScreen);
-    return built.svg;
+    if (built.svg) return built.svg;
+
+    // Stage 4 fallback: Universal Code Editor Thumbnail for models without diagrams
+    try {
+      const generated = renderUniversalCodeThumbnailSvg(rawCode, {
+        dialect,
+        title,
+      });
+      return sanitizeSvgMarkup(generated, { isFullScreen, isDark });
+    } catch {
+      return "";
+    }
   }, [viewConfig, rawCode, dialect, title, isDark, isCodeOnlyDialect, isFullScreen]);
 
   const codeLines = useMemo(() => (rawCode ? rawCode.split(/\r?\n/) : []), [rawCode]);
-  const effectiveViewMode = isCodeOnlyDialect || !svgMarkup ? "code" : viewMode;
+  const isCodeSvg = Boolean(svgMarkup && svgMarkup.includes('data-preview-mode="code"'));
+  const effectiveViewMode = isCodeOnlyDialect || isCodeSvg || !svgMarkup ? "code" : viewMode;
 
-  if (dialect === "fortran" || dialect === "f90" || dialect === "f95" || dialect === "f08" || dialect === "f18") {
-    return <FortranViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-  }
+  const [interactive, setInteractive] = useState(isFullScreen);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isFullScreen) {
+      setInteractive(true);
+    }
+  }, [isFullScreen]);
+
+  // Hibernate heavy Monaco editor when scrolled out of view in feed mode
+  useEffect(() => {
+    if (!interactive || isFullScreen) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            setInteractive(false);
+          }
+        });
+      },
+      { threshold: 0.0 },
+    );
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+    return () => observer.disconnect();
+  }, [interactive, isFullScreen]);
 
   if (dialect === "reqif" || dialect === "reqifz") {
     return (
@@ -1478,7 +1545,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
   return (
     <Container $isFullScreen={isFullScreen} $standalone={Boolean(viewConfig?.standalone)}>
       <FloatingControls>
-        {!isCodeOnlyDialect && svgMarkup && (
+        {!isCodeOnlyDialect && !isCodeSvg && svgMarkup && (
           <ToggleGroup role="tablist" aria-label="View mode">
             <ToggleBtn
               type="button"
@@ -1504,7 +1571,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
             </ToggleBtn>
           </ToggleGroup>
         )}
-        {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
+        {svgMarkup && (effectiveViewMode === "diagram" || isCodeSvg) && (
           <IconBtn type="button" onClick={handleDownloadSvg} title="Download SVG" aria-label="Download SVG">
             <DownloadIcon size={14} />
           </IconBtn>
@@ -1538,7 +1605,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
         )}
       </FloatingControls>
 
-      <ContentGrid $isFullScreen={isFullScreen}>
+      <ContentGrid ref={containerRef} $isFullScreen={isFullScreen}>
         {loadingText ? (
           <DiagramPane $isFullScreen={isFullScreen}>
             <Spinner size="medium" />
@@ -1546,7 +1613,50 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
           </DiagramPane>
         ) : effectiveViewMode === "diagram" && svgMarkup ? (
           <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
-        ) : isFullScreen ? (
+        ) : !interactive && !isFullScreen && svgMarkup ? (
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            height="100%"
+            style={{
+              cursor: "pointer",
+              position: "relative",
+              background: "var(--color-canvas-default, #0d1117)",
+            }}
+            onClick={() => setInteractive(true)}
+          >
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              dangerouslySetInnerHTML={{ __html: svgMarkup }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                bottom: "12px",
+                right: "12px",
+                background: "var(--ms-brand, #0e7490)",
+                padding: "6px 14px",
+                borderRadius: "9999px",
+                border: "1px solid rgba(255, 255, 255, 0.25)",
+                boxShadow: "0 4px 14px rgba(0, 0, 0, 0.45)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <Text style={{ fontSize: "12px", lineHeight: "16px", color: "#ffffff", fontWeight: 600 }}>
+                ▶ Interactive Editor
+              </Text>
+            </div>
+          </Box>
+        ) : isFullScreen || interactive ? (
           <Suspense
             fallback={
               <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>

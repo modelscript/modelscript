@@ -140,4 +140,49 @@ END-ISO-10303-21;
     const dist = Math.hypot(c0[0] - c1[0], c0[1] - c1[1], c0[2] - c1[2]);
     assert(dist > 15, `Expected callouts to be spatially separated, got dist=${dist}`);
   });
+
+  it("reconciles features by semantic name when stepEntityId is absent or renumbered", () => {
+    const qifDsl = `
+      QIF 3.0.0
+      FEATURE F1 Plane "DatumFaceA" points=4
+      FEATURE F2 Cylinder "MainBore" size=25.0 points=6
+    `;
+    const doc = parseQif(qifDsl);
+    const res = reconcileStepWithQif(sampleStep, doc);
+
+    assert.strictEqual(res.matchedFeatures.length, 2);
+    assert.strictEqual(res.unresolvedFeatures.length, 0);
+    assert.strictEqual(res.matchedFeatures[0]?.matchType, "semanticName");
+    assert.strictEqual(res.matchedFeatures[1]?.matchType, "semanticName");
+    assert.strictEqual(res.matchedFeatures[1]?.stepEntityId, "#105");
+  });
+
+  it("reconciles features by spatial nearest-neighbor proximity", () => {
+    const stepWithPoints = `
+ISO-10303-21;
+DATA;
+#1 = CARTESIAN_POINT('Pt1', (10.0, 20.0, 30.0));
+#2 = CYLINDRICAL_SURFACE('Hole1', #1, 5.0);
+#3 = ADVANCED_FACE('Face1', (#4), #2, .T.);
+ENDSEC;
+END-ISO-10303-21;
+    `;
+    const qifXml = `<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="11111111-2222-3333-4444-555555555555">
+  <FeatureNominals>
+    <CylinderFeatureNominal id="F_CYL">
+      <Name>UnmatchedNameBore</Name>
+      <Diameter>10.0</Diameter>
+      <Location>10.5 20.2 29.8</Location>
+      <AxisVector>0.0 0.0 1.0</AxisVector>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+</QIFDocument>`;
+    const doc = parseQif(qifXml);
+    const res = reconcileStepWithQif(stepWithPoints, doc);
+
+    assert.strictEqual(res.matchedFeatures.length, 1);
+    assert.strictEqual(res.matchedFeatures[0]?.matchType, "spatialProximity");
+    assert.strictEqual(res.matchedFeatures[0]?.stepEntityId, "#3");
+  });
 });

@@ -11,6 +11,7 @@ export const SYSTEMS_ONTOLOGICAL_POSTS: SeedPostSpec[] = [
     filename: "ElectroHydrostaticActuator.mo",
     viewType: "modelica-diagram",
     hoursAgo: 2,
+    signed: true,
     postContent:
       "Published the updated Modelica 3.5 multi-domain Electro-Hydrostatic Flight Actuator (EHA) model for primary flight control surfaces. Couples a permanent-magnet synchronous motor drive, bidirectional fixed-displacement axial piston pump, differential hydraulic cylinder with fluid compressibility (bulk modulus β = 1.45 GPa), and cascaded position/pressure damping loop. Achieves 42 rad/s bandwidth under 38 kN aerodynamic hinge load with zero steady-state leakage. #modelica #aerospace #hydraulics #fmi3 #multiphysics",
     code: `model ElectroHydrostaticActuator "Primary flight control Electro-Hydrostatic Actuator (EHA)"
@@ -107,6 +108,7 @@ end ElectroHydrostaticActuator;`,
     filename: "TiltRotorTransitionController.msx",
     viewType: "modelscript",
     hoursAgo: 4,
+    signed: true,
     postContent:
       "Demonstrating native ModelScript (`.msx`) for an eVTOL tilt-rotor transition corridor controller! Couples continuous longitudinal 3-DOF aero-propulsion equations with synchronous nacelle tilt scheduling (`theta_nacelle` from 90° hover to 0° cruise) and formal safety invariant contracts ensuring angle-of-attack α stays strictly below the 13.5° wing stall boundary throughout conversion. #modelscript #evtol #flightcontrol #formalmethods #dae",
     code: `// ModelScript (.msx) — Hybrid eVTOL Tilt-Rotor Conversion Corridor Model
@@ -197,6 +199,7 @@ equation
     filename: "ArtemisLunarLanderGNC.sysml",
     viewType: "sysml2",
     hoursAgo: 7,
+    signed: true,
     postContent:
       "Here is our OMG SysML v2 architecture model for the Artemis Lunar Lander Powered Descent & Hazard Avoidance GNC subsystem. Includes typed `part def` decompositions, conjugated propellant & SpaceWire buses, modal descent state machines, and formal `requirement def` verification constraints for touchdown vertical/lateral velocity limits. #sysmlv2 #mbse #aerospace #gnc #kerml",
     code: `package ArtemisLunarLanderGNC {

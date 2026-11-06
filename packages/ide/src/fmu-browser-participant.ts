@@ -17,6 +17,7 @@
  *    propagate to outputs unchanged.
  */
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { unzipSync } from "fflate";
 
 // ── modelDescription.xml Parser (browser-safe, zero-dependency) ──
@@ -50,35 +51,65 @@ interface FmiModelDescription {
   variables: FmiScalarVariable[];
 }
 
-/** Extract an attribute value from an XML attribute string. */
-function extractAttrFromStr(attrs: string, attr: string): string | undefined {
-  const match = attrs.match(new RegExp(`${attr}\\s*=\\s*"([^"]*)"`, "s"));
-  return match ? (match[1] ?? undefined) : undefined;
+function getAttr(elem: XmlElement, name: string): string | undefined {
+  const norm = name.toLowerCase();
+  return elem.attributes.find((a) => a.name.toLowerCase() === norm)?.value;
 }
 
-/** Extract an attribute from the first occurrence of an XML element. */
-function extractAttr(xml: string, element: string, attr: string): string | undefined {
-  const elemMatch = xml.match(new RegExp(`<${element}\\s+([^>]*)>`, "s"));
-  if (!elemMatch) return undefined;
-  return extractAttrFromStr(elemMatch[1] ?? "", attr);
+function findChild(parent: XmlElement, tag: string): XmlElement | undefined {
+  const norm = tag.toLowerCase();
+  return parent.children.find((c) => {
+    const cName = c.name.toLowerCase();
+    return cName === norm || cName.endsWith(`:${norm}`);
+  });
+}
+
+function findDescendant(parent: XmlElement, tag: string): XmlElement | undefined {
+  const norm = tag.toLowerCase();
+  if (parent.name.toLowerCase() === norm || parent.name.toLowerCase().endsWith(`:${norm}`)) {
+    return parent;
+  }
+  for (const child of parent.children) {
+    const found = findDescendant(child, tag);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findDescendants(parent: XmlElement, tag: string): XmlElement[] {
+  const norm = tag.toLowerCase();
+  const results: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    const name = node.name.toLowerCase();
+    if (name === norm || name.endsWith(`:${norm}`)) {
+      results.push(node);
+    }
+    for (const child of node.children) {
+      walk(child);
+    }
+  }
+  walk(parent);
+  return results;
 }
 
 /** Parse modelDescription.xml into structured metadata. */
 function parseModelDescription(xml: string): FmiModelDescription {
-  const fmiVersion = extractAttr(xml, "fmiModelDescription", "fmiVersion") ?? "2.0";
-  const modelName = extractAttr(xml, "fmiModelDescription", "modelName") ?? "Unknown";
-  const guid = extractAttr(xml, "fmiModelDescription", "guid") ?? "";
-  const description = extractAttr(xml, "fmiModelDescription", "description");
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
 
-  const supportsCoSimulation = /<CoSimulation\s+/.test(xml);
+  const fmiVersion = (root ? getAttr(root, "fmiVersion") : undefined) ?? "2.0";
+  const modelName = (root ? getAttr(root, "modelName") : undefined) ?? "Unknown";
+  const guid = (root ? getAttr(root, "guid") : undefined) ?? "";
+  const description = root ? getAttr(root, "description") : undefined;
+
+  const supportsCoSimulation = root ? findDescendant(root, "CoSimulation") !== undefined : false;
 
   let defaultExperiment: FmiModelDescription["defaultExperiment"];
-  const expMatch = xml.match(/<DefaultExperiment\s+([^>]*)\/?\s*>/);
-  if (expMatch) {
-    const attrs = expMatch[1] ?? "";
-    const startStr = extractAttrFromStr(attrs, "startTime");
-    const stopStr = extractAttrFromStr(attrs, "stopTime");
-    const stepStr = extractAttrFromStr(attrs, "stepSize");
+  const expElem = root ? findDescendant(root, "DefaultExperiment") : undefined;
+  if (expElem) {
+    const startStr = getAttr(expElem, "startTime");
+    const stopStr = getAttr(expElem, "stopTime");
+    const stepStr = getAttr(expElem, "stepSize");
     defaultExperiment = {
       startTime: startStr !== undefined ? parseFloat(startStr) : undefined,
       stopTime: stopStr !== undefined ? parseFloat(stopStr) : undefined,
@@ -88,35 +119,39 @@ function parseModelDescription(xml: string): FmiModelDescription {
 
   // Parse scalar variables
   const variables: FmiScalarVariable[] = [];
-  const svRegex = /<ScalarVariable\s+([^>]*)>([\s\S]*?)<\/ScalarVariable>/g;
-  let svMatch: RegExpExecArray | null;
+  const svElements = root ? findDescendants(root, "ScalarVariable") : [];
 
-  while ((svMatch = svRegex.exec(xml)) !== null) {
-    const attrs = svMatch[1] ?? "";
-    const body = svMatch[2] ?? "";
-
-    const name = extractAttrFromStr(attrs, "name") ?? "";
-    const valueReference = parseInt(extractAttrFromStr(attrs, "valueReference") ?? "0", 10);
-    const svDescription = extractAttrFromStr(attrs, "description");
-    const causality = (extractAttrFromStr(attrs, "causality") ?? "local") as FmiScalarVariable["causality"];
-    const variability = extractAttrFromStr(attrs, "variability") ?? "continuous";
+  for (const svElem of svElements) {
+    const name = getAttr(svElem, "name") ?? "";
+    const valueReference = parseInt(getAttr(svElem, "valueReference") ?? "0", 10);
+    const svDescription = getAttr(svElem, "description");
+    const causality = (getAttr(svElem, "causality") ?? "local") as FmiScalarVariable["causality"];
+    const variability = getAttr(svElem, "variability") ?? "continuous";
 
     let type: FmiScalarVariable["type"] = "Real";
     let start: number | string | boolean | undefined;
     let unit: string | undefined;
 
-    const typeMatch = body.match(/<(Real|Integer|Boolean|String|Enumeration)\s*([^>]*)\/?\s*>/);
-    if (typeMatch) {
-      type = (typeMatch[1] ?? "Real") as FmiScalarVariable["type"];
-      const typeAttrs = typeMatch[2] ?? "";
-      const startStr = extractAttrFromStr(typeAttrs, "start");
+    const realChild = findChild(svElem, "Real");
+    const intChild = findChild(svElem, "Integer");
+    const boolChild = findChild(svElem, "Boolean");
+    const strChild = findChild(svElem, "String");
+    const enumChild = findChild(svElem, "Enumeration");
+
+    const typeChild = realChild ?? intChild ?? boolChild ?? strChild ?? enumChild;
+    if (typeChild) {
+      const typeName = typeChild.name.split(":").pop() ?? "Real";
+      type = (
+        typeName.match(/^(Real|Integer|Boolean|String|Enumeration)$/) ? typeName : "Real"
+      ) as FmiScalarVariable["type"];
+      const startStr = getAttr(typeChild, "start");
       if (startStr !== undefined) {
         if (type === "Real") start = parseFloat(startStr);
         else if (type === "Integer" || type === "Enumeration") start = parseInt(startStr, 10);
         else if (type === "Boolean") start = startStr === "true" || startStr === "1";
         else start = startStr;
       }
-      unit = extractAttrFromStr(typeAttrs, "unit");
+      unit = getAttr(typeChild, "unit");
     }
 
     variables.push({ name, valueReference, causality, variability, type, start, unit, description: svDescription });
@@ -616,8 +651,8 @@ export class FmuBrowserParticipant {
     }
 
     // Pre-parse to get the model name
-    const nameMatch = this.xmlContent.match(/modelName\s*=\s*"([^"]*)"/);
-    this.modelName = nameMatch?.[1] ?? "FMU";
+    const doc = parseXmlSync(this.xmlContent);
+    this.modelName = (doc.root ? getAttr(doc.root, "modelName") : undefined) ?? "FMU";
   }
 
   /** Get variable metadata (available after initialize). */

@@ -10,7 +10,16 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
-import { ensureUserActivityRepo, getExistingOrEnsureUserActivityRepo } from "../services/activity-git.js";
+import {
+  GitBodyLimitError,
+  ReceivePackGate,
+  applyHardenedRepoConfig,
+  getReceivePackLimits,
+  getUploadPackLimits,
+  gitSubprocessEnv,
+  killAfter,
+  limitedRequestBody,
+} from "../util/git-hardening.js";
 
 function pktLine(str: string): Buffer {
   const length = Buffer.byteLength(str) + 4;
@@ -19,6 +28,9 @@ function pktLine(str: string): Buffer {
 }
 
 const PKT_FLUSH = Buffer.from("0000");
+
+/** Shared across both router mounts (`/git` and `/api/v1/git-server`) so push limits cannot be bypassed. */
+const receivePackGate = new ReceivePackGate();
 
 export interface GitServerOptions {
   reposDir?: string | undefined;
@@ -35,10 +47,6 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     fs.mkdirSync(baseDir, { recursive: true });
   }
 
-  function isActivityProject(project: string): boolean {
-    return project.replace(/\.git$/i, "").toLowerCase() === "activity";
-  }
-
   function resolveRepoPath(namespace: string, project: string): string | null {
     if (
       !namespace ||
@@ -52,11 +60,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     }
 
     const rawProj = project.replace(/\.git$/i, "");
-    if (
-      namespace.toLowerCase() === "_activity_cache" ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(namespace) ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(rawProj)
-    ) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(namespace) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(rawProj)) {
       return null;
     }
 
@@ -226,57 +230,9 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
   function ensureBareRepo(repoPath: string): void {
     if (!fs.existsSync(repoPath)) {
       fs.mkdirSync(repoPath, { recursive: true });
-      execFileSync("git", ["init", "--bare", repoPath]);
-      execFileSync("git", ["-C", repoPath, "config", "http.receivepack", "true"]);
-      execFileSync("git", ["-C", repoPath, "config", "uploadpack.allowFilter", "true"]);
+      execFileSync("git", ["init", "--bare", repoPath], { env: gitSubprocessEnv() });
+      applyHardenedRepoConfig(repoPath);
     }
-  }
-
-  function authorizeActivityRepoOwner(
-    req: Request,
-    res: Response,
-    namespace: string,
-  ): NonNullable<ReturnType<LibraryDatabase["getUserById"]>> | null {
-    const { user, tokenScopes, packagePattern, isBot } = authenticate(req);
-    if (!user) {
-      res.setHeader("WWW-Authenticate", `Basic realm="${database.getInstanceSettings().instanceName || "Ansatz"} Git"`);
-      res.status(401).send("Authentication required to access activity repository");
-      return null;
-    }
-
-    if (isBot || user.account_type === "bot") {
-      res.status(403).send("Forbidden: Bot accounts cannot access personal GDPR activity repositories");
-      return null;
-    }
-
-    if (tokenScopes) {
-      const hasAllowedScope =
-        tokenScopes.includes("*") ||
-        tokenScopes.includes("admin") ||
-        tokenScopes.includes("repos:read") ||
-        tokenScopes.includes("repos:write") ||
-        tokenScopes.includes("account:read");
-      const isPackageRestricted = Boolean(packagePattern && packagePattern !== "*");
-      if (!hasAllowedScope || isPackageRestricted) {
-        res
-          .status(403)
-          .send("Forbidden: Personal access token requires unrestricted 'repos:read' or 'account:read' scope");
-        return null;
-      }
-    }
-
-    const cleanNs = namespace.trim().toLowerCase();
-    if (cleanNs === "me" || user.username.toLowerCase() === cleanNs) {
-      return user;
-    }
-
-    const targetUser = database.getUserByUsername(namespace);
-    if (!targetUser || targetUser.id !== user.id) {
-      res.status(403).send("Forbidden: Only the account owner may access their activity repository");
-      return null;
-    }
-
-    return user;
   }
 
   function checkRepoReadAccess(req: Request, res: Response, namespace: string, project: string): boolean {
@@ -310,6 +266,60 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     return true;
   }
 
+  /** Streams a size-capped, time-limited `git upload-pack` response for `repoPath`. */
+  function streamUploadPack(
+    req: Request,
+    res: Response,
+    repoPath: string,
+    onComplete?: (bytesTransferred: number, durationMs: number, exitCode: number | null) => void,
+  ): void {
+    res.setHeader("Content-Type", "application/x-git-upload-pack-result");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    const startTime = Date.now();
+    let bytesTransferred = 0;
+
+    const uploadLimits = getUploadPackLimits();
+    const gitProc = spawn("git", ["upload-pack", "--stateless-rpc", repoPath], { env: gitSubprocessEnv() });
+    const cancelUploadTimer = killAfter(gitProc, uploadLimits.timeoutMs);
+    gitProc.on("close", (code) => {
+      cancelUploadTimer();
+      if (onComplete) {
+        try {
+          onComplete(bytesTransferred, Date.now() - startTime, code);
+        } catch {
+          // ignore telemetry failure
+        }
+      }
+    });
+
+    const uploadBody = limitedRequestBody(req, uploadLimits.maxBytes);
+    uploadBody.on("error", (err) => {
+      gitProc.kill("SIGKILL");
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.status(err instanceof GitBodyLimitError ? 413 : 400).send("Invalid or oversized fetch request");
+    });
+    uploadBody.pipe(gitProc.stdin);
+    gitProc.stdin.on("error", () => {
+      // Client disconnected or process exited early.
+    });
+
+    if (onComplete) {
+      gitProc.stdout.on("data", (chunk: Buffer) => {
+        bytesTransferred += chunk.length;
+      });
+    }
+    gitProc.stdout.pipe(res);
+
+    gitProc.on("error", (err) => {
+      console.error("[git-server] Upload-pack failed:", err);
+      if (!res.headersSent) res.status(500).send("Upload-pack error");
+    });
+  }
+
   /**
    * GET /:namespace/:project/info/refs
    * Git Smart HTTP reference discovery
@@ -323,40 +333,6 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
 
     const namespace = String(req.params["namespace"] || "");
     const project = String(req.params["project"] || "");
-
-    if (isActivityProject(project)) {
-      if (service === "git-receive-pack") {
-        res.status(403).send("Forbidden: Virtual activity repository is read-only");
-        return;
-      }
-
-      const owner = authorizeActivityRepoOwner(req, res, namespace);
-      if (!owner) return;
-
-      let activityRepoPath: string;
-      try {
-        activityRepoPath = ensureUserActivityRepo(database, owner.id, baseDir).repoPath;
-      } catch (err) {
-        console.error("[git-server] Failed to materialize activity repository:", err);
-        res.status(500).send("Failed to prepare activity repository");
-        return;
-      }
-
-      res.setHeader("Content-Type", `application/x-${service}-advertisement`);
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-
-      res.write(pktLine(`# service=${service}\n`));
-      res.write(PKT_FLUSH);
-
-      const gitProc = spawn("git", ["upload-pack", "--stateless-rpc", "--advertise-refs", activityRepoPath]);
-      gitProc.stdout.pipe(res);
-      gitProc.stderr.on("data", (data) => {
-        console.error(`[git-server error] ${data.toString()}`);
-      });
-      return;
-    }
 
     const repoPath = resolveRepoPath(namespace, project);
 
@@ -427,44 +403,6 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     const namespace = String(req.params["namespace"] || "");
     const project = String(req.params["project"] || "");
 
-    if (isActivityProject(project)) {
-      const owner = authorizeActivityRepoOwner(req, res, namespace);
-      if (!owner) return;
-
-      let activityRepoPath: string;
-      let syncMode: "hit" | "incremental" | "cold";
-      try {
-        const ensured = getExistingOrEnsureUserActivityRepo(database, owner.id, baseDir);
-        activityRepoPath = ensured.repoPath;
-        syncMode = ensured.mode;
-      } catch (err) {
-        console.error("[git-server] Failed to materialize activity repository:", err);
-        res.status(500).send("Failed to prepare activity repository");
-        return;
-      }
-
-      database.logAudit({
-        actorId: owner.id,
-        action: "gdpr_activity_git_synced",
-        resourceType: "user",
-        resourceId: String(owner.id),
-        details: { mode: syncMode },
-      });
-
-      res.setHeader("Content-Type", "application/x-git-upload-pack-result");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-      const gitProc = spawn("git", ["upload-pack", "--stateless-rpc", activityRepoPath]);
-      req.pipe(gitProc.stdin);
-      gitProc.stdout.pipe(res);
-
-      gitProc.on("error", (err) => {
-        console.error("[git-server] Activity upload-pack failed:", err);
-        if (!res.headersSent) res.status(500).send("Upload-pack error");
-      });
-      return;
-    }
-
     const repoPath = resolveRepoPath(namespace, project);
 
     if (!repoPath || !fs.existsSync(repoPath)) {
@@ -476,18 +414,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       return;
     }
 
-    res.setHeader("Content-Type", "application/x-git-upload-pack-result");
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-    const gitProc = spawn("git", ["upload-pack", "--stateless-rpc", repoPath]);
-
-    req.pipe(gitProc.stdin);
-    gitProc.stdout.pipe(res);
-
-    gitProc.on("error", (err) => {
-      console.error("[git-server] Upload-pack failed:", err);
-      if (!res.headersSent) res.status(500).send("Upload-pack error");
-    });
+    streamUploadPack(req, res, repoPath);
   });
 
   /**
@@ -497,11 +424,6 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
   router.post("/:namespace/:project/git-receive-pack", (req: Request, res: Response): void => {
     const namespace = String(req.params["namespace"] || "");
     const project = String(req.params["project"] || "");
-
-    if (isActivityProject(project)) {
-      res.status(403).send("Forbidden: Virtual activity repository is read-only");
-      return;
-    }
 
     const repoPath = resolveRepoPath(namespace, project);
 
@@ -530,17 +452,81 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       return;
     }
 
-    ensureBareRepo(repoPath);
+    const limits = getReceivePackLimits();
+    if (Number.parseInt(String(req.headers["content-length"] || "0"), 10) > limits.maxBytes) {
+      res.status(413).send(`Push rejected: payload exceeds the ${limits.maxBytes} byte limit`);
+      return;
+    }
+
+    const slot = receivePackGate.tryAcquire(repoPath);
+    if (!("release" in slot)) {
+      res.setHeader("Retry-After", "5");
+      res
+        .status(429)
+        .send(
+          slot.reason === "busy-repo"
+            ? "Another push to this repository is in progress. Retry shortly."
+            : "Server is busy processing other pushes. Retry shortly.",
+        );
+      return;
+    }
+
+    try {
+      ensureBareRepo(repoPath);
+      applyHardenedRepoConfig(repoPath, limits.maxBytes);
+    } catch (err) {
+      slot.release();
+      console.error("[git-server] Failed to prepare repository for push:", err);
+      res.status(500).send("Failed to prepare repository");
+      return;
+    }
 
     res.setHeader("Content-Type", "application/x-git-receive-pack-result");
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-    const gitProc = spawn("git", ["receive-pack", "--stateless-rpc", repoPath]);
+    const gitProc = spawn("git", ["receive-pack", "--stateless-rpc", repoPath], { env: gitSubprocessEnv() });
+    let timedOut = false;
+    const cancelTimer = killAfter(gitProc, limits.timeoutMs, () => {
+      timedOut = true;
+    });
+    let finished = false;
+    const finish = (): void => {
+      if (finished) return;
+      finished = true;
+      cancelTimer();
+      slot.release();
+    };
 
-    req.pipe(gitProc.stdin);
+    const body = limitedRequestBody(req, limits.maxBytes);
+    body.on("error", (err) => {
+      gitProc.kill("SIGKILL");
+      finish();
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      if (err instanceof GitBodyLimitError) {
+        res.status(413).send(`Push rejected: payload exceeds the ${limits.maxBytes} byte limit`);
+      } else {
+        res.status(400).send("Malformed push request body");
+      }
+    });
+    body.pipe(gitProc.stdin);
+    gitProc.stdin.on("error", () => {
+      // Process exited before consuming the body (e.g. fsck rejection); the close handler reports the result.
+    });
     gitProc.stdout.pipe(res);
+    gitProc.stderr.on("data", (data) => {
+      console.error(`[git-server receive-pack] ${data.toString()}`);
+    });
 
     gitProc.on("close", (code) => {
+      finish();
+      if (timedOut) {
+        console.error(`[git-server] Receive-pack for ${namespace}/${project} timed out`);
+        if (!res.writableEnded) res.end();
+        return;
+      }
       if (code === 0) {
         // Link repo in database if not already linked
         const cleanProj = project.replace(/\.git$/, "");
@@ -549,6 +535,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     });
 
     gitProc.on("error", (err) => {
+      finish();
       console.error("[git-server] Receive-pack failed:", err);
       if (!res.headersSent) res.status(500).send("Receive-pack error");
     });

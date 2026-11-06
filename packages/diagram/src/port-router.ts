@@ -1420,21 +1420,198 @@ export function routeOrthogonalGridAStar(options: {
     return waypoints;
   }
 
-  // Deterministic orthogonal Manhattan fallback when WASM router is not loaded or fails
-  if (Math.abs(startX - endX) < 1e-3 || Math.abs(startY - endY) < 1e-3) {
+  // Deterministic obstacle-aware orthogonal routing when WASM router is not loaded or fails
+  return routeOrthogonalGridAStarPureTs(cols, rows, startX, startY, endX, endY, grid, options.bendPenalty ?? 2.5);
+}
+
+/**
+ * Pure-TypeScript obstacle-aware orthogonal A* grid router for fallback when WASM is not loaded.
+ */
+function routeOrthogonalGridAStarPureTs(
+  cols: number,
+  rows: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  grid: Uint8Array,
+  bendPenalty = 2.5,
+): [number, number][] {
+  const sX = Math.round(startX);
+  const sY = Math.round(startY);
+  const eX = Math.round(endX);
+  const eY = Math.round(endY);
+
+  if (sX === eX && sY === eY) {
+    return [[sX, sY]];
+  }
+
+  const isSegmentFree = (x0: number, y0: number, x1: number, y1: number): boolean => {
+    const minX = Math.min(x0, x1);
+    const maxX = Math.max(x0, x1);
+    const minY = Math.min(y0, y1);
+    const maxY = Math.max(y0, y1);
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        if ((x === sX && y === sY) || (x === eX && y === eY)) continue;
+        if (x >= 0 && x < cols && y >= 0 && y < rows) {
+          if (grid[x + y * cols] === 1) return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  // Straight line check
+  if ((sX === eX || sY === eY) && isSegmentFree(sX, sY, eX, eY)) {
     return [
-      [startX, startY],
-      [endX, endY],
+      [sX, sY],
+      [eX, eY],
     ];
   }
 
-  const midX = Math.round(((startX + endX) / 2) * 10) / 10;
-  return [
-    [startX, startY],
-    [midX, startY],
-    [midX, endY],
-    [endX, endY],
+  // Option A: Horizontal first -> (midX, sY) -> (midX, eY) -> (eX, eY)
+  const midX = Math.round((sX + eX) / 2);
+  if (isSegmentFree(sX, sY, midX, sY) && isSegmentFree(midX, sY, midX, eY) && isSegmentFree(midX, eY, eX, eY)) {
+    return [
+      [sX, sY],
+      [midX, sY],
+      [midX, eY],
+      [eX, eY],
+    ];
+  }
+
+  // Option B: Vertical first -> (sX, midY) -> (eX, midY) -> (eX, eY)
+  const midY = Math.round((sY + eY) / 2);
+  if (isSegmentFree(sX, sY, sX, midY) && isSegmentFree(sX, midY, eX, midY) && isSegmentFree(eX, midY, eX, eY)) {
+    return [
+      [sX, sY],
+      [sX, midY],
+      [eX, midY],
+      [eX, eY],
+    ];
+  }
+
+  // Full A* search on grid
+  const total = cols * rows;
+  if (total === 0 || total > 50000) {
+    return [
+      [sX, sY],
+      [midX, sY],
+      [midX, eY],
+      [eX, eY],
+    ];
+  }
+
+  const DIRS: [number, number][] = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0],
   ];
+  const gScore = new Float32Array(total * 4).fill(Infinity);
+  const parent = new Int32Array(total * 4).fill(-1);
+
+  const openSet: number[] = [];
+  const fScoreMap: number[] = [];
+
+  const startIndex = sY * cols + sX;
+  const endIndex = eY * cols + eX;
+
+  for (let d = 0; d < 4; d++) {
+    const sId = startIndex * 4 + d;
+    gScore[sId] = 0;
+    const h = Math.abs(sX - eX) + Math.abs(sY - eY);
+    openSet.push(sId);
+    fScoreMap.push(h);
+  }
+
+  let foundEndState = -1;
+  let iterations = 0;
+  const maxIterations = Math.min(total * 2, 8000);
+
+  while (openSet.length > 0 && iterations++ < maxIterations) {
+    let bestIdx = 0;
+    let minF = fScoreMap[0]!;
+    for (let i = 1; i < openSet.length; i++) {
+      if (fScoreMap[i]! < minF) {
+        minF = fScoreMap[i]!;
+        bestIdx = i;
+      }
+    }
+
+    const currState = openSet[bestIdx]!;
+    openSet.splice(bestIdx, 1);
+    fScoreMap.splice(bestIdx, 1);
+
+    const currCell = Math.floor(currState / 4);
+    const currDir = currState % 4;
+    const cx = currCell % cols;
+    const cy = Math.floor(currCell / cols);
+
+    if (currCell === endIndex) {
+      foundEndState = currState;
+      break;
+    }
+
+    for (let nd = 0; nd < 4; nd++) {
+      if (Math.abs(nd - currDir) === 2) continue; // no 180 reversals
+      const [dx, dy] = DIRS[nd]!;
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || nx >= cols || ny < 0 || ny >= rows) continue;
+      const nextCell = ny * cols + nx;
+      if (grid[nextCell] === 1 && nextCell !== endIndex) continue;
+
+      const isBend = nd !== currDir;
+      const cost = 1.0 + (isBend ? bendPenalty : 0) + (grid[nextCell] === 2 ? 3.0 : 0);
+      const tentativeG = gScore[currState]! + cost;
+      const nextState = nextCell * 4 + nd;
+
+      if (tentativeG < gScore[nextState]!) {
+        gScore[nextState] = tentativeG;
+        parent[nextState] = currState;
+        const h = Math.abs(nx - eX) + Math.abs(ny - eY);
+        openSet.push(nextState);
+        fScoreMap.push(tentativeG + h);
+      }
+    }
+  }
+
+  if (foundEndState === -1) {
+    return [
+      [sX, sY],
+      [midX, sY],
+      [midX, eY],
+      [eX, eY],
+    ];
+  }
+
+  const rawPath: [number, number][] = [];
+  let s = foundEndState;
+  while (s !== -1) {
+    const c = Math.floor(s / 4);
+    rawPath.push([c % cols, Math.floor(c / cols)]);
+    s = parent[s]!;
+  }
+  rawPath.reverse();
+
+  if (rawPath.length <= 2) return rawPath;
+  const compressed: [number, number][] = [rawPath[0]!];
+  for (let i = 1; i < rawPath.length - 1; i++) {
+    const prev = compressed[compressed.length - 1]!;
+    const curr = rawPath[i]!;
+    const next = rawPath[i + 1]!;
+    const dx1 = curr[0] - prev[0];
+    const dy1 = curr[1] - prev[1];
+    const dx2 = next[0] - curr[0];
+    const dy2 = next[1] - curr[1];
+    if ((dx1 === 0 && dx2 !== 0) || (dy1 === 0 && dy2 !== 0) || (dx1 !== 0 && dx2 === 0) || (dy1 !== 0 && dy2 === 0)) {
+      compressed.push(curr);
+    }
+  }
+  compressed.push(rawPath[rawPath.length - 1]!);
+  return compressed;
 }
 
 /**
@@ -2054,6 +2231,35 @@ export interface JumpoverSegment {
   p1: PointLike;
   /** Second endpoint of the obstacle segment. */
   p2: PointLike;
+  /** Optional edge ID to avoid self-crossing detection. */
+  edgeId?: string | undefined;
+  /** Optional electrical net ID to avoid hopping over wires belonging to the same net. */
+  netId?: string | undefined;
+  /** Whether the obstacle edge itself hops over perpendicular wires (used to avoid double-hopping). */
+  hasJumpover?: boolean | undefined;
+}
+
+/** Options for configuring semicircular bridge jumpover path generation. */
+export interface JumpoverOptions {
+  /** Radius of the semicircular jumpover arc. Default is 5. */
+  radius?: number | undefined;
+  /**
+   * Orientation of segments that can create jumpover bridges over perpendicular obstacles:
+   * - "both": Both horizontal and vertical segments can hop (default).
+   * - "horizontal": Only horizontal segments hop over vertical obstacles (standard schematic EDA convention).
+   * - "vertical": Only vertical segments hop over horizontal obstacles.
+   */
+  axis?: "both" | "horizontal" | "vertical" | undefined;
+  /** Sweep direction for horizontal segment hops: "up" (negative Y, default) or "down" (positive Y). */
+  horizontalHop?: "up" | "down" | undefined;
+  /** Sweep direction for vertical segment hops: "right" (positive X, default) or "left" (negative X). */
+  verticalHop?: "right" | "left" | undefined;
+  /** Edge ID of the current wire being routed (used to exclude self-segments). */
+  edgeId?: string | undefined;
+  /** Electrical net ID of the wire being routed (used to exclude same-net segments). */
+  netId?: string | undefined;
+  /** Solder dot locations to suppress jumpovers near connected solder junctions. */
+  solderDots?: PointLike[] | undefined;
 }
 
 /**
@@ -2063,7 +2269,7 @@ export interface JumpoverSegment {
 export function computeJumpoverPath(
   points: PointLike[],
   obstacles: JumpoverSegment[] = [],
-  options: { radius?: number | undefined } = {},
+  options: JumpoverOptions = {},
 ): string {
   if (points.length < 2) {
     if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y}`;
@@ -2071,6 +2277,12 @@ export function computeJumpoverPath(
   }
 
   const radius = options.radius ?? 5;
+  const axis = options.axis ?? "both";
+  const horizHop = options.horizontalHop ?? "up";
+  const vertHop = options.verticalHop ?? "right";
+  const solderDots = options.solderDots ?? [];
+  const dotTolSq = radius * 1.5 * (radius * 1.5);
+
   let d = `M ${points[0]!.x} ${points[0]!.y}`;
 
   for (let i = 0; i < points.length - 1; i++) {
@@ -2078,8 +2290,9 @@ export function computeJumpoverPath(
     const p2 = points[i + 1]!;
 
     const isHorizontal = Math.abs(p1.y - p2.y) < 0.001;
+    const isVertical = Math.abs(p1.x - p2.x) < 0.001;
 
-    if (isHorizontal && Math.abs(p1.x - p2.x) > radius * 2) {
+    if (isHorizontal && (axis === "both" || axis === "horizontal") && Math.abs(p1.x - p2.x) > radius * 2) {
       const y = p1.y;
       const minX = Math.min(p1.x, p2.x);
       const maxX = Math.max(p1.x, p2.x);
@@ -2088,31 +2301,61 @@ export function computeJumpoverPath(
       // Find perpendicular (vertical) obstacles intersecting this horizontal segment
       const crossings: number[] = [];
       for (const obs of obstacles) {
+        if (options.edgeId && obs.edgeId && options.edgeId === obs.edgeId) continue;
+        if (options.netId && obs.netId && options.netId === obs.netId) continue;
+
         const obsIsVertical = Math.abs(obs.p1.x - obs.p2.x) < 0.001;
         if (!obsIsVertical) continue;
+
         const obsX = obs.p1.x;
         const obsMinY = Math.min(obs.p1.y, obs.p2.y);
         const obsMaxY = Math.max(obs.p1.y, obs.p2.y);
 
-        if (obsX > minX + radius && obsX < maxX - radius && y >= obsMinY && y <= obsMaxY) {
-          crossings.push(obsX);
+        // Crossing must be interior to both the horizontal segment and the vertical obstacle
+        if (obsX > minX + radius && obsX < maxX - radius && y > obsMinY + 1 && y < obsMaxY - 1) {
+          // Check if suppressed by a nearby solder dot (connected net junction)
+          let atSolderDot = false;
+          for (const dot of solderDots) {
+            const dx = obsX - dot.x;
+            const dy = y - dot.y;
+            if (dx * dx + dy * dy <= dotTolSq) {
+              atSolderDot = true;
+              break;
+            }
+          }
+          if (!atSolderDot) {
+            crossings.push(obsX);
+          }
         }
       }
 
       // Sort crossings along direction of travel
       crossings.sort((a, b) => (dir > 0 ? a - b : b - a));
 
+      // Filter out crossings that are too close to each other (< 2 * radius) to avoid overlapping arcs
+      const cleanCrossings: number[] = [];
+      for (const cx of crossings) {
+        if (cleanCrossings.length === 0) {
+          cleanCrossings.push(cx);
+        } else {
+          const last = cleanCrossings[cleanCrossings.length - 1]!;
+          if (Math.abs(cx - last) >= radius * 2) {
+            cleanCrossings.push(cx);
+          }
+        }
+      }
+
       // Build path with jumpover arcs
       let curX = p1.x;
-      for (const cx of crossings) {
+      for (const cx of cleanCrossings) {
         if (dir > 0) {
           const startArcX = cx - radius;
           const endArcX = cx + radius;
           if (startArcX > curX) {
             d += ` L ${startArcX} ${y}`;
           }
-          // Clockwise arc hopping upward (negative Y in SVG)
-          d += ` A ${radius} ${radius} 0 0 1 ${endArcX} ${y}`;
+          const sweep = horizHop === "up" ? 1 : 0;
+          d += ` A ${radius} ${radius} 0 0 ${sweep} ${endArcX} ${y}`;
           curX = endArcX;
         } else {
           const startArcX = cx + radius;
@@ -2120,9 +2363,90 @@ export function computeJumpoverPath(
           if (startArcX < curX) {
             d += ` L ${startArcX} ${y}`;
           }
-          // Counter-clockwise arc hopping upward (negative Y in SVG)
-          d += ` A ${radius} ${radius} 0 0 0 ${endArcX} ${y}`;
+          const sweep = horizHop === "up" ? 0 : 1;
+          d += ` A ${radius} ${radius} 0 0 ${sweep} ${endArcX} ${y}`;
           curX = endArcX;
+        }
+      }
+      d += ` L ${p2.x} ${p2.y}`;
+    } else if (isVertical && (axis === "both" || axis === "vertical") && Math.abs(p1.y - p2.y) > radius * 2) {
+      const x = p1.x;
+      const minY = Math.min(p1.y, p2.y);
+      const maxY = Math.max(p1.y, p2.y);
+      const dir = p2.y > p1.y ? 1 : -1;
+
+      // Find perpendicular (horizontal) obstacles intersecting this vertical segment
+      const crossings: number[] = [];
+      for (const obs of obstacles) {
+        if (options.edgeId && obs.edgeId && options.edgeId === obs.edgeId) continue;
+        if (options.netId && obs.netId && options.netId === obs.netId) continue;
+
+        // In standard EDA convention, horizontal segments have hop priority over vertical segments.
+        // If the horizontal obstacle also has jumpovers enabled and axis is "both", skip vertical hop to avoid double-hopping.
+        if (axis === "both" && obs.hasJumpover) continue;
+
+        const obsIsHorizontal = Math.abs(obs.p1.y - obs.p2.y) < 0.001;
+        if (!obsIsHorizontal) continue;
+
+        const obsY = obs.p1.y;
+        const obsMinX = Math.min(obs.p1.x, obs.p2.x);
+        const obsMaxX = Math.max(obs.p1.x, obs.p2.x);
+
+        // Crossing must be interior to both the vertical segment and the horizontal obstacle
+        if (obsY > minY + radius && obsY < maxY - radius && x > obsMinX + 1 && x < obsMaxX - 1) {
+          // Check if suppressed by a nearby solder dot (connected net junction)
+          let atSolderDot = false;
+          for (const dot of solderDots) {
+            const dx = x - dot.x;
+            const dy = obsY - dot.y;
+            if (dx * dx + dy * dy <= dotTolSq) {
+              atSolderDot = true;
+              break;
+            }
+          }
+          if (!atSolderDot) {
+            crossings.push(obsY);
+          }
+        }
+      }
+
+      // Sort crossings along direction of travel
+      crossings.sort((a, b) => (dir > 0 ? a - b : b - a));
+
+      // Filter out crossings that are too close to each other (< 2 * radius) to avoid overlapping arcs
+      const cleanCrossings: number[] = [];
+      for (const cy of crossings) {
+        if (cleanCrossings.length === 0) {
+          cleanCrossings.push(cy);
+        } else {
+          const last = cleanCrossings[cleanCrossings.length - 1]!;
+          if (Math.abs(cy - last) >= radius * 2) {
+            cleanCrossings.push(cy);
+          }
+        }
+      }
+
+      // Build path with vertical jumpover arcs
+      let curY = p1.y;
+      for (const cy of cleanCrossings) {
+        if (dir > 0) {
+          const startArcY = cy - radius;
+          const endArcY = cy + radius;
+          if (startArcY > curY) {
+            d += ` L ${x} ${startArcY}`;
+          }
+          const sweep = vertHop === "right" ? 1 : 0;
+          d += ` A ${radius} ${radius} 0 0 ${sweep} ${x} ${endArcY}`;
+          curY = endArcY;
+        } else {
+          const startArcY = cy + radius;
+          const endArcY = cy - radius;
+          if (startArcY < curY) {
+            d += ` L ${x} ${startArcY}`;
+          }
+          const sweep = vertHop === "right" ? 0 : 1;
+          d += ` A ${radius} ${radius} 0 0 ${sweep} ${x} ${endArcY}`;
+          curY = endArcY;
         }
       }
       d += ` L ${p2.x} ${p2.y}`;

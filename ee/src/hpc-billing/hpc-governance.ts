@@ -19,7 +19,7 @@ export interface EnterpriseHpcBillingRouters {
 export function mountEnterpriseHpcAndBilling(app: Express, routers: EnterpriseHpcBillingRouters): void {
   app.use(
     "/api/v1/cae",
-    requireEnterpriseFeature("slurm_hpc"),
+    requireEnterpriseFeature("slurm_hpc", { exemptPaths: ["/cluster/status", "/cae/cluster/status"] }),
     routers.optionalAuthMiddleware,
     routers.caeFeatureGuard,
   );

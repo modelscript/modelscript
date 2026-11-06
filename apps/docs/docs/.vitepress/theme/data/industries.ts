@@ -522,11 +522,12 @@ export const INDUSTRIES: Industry[] = [
     headline: "From robot description to verified plant & controller",
     summary:
       "Load URDF/Xacro robots, IEC 62714 AutomationML plant hierarchies, and Adams mechanisms, run IEC 61131-3 PLC programs on a virtual PLC, and formally verify control logic against the plant model.",
-    languages: ["urdf", "plcopen", "automationml", "adams", "simpack", "opensim", "step", "qif", "scad", "modelica"],
+    languages: ["urdf", "plcopen", "automationml", "adams", "simpack", "opensim", "step", "qif", "scad", "usd", "modelica"],
     standards: [
       "IEC 61131-3 / PLCopen XML",
       "IEC 62714 AutomationML (CAEX)",
       "URDF / Xacro",
+      "OpenUSD (Pixar / ASWF / AOUSD)",
       "STEP AP242",
       "ISO 23952 QIF 3.0",
       "FMI 2.0 / 3.0",

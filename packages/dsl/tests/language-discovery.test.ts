@@ -23,6 +23,7 @@ describe("Workspace Language Discovery & Extension Generator", () => {
     assert.ok(ids.includes("owl2"), "Should discover owl2");
     assert.ok(ids.includes("csv"), "Should discover csv");
     assert.ok(ids.includes("scad"), "Should discover scad");
+    assert.ok(ids.includes("usd"), "Should discover usd");
 
     // Verify modelica extensions
     const modelica = result.languages.find((l) => l.id === "modelica")!;

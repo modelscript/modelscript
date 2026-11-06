@@ -336,6 +336,60 @@ function matVec6(M: number[][], vec: SpatialVector): SpatialVector {
   return out;
 }
 
+export interface LinkPose {
+  name: string;
+  parentName: string | null;
+  jointName: string | null;
+  position: [number, number, number];
+  rotation: RotMatrix9;
+}
+
+/**
+ * Computes forward kinematics for all links in the robot kinematic tree.
+ * Given joint positions q, computes the 3D world position and rotation matrix for each link.
+ */
+export function computeForwardKinematics(
+  robot: UrdfRobot,
+  q?: Map<string, number> | Record<string, number>,
+): Map<string, LinkPose> {
+  const tree = buildKinematicTree(robot);
+  const qMap = q instanceof Map ? q : new Map(Object.entries(q ?? {}));
+  const poses = new Map<string, LinkPose>();
+
+  for (const node of tree) {
+    const qVal = node.jointName ? (qMap.get(node.jointName) ?? 0) : 0;
+    const relXform = computeJointSpatialTransform(node, qVal);
+
+    if (!node.parentName || !poses.has(node.parentName)) {
+      poses.set(node.name, {
+        name: node.name,
+        parentName: null,
+        jointName: null,
+        position: [relXform.r[0], relXform.r[1], relXform.r[2]],
+        rotation: relXform.R,
+      });
+    } else {
+      const parentPose = poses.get(node.parentName)!;
+      const rRot = multRotVec(parentPose.rotation, relXform.r);
+      const worldPos: [number, number, number] = [
+        parentPose.position[0] + rRot[0],
+        parentPose.position[1] + rRot[1],
+        parentPose.position[2] + rRot[2],
+      ];
+      const worldRot = multiplyRot9(parentPose.rotation, relXform.R);
+      poses.set(node.name, {
+        name: node.name,
+        parentName: node.parentName,
+        jointName: node.jointName,
+        position: worldPos,
+        rotation: worldRot,
+      });
+    }
+  }
+
+  return poses;
+}
+
 /**
  * Computes inverse dynamics using the Recursive Newton-Euler Algorithm (RNEA):
  * Given joint positions q, velocities qd, and accelerations qdd, returns joint torques tau.

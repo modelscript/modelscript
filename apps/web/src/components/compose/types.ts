@@ -15,6 +15,8 @@ export interface ComposeBoxProps {
   pendingPin?: SpatialPin | undefined;
   content?: string | undefined;
   setContent?: ((val: string) => void) | undefined;
+  contentWarning?: string | undefined;
+  setContentWarning?: ((val: string) => void) | undefined;
   artifactId?: number | string | null | undefined;
   setArtifactId?: ((val: number | string | null) => void) | undefined;
   isModal?: boolean | undefined;

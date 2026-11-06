@@ -3,12 +3,29 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { resolveActiveEnterpriseLicense, type EnterpriseFeature, type LicenseVerificationResult } from "./verifier.js";
 
+export interface RequireEnterpriseFeatureOptions {
+  exemptPaths?: string[];
+}
+
 /**
  * Express middleware that verifies an active Enterprise Edition license and checks
  * that the requested `feature` is included in the license grant.
  */
-export function requireEnterpriseFeature(feature?: EnterpriseFeature) {
-  return (_req: Request, res: Response, next: NextFunction): void => {
+export function requireEnterpriseFeature(feature?: EnterpriseFeature, options?: RequireEnterpriseFeatureOptions) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (options?.exemptPaths && options.exemptPaths.length > 0) {
+      const path = req.path || "";
+      const originalPath = (req.originalUrl || "").split("?")[0] || "";
+      const isExempt = options.exemptPaths.some(
+        (exempt) =>
+          path === exempt || path.endsWith(exempt) || originalPath === exempt || originalPath.endsWith(exempt),
+      );
+      if (isExempt) {
+        next();
+        return;
+      }
+    }
+
     const status: LicenseVerificationResult = resolveActiveEnterpriseLicense();
     if (!status.valid || !status.claims) {
       const httpStatus = status.mode === "expired" ? 403 : 402;

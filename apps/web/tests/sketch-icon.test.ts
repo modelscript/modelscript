@@ -98,7 +98,7 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     assert.strictEqual(SketchIcon, AnsatzSketchIcon, "SketchIcon must be an exact alias of AnsatzSketchIcon");
   });
 
-  it("verifies Caddyfile redirects morsel.modelscript.org to ansatz.org/sketch", () => {
+  it("verifies Caddyfile redirects morsel.modelscript.org to ansatz.social/sketch", () => {
     const caddyPath = path.resolve(import.meta.dirname, "../../../config/Caddyfile");
     const caddySrc = fs.readFileSync(caddyPath, "utf-8");
 
@@ -107,16 +107,16 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       "Caddyfile must define morsel.modelscript.org server block",
     );
     assert.ok(
-      caddySrc.includes("redir @embed https://ansatz.org/embed/sketch{?query} permanent"),
-      "Caddyfile must redirect embed paths to https://ansatz.org/embed/sketch",
+      caddySrc.includes("redir @embed https://ansatz.social/embed/sketch{?query} permanent"),
+      "Caddyfile must redirect embed paths to https://ansatz.social/embed/sketch",
     );
     assert.ok(
-      caddySrc.includes("redir @root https://ansatz.org/sketch{?query} permanent"),
-      "Caddyfile must redirect root path to https://ansatz.org/sketch",
+      caddySrc.includes("redir @root https://ansatz.social/sketch{?query} permanent"),
+      "Caddyfile must redirect root path to https://ansatz.social/sketch",
     );
     assert.ok(
-      caddySrc.includes("redir https://ansatz.org/sketch{uri} permanent"),
-      "Caddyfile must redirect arbitrary paths under https://ansatz.org/sketch",
+      caddySrc.includes("redir https://ansatz.social/sketch{uri} permanent"),
+      "Caddyfile must redirect arbitrary paths under https://ansatz.social/sketch",
     );
     assert.ok(caddySrc.includes("ide.modelscript.org {"), "Caddyfile must define ide.modelscript.org server block");
     assert.ok(

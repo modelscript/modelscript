@@ -7,16 +7,20 @@ import {
   DownloadIcon,
   PulseIcon,
   StackIcon,
+  SyncIcon,
   TableIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
+import { updateArtifactView } from "../../api/artifacts";
+import { useAuth } from "../../AuthContext";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import { useToast } from "../ToastContext";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
@@ -40,7 +44,9 @@ interface ModelicaDiagramViewerProps {
     artifactId?: string | number | undefined;
     [key: string]: unknown;
   };
+  artifactId?: string | number | undefined;
   isFullScreen?: boolean | undefined;
+  onSaved?: ((updatedArtifact: any) => void) | undefined;
 }
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean; $standalone?: boolean | undefined }>`
@@ -146,11 +152,22 @@ export function hasModelica3dVisualizers(code: string): boolean {
   );
 }
 
+export interface ModelicaPreviewMetadata {
+  isPartial?: boolean | undefined;
+  hasIcon?: boolean | undefined;
+  hasDiagram?: boolean | undefined;
+  has3d?: boolean | undefined;
+  hasEquations?: boolean | undefined;
+  hasConnect?: boolean | undefined;
+  kind?: string | undefined;
+}
+
 export function inferModelicaPreviewMode(
   code: string,
   explicitMode?: string | undefined,
   svg?: string | undefined,
   thumbUrl?: string | undefined,
+  modelMetadata?: ModelicaPreviewMetadata | undefined,
 ): ModelicaPreviewMode {
   if (
     explicitMode === "diagram" ||
@@ -176,35 +193,45 @@ export function inferModelicaPreviewMode(
       return thumbMatch[1].toLowerCase() as ModelicaPreviewMode;
     }
   }
-  const has3d = hasModelica3dVisualizers(code);
+  const has3d = modelMetadata?.has3d !== undefined ? modelMetadata.has3d : hasModelica3dVisualizers(code);
   const hasDiagram =
-    /\bPlacement\s*\(/i.test(code) || /\bDiagram\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code);
+    modelMetadata?.hasDiagram !== undefined
+      ? modelMetadata.hasDiagram
+      : /\bPlacement\s*\(/i.test(code) || /\bDiagram\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code);
   if (has3d && !hasDiagram) return "3d";
   if (hasDiagram) return "diagram";
 
   const hasIcon =
-    /\bIcon\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code) ||
-    /\bextends\s+[A-Za-z0-9_.]*(?:Icon|OnePort|TwoPin|TwoPort|SISO|SO|MI|MO|Interfaces\.)/i.test(code);
+    modelMetadata?.hasIcon !== undefined
+      ? modelMetadata.hasIcon
+      : /\bIcon\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code) ||
+        /\bextends\s+[A-Za-z0-9_.]*(?:Icon|OnePort|TwoPin|TwoPort|SISO|SO|MI|MO|Interfaces\.)/i.test(code);
   if (hasIcon) return "icon";
 
   if (has3d) return "3d";
 
   const isPartial =
-    /\bpartial\s+(?:encapsulated\s+|expandable\s+)*(?:model|class|block|connector|record|function|package|type|operator)\b/.test(
-      code,
-    );
+    modelMetadata?.isPartial !== undefined
+      ? modelMetadata.isPartial
+      : /\bpartial\s+(?:encapsulated\s+|expandable\s+)*(?:model|class|block|connector|record|function|package|type|operator)\b/.test(
+          code,
+        );
   const codeWithoutWithin = code.replace(/^\s*within\b[^;]*;/gm, "");
-  const isNonSimKind = /^\s*(?:encapsulated\s+)?(?:package|connector|record|function|type|operator)\b/m.test(
-    codeWithoutWithin,
-  );
+  const isNonSimKind =
+    modelMetadata?.kind !== undefined
+      ? ["package", "connector", "record", "function", "type", "operator"].includes(modelMetadata.kind.toLowerCase())
+      : /^\s*(?:encapsulated\s+)?(?:package|connector|record|function|type|operator)\b/m.test(codeWithoutWithin);
   const hasEquations =
-    /\b(?:equation|algorithm)\b/.test(code) &&
-    (/\bder\s*\(/.test(code) || /(?:^|\n)\s*[A-Za-z0-9_.(),\s+-/*]+\s*:?=\s*[^;=]+;/m.test(code));
+    modelMetadata?.hasEquations !== undefined
+      ? modelMetadata.hasEquations
+      : /\b(?:equation|algorithm)\b/.test(code) &&
+        (/\bder\s*\(/.test(code) || /(?:^|\n)\s*[A-Za-z0-9_.(),\s+-/*]+\s*:?=\s*[^;=]+;/m.test(code));
 
   if (!isPartial && !isNonSimKind && hasEquations) {
     return "simulation";
   }
-  if (/\bconnect\s*\(/i.test(code)) {
+  const hasConnect = modelMetadata?.hasConnect !== undefined ? modelMetadata.hasConnect : /\bconnect\s*\(/i.test(code);
+  if (hasConnect) {
     return "diagram";
   }
   return "code";
@@ -258,7 +285,18 @@ function buildClientCodeFallbackSvg(code: string, title: string): string {
 </svg>`;
 }
 
-export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ viewConfig, isFullScreen = false }) => {
+export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
+  viewConfig,
+  artifactId: propArtifactId,
+  isFullScreen = false,
+  onSaved,
+}) => {
+  const { token } = useAuth();
+  const toast = useToast();
+  const targetArtifactId = propArtifactId || viewConfig.artifactId;
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   const inlineCode = (viewConfig.code as string) || (viewConfig.content as string) || "";
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
 
@@ -276,6 +314,41 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
   const baseCode = inlineCode || fetchedCode || "model Example\n\nend Example;";
   const [editedCode, setEditedCode] = useState<string | null>(null);
   const code = editedCode ?? baseCode;
+  const hasUnsavedChanges = Boolean(editedCode && editedCode !== baseCode);
+
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!targetArtifactId) return;
+    if (!token) {
+      toast.error("Please log in to save changes to this artifact");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const updated = await updateArtifactView(targetArtifactId, {
+        view_config: {
+          ...viewConfig,
+          code: editedCode,
+        },
+        title: (viewConfig.title as string) || undefined,
+      });
+      setSaveSuccess(true);
+      toast.success("Artifact changes saved successfully!");
+      onSaved?.(updated);
+      window.dispatchEvent(
+        new CustomEvent("modelscript:artifact-updated", {
+          detail: { artifactId: targetArtifactId, artifactView: updated?.artifactView },
+        }),
+      );
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err: unknown) {
+      console.error("Failed to save artifact:", err);
+      toast.error("Failed to save changes. Make sure you own this artifact.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
   const dialect = (viewConfig.dialect as string) || "modelica";
   const title = (viewConfig.title as string) || "Interactive System";
 
@@ -293,9 +366,32 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
     (viewConfig.simulationPreview ? "simulation" : undefined) ||
     (typeof viewConfig.nodeCount === "number" && viewConfig.nodeCount > 0 ? "diagram" : undefined);
 
+  const metadataRecord =
+    typeof viewConfig.metadata === "object" && viewConfig.metadata !== null
+      ? (viewConfig.metadata as Record<string, unknown>)
+      : undefined;
+
+  const modelMetadata: ModelicaPreviewMetadata | undefined = useMemo(() => {
+    if (!metadataRecord) return undefined;
+    const nested =
+      typeof metadataRecord.modelMetadata === "object" && metadataRecord.modelMetadata !== null
+        ? (metadataRecord.modelMetadata as ModelicaPreviewMetadata)
+        : undefined;
+    return {
+      isPartial: typeof metadataRecord.isPartial === "boolean" ? metadataRecord.isPartial : nested?.isPartial,
+      hasIcon: typeof metadataRecord.hasIcon === "boolean" ? metadataRecord.hasIcon : nested?.hasIcon,
+      hasDiagram: typeof metadataRecord.hasDiagram === "boolean" ? metadataRecord.hasDiagram : nested?.hasDiagram,
+      has3d: typeof metadataRecord.has3d === "boolean" ? metadataRecord.has3d : nested?.has3d,
+      hasEquations:
+        typeof metadataRecord.hasEquations === "boolean" ? metadataRecord.hasEquations : nested?.hasEquations,
+      hasConnect: typeof metadataRecord.hasConnect === "boolean" ? metadataRecord.hasConnect : nested?.hasConnect,
+      kind: typeof metadataRecord.kind === "string" ? metadataRecord.kind : nested?.kind,
+    };
+  }, [metadataRecord]);
+
   const previewMode = useMemo(
-    () => inferModelicaPreviewMode(code, explicitMode, rawSvg, rawThumbUrl),
-    [code, explicitMode, rawSvg, rawThumbUrl],
+    () => inferModelicaPreviewMode(code, explicitMode, rawSvg, rawThumbUrl, modelMetadata),
+    [code, explicitMode, rawSvg, rawThumbUrl, modelMetadata],
   );
 
   const { theme } = useTheme();
@@ -592,6 +688,33 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
               {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
               <span>{copied ? "Copied" : "Copy"}</span>
             </IconActionButton>
+            {hasUnsavedChanges && targetArtifactId && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                style={{
+                  background: saveSuccess ? "rgba(16, 185, 129, 0.2)" : "var(--ms-brand, #0e7490)",
+                  color: saveSuccess ? "#10b981" : "#ffffff",
+                  border: "1px solid " + (saveSuccess ? "rgba(16, 185, 129, 0.4)" : "var(--ms-brand, #0e7490)"),
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  lineHeight: "16px",
+                  fontWeight: 700,
+                  cursor: isSaving ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
+                  transition: "all 0.15s ease",
+                }}
+                title="Save changes directly to this model artifact"
+              >
+                {saveSuccess ? <CheckIcon size={12} /> : isSaving ? <SyncIcon size={12} /> : null}
+                <span>{saveSuccess ? "Saved!" : isSaving ? "Saving…" : "Save Artifact"}</span>
+              </button>
+            )}
             {Boolean(viewConfig?.standalone) && (
               <Button size="small" variant="primary" leadingVisual={DraftingTriangleIcon} onClick={handleFork}>
                 Sketch

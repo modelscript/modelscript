@@ -15,6 +15,8 @@ export interface ProfileData {
   following_count: number;
   post_count?: number | undefined;
   pinned_post_id?: number | string | null | undefined;
+  signing_verified?: boolean | number | undefined;
+  signing_policy_strict?: boolean | number | undefined;
   created_at: string;
 }
 

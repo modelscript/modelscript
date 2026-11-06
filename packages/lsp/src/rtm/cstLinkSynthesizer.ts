@@ -16,6 +16,158 @@ export interface WorkspaceTextEdit {
 }
 
 /**
+ * Checks whether the character at `targetOffset` is in code (not within line/block comments or strings).
+ */
+function isOffsetInCode(text: string, targetOffset: number): boolean {
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inString = false;
+
+  for (let i = 0; i < targetOffset && i < text.length; i++) {
+    const ch = text[i]!;
+    const next = i + 1 < text.length ? text[i + 1]! : "";
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+  }
+
+  return !inLineComment && !inBlockComment && !inString;
+}
+
+/**
+ * Finds the first regex match that starts at a valid code offset (not inside comments/strings).
+ */
+function findRegexInCode(text: string, regex: RegExp, startIndex = 0): RegExpExecArray | null {
+  const flags = regex.flags.includes("g") ? regex.flags : regex.flags + "g";
+  const r = new RegExp(regex.source, flags);
+  r.lastIndex = startIndex;
+  let match: RegExpExecArray | null;
+  while ((match = r.exec(text)) !== null) {
+    if (isOffsetInCode(text, match.index)) {
+      return match;
+    }
+    if (match.index === r.lastIndex) r.lastIndex++;
+  }
+  return null;
+}
+
+/**
+ * Finds the matching closing parenthesis `)` for an open parenthesis `(` at `openParenIdx`,
+ * skipping comments and strings.
+ */
+function findMatchingParen(text: string, openParenIdx: number): number {
+  let depth = 0;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inString = false;
+
+  for (let i = openParenIdx; i < text.length; i++) {
+    const ch = text[i]!;
+    const next = i + 1 < text.length ? text[i + 1]! : "";
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Expands a matched span to include leading indentation and trailing newline if it occupies a full line.
+ */
+function expandLineRange(text: string, start: number, end: number): { start: number; end: number } {
+  let lineStart = start;
+  while (lineStart > 0 && text[lineStart - 1] !== "\n" && text[lineStart - 1] !== "\r") {
+    if (text[lineStart - 1] !== " " && text[lineStart - 1] !== "\t") {
+      lineStart = start;
+      break;
+    }
+    lineStart--;
+  }
+
+  let lineEnd = end;
+  while (lineEnd < text.length && text[lineEnd] !== "\n" && text[lineEnd] !== "\r") {
+    if (text[lineEnd] !== " " && text[lineEnd] !== "\t") {
+      return { start: lineStart, end };
+    }
+    lineEnd++;
+  }
+  if (lineEnd < text.length && text[lineEnd] === "\r") lineEnd++;
+  if (lineEnd < text.length && text[lineEnd] === "\n") lineEnd++;
+
+  return { start: lineStart, end: lineEnd };
+}
+
+/**
  * Computes source code text edits to bi-directionally insert or delete
  * traceability links in SysML v2 and Modelica documents.
  */
@@ -60,8 +212,14 @@ export class CstLinkSynthesizer {
     linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
   ): WorkspaceTextEdit[] | null {
     if (linkKind === "connect") {
-      // Synthesize: connect sourceName to targetName;
-      const lastBraceIndex = documentText.lastIndexOf("}");
+      let lastBraceIndex = -1;
+      for (let i = documentText.length - 1; i >= 0; i--) {
+        if (documentText[i] === "}" && isOffsetInCode(documentText, i)) {
+          lastBraceIndex = i;
+          break;
+        }
+      }
+
       if (lastBraceIndex !== -1) {
         const pos = this.offsetToPosition(documentText, lastBraceIndex);
         return [
@@ -81,16 +239,23 @@ export class CstLinkSynthesizer {
       }
     }
 
-    // 1. Locate the source element declaration in documentText
-    const regex = new RegExp(
-      `\\b(part\\s+def|part|port\\s+def|port|action\\s+def|action|verification\\s+def|verification|hazard\\s+def|hazard|item\\s+def|item)\\s+${sourceName}\\b([^;{]*)(;|\\{)`,
+    // 1. Locate the source element declaration in documentText outside comments and strings
+    const escapedSource = sourceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const elemRegex = new RegExp(
+      `\\b(part\\s+def|part|port\\s+def|port|action\\s+def|action|verification\\s+def|verification|hazard\\s+def|hazard|item\\s+def|item|requirement\\s+def|requirement|attribute\\s+def|attribute|connection\\s+def|connection|allocation\\s+def|allocation)\\s+${escapedSource}\\b([^;{]*)(;|\\{)`,
       "m",
     );
 
-    const match = regex.exec(documentText);
+    const match = findRegexInCode(documentText, elemRegex);
     if (!match) {
       if (linkKind === "allocate") {
-        const lastBraceIndex = documentText.lastIndexOf("}");
+        let lastBraceIndex = -1;
+        for (let i = documentText.length - 1; i >= 0; i--) {
+          if (documentText[i] === "}" && isOffsetInCode(documentText, i)) {
+            lastBraceIndex = i;
+            break;
+          }
+        }
         if (lastBraceIndex !== -1) {
           const pos = this.offsetToPosition(documentText, lastBraceIndex);
           return [
@@ -120,8 +285,8 @@ export class CstLinkSynthesizer {
     const delimiter = match[3];
 
     if (delimiter === "{") {
-      const openBraceIndex = fullMatchIndex + match[0].length;
-      const pos = this.offsetToPosition(documentText, openBraceIndex);
+      const openBraceIndex = fullMatchIndex + match[0].length - 1;
+      const pos = this.offsetToPosition(documentText, openBraceIndex + 1);
       return [
         {
           range: { start: pos, end: pos },
@@ -164,12 +329,15 @@ export class CstLinkSynthesizer {
       ];
     }
 
+    const escapedTarget = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     if (linkKind === "connect" && sourceName) {
+      const escapedSource = sourceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const connectRegex = new RegExp(
-        `^[ \\t]*connect\\s+(${sourceName}\\s+to\\s+${targetName}|${targetName}\\s+to\\s+${sourceName})\\s*;[ \\t]*\\r?\\n?`,
+        `^[ \\t]*connect\\s+(${escapedSource}\\s+to\\s+${escapedTarget}|${escapedTarget}\\s+to\\s+${escapedSource})\\s*;[ \\t]*\\r?\\n?`,
         "m",
       );
-      const match = connectRegex.exec(documentText);
+      const match = findRegexInCode(documentText, connectRegex);
       if (match) {
         const startPos = this.offsetToPosition(documentText, match.index);
         const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
@@ -178,11 +346,12 @@ export class CstLinkSynthesizer {
     }
 
     if (linkKind === "allocate" && sourceName) {
+      const escapedSource = sourceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const allocRegex = new RegExp(
-        `^[ \\t]*allocate\\s+${sourceName}\\s+to\\s+${targetName}\\s*;[ \\t]*\\r?\\n?`,
+        `^[ \\t]*allocate\\s+${escapedSource}\\s+to\\s+${escapedTarget}\\s*;[ \\t]*\\r?\\n?`,
         "m",
       );
-      const match = allocRegex.exec(documentText);
+      const match = findRegexInCode(documentText, allocRegex);
       if (match) {
         const startPos = this.offsetToPosition(documentText, match.index);
         const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
@@ -200,8 +369,8 @@ export class CstLinkSynthesizer {
             : linkKind === "refine"
               ? "refine"
               : "allocate";
-    const lineRegex = new RegExp(`^[ \\t]*${keyword}\\s+(to\\s+)?${targetName}\\s*;[ \\t]*\\r?\\n?`, "m");
-    const match = lineRegex.exec(documentText);
+    const lineRegex = new RegExp(`^[ \\t]*${keyword}\\s+(to\\s+)?${escapedTarget}\\s*;[ \\t]*\\r?\\n?`, "m");
+    const match = findRegexInCode(documentText, lineRegex);
     if (!match) return null;
 
     const startPos = this.offsetToPosition(documentText, match.index);
@@ -224,9 +393,19 @@ export class CstLinkSynthesizer {
     targetReqName: string,
     linkKind: "satisfy" | "verify" | "allocate" = "satisfy",
   ): WorkspaceTextEdit[] | null {
-    // Find the `end <sourceClassName>;` of the model
-    const endRegex = new RegExp(`\\bend\\s+${sourceClassName}\\s*;`, "m");
-    const match = endRegex.exec(documentText);
+    const escapedClass = sourceClassName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // 1. Locate the class/model definition in code
+    const classDefRegex = new RegExp(
+      `\\b(model|block|class|record|package|connector|function|type)\\s+${escapedClass}\\b`,
+      "m",
+    );
+    const defMatch = findRegexInCode(documentText, classDefRegex);
+    const searchStart = defMatch ? defMatch.index : 0;
+
+    // 2. Find the matching `end <sourceClassName>;` of the model outside comments/strings
+    const endRegex = new RegExp(`\\bend\\s+${escapedClass}\\s*;`, "m");
+    const match = findRegexInCode(documentText, endRegex, searchStart);
     if (!match) return null;
 
     const attrName = linkKind === "satisfy" ? "satisfies" : linkKind === "verify" ? "verifies" : "allocates";
@@ -245,21 +424,38 @@ export class CstLinkSynthesizer {
    * Removes a traceability annotation from a Modelica model.
    */
   static removeModelicaTraceLink(documentText: string, targetReqName: string): WorkspaceTextEdit[] | null {
-    const annotRegex = new RegExp(
-      `^[ \\t]*annotation\\s*\\([\\s\\S]*?__modelscript\\s*\\([\\s\\S]*?"${targetReqName}"[\\s\\S]*?\\)\\s*\\);[ \\t]*\\r?\\n?`,
-      "m",
-    );
-    const match = annotRegex.exec(documentText);
-    if (!match) return null;
+    // Scan for `annotation` outside comments and strings
+    const annotKeywordRegex = /\bannotation\s*\(/g;
+    let match: RegExpExecArray | null;
+    while ((match = annotKeywordRegex.exec(documentText)) !== null) {
+      if (!isOffsetInCode(documentText, match.index)) continue;
 
-    const startPos = this.offsetToPosition(documentText, match.index);
-    const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
+      const openParenIdx = documentText.indexOf("(", match.index);
+      if (openParenIdx === -1) continue;
 
-    return [
-      {
-        range: { start: startPos, end: endPos },
-        newText: "",
-      },
-    ];
+      const closeParenIdx = findMatchingParen(documentText, openParenIdx);
+      if (closeParenIdx === -1) continue;
+
+      let semiIdx = closeParenIdx + 1;
+      while (semiIdx < documentText.length && /\s/.test(documentText[semiIdx]!)) {
+        semiIdx++;
+      }
+      if (semiIdx >= documentText.length || documentText[semiIdx] !== ";") continue;
+
+      const annotBody = documentText.slice(openParenIdx, closeParenIdx + 1);
+      if (annotBody.includes("__modelscript") && annotBody.includes(`"${targetReqName}"`)) {
+        const fullRange = expandLineRange(documentText, match.index, semiIdx + 1);
+        const startPos = this.offsetToPosition(documentText, fullRange.start);
+        const endPos = this.offsetToPosition(documentText, fullRange.end);
+        return [
+          {
+            range: { start: startPos, end: endPos },
+            newText: "",
+          },
+        ];
+      }
+    }
+
+    return null;
   }
 }

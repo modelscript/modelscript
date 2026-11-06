@@ -2,7 +2,12 @@
 
 import assert from "node:assert";
 import test from "node:test";
-import { computeSolderDots, solderDotToDiagramNode } from "../src/solder-dots.js";
+import {
+  computeSolderDots,
+  computeWireCrossings,
+  solderDotToDiagramNode,
+  wireCrossingToDiagramNode,
+} from "../src/solder-dots.js";
 
 test("Topological Solder Dot Junction Engine", async (t) => {
   await t.test("should detect T-junction between an edge endpoint and another edge segment", () => {
@@ -297,5 +302,93 @@ test("Topological Solder Dot Junction Engine", async (t) => {
     assert.strictEqual(dots.length, 1);
     assert.strictEqual(dots[0].x, 20);
     assert.strictEqual(dots[0].y, 30);
+  });
+
+  await t.test("should detect crossing between perpendicular horizontal and vertical wires without solder dots", () => {
+    const edges = [
+      {
+        id: "h_wire",
+        points: [
+          { x: 0, y: 50 },
+          { x: 100, y: 50 },
+        ],
+        color: "#1890ff",
+      },
+      {
+        id: "v_wire",
+        points: [
+          { x: 50, y: 0 },
+          { x: 50, y: 100 },
+        ],
+        color: "#1890ff",
+      },
+    ];
+
+    const dots = computeSolderDots(edges);
+    assert.strictEqual(dots.length, 0, "Perpendicular crossing without shared endpoints must not create a solder dot");
+
+    const crossings = computeWireCrossings(edges, dots);
+    assert.strictEqual(crossings.length, 1, "Must detect exactly 1 wire crossing");
+    assert.strictEqual(crossings[0].x, 50);
+    assert.strictEqual(crossings[0].y, 50);
+    assert.strictEqual(crossings[0].horizontalEdgeId, "h_wire");
+    assert.strictEqual(crossings[0].verticalEdgeId, "v_wire");
+
+    const node = wireCrossingToDiagramNode(crossings[0], true);
+    assert.strictEqual(node.type, "wire-crossing");
+    assert.strictEqual(node.x, 45); // 50 - half(5)
+    assert.strictEqual(node.y, 45);
+    assert.strictEqual(node.width, 10);
+    assert.strictEqual(node.height, 10);
+    assert.strictEqual(node.attrs?.arc?.stroke, "#1890ff");
+  });
+
+  await t.test("should not create jumpover when crossing is within tolerance of an existing solder dot", () => {
+    const edges = [
+      {
+        id: "h_wire",
+        points: [
+          { x: 0, y: 50 },
+          { x: 100, y: 50 },
+        ],
+        color: "#1890ff",
+      },
+      {
+        id: "v_wire",
+        points: [
+          { x: 50, y: 0 },
+          { x: 50, y: 100 },
+        ],
+        color: "#1890ff",
+      },
+    ];
+
+    const fakeSolderDots = [{ id: "dot1", x: 50, y: 50, color: "#1890ff" }];
+    const crossings = computeWireCrossings(edges, fakeSolderDots);
+    assert.strictEqual(crossings.length, 0, "Wire crossing at a solder dot must be suppressed");
+  });
+
+  await t.test("should not create jumpover when crossing is within tolerance of a component port", () => {
+    const edges = [
+      {
+        id: "h_wire",
+        points: [
+          { x: 0, y: 50 },
+          { x: 100, y: 50 },
+        ],
+        color: "#1890ff",
+      },
+      {
+        id: "v_wire",
+        points: [
+          { x: 50, y: 0 },
+          { x: 50, y: 100 },
+        ],
+        color: "#1890ff",
+      },
+    ];
+
+    const crossings = computeWireCrossings(edges, [], { portPoints: [{ x: 50, y: 50 }] });
+    assert.strictEqual(crossings.length, 0, "Wire crossing at a component port must be suppressed");
   });
 });

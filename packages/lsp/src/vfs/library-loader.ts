@@ -1334,10 +1334,26 @@ export async function ensureLibraryVersionMounted(
     }
   }
 
-  if (normName === "Modelica" && serverDistBase) {
-    await loadMSL(serverDistBase, ctx, dep.version);
+  const effectiveDistBase = serverDistBase || (globalThis as any).serverDistBase || "";
+
+  if (normName === "Modelica" && effectiveDistBase) {
+    await loadMSL(effectiveDistBase, ctx, dep.version);
+  } else if (normName === "SysML" && effectiveDistBase) {
+    await loadSysML2StandardLibrary(effectiveDistBase, ctx);
   } else {
-    await loadDependencyFromRegistry({ name: dep.name, version: dep.version }, ctx);
+    try {
+      await loadDependencyFromRegistry({ name: dep.name, version: dep.version }, ctx);
+    } catch (regErr) {
+      if (normName === "Modelica" && effectiveDistBase) {
+        ctx.logger.warn(`[deps] Registry load failed for Modelica, falling back to local MSL: ${regErr}`);
+        await loadMSL(effectiveDistBase, ctx, dep.version);
+      } else if (normName === "SysML" && effectiveDistBase) {
+        ctx.logger.warn(`[deps] Registry load failed for SysML, falling back to local SysML: ${regErr}`);
+        await loadSysML2StandardLibrary(effectiveDistBase, ctx);
+      } else {
+        throw regErr;
+      }
+    }
   }
   return true;
 }

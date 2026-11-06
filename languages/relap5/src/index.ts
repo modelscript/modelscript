@@ -2,6 +2,7 @@
 
 export * from "./dae/index.js";
 export * from "./errors.js";
+export * from "./grammar/index.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

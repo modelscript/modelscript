@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { strToU8, zipSync } from "fflate";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  TURBINE_BLADE_ROOT_STEP,
   isSynthesizedStep,
+  isTurbineBladeInspection,
   parseBinaryStl,
   readGeometryCompanion,
+  stepTextToGeometry,
   unionBounds,
 } from "../src/components/artifacts/qif-step-geometry";
 import { allBlockingIssues, needsWizard, planBatch, visibleSteps } from "../src/components/compose/attach/engine";
 import { genericAttachProfile } from "../src/components/compose/attach/profiles/generic";
 import {
+  detectStepUnits,
   qifAttachProfile,
   summarizeReconciliation,
   type QifAttachDraft,
@@ -21,6 +26,7 @@ import {
   resolveAttachProfile,
 } from "../src/components/compose/attach/registry";
 import type { AttachContext, AttachCreateArtifactInput } from "../src/components/compose/attach/types";
+import { classifyArtifactLocally, draftLocallyFromSummary } from "../src/util/composer-ai";
 
 const QIF_DSL = `
 QIF 3.0.0
@@ -230,6 +236,33 @@ describe("QIF part geometry helpers", () => {
     );
     assert.equal(isSynthesizedStep(STEP_TEXT), false);
   });
+
+  it("identifies the seeded turbine blade root inspection config", () => {
+    assert.equal(isTurbineBladeInspection({ filename: "TurbineBlade.qif" }), true);
+    assert.equal(
+      isTurbineBladeInspection({ title: "Aerospace HPT Blade Fir-Tree Root — ISO 23952 QIF 3.0 MBD & CMM Metrology" }),
+      true,
+    );
+    assert.equal(
+      isTurbineBladeInspection({ code: "FEATURE F_ROOT_BASE Plane ... FEATURE F_COOLING_BORE Cylinder ..." }),
+      true,
+    );
+    assert.equal(isTurbineBladeInspection({ filename: "other.qif" }), false);
+    assert.equal(isTurbineBladeInspection(null), false);
+    assert.equal(isTurbineBladeInspection(undefined), false);
+  });
+
+  it("tessellates seeded TURBINE_BLADE_ROOT_STEP into solid B-Rep geometry envelope", async () => {
+    assert.equal(isSynthesizedStep(TURBINE_BLADE_ROOT_STEP), false);
+    const geo = await stepTextToGeometry(TURBINE_BLADE_ROOT_STEP, "TurbineBladeRoot.step");
+    assert.ok(geo);
+    assert.equal(geo.payload.name, "TurbineBladeRoot.step");
+    assert.equal(geo.payload.isBodyEnvelope, true);
+    assert.ok(geo.payload.vertices.length > 0);
+    assert.ok(geo.bounds.max[0] > geo.bounds.min[0]);
+    assert.ok(geo.bounds.max[1] > geo.bounds.min[1]);
+    assert.ok(geo.bounds.max[2] > geo.bounds.min[2]);
+  });
 });
 
 describe("multi-file drop pairing", () => {
@@ -401,5 +434,179 @@ describe("QIF opened from an attached STEP model", () => {
     assert.equal(out.geometryMode, "linked");
     assert.equal(out.reconciliation, undefined);
     assert.equal(allBlockingIssues(qifAttachProfile, out, []).length, 0);
+  });
+});
+
+describe("QIF archive (.qifz and .zip) extraction & auto-pairing", () => {
+  it("unpacks a .qifz bundle and auto-pairs the enclosed STEP model", async () => {
+    const zipped = zipSync({
+      "blade.qif": strToU8(QIF_DSL),
+      "blade.step": strToU8(STEP_TEXT),
+    });
+    const zipFile = new File([zipped], "blade_inspection.qifz");
+    const analysis = await qifAttachProfile.analyze(zipFile, fakeCtx(newCalls()));
+
+    assert.equal(analysis.issues.length, 0);
+    assert.equal(analysis.draft.geometryMode, "upload");
+    assert.equal(analysis.draft.stepFile?.name, "blade.step");
+    assert.equal(analysis.draft.reconciliation?.matched, 2);
+    assert.ok(analysis.chips.some((c) => c.label.includes("Auto-paired: blade.step")));
+  });
+
+  it("reports an error when an archive contains no .qif file", async () => {
+    const zipped = zipSync({
+      "model.step": strToU8(STEP_TEXT),
+      "readme.txt": strToU8("just docs"),
+    });
+    const zipFile = new File([zipped], "empty_qif.zip");
+    const analysis = await qifAttachProfile.analyze(zipFile, fakeCtx(newCalls()));
+
+    assert.equal(analysis.issues.length, 1);
+    assert.equal(analysis.issues[0]?.severity, "error");
+    assert.match(analysis.issues[0]?.message ?? "", /No QIF.*found in this archive/i);
+  });
+});
+
+describe("Unit mismatch auto-detection and scaling", () => {
+  const INCH_STEP = `
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('STEP in inches'),'2;1');
+ENDSEC;
+DATA;
+#1 = (LENGTH_UNIT()NAMED_UNIT(*)CONVERSION_BASED_UNIT('INCH',#2));
+#10 = PLANE('DatumFaceA', #11);
+#101 = ADVANCED_FACE('DatumFaceA_Adv', (#12), #10, .T.);
+#20 = CYLINDRICAL_SURFACE('MainBoreCyl', #21, 0.492);
+#105 = ADVANCED_FACE('MainBoreFace', (#22), #20, .T.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  it("detects unit difference between inch STEP and mm QIF and sets 25.4 scale factor", async () => {
+    assert.equal(detectStepUnits(INCH_STEP), "inch");
+    const calls = newCalls();
+    const { draft } = await qifAttachProfile.analyze(new File([QIF_DSL], "blade.qif"), fakeCtx(calls));
+    const stepFile = new File([INCH_STEP], "inch_part.step");
+
+    const paired = await qifAttachProfile.withCompanions!(draft, [stepFile]);
+    assert.equal(paired.reconciliation?.unitMismatch?.suggestedScale, 25.4);
+    assert.equal(paired.scaleFactor, 25.4);
+
+    const built = await qifAttachProfile.build(
+      paired,
+      fakeCtx(calls, () => "cad-step"),
+    );
+    assert.equal(built.view_config["geometryScale"], 25.4);
+    const companion = readGeometryCompanion(built.view_config);
+    assert.equal(companion?.scaleFactor, 25.4);
+  });
+
+  it("parseBinaryStl scales vertex coordinates when scaleFactor is provided", () => {
+    // 84 header bytes + 1 triangle (50 bytes)
+    const buf = new Uint8Array(84 + 50);
+    const view = new DataView(buf.buffer);
+    view.setUint32(80, 1, true); // 1 triangle
+    // Normal: (0, 0, 1)
+    view.setFloat32(84 + 8, 1.0, true);
+    // V0: (1.0, 2.0, 3.0)
+    view.setFloat32(84 + 12, 1.0, true);
+    view.setFloat32(84 + 16, 2.0, true);
+    view.setFloat32(84 + 20, 3.0, true);
+
+    const unscaled = parseBinaryStl(buf, "test");
+    assert.equal(unscaled?.payload.vertices[0], 1.0);
+
+    const scaled = parseBinaryStl(buf, "test", 25.4);
+    assert.equal(scaled?.payload.vertices[0], 25.4);
+    assert.equal(scaled?.bounds.max[0], 25.4);
+  });
+});
+
+describe("Smart companion pairing by base name in planBatch", () => {
+  it("pairs files with matching base names across multiple drops", () => {
+    const undo = registerAttachProfile(qifAttachProfile);
+    try {
+      const files = [
+        new File([QIF_DSL], "housing_A.qif"),
+        new File([QIF_DSL], "housing_B.qif"),
+        new File([STEP_TEXT], "housing_B.step"),
+        new File([STEP_TEXT], "housing_A.step"),
+      ];
+      const batch = planBatch(files, resolveAttachProfile);
+      assert.equal(batch.length, 2);
+      assert.equal(batch[0]?.file.name, "housing_A.qif");
+      assert.equal(batch[0]?.companions[0]?.name, "housing_A.step");
+      assert.equal(batch[1]?.file.name, "housing_B.qif");
+      assert.equal(batch[1]?.companions[0]?.name, "housing_B.step");
+    } finally {
+      undo();
+    }
+  });
+});
+
+describe("AI Metrology Copilot classification & drafting", () => {
+  it("classifies QIF artifact and extracts metrology highlights and hashtags", () => {
+    const summary = classifyArtifactLocally({
+      artifact_type: "qif",
+      title: "TurbineBlade.qif",
+      view_config: {
+        code: QIF_DSL,
+        companions: { geometry: { title: "TurbineBlade.step" } },
+      },
+    });
+
+    assert.equal(summary.domain, "Digital Metrology & 3D MBD");
+    assert.ok(summary.suggestedHashtags.includes("#Metrology"));
+    assert.ok(summary.suggestedHashtags.includes("#QIF"));
+    assert.ok(summary.highlights.some((h) => h.includes("3D CAD Model: TurbineBlade.step")));
+    assert.ok(summary.highlights.some((h) => h.includes("features")));
+  });
+
+  it("drafts specialized First Article Inspection post", () => {
+    const summary = classifyArtifactLocally({
+      artifact_type: "qif",
+      title: "Impeller_FAI",
+      view_config: {
+        code: QIF_DSL,
+        companions: { geometry: { title: "Impeller.step" } },
+      },
+    });
+
+    const concise = draftLocallyFromSummary(summary, "concise");
+    assert.ok(concise.draft.includes("First Article Inspection"));
+    assert.ok(concise.draft.includes("Impeller_FAI"));
+    assert.ok(concise.draft.includes("#Metrology"));
+
+    const expand = draftLocallyFromSummary(summary, "expand");
+    assert.ok(expand.draft.includes("### Inspection Summary"));
+    assert.ok(expand.draft.includes("Bill of Characteristics"));
+  });
+});
+
+describe("QIF Live pairing & alignment (Phase 2)", () => {
+  it("summarizeReconciliation reports accurate byMethod breakdown", async () => {
+    const { parseQif } = await import("@modelscript/qif/parser");
+    const qifWithMixed = `
+QIF 3.0.0
+FEATURE F1 Plane "DatumPlane" step="#101" points=4
+FEATURE F2 Cylinder "MainBore" size=25.0 points=6
+FEATURE F3 Sphere "MissingSphere" size=16.0 step="#999" points=5
+`;
+    const doc = parseQif(qifWithMixed);
+    const summary = summarizeReconciliation(doc, STEP_TEXT);
+
+    assert.equal(summary.matched, 2);
+    assert.equal(summary.total, 3);
+    assert.equal(summary.unresolved.length, 1);
+    assert.equal(summary.unresolved[0], "MissingSphere");
+    assert.ok(summary.byMethod);
+    assert.equal(summary.byMethod.entityId, 1); // F1 matched #101 directly
+    assert.equal(summary.byMethod.semanticName, 1); // F2 matched MainBoreFace (#105) by name
+    assert.equal(summary.byMethod.spatialProximity, 0);
+  });
+
+  it("exposes QifPreview component on qifAttachProfile", () => {
+    assert.ok(qifAttachProfile.Preview !== undefined);
   });
 });

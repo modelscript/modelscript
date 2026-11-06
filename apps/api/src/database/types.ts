@@ -25,6 +25,8 @@ export interface UserFederationInfo {
   moved_to_actor_url?: string | null | undefined;
   profile_fields?: string | null | undefined;
   default_post_visibility?: string | undefined;
+  signing_verified?: number | boolean | undefined;
+  signing_policy_strict?: number | boolean | undefined;
 }
 
 export interface UserRow {
@@ -74,6 +76,46 @@ export interface UserRow {
   moved_to_actor_url?: string | null | undefined;
   profile_fields?: string | null | undefined;
   default_post_visibility?: string | undefined;
+  signing_verified?: number | boolean | undefined;
+  signing_policy_strict?: number | boolean | undefined;
+  branch_tip_oid?: string | null | undefined;
+}
+
+export interface AccountSigningKey {
+  id: number;
+  user_id: number;
+  public_key_multibase: string;
+  public_key_openssh: string;
+  fingerprint_sha256: string;
+  algo: string;
+  label?: string | null | undefined;
+  trust_level: string;
+  created_at: string;
+  activated_at: string;
+  revoked_at?: string | null | undefined;
+  revoked_reason?: string | null | undefined;
+  prev_key_id?: number | null | undefined;
+  rotation_proof?: string | null | undefined;
+}
+
+export interface AccountKeyLogEntry {
+  seq: number;
+  user_id: number;
+  event: string;
+  payload_json: string;
+  prev_hash: string;
+  entry_hash: string;
+  created_at: string;
+}
+
+export interface SignedPostEvidence {
+  post_id: string;
+  rev: number;
+  payload_json: string;
+  proof_json: string;
+  key_id?: number | null | undefined;
+  commit_oid?: string | null | undefined;
+  received_at: string;
 }
 
 export interface UserReferralRow {
@@ -209,6 +251,7 @@ export interface PostRow {
   display_name?: string | null | undefined;
   avatar_url?: string | null | undefined;
   account_type?: string | undefined;
+  signing_verified?: number | boolean | undefined;
   like_count?: number | undefined;
   reply_count?: number | undefined;
   repost_count?: number | undefined;
@@ -520,7 +563,8 @@ export interface IDatabase {
   ): void;
   getUserArchiveData(userId: number): UserArchiveData | null;
   getAllArtifactViews(): ArtifactViewRow[];
-  updateArtifactViewConfig(id: number, viewConfig: string): void;
+  updateArtifactViewConfig(id: number | string, viewConfig: string, title?: string | null | undefined): void;
+  listSignedPostEvidence(postId: string): SignedPostEvidence[];
 }
 
 export interface FederationRelayRow {

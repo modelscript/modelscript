@@ -4,6 +4,7 @@ import { parseQif } from "@modelscript/qif/parser";
 import { evaluateQifSpc } from "@modelscript/qif/spc";
 import { reconcileStepWithQif } from "@modelscript/qif/step-bridge";
 import type { QifDocument } from "@modelscript/qif/types";
+import { strFromU8, unzipSync } from "fflate";
 import React, { useCallback } from "react";
 import { ArtifactPicker, ChoiceCards, FileSlot, IssueList, ProvenanceBadge } from "../Primitives";
 import type {
@@ -15,13 +16,24 @@ import type {
   AttachProfile,
   WizardStepProps,
 } from "../types";
+import { QifPreview, qifPreviewRenderer } from "./QifPreview";
+export { QifPreview, qifPreviewRenderer };
 
 export type QifGeometryMode = "none" | "upload" | "linked";
+
+export interface QifUnitMismatch {
+  qifUnit: string;
+  stepUnit: string;
+  ratio: number;
+  suggestedScale: number;
+}
 
 export interface QifReconciliationSummary {
   matched: number;
   total: number;
   unresolved: string[];
+  unitMismatch?: QifUnitMismatch | undefined;
+  byMethod?: { entityId: number; semanticName: number; spatialProximity: number } | undefined;
 }
 
 export interface QifAttachDraft {
@@ -34,6 +46,7 @@ export interface QifAttachDraft {
   linked?: { id: number | string; title: string } | undefined;
   reconciliation?: QifReconciliationSummary | undefined;
   reconciliationError?: string | undefined;
+  scaleFactor?: number | undefined;
   /** Kept so reconciliation can be recomputed without re-parsing when the geometry changes. */
   doc: QifDocument;
 }
@@ -41,13 +54,119 @@ export interface QifAttachDraft {
 export const QIF_GEOMETRY_ACCEPT = ".step,.stp,.p21";
 const STEP_VIEW_TYPES = ["cad-step", "cad_step", "step", "stp", "cad"];
 
+export function detectStepUnits(stepText: string): "mm" | "inch" | "meter" | "unknown" {
+  if (
+    /CONVERSION_BASED_UNIT\s*\(\s*['"]INCH['"]/i.test(stepText) ||
+    /SI_UNIT\s*\(\s*[^,)]*,\s*\.INCH\.\s*\)/i.test(stepText) ||
+    /NAMED_UNIT\s*\([^)]*\)\s*,\s*CONVERSION_BASED_UNIT\s*\(\s*['"]INCH['"]/i.test(stepText)
+  ) {
+    return "inch";
+  }
+  if (/SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(stepText)) {
+    return "mm";
+  }
+  if (/SI_UNIT\s*\(\s*\$\s*,\s*\.METRE\.\s*\)/i.test(stepText)) {
+    return "meter";
+  }
+  return "unknown";
+}
+
+export function detectQifUnits(doc: QifDocument): "mm" | "inch" | "meter" | "unknown" {
+  const raw = (doc.header.fileUnits || "").toLowerCase().trim();
+  if (raw.includes("inch") || raw === "in") return "inch";
+  if (raw.includes("milli") || raw === "mm") return "mm";
+  if (raw.includes("meter") || raw === "m") return "meter";
+  return "unknown";
+}
+
+export function detectUnitMismatch(doc: QifDocument, stepText: string): QifUnitMismatch | undefined {
+  const qifUnit = detectQifUnits(doc);
+  const stepUnit = detectStepUnits(stepText);
+
+  if (qifUnit !== "unknown" && stepUnit !== "unknown" && qifUnit !== stepUnit) {
+    if (qifUnit === "mm" && stepUnit === "inch") {
+      return { qifUnit: "mm", stepUnit: "inch", ratio: 25.4, suggestedScale: 25.4 };
+    }
+    if (qifUnit === "inch" && stepUnit === "mm") {
+      return { qifUnit: "inch", stepUnit: "mm", ratio: 1 / 25.4, suggestedScale: 1 / 25.4 };
+    }
+    if (qifUnit === "mm" && stepUnit === "meter") {
+      return { qifUnit: "mm", stepUnit: "meter", ratio: 1000, suggestedScale: 1000 };
+    }
+  }
+
+  // Coordinate magnitude heuristic:
+  const ptRegex =
+    /CARTESIAN_POINT\s*\([^)]*,\s*\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*(?:,\s*([-+0-9.eE]+))?\s*\)\s*\)/g;
+  let sMatch: RegExpExecArray | null;
+  let maxStepCoord = 0;
+  let stepPtCount = 0;
+  while ((sMatch = ptRegex.exec(stepText)) !== null && stepPtCount < 300) {
+    stepPtCount++;
+    const x = Math.abs(parseFloat(sMatch[1] || "0"));
+    const y = Math.abs(parseFloat(sMatch[2] || "0"));
+    const z = Math.abs(parseFloat(sMatch[3] || "0"));
+    const m = Math.max(x, y, z);
+    if (m > maxStepCoord) maxStepCoord = m;
+  }
+
+  let maxQifCoord = 0;
+  for (const feat of doc.features) {
+    if (feat.nominalSize && feat.nominalSize > maxQifCoord) maxQifCoord = feat.nominalSize;
+    if (feat.location) {
+      const [x, y, z] = feat.location;
+      const m = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+      if (m > maxQifCoord) maxQifCoord = m;
+    }
+  }
+
+  if (maxStepCoord > 0 && maxQifCoord > 0) {
+    const ratio = maxQifCoord / maxStepCoord;
+    if (ratio >= 20 && ratio <= 30) {
+      return {
+        qifUnit: qifUnit !== "unknown" ? qifUnit : "mm",
+        stepUnit: stepUnit !== "unknown" ? stepUnit : "inch",
+        ratio,
+        suggestedScale: 25.4,
+      };
+    }
+    if (ratio >= 0.03 && ratio <= 0.05) {
+      return {
+        qifUnit: qifUnit !== "unknown" ? qifUnit : "inch",
+        stepUnit: stepUnit !== "unknown" ? stepUnit : "mm",
+        ratio,
+        suggestedScale: 1 / 25.4,
+      };
+    }
+    if (ratio >= 800 && ratio <= 1200) {
+      return {
+        qifUnit: qifUnit !== "unknown" ? qifUnit : "mm",
+        stepUnit: stepUnit !== "unknown" ? stepUnit : "meter",
+        ratio,
+        suggestedScale: 1000,
+      };
+    }
+  }
+
+  return undefined;
+}
+
 /** Match the QIF's STEP entity references against a STEP model. Pure, so it is unit-testable. */
 export function summarizeReconciliation(doc: QifDocument, stepText: string): QifReconciliationSummary {
   const result = reconcileStepWithQif(stepText, doc);
+  const unitMismatch = detectUnitMismatch(doc, stepText);
+  const byMethod = { entityId: 0, semanticName: 0, spatialProximity: 0 };
+  for (const m of result.matchedFeatures) {
+    if (m.matchType === "entityId") byMethod.entityId++;
+    else if (m.matchType === "semanticName") byMethod.semanticName++;
+    else if (m.matchType === "spatialProximity") byMethod.spatialProximity++;
+  }
   return {
     matched: result.matchedFeatures.length,
     total: result.matchedFeatures.length + result.unresolvedFeatures.length,
     unresolved: result.unresolvedFeatures.map((f) => f.featureName || f.featureId),
+    byMethod,
+    ...(unitMismatch ? { unitMismatch } : {}),
   };
 }
 
@@ -69,17 +188,31 @@ function geometryIssues(d: QifAttachDraft): AttachIssue[] {
       message: `${r.unresolved.length} of ${r.total} features reference STEP entities that were not found in this model (${r.unresolved.slice(0, 3).join(", ")}${r.unresolved.length > 3 ? ", …" : ""}).`,
     });
   }
+  if (r?.unitMismatch) {
+    const factorStr =
+      r.unitMismatch.ratio > 1 ? r.unitMismatch.ratio.toFixed(1) : (1 / r.unitMismatch.ratio).toFixed(1);
+    issues.push({
+      severity: "warning",
+      message: `Unit mismatch detected: QIF report is in ${r.unitMismatch.qifUnit} while STEP model is in ${r.unitMismatch.stepUnit} (~${factorStr}× difference). A scale factor of ${r.unitMismatch.suggestedScale}× will be applied.`,
+    });
+  }
   return issues;
 }
 
 function reconcileSafely(d: QifAttachDraft, stepText: string | undefined): Partial<QifAttachDraft> {
-  if (!stepText) return { reconciliation: undefined, reconciliationError: undefined };
+  if (!stepText) return { reconciliation: undefined, reconciliationError: undefined, scaleFactor: undefined };
   try {
-    return { reconciliation: summarizeReconciliation(d.doc, stepText), reconciliationError: undefined };
+    const summary = summarizeReconciliation(d.doc, stepText);
+    return {
+      reconciliation: summary,
+      reconciliationError: undefined,
+      scaleFactor: summary.unitMismatch ? summary.unitMismatch.suggestedScale : undefined,
+    };
   } catch {
     return {
       reconciliation: undefined,
       reconciliationError: "Could not read this STEP file to check feature matches.",
+      scaleFactor: undefined,
     };
   }
 }
@@ -175,11 +308,31 @@ const GeometryStep: React.FC<WizardStepProps<QifAttachDraft>> = ({ draft, update
           {r && r.total > 0 && (
             <span style={{ fontSize: 13, color: r.unresolved.length === 0 ? "#16a34a" : "var(--ms-text-2)" }}>
               {r.matched}/{r.total} features matched to STEP entities
+              {r.byMethod && (r.byMethod.semanticName > 0 || r.byMethod.spatialProximity > 0) && (
+                <span style={{ fontSize: 11, color: "var(--ms-text-3)", marginLeft: 6 }}>
+                  ({r.byMethod.entityId} direct, {r.byMethod.semanticName} by name, {r.byMethod.spatialProximity} by
+                  proximity)
+                </span>
+              )}
             </span>
           )}
           {r && r.total === 0 && (
             <span style={{ fontSize: 13, color: "var(--ms-text-3)" }}>
               This report doesn&apos;t reference STEP entity IDs, so features can&apos;t be tied to faces automatically.
+            </span>
+          )}
+          {r?.unitMismatch && (
+            <span
+              style={{
+                fontSize: 12,
+                padding: "2px 8px",
+                borderRadius: "12px",
+                background: "rgba(245, 158, 11, 0.15)",
+                color: "#f59e0b",
+                fontWeight: 600,
+              }}
+            >
+              Scale: {r.unitMismatch.suggestedScale}× ({r.unitMismatch.stepUnit} → {r.unitMismatch.qifUnit})
             </span>
           )}
         </div>
@@ -198,10 +351,17 @@ function readGeometryRef(config: Record<string, unknown>): GeometryRef | undefin
   const rec = g as Record<string, unknown>;
   const id = rec["artifactId"];
   if (typeof id !== "string" && typeof id !== "number") return undefined;
+  const sf =
+    typeof rec["scaleFactor"] === "number" && rec["scaleFactor"] > 0
+      ? rec["scaleFactor"]
+      : typeof config["geometryScale"] === "number" && (config["geometryScale"] as number) > 0
+        ? (config["geometryScale"] as number)
+        : undefined;
   return {
     artifactId: id,
     title: typeof rec["title"] === "string" ? rec["title"] : `Artifact ${id}`,
     provenance: rec["provenance"] === "user-provided" ? "user-provided" : "linked",
+    ...(sf !== undefined ? { scaleFactor: sf } : {}),
   };
 }
 
@@ -209,10 +369,12 @@ interface GeometryRef {
   artifactId: number | string;
   title: string;
   provenance: "user-provided" | "linked";
+  scaleFactor?: number | undefined;
 }
 
 /** Turn the user's geometry choice into a stored reference, creating the STEP artifact when it was uploaded. */
 async function resolveGeometryRef(draft: QifAttachDraft, ctx: AttachContext): Promise<GeometryRef | undefined> {
+  const scaleFactor = draft.scaleFactor ?? draft.reconciliation?.unitMismatch?.suggestedScale;
   if (draft.geometryMode === "upload" && draft.stepFile) {
     const stepUpload = await ctx.uploadFile(draft.stepFile);
     const created = await ctx.createArtifact({
@@ -225,12 +387,100 @@ async function resolveGeometryRef(draft: QifAttachDraft, ctx: AttachContext): Pr
         ...(stepUpload.metadata || {}),
       },
     });
-    return { artifactId: created.id, title: draft.stepFile.name, provenance: "user-provided" };
+    return {
+      artifactId: created.id,
+      title: draft.stepFile.name,
+      provenance: "user-provided",
+      ...(scaleFactor !== undefined ? { scaleFactor } : {}),
+    };
   }
   if (draft.geometryMode === "linked" && draft.linked) {
-    return { artifactId: draft.linked.id, title: draft.linked.title, provenance: "linked" };
+    return {
+      artifactId: draft.linked.id,
+      title: draft.linked.title,
+      provenance: "linked",
+      ...(scaleFactor !== undefined ? { scaleFactor } : {}),
+    };
   }
   return undefined;
+}
+
+export function isArchive(fileName: string): boolean {
+  const ext = fileName.toLowerCase();
+  return ext.endsWith(".qifz") || ext.endsWith(".zip");
+}
+
+export function extractQifFromArchive(
+  unzipped: Record<string, Uint8Array>,
+  _archiveFileName: string,
+): { qifFile: File; qifText: string; stepFile?: File; stepText?: string } | null {
+  const entries = Object.keys(unzipped).filter((k) => !k.startsWith("__MACOSX/") && !k.endsWith("/"));
+  const qifEntry = entries.find((k) => k.toLowerCase().endsWith(".qif"));
+  if (!qifEntry) return null;
+
+  const qifText = strFromU8(unzipped[qifEntry]!);
+  const qifFileName = qifEntry.split("/").pop() || "inspection.qif";
+  const qifFile = new File([qifText], qifFileName);
+
+  const stepEntry = entries.find((k) => /\.(step|stp|p21)$/i.test(k));
+  let stepFile: File | undefined;
+  let stepText: string | undefined;
+  if (stepEntry) {
+    stepText = strFromU8(unzipped[stepEntry]!);
+    const stepFileName = stepEntry.split("/").pop() || "geometry.step";
+    stepFile = new File([stepText], stepFileName);
+  }
+
+  return { qifFile, qifText, stepFile, stepText };
+}
+
+export async function analyzeQifArchive(file: File, _ctx: AttachContext): Promise<AttachAnalysis<QifAttachDraft>> {
+  let unzipped: Record<string, Uint8Array>;
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    unzipped = unzipSync(buf);
+  } catch (err) {
+    const emptyDoc = parseQif("", file.name);
+    return {
+      draft: { file, text: "", geometryMode: "none", doc: emptyDoc },
+      chips: [],
+      issues: [
+        {
+          severity: "error",
+          message: `Could not read archive: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ],
+    };
+  }
+
+  const extracted = extractQifFromArchive(unzipped, file.name);
+  if (!extracted) {
+    const emptyDoc = parseQif("", file.name);
+    return {
+      draft: { file, text: "", geometryMode: "none", doc: emptyDoc },
+      chips: [],
+      issues: [
+        {
+          severity: "error",
+          message: "No QIF (.qif) inspection document found in this archive.",
+        },
+      ],
+    };
+  }
+
+  const analysis = describeQif(extracted.qifFile, extracted.qifText);
+  if (extracted.stepFile && extracted.stepText) {
+    analysis.draft = {
+      ...analysis.draft,
+      geometryMode: "upload",
+      stepFile: extracted.stepFile,
+      stepText: extracted.stepText,
+      ...reconcileSafely(analysis.draft, extracted.stepText),
+    };
+    analysis.chips.push({ label: `Auto-paired: ${extracted.stepFile.name}`, tone: "success" });
+  }
+
+  return analysis;
 }
 
 function describeQif(file: File, text: string): AttachAnalysis<QifAttachDraft> {
@@ -278,9 +528,12 @@ function describeQif(file: File, text: string): AttachAnalysis<QifAttachDraft> {
 export const qifAttachProfile: AttachProfile<QifAttachDraft> = {
   id: "qif",
   label: "QIF inspection report",
-  match: { extensions: [".qif"] },
+  match: { extensions: [".qif", ".qifz"] },
 
-  async analyze(file): Promise<AttachAnalysis<QifAttachDraft>> {
+  async analyze(file, ctx): Promise<AttachAnalysis<QifAttachDraft>> {
+    if (isArchive(file.name)) {
+      return analyzeQifArchive(file, ctx);
+    }
     return describeQif(file, await file.text());
   },
 
@@ -322,6 +575,8 @@ export const qifAttachProfile: AttachProfile<QifAttachDraft> = {
       Component: GeometryStep,
     },
   ],
+
+  Preview: QifPreview,
 
   edit: {
     matches: (view) =>
@@ -374,12 +629,28 @@ export const qifAttachProfile: AttachProfile<QifAttachDraft> = {
     delete additions["stepCode"];
 
     const geometry = await resolveGeometryRef(draft, ctx);
+    const scaleFactor = draft.scaleFactor ?? draft.reconciliation?.unitMismatch?.suggestedScale;
 
     const reportBits = [`${draft.doc.features.length} features`, `${draft.doc.characteristics.length} characteristics`];
+    let spcDetail = "";
+    try {
+      const spc = evaluateQifSpc(draft.doc);
+      const cpks = spc.characteristics.map((c) => c.cpk).filter((v) => Number.isFinite(v));
+      const failCount = spc.characteristics.filter((c) => c.status === "FAIL").length;
+      if (failCount > 0) {
+        spcDetail = ` (${failCount} out of tolerance)`;
+      } else if (cpks.length > 0) {
+        spcDetail = ` (Min Cpk ${Math.min(...cpks).toFixed(2)})`;
+      }
+    } catch {}
+
+    const modelSuffix = geometry ? ` · Paired with 3D model '${geometry.title}'` : "";
+    const suggestedCaption = `Inspection report${draft.partName ? ` for ${draft.partName}` : ""}: ${reportBits.join(", ")}${spcDetail}${modelSuffix}.`;
+
     return {
       artifact_type: upload.view_type && upload.view_type !== "other" ? upload.view_type : "qif",
       title: draft.file.name,
-      suggestedCaption: `Inspection report${draft.partName ? ` for ${draft.partName}` : ""}: ${reportBits.join(", ")}.`,
+      suggestedCaption,
       view_config: {
         url: upload.url,
         ...(upload.svg ? { svg: upload.svg } : {}),
@@ -388,6 +659,7 @@ export const qifAttachProfile: AttachProfile<QifAttachDraft> = {
         ...(upload.metadata || {}),
         code: draft.text,
         ...(geometry ? { companions: { geometry } } : {}),
+        ...(scaleFactor !== undefined ? { geometryScale: scaleFactor } : {}),
       },
     };
   },

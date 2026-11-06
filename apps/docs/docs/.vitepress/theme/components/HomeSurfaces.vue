@@ -1,8 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import { computed } from "vue";
 import type { IconName } from "../data/icons";
 import mcpData from "../data/mcp-tools.generated.json";
 import { type Tone, toneStyle } from "../data/tones";
+import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
 
 type SurfaceId = "sketch" | "playground" | "webide" | "vscode" | "cli" | "mcp" | "desktop";
@@ -19,7 +21,9 @@ interface Surface {
   target?: string;
 }
 
-const surfaces: Surface[] = [
+const { ansatzOrigin } = useAnsatzOrigin();
+
+const surfaces = computed<Surface[]>(() => [
   {
     id: "sketch",
     icon: "globe",
@@ -27,9 +31,9 @@ const surfaces: Surface[] = [
     title: "Sketch",
     body: "Draft, simulate, and visualize models in your browser. Nothing to install.",
     cta: "Try Sketch",
-    link: "/sketch",
+    link: `${ansatzOrigin.value}/sketch`,
     tag: "Zero install",
-    target: "_self",
+    target: "_blank",
   },
   {
     id: "webide",
@@ -38,8 +42,8 @@ const surfaces: Surface[] = [
     title: "Studio",
     body: "A full VS Code-based workbench with diagrams, plots, and a simulation debugger.",
     cta: "Launch Studio",
-    link: "/studio",
-    target: "_self",
+    link: `${ansatzOrigin.value}/studio`,
+    target: "_blank",
   },
   {
     id: "vscode",
@@ -78,7 +82,7 @@ const surfaces: Surface[] = [
     cta: "Download",
     link: "https://github.com/modelscript/modelscript/releases",
   },
-];
+]);
 </script>
 
 <template>

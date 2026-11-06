@@ -10,6 +10,7 @@ export interface ComposeInitialState {
   content?: string | undefined;
   initialContent?: string | undefined;
   defaultText?: string | undefined;
+  contentWarning?: string | undefined;
   artifactId?: number | string | null | undefined;
   artifactViewId?: number | string | null | undefined;
   quotePost?: any;

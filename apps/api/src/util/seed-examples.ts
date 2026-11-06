@@ -226,7 +226,12 @@ export async function seedPrepackagedLibraries(
   database: LibraryDatabase,
   jobQueue: JobQueue,
 ): Promise<void> {
-  const requestedPacks = (process.env["STDLIB_PACKS"] || "all")
+  const isFlagship =
+    process.env["DEPLOYMENT_PRESET"] === "tier3_flagship" ||
+    process.env["ANSATZ_TIER"] === "tier3_flagship" ||
+    process.env["MSX_SETUP_PRESET"] === "tier3_flagship";
+  const defaultPacks = isFlagship ? "modelica" : "all";
+  const requestedPacks = (process.env["STDLIB_PACKS"] || defaultPacks)
     .split(",")
     .map((p) => p.trim())
     .filter(Boolean);
@@ -408,6 +413,10 @@ export async function seedPrepackagedLibraries(
     }
 
     if (!zipBuffer || !resolvedZipPath) {
+      if (pkg.tier === "tier3_ondemand") {
+        console.log(`[Seed] Skipping on-demand library ${pkg.name}@${pkg.version} (not bundled on disk).`);
+        continue;
+      }
       if (pkg.upstream?.url) {
         console.log(
           `[Seed] Archive for ${pkg.name}@${pkg.version} not found locally on disk. Attempting on-the-fly download...`,

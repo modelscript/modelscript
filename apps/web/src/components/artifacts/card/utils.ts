@@ -14,7 +14,8 @@ export function resolvePlaceholder(vt?: string): PlaceholderType {
     v === "cad-3d-viewer" ||
     v === "step" ||
     v === "stp" ||
-    v === "3d-model"
+    v === "3d-model" ||
+    v === "qif"
   ) {
     return "cad";
   }
@@ -81,16 +82,39 @@ export function resolveThumbnailUrls(viewConfig: any): {
   let resolvedThumbnailUrl = viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url;
   if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/thumbnails/")) {
     resolvedThumbnailUrl = `/api${resolvedThumbnailUrl}`;
+  } else if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/uploads/")) {
+    resolvedThumbnailUrl = `/api/v1/storage${resolvedThumbnailUrl}`;
   }
 
   let resolvedThumbnailUrlLight = viewConfig?.thumbnailUrlLight;
   if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/thumbnails/")) {
     resolvedThumbnailUrlLight = `/api${resolvedThumbnailUrlLight}`;
+  } else if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/uploads/")) {
+    resolvedThumbnailUrlLight = `/api/v1/storage${resolvedThumbnailUrlLight}`;
   }
 
   let resolvedThumbnailUrlDark = viewConfig?.thumbnailUrlDark;
   if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.startsWith("/thumbnails/")) {
     resolvedThumbnailUrlDark = `/api${resolvedThumbnailUrlDark}`;
+  } else if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.startsWith("/uploads/")) {
+    resolvedThumbnailUrlDark = `/api/v1/storage${resolvedThumbnailUrlDark}`;
+  }
+
+  // If a pre-generated vector SVG is available in viewConfig and the thumbnail is either missing
+  // or a stale auto-captured raster snapshot (/thumbnails/artifact_), prioritize the pristine vector SVG.
+  const hasInlineSvg = typeof viewConfig?.svg === "string" && viewConfig.svg.trim().startsWith("<svg");
+  const isStaleRaster = !resolvedThumbnailUrl || resolvedThumbnailUrl.includes("/thumbnails/artifact_");
+  if (hasInlineSvg && isStaleRaster) {
+    const dataUri = `data:image/svg+xml;utf8,${encodeURIComponent(viewConfig.svg.trim())}`;
+    resolvedThumbnailUrl = dataUri;
+    resolvedThumbnailUrlLight =
+      resolvedThumbnailUrlLight && !resolvedThumbnailUrlLight.includes("/thumbnails/artifact_")
+        ? resolvedThumbnailUrlLight
+        : dataUri;
+    resolvedThumbnailUrlDark =
+      resolvedThumbnailUrlDark && !resolvedThumbnailUrlDark.includes("/thumbnails/artifact_")
+        ? resolvedThumbnailUrlDark
+        : dataUri;
   }
 
   return {

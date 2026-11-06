@@ -20,6 +20,7 @@ interface LazyHeavyViewerProps {
     | "fea"
     | "cfd"
     | "cad"
+    | "qif"
     | "pdf"
     | "gcode"
     | "fmu"
@@ -30,6 +31,7 @@ interface LazyHeavyViewerProps {
     | "generic"
     | string
     | undefined;
+  height?: string | undefined;
   children: React.ReactNode;
 }
 
@@ -49,6 +51,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   title,
   isFullScreen = false,
   placeholderType = "generic",
+  height,
   children,
 }) => {
   const [isActive, setIsActive] = useState(isFullScreen);
@@ -154,7 +157,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     return () => observer.disconnect();
   }, [isActive, isFullScreen]);
 
-  const containerHeight = isFullScreen ? "100%" : "450px";
+  const containerHeight = isFullScreen ? "100%" : height || "450px";
 
   if (isActive || isFullScreen) {
     return (

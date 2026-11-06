@@ -95,10 +95,10 @@ export default defineConfig({
   },
   vite: {
     build: {
-      target: "esnext",
+      target: ["es2020", "safari15"],
     },
     esbuild: {
-      target: "esnext",
+      target: ["es2020", "safari15"],
     },
     resolve: {
       dedupe: ["three"],
@@ -110,7 +110,7 @@ export default defineConfig({
         "three/examples/jsm/utils/BufferGeometryUtils.js",
       ],
       esbuildOptions: {
-        target: "esnext",
+        target: ["es2020", "safari15"],
       },
     },
   },
@@ -336,6 +336,7 @@ export default defineConfig({
           text: "Ansatz Platform",
           items: [
             { text: "Overview & Architecture", link: "/ansatz/overview" },
+            { text: "Workflow Replacement Guide", link: "/ansatz/workflow-replacement" },
             { text: "ActivityPub Federation", link: "/ansatz/federation" },
             { text: "Package Registry", link: "/ansatz/package-registry" },
             { text: "Cloud HPC Simulation", link: "/ansatz/cloud-hpc" },
@@ -349,6 +350,7 @@ export default defineConfig({
           text: "Ansatz Platform",
           items: [
             { text: "Overview & Architecture", link: "/ansatz/overview" },
+            { text: "Workflow Replacement Guide", link: "/ansatz/workflow-replacement" },
             { text: "ActivityPub Federation", link: "/ansatz/federation" },
             { text: "Package Registry", link: "/ansatz/package-registry" },
             { text: "Cloud HPC Simulation", link: "/ansatz/cloud-hpc" },

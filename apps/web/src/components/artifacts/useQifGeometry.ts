@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { getArtifactView } from "../../api";
 import { artifactViewTitle, extractArtifactSourceText } from "../compose/attach/artifact-source";
-import { type StepGeometry, readGeometryCompanion, stepTextToGeometry } from "./qif-step-geometry";
+import {
+  type StepGeometry,
+  TURBINE_BLADE_ROOT_STEP,
+  isTurbineBladeInspection,
+  readGeometryCompanion,
+  stepTextToGeometry,
+} from "./qif-step-geometry";
 
 export type QifGeometryState =
   | { status: "none" }
@@ -17,8 +23,9 @@ interface Resolved {
 }
 
 /**
- * Resolves the part geometry for a QIF artifact: a referenced STEP artifact (preferred) or inline
- * legacy `stepCode`/`stepSource`. Never fabricates geometry; with neither it reports `none`.
+ * Resolves the part geometry for a QIF artifact: a referenced STEP artifact (preferred), inline
+ * legacy `stepCode`/`stepSource`, or standard companion geometry for the seeded turbine root.
+ * Never fabricates geometry for unknown models; without one it reports `none`.
  */
 export function useQifGeometry(
   viewConfig: Record<string, unknown> | null | undefined,
@@ -26,11 +33,19 @@ export function useQifGeometry(
 ): QifGeometryState {
   const companion = readGeometryCompanion(viewConfig);
   const artifactId = companion ? String(companion.artifactId) : undefined;
-  const companionTitle = companion?.title;
+  const isTurbine = isTurbineBladeInspection(viewConfig);
+  const effectiveStepText = legacyStepText ?? (isTurbine ? TURBINE_BLADE_ROOT_STEP : undefined);
+
+  const companionTitle =
+    companion?.title ??
+    (typeof viewConfig?.["stepTitle"] === "string" ? (viewConfig["stepTitle"] as string) : undefined) ??
+    (typeof viewConfig?.["stepFilename"] === "string" ? (viewConfig["stepFilename"] as string) : undefined) ??
+    (isTurbine ? "TurbineBladeRoot.step" : undefined);
+
   const key = artifactId
     ? `c:${artifactId}`
-    : legacyStepText
-      ? `l:${legacyStepText.length}:${legacyStepText.slice(0, 48)}`
+    : effectiveStepText
+      ? `l:${effectiveStepText.length}:${effectiveStepText.slice(0, 48)}`
       : undefined;
   const [resolved, setResolved] = useState<Resolved | null>(null);
 
@@ -40,7 +55,7 @@ export function useQifGeometry(
     void (async () => {
       let state: QifGeometryState;
       try {
-        let stepText = legacyStepText;
+        let stepText = effectiveStepText;
         let title = companionTitle;
         if (artifactId) {
           const view: unknown = await getArtifactView(artifactId);
@@ -50,7 +65,10 @@ export function useQifGeometry(
         if (!stepText) {
           state = { status: "error", title, message: "The paired STEP model could not be loaded." };
         } else {
-          const geometry = await stepTextToGeometry(stepText, title ?? "STEP part");
+          const scaleFactor =
+            companion?.scaleFactor ??
+            (typeof viewConfig?.["geometryScale"] === "number" ? (viewConfig["geometryScale"] as number) : 1.0);
+          const geometry = await stepTextToGeometry(stepText, title ?? "STEP part", scaleFactor);
           state = { status: "ready", title, stepText, geometry };
         }
       } catch (err) {
@@ -65,7 +83,7 @@ export function useQifGeometry(
     return () => {
       cancelled = true;
     };
-  }, [key, artifactId, companionTitle, legacyStepText]);
+  }, [key, artifactId, companionTitle, effectiveStepText, viewConfig, companion]);
 
   if (!key) return { status: "none" };
   return resolved?.key === key ? resolved.state : { status: "loading", title: companionTitle };

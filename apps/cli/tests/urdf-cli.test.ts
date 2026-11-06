@@ -32,6 +32,13 @@ const ROBOT_URDF = `<?xml version="1.0"?>
 test("ROS URDF CLI Commands (msx urdf lint, rnea, to-modelica, to-simpack, to-adams, to-dae)", async (t) => {
   const tmpDir = path.resolve(process.cwd(), "data/scratch_urdf_cli");
   fs.mkdirSync(tmpDir, { recursive: true });
+  t.after(() => {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // Ignore
+    }
+  });
 
   const urdfFile = path.join(tmpDir, "arm.urdf");
   fs.writeFileSync(urdfFile, ROBOT_URDF, "utf-8");
@@ -110,5 +117,71 @@ test("ROS URDF CLI Commands (msx urdf lint, rnea, to-modelica, to-simpack, to-ad
     } finally {
       console.log = origLog;
     }
+  });
+
+  await t.test("msx urdf simulate (forward dynamics to CSV and JSON)", async () => {
+    const outCsv = path.join(tmpDir, "sim.csv");
+    await (UrdfCommand.handler as any)({
+      action: "simulate",
+      files: [urdfFile],
+      out: outCsv,
+      format: "csv",
+      stopTime: 0.1,
+      stepSize: 0.05,
+    });
+    assert.ok(fs.existsSync(outCsv));
+    const csvContent = fs.readFileSync(outCsv, "utf-8");
+    assert.ok(csvContent.includes("time"));
+    assert.ok(csvContent.includes("joint1.q"));
+
+    const outJson = path.join(tmpDir, "sim.json");
+    await (UrdfCommand.handler as any)({
+      action: "simulate",
+      files: [urdfFile],
+      out: outJson,
+      format: "json",
+      stopTime: 0.1,
+      stepSize: 0.05,
+    });
+    assert.ok(fs.existsSync(outJson));
+    const jsonContent = JSON.parse(fs.readFileSync(outJson, "utf-8"));
+    assert.equal(jsonContent.model, "cli_arm");
+    assert.ok(Array.isArray(jsonContent.time));
+  });
+
+  await t.test("msx urdf to-usd (.usda ASCII scene)", async () => {
+    const outUsda = path.join(tmpDir, "arm.usda");
+    await (UrdfCommand.handler as any)({
+      action: "to-usd",
+      files: [urdfFile],
+      out: outUsda,
+    });
+    assert.ok(fs.existsSync(outUsda));
+    const content = fs.readFileSync(outUsda, "utf-8");
+    assert.ok(content.startsWith("#usda 1.0"));
+    assert.ok(content.includes('defaultPrim = "cli_arm"'));
+    assert.ok(content.includes('def Xform "base"'));
+    assert.ok(content.includes('def PhysicsRevoluteJoint "joint1"'));
+  });
+
+  await t.test("msx urdf to-usd (.usdz 64-byte aligned package)", async () => {
+    const outUsdz = path.join(tmpDir, "arm.usdz");
+    await (UrdfCommand.handler as any)({
+      action: "to-usd",
+      files: [urdfFile],
+      out: outUsdz,
+      usdz: true,
+    });
+    assert.ok(fs.existsSync(outUsdz));
+    const buffer = fs.readFileSync(outUsdz);
+    assert.ok(buffer.length > 200);
+
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    assert.equal(view.getUint32(0, true), 0x04034b50); // LFH signature
+
+    const fileNameLen = view.getUint16(26, true);
+    const extraLen = view.getUint16(28, true);
+    const dataOffset = 30 + fileNameLen + extraLen;
+    assert.equal(dataOffset % 64, 0, "USDZ payload MUST be 64-byte aligned");
   });
 });

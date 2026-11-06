@@ -10,10 +10,11 @@ import {
   type PropertyGroupConfig,
   type PropertyTabConfig,
 } from "@modelscript/diagram";
-import { ChevronDownIcon, ChevronRightIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import { ChevronRightIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnsatzSketchIcon } from "../icons";
 import Spinner from "../Spinner";
 import { ComponentIcon } from "./ComponentList";
 import type { Translations } from "./util/i18n";
@@ -35,9 +36,10 @@ function formatDescription(desc?: string) {
           style={{
             fontSize: 10,
             padding: "1px 4px",
-            borderRadius: 3,
-            background: "rgba(128,128,128,0.15)",
-            fontFamily: "var(--fontStack-monospace, monospace)",
+            borderRadius: "var(--ms-radius-sm, 3px)",
+            background: "var(--ms-surface-hover, rgba(128,128,128,0.12))",
+            color: "var(--ms-brand, var(--color-accent-fg))",
+            fontFamily: "var(--ms-font-mono, monospace)",
           }}
         >
           {formulaMatch[2]}
@@ -60,6 +62,92 @@ interface PropertiesWidgetProps {
   translations: Translations;
 }
 
+function CollapsibleSection({
+  title,
+  isOpen,
+  onToggle,
+  badge,
+  action,
+  children,
+  className = "",
+}: {
+  title: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`border-bottom ${className}`}
+      style={{ borderColor: "var(--ms-border, var(--color-border-muted))" }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isOpen}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: "transparent",
+          cursor: "pointer",
+          textAlign: "left",
+          color: "var(--color-fg-muted)",
+          fontSize: 12,
+          fontWeight: 600,
+          transition: "background 0.15s ease, color 0.15s ease",
+          borderRadius: "var(--ms-radius-sm, 4px)",
+          boxSizing: "border-box",
+          userSelect: "none",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--ms-surface-hover, rgba(125, 125, 125, 0.06))";
+          e.currentTarget.style.color = "var(--color-fg-default)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+          e.currentTarget.style.color = "var(--color-fg-muted)";
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <ChevronRightIcon
+            size={14}
+            style={{
+              transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 0.18s cubic-bezier(0.2, 0, 0, 1)",
+              flexShrink: 0,
+            }}
+          />
+          <span>{title}</span>
+          {badge}
+        </span>
+        {action && (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            {action}
+          </span>
+        )}
+      </div>
+      {isOpen && <div>{children}</div>}
+    </div>
+  );
+}
+
 function ParameterRow({
   parameter,
   onParameterChange,
@@ -70,23 +158,73 @@ function ParameterRow({
 }) {
   const { value, unit, isBoolean } = parameter;
   const [localValue, setLocalValue] = useState(value);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   useEffect(() => {
     setLocalValue(value);
+    setIsSaving(false);
   }, [value, parameter.name]);
 
   useEffect(() => {
     if (isBoolean) return; // Boolean toggle calls onParameterChange immediately via onClick
-    if (localValue === value || localValue === "-") return;
+    if (localValue === value || localValue === "-") {
+      setIsSaving(false);
+      return;
+    }
 
+    setIsSaving(true);
     const timeoutId = setTimeout(() => {
       if (onParameterChange) {
         onParameterChange(parameter.name, localValue);
       }
+      setIsSaving(false);
     }, 150);
 
     return () => clearTimeout(timeoutId);
   }, [localValue, value, parameter.name, onParameterChange, isBoolean]);
+
+  const isNumeric = !isBoolean && !isNaN(parseFloat(localValue));
+
+  const handleLabelMouseDown = (e: React.MouseEvent) => {
+    if (!isNumeric) return;
+    const startVal = parseFloat(localValue);
+    if (isNaN(startVal)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    let hasMoved = false;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (!hasMoved && Math.abs(dx) > 2) {
+        hasMoved = true;
+        setIsScrubbing(true);
+        document.body.style.cursor = "ew-resize";
+        document.body.style.userSelect = "none";
+      }
+      if (hasMoved) {
+        const step = ev.shiftKey ? 10 : ev.altKey ? 0.01 : Math.abs(startVal) >= 10 ? 1 : 0.1;
+        const nextVal = startVal + dx * step;
+        const decimals = ev.altKey ? 3 : step < 1 ? 2 : Number.isInteger(startVal) ? 0 : 2;
+        const factor = Math.pow(10, decimals);
+        const formatted = String(Math.round(nextVal * factor) / factor);
+        setLocalValue(formatted);
+      }
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      setIsScrubbing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
 
   const isChecked = localValue === "true";
 
@@ -95,7 +233,7 @@ function ParameterRow({
       style={{
         display: "flex",
         flexDirection: "column",
-        padding: "8px 16px",
+        padding: "6px 16px",
         cursor: "default",
       }}
       onMouseDown={(e) => {
@@ -103,82 +241,133 @@ function ParameterRow({
         e.preventDefault();
       }}
     >
-      <div className="d-flex flex-row flex-justify-between flex-items-center" onClick={(e) => e.stopPropagation()}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div
           id={`param-label-${parameter.name}`}
-          className="f6 color-fg-muted"
+          onMouseDown={handleLabelMouseDown}
           style={{
-            marginRight: 8,
+            flex: "1 1 auto",
+            minWidth: 0,
+            fontSize: 12,
+            fontWeight: 500,
+            color: isSaving || isScrubbing ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            maxWidth: "calc(100% - 130px)",
+            transition: "color 0.15s ease",
+            cursor: isNumeric ? "ew-resize" : "default",
+            userSelect: isScrubbing ? "none" : undefined,
           }}
-          title={parameter.localizedName || parameter.description || ""}
+          title={
+            (parameter.localizedName || parameter.description || parameter.name) +
+            (isNumeric ? " (Drag horizontally to scrub value)" : "")
+          }
         >
           {parameter.localizedName || parameter.name}
+          {isSaving && (
+            <span
+              style={{
+                marginLeft: 4,
+                fontSize: 10,
+                color: "var(--ms-accent-cyan, #06b6d4)",
+                fontWeight: 600,
+              }}
+            >
+              •
+            </span>
+          )}
         </div>
-        {isBoolean ? (
-          <ToggleSwitch
-            size="small"
-            statusLabelPosition="hidden"
-            checked={isChecked}
-            aria-labelledby={`param-label-${parameter.name}`}
-            onClick={() => {
-              const newVal = isChecked ? "false" : "true";
-              setLocalValue(newVal);
-              if (onParameterChange) {
-                onParameterChange(parameter.name, newVal);
+        <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6 }}>
+          {isBoolean ? (
+            <ToggleSwitch
+              size="small"
+              statusLabelPosition="hidden"
+              checked={isChecked}
+              aria-labelledby={`param-label-${parameter.name}`}
+              onClick={() => {
+                const newVal = isChecked ? "false" : "true";
+                setLocalValue(newVal);
+                if (onParameterChange) {
+                  onParameterChange(parameter.name, newVal);
+                }
+              }}
+              onChange={() => {
+                /* controlled via onClick */
+              }}
+            />
+          ) : (
+            <TextInput
+              size="small"
+              value={localValue}
+              onChange={(e) => {
+                e.stopPropagation();
+                setLocalValue(e.target.value);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  (e.target as HTMLInputElement).blur();
+                } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                  const num = parseFloat(localValue);
+                  if (!isNaN(num)) {
+                    e.preventDefault();
+                    const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                    const nextNum = e.key === "ArrowUp" ? num + step : num - step;
+                    const formatted = String(Math.round(nextNum * 1000) / 1000);
+                    setLocalValue(formatted);
+                  }
+                }
+              }}
+              onKeyUp={(e) => e.stopPropagation()}
+              onBlur={() => {
+                if (localValue !== value && localValue !== "-" && onParameterChange) {
+                  onParameterChange(parameter.name, localValue);
+                }
+              }}
+              trailingVisual={
+                unit
+                  ? () => (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--color-fg-muted)",
+                          fontFamily: "var(--ms-font-mono, monospace)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatUnit(unit)}
+                      </span>
+                    )
+                  : undefined
               }
-            }}
-            onChange={() => {
-              /* controlled via onClick */
-            }}
-          />
-        ) : (
-          <TextInput
-            size="small"
-            value={localValue}
-            onChange={(e) => {
-              e.stopPropagation();
-              setLocalValue(e.target.value);
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onMouseUp={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") {
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            onKeyUp={(e) => e.stopPropagation()}
-            onBlur={() => {
-              if (localValue !== value && localValue !== "-" && onParameterChange) {
-                onParameterChange(parameter.name, localValue);
-              }
-            }}
-            trailingVisual={
-              unit
-                ? () => (
-                    <span style={{ fontSize: 11, color: "var(--fgColor-muted, #656d76)", whiteSpace: "nowrap" }}>
-                      {formatUnit(unit)}
-                    </span>
-                  )
-                : undefined
-            }
-            style={{ width: 120, height: 24, fontSize: 12 }}
-          />
-        )}
+              style={{
+                width: 120,
+                height: 26,
+                fontSize: 12,
+                fontFamily: "var(--ms-font-mono, monospace)",
+              }}
+            />
+          )}
+        </div>
       </div>
       {parameter.localizedDescription && (
         <div
-          className="f6 color-fg-muted"
           style={{
-            marginTop: 2,
+            marginTop: 3,
             fontSize: 11,
-            paddingLeft: 0,
             lineHeight: 1.35,
-            opacity: 0.75,
+            color: "var(--color-fg-muted)",
+            opacity: 0.8,
             wordBreak: "break-word",
           }}
         >
@@ -206,17 +395,24 @@ function SchemaFieldRow({
 }) {
   const isEnabled = evaluatePropertyPredicate(field.enabledIf, contextValues) && !field.readOnly;
   const [localVal, setLocalVal] = useState<string>(String(currentValue ?? field.defaultValue ?? ""));
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setLocalVal(String(currentValue ?? field.defaultValue ?? ""));
+    setIsSaving(false);
   }, [currentValue, field.defaultValue]);
 
   useEffect(() => {
     if (field.kind === "boolean") return;
-    if (localVal === "-" || localVal === String(currentValue ?? field.defaultValue ?? "")) return;
+    if (localVal === "-" || localVal === String(currentValue ?? field.defaultValue ?? "")) {
+      setIsSaving(false);
+      return;
+    }
 
+    setIsSaving(true);
     const timeout = setTimeout(() => {
       onParameterChange?.(field.key, localVal);
+      setIsSaving(false);
     }, 150);
     return () => clearTimeout(timeout);
   }, [localVal, currentValue, field.key, field.defaultValue, field.kind, onParameterChange]);
@@ -226,6 +422,49 @@ function SchemaFieldRow({
   const defaultValueStr =
     field.defaultValue !== undefined && field.defaultValue !== null ? String(field.defaultValue) : "";
   const isOverridden = localVal !== "" && localVal !== "-" && defaultValueStr !== "" && localVal !== defaultValueStr;
+
+  const isNumberField = field.kind === "number";
+  const [isScrubbing, setIsScrubbing] = useState(false);
+
+  const handleLabelMouseDown = (e: React.MouseEvent) => {
+    if (!isNumberField || !isEnabled) return;
+    const startVal = parseFloat(localVal);
+    if (isNaN(startVal)) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    let hasMoved = false;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (!hasMoved && Math.abs(dx) > 2) {
+        hasMoved = true;
+        setIsScrubbing(true);
+        document.body.style.cursor = "ew-resize";
+        document.body.style.userSelect = "none";
+      }
+      if (hasMoved) {
+        const step = ev.shiftKey ? 10 : ev.altKey ? 0.01 : Math.abs(startVal) >= 10 ? 1 : 0.1;
+        const nextVal = startVal + dx * step;
+        const decimals = ev.altKey ? 3 : step < 1 ? 2 : Number.isInteger(startVal) ? 0 : 2;
+        const factor = Math.pow(10, decimals);
+        const formatted = String(Math.round(nextVal * factor) / factor);
+        setLocalVal(formatted);
+      }
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      setIsScrubbing(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
 
   const handleReset = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -242,8 +481,24 @@ function SchemaFieldRow({
         opacity: isEnabled ? 1 : 0.45,
       }}
     >
-      <div className="d-flex flex-row flex-justify-between flex-items-center" onClick={(e) => e.stopPropagation()}>
-        <div className="d-flex flex-items-center" style={{ maxWidth: "calc(100% - 130px)", overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            overflow: "hidden",
+          }}
+        >
           {isOverridden && (
             <span
               title={`Modified from default (${defaultValueStr})`}
@@ -252,7 +507,8 @@ function SchemaFieldRow({
                 width: 6,
                 height: 6,
                 borderRadius: "50%",
-                backgroundColor: "var(--fgColor-accent, #58a6ff)",
+                backgroundColor: "var(--ms-brand, #0891b2)",
+                boxShadow: "0 0 4px var(--ms-brand, #0891b2)",
                 marginRight: 6,
                 flexShrink: 0,
               }}
@@ -260,21 +516,45 @@ function SchemaFieldRow({
           )}
           <label
             id={`schema-field-${field.key}`}
-            className="f6"
+            onMouseDown={handleLabelMouseDown}
             style={{
+              fontSize: 12,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              color: isOverridden ? "var(--fgColor-default, #c9d1d9)" : "var(--fgColor-muted, #8b949e)",
+              color:
+                isSaving || isScrubbing
+                  ? "var(--ms-brand, #0891b2)"
+                  : isOverridden
+                    ? "var(--color-fg-default)"
+                    : "var(--color-fg-muted)",
               fontWeight: isOverridden ? 600 : 400,
+              transition: "color 0.15s ease",
+              cursor: isNumberField && isEnabled ? "ew-resize" : "default",
+              userSelect: isScrubbing ? "none" : undefined,
             }}
-            title={field.description || ""}
+            title={
+              (field.description || field.label || field.key) +
+              (isNumberField && isEnabled ? " (Drag horizontally to scrub value)" : "")
+            }
           >
             {field.label || field.key}
+            {isSaving && (
+              <span
+                style={{
+                  marginLeft: 4,
+                  fontSize: 10,
+                  color: "var(--ms-accent-cyan, #06b6d4)",
+                  fontWeight: 600,
+                }}
+              >
+                •
+              </span>
+            )}
           </label>
         </div>
 
-        <div className="d-flex flex-items-center" style={{ gap: 4 }}>
+        <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6 }}>
           {isOverridden && (
             <button
               type="button"
@@ -287,9 +567,10 @@ function SchemaFieldRow({
                 cursor: "pointer",
                 padding: "2px 4px",
                 fontSize: "12px",
-                color: "var(--fgColor-muted, #8b949e)",
+                color: "var(--color-fg-muted)",
                 lineHeight: 1,
-                borderRadius: 4,
+                borderRadius: "var(--ms-radius-sm, 4px)",
+                transition: "color 0.15s ease",
               }}
             >
               ↺
@@ -323,11 +604,12 @@ function SchemaFieldRow({
                 width: 130,
                 height: 26,
                 fontSize: 12,
-                borderRadius: 4,
-                border: "1px solid var(--borderColor-default, #30363d)",
-                background: "var(--bgColor-muted, #161b22)",
-                color: "var(--fgColor-default, #c9d1d9)",
+                borderRadius: "var(--ms-radius-sm, 6px)",
+                border: "1px solid var(--color-border-default, var(--ms-border))",
+                background: "var(--color-canvas-subtle, var(--ms-bg-soft))",
+                color: "var(--color-fg-default)",
                 padding: "2px 6px",
+                fontFamily: "inherit",
               }}
             >
               {field.choices.map((c: PropertyChoice | string) => {
@@ -351,10 +633,10 @@ function SchemaFieldRow({
               }}
               style={{
                 width: 40,
-                height: 24,
+                height: 26,
                 padding: 2,
-                borderRadius: 4,
-                border: "1px solid var(--borderColor-default, #30363d)",
+                borderRadius: "var(--ms-radius-sm, 4px)",
+                border: "1px solid var(--color-border-default, var(--ms-border))",
                 background: "transparent",
                 cursor: isEnabled ? "pointer" : "not-allowed",
               }}
@@ -366,8 +648,11 @@ function SchemaFieldRow({
                 overflow: "auto",
                 fontSize: 11,
                 padding: "4px 8px",
-                background: "var(--bgColor-muted, #161b22)",
-                borderRadius: 4,
+                background: "var(--color-canvas-subtle, var(--ms-bg-soft))",
+                border: "1px solid var(--color-border-subtle, var(--ms-border))",
+                color: "var(--color-fg-default)",
+                fontFamily: "var(--ms-font-mono, monospace)",
+                borderRadius: "var(--ms-radius-sm, 4px)",
                 width: "100%",
               }}
             >
@@ -381,16 +666,43 @@ function SchemaFieldRow({
               disabled={!isEnabled}
               value={localVal}
               onChange={(e) => setLocalVal(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  (e.target as HTMLInputElement).blur();
+                } else if (field.kind === "number" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+                  const num = parseFloat(localVal);
+                  if (!isNaN(num)) {
+                    e.preventDefault();
+                    const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                    const nextNum = e.key === "ArrowUp" ? num + step : num - step;
+                    const formatted = String(Math.round(nextNum * 1000) / 1000);
+                    setLocalVal(formatted);
+                  }
+                }
+              }}
               trailingVisual={
                 unitStr
                   ? () => (
-                      <span style={{ fontSize: 11, color: "var(--fgColor-muted, #656d76)", whiteSpace: "nowrap" }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--color-fg-muted)",
+                          fontFamily: "var(--ms-font-mono, monospace)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {unitStr}
                       </span>
                     )
                   : undefined
               }
-              style={{ width: 130, height: 24, fontSize: 12 }}
+              style={{
+                width: 130,
+                height: 26,
+                fontSize: 12,
+                fontFamily: field.kind === "number" ? "var(--ms-font-mono, monospace)" : "inherit",
+              }}
             />
           )}
         </div>
@@ -402,12 +714,13 @@ function SchemaFieldRow({
             alignItems: "center",
             justifyContent: "space-between",
             gap: 6,
-            background: "rgba(248, 81, 73, 0.12)",
-            border: "1px solid var(--fgColor-danger, #f85149)",
-            borderRadius: 4,
+            background: "var(--ms-status-fail-bg, rgba(225, 29, 72, 0.12))",
+            border: "1px solid var(--ms-status-fail-border, var(--ms-danger, #e11d48))",
+            borderRadius: "var(--ms-radius-sm, 4px)",
             padding: "4px 8px",
             marginTop: 4,
             fontSize: 11,
+            color: "var(--color-fg-default)",
           }}
         >
           <span>
@@ -419,9 +732,9 @@ function SchemaFieldRow({
               onClick={() => onResolveConflict?.("keep_local")}
               style={{
                 background: "transparent",
-                border: "1px solid var(--fgColor-danger, #f85149)",
+                border: "1px solid var(--ms-status-fail-border, var(--ms-danger, #e11d48))",
                 borderRadius: 3,
-                color: "var(--fgColor-default, #c9d1d9)",
+                color: "var(--color-fg-default)",
                 fontSize: 10,
                 padding: "2px 6px",
                 cursor: "pointer",
@@ -434,9 +747,9 @@ function SchemaFieldRow({
               onClick={() => onResolveConflict?.("accept_remote")}
               style={{
                 background: "transparent",
-                border: "1px solid var(--fgColor-danger, #f85149)",
+                border: "1px solid var(--ms-status-fail-border, var(--ms-danger, #e11d48))",
                 borderRadius: 3,
-                color: "var(--fgColor-default, #c9d1d9)",
+                color: "var(--color-fg-default)",
                 fontSize: 10,
                 padding: "2px 6px",
                 cursor: "pointer",
@@ -448,7 +761,7 @@ function SchemaFieldRow({
         </div>
       )}
       {validationErr && (
-        <div style={{ color: "var(--fgColor-danger, #f85149)", fontSize: 11, marginTop: 2 }}>{validationErr}</div>
+        <div style={{ color: "var(--ms-danger, #e11d48)", fontSize: 11, marginTop: 2 }}>{validationErr}</div>
       )}
       {field.description && (
         <div
@@ -471,6 +784,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     documentation: true,
     revisions: true,
   });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const [localName, setLocalName] = useState(properties?.name || "");
   const [localDescription, setLocalDescription] = useState(properties?.description || "");
@@ -575,11 +889,17 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
   if (isLoading && !properties) {
     return (
       <div
-        className="height-full p-4 color-fg-muted f4 border-left d-flex flex-items-center flex-justify-center"
-        style={{ width: props.width || 300, minHeight: 200 }}
+        className="height-full border-left d-flex flex-column flex-items-center flex-justify-center p-4"
+        style={{
+          width: props.width || 300,
+          minHeight: 240,
+          backgroundColor: "var(--color-canvas-default)",
+          color: "var(--color-fg-muted)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <Spinner size="medium" />
+        <span style={{ marginTop: 12, fontSize: 12, fontWeight: 500 }}>Loading properties…</span>
       </div>
     );
   }
@@ -587,11 +907,37 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
   if (!properties) {
     return (
       <div
-        className="height-full p-4 color-fg-muted f4 border-left"
-        style={{ width: props.width || 300 }}
+        className="height-full border-left d-flex flex-column flex-items-center flex-justify-center p-4 text-center"
+        style={{
+          width: props.width || 300,
+          backgroundColor: "var(--color-canvas-default)",
+          color: "var(--color-fg-muted)",
+          userSelect: "none",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        {translations.noComponentSelected}
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: "50%",
+            backgroundColor: "var(--color-canvas-subtle, var(--ms-bg-soft))",
+            border: "1px solid var(--color-border-subtle, var(--ms-border))",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 16,
+            color: "var(--ms-brand, #0891b2)",
+          }}
+        >
+          <AnsatzSketchIcon size={24} variant="triangle" />
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-fg-default)", marginBottom: 6 }}>
+          {translations.noComponentSelected}
+        </div>
+        <p style={{ fontSize: 12, lineHeight: 1.5, margin: 0, maxWidth: 220 }}>
+          Click any component or connection in the schematic diagram to inspect and edit its parameters.
+        </p>
       </div>
     );
   }
@@ -639,24 +985,17 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
       style={{ width: props.width || 300, paddingBottom: 80 }}
       onClick={(e) => e.stopPropagation()}
     >
-      <details open={expandedSections.info} className="mb-2 border-bottom">
-        <summary
-          className="p-2 cursor-pointer f6 text-bold color-fg-muted d-flex flex-items-center flex-justify-between"
-          style={{ listStyle: "none" }}
-          onClick={(e) => {
-            e.preventDefault();
-            toggleSection("info");
-          }}
-        >
-          <span className="d-flex flex-items-center">
-            {expandedSections.info ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
-            {translations.information}
-          </span>
-          {props.onClose && (
+      <CollapsibleSection
+        title={translations.information}
+        isOpen={expandedSections.info}
+        onToggle={() => toggleSection("info")}
+        className="mb-2"
+        action={
+          props.onClose && (
             <button
               type="button"
               aria-label="Close properties panel"
-              title="Close properties panel"
+              title="Close properties panel (Esc)"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -665,48 +1004,80 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               style={{
                 background: "transparent",
                 border: "none",
-                color: "var(--fgColor-muted, #8b949e)",
+                color: "var(--color-fg-muted)",
                 cursor: "pointer",
-                fontSize: "14px",
-                lineHeight: 1,
-                padding: "2px 6px",
-                borderRadius: "4px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 24,
+                height: 24,
+                borderRadius: "var(--ms-radius-sm, 4px)",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor =
+                  "var(--color-action-list-item-default-hover-bg, var(--ms-surface-hover, rgba(125, 125, 125, 0.1)))";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
               }}
             >
-              ✕
+              <XIcon size={14} />
             </button>
-          )}
-        </summary>
+          )
+        }
+      >
         <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
-          <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>
+          <div style={{ display: "flex", flexDirection: "row", gap: "16px", alignItems: "center" }}>
             {(liveIconSvg || properties.iconSvg) && (
-              <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                <ComponentIcon iconSvg={liveIconSvg || properties.iconSvg} size={80} darkMode={colorMode === "dark"} />
+              <div
+                style={{
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 6,
+                  borderRadius: "var(--ms-radius-sm, 8px)",
+                  backgroundColor: "var(--color-canvas-subtle, var(--ms-bg-soft))",
+                  border: "1px solid var(--color-border-subtle, var(--ms-border))",
+                }}
+              >
+                <ComponentIcon iconSvg={liveIconSvg || properties.iconSvg} size={64} darkMode={colorMode === "dark"} />
               </div>
             )}
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "8px",
+                gap: "6px",
                 overflow: "hidden",
                 flex: 1,
                 justifyContent: "center",
               }}
             >
-              <div style={{ padding: "4px 0" }}>
-                <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
+              <div style={{ padding: "2px 0" }}>
+                <div className="f6 color-fg-muted" style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
                   {translations.type}
                 </div>
                 <div
-                  className="f6"
-                  style={{ wordBreak: "break-all", lineHeight: "1.2", fontWeight: "normal", padding: "4px 0" }}
+                  style={{
+                    wordBreak: "break-all",
+                    fontSize: 11,
+                    fontFamily: "var(--ms-font-mono, monospace)",
+                    fontWeight: 600,
+                    color: "var(--ms-brand, #0891b2)",
+                    backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.1))",
+                    border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 25%, transparent)",
+                    padding: "2px 6px",
+                    borderRadius: "var(--ms-radius-sm, 4px)",
+                    display: "inline-block",
+                  }}
                 >
                   {properties.localizedClassName || properties.className}
                 </div>
               </div>
               <div>
-                <div className="f6 color-fg-muted" style={{ lineHeight: "1.2" }}>
+                <div className="f6 color-fg-muted" style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>
                   {translations.name}
                 </div>
                 <TextInput
@@ -726,9 +1097,10 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   }}
                   style={{
                     width: "100%",
-                    height: 24,
+                    height: 26,
                     fontSize: 12,
-                    padding: "0 4px",
+                    fontFamily: "var(--ms-font-mono, monospace)",
+                    fontWeight: 600,
                   }}
                 />
               </div>
@@ -736,7 +1108,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           </div>
           {localDescription || descriptionEditing ? (
             <div>
-              <div className="f6 color-fg-muted" style={{ opacity: 0.4 }}>
+              <div className="f6 color-fg-muted" style={{ fontSize: 11, marginBottom: 2 }}>
                 {translations.description}
               </div>
               <Textarea
@@ -758,26 +1130,36 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 style={{
                   width: "100%",
                   fontSize: 12,
-                  padding: "4px",
+                  padding: "6px",
+                  borderRadius: "var(--ms-radius-sm, 6px)",
                 }}
               />
             </div>
           ) : (
-            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+            <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}>
               <button
                 type="button"
                 onClick={() => setDescriptionEditing(true)}
                 style={{
                   background: "transparent",
-                  border: `1px dashed ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
-                  borderRadius: 6,
+                  border: "1px dashed var(--color-border-default, var(--ms-border))",
+                  borderRadius: "var(--ms-radius-sm, 6px)",
                   padding: "6px 12px",
                   fontSize: 11,
-                  color: "var(--fgColor-muted, #8b949e)",
+                  color: "var(--color-fg-muted)",
                   cursor: "pointer",
                   width: "100%",
                   textAlign: "center",
                   transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    "var(--color-action-list-item-default-hover-bg, var(--ms-surface-hover, rgba(125, 125, 125, 0.08)))";
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
                 }}
               >
                 + {translations.addDescription || "Add description"}
@@ -785,7 +1167,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             </div>
           )}
         </div>
-      </details>
+      </CollapsibleSection>
 
       {/* Schema-driven Tabs & Groups */}
       {visibleTabs.length > 0 ? (
@@ -795,7 +1177,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             style={{
               display: "flex",
               gap: 4,
-              borderBottom: "1px solid var(--borderColor-default, #30363d)",
+              borderBottom: "1px solid var(--color-border-default, var(--ms-border))",
               padding: "0 12px",
               overflowX: "auto",
             }}
@@ -810,13 +1192,15 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                     padding: "6px 12px",
                     background: "transparent",
                     border: "none",
-                    borderBottom: isActive ? "2px solid var(--fgColor-accent, #58a6ff)" : "2px solid transparent",
-                    color: isActive ? "var(--fgColor-default, #c9d1d9)" : "var(--fgColor-muted, #8b949e)",
+                    borderBottom: isActive ? "2px solid var(--ms-brand, #0891b2)" : "2px solid transparent",
+                    color: isActive ? "var(--color-fg-default)" : "var(--color-fg-muted)",
                     cursor: "pointer",
                     fontSize: 11,
                     fontWeight: 600,
                     whiteSpace: "nowrap",
                     textTransform: "uppercase",
+                    letterSpacing: "0.03em",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   {t.label}
@@ -881,15 +1265,19 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
                       if (visibleFields.length === 0 && filterText) return null;
 
+                      const isGrpOpen = openGroups[grp.id] ?? true;
                       return (
-                        <details key={grp.id} open className="border-bottom">
-                          <summary
-                            className="p-2 cursor-pointer f6 text-bold color-fg-muted"
-                            style={{ listStyle: "none" }}
-                          >
-                            <ChevronDownIcon className="mr-1" />
-                            {grp.label}
-                          </summary>
+                        <CollapsibleSection
+                          key={grp.id}
+                          title={grp.label}
+                          isOpen={isGrpOpen}
+                          onToggle={() =>
+                            setOpenGroups((prev) => ({
+                              ...prev,
+                              [grp.id]: !isGrpOpen,
+                            }))
+                          }
+                        >
                           <div style={{ paddingBottom: 8 }}>
                             {visibleFields.map((fld: PropertyFieldConfig) => (
                               <SchemaFieldRow
@@ -908,7 +1296,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                               />
                             ))}
                           </div>
-                        </details>
+                        </CollapsibleSection>
                       );
                     })}
                   </>
@@ -920,80 +1308,94 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
       ) : (
         /* Legacy flat parameters fallback */
         parameters.length > 0 && (
-          <details open={expandedSections.parameters} className="border-bottom">
-            <summary
-              className="p-2 cursor-pointer f6 text-bold color-fg-muted"
-              style={{ listStyle: "none" }}
-              onClick={(e) => {
-                e.preventDefault();
-                toggleSection("parameters");
-              }}
-            >
-              {expandedSections.parameters ? (
-                <ChevronDownIcon className="mr-1" />
-              ) : (
-                <ChevronRightIcon className="mr-1" />
-              )}
-              {translations.parameters}
-            </summary>
-            <div style={{ paddingBottom: 8 }}>
-              {parameters.map((parameter) => (
-                <ParameterRow
-                  key={parameter.name}
-                  parameter={parameter}
-                  colorMode={colorMode}
-                  onParameterChange={onParameterChange}
+          <CollapsibleSection
+            title={translations.parameters}
+            isOpen={expandedSections.parameters}
+            onToggle={() => toggleSection("parameters")}
+            badge={
+              <span
+                style={{
+                  marginLeft: 2,
+                  fontSize: 10,
+                  fontFamily: "var(--ms-font-mono, monospace)",
+                  padding: "1px 5px",
+                  borderRadius: 999,
+                  background: "var(--ms-surface-hover, rgba(128,128,128,0.12))",
+                  color: "var(--color-fg-muted)",
+                }}
+              >
+                {parameters.length}
+              </span>
+            }
+          >
+            {parameters.length > 4 && (
+              <div style={{ padding: "4px 16px 8px 16px" }}>
+                <TextInput
+                  size="small"
+                  block
+                  leadingVisual={SearchIcon}
+                  placeholder="Filter parameters..."
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  trailingAction={
+                    filterText ? (
+                      <TextInput.Action icon={XIcon} aria-label="Clear filter" onClick={() => setFilterText("")} />
+                    ) : undefined
+                  }
+                  style={{ fontSize: 11, height: 26 }}
                 />
-              ))}
+              </div>
+            )}
+            <div style={{ paddingBottom: 8 }}>
+              {parameters
+                .filter((p) => {
+                  if (!filterText) return true;
+                  const q = filterText.toLowerCase();
+                  return (
+                    p.name.toLowerCase().includes(q) ||
+                    (p.localizedName && p.localizedName.toLowerCase().includes(q)) ||
+                    (p.description && p.description.toLowerCase().includes(q))
+                  );
+                })
+                .map((parameter) => (
+                  <ParameterRow
+                    key={parameter.name}
+                    parameter={parameter}
+                    colorMode={colorMode}
+                    onParameterChange={onParameterChange}
+                  />
+                ))}
             </div>
-          </details>
+          </CollapsibleSection>
         )
       )}
 
       {doc?.info && (
-        <details open={expandedSections.documentation} className="border-bottom">
-          <summary
-            className="p-2 cursor-pointer f6 text-bold color-fg-muted"
-            style={{ listStyle: "none" }}
-            onClick={(e) => {
-              e.preventDefault();
-              toggleSection("documentation");
-            }}
-          >
-            {expandedSections.documentation ? (
-              <ChevronDownIcon className="mr-1" />
-            ) : (
-              <ChevronRightIcon className="mr-1" />
-            )}
-            {translations.documentation}
-          </summary>
+        <CollapsibleSection
+          title={translations.documentation}
+          isOpen={expandedSections.documentation}
+          onToggle={() => toggleSection("documentation")}
+        >
           <div
             className="markdown-body p-3"
             style={{ fontSize: "14px", backgroundColor: "transparent" }}
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processHtml(doc.info)) }}
           />
-        </details>
+        </CollapsibleSection>
       )}
 
       {doc?.revisions && (
-        <details open={expandedSections.revisions} className="border-bottom">
-          <summary
-            className="p-2 cursor-pointer f6 text-bold color-fg-muted"
-            style={{ listStyle: "none" }}
-            onClick={(e) => {
-              e.preventDefault();
-              toggleSection("revisions");
-            }}
-          >
-            {expandedSections.revisions ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
-            {translations.revisions}
-          </summary>
+        <CollapsibleSection
+          title={translations.revisions}
+          isOpen={expandedSections.revisions}
+          onToggle={() => toggleSection("revisions")}
+        >
           <div
             className="markdown-body p-3"
             style={{ fontSize: "14px", backgroundColor: "transparent" }}
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processHtml(doc.revisions)) }}
           />
-        </details>
+        </CollapsibleSection>
       )}
     </div>
   );

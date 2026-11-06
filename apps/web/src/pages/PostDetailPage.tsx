@@ -34,7 +34,7 @@ const PostDetailPage: React.FC = () => {
         ? parseNotebookFromContent(
             post.content,
             post.artifact_view_id !== undefined && post.artifact_view_id !== null
-              ? Number(post.artifact_view_id)
+              ? String(post.artifact_view_id)
               : null,
             post.metadata?.notebook as Partial<NotebookMetadata> | undefined,
           )

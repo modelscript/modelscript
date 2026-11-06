@@ -90,14 +90,13 @@ function flattenArenaFromInstance(classInstance: any, _context?: any): DAEBuilde
   return arena as any;
 }
 
-console.log("ModelScript language server starting...");
-
 /* Browser-specific connection setup */
 
 const globalScope = typeof self !== "undefined" ? self : globalThis;
 const messageReader = new BrowserMessageReader(globalScope as any);
 const messageWriter = new BrowserMessageWriter(globalScope as any);
 const connection = createConnection(messageReader, messageWriter);
+connection.console.info("ModelScript language server starting...");
 
 /* Shared filesystem + context (populated with MSL during init) */
 

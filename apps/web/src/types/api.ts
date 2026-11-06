@@ -21,6 +21,7 @@ export interface PostAuthor {
   display_name?: string | undefined;
   avatar_url?: string | undefined;
   account_type?: string | undefined;
+  signing_verified?: boolean | number | undefined;
 }
 
 export interface PostItem {
@@ -30,6 +31,8 @@ export interface PostItem {
   username: string;
   display_name?: string | undefined;
   avatar_url?: string | undefined;
+  account_type?: string | undefined;
+  signing_verified?: boolean | number | undefined;
   content: string;
   artifact_id?: number | string | null | undefined;
   reply_to_id?: number | string | null | undefined;
@@ -101,4 +104,37 @@ export interface ScriptTemplateDTO {
   config: string;
   estimatedDuration?: string | undefined;
   steps?: unknown[] | undefined;
+}
+
+export interface AccountSigningKeyInfo {
+  id: number;
+  user_id: number;
+  fingerprint_sha256: string;
+  public_key_openssh: string;
+  public_key_multibase: string;
+  algo: string;
+  label?: string | null | undefined;
+  trust_level: string;
+  created_at: string;
+  activated_at?: string | undefined;
+  revoked_at?: string | null | undefined;
+  revocation_reason?: string | null | undefined;
+  prev_key_id?: number | null | undefined;
+  rotation_proof?: string | null | undefined;
+}
+
+export interface UserSigningKeysResponse {
+  signing_verified: boolean;
+  signing_policy_strict: boolean;
+  keys: AccountSigningKeyInfo[];
+}
+
+export interface SigningKeyLogItem {
+  seq: number;
+  user_id: number;
+  event: string;
+  payload_json: string;
+  prev_hash: string;
+  entry_hash: string;
+  created_at: string;
 }

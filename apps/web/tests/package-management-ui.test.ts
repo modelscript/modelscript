@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test, { describe } from "node:test";
 import {
   acceptPackageTransfer,
@@ -420,5 +422,96 @@ end BooleanNetwork1;`;
     assert.equal(eqs[2], "connect(booleanPulse2.y, and1.u[3]);");
     assert.ok(eqs[3]?.includes("when condition then"));
     assert.ok(eqs[3]?.includes("end when;"));
+  });
+
+  test("AppShell removes right sidenav on package detail pages while keeping package catalog", () => {
+    const appShellPath = path.resolve(import.meta.dirname, "../src/components/AppShell.tsx");
+    const appShellSrc = fs.readFileSync(appShellPath, "utf-8");
+
+    assert.ok(
+      appShellSrc.includes('location.pathname.startsWith("/packages")') &&
+        appShellSrc.includes('location.pathname !== "/packages"') &&
+        appShellSrc.includes('location.pathname !== "/packages/"'),
+      "AppShell must include /packages/* detail pages in isWideLayout",
+    );
+    assert.ok(
+      appShellSrc.includes("{showsRightPanel && (") ||
+        appShellSrc.includes("{!isWideLayout && !isFullScreenLayout && !isInspectorLayout && ("),
+      "AppShell must conditionally hide RightPanelWrapper on package detail pages",
+    );
+  });
+
+  test("ClassParametersSection receives and renders extends while ClassDetailHeader leaves header clean", () => {
+    const headerPath = path.resolve(import.meta.dirname, "../src/pages/class-detail/components/ClassDetailHeader.tsx");
+    const headerSrc = fs.readFileSync(headerPath, "utf-8");
+    assert.ok(
+      !headerSrc.includes(
+        '<Text style={{ fontSize: 11, color: "var(--color-text-muted)", fontWeight: 600 }}>Extends:</Text>',
+      ),
+      "ClassDetailHeader must no longer contain the Extends row in the header hero",
+    );
+    assert.ok(
+      !headerSrc.includes("formatFormalSignature"),
+      "ClassDetailHeader must no longer render the class signature code block row",
+    );
+
+    const paramSectionPath = path.resolve(
+      import.meta.dirname,
+      "../src/pages/class-detail/components/ClassParametersSection.tsx",
+    );
+    const paramSectionSrc = fs.readFileSync(paramSectionPath, "utf-8");
+    assert.ok(paramSectionSrc.includes("extendsList"), "ClassParametersSection must accept extendsList prop");
+    assert.ok(
+      paramSectionSrc.includes("Extends &amp; Inherited Classes"),
+      "ClassParametersSection must render Extends & Inherited Classes section",
+    );
+
+    const detailViewPath = path.resolve(import.meta.dirname, "../src/pages/class-detail/ClassDetailView.tsx");
+    const detailViewSrc = fs.readFileSync(detailViewPath, "utf-8");
+    assert.ok(
+      detailViewSrc.includes("extendsList={cls.extends}"),
+      "ClassDetailView must pass cls.extends to ClassParametersSection",
+    );
+  });
+
+  test("ClassDetailHeader renders muted FQN above, simple name in heading, and file path below", () => {
+    const headerPath = path.resolve(import.meta.dirname, "../src/pages/class-detail/components/ClassDetailHeader.tsx");
+    const headerSrc = fs.readFileSync(headerPath, "utf-8");
+
+    const headingIndex = headerSrc.indexOf("<Heading");
+
+    // Muted FQN appears before Heading
+    const fqnIndex = headerSrc.indexOf("<FqnText>{className}</FqnText>");
+    assert.ok(fqnIndex !== -1 && fqnIndex < headingIndex, "Muted FQN must appear above the main name Heading");
+
+    // Heading contains simple name logic
+    assert.ok(
+      headerSrc.includes('className.includes(".") ? className.split(".").pop() : className') ||
+        headerSrc.includes("simpleName"),
+      "Main heading must display the simple name",
+    );
+
+    // File path appears below Heading and clicking opens source tab
+    const sourceFileIndex = headerSrc.indexOf("cls.sourceFile");
+    assert.ok(
+      sourceFileIndex !== -1 && sourceFileIndex > headingIndex,
+      "File path must appear below the main name Heading",
+    );
+    assert.ok(
+      headerSrc.includes('setActiveTab("source")'),
+      "Clicking file path badge must trigger setActiveTab to 'source'",
+    );
+  });
+
+  test("ClassDetail TabBar suppresses scrollbars and hides vertical overflow", () => {
+    const stylesPath = path.resolve(import.meta.dirname, "../src/pages/class-detail/styles.ts");
+    const stylesSrc = fs.readFileSync(stylesPath, "utf-8");
+
+    assert.ok(
+      stylesSrc.includes("overflow-y: hidden;"),
+      "TabBar in styles.ts must specify overflow-y: hidden to prevent vertical scrollbars",
+    );
+    assert.ok(stylesSrc.includes("scrollbar-width: none;"), "TabBar in styles.ts must specify scrollbar-width: none");
+    assert.ok(stylesSrc.includes("display: none;"), "TabBar in styles.ts must hide webkit scrollbars");
   });
 });

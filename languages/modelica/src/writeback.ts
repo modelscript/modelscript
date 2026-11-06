@@ -39,6 +39,41 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
   const { entry, fullText, newValue, queryEngine } = ctx;
   if (!entry) return null;
 
+  // 0. Exact CST node field range from AST indexing (Tier 0)
+  if (entry.fieldRanges) {
+    const valField =
+      entry.fieldRanges.value ??
+      entry.fieldRanges.expression ??
+      entry.fieldRanges.modification ??
+      entry.fieldRanges.binding;
+    if (
+      valField &&
+      valField.startOffset != null &&
+      valField.endOffset != null &&
+      valField.endOffset > valField.startOffset
+    ) {
+      let valStart = valField.startOffset;
+      let valEnd = valField.endOffset;
+      const valSlice = fullText.substring(valStart, valEnd);
+      const opMatch = valSlice.match(/^(=(?!=))\s*/);
+      if (opMatch) {
+        valStart += opMatch[0].length;
+      }
+      const trimmedVal = fullText
+        .substring(valStart, valEnd)
+        .replace(/[;\r\n]+$/, "")
+        .trimEnd();
+      valEnd = valStart + trimmedVal.length;
+      if (valEnd > valStart) {
+        return {
+          startOffset: valStart,
+          endOffset: valEnd,
+          newText: newValue.trim(),
+        };
+      }
+    }
+  }
+
   // 1. Precise CST byte-range replacement within the indexed declaration
   if (entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset) {
     const declText = fullText.substring(entry.startOffset, entry.endOffset);

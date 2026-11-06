@@ -8,8 +8,61 @@
  * XML `TextEdit`s on `SystemStructure.ssd`.
  */
 
+import { parseXmlSync, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import { parseSsd } from "./ssd-parser.js";
 import type { SspComponent, SspConnection, SspConnector, SspConnectorType, SspSystem } from "./types.js";
+
+function sspLocalName(name: string): string {
+  const idx = name.indexOf(":");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+function sspMatchName(actual: string, expected: string): boolean {
+  return actual === expected || sspLocalName(actual) === sspLocalName(expected);
+}
+
+function findXmlElement(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement | null {
+  if (!root) return null;
+  if (predicate(root)) return root;
+  for (const child of root.children) {
+    const found = findXmlElement(child, predicate);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findAllXmlElements(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement[] {
+  const result: XmlElement[] = [];
+  if (!root) return result;
+  if (predicate(root)) result.push(root);
+  for (const child of root.children) {
+    result.push(...findAllXmlElements(child, predicate));
+  }
+  return result;
+}
+
+function computeLineStarts(text: string): number[] {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") starts.push(i + 1);
+  }
+  return starts;
+}
+
+function offsetToPosition(offset: number, lineStarts: number[]): { line: number; character: number } {
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (lineStarts[mid]! <= offset) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  const line = high;
+  return { line, character: offset - lineStarts[line]! };
+}
 
 export interface SspTextEdit {
   range: {
@@ -792,62 +845,64 @@ export function applySspDiagramEdits(
         }
       }
     } else if (actionType === "updateName") {
-      const cmp = system.components.find((c) => c.name === action.oldName);
-      if (cmp?.line && cmp.line - 1 < lines.length) {
-        const lIdx = cmp.line - 1;
-        const lineText = lines[lIdx]!;
-        const updated = lineText.replace(/\bname\s*=\s*(["'])[^"']*\1/, `name=$1${action.newName}$1`);
-        if (updated !== lineText) {
-          edits.push({
-            range: { start: { line: lIdx, character: 0 }, end: { line: lIdx, character: lineText.length } },
-            newText: updated,
-          });
-        }
-      }
-      for (const conn of system.connections) {
-        if (
-          (conn.startElement === action.oldName || conn.endElement === action.oldName) &&
-          conn.line &&
-          conn.line - 1 < lines.length
-        ) {
-          const cIdx = conn.line - 1;
-          let lineText = lines[cIdx]!;
-          if (conn.startElement === action.oldName) {
-            lineText = lineText.replace(/\bstartElement\s*=\s*(["'])[^"']*\1/, `startElement=$1${action.newName}$1`);
-          }
-          if (conn.endElement === action.oldName) {
-            lineText = lineText.replace(/\bendElement\s*=\s*(["'])[^"']*\1/, `endElement=$1${action.newName}$1`);
-          }
-          edits.push({
-            range: { start: { line: cIdx, character: 0 }, end: { line: cIdx, character: lines[cIdx]!.length } },
-            newText: lineText,
-          });
-        }
-      }
-    } else if (actionType === "updateParameter" || actionType === "updateProperty") {
-      const paramName: string = (actionType === "updateProperty" ? action.key : action.parameter) ?? "";
-      const paramVal = String(action.value);
-      const targetName: string = action.name ?? "";
+      const xmlDoc = parseXmlSync(xml);
+      const lineStarts = computeLineStarts(xml);
+      let updatedCst = false;
 
-      if (paramName === "source" || paramName === "type") {
-        const cmp = system.components.find((c) => c.name === targetName);
+      if (xmlDoc.root) {
+        const cmpEl = findXmlElement(
+          xmlDoc.root,
+          (el) =>
+            sspMatchName(el.name, "Component") &&
+            el.attributes.some((a) => a.name === "name" && a.value === action.oldName),
+        );
+        if (cmpEl) {
+          const nameAttr = cmpEl.attributes.find((a) => a.name === "name");
+          if (nameAttr) {
+            edits.push({
+              range: {
+                start: offsetToPosition(nameAttr.valueStart, lineStarts),
+                end: offsetToPosition(nameAttr.valueEnd, lineStarts),
+              },
+              newText: action.newName ?? "",
+            });
+            updatedCst = true;
+          }
+        }
+
+        const connEls = findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Connection"));
+        for (const connEl of connEls) {
+          const startAttr = connEl.attributes.find((a) => a.name === "startElement" && a.value === action.oldName);
+          if (startAttr) {
+            edits.push({
+              range: {
+                start: offsetToPosition(startAttr.valueStart, lineStarts),
+                end: offsetToPosition(startAttr.valueEnd, lineStarts),
+              },
+              newText: action.newName ?? "",
+            });
+            updatedCst = true;
+          }
+          const endAttr = connEl.attributes.find((a) => a.name === "endElement" && a.value === action.oldName);
+          if (endAttr) {
+            edits.push({
+              range: {
+                start: offsetToPosition(endAttr.valueStart, lineStarts),
+                end: offsetToPosition(endAttr.valueEnd, lineStarts),
+              },
+              newText: action.newName ?? "",
+            });
+            updatedCst = true;
+          }
+        }
+      }
+
+      if (!updatedCst) {
+        const cmp = system.components.find((c) => c.name === action.oldName);
         if (cmp?.line && cmp.line - 1 < lines.length) {
           const lIdx = cmp.line - 1;
           const lineText = lines[lIdx]!;
-          const attrRe = new RegExp(`\\b${paramName}\\s*=\\s*(["'])[^"']*\\1`);
-          let updated: string;
-          if (attrRe.test(lineText)) {
-            updated = lineText.replace(attrRe, `${paramName}=$1${paramVal}$1`);
-          } else {
-            const trimmed = lineText.trimEnd();
-            if (trimmed.endsWith("/>")) {
-              updated = `${trimmed.slice(0, -2)} ${paramName}="${paramVal}"/>`;
-            } else if (trimmed.endsWith(">")) {
-              updated = `${trimmed.slice(0, -1)} ${paramName}="${paramVal}">`;
-            } else {
-              updated = lineText;
-            }
-          }
+          const updated = lineText.replace(/\bname\s*=\s*(["'])[^"']*\1/, `name=$1${action.newName}$1`);
           if (updated !== lineText) {
             edits.push({
               range: { start: { line: lIdx, character: 0 }, end: { line: lIdx, character: lineText.length } },
@@ -855,36 +910,122 @@ export function applySspDiagramEdits(
             });
           }
         }
+        for (const conn of system.connections) {
+          if (
+            (conn.startElement === action.oldName || conn.endElement === action.oldName) &&
+            conn.line &&
+            conn.line - 1 < lines.length
+          ) {
+            const cIdx = conn.line - 1;
+            let lineText = lines[cIdx]!;
+            if (conn.startElement === action.oldName) {
+              lineText = lineText.replace(/\bstartElement\s*=\s*(["'])[^"']*\1/, `startElement=$1${action.newName}$1`);
+            }
+            if (conn.endElement === action.oldName) {
+              lineText = lineText.replace(/\bendElement\s*=\s*(["'])[^"']*\1/, `endElement=$1${action.newName}$1`);
+            }
+            edits.push({
+              range: { start: { line: cIdx, character: 0 }, end: { line: cIdx, character: lines[cIdx]!.length } },
+              newText: lineText,
+            });
+          }
+        }
+      }
+    } else if (actionType === "updateParameter" || actionType === "updateProperty") {
+      const paramName: string = (actionType === "updateProperty" ? action.key : action.parameter) ?? "";
+      const paramVal = String(action.value);
+      const targetName: string = action.name ?? "";
+
+      const xmlDoc = parseXmlSync(xml);
+      const lineStarts = computeLineStarts(xml);
+
+      if (paramName === "source" || paramName === "type") {
+        let updatedAttr = false;
+        if (xmlDoc.root) {
+          const cmpEl = findXmlElement(
+            xmlDoc.root,
+            (el) =>
+              sspMatchName(el.name, "Component") &&
+              el.attributes.some((a) => a.name === "name" && a.value === targetName),
+          );
+          if (cmpEl) {
+            const attr = cmpEl.attributes.find((a) => a.name === paramName);
+            if (attr) {
+              edits.push({
+                range: {
+                  start: offsetToPosition(attr.valueStart, lineStarts),
+                  end: offsetToPosition(attr.valueEnd, lineStarts),
+                },
+                newText: paramVal,
+              });
+              updatedAttr = true;
+            } else {
+              const insertOffset = cmpEl.selfClosing ? cmpEl.openEnd - 2 : cmpEl.openEnd - 1;
+              const pos = offsetToPosition(insertOffset, lineStarts);
+              edits.push({
+                range: { start: pos, end: pos },
+                newText: ` ${paramName}="${paramVal}"`,
+              });
+              updatedAttr = true;
+            }
+          }
+        }
+        if (!updatedAttr) {
+          const cmp = system.components.find((c) => c.name === targetName);
+          if (cmp?.line && cmp.line - 1 < lines.length) {
+            const lIdx = cmp.line - 1;
+            const lineText = lines[lIdx]!;
+            const attrRe = new RegExp(`\\b${paramName}\\s*=\\s*(["'])[^"']*\\1`);
+            let updated: string;
+            if (attrRe.test(lineText)) {
+              updated = lineText.replace(attrRe, `${paramName}=$1${paramVal}$1`);
+            } else {
+              const trimmed = lineText.trimEnd();
+              if (trimmed.endsWith("/>")) {
+                updated = `${trimmed.slice(0, -2)} ${paramName}="${paramVal}"/>`;
+              } else if (trimmed.endsWith(">")) {
+                updated = `${trimmed.slice(0, -1)} ${paramName}="${paramVal}">`;
+              } else {
+                updated = lineText;
+              }
+            }
+            if (updated !== lineText) {
+              edits.push({
+                range: { start: { line: lIdx, character: 0 }, end: { line: lIdx, character: lineText.length } },
+                newText: updated,
+              });
+            }
+          }
+        }
         continue;
       }
 
-      // Check existing inline SSV parameter bindings
-      let matchedParamLine: number | undefined;
-      for (const binding of system.parameterBindings || []) {
-        const cleanPrefix = (binding.prefix ?? "").replace(/\.$/, "");
-        const prefixMatch = !cleanPrefix || cleanPrefix === targetName;
-        if (!prefixMatch) continue;
-        for (const p of binding.values) {
-          if (p.name === paramName || p.name === `${targetName}.${paramName}`) {
-            matchedParamLine = p.line;
-            break;
+      // Check existing inline SSV parameter bindings via XML CST
+      let paramValueAttr: XmlAttribute | null = null;
+      if (xmlDoc.root) {
+        for (const el of findAllXmlElements(xmlDoc.root, (e) => sspMatchName(e.name, "Parameter"))) {
+          const pName = el.attributes.find((a) => a.name === "name")?.value;
+          if (pName === paramName || pName === `${targetName}.${paramName}`) {
+            for (const ch of el.children) {
+              const vAttr = ch.attributes.find((a) => a.name === "value");
+              if (vAttr) {
+                paramValueAttr = vAttr;
+                break;
+              }
+            }
+            if (paramValueAttr) break;
           }
         }
       }
 
-      if (matchedParamLine && matchedParamLine - 1 < lines.length) {
-        const pStart = matchedParamLine - 1;
-        for (let i = pStart; i < Math.min(lines.length, pStart + 4); i++) {
-          if (/\bvalue\s*=\s*["'][^"']*["']/.test(lines[i]!)) {
-            const oldLine = lines[i]!;
-            const newLine = oldLine.replace(/(\bvalue\s*=\s*["'])([^"']*)(["'])/, `$1${paramVal}$3`);
-            edits.push({
-              range: { start: { line: i, character: 0 }, end: { line: i, character: oldLine.length } },
-              newText: newLine,
-            });
-            break;
-          }
-        }
+      if (paramValueAttr) {
+        edits.push({
+          range: {
+            start: offsetToPosition(paramValueAttr.valueStart, lineStarts),
+            end: offsetToPosition(paramValueAttr.valueEnd, lineStarts),
+          },
+          newText: paramVal,
+        });
       } else {
         const closeSysIdx = findClosingTagLine("System");
         const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;

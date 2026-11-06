@@ -7,6 +7,14 @@ import * as antvLayout from "@antv/layout";
 import * as x6 from "@antv/x6";
 
 import {
+  computeNodeAlignment,
+  ensureAlignmentToolbar,
+  showAlignmentToolbar,
+  type AlignableNode,
+  type AlignmentType,
+} from "./alignment.js";
+import { hideContextMenu, showContextMenu } from "./context-menu.js";
+import {
   clearActiveDropPlaceholder,
   dropComponentGhost,
   ensureDiagramStyles,
@@ -16,6 +24,7 @@ import {
   type DropPlaceholderOptions,
 } from "./drop-placeholder.js";
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
+import { ensureMinimapHud, isMinimapOpen, toggleMinimapHud, updateMinimapHud } from "./minimap.js";
 import {
   computeFilletedOrthogonalPath,
   computeJumpoverPath,
@@ -29,19 +38,29 @@ import {
   resolveNodePortWorldPoint,
   simplifyCollinearPoints,
   translateConnectedEdgeStubs,
+  type JumpoverOptions,
+  type JumpoverSegment,
   type PointLike,
   type RectLike,
   type RouterNodeLike,
   type RouterPortConfig,
 } from "./port-router.js";
-import type { ReactiveAnimationBinding } from "./protocol.js";
+import type { CoordinateSystem, ReactiveAnimationBinding } from "./protocol.js";
 import { alignNodeSelectionBox, getEdgeToolConfig, syncAllNodeSelectionBoxes } from "./selection-handles.js";
 import { applySequenceLayout } from "./sequence-layout.js";
-import { computeEdgeNetIds, computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
+import {
+  computeEdgeNetIds,
+  computeSolderDots,
+  computeWireCrossings,
+  solderDotToDiagramNode,
+  wireCrossingToDiagramNode,
+  type EdgePath,
+} from "./solder-dots.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout, type SwimlanePartition } from "./swimlane-layout.js";
-import { animateCells } from "./telemetry.js";
+import { animateCells, type SimulationFrame } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
+import { scheduleViewportCulling } from "./viewport-culling.js";
 
 export interface EdgeTerminal {
   cell?: string | undefined;
@@ -147,6 +166,7 @@ export interface Graph {
   drawGrid(options: Record<string, unknown>): void;
   dispose(): void;
   createEdge(metadata: Record<string, unknown>): Edge;
+  addEdge(metadata: Record<string, unknown> | Edge): Edge;
   use(plugin: unknown): void;
   on<T = Record<string, unknown>>(event: string, handler: (args: T) => void): void;
   addNode(metadata: Record<string, unknown>): Node;
@@ -163,6 +183,7 @@ export interface Graph {
   scale(): { sx: number; sy: number };
   translate(tx?: number, ty?: number): { tx: number; ty: number };
   zoom(factor?: number, options?: { absolute?: boolean | undefined }): number;
+  zoomTo?: ((factor: number) => void) | undefined;
   resize(width: number, height: number): void;
   zoomToRect(rect: RectLike, options?: Record<string, unknown>): void;
   zoomToFit(options?: Record<string, unknown>): void;
@@ -171,6 +192,14 @@ export interface Graph {
   fromJSON(data: { nodes: unknown[]; edges: unknown[] }): void;
   clearCells(): void;
   clientToLocal(x: number, y: number): PointLike;
+  showGrid?: (() => void) | undefined;
+  hideGrid?: (() => void) | undefined;
+  clearGrid?: (() => void) | undefined;
+  setGridSize?: ((size: number) => void) | undefined;
+  getGridSize?: (() => number) | undefined;
+  isSelected?: ((cell: Cell) => boolean) | undefined;
+  cleanSelection?: (() => void) | undefined;
+  select?: ((cell: Cell | Cell[]) => void) | undefined;
   matrix?: (() => { a: number; d: number; e: number; f: number }) | undefined;
   coord?: { localToGraphRect?: (rect: RectLike) => RectLike } | undefined;
   getPlugin?: ((name: string) => unknown) | undefined;
@@ -253,6 +282,36 @@ if (typeof Graph.registerRouter === "function") {
   }
 }
 
+interface JumpoverEdgeLike {
+  id?: string | undefined;
+  findView?: ((graph: unknown) => { routePoints?: PointLike[] } | null | undefined) | undefined;
+  getVertices?: (() => PointLike[]) | undefined;
+  getSourcePoint?: (() => PointLike) | undefined;
+  source?: PointLike | undefined;
+  getTargetPoint?: (() => PointLike) | undefined;
+  target?: PointLike | undefined;
+  getConnector?: (() => string | { name?: string }) | undefined;
+  connector?: string | { name?: string } | undefined;
+}
+
+interface JumpoverNodeLike {
+  id?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  getPosition?: (() => PointLike | undefined) | undefined;
+  getSize?: (() => { width?: number; height?: number } | undefined) | undefined;
+}
+
+interface JumpoverEdgeViewLike {
+  graph?:
+    | {
+        getEdges?: (() => JumpoverEdgeLike[]) | undefined;
+        getNodes?: (() => JumpoverNodeLike[]) | undefined;
+      }
+    | undefined;
+  cell?: { id?: string | undefined } | undefined;
+}
+
 if (typeof Graph.registerConnector === "function") {
   try {
     Graph.registerConnector(
@@ -261,10 +320,74 @@ if (typeof Graph.registerConnector === "function") {
         sourcePoint: PointLike,
         targetPoint: PointLike,
         routePoints: PointLike[] = [],
-        args: { radius?: number | undefined } = {},
+        args: JumpoverOptions = {},
+        edgeView?: JumpoverEdgeViewLike,
       ) => {
         const points = [sourcePoint, ...routePoints, targetPoint];
-        return computeJumpoverPath(points, [], { radius: args.radius ?? 5 });
+        const obstacles: JumpoverSegment[] = [];
+        const solderDots: PointLike[] = [];
+
+        if (edgeView?.graph && typeof edgeView.graph.getEdges === "function") {
+          const currentCell = edgeView.cell;
+          const currentEdgeId = currentCell?.id;
+          const allEdges = edgeView.graph.getEdges();
+
+          // Collect solder dot positions to suppress jumpovers near connected net junctions
+          if (typeof edgeView.graph.getNodes === "function") {
+            for (const n of edgeView.graph.getNodes()) {
+              if (typeof n.id === "string" && n.id.startsWith("solder_dot_")) {
+                const pos = typeof n.getPosition === "function" ? n.getPosition() : { x: n.x, y: n.y };
+                const size = typeof n.getSize === "function" ? n.getSize() : { width: 3, height: 3 };
+                if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+                  solderDots.push({
+                    x: pos.x + (size?.width ?? 3) / 2,
+                    y: pos.y + (size?.height ?? 3) / 2,
+                  });
+                }
+              }
+            }
+          }
+
+          for (const edge of allEdges) {
+            if (edge.id === currentEdgeId) continue;
+
+            const otherView = typeof edge.findView === "function" ? edge.findView(edgeView.graph) : null;
+            const otherRoute = otherView?.routePoints;
+            const otherVertices =
+              otherRoute && otherRoute.length > 0
+                ? otherRoute
+                : typeof edge.getVertices === "function"
+                  ? edge.getVertices()
+                  : [];
+            const otherSrc = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : edge.source;
+            const otherTgt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : edge.target;
+
+            if (otherSrc && otherTgt && typeof otherSrc.x === "number" && typeof otherTgt.x === "number") {
+              const otherConnector = typeof edge.getConnector === "function" ? edge.getConnector() : edge.connector;
+              const otherConnectorName = typeof otherConnector === "string" ? otherConnector : otherConnector?.name;
+              const hasJumpover = otherConnectorName === "jumpover";
+
+              const otherPoints: PointLike[] = [otherSrc, ...otherVertices, otherTgt];
+              for (let j = 0; j < otherPoints.length - 1; j++) {
+                obstacles.push({
+                  p1: otherPoints[j]!,
+                  p2: otherPoints[j + 1]!,
+                  edgeId: edge.id,
+                  hasJumpover,
+                });
+              }
+            }
+          }
+        }
+
+        return computeJumpoverPath(points, obstacles, {
+          radius: args.radius ?? 5,
+          axis: args.axis ?? "both",
+          horizontalHop: args.horizontalHop ?? "up",
+          verticalHop: args.verticalHop ?? "right",
+          edgeId: edgeView?.cell?.id,
+          solderDots,
+        });
       },
       true,
     );
@@ -332,6 +455,8 @@ export interface DiagramRendererOptions {
   isDark?: boolean | undefined;
   /** Whether edges can connect directly to node bodies in addition to port magnets. */
   allowNodeConnection?: boolean | undefined;
+  /** Coordinate snap raster in pixels (default 20, or 18 for PSCAD). */
+  snapGrid?: number | undefined;
   /** Default connector style for newly created and unspecified edges (e.g. "normal" or { name: "rounded", args: { radius: 8 } }). */
   defaultConnector?: unknown | undefined;
   /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
@@ -344,6 +469,8 @@ export interface DiagramRendererOptions {
   onUndo?: (() => void) | undefined;
   /** Callback invoked when the user triggers a Redo keyboard shortcut (`Ctrl+Y` / `Cmd+Shift+Z`). */
   onRedo?: (() => void) | undefined;
+  /** Callback invoked when auto-layout is triggered from canvas context menu. */
+  onAutoLayout?: (() => void) | undefined;
   /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
   onMessage?: ((msg: DiagramHostMessage) => void) | undefined;
 }
@@ -627,7 +754,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
-      snap: { radius: 32 },
+      snap: { radius: 24 },
       allowBlank: false,
       allowMulti: () => !isCurrentDiagramReadOnly,
       allowLoop: false,
@@ -641,8 +768,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           args: {
             attrs: {
               fill: "#fff",
-              stroke: "#31d0c6",
-              strokeWidth: 4,
+              stroke: "#0891b2",
+              strokeWidth: 3.5,
             },
           },
         },
@@ -650,14 +777,18 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           name: "stroke",
           args: {
             attrs: {
-              fill: "#31d0c6",
-              stroke: "#1890ff",
-              strokeWidth: 6,
+              fill: "#0891b2",
+              stroke: "#22d3ee",
+              strokeWidth: 5,
             },
           },
         },
       },
-      validateMagnet: () => true,
+      validateMagnet: ({ cell }: { cell?: { id: string } | null | undefined } = {}) => {
+        if (isCurrentDiagramReadOnly) return false;
+        if (cell && isEphemeralDiagramNode(cell.id)) return false;
+        return true;
+      },
       validateConnection: ({
         sourceCell,
         targetCell,
@@ -665,8 +796,9 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         sourceCell?: { id: string } | null | undefined;
         targetCell?: { id: string } | null | undefined;
       }) => {
-        if (sourceCell && isEphemeralDiagramNode(sourceCell.id)) return false;
-        if (targetCell && isEphemeralDiagramNode(targetCell.id)) return false;
+        if (!sourceCell || !targetCell) return false;
+        if (sourceCell.id === targetCell.id) return false;
+        if (isEphemeralDiagramNode(sourceCell.id) || isEphemeralDiagramNode(targetCell.id)) return false;
         return true;
       },
       validateEdge: () => true,
@@ -768,6 +900,121 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     });
   };
 
+  // ── Minimap HUD ──
+  const minimapHud = ensureMinimapHud(container, (worldX, worldY) => {
+    const graphWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
+    if (typeof graphWithCenter.centerPoint === "function") {
+      graphWithCenter.centerPoint(worldX, worldY);
+    }
+  });
+
+  // ── Node Rotation Helper ──
+  const rotateSelectedNodes = (deltaDegrees: number, targetGraph: Graph = g) => {
+    const selectedNodes = targetGraph
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+    if (selectedNodes.length === 0) return;
+
+    const moveItems: Record<string, unknown>[] = [];
+    targetGraph.batchUpdate("rotate", () => {
+      for (const node of selectedNodes) {
+        const curAngle = node.getAngle?.() || 0;
+        const newAngle = (((curAngle + deltaDegrees) % 360) + 360) % 360;
+        node.rotate?.(newAngle, { absolute: true });
+        const p = node.getPosition();
+        const s = node.getSize();
+        const edges = getConnectedEdges(targetGraph, node);
+        const name = (node.getData?.()?.["name"] as string) || node.id;
+        moveItems.push({
+          name,
+          x: p.x,
+          y: p.y,
+          width: s.width,
+          height: s.height,
+          rotation: newAngle,
+          edges,
+        });
+      }
+    });
+
+    if (moveItems.length > 0) {
+      enqueueDiagramAction({ type: "move", items: moveItems }, targetGraph);
+      scheduleUpdateSolderDots(targetGraph);
+    }
+  };
+
+  // ── Multi-Node Alignment & Distribution Toolbar ──
+  const alignmentToolbar = ensureAlignmentToolbar(container, (type: AlignmentType) => {
+    if (type === "rotate-cw") {
+      rotateSelectedNodes(90, g);
+      return;
+    }
+    const currentSelected = g
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode()) as Node[];
+    if (currentSelected.length < 2) return;
+    const nodesToAlign: AlignableNode[] = currentSelected.map((n: Node) => {
+      const pos = n.getPosition();
+      const sz = n.getSize();
+      return { id: n.id, x: pos.x, y: pos.y, width: sz.width, height: sz.height };
+    });
+    const snapGrid = 1;
+    const updates = computeNodeAlignment(nodesToAlign, type, snapGrid);
+    if (updates.length === 0) return;
+
+    g.batchUpdate("align", () => {
+      for (const u of updates) {
+        const node = g.getCellById(u.id) as Node;
+        if (node && typeof node.isNode === "function" && node.isNode()) {
+          const oldPos = node.getPosition();
+          const dx = u.x - oldPos.x;
+          const dy = u.y - oldPos.y;
+          node.setPosition(u.x, u.y);
+          translateConnectedEdgeStubs(g, node, dx, dy);
+        }
+      }
+    });
+
+    enqueueDiagramAction(
+      {
+        type: "move",
+        items: updates.map((u) => {
+          const node = g.getCellById(u.id);
+          const name = (node?.getData?.()?.["name"] as string) || u.id;
+          return { name, x: u.x, y: u.y };
+        }),
+      },
+      g,
+    );
+
+    const updatedNodes: AlignableNode[] = currentSelected.map((n: Node) => {
+      const pos = n.getPosition();
+      const sz = n.getSize();
+      return { id: n.id, x: pos.x, y: pos.y, width: sz.width, height: sz.height };
+    });
+    const sc = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
+    const tr = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
+    showAlignmentToolbar(alignmentToolbar, container, updatedNodes, sc, tr);
+  });
+
+  const syncAlignmentToolbar = () => {
+    const selectedNodes = g
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode()) as Node[];
+    if (selectedNodes.length >= 2) {
+      const nodesToAlign: AlignableNode[] = selectedNodes.map((n: Node) => {
+        const pos = n.getPosition();
+        const sz = n.getSize();
+        return { id: n.id, x: pos.x, y: pos.y, width: sz.width, height: sz.height };
+      });
+      const sc = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
+      const tr = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
+      showAlignmentToolbar(alignmentToolbar, container, nodesToAlign, sc, tr);
+    } else {
+      showAlignmentToolbar(alignmentToolbar, container, [], { sx: 1, sy: 1 }, { tx: 0, ty: 0 });
+    }
+  };
+
   // ── Selection change events — add/remove edge tools & align node selection boxes ──
   g.on("selection:changed", ({ added, removed }: { added: Cell[]; removed: Cell[] }) => {
     added.forEach((cell: Cell) => {
@@ -787,12 +1034,16 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         cell.removeTools();
       }
     });
+    syncAlignmentToolbar();
   });
 
   // ── Viewport Level-of-Detail (LOD) & Scale/Translate Sync ──
   g.on("scale", ({ sx }: { sx: number }) => {
     syncAllNodeSelectionBoxes(g, selectionImpl?.container);
     refreshSelectedEdgeTools();
+    scheduleViewportCulling(g);
+    syncAlignmentToolbar();
+    updateMinimapHud(minimapHud, g);
     if (!container) return;
     if (sx < 0.25) {
       container.classList.add("x6-lod-minimal");
@@ -808,6 +1059,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   g.on("translate", () => {
     syncAllNodeSelectionBoxes(g, selectionImpl?.container);
+    scheduleViewportCulling(g);
+    syncAlignmentToolbar();
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("node:change:position", () => {
+    syncAlignmentToolbar();
+    updateMinimapHud(minimapHud, g);
   });
 
   // ── Placement Mode (Drag and Drop in VS Code) ──
@@ -937,6 +1196,12 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         placementGhost.position(x - size.width / 2, y - size.height / 2);
       }
     }
+    if (isWireToolActive && activeWireState?.previewEdge) {
+      const raster = currentOptions?.snapGrid ?? 20;
+      const snappedX = Math.round(x / raster) * raster;
+      const snappedY = Math.round(y / raster) * raster;
+      activeWireState.previewEdge.setTarget({ x: snappedX, y: snappedY });
+    }
   };
 
   const handlePointerUpOrDrop = (x: number, y: number) => {
@@ -967,11 +1232,143 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     isPointerOverCanvas = false;
   });
 
-  g.on("blank:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
-  g.on("cell:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
+  // ── Universal Point-by-Point Wire Tool (W key) ──
+  let isWireToolActive = false;
+  let activeWireState: {
+    sourceCell: Cell;
+    sourcePortId?: string | undefined;
+    sourcePoint: { x: number; y: number };
+    waypoints: { x: number; y: number }[];
+    previewEdge?: Edge | null;
+  } | null = null;
+
+  const cancelWireToolInProgress = () => {
+    if (activeWireState?.previewEdge) {
+      try {
+        g.removeCell(activeWireState.previewEdge);
+      } catch {
+        // Ignored
+      }
+    }
+    activeWireState = null;
+  };
+
+  const setWireToolState = (active?: boolean): boolean => {
+    isWireToolActive = active !== undefined ? active : !isWireToolActive;
+    if (!isWireToolActive) {
+      cancelWireToolInProgress();
+      const container = g.container;
+      if (container) container.style.cursor = "default";
+    } else {
+      const container = g.container;
+      if (container) container.style.cursor = "crosshair";
+    }
+    return isWireToolActive;
+  };
+
+  g.on("blank:click", ({ x, y }: { x: number; y: number }) => {
+    if (placementData) {
+      handlePlacementClick(x, y);
+      return;
+    }
+    if (isWireToolActive && activeWireState) {
+      const raster = currentOptions?.snapGrid ?? 20;
+      const snappedX = Math.round(x / raster) * raster;
+      const snappedY = Math.round(y / raster) * raster;
+      activeWireState.waypoints.push({ x: snappedX, y: snappedY });
+      if (activeWireState.previewEdge && typeof activeWireState.previewEdge.setVertices === "function") {
+        activeWireState.previewEdge.setVertices([...activeWireState.waypoints]);
+      }
+    }
+  });
+
+  g.on("cell:click", ({ cell, x, y }: { cell: Cell; x: number; y: number }) => {
+    if (placementData) {
+      handlePlacementClick(x, y);
+      return;
+    }
+    if (isWireToolActive && cell.isNode()) {
+      const portId = resolveNearestNodePortId(cell, { x, y });
+      const portPoint = (portId !== undefined ? resolveNodePortWorldPoint(cell, portId) : null) ?? { x, y };
+
+      if (!activeWireState) {
+        // Start wire from this node/port
+        const previewEdge = g.createEdge({
+          id: "__wire_tool_preview__",
+          zIndex: 10000,
+          source: portId !== undefined ? { cell: cell.id, port: portId } : { cell: cell.id },
+          target: { x: portPoint.x, y: portPoint.y },
+          router: { name: "port-orthogonal-astar" },
+          connector: { name: "rounded", args: { radius: 4 } },
+          attrs: {
+            line: {
+              stroke: isDark ? "#569cd6" : "#005fb8",
+              strokeDasharray: "4 2",
+              strokeWidth: 2,
+              targetMarker: null,
+              "pointer-events": "none",
+            },
+          },
+        });
+        activeWireState = {
+          sourceCell: cell,
+          sourcePortId: portId,
+          sourcePoint: portPoint,
+          waypoints: [],
+          previewEdge,
+        };
+        g.addEdge(previewEdge);
+      } else {
+        // Target node clicked: finish wire
+        if (activeWireState.sourceCell.id === cell.id && activeWireState.sourcePortId === portId) {
+          // Clicked start port; skip
+          return;
+        }
+        const srcStr =
+          activeWireState.sourcePortId !== undefined
+            ? `${activeWireState.sourceCell.id}.${activeWireState.sourcePortId}`
+            : activeWireState.sourceCell.id;
+        const tgtStr = portId !== undefined ? `${cell.id}.${portId}` : cell.id;
+
+        const roundedSrc = {
+          x: Math.round(activeWireState.sourcePoint.x),
+          y: Math.round(-activeWireState.sourcePoint.y),
+        };
+        const roundedTgt = {
+          x: Math.round(portPoint.x),
+          y: Math.round(-portPoint.y),
+        };
+        const roundedWaypoints = activeWireState.waypoints.map((w) => ({
+          x: Math.round(w.x),
+          y: Math.round(-w.y),
+        }));
+        const points = [roundedSrc, ...roundedWaypoints, roundedTgt];
+
+        cancelWireToolInProgress();
+
+        enqueueDiagramAction(
+          {
+            type: "connect",
+            source: srcStr,
+            target: tgtStr,
+            points,
+          },
+          g,
+        );
+      }
+    }
+  });
 
   const onWindowEscape = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
+      if (activeWireState) {
+        cancelWireToolInProgress();
+        return;
+      }
+      if (isWireToolActive) {
+        setWireToolState(false);
+        return;
+      }
       clearPlacement();
       clearActiveDropPlaceholder();
       const existingPlaceholder = g.getCellById?.("__drop_placeholder__");
@@ -1014,6 +1411,16 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const edge = g.getCellById(edgeId);
       if (edge && edge.isEdge()) {
         rerouteEdgeOrthogonal(edge, g);
+      }
+    };
+
+    win.__toggleWireTool = setWireToolState;
+    win.__isWireToolActive = () => isWireToolActive;
+    win.__cancelWireTool = cancelWireToolInProgress;
+    win.__startInlineNodeEdit = (nodeId: string) => {
+      const node = g.getCellById(nodeId);
+      if (node && node.isNode()) {
+        startInlineNodeEdit(node);
       }
     };
   }
@@ -1578,13 +1985,145 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
   });
 
+  // ── Desktop CAD Context Menus ──
+  g.on("node:contextmenu", ({ node, e }: { node: Node; e: MouseEvent }) => {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
+    if (!node || isEphemeralDiagramNode(node.id)) return;
+
+    if (!g.isSelected?.(node)) {
+      g.cleanSelection?.();
+      g.select?.(node);
+    }
+
+    const nodeName = (node.getData?.()?.["name"] as string) || node.id;
+    showContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      container,
+      items: [
+        {
+          label: "Rotate 90° Clockwise",
+          shortcut: "R",
+          action: () => rotateSelectedNodes(90, g),
+        },
+        {
+          label: "Rotate 90° Counter-CW",
+          shortcut: "Shift+R",
+          action: () => rotateSelectedNodes(-90, g),
+        },
+        { type: "separator" },
+        {
+          label: "Inspect Properties",
+          action: () => {
+            postMessageToHost({ type: "getProperties", componentName: nodeName }, g);
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Delete Component",
+          shortcut: "Del",
+          danger: true,
+          action: () => {
+            enqueueDiagramAction({ type: "deleteComponents", names: [nodeName] }, g);
+            g.removeCell?.(node);
+            scheduleUpdateSolderDots(g);
+          },
+        },
+      ],
+    });
+  });
+
   g.on("edge:contextmenu", ({ edge, e }: { edge: Edge; e: MouseEvent }) => {
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
-    if (edge && edge.isEdge()) {
-      rerouteEdgeOrthogonal(edge, g);
+    if (!edge || !edge.isEdge()) return;
+
+    showContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      container,
+      items: [
+        {
+          label: "Re-route Orthogonal",
+          action: () => {
+            rerouteEdgeOrthogonal(edge, g);
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Delete Connection",
+          shortcut: "Del",
+          danger: true,
+          action: () => {
+            const src = edge.getSource() as { cell?: string; port?: string } | undefined;
+            const tgt = edge.getTarget() as { cell?: string; port?: string } | undefined;
+            if (src?.cell && src?.port && tgt?.cell && tgt?.port) {
+              enqueueDiagramAction(
+                { type: "disconnect", source: `${src.cell}.${src.port}`, target: `${tgt.cell}.${tgt.port}` },
+                g,
+              );
+            }
+            g.removeCell?.(edge);
+            scheduleUpdateSolderDots(g);
+          },
+        },
+      ],
+    });
+  });
+
+  g.on("blank:contextmenu", ({ e }: { e: MouseEvent }) => {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
     }
+    showContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      container,
+      items: [
+        {
+          label: "Zoom to Fit",
+          shortcut: "Shift+1",
+          action: () => {
+            g.zoomToFit({ maxScale: 1, padding: 24 });
+          },
+        },
+        {
+          label: "Reset Zoom (100%)",
+          shortcut: "Ctrl+0",
+          action: () => {
+            if (typeof g.zoomTo === "function") g.zoomTo(1);
+            else g.zoom(1, { absolute: true });
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Auto-layout Diagram",
+          action: () => {
+            const opts = getOptionsForGraph(g);
+            if (opts?.onAutoLayout) {
+              opts.onAutoLayout();
+            } else {
+              postMessageToHost({ type: "autoLayout" }, g);
+            }
+          },
+        },
+        {
+          label: isMinimapOpen(container) ? "Hide Minimap" : "Show Minimap",
+          shortcut: "M",
+          action: () => {
+            toggleMinimapHud(container);
+            updateMinimapHud(minimapHud, g);
+          },
+        },
+      ],
+    });
+  });
+
+  g.on("blank:click", () => {
+    hideContextMenu(container);
   });
 
   const onAltKeyDown = (e: KeyboardEvent) => {
@@ -1645,6 +2184,18 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       g.removeCells(cells);
       scheduleUpdateSolderDots(g);
     } else if (graph === g) {
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          (active as HTMLElement).isContentEditable ||
+          Boolean((active as HTMLElement).closest?.(".monaco-editor")))
+      ) {
+        return;
+      }
+
       const nav = navigator as unknown as {
         platform?: string | undefined;
         userAgent?: string | undefined;
@@ -1666,6 +2217,32 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         e.preventDefault();
         Spinner.show();
         postMessageToHost({ type: "redo" }, g);
+      } else if (mod && (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd")) {
+        e.preventDefault();
+        const current = g.zoom();
+        const next = Math.min(3, Math.round((current + 0.15) * 100) / 100);
+        if (typeof g.zoomTo === "function") g.zoomTo(next);
+        else g.zoom(next, { absolute: true });
+      } else if (mod && (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract")) {
+        e.preventDefault();
+        const current = g.zoom();
+        const next = Math.max(0.1, Math.round((current - 0.15) * 100) / 100);
+        if (typeof g.zoomTo === "function") g.zoomTo(next);
+        else g.zoom(next, { absolute: true });
+      } else if (mod && (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0")) {
+        e.preventDefault();
+        if (typeof g.zoomTo === "function") g.zoomTo(1);
+        else g.zoom(1, { absolute: true });
+      } else if ((mod && (e.key === "1" || e.code === "Digit1")) || (e.shiftKey && (e.key === "1" || e.key === "!"))) {
+        e.preventDefault();
+        g.zoomToFit({ maxScale: 1, padding: 24 });
+      } else if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        toggleMinimapHud(container);
+        updateMinimapHud(minimapHud, g);
+      } else if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        rotateSelectedNodes(e.shiftKey ? -90 : 90, g);
       }
     }
   };
@@ -1674,6 +2251,91 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     document.addEventListener("keydown", onAltKeyDown);
     document.addEventListener("keyup", onAltKeyUp);
     document.addEventListener("keydown", onDocKeyDown);
+
+    // ── CAD Spacebar Hand Pan Mode ──
+    let isSpacePressed = false;
+    let isSpacePanning = false;
+    let spacePanStartX = 0;
+    let spacePanStartY = 0;
+
+    const onSpaceKeyDown = (e: KeyboardEvent) => {
+      if (e.key === " " || e.code === "Space") {
+        const active = document.activeElement;
+        if (
+          active &&
+          (active.tagName === "INPUT" ||
+            active.tagName === "TEXTAREA" ||
+            active.tagName === "SELECT" ||
+            (active as HTMLElement).isContentEditable)
+        ) {
+          return;
+        }
+        if (!isSpacePressed) {
+          isSpacePressed = true;
+          container.classList.add("x6-hand-panning");
+        }
+        e.preventDefault();
+      }
+    };
+
+    const onSpaceKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " " || e.code === "Space") {
+        isSpacePressed = false;
+        isSpacePanning = false;
+        container.classList.remove("x6-hand-panning");
+        container.classList.remove("x6-hand-panning-active");
+      }
+    };
+
+    const onContainerMouseDownCapture = (e: MouseEvent) => {
+      if (isSpacePressed) {
+        isSpacePanning = true;
+        spacePanStartX = e.clientX;
+        spacePanStartY = e.clientY;
+        container.classList.add("x6-hand-panning-active");
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const onWindowMouseMoveCapture = (e: MouseEvent) => {
+      if (isSpacePanning) {
+        const dx = e.clientX - spacePanStartX;
+        const dy = e.clientY - spacePanStartY;
+        spacePanStartX = e.clientX;
+        spacePanStartY = e.clientY;
+        const cur = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
+        g.translate(cur.tx + dx, cur.ty + dy);
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const onWindowMouseUpCapture = (e: MouseEvent) => {
+      if (isSpacePanning) {
+        isSpacePanning = false;
+        container.classList.remove("x6-hand-panning-active");
+        if (!isSpacePressed) {
+          container.classList.remove("x6-hand-panning");
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const onWindowBlur = () => {
+      isSpacePressed = false;
+      isSpacePanning = false;
+      container.classList.remove("x6-hand-panning");
+      container.classList.remove("x6-hand-panning-active");
+    };
+
+    container.addEventListener("mousedown", onContainerMouseDownCapture, true);
+    window.addEventListener("mousemove", onWindowMouseMoveCapture, true);
+    window.addEventListener("mouseup", onWindowMouseUpCapture, true);
+    window.addEventListener("blur", onWindowBlur);
+    document.addEventListener("keydown", onSpaceKeyDown);
+    document.addEventListener("keyup", onSpaceKeyUp);
   }
 
   g.on("node:mousedown", ({ node }: { node: Node }) => {
@@ -1811,6 +2473,79 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     requestAnimationFrame(animate);
   });
 
+  const startInlineNodeEdit = (node: Node) => {
+    if (isCurrentDiagramReadOnly || isEphemeralDiagramNode(node.id)) return;
+    const existingInput = document.getElementById("__diagram_inline_input__");
+    if (existingInput) existingInput.remove();
+
+    const view = g.findViewByCell(node);
+    const containerEl = g.container;
+    if (!view?.container || !containerEl) return;
+
+    const rect = view.container.getBoundingClientRect();
+    const containerRect = containerEl.getBoundingClientRect();
+    const left = Math.max(8, rect.left - containerRect.left);
+    const top = Math.max(8, rect.bottom - containerRect.top - 26);
+    const width = Math.min(260, Math.max(90, rect.width));
+
+    const data = node.getData();
+    const currentName = String(data?.["name"] ?? data?.properties?.name ?? node.id);
+
+    const input = document.createElement("input");
+    input.id = "__diagram_inline_input__";
+    input.type = "text";
+    input.value = currentName;
+    input.style.position = "absolute";
+    input.style.left = `${left}px`;
+    input.style.top = `${top}px`;
+    input.style.width = `${width}px`;
+    input.style.height = "24px";
+    input.style.boxSizing = "border-box";
+    input.style.background = isDark ? "#1e1e1e" : "#ffffff";
+    input.style.color = isDark ? "#cccccc" : "#333333";
+    input.style.border = "1.5px solid #007fd4";
+    input.style.borderRadius = "3px";
+    input.style.fontFamily = "inherit";
+    input.style.fontSize = "12px";
+    input.style.textAlign = "center";
+    input.style.zIndex = "100000";
+    input.style.outline = "none";
+    input.style.padding = "0 6px";
+    input.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
+
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      const newName = input.value.trim();
+      if (newName && newName !== currentName) {
+        node.setData({ ...node.getData(), name: newName });
+        enqueueDiagramAction({ type: "updateName", oldName: currentName, newName }, g);
+      }
+      input.remove();
+    };
+
+    input.addEventListener("keydown", (e: KeyboardEvent) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        committed = true;
+        input.remove();
+      }
+    });
+
+    input.addEventListener("blur", () => {
+      commit();
+    });
+
+    containerEl.appendChild(input);
+    input.focus();
+    input.select();
+  };
+
   // ── Double-click navigation: drill into child diagram views ──
   // E.g., double-click a StateDefinition in BDD → open StateMachine view for it.
   g.on("node:dblclick", ({ node }: { node: Node }) => {
@@ -1847,7 +2582,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       Package: "Package",
     };
 
-    const targetDiagramType = navigationMap[props.ruleName];
+    const targetDiagramType = props?.ruleName ? navigationMap[props.ruleName] : undefined;
     if (targetDiagramType) {
       postMessageToHost(
         {
@@ -1857,7 +2592,11 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         },
         g,
       );
+      return;
     }
+
+    // Leaf component: trigger inline canvas rename
+    startInlineNodeEdit(node);
   });
 
   g.on("blank:click", () => {
@@ -1907,6 +2646,10 @@ interface DiagramWindow {
   __setPointerOverCanvas?: ((over: boolean, pos?: PointLike) => void) | undefined;
   __getPlacementData?: (() => PlacementData | null) | undefined;
   __rerouteEdgeOrthogonal?: ((edgeId: string) => void) | undefined;
+  __toggleWireTool?: ((active?: boolean) => boolean) | undefined;
+  __isWireToolActive?: (() => boolean) | undefined;
+  __cancelWireTool?: (() => void) | undefined;
+  __startInlineNodeEdit?: ((nodeId: string) => void) | undefined;
   debugSolderDotsInfo?: string | undefined;
   prompt?: ((message?: string, _default?: string) => string | null) | undefined;
   event?: { buttons?: number | undefined } | Event | undefined;
@@ -2018,15 +2761,7 @@ export interface RenderDiagramInput {
   diagramType?: string | undefined;
   partitions?: SwimlanePartition[] | undefined;
   layout?: string | undefined;
-  coordinateSystem?:
-    | {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }
-    | null
-    | undefined;
+  coordinateSystem?: CoordinateSystem | null | undefined;
   diagramBackground?: unknown;
   breadcrumbs?: { id: string; label: string }[] | undefined;
   metadata?:
@@ -2140,9 +2875,44 @@ export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
   }
 }
 
-function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
+export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
   isCurrentDiagramReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
   activeDefaultConnector = data.metadata?.defaultConnector ?? currentOptions?.defaultConnector;
+
+  // Dynamically configure canvas grid from coordinateSystem if specified
+  if (data.coordinateSystem?.grid) {
+    const gridConfig = data.coordinateSystem.grid;
+    if (Array.isArray(gridConfig)) {
+      if (typeof gridConfig[0] === "number" && gridConfig[0] > 0) {
+        g.setGridSize?.(gridConfig[0]);
+      }
+    } else if (typeof gridConfig === "object") {
+      if (gridConfig.visible === false) {
+        g.hideGrid?.();
+      } else {
+        g.showGrid?.();
+        if (typeof gridConfig.x === "number" && gridConfig.x > 0) {
+          g.setGridSize?.(gridConfig.x);
+        }
+        if (gridConfig.type) {
+          const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+          if (gridConfig.type === "dot") {
+            g.drawGrid({ type: "dot", args: { color: gridConfig.color ?? gridColor, thickness: 1.5 } });
+          } else if (gridConfig.type === "mesh") {
+            g.drawGrid({ type: "mesh", args: { color: gridConfig.color ?? gridColor, thickness: 1 } });
+          } else if (gridConfig.type === "doubleMesh") {
+            g.drawGrid({
+              type: "doubleMesh",
+              args: [
+                { color: "transparent", thickness: 0 },
+                { color: gridConfig.color ?? gridColor, thickness: 1, factor: 10 },
+              ],
+            });
+          }
+        }
+      }
+    }
+  }
 
   // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives.
   // Retain the drop placeholder if incoming data does not yet contain the newly dropped component
@@ -2476,25 +3246,54 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
   // Add diagram background if present
   if (data.coordinateSystem) {
     const cs = data.coordinateSystem;
-    const isIconMode = (data.diagramType || "").toLowerCase() === "icon";
-    const boundaryStroke = isIconMode
-      ? isDark
-        ? "rgba(56, 189, 248, 0.45)"
-        : "rgba(2, 132, 199, 0.45)"
-      : isDark
-        ? "rgba(148, 163, 184, 0.16)"
-        : "rgba(100, 116, 139, 0.16)";
+    const showBounds = cs.boundsStyle?.visible !== false;
+    const boundsStroke = cs.boundsStyle?.stroke ?? "#999";
+    const boundsDash = cs.boundsStyle?.strokeDasharray ? ` stroke-dasharray: ${cs.boundsStyle.strokeDasharray};` : "";
+    const boundsWidth = cs.boundsStyle?.strokeWidth ?? 1;
+    const boundsFill = cs.boundsStyle?.fill ?? "transparent";
 
-    const children: unknown[] = [
-      {
+    const children: unknown[] = [];
+    if (showBounds) {
+      children.push({
         tagName: "rect",
         attrs: {
-          style: `fill: transparent; stroke: ${boundaryStroke}; stroke-width: 1px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none;`,
+          style: `fill: ${boundsFill}; stroke: ${boundsStroke}; stroke-width: ${boundsWidth}px;${boundsDash} vector-effect: non-scaling-stroke; pointer-events: none;`,
           width: cs.width,
           height: cs.height,
         },
-      },
-    ];
+      });
+
+      if (cs.boundsStyle?.headerText) {
+        const headerText = cs.boundsStyle.headerText;
+        const badgeW = Math.min(cs.width, Math.max(80, headerText.length * 7 + 16));
+        children.push(
+          {
+            tagName: "rect",
+            attrs: {
+              x: "0",
+              y: "0",
+              width: String(badgeW),
+              height: "20",
+              fill: isDark ? "#1e293b" : "#f1f5f9",
+              stroke: boundsStroke,
+              "stroke-width": "1",
+            },
+          },
+          {
+            tagName: "text",
+            textContent: headerText,
+            attrs: {
+              x: "8",
+              y: "14",
+              fill: isDark ? "#94a3b8" : "#475569",
+              "font-size": "10.5",
+              "font-family": "Inter, system-ui, sans-serif",
+              "font-weight": "600",
+            },
+          },
+        );
+      }
+    }
     if (data.diagramBackground) {
       children.push(data.diagramBackground);
     }
@@ -2521,52 +3320,107 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
 
   // Add axes node
   if (data.coordinateSystem) {
-    const axisStroke = isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(100, 116, 139, 0.16)";
-    nodes.push({
-      id: "__diagram_axes__",
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-      zIndex: -2,
-      markup: {
-        tagName: "g",
-        attrs: {
-          pointerEvents: "none",
-          style: "pointer-events: none;",
+    const cs = data.coordinateSystem;
+    const showAxes = cs.axesStyle?.visible !== false;
+    if (showAxes) {
+      const axisStroke = cs.axesStyle?.stroke ?? "#999";
+      const axisWidth = String(cs.axesStyle?.strokeWidth ?? 1);
+      const axisDash = cs.axesStyle?.strokeDasharray;
+      const boundsOnly = cs.axesStyle?.boundsOnly === true;
+      const ox = cs.axesStyle?.origin?.[0] ?? 0;
+      const oy = cs.axesStyle?.origin?.[1] ?? 0;
+
+      const minX = boundsOnly ? cs.x : -100000;
+      const maxX = boundsOnly ? cs.x + cs.width : 100000;
+      const minY = boundsOnly ? cs.y : -100000;
+      const maxY = boundsOnly ? cs.y + cs.height : 100000;
+
+      const lineAttrsX: Record<string, string> = {
+        x1: String(minX),
+        y1: String(oy),
+        x2: String(maxX),
+        y2: String(oy),
+        stroke: axisStroke,
+        "stroke-width": axisWidth,
+        "vector-effect": "non-scaling-stroke",
+        "pointer-events": "none",
+      };
+      if (axisDash) {
+        lineAttrsX["stroke-dasharray"] = axisDash;
+      }
+
+      const lineAttrsY: Record<string, string> = {
+        x1: String(ox),
+        y1: String(minY),
+        x2: String(ox),
+        y2: String(maxY),
+        stroke: axisStroke,
+        "stroke-width": axisWidth,
+        "vector-effect": "non-scaling-stroke",
+        "pointer-events": "none",
+      };
+      if (axisDash) {
+        lineAttrsY["stroke-dasharray"] = axisDash;
+      }
+
+      const axisChildren: unknown[] = [
+        {
+          tagName: "line",
+          attrs: lineAttrsX,
         },
-        children: [
-          {
-            tagName: "line",
-            attrs: {
-              x1: "-100000",
-              y1: "0",
-              x2: "100000",
-              y2: "0",
-              stroke: axisStroke,
-              "stroke-width": "1",
-              "stroke-dasharray": "6 4",
-              "vector-effect": "non-scaling-stroke",
-              "pointer-events": "none",
-            },
+        {
+          tagName: "line",
+          attrs: lineAttrsY,
+        },
+      ];
+
+      if (cs.axesStyle?.xLabel) {
+        axisChildren.push({
+          tagName: "text",
+          textContent: cs.axesStyle.xLabel,
+          attrs: {
+            x: String(maxX - 4),
+            y: String(oy - 6),
+            "text-anchor": "end",
+            fill: axisStroke,
+            "font-size": "10",
+            "font-family": "Inter, system-ui, sans-serif",
           },
-          {
-            tagName: "line",
-            attrs: {
-              x1: "0",
-              y1: "-100000",
-              x2: "0",
-              y2: "100000",
-              stroke: axisStroke,
-              "stroke-width": "1",
-              "stroke-dasharray": "6 4",
-              "vector-effect": "non-scaling-stroke",
-              "pointer-events": "none",
-            },
+        });
+      }
+
+      if (cs.axesStyle?.yLabel) {
+        axisChildren.push({
+          tagName: "text",
+          textContent: cs.axesStyle.yLabel,
+          attrs: {
+            x: String(ox + 6),
+            y: String(minY + 12),
+            "text-anchor": "start",
+            fill: axisStroke,
+            "font-size": "10",
+            "font-family": "Inter, system-ui, sans-serif",
           },
-        ],
-      },
-    });
+        });
+      }
+
+      nodes.push({
+        id: "__diagram_axes__",
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        zIndex: -2,
+        markup: {
+          tagName: "g",
+          attrs: {
+            pointerEvents: "none",
+            style: "pointer-events: none;",
+          },
+          children: axisChildren,
+        },
+      });
+    }
   }
 
   const cs = data.coordinateSystem;
@@ -2829,15 +3683,19 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
     }
   }
 
+  const currentModule = data.metadata?.currentModule ?? data.className ?? null;
+  const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
+  lastRenderedModule = currentModule;
+
   // ── Diff-based incremental update ──
-  // If the graph already has cells and the topology hasn't changed (same set of
-  // node/edge IDs), update positions and properties in-place instead of
-  // destroying the entire DOM via fromJSON. This avoids visible flicker and
-  // is ~5-10x faster for spatial-only edits (move, resize, annotation changes).
+  // If the graph already has cells and the module hasn't changed,
+  // update positions, properties, and cells in-place instead of destroying
+  // the entire DOM via fromJSON. This guarantees zero flicker and preserves
+  // active drag handles, selection states, and focus.
   const existingCells = g.getCells();
   const isFirstRender = existingCells.length === 0;
 
-  if (!isFirstRender) {
+  if (!isFirstRender && !moduleChanged) {
     const existingNodeIds = new Set<string>();
     const existingEdgeIds = new Set<string>();
     for (const cell of existingCells) {
@@ -2853,158 +3711,176 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
       edges.filter((e: { id: string }) => !isEphemeralDiagramNode(e.id)).map((e: { id: string }) => e.id),
     );
 
-    // Check if topology changed (different node/edge sets)
-    const topologyChanged =
-      existingNodeIds.size !== newNodeIds.size ||
-      existingEdgeIds.size !== newEdgeIds.size ||
-      [...existingNodeIds].some((id) => !newNodeIds.has(id)) ||
-      [...newNodeIds].some((id) => !existingNodeIds.has(id)) ||
-      [...existingEdgeIds].some((id) => !newEdgeIds.has(id));
-
-    if (!topologyChanged) {
-      if (activeDrop && isComponentPresentInData) {
-        const ph = g.getCellById("__drop_placeholder__");
-        if (ph) g.removeCell(ph);
-        clearActiveDropPlaceholder();
-      }
-      // ── Fast path: incremental update ──
-      g.batchUpdate("diagram-diff", () => {
-        if (!data.coordinateSystem) {
-          const bg = g.getCellById("__diagram_background__");
-          if (bg) g.removeCell(bg);
-          const axes = g.getCellById("__diagram_axes__");
-          if (axes) g.removeCell(axes);
-        }
-
-        for (const nodeData of nodes) {
-          const cell = g.getCellById(nodeData.id);
-          if (!cell || !cell.isNode()) continue;
-
-          // Update position if changed
-          const pos = cell.getPosition();
-          if (Math.abs(pos.x - nodeData.x) > 0.5 || Math.abs(pos.y - nodeData.y) > 0.5) {
-            cell.setPosition(nodeData.x, nodeData.y, { silent: false });
-          }
-
-          // Update size if changed
-          const size = cell.getSize();
-          if (Math.abs(size.width - nodeData.width) > 0.5 || Math.abs(size.height - nodeData.height) > 0.5) {
-            cell.setSize(nodeData.width, nodeData.height);
-          }
-
-          // Update angle if changed
-          const angle = cell.getAngle();
-          if (Math.abs(angle - (nodeData.angle ?? 0)) > 0.5) {
-            cell.rotate(nodeData.angle ?? 0, { absolute: true });
-          }
-
-          // Update data (properties)
-          if (nodeData.data) {
-            cell.setData(nodeData.data, { overwrite: true });
-          }
-
-          // Update markup and attrs (e.g. parameter ratings, breaker open/closed color, labels)
-          if (nodeData.markup) {
-            cell.setMarkup(nodeData.markup);
-          }
-          if (nodeData.attrs) {
-            cell.setAttrs(nodeData.attrs);
-          }
-
-          // Update ports if changed (e.g. conditional ports like heatPort toggled via parameters)
-          interface DiagramPortLike {
-            id?: string;
-            name?: string;
-            args?: { x?: number; y?: number; angle?: number };
-          }
-          const currentPorts = (cell.getPorts?.() || []) as DiagramPortLike[];
-          const newPortItems: DiagramPortLike[] = nodeData.ports
-            ? Array.isArray(nodeData.ports)
-              ? (nodeData.ports as DiagramPortLike[])
-              : (nodeData.ports as { items?: DiagramPortLike[] })?.items || []
-            : [];
-          const currentSig = currentPorts
-            .map((p) => `${p.id}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
-            .join(";");
-          const newSig = newPortItems
-            .map((p) => `${p.id || p.name}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
-            .join(";");
-          if (currentSig !== newSig) {
-            cell.prop?.("ports", nodeData.ports ?? { items: [], groups: {} }, { rewrite: true });
-          }
-        }
-
-        // Update edge vertices, endpoints, attrs, labels, router, and data
-        for (const edgeData of edges) {
-          const cell = g.getCellById(edgeData.id);
-          if (!cell || !cell.isEdge()) continue;
-
-          if (edgeData.vertices) {
-            const curVerts = cell.getVertices() || [];
-            const vertsChanged =
-              curVerts.length !== edgeData.vertices.length ||
-              curVerts.some(
-                (v: PointLike, idx: number) =>
-                  Math.abs(v.x - (edgeData.vertices![idx]?.x ?? 0)) > 0.5 ||
-                  Math.abs(v.y - (edgeData.vertices![idx]?.y ?? 0)) > 0.5,
-              );
-            if (vertsChanged) {
-              cell.setVertices(edgeData.vertices, { ignoreSnap: true });
-            }
-          }
-          if (edgeData.source && typeof edgeData.source === "object") {
-            const curSrc = cell.getSource();
-            if (curSrc?.cell !== edgeData.source.cell || curSrc?.port !== edgeData.source.port) {
-              cell.setSource(edgeData.source);
-            }
-          }
-          if (edgeData.target && typeof edgeData.target === "object") {
-            const curTgt = cell.getTarget();
-            if (curTgt?.cell !== edgeData.target.cell || curTgt?.port !== edgeData.target.port) {
-              cell.setTarget(edgeData.target);
-            }
-          }
-          if (edgeData.router) {
-            cell.setRouter?.(edgeData.router);
-          }
-          if (edgeData.connector) {
-            cell.setConnector?.(edgeData.connector);
-          }
-          if (edgeData.labels) {
-            cell.setLabels?.(edgeData.labels);
-          }
-          if (edgeData.attrs) {
-            cell.setAttrs(edgeData.attrs);
-          }
-          if (edgeData.data) {
-            cell.setData(edgeData.data, { overwrite: true });
-          }
-        }
-      });
-
-      const prevCachedProps = selectedNodeId ? propertyCache.get(selectedNodeId) : undefined;
-      // Clear property cache on re-render (model state may have changed)
-      propertyCache.clear();
-
-      // Restore property panel for previously selected node after re-render
-      if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
-        const restoredNode = g.getCellById(selectedNodeId);
-        if (restoredNode && restoredNode.isNode()) {
-          if (prevCachedProps) {
-            propertyCache.set(selectedNodeId, prevCachedProps);
-            showProperties({ id: restoredNode.id, properties: prevCachedProps, isLoading: false });
-          } else {
-            const data = restoredNode.getData();
-            showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
-          }
-          postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
-        }
-      }
-
-      updateSolderDots(g);
-      scheduleUpdateSolderDots(g);
-      return;
+    if (activeDrop && isComponentPresentInData) {
+      const ph = g.getCellById("__drop_placeholder__");
+      if (ph) g.removeCell(ph);
+      clearActiveDropPlaceholder();
     }
+
+    // ── Keyed Differential Cell Reconciler (Zero-Flicker) ──
+    g.batchUpdate("diagram-diff", () => {
+      if (!data.coordinateSystem) {
+        const bg = g.getCellById("__diagram_background__");
+        if (bg) g.removeCell(bg);
+        const axes = g.getCellById("__diagram_axes__");
+        if (axes) g.removeCell(axes);
+      }
+
+      // 1. Remove deleted nodes and edges
+      for (const cell of existingCells) {
+        if (isEphemeralDiagramNode(cell.id)) continue;
+        if (cell.isNode() && !newNodeIds.has(cell.id)) {
+          g.removeCell(cell);
+        } else if (cell.isEdge() && !newEdgeIds.has(cell.id)) {
+          g.removeCell(cell);
+        }
+      }
+
+      for (const nodeData of nodes) {
+        const cell = g.getCellById(nodeData.id);
+        if (!cell || !cell.isNode()) {
+          g.addNode(nodeData);
+          continue;
+        }
+
+        // Update position if changed
+        const pos = cell.getPosition();
+        if (Math.abs(pos.x - nodeData.x) > 0.5 || Math.abs(pos.y - nodeData.y) > 0.5) {
+          cell.setPosition(nodeData.x, nodeData.y, { silent: false });
+        }
+
+        // Update size if changed
+        const size = cell.getSize();
+        if (Math.abs(size.width - nodeData.width) > 0.5 || Math.abs(size.height - nodeData.height) > 0.5) {
+          cell.setSize(nodeData.width, nodeData.height);
+        }
+
+        // Update angle if changed
+        const angle = cell.getAngle();
+        if (Math.abs(angle - (nodeData.angle ?? 0)) > 0.5) {
+          cell.rotate(nodeData.angle ?? 0, { absolute: true });
+        }
+
+        // Update data (properties)
+        if (nodeData.data) {
+          cell.setData(nodeData.data, { overwrite: true });
+        }
+
+        // Update markup and attrs (e.g. parameter ratings, breaker open/closed color, labels)
+        if (nodeData.markup) {
+          cell.setMarkup(nodeData.markup);
+        }
+        if (nodeData.attrs) {
+          cell.setAttrs(nodeData.attrs);
+        }
+
+        // Update ports if changed (e.g. conditional ports like heatPort toggled via parameters)
+        interface DiagramPortLike {
+          id?: string;
+          name?: string;
+          args?: { x?: number; y?: number; angle?: number };
+        }
+        const currentPorts = (cell.getPorts?.() || []) as DiagramPortLike[];
+        const newPortItems: DiagramPortLike[] = nodeData.ports
+          ? Array.isArray(nodeData.ports)
+            ? (nodeData.ports as DiagramPortLike[])
+            : (nodeData.ports as { items?: DiagramPortLike[] })?.items || []
+          : [];
+        const currentSig = currentPorts
+          .map((p) => `${p.id}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
+          .join(";");
+        const newSig = newPortItems
+          .map((p) => `${p.id || p.name}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
+          .join(";");
+        if (currentSig !== newSig) {
+          cell.prop?.("ports", nodeData.ports ?? { items: [], groups: {} }, { rewrite: true });
+        }
+      }
+
+      // Update edge vertices, endpoints, attrs, labels, router, and data
+      for (const edgeData of edges) {
+        const cell = g.getCellById(edgeData.id);
+        if (!cell || !cell.isEdge()) {
+          g.addEdge(edgeData);
+          continue;
+        }
+
+        if (edgeData.vertices) {
+          const curVerts = cell.getVertices() || [];
+          const vertsChanged =
+            curVerts.length !== edgeData.vertices.length ||
+            curVerts.some(
+              (v: PointLike, idx: number) =>
+                Math.abs(v.x - (edgeData.vertices![idx]?.x ?? 0)) > 0.5 ||
+                Math.abs(v.y - (edgeData.vertices![idx]?.y ?? 0)) > 0.5,
+            );
+          if (vertsChanged) {
+            cell.setVertices(edgeData.vertices, { ignoreSnap: true });
+          }
+        }
+        if (edgeData.source && typeof edgeData.source === "object") {
+          const curSrc = cell.getSource();
+          if (curSrc?.cell !== edgeData.source.cell || curSrc?.port !== edgeData.source.port) {
+            cell.setSource(edgeData.source);
+          }
+        }
+        if (edgeData.target && typeof edgeData.target === "object") {
+          const curTgt = cell.getTarget();
+          if (curTgt?.cell !== edgeData.target.cell || curTgt?.port !== edgeData.target.port) {
+            cell.setTarget(edgeData.target);
+          }
+        }
+        if (edgeData.router) {
+          cell.setRouter?.(edgeData.router);
+        }
+        if (edgeData.connector) {
+          cell.setConnector?.(edgeData.connector);
+        }
+        if (edgeData.labels) {
+          cell.setLabels?.(edgeData.labels);
+        }
+        if (edgeData.attrs) {
+          cell.setAttrs(edgeData.attrs);
+        }
+        if (edgeData.data) {
+          cell.setData(edgeData.data, { overwrite: true });
+        }
+      }
+
+      // 4. Update embedding relationships
+      for (const [childId, parentId] of relations) {
+        const parentCell = g.getCellById(parentId);
+        const childCell = g.getCellById(childId);
+        if (parentCell && childCell && parentCell.isNode() && childCell.isNode()) {
+          parentCell.addChild(childCell);
+        }
+      }
+    });
+
+    const prevCachedProps = selectedNodeId ? propertyCache.get(selectedNodeId) : undefined;
+    // Clear property cache on re-render (model state may have changed)
+    propertyCache.clear();
+
+    // Restore property panel for previously selected node after re-render
+    if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
+      const restoredNode = g.getCellById(selectedNodeId);
+      if (restoredNode && restoredNode.isNode()) {
+        if (prevCachedProps) {
+          propertyCache.set(selectedNodeId, prevCachedProps);
+          showProperties({ id: restoredNode.id, properties: prevCachedProps, isLoading: false });
+        } else {
+          const data = restoredNode.getData();
+          showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+        }
+        postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
+      }
+    }
+
+    updateSolderDots(g);
+    scheduleUpdateSolderDots(g);
+    scheduleViewportCulling(g);
+    updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
+    return;
   }
 
   // ── Full render path (first render or topology changed) ──
@@ -3034,10 +3910,6 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
   }
 
   updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
-
-  const currentModule = data.metadata?.currentModule ?? data.className ?? null;
-  const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
-  lastRenderedModule = currentModule;
 
   // Only fit view on first render or when switching modules — preserve zoom/pan on subsequent updates
   if (isFirstRender || moduleChanged) {
@@ -3122,9 +3994,11 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
 
   updateSolderDots(g);
   scheduleUpdateSolderDots(g);
+  scheduleViewportCulling(g);
   setTimeout(() => {
     if (graph === g && !g.disposed) {
       updateSolderDots(g);
+      scheduleViewportCulling(g);
     }
   }, 50);
 }
@@ -3197,6 +4071,18 @@ if (typeof window !== "undefined") {
           if (!message.data?.isLoading) {
             Spinner.hide();
           }
+        }
+        break;
+      }
+      case "simulationFrame": {
+        if (message.stateVector) {
+          applySimulationFrame(message.stateVector, message.varIndexMap);
+        }
+        break;
+      }
+      case "simulationBatch": {
+        if (Array.isArray(message.frames)) {
+          applySimulationBatch(message.frames, message.fps);
         }
         break;
       }
@@ -3436,6 +4322,13 @@ function showProperties(
   }
 }
 
+export {
+  performViewportCulling,
+  scheduleViewportCulling,
+  type ViewportCullingGraph,
+  type ViewportCullingGraphNode,
+} from "./viewport-culling.js";
+
 /** Pending `requestAnimationFrame` handle for coalescing solder-dot updates. */
 let solderDotsRaf: number | null = null;
 
@@ -3462,11 +4355,13 @@ export function updateSolderDots(g: Graph) {
 
   const edges = g.getEdges();
   const existingDots = g.getNodes().filter((n: Node) => n.id.startsWith("solder_dot_"));
+  const existingCrossings = g.getNodes().filter((n: Node) => n.id.startsWith("wire_crossing_"));
 
   if (!edges || edges.length === 0) {
-    if (existingDots.length > 0) {
+    if (existingDots.length > 0 || existingCrossings.length > 0) {
       g.batchUpdate("solder-dots", () => {
         for (const dot of existingDots) g.removeCell(dot);
+        for (const cross of existingCrossings) g.removeCell(cross);
       });
     }
     return;
@@ -3535,15 +4430,21 @@ export function updateSolderDots(g: Graph) {
   }
 
   const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints });
-  const existingIds = new Set<string>(existingDots.map((n: Node) => n.id));
-  const newIds = new Set<string>();
+  const crossings = computeWireCrossings(allPaths, dots, { portPoints });
+  const existingDotIds = new Set<string>(existingDots.map((n: Node) => n.id));
+  const newDotIds = new Set<string>();
+  const existingCrossingIds = new Set<string>(existingCrossings.map((n: Node) => n.id));
+  const newCrossingIds = new Set<string>();
 
   const dotSize = 3;
   const radius = dotSize / 2;
+  const opts = getOptionsForGraph(g);
+  const isDark = opts?.isDark ?? true;
 
   g.batchUpdate("solder-dots", () => {
+    // Solder dots
     for (const dot of dots) {
-      newIds.add(dot.id);
+      newDotIds.add(dot.id);
       const targetX = dot.x - radius;
       const targetY = dot.y - radius;
 
@@ -3561,8 +4462,36 @@ export function updateSolderDots(g: Graph) {
       }
     }
 
-    for (const oldId of existingIds) {
-      if (!newIds.has(oldId)) {
+    for (const oldId of existingDotIds) {
+      if (!newDotIds.has(oldId)) {
+        const cell = g.getCellById(oldId);
+        if (cell) g.removeCell(cell);
+      }
+    }
+
+    // Wire crossing jumpovers
+    for (const crossing of crossings) {
+      newCrossingIds.add(crossing.id);
+      const half = 5; // size is 10
+      const targetX = crossing.x - half;
+      const targetY = crossing.y - half;
+
+      const existing = g.getCellById(crossing.id);
+      if (existing && existing.isNode()) {
+        const curPos = existing.getPosition();
+        if (Math.abs(curPos.x - targetX) > 0.1 || Math.abs(curPos.y - targetY) > 0.1) {
+          existing.setPosition(targetX, targetY);
+        }
+        if (existing.attr("arc/stroke") !== crossing.color) {
+          existing.attr("arc/stroke", crossing.color);
+        }
+      } else {
+        g.addNode(wireCrossingToDiagramNode(crossing, isDark) as unknown as Record<string, unknown>);
+      }
+    }
+
+    for (const oldId of existingCrossingIds) {
+      if (!newCrossingIds.has(oldId)) {
         const cell = g.getCellById(oldId);
         if (cell) g.removeCell(cell);
       }
@@ -3571,7 +4500,7 @@ export function updateSolderDots(g: Graph) {
 
   if (typeof window !== "undefined") {
     (window as unknown as DiagramWindow).debugSolderDotsInfo =
-      `Edges: ${edges.length}, Paths: ${allPaths.length}, Dots: ${dots.length}`;
+      `Edges: ${edges.length}, Paths: ${allPaths.length}, Dots: ${dots.length}, Crossings: ${crossings.length}`;
   }
 }
 
@@ -3679,6 +4608,51 @@ export function applySimulationFrame(
   animateCells({ nodes: graph.getNodes(), edges: graph.getEdges() }, stateVector, varIndexMap);
 }
 
+let activeSimulationBatchId: number | null = null;
+
+/**
+ * Applies and plays back a batch of simulation telemetry frames over time at the requested FPS.
+ */
+export function applySimulationBatch(frames: SimulationFrame[], fps = 30): void {
+  if (!graph || !Array.isArray(frames) || frames.length === 0) return;
+  if (typeof window === "undefined" || !window.requestAnimationFrame) {
+    const last = frames[frames.length - 1];
+    if (last) {
+      applySimulationFrame(last.stateVector, last.varIndexMap);
+    }
+    return;
+  }
+
+  if (activeSimulationBatchId !== null) {
+    cancelAnimationFrame(activeSimulationBatchId);
+    activeSimulationBatchId = null;
+  }
+
+  let frameIdx = 0;
+  let lastTime = 0;
+  const interval = 1000 / Math.max(1, Math.min(120, fps));
+
+  function tick(timestamp: number) {
+    if (!lastTime) lastTime = timestamp;
+    const elapsed = timestamp - lastTime;
+    if (elapsed >= interval) {
+      lastTime = timestamp;
+      const frame = frames[frameIdx];
+      if (frame) {
+        applySimulationFrame(frame.stateVector, frame.varIndexMap);
+      }
+      frameIdx++;
+    }
+    if (frameIdx < frames.length) {
+      activeSimulationBatchId = requestAnimationFrame(tick);
+    } else {
+      activeSimulationBatchId = null;
+    }
+  }
+
+  activeSimulationBatchId = requestAnimationFrame(tick);
+}
+
 /**
  * Toggles the collapsed/expanded visual state of a composite group container node,
  * hiding or restoring its embedded child nodes and resizing the container header.
@@ -3765,11 +4739,13 @@ export function triggerInteractiveInput(
 }
 
 export * from "./affine-matrix.js";
+export * from "./alignment.js";
 export * from "./aspen-diagram-builder.js";
 export * from "./autosar-diagram-builder.js";
 export * from "./collab-manager.js";
 export * from "./collab-overlay.js";
 export * from "./color-inversion.js";
+export * from "./context-menu.js";
 export * from "./easy5-diagram-builder.js";
 export * from "./eclipse-diagram-builder.js";
 export * from "./fault-tree.js";
@@ -3781,6 +4757,7 @@ export * from "./jsbsim-diagram-builder.js";
 export * from "./kinematic-diagram-builder.js";
 export * from "./layout-storage.js";
 export * from "./lps-diagram-builder.js";
+export * from "./minimap.js";
 export * from "./olga-diagram-builder.js";
 export * from "./opendss-diagram-builder.js";
 export * from "./openscenario-diagram-builder.js";
@@ -3811,5 +4788,79 @@ export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";
 export * from "./touchstone-diagram-builder.js";
 export * from "./tsm-layout.js";
 export * from "./verilog-a-diagram-builder.js";
+export * from "./viewport-culling.js";
 export * from "./visual-diff-graph.js";
 export * from "./visual-diff-renderer.js";
+
+export type DiagramGridMode = "doubleMesh" | "dot" | "mesh" | "none";
+
+/**
+ * Dynamically switches the canvas background grid style.
+ */
+export function setDiagramGrid(mode: DiagramGridMode, g?: Graph | null): void {
+  const targetGraph = g ?? graph;
+  if (!targetGraph || targetGraph.disposed) return;
+  if (mode === "none") {
+    targetGraph.hideGrid?.();
+    return;
+  }
+  targetGraph.showGrid?.();
+  const isDark =
+    (targetGraph.options as { background?: { color?: string } } | undefined)?.background?.color !== "#ffffff";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+  if (mode === "dot") {
+    targetGraph.drawGrid({
+      type: "dot",
+      args: { color: gridColor, thickness: 1.5 },
+    });
+  } else if (mode === "mesh") {
+    targetGraph.drawGrid({
+      type: "mesh",
+      args: { color: gridColor, thickness: 1 },
+    });
+  } else if (mode === "doubleMesh") {
+    targetGraph.drawGrid({
+      type: "doubleMesh",
+      args: [
+        { color: "transparent", thickness: 0 },
+        { color: gridColor, thickness: 1, factor: 10 },
+      ],
+    });
+  }
+}
+
+/**
+ * Toggles snap-to-grid on the active diagram canvas.
+ */
+export function setDiagramSnap(enabled: boolean, g?: Graph | null): void {
+  const targetGraph = g ?? graph;
+  if (!targetGraph || targetGraph.disposed) return;
+  targetGraph.setGridSize?.(enabled ? 10 : 1);
+}
+
+/**
+ * Toggles the Minimap HUD for the active diagram.
+ */
+export function toggleMinimap(container?: HTMLElement | null): boolean {
+  const c = container ?? graph?.container;
+  if (!c) return false;
+  return toggleMinimapHud(c);
+}
+
+/**
+ * Returns true if the Minimap HUD is currently open.
+ */
+export function isMinimapVisible(container?: HTMLElement | null): boolean {
+  const c = container ?? graph?.container;
+  if (!c) return false;
+  return isMinimapOpen(c);
+}
+
+export {
+  detectPrimarySymbol,
+  getDialectMeta,
+  highlightCodeLineToSvgTspans,
+  renderUniversalCodeThumbnailSvg,
+  type CodeThumbnailOptions,
+  type DialectMeta,
+} from "./code-thumbnail-builder.js";

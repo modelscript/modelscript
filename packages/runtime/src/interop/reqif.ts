@@ -8,6 +8,8 @@
  * with full support for hierarchical specifications and traceability relations.
  */
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+
 export interface ReqIfAttribute {
   name: string;
   type: "String" | "Real" | "Integer" | "Boolean" | "Enumeration";
@@ -44,6 +46,49 @@ export interface ReqIfSpecification {
   relations?: ReqIfRelation[] | undefined;
 }
 
+function localName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchTag(element: XmlElement, expected: string): boolean {
+  return localName(element.name).toUpperCase() === expected.toUpperCase();
+}
+
+function getAttr(element: XmlElement, name: string): string | undefined {
+  const target = name.toUpperCase();
+  const attr = element.attributes.find((a) => localName(a.name).toUpperCase() === target);
+  return attr?.value;
+}
+
+function getChild(element: XmlElement | null | undefined, expectedName: string): XmlElement | undefined {
+  if (!element) return undefined;
+  return element.children.find((c) => matchTag(c, expectedName));
+}
+
+function findDescendants(element: XmlElement, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  const result: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    for (const child of node.children) {
+      if (predicate(child)) result.push(child);
+      walk(child);
+    }
+  }
+  walk(element);
+  return result;
+}
+
+function getElementAllText(el: XmlElement): string {
+  let s = el.text;
+  for (const ch of el.children) {
+    const chText = getElementAllText(ch);
+    if (chText) {
+      s += (s ? " " : "") + chText;
+    }
+  }
+  return s.trim();
+}
+
 export class ReqIfParser {
   /**
    * Parses standard OMG ReqIF 1.2 XML into structured requirement specifications.
@@ -56,31 +101,33 @@ export class ReqIfParser {
       relations: [],
     };
 
+    const doc = parseXmlSync(xmlString);
+    const root = doc.root;
+    if (!root) return spec;
+
     // Extract title from REQ-IF-HEADER or SPECIFICATION
-    const titleMatch = xmlString.match(/<TITLE>([^<]*)<\/TITLE>/i) || xmlString.match(/LONG-NAME="([^"]+)"/i);
-    if (titleMatch) {
-      spec.title = titleMatch[1]!;
+    const titleEl = findDescendants(root, (e) => matchTag(e, "TITLE"))[0];
+    if (titleEl && titleEl.text.trim()) {
+      spec.title = titleEl.text.trim();
+    } else {
+      const longName =
+        getAttr(root, "LONG-NAME") ||
+        findDescendants(root, (e) => matchTag(e, "SPECIFICATION"))
+          .map((s) => getAttr(s, "LONG-NAME"))
+          .find(Boolean);
+      if (longName) {
+        spec.title = longName;
+      }
     }
 
     // Map to hold flat list of requirements by ID for hierarchical reconstruction
     const reqMap = new Map<string, ReqIfRequirement>();
 
     // 1. Extract SPEC-OBJECT blocks
-    const specObjRegex = /<SPEC-OBJECT\b([^>]*)>([\s\S]*?)<\/SPEC-OBJECT>/gi;
-    let match: RegExpExecArray | null;
-
-    while ((match = specObjRegex.exec(xmlString)) !== null) {
-      const attrsStr = match[1]!;
-      const body = match[2]!;
-
-      const idMatch = attrsStr.match(/IDENTIFIER="([^"]+)"/i);
-      const id = idMatch ? idMatch[1]! : `REQ-${reqMap.size + 1}`;
-
-      // Extract custom attributes first
+    const specObjects = findDescendants(root, (e) => matchTag(e, "SPEC-OBJECT"));
+    for (const specObj of specObjects) {
+      const id = getAttr(specObj, "IDENTIFIER") || `REQ-${reqMap.size + 1}`;
       const attributes: Record<string, string | number | boolean> = {};
-      const valRegex =
-        /<ATTRIBUTE-VALUE-(?:STRING|REAL|INTEGER|BOOLEAN|ENUMERATION|XHTML)\b([^>]*)>([\s\S]*?)<\/ATTRIBUTE-VALUE-(?:STRING|REAL|INTEGER|BOOLEAN|ENUMERATION|XHTML)>/gi;
-      let valMatch: RegExpExecArray | null;
 
       let extractedName: string | undefined;
       let extractedText: string | undefined;
@@ -88,67 +135,63 @@ export class ReqIfParser {
       let extractedComparator: ReqIfRequirement["comparator"] = undefined;
       let extractedAsil: ReqIfRequirement["asilLevel"] = undefined;
 
-      while ((valMatch = valRegex.exec(body)) !== null) {
-        const valAttrs = valMatch[1]!;
-        const valBody = valMatch[2]!;
+      const valElements = findDescendants(specObj, (e) =>
+        localName(e.name).toUpperCase().startsWith("ATTRIBUTE-VALUE-"),
+      );
 
+      for (const valEl of valElements) {
         // Attribute name / definition reference
-        const attrDefMatch =
-          valAttrs.match(/(?:ATTRIBUTE-DEFINITION|DEFINITION)="([^"]+)"/i) ||
-          valBody.match(/<ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>([^<]*)<\/ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>/i);
-        const attrName = attrDefMatch ? attrDefMatch[1]!.trim() : "Attribute";
+        let attrName: string | undefined = getAttr(valEl, "ATTRIBUTE-DEFINITION") || getAttr(valEl, "DEFINITION");
+        if (!attrName) {
+          const defRefEl = findDescendants(valEl, (e) => {
+            const upper = localName(e.name).toUpperCase();
+            return upper.startsWith("ATTRIBUTE-DEFINITION-") && upper.endsWith("-REF");
+          })[0];
+          if (defRefEl && defRefEl.text.trim()) {
+            attrName = defRefEl.text.trim();
+          }
+        }
+        if (!attrName) attrName = "Attribute";
 
         // Raw value
-        const theValAttrMatch = valAttrs.match(/THE-VALUE="([^"]*)"/i);
-        let theValBody = "";
-        const theValOpen = valBody.indexOf("<THE-VALUE>");
-        if (theValOpen !== -1) {
-          const theValClose = valBody.indexOf("</THE-VALUE>", theValOpen);
-          if (theValClose !== -1) {
-            theValBody = valBody.slice(theValOpen + "<THE-VALUE>".length, theValClose);
+        let rawVal: string | undefined = getAttr(valEl, "THE-VALUE");
+        if (rawVal === undefined) {
+          const theValEl = getChild(valEl, "THE-VALUE");
+          if (theValEl) {
+            rawVal = getElementAllText(theValEl);
+          } else {
+            const enumRefEl = getChild(valEl, "ENUM-VALUE-REF");
+            if (enumRefEl) {
+              rawVal = enumRefEl.text.trim();
+            }
           }
         }
-        const enumRefMatch = valBody.match(/<ENUM-VALUE-REF>([^<]*)<\/ENUM-VALUE-REF>/i);
+        if (rawVal === undefined) rawVal = "";
 
-        let rawStr = "";
-        if (theValAttrMatch) {
-          rawStr = theValAttrMatch[1]!;
-        } else if (theValBody) {
-          let stripped = theValBody;
-          let prev = "";
-          while (stripped !== prev) {
-            prev = stripped;
-            stripped = stripped.replace(/<[^<>]+>/g, "");
-          }
-          rawStr = stripped.trim();
-        } else if (enumRefMatch) {
-          rawStr = enumRefMatch[1]!.trim();
-        }
-        const rawVal = unescapeXml(rawStr);
-
-        if (!isNaN(Number(rawVal)) && rawVal !== "") {
-          attributes[attrName] = Number(rawVal);
-        } else if (rawVal.toLowerCase() === "true" || rawVal.toLowerCase() === "false") {
-          attributes[attrName] = rawVal.toLowerCase() === "true";
+        const cleanVal = unescapeXml(rawVal);
+        if (!isNaN(Number(cleanVal)) && cleanVal !== "") {
+          attributes[attrName] = Number(cleanVal);
+        } else if (cleanVal.toLowerCase() === "true" || cleanVal.toLowerCase() === "false") {
+          attributes[attrName] = cleanVal.toLowerCase() === "true";
         } else {
-          attributes[attrName] = rawVal;
+          attributes[attrName] = cleanVal;
         }
 
         const lowerDef = attrName.toLowerCase();
         if (lowerDef.includes("name") || lowerDef === "title") {
-          extractedName = rawVal;
+          extractedName = cleanVal;
         } else if (lowerDef.includes("text") || lowerDef.includes("desc")) {
-          extractedText = rawVal;
+          extractedText = cleanVal;
         } else if (lowerDef.includes("limit")) {
-          extractedLimit = Number(rawVal);
+          extractedLimit = Number(cleanVal);
         } else if (lowerDef.includes("comp")) {
-          extractedComparator = rawVal as any;
+          extractedComparator = cleanVal as any;
         } else if (lowerDef.includes("asil")) {
-          extractedAsil = rawVal as any;
+          extractedAsil = cleanVal as any;
         }
       }
 
-      const name = extractedName || attrsStr.match(/LONG-NAME="([^"]+)"/i)?.[1] || id;
+      const name = extractedName || getAttr(specObj, "LONG-NAME") || id;
       let text = extractedText || name;
 
       // Check for numeric limit / comparison heuristics in requirement text if not explicitly provided
@@ -197,28 +240,16 @@ export class ReqIfParser {
     }
 
     // 2. Extract SPEC-RELATIONS
-    const relationRegex = /<SPEC-RELATION\b([^>]*)>([\s\S]*?)<\/SPEC-RELATION>/gi;
-    while ((match = relationRegex.exec(xmlString)) !== null) {
-      const relAttrs = match[1]!;
-      const relBody = match[2]!;
-
-      const extractInnerRef = (container: string, parentTag: string, childTag: string): string | undefined => {
-        const pOpen = `<${parentTag}>`;
-        const pClose = `</${parentTag}>`;
-        const pStart = container.toUpperCase().indexOf(pOpen);
-        if (pStart === -1) return undefined;
-        const pEnd = container.toUpperCase().indexOf(pClose, pStart);
-        if (pEnd === -1) return undefined;
-        const inner = container.slice(pStart + pOpen.length, pEnd);
-        const m = inner.match(new RegExp(`<${childTag}>([^<]*)<\\/${childTag}>`, "i"));
-        return m ? m[1]!.trim() : undefined;
-      };
-
-      const relId = relAttrs.match(/IDENTIFIER="([^"]+)"/i)?.[1] || `REL-${spec.relations!.length + 1}`;
-      const sourceId = extractInnerRef(relBody, "SOURCE", "SPEC-OBJECT-REF");
-      const targetId = extractInnerRef(relBody, "TARGET", "SPEC-OBJECT-REF");
-      const typeRef = extractInnerRef(relBody, "TYPE", "SPEC-RELATION-TYPE-REF");
-      const typeMatch = typeRef || relAttrs.match(/LONG-NAME="([^"]+)"/i)?.[1] || "satisfies";
+    const specRelations = findDescendants(root, (e) => matchTag(e, "SPEC-RELATION"));
+    for (const relEl of specRelations) {
+      const relId = getAttr(relEl, "IDENTIFIER") || `REL-${spec.relations!.length + 1}`;
+      const sourceEl = getChild(relEl, "SOURCE");
+      const sourceId = sourceEl ? getChild(sourceEl, "SPEC-OBJECT-REF")?.text.trim() : undefined;
+      const targetEl = getChild(relEl, "TARGET");
+      const targetId = targetEl ? getChild(targetEl, "SPEC-OBJECT-REF")?.text.trim() : undefined;
+      const typeEl = getChild(relEl, "TYPE");
+      const typeRef = typeEl ? getChild(typeEl, "SPEC-RELATION-TYPE-REF")?.text.trim() : undefined;
+      const typeMatch = typeRef || getAttr(relEl, "LONG-NAME") || "satisfies";
 
       if (sourceId && targetId) {
         spec.relations!.push({
@@ -242,40 +273,43 @@ export class ReqIfParser {
     const parentMap = new Map<string, string>(); // childReqId -> parentReqId
     const childIds = new Set<string>();
 
-    const parseHierarchyBlock = (blockXml: string, parentReqId?: string) => {
-      let depth = 0;
-      let tagStart = -1;
-
-      for (let i = 0; i < blockXml.length; i++) {
-        if (blockXml.startsWith("<SPEC-HIERARCHY", i)) {
-          if (depth === 0) {
-            tagStart = i;
-          }
-          depth++;
-        } else if (blockXml.startsWith("</SPEC-HIERARCHY>", i)) {
-          depth--;
-          if (depth === 0 && tagStart !== -1) {
-            const fullTag = blockXml.substring(tagStart, i + 17);
-            const objRefMatch = fullTag.match(/<OBJECT>[\s\S]*?<SPEC-OBJECT-REF>(.*?)<\/SPEC-OBJECT-REF>/i);
-            const currentReqId = objRefMatch ? objRefMatch[1]!.trim() : undefined;
-
-            if (currentReqId) {
-              if (parentReqId) {
-                parentMap.set(currentReqId, parentReqId);
-                childIds.add(currentReqId);
-              }
-              const childrenBlock = fullTag.match(/<CHILDREN>([\s\S]*?)<\/CHILDREN>/i);
-              if (childrenBlock) {
-                parseHierarchyBlock(childrenBlock[1]!, currentReqId);
-              }
+    const parseHierarchy = (el: XmlElement, parentReqId?: string) => {
+      const objEl = getChild(el, "OBJECT");
+      const currentReqId = objEl ? getChild(objEl, "SPEC-OBJECT-REF")?.text.trim() : undefined;
+      if (currentReqId) {
+        if (parentReqId) {
+          parentMap.set(currentReqId, parentReqId);
+          childIds.add(currentReqId);
+        }
+        const childrenEl = getChild(el, "CHILDREN");
+        if (childrenEl) {
+          for (const ch of childrenEl.children) {
+            if (matchTag(ch, "SPEC-HIERARCHY")) {
+              parseHierarchy(ch, currentReqId);
             }
-            tagStart = -1;
           }
         }
       }
     };
 
-    parseHierarchyBlock(xmlString);
+    const specContainers = findDescendants(root, (e) => matchTag(e, "SPECIFICATION"));
+    if (specContainers.length > 0) {
+      for (const sc of specContainers) {
+        const childrenEl = getChild(sc, "CHILDREN");
+        if (childrenEl) {
+          for (const ch of childrenEl.children) {
+            if (matchTag(ch, "SPEC-HIERARCHY")) {
+              parseHierarchy(ch);
+            }
+          }
+        }
+      }
+    } else {
+      const allHierarchies = findDescendants(root, (e) => matchTag(e, "SPEC-HIERARCHY"));
+      for (const h of allHierarchies) {
+        parseHierarchy(h);
+      }
+    }
 
     // Build hierarchical tree
     for (const [id, req] of reqMap.entries()) {

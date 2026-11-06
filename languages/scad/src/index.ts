@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compileToStep, ManifoldWorker, SolidKind, type Solid, type SolidSourceMetadata } from "@modelscript/cad";
+import {
+  compileToStep,
+  compileToUsd,
+  compileToUsdz,
+  ManifoldWorker,
+  SolidKind,
+  type Solid,
+  type SolidSourceMetadata,
+  type UsdExportOptions,
+} from "@modelscript/cad";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -239,4 +248,32 @@ export async function compileScadToStep(source: string, options?: ScadEvaluation
     throw new Error("Failed to compile SCAD: no solid geometry generated");
   }
   return compileToStep(solid);
+}
+
+/**
+ * Parses and evaluates SCAD source code directly into an OpenUSD (.usda) scene.
+ */
+export async function compileScadToUsd(
+  source: string,
+  options?: ScadEvaluationOptions & UsdExportOptions,
+): Promise<string> {
+  const solid = await compileScadToSolid(source, options);
+  if (!solid) {
+    throw new Error("Failed to compile SCAD: no solid geometry generated");
+  }
+  return compileToUsd(solid, options);
+}
+
+/**
+ * Parses and evaluates SCAD source code directly into a 64-byte aligned USDZ package (.usdz).
+ */
+export async function compileScadToUsdz(
+  source: string,
+  options?: ScadEvaluationOptions & UsdExportOptions,
+): Promise<Uint8Array> {
+  const solid = await compileScadToSolid(source, options);
+  if (!solid) {
+    throw new Error("Failed to compile SCAD: no solid geometry generated");
+  }
+  return compileToUsdz(solid, options);
 }

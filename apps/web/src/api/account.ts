@@ -64,42 +64,6 @@ export const exportUserDataArchive = async (format: "zip" | "json" = "zip"): Pro
   return response.data;
 };
 
-export interface ActivityGitRepoStatus {
-  cached: boolean;
-  repoUrlPath: string;
-  aliasUrlPath: string;
-  webRepoPath: string;
-  webIdePath: string;
-  clonePaths: {
-    byUsername: string;
-    shorthand: string;
-  };
-  createdAt: string | null;
-  lastAccessedAt: string | null;
-  expiresAt: string | null;
-  ttlRemainingSeconds: number;
-  commitCount: number;
-  sizeBytes: number;
-  postCount: number;
-  libraryCount: number;
-  studyCount: number;
-  fingerprint: string;
-}
-
-export const getActivityGitRepoStatus = async (): Promise<ActivityGitRepoStatus> => {
-  const { data } = await api.get<ActivityGitRepoStatus>("/users/me/activity-repo");
-  return data;
-};
-
-export const purgeActivityGitRepoCache = async (): Promise<{
-  success: boolean;
-  purged: boolean;
-  message: string;
-}> => {
-  const { data } = await api.delete<{ success: boolean; purged: boolean; message: string }>("/users/me/activity-repo");
-  return data;
-};
-
 export const deleteAccount = async () => {
   const { data } = await api.delete("/users/me");
   return data;
@@ -592,4 +556,72 @@ export const registerPushSubscription = async (payload: {
 export const deletePushSubscription = async (id: number): Promise<{ success: boolean }> => {
   const { data } = await api.delete<{ success: boolean }>(`/users/me/push-subscriptions/${id}`);
   return data;
+};
+
+import type { AccountSigningKeyInfo, SigningKeyLogItem, UserSigningKeysResponse } from "../types/api";
+
+export const getUserSigningKeys = async (): Promise<UserSigningKeysResponse> => {
+  const { data } = await api.get<UserSigningKeysResponse>("/users/me/signing-keys");
+  return data;
+};
+
+export const getSigningKeyChallenge = async (_publicKeyOpenssh?: string): Promise<{ challenge: string }> => {
+  const { data } = await api.get<{ challenge: string }>("/users/me/signing-challenge");
+  return data;
+};
+
+export const registerAccountSigningKey = async (payload: {
+  publicKeyOpenssh: string;
+  label?: string;
+  trustLevel?: string;
+  challenge?: string;
+  signature?: string;
+  delegation?: {
+    masterKeyId: number;
+    signature: string;
+  };
+}): Promise<AccountSigningKeyInfo> => {
+  const { data } = await api.post<AccountSigningKeyInfo>("/users/me/signing-keys", payload);
+  return data;
+};
+
+export const getDelegationStatement = async (
+  deviceKeyId: number,
+  masterKeyId: number,
+): Promise<{ statement: string }> => {
+  const { data } = await api.get<{ statement: string }>(
+    `/users/me/signing-keys/${deviceKeyId}/delegation-statement?masterKeyId=${masterKeyId}`,
+  );
+  return data;
+};
+
+export const delegateAccountSigningKey = async (
+  deviceKeyId: number,
+  masterKeyId: number,
+  signature: string,
+): Promise<{ success: boolean; key: AccountSigningKeyInfo }> => {
+  const { data } = await api.post<{ success: boolean; key: AccountSigningKeyInfo }>(
+    `/users/me/signing-keys/${deviceKeyId}/delegate`,
+    { masterKeyId, signature },
+  );
+  return data;
+};
+
+export const revokeAccountSigningKey = async (keyId: number, reason?: string): Promise<{ success: boolean }> => {
+  const { data } = await api.post<{ success: boolean }>(`/users/me/signing-keys/${keyId}/revoke`, { reason });
+  return data;
+};
+
+export const updateSigningPolicy = async (
+  strict: boolean,
+): Promise<{ success: boolean; signing_policy_strict: boolean }> => {
+  const { data } = await api.put<{ success: boolean; signing_policy_strict: boolean }>("/users/me/signing-policy", {
+    strict,
+  });
+  return data;
+};
+
+export const getSigningKeyLog = async (usernameOrId: string | number): Promise<SigningKeyLogItem[]> => {
+  const { data } = await api.get<{ log: SigningKeyLogItem[] }>(`/users/${usernameOrId}/signing-keys/log`);
+  return data.log || [];
 };

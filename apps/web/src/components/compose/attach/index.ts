@@ -19,7 +19,7 @@ export * from "./Primitives";
 export { genericAttachProfile } from "./profiles/generic";
 export * from "./profiles/modelica-classes";
 export { modelicaAttachProfile } from "./profiles/ModelicaProfile";
-export { qifAttachProfile, summarizeReconciliation } from "./profiles/QifProfile";
+export { qifAttachProfile, QifPreview, qifPreviewRenderer, summarizeReconciliation } from "./profiles/QifProfile";
 export * from "./profiles/vega-model";
 export { vegaAttachProfile, vegaPreviewRenderer } from "./profiles/VegaProfile";
 export * from "./registry";

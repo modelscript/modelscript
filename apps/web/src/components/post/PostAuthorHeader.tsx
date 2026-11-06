@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { HubotIcon, KebabHorizontalIcon, RssIcon, ShieldCheckIcon } from "@primer/octicons-react";
+import { HubotIcon, KebabHorizontalIcon, PencilIcon, RssIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Text, Tooltip } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -8,6 +8,7 @@ import { safeJsonParse } from "../../util/json";
 import Box from "../Box";
 import FederatedDomainPill from "../FederatedDomainPill";
 import ProfileHoverCard from "../ProfileHoverCard";
+import VerifiedAccountBadge from "../VerifiedAccountBadge";
 import { PostActionMenu } from "./PostActionMenu";
 import {
   ActionButton,
@@ -17,6 +18,7 @@ import {
   SignatureBadge,
   formatFullTimestamp,
   formatRelativeTime,
+  parseUtcDate,
 } from "./styles";
 
 export interface PostAuthorHeaderProps {
@@ -30,6 +32,7 @@ export interface PostAuthorHeaderProps {
   setShowPostMenu: (show: boolean) => void;
   canEditPost: boolean;
   onOpenEditModal: () => void;
+  onOpenRevisionModal?: (() => void) | undefined;
   onOpenSignatureModal: () => void;
   onOpenLoginModal: () => void;
   onPostDeleted?: (() => void) | undefined;
@@ -50,6 +53,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
   setShowPostMenu,
   canEditPost,
   onOpenEditModal,
+  onOpenRevisionModal,
   onOpenSignatureModal,
   onOpenLoginModal,
   onPostDeleted,
@@ -61,6 +65,11 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
     typeof displayPost?.metadata === "string"
       ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
       : displayPost?.metadata || {};
+
+  const wasUpdated =
+    displayPost.updated_at &&
+    displayPost.created_at &&
+    parseUtcDate(displayPost.updated_at).getTime() - parseUtcDate(displayPost.created_at).getTime() > 5000;
 
   if (isDetail) {
     return (
@@ -96,6 +105,9 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
                   <span className="profile-name-text" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                     {displayPost.display_name || displayPost.username}
                   </span>
+                  {Boolean(displayPost.signing_verified) && (
+                    <VerifiedAccountBadge username={displayPost.username} size={14} />
+                  )}
                   {displayPost.account_type === "rss" && (
                     <span style={{ flexShrink: 0, display: "inline-flex", color: "var(--color-fg-muted)" }}>
                       <RssIcon size={14} />
@@ -130,13 +142,14 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
               <FederatedDomainPill domain={parsedAuthor.remoteDomain} />
             )}
             {hasSignature && (
-              <Tooltip text="Cryptographically signed by author device key (Click to verify proof)" direction="s">
+              <Tooltip text="Cryptographically signed by author (Click to view signature proof)" direction="s">
                 <SignatureBadge
                   onClick={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
                     onOpenSignatureModal();
                   }}
+                  aria-label="View cryptographic post signature"
                 >
                   <ShieldCheckIcon size={12} />
                   <span>Signed</span>
@@ -169,6 +182,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             canEditPost={canEditPost}
             isNotebook={isNotebook}
             onOpenEditModal={onOpenEditModal}
+            onOpenRevisionModal={onOpenRevisionModal}
             onPostDeleted={onPostDeleted}
             displayPost={displayPost}
             token={token}
@@ -207,6 +221,9 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             }}
           >
             <span className="profile-name-text">{displayPost.display_name || displayPost.username}</span>
+            {Boolean(displayPost.signing_verified) && (
+              <VerifiedAccountBadge username={displayPost.username} size={14} />
+            )}
             {displayPost.account_type === "rss" && (
               <span style={{ display: "inline-flex", color: "var(--color-fg-muted)", flexShrink: 0 }}>
                 <RssIcon size={14} />
@@ -241,13 +258,14 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
         <FederatedDomainPill domain={parsedAuthor.remoteDomain} />
       )}
       {hasSignature && (
-        <Tooltip text="Cryptographically signed by author device key (Click to verify proof)" direction="s">
+        <Tooltip text="Cryptographically signed by author (Click to view signature proof)" direction="s">
           <SignatureBadge
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
               onOpenSignatureModal();
             }}
+            aria-label="View cryptographic post signature"
           >
             <ShieldCheckIcon size={12} />
             <span>Signed</span>
@@ -282,6 +300,43 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           </Text>
         </Link>
       </Tooltip>
+      {wasUpdated && (
+        <Tooltip
+          text={`Edited ${formatFullTimestamp(displayPost.updated_at)}${onOpenRevisionModal ? " · Click to view edit history" : ""}`}
+          direction="s"
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              if (!onOpenRevisionModal) return;
+              e.stopPropagation();
+              e.preventDefault();
+              onOpenRevisionModal?.();
+            }}
+            className="handle-text"
+            style={{
+              fontSize: "13px",
+              lineHeight: "20px",
+              color: "var(--color-fg-muted)",
+              cursor: onOpenRevisionModal ? "pointer" : "default",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "2px",
+              marginLeft: "3px",
+              flexShrink: 0,
+              background: "none",
+              border: "none",
+              padding: 0,
+              textDecoration: onOpenRevisionModal ? "underline" : "none",
+              textDecorationStyle: "dotted",
+            }}
+            aria-label="View edit history"
+          >
+            <PencilIcon size={11} />
+            <span>(edited)</span>
+          </button>
+        </Tooltip>
+      )}
       <Box flex={1} />
       <Box position="relative" mr={1} style={{ zIndex: showPostMenu ? 200 : undefined, flexShrink: 0 }}>
         <Tooltip text="More" direction="s">
@@ -305,6 +360,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           canEditPost={canEditPost}
           isNotebook={isNotebook}
           onOpenEditModal={onOpenEditModal}
+          onOpenRevisionModal={onOpenRevisionModal}
           onPostDeleted={onPostDeleted}
           displayPost={displayPost}
           token={token}

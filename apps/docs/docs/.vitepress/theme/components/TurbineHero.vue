@@ -4,7 +4,7 @@ import { useData } from "vitepress";
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import type { IconName } from "../data/icons";
 import MsIcon from "./MsIcon.vue";
-import { CALLOUTS } from "./turbine/geometry";
+import { CALLOUTS } from "./turbine/callouts";
 import type { TurbineScene, ViewMode } from "./turbine/scene";
 
 const { isDark } = useData();
@@ -36,10 +36,15 @@ const onMotionChange = (e: MediaQueryListEvent) => scene.value?.setReducedMotion
 
 function webglAvailable(): boolean {
   try {
+    if (typeof window === "undefined" || !window.WebGL2RenderingContext) return false;
     const c = document.createElement("canvas");
     const gl = c.getContext("webgl2");
     if (!gl) return false;
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    try {
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      // ignore
+    }
     return true;
   } catch {
     return false;
@@ -52,13 +57,13 @@ onMounted(async () => {
     return;
   }
 
-  // Safety net: if the 3D scene never signals first frame within 2.5s,
+  // Safety net: if the 3D scene never signals first frame within 8s (generous for older mobile A10 CPUs),
   // gracefully fall back to the digital twin illustration so the hero is never blank.
   fallbackTimer = setTimeout(() => {
     if (!ready.value && !fallback.value) {
       fallback.value = true;
     }
-  }, 2500);
+  }, 8000);
 
   await nextTick();
   if (!canvas.value || !stage.value) {
@@ -82,6 +87,7 @@ onMounted(async () => {
       })),
       onFirstFrame: () => {
         if (fallbackTimer) clearTimeout(fallbackTimer);
+        fallback.value = false;
         ready.value = true;
       },
       onError: () => {
@@ -112,15 +118,26 @@ onMounted(async () => {
     s.resize(rect.width, rect.height);
   }
 
-  resizeObs = new ResizeObserver(([entry]) => {
-    if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
-      s.resize(entry.contentRect.width, entry.contentRect.height);
-    }
-  });
-  resizeObs.observe(stage.value);
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObs = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+        s.resize(entry.contentRect.width, entry.contentRect.height);
+      }
+    });
+    resizeObs.observe(stage.value);
+  } else {
+    window.addEventListener("resize", () => {
+      if (stage.value) {
+        const r = stage.value.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) s.resize(r.width, r.height);
+      }
+    });
+  }
 
-  interObs = new IntersectionObserver(([entry]) => s.setVisible(entry.isIntersecting), { threshold: 0.01 });
-  if (root.value) interObs.observe(root.value);
+  if (typeof IntersectionObserver !== "undefined" && root.value) {
+    interObs = new IntersectionObserver(([entry]) => s.setVisible(entry.isIntersecting), { threshold: 0.01 });
+    interObs.observe(root.value);
+  }
 
   canvas.value.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();

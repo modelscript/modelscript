@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PackageIcon, PlugIcon, SearchIcon, SlidersIcon, XIcon } from "@primer/octicons-react";
+import { PackageIcon, PlugIcon, RepoForkedIcon, SearchIcon, SlidersIcon, XIcon } from "@primer/octicons-react";
 import { Label, Text, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
-import { getIconUrl } from "../../../api";
+import { Link } from "react-router-dom";
+import { getIconUrl, type ClassSummary } from "../../../api";
 import Box from "../../../components/Box";
-import type { EnrichedComponent } from "../../../components/classTreeUtils";
+import { resolveTypeTargetUrl, type EnrichedComponent } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
 import { JavadocSection, JavadocTable, JavadocTableWrap, SectionTitle, TypeMono } from "../styles";
 
 export interface ClassParametersSectionProps {
+  extendsList?: string[] | undefined;
+  className?: string | undefined;
+  allClasses?: ClassSummary[] | undefined;
   parameters?: EnrichedComponent[] | undefined;
   connectors?: EnrichedComponent[] | undefined;
   submodels?: EnrichedComponent[] | undefined;
@@ -19,6 +23,9 @@ export interface ClassParametersSectionProps {
 }
 
 export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
+  extendsList = [],
+  className,
+  allClasses = [],
   parameters = [],
   connectors = [],
   submodels = [],
@@ -27,12 +34,13 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
   version,
 }) => {
   const [memberFilter, setMemberFilter] = useState("");
-  const totalCount = parameters.length + connectors.length + submodels.length;
+  const totalCount = extendsList.length + parameters.length + connectors.length + submodels.length;
 
-  const { filteredParams, filteredConnectors, filteredSubmodels } = useMemo(() => {
+  const { filteredExtends, filteredParams, filteredConnectors, filteredSubmodels } = useMemo(() => {
     const q = memberFilter.trim().toLowerCase();
     if (!q) {
       return {
+        filteredExtends: extendsList,
         filteredParams: parameters,
         filteredConnectors: connectors,
         filteredSubmodels: submodels,
@@ -43,11 +51,12 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
       c.type_name.toLowerCase().includes(q) ||
       Boolean(c.description && c.description.toLowerCase().includes(q));
     return {
+      filteredExtends: extendsList.filter((base) => base.toLowerCase().includes(q)),
       filteredParams: parameters.filter(matches),
       filteredConnectors: connectors.filter(matches),
       filteredSubmodels: submodels.filter(matches),
     };
-  }, [memberFilter, parameters, connectors, submodels]);
+  }, [memberFilter, extendsList, parameters, connectors, submodels]);
 
   return (
     <>
@@ -72,6 +81,51 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
             }}
           />
         </Box>
+      )}
+
+      {filteredExtends.length > 0 && (
+        <JavadocSection>
+          <SectionTitle as="h3">
+            <RepoForkedIcon size={14} /> Extends &amp; Inherited Classes ({filteredExtends.length})
+          </SectionTitle>
+          <Box
+            display="flex"
+            alignItems="center"
+            gap="8px"
+            flexWrap="wrap"
+            p={3}
+            style={{
+              background: "var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.03)))",
+              border: "1px solid var(--ms-border, var(--color-border))",
+              borderRadius: "10px",
+            }}
+          >
+            <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Extends:</Text>
+            {filteredExtends.map((base) => {
+              const targetUrl = resolveTypeTargetUrl(base, libraryName, version, allClasses, className);
+              return targetUrl ? (
+                <Link key={base} to={targetUrl} style={{ textDecoration: "none" }}>
+                  <Label
+                    variant="secondary"
+                    style={{
+                      fontSize: 12,
+                      padding: "3px 10px",
+                      cursor: "pointer",
+                      borderColor: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
+                      color: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
+                    }}
+                  >
+                    {base}
+                  </Label>
+                </Link>
+              ) : (
+                <Label key={base} variant="secondary" style={{ fontSize: 12, padding: "3px 10px" }}>
+                  {base}
+                </Label>
+              );
+            })}
+          </Box>
+        </JavadocSection>
       )}
 
       {filteredParams.length > 0 && (
@@ -260,6 +314,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
       )}
 
       {memberFilter.trim() !== "" &&
+        filteredExtends.length === 0 &&
         filteredParams.length === 0 &&
         filteredConnectors.length === 0 &&
         filteredSubmodels.length === 0 && (

@@ -509,6 +509,24 @@ export function renderSwmmProfileSvg(
   svg += `  <text x="${margin.left}" y="32" fill="${textColor}" font-size="16" font-weight="700">${options?.title ?? model.title ?? "Longitudinal Hydraulic Profile"}</text>\n`;
   svg += `  <text x="${margin.left}" y="48" fill="${subTextColor}" font-size="10">Ground Surface, Conduit Invert, and Hydraulic Grade Line (HGL)</text>\n`;
 
+  // Draw Elevation & Chainage Coordinate Axes & Ticks
+  const axisColor = isDark ? "#334155" : "#cbd5e1";
+  const axisTextColor = isDark ? "#94a3b8" : "#64748b";
+  svg += `  <g id="profile-axes">\n`;
+  svg += `    <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}" stroke="${axisColor}" stroke-width="1.5" />\n`;
+  svg += `    <line x1="${margin.left}" y1="${margin.top + plotH}" x2="${margin.left + plotW}" y2="${margin.top + plotH}" stroke="${axisColor}" stroke-width="1.5" />\n`;
+  svg += `    <text x="${margin.left - 10}" y="${margin.top - 8}" fill="${axisTextColor}" font-size="9.5" font-weight="600" text-anchor="end">Elev (m)</text>\n`;
+
+  const numElevTicks = 4;
+  for (let i = 0; i <= numElevTicks; i++) {
+    const val = minElev + (i / numElevTicks) * elevRange;
+    const y = mapY(val);
+    svg += `    <line x1="${margin.left - 4}" y1="${y}" x2="${margin.left}" y2="${y}" stroke="${axisColor}" stroke-width="1" />\n`;
+    svg += `    <line x1="${margin.left}" y1="${y}" x2="${margin.left + plotW}" y2="${y}" stroke="${axisColor}" stroke-width="0.5" stroke-dasharray="2,4" opacity="0.4" />\n`;
+    svg += `    <text x="${margin.left - 8}" y="${y + 3}" fill="${axisTextColor}" font-size="8.5" text-anchor="end">${val.toFixed(1)}</text>\n`;
+  }
+  svg += `  </g>\n`;
+
   // Draw Ground Surface Line
   const groundPts = profilePoints.map((p) => `${mapX(p.chainage)},${mapY(p.rimElev)}`).join(" ");
   svg += `  <polyline points="${groundPts}" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="4,2" />\n`;

@@ -2,6 +2,8 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { registerMiscEndpoints } from "../src/handlers/miscEndpoints.js";
+import { ParserService } from "../src/services/parser-service.js";
 import {
   getLibraryInfo,
   getLibraryName,
@@ -145,5 +147,86 @@ describe("Unified Libraries Panel & URL-Driven Stdlib/Package Preloading", () =>
     assert.equal(mountedLibraryMetadata.has("PlanarMechanics"), false);
     assert.equal(notifiedTreeChanged, true);
     assert.equal(mockWsIndex.fileLoaders.has("modelica:/lib/Modelica 4.1.0/package.mo"), true);
+  });
+
+  it("ParserService.getOrCreateLoaderContext lazily creates and binds loaderCtx", () => {
+    delete (globalThis as any).savedLoaderCtx;
+
+    const mockConnection: any = {
+      console: { info: () => {}, warn: () => {}, error: () => {} },
+      sendNotification: () => {},
+    };
+    const mockDocManager: any = { documentTrees: new Map() };
+    const mockWorkspaceManager: any = {
+      getWorkspaceIndex: () => null,
+      unifiedWorkspace: { toUnifiedPartial: () => null },
+    };
+    const mockDocuments: any = { all: () => [], get: () => undefined };
+
+    const parserService = new ParserService(mockConnection, mockDocManager, mockWorkspaceManager, mockDocuments);
+
+    assert.equal((globalThis as any).savedLoaderCtx, undefined);
+
+    const ctx = parserService.getOrCreateLoaderContext();
+    assert.ok(ctx, "LoaderContext should be instantiated");
+    assert.equal(ctx.connectionState, mockConnection);
+    assert.ok(ctx.sharedFs, "sharedFs should be initialized");
+    assert.ok(ctx.cacheStore, "cacheStore should be initialized");
+    assert.equal((globalThis as any).savedLoaderCtx, ctx, "savedLoaderCtx global should be bound");
+
+    const ctx2 = parserService.getOrCreateLoaderContext();
+    assert.equal(ctx2, ctx, "getOrCreateLoaderContext should return cached instance");
+  });
+
+  it("installDependency endpoint obtains loaderCtx via getOrCreateLoaderContext even if savedLoaderCtx was unset", async () => {
+    delete (globalThis as any).savedLoaderCtx;
+
+    const notifications: Record<string, any> = {};
+    const warnings: string[] = [];
+    const mockConnection: any = {
+      console: {
+        info: () => {},
+        warn: (msg: string) => warnings.push(msg),
+        error: () => {},
+      },
+      onNotification: (method: string, handler: (...args: unknown[]) => void) => {
+        notifications[method] = handler;
+      },
+      onRequest: () => {},
+      sendNotification: () => {},
+    };
+    const mockDocManager: any = { documentTrees: new Map() };
+    const mockWorkspaceManager: any = {
+      getWorkspaceIndex: () => null,
+      unifiedWorkspace: { toUnifiedPartial: () => null },
+    };
+    const mockDocuments: any = { all: () => [], get: () => undefined };
+
+    const parserService = new ParserService(mockConnection, mockDocManager, mockWorkspaceManager, mockDocuments);
+
+    const lspContext: any = {
+      connection: mockConnection,
+      parserService,
+      workspaceManager: mockWorkspaceManager,
+      documentManager: mockDocManager,
+      documents: mockDocuments,
+      validationService: { validateTextDocument: () => {} },
+      settings: {},
+    };
+
+    registerMiscEndpoints(lspContext);
+
+    assert.ok(notifications["modelscript/installDependency"], "Handler should be registered");
+
+    // Call installDependency when savedLoaderCtx was initially unset
+    await notifications["modelscript/installDependency"]({ name: "Modelica", version: "4.1.0" });
+
+    // Ensure it did NOT reject with "loader context not ready."
+    assert.equal(
+      warnings.some((w) => w.includes("loader context not ready")),
+      false,
+      "installDependency should not fail with loader context not ready",
+    );
+    assert.ok((globalThis as any).savedLoaderCtx, "savedLoaderCtx should now be bound");
   });
 });

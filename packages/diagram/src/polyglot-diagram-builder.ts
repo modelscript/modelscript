@@ -2,6 +2,7 @@
 
 import type { InteractiveBinding } from "./interactive.js";
 import { computeStemLines, type PortSide } from "./port-router.js";
+import type { CoordinateSystem } from "./protocol.js";
 import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
 
 /** X6 SVG Markup element — defines the DOM structure of a node/port. */
@@ -237,7 +238,7 @@ export interface PolyglotDiagramEdge {
 export interface PolyglotDiagramData {
   nodes: PolyglotDiagramNode[];
   edges: PolyglotDiagramEdge[];
-  coordinateSystem?: { x: number; y: number; width: number; height: number } | null | undefined;
+  coordinateSystem?: CoordinateSystem | null | undefined;
   diagramBackground?: unknown;
   /** Optional: the type of diagram, used by the renderer to select layout algorithms */
   diagramType?: string | undefined;
@@ -262,6 +263,15 @@ export interface PolyglotProjectionConfig {
   [key: string]: unknown;
 }
 
+/**
+ * Lightweight structural interface for linear-memory DAE or solver variable causality lookup.
+ */
+export interface DiagramDaeLike {
+  getVarIndex?(name: string): number;
+  getVarCausality?(varIndex: number): number; // 0 = Local, 1 = Input, 2 = Output
+  getVarType?(varIndex: number): number;
+}
+
 export interface PolyglotDiagramOptions {
   customProjections?: Record<string, PolyglotProjectionConfig> | undefined;
   structuralKinds?: Set<string> | string[] | undefined;
@@ -283,6 +293,7 @@ export interface PolyglotDiagramOptions {
     | undefined;
   solderDots?: boolean | undefined;
   stemLines?: boolean | undefined;
+  dae?: DiagramDaeLike | undefined;
 }
 
 /**
@@ -1979,23 +1990,89 @@ export function buildPolyglotDiagram(
     const portName = sym.name ?? `port_${sym.id}`;
     const portItems = parentNode.ports.items ?? [];
 
-    // Intelligently assign port side based on causality/direction metadata or naming convention
-    const rawMetaDir = sym.metadata?.["direction"] ?? sym.attributes?.["direction"];
-    const metaDir = typeof rawMetaDir === "string" ? rawMetaDir : undefined;
+    // Intelligently assign port side based on multi-tier semantic causality ladder:
+    // 1. Direct metadata/attributes
+    // 2. DAE linear memory arena (opts.dae.getVarCausality)
+    // 3. ScopeResolver / Type definition declaration
+    // 4. Connection topology inference
+    // 5. Naming convention
+    const rawCausality =
+      sym.metadata?.["causality"] ??
+      sym.attributes?.["causality"] ??
+      sym.metadata?.["direction"] ??
+      sym.attributes?.["direction"];
+    let causalityStr = "";
+    if (typeof rawCausality === "string") {
+      causalityStr = rawCausality.toLowerCase().trim();
+    } else if (typeof rawCausality === "number") {
+      causalityStr = rawCausality === 1 ? "input" : rawCausality === 2 ? "output" : "";
+    }
+
+    // Tier 2: DAE linear memory arena lookup
+    if (!causalityStr && opts.dae) {
+      const fqName = parentNode.id ? `${parentNode.id}.${portName}` : portName;
+      const vIdx = opts.dae.getVarIndex ? opts.dae.getVarIndex(fqName) : -1;
+      if (vIdx !== undefined && vIdx >= 0 && opts.dae.getVarCausality) {
+        const c = opts.dae.getVarCausality(vIdx);
+        if (c === 1) causalityStr = "input";
+        else if (c === 2) causalityStr = "output";
+      }
+    }
+
+    // Tier 3: ScopeResolver type definition resolution
+    if (!causalityStr && resolver) {
+      const resolved = resolver.resolve(sym);
+      for (const tgt of resolved) {
+        const c =
+          tgt.metadata?.["causality"] ??
+          tgt.attributes?.["causality"] ??
+          tgt.metadata?.["direction"] ??
+          tgt.attributes?.["direction"];
+        if (typeof c === "string") {
+          causalityStr = c.toLowerCase().trim();
+          break;
+        } else if (typeof c === "number") {
+          causalityStr = c === 1 ? "input" : c === 2 ? "output" : "";
+          if (causalityStr) break;
+        }
+        if (/in(?:put)?port/i.test(tgt.ruleName) || (tgt.name && /in(?:put)?port/i.test(tgt.name))) {
+          causalityStr = "input";
+          break;
+        } else if (/out(?:put)?port/i.test(tgt.ruleName) || (tgt.name && /out(?:put)?port/i.test(tgt.name))) {
+          causalityStr = "output";
+          break;
+        }
+      }
+    }
+
+    // Tier 4: Connection topology inference
+    if (!causalityStr) {
+      for (const edgeCandidate of allSymbols) {
+        if (gfxConfig[edgeCandidate.ruleName]?.role === "edge") {
+          const src = edgeCandidate.metadata?.["source"];
+          const tgt = edgeCandidate.metadata?.["target"];
+          const fullPort = parentNode.id ? `${parentNode.id}.${portName}` : portName;
+          if (src === portName || src === fullPort) {
+            causalityStr = "output";
+            break;
+          } else if (tgt === portName || tgt === fullPort) {
+            causalityStr = "input";
+            break;
+          }
+        }
+      }
+    }
+
+    const metaDir = typeof rawCausality === "string" ? rawCausality : causalityStr || undefined;
+
     let group: string;
-    if (
-      metaDir === "in" ||
-      metaDir === "input" ||
-      /(?:^|[a-z0-9_])(?:in|input)$/i.test(portName) ||
-      /^in(?:[A-Z0-9_]|$)/.test(portName)
-    ) {
+    if (causalityStr === "in" || causalityStr === "input") {
       group = "in";
-    } else if (
-      metaDir === "out" ||
-      metaDir === "output" ||
-      /(?:^|[a-z0-9_])(?:out|output)$/i.test(portName) ||
-      /^out(?:[A-Z0-9_]|$)/.test(portName)
-    ) {
+    } else if (causalityStr === "out" || causalityStr === "output") {
+      group = "out";
+    } else if (/(?:^|[a-z0-9_])(?:in|input)$/i.test(portName) || /^in(?:[A-Z0-9_]|$)/.test(portName)) {
+      group = "in";
+    } else if (/(?:^|[a-z0-9_])(?:out|output)$/i.test(portName) || /^out(?:[A-Z0-9_]|$)/.test(portName)) {
       group = "out";
     } else {
       // Default: alternating sides starting with "in" on left, "out" on right
@@ -2805,6 +2882,18 @@ export function buildPolyglotDiagram(
       y: -csHeight / 2,
       width: csWidth,
       height: csHeight,
+      grid: {
+        type: "dot",
+        x: 10,
+        y: 10,
+        visible: true,
+      },
+      axesStyle: {
+        visible: false,
+      },
+      boundsStyle: {
+        visible: false,
+      },
     },
     diagramBackground: null,
     diagramType,
@@ -3546,8 +3635,13 @@ export function buildDiagramFromDSL(
       const eqParts = text.split("=");
       if (eqParts.length >= 2) {
         if (!lhsText) {
-          const lhsMatch = eqParts[0]!.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
-          lhsText = lhsMatch ? lhsMatch[1]! : eqParts[0]!.trim();
+          const derMatch = eqParts[0]!.match(/\bder\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)/);
+          if (derMatch) {
+            lhsText = derMatch[1]!;
+          } else {
+            const lhsMatch = eqParts[0]!.match(/\b([a-zA-Z_][a-zA-Z0-9_.]*)\b/);
+            lhsText = lhsMatch ? lhsMatch[1]! : eqParts[0]!.trim();
+          }
         }
         if (!rhsText) {
           rhsText = eqParts.slice(1).join("=").replace(/;$/, "").trim();
@@ -3571,15 +3665,39 @@ export function buildDiagramFromDSL(
             "sample",
             "pre",
             "edge",
+            "change",
+            "reinit",
             "sin",
             "cos",
             "tan",
+            "asin",
+            "acos",
+            "atan",
+            "atan2",
+            "sinh",
+            "cosh",
+            "tanh",
             "exp",
             "log",
+            "log10",
             "sqrt",
             "abs",
             "min",
             "max",
+            "mod",
+            "rem",
+            "floor",
+            "ceil",
+            "sign",
+            "div",
+            "noEvent",
+            "smooth",
+            "cardinality",
+            "homotopy",
+            "semiLinear",
+            "in",
+            "out",
+            "connect",
           ]);
           rhsIdentifiers = rawIds.filter((id) => !keywords.has(id));
         }

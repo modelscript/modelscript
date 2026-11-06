@@ -193,7 +193,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
             <input
               ref={inspectionInputRef}
               type="file"
-              accept=".qif,.xml"
+              accept=".qif,.qifz,.zip,.xml"
               aria-label="Choose QIF inspection report"
               style={{ display: "none" }}
               onChange={(e) => {

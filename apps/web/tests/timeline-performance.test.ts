@@ -146,6 +146,40 @@ describe("Timeline Performance, Artifact Lifecycle & Memory Efficiency", () => {
       );
     });
 
+    it("ensures PolyglotArtifactViewer guards against auto-mounting Monaco without user interaction and adopts static island pattern", () => {
+      const src = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/PolyglotArtifactViewer.tsx"),
+        "utf-8",
+      );
+      assert.ok(
+        src.includes("const [interactive, setInteractive] = useState(isFullScreen);"),
+        "PolyglotArtifactViewer must initialize interactive to isFullScreen to prevent auto-mounting Monaco in feed",
+      );
+      assert.ok(
+        src.includes("renderUniversalCodeThumbnailSvg"),
+        "PolyglotArtifactViewer must provide universal code thumbnail SVG fallback",
+      );
+      assert.ok(
+        src.includes("▶ Interactive Editor"),
+        "PolyglotArtifactViewer must provide '▶ Interactive Editor' CTA pill for static code cards",
+      );
+      assert.ok(
+        src.includes("!entry.isIntersecting"),
+        "PolyglotArtifactViewer must hibernate heavy editor when scrolled out of view",
+      );
+    });
+
+    it("ensures ViewerDispatcher routes Fortran dialects to unified PolyglotArtifactViewer instead of eager FortranViewer", () => {
+      const src = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf-8",
+      );
+      assert.ok(
+        !src.includes("return <FortranViewer"),
+        "ViewerDispatcher must not eagerly mount FortranViewer for Fortran artifacts in feeds",
+      );
+    });
+
     it("ensures ViewerDispatcher wraps missing 3D/physics viewers in LazyHeavyViewer", () => {
       const src = fs.readFileSync(
         path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),

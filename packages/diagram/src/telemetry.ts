@@ -118,8 +118,18 @@ export function animateCells(
         node.translate?.(0, val);
       } else if (anim.property === "text" || anim.property === "label") {
         node.attr?.("label/text", typeof val === "number" ? val.toFixed(2) : String(val));
-      } else if (anim.property === "colormap") {
-        node.attr?.("body/fill", turboColormap(val));
+      } else if (anim.property === "colormap" || anim.property === "voltage") {
+        const min = anim.range?.[0] ?? 0;
+        const max = anim.range?.[1] ?? 1;
+        const norm = max > min ? (val - min) / (max - min) : val;
+        node.attr?.("body/fill", turboColormap(norm));
+      } else if (anim.property === "breaker" || anim.property === "switch" || anim.property === "state") {
+        const isOpen = Math.abs(val) < 0.5;
+        node.attr?.("breaker/text", isOpen ? "OPEN" : "CLOSED");
+        node.attr?.("breaker/fill", isOpen ? "#22c55e" : "#ef4444");
+        node.attr?.("body/stroke", isOpen ? "#22c55e" : "#ef4444");
+        node.attr?.("badge/text", isOpen ? "OPEN" : "CLOSED");
+        node.attr?.("badge/fill", isOpen ? "#22c55e" : "#ef4444");
       } else if (anim.property === "dial" || anim.property === "needle") {
         // Rotating needle pointer for circular gauges
         node.attr?.("needle/transform", `rotate(${val} 50 50)`);
@@ -144,7 +154,7 @@ export function animateCells(
     }
   }
 
-  // 2. Animate edges (flow particles, line thickness, pressure colors)
+  // 2. Animate edges (flow particles, line thickness, pressure colors, voltages)
   for (const edge of cells.edges) {
     const anims = edge.getData?.()?.animations;
     if (!anims || anims.length === 0) continue;
@@ -152,15 +162,25 @@ export function animateCells(
       const val = extractVal(anim.variableName);
       if (val === undefined) continue;
 
-      if (anim.property === "flow" || anim.property === "dashoffset") {
+      if (anim.property === "flow" || anim.property === "current" || anim.property === "dashoffset") {
+        edge.attr?.("line/strokeDasharray", "6 4");
         edge.attr?.("line/strokeDashoffset", val);
       } else if (anim.property === "strokeWidth") {
         edge.attr?.("line/strokeWidth", Math.max(1, val));
       } else if (anim.property === "stroke" || anim.property === "color") {
         edge.attr?.("line/stroke", String(val));
-      } else if (anim.property === "colormap") {
-        edge.attr?.("line/stroke", turboColormap(val));
+      } else if (anim.property === "colormap" || anim.property === "voltage") {
+        const min = anim.range?.[0] ?? 0;
+        const max = anim.range?.[1] ?? 1;
+        const norm = max > min ? (val - min) / (max - min) : val;
+        edge.attr?.("line/stroke", turboColormap(norm));
       }
     }
   }
+}
+
+export interface SimulationFrame {
+  time?: number;
+  stateVector: Record<string, number> | Float64Array;
+  varIndexMap?: Map<string, number> | Record<string, number>;
 }

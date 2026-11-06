@@ -490,10 +490,12 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
 
       {slides.length > 0 ? (
         <PostArtifactSlider slides={slides} forkedFromId={forkedFromId} onPinCreated={onPinCreated} />
-      ) : displayPost.artifact_view_id && Number(displayPost.artifact_view_id) > 0 ? (
+      ) : displayPost.artifact_view_id &&
+        String(displayPost.artifact_view_id).trim() !== "" &&
+        String(displayPost.artifact_view_id) !== "0" ? (
         <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
           <ArtifactViewCard
-            artifactId={Number(displayPost.artifact_view_id)}
+            artifactId={displayPost.artifact_view_id}
             initialArtifactView={displayPost.artifact_view}
             forkedFromId={forkedFromId}
             onPinCreated={onPinCreated}

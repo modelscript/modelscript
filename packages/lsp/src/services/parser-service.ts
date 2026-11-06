@@ -609,7 +609,52 @@ export class ParserService {
     return { lineIndex: cached.lineIndex, tokens: cached.tokens };
   }
 
-  private serverDistBase = "";
+  public serverDistBase = "";
+  private loaderCtx: LoaderContext | null = null;
+
+  public getServerDistBase(): string {
+    return this.serverDistBase || (globalThis as any).serverDistBase || "";
+  }
+
+  public getOrCreateLoaderContext(): LoaderContext {
+    if (this.loaderCtx) {
+      return this.loaderCtx;
+    }
+    const globalCtx = globalThis as any;
+    if (globalCtx.savedLoaderCtx) {
+      this.loaderCtx = globalCtx.savedLoaderCtx;
+      return this.loaderCtx!;
+    }
+    this.ensureSharedContext();
+    const localStore =
+      typeof indexedDB !== "undefined"
+        ? new IndexedDBQueryCacheStore("modelscript-lsp-cache")
+        : new MemoryQueryCacheStore();
+    const federatedEndpoints: string[] = [];
+    const cacheStore = new FederatedQueryCacheStore(localStore, {
+      getEndpoints: () => federatedEndpoints,
+    });
+    this.loaderCtx = {
+      connectionState: this.connection,
+      logger: {
+        log: (msg) => this.connection.console.info(msg),
+        warn: (msg) => this.connection.console.warn(msg),
+        error: (msg, e) => this.connection.console.error(`${msg} ${e}`),
+      },
+      sharedFs: globalCtx.sharedFs ?? new BrowserFileSystem(),
+      sharedContext: this.sharedContext,
+      globalWorkspaceIndex: this.workspaceManager.getWorkspaceIndex("modelica"),
+      sysml2WorkspaceIndex: this.workspaceManager.getWorkspaceIndex("sysml2"),
+      documentTrees: this.documentManager.documentTrees as any,
+      sysml2Parser: this.getParser("sysml2") as any,
+      cacheStore,
+      registryUrl: typeof globalCtx.registryUrl !== "undefined" ? globalCtx.registryUrl : undefined,
+      federatedEndpoints,
+    };
+    globalCtx.savedLoaderCtx = this.loaderCtx;
+    return this.loaderCtx;
+  }
+
   private manifest: {
     id: string;
     wasm?: string | undefined;
@@ -828,8 +873,10 @@ export class ParserService {
         getReadyMessage?: (() => string) | undefined;
       };
 
-      const loaderCtx = globalCtx.savedLoaderCtx;
-      if (!loaderCtx || !this.serverDistBase) return;
+      const loaderCtx = this.getOrCreateLoaderContext();
+      const serverDistBase = this.getServerDistBase();
+      if (!serverDistBase) return;
+      this.serverDistBase = serverDistBase;
 
       for (const lib of polyglotLibs) {
         const libKey = `${lib.packageName}@${lib.version}`;
@@ -890,8 +937,10 @@ export class ParserService {
       return;
     }
 
-    const loaderCtx = (globalThis as any).savedLoaderCtx as LoaderContext | undefined;
-    if (!loaderCtx || !this.serverDistBase) return;
+    const loaderCtx = this.getOrCreateLoaderContext();
+    const serverDistBase = this.getServerDistBase();
+    if (!serverDistBase) return;
+    this.serverDistBase = serverDistBase;
 
     const dep =
       this.projectDependenciesRef.find((d) => d.name === depName) ??
@@ -975,10 +1024,11 @@ export class ParserService {
   }
 
   public async syncDocumentLibraryVersions(uri: string, text: string): Promise<void> {
-    const loaderCtx = (globalThis as any).savedLoaderCtx as LoaderContext | undefined;
-    if (!loaderCtx || !this.serverDistBase) return;
+    const loaderCtx = this.getOrCreateLoaderContext();
+    const serverDistBase = this.getServerDistBase();
+    if (!loaderCtx || !serverDistBase) return;
     try {
-      const swapped = await resolveWorkspaceLibraryVersions(text, loaderCtx, uri, this.serverDistBase);
+      const swapped = await resolveWorkspaceLibraryVersions(text, loaderCtx, uri, serverDistBase);
       if (swapped.length > 0) {
         for (const dep of swapped) {
           const existingIdx = this.projectDependenciesRef.findIndex((d) => d.name === dep.name);
@@ -1005,7 +1055,9 @@ export class ParserService {
   }
 
   public async ensureLanguageParserLoaded(languageIdOrUri: string): Promise<void> {
-    if (!this.serverDistBase) return;
+    const serverDistBase = this.getServerDistBase();
+    if (!serverDistBase) return;
+    this.serverDistBase = serverDistBase;
     this.ensureSharedContext();
     const langId = this.resolveNormalizedLanguageId(languageIdOrUri);
     if (!this.isParserReady(langId)) {
@@ -1060,6 +1112,8 @@ export class ParserService {
       this.validationServiceRef = validationService;
       this.projectDependenciesRef = projectDependencies;
       this.ensureSharedContext();
+      const loaderCtx = this.getOrCreateLoaderContext();
+      (globalThis as any).savedLoaderCtx = loaderCtx;
 
       this.connection.sendNotification("modelscript/status", {
         state: "loading",
@@ -1140,15 +1194,7 @@ export class ParserService {
         }
       }
 
-      // Initialize FederatedCacheStore with local IndexedDB (browser) or Memory store (Node)
-      const localStore =
-        typeof indexedDB !== "undefined"
-          ? new IndexedDBQueryCacheStore("modelscript-lsp-cache")
-          : new MemoryQueryCacheStore();
-      const federatedEndpoints: string[] = []; // Endpoints added later in loadRegistryPackages
-      const cacheStore = new FederatedQueryCacheStore(localStore, {
-        getEndpoints: () => federatedEndpoints,
-      });
+      const cacheStore = loaderCtx.cacheStore;
       const MAX_MEMOS = 2_000_000; // Limit in-memory memos
 
       const createModelicaQE =
@@ -1185,25 +1231,11 @@ export class ParserService {
           this.connection.console.error(`[lsp] onParsersReady callback error: ${cbErr}`);
         }
       }
-      const loaderCtx: LoaderContext = {
-        connectionState: this.connection,
-        logger: {
-          log: (msg) => this.connection.console.info(msg),
-          warn: (msg) => this.connection.console.warn(msg),
-          error: (msg, e) => this.connection.console.error(`${msg} ${e}`),
-        },
-        sharedFs: (globalThis as any).sharedFs ?? new BrowserFileSystem(),
-        sharedContext: this.sharedContext,
-        globalWorkspaceIndex: this.workspaceManager.getWorkspaceIndex("modelica"),
-        sysml2WorkspaceIndex: this.workspaceManager.getWorkspaceIndex("sysml2"),
-        documentTrees: this.documentManager.documentTrees as any,
-        sysml2Parser: this.getParser("sysml2") as any,
-        cacheStore,
-        registryUrl:
-          typeof (globalThis as any).registryUrl !== "undefined" ? (globalThis as any).registryUrl : undefined,
-        federatedEndpoints,
-      };
-      (globalThis as any).savedLoaderCtx = loaderCtx;
+
+      loaderCtx.globalWorkspaceIndex = this.workspaceManager.getWorkspaceIndex("modelica");
+      loaderCtx.sysml2WorkspaceIndex = this.workspaceManager.getWorkspaceIndex("sysml2");
+      loaderCtx.sysml2Parser = this.getParser("sysml2") as any;
+      loaderCtx.sharedContext = this.sharedContext;
 
       if (this.lazyLoadParsers) {
         const initialTargets = new Set<string>();
@@ -1415,7 +1447,7 @@ export class ParserService {
           engine = createModelicaQE(
             unifiedIndex,
             this.getSharedCstTreeWrapper(),
-            (globalThis as any).savedLoaderCtx?.cacheStore,
+            this.getOrCreateLoaderContext().cacheStore,
             100_000,
           ) as any;
           this.workspaceManager.globalModelicaQueryEngine = engine;

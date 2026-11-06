@@ -6,6 +6,7 @@
  * Provides lightweight XML parsing and ZIP extraction for FMI 2.0/3.0 modelDescription.xml.
  */
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { inflateRaw } from "pako";
 
 // ── FMU model description types ──
@@ -21,63 +22,97 @@ export interface FmuScalarVariable {
 
 // ── XML parsing ──
 
+function localXmlName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchXmlTag(element: XmlElement, expected: string): boolean {
+  return localXmlName(element.name).toUpperCase() === expected.toUpperCase();
+}
+
+function findXmlDescendants(element: XmlElement, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  const result: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    for (const child of node.children) {
+      if (predicate(child)) result.push(child);
+      walk(child);
+    }
+  }
+  walk(element);
+  return result;
+}
+
 /**
- * Parse scalar variables from an FMI 2.0 `modelDescription.xml` string.
- * Uses lightweight regex matching — no DOM parser required.
+ * Parse scalar variables from an FMI 2.0 / 3.0 `modelDescription.xml` string.
+ * Uses typed CST traversal via parseXmlSync — zero regex matching.
  */
 export function parseFmuModelDescription(xml: string): {
   modelName: string;
   description: string;
   variables: FmuScalarVariable[];
 } {
-  // Extract modelName
-  const nameMatch = xml.match(/modelName\s*=\s*"([^"]*)"/);
-  const modelName = nameMatch?.[1] ?? "FMU";
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
 
-  // Extract top-level description
-  const rootTagEnd = xml.indexOf(">");
-  const rootTag = rootTagEnd !== -1 ? xml.slice(0, rootTagEnd) : "";
-  const descMatch = rootTag.match(/\bdescription\s*=\s*"([^"]*)"/);
-  const description = descMatch?.[1] ?? "";
+  const getAttr = (el: XmlElement | null | undefined, name: string): string | undefined => {
+    if (!el) return undefined;
+    const target = name.toUpperCase();
+    return el.attributes.find((a) => localXmlName(a.name).toUpperCase() === target)?.value;
+  };
 
-  // Extract scalar variables
+  const modelName = getAttr(root, "modelName") ?? "FMU";
+  const description = getAttr(root, "description") ?? "";
+
   const variables: FmuScalarVariable[] = [];
-  const scalarRegex =
-    /<ScalarVariable\b([^>]*)\/?>[\s\S]*?(?:<\/ScalarVariable>|(?=<ScalarVariable|<\/ModelVariables))/g;
-  let match: RegExpExecArray | null;
+  if (root) {
+    const svElements = findXmlDescendants(root, (e) => matchXmlTag(e, "ScalarVariable"));
+    for (const sv of svElements) {
+      const varName = getAttr(sv, "name");
+      if (!varName) continue;
 
-  while ((match = scalarRegex.exec(xml)) !== null) {
-    const attrs = match[0] ?? "";
-    const headerAttrs = match[1] ?? "";
+      const causality = (getAttr(sv, "causality") ?? "local") as FmuScalarVariable["causality"];
+      const variability = (getAttr(sv, "variability") ?? "continuous") as FmuScalarVariable["variability"];
+      const varDesc = getAttr(sv, "description") ?? "";
 
-    const varName = headerAttrs.match(/\bname\s*=\s*"([^"]*)"/)?.[1];
-    if (!varName) continue;
+      let type: FmuScalarVariable["type"] = "Real";
+      let start: number | boolean | string | undefined = undefined;
 
-    const causality = (headerAttrs.match(/\bcausality\s*=\s*"([^"]*)"/)?.[1] ??
-      "local") as FmuScalarVariable["causality"];
-    const variability = (headerAttrs.match(/\bvariability\s*=\s*"([^"]*)"/)?.[1] ??
-      "continuous") as FmuScalarVariable["variability"];
-    const varDesc = headerAttrs.match(/\bdescription\s*=\s*"([^"]*)"/)?.[1] ?? "";
+      const typeChild = sv.children.find((c) => {
+        const u = localXmlName(c.name).toUpperCase();
+        return u === "REAL" || u === "INTEGER" || u === "BOOLEAN" || u === "STRING" || u === "ENUMERATION";
+      });
 
-    // Extract type based on inner tags
-    let type: FmuScalarVariable["type"] = "Real";
-    if (attrs.includes("<Integer")) type = "Integer";
-    else if (attrs.includes("<Boolean")) type = "Boolean";
-    else if (attrs.includes("<String")) type = "String";
-    else if (attrs.includes("<Enumeration")) type = "Enumeration";
+      if (typeChild) {
+        const u = localXmlName(typeChild.name).toUpperCase();
+        if (u === "INTEGER") type = "Integer";
+        else if (u === "BOOLEAN") type = "Boolean";
+        else if (u === "STRING") type = "String";
+        else if (u === "ENUMERATION") type = "Enumeration";
+        else type = "Real";
 
-    // Extract start value from nested tags
-    const startMatch = attrs.match(/\bstart\s*=\s*"([^"]*)"/);
-    const start = startMatch ? parseFloat(startMatch[1] ?? "") : undefined;
+        const startAttr = getAttr(typeChild, "start");
+        if (startAttr !== undefined) {
+          if (type === "Real" || type === "Integer") {
+            const parsed = parseFloat(startAttr);
+            if (Number.isFinite(parsed)) start = parsed;
+          } else if (type === "Boolean") {
+            start = startAttr.toLowerCase() === "true" || startAttr === "1";
+          } else {
+            start = startAttr;
+          }
+        }
+      }
 
-    variables.push({
-      name: varName,
-      causality,
-      variability,
-      description: varDesc,
-      type,
-      ...(Number.isFinite(start) ? { start: start as number } : {}),
-    });
+      variables.push({
+        name: varName,
+        causality,
+        variability,
+        description: varDesc,
+        type,
+        ...(start !== undefined ? { start } : {}),
+      });
+    }
   }
 
   return { modelName, description, variables };

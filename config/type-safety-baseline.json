@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 694,
+      "explicitAny": 741,
       "tsComments": 0
     },
     "ee": {
@@ -37,7 +37,15 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/antimony": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/aspen": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/automationml": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -45,11 +53,23 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/bngl": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/c": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/cantera": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/ccsds": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cellml": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -58,6 +78,10 @@
       "tsComments": 0
     },
     "languages/csv": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/dicom-rt": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -81,11 +105,23 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/febio": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/fortran": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/genbank": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/gensys": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gproms": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -94,6 +130,10 @@
       "tsComments": 0
     },
     "languages/ibis": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/igtl": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -106,10 +146,18 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3211,
+      "explicitAny": 3223,
       "tsComments": 0
     },
     "languages/modelscript": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/nifti": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/nmtran": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -129,7 +177,23 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/opensim": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/oscal": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/owl2": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/pdb": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/phreeqc": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -142,6 +206,10 @@
       "tsComments": 0
     },
     "languages/psse": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/qif": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -161,7 +229,15 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/sbol": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/scad": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/sedml": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -174,6 +250,10 @@
       "tsComments": 0
     },
     "languages/simulink": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/smiles": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -197,12 +277,24 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/three-mf": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/topas": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/touchstone": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "languages/urdf": {
       "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/usd": {
+      "explicitAny": 10,
       "tsComments": 0
     },
     "languages/verilog-a": {
@@ -246,7 +338,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 2042,
+      "explicitAny": 2039,
       "tsComments": 0
     },
     "packages/mcp": {

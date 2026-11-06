@@ -114,4 +114,49 @@ describe("Live Telemetry & Turbo Colormap", () => {
     // Verify edge flow animation offset was decremented
     assert.ok(attrCalls.some((c) => c.selector === "line/strokeDashoffset" && c.attrs < 10));
   });
+
+  it("should animate breaker state badges between OPEN and CLOSED", () => {
+    const attrCalls: { selector: string; attrs: any }[] = [];
+    const mockBreaker = {
+      attr: (path: string, val: any) => attrCalls.push({ selector: path, attrs: val }),
+      getData: () => ({ animations: [{ property: "breaker", variableName: "brk_status" }] }),
+    };
+
+    // Open breaker (0)
+    animateCells({ nodes: [mockBreaker as any], edges: [] }, { brk_status: 0 });
+    assert.ok(attrCalls.some((c) => c.selector === "breaker/text" && c.attrs === "OPEN"));
+    assert.ok(attrCalls.some((c) => c.selector === "breaker/fill" && c.attrs === "#22c55e"));
+
+    // Closed breaker (1)
+    attrCalls.length = 0;
+    animateCells({ nodes: [mockBreaker as any], edges: [] }, { brk_status: 1 });
+    assert.ok(attrCalls.some((c) => c.selector === "breaker/text" && c.attrs === "CLOSED"));
+    assert.ok(attrCalls.some((c) => c.selector === "breaker/fill" && c.attrs === "#ef4444"));
+  });
+
+  it("should animate wire voltage colormaps normalized to range", () => {
+    const attrCalls: { selector: string; attrs: any }[] = [];
+    const mockWire = {
+      attr: (path: string, val: any) => attrCalls.push({ selector: path, attrs: val }),
+      getData: () => ({
+        animations: [{ property: "voltage", variableName: "V_bus", range: [100, 200] as [number, number] }],
+      }),
+    };
+
+    // 150 is exactly 50% between 100 and 200
+    animateCells({ nodes: [], edges: [mockWire as any] }, { V_bus: 150 });
+    assert.ok(attrCalls.some((c) => c.selector === "line/stroke" && c.attrs === turboColormap(0.5)));
+  });
+
+  it("should configure dasharray particles for active current flow", () => {
+    const attrCalls: { selector: string; attrs: any }[] = [];
+    const mockWire = {
+      attr: (path: string, val: any) => attrCalls.push({ selector: path, attrs: val }),
+      getData: () => ({ animations: [{ property: "flow", variableName: "I_line" }] }),
+    };
+
+    animateCells({ nodes: [], edges: [mockWire as any] }, { I_line: 12.5 });
+    assert.ok(attrCalls.some((c) => c.selector === "line/strokeDasharray" && c.attrs === "6 4"));
+    assert.ok(attrCalls.some((c) => c.selector === "line/strokeDashoffset" && c.attrs === 12.5));
+  });
 });

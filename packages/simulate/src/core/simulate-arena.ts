@@ -5782,6 +5782,25 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     stateNames.push(name);
   }
 
+  // If no dynamic state variables and no explicit outputStringIds, collect all non-parameter, non-constant scalar variables
+  let effectiveOutputIds = options?.outputStringIds;
+  if (!effectiveOutputIds || effectiveOutputIds.length === 0) {
+    if (stateNameIds.length === 0) {
+      const defaultIds: number[] = [];
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        if (arena.hiddenVarIndices?.has(i)) continue;
+        const v = arena.getVarVariability(i);
+        if (v === Variability.Parameter || v === Variability.Constant) continue;
+        if (arena.getVarShape(i).length > 0) continue;
+        defaultIds.push(arena.getVarNameId(i));
+      }
+      if (defaultIds.length > 0) {
+        effectiveOutputIds = defaultIds;
+      }
+    }
+  }
+
   // ── Step 6: Run simulation ──
   if (options?.steadyStateOnly) {
     const t = [startTime];
@@ -5791,9 +5810,9 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     }
     let outNames = stateNames;
     let outY = [initialRow];
-    if (options?.outputStringIds) {
-      outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
-      outY = [options.outputStringIds.map((id) => valuesByStringId[id] ?? 0)];
+    if (effectiveOutputIds) {
+      outNames = effectiveOutputIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+      outY = [effectiveOutputIds.map((id) => valuesByStringId[id] ?? 0)];
     }
     return { t, y: outY, states: outNames };
   }
@@ -5818,7 +5837,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     solver: chosenSolver,
     atol: options?.atol ?? exp.tolerance,
     rtol: options?.rtol ?? exp.tolerance,
-    ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
+    ...(effectiveOutputIds !== undefined && { outputStringIds: effectiveOutputIds }),
     ...(options?.stlMonitors !== undefined && { stlMonitors: options.stlMonitors }),
     ...(options?.earlyTerminateOnViolation !== undefined && {
       earlyTerminateOnViolation: options.earlyTerminateOnViolation,
@@ -5837,8 +5856,8 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
 
   let outNames = stateNames;
   let outY = y;
-  if (options?.outputStringIds) {
-    outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  if (effectiveOutputIds) {
+    outNames = effectiveOutputIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
   } else if (arena.hiddenVarIndices && arena.hiddenVarIndices.size > 0 && !options?.debug) {
     const keepIndices: number[] = [];
     const filteredNames: string[] = [];
@@ -6005,6 +6024,25 @@ export async function simulateArenaAsync(
     stateNames.push(name);
   }
 
+  // If no dynamic state variables and no explicit outputStringIds, collect all non-parameter, non-constant scalar variables
+  let effectiveOutputIds = options?.outputStringIds;
+  if (!effectiveOutputIds || effectiveOutputIds.length === 0) {
+    if (stateNameIds.length === 0) {
+      const defaultIds: number[] = [];
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        if (arena.hiddenVarIndices?.has(i)) continue;
+        const v = arena.getVarVariability(i);
+        if (v === Variability.Parameter || v === Variability.Constant) continue;
+        if (arena.getVarShape(i).length > 0) continue;
+        defaultIds.push(arena.getVarNameId(i));
+      }
+      if (defaultIds.length > 0) {
+        effectiveOutputIds = defaultIds;
+      }
+    }
+  }
+
   if (options?.steadyStateOnly) {
     const t = [startTime];
     const initialRow: number[] = [];
@@ -6013,9 +6051,9 @@ export async function simulateArenaAsync(
     }
     let outNames = stateNames;
     let outY = [initialRow];
-    if (options?.outputStringIds) {
-      outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
-      outY = [options.outputStringIds.map((id) => valuesByStringId[id] ?? 0)];
+    if (effectiveOutputIds) {
+      outNames = effectiveOutputIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+      outY = [effectiveOutputIds.map((id) => valuesByStringId[id] ?? 0)];
     }
     return { t, y: outY, states: outNames };
   }
@@ -6128,7 +6166,7 @@ export async function simulateArenaAsync(
     ...(options?.signal !== undefined && { signal: options.signal }),
     atol: options?.atol ?? exp.tolerance,
     rtol: options?.rtol ?? exp.tolerance,
-    ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
+    ...(effectiveOutputIds !== undefined && { outputStringIds: effectiveOutputIds }),
   });
 
   sim.terminateFmuSubsystems();
@@ -6138,8 +6176,8 @@ export async function simulateArenaAsync(
 
   let outNames = stateNames;
   let outY = y;
-  if (options?.outputStringIds) {
-    outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  if (effectiveOutputIds) {
+    outNames = effectiveOutputIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
   } else if (arena.hiddenVarIndices && arena.hiddenVarIndices.size > 0 && !options?.debug) {
     const keepIndices: number[] = [];
     const filteredNames: string[] = [];

@@ -139,12 +139,16 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 
+  const getLoaderCtx = () => context.parserService?.getOrCreateLoaderContext?.() ?? (globalThis as any).savedLoaderCtx;
+  const getServerDistBase = () => (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
+
   context.connection.onNotification(
     "modelscript/registryPackages",
     async (params: { packages: RegistryPackageInfo[] }) => {
-      if (savedLoaderCtx) {
+      const loaderCtx = getLoaderCtx();
+      if (loaderCtx) {
         context.connection.console.info(`[lsp] Received ${params.packages.length} registry packages from client.`);
-        await loadRegistryPackages(params.packages, savedLoaderCtx);
+        await loadRegistryPackages(params.packages, loaderCtx);
         // Re-validate all documents to pick up the newly indexed library items
         for (const doc of context.documents.all()) {
           context.validationService.validateTextDocument(doc);
@@ -160,7 +164,8 @@ export function registerMiscEndpoints(context: LspContext) {
   context.connection.onNotification(
     "modelscript/installDependency",
     async (params: { name: string; version: string }) => {
-      if (!savedLoaderCtx) {
+      const loaderCtx = getLoaderCtx();
+      if (!loaderCtx) {
         context.connection.console.warn("[lsp] installDependency: loader context not ready.");
         return;
       }
@@ -170,7 +175,7 @@ export function registerMiscEndpoints(context: LspContext) {
         message: `Loading ${params.name}@${params.version}...`,
       });
       try {
-        await ensureLibraryVersionMounted(params, savedLoaderCtx, (globalThis as any).serverDistBase);
+        await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase());
         context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
 
         context.connection.sendNotification("modelscript/status", {
@@ -209,12 +214,13 @@ export function registerMiscEndpoints(context: LspContext) {
 
   // Handler for uninstalling/unmounting a library package (standard or custom) from the workspace
   context.connection.onNotification("modelscript/uninstallDependency", (params: { name: string }) => {
-    if (!savedLoaderCtx) {
+    const loaderCtx = getLoaderCtx();
+    if (!loaderCtx) {
       context.connection.console.warn("[lsp] uninstallDependency: loader context not ready.");
       return;
     }
     try {
-      const evicted = unloadLibraryPackage(params.name, savedLoaderCtx);
+      const evicted = unloadLibraryPackage(params.name, loaderCtx);
       context.connection.console.info(`[lsp] Uninstalled dependency ${params.name} (${evicted} URIs evicted)`);
       for (const doc of context.documents.all()) {
         context.validationService.validateTextDocument(doc);
@@ -233,12 +239,13 @@ export function registerMiscEndpoints(context: LspContext) {
   context.connection.onNotification(
     "modelscript/importLibraryZip",
     async (params: { name?: string; version?: string; zipBase64?: string; url?: string }) => {
-      if (!savedLoaderCtx) {
+      const loaderCtx = getLoaderCtx();
+      if (!loaderCtx) {
         context.connection.console.warn("[lsp] importLibraryZip: loader context not ready.");
         return;
       }
       try {
-        const result = await importLibraryZip(params, savedLoaderCtx);
+        const result = await importLibraryZip(params, loaderCtx);
         context.connection.console.info(
           `[lsp] Imported .zip library ${result.name}@${result.version} (${result.fileCount} files)`,
         );

@@ -495,3 +495,96 @@ test("SysML v2 Two-tone card architecture, stereotype normalization, and high-co
   assert.strictEqual((defNode.attrs?.secHead_0 as any)?.fill, "#475569");
   assert.strictEqual((defNode.attrs?.entry_0_0 as any)?.fill, "#1e293b");
 });
+
+test("Derives port causality and group side from DAE linear arena and ScopeResolver", () => {
+  const config: DiagramConfig = {
+    nodes: {
+      Module: {
+        shape: "rect",
+        role: "node",
+      },
+      Port: {
+        shape: "circle",
+        role: "port",
+      },
+    },
+    portRules: ["Port"],
+  };
+
+  const { graphicsConfig, options } = compileDiagramConfigToPolyglot(config);
+
+  const symbols = new Map<SymbolId, SymbolEntry>();
+  symbols.set(
+    10 as SymbolId,
+    {
+      id: 10 as SymbolId,
+      name: "Filter",
+      ruleName: "Module",
+      parentId: null,
+      metadata: {},
+    } as SymbolEntry,
+  );
+
+  symbols.set(
+    11 as SymbolId,
+    {
+      id: 11 as SymbolId,
+      name: "signalA",
+      ruleName: "Port",
+      parentId: 10 as SymbolId,
+      metadata: {},
+    } as SymbolEntry,
+  );
+
+  symbols.set(
+    12 as SymbolId,
+    {
+      id: 12 as SymbolId,
+      name: "signalB",
+      ruleName: "Port",
+      parentId: 10 as SymbolId,
+      metadata: {},
+    } as SymbolEntry,
+  );
+
+  const index: SymbolIndex = {
+    symbols,
+    byName: new Map([
+      ["Filter", [10 as SymbolId]],
+      ["signalA", [11 as SymbolId]],
+      ["signalB", [12 as SymbolId]],
+    ]),
+    childrenOf: new Map([[10 as SymbolId, [11 as SymbolId, 12 as SymbolId]]]),
+  };
+
+  // Mock DAE arena: signalA -> Input (1), signalB -> Output (2)
+  const mockDae = {
+    getVarIndex(name: string) {
+      if (name.includes("signalA")) return 1;
+      if (name.includes("signalB")) return 2;
+      return -1;
+    },
+    getVarCausality(vIdx: number) {
+      if (vIdx === 1) return 1; // Input
+      if (vIdx === 2) return 2; // Output
+      return 0;
+    },
+  };
+
+  const diagram = buildPolyglotDiagram(index, graphicsConfig, undefined, undefined, "All", {
+    ...options,
+    dae: mockDae,
+  });
+
+  assert.strictEqual(diagram.nodes.length, 1);
+  const node = diagram.nodes[0]!;
+  assert.ok(node.ports?.items);
+  const itemA = node.ports.items.find((p) => p.id === "signalA");
+  const itemB = node.ports.items.find((p) => p.id === "signalB");
+
+  assert.ok(itemA);
+  assert.strictEqual(itemA.group, "in"); // Placed on "in" group (left)
+
+  assert.ok(itemB);
+  assert.strictEqual(itemB.group, "out"); // Placed on "out" group (right)
+});

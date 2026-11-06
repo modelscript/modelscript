@@ -1,21 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { RssIcon } from "@primer/octicons-react";
+import { RssIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Text, Tooltip } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { getPost } from "../../api";
+import { safeJsonParse } from "../../util/json";
 import { getPostUrl } from "../../util/url";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import Box from "../Box";
 import FederatedDomainPill from "../FederatedDomainPill";
 import ProfileHoverCard from "../ProfileHoverCard";
 import { PostMarkdownContent } from "./PostMarkdownContent";
+import { PostSignatureModal } from "./PostSignatureModal";
 import {
   Avatar,
   NestedQuoteWrapper,
   ProfileNameLink,
   QuoteWrapper,
+  SignatureBadge,
   TimestampButton,
   formatFullTimestamp,
   formatRelativeTime,
@@ -47,6 +51,26 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
   const [nestedQuote, setNestedQuote] = useState<NestedQuotedPostItem | null>(
     quotePost?.quote_post || quotePost?.quotePost || null,
   );
+  const [showQuoteSigModal, setShowQuoteSigModal] = useState(false);
+
+  const quoteMeta = useMemo(() => {
+    if (!quotePost.metadata) return null;
+    if (typeof quotePost.metadata === "object") return quotePost.metadata;
+    return safeJsonParse(quotePost.metadata, null);
+  }, [quotePost.metadata]);
+
+  const quoteSigDigest =
+    (quotePost as any)?.signature ||
+    quotePost?.client_signature ||
+    quoteMeta?.client_signature ||
+    quoteMeta?.clientSignature ||
+    quoteMeta?.proof?.proofValue ||
+    quoteMeta?.proof?.signature ||
+    quoteMeta?.signature ||
+    quotePost?.metadata?.client_signature ||
+    quotePost?.metadata?.clientSignature ||
+    "";
+  const quoteHasSignature = Boolean(quoteSigDigest);
 
   useEffect(() => {
     if (!quotePost) {
@@ -220,6 +244,21 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
             </Tooltip>
           </>
         )}
+        {quoteHasSignature && (
+          <Tooltip text="Cryptographically signed by author (Click to view signature proof)" direction="s">
+            <SignatureBadge
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setShowQuoteSigModal(true);
+              }}
+              aria-label="View cryptographic post signature"
+            >
+              <ShieldCheckIcon size={12} />
+              <span>Signed</span>
+            </SignatureBadge>
+          </Tooltip>
+        )}
         {parsedQuoteAuthor?.isFederated && parsedQuoteAuthor.remoteDomain && (
           <FederatedDomainPill domain={parsedQuoteAuthor.remoteDomain} />
         )}
@@ -227,14 +266,13 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
       <Box style={{ fontSize: "15px", lineHeight: "20px", wordBreak: "break-word" }}>
         <PostMarkdownContent text={quotePost.content} />
       </Box>
-      {quotePost.artifact_view_id && Number(quotePost.artifact_view_id) > 0 && (
-        <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-          <ArtifactViewCard
-            artifactId={Number(quotePost.artifact_view_id)}
-            initialArtifactView={quotePost.artifact_view}
-          />
-        </Box>
-      )}
+      {quotePost.artifact_view_id &&
+        String(quotePost.artifact_view_id).trim() !== "" &&
+        String(quotePost.artifact_view_id) !== "0" && (
+          <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+            <ArtifactViewCard artifactId={quotePost.artifact_view_id} initialArtifactView={quotePost.artifact_view} />
+          </Box>
+        )}
 
       {/* Second level quote post with thick grey left vertical line indentation like X */}
       {nestedQuote && (
@@ -333,16 +371,46 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
           <Box style={{ fontSize: "13.5px", lineHeight: "18px", wordBreak: "break-word" }}>
             <PostMarkdownContent text={nestedQuote.content} />
           </Box>
-          {nestedQuote.artifact_view_id && Number(nestedQuote.artifact_view_id) > 0 && (
-            <Box mt={1.5} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-              <ArtifactViewCard
-                artifactId={Number(nestedQuote.artifact_view_id)}
-                initialArtifactView={nestedQuote.artifact_view}
-              />
-            </Box>
-          )}
+          {nestedQuote.artifact_view_id &&
+            String(nestedQuote.artifact_view_id).trim() !== "" &&
+            String(nestedQuote.artifact_view_id) !== "0" && (
+              <Box mt={1.5} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+                <ArtifactViewCard
+                  artifactId={nestedQuote.artifact_view_id}
+                  initialArtifactView={nestedQuote.artifact_view}
+                />
+              </Box>
+            )}
         </NestedQuoteWrapper>
       )}
+      {showQuoteSigModal &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <PostSignatureModal
+            displayPost={{
+              ...quotePost,
+              username: cleanUsername || quotePost.username || "unknown",
+              display_name: displayName,
+            }}
+            signatureScheme={
+              quoteMeta?.proof?.cryptosuite
+                ? `Data Integrity (${quoteMeta.proof.cryptosuite})`
+                : quotePost.client_signature || quoteMeta?.client_signature || quoteMeta?.clientSignature
+                  ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
+                  : "ActivityPub RFC 9421 / Cavage HTTP Signatures"
+            }
+            keyIdentifier={
+              quotePost.key_id_string ||
+              quoteMeta?.key_id_string ||
+              quoteMeta?.keyIdString ||
+              quoteMeta?.proof?.verificationMethod ||
+              (cleanUsername ? `@${cleanUsername} device-key` : "device-key")
+            }
+            signatureDigest={quoteSigDigest}
+            onClose={() => setShowQuoteSigModal(false)}
+          />,
+          document.body,
+        )}
     </QuoteWrapper>
   );
 };

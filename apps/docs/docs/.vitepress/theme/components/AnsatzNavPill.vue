@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref } from "vue";
+import { useAnsatzOrigin } from "../util/ansatz";
 import { activeMenuId, cancelSharedMenuTimers } from "./NavMegaMenu.vue";
 
 const props = defineProps<{
@@ -14,8 +15,14 @@ const isOpen = computed(() => activeMenuId.value === MENU_ID);
 const isHovered = ref(false);
 const isFocused = ref(false);
 
-const ansatzOrigin = ref("https://ansatz.social");
-const hostLabel = ref("ansatz.social");
+const { ansatzOrigin } = useAnsatzOrigin();
+const hostLabel = computed(() => {
+  try {
+    return new URL(ansatzOrigin.value).host;
+  } catch {
+    return "ansatz.social";
+  }
+});
 
 const exploreHref = computed(() => `${ansatzOrigin.value}/explore`);
 
@@ -104,19 +111,6 @@ function onScreenClick(): void {
 }
 
 onMounted(() => {
-  if (typeof window !== "undefined") {
-    const { hostname, port, protocol } = window.location;
-    const isLocal =
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "[::1]" ||
-      hostname.endsWith(".localhost");
-    if (isLocal) {
-      const targetPort = port && port !== "5173" && port !== "4173" ? port : "3001";
-      ansatzOrigin.value = `${protocol}//${hostname}:${targetPort}`;
-      hostLabel.value = `${hostname}:${targetPort}`;
-    }
-  }
   document.addEventListener("keydown", onKeydown);
 });
 

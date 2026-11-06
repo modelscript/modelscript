@@ -15,6 +15,46 @@ export const sysml2Writeback: WritebackHandler = (ctx: WritebackContext): Writeb
   const { entry, fullText, newValue } = ctx;
   if (!entry) return null;
 
+  // 0. Exact CST node field range from AST indexing (Tier 0)
+  if (entry.fieldRanges) {
+    const valField =
+      entry.fieldRanges.value ??
+      entry.fieldRanges.expression ??
+      entry.fieldRanges.ownedRelatedElement ??
+      entry.fieldRanges.featureValue;
+    if (
+      valField &&
+      valField.startOffset != null &&
+      valField.endOffset != null &&
+      valField.endOffset > valField.startOffset
+    ) {
+      let valStart = valField.startOffset;
+      let valEnd = valField.endOffset;
+      const valSlice = fullText.substring(valStart, valEnd);
+      const opMatch = valSlice.match(/^(:=|=(?!=))\s*/);
+      if (opMatch) {
+        valStart += opMatch[0].length;
+      }
+      const rawVal = fullText
+        .substring(valStart, valEnd)
+        .replace(/[;}\r\n]+$/, "")
+        .trimEnd();
+      valEnd = valStart + rawVal.length;
+      if (valEnd > valStart) {
+        let replacement = newValue.trim();
+        const unitMatch = rawVal.match(/(\[[^\]]+\])$/);
+        if (unitMatch && !replacement.includes("[")) {
+          replacement = `${replacement} ${unitMatch[1]}`;
+        }
+        return {
+          startOffset: valStart,
+          endOffset: valEnd,
+          newText: replacement,
+        };
+      }
+    }
+  }
+
   // 1. Precise CST byte-range replacement within the indexed declaration
   if (entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset) {
     const declText = fullText.substring(entry.startOffset, entry.endOffset);

@@ -25,6 +25,7 @@ export interface UserAboutData {
     }[];
   };
   isVerified?: boolean;
+  signing_verified?: boolean;
   isBlocked?: boolean;
   isBlockedBy?: boolean;
 }
@@ -256,6 +257,13 @@ export const createPost = async (payload: Record<string, any>): Promise<{ post: 
 
 export const updatePost = async (id: string | number, payload: Record<string, any>): Promise<{ post: any }> => {
   const { data } = await api.put(`/social/posts/${id}`, payload);
+  return data;
+};
+
+export const getPostRevisions = async (
+  postId: string | number,
+): Promise<{ postId: string; currentRev: number; revisions: any[] }> => {
+  const { data } = await api.get(`/social/posts/${postId}/revisions`);
   return data;
 };
 

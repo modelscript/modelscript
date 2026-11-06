@@ -85,6 +85,7 @@ export const POLYGLOT_LANGUAGE_IDS = [
   "nifti",
   "topas",
   "igtl",
+  "usd",
 ] as const;
 
 export function getLanguageFlagKey(langId: string): string {

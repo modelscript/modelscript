@@ -462,6 +462,15 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
     keywords: "ssh keys federation signing webcrypto public key pem device keystore",
   },
   {
+    id: "security-verified-account-keys",
+    title: "Signed Account & User-Held Signing Keys",
+    description:
+      "Register Ed25519 or FIDO2 hardware keys (YubiKey) to activate Signed Account status and sign Git commits and ActivityPub posts.",
+    tab: "security",
+    tabLabel: "Security & 2FA",
+    keywords: "signed account signing keys ed25519 sshsig ssh fido2 yubikey badge strict mode git transport",
+  },
+  {
     id: "security-revoke-sessions",
     title: "Revoke All Sessions",
     description: "Immediately invalidate all active JWT sessions across other browsers and mobile devices.",
@@ -731,14 +740,6 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
     tab: "dataArchive",
     tabLabel: "Data Archive & Portability",
     keywords: "gdpr zip json data archive download export portability offline viewer",
-  },
-  {
-    id: "archive-activity-git-repo",
-    title: "Activity Git Repository",
-    description: "Clone your entire account activity and models as a read-only Git repository.",
-    tab: "dataArchive",
-    tabLabel: "Data Archive & Portability",
-    keywords: "activity git repository clone portability fast-forward backup",
   },
 
   // 9. API Tokens (PAT)

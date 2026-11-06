@@ -51,7 +51,11 @@ export function resolveTargetClass(
     if (candidates && candidates.length > 0) {
       for (const id of candidates) {
         const entry = unifiedIndex.symbols.get(id);
-        if (entry && (entry.name === className || getCompositeName(entry, unifiedIndex) === className)) {
+        if (
+          entry &&
+          (entry.kind === "Class" || entry.kind === "Def") &&
+          (entry.name === className || getCompositeName(entry, unifiedIndex) === className)
+        ) {
           return {
             symbolId: id,
             className: entry.name,
@@ -68,16 +72,36 @@ export function resolveTargetClass(
   };
 
   const normUri = uri ? uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "";
+  const matchesUri = (resId?: string): boolean => {
+    if (!resId || !uri) return false;
+    if (resId === uri) return true;
+    const rNorm = resId.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+    if (rNorm === normUri) return true;
+    try {
+      if (decodeURIComponent(resId) === decodeURIComponent(uri)) return true;
+      if (decodeURIComponent(rNorm) === decodeURIComponent(normUri)) return true;
+    } catch {
+      // ignore
+    }
+    const resPath = resId.replace(/^[a-z0-9+-]+:\/{1,3}/i, "/");
+    const uriPath = uri.replace(/^[a-z0-9+-]+:\/{1,3}/i, "/");
+    if (resPath === uriPath) return true;
+    try {
+      if (decodeURIComponent(resPath) === decodeURIComponent(uriPath)) return true;
+    } catch {
+      // ignore
+    }
+    const resBase = resId.split("/").pop() || "";
+    const uriBase = uri.split("/").pop() || "";
+    if (resBase && uriBase && resBase === uriBase) return true;
+    return false;
+  };
+
   // Fallback: search for top-level class in the specified URI, preferring model/block/class over connector/record/type
   let fallbackUnified: { symbolId: number; className: string; classKind: string } | null = null;
   let preferredUnified: { symbolId: number; className: string; classKind: string } | null = null;
   for (const [id, entry] of unifiedIndex.symbols.entries()) {
-    const entryNorm = entry.resourceId?.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
-    if (
-      (entry.resourceId === uri || entryNorm === normUri) &&
-      (entry.kind === "Class" || entry.kind === "Def") &&
-      entry.parentId === null
-    ) {
+    if (matchesUri(entry.resourceId) && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
       const classKind = (entry.metadata?.["classKind"] as string) ?? "class";
       const candidate = { symbolId: id, className: entry.name, classKind };
       if (!fallbackUnified) fallbackUnified = candidate;
@@ -94,26 +118,22 @@ export function resolveTargetClass(
     if (className) {
       const wsCandidates = wsIndex.unifiedIndex.byName?.get(className);
       if (wsCandidates && wsCandidates.length > 0) {
-        const id = wsCandidates[0];
-        const entry = wsIndex.unifiedIndex.symbols.get(id);
-        if (entry) {
-          return {
-            symbolId: id,
-            className: entry.name,
-            classKind: (entry.metadata?.classKind as string) ?? "class",
-          };
+        for (const id of wsCandidates) {
+          const entry = wsIndex.unifiedIndex.symbols.get(id);
+          if (entry && (entry.kind === "Class" || entry.kind === "Def")) {
+            return {
+              symbolId: id,
+              className: entry.name,
+              classKind: (entry.metadata?.classKind as string) ?? "class",
+            };
+          }
         }
       }
     }
     let fallbackWs: { symbolId: number; className: string; classKind: string } | null = null;
     let preferredWs: { symbolId: number; className: string; classKind: string } | null = null;
     for (const [id, entry] of wsIndex.unifiedIndex.symbols.entries()) {
-      const entryNorm = entry.resourceId?.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
-      if (
-        (entry.resourceId === uri || entryNorm === normUri) &&
-        (entry.kind === "Class" || entry.kind === "Def") &&
-        entry.parentId === null
-      ) {
+      if (matchesUri(entry.resourceId) && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
         const classKind = (entry.metadata?.classKind as string) ?? "class";
         const candidate = { symbolId: id, className: entry.name, classKind };
         if (!fallbackWs) fallbackWs = candidate;

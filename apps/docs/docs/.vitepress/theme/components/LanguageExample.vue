@@ -3,12 +3,15 @@
 import { useData } from "vitepress";
 import { computed, ref, watch } from "vue";
 import EXAMPLE_DATA from "../data/language-examples.generated.json";
+import { useAnsatzOrigin } from "../util/ansatz";
 import ModelScriptViewer from "./ModelScriptViewer.vue";
 import MsIcon from "./MsIcon.vue";
 
 const props = defineProps<{
   slug?: string;
 }>();
+
+const { ansatzOrigin } = useAnsatzOrigin();
 
 const { page, isDark } = useData();
 
@@ -70,8 +73,8 @@ const activeSvg = computed<string>(() => {
 });
 
 const sketchHref = computed<string>(() => {
-  if (!example.value) return "/sketch";
-  return `/sketch#m=${example.value.permalinkToken}`;
+  if (!example.value) return `${ansatzOrigin.value}/sketch`;
+  return `${ansatzOrigin.value}/sketch#m=${example.value.permalinkToken}`;
 });
 
 const canvasTransform = computed<string>(() => {

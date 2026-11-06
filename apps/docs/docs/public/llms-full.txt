@@ -1581,12 +1581,216 @@ The ModelScript engine is designed to be completely headless and can run inside 
 | :----------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
 | **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.         |
 | **Ansatz Sketch**        | `/sketch`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
+| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.       |
 | **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.          |
 | **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.           |
 | **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.     |
 | **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal morsels, models, and scholarly records. |
 | **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.        |
 | **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.              |
+
+---
+
+## Replacing Legacy Desktop Workflows
+
+Ansatz serves as the collaborative platform layer designed to systematically displace the file silos, seat-tax barriers, and isolated environments of legacy first-party engineering tools (Dassault Systèmes Dymola and Cameo, MathWorks Simulink, Manitoba Hydro PSCAD, and SLB OLGA).
+
+For a detailed analysis of the 5-stage adoption wedge (Zero-Install Review, Cross-Domain Digital Thread, Git-Native CI/CD, Executable Decision Records, and Cloud HPC Offload) and tool-specific displacement playbooks, see the [Workflow Replacement Guide](/ansatz/workflow-replacement).
+
+================================================================================
+DOCUMENT: Workflow Replacement Guide
+CANONICAL URL: https://modelscript.org/ansatz/workflow-replacement
+================================================================================
+
+# Replacing First-Party Engineering Workflows with Ansatz
+
+**Ansatz** (`ansatz.social`) is designed to displace the fragmented, desktop-bound workflows of legacy first-party engineering tools—including Dassault Systèmes Dymola, Cameo / MagicDraw, MathWorks MATLAB/Simulink, Manitoba Hydro PSCAD, and SLB OLGA. 
+
+Rather than functioning as a generic consumer social network, Ansatz serves as the **Collaborative Systems Engineering Cloud**: uniting the zero-install accessibility of web-native CAD/vector tools, the branching and review rigor of modern software version control, and the model distribution capabilities of contemporary package registries for 66 physical and mathematical engineering domains.
+
+---
+
+## The Incumbent Failure Modes
+
+Practicing engineers in automotive, aerospace, energy, defense, and biomedical sectors frequently encounter structural bottlenecks in traditional first-party toolchains:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ The First-Party Workflow Bottleneck Matrix                             │
+├────────────────────┬─────────────────────────────┬─────────────────────┤
+│ Dimension          │ Legacy First-Party Status   │ Ansatz Architecture │
+├────────────────────┼─────────────────────────────┼─────────────────────┤
+│ Licensing          │ $20k–$80k/seat FlexLM node  │ Open-core engine &  │
+│                    │ locks & floating starvation │ web-native access   │
+├────────────────────┼─────────────────────────────┼─────────────────────┤
+│ Distribution       │ 500MB proprietary zip files │ URL permalinks &    │
+│                    │ emailed or stored on shared │ WebAssembly runtime │
+│                    │ network folders             │ in the browser      │
+├────────────────────┼─────────────────────────────┼─────────────────────┤
+│ Collaboration      │ Monolithic binary files     │ Git Smart HTTP with │
+│                    │ (.slx, .pscx, .mdzip) that  │ visual schematic    │
+│                    │ prevent code review         │ & trajectory diffs  │
+├────────────────────┼─────────────────────────────┼─────────────────────┤
+│ Interoperability   │ Isolated disciplinary silos │ Cross-domain Salsa  │
+│                    │ bridged only by static      │ hypergraph linking  │
+│                    │ PowerPoint screenshots      │ 66 format parsers   │
+└────────────────────┴─────────────────────────────┴─────────────────────┘
+```
+
+---
+
+## The 5-Stage Replacement Wedge
+
+Displacing an entrenched engineering monolith cannot occur through immediate, disruptive rip-and-replace mandates. Ansatz employs a phased adoption wedge that provides immediate utility before expanding into primary authoring:
+
+```mermaid
+flowchart TD
+    Wedge1["Stage 1: Zero-Install Review & Handoff<br/>(Replace 500MB zip emails & viewer seats)"]
+    Wedge2["Stage 2: Cross-Domain Digital Thread<br/>(Connect SysML v2, Modelica, PSCAD & CAD)"]
+    Wedge3["Stage 3: Git-Native Engineering CI/CD<br/>(Automated PR diffs & trajectory regression)"]
+    Wedge4["Stage 4: Living Decision Records & Literature<br/>(Link DOI references & runnable calibration)"]
+    Wedge5["Stage 5: Primary Authoring & Cloud HPC<br/>(In-browser Studio & Slurm cluster offload)"]
+
+    Wedge1 --> Wedge2
+    Wedge2 --> Wedge3
+    Wedge3 --> Wedge4
+    Wedge4 --> Wedge5
+```
+
+### Stage 1: Zero-Install Review and Client Handoff
+
+* **The Problem:** Non-authoring stakeholders—project managers, systems certifiers, contracting officers, and downstream integration teams—are routinely locked out of inspecting engineering models because acquiring a dedicated desktop license seat cannot be justified for read-only evaluation.
+* **The Ansatz Workflow:** 
+  1. An author opens or imports an existing model in **Ansatz Sketch** (`/sketch`).
+  2. The entire multi-domain model is encoded into a deterministic, compressed permalink or published as a versioned engineering morsel.
+  3. The reviewer opens the URL in any standard web browser on Linux, macOS, Windows, or iPadOS.
+  4. The model compiles and simulates directly on the client using WebAssembly, exposing interactive parameter sliders, schematic diagrams, 3D CAD viewports, and numerical time-series charts.
+* **Workflows Replaced:**
+  - Purchasing costly read-only or review licenses.
+  - Assembling manual 60-slide PowerPoint presentations containing static trajectory captures.
+  - Waiting for organizational IT clearance to install multi-gigabyte desktop client binaries.
+
+### Stage 2: Cross-Disciplinary Digital Thread Integration
+
+* **The Problem:** Single-domain tools are fundamentally incapable of validating multi-physics and cross-domain constraints. Systems architects define requirements in Cameo; thermal engineers model heat exchangers in Dymola; electrical teams model protection schemes in PSCAD; structural teams model casings in STEP CAD. Cross-domain inconsistencies are typically identified late during physical test-bench integration.
+* **The Ansatz Workflow:**
+  - Ansatz maintains a unified **Digital Thread Explorer** (`/thread`) powered by Triple Graph Grammars (TGG) and ModelScript's Salsa query engine.
+  - Requirements authored in SysML v2 (`requirement def`) are bound directly to continuous differential algebraic equations (DAEs) in Modelica and electrical grid components in PSCAD.
+  - Mathematical balance and constraint satisfaction are verified automatically across domain boundaries.
+* **Workflows Replaced:**
+  - Manual verification matrices maintained in disconnected spreadsheets.
+  - Point-to-point co-simulation setups susceptible to algebraic loops and numerical divergence.
+  - Unsynchronized requirements databases.
+
+### Stage 3: Git-Native Engineering CI/CD and Pull Requests
+
+* **The Problem:** Legacy tools treat source control as an afterthought. Binary model files cannot be inspected in traditional git diff tools, leading to blind merges, undetected regressions, and parameter drift.
+* **The Ansatz Workflow:**
+  - Repositories in Ansatz are backed by standard Git Smart HTTP storage.
+  - Pull requests trigger automated validation pipelines:
+    - **Visual Schematic Diffs:** Identifies added, removed, and modified components, connector ports, and routing coordinates.
+    - **Trajectory Regression Testing:** Compares simulation trajectories against reference baselines using RMSE and Normalized Max Relative Error thresholds.
+    - **Physical Rule Audits:** Evaluates unit consistency, DAE algebraic index, and domain safety standards (such as IEEE Std 2800 for power grids or EN 14363 for rail vehicles).
+* **Workflows Replaced:**
+  - Manual design review meetings dedicated to inspecting line-item changes.
+  - Undetected parameter overwrites during multi-engineer project handoffs.
+  - Unvalidated pull requests in engineering repositories.
+
+### Stage 4: Living Engineering Decision Records (EDRs)
+
+* **The Problem:** Organizational knowledge is commonly fragmented across internal wikis, static PDFs, and local spreadsheets. When project personnel change, the physical rationale, experimental telemetry, and bibliographic citations behind critical parameters are lost.
+* **The Ansatz Workflow:**
+  - Replaces static wiki entries with **Executable Engineering Decision Records (EDRs)**.
+  - Each EDR incorporates:
+    - Bibliographic references queried directly from OpenAlex and Crossref (`[@cite_key]`).
+    - Embedded client-side simulation runners with locked or tunable parameter bands.
+    - Experimental calibration datasets (CSV) paired with automated optimization routines (such as Nelder-Mead simplex or gradient descent).
+* **Workflows Replaced:**
+  - Internal documentation containing disconnected, outdated screenshots.
+  - Static research papers whose governing equations cannot be evaluated or reproduced.
+  - Spreadsheets storing untracked calibration constants.
+
+### Stage 5: Primary Authoring and Cloud HPC Offload
+
+* **The Problem:** High-dimension parameter sweeps, Monte Carlo reliability studies, and 3D continuum simulations monopolize local workstation CPU cores for hours, halting other engineering activities.
+* **The Ansatz Workflow:**
+  - Authors construct models within **Ansatz Studio** (`/studio`), utilizing Monaco code editing, language server diagnostics (`@modelscript/lsp`), and equation-level Debug Adapter Protocol (DAP) stepping.
+  - Parametric sweeps and surrogate model training are dispatched directly to remote Slurm HPC clusters or batched WebGPU kernels via the Ansatz Cloud Dispatcher.
+* **Workflows Replaced:**
+  - Workstation lockups during large computational batch sweeps.
+  - Purchasing dedicated parallel computing toolbox licenses per user workstation.
+
+---
+
+## Domain-Specific Displacement Playbooks
+
+```mermaid
+graph LR
+    subgraph "Legacy First-Party Tools"
+        Dymola["Dassault Dymola / SystemModeler"]
+        Cameo["Dassault Cameo / MagicDraw"]
+        PSCAD["Manitoba Hydro PSCAD"]
+        Simulink["MathWorks Simulink"]
+        OLGA["SLB OLGA / Aspen HYSYS"]
+    end
+
+    subgraph "Ansatz Platform Architecture"
+        Studio["Ansatz Studio (/studio)"]
+        Sketch["Ansatz Sketch (/sketch)"]
+        Registry["Package Registry (/packages)"]
+        Thread["Digital Thread (/thread)"]
+    end
+
+    Dymola -->|WASM DAE & DAP Debugger| Studio
+    Cameo -->|SysML v2 Native Engine| Thread
+    PSCAD -->|IEEE 2800 CI Gates| Registry
+    Simulink -->|B2B Trajectory Parity| Sketch
+    OLGA -->|Flow Assurance Pre-Flight| Studio
+```
+
+### 1. Modelica & Multi-Physics (vs. Dymola & Wolfram SystemModeler)
+* **Incumbent Pain:** Dymola licenses require dedicated Windows workstations and flex license management; OpenModelica lacks collaborative web workspaces.
+* **Ansatz Solution:**
+  - Native in-browser GLR parsing and linear-memory DAE compilation.
+  - Debug Adapter Protocol (DAP) simulation debugging: engineers step through continuous-time integration intervals ($\Delta t$), monitor Jacobian condition numbers, and inspect algebraic state iterations inside VS Code / Studio.
+  - Content-Addressable Package Registry (`/packages`) with automated dependency resolution, replacing manual folder unzipping.
+
+### 2. Systems Modeling & MBSE (vs. Cameo & IBM Rhapsody)
+* **Incumbent Pain:** Cameo is constrained by legacy SysML v1 constructs and heavyweight desktop runtimes, lacking direct numerical execution of physical differential equations.
+* **Ansatz Solution:**
+  - Native parser and Salsa query engine for **SysML v2** and **KerML**.
+  - Direct translation of SysML v2 parts into continuous DAE representations for dynamic simulation.
+  - Bidirectional visual editing between textual SysML v2 source code and graphical block definition diagrams (BDD) / internal block diagrams (IBD).
+
+### 3. Electrical Power Systems (vs. PSCAD & PSS/E)
+* **Incumbent Pain:** PSCAD relies on legacy Fortran toolchains, Windows operating system constraints, and cannot be integrated into automated cloud CI/CD pipelines.
+* **Ansatz Solution:**
+  - Fixed-step nodal admittance electromagnetic transient (EMT) simulation directly from `.pscx` XML models.
+  - Automated **IEEE Std 2800-2022** grid compliance testing (LVRT/HVRT voltage and frequency ride-through verification) executing as automated pull request checks.
+  - Direct export of PSCAD schematics into standardized Modelica and FMI/SSP container topologies.
+
+### 4. Dynamic Control Systems (vs. MATLAB / Simulink)
+* **Incumbent Pain:** Massive software footprints (exceeding 40GB), proprietary binary `.slx` formats that resist version control, and costly per-toolbox pricing structures.
+* **Ansatz Solution:**
+  - Parsing and AST transformation of Simulink models into readable Modelica and C99 code.
+  - Automated ISO 26262 Back-to-Back (B2B) trajectory equivalence testing verifying numeric output tolerances.
+  - Shareable URL permalinks for instantaneous stakeholder evaluation without MATLAB installed.
+
+### 5. Flow Assurance & Chemical Process (vs. SLB OLGA & Aspen HYSYS)
+* **Incumbent Pain:** Specialized transient multiphase and chemical licenses represent substantial ongoing software expenditures ($50k+ per seat).
+* **Ansatz Solution:**
+  - Pre-flight automated linting for multiphase pipelines (evaluating Courant-Friedrichs-Lewy stability criteria, hydrate formation subcooling margins, and severe riser slugging risks).
+  - Parsing and visualization of `.tpl` and `.ppl` trend/profile logs into interactive web charts and spatial pipeline elevation diagrams.
+
+---
+
+## Enterprise Trust and Security
+
+To satisfy operational requirements in regulated and defense engineering environments, Ansatz provides specific architectural guarantees:
+
+1. **Client-Side Sandbox Execution:** In Ansatz Sketch, compilation, Salsa dependency resolution, and numerical integration execute inside the client's WebAssembly sandbox. Model source code and equations do not need to be transmitted to remote servers.
+2. **Cryptographic Data Sovereignty:** Every project repository is backed by standard Git Smart HTTP infrastructure with support for Ed25519 commit verification. Teams retain complete local data ownership and can clone or export full histories at any time.
+3. **Air-Gapped On-Premises Deployment:** Organizations can deploy standalone Ansatz nodes (`ansatz-ce` or `ansatz-ee`) inside sovereign VPCs, Kubernetes clusters, or air-gapped internal intranets with LDAP, SAML/SSO, and Slurm HPC cluster federation.
 
 ================================================================================
 DOCUMENT: ActivityPub Federation
@@ -1660,7 +1864,7 @@ CANONICAL URL: https://modelscript.org/ansatz/package-registry
 
 # Polyglot Package Registry
 
-The **Ansatz Package Registry** (`/packages`) provides versioned dependency management and artifact distribution for multi-domain engineering libraries. It supports native ModelScript packages alongside standard Modelica libraries, SysML v2 models, and STEP CAD repositories.
+The **Ansatz Package Registry** ([ansatz.social/packages](https://ansatz.social/packages)) provides versioned dependency management and artifact distribution for multi-domain engineering libraries. It supports native ModelScript packages alongside standard Modelica libraries, SysML v2 models, and STEP CAD repositories.
 
 ---
 
@@ -1696,7 +1900,7 @@ Packages include metadata declaring dependencies, license, and maturity:
 
 ### 2. Publishing Packages
 
-Engineers can publish packages through the web interface using the **Publish Package Modal** in `/packages`, or via the CLI:
+Engineers can publish packages through the web interface using the **Publish Package Modal** in [Packages](https://ansatz.social/packages), or via the CLI:
 
 ```bash
 msx publish ./my-package
@@ -6041,6 +6245,10 @@ Inspect, validate, solve kinematics, and project ROS URDF & SDFormat robot model
 
 Options:
   - `--out, -o, --output <string>`: Output file path
+  - `--usdz <boolean>`: Package as 64-byte aligned OpenUSD ZIP archive (.usdz) (default: false)
+  - `--format <string>`: Simulation output format (default: "csv")
+  - `--stop-time, --stopTime <number>`: Simulation stop time in seconds (default: 1)
+  - `--step-size, --stepSize, --interval <number>`: Simulation communication step size in seconds (default: 0.01)
   - `--gravity <number>`: Gravitational acceleration [m/s^2] (default: 9.80665)
 
 | Action        | Description                                                                                          |
@@ -6478,6 +6686,45 @@ msx db <status|upgrade|rollback|plan|verify> [--db <file.sqlite>] [--dry-run] [-
 msx archive <request|status|download> <targetId> [-o <path>]
 ```
 
+---
+
+### `keys`
+
+Manages user-held cryptographic signing keys (Ed25519 and FIDO2/U2F hardware keys) for **Signed Accounts** and bidirectional Git transport.
+
+| Subcommand | Arguments | Description |
+| :--- | :--- | :--- |
+| `list` | — | List all registered user-held signing keys, active status, SHA-256 fingerprints, and trust levels. |
+| `generate` | `[-o <file>] [-c <comment>]` | Generate a new, non-custodial Ed25519 keypair for commit and post signing. |
+| `register` | `<keyPathOrString> [-l <label>]` | Register a public key (`~/.ssh/id_ed25519.pub`) with the server via Proof-of-Possession (PoP) challenge/response. |
+| `revoke` | `<keyId> [-r <reason>]` | Revoke a compromised or retired signing key. |
+| `policy` | `[strict\|flexible]` | Query or update the account's signing policy (strict mode rejects unsigned commits and posts). |
+
+```bash
+# Generate a new local Ed25519 signing keypair
+msx keys generate
+
+# Register a public key to activate Signed Account status
+msx keys register ~/.ssh/id_ed25519.pub --label "Work Laptop"
+
+# Enforce strict signing mode (all git pushes and posts must be signed)
+msx keys policy strict
+```
+
+---
+
+### `sign`
+
+Generates or verifies W3C Data Integrity (`eddsa-jcs-2022`) proofs for Markdown posts, tutorials, and engineering artifacts.
+
+```bash
+# Sign a post file with your Ed25519 private key
+msx sign posts/thruster-design.md -k ~/.ssh/id_ed25519
+
+# Verify a post's cryptographic proof sidecar against a public key or server registry
+msx sign posts/thruster-design.md --verify -k ~/.ssh/id_ed25519.pub
+```
+
 ================================================================================
 DOCUMENT: Polyglot Language Ecosystem
 CANONICAL URL: https://modelscript.org/languages/overview
@@ -6510,7 +6757,7 @@ Search by name, file extension, maturity tier, or engineering domain, or filter 
 Filter by platform group, maturity tier (`Stable`, `Beta`, `Preview`), industry, or capability across all engineering languages to inspect simulation engines, linear-memory DAE lowering, and polyglot projections:
 
 ### Polyglot Language Capability Matrix
-ModelScript supports 65 modeling, simulation, and engineering formats across 5 pipeline capabilities:
+ModelScript supports 66 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Tier | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | Modelica | `stable` | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -6524,6 +6771,7 @@ ModelScript supports 65 modeling, simulation, and engineering formats across 5 p
 | OpenSCAD | `stable` | `.scad` | Parametric constructive solid geometry | ✓ | ✓ | — | — | ✓ |
 | CFD (SU2 / OpenFOAM) | `preview` | `.su2` | Computational fluid dynamics meshes | ✓ | ✓ | ✓ | ✓ | ✓ |
 | FEA (CalculiX / Abaqus / NASTRAN) | `preview` | `.inp` | Finite-element structural analysis | ✓ | ✓ | ✓ | ✓ | ✓ |
+| OpenUSD | `preview` | `.usd / .usda / .usdz` | Universal Scene Description 3D stages & UsdPhysics digital twins | ✓ | — | ✓ | — | — |
 | CSV | `stable` | `.csv` | Time-series & sensor logs | ✓ | ✓ | — | — | ✓ |
 | C | `beta` | `.c` | Numerical & embedded C integration | ✓ | ✓ | ✓ | — | ✓ |
 | Fortran | `preview` | `.f90` | Legacy scientific subroutines | ✓ | ✓ | ✓ | — | — |
@@ -6550,7 +6798,7 @@ ModelScript supports 65 modeling, simulation, and engineering formats across 5 p
 | Verilog-A / AMS | `beta` | `.va` | Analog compact device models | ✓ | ✓ | ✓ | — | ✓ |
 | IBIS | `preview` | `.ibs` | I/O buffer behavioral models | ✓ | ✓ | ✓ | — | ✓ |
 | Touchstone | `preview` | `.sNp` | RF & signal-integrity S-parameters | ✓ | ✓ | ✓ | — | ✓ |
-| URDF / Xacro | `beta` | `.urdf` | Robot kinematics & dynamics | ✓ | ✓ | ✓ | — | ✓ |
+| URDF / Xacro | `beta` | `.urdf` | Robot kinematics & dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PLCopen / IEC 61131-3 | `beta` | `.st` | PLC control software | ✓ | ✓ | ✓ | ✓ | ✓ |
 | AutomationML (IEC 62714) | `beta` | `.aml` | CAEX mechatronic plant hierarchy & virtual commissioning | ✓ | ✓ | ✓ | — | ✓ |
 | MSC Adams | `beta` | `.adm` | Mechanical system dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -8111,6 +8359,7 @@ tag_port("base_mount", "frame", [0, 0, -1])
 
 - **Surgical AST Writeback (`ScadPatcher` in `languages/scad/src/patcher.ts`)**: When a user drags a 3D translation/rotation/scale gizmo in the CAD viewport, `ScadPatcher` (`patchNode`, `patchVariable`, `patchTransformArgument`, `patchVectorComponent`, `wrapPrimitiveWithTransform`, `patchOrInsertTransform`) updates the exact CST byte spans in the `.scad` source without reformatting surrounding code or comments.
 - **STEP AP214/AP242 Export (`compileScadToStep`)**: Evaluates the `.scad` CSG tree and serializes exact B-Rep analytical surfaces (`PLANE`, `CYLINDRICAL_SURFACE`, `SPHERICAL_SURFACE`, `MANIFOLD_SOLID_BREP`) to ISO 10303-21 `.step`.
+- **OpenUSD & USDZ Export (`compileScadToUsd`, `compileScadToUsdz`)**: Evaluates CSG trees and exports `.usda` or 64-byte aligned `.usdz` archives for Apple AR Quick Look and NVIDIA Omniverse.
 
 ```bash
 # Project a parametric OpenSCAD file to an ISO 10303-21 STEP CAD file
@@ -8396,6 +8645,88 @@ msx fea solve BracketAssembly.inp
 | `F1006` | error | `degenerate-element-nodes` | Element '<elemId>' of type '<type>' contains duplicate or degenerate node references. |
 | `F1007` | error | `negative-yield-stress` | Plastic yield strength '<val>' for material '<mat>' must be strictly positive. |
 | `F1008` | warning | `negative-density` | Mass density '<val>' for material '<mat>' must be strictly positive for dynamic analysis. |
+
+================================================================================
+DOCUMENT: OpenUSD (.usd / .usda / .usdz) Language Reference
+CANONICAL URL: https://modelscript.org/languages/usd
+================================================================================
+
+# OpenUSD & UsdPhysics Digital Twins
+
+ModelScript provides first-class support for **OpenUSD** (`.usd`, `.usda`, `.usdz`), the universal 3D scene description standard governed by the Alliance for OpenUSD (AOUSD). In ModelScript, OpenUSD serves as the high-fidelity 3D bridge connecting 1D/multibody physical simulation (Modelica, URDF, SIMPACK, Adams) and procedural 3D CAD (STEP, OpenSCAD) with photorealistic digital twins (NVIDIA Omniverse / Isaac Sim, Apple Vision Pro, Unreal Engine).
+
+---
+
+## Capabilities & Supported Formats
+
+| Format                              | Extension | Description                                                                                                                                 |
+| :---------------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| **ASCII OpenUSD Stage**             | `.usda`   | Human-readable UTF-8 scene description defining prim hierarchies, time-sampled attribute curves, and `UsdPhysics` schemas.                  |
+| **OpenUSD Zip Package**             | `.usdz`   | Zero-dependency, uncompressed ZIP archive with **strict 64-byte payload data alignment** for direct `mmap` streaming on iOS / visionOS / AR. |
+| **Binary / Mixed OpenUSD**          | `.usd`    | Generic USD container format routed automatically to ModelScript's streaming parser and 3D viewers.                                          |
+
+---
+
+## Key Architectural Features
+
+### 1. `UsdPhysics` Simulation Ingestion (`lowerUsdToDae`)
+ModelScript can parse OpenUSD stages authored in external digital twin tools (NVIDIA Isaac Sim, Blender, Omniverse) and extract physics properties:
+- **Rigid Bodies (`PhysicsRigidBodyAPI`, `PhysicsMassAPI`):** Extracts scalar mass, center-of-mass offsets, and diagonal principal inertia tensors.
+- **Kinematic Constraints:** Resolves parent/child body targets (`physics:body0`, `physics:body1`), axis tokens, and limits for `PhysicsRevoluteJoint`, `PhysicsPrismaticJoint`, and `PhysicsFixedJoint`.
+- **Linear DAE Lowering:** Lowers generalized joint coordinates $(q, \dot{q}, \tau)$ directly into ModelScript's WebAssembly Struct-of-Arrays `DAEBuilder` arena for simulation via CVODE/IDA or batched WebGPU integrators.
+
+### 2. Time-Sampled Trajectory Animation
+When forward dynamics are solved in ModelScript (from ROS URDF or Modelica MultiBody models), joint state trajectories are converted via forward kinematics into time-sampled USD animation curves:
+```c
+double3 xformOp:translate.timeSamples = {
+    0.0: (0.0, 0.0, 0.5),
+    0.5: (0.1, 0.0, 0.7),
+    1.0: (0.2, 0.0, 0.8),
+}
+quatf xformOp:orient.timeSamples = {
+    0.0: (1.0, 0.0, 0.0, 0.0),
+    0.5: (0.923, 0.382, 0.0, 0.0),
+    1.0: (0.707, 0.707, 0.0, 0.0),
+}
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+```
+These files can be immediately opened in Apple Vision Pro, Quick Look, or NVIDIA Omniverse for dynamic simulation playback.
+
+### 3. Procedural CAD & CSG Export
+Watertight 2-manifold triangular meshes synthesized by `@modelscript/cad` (`ManifoldSurfaceMesh`) and OpenSCAD (`@modelscript/scad`) map directly to `UsdGeomMesh`:
+- Exact vertex points (`point3f[] points`)
+- Outward unit surface normals (`normal3f[] normals`)
+- Triangulated index buffers (`int[] faceVertexIndices`)
+- Diffuse material colors (`color3f[] primvars:displayColor`)
+- Part assembly transformations (`matrix4d xformOp:transform`)
+
+---
+
+## Command Line Interface (`msx`)
+
+```bash
+# Export URDF robot to human-readable ASCII OpenUSD with UsdPhysics schemas
+msx urdf to-usd robot.urdf -o robot.usda
+
+# Export to 64-byte aligned USDZ package for Apple Vision Pro & AR Quick Look
+msx urdf to-usd robot.urdf --usdz -o robot.usdz
+
+# Simulate robot forward dynamics and output trajectory
+msx urdf simulate robot.urdf --stop-time=2.0 -o sim.json
+```
+
+---
+
+## Semantic Linter Rules (`USD_*`)
+
+| Code      | Rule                        | Description                                                                                     |
+| :-------- | :-------------------------- | :---------------------------------------------------------------------------------------------- |
+| `USD1002` | `dangling-relationship`     | Joint or constraint targets a non-existent prim path in the stage (`rel physics:body0`).        |
+| `USD1003` | `invalid-up-axis`           | Stage `upAxis` metadata is not `'Y'` or `'Z'`.                                                  |
+| `USD1004` | `non-positive-mass`         | Rigid body declares a mass $\le 0$ (`physics:mass`).                                            |
+| `USD1005` | `invalid-inertia`           | Diagonal inertia tensor component is negative (`physics:diagonalInertia`).                      |
+| `USD1006` | `inverted-joint-limits`     | Joint lower limit exceeds upper limit (`physics:lowerLimit > physics:upperLimit`).              |
+| `USD1007` | `invalid-axis-token`        | Joint axis token is not `'X'`, `'Y'`, or `'Z'` (`physics:axis`).                               |
 
 ================================================================================
 DOCUMENT: CSV (.csv) Language Reference
@@ -11764,15 +12095,20 @@ msx urdf <action> [files...] [options]
 | :---------------- | :---------------------------------------------------------------------------- | :------------------ |
 | **`lint`**        | Runs kinematic tree validation, joint limit checks, and inertia verification. | —                   |
 | **`rnea`**        | Evaluates inverse dynamics (RNEA) at test joint coordinates.                  | `--gravity`         |
+| **`simulate`**    | Solves articulated robot forward dynamics into time-series trajectories.      | `--stop-time`, `--step-size`, `--format=csv\|json` |
 | **`to-modelica`** | Generates standard `Modelica.Mechanics.MultiBody` robot system.               | `--out=<file.mo>`   |
 | **`to-adams`**    | Projects robot mechanism into MSC Adams `.adm` solver dataset.                | `--out=<file.adm>`  |
 | **`to-simpack`**  | Projects robot mechanism into SIMPACK XML `.spck` model.                      | `--out=<file.spck>` |
+| **`to-usd`**      | Projects robot into OpenUSD / UsdPhysics scene or 64-byte aligned package.    | `--usdz`, `--out=<file.usda\|file.usdz>` |
 | **`to-dae`**      | Lowers kinematic state equations directly into `DAEBuilder` arena.            | —                   |
 
 ### Examples
 
 ```bash
-# Evaluate inverse dynamics (RNEA) at test joint coordinates
+# Simulate forward dynamics under gravity to CSV/JSON trajectory
+msx simulate KukaIiwa14.urdf --stop-time=2.0 --step-size=0.01 -o trajectory.csv
+
+# Evaluate inverse dynamics (RNEA) static hold torques
 msx urdf rnea KukaIiwa14.urdf
 
 # Check for inverted joint limits or dangling parent links
@@ -11781,9 +12117,26 @@ msx urdf lint MobileManipulator.urdf
 # Convert robot description into standard Modelica 3.x
 msx urdf to-modelica PandaArm.urdf --out=PandaArm.mo
 
+# Export to OpenUSD / UsdPhysics digital twin scene
+msx urdf to-usd PandaArm.urdf --out=PandaArm.usda
+
+# Export to 64-byte aligned USDZ package for Apple Vision Pro & NVIDIA Omniverse
+msx urdf to-usd PandaArm.urdf --usdz --out=PandaArm.usdz
+
 # Export to MSC Adams for vehicle-mounted robot simulation
 msx urdf to-adams RoverArm.urdf --out=RoverArm.adm
 ```
+
+---
+
+## Interactive Ansatz Web Platform (`UrdfViewer`)
+
+On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts render directly in the interactive **Robotics Mechanism Studio**:
+
+* **Kinematic Tree View**: High-resolution vector schematic visualizing parent/child links and joint types with pan-and-zoom controls.
+* **3D Pose View**: Real-time WebGPU/Three.js multibody viewport with forward kinematics joint angle sliders ($q_i \in [q_{\text{min}}, q_{\text{max}}]$).
+* **Dynamics & Linter**: Pre-flight verification results (`M7501`–`M7508`) paired with an **RNEA Gravity Hold Torques** calculator reporting static equilibrium torques ($\tau_i \text{ [N}\cdot\text{m]}$).
+* **Polyglot Projections**: One-click translation to Modelica 3.x or SIMPACK JSON, with direct export to the Ansatz Sketch visual playground.
 
 ---
 
@@ -14146,8 +14499,8 @@ CANONICAL URL: https://modelscript.org/industries/robotics
 **Summary:** Load URDF/Xacro robots, IEC 62714 AutomationML plant hierarchies, and Adams mechanisms, run IEC 61131-3 PLC programs on a virtual PLC, and formally verify control logic against the plant model.
 **Headline:** From robot description to verified plant & controller
 
-**Target Languages:** `urdf`, `plcopen`, `automationml`, `adams`, `simpack`, `opensim`, `step`, `qif`, `scad`, `modelica`
-**Supported Standards:** IEC 61131-3 / PLCopen XML, IEC 62714 AutomationML (CAEX), URDF / Xacro, STEP AP242, ISO 23952 QIF 3.0, FMI 2.0 / 3.0
+**Target Languages:** `urdf`, `plcopen`, `automationml`, `adams`, `simpack`, `opensim`, `step`, `qif`, `scad`, `usd`, `modelica`
+**Supported Standards:** IEC 61131-3 / PLCopen XML, IEC 62714 AutomationML (CAEX), URDF / Xacro, OpenUSD (Pixar / ASWF / AOUSD), STEP AP242, ISO 23952 QIF 3.0, FMI 2.0 / 3.0
 
 ### Industry Challenges & Solutions
 - **Control vs. plant gap:** PLC logic is tested on hardware late, after mechanical design is frozen.
@@ -14343,6 +14696,10 @@ The **CLI** column below shows which command reports each language's rules.
 | [3MF Medical](#three-mf)                  | `@modelscript/three-mf`     |    10 | Language server / API   |
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
+
+::: info Not yet listed
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [OpenUSD](../languages/usd.md). See each language guide for details.
+:::
 
 ## Modelica {#modelica}
 

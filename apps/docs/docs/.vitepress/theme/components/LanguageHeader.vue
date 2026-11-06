@@ -3,11 +3,14 @@
 import { useData } from "vitepress";
 import { computed } from "vue";
 import LANG_DATA from "../data/languages.generated.json";
+import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
 
 const props = defineProps<{
   slug?: string;
 }>();
+
+const { ansatzOrigin } = useAnsatzOrigin();
 
 const { page } = useData();
 
@@ -107,7 +110,7 @@ const maturity = computed(() => {
           <span>Source</span>
         </a>
         <a
-          :href="`/sketch?lang=${lang.slug}`"
+          :href="`${ansatzOrigin}/sketch?lang=${lang.slug}`"
           target="_blank"
           rel="noopener noreferrer"
           class="lang-action-btn lang-action-primary"

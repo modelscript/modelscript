@@ -185,6 +185,15 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     group: "geometry",
     tier: "preview",
   },
+  {
+    slug: "usd",
+    name: "OpenUSD",
+    sidebar: "OpenUSD (Universal Scene Description)",
+    ext: ".usd / .usda / .usdz",
+    role: "Universal Scene Description 3D stages & UsdPhysics digital twins",
+    group: "geometry",
+    tier: "preview",
+  },
 
   // ── Data & code integration ─────────────────────────────────────────────
   {

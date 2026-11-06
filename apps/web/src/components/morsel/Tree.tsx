@@ -58,6 +58,29 @@ function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: str
   const n = (className || "").toLowerCase();
   const id = (nodeId || "").toLowerCase();
 
+  if (k === "loading-package") {
+    return (
+      <svg
+        className="animate-spin"
+        style={{
+          width: 16,
+          height: 16,
+          animation: "spin 1s linear infinite",
+          color: "#06b6d4",
+          flexShrink: 0,
+        }}
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" style={{ opacity: 0.25 }} />
+        <path
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          style={{ opacity: 0.75 }}
+        />
+      </svg>
+    );
+  }
   if (k === "owl2-folder" || k === "ontology-folder") {
     return <FileDirectoryIcon size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />;
   }
@@ -270,7 +293,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           padding: "6px 8px",
           paddingLeft: `${8 + depth * 16}px`,
           margin: "0 8px",
-          cursor: "pointer",
+          cursor: node.classKind === "loading-package" ? "default" : "pointer",
           fontSize: 14,
           color: "var(--fgColor-default, var(--color-fg-default))",
           backgroundColor: isSelected
@@ -287,6 +310,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         onMouseLeave={() => setHovered(false)}
         onClick={(e) => {
           e.stopPropagation();
+          if (node.classKind === "loading-package") return;
           onHighlight?.(compositeName);
           const isCoarsePointer = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
           if (hasChildren) {
@@ -300,10 +324,12 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
+          if (node.classKind === "loading-package") return;
           onHighlight?.(compositeName);
           onSelect(compositeName, node.classKind ?? "class");
         }}
         onKeyDown={(e) => {
+          if (node.classKind === "loading-package") return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             e.stopPropagation();
@@ -330,8 +356,12 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             }
           }
         }}
-        draggable
+        draggable={node.classKind !== "loading-package"}
         onDragStart={(e) => {
+          if (node.classKind === "loading-package") {
+            e.preventDefault();
+            return;
+          }
           const iconSvg = node.iconSvg || iconCache.get(compositeName);
           const payload = {
             className: compositeName,
@@ -550,10 +580,8 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   React.useEffect(() => {
     if (!props.uri) return;
 
-    console.log("[tree] Requesting getLibraryTree for", props.uri, "version=", props.version);
     getLibraryTree(props.uri)
       .then((nodes) => {
-        console.log("[tree] Received root nodes:", nodes);
         setRootNodes(nodes);
       })
       .catch((e) => console.warn("[tree] Failed to load root nodes:", e));

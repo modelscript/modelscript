@@ -6,6 +6,7 @@ import {
   CpuIcon,
   PackageIcon,
   PlugIcon,
+  RepoForkedIcon,
   SlidersIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
@@ -211,7 +212,7 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
       )}
 
       {/* Compact summary link to Parameters & Ports tab */}
-      {totalMembersCount > 0 && onViewParameters && (
+      {(totalMembersCount > 0 || (cls.extends && cls.extends.length > 0)) && onViewParameters && (
         <GlassCard
           style={{
             display: "flex",
@@ -223,6 +224,12 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
           }}
         >
           <Box display="flex" alignItems="center" gap="12px" flexWrap="wrap">
+            {cls.extends && cls.extends.length > 0 && (
+              <Label variant="secondary" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <RepoForkedIcon size={12} /> {cls.extends.length}{" "}
+                {cls.extends.length === 1 ? "base class" : "base classes"}
+              </Label>
+            )}
             {categorized.parameters.length > 0 && (
               <Label variant="secondary" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                 <SlidersIcon size={12} /> {categorized.parameters.length}{" "}

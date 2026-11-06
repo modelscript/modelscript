@@ -85,6 +85,7 @@ export function registerCustomEditors(
     "qif.diagramEditor",
     "oscal.diagramEditor",
     "automationml.diagramEditor",
+    "usd.diagramEditor",
   ];
   for (const vt of diagramViewTypes) {
     context.subscriptions.push(

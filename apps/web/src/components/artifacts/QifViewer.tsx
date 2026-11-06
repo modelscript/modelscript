@@ -45,6 +45,16 @@ export interface QifViewerProps {
 
 export type QifViewTab = "3d" | "boc" | "spc" | "code";
 
+export interface Qif3dAnnotation {
+  id: string;
+  position: [number, number, number];
+  author: string;
+  text: string;
+  createdAt: string;
+  featureId?: string;
+  resolved?: boolean;
+}
+
 function formatMaterialModifier(mod?: "RFS" | "MMC" | "LMC"): string {
   if (mod === "MMC") return "Ⓜ";
   if (mod === "LMC") return "Ⓛ";
@@ -57,6 +67,106 @@ function getStatusHexColor(status: string, ratio = 0): string {
   return "#22c55e";
 }
 
+export interface FeatureControlFrameProps {
+  symbol: string;
+  isDiametrical?: boolean;
+  toleranceZone: string | number;
+  materialCondition?: "RFS" | "MMC" | "LMC";
+  datumReferences?: Array<{ datumLabel: string; materialCondition?: "RFS" | "MMC" | "LMC" }>;
+  status?: string;
+  toleranceRatio?: number;
+  compact?: boolean;
+}
+
+export function FeatureControlFrame({
+  symbol,
+  isDiametrical,
+  toleranceZone,
+  materialCondition,
+  datumReferences = [],
+  status,
+  toleranceRatio = 0,
+  compact = false,
+}: FeatureControlFrameProps): React.ReactElement {
+  const statusColor = status ? getStatusHexColor(status, toleranceRatio) : "#38bdf8";
+  const modStr = formatMaterialModifier(materialCondition);
+
+  return (
+    <div
+      data-testid="feature-control-frame"
+      style={{
+        display: "inline-flex",
+        alignItems: "stretch",
+        border: `1.5px solid ${statusColor}`,
+        borderRadius: compact ? "2px" : "3px",
+        background: "rgba(15, 23, 42, 0.92)",
+        fontFamily: "var(--font-mono, monospace)",
+        fontSize: compact ? "9.5px" : "11px",
+        color: "#f8fafc",
+        overflow: "hidden",
+        verticalAlign: "middle",
+        userSelect: "none",
+        lineHeight: 1.2,
+      }}
+    >
+      {/* 1. Geometric Characteristic Symbol */}
+      <div
+        style={{
+          padding: compact ? "1px 4px" : "2px 6px",
+          borderRight: `1px solid ${statusColor}`,
+          fontWeight: 700,
+          color: "#38bdf8",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(56, 189, 248, 0.08)",
+        }}
+      >
+        {symbol}
+      </div>
+
+      {/* 2. Tolerance Zone & Material Condition Modifier */}
+      <div
+        style={{
+          padding: compact ? "1px 5px" : "2px 7px",
+          borderRight: datumReferences.length > 0 ? `1px solid ${statusColor}` : undefined,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+        }}
+      >
+        {isDiametrical && <span>⌀</span>}
+        <span>{toleranceZone}</span>
+        {modStr && <span style={{ fontSize: compact ? "9px" : "10px", color: "#38bdf8" }}>{modStr}</span>}
+      </div>
+
+      {/* 3. Datum Reference Frame Compartments */}
+      {datumReferences.map((d, i) => {
+        const dMod = formatMaterialModifier(d.materialCondition);
+        return (
+          <div
+            key={i}
+            style={{
+              padding: compact ? "1px 4px" : "2px 6px",
+              borderRight: i < datumReferences.length - 1 ? `1px solid ${statusColor}` : undefined,
+              fontWeight: 700,
+              color: "#e2e8f0",
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+            }}
+          >
+            <span>{d.datumLabel}</span>
+            {dMod && <span style={{ fontSize: compact ? "8.5px" : "9.5px", color: "#38bdf8" }}>{dMod}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface OrbitControlsHandle {
   target: { set: (x: number, y: number, z: number) => void };
   update: () => void;
@@ -65,9 +175,11 @@ interface OrbitControlsHandle {
 function CameraController({
   controlsRef,
   presetTrigger,
+  focusTarget,
 }: {
   controlsRef: React.RefObject<OrbitControlsHandle | null>;
   presetTrigger: { preset: CameraPreset; timestamp: number } | null;
+  focusTarget?: { point: [number, number, number]; timestamp: number } | null;
 }) {
   const { camera } = useThree();
   useEffect(() => {
@@ -100,6 +212,19 @@ function CameraController({
       controlsRef.current.update();
     }
   }, [presetTrigger, camera, controlsRef]);
+
+  useEffect(() => {
+    if (!focusTarget) return;
+    const [fx, fy, fz] = focusTarget.point;
+    camera.up.set(0, 0, 1);
+    camera.position.set(fx + 20, fy - 20, fz + 16);
+    camera.lookAt(fx, fy, fz);
+    if (controlsRef.current) {
+      controlsRef.current.target.set(fx, fy, fz);
+      controlsRef.current.update();
+    }
+  }, [focusTarget, camera, controlsRef]);
+
   return null;
 }
 
@@ -176,6 +301,8 @@ function QifFeatureMesh({
   );
 }
 
+let focusTriggerCounter = 0;
+
 const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -196,6 +323,21 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
     preset: CameraPreset;
     timestamp: number;
   } | null>(null);
+  const [whiskerScale, setWhiskerScale] = useState<number>(50);
+  const [tourIndex, setTourIndex] = useState<number>(0);
+  const [focusTrigger, setFocusTrigger] = useState<{ point: [number, number, number]; timestamp: number } | null>(null);
+  const [activeSerial, setActiveSerial] = useState<string | undefined>(undefined);
+
+  const initialAnnotations: Qif3dAnnotation[] = useMemo(() => {
+    const cfg = (viewConfig && typeof viewConfig === "object" ? viewConfig : {}) as Record<string, unknown>;
+    const raw = cfg["annotations"] || cfg["spatialAnnotations"] || cfg["notes"];
+    return Array.isArray(raw) ? (raw as Qif3dAnnotation[]) : [];
+  }, [viewConfig]);
+
+  const [annotations, setAnnotations] = useState<Qif3dAnnotation[]>(initialAnnotations);
+  const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+
   const [copied, setCopied] = useState<boolean>(false);
   const controlsRef = useRef<OrbitControlsHandle | null>(null);
 
@@ -222,7 +364,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
     rawHeatmapSvg: string;
   } => {
     const doc: QifDocument = parseQif(rawQifText);
-    const scene = buildQif3dMbdScene(doc, pairedStepText);
+    const scene = buildQif3dMbdScene(doc, pairedStepText, activeSerial);
     const rawSpcSvg = DOMPurify.sanitize(renderQifSpcChartSvg(scene.spcSummary));
     const rawHeatmapSvg = DOMPurify.sanitize(renderQifMbdHeatmapSvg(doc, scene.spcSummary));
     return {
@@ -231,7 +373,12 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
       rawSpcSvg,
       rawHeatmapSvg,
     };
-  }, [rawQifText, pairedStepText]);
+  }, [rawQifText, pairedStepText, activeSerial]);
+
+  const activeAnnotation = useMemo(
+    () => annotations.find((a) => a.id === activeAnnotationId) ?? null,
+    [annotations, activeAnnotationId],
+  );
 
   const spcSvg = useMemo(
     () => adaptSvgMarkupForTheme(baseParsedData.rawSpcSvg, isDark),
@@ -309,6 +456,43 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
     setSelectedFeatureId((prev) =>
       selectedCharId === callout.characteristicId && prev === callout.featureId ? null : callout.featureId,
     );
+  };
+
+  const issueCallouts = useMemo(() => {
+    return scene.callouts.filter(
+      (c) => c.status === "FAIL" || c.status === "MARGINAL" || c.status === "REWORK" || c.toleranceRatio > 0.75,
+    );
+  }, [scene.callouts]);
+
+  const handleTourStep = (direction: 1 | -1 = 1) => {
+    if (issueCallouts.length === 0) return;
+    const nextIdx = (tourIndex + direction + issueCallouts.length) % issueCallouts.length;
+    setTourIndex(nextIdx);
+    const target = issueCallouts[nextIdx];
+    if (target) {
+      setSelectedCharId(target.characteristicId);
+      setSelectedFeatureId(target.featureId);
+      setFocusTrigger({
+        point: [
+          (target.surfaceAnchor[0] - sceneCenter[0]) * sceneScale,
+          (target.surfaceAnchor[1] - sceneCenter[1]) * sceneScale,
+          (target.surfaceAnchor[2] - sceneCenter[2]) * sceneScale,
+        ],
+        timestamp: ++focusTriggerCounter,
+      });
+    }
+  };
+
+  const handleSelectCalloutWithFocus = (callout: Qif3dCalloutAnchor) => {
+    handleSelectCallout(callout);
+    setFocusTrigger({
+      point: [
+        (callout.surfaceAnchor[0] - sceneCenter[0]) * sceneScale,
+        (callout.surfaceAnchor[1] - sceneCenter[1]) * sceneScale,
+        (callout.surfaceAnchor[2] - sceneCenter[2]) * sceneScale,
+      ],
+      timestamp: ++focusTriggerCounter,
+    });
   };
 
   const handleCopySource = async () => {
@@ -429,6 +613,88 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
               >
                 QIF 3.0 · STEP AP242
               </span>
+              {scene.availableSerialNumbers && scene.availableSerialNumbers.length > 1 && (
+                <div
+                  data-testid="qif-serial-scrubber"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    background: "rgba(15, 23, 42, 0.6)",
+                    border: "1px solid var(--color-border-default, #30363d)",
+                    borderRadius: "14px",
+                    padding: "1px 7px",
+                    fontSize: "10px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: "#cbd5e1",
+                  }}
+                >
+                  <span style={{ color: "#94a3b8" }}>SN:</span>
+                  <button
+                    type="button"
+                    disabled={
+                      (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) <= 0
+                    }
+                    onClick={() => {
+                      const curIdx = scene.availableSerialNumbers!.indexOf(
+                        activeSerial ?? scene.activeSerialNumber ?? "",
+                      );
+                      if (curIdx > 0) setActiveSerial(scene.availableSerialNumbers![curIdx - 1]);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color:
+                        (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) > 0
+                          ? "#38bdf8"
+                          : "#475569",
+                      cursor: "pointer",
+                      padding: "0 2px",
+                      fontWeight: 800,
+                      fontSize: "9px",
+                    }}
+                    title="Previous part serial number"
+                    aria-label="Previous serial number"
+                  >
+                    ◀
+                  </button>
+                  <span style={{ fontWeight: 700, color: "#38bdf8" }}>
+                    {activeSerial ?? scene.activeSerialNumber ?? scene.availableSerialNumbers[0]}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) >=
+                      scene.availableSerialNumbers.length - 1
+                    }
+                    onClick={() => {
+                      const curIdx = scene.availableSerialNumbers!.indexOf(
+                        activeSerial ?? scene.activeSerialNumber ?? "",
+                      );
+                      if (curIdx < scene.availableSerialNumbers!.length - 1) {
+                        setActiveSerial(scene.availableSerialNumbers![curIdx + 1]);
+                      }
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color:
+                        (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) <
+                        scene.availableSerialNumbers.length - 1
+                          ? "#38bdf8"
+                          : "#475569",
+                      cursor: "pointer",
+                      padding: "0 2px",
+                      fontWeight: 800,
+                      fontSize: "9px",
+                    }}
+                    title="Next part serial number"
+                    aria-label="Next serial number"
+                  >
+                    ▶
+                  </button>
+                </div>
+              )}
             </Box>
 
             <Box display="flex" alignItems="center" gap={2} flexShrink={0}>
@@ -541,31 +807,30 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
               >
                 <span
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "18px",
+                    height: "18px",
                     borderRadius: "50%",
                     background: getStatusHexColor(activeCallout.status, activeCallout.toleranceRatio),
                     color: "#0f172a",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "9.5px",
+                    fontSize: "10px",
                     fontWeight: 800,
+                    flexShrink: 0,
                   }}
                 >
                   {activeCallout.balloonNumber}
                 </span>
-                <span style={{ color: "#38bdf8", fontWeight: 700 }}>{activeCallout.gdtSymbol}</span>
-                <span style={{ fontWeight: 700 }}>
-                  {activeCallout.isDiametrical ? "⌀" : ""}
-                  {activeCallout.toleranceZone}
-                  {formatMaterialModifier(activeCallout.materialCondition)}
-                </span>
-                <span style={{ color: "#cbd5e1", borderLeft: "1px solid #475569", paddingLeft: "6px" }}>
-                  {activeCallout.datumReferences
-                    .map((d) => `${d.datumLabel}${formatMaterialModifier(d.materialCondition)}`)
-                    .join(" | ") || "Primary"}
-                </span>
+                <FeatureControlFrame
+                  symbol={activeCallout.gdtSymbol}
+                  isDiametrical={activeCallout.isDiametrical}
+                  toleranceZone={activeCallout.toleranceZone}
+                  materialCondition={activeCallout.materialCondition}
+                  datumReferences={activeCallout.datumReferences}
+                  status={activeCallout.status}
+                  toleranceRatio={activeCallout.toleranceRatio}
+                />
                 {activeCallout.stepEntityId && (
                   <span style={{ color: "#38bdf8", borderLeft: "1px solid #475569", paddingLeft: "6px" }}>
                     STEP {activeCallout.stepEntityId}
@@ -600,6 +865,83 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
               </Box>
             )}
 
+            {/* Floating 3D Spatial Annotation Card */}
+            {activeAnnotation && (
+              <Box
+                data-testid="qif-active-annotation-card"
+                position="absolute"
+                top={12}
+                left={56}
+                zIndex={15}
+                p={2}
+                borderRadius="10px"
+                bg="rgba(15, 23, 42, 0.92)"
+                border="1px solid rgba(245, 158, 11, 0.6)"
+                style={{
+                  backdropFilter: "blur(10px)",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+                  maxWidth: "260px",
+                  fontSize: "11px",
+                  color: "#f8fafc",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 4,
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: "#f59e0b" }}>💬 {activeAnnotation.author}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAnnotationId(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      fontSize: "11px",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={{ marginBottom: 6, lineHeight: 1.4, color: "#e2e8f0" }}>{activeAnnotation.text}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: "10px",
+                    color: "#94a3b8",
+                  }}
+                >
+                  <span>{activeAnnotation.createdAt}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnnotations((prev) =>
+                        prev.map((a) => (a.id === activeAnnotation.id ? { ...a, resolved: !a.resolved } : a)),
+                      );
+                    }}
+                    style={{
+                      background: activeAnnotation.resolved ? "rgba(34, 197, 94, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                      color: activeAnnotation.resolved ? "#4ade80" : "#fbbf24",
+                      border: `1px solid ${activeAnnotation.resolved ? "#22c55e" : "#f59e0b"}`,
+                      borderRadius: "8px",
+                      padding: "1px 6px",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {activeAnnotation.resolved ? "✓ Resolved" : "Mark Resolved"}
+                  </button>
+                </div>
+              </Box>
+            )}
+
             {
               <Box
                 data-testid="qif-no-geometry-notice"
@@ -608,16 +950,34 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                 right="12px"
                 zIndex={5}
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
                   padding: "4px 10px",
                   borderRadius: "999px",
-                  background: "rgba(15, 23, 42, 0.78)",
-                  border: "1px solid rgba(148, 163, 184, 0.35)",
-                  color: "#cbd5e1",
+                  background: geometryState.status === "ready" ? "rgba(15, 23, 42, 0.88)" : "rgba(15, 23, 42, 0.78)",
+                  border:
+                    geometryState.status === "ready"
+                      ? "1px solid rgba(56, 189, 248, 0.4)"
+                      : "1px solid rgba(148, 163, 184, 0.35)",
+                  color: geometryState.status === "ready" ? "#e0f2fe" : "#cbd5e1",
                   fontSize: "11px",
                   pointerEvents: "none",
                 }}
                 title={geometryNoticeDetail}
               >
+                {geometryState.status === "ready" && (
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: "#38bdf8",
+                      boxShadow: "0 0 6px rgba(56, 189, 248, 0.8)",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
                 {geometryNotice}
               </Box>
             }
@@ -694,23 +1054,33 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   scene.probeHits.map((hit) => {
                     if (!showProbes && hit.featureId !== selectedFeatureId) return null;
                     const isHighlighted = !selectedFeatureId || hit.featureId === selectedFeatureId;
-                    const devScale = 45;
+                    const hitStatusColor =
+                      hit.status === "FAIL" ? "#ef4444" : hit.status === "MARGINAL" ? "#f59e0b" : "#22c55e";
+                    const whiskerColor = isHighlighted ? (hit.status === "FAIL" ? "#ef4444" : "#38bdf8") : "#475569";
                     const tip: [number, number, number] = [
-                      hit.position[0] + hit.deviationVector[0] * devScale,
-                      hit.position[1] + hit.deviationVector[1] * devScale,
-                      hit.position[2] + hit.deviationVector[2] * devScale,
+                      hit.position[0] + hit.deviationVector[0] * whiskerScale,
+                      hit.position[1] + hit.deviationVector[1] * whiskerScale,
+                      hit.position[2] + hit.deviationVector[2] * whiskerScale,
                     ];
                     return (
                       <group key={hit.id}>
                         <mesh position={hit.position}>
                           <sphereGeometry args={[isHighlighted ? 0.55 : 0.35, 10, 10]} />
                           <meshStandardMaterial
-                            color={isHighlighted ? "#38bdf8" : "#475569"}
-                            emissive={isHighlighted ? "#0284c7" : "#000000"}
-                            emissiveIntensity={0.4}
+                            color={isHighlighted ? hitStatusColor : "#475569"}
+                            emissive={isHighlighted ? hitStatusColor : "#000000"}
+                            emissiveIntensity={0.5}
                           />
                         </mesh>
-                        {isHighlighted && <Line points={[hit.position, tip]} color="#38bdf8" lineWidth={1.2} />}
+                        {isHighlighted && (
+                          <>
+                            <Line points={[hit.position, tip]} color={whiskerColor} lineWidth={1.6} />
+                            <mesh position={tip}>
+                              <sphereGeometry args={[0.22, 6, 6]} />
+                              <meshBasicMaterial color={whiskerColor} />
+                            </mesh>
+                          </>
+                        )}
                       </group>
                     );
                   })}
@@ -775,20 +1145,16 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                         </mesh>
                         <Html position={callout.calloutPosition} center zIndexRange={[1, 5]}>
                           <div
-                            onClick={() => handleSelectCallout(callout)}
+                            onClick={() => handleSelectCalloutWithFocus(callout)}
                             style={{
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "4px",
-                              background: isActive ? "rgba(14, 116, 144, 0.95)" : "rgba(15, 23, 42, 0.88)",
+                              background: isActive ? "rgba(14, 116, 144, 0.95)" : "rgba(15, 23, 42, 0.90)",
                               border: `1.2px solid ${isActive ? "#38bdf8" : statusColor}`,
-                              borderRadius: "999px",
-                              padding: "1.5px 6px 1.5px 3px",
+                              borderRadius: "4px",
+                              padding: "2px 4px",
                               color: "#f8fafc",
-                              fontSize: "9.5px",
-                              fontWeight: 600,
-                              fontFamily: "var(--font-mono, monospace)",
-                              whiteSpace: "nowrap",
                               cursor: "pointer",
                               boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
                             }}
@@ -799,23 +1165,85 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                                 display: "inline-flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                width: "14px",
-                                height: "14px",
+                                width: "15px",
+                                height: "15px",
                                 borderRadius: "50%",
                                 background: statusColor,
                                 color: "#0f172a",
                                 fontWeight: 800,
                                 fontSize: "9px",
+                                flexShrink: 0,
                               }}
                             >
                               {callout.balloonNumber}
                             </span>
-                            <span style={{ color: "#38bdf8", fontWeight: 700 }}>{callout.gdtSymbol}</span>
-                            <span>
-                              {callout.isDiametrical ? "⌀" : ""}
-                              {callout.toleranceZone}
-                              {formatMaterialModifier(callout.materialCondition)}
-                            </span>
+                            <FeatureControlFrame
+                              symbol={callout.gdtSymbol}
+                              isDiametrical={callout.isDiametrical}
+                              toleranceZone={callout.toleranceZone}
+                              materialCondition={callout.materialCondition}
+                              datumReferences={callout.datumReferences}
+                              status={callout.status}
+                              toleranceRatio={callout.toleranceRatio}
+                              compact={true}
+                            />
+                          </div>
+                        </Html>
+                      </group>
+                    );
+                  })}
+
+                {/* 6. 3D Spatial Collaboration Annotations / Review Pins */}
+                {showAnnotations &&
+                  annotations.map((ann) => {
+                    const isActive = activeAnnotationId === ann.id;
+                    const pinColor = ann.resolved ? "#22c55e" : "#f59e0b";
+                    return (
+                      <group key={ann.id}>
+                        <mesh
+                          position={ann.position}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveAnnotationId((prev) => (prev === ann.id ? null : ann.id));
+                          }}
+                        >
+                          <sphereGeometry args={[isActive ? 0.9 : 0.6, 12, 12]} />
+                          <meshStandardMaterial
+                            color={pinColor}
+                            emissive={pinColor}
+                            emissiveIntensity={isActive ? 0.6 : 0.25}
+                          />
+                        </mesh>
+                        <Html
+                          position={[ann.position[0], ann.position[1], ann.position[2] + 2]}
+                          center
+                          zIndexRange={[1, 6]}
+                        >
+                          <div
+                            data-testid={`qif-annotation-pin-${ann.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveAnnotationId((prev) => (prev === ann.id ? null : ann.id));
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              background: isActive ? "rgba(245, 158, 11, 0.95)" : "rgba(15, 23, 42, 0.90)",
+                              border: `1.2px solid ${pinColor}`,
+                              borderRadius: "10px",
+                              padding: "1px 6px",
+                              color: isActive ? "#0f172a" : "#fef3c7",
+                              fontWeight: 700,
+                              fontSize: "9.5px",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={`Note by ${ann.author}: ${ann.text}`}
+                          >
+                            <span>💬</span>
+                            <span>{ann.author}</span>
                           </div>
                         </Html>
                       </group>
@@ -823,7 +1251,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   })}
               </group>
 
-              <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
+              <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} focusTarget={focusTrigger} />
               <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
             </Canvas>
 
@@ -853,22 +1281,33 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   active: showHeatmap,
                   toggle: () => setShowHeatmap((v) => !v),
                   dotColor: "#22c55e",
+                  testId: "qif-toggle-heatmap-btn",
                 },
                 {
                   label: `CMM Hits (${scene.probeHits.length})`,
                   active: showProbes,
                   toggle: () => setShowProbes((v) => !v),
                   dotColor: "#38bdf8",
+                  testId: "qif-toggle-probes-btn",
                 },
                 {
                   label: `GD&T Pins (${scene.callouts.length})`,
                   active: show3dLabels,
                   toggle: () => setShow3dLabels((v) => !v),
                   dotColor: "#f59e0b",
+                  testId: "qif-toggle-callouts-btn",
+                },
+                {
+                  label: `Notes (${annotations.length})`,
+                  active: showAnnotations,
+                  toggle: () => setShowAnnotations((v) => !v),
+                  dotColor: "#fbbf24",
+                  testId: "qif-toggle-annotations-btn",
                 },
               ].map((btn) => (
                 <button
                   key={btn.label}
+                  data-testid={btn.testId}
                   type="button"
                   onClick={btn.toggle}
                   style={{
@@ -897,6 +1336,168 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   {btn.label}
                 </button>
               ))}
+
+              {/* Quick Add Spatial Note */}
+              <button
+                type="button"
+                data-testid="qif-add-annotation-btn"
+                onClick={() => {
+                  const newId = `ann-${Date.now()}`;
+                  const newNote: Qif3dAnnotation = {
+                    id: newId,
+                    position: [sceneCenter[0], sceneCenter[1], sceneCenter[2]],
+                    author: "Inspector",
+                    text: "Review required on this zone.",
+                    createdAt: "Just now",
+                    resolved: false,
+                  };
+                  setAnnotations((prev) => [...prev, newNote]);
+                  setActiveAnnotationId(newId);
+                  setShowAnnotations(true);
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "3px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  fontFamily: "var(--font-mono, monospace)",
+                  padding: "2px 7px",
+                  borderRadius: "12px",
+                  cursor: "pointer",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  color: "#fbbf24",
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                }}
+                title="Add 3D review note on model"
+              >
+                + Note
+              </button>
+
+              {/* Whisker Magnification Selector */}
+              {showProbes && (
+                <button
+                  type="button"
+                  data-testid="qif-whisker-scale-btn"
+                  onClick={() => {
+                    setWhiskerScale((prev) => (prev === 10 ? 50 : prev === 50 ? 100 : prev === 100 ? 200 : 10));
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono, monospace)",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    cursor: "pointer",
+                    background: "rgba(56, 189, 248, 0.15)",
+                    color: "#38bdf8",
+                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                  }}
+                  title="Cycle CMM probe deviation magnification (10×, 50×, 100×, 200×)"
+                >
+                  <span style={{ color: "#94a3b8" }}>Whiskers:</span>
+                  <span>{whiskerScale}×</span>
+                </button>
+              )}
+
+              {/* Out-of-Spec Inspection Tour */}
+              {issueCallouts.length > 0 ? (
+                <div
+                  data-testid="qif-inspection-tour"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                    background: "rgba(239, 68, 68, 0.18)",
+                    border: "1px solid rgba(239, 68, 68, 0.45)",
+                    borderRadius: "12px",
+                    padding: "1px 6px",
+                    color: "#fca5a5",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono, monospace)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleTourStep(-1)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#fca5a5",
+                      cursor: "pointer",
+                      padding: "0 2px",
+                      fontWeight: 800,
+                      fontSize: "9px",
+                    }}
+                    title="Previous non-conformance"
+                    aria-label="Previous non-conformance"
+                  >
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTourStep(1)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#fca5a5",
+                      cursor: "pointer",
+                      padding: "1px 4px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontWeight: 700,
+                      fontSize: "10px",
+                    }}
+                    title="Tour out-of-spec characteristics on the 3D model"
+                  >
+                    <span>
+                      ⚠️ Tour Issues ({tourIndex + 1}/{issueCallouts.length})
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTourStep(1)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#fca5a5",
+                      cursor: "pointer",
+                      padding: "0 2px",
+                      fontWeight: 800,
+                      fontSize: "9px",
+                    }}
+                    title="Next non-conformance"
+                    aria-label="Next non-conformance"
+                  >
+                    ▶
+                  </button>
+                </div>
+              ) : (
+                <span
+                  data-testid="qif-all-inspec-badge"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono, monospace)",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    background: "rgba(34, 197, 94, 0.15)",
+                    color: "#4ade80",
+                    border: "1px solid rgba(34, 197, 94, 0.35)",
+                  }}
+                  title="All inspected characteristics are within specified tolerance zones"
+                >
+                  ✓ 100% In-Spec
+                </span>
+              )}
             </Box>
 
             {/* Bottom-Right Compact Metrology Status Pill */}
@@ -992,6 +1593,14 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                         setSelectedFeatureId(c.featureId);
                         setSelectedCharId(c.characteristicId);
                         setViewTab("3d");
+                        setFocusTrigger({
+                          point: [
+                            (c.surfaceAnchor[0] - sceneCenter[0]) * sceneScale,
+                            (c.surfaceAnchor[1] - sceneCenter[1]) * sceneScale,
+                            (c.surfaceAnchor[2] - sceneCenter[2]) * sceneScale,
+                          ],
+                          timestamp: Date.now(),
+                        });
                       }}
                       style={{
                         borderBottom: "1px solid var(--color-border-muted, rgba(48, 54, 61, 0.6))",
@@ -1003,9 +1612,16 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                       <td style={{ padding: "8px", color: "#0284c7" }}>
                         {c.stepEntityId ?? "—"} ({c.featureName})
                       </td>
-                      <td style={{ padding: "8px", fontWeight: 700 }}>
-                        {c.gdtSymbol} {c.isDiametrical ? "⌀" : ""}
-                        {c.toleranceZone} {formatMaterialModifier(c.materialCondition)}
+                      <td style={{ padding: "8px" }}>
+                        <FeatureControlFrame
+                          symbol={c.gdtSymbol}
+                          isDiametrical={c.isDiametrical}
+                          toleranceZone={c.toleranceZone}
+                          materialCondition={c.materialCondition}
+                          datumReferences={c.datumReferences}
+                          status={c.status}
+                          toleranceRatio={c.toleranceRatio}
+                        />
                       </td>
                       <td style={{ padding: "8px" }}>
                         {c.datumReferences

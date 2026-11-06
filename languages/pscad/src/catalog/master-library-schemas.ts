@@ -2515,21 +2515,22 @@ export function getPscadDefinitionLocation(
   const paramValMatch = /<param\b[^>]*\bname\s*=\s*["']Name["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/i.exec(lineText);
   if (paramValMatch?.[1]) {
     const netName = paramValMatch[1];
-    const escapedNet = netName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const lines = text.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i]!;
-      if (
-        new RegExp(`<param\\b[^>]*\\bname\\s*=\\s*["']Name["'][^>]*\\bvalue\\s*=\\s*["']${escapedNet}["']`, "i").test(l)
-      ) {
-        const col = Math.max(0, l.indexOf(netName));
-        return {
-          uri,
-          range: {
-            start: { line: i, character: col },
-            end: { line: i, character: col + netName.length },
-          },
-        };
+      if (l.includes(netName) && /<param\b/i.test(l)) {
+        const nMatch = /\bname\s*=\s*["']([^"']+)["']/i.exec(l);
+        const vMatch = /\bvalue\s*=\s*["']([^"']+)["']/i.exec(l);
+        if (nMatch?.[1]?.toLowerCase() === "name" && vMatch?.[1] === netName) {
+          const col = Math.max(0, l.indexOf(netName));
+          return {
+            uri,
+            range: {
+              start: { line: i, character: col },
+              end: { line: i, character: col + netName.length },
+            },
+          };
+        }
       }
     }
   }

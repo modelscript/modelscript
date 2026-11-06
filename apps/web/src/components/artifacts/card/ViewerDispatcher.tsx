@@ -70,9 +70,9 @@ const Owl2Viewer = React.lazy(() => import("../Owl2Viewer"));
 const GensysViewer = React.lazy(() => import("../GensysViewer"));
 const SimpackViewer = React.lazy(() => import("../SimpackViewer"));
 const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
-const FortranViewer = React.lazy(() => import("../FortranViewer"));
 const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
 const QifViewer = React.lazy(() => import("../QifViewer"));
+const UrdfViewer = React.lazy(() => import("../UrdfViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 
 export function getViewerExpectedHeight(
@@ -219,11 +219,12 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "modelica":
       case "morsel":
       case "polyglot-morsel":
-        return <ModelicaDiagramViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return <ModelicaDiagramViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelscript":
       case "msx":
         return (
           <ModelicaDiagramViewer
+            artifactId={artifactId}
             viewConfig={{ ...viewConfig, dialect: viewConfig?.dialect || "msx" }}
             isFullScreen={isFullScreen}
           />
@@ -265,7 +266,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "dataset":
       case "dataset-table":
       case "json-table":
-        return <CsvViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return <CsvViewer viewConfig={viewConfig} isFullScreen={isFullScreen} thumbnailUrl={resolvedThumbnailUrl} />;
       case "webgpu":
       case "webgpu-simulation":
       case "gpu-simulation":
@@ -483,6 +484,22 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             <SimpackViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
+      case "urdf":
+      case "sdf":
+      case "xacro":
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="URDF Robotics Mechanism"
+            placeholderType="cad"
+            isFullScreen={isFullScreen}
+          >
+            <UrdfViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "owl":
       case "owl2":
         return <Owl2Viewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
@@ -496,17 +513,29 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "engineering-app":
       case "app":
         return <SolutionViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "reqif":
+      case "reqifz":
+        return <ReqifViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "qif":
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="QIF 3D MBD & Metrology"
+            placeholderType="cad"
+            height={expectedHeight}
+            isFullScreen={isFullScreen}
+          >
+            <QifViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "fortran":
       case "f90":
       case "f95":
       case "f08":
       case "f18":
-        return <FortranViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "reqif":
-      case "reqifz":
-        return <ReqifViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "qif":
-        return <QifViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "aspen":
       case "swmm":
       case "touchstone":
@@ -529,7 +558,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "plcopen":
       case "simulink":
       case "spice":
-      case "urdf":
       case "verilog-a":
       case "oscal":
       case "automationml":

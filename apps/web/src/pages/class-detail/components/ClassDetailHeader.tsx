@@ -9,14 +9,12 @@ import {
   SlidersIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Heading, IconButton, Label, Text } from "@primer/react";
+import { Heading, IconButton, Label } from "@primer/react";
 import React from "react";
-import { Link } from "react-router-dom";
 import styledImport from "styled-components";
 import { getIconUrl, type ClassSummary } from "../../../api";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
-import { formatFormalSignature, resolveTypeTargetUrl } from "../../../components/classTreeUtils";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { HeaderBar, TabBar, TabButton, TabCountBadge } from "../styles";
 import type { ClassDetail, ClassTabId, JobStatus } from "../types";
@@ -27,12 +25,11 @@ const styled: typeof styledImport =
 const HeroRow = styled.div`
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 20px;
   width: 100%;
 
   @media (max-width: 640px) {
-    flex-direction: column-reverse;
+    flex-direction: column;
     gap: 14px;
   }
 `;
@@ -42,13 +39,72 @@ const HeroLeft = styled.div`
   min-width: 0;
   display: flex;
   flex-direction: column;
+`;
+
+const FqnText = styled.div`
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+  margin-bottom: 4px;
+  letter-spacing: -0.1px;
+`;
+
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+`;
+
+const FilePathBadge = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-muted);
+  background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.04)));
+  border: 1px solid var(--ms-border, var(--color-border));
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+  width: fit-content;
+  margin-bottom: 8px;
+
+  &:hover {
+    color: var(--ms-brand, var(--color-accent-cyan, #06b6d4));
+    border-color: var(--ms-brand, var(--color-accent-cyan, #06b6d4));
+    background: var(--ms-brand-soft, rgba(6, 182, 212, 0.08));
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-cyan, #06b6d4);
+    outline-offset: 1px;
+  }
+`;
+
+const DescriptionText = styled.p`
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 900px;
 `;
 
 const HeroIconCard = styled.div`
-  width: 72px;
-  height: 72px;
-  border-radius: 14px;
+  width: 100px;
+  height: 100px;
+  border-radius: 18px;
   background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.04)));
   border: 1px solid var(--ms-border, var(--color-border));
   display: flex;
@@ -59,7 +115,7 @@ const HeroIconCard = styled.div`
   transition:
     transform 0.2s ease,
     border-color 0.2s ease;
-  padding: 6px;
+  padding: 10px;
   box-sizing: border-box;
 
   &:hover {
@@ -75,9 +131,10 @@ const HeroIconCard = styled.div`
   }
 
   @media (max-width: 640px) {
-    width: 56px;
-    height: 56px;
-    border-radius: 10px;
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    padding: 8px;
   }
 `;
 
@@ -112,15 +169,10 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   treeCollapsed,
   onToggleTreeCollapse,
   onOpenLogs,
-  allClasses = [],
+  allClasses: _allClasses = [],
 }) => {
   const flagCae = useFeatureFlag("cae_cloud_solver");
   const showStudies = hasCae ?? flagCae;
-  const signature = formatFormalSignature({
-    className,
-    classKind: cls.classKind,
-    baseClasses: cls.baseClasses,
-  });
 
   const [imgError, setImgError] = React.useState(false);
   React.useEffect(() => {
@@ -166,94 +218,6 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
         </Box>
 
         <HeroRow>
-          <HeroLeft>
-            <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
-              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 26, margin: 0 }}>
-                {className}
-              </Heading>
-              <Label
-                variant="accent"
-                style={{
-                  fontSize: 12,
-                  padding: "2px 8px",
-                  background: "var(--color-accent-blue-bg)",
-                  color: "var(--color-accent-blue)",
-                  border: "1px solid var(--color-accent-blue-border)",
-                }}
-              >
-                {cls.classKind}
-              </Label>
-              {cls.sourceFile && (
-                <Label
-                  variant="secondary"
-                  style={{ fontSize: 11, fontFamily: "var(--font-mono, monospace)", opacity: 0.85 }}
-                >
-                  {cls.sourceFile}
-                </Label>
-              )}
-              {jobStatus && jobStatus !== "completed" && (
-                <Label
-                  variant={jobStatus === "failed" ? "danger" : "attention"}
-                  style={{ cursor: onOpenLogs ? "pointer" : "default" }}
-                  onClick={onOpenLogs}
-                  title={onOpenLogs ? "Click to view logs" : undefined}
-                >
-                  {jobStatus === "failed" ? "Ingestion Failed" : jobStatus === "processing" ? "Processing…" : "Pending"}
-                </Label>
-              )}
-            </Box>
-
-            {cls.extends && cls.extends.length > 0 && (
-              <Box display="flex" alignItems="center" gap="6px" flexWrap="wrap">
-                <Text style={{ fontSize: 11, color: "var(--color-text-muted)", fontWeight: 600 }}>Extends:</Text>
-                {cls.extends.map((base) => {
-                  const targetUrl = resolveTypeTargetUrl(base, libraryName, version, allClasses, className);
-                  return targetUrl ? (
-                    <Link key={base} to={targetUrl} style={{ textDecoration: "none" }}>
-                      <Label
-                        variant="secondary"
-                        style={{
-                          fontSize: 11,
-                          cursor: "pointer",
-                          borderColor: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
-                          color: "var(--ms-brand, var(--color-accent-cyan, #06b6d4))",
-                        }}
-                      >
-                        {base}
-                      </Label>
-                    </Link>
-                  ) : (
-                    <Label key={base} variant="secondary" style={{ fontSize: 11 }}>
-                      {base}
-                    </Label>
-                  );
-                })}
-              </Box>
-            )}
-
-            {cls.description && (
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14.5, margin: "2px 0 0" }}>
-                {cls.description}
-              </Text>
-            )}
-
-            <div
-              style={{
-                marginTop: 6,
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: "var(--ms-surface-hover, var(--color-glass-bg))",
-                border: "1px solid var(--ms-border, var(--color-border))",
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: 12,
-                color: "var(--color-text-primary)",
-                overflowX: "auto",
-              }}
-            >
-              {signature}
-            </div>
-          </HeroLeft>
-
           <HeroIconCard title={`${className} (${cls.classKind})`}>
             {!imgError ? (
               <img
@@ -270,10 +234,10 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
                 justifyContent="center"
                 style={{ color: "var(--color-text-muted)" }}
               >
-                <PackageIcon size={26} />
+                <PackageIcon size={36} />
                 <span
                   style={{
-                    fontSize: "9px",
+                    fontSize: "10px",
                     fontFamily: "var(--font-mono, monospace)",
                     textTransform: "uppercase",
                     marginTop: "2px",
@@ -284,6 +248,61 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
               </Box>
             )}
           </HeroIconCard>
+
+          <HeroLeft>
+            <FqnText>{className}</FqnText>
+
+            <TitleRow>
+              <Heading
+                as="h1"
+                style={{
+                  color: "var(--color-text-heading)",
+                  fontWeight: 700,
+                  fontSize: 24,
+                  lineHeight: 1.25,
+                  margin: 0,
+                }}
+              >
+                {className.includes(".") ? className.split(".").pop() : className}
+              </Heading>
+              <Label
+                variant="accent"
+                style={{
+                  fontSize: 12,
+                  padding: "2px 8px",
+                  background: "var(--color-accent-blue-bg)",
+                  color: "var(--color-accent-blue)",
+                  border: "1px solid var(--color-accent-blue-border)",
+                }}
+              >
+                {cls.classKind}
+              </Label>
+              {jobStatus && jobStatus !== "completed" && (
+                <Label
+                  variant={jobStatus === "failed" ? "danger" : "attention"}
+                  style={{ cursor: onOpenLogs ? "pointer" : "default" }}
+                  onClick={onOpenLogs}
+                  title={onOpenLogs ? "Click to view logs" : undefined}
+                >
+                  {jobStatus === "failed" ? "Ingestion Failed" : jobStatus === "processing" ? "Processing…" : "Pending"}
+                </Label>
+              )}
+            </TitleRow>
+
+            {cls.sourceFile && (
+              <FilePathBadge
+                type="button"
+                onClick={() => setActiveTab("source")}
+                title="View in Source tab"
+                aria-label={`Open source file ${cls.sourceFile}`}
+              >
+                <FileCodeIcon size={12} style={{ opacity: 0.85 }} />
+                <span>{cls.sourceFile}</span>
+              </FilePathBadge>
+            )}
+
+            {cls.description && <DescriptionText>{cls.description}</DescriptionText>}
+          </HeroLeft>
         </HeroRow>
       </HeaderBar>
 
@@ -306,7 +325,9 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
         >
           <SlidersIcon size={15} />
           Parameters &amp; Ports
-          <TabCountBadge $active={activeTab === "parameters"}>{cls.components.length}</TabCountBadge>
+          <TabCountBadge $active={activeTab === "parameters"}>
+            {cls.components.length + (cls.extends?.length || 0)}
+          </TabCountBadge>
         </TabButton>
         {(equationsCount > 0 || (!cls.classKind.startsWith("sysml") && !cls.classKind.startsWith("cad"))) && (
           <TabButton

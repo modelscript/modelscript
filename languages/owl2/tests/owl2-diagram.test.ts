@@ -62,6 +62,12 @@ describe("OWL2 Diagram Data Generator", () => {
     assert.ok(vehicleNode);
     assert.strictEqual(vehicleNode?.x, 100);
     assert.strictEqual(vehicleNode?.y, 50);
+    assert.strictEqual(vehicleNode?.attrs?.body?.stroke, "#ca8a04", "Classes should use Graffoo golden yellow border");
+
+    const carNode = dataAll.nodes.find((n) => n.id === "http://example.org/ont#Car");
+    assert.ok(carNode);
+    assert.ok(carNode?.attrs?.innerBorder, "Defined classes in EquivalentClasses should feature Graffoo double border");
+    assert.strictEqual(carNode?.attrs?.body?.stroke, "#eab308");
 
     // "ClassTaxonomy" diagram type
     const dataTaxonomy = buildOWL2DiagramData(axioms, undefined, "ClassTaxonomy");
@@ -209,9 +215,75 @@ Ontology(
     assert.ok(editDelConn.length >= 1);
   });
 
-  it("computes deletion edits", () => {
-    const delEdits = computeOWL2ElementDelete(sampleDoc, [":Car"]);
-    assert.ok(delEdits.length >= 1);
+  it("computes deletion edits with multi-line axiom precision", () => {
+    const multiLineDoc = `Ontology(
+  Declaration(Class(:Vehicle))
+  Declaration(Class(:Car))
+  SubClassOf(
+    :Car
+    :Vehicle
+  )
+)`;
+    const delEdits = computeOWL2ElementDelete(multiLineDoc, [":Car"]);
+    assert.strictEqual(delEdits.length, 2); // Deletes Declaration(Class(:Car)) and multi-line SubClassOf
+
+    const delConnEdits = computeOWL2ConnectionDelete(multiLineDoc, ":Car", ":Vehicle");
+    assert.strictEqual(delConnEdits.length, 1);
+    assert.strictEqual(delConnEdits[0]!.range.start.line, 3);
+    assert.strictEqual(delConnEdits[0]!.range.end.line, 7);
+  });
+
+  it("deletes axioms accurately using CST tree navigation when cstRoot is provided", () => {
+    const doc = `Ontology(
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  SubClassOf(:B :A)
+)`;
+    // Synthetic CST tree
+    const cstRoot = {
+      type: "OntologyDocument",
+      startIndex: 0,
+      endIndex: doc.length,
+      children: [
+        {
+          type: "DeclarationAxiom",
+          startIndex: doc.indexOf("Declaration(Class(:A))"),
+          endIndex: doc.indexOf("Declaration(Class(:A))") + "Declaration(Class(:A))".length,
+        },
+        {
+          type: "DeclarationAxiom",
+          startIndex: doc.indexOf("Declaration(Class(:B))"),
+          endIndex: doc.indexOf("Declaration(Class(:B))") + "Declaration(Class(:B))".length,
+        },
+        {
+          type: "SubClassOfAxiom",
+          startIndex: doc.indexOf("SubClassOf(:B :A)"),
+          endIndex: doc.indexOf("SubClassOf(:B :A)") + "SubClassOf(:B :A)".length,
+        },
+      ],
+    };
+
+    const delEdits = computeOWL2ElementDelete(doc, [":B"], cstRoot);
+    assert.strictEqual(delEdits.length, 2);
+
+    const delConn = computeOWL2ConnectionDelete(doc, ":B", ":A", cstRoot);
+    assert.strictEqual(delConn.length, 1);
+    assert.strictEqual(delConn[0]!.range.start.line, 3);
+  });
+
+  it("supports Turtle format insertions", () => {
+    const turtleDoc = `@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+:Parent a owl:Class .
+`;
+    const insertElem = computeOWL2ElementInsert(turtleDoc, "Class", ":Child");
+    assert.strictEqual(insertElem.length, 1);
+    assert.ok(insertElem[0]!.newText.includes(":Child a owl:Class ."));
+
+    const insertConn = computeOWL2ConnectionInsert(turtleDoc, ":Child", ":Parent", "subClassOf");
+    assert.strictEqual(insertConn.length, 1);
+    assert.ok(insertConn[0]!.newText.includes(":Child rdfs:subClassOf :Parent ."));
   });
 
   it("computes rename edits across document", () => {

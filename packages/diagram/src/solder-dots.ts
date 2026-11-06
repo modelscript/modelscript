@@ -410,3 +410,175 @@ export function solderDotToDiagramNode(dot: SolderDot, size = 3) {
     ports: { items: [], groups: {} },
   };
 }
+
+export interface WireCrossing {
+  id: string;
+  x: number;
+  y: number;
+  horizontalEdgeId: string;
+  verticalEdgeId: string;
+  color: string;
+}
+
+/**
+ * Computes non-connected orthogonal wire crossings where two wires cross without forming a T-junction solder dot.
+ * IEEE Std 315 / IEC 60617 schematic jumpover arcs are placed at these coordinates to visually clarify that the wires do not intersect.
+ */
+export function computeWireCrossings(
+  edges: EdgePath[],
+  solderDots: SolderDot[],
+  options: { portPoints?: { x: number; y: number }[]; tolerance?: number } = {},
+): WireCrossing[] {
+  const tolerance = options.tolerance ?? 4.0;
+  const tolSq = tolerance * tolerance;
+  const portPoints = options.portPoints ?? [];
+
+  interface OrthoSeg {
+    edgeId: string;
+    color: string;
+    isHoriz: boolean;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }
+
+  const horizSegs: OrthoSeg[] = [];
+  const vertSegs: OrthoSeg[] = [];
+
+  for (const edge of edges) {
+    if (!edge.points || edge.points.length < 2) continue;
+    const color = edge.color && edge.color !== "none" ? edge.color : "#1890ff";
+    for (let i = 0; i < edge.points.length - 1; i++) {
+      const p1 = edge.points[i]!;
+      const p2 = edge.points[i + 1]!;
+      if (Math.abs(p1.y - p2.y) <= 0.5 && Math.abs(p1.x - p2.x) > 8) {
+        horizSegs.push({
+          edgeId: edge.id,
+          color,
+          isHoriz: true,
+          x1: Math.min(p1.x, p2.x),
+          y1: p1.y,
+          x2: Math.max(p1.x, p2.x),
+          y2: p1.y,
+        });
+      } else if (Math.abs(p1.x - p2.x) <= 0.5 && Math.abs(p1.y - p2.y) > 8) {
+        vertSegs.push({
+          edgeId: edge.id,
+          color,
+          isHoriz: false,
+          x1: p1.x,
+          y1: Math.min(p1.y, p2.y),
+          x2: p1.x,
+          y2: Math.max(p1.y, p2.y),
+        });
+      }
+    }
+  }
+
+  const crossings: WireCrossing[] = [];
+  const seenCrossingKeys = new Set<string>();
+
+  for (const h of horizSegs) {
+    for (const v of vertSegs) {
+      if (h.edgeId === v.edgeId) continue;
+
+      // Crossing point is at (v.x1, h.y1)
+      const cx = v.x1;
+      const cy = h.y1;
+
+      // Must be strictly interior to both segments (not endpoints)
+      if (cx <= h.x1 + 6 || cx >= h.x2 - 6) continue;
+      if (cy <= v.y1 + 6 || cy >= v.y2 - 6) continue;
+
+      // Exclude if close to any solder dot
+      let atSolderDot = false;
+      for (const dot of solderDots) {
+        const d2 = (cx - dot.x) * (cx - dot.x) + (cy - dot.y) * (cy - dot.y);
+        if (d2 <= tolSq) {
+          atSolderDot = true;
+          break;
+        }
+      }
+      if (atSolderDot) continue;
+
+      // Exclude if close to any component port
+      let atPort = false;
+      for (const pp of portPoints) {
+        const d2 = (cx - pp.x) * (cx - pp.x) + (cy - pp.y) * (cy - pp.y);
+        if (d2 <= tolSq) {
+          atPort = true;
+          break;
+        }
+      }
+      if (atPort) continue;
+
+      const key = `${Math.round(cx)}:${Math.round(cy)}`;
+      if (seenCrossingKeys.has(key)) continue;
+      seenCrossingKeys.add(key);
+
+      crossings.push({
+        id: `wire_crossing_${h.edgeId}_${v.edgeId}_${Math.round(cx)}_${Math.round(cy)}`,
+        x: Math.round(cx),
+        y: Math.round(cy),
+        horizontalEdgeId: h.edgeId,
+        verticalEdgeId: v.edgeId,
+        color: h.color,
+      });
+    }
+  }
+
+  return crossings;
+}
+
+/**
+ * Builds an ephemeral diagram node for a wire crossing jumpover arc.
+ */
+export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolean) {
+  const size = 10;
+  const half = size / 2;
+  const bg = isDark ? "#1e1e1e" : "#ffffff";
+  return {
+    id: crossing.id,
+    type: "wire-crossing",
+    x: crossing.x - half,
+    y: crossing.y - half,
+    width: size,
+    height: size,
+    angle: 0,
+    opacity: 1,
+    zIndex: 25,
+    autoLayout: false,
+    markup: [
+      {
+        tagName: "rect",
+        selector: "mask",
+        attrs: {
+          x: 2,
+          y: 1,
+          width: 6,
+          height: 8,
+          fill: bg,
+          stroke: "none",
+          pointerEvents: "none",
+        },
+      },
+      {
+        tagName: "path",
+        selector: "arc",
+        attrs: {
+          d: "M 0 5 A 4 4 0 0 1 10 5",
+          fill: "none",
+          stroke: crossing.color,
+          strokeWidth: 1.5,
+          pointerEvents: "none",
+        },
+      },
+    ],
+    attrs: {
+      mask: { fill: bg, stroke: "none", pointerEvents: "none" },
+      arc: { stroke: crossing.color, strokeWidth: 1.5, fill: "none", pointerEvents: "none" },
+    },
+    ports: { items: [], groups: {} },
+  };
+}

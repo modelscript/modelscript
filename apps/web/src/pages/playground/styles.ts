@@ -72,8 +72,8 @@ export const NavCenter = styled.div`
 
   /* Modernized, sleek engineering workbench segmented control */
   ul[data-size="small"] {
-    background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.04));
-    border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+    background: var(--color-canvas-subtle, var(--ms-bg-soft, rgba(0, 0, 0, 0.04)));
+    border: 1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.12)));
     border-radius: 8px;
     padding: 2px;
     gap: 2px;
@@ -103,14 +103,17 @@ export const NavCenter = styled.div`
 
   /* Inactive button hover */
   button:not([aria-current="true"]):hover {
-    background-color: var(--color-action-list-item-default-hover-bg, rgba(125, 125, 125, 0.08)) !important;
+    background-color: var(
+      --color-action-list-item-default-hover-bg,
+      var(--ms-surface-hover, rgba(125, 125, 125, 0.08))
+    ) !important;
     color: var(--color-fg-default) !important;
   }
 
   /* Active selected button styling with ModelScript brand cyan accent */
   button[aria-current="true"] {
     font-weight: 600 !important;
-    background-color: var(--color-canvas-default, #ffffff) !important;
+    background-color: var(--color-canvas-default, var(--ms-bg, #ffffff)) !important;
     color: var(--ms-brand, #0891b2) !important;
     box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.12),
@@ -122,7 +125,19 @@ export const NavCenter = styled.div`
     fill: var(--ms-brand, #0891b2) !important;
   }
 
-  @media (max-width: 960px) {
+  /* Responsive label collapse: between 600px and 1160px, collapse button text so all 6 tabs fit comfortably */
+  @media (max-width: 1160px) {
+    button {
+      padding: 0 8px !important;
+    }
+    /* Primer renders span.segmentedControl-content > (icon div, div.segmentedControl-text).
+       Hide only the text so icons remain; accessible name comes from aria-label. */
+    .segmentedControl-text {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 600px) {
     display: none;
   }
 `;

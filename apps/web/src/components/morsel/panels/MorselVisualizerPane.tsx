@@ -405,6 +405,95 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
   const [showPalette, setShowPalette] = useState(false);
+  const [currentZoom, setCurrentZoom] = useState(1);
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
+  const zoomMenuRef = useRef<HTMLDivElement>(null);
+  const [isMinimapActive, setIsMinimapActive] = useState(false);
+  const [gridMode, setGridMode] = useState<"doubleMesh" | "dot" | "mesh" | "none">(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("modelscript.diagram.gridMode");
+      if (saved === "doubleMesh" || saved === "dot" || saved === "mesh" || saved === "none") {
+        return saved;
+      }
+    }
+    return "doubleMesh";
+  });
+  const [isSnapActive, setIsSnapActive] = useState(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("modelscript.diagram.snapToGrid");
+      if (saved !== null) {
+        return saved === "true";
+      }
+    }
+    return true;
+  });
+  const [showGridMenu, setShowGridMenu] = useState(false);
+  const gridMenuRef = useRef<HTMLDivElement>(null);
+
+  const toggleMinimapView = () => {
+    const next = diagramEditorRef?.current?.toggleMinimap() ?? !isMinimapActive;
+    setIsMinimapActive(next);
+  };
+
+  const handleGridModeChange = (mode: "doubleMesh" | "dot" | "mesh" | "none") => {
+    setGridMode(mode);
+    diagramEditorRef?.current?.setGridMode(mode);
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("modelscript.diagram.gridMode", mode);
+    }
+  };
+
+  const handleSnapToggle = () => {
+    const next = !isSnapActive;
+    setIsSnapActive(next);
+    diagramEditorRef?.current?.setSnapToGrid(next);
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("modelscript.diagram.snapToGrid", String(next));
+    }
+  };
+
+  useEffect(() => {
+    if (!isDiagramLoading && diagramEditorRef?.current) {
+      diagramEditorRef.current.setGridMode(gridMode);
+      diagramEditorRef.current.setSnapToGrid(isSnapActive);
+    }
+  }, [isDiagramLoading, gridMode, isSnapActive]);
+
+  const handleUndo = () => {
+    if (isSpatialEditPending) isSpatialEditPending.current = false;
+    editorRef?.current?.focus();
+    const prev = editorRef?.current?.getValue();
+    editorRef?.current?.trigger("diagram", "undo", null);
+    if (prev !== editorRef?.current?.getValue()) {
+      setIsDiagramLoading(true);
+    }
+  };
+
+  const handleRedo = () => {
+    if (isSpatialEditPending) isSpatialEditPending.current = false;
+    editorRef?.current?.focus();
+    const prev = editorRef?.current?.getValue();
+    editorRef?.current?.trigger("diagram", "redo", null);
+    if (prev !== editorRef?.current?.getValue()) {
+      setIsDiagramLoading(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!showZoomMenu && !showGridMenu) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (showZoomMenu && zoomMenuRef.current && !zoomMenuRef.current.contains(target)) {
+        setShowZoomMenu(false);
+      }
+      if (showGridMenu && gridMenuRef.current && !gridMenuRef.current.contains(target)) {
+        setShowGridMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [showZoomMenu, showGridMenu]);
+
   const activeLangInfo = getLanguageInfo(dialect);
   const stencils = useMemo(() => getStencilsForDialect(dialect), [dialect]);
   const isPlaygroundRoute =
@@ -496,6 +585,23 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showEmptyState]);
+
+  // Global Escape key shortcut to deselect component and close properties inspector
+  useEffect(() => {
+    if (!selectedComponent) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
+          target.blur();
+          return;
+        }
+        handleSelectComponent(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedComponent, handleSelectComponent]);
 
   const [backendHistorianSessions, setBackendHistorianSessions] = useState<HistorianSession[]>([]);
 
@@ -598,22 +704,14 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 fontWeight: selectedModelIndex === index ? 600 : 400,
                 border: "none",
                 borderBottom:
-                  selectedModelIndex === index
-                    ? colorMode === "dark"
-                      ? "2px solid #58a6ff"
-                      : "2px solid #0969da"
-                    : "2px solid transparent",
+                  selectedModelIndex === index ? "2px solid var(--ms-brand, #0891b2)" : "2px solid transparent",
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 backgroundColor: "transparent",
                 color:
                   selectedModelIndex === index
-                    ? colorMode === "dark"
-                      ? "#e6edf3"
-                      : "#1f2328"
-                    : colorMode === "dark"
-                      ? "#8b949e"
-                      : "#656d76",
+                    ? "var(--ms-text-1, var(--color-fg-default))"
+                    : "var(--ms-text-2, var(--color-fg-muted))",
                 transition: "all 0.15s ease",
                 display: "inline-grid",
                 justifyItems: "center",
@@ -699,7 +797,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     }
                   />
                   <div
-                    style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
+                    style={{ width: 1, height: 18, backgroundColor: "var(--ms-border, var(--color-border-default))" }}
                   />
                 </>
               )}
@@ -780,17 +878,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             fontWeight: isSelected ? 600 : 400,
                             cursor: "pointer",
                             backgroundColor: isSelected
-                              ? colorMode === "dark"
-                                ? "rgba(255,255,255,0.14)"
-                                : "#ffffff"
+                              ? "var(--ms-surface-hover, rgba(125, 125, 125, 0.14))"
                               : "transparent",
                             color: isSelected
-                              ? colorMode === "dark"
-                                ? "#e6edf3"
-                                : "#1f2328"
-                              : colorMode === "dark"
-                                ? "#8b949e"
-                                : "#656d76",
+                              ? "var(--ms-brand, var(--color-accent-fg))"
+                              : "var(--ms-text-2, var(--color-fg-muted))",
                           }}
                         >
                           {dt.label}
@@ -882,7 +974,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               {isPlaygroundRoute && !isNarrow && onAutoLayout && activeLangInfo.supportsDiagram && (
                 <>
                   <div
-                    style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
+                    style={{ width: 1, height: 18, backgroundColor: "var(--ms-border, var(--color-border-default))" }}
                   />
                   <IconButton
                     icon={FlowchartIcon}
@@ -920,7 +1012,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     fontWeight: 700,
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
-                    color: colorMode === "dark" ? "#8b949e" : "#656d76",
+                    color: "var(--ms-text-2, var(--color-fg-muted))",
                     marginRight: 4,
                   }}
                 >
@@ -941,8 +1033,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       fontSize: 11,
                       fontWeight: 500,
                       cursor: "pointer",
-                      backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)",
-                      color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                      backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
+                      color: "var(--ms-text-1, var(--color-fg-default))",
                     }}
                     title={`Insert ${item.label} into ${activeLangInfo.label} document`}
                   >
@@ -994,18 +1086,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     fontSize: 11,
                     fontWeight: isSelected ? 600 : 400,
                     cursor: "pointer",
-                    backgroundColor: isSelected
-                      ? colorMode === "dark"
-                        ? "rgba(6, 182, 212, 0.2)"
-                        : "#ffffff"
-                      : "transparent",
+                    backgroundColor: isSelected ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))" : "transparent",
                     color: isSelected
-                      ? colorMode === "dark"
-                        ? "#22d3ee"
-                        : "#0e7490"
-                      : colorMode === "dark"
-                        ? "#8b949e"
-                        : "#656d76",
+                      ? "var(--ms-brand, var(--color-accent-fg))"
+                      : "var(--ms-text-2, var(--color-fg-muted))",
                   }}
                 >
                   {dt.label}
@@ -1053,7 +1137,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 style={{
                   border: "none",
                   background: "transparent",
-                  color: colorMode === "dark" ? "#58a6ff" : "#0969da",
+                  color: "var(--ms-brand, var(--color-accent-fg))",
                   fontWeight: 600,
                   cursor: "pointer",
                   padding: "0 2px",
@@ -1064,7 +1148,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               </button>
               {drillDownPath.map((seg, idx) => (
                 <React.Fragment key={`${seg}-${idx}`}>
-                  <span style={{ color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>›</span>
+                  <span style={{ color: "var(--ms-text-2, var(--color-fg-muted))" }}>›</span>
                   <button
                     type="button"
                     onClick={() => onDrillUp?.(idx)}
@@ -1073,12 +1157,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       background: "transparent",
                       color:
                         idx === drillDownPath.length - 1
-                          ? colorMode === "dark"
-                            ? "#e6edf3"
-                            : "#1f2328"
-                          : colorMode === "dark"
-                            ? "#58a6ff"
-                            : "#0969da",
+                          ? "var(--ms-text-1, var(--color-fg-default))"
+                          : "var(--ms-brand, var(--color-accent-fg))",
                       fontWeight: idx === drillDownPath.length - 1 ? 600 : 500,
                       cursor: "pointer",
                       padding: "0 2px",
@@ -1145,7 +1225,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         style={{
                           border: "none",
                           background: "transparent",
-                          color: colorMode === "dark" ? "#58a6ff" : "#0969da",
+                          color: "var(--ms-brand, var(--color-accent-fg))",
                           fontWeight: 600,
                           cursor: "pointer",
                           padding: "0 2px",
@@ -1156,7 +1236,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       </button>
                       {drillDownPath.map((seg, idx) => (
                         <React.Fragment key={`${seg}-${idx}`}>
-                          <span style={{ color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>›</span>
+                          <span style={{ color: "var(--ms-text-2, var(--color-fg-muted))" }}>›</span>
                           <button
                             type="button"
                             onClick={() => onDrillUp?.(idx)}
@@ -1165,12 +1245,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                               background: "transparent",
                               color:
                                 idx === drillDownPath.length - 1
-                                  ? colorMode === "dark"
-                                    ? "#e6edf3"
-                                    : "#1f2328"
-                                  : colorMode === "dark"
-                                    ? "#58a6ff"
-                                    : "#0969da",
+                                  ? "var(--ms-text-1, var(--color-fg-default))"
+                                  : "var(--ms-brand, var(--color-accent-fg))",
                               fontWeight: idx === drillDownPath.length - 1 ? 600 : 500,
                               cursor: "pointer",
                               padding: "0 2px",
@@ -1187,7 +1263,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       style={{
                         fontSize: 11,
                         fontWeight: 600,
-                        color: colorMode === "dark" ? "#8b949e" : "#656d76",
+                        color: "var(--ms-text-2, var(--color-fg-muted))",
                         letterSpacing: "0.02em",
                         textTransform: "uppercase",
                         whiteSpace: "nowrap",
@@ -1200,8 +1276,560 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   )}
                 </div>
 
-                {/* Right: Diagram Type Selector, Add Element, Auto-Layout */}
+                {/* Right: History (Undo/Redo), Zoom Controls, Diagram Type Selector, Add Element, Auto-Layout */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  {activeLangInfo.supportsDiagram && (
+                    <>
+                      {/* Undo / Redo */}
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 1,
+                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+                          borderRadius: 6,
+                          border:
+                            colorMode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
+                          padding: 1,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={handleUndo}
+                          aria-label="Undo"
+                          title="Undo (Ctrl+Z)"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            borderRadius: 4,
+                            padding: "3px 6px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 7h7a4 4 0 0 1 4 4v1" />
+                            <path d="M6 4L3 7l3 3" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRedo}
+                          aria-label="Redo"
+                          title="Redo (Ctrl+Y / Cmd+Shift+Z)"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            borderRadius: 4,
+                            padding: "3px 6px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M13 7H6a4 4 0 0 0-4 4v1" />
+                            <path d="M10 4l3 3-3 3" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Zoom Controls */}
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 1,
+                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+                          borderRadius: 6,
+                          border:
+                            colorMode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
+                          padding: 1,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => diagramEditorRef?.current?.zoomOut()}
+                          aria-label="Zoom Out"
+                          title="Zoom Out (Ctrl+-)"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            borderRadius: 4,
+                            padding: "3px 5px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="7" cy="7" r="5" />
+                            <path d="M11 11l4 4" />
+                            <path d="M4.5 7h5" />
+                          </svg>
+                        </button>
+
+                        <div style={{ position: "relative" }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowZoomMenu((v) => !v)}
+                            aria-label={`Zoom level: ${Math.round(currentZoom * 100)}%`}
+                            title="Zoom presets / Reset to 100% (Ctrl+0)"
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              borderRadius: 4,
+                              padding: "2px 5px",
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: "var(--ms-text-1, var(--color-fg-default))",
+                              cursor: "pointer",
+                              minWidth: 38,
+                              textAlign: "center",
+                              fontVariantNumeric: "tabular-nums",
+                            }}
+                          >
+                            {Math.round(currentZoom * 100)}%
+                          </button>
+                          {showZoomMenu && (
+                            <div
+                              ref={zoomMenuRef}
+                              style={{
+                                position: "absolute",
+                                top: "calc(100% + 4px)",
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                zIndex: 100,
+                                minWidth: 120,
+                                padding: 4,
+                                borderRadius: 8,
+                                border:
+                                  colorMode === "dark"
+                                    ? "1px solid rgba(255, 255, 255, 0.15)"
+                                    : "1px solid rgba(0, 0, 0, 0.12)",
+                                backgroundColor: colorMode === "dark" ? "#1f242c" : "#ffffff",
+                                boxShadow:
+                                  colorMode === "dark"
+                                    ? "0 8px 24px rgba(0, 0, 0, 0.45)"
+                                    : "0 8px 24px rgba(0, 0, 0, 0.15)",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 2,
+                              }}
+                            >
+                              {[
+                                { label: "50%", scale: 0.5 },
+                                { label: "75%", scale: 0.75 },
+                                { label: "100%", scale: 1.0 },
+                                { label: "125%", scale: 1.25 },
+                                { label: "150%", scale: 1.5 },
+                                { label: "200%", scale: 2.0 },
+                              ].map((preset) => {
+                                const isCurrent = Math.round(currentZoom * 100) === Math.round(preset.scale * 100);
+                                return (
+                                  <button
+                                    key={preset.scale}
+                                    type="button"
+                                    onClick={() => {
+                                      diagramEditorRef?.current?.zoomTo(preset.scale);
+                                      setShowZoomMenu(false);
+                                    }}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      padding: "4px 8px",
+                                      fontSize: 11,
+                                      fontWeight: isCurrent ? 600 : 400,
+                                      color: isCurrent
+                                        ? "var(--ms-brand, #0891b2)"
+                                        : "var(--ms-text-1, var(--color-fg-default))",
+                                      background: "transparent",
+                                      border: "none",
+                                      borderRadius: 4,
+                                      cursor: "pointer",
+                                      textAlign: "left",
+                                    }}
+                                  >
+                                    <span>{preset.label}</span>
+                                    {isCurrent && <span>✓</span>}
+                                  </button>
+                                );
+                              })}
+                              <div
+                                style={{
+                                  height: 1,
+                                  backgroundColor:
+                                    colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+                                  margin: "2px 0",
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  diagramEditorRef?.current?.zoomToFit();
+                                  setShowZoomMenu(false);
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  padding: "4px 8px",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  color: "var(--ms-text-1, var(--color-fg-default))",
+                                  background: "transparent",
+                                  border: "none",
+                                  borderRadius: 4,
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                              >
+                                Zoom to Fit (Shift+1)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => diagramEditorRef?.current?.zoomIn()}
+                          aria-label="Zoom In"
+                          title="Zoom In (Ctrl+=)"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            borderRadius: 4,
+                            padding: "3px 5px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <circle cx="7" cy="7" r="5" />
+                            <path d="M11 11l4 4" />
+                            <path d="M7 4.5v5" />
+                            <path d="M4.5 7h5" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => diagramEditorRef?.current?.zoomToFit()}
+                          aria-label="Zoom to Fit"
+                          title="Zoom to Fit (Shift+1)"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            borderRadius: 4,
+                            padding: "3px 5px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M2 6V2h4" />
+                            <path d="M14 6V2h-4" />
+                            <path d="M2 10v4h4" />
+                            <path d="M14 10v4h-4" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Rotate & Canvas View Tools */}
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 1,
+                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+                          borderRadius: 6,
+                          border:
+                            colorMode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
+                          padding: 1,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => diagramEditorRef?.current?.rotateSelected(90)}
+                          aria-label="Rotate 90° Clockwise"
+                          title="Rotate 90° Clockwise (R / Shift+R)"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            borderRadius: 4,
+                            padding: "3px 5px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M14 7A6 6 0 1 1 8 2h4" />
+                            <path d="M9 5l3-3-3-3" />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={toggleMinimapView}
+                          aria-label="Toggle Minimap"
+                          title="Toggle Minimap (M)"
+                          style={{
+                            border: "none",
+                            background: isMinimapActive
+                              ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))"
+                              : "transparent",
+                            borderRadius: 4,
+                            padding: "3px 5px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: isMinimapActive
+                              ? "var(--ms-brand, #0891b2)"
+                              : "var(--ms-text-2, var(--color-fg-muted))",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect x="2" y="2" width="12" height="12" rx="2" />
+                            <path d="M9 9h5v5H9z" />
+                            <path d="M2 6h12" />
+                          </svg>
+                        </button>
+
+                        {/* Grid & Snapping Popover */}
+                        <div style={{ position: "relative" }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowGridMenu((v) => !v)}
+                            aria-label="Grid & Snapping Options"
+                            title="Grid & Snapping Options"
+                            style={{
+                              border: "none",
+                              background: showGridMenu
+                                ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))"
+                                : "transparent",
+                              borderRadius: 4,
+                              padding: "3px 5px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: showGridMenu
+                                ? "var(--ms-brand, #0891b2)"
+                                : "var(--ms-text-2, var(--color-fg-muted))",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.75"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M1 5h14M1 11h14M5 1v14M11 1v14" />
+                            </svg>
+                          </button>
+                          {showGridMenu && (
+                            <div
+                              ref={gridMenuRef}
+                              style={{
+                                position: "absolute",
+                                top: "calc(100% + 4px)",
+                                right: 0,
+                                zIndex: 100,
+                                minWidth: 160,
+                                padding: 6,
+                                borderRadius: 8,
+                                border:
+                                  colorMode === "dark"
+                                    ? "1px solid rgba(255, 255, 255, 0.15)"
+                                    : "1px solid rgba(0, 0, 0, 0.12)",
+                                backgroundColor: colorMode === "dark" ? "#1f242c" : "#ffffff",
+                                boxShadow:
+                                  colorMode === "dark"
+                                    ? "0 8px 24px rgba(0, 0, 0, 0.45)"
+                                    : "0 8px 24px rgba(0, 0, 0, 0.15)",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 3,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  color: "var(--ms-text-2, #8b949e)",
+                                  textTransform: "uppercase",
+                                  padding: "2px 6px",
+                                }}
+                              >
+                                Canvas Grid Style
+                              </span>
+                              {[
+                                { label: "Double Mesh (CAD)", mode: "doubleMesh" as const },
+                                { label: "Dot Matrix", mode: "dot" as const },
+                                { label: "Fine Mesh", mode: "mesh" as const },
+                                { label: "Blank (No Grid)", mode: "none" as const },
+                              ].map((item) => (
+                                <button
+                                  key={item.mode}
+                                  type="button"
+                                  onClick={() => {
+                                    handleGridModeChange(item.mode);
+                                    setShowGridMenu(false);
+                                  }}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    padding: "4px 8px",
+                                    fontSize: 11,
+                                    fontWeight: gridMode === item.mode ? 600 : 400,
+                                    color:
+                                      gridMode === item.mode
+                                        ? "var(--ms-brand, #0891b2)"
+                                        : "var(--ms-text-1, var(--color-fg-default))",
+                                    background: "transparent",
+                                    border: "none",
+                                    borderRadius: 4,
+                                    cursor: "pointer",
+                                    textAlign: "left",
+                                  }}
+                                >
+                                  <span>{item.label}</span>
+                                  {gridMode === item.mode && <span>✓</span>}
+                                </button>
+                              ))}
+                              <div
+                                style={{
+                                  height: 1,
+                                  backgroundColor:
+                                    colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+                                  margin: "2px 0",
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleSnapToggle();
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  padding: "4px 8px",
+                                  fontSize: 11,
+                                  fontWeight: isSnapActive ? 600 : 400,
+                                  color: isSnapActive
+                                    ? "var(--ms-brand, #0891b2)"
+                                    : "var(--ms-text-1, var(--color-fg-default))",
+                                  background: "transparent",
+                                  border: "none",
+                                  borderRadius: 4,
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                              >
+                                <span>Snap to Grid</span>
+                                <span style={{ fontSize: 10, fontWeight: 700 }}>{isSnapActive ? "ON" : "OFF"}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          width: 1,
+                          height: 14,
+                          backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+                          margin: "0 1px",
+                        }}
+                      />
+                    </>
+                  )}
                   {activeLangInfo.diagramTypes && activeLangInfo.diagramTypes.length > 1 && setDiagramType && (
                     <div
                       style={{
@@ -1228,17 +1856,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                               fontWeight: isSelected ? 600 : 400,
                               cursor: "pointer",
                               backgroundColor: isSelected
-                                ? colorMode === "dark"
-                                  ? "rgba(6, 182, 212, 0.2)"
-                                  : "#ffffff"
+                                ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))"
                                 : "transparent",
                               color: isSelected
-                                ? colorMode === "dark"
-                                  ? "#22d3ee"
-                                  : "#0e7490"
-                                : colorMode === "dark"
-                                  ? "#8b949e"
-                                  : "#656d76",
+                                ? "var(--ms-brand, var(--color-accent-fg))"
+                                : "var(--ms-text-2, var(--color-fg-muted))",
                             }}
                           >
                             {dt.label}
@@ -1308,7 +1930,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     fontWeight: 700,
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
-                    color: colorMode === "dark" ? "#8b949e" : "#656d76",
+                    color: "var(--ms-text-2, var(--color-fg-muted))",
                     marginRight: 4,
                   }}
                 >
@@ -1329,8 +1951,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       fontSize: 11,
                       fontWeight: 500,
                       cursor: "pointer",
-                      backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)",
-                      color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                      backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
+                      color: "var(--ms-text-1, var(--color-fg-default))",
                     }}
                     title={`Insert ${item.label} into ${activeLangInfo.label} document`}
                   >
@@ -1397,24 +2019,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   onComponentsDelete={async (names) => {
                     enqueueDiagramAction({ type: "deleteComponents", names });
                   }}
-                  onUndo={() => {
-                    if (isSpatialEditPending) isSpatialEditPending.current = false;
-                    editorRef.current?.focus();
-                    const prev = editorRef.current?.getValue();
-                    editorRef.current?.trigger("diagram", "undo", null);
-                    if (prev !== editorRef.current?.getValue()) {
-                      setIsDiagramLoading(true);
-                    }
-                  }}
-                  onRedo={() => {
-                    if (isSpatialEditPending) isSpatialEditPending.current = false;
-                    editorRef.current?.focus();
-                    const prev = editorRef.current?.getValue();
-                    editorRef.current?.trigger("diagram", "redo", null);
-                    if (prev !== editorRef.current?.getValue()) {
-                      setIsDiagramLoading(true);
-                    }
-                  }}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  onZoomChange={setCurrentZoom}
+                  onAutoLayout={onAutoLayout}
                 />
               </Suspense>
 
@@ -1570,7 +2178,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           width: "100%",
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "var(--color-accent-fg, #0969da)";
+                          e.currentTarget.style.borderColor = "var(--ms-brand, var(--color-accent-fg))";
                           e.currentTarget.style.background =
                             colorMode === "dark" ? "rgba(33, 38, 45, 0.9)" : "rgba(255, 255, 255, 1)";
                           e.currentTarget.style.transform = "translateY(-1px)";
@@ -1608,8 +2216,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             letterSpacing: "0.04em",
                             padding: "2px 8px",
                             borderRadius: "12px",
-                            background: colorMode === "dark" ? "rgba(56, 189, 248, 0.12)" : "rgba(9, 105, 218, 0.08)",
-                            color: colorMode === "dark" ? "#38bdf8" : "#0969da",
+                            background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
+                            color: "var(--ms-brand, var(--color-accent-fg))",
                           }}
                         >
                           {ex.category}
@@ -1636,8 +2244,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           padding: "1px 5px",
                           fontSize: "10px",
                           borderRadius: "4px",
-                          background: colorMode === "dark" ? "#21262d" : "#e1e4e8",
-                          border: colorMode === "dark" ? "1px solid #30363d" : "1px solid #d0d7de",
+                          background: "var(--ms-surface-hover, var(--color-canvas-subtle))",
+                          border: "1px solid var(--ms-border, var(--color-border-default))",
                           fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace",
                         }}
                       >

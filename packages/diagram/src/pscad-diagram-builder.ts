@@ -24,6 +24,7 @@ import {
   transmissionLineGlyph,
   wirelessNetLabelGlyph,
 } from "./glyphs.js";
+import { parseMiniXml, type MiniXmlElement } from "./xml-utils.js";
 
 export interface PscadComponentLike {
   id: string;
@@ -420,38 +421,39 @@ function parseSvgXmlToMarkup(
   let isCondActive = true;
 
   // Support cond, rect, line, circle, ellipse, text, path, polygon, and PSCAD v5 <Gfx classid="Graphics.*">
-  const tagRegex = /<(cond|rect|line|circle|ellipse|text|path|polygon|gfx)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-  let match: RegExpExecArray | null;
+  const xmlTree = parseMiniXml(`<root>${svgXml}</root>`);
+  if (!xmlTree) return undefined;
 
-  while ((match = tagRegex.exec(svgXml)) !== null) {
-    let tagName = match[1]!.toLowerCase();
-    const attrsStr = match[2]!;
-    let bodyText = match[3] ?? "";
+  function processElement(elem: MiniXmlElement) {
+    let tagName = elem.tag.toLowerCase();
+    let bodyText = elem.text ?? "";
 
     if (tagName === "cond") {
       const condExpr = bodyText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
       isCondActive = evalPscadCond(condExpr, lowerMap);
-      continue;
+      return;
     }
 
     if (!isCondActive) {
-      continue;
+      return;
     }
 
     const selector = `svgEl_${elemCounter++}`;
 
     const attrMap = new Map<string, string>();
-    const attrRe = /([A-Za-z0-9_-]+)=["']([^"']*)["']/g;
-    let aMatch: RegExpExecArray | null;
-    while ((aMatch = attrRe.exec(attrsStr)) !== null) {
-      attrMap.set(aMatch[1]!.toLowerCase(), aMatch[2]!);
+    for (const [k, v] of Object.entries(elem.attrs)) {
+      attrMap.set(k.toLowerCase(), v as string);
     }
     if (tagName === "gfx") {
       // Also extract child <param name="..." value="..."/> inside <Gfx>
-      const paramRe = /<param\b[^>]*?\bname=["']([^"']+)["'][^>]*?\bvalue=["']([^"']*)["'][^>]*?\/?>/gi;
-      let pMatch: RegExpExecArray | null;
-      while ((pMatch = paramRe.exec(bodyText)) !== null) {
-        attrMap.set(pMatch[1]!.toLowerCase(), pMatch[2]!);
+      for (const pNode of elem.children) {
+        if (pNode.tag.toLowerCase() === "param") {
+          const pName = pNode.attrs["name"] || pNode.attrs["Name"];
+          const pVal = pNode.attrs["value"] || pNode.attrs["Value"] || pNode.text || "";
+          if (pName) {
+            attrMap.set(pName.toLowerCase(), pVal);
+          }
+        }
       }
       const clsId = (attrMap.get("classid") ?? "").toLowerCase();
       if (clsId.includes("rectangle")) {
@@ -488,7 +490,7 @@ function parseSvgXmlToMarkup(
       const ryVal = parseFloat(getAttr("y") || "0") + centerY;
       const rwVal = parseFloat(getAttr("width") || "0");
       const rhVal = parseFloat(getAttr("height") || "0");
-      if (rwVal <= 0 || rhVal <= 0) continue;
+      if (rwVal <= 0 || rhVal <= 0) return;
       if (isMirrored) {
         rxVal = cellWidth - (rxVal + rwVal);
       }
@@ -579,7 +581,7 @@ function parseSvgXmlToMarkup(
       };
     } else if (tagName === "path") {
       const d = getAttr("d");
-      if (!d) continue;
+      if (!d) return;
       const stroke = normalizeStroke(getAttr("stroke"));
       const fillStyle = getAttr("fill-style")?.toLowerCase();
       const fill = fillStyle === "solid" ? normalizeFill(getAttr("fill-fg") || stroke) : "none";
@@ -611,11 +613,11 @@ function parseSvgXmlToMarkup(
         rawText = rawText.replace(/\$Index\s+to\s+\$End/gi, "$Index");
       }
       const textVal = rawText
-        .replace(/%([A-Za-z0-9_]+)/g, (_, p) => {
+        .replace(/%([A-Za-z0-9_]+)/g, (_: string, p: string) => {
           const val = lowerMap.get(p.toLowerCase());
           return val !== undefined ? String(val) : "";
         })
-        .replace(/\$([A-Za-z0-9_]+)/g, (_, p) => {
+        .replace(/\$([A-Za-z0-9_]+)/g, (_: string, p: string) => {
           const val = lowerMap.get(p.toLowerCase());
           if (val !== undefined && cleanDefn?.toLowerCase() === "const" && p.toLowerCase() === "value") {
             const numVal = parseFloat(String(val));
@@ -627,7 +629,7 @@ function parseSvgXmlToMarkup(
         })
         .replace(/,\s*j\s*$/g, "")
         .trim();
-      if (!textVal) continue;
+      if (!textVal) return;
       const stroke = normalizeStroke(getAttr("fill") || getAttr("stroke"));
       const fsAttr = getAttr("font-size")?.toLowerCase();
       const fs = fsAttr === "small" ? 8.5 : fsAttr === "large" ? 10.5 : 8.5;
@@ -668,6 +670,19 @@ function parseSvgXmlToMarkup(
       };
     }
   }
+
+  function walk(nodes: MiniXmlElement[]) {
+    for (const elem of nodes) {
+      const tag = elem.tag.toLowerCase();
+      if (tag === "svg" || tag === "g" || tag === "group") {
+        walk(elem.children);
+      } else {
+        processElement(elem);
+      }
+    }
+  }
+
+  walk(xmlTree.children);
 
   return markup.length > 0 ? { markup, attrs } : undefined;
 }
@@ -2053,9 +2068,9 @@ export function renderPscadSvg(
   const vbW = Math.round(maxX - minX + 2 * padding);
   let vbH = Math.round(maxY - minY + 2 * padding);
 
-  // Prevent ultra-flat ribbon aspect ratios on 1D horizontal schematics
-  if (project.projectType !== "library" && vbH < vbW * 0.34) {
-    const targetH = Math.round(vbW * 0.34);
+  // Prevent ultra-flat ribbon aspect ratios on 1D horizontal schematics without excessive letterboxing
+  if (project.projectType !== "library" && vbH < vbW * 0.22) {
+    const targetH = Math.round(vbW * 0.22);
     const extraH = targetH - vbH;
     vbY = Math.round(vbY - extraH / 2);
     vbH = targetH;

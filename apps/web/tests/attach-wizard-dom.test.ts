@@ -40,7 +40,9 @@ const React = await import("react");
 const { act } = React;
 const { createRoot } = await import("react-dom/client");
 const attach = await import("../src/components/compose/attach/index");
-const { AttachWizard, useAttachFlow, registerAttachProfile, ChoiceCards, vegaPreviewRenderer } = attach;
+const { AttachWizard, useAttachFlow, registerAttachProfile, ChoiceCards, vegaPreviewRenderer, qifPreviewRenderer } =
+  attach;
+const realQifViewer = qifPreviewRenderer.Viewer;
 type AttachFlow = import("../src/components/compose/attach/useAttachFlow").AttachFlow;
 type AttachContext = import("../src/components/compose/attach/types").AttachContext;
 type AttachProfile = import("../src/components/compose/attach/types").AttachProfile<{ ok: boolean; choice?: string }>;
@@ -133,9 +135,15 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   flowRef = { current: null };
+  qifPreviewRenderer.Viewer = ((props: { viewConfig?: Record<string, unknown> }) =>
+    React.createElement("div", {
+      "data-testid": "fake-qif-viewer",
+      "data-code": String(props.viewConfig?.code ?? ""),
+    })) as never;
 });
 
 afterEach(async () => {
+  qifPreviewRenderer.Viewer = realQifViewer;
   await act(async () => root.unmount());
   container.remove();
 });

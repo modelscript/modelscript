@@ -15,6 +15,7 @@ import {
   parseSimulinkTextToSystem,
   renderSimulinkSvg,
 } from "@modelscript/diagram/simulink-diagram-builder";
+import { resolveThumbnailUrls } from "../src/components/artifacts/card/utils.js";
 import { adaptSvgMarkupForTheme } from "../src/components/artifacts/svg-theme.js";
 import {
   extractCadComponents,
@@ -941,6 +942,7 @@ end DoublePendulum3D;
         "CadStepViewer.tsx",
         "VegaViewer.tsx",
         "MermaidViewer.tsx",
+        "PscadViewer.tsx",
         "ArtifactViewCard.tsx",
       ];
 
@@ -1125,9 +1127,13 @@ end DoublePendulum3D;
         path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
         "utf8",
       );
+      const qifCaseSlice = dispatcherSrc.slice(
+        dispatcherSrc.indexOf('case "qif":'),
+        dispatcherSrc.indexOf('case "fortran":'),
+      );
       assert.ok(
-        dispatcherSrc.includes('case "qif":') && dispatcherSrc.includes("<QifViewer"),
-        "ViewerDispatcher must route 'qif' artifacts to dedicated <QifViewer />",
+        qifCaseSlice.includes("<LazyHeavyViewer") && qifCaseSlice.includes("<QifViewer"),
+        "ViewerDispatcher must route 'qif' artifacts to <QifViewer /> wrapped in <LazyHeavyViewer /> for thumbnail-first 3D preview",
       );
 
       const qifViewerSrc = fs.readFileSync(
@@ -1147,6 +1153,187 @@ end DoublePendulum3D;
       assert.ok(
         !qifViewerSrc.includes('width="335px"') && !qifViewerSrc.includes("top={10} left={10}"),
         "QifViewer 3D viewport must use full width without a docked 335px right panel or overlapping top-left layer toggles",
+      );
+      assert.ok(
+        qifViewerSrc.includes("FeatureControlFrame") && qifViewerSrc.includes('data-testid="feature-control-frame"'),
+        "QifViewer must implement ASME Y14.5 / ISO 1101 FeatureControlFrame badges",
+      );
+      assert.ok(
+        qifViewerSrc.includes("whiskerScale") && qifViewerSrc.includes('data-testid="qif-whisker-scale-btn"'),
+        "QifViewer must provide CMM deviation whisker scale magnification controls",
+      );
+      assert.ok(
+        qifViewerSrc.includes("handleTourStep") && qifViewerSrc.includes('data-testid="qif-inspection-tour"'),
+        "QifViewer must provide an out-of-spec inspection tour to focus camera on non-conformances",
+      );
+      assert.ok(
+        qifViewerSrc.includes('data-testid="qif-serial-scrubber"'),
+        "QifViewer must provide multi-run serial number scrubber when multiple part runs exist",
+      );
+      assert.ok(
+        qifViewerSrc.includes('data-testid="qif-active-annotation-card"') &&
+          qifViewerSrc.includes("qif-toggle-annotations-btn") &&
+          qifViewerSrc.includes('data-testid="qif-add-annotation-btn"'),
+        "QifViewer must support 3D spatial review pins, toggle notes, and active annotation review card",
+      );
+    });
+
+    it("verifies URDF robotics viewer and diagram integration in Ansatz", async () => {
+      const dispatcherSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        dispatcherSrc.includes('case "urdf":') &&
+          dispatcherSrc.includes("<UrdfViewer") &&
+          dispatcherSrc.includes('title="URDF Robotics Mechanism"'),
+        "ViewerDispatcher must route 'urdf', 'sdf', and 'xacro' artifacts to dedicated <UrdfViewer />",
+      );
+
+      const urdfViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/UrdfViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        urdfViewerSrc.includes("MultibodyViewport3D") &&
+          urdfViewerSrc.includes("computeForwardKinematics") &&
+          urdfViewerSrc.includes("computeInverseDynamicsRnea") &&
+          urdfViewerSrc.includes("lintUrdfRobot") &&
+          urdfViewerSrc.includes("urdfToModelica"),
+        "UrdfViewer must integrate 3D pose, forward kinematics, RNEA hold torques, linter, and polyglot projections",
+      );
+
+      const polySrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/PolyglotArtifactViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        polySrc.includes('normalizedLang === "urdf"') && polySrc.includes("renderUrdfSvg(robot"),
+        "PolyglotArtifactViewer must dispatch URDF models to renderUrdfSvg",
+      );
+
+      const { parseUrdf, renderUrdfSvg } = await import("@modelscript/urdf");
+      const sampleUrdf = `<?xml version="1.0"?>
+<robot name="test_bot">
+  <link name="base"/>
+  <link name="arm"><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="j1" type="revolute"><parent link="base"/><child link="arm"/><origin xyz="0 0 0.5"/><axis xyz="0 0 1"/></joint>
+</robot>`;
+      const robot = parseUrdf(sampleUrdf);
+      assert.equal(robot.name, "test_bot");
+      assert.equal(robot.links.size, 2);
+      assert.equal(robot.joints.size, 1);
+      const svg = renderUrdfSvg(robot);
+      assert.ok(svg.includes("<svg"), "Must produce valid SVG diagram for URDF");
+    });
+  });
+
+  describe("12. CSV Telemetry Chart / Table Dual Visual Preview Mode", () => {
+    it("synthesizes multi-trace telemetry SVG chart from numeric tabular rows", async () => {
+      const { buildClientTelemetrySvg } = await import("../src/components/artifacts/csv-telemetry-chart.js");
+      const headers = ["time_s", "pack_v", "pack_current_a", "temp_c"];
+      const rows = [
+        [0.0, 712.4, 0.0, 24.2],
+        [60.0, 748.2, 520.0, 26.1],
+        [120.0, 764.5, 545.0, 28.4],
+      ];
+      const svg = buildClientTelemetrySvg(headers, rows, "Battery Pack Telemetry");
+      assert.ok(svg, "Must return valid SVG for numeric data");
+      assert.ok(svg.includes("<svg"), "Must have svg opening tag");
+      assert.ok(svg.includes("CSV TELEMETRY // Battery Pack Telemetry"), "Must include chart title");
+      assert.ok(svg.includes("pack_v") && svg.includes("temp_c"), "Must include series names in legend");
+      assert.ok(svg.includes("<polyline"), "Must include SVG polylines for traces");
+    });
+
+    it("returns null when tabular rows contain no numeric series", async () => {
+      const { buildClientTelemetrySvg } = await import("../src/components/artifacts/csv-telemetry-chart.js");
+      const headers = ["name", "role", "city"];
+      const rows = [
+        ["Alice", "Engineer", "Zurich"],
+        ["Bob", "Scientist", "Munich"],
+      ];
+      const svg = buildClientTelemetrySvg(headers, rows, "String Dataset");
+      assert.strictEqual(svg, null, "Must return null when columns are non-numeric text");
+    });
+
+    it("verifies CsvViewer and ViewerDispatcher dual-mode chart/table integration", () => {
+      const csvViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/CsvViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        csvViewerSrc.includes("ModeToggleGroup") &&
+          csvViewerSrc.includes("ModeToggleButton") &&
+          csvViewerSrc.includes("ChartContainer") &&
+          csvViewerSrc.includes("SwitchToTablePill"),
+        "CsvViewer must implement ModeToggleGroup, ChartContainer, and SwitchToTablePill",
+      );
+      assert.ok(
+        csvViewerSrc.includes('activeMode === "chart"') && csvViewerSrc.includes('activeMode === "table"'),
+        "CsvViewer must support activeMode switching between 'chart' and 'table'",
+      );
+
+      const dispatcherSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        dispatcherSrc.includes("<CsvViewer") && dispatcherSrc.includes("thumbnailUrl={resolvedThumbnailUrl}"),
+        "ViewerDispatcher must pass resolvedThumbnailUrl to CsvViewer",
+      );
+    });
+  });
+
+  describe("13. Canonical Vector SVG Thumbnail Preservation & Raster Stale Capture Shielding", () => {
+    it("prioritizes canonical vector SVG data URI when thumbnail is a stale raster capture", () => {
+      const stepSvg =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450"><g><polygon points="10,10 20,20 30,10" fill="#4e759e"/></g></svg>';
+      const res = resolveThumbnailUrls({
+        svg: stepSvg,
+        thumbnailUrl: "/thumbnails/artifact_35_thumb_1793743835934.webp",
+      });
+
+      assert.ok(
+        res.resolvedThumbnailUrl?.startsWith("data:image/svg+xml;utf8,"),
+        "Must prioritize clean vector SVG data URI over stale /thumbnails/artifact_ raster capture",
+      );
+      assert.ok(res.resolvedThumbnailUrl.includes("%3Cpolygon"), "Data URI must encode the vector geometry");
+    });
+
+    it("normalizes /uploads/ URLs to /api/v1/storage/uploads/ for proper proxying", () => {
+      const res = resolveThumbnailUrls({
+        thumbnailUrl: "/uploads/Gimbal_TVC_Actuator_Assembly.step.thumb.svg",
+      });
+
+      assert.equal(res.resolvedThumbnailUrl, "/api/v1/storage/uploads/Gimbal_TVC_Actuator_Assembly.step.thumb.svg");
+    });
+
+    it("preserves canonical /api/v1/storage/ vector thumbnails directly", () => {
+      const canonicalUrl = "/api/v1/storage/uploads/Gimbal_TVC_Actuator_Assembly.step.thumb.svg";
+      const res = resolveThumbnailUrls({
+        thumbnailUrl: canonicalUrl,
+      });
+
+      assert.equal(res.resolvedThumbnailUrl, canonicalUrl);
+    });
+
+    it("verifies backend thumbnail route preserves official vector SVG thumbnails", () => {
+      const socialRouteSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../../apps/api/src/routes/social.ts"),
+        "utf8",
+      );
+      assert.ok(
+        socialRouteSrc.includes('artifact.thumbnail_url.endsWith(".svg")') &&
+          socialRouteSrc.includes("Official vector SVG thumbnail preserved"),
+        "social.ts must protect existing vector SVG thumbnails from being clobbered by canvas raster uploads",
+      );
+    });
+
+    it("verifies seed reconciliation restores canonical vector SVG thumbnails over stale webp", () => {
+      const seedSrc = fs.readFileSync(path.resolve(import.meta.dirname, "../../../apps/api/src/seed/index.ts"), "utf8");
+      assert.ok(
+        seedSrc.includes("isStaleRasterThumb") && seedSrc.includes('startsWith("/thumbnails/artifact_")'),
+        "seed/index.ts must detect and reconcile stale auto-captured raster webp thumbnails back to canonical vector SVGs",
       );
     });
   });

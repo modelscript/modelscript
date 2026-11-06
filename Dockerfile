@@ -109,6 +109,7 @@ COPY languages/three-mf/package.json languages/three-mf/
 COPY languages/topas/package.json languages/topas/
 COPY languages/touchstone/package.json languages/touchstone/
 COPY languages/urdf/package.json languages/urdf/
+COPY languages/usd/package.json languages/usd/
 COPY languages/verilog-a/package.json languages/verilog-a/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild better-sqlite3
 

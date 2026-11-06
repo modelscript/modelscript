@@ -13,6 +13,7 @@ import {
   reconcilePropertiesDOM,
   rerouteEdgeOrthogonal,
   setDiagramOptions,
+  toggleMinimapHud,
   updateParameterText,
   type ComponentPropertyData,
   type PropertyTabConfig,
@@ -39,6 +40,10 @@ interface DiagramWindowGlobals extends Window {
   __handlePlacementClick?: ((x: number, y: number) => void) | undefined;
   __startPlacement?: ((data: PlacementPayload) => void) | undefined;
   __clearPlacement?: (() => void) | undefined;
+  __toggleWireTool?: ((active?: boolean) => boolean) | undefined;
+  __isWireToolActive?: (() => boolean) | undefined;
+  __cancelWireTool?: (() => void) | undefined;
+  __startInlineNodeEdit?: ((nodeId: string) => void) | undefined;
 }
 
 interface WebviewDiagramAction {
@@ -111,8 +116,13 @@ function escapeHtml(str: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-const SNAP_GRID = 20;
-const snapToGrid = (val: number, step = SNAP_GRID) => Math.round(val / step) * step;
+function getSnapGrid(lang = activeLanguage): number {
+  return isPscadLanguage(lang) ? 18 : 20;
+}
+const snapToGrid = (val: number, step?: number) => {
+  const s = step ?? getSnapGrid();
+  return Math.round(val / s) * s;
+};
 
 // Add global binding for close button
 function initPropertiesClose() {
@@ -548,6 +558,7 @@ function initCanvasHud() {
 
   const setSelectMode = () => {
     isWireModeActive = false;
+    diagramWindow.__toggleWireTool?.(false);
     hudWire?.classList.remove("active");
     hudSelect?.classList.add("active");
     const container = document.getElementById("container");
@@ -556,6 +567,9 @@ function initCanvasHud() {
 
   const setWireMode = () => {
     isWireModeActive = !isWireModeActive;
+    if (diagramWindow.__toggleWireTool) {
+      isWireModeActive = diagramWindow.__toggleWireTool(isWireModeActive);
+    }
     if (isWireModeActive) {
       hudSelect?.classList.remove("active");
       hudWire?.classList.add("active");
@@ -988,7 +1002,7 @@ function initContextMenu() {
       const items: ContextMenuItem[] = [
         {
           label: "Edit Parameters...",
-          shortcut: "Space",
+          shortcut: "Enter",
           action: () => {
             showProperties({ id: node.id, properties: node.getData()?.properties });
             vscode.postMessage({ type: "getProperties", componentName: node.id });
@@ -1278,11 +1292,17 @@ function initKeyboardAccelerators() {
     const isEditingText =
       active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
 
-    // Close Spotlight on Escape
+    // Close Spotlight or Wire Mode on Escape
     const spotlight = document.getElementById("spotlight-omni-insert");
-    if (e.key === "Escape" && spotlight && spotlight.style.display !== "none") {
-      spotlight.style.display = "none";
-      return;
+    if (e.key === "Escape") {
+      if (spotlight && spotlight.style.display !== "none") {
+        spotlight.style.display = "none";
+        return;
+      }
+      if (isWireModeActive) {
+        setSelectMode();
+        return;
+      }
     }
 
     if (isEditingText) return;
@@ -1297,8 +1317,28 @@ function initKeyboardAccelerators() {
       return;
     }
 
+    // Universal Wire mode: W (Modelica, SysML v2, OWL 2, PSCAD)
+    if (e.key.toLowerCase() === "w" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const hudWire = document.getElementById("hud-wire");
+      if (hudWire) {
+        hudWire.click();
+      } else {
+        setWireMode();
+      }
+      return;
+    }
+
     const selectedCells = g.getSelectedCells() as DiagramNodeCell[];
     const selectedNodes = selectedCells.filter((c: DiagramNodeCell) => c.isNode());
+
+    // Inline rename: F2
+    if (e.key === "F2" && selectedNodes.length > 0) {
+      e.preventDefault();
+      const node = selectedNodes[0]!;
+      diagramWindow.__startInlineNodeEdit?.(node.id);
+      return;
+    }
 
     // Rotate: R
     if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) {
@@ -1332,13 +1372,6 @@ function initKeyboardAccelerators() {
 
     const isPscad = isPscadLanguage(activeLanguage);
     if (isPscad) {
-      // Wire mode: W
-      if (e.key.toLowerCase() === "w" && !e.ctrlKey && !e.metaKey) {
-        const hudWire = document.getElementById("hud-wire");
-        hudWire?.click();
-        return;
-      }
-
       // Quick insert Ground: G
       if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey) {
         diagramWindow.__startPlacement?.({ className: "master:ground", classKind: "Component" });
@@ -1396,12 +1429,22 @@ function initKeyboardAccelerators() {
       }
     }
 
-    // Open properties: Space
-    if (e.key === " " && selectedNodes.length > 0) {
+    // Open properties: Enter
+    if (e.key === "Enter" && selectedNodes.length > 0) {
       e.preventDefault();
       const node = selectedNodes[0]!;
       showProperties({ id: node.id, properties: node.getData()?.properties });
       vscode.postMessage({ type: "getProperties", componentName: node.id });
+      return;
+    }
+
+    // Toggle Minimap HUD: M
+    if (e.key.toLowerCase() === "m" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const container = g.container as HTMLElement | undefined;
+      if (container) {
+        toggleMinimapHud(container);
+      }
       return;
     }
   });

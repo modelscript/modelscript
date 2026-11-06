@@ -14,6 +14,7 @@ import type {
   ContainerExtractionResult,
   ContainerToolkit,
 } from "@modelscript/dsl/dsl/language.js";
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { deflateRaw, inflateRaw } from "pako";
 
 // ── In-Memory ZIP Reader ─────────────────────────────────────────────
@@ -263,69 +264,85 @@ export function createZipArchive(
 
 // ── DOM-Free XML Helpers ─────────────────────────────────────────────
 
-function escapeXmlRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function matchesTag(elementName: string, targetTag: string): boolean {
+  const normElem = elementName.toLowerCase();
+  const normTarget = targetTag.toLowerCase();
+  if (normElem === normTarget) return true;
+  if (!normTarget.includes(":") && normElem.endsWith(`:${normTarget}`)) {
+    return true;
+  }
+  return false;
+}
+
+function findFirstElement(root: XmlElement, tag: string): XmlElement | null {
+  if (matchesTag(root.name, tag)) return root;
+  for (const child of root.children) {
+    const found = findFirstElement(child, tag);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findAllElements(root: XmlElement, tag: string): XmlElement[] {
+  const results: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    if (matchesTag(node.name, tag)) {
+      results.push(node);
+    }
+    for (const child of node.children) {
+      walk(child);
+    }
+  }
+  walk(root);
+  return results;
 }
 
 /** Extract attribute value from tag in XML string. */
 export function extractXmlAttr(xml: string, tag: string, attr: string): string | null {
-  const escapedTag = escapeXmlRegExp(tag);
-  const escapedAttr = escapeXmlRegExp(attr);
-  const regex = new RegExp(`<${escapedTag}(?=[\\s/>])[^>]*\\b${escapedAttr}\\s*=\\s*"([^"]*)"`, "i");
-  const match = xml.match(regex);
-  return match?.[1] ?? null;
+  if (!xml) return null;
+  const doc = parseXmlSync(xml);
+  if (!doc.root) return null;
+  const elem = findFirstElement(doc.root, tag);
+  if (!elem) return null;
+  const normAttr = attr.toLowerCase();
+  const found = elem.attributes.find((a) => a.name.toLowerCase() === normAttr);
+  return found?.value ?? null;
 }
 
 /** Extract attribute value from raw attribute string. */
 export function extractXmlAttrFromStr(attrStr: string, attrName: string): string | null {
-  const escapedAttr = escapeXmlRegExp(attrName);
-  const regex = new RegExp(`\\b${escapedAttr}\\s*=\\s*"([^"]*)"`, "i");
-  const match = attrStr.match(regex);
-  return match?.[1] ?? null;
+  if (!attrStr) return null;
+  const doc = parseXmlSync(`<_dummy ${attrStr}/>`);
+  if (!doc.root) return null;
+  const normAttr = attrName.toLowerCase();
+  const found = doc.root.attributes.find((a) => a.name.toLowerCase() === normAttr);
+  return found?.value ?? null;
 }
 
 /** Extract matching XML tags with attribute strings and bodies. */
 export function extractXmlTags(xml: string, tag: string): { attrs: string; body: string }[] {
-  const results: { attrs: string; body: string }[] = [];
-  const escapedTag = escapeXmlRegExp(tag);
-  const regex = new RegExp(
-    `<${escapedTag}(?=[\\s/>])([^>]*?)\\/>|<${escapedTag}(?=[\\s/>])([^>]*)>([\\s\\S]*?)<\\/${escapedTag}\\s*>`,
-    "gi",
-  );
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(xml)) !== null) {
-    const attrs = match[1] ?? match[2] ?? "";
-    const body = match[3] ?? "";
-    results.push({ attrs, body });
-  }
-  return results;
+  if (!xml) return [];
+  const doc = parseXmlSync(xml);
+  if (!doc.root) return [];
+  const elements = findAllElements(doc.root, tag);
+  return elements.map((el) => {
+    const attrs = xml.slice(el.start + 1 + el.name.length, el.openEnd - (el.selfClosing ? 2 : 1)).trim();
+    const body = el.selfClosing ? "" : xml.slice(el.openEnd, el.closeStart);
+    return { attrs, body };
+  });
 }
 
 /** Lightweight XML tag parser into a key-value structure. */
 export function parseXmlSimple(xml: string): Record<string, any> {
   const result: Record<string, any> = {};
-  const start = xml.indexOf("<");
-  if (start === -1) return result;
-  const end = xml.indexOf(">", start);
-  if (end === -1) return result;
+  if (!xml) return result;
+  const doc = parseXmlSync(xml);
+  if (!doc.root) return result;
 
-  let content = xml.slice(start + 1, end).trim();
-  if (content.endsWith("/")) {
-    content = content.slice(0, -1).trim();
+  result["@tag"] = doc.root.name;
+  for (const attr of doc.root.attributes) {
+    result[attr.name] = attr.value;
   }
-  const spaceIdx = content.search(/\s/);
-  const rootTag = spaceIdx === -1 ? content : content.slice(0, spaceIdx);
-  const rootAttrs = spaceIdx === -1 ? "" : content.slice(spaceIdx).trim();
-
-  result["@tag"] = rootTag;
-
-  // Extract attributes
-  const attrRegex = /\b([a-zA-Z0-9_:-]+)\s*=\s*"([^"]*)"/g;
-  let attrMatch: RegExpExecArray | null;
-  while ((attrMatch = attrRegex.exec(rootAttrs)) !== null) {
-    result[attrMatch[1]!] = attrMatch[2];
-  }
-
   return result;
 }
 

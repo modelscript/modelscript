@@ -525,31 +525,19 @@ export class CadViewerPanel extends BaseWebviewPanel {
       const propName = mode === "rotate" ? "rotation" : mode === "scale" ? "scale" : "position";
       const vec =
         mode === "rotate" ? (newRotation ?? [0, 0, 0]) : mode === "scale" ? (newScale ?? [1, 1, 1]) : newPosition;
-      const newCoords = `${vec[0].toFixed(2)}, ${vec[1].toFixed(2)}, ${vec[2].toFixed(2)}`;
 
-      const compRegex = new RegExp(
-        `(${componentName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*?${propName}\\s*=\\s*\\{)[^}]*(\\}[\\s\\S]*?\\))`,
-      );
-      const match = compRegex.exec(source);
-      if (match) {
+      const { patchModelicaCadAnnotation } = await import("@modelscript/cad");
+      const patch = patchModelicaCadAnnotation(source, componentName, {
+        [propName]: vec,
+        bindings: [],
+      });
+
+      if (patch.updatedSource !== source && patch.replacedRange) {
         const edit = new vscode.WorkspaceEdit();
-        const startIdx = match.index + match[1]!.length;
-        const endIdx = startIdx + match[0].length - match[1]!.length - match[2]!.length;
-        const startPos = doc.positionAt(startIdx);
-        const endPos = doc.positionAt(endIdx);
-        edit.replace(doc.uri, new vscode.Range(startPos, endPos), newCoords);
+        const startPos = doc.positionAt(patch.replacedRange.start);
+        const endPos = doc.positionAt(patch.replacedRange.end);
+        edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
         await vscode.workspace.applyEdit(edit);
-      } else {
-        // Insert property into existing CAD(...) annotation if not present yet
-        const cadInsertRegex = new RegExp(`(${componentName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*)(\\))`);
-        const insertMatch = cadInsertRegex.exec(source);
-        if (insertMatch) {
-          const edit = new vscode.WorkspaceEdit();
-          const insertIdx = insertMatch.index + insertMatch[1]!.length;
-          const pos = doc.positionAt(insertIdx);
-          edit.insert(doc.uri, pos, `, ${propName}={${newCoords}}`);
-          await vscode.workspace.applyEdit(edit);
-        }
       }
     }
   }

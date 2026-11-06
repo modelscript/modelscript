@@ -40,12 +40,8 @@ export const modelscriptLanguage = language({
   },
 
   // Bi-directional source writeback for in-place symbol value edits
-  writeback: (ctx) => {
-    const { entry, newValue } = ctx;
-    if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
-      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
-    }
-    return null;
+  writeback: {
+    operators: ["=", ":="],
   },
 
   // IDE and AI agent actions for executing active ModelScript files

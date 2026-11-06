@@ -10,6 +10,7 @@ import {
   HeartIcon,
   LinkIcon,
   PaperclipIcon,
+  PencilIcon,
   QuoteIcon,
   ShareIcon,
   SyncIcon,
@@ -21,7 +22,7 @@ import { buildCitationFromPost } from "../../util/citations";
 import AnimatedCount from "../AnimatedCount";
 import Box from "../Box";
 import { CitationModal } from "../citations/CitationModal";
-import { ActionButton, MenuButton, ViewsLink, formatNumber, parseUtcDate } from "./styles";
+import { ActionButton, MenuButton, ViewsLink, formatFullTimestamp, formatNumber, parseUtcDate } from "./styles";
 
 export interface PostActionsBarProps {
   displayPost: any;
@@ -44,6 +45,7 @@ export interface PostActionsBarProps {
   onCopyLink: (e: React.MouseEvent) => void;
   onDownload: (e: React.MouseEvent) => void;
   onPostAsAttachment: (e: React.MouseEvent) => void;
+  onOpenRevisionModal?: (() => void) | undefined;
   isDetail?: boolean;
 }
 
@@ -68,6 +70,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   onCopyLink,
   onDownload,
   onPostAsAttachment,
+  onOpenRevisionModal,
   isDetail,
 }) => {
   const [showRepostMenu, setShowRepostMenu] = useState(false);
@@ -387,6 +390,11 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   );
 
   if (isDetail) {
+    const wasUpdated =
+      displayPost.updated_at &&
+      displayPost.created_at &&
+      parseUtcDate(displayPost.updated_at).getTime() - parseUtcDate(displayPost.created_at).getTime() > 5000;
+
     return (
       <>
         <Box display="flex" alignItems="center" fontSize="15px" mb={2} mt={3}>
@@ -403,6 +411,43 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
               year: "numeric",
             })}
           </span>
+          {wasUpdated && (
+            <>
+              <span className="handle-text" style={{ margin: "0 4px" }}>
+                ·
+              </span>
+              <Tooltip
+                text={`Edited ${formatFullTimestamp(displayPost.updated_at)}${onOpenRevisionModal ? " · Click to view edit history" : ""}`}
+                direction="n"
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (!onOpenRevisionModal) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onOpenRevisionModal();
+                  }}
+                  className="handle-text"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "3px",
+                    cursor: onOpenRevisionModal ? "pointer" : "default",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    textDecoration: onOpenRevisionModal ? "underline" : "none",
+                    textDecorationStyle: "dotted",
+                  }}
+                  aria-label="View edit history"
+                >
+                  <PencilIcon size={12} />
+                  <span>Edited</span>
+                </button>
+              </Tooltip>
+            </>
+          )}
           <span className="handle-text" style={{ margin: "0 4px" }}>
             ·
           </span>

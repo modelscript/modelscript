@@ -10,6 +10,7 @@
  * reduction and neural operator training.
  */
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import type { SnapshotMatrixDataset } from "./cfd-snapshot-collector.js";
 
 export interface CaeRunResult {
@@ -108,32 +109,54 @@ export class CaeSnapshotExtractor {
     numPoints: number;
     pointData: Record<string, Float32Array>;
   } {
-    const startIdx = vtuXml.indexOf("<PointData");
-    const endTag = "</PointData>";
-    const endIdx = startIdx !== -1 ? vtuXml.indexOf(endTag, startIdx) : -1;
-    if (startIdx === -1 || endIdx === -1) {
+    const xmlDoc = parseXmlSync(vtuXml);
+    if (!xmlDoc.root) {
       throw new Error("No PointData block found in VTU XML content");
     }
 
-    const pointDataStr = vtuXml.slice(startIdx, endIdx + endTag.length);
-    const dataArrayRegex = /<DataArray\b([^>]*)>([^<]*)<\/DataArray>/g;
+    let pointDataEl: XmlElement | null = null;
+    function findPointData(el: XmlElement): void {
+      const tag = el.name.includes(":") ? el.name.slice(el.name.indexOf(":") + 1).toLowerCase() : el.name.toLowerCase();
+      if (tag === "pointdata") {
+        pointDataEl = el;
+        return;
+      }
+      for (const child of el.children) {
+        if (!pointDataEl) findPointData(child);
+      }
+    }
+    findPointData(xmlDoc.root);
+
+    if (!pointDataEl) {
+      throw new Error("No PointData block found in VTU XML content");
+    }
+
     const pointData: Record<string, Float32Array> = {};
     let numPoints = 0;
 
-    let match: RegExpExecArray | null;
-    while ((match = dataArrayRegex.exec(pointDataStr)) !== null) {
-      const attrs = match[1]!;
-      const nameMatch = attrs.match(/Name="([^"]+)"/);
-      if (!nameMatch) continue;
-      const name = nameMatch[1]!;
-      const textValues = match[2]!.trim().split(/\s+/);
-      const floats = new Float32Array(textValues.length);
-      for (let k = 0; k < textValues.length; k++) {
-        floats[k] = parseFloat(textValues[k]!) || 0.0;
-      }
-      pointData[name] = floats;
-      if (numPoints === 0) {
-        numPoints = floats.length;
+    for (const child of (pointDataEl as XmlElement).children) {
+      const tag = child.name.includes(":")
+        ? child.name.slice(child.name.indexOf(":") + 1).toLowerCase()
+        : child.name.toLowerCase();
+      if (tag === "dataarray") {
+        const nameAttr = child.attributes.find((a) => a.name.toLowerCase() === "name");
+        if (!nameAttr || !nameAttr.value) continue;
+        const name = nameAttr.value;
+
+        const text = child.text.trim();
+        if (!text) {
+          pointData[name] = new Float32Array(0);
+          continue;
+        }
+        const textValues = text.split(/\s+/);
+        const floats = new Float32Array(textValues.length);
+        for (let k = 0; k < textValues.length; k++) {
+          floats[k] = parseFloat(textValues[k]!) || 0.0;
+        }
+        pointData[name] = floats;
+        if (numPoints === 0) {
+          numPoints = floats.length;
+        }
       }
     }
 

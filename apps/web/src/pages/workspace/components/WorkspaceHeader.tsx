@@ -202,7 +202,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
                 Web IDE
               </Button>
 
-              {openCompose && project.toLowerCase() !== "activity" && project.toLowerCase() !== "activity.git" && (
+              {openCompose && (
                 <Button
                   leadingVisual={ShareIcon}
                   size="small"
@@ -233,17 +233,15 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
                 {watching ? "Watching" : "Watch"}
               </Button>
 
-              {project.toLowerCase() !== "activity" && project.toLowerCase() !== "activity.git" && (
-                <Button
-                  leadingVisual={RepoForkedIcon}
-                  size="small"
-                  variant={forked ? "primary" : "default"}
-                  onClick={handleFork}
-                  trailingVisual={() => <CounterLabel>{displayForks.toLocaleString()}</CounterLabel>}
-                >
-                  {forked ? "Forked" : "Fork"}
-                </Button>
-              )}
+              <Button
+                leadingVisual={RepoForkedIcon}
+                size="small"
+                variant={forked ? "primary" : "default"}
+                onClick={handleFork}
+                trailingVisual={() => <CounterLabel>{displayForks.toLocaleString()}</CounterLabel>}
+              >
+                {forked ? "Forked" : "Fork"}
+              </Button>
 
               <Button
                 leadingVisual={starred ? StarFillIcon : StarIcon}

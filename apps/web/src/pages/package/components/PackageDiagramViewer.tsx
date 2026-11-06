@@ -66,6 +66,7 @@ export const PackageDiagramViewer: React.FC<PackageDiagramViewerProps> = ({
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [detectedRatio, setDetectedRatio] = useState<string | null>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -90,6 +91,7 @@ export const PackageDiagramViewer: React.FC<PackageDiagramViewerProps> = ({
     setZoom(initialZoom);
     setPan({ x: 0, y: 0 });
     setInternalLoaded(false);
+    setDetectedRatio(null);
   }, [src, initialZoom]);
 
   // Handle Fullscreen escape key and lock body scrolling
@@ -273,7 +275,11 @@ export const PackageDiagramViewer: React.FC<PackageDiagramViewerProps> = ({
         ...(isFullScreen ? undefined : style),
         ...(minHeight !== undefined && !isFullScreen ? { minHeight } : undefined),
         ...(maxHeight !== undefined && !isFullScreen ? { maxHeight } : undefined),
-        ...(aspectRatio !== undefined && !isFullScreen ? { aspectRatio } : undefined),
+        ...(aspectRatio !== undefined && !isFullScreen
+          ? { aspectRatio }
+          : detectedRatio !== null && !isFullScreen
+            ? { aspectRatio: detectedRatio }
+            : undefined),
       }}
     >
       {!isLoaded && !isError && (
@@ -342,9 +348,24 @@ export const PackageDiagramViewer: React.FC<PackageDiagramViewerProps> = ({
           alt={alt}
           width="100%"
           height="100%"
+          disableStrokeOverride={true}
           onLoad={() => {
             setInternalLoaded(true);
             setLoaded?.(true);
+            const svgEl = viewportRef.current?.querySelector("svg");
+            if (svgEl) {
+              const vb = svgEl.getAttribute("viewBox");
+              if (vb) {
+                const parts = vb
+                  .trim()
+                  .split(/[\s,]+/)
+                  .map(Number);
+                if (parts.length === 4 && parts[2] && parts[3] && parts[2] > 0 && parts[3] > 0) {
+                  const r = Math.round((parts[2] / parts[3]) * 100) / 100;
+                  setDetectedRatio(`${r} / 1`);
+                }
+              }
+            }
             onLoad?.();
           }}
           onError={(err) => {

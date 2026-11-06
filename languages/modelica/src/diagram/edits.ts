@@ -6,7 +6,7 @@
 
 type ModelicaClassInstance = any;
 import { CstUnparser } from "@modelscript/dsl";
-import { Range, TextEdit } from "vscode-languageserver";
+import { Position, Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
 import { Cst } from "../../src-gen/bindings.js";
@@ -497,7 +497,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
     }
   } else {
     // No annotation clause exists, insert a new one before the semi-colon
-    const semiIndex = text.lastIndexOf(";");
+    const semiIndex = findStatementSemicolon(text);
     if (semiIndex !== -1) {
       const insert = ` annotation(${newPlacement})`;
       const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
@@ -527,6 +527,13 @@ function getPlacementEditIfMissing(
   const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
   const compRange = getNodeRange(abstractNode);
   if (!compRange) return null;
+
+  // Direct CST check: check if annotation clause has Placement modification
+  const annotationClause = getAnnotationClauseNode(abstractNode);
+  if (annotationClause) {
+    const placementNode = findDescendantModification(annotationClause, "Placement");
+    if (placementNode) return null;
+  }
 
   const { startLine, startCol, endLine, endCol } = compRange;
   const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
@@ -830,8 +837,17 @@ export function computeEdgePointEdits(
     const range = Range.create(startLine, startCol, endLine, endCol);
     const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
 
-    // Validate it's actually a connect equation
-    if (!text.match(/^\s*connect\s*\(/)) continue;
+    // Validate it's actually a connect equation using CST / semantic info first
+    const isConnect =
+      Cst.ConnectEquation.is(eqNode) ||
+      eqNode.type === "connect_equation" ||
+      (eqNode.type === "some_equation" &&
+        (eqNode.children?.some((c: any) => Cst.ConnectEquation.is(c) || c.type === "connect_equation") ||
+          eqNode.connectEquation != null)) ||
+      Boolean(connectEq?.lhs && connectEq?.rhs) ||
+      Boolean(connectEq?.componentReference1 && connectEq?.componentReference2);
+
+    if (!isConnect && !text.match(/^\s*connect\s*\(/)) continue;
 
     const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
     const newPointsCore = `points=${pointsStr}`;
@@ -1018,16 +1034,122 @@ export function computeEdgePointEdits(
 
 // ── Helpers ──
 
-function findMatchingParen(text: string, openPos: number): number {
+export function findMatchingParen(text: string, openPos: number): number {
   let nesting = 0;
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
   for (let i = openPos; i < text.length; i++) {
-    if (text[i] === "(") nesting++;
-    else if (text[i] === ")") {
+    const ch = text[i]!;
+    const next = i + 1 < text.length ? text[i + 1]! : "";
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      escaped = false;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "(") nesting++;
+    else if (ch === ")") {
       if (nesting === 0) return i;
       nesting--;
     }
   }
   return -1;
+}
+
+export function findStatementSemicolon(text: string): number {
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let lastSemi = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    const next = i + 1 < text.length ? text[i + 1]! : "";
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      escaped = false;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+
+    if (ch === ";") {
+      lastSemi = i;
+    }
+  }
+  return lastSemi;
 }
 
 function getTextInRange(lines: string[], startLine: number, startCol: number, endLine: number, endCol: number): string {
@@ -1588,13 +1710,48 @@ export function computeComponentInsert(
   const modelStartLine = classRange ? classRange.startLine : 0;
   const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
 
-  const keywords = ["protected", "initial equation", "initial algorithm", "equation", "algorithm", "end"];
   let insertLine = -1;
-  for (let i = modelStartLine; i <= modelEndLine; i++) {
-    const line = lines[i]!.trim();
-    if (keywords.some((kw) => line.startsWith(kw))) {
-      insertLine = i;
-      break;
+
+  if (astNode) {
+    const classSpecifier =
+      astNode.classSpecifier ??
+      astNode.children?.find((c: any) => c.type === "class_specifier" || c.type === "composition") ??
+      astNode;
+    const composition =
+      classSpecifier.composition ??
+      classSpecifier.children?.find((c: any) => c.type === "composition") ??
+      classSpecifier;
+    const sections = composition.children || composition.sections || [];
+
+    for (const section of sections) {
+      const type = section.type || "";
+      if (
+        Cst.EquationSection.is(section) ||
+        type === "equation_section" ||
+        type === "EquationSection" ||
+        Cst.AlgorithmSection.is(section) ||
+        type === "algorithm_section" ||
+        type === "AlgorithmSection" ||
+        type.includes("protected") ||
+        section.isProtected === true
+      ) {
+        const r = getNodeRange(section);
+        if (r && r.startLine >= modelStartLine) {
+          insertLine = r.startLine;
+          break;
+        }
+      }
+    }
+  }
+
+  if (insertLine === -1) {
+    const keywords = ["protected", "initial equation", "initial algorithm", "equation", "algorithm", "end"];
+    for (let i = modelStartLine; i <= modelEndLine; i++) {
+      const line = lines[i]!.trim();
+      if (keywords.some((kw) => line.startsWith(kw))) {
+        insertLine = i;
+        break;
+      }
     }
   }
 
@@ -1623,6 +1780,165 @@ export function computeComponentInsert(
       } else {
         return [TextEdit.insert({ line: endLineNumber, character: 0 }, componentDecl)];
       }
+    }
+  }
+
+  return [];
+}
+
+// ── Diagram Coordinate System Edits (Bounds & Grid) ──
+
+export interface CoordinateSystemEditOptions {
+  extent?: [[number, number], [number, number]];
+  grid?: [number, number];
+  preserveAspectRatio?: boolean;
+  initialScale?: number;
+}
+
+/**
+ * Computes TextEdits to update, insert, or resize the diagram coordinate system
+ * (extent, grid, aspect ratio, initialScale) in the Modelica source text.
+ */
+export function computeCoordinateSystemEdits(
+  docText: string,
+  classInstance: ModelicaClassInstance,
+  options: CoordinateSystemEditOptions,
+): TextEdit[] {
+  const lines = docText.split("\n");
+  const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;
+  const classRange = getNodeRange(astNode);
+  const modelStartLine = classRange ? classRange.startLine : 0;
+  const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
+
+  // Build the new coordinateSystem(...) arguments string
+  const formatCoordSys = (existing?: {
+    extent?: [[number, number], [number, number]];
+    grid?: [number, number];
+    preserveAspectRatio?: boolean;
+    initialScale?: number;
+  }) => {
+    const preserveAspectRatio =
+      options.preserveAspectRatio !== undefined ? options.preserveAspectRatio : (existing?.preserveAspectRatio ?? true);
+    const extent = options.extent ??
+      existing?.extent ?? [
+        [-100, -100],
+        [100, 100],
+      ];
+    const grid = options.grid ?? existing?.grid;
+    const initialScale = options.initialScale ?? existing?.initialScale;
+
+    const parts: string[] = [];
+    if (preserveAspectRatio !== undefined) {
+      parts.push(`preserveAspectRatio = ${preserveAspectRatio}`);
+    }
+    if (extent) {
+      parts.push(`extent = {{${extent[0][0]}, ${extent[0][1]}}, {${extent[1][0]}, ${extent[1][1]}}}`);
+    }
+    if (grid) {
+      parts.push(`grid = {${grid[0]}, ${grid[1]}}`);
+    }
+    if (initialScale !== undefined) {
+      parts.push(`initialScale = ${initialScale}`);
+    }
+    return `coordinateSystem(${parts.join(", ")})`;
+  };
+
+  const existingDiagram: any =
+    typeof classInstance.annotation === "function" ? classInstance.annotation("Diagram") : null;
+  const existingCoordSys = existingDiagram?.coordinateSystem;
+  const newCoordSysCall = formatCoordSys(existingCoordSys);
+
+  const modelLines = lines.slice(modelStartLine, modelEndLine + 1);
+  const modelText = modelLines.join("\n");
+
+  const lastEndIdx = modelText.lastIndexOf("end");
+  const searchArea = lastEndIdx !== -1 ? modelText.substring(0, lastEndIdx) : modelText;
+
+  // 1. Look for existing Diagram(...)
+  const diagramRegex = /Diagram\s*\(/;
+  const diagramMatch = searchArea.match(diagramRegex);
+
+  if (diagramMatch && diagramMatch.index !== undefined) {
+    const diagStart = diagramMatch.index;
+    const diagOpenParen = diagStart + diagramMatch[0].length - 1;
+    const diagEnd = findMatchingParen(searchArea, diagOpenParen);
+    if (diagEnd !== -1) {
+      const diagContent = searchArea.substring(diagOpenParen + 1, diagEnd);
+      const coordSysRegex = /coordinateSystem\s*\(/;
+      const csMatch = diagContent.match(coordSysRegex);
+      if (csMatch && csMatch.index !== undefined) {
+        const csStart = csMatch.index;
+        const csOpenParen = csStart + csMatch[0].length - 1;
+        const csEnd = findMatchingParen(diagContent, csOpenParen);
+        if (csEnd !== -1) {
+          // Replace coordinateSystem(...) call
+          const absCsStart = diagOpenParen + 1 + csStart;
+          const absCsEnd = diagOpenParen + 1 + csEnd;
+
+          const beforeText = modelText.substring(0, absCsStart);
+          const startLineOffset = beforeText.split("\n").length - 1;
+          const startCol = beforeText.length - beforeText.lastIndexOf("\n") - 1;
+
+          const toEndText = modelText.substring(0, absCsEnd + 1);
+          const endLineOffset = toEndText.split("\n").length - 1;
+          const endCol = toEndText.length - toEndText.lastIndexOf("\n") - 1;
+
+          return [
+            TextEdit.replace(
+              Range.create(modelStartLine + startLineOffset, startCol, modelStartLine + endLineOffset, endCol),
+              newCoordSysCall,
+            ),
+          ];
+        }
+      } else {
+        // Diagram exists without coordinateSystem. Insert it as first element.
+        const absInsertPos = diagOpenParen + 1;
+        const beforeText = modelText.substring(0, absInsertPos);
+        const startLineOffset = beforeText.split("\n").length - 1;
+        const startCol = beforeText.length - beforeText.lastIndexOf("\n") - 1;
+
+        const prefix = diagContent.trim().length > 0 ? `${newCoordSysCall}, ` : newCoordSysCall;
+        return [TextEdit.insert(Position.create(modelStartLine + startLineOffset, startCol), prefix)];
+      }
+    }
+  }
+
+  // 2. Check if there is an existing class-level annotation clause without Diagram(...)
+  const annMatches = [...searchArea.matchAll(/annotation\s*\(/g)];
+  if (annMatches.length > 0) {
+    const lastAnn = annMatches[annMatches.length - 1]!;
+    const annIdx = lastAnn.index!;
+    const annOpenParen = annIdx + lastAnn[0].length - 1;
+    const annEnd = findMatchingParen(searchArea, annOpenParen);
+    if (annEnd !== -1) {
+      const afterAnn = searchArea.substring(annEnd + 1).trim();
+      if (afterAnn === "" || afterAnn === ";") {
+        const annContent = searchArea.substring(annOpenParen + 1, annEnd);
+        const absInsertPos = annOpenParen + 1;
+        const beforeText = modelText.substring(0, absInsertPos);
+        const startLineOffset = beforeText.split("\n").length - 1;
+        const startCol = beforeText.length - beforeText.lastIndexOf("\n") - 1;
+
+        const toInsert = annContent.trim().length > 0 ? `Diagram(${newCoordSysCall}), ` : `Diagram(${newCoordSysCall})`;
+        return [TextEdit.insert(Position.create(modelStartLine + startLineOffset, startCol), toInsert)];
+      }
+    }
+  }
+
+  // 3. Fallback: Insert a new class-level annotation before 'end <ClassName>;'
+  if (lastEndIdx !== -1) {
+    const beforeEnd = modelText.substring(0, lastEndIdx);
+    const linesBefore = beforeEnd.split("\n").length - 1;
+    const endLineNumber = modelStartLine + linesBefore;
+    const endLineContent = lines[endLineNumber]!;
+    const endCol = endLineContent.lastIndexOf("end");
+    const indentation = "  ";
+    const newClause = `${indentation}annotation(Diagram(${newCoordSysCall}));\n`;
+
+    if (endLineContent.substring(0, endCol).trim() === "") {
+      return [TextEdit.insert(Position.create(endLineNumber, 0), newClause)];
+    } else {
+      return [TextEdit.insert(Position.create(endLineNumber, endCol), `\n${newClause}`)];
     }
   }
 

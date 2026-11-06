@@ -204,115 +204,124 @@ export function registerSimulationCommands(
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.action.simulate", async (args?: SimulationCommandArg) => {
-      return vscode.commands.executeCommand("modelscript.modelica.simulate", args);
+    vscode.commands.registerCommand("modelscript.action.simulate", async (...args: unknown[]) => {
+      return vscode.commands.executeCommand("modelscript.modelica.simulate", ...args);
     }),
 
-    vscode.commands.registerCommand("modelscript.modelica.simulate", async (args?: SimulationCommandArg) => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      let uri = editor?.document.uri.toString();
-      let inputs: ModelicaActionInputs = {};
-      if (args && typeof args === "object") {
-        if ("scheme" in args && "path" in args && args.scheme && args.path) {
-          uri = args.toString();
-        } else if (typeof args.toString === "function" && args.scheme) {
-          uri = args.toString();
-        } else {
-          inputs = { ...args };
+    vscode.commands.registerCommand(
+      "modelscript.modelica.simulate",
+      async (args?: SimulationCommandArg, targetName?: string) => {
+        if (!client) return;
+        const editor = vscode.window.activeTextEditor;
+        let uri = editor?.document.uri.toString();
+        let inputs: ModelicaActionInputs = {};
+        if (typeof targetName === "string" && targetName.trim()) {
+          inputs.name = targetName.trim();
         }
-      }
-      if (!uri && editor?.document) {
-        uri = editor.document.uri.toString();
-      }
-      if (!uri) {
-        const candidate =
-          vscode.window.visibleTextEditors.find(
-            (e) =>
-              e.document.uri.scheme !== "output" &&
-              (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
-          )?.document ??
-          vscode.workspace.textDocuments.find(
-            (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
-          );
-        if (candidate) {
-          uri = candidate.uri.toString();
-          if (!inputs.documentText) inputs.documentText = candidate.getText();
-          if (!inputs.name) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) {
-              inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+        if (args && typeof args === "object") {
+          if ("scheme" in args && "path" in args && args.scheme && args.path) {
+            uri = args.toString();
+          } else if (typeof args.toString === "function" && args.scheme) {
+            uri = args.toString();
+          } else {
+            inputs = { ...inputs, ...args };
+          }
+        } else if (typeof args === "string") {
+          uri = args;
+        }
+        if (!uri && editor?.document) {
+          uri = editor.document.uri.toString();
+        }
+        if (!uri) {
+          const candidate =
+            vscode.window.visibleTextEditors.find(
+              (e) =>
+                e.document.uri.scheme !== "output" &&
+                (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
+            )?.document ??
+            vscode.workspace.textDocuments.find(
+              (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
+            );
+          if (candidate) {
+            uri = candidate.uri.toString();
+            if (!inputs.documentText) inputs.documentText = candidate.getText();
+            if (!inputs.name) {
+              const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+              const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+              if (m) {
+                inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+              }
             }
           }
         }
-      }
-      if (!inputs.documentText && editor?.document) {
-        inputs.documentText = editor.document.getText();
-      }
-      if (inputs.documentText && !inputs.name) {
-        const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-        const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-        if (m) {
-          inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+        if (!inputs.documentText && editor?.document) {
+          inputs.documentText = editor.document.getText();
         }
-      }
+        if (inputs.documentText && !inputs.name) {
+          const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+          if (m) {
+            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+          }
+        }
 
-      const simDefaults = getSimulationDefaults();
-      if (inputs.stopTime === undefined) inputs.stopTime = simDefaults.stopTime;
-      if (inputs.intervals === undefined) inputs.intervals = simDefaults.intervals;
-      if (inputs.tolerance === undefined) inputs.tolerance = simDefaults.tolerance;
-      if (inputs.solver === undefined) inputs.solver = simDefaults.solver;
+        const simDefaults = getSimulationDefaults();
+        if (inputs.stopTime === undefined) inputs.stopTime = simDefaults.stopTime;
+        if (inputs.intervals === undefined) inputs.intervals = simDefaults.intervals;
+        if (inputs.tolerance === undefined) inputs.tolerance = simDefaults.tolerance;
+        if (inputs.solver === undefined) inputs.solver = simDefaults.solver;
 
-      try {
-        const lang = editor?.document.languageId ?? "modelica";
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: `Simulating ${inputs.name || "Model"}...`,
-            cancellable: false,
-          },
-          async () => {
-            const res = await client!.sendRequest<ModelicaSimulateResponse>("modelscript/executeAction", {
-              actionId: "simulate",
-              languageId: lang,
-              uri,
-              inputs,
-            });
+        try {
+          const lang = editor?.document.languageId ?? "modelica";
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: `Simulating ${inputs.name || "Model"}...`,
+              cancellable: false,
+            },
+            async () => {
+              const res = await client!.sendRequest<ModelicaSimulateResponse>("modelscript/executeAction", {
+                actionId: "simulate",
+                languageId: lang,
+                uri,
+                inputs,
+              });
 
-            if (res && res.t && res.t.length > 0) {
-              SimulationPanel.createOrShowWithData(
-                context.extensionUri,
-                {
-                  t: res.t,
-                  states: res.states || [],
-                  y: res.y || [],
-                  experiment: res.experiment ?? {
-                    startTime: 0,
-                    stopTime: simDefaults.stopTime,
-                    interval: simDefaults.stopTime / Math.max(1, simDefaults.intervals),
-                    tolerance: simDefaults.tolerance,
-                    solver: simDefaults.solver,
+              if (res && res.t && res.t.length > 0) {
+                SimulationPanel.createOrShowWithData(
+                  context.extensionUri,
+                  {
+                    t: res.t,
+                    states: res.states || [],
+                    y: res.y || [],
+                    experiment: res.experiment ?? {
+                      startTime: 0,
+                      stopTime: simDefaults.stopTime,
+                      interval: simDefaults.stopTime / Math.max(1, simDefaults.intervals),
+                      tolerance: simDefaults.tolerance,
+                      solver: simDefaults.solver,
+                    },
+                    parameters: res.parameters ?? [],
+                    telemetry: res.telemetry,
+                    projectName: res.projectName ?? inputs.name,
                   },
-                  parameters: res.parameters ?? [],
-                  telemetry: res.telemetry,
-                  projectName: res.projectName ?? inputs.name,
-                },
-                uri ?? "",
-                client,
-              );
-            } else if (res && res.error) {
-              vscode.window.showErrorMessage(`Simulation failed: ${res.error}`);
-              outputChannel.appendLine(`[Simulation Error] ${res.error}`);
-              outputChannel.show(true);
-            }
-          },
-        );
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        vscode.window.showErrorMessage(`Simulation failed: ${msg}`);
-      }
-    }),
+                  uri ?? "",
+                  client,
+                  inputs.name,
+                );
+              } else if (res && res.error) {
+                vscode.window.showErrorMessage(`Simulation failed: ${res.error}`);
+                outputChannel.appendLine(`[Simulation Error] ${res.error}`);
+                outputChannel.show(true);
+              }
+            },
+          );
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          vscode.window.showErrorMessage(`Simulation failed: ${msg}`);
+        }
+      },
+    ),
 
     vscode.commands.registerCommand(
       "modelscript.openLineGeometryEditor",

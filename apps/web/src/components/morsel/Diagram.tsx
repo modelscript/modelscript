@@ -6,8 +6,13 @@ import {
   getGraph,
   initGraph,
   isEphemeralDiagramNode,
+  isMinimapVisible,
   renderDiagram,
+  setDiagramGrid,
   setDiagramOptions,
+  setDiagramSnap,
+  toggleMinimap,
+  type DiagramGridMode,
 } from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -16,11 +21,22 @@ import { movePlacementGhost } from "./placement";
 export interface DiagramEditorHandle {
   fitContent: () => void;
   layout: () => void;
+  zoomIn: (factor?: number) => number;
+  zoomOut: (factor?: number) => number;
+  zoomTo: (scale: number) => void;
+  zoomToFit: () => void;
+  getZoom: () => number;
+  rotateSelected: (deltaDegrees?: number) => void;
+  toggleMinimap: () => boolean;
+  isMinimapOpen: () => boolean;
+  setGridMode: (mode: DiagramGridMode) => void;
+  setSnapToGrid: (enabled: boolean) => void;
 }
 
 interface DiagramEditorProps {
   diagramData: any | null;
   diagramClassName?: string | null | undefined;
+  onZoomChange?: ((zoom: number) => void) | undefined;
   onSelect?: ((componentName: string | null) => void) | undefined;
   onDrop?: ((className: string, x: number, y: number, iconSvg?: string | null) => void) | undefined;
   onConnect?: ((source: string, target: string, points?: { x: number; y: number }[]) => void) | undefined;
@@ -55,6 +71,7 @@ interface DiagramEditorProps {
   onComponentsDelete?: ((names: string[]) => void) | undefined;
   onUndo?: (() => void) | undefined;
   onRedo?: (() => void) | undefined;
+  onAutoLayout?: (() => void) | undefined;
   selectedName?: string | null | undefined;
   theme: Theme;
   isLoading?: boolean | undefined;
@@ -90,11 +107,19 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     propsRef.current.onNodeDoubleClick?.(node.id, data);
   }).current;
 
+  const handleScale = useRef(({ sx }: any) => {
+    if (typeof sx === "number" && !isNaN(sx)) {
+      propsRef.current.onZoomChange?.(Math.round(sx * 100) / 100);
+    }
+  }).current;
+
   const attachGraphListeners = () => {
     const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
     if (g && typeof g.on === "function") {
       g.off?.("node:dblclick", handleNodeDblClick);
       g.on("node:dblclick", handleNodeDblClick);
+      g.off?.("scale", handleScale);
+      g.on("scale", handleScale);
     }
   };
 
@@ -152,6 +177,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       },
       onUndo: () => propsRef.current.onUndo?.(),
       onRedo: () => propsRef.current.onRedo?.(),
+      onAutoLayout: () => propsRef.current.onAutoLayout?.(),
     });
     attachGraphListeners();
   };
@@ -180,6 +206,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           } else {
             g.zoomToFit({ maxScale: 1, padding: 20 });
           }
+          if (typeof (g as any).zoom === "function") {
+            propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
+          }
         } catch {
           // ignore if zoom fails before layout
         }
@@ -189,6 +218,86 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (typeof window !== "undefined") {
         window.postMessage({ type: "autoLayout" }, "*");
       }
+    },
+    zoomIn: (factor = 0.15) => {
+      const g = getGraph(containerRef.current) as any;
+      if (g && typeof g.zoom === "function") {
+        const current = g.zoom();
+        const next = Math.min(3.0, Math.round((current + factor) * 100) / 100);
+        g.zoomTo(next);
+        propsRef.current.onZoomChange?.(next);
+        return next;
+      }
+      return 1;
+    },
+    zoomOut: (factor = 0.15) => {
+      const g = getGraph(containerRef.current) as any;
+      if (g && typeof g.zoom === "function") {
+        const current = g.zoom();
+        const next = Math.max(0.2, Math.round((current - factor) * 100) / 100);
+        g.zoomTo(next);
+        propsRef.current.onZoomChange?.(next);
+        return next;
+      }
+      return 1;
+    },
+    zoomTo: (scale: number) => {
+      const g = getGraph(containerRef.current) as any;
+      if (g && typeof g.zoomTo === "function") {
+        const clamped = Math.max(0.2, Math.min(3.0, scale));
+        g.zoomTo(clamped);
+        propsRef.current.onZoomChange?.(clamped);
+      }
+    },
+    zoomToFit: () => {
+      const container = containerRef.current;
+      const g = getGraph(container) as any;
+      if (g && typeof g.zoomToFit === "function") {
+        g.zoomToFit({ maxScale: 1, padding: 24 });
+        if (typeof g.zoom === "function") {
+          propsRef.current.onZoomChange?.(Math.round(g.zoom() * 100) / 100);
+        }
+      }
+    },
+    getZoom: () => {
+      const g = getGraph(containerRef.current) as any;
+      if (g && typeof g.zoom === "function") {
+        return Math.round(g.zoom() * 100) / 100;
+      }
+      return 1;
+    },
+    rotateSelected: (deltaDegrees = 90) => {
+      const g = getGraph(containerRef.current) as any;
+      if (!g) return;
+      const selected = g.getSelectedCells?.()?.filter((c: any) => c.isNode?.() && !isEphemeralDiagramNode(c.id)) || [];
+      if (selected.length === 0) return;
+      const moveItems: any[] = [];
+      g.batchUpdate?.("rotate", () => {
+        for (const node of selected) {
+          const cur = node.getAngle?.() || 0;
+          const next = (((cur + deltaDegrees) % 360) + 360) % 360;
+          node.rotate?.(next, { absolute: true });
+          const p = node.getPosition();
+          const s = node.getSize();
+          const name = node.getData?.()?.["name"] || node.id;
+          moveItems.push({ name, x: p.x, y: p.y, width: s.width, height: s.height, rotation: next });
+        }
+      });
+      if (moveItems.length > 0 && propsRef.current.onMove) {
+        propsRef.current.onMove(moveItems);
+      }
+    },
+    toggleMinimap: () => {
+      return toggleMinimap(containerRef.current);
+    },
+    isMinimapOpen: () => {
+      return isMinimapVisible(containerRef.current);
+    },
+    setGridMode: (mode: DiagramGridMode) => {
+      setDiagramGrid(mode, getGraph(containerRef.current) as any);
+    },
+    setSnapToGrid: (enabled: boolean) => {
+      setDiagramSnap(enabled, getGraph(containerRef.current) as any);
     },
   }));
 

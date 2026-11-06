@@ -3,9 +3,12 @@
 import { computed } from "vue";
 import { INDUSTRIES, INDUSTRY_GROUPS } from "../data/industries";
 import { LANGUAGE_COUNT } from "../data/languages";
+import { useAnsatzOrigin } from "../util/ansatz";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
+
+const { ansatzOrigin } = useAnsatzOrigin();
 
 const columns = computed<MegaMenuColumn[]>(() =>
   INDUSTRY_GROUPS.map((g) => ({
@@ -30,11 +33,11 @@ const feature: MegaMenuFeature = {
   ctaHref: "/industries/power-systems",
 };
 
-const footerLinks: MegaMenuFooterLink[] = [
+const footerLinks = computed<MegaMenuFooterLink[]>(() => [
   { label: "All industries", href: "/industries/", icon: "globe" },
   { label: `Browse all ${LANGUAGE_COUNT} languages & formats`, href: "/languages/overview", icon: "layers" },
-  { label: "Try it in Sketch", href: "/sketch", icon: "terminal", target: "_self" },
-];
+  { label: "Try it in Sketch", href: `${ansatzOrigin.value}/sketch`, icon: "terminal", target: "_blank" },
+]);
 </script>
 
 <template>

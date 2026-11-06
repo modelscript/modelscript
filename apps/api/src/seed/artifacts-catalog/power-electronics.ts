@@ -11,6 +11,7 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
     filename: "BESS_250MW_GridForming_IEEE2800.pscx",
     viewType: "pscad",
     hoursAgo: 3,
+    signed: true,
     postContent:
       "Completed the PSCAD EMT verification (`BESS_250MW_GridForming_IEEE2800.pscx`) for our 250 MW / 1 GWh Grid-Forming Battery Energy Storage System interconnecting at 230 kV (SCR = 1.85). Tested symmetrical 3LG and asymmetrical 1LG bolted faults at the POI per IEEE 2800-2022 Clause 7.2: negative-sequence reactive current injection reaches 90% response in 11.4 ms with zero PLL loss-of-synchronism. #pscad #ieee2800 #emt #gridforming #ibr #powergrids",
     code: `<project name="BESS_250MW_GridForming_IEEE2800" version="5.0.2">

@@ -8,6 +8,7 @@
  * as well as JSON serialized representations.
  */
 
+import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   ThreeMfBaseMaterial,
   ThreeMfBaseMaterialsGroup,
@@ -65,16 +66,48 @@ function makeRange(startOffset: number, endOffset: number, lineOffsets: number[]
   };
 }
 
-function parseAttributes(attrString: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  const attrRegex = /([A-Za-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  let m: RegExpExecArray | null;
-  while ((m = attrRegex.exec(attrString)) !== null) {
-    const key = m[1]!;
-    const val = m[2] ?? m[3] ?? "";
-    attrs[key] = val;
+function localName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchTag(el: XmlElement, name: string): boolean {
+  return localName(el.name).toLowerCase() === name.toLowerCase();
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  const target = name.toLowerCase();
+  const attr = el.attributes.find(
+    (a: XmlAttribute) => localName(a.name).toLowerCase() === target || a.name.toLowerCase() === target,
+  );
+  return attr?.value;
+}
+
+function getAttrsMap(el: XmlElement): Record<string, string> {
+  const res: Record<string, string> = {};
+  for (const a of el.attributes) {
+    res[localName(a.name)] = a.value;
+    res[a.name] = a.value;
   }
-  return attrs;
+  return res;
+}
+
+function getChild(el: XmlElement | null | undefined, name: string): XmlElement | undefined {
+  if (!el) return undefined;
+  return el.children.find((c: XmlElement) => matchTag(c, name));
+}
+
+function findDescendants(el: XmlElement | null | undefined, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  if (!el) return [];
+  const res: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    for (const child of node.children) {
+      if (predicate(child)) res.push(child);
+      walk(child);
+    }
+  }
+  walk(el);
+  return res;
 }
 
 function parseVec3(raw: string | undefined, fallback: [number, number, number] = [0, 0, 0]): [number, number, number] {
@@ -102,64 +135,53 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
   const lineOffsets = computeLineOffsets(text);
   const docRange = makeRange(0, text.length, lineOffsets);
 
+  const xmlDoc = parseXml(text);
+  const root = xmlDoc.root;
+  const modelEl =
+    root && matchTag(root, "model") ? root : (findDescendants(root, (e) => matchTag(e, "model"))[0] ?? root);
+
   let unit: ThreeMfUnit = "millimeter";
-  const modelMatch = /<model\b([^>]*)>/i.exec(text);
-  if (modelMatch) {
-    const modelAttrs = parseAttributes(modelMatch[1]!);
-    if (modelAttrs["unit"]) {
-      unit = modelAttrs["unit"] as ThreeMfUnit;
+  if (modelEl) {
+    const unitAttr = getAttr(modelEl, "unit");
+    if (unitAttr) {
+      unit = unitAttr as ThreeMfUnit;
     }
   }
 
   // 1. Parse <metadata name="...">value</metadata>
   const metadata: Record<string, string> = {};
-  const metaRegex = /<metadata\b([^>]*)>([\s\S]*?)<\/metadata>/gi;
-  let metaMatch: RegExpExecArray | null;
-  while ((metaMatch = metaRegex.exec(text)) !== null) {
-    const attrs = parseAttributes(metaMatch[1]!);
-    const name = attrs["name"];
+  const metaEls = modelEl ? findDescendants(modelEl, (e) => matchTag(e, "metadata")) : [];
+  for (const metaEl of metaEls) {
+    const name = getAttr(metaEl, "name");
     if (name) {
-      metadata[name] = metaMatch[2]!.trim();
+      metadata[name] = metaEl.text.trim();
     }
   }
 
   // 2. Parse <basematerials id="...">
   const baseMaterialGroups: ThreeMfBaseMaterialsGroup[] = [];
-  const bmGroupRegex = /<basematerials\b([^>]*)>([\s\S]*?)<\/basematerials>/gi;
-  let bmGroupMatch: RegExpExecArray | null;
-  while ((bmGroupMatch = bmGroupRegex.exec(text)) !== null) {
-    const groupAttrs = parseAttributes(bmGroupMatch[1]!);
-    const groupId = groupAttrs["id"] ?? "1";
-    const groupBody = bmGroupMatch[2]!;
-    const groupStart = bmGroupMatch.index;
+  const bmGroupEls = modelEl ? findDescendants(modelEl, (e) => matchTag(e, "basematerials")) : [];
+  for (const bmGroupEl of bmGroupEls) {
+    const groupId = getAttr(bmGroupEl, "id") ?? "1";
     const materials: ThreeMfBaseMaterial[] = [];
-
-    const baseRegex = /<base\b([^>]*)\/?>/gi;
-    let baseMatch: RegExpExecArray | null;
     let idx = 0;
-    while ((baseMatch = baseRegex.exec(groupBody)) !== null) {
-      const bAttrs = parseAttributes(baseMatch[1]!);
-      const bRange = makeRange(
-        groupStart + baseMatch.index,
-        groupStart + baseMatch.index + baseMatch[0].length,
-        lineOffsets,
-      );
+    for (const baseEl of bmGroupEl.children) {
+      if (!matchTag(baseEl, "base")) continue;
+      const bAttrs = getAttrsMap(baseEl);
       materials.push({
         index: idx++,
         name: bAttrs["name"] ?? `Material_${idx}`,
         displayColor: bAttrs["displaycolor"],
-        range: bRange,
+        range: makeRange(baseEl.start, baseEl.end, lineOffsets),
       });
     }
-
     baseMaterialGroups.push({
       id: groupId,
       materials,
-      range: makeRange(groupStart, groupStart + bmGroupMatch[0].length, lineOffsets),
+      range: makeRange(bmGroupEl.start, bmGroupEl.end, lineOffsets),
     });
   }
 
-  // Build quick lookup for base materials by (pid, pindex)
   const resolveMaterialName = (pid?: string, pindex?: number): string | undefined => {
     if (!pid) return undefined;
     const grp = baseMaterialGroups.find((g) => g.id === pid);
@@ -170,14 +192,10 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
 
   // 3. Parse <object ...>...</object>
   const objects: ThreeMfObject[] = [];
-  const objRegex = /<object\b([^>]*)>([\s\S]*?)<\/object>/gi;
-  let objMatch: RegExpExecArray | null;
-  while ((objMatch = objRegex.exec(text)) !== null) {
-    const objAttrs = parseAttributes(objMatch[1]!);
-    const objBody = objMatch[2]!;
-    const objStart = objMatch.index;
-    const bodyStart = objStart + objMatch[0].indexOf(objBody);
-    const objRange = makeRange(objStart, objStart + objMatch[0].length, lineOffsets);
+  const objEls = modelEl ? findDescendants(modelEl, (e) => matchTag(e, "object")) : [];
+  for (const objEl of objEls) {
+    const objAttrs = getAttrsMap(objEl);
+    const objRange = makeRange(objEl.start, objEl.end, lineOffsets);
 
     const id = objAttrs["id"] ?? "";
     const name = objAttrs["name"];
@@ -199,32 +217,27 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
     // Parse <mesh>
     const vertices: ThreeMfVertex[] = [];
     const triangles: ThreeMfTriangle[] = [];
-    const meshMatch = /<mesh\b[^>]*>([\s\S]*?)<\/mesh>/i.exec(objBody);
-    if (meshMatch) {
-      const meshBody = meshMatch[1]!;
-      const meshOffset = bodyStart + meshMatch.index;
-
-      const vertRegex = /<vertex\b([^>]*)\/?>/gi;
-      let vMatch: RegExpExecArray | null;
-      while ((vMatch = vertRegex.exec(meshBody)) !== null) {
-        const vAttrs = parseAttributes(vMatch[1]!);
+    const meshEl = getChild(objEl, "mesh");
+    if (meshEl) {
+      const vertContainer = getChild(meshEl, "vertices") ?? meshEl;
+      for (const vEl of vertContainer.children) {
+        if (!matchTag(vEl, "vertex")) continue;
+        const vAttrs = getAttrsMap(vEl);
         vertices.push({
           x: Number(vAttrs["x"] ?? 0),
           y: Number(vAttrs["y"] ?? 0),
           z: Number(vAttrs["z"] ?? 0),
         });
       }
-
-      const triRegex = /<triangle\b([^>]*)\/?>/gi;
-      let tMatch: RegExpExecArray | null;
-      while ((tMatch = triRegex.exec(meshBody)) !== null) {
-        const tAttrs = parseAttributes(tMatch[1]!);
-        const tStart = meshOffset + tMatch.index;
+      const triContainer = getChild(meshEl, "triangles") ?? meshEl;
+      for (const tEl of triContainer.children) {
+        if (!matchTag(tEl, "triangle")) continue;
+        const tAttrs = getAttrsMap(tEl);
         const tri: ThreeMfTriangle = {
           v1: Number(tAttrs["v1"] ?? 0),
           v2: Number(tAttrs["v2"] ?? 0),
           v3: Number(tAttrs["v3"] ?? 0),
-          range: makeRange(tStart, tStart + tMatch[0].length, lineOffsets),
+          range: makeRange(tEl.start, tEl.end, lineOffsets),
         };
         if (tAttrs["p1"] !== undefined) tri.p1 = Number(tAttrs["p1"]);
         if (tAttrs["pid"] !== undefined) tri.pid = tAttrs["pid"];
@@ -234,15 +247,10 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
 
     // Parse <medical:SurgicalGuide> or <SurgicalGuide>
     let surgicalGuide: ThreeMfSurgicalGuideSpec | undefined;
-    const guideMatch = /<(?:medical:)?SurgicalGuide\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:medical:)?SurgicalGuide>)/i.exec(
-      objBody,
-    );
-    if (guideMatch) {
+    const guideEl = objEl.children.find((c) => matchTag(c, "SurgicalGuide"));
+    if (guideEl) {
       isMedicalDevice = true;
-      const gAttrs = parseAttributes(guideMatch[1]!);
-      const gBody = guideMatch[2] ?? "";
-      const gStart = bodyStart + guideMatch.index;
-
+      const gAttrs = getAttrsMap(guideEl);
       const guideWall =
         gAttrs["wallThickness"] !== undefined
           ? Number(gAttrs["wallThickness"])
@@ -255,26 +263,22 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
       if (guideMat !== undefined) materialName = guideMat;
 
       const osteotomyPlanes: ThreeMfOsteotomyPlane[] = [];
-      const planeRegex = /<(?:medical:)?OsteotomyPlane\b([^>]*)\/?>/gi;
-      let pMatch: RegExpExecArray | null;
-      while ((pMatch = planeRegex.exec(gBody)) !== null) {
-        const pAttrs = parseAttributes(pMatch[1]!);
-        const pStart = gStart + pMatch.index;
+      const planeEls = guideEl.children.filter((c) => matchTag(c, "OsteotomyPlane"));
+      for (const pEl of planeEls) {
+        const pAttrs = getAttrsMap(pEl);
         osteotomyPlanes.push({
           id: pAttrs["id"] ?? `Plane_${osteotomyPlanes.length + 1}`,
           origin: parseVec3(pAttrs["origin"], [0, 0, 0]),
           normal: parseVec3(pAttrs["normal"], [0, 0, 1]),
           slotWidthMm: pAttrs["slotWidth"] !== undefined ? Number(pAttrs["slotWidth"]) : undefined,
-          range: makeRange(pStart, pStart + pMatch[0].length, lineOffsets),
+          range: makeRange(pEl.start, pEl.end, lineOffsets),
         });
       }
 
       const drillSleeves: ThreeMfDrillSleeve[] = [];
-      const sleeveRegex = /<(?:medical:)?DrillSleeve\b([^>]*)\/?>/gi;
-      let sMatch: RegExpExecArray | null;
-      while ((sMatch = sleeveRegex.exec(gBody)) !== null) {
-        const sAttrs = parseAttributes(sMatch[1]!);
-        const sStart = gStart + sMatch.index;
+      const sleeveEls = guideEl.children.filter((c) => matchTag(c, "DrillSleeve"));
+      for (const sEl of sleeveEls) {
+        const sAttrs = getAttrsMap(sEl);
         const innerD = Number(sAttrs["innerDiameter"] ?? 2.0);
         const outerD = Number(sAttrs["outerDiameter"] ?? 4.0);
         const explicitWall =
@@ -287,7 +291,7 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
           outerDiameterMm: outerD,
           wallThicknessMm: explicitWall,
           lengthMm: sAttrs["length"] !== undefined ? Number(sAttrs["length"]) : undefined,
-          range: makeRange(sStart, sStart + sMatch[0].length, lineOffsets),
+          range: makeRange(sEl.start, sEl.end, lineOffsets),
         });
       }
 
@@ -299,7 +303,7 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
         sterilizationMethod: gAttrs["sterilization"] ?? gAttrs["sterilizationMethod"],
         osteotomyPlanes,
         drillSleeves,
-        range: makeRange(gStart, gStart + guideMatch[0].length, lineOffsets),
+        range: makeRange(guideEl.start, guideEl.end, lineOffsets),
       };
     }
 
@@ -314,7 +318,7 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
     if (pindex !== undefined) obj.pindex = pindex;
     if (materialName !== undefined) obj.materialName = materialName;
     if (wallThicknessMm !== undefined) obj.wallThicknessMm = wallThicknessMm;
-    if (meshMatch) obj.mesh = { vertices, triangles };
+    if (meshEl) obj.mesh = { vertices, triangles };
     if (surgicalGuide !== undefined) obj.surgicalGuide = surgicalGuide;
 
     objects.push(obj);
@@ -322,18 +326,14 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
 
   // 4. Parse <build><item .../></build>
   const buildItems: ThreeMfBuildItem[] = [];
-  const buildMatch = /<build\b[^>]*>([\s\S]*?)<\/build>/i.exec(text);
-  if (buildMatch) {
-    const buildBody = buildMatch[1]!;
-    const buildStart = buildMatch.index + buildMatch[0].indexOf(buildBody);
-    const itemRegex = /<item\b([^>]*)\/?>/gi;
-    let iMatch: RegExpExecArray | null;
-    while ((iMatch = itemRegex.exec(buildBody)) !== null) {
-      const iAttrs = parseAttributes(iMatch[1]!);
-      const iStart = buildStart + iMatch.index;
+  const buildEl = modelEl ? getChild(modelEl, "build") : undefined;
+  if (buildEl) {
+    for (const itemEl of buildEl.children) {
+      if (!matchTag(itemEl, "item")) continue;
+      const iAttrs = getAttrsMap(itemEl);
       const item: ThreeMfBuildItem = {
         objectId: iAttrs["objectid"] ?? iAttrs["objectId"] ?? "",
-        range: makeRange(iStart, iStart + iMatch[0].length, lineOffsets),
+        range: makeRange(itemEl.start, itemEl.end, lineOffsets),
       };
       if (iAttrs["partnumber"]) item.partNumber = iAttrs["partnumber"];
       if (iAttrs["transform"] !== undefined) {

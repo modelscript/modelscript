@@ -6,6 +6,7 @@ import {
   computeOrthogonalRoute,
   computeSmoothBezierPath,
   healOrthogonalVertices,
+  type JumpoverOptions,
   type JumpoverSegment,
   type PointLike,
 } from "./port-router.js";
@@ -252,6 +253,60 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
   // 3. Background rectangle
   bodyParts.push(`<rect x="${viewBoxX}" y="${viewBoxY}" width="${viewBoxW}" height="${viewBoxH}" fill="${bgColor}"/>`);
 
+  // Render coordinate system bounds and axes if configured
+  if (diagram.coordinateSystem) {
+    const cs = diagram.coordinateSystem;
+    if (cs.boundsStyle?.visible === true) {
+      const boundsStroke = cs.boundsStyle.stroke ?? "#999";
+      const boundsDash = cs.boundsStyle.strokeDasharray ? ` stroke-dasharray="${cs.boundsStyle.strokeDasharray}"` : "";
+      const boundsWidth = cs.boundsStyle.strokeWidth ?? 1;
+      const boundsFill = cs.boundsStyle.fill ?? "none";
+      bodyParts.push(
+        `<rect id="__diagram_bounds__" x="${cs.x}" y="${cs.y}" width="${cs.width}" height="${cs.height}" fill="${boundsFill}" stroke="${boundsStroke}" stroke-width="${boundsWidth}"${boundsDash} vector-effect="non-scaling-stroke"/>`,
+      );
+      if (cs.boundsStyle.headerText) {
+        const text = escapeXml(cs.boundsStyle.headerText);
+        const badgeW = Math.min(cs.width, Math.max(80, text.length * 7 + 16));
+        bodyParts.push(
+          `<rect x="${cs.x}" y="${cs.y}" width="${badgeW}" height="20" fill="${isDark ? "#1e293b" : "#f1f5f9"}" stroke="${boundsStroke}" stroke-width="1"/>`,
+          `<text x="${cs.x + 8}" y="${cs.y + 14}" fill="${isDark ? "#94a3b8" : "#475569"}" font-size="10.5" font-family="Inter, system-ui, sans-serif" font-weight="600">${text}</text>`,
+        );
+      }
+    }
+
+    if (cs.axesStyle?.visible === true) {
+      const axisStroke = cs.axesStyle.stroke ?? "#999";
+      const axisWidth = cs.axesStyle.strokeWidth ?? 1;
+      const axisDash = cs.axesStyle.strokeDasharray ? ` stroke-dasharray="${cs.axesStyle.strokeDasharray}"` : "";
+      const boundsOnly = cs.axesStyle.boundsOnly === true;
+      const ox = cs.axesStyle.origin?.[0] ?? 0;
+      const oy = cs.axesStyle.origin?.[1] ?? 0;
+
+      const minX = boundsOnly ? cs.x : viewBoxX;
+      const maxX = boundsOnly ? cs.x + cs.width : viewBoxX + viewBoxW;
+      const minY = boundsOnly ? cs.y : viewBoxY;
+      const maxY = boundsOnly ? cs.y + cs.height : viewBoxY + viewBoxH;
+
+      bodyParts.push(
+        `<g id="__diagram_axes__">`,
+        `<line x1="${minX}" y1="${oy}" x2="${maxX}" y2="${oy}" stroke="${axisStroke}" stroke-width="${axisWidth}"${axisDash} vector-effect="non-scaling-stroke"/>`,
+        `<line x1="${ox}" y1="${minY}" x2="${ox}" y2="${maxY}" stroke="${axisStroke}" stroke-width="${axisWidth}"${axisDash} vector-effect="non-scaling-stroke"/>`,
+      );
+
+      if (cs.axesStyle.xLabel) {
+        bodyParts.push(
+          `<text x="${maxX - 4}" y="${oy - 6}" text-anchor="end" fill="${axisStroke}" font-size="10" font-family="Inter, system-ui, sans-serif">${escapeXml(cs.axesStyle.xLabel)}</text>`,
+        );
+      }
+      if (cs.axesStyle.yLabel) {
+        bodyParts.push(
+          `<text x="${ox + 6}" y="${minY + 12}" text-anchor="start" fill="${axisStroke}" font-size="10" font-family="Inter, system-ui, sans-serif">${escapeXml(cs.axesStyle.yLabel)}</text>`,
+        );
+      }
+      bodyParts.push(`</g>`);
+    }
+  }
+
   // 4. Collect edge segments for jumpover obstacle detection
   const edgeSegments: JumpoverSegment[] = [];
   const edgePaths: {
@@ -359,7 +414,14 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
           routerName === undefined)
       ) {
         const obstacles = diagram.nodes
-          .filter((n) => n.id !== srcId && n.id !== tgtId)
+          .filter(
+            (n) =>
+              n.id !== srcId &&
+              n.id !== tgtId &&
+              !n.id.startsWith("solder_dot_") &&
+              !n.id.startsWith("wire_crossing_") &&
+              !n.id.startsWith("__"),
+          )
           .map((n) => ({ x: n.x ?? 0, y: n.y ?? 0, width: n.width ?? 120, height: n.height ?? 60 }));
         const sourceBox = srcNode
           ? { x: srcNode.x ?? 0, y: srcNode.y ?? 0, width: srcNode.width ?? 120, height: srcNode.height ?? 60 }
@@ -373,9 +435,24 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       points.push(pTgt);
     }
 
+    const connectorObj =
+      typeof edge.connector === "object" && edge.connector !== null
+        ? (edge.connector as { name?: string; args?: JumpoverOptions })
+        : undefined;
+    const connectorName =
+      typeof edge.connector === "string"
+        ? edge.connector
+        : (connectorObj?.name ?? (edge.style?.connector as string | undefined));
+    const isEdgeJumpover = connectorName === "jumpover";
+
     // Register segments
     for (let i = 0; i < points.length - 1; i++) {
-      edgeSegments.push({ p1: points[i]!, p2: points[i + 1]! });
+      edgeSegments.push({
+        p1: points[i]!,
+        p2: points[i + 1]!,
+        edgeId: edge.id,
+        hasJumpover: isEdgeJumpover,
+      });
     }
 
     const stroke = (edge.attrs?.line?.stroke as string) || defaultEdgeStroke;
@@ -402,12 +479,24 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     edgePaths.push({ edge, points, stroke, strokeWidth, dash, markerEnd, markerStart });
   }
 
+  // Collect solder dot positions to suppress wire jumpover arcs over connected junctions
+  const solderDots: PointLike[] = [];
+  for (const node of diagram.nodes) {
+    if (typeof node.id === "string" && node.id.startsWith("solder_dot_")) {
+      const nx = node.x ?? 0;
+      const ny = node.y ?? 0;
+      const nw = node.width ?? 6;
+      const nh = node.height ?? 6;
+      solderDots.push({ x: nx + nw / 2, y: ny + nh / 2 });
+    }
+  }
+
   // 5. Render Edges (with jumpover crossing, rounded orthogonal fillets, and smooth Bezier support)
   bodyParts.push(`<g id="edges">`);
   for (const ep of edgePaths) {
     const connectorObj =
       typeof ep.edge.connector === "object" && ep.edge.connector !== null
-        ? (ep.edge.connector as { name?: string; args?: { radius?: number } })
+        ? (ep.edge.connector as { name?: string; args?: JumpoverOptions })
         : undefined;
     const connectorName =
       typeof ep.edge.connector === "string"
@@ -424,8 +513,16 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     let d = "";
     if (isJumpover) {
       // Find obstacles from other edges
-      const obstacles = edgeSegments.filter((s) => !ep.points.some((p) => p === s.p1 || p === s.p2));
-      d = computeJumpoverPath(ep.points, obstacles, { radius: 5 });
+      const obstacles = edgeSegments.filter((s) => s.edgeId !== ep.edge.id);
+      const jArgs = connectorObj?.args;
+      d = computeJumpoverPath(ep.points, obstacles, {
+        radius: jArgs?.radius ?? 5,
+        axis: jArgs?.axis ?? "both",
+        horizontalHop: jArgs?.horizontalHop ?? "up",
+        verticalHop: jArgs?.verticalHop ?? "right",
+        edgeId: ep.edge.id,
+        solderDots,
+      });
     } else if (isSmooth) {
       d = computeSmoothBezierPath(ep.points);
     } else if (isRounded && ep.points.length >= 3) {
@@ -536,6 +633,16 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     bodyParts.push(
       `<rect width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
     );
+
+    // Double border for defined classes (Graffoo / VOWL notation)
+    const innerBorder = node.attrs?.["innerBorder"] as Record<string, unknown> | undefined;
+    if (innerBorder) {
+      const ibStroke = (innerBorder["stroke"] as string) || stroke;
+      const ibStrokeWidth = (innerBorder["strokeWidth"] as number) || 1.25;
+      bodyParts.push(
+        `<rect x="3.5" y="3.5" width="${Math.max(0, nw - 7)}" height="${Math.max(0, nh - 7)}" rx="${Math.max(0, rx - 2)}" ry="${Math.max(0, ry - 2)}" fill="none" stroke="${escapeXml(ibStroke)}" stroke-width="${ibStrokeWidth}"/>`,
+      );
+    }
 
     // Bitmap raster / vector image embedding if present
     if (iconUrl) {
@@ -803,6 +910,18 @@ export function cellsToDiagramData(graph: { title?: string | undefined; cells: R
       y: minY,
       width: Math.max(100, maxX - minX),
       height: Math.max(100, maxY - minY),
+      grid: {
+        type: "dot",
+        x: 20,
+        y: 20,
+        visible: true,
+      },
+      axesStyle: {
+        visible: false,
+      },
+      boundsStyle: {
+        visible: false,
+      },
     },
     diagramBackground: null,
   };

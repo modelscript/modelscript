@@ -101,8 +101,6 @@ export function mapActionForDomain(
         return { action: "propagate" };
       case "ibis":
         return { action: "eval" };
-      case "urdf":
-        return { action: "rnea" };
       case "easy5":
         return { action: "linearize" };
       default:

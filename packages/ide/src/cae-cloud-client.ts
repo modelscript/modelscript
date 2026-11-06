@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+
 export interface ComputeProfileInfo {
   id: string;
   name: string;
@@ -224,48 +226,60 @@ export class CaeCloudClient {
     fields: { vonMisesStress: number[]; displacements: number[] };
     stats: { maxStress: number; maxDisplacement: number; safetyFactor: number };
   } {
-    const pointsMatch = vtuXml.match(/<Points>[\s\S]*?<DataArray[^>]*>([\s\S]*?)<\/DataArray>[\s\S]*?<\/Points>/);
     const positions: number[] = [];
-    if (pointsMatch && pointsMatch[1]) {
-      const vals = pointsMatch[1].trim().split(/\s+/).map(Number);
-      for (const v of vals) if (!Number.isNaN(v)) positions.push(v);
-    }
-
-    const connMatch = vtuXml.match(/<DataArray[^>]*Name="connectivity"[^>]*>([\s\S]*?)<\/DataArray>/);
     const elements: number[] = [];
-    if (connMatch && connMatch[1]) {
-      const vals = connMatch[1].trim().split(/\s+/).map(Number);
-      for (const v of vals) if (!Number.isNaN(v)) elements.push(v);
-    }
-
-    const stressMatch = vtuXml.match(
-      /<DataArray[^>]*Name="(?:Stress_VonMises|VonMisesStress|Pressure)"[^>]*>([\s\S]*?)<\/DataArray>/,
-    );
     const vonMisesStress: number[] = [];
     let maxStress = 0;
-    if (stressMatch && stressMatch[1]) {
-      const vals = stressMatch[1].trim().split(/\s+/).map(Number);
-      for (const v of vals) {
-        if (!Number.isNaN(v)) {
-          vonMisesStress.push(v);
-          if (v > maxStress) maxStress = v;
-        }
-      }
-    }
-
-    const dispMatch = vtuXml.match(/<DataArray[^>]*Name="(?:Displacement|Velocity)"[^>]*>([\s\S]*?)<\/DataArray>/);
     const displacements: number[] = [];
     let maxDisp = 0;
-    if (dispMatch && dispMatch[1]) {
-      const vals = dispMatch[1].trim().split(/\s+/).map(Number);
-      for (let i = 0; i < vals.length; i += 3) {
-        const dx = vals[i] || 0;
-        const dy = vals[i + 1] || 0;
-        const dz = vals[i + 2] || 0;
-        displacements.push(dx, dy, dz);
-        const mag = Math.hypot(dx, dy, dz);
-        if (mag > maxDisp) maxDisp = mag;
+
+    const xmlDoc = parseXmlSync(vtuXml);
+    if (xmlDoc.root) {
+      function walk(el: XmlElement): void {
+        const tag = el.name.includes(":")
+          ? el.name.slice(el.name.indexOf(":") + 1).toLowerCase()
+          : el.name.toLowerCase();
+        if (tag === "points") {
+          for (const c of el.children) {
+            const cTag = c.name.includes(":")
+              ? c.name.slice(c.name.indexOf(":") + 1).toLowerCase()
+              : c.name.toLowerCase();
+            if (cTag === "dataarray") {
+              const vals = c.text.trim().split(/\s+/).map(Number);
+              for (const v of vals) if (!Number.isNaN(v)) positions.push(v);
+            }
+          }
+        } else if (tag === "dataarray") {
+          const nameAttr = el.attributes.find((a) => a.name.toLowerCase() === "name");
+          const name = nameAttr?.value ?? "";
+          if (name.toLowerCase() === "connectivity") {
+            const vals = el.text.trim().split(/\s+/).map(Number);
+            for (const v of vals) if (!Number.isNaN(v)) elements.push(v);
+          } else if (/^(?:stress_vonmises|vonmisesstress|pressure)$/i.test(name)) {
+            const vals = el.text.trim().split(/\s+/).map(Number);
+            for (const v of vals) {
+              if (!Number.isNaN(v)) {
+                vonMisesStress.push(v);
+                if (v > maxStress) maxStress = v;
+              }
+            }
+          } else if (/^(?:displacement|velocity)$/i.test(name)) {
+            const vals = el.text.trim().split(/\s+/).map(Number);
+            for (let i = 0; i < vals.length; i += 3) {
+              const dx = vals[i] || 0;
+              const dy = vals[i + 1] || 0;
+              const dz = vals[i + 2] || 0;
+              displacements.push(dx, dy, dz);
+              const mag = Math.hypot(dx, dy, dz);
+              if (mag > maxDisp) maxDisp = mag;
+            }
+          }
+        }
+        for (const child of el.children) {
+          walk(child);
+        }
       }
+      walk(xmlDoc.root);
     }
 
     const numNodes = positions.length / 3;

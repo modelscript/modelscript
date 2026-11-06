@@ -417,8 +417,13 @@ export class DiagramService {
                     (s) => `n_${s.id}` === node.id && s.resourceId === params.uri,
                   );
                   const name = sym?.name;
-                  if (name && layout.elements[name]) {
-                    const el = layout.elements[name];
+                  const symbolId = sym ? String(sym.id) : undefined;
+                  const el = sysmlOps.findElementLayout
+                    ? sysmlOps.findElementLayout(layout, name ?? "", symbolId)
+                    : name
+                      ? layout.elements[name]
+                      : undefined;
+                  if (el) {
                     node.x = el.x;
                     node.y = el.y;
                     if (el.width) node.width = el.width;

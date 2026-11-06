@@ -41,19 +41,24 @@ ModelScript provides first-class support for **URDF** (`.urdf`) and **Xacro** (`
 msx urdf <action> [files...] [options]
 ```
 
-| Action            | Description                                                                   | Key Options         |
-| :---------------- | :---------------------------------------------------------------------------- | :------------------ |
-| **`lint`**        | Runs kinematic tree validation, joint limit checks, and inertia verification. | —                   |
-| **`rnea`**        | Evaluates inverse dynamics (RNEA) at test joint coordinates.                  | `--gravity`         |
-| **`to-modelica`** | Generates standard `Modelica.Mechanics.MultiBody` robot system.               | `--out=<file.mo>`   |
-| **`to-adams`**    | Projects robot mechanism into MSC Adams `.adm` solver dataset.                | `--out=<file.adm>`  |
-| **`to-simpack`**  | Projects robot mechanism into SIMPACK XML `.spck` model.                      | `--out=<file.spck>` |
-| **`to-dae`**      | Lowers kinematic state equations directly into `DAEBuilder` arena.            | —                   |
+| Action            | Description                                                                   | Key Options                                        |
+| :---------------- | :---------------------------------------------------------------------------- | :------------------------------------------------- |
+| **`lint`**        | Runs kinematic tree validation, joint limit checks, and inertia verification. | —                                                  |
+| **`rnea`**        | Evaluates inverse dynamics (RNEA) at test joint coordinates.                  | `--gravity`                                        |
+| **`simulate`**    | Solves articulated robot forward dynamics into time-series trajectories.      | `--stop-time`, `--step-size`, `--format=csv\|json` |
+| **`to-modelica`** | Generates standard `Modelica.Mechanics.MultiBody` robot system.               | `--out=<file.mo>`                                  |
+| **`to-adams`**    | Projects robot mechanism into MSC Adams `.adm` solver dataset.                | `--out=<file.adm>`                                 |
+| **`to-simpack`**  | Projects robot mechanism into SIMPACK XML `.spck` model.                      | `--out=<file.spck>`                                |
+| **`to-usd`**      | Projects robot into OpenUSD / UsdPhysics scene or 64-byte aligned package.    | `--usdz`, `--out=<file.usda\|file.usdz>`           |
+| **`to-dae`**      | Lowers kinematic state equations directly into `DAEBuilder` arena.            | —                                                  |
 
 ### Examples
 
 ```bash
-# Evaluate inverse dynamics (RNEA) at test joint coordinates
+# Simulate forward dynamics under gravity to CSV/JSON trajectory
+msx simulate KukaIiwa14.urdf --stop-time=2.0 --step-size=0.01 -o trajectory.csv
+
+# Evaluate inverse dynamics (RNEA) static hold torques
 msx urdf rnea KukaIiwa14.urdf
 
 # Check for inverted joint limits or dangling parent links
@@ -62,9 +67,26 @@ msx urdf lint MobileManipulator.urdf
 # Convert robot description into standard Modelica 3.x
 msx urdf to-modelica PandaArm.urdf --out=PandaArm.mo
 
+# Export to OpenUSD / UsdPhysics digital twin scene
+msx urdf to-usd PandaArm.urdf --out=PandaArm.usda
+
+# Export to 64-byte aligned USDZ package for Apple Vision Pro & NVIDIA Omniverse
+msx urdf to-usd PandaArm.urdf --usdz --out=PandaArm.usdz
+
 # Export to MSC Adams for vehicle-mounted robot simulation
 msx urdf to-adams RoverArm.urdf --out=RoverArm.adm
 ```
+
+---
+
+## Interactive Ansatz Web Platform (`UrdfViewer`)
+
+On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts render directly in the interactive **Robotics Mechanism Studio**:
+
+- **Kinematic Tree View**: High-resolution vector schematic visualizing parent/child links and joint types with pan-and-zoom controls.
+- **3D Pose View**: Real-time WebGPU/Three.js multibody viewport with forward kinematics joint angle sliders ($q_i \in [q_{\text{min}}, q_{\text{max}}]$).
+- **Dynamics & Linter**: Pre-flight verification results (`M7501`–`M7508`) paired with an **RNEA Gravity Hold Torques** calculator reporting static equilibrium torques ($\tau_i \text{ [N}\cdot\text{m]}$).
+- **Polyglot Projections**: One-click translation to Modelica 3.x or SIMPACK JSON, with direct export to the Ansatz Sketch visual playground.
 
 ---
 

@@ -63,6 +63,7 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, LanguageMaturity> = {
   touchstone: "experimental",
   urdf: "experimental",
   "verilog-a": "experimental",
+  usd: "experimental",
 };
 
 /**
@@ -114,6 +115,7 @@ export const DIAGRAM_EDITOR_SUPPORTED_LANGS = new Set<string>([
   "touchstone",
   "urdf",
   "verilog-a",
+  "usd",
 ]);
 
 /**
@@ -199,6 +201,8 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
       extensions = [".step", ".stp", ".p21"];
     } else if (id === "owl2" || id === "owl") {
       extensions = [".owl", ".owl2", ".ofn", ".ttl"];
+    } else if (id === "usd") {
+      extensions = [".usd", ".usda", ".usdz"];
     } else {
       extensions = [`.${id}`];
     }

@@ -126,10 +126,25 @@ export function planBatch(files: File[], resolve: (fileName: string) => AnyAttac
     if (claimed.has(file)) continue;
     const exts = resolve(file.name)?.companionExtensions;
     if (!exts || exts.length === 0) continue;
-    const match = files.find(
+    const base = file.name.replace(/\.[^./\\]+$/, "").toLowerCase();
+    const candidates = files.filter(
       (other) => other !== file && !claimed.has(other) && exts.includes(fileExtension(other.name)),
     );
-    if (match) {
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => {
+        const aBase = a.name.replace(/\.[^./\\]+$/, "").toLowerCase();
+        const bBase = b.name.replace(/\.[^./\\]+$/, "").toLowerCase();
+        const aExact = aBase === base;
+        const bExact = bBase === base;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+        const aContains = aBase.includes(base) || base.includes(aBase);
+        const bContains = bBase.includes(base) || base.includes(bBase);
+        if (aContains && !bContains) return -1;
+        if (!aContains && bContains) return 1;
+        return 0;
+      });
+      const match = candidates[0]!;
       claimed.add(match);
       companionsOf.set(file, [match]);
     }

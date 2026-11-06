@@ -13,6 +13,7 @@ interface InvertedSvgProps {
   height?: number | string | undefined;
   style?: React.CSSProperties | undefined;
   fallback?: React.ReactNode | undefined;
+  disableStrokeOverride?: boolean | undefined;
   onLoad?: (() => void) | undefined;
   onError?: ((e: unknown) => void) | undefined;
 }
@@ -184,13 +185,18 @@ const SvgContainer = styled.div<{ $w: number | string; $h: number | string; $thi
     stroke-linejoin: round;
   }
 
+  ${(p) =>
+    p.$baseStroke > 0
+      ? `
   & svg [stroke-width="0.25"] {
-    stroke-width: ${(p) => p.$thinStroke}px;
+    stroke-width: ${p.$thinStroke}px;
   }
   & svg [stroke-width="0.5"],
   & svg [stroke-width="1"] {
-    stroke-width: ${(p) => p.$baseStroke}px;
+    stroke-width: ${p.$baseStroke}px;
   }
+`
+      : ""}
 `;
 
 const svgFetchCache = new Map<string, Promise<string>>();
@@ -215,7 +221,17 @@ function fetchSvgCached(url: string): Promise<string> {
  * Renders an SVG inline with Helmlab-based perceptual color inversion
  * for dark mode. Falls back to hiding on error.
  */
-const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, style, fallback, onLoad, onError }) => {
+const InvertedSvg: React.FC<InvertedSvgProps> = ({
+  src,
+  alt,
+  width,
+  height,
+  style,
+  fallback,
+  disableStrokeOverride,
+  onLoad,
+  onError,
+}) => {
   const { theme } = useTheme();
   const rawInstanceId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const [state, dispatch] = useReducer(reducer, { svgContent: null, error: false });
@@ -283,9 +299,9 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
   }
 
   const numericSize = getNumericSize(width) ?? getNumericSize(height);
-  let thinStroke = 1.25;
-  let baseStroke = 1.5;
-  if (numericSize !== null) {
+  let thinStroke = 0;
+  let baseStroke = 0;
+  if (!disableStrokeOverride && numericSize !== null) {
     if (numericSize <= 20) {
       thinStroke = 0.65;
       baseStroke = 0.8;
@@ -295,6 +311,9 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
     } else if (numericSize <= 64) {
       thinStroke = 1.0;
       baseStroke = 1.15;
+    } else {
+      thinStroke = 1.25;
+      baseStroke = 1.5;
     }
   }
 

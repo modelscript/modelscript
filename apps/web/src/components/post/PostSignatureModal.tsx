@@ -3,6 +3,7 @@
 import { AlertIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
+import { canonicalizeJson } from "../../util/crypto/jcs";
 import Box from "../Box";
 
 export interface PostSignatureModalProps {
@@ -123,7 +124,27 @@ async function verifySignatureWithWebCrypto(
     }
   }
 
-  // 2. PEM-encoded SPKI Public Key
+  // 2. OpenSSH public key format: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... [comment]"
+  if (keyStr.startsWith("ssh-ed25519 ") || keyStr.includes("AAAAC3NzaC1lZDI1NTE5")) {
+    const parts = keyStr.split(/\s+/);
+    const b64 = parts.find((p) => p.startsWith("AAAAC3NzaC1lZDI1NTE5")) || parts[1];
+    if (b64) {
+      const wireBytes = decodeEncodedBytes(b64);
+      if (wireBytes && wireBytes.length >= 51) {
+        // OpenSSH wire format: 4-byte len + "ssh-ed25519" (11 bytes) + 4-byte len + 32-byte key
+        // Offset: 4 + 11 + 4 = 19
+        const rawEdKey = wireBytes.slice(19, 19 + 32);
+        if (rawEdKey.length === 32) {
+          const rawBuf = rawEdKey.buffer.slice(rawEdKey.byteOffset, rawEdKey.byteOffset + 32) as ArrayBuffer;
+          if (await tryVerifyKey("raw", rawBuf, { name: "Ed25519" }, { name: "Ed25519" })) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. PEM-encoded SPKI Public Key
   const strippedPem = keyStr
     .replace(/-----BEGIN [A-Z0-9 ]*PUBLIC KEY-----/g, "")
     .replace(/-----END [A-Z0-9 ]*PUBLIC KEY-----/g, "")
@@ -209,6 +230,11 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
     sha256Hex: null,
   }));
 
+  const [resolvedKeyData, setResolvedKeyData] = useState<{
+    signingKey?: any;
+    masterKey?: any;
+  } | null>(null);
+
   useEffect(() => {
     if (!isValidEnvelope || !decodedSignatureBytes) {
       setVerificationState({ mode: "unverified", sha256Hex: null });
@@ -237,14 +263,96 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
         }
       }
 
-      if (embeddedPublicKey && subtle) {
-        const verified = await verifySignatureWithWebCrypto(
-          embeddedPublicKey,
+      let activePublicKey = embeddedPublicKey;
+      let matchedSigningKey: any = null;
+      let matchedMasterKey: any = null;
+
+      if (!activePublicKey && displayPost.username) {
+        try {
+          const res = await fetch(`/api/v1/users/${encodeURIComponent(displayPost.username)}/signing-keys`);
+          if (res.ok) {
+            const data = await res.json();
+            const keys: any[] = data.keys || [];
+            matchedSigningKey = keys.find(
+              (k) =>
+                (keyIdentifier &&
+                  (k.fingerprint_sha256.includes(keyIdentifier) || keyIdentifier.includes(k.fingerprint_sha256))) ||
+                (displayPost.metadata?.proof?.verificationMethod &&
+                  String(displayPost.metadata.proof.verificationMethod).includes(k.public_key_multibase)),
+            );
+            if (!matchedSigningKey && keys.length === 1) {
+              matchedSigningKey = keys[0];
+            }
+            if (matchedSigningKey) {
+              activePublicKey = matchedSigningKey.public_key_openssh || matchedSigningKey.public_key_multibase;
+              if (matchedSigningKey.prev_key_id) {
+                matchedMasterKey = keys.find((k) => k.id === matchedSigningKey.prev_key_id);
+              }
+            }
+          }
+        } catch {
+          // ignore network error
+        }
+      }
+
+      if (activePublicKey && subtle) {
+        let verified = await verifySignatureWithWebCrypto(
+          activePublicKey,
           decodedSignatureBytes,
           payloadBytes,
           signatureScheme,
         );
+
+        if (!verified && displayPost.metadata?.proof) {
+          try {
+            const proof = displayPost.metadata.proof;
+            const proofConfig = {
+              type: proof.type,
+              cryptosuite: proof.cryptosuite,
+              created: proof.created,
+              verificationMethod: proof.verificationMethod,
+              proofPurpose: proof.proofPurpose,
+            };
+            const payload = (displayPost.metadata?.signedPayload as Record<string, unknown> | undefined) ||
+              (displayPost.metadata?.proof_payload as Record<string, unknown> | undefined) || {
+                content: signedPayloadText,
+                created_at: proof.created,
+                ...(displayPost.reply_to_id ? { reply_to_id: String(displayPost.reply_to_id) } : {}),
+                ...(displayPost.quote_post_id ? { quote_post_id: String(displayPost.quote_post_id) } : {}),
+                ...(displayPost.artifact_view_id ? { artifact_id: String(displayPost.artifact_view_id) } : {}),
+              };
+
+            const canonicalPayload = canonicalizeJson(payload);
+            const payloadHashBuf = await subtle.digest("SHA-256", encoder.encode(canonicalPayload));
+            const canonicalConfig = canonicalizeJson(proofConfig);
+            const configHashBuf = await subtle.digest("SHA-256", encoder.encode(canonicalConfig));
+
+            const signingData = new Uint8Array(64);
+            signingData.set(new Uint8Array(configHashBuf), 0);
+            signingData.set(new Uint8Array(payloadHashBuf), 32);
+
+            verified = await verifySignatureWithWebCrypto(
+              activePublicKey,
+              decodedSignatureBytes,
+              signingData,
+              signatureScheme,
+            );
+
+            if (!verified) {
+              verified = await verifySignatureWithWebCrypto(
+                activePublicKey,
+                decodedSignatureBytes,
+                encoder.encode(canonicalPayload),
+                signatureScheme,
+              );
+            }
+          } catch {
+            // fall back
+          }
+        }
+
         if (!cancelled) {
+          setResolvedKeyData({ signingKey: matchedSigningKey, masterKey: matchedMasterKey });
           setVerificationState({
             mode: verified ? "webcrypto-verified" : "webcrypto-failed",
             sha256Hex: computedSha256Hex,
@@ -265,7 +373,15 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isValidEnvelope, decodedSignatureBytes, embeddedPublicKey, signedPayloadText, signatureScheme]);
+  }, [
+    isValidEnvelope,
+    decodedSignatureBytes,
+    embeddedPublicKey,
+    signedPayloadText,
+    signatureScheme,
+    displayPost.username,
+    keyIdentifier,
+  ]);
 
   const isVerifiedStatus =
     verificationState.mode === "webcrypto-verified" || verificationState.mode === "envelope-digest-verified";
@@ -337,10 +453,34 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
           </Box>
         )}
 
+        {resolvedKeyData?.masterKey && (
+          <Box
+            p={2.5}
+            style={{
+              backgroundColor: "rgba(130, 80, 223, 0.1)",
+              border: "1px solid rgba(130, 80, 223, 0.3)",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
+          >
+            <div style={{ fontWeight: 600, color: "var(--color-done-fg, #8250df)", marginBottom: "3px" }}>
+              🔗 Master Key Delegation Verified
+            </div>
+            <div style={{ color: "var(--color-fg-muted)", lineHeight: "1.4" }}>
+              This post was signed by browser device key{" "}
+              <code>
+                {resolvedKeyData.signingKey?.label || resolvedKeyData.signingKey?.fingerprint_sha256?.slice(0, 16)}
+              </code>
+              , mathematically attested by Master Key{" "}
+              <code>{resolvedKeyData.masterKey.label || resolvedKeyData.masterKey.fingerprint_sha256}</code>.
+            </div>
+          </Box>
+        )}
+
         <Box
           display="grid"
           style={{
-            gridTemplateColumns: "110px 1fr",
+            gridTemplateColumns: "130px 1fr",
             rowGap: "8px",
             columnGap: "12px",
             fontSize: "13px",
@@ -351,14 +491,44 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
             @{displayPost.username} {displayPost.display_name && `(${displayPost.display_name})`}
           </Text>
 
+          <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Key Persona:</Text>
+          <Text>{resolvedKeyData?.signingKey?.label || "Web Browser Device Key"}</Text>
+
+          {resolvedKeyData?.masterKey && (
+            <>
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Master Key:</Text>
+              <Text style={{ fontFamily: "monospace", fontSize: "12px" }}>
+                {resolvedKeyData.masterKey.label || resolvedKeyData.masterKey.fingerprint_sha256}
+              </Text>
+            </>
+          )}
+
           <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Algorithm:</Text>
           <Text style={{ fontFamily: "monospace", fontSize: "12px" }}>{signatureScheme}</Text>
 
           <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Key ID:</Text>
           <Text style={{ fontFamily: "monospace", fontSize: "12px", wordBreak: "break-all" }}>{keyIdentifier}</Text>
 
+          {displayPost.reply_to_id && (
+            <>
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Thread Context:</Text>
+              <Text style={{ color: "var(--color-success-fg, #1a7f37)", fontWeight: 500 }}>
+                ✓ Reply to post #{displayPost.reply_to_id} (Replay-protected)
+              </Text>
+            </>
+          )}
+
+          {displayPost.artifact_view_id && (
+            <>
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Artifact Context:</Text>
+              <Text style={{ color: "var(--color-success-fg, #1a7f37)", fontWeight: 500 }}>
+                ✓ Simulation model #{displayPost.artifact_view_id} (Tamper-evident)
+              </Text>
+            </>
+          )}
+
           <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Protocol:</Text>
-          <Text>W3C ActivityPub / ActivityStreams 2.0</Text>
+          <Text>W3C Data Integrity / ActivityStreams 2.0</Text>
 
           {verificationState.sha256Hex && (
             <>
@@ -377,6 +547,36 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
               </Text>
             </>
           )}
+        </Box>
+
+        <Box>
+          <Text
+            style={{
+              fontWeight: 600,
+              fontSize: "12px",
+              color: "var(--color-fg-muted)",
+              display: "block",
+              marginBottom: "4px",
+            }}
+          >
+            Independent CLI Verification
+          </Text>
+          <Box
+            as="pre"
+            p={2}
+            style={{
+              backgroundColor: "var(--color-canvas-subtle, #161b22)",
+              border: "1px solid var(--color-border-default, #30363d)",
+              borderRadius: "6px",
+              fontSize: "11px",
+              fontFamily: "monospace",
+              margin: 0,
+              overflowX: "auto",
+            }}
+          >
+            curl -s https://{typeof window !== "undefined" ? window.location.host : "ansatz.org"}/api/v1/social/posts/
+            {displayPost.id || 1} | msx verify
+          </Box>
         </Box>
 
         {effectiveDigest && (

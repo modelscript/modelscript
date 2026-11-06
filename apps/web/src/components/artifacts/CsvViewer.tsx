@@ -6,14 +6,17 @@ import {
   DownloadIcon,
   GraphIcon,
   SearchIcon,
+  TableIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Button, Text, TextInput } from "@primer/react";
+import DOMPurify from "dompurify";
 import Papa from "papaparse";
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
 import Spinner from "../Spinner";
+import { adaptSvgMarkupForTheme, resolveCurrentThemeIsDark } from "./svg-theme.js";
 
 export interface DatasetColumn {
   name: string;
@@ -40,10 +43,17 @@ export interface CsvViewerProps {
     format?: "csv" | "tsv" | "json" | string | undefined;
     hasHeader?: boolean | undefined;
     delimiter?: string | undefined;
+    svg?: string | undefined;
+    thumbnailUrl?: string | undefined;
+    thumbnail_url?: string | undefined;
     [key: string]: unknown;
   };
   isFullScreen?: boolean | undefined;
+  thumbnailUrl?: string | undefined;
 }
+
+import { buildClientTelemetrySvg } from "./csv-telemetry-chart.js";
+export { buildClientTelemetrySvg };
 
 const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
@@ -55,6 +65,7 @@ const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   overflow: hidden;
   font-family: inherit;
+  position: relative;
 `;
 
 const Toolbar = styled.div`
@@ -69,6 +80,91 @@ const Toolbar = styled.div`
   flex-wrap: wrap;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+`;
+
+const ModeToggleGroup = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border-default, #30363d);
+`;
+
+const ModeToggleButton = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: none;
+  font-size: 11px;
+  font-weight: ${(p) => (p.$active ? 600 : 500)};
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+  background: ${(p) => (p.$active ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--ms-brand, #22d3ee)" : "var(--color-fg-muted, #8b949e)")};
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+
+  &:hover {
+    color: var(--color-fg-default, #f1f5f9);
+  }
+`;
+
+const ChartContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`
+  flex: 1;
+  width: 100%;
+  height: ${(props) => (props.$isFullScreen ? "100%" : "calc(100% - 44px)")};
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: radial-gradient(circle at center, rgba(14, 25, 45, 0.5) 0%, rgba(13, 17, 23, 0.98) 100%);
+  overflow: hidden;
+  padding: 12px;
+
+  svg {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  }
+`;
+
+const SwitchToTablePill = styled.button`
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--surface-hud, rgba(15, 23, 42, 0.85));
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 20px;
+  color: var(--color-text-primary, #e6edf3);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
+  z-index: 5;
+
+  &:hover {
+    background: rgba(30, 41, 59, 0.95);
+    border-color: var(--color-accent-emphasis, #1f6feb);
+    color: #fff;
+    transform: translateY(-1px);
+  }
 `;
 
 const StatsDrawer = styled.div`
@@ -194,11 +290,52 @@ const PaginationBar = styled.div`
   gap: 8px;
 `;
 
-export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
+export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, thumbnailUrl }) => {
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
+
+  // User tab selection override (null = auto default to chart if available, else table)
+  const [userSelectedMode, setUserSelectedMode] = useState<"chart" | "table" | null>(null);
+
+  // SVG markup state (either directly in viewConfig.svg or fetched from thumbnailUrl)
+  const [svgMarkup, setSvgMarkup] = useState<string | null>(() => {
+    if (typeof viewConfig?.svg === "string" && viewConfig.svg.trim().startsWith("<svg")) {
+      return viewConfig.svg.trim();
+    }
+    return null;
+  });
+
+  const resolvedThumbUrl = useMemo(() => {
+    const candidate =
+      (typeof viewConfig?.thumbnailUrl === "string" && viewConfig.thumbnailUrl) ||
+      (typeof viewConfig?.thumbnail_url === "string" && viewConfig.thumbnail_url) ||
+      (typeof thumbnailUrl === "string" && thumbnailUrl) ||
+      null;
+    return candidate;
+  }, [viewConfig?.thumbnailUrl, viewConfig?.thumbnail_url, thumbnailUrl]);
+
+  useEffect(() => {
+    if (typeof viewConfig?.svg === "string" && viewConfig.svg.trim().startsWith("<svg")) {
+      setSvgMarkup(viewConfig.svg.trim());
+      return;
+    }
+    if (resolvedThumbUrl && (resolvedThumbUrl.endsWith(".svg") || resolvedThumbUrl.includes(".svg"))) {
+      let active = true;
+      fetch(resolvedThumbUrl)
+        .then((res) => (res.ok ? res.text() : null))
+        .then((text) => {
+          if (active && text && text.includes("<svg")) {
+            setSvgMarkup(text.trim());
+          }
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }
+  }, [viewConfig?.svg, resolvedThumbUrl]);
 
   // Table controls
   const [searchQuery, setSearchQuery] = useState("");
@@ -278,6 +415,29 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
     }
     return sliced;
   }, [csvData, maxPreviewRows]);
+
+  const chartTitle = (typeof viewConfig?.title === "string" && viewConfig.title.trim()) || "Dataset Telemetry";
+  const fallbackChartSvg = useMemo(() => {
+    if (svgMarkup) return null;
+    if (headers.length > 0 && rawRows.length > 0) {
+      return buildClientTelemetrySvg(headers, rawRows, chartTitle);
+    }
+    return null;
+  }, [svgMarkup, headers, rawRows, chartTitle]);
+
+  const rawActiveSvg = svgMarkup || fallbackChartSvg;
+
+  const isDark = resolveCurrentThemeIsDark();
+  const displaySvg = useMemo(() => {
+    if (!rawActiveSvg) return null;
+    const themed = adaptSvgMarkupForTheme(rawActiveSvg, isDark);
+    return typeof DOMPurify.sanitize === "function"
+      ? DOMPurify.sanitize(themed, { USE_PROFILES: { svg: true, svgFilters: true } })
+      : themed;
+  }, [rawActiveSvg, isDark]);
+
+  const hasChart = Boolean(displaySvg || resolvedThumbUrl);
+  const activeMode: "chart" | "table" = userSelectedMode ?? (hasChart ? "chart" : "table");
 
   const isFiltering = searchQuery.trim().length > 0;
 
@@ -409,6 +569,14 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setPage(1);
+              if (e.target.value.trim().length > 0 && activeMode === "chart") {
+                setUserSelectedMode("table");
+              }
+            }}
+            onFocus={() => {
+              if (isFiltering && activeMode === "chart") {
+                setUserSelectedMode("table");
+              }
             }}
             aria-label="Filter rows"
             sx={{ width: "100%" }}
@@ -416,6 +584,33 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
         </Box>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0, marginLeft: "auto" }}>
+          {hasChart && (
+            <ModeToggleGroup role="tablist" aria-label="Dataset view mode">
+              <ModeToggleButton
+                type="button"
+                role="tab"
+                aria-selected={activeMode === "chart"}
+                $active={activeMode === "chart"}
+                onClick={() => setUserSelectedMode("chart")}
+                title="Show Visual Telemetry Chart"
+              >
+                <GraphIcon size={12} />
+                <span>Chart</span>
+              </ModeToggleButton>
+              <ModeToggleButton
+                type="button"
+                role="tab"
+                aria-selected={activeMode === "table"}
+                $active={activeMode === "table"}
+                onClick={() => setUserSelectedMode("table")}
+                title="Inspect Tabular Data"
+              >
+                <TableIcon size={12} />
+                <span>Table</span>
+              </ModeToggleButton>
+            </ModeToggleGroup>
+          )}
+
           <span
             style={{
               fontSize: "11px",
@@ -442,8 +637,13 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
           {columnsMeta.length > 0 && (
             <Button
               size="small"
-              variant={showStats ? "primary" : "default"}
-              onClick={() => setShowStats((prev) => !prev)}
+              variant={showStats && activeMode === "table" ? "primary" : "default"}
+              onClick={() => {
+                if (activeMode === "chart") {
+                  setUserSelectedMode("table");
+                }
+                setShowStats((prev) => !prev);
+              }}
               title="Toggle column summary statistics (min, max, average)"
             >
               <GraphIcon size={13} />
@@ -453,7 +653,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
             </Button>
           )}
 
-          {showPageSizeSelector && (
+          {activeMode === "table" && showPageSizeSelector && (
             <select
               value={pageSize}
               onChange={(e) => {
@@ -491,134 +691,184 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
         </Box>
       </Toolbar>
 
-      {showStats && columnsMeta.length > 0 && (
-        <StatsDrawer>
-          {columnsMeta.map((col) => (
-            <StatCard key={col.name}>
-              <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-                <strong style={{ color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {col.name}
-                  {col.unit ? (
-                    <span style={{ color: "#22d3ee", fontWeight: 500, marginLeft: 4 }}>[{col.unit}]</span>
-                  ) : null}
-                </strong>
-                <TypePill $type={col.type}>{col.type}</TypePill>
-              </Box>
-              {col.type === "number" && (
-                <Box display="flex" gap={2} color="var(--color-text-muted)" fontSize="10.5px">
-                  <span>min: {col.min !== undefined ? col.min.toFixed(2) : "—"}</span>
-                  <span>max: {col.max !== undefined ? col.max.toFixed(2) : "—"}</span>
-                  {col.mean !== undefined && <span>avg: {col.mean.toFixed(2)}</span>}
+      {activeMode === "chart" ? (
+        <ChartContainer $isFullScreen={isFullScreen}>
+          {displaySvg ? (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              dangerouslySetInnerHTML={{ __html: displaySvg }}
+            />
+          ) : resolvedThumbUrl ? (
+            <img
+              src={resolvedThumbUrl}
+              alt={typeof viewConfig?.title === "string" ? viewConfig.title : "Telemetry Chart Preview"}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                borderRadius: "6px",
+                boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
+              }}
+            />
+          ) : null}
+
+          <SwitchToTablePill
+            type="button"
+            onClick={() => setUserSelectedMode("table")}
+            title="Switch to full interactive tabular view"
+          >
+            <TableIcon size={13} />
+            <span>
+              View Tabular Data ({reportedTotal} {reportedTotal === 1 ? "row" : "rows"})
+            </span>
+          </SwitchToTablePill>
+        </ChartContainer>
+      ) : (
+        <>
+          {showStats && columnsMeta.length > 0 && (
+            <StatsDrawer>
+              {columnsMeta.map((col) => (
+                <StatCard key={col.name}>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+                    <strong
+                      style={{ color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {col.name}
+                      {col.unit ? (
+                        <span style={{ color: "#22d3ee", fontWeight: 500, marginLeft: 4 }}>[{col.unit}]</span>
+                      ) : null}
+                    </strong>
+                    <TypePill $type={col.type}>{col.type}</TypePill>
+                  </Box>
+                  {col.type === "number" && (
+                    <Box display="flex" gap={2} color="var(--color-text-muted)" fontSize="10.5px">
+                      <span>min: {col.min !== undefined ? col.min.toFixed(2) : "—"}</span>
+                      <span>max: {col.max !== undefined ? col.max.toFixed(2) : "—"}</span>
+                      {col.mean !== undefined && <span>avg: {col.mean.toFixed(2)}</span>}
+                    </Box>
+                  )}
+                  {col.unique !== undefined && (
+                    <span style={{ color: "var(--color-text-muted)", fontSize: "10px" }}>
+                      {col.unique} unique values
+                    </span>
+                  )}
+                </StatCard>
+              ))}
+            </StatsDrawer>
+          )}
+
+          <TableContainer>
+            <StyledTable>
+              <thead>
+                <tr>
+                  {headers.map((h, i) => {
+                    const colMeta = columnsMeta[i];
+                    const unitBadge = colMeta?.unit && !h.includes(`[${colMeta.unit}]`) ? colMeta.unit : undefined;
+                    return (
+                      <th key={i} onClick={() => handleHeaderClick(i)} title={`Sort by ${h}`}>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <span>{h}</span>
+                          {unitBadge && (
+                            <span
+                              style={{
+                                color: "#22d3ee",
+                                fontSize: "10.5px",
+                                fontFamily: "var(--font-mono, monospace)",
+                              }}
+                            >
+                              [{unitBadge}]
+                            </span>
+                          )}
+                          {sortCol === i ? sortAsc ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} /> : null}
+                        </Box>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedRows.map((row, rIdx) => (
+                  <tr key={rIdx}>
+                    {row.map((cell, cIdx) => (
+                      <td key={cIdx} title={String(cell)}>
+                        {String(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {paginatedRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={headers.length || 1}
+                      style={{ textAlign: "center", padding: "24px", color: "var(--color-text-muted)" }}
+                    >
+                      {csvData.length === 0 ? "No CSV dataset rows available." : `No rows matching "${searchQuery}".`}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </StyledTable>
+          </TableContainer>
+
+          {showBottomBar && (
+            <PaginationBar>
+              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {isFiltering ? (
+                  <>
+                    Found <strong>{totalRows}</strong> matching {totalRows === 1 ? "row" : "rows"} (filtered from{" "}
+                    {rawRows.length} total) &mdash;{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setPage(1);
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--color-accent-fg, #58a6ff)",
+                        cursor: "pointer",
+                        padding: 0,
+                        fontSize: "11.5px",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Reset filter
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Showing rows {totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1}&ndash;
+                    {Math.min(currentPage * pageSize, totalRows)} of {reportedTotal}
+                  </>
+                )}
+              </span>
+              {hasMultiplePages && (
+                <Box display="flex" alignItems="center" gap={1} style={{ flexShrink: 0 }}>
+                  <Button size="small" disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                    Previous
+                  </Button>
+                  <Text fontSize="11px" mx={1}>
+                    Page {currentPage} of {totalPages}
+                  </Text>
+                  <Button
+                    size="small"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
                 </Box>
               )}
-              {col.unique !== undefined && (
-                <span style={{ color: "var(--color-text-muted)", fontSize: "10px" }}>{col.unique} unique values</span>
-              )}
-            </StatCard>
-          ))}
-        </StatsDrawer>
-      )}
-
-      <TableContainer>
-        <StyledTable>
-          <thead>
-            <tr>
-              {headers.map((h, i) => {
-                const colMeta = columnsMeta[i];
-                const unitBadge = colMeta?.unit && !h.includes(`[${colMeta.unit}]`) ? colMeta.unit : undefined;
-                return (
-                  <th key={i} onClick={() => handleHeaderClick(i)} title={`Sort by ${h}`}>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <span>{h}</span>
-                      {unitBadge && (
-                        <span
-                          style={{ color: "#22d3ee", fontSize: "10.5px", fontFamily: "var(--font-mono, monospace)" }}
-                        >
-                          [{unitBadge}]
-                        </span>
-                      )}
-                      {sortCol === i ? sortAsc ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} /> : null}
-                    </Box>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedRows.map((row, rIdx) => (
-              <tr key={rIdx}>
-                {row.map((cell, cIdx) => (
-                  <td key={cIdx} title={String(cell)}>
-                    {String(cell)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {paginatedRows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={headers.length || 1}
-                  style={{ textAlign: "center", padding: "24px", color: "var(--color-text-muted)" }}
-                >
-                  {csvData.length === 0 ? "No CSV dataset rows available." : `No rows matching "${searchQuery}".`}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </StyledTable>
-      </TableContainer>
-
-      {showBottomBar && (
-        <PaginationBar>
-          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {isFiltering ? (
-              <>
-                Found <strong>{totalRows}</strong> matching {totalRows === 1 ? "row" : "rows"} (filtered from{" "}
-                {rawRows.length} total) &mdash;{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setPage(1);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--color-accent-fg, #58a6ff)",
-                    cursor: "pointer",
-                    padding: 0,
-                    fontSize: "11.5px",
-                    textDecoration: "underline",
-                  }}
-                >
-                  Reset filter
-                </button>
-              </>
-            ) : (
-              <>
-                Showing rows {totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1}&ndash;
-                {Math.min(currentPage * pageSize, totalRows)} of {reportedTotal}
-              </>
-            )}
-          </span>
-          {hasMultiplePages && (
-            <Box display="flex" alignItems="center" gap={1} style={{ flexShrink: 0 }}>
-              <Button size="small" disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                Previous
-              </Button>
-              <Text fontSize="11px" mx={1}>
-                Page {currentPage} of {totalPages}
-              </Text>
-              <Button
-                size="small"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </Button>
-            </Box>
+            </PaginationBar>
           )}
-        </PaginationBar>
+        </>
       )}
     </TableWrapper>
   );

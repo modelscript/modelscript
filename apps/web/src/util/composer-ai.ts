@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseQif } from "@modelscript/qif/parser";
+import { evaluateQifSpc } from "@modelscript/qif/spc";
 import {
   draftPostWithAi,
   getArtifactView,
@@ -316,6 +318,10 @@ const LOCAL_DOMAIN_MAP: Record<string, { domain: string; hashtags: string[] }> =
     hashtags: ["#Simulation", "#Dynamics", "#TimeSeries"],
   },
   "vega-plot": { domain: "Simulation Trajectory Analysis", hashtags: ["#Simulation", "#Dynamics", "#DataViz"] },
+  qif: {
+    domain: "Digital Metrology & 3D MBD",
+    hashtags: ["#QIF", "#Metrology", "#GDT", "#QualityEngineering", "#MBD"],
+  },
   package: { domain: "Engineering Package Registry", hashtags: ["#ModelScript", "#OpenSource", "#EngineeringLibrary"] },
   repository: { domain: "Engineering Git Repository", hashtags: ["#Git", "#ModelScript", "#ReproducibleEngineering"] },
 };
@@ -377,6 +383,51 @@ export function classifyArtifactLocally(rawView: Record<string, unknown> | null 
     }
   }
 
+  if (viewType === "qif") {
+    const rawCode = String(config["code"] || config["qifCode"] || config["source"] || "");
+    const companions = (config["companions"] as Record<string, unknown> | undefined) ?? {};
+    const geom = companions["geometry"] as Record<string, unknown> | undefined;
+    const geomTitle = geom && typeof geom["title"] === "string" ? geom["title"] : undefined;
+
+    let featCount = 0;
+    let charCount = 0;
+    let actualCount = 0;
+    let failCount = 0;
+    let minCpk: number | undefined;
+
+    if (rawCode) {
+      try {
+        const doc = parseQif(rawCode);
+        featCount = doc.features.length;
+        charCount = doc.characteristics.length;
+        actualCount = doc.actuals.length;
+        try {
+          const spc = evaluateQifSpc(doc);
+          const cpks = spc.characteristics.map((c) => c.cpk).filter((v) => Number.isFinite(v));
+          if (cpks.length > 0) minCpk = Math.min(...cpks);
+          failCount = spc.characteristics.filter((c) => c.status === "FAIL").length;
+        } catch {}
+      } catch {}
+    }
+
+    if (featCount > 0 || charCount > 0) {
+      highlights.push(
+        `${featCount} features, ${charCount} characteristics${actualCount > 0 ? `, ${actualCount} measurements` : ""}`,
+      );
+    }
+    if (geomTitle) {
+      highlights.push(`3D CAD Model: ${geomTitle}`);
+    }
+    if (minCpk !== undefined) {
+      highlights.push(`Min Cpk: ${minCpk.toFixed(2)}`);
+    }
+    if (failCount > 0) {
+      highlights.push(`Non-Conformance: ${failCount} characteristic(s) out of tolerance`);
+    } else if (charCount > 0) {
+      highlights.push("All characteristics in tolerance");
+    }
+  }
+
   if (typeof config["componentCount"] === "number" && config["componentCount"] > 0) {
     highlights.push(
       `${config["componentCount"]} components${
@@ -423,6 +474,64 @@ export function draftLocallyFromSummary(
     const missing = summary.suggestedHashtags.filter((t) => !base.toLowerCase().includes(t.toLowerCase()));
     return {
       draft: missing.length > 0 ? `${base}\n\n${missing.join(" ")}` : base,
+      notebookTitle,
+      notebookSummary,
+      domain: summary.domain,
+      highlights: summary.highlights,
+      suggestedHashtags: summary.suggestedHashtags,
+      provider: "local-browser-ai",
+      model: "browser-engineering-classifier-v1",
+    };
+  }
+
+  if (summary.domain === "Digital Metrology & 3D MBD") {
+    const isNcr = summary.highlights.some((h) => h.toLowerCase().includes("non-conformance"));
+    const headline = isNcr
+      ? `🚨 **Quality Alert / NCR**: **${summary.title}**`
+      : `✅ **First Article Inspection**: **${summary.title}**`;
+    const details = summary.highlights.join(" · ");
+
+    if (tone === "concise") {
+      const draft = `${headline} — ${details}. ${tags}`.trim();
+      return {
+        draft,
+        notebookTitle,
+        notebookSummary,
+        domain: summary.domain,
+        highlights: summary.highlights,
+        suggestedHashtags: summary.suggestedHashtags,
+        provider: "local-browser-ai",
+        model: "browser-engineering-classifier-v1",
+      };
+    }
+
+    if (tone === "expand") {
+      const bullets = summary.highlights.map((h) => `- ${h}`).join("\n");
+      const draft = [
+        `${headline}`,
+        `### Inspection Summary\n${bullets}`,
+        `Interactive 3D MBD geometry and Bill of Characteristics (BoC) attached for review.\n\n${tags}`,
+      ].join("\n\n");
+      return {
+        draft,
+        notebookTitle,
+        notebookSummary,
+        domain: summary.domain,
+        highlights: summary.highlights,
+        suggestedHashtags: summary.suggestedHashtags,
+        provider: "local-browser-ai",
+        model: "browser-engineering-classifier-v1",
+      };
+    }
+
+    // Default / technical tone:
+    const draft = [
+      `${headline}`,
+      `Inspection report covering ${details}.`,
+      `Inspect 3D CAD alignment, deviation heatmaps, and GD&T characteristics in the interactive viewer below.\n\n${tags}`,
+    ].join("\n\n");
+    return {
+      draft,
       notebookTitle,
       notebookSummary,
       domain: summary.domain,

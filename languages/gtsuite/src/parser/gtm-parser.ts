@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   GtComponent,
   GtConnection,
@@ -33,60 +34,111 @@ export function parseGtmModel(rawText: string, defaultName = "EngineModel"): GtM
   return parseAsciiGtm(trimmed, defaultName);
 }
 
+function getXmlAttr(elem: XmlElement, name: string): string | undefined {
+  const target = name.toLowerCase();
+  const attr = elem.attributes.find((a) => a.name.toLowerCase() === target);
+  return attr?.value;
+}
+
+function getXmlAttrNumber(elem: XmlElement, name: string, defaultVal: number): number {
+  const val = getXmlAttr(elem, name);
+  if (val === undefined) return defaultVal;
+  const num = Number(val);
+  return Number.isNaN(num) ? defaultVal : num;
+}
+
+function findXmlChild(parent: XmlElement, tagName: string): XmlElement | undefined {
+  const target = tagName.toLowerCase();
+  return parent.children.find((c) => {
+    const name = c.name.toLowerCase();
+    return name === target || name.endsWith(`:${target}`);
+  });
+}
+
+function findXmlDescendants(parent: XmlElement, tagName: string): XmlElement[] {
+  const target = tagName.toLowerCase();
+  const results: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    for (const child of node.children) {
+      const name = child.name.toLowerCase();
+      if (name === target || name.endsWith(`:${target}`)) {
+        results.push(child);
+      }
+      walk(child);
+    }
+  }
+  walk(parent);
+  return results;
+}
+
 /**
  * XML parser for GT-SUITE model project documents.
  */
 function parseXmlGtm(xmlText: string, defaultName: string): GtModel {
-  // Simple robust regex-based XML extraction without heavy dependencies
-  const modelNameMatch = xmlText.match(/<(?:\w+:)?(?:GTModel|Model|GTSUITE)\b[^<>]*?\bname=["']([^"']+)["']/i);
-  const name = modelNameMatch?.[1] ?? defaultName;
+  const doc = parseXml(xmlText);
+  if (!doc.root) {
+    return {
+      name: defaultName,
+      attributes: {},
+      components: [],
+      connections: [],
+      maps: {},
+      simulationSettings: {
+        durationSeconds: 5.0,
+        timeStepSeconds: 0.0001,
+        engineSpeedRpm: 3000.0,
+        ambientPressurePa: 101325.0,
+        ambientTemperatureK: 298.15,
+        airFuelRatioLambda: 1.0,
+      },
+    };
+  }
 
+  const root = doc.root;
+  const name = getXmlAttr(root, "name") ?? defaultName;
+
+  const simElem = findXmlChild(root, "SimulationSettings");
   const simSettings: GtSimulationSettings = {
-    durationSeconds: extractXmlAttrNumber(xmlText, "duration", 5.0),
-    timeStepSeconds: extractXmlAttrNumber(xmlText, "timeStep", 0.0001),
-    engineSpeedRpm: extractXmlAttrNumber(xmlText, "engineSpeed", 3000.0),
-    ambientPressurePa: extractXmlAttrNumber(xmlText, "ambientPressure", 101325.0),
-    ambientTemperatureK: extractXmlAttrNumber(xmlText, "ambientTemperature", 298.15),
-    airFuelRatioLambda: extractXmlAttrNumber(xmlText, "lambda", 1.0),
+    durationSeconds: simElem ? getXmlAttrNumber(simElem, "duration", 5.0) : getXmlAttrNumber(root, "duration", 5.0),
+    timeStepSeconds: simElem
+      ? getXmlAttrNumber(simElem, "timeStep", 0.0001)
+      : getXmlAttrNumber(root, "timeStep", 0.0001),
+    engineSpeedRpm: simElem
+      ? getXmlAttrNumber(simElem, "engineSpeed", 3000.0)
+      : getXmlAttrNumber(root, "engineSpeed", 3000.0),
+    ambientPressurePa: simElem
+      ? getXmlAttrNumber(simElem, "ambientPressure", 101325.0)
+      : getXmlAttrNumber(root, "ambientPressure", 101325.0),
+    ambientTemperatureK: simElem
+      ? getXmlAttrNumber(simElem, "ambientTemperature", 298.15)
+      : getXmlAttrNumber(root, "ambientTemperature", 298.15),
+    airFuelRatioLambda: simElem ? getXmlAttrNumber(simElem, "lambda", 1.0) : getXmlAttrNumber(root, "lambda", 1.0),
   };
 
   const components: GtComponent[] = [];
   const connections: GtConnection[] = [];
   const maps: Record<string, GtTableMap> = {};
 
-  // Extract <Component ...> blocks without ReDoS vulnerability
-  const compTagRegex = /<Component\b([^>]*?)(\/?>)/gi;
-  let tagMatch: RegExpExecArray | null;
-
-  while ((tagMatch = compTagRegex.exec(xmlText)) !== null) {
-    const attrsStr = tagMatch[1] ?? "";
-    const isSelfClosing = tagMatch[2] === "/>";
-    let bodyStr = "";
-
-    if (!isSelfClosing) {
-      const startBody = compTagRegex.lastIndex;
-      const nextOpen = xmlText.slice(startBody).search(/<Component\b/i);
-      const closeMatch = xmlText.slice(startBody).match(/<\/Component>/i);
-      if (closeMatch && (nextOpen === -1 || closeMatch.index! < nextOpen)) {
-        bodyStr = xmlText.slice(startBody, startBody + closeMatch.index!);
-        compTagRegex.lastIndex = startBody + closeMatch.index! + closeMatch[0].length;
-      }
-    }
-    const id = extractAttr(attrsStr, "id") ?? `comp_${components.length + 1}`;
-    const kind = (extractAttr(attrsStr, "kind") ?? extractAttr(attrsStr, "type") ?? "pipe").toLowerCase();
+  const compNodes = findXmlDescendants(root, "Component");
+  for (const compElem of compNodes) {
+    const id = getXmlAttr(compElem, "id") ?? `comp_${components.length + 1}`;
+    const kind = (getXmlAttr(compElem, "kind") ?? getXmlAttr(compElem, "type") ?? "pipe").toLowerCase();
 
     if (kind === "cylinder") {
-      const boreM = extractAttrNumber(attrsStr, "bore", 0.0825);
-      const strokeM = extractAttrNumber(attrsStr, "stroke", 0.0928);
-      const rodM = extractAttrNumber(attrsStr, "rodLength", 0.144);
-      const cr = extractAttrNumber(attrsStr, "compressionRatio", 10.0);
+      const boreM = getXmlAttrNumber(compElem, "bore", 0.0825);
+      const strokeM = getXmlAttrNumber(compElem, "stroke", 0.0928);
+      const rodM = getXmlAttrNumber(compElem, "rodLength", 0.144);
+      const cr = getXmlAttrNumber(compElem, "compressionRatio", 10.0);
       const disp = (Math.PI / 4) * boreM * boreM * strokeM;
 
       // Extract child combustion block
-      const anchor = extractXmlAttrNumber(bodyStr, "anchorAngle", 15.0);
-      const duration = extractXmlAttrNumber(bodyStr, "duration", 40.0);
-      const exponent = extractXmlAttrNumber(bodyStr, "exponent", 2.0);
-      const wallTemp = extractXmlAttrNumber(bodyStr, "wallTemperature", 450.0);
+      const combustionElem = findXmlChild(compElem, "Combustion");
+      const anchor = combustionElem ? getXmlAttrNumber(combustionElem, "anchorAngle", 15.0) : 15.0;
+      const duration = combustionElem ? getXmlAttrNumber(combustionElem, "duration", 40.0) : 40.0;
+      const exponent = combustionElem ? getXmlAttrNumber(combustionElem, "exponent", 2.0) : 2.0;
+
+      const heatElem = findXmlChild(compElem, "HeatTransfer");
+      const wallTemp = heatElem ? getXmlAttrNumber(heatElem, "wallTemperature", 450.0) : 450.0;
 
       components.push({
         id,
@@ -115,76 +167,74 @@ function parseXmlGtm(xmlText: string, defaultName: string): GtModel {
       components.push({
         id,
         kind: kind as GtPipeComponent["kind"],
-        diameterM: extractAttrNumber(attrsStr, "diameter", 0.045),
-        lengthM: extractAttrNumber(attrsStr, "length", 0.35),
-        wallTemperatureK: extractAttrNumber(attrsStr, "wallTemperature", 350.0),
-        frictionFactor: extractAttrNumber(attrsStr, "friction", 0.005),
-        numCells: extractAttrNumber(attrsStr, "numCells", 10),
+        diameterM: getXmlAttrNumber(compElem, "diameter", 0.045),
+        lengthM: getXmlAttrNumber(compElem, "length", 0.35),
+        wallTemperatureK: getXmlAttrNumber(compElem, "wallTemperature", 350.0),
+        frictionFactor: getXmlAttrNumber(compElem, "friction", 0.005),
+        numCells: getXmlAttrNumber(compElem, "numCells", 10),
       } as GtPipeComponent);
     } else if (kind === "plenum" || kind === "flow_split") {
       components.push({
         id,
         kind: kind as GtPlenumComponent["kind"],
-        volumeM3: extractAttrNumber(attrsStr, "volume", 0.004),
-        initialPressurePa: extractAttrNumber(attrsStr, "initialPressure", 101325.0),
-        initialTemperatureK: extractAttrNumber(attrsStr, "initialTemperature", 300.0),
+        volumeM3: getXmlAttrNumber(compElem, "volume", 0.004),
+        initialPressurePa: getXmlAttrNumber(compElem, "initialPressure", 101325.0),
+        initialTemperatureK: getXmlAttrNumber(compElem, "initialTemperature", 300.0),
       } as GtPlenumComponent);
     } else if (kind === "turbo_compressor") {
       components.push({
         id,
         kind: "turbo_compressor",
-        pressureRatio: extractAttrNumber(attrsStr, "pressureRatio", 2.0),
-        massFlowKgS: extractAttrNumber(attrsStr, "massFlow", 0.15),
-        speedRpm: extractAttrNumber(attrsStr, "speedRpm", 120000.0),
-        efficiency: extractAttrNumber(attrsStr, "efficiency", 0.76),
+        pressureRatio: getXmlAttrNumber(compElem, "pressureRatio", 2.0),
+        massFlowKgS: getXmlAttrNumber(compElem, "massFlow", 0.15),
+        speedRpm: getXmlAttrNumber(compElem, "speedRpm", 120000.0),
+        efficiency: getXmlAttrNumber(compElem, "efficiency", 0.76),
       } as GtTurboCompressorComponent);
     } else if (kind === "turbo_turbine") {
       components.push({
         id,
         kind: "turbo_turbine",
-        expansionRatio: extractAttrNumber(attrsStr, "expansionRatio", 1.8),
-        efficiency: extractAttrNumber(attrsStr, "efficiency", 0.72),
-        wastegateFraction: extractAttrNumber(attrsStr, "wastegate", 0.0),
+        expansionRatio: getXmlAttrNumber(compElem, "expansionRatio", 1.8),
+        efficiency: getXmlAttrNumber(compElem, "efficiency", 0.72),
+        wastegateFraction: getXmlAttrNumber(compElem, "wastegate", 0.0),
       } as GtTurboTurbineComponent);
     } else if (kind === "intercooler") {
       components.push({
         id,
         kind: "intercooler",
-        volumeM3: extractAttrNumber(attrsStr, "volume", 0.005),
-        pressureDropCoefficient: extractAttrNumber(attrsStr, "pressureDrop", 0.05),
-        effectiveness: extractAttrNumber(attrsStr, "effectiveness", 0.85),
-        coolantTemperatureK: extractAttrNumber(attrsStr, "coolantTemp", 300.0),
+        volumeM3: getXmlAttrNumber(compElem, "volume", 0.005),
+        pressureDropCoefficient: getXmlAttrNumber(compElem, "pressureDrop", 0.05),
+        effectiveness: getXmlAttrNumber(compElem, "effectiveness", 0.85),
+        coolantTemperatureK: getXmlAttrNumber(compElem, "coolantTemp", 300.0),
       } as GtIntercoolerComponent);
     } else if (kind === "environment_inlet" || kind === "environment_outlet") {
       components.push({
         id,
         kind: kind as GtEnvironmentComponent["kind"],
-        pressurePa: extractAttrNumber(attrsStr, "pressure", 101325.0),
-        temperatureK: extractAttrNumber(attrsStr, "temperature", 298.15),
+        pressurePa: getXmlAttrNumber(compElem, "pressure", 101325.0),
+        temperatureK: getXmlAttrNumber(compElem, "temperature", 298.15),
       } as GtEnvironmentComponent);
     } else if (kind === "valve") {
       components.push({
         id,
         kind: "valve",
-        diameterM: extractAttrNumber(attrsStr, "diameter", 0.034),
-        maxLiftM: extractAttrNumber(attrsStr, "maxLift", 0.01),
-        dischargeCoefficient: extractAttrNumber(attrsStr, "cd", 0.65),
-        lashClearanceM: extractAttrNumber(attrsStr, "lash", 0.0002),
-        openAngleDeg: extractAttrNumber(attrsStr, "openAngle", 350.0),
-        closeAngleDeg: extractAttrNumber(attrsStr, "closeAngle", 580.0),
+        diameterM: getXmlAttrNumber(compElem, "diameter", 0.034),
+        maxLiftM: getXmlAttrNumber(compElem, "maxLift", 0.01),
+        dischargeCoefficient: getXmlAttrNumber(compElem, "cd", 0.65),
+        lashClearanceM: getXmlAttrNumber(compElem, "lash", 0.0002),
+        openAngleDeg: getXmlAttrNumber(compElem, "openAngle", 350.0),
+        closeAngleDeg: getXmlAttrNumber(compElem, "closeAngle", 580.0),
       } as GtValveComponent);
     }
   }
 
   // Extract <Connection from="..." to="..." />
-  const connRegex = /<Connection\s+([^\s<>][^<>]*?)\/>/gi;
-  let connMatch: RegExpExecArray | null;
-  while ((connMatch = connRegex.exec(xmlText)) !== null) {
-    const attrs = connMatch[1] ?? "";
-    const from = extractAttr(attrs, "from") ?? "";
-    const to = extractAttr(attrs, "to") ?? "";
-    const fromPort = extractAttr(attrs, "fromPort") ?? "out";
-    const toPort = extractAttr(attrs, "toPort") ?? "in";
+  const connNodes = findXmlDescendants(root, "Connection");
+  for (const connElem of connNodes) {
+    const from = getXmlAttr(connElem, "from") ?? "";
+    const to = getXmlAttr(connElem, "to") ?? "";
+    const fromPort = getXmlAttr(connElem, "fromPort") ?? "out";
+    const toPort = getXmlAttr(connElem, "toPort") ?? "in";
     if (from && to) {
       connections.push({ fromComponent: from, fromPort, toComponent: to, toPort });
     }
@@ -433,23 +483,4 @@ function parseKvPairs(str: string): Record<string, number> {
     }
   }
   return res;
-}
-
-function extractAttr(attrsStr: string, attrName: string): string | undefined {
-  const match = attrsStr.match(new RegExp(`${attrName}=["']([^"']+)["']`, "i"));
-  return match?.[1];
-}
-
-function extractAttrNumber(attrsStr: string, attrName: string, defaultVal: number): number {
-  const val = extractAttr(attrsStr, attrName);
-  if (val === undefined) return defaultVal;
-  const num = Number(val);
-  return Number.isNaN(num) ? defaultVal : num;
-}
-
-function extractXmlAttrNumber(xmlStr: string, attrName: string, defaultVal: number): number {
-  const match = xmlStr.match(new RegExp(`${attrName}=["']([^"']+)["']`, "i"));
-  if (!match?.[1]) return defaultVal;
-  const num = Number(match[1]);
-  return Number.isNaN(num) ? defaultVal : num;
 }

@@ -8,7 +8,7 @@ export interface StepGeometry {
 }
 
 /** Parse a binary STL (80-byte header, uint32 triangle count, 50 bytes per triangle) into a mesh payload. */
-export function parseBinaryStl(stl: Uint8Array, name: string): StepGeometry | null {
+export function parseBinaryStl(stl: Uint8Array, name: string, scaleFactor = 1.0): StepGeometry | null {
   if (stl.byteLength < 84) return null;
   const view = new DataView(stl.buffer, stl.byteOffset, stl.byteLength);
   const declared = view.getUint32(80, true);
@@ -19,6 +19,7 @@ export function parseBinaryStl(stl: Uint8Array, name: string): StepGeometry | nu
   const normals: number[] = new Array<number>(triCount * 9);
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  const scale = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1.0;
 
   for (let i = 0; i < triCount; i++) {
     const off = 84 + i * 50;
@@ -28,7 +29,8 @@ export function parseBinaryStl(stl: Uint8Array, name: string): StepGeometry | nu
     for (let v = 0; v < 3; v++) {
       const base = i * 9 + v * 3;
       for (let axis = 0; axis < 3; axis++) {
-        const value = view.getFloat32(off + 12 + v * 12 + axis * 4, true);
+        const rawValue = view.getFloat32(off + 12 + v * 12 + axis * 4, true);
+        const value = rawValue * scale;
         vertices[base + axis] = value;
         if (value < min[axis]!) min[axis] = value;
         if (value > max[axis]!) max[axis] = value;
@@ -56,17 +58,22 @@ export function parseBinaryStl(stl: Uint8Array, name: string): StepGeometry | nu
 }
 
 /** Tessellate STEP text into a displayable mesh. The tessellator is loaded lazily (it is large). */
-export async function stepTextToGeometry(stepText: string, name: string): Promise<StepGeometry | null> {
+export async function stepTextToGeometry(
+  stepText: string,
+  name: string,
+  scaleFactor = 1.0,
+): Promise<StepGeometry | null> {
   const { tessellateStepSource } = await import("../morsel/hooks/useMorselEngine");
   // Keep native STEP coordinates: QIF feature locations are in the same (millimeter) frame.
   const { stlBuffer } = tessellateStepSource(stepText, { normalize: false });
-  return parseBinaryStl(stlBuffer, name);
+  return parseBinaryStl(stlBuffer, name, scaleFactor);
 }
 
 export interface GeometryCompanionRef {
   artifactId: string | number;
   title?: string | undefined;
   provenance?: string | undefined;
+  scaleFactor?: number | undefined;
 }
 
 /** Read `viewConfig.companions.geometry` (a reference to the paired STEP artifact), if present. */
@@ -81,10 +88,17 @@ export function readGeometryCompanion(
   const id = g["artifactId"];
   if (typeof id !== "string" && typeof id !== "number") return undefined;
   if (typeof id === "string" && id.length === 0) return undefined;
+  const sf =
+    typeof g["scaleFactor"] === "number" && g["scaleFactor"] > 0
+      ? g["scaleFactor"]
+      : typeof viewConfig?.["geometryScale"] === "number" && (viewConfig["geometryScale"] as number) > 0
+        ? (viewConfig["geometryScale"] as number)
+        : undefined;
   return {
     artifactId: id,
     ...(typeof g["title"] === "string" ? { title: g["title"] } : {}),
     ...(typeof g["provenance"] === "string" ? { provenance: g["provenance"] } : {}),
+    ...(sf !== undefined ? { scaleFactor: sf } : {}),
   };
 }
 
@@ -121,4 +135,27 @@ const SYNTHESIZED_STEP_MARKER = "ModelScript ISO 10303-242 AP242 MBD Companion B
  */
 export function isSynthesizedStep(stepText: string): boolean {
   return stepText.includes(SYNTHESIZED_STEP_MARKER);
+}
+
+export { TURBINE_BLADE_ROOT_STEP } from "@modelscript/qif/step-bridge";
+
+/**
+ * Returns true if the artifact viewConfig corresponds to the seeded Aerospace HPT Blade Fir-Tree Root inspection.
+ */
+export function isTurbineBladeInspection(viewConfig?: Record<string, unknown> | null): boolean {
+  if (!viewConfig || typeof viewConfig !== "object") return false;
+  const fn = typeof viewConfig["filename"] === "string" ? (viewConfig["filename"] as string) : "";
+  const title = typeof viewConfig["title"] === "string" ? (viewConfig["title"] as string) : "";
+  const code =
+    typeof viewConfig["code"] === "string"
+      ? (viewConfig["code"] as string)
+      : typeof viewConfig["source"] === "string"
+        ? (viewConfig["source"] as string)
+        : "";
+  return (
+    fn.includes("TurbineBlade") ||
+    title.includes("HPT Blade") ||
+    title.includes("Turbine Blade") ||
+    (code.includes("F_ROOT_BASE") && code.includes("F_COOLING_BORE"))
+  );
 }

@@ -159,6 +159,8 @@ const usageAttrs = (_usageKind: string) => (self: SysmlRuleSelf) => ({
     shortName: self.declaredShortName,
     multiplicityLower: self.ownedMultiplicity?.ownedRelatedElement?.lowerBound,
     multiplicityUpper: self.ownedMultiplicity?.ownedRelatedElement?.upperBound,
+    value: self["ownedRelatedElement"],
+    expression: self["ownedRelatedElement"],
   },
 });
 

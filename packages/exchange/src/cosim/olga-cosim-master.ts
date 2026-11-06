@@ -24,6 +24,7 @@
 import { parseOlga, type OlgaModel } from "@modelscript/olga";
 import fs from "node:fs";
 import path from "node:path";
+import { extractFromZip } from "../fmu/fmu.js";
 import type { CosimValue } from "./coupling.js";
 import type { ParticipantMetadata } from "./mqtt/protocol.js";
 import type { CoSimParticipant } from "./participant.js";
@@ -272,6 +273,24 @@ export class TopsideFacilityCoSimParticipant implements CoSimParticipant {
   public async terminate(): Promise<void> {}
 }
 
+function extractOpiFromFmu(buf: Uint8Array): string | null {
+  try {
+    const opiBytes =
+      extractFromZip(buf, "resources/model.opi") ||
+      extractFromZip(buf, "model.opi") ||
+      extractFromZip(buf, "resources/model.xml");
+    if (opiBytes) {
+      const text = new TextDecoder().decode(opiBytes);
+      if (text.includes("<Model") || text.includes("<OLGAModel")) {
+        return text;
+      }
+    }
+  } catch {
+    // If not a valid zip archive, ignore
+  }
+  return null;
+}
+
 /**
  * Resolves or instantiates an OLGA co-simulation participant from file path, raw source, or model.
  */
@@ -286,12 +305,11 @@ function resolveSubseaParticipant(
   let model: OlgaModel;
   if (typeof source === "string") {
     if (source.endsWith(".fmu") && fs.existsSync(source)) {
-      // In an FMU package, look for serialized model.opi or modelDescription.xml
+      // In an FMU package, look for serialized model.opi in resources/ or root
       const buf = fs.readFileSync(source);
-      const str = buf.toString("latin1");
-      const opiMatch = str.match(/<OLGAModel[\s\S]*?<\/OLGAModel>/);
-      if (opiMatch) {
-        model = parseOlga(opiMatch[0]);
+      const opiText = extractOpiFromFmu(buf);
+      if (opiText) {
+        model = parseOlga(opiText);
       } else {
         // Fallback default subsea production riser model
         model = createDefaultSubseaRiserModel(path.basename(source, ".fmu"));
@@ -303,17 +321,17 @@ function resolveSubseaParticipant(
       model = parseOlga(source);
     }
   } else if (source instanceof Uint8Array) {
-    const str = Buffer.from(source).toString("latin1");
-    const startIdx = str.indexOf("<OLGAModel");
-    let modelXml: string | null = null;
-    if (startIdx !== -1) {
-      const endTag = "</OLGAModel>";
-      const endIdx = str.indexOf(endTag, startIdx);
-      if (endIdx !== -1) {
-        modelXml = str.slice(startIdx, endIdx + endTag.length);
+    const opiText = extractOpiFromFmu(source);
+    if (opiText) {
+      model = parseOlga(opiText);
+    } else {
+      const text = new TextDecoder().decode(source);
+      if (text.includes("<Model") || text.includes("<OLGAModel")) {
+        model = parseOlga(text);
+      } else {
+        model = createDefaultSubseaRiserModel("subsea_fmu");
       }
     }
-    model = modelXml ? parseOlga(modelXml) : createDefaultSubseaRiserModel("subsea_fmu");
   } else {
     model = source;
   }

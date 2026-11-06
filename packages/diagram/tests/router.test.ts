@@ -15,6 +15,7 @@ import {
   healOrthogonalVertices,
   portOrthogonalRouter,
   regularizeOrthogonalPolyline,
+  routeOrthogonalGridAStar,
   segmentIntersectsRect,
   simplifyCollinearPoints,
   translateConnectedEdgeStubs,
@@ -730,6 +731,41 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
         Math.abs(a.x - b.x) < 1e-6 || Math.abs(a.y - b.y) < 1e-6,
         `Case 3 segment ${i} (${a.x},${a.y})->(${b.x},${b.y}) must be strictly orthogonal`,
       );
+    }
+  });
+
+  it("routeOrthogonalGridAStar should navigate around obstacle cells in pure TypeScript mode", () => {
+    const cols = 20;
+    const rows = 20;
+    const grid = new Uint8Array(cols * rows);
+
+    // Place an obstacle block from (8, 5) to (12, 15)
+    for (let x = 8; x <= 12; x++) {
+      for (let y = 5; y <= 15; y++) {
+        grid[y * cols + x] = 1;
+      }
+    }
+
+    const startX = 5;
+    const startY = 10;
+    const endX = 15;
+    const endY = 10;
+
+    const waypoints = routeOrthogonalGridAStar({
+      cols,
+      rows,
+      startX,
+      startY,
+      endX,
+      endY,
+      grid,
+    });
+
+    assert.ok(waypoints.length >= 2, "Expected detour waypoints around obstacle");
+    // Verify none of the waypoints land inside the obstacle [8..12, 5..15]
+    for (const [wx, wy] of waypoints) {
+      const inObstacle = wx >= 8 && wx <= 12 && wy >= 5 && wy <= 15;
+      assert.strictEqual(inObstacle, false, `Waypoint (${wx}, ${wy}) collided with obstacle`);
     }
   });
 });

@@ -96,6 +96,10 @@ The **CLI** column below shows which command reports each language's rules.
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
 
+::: info Not yet listed
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [OpenUSD](../languages/usd.md). See each language guide for details.
+:::
+
 ## Modelica {#modelica}
 
 Acausal multi-domain physics. **307 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts`, `languages/modelica/src/lints/index.ts` · [Language guide](../languages/modelica.md)

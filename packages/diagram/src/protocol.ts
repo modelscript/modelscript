@@ -359,11 +359,47 @@ export interface DiagramEdge {
   };
 }
 
+export interface CoordinateSystemBoundsStyle {
+  stroke?: string | undefined;
+  strokeWidth?: number | undefined;
+  strokeDasharray?: string | undefined;
+  fill?: string | undefined;
+  visible?: boolean | undefined;
+  headerText?: string | undefined;
+}
+
+export interface CoordinateSystemAxesStyle {
+  stroke?: string | undefined;
+  strokeWidth?: number | undefined;
+  strokeDasharray?: string | undefined;
+  visible?: boolean | undefined;
+  boundsOnly?: boolean | undefined;
+  origin?: [number, number] | undefined;
+  showTicks?: boolean | undefined;
+  xLabel?: string | undefined;
+  yLabel?: string | undefined;
+}
+
+export interface CoordinateSystemGridConfig {
+  x?: number | undefined;
+  y?: number | undefined;
+  type?: "dot" | "mesh" | "doubleMesh" | "none" | undefined;
+  color?: string | undefined;
+  visible?: boolean | undefined;
+  snap?: boolean | undefined;
+}
+
 export interface CoordinateSystem {
   x: number;
   y: number;
   width: number;
   height: number;
+  extent?: [[number, number], [number, number]] | undefined;
+  grid?: [number, number] | CoordinateSystemGridConfig | undefined;
+  preserveAspectRatio?: boolean | undefined;
+  initialScale?: number | undefined;
+  boundsStyle?: CoordinateSystemBoundsStyle | undefined;
+  axesStyle?: CoordinateSystemAxesStyle | undefined;
 }
 
 export interface DiagramData {

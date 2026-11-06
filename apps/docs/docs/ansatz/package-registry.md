@@ -1,6 +1,6 @@
 # Polyglot Package Registry
 
-The **Ansatz Package Registry** (`/packages`) provides versioned dependency management and artifact distribution for multi-domain engineering libraries. It supports native ModelScript packages alongside standard Modelica libraries, SysML v2 models, and STEP CAD repositories.
+The **Ansatz Package Registry** ([ansatz.social/packages](https://ansatz.social/packages)) provides versioned dependency management and artifact distribution for multi-domain engineering libraries. It supports native ModelScript packages alongside standard Modelica libraries, SysML v2 models, and STEP CAD repositories.
 
 ---
 
@@ -36,7 +36,7 @@ Packages include metadata declaring dependencies, license, and maturity:
 
 ### 2. Publishing Packages
 
-Engineers can publish packages through the web interface using the **Publish Package Modal** in `/packages`, or via the CLI:
+Engineers can publish packages through the web interface using the **Publish Package Modal** in [Packages](https://ansatz.social/packages), or via the CLI:
 
 ```bash
 msx publish ./my-package

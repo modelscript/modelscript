@@ -117,13 +117,11 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
         alignItems: "center",
         gap: 8,
         padding: "8px 16px",
-        borderRadius: 12,
-        backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.9)",
+        borderRadius: "var(--ms-radius-lg, 12px)",
+        backgroundColor: "var(--color-canvas-subtle, var(--ms-surface-glass, rgba(22, 27, 34, 0.9)))",
         backdropFilter: "blur(12px)",
-        boxShadow:
-          colorMode === "dark"
-            ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)"
-            : "0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)",
+        border: "1px solid var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))",
+        boxShadow: "var(--ms-shadow-pop, 0 4px 24px rgba(0, 0, 0, 0.25))",
         zIndex: 1000,
       }}
     >
@@ -137,7 +135,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           >
             <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
           </a>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div
+            style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}
+          />
           <ActionMenu>
             <ActionMenu.Button
               size="small"
@@ -168,7 +168,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
               </ActionList>
             </ActionMenu.Overlay>
           </ActionMenu>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div
+            style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}
+          />
         </>
       )}
       <IconButton
@@ -187,7 +189,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
             : {}
         }
       />
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+      <div
+        style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}
+      />
       <IconButton
         icon={FileIcon}
         size="small"
@@ -218,7 +222,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
       )}
       {activeLangInfo.supportsDiagram && (
         <>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div
+            style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}
+          />
           <IconButton
             icon={FlowchartIcon}
             size="small"
@@ -229,7 +235,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           />
         </>
       )}
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+      <div
+        style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}
+      />
       <div
         style={{
           display: "flex",

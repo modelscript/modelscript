@@ -13,6 +13,7 @@ export interface SysML2ElementLayout {
   width: number;
   height: number;
   rotation?: number | undefined;
+  symbolId?: string | undefined;
 }
 
 /**
@@ -27,7 +28,7 @@ export interface SysML2ConnectionLayout {
  */
 export interface SysML2Layout {
   version: 1;
-  /** Maps element qualified name → position/size data */
+  /** Maps element qualified name or symbol ID → position/size data */
   elements: Record<string, SysML2ElementLayout>;
   /** Maps connection id (source→target) → vertex data */
   connections: Record<string, SysML2ConnectionLayout>;
@@ -69,21 +70,59 @@ export function layoutUriFromSysmlUri(sysmlUri: string): string {
 }
 
 /**
+ * Resolves layout for an element by symbolId first, falling back to name/qualifiedName.
+ */
+export function findElementLayout(
+  layout: SysML2Layout | null | undefined,
+  name: string,
+  symbolId?: string | null,
+): SysML2ElementLayout | undefined {
+  if (!layout?.elements) return undefined;
+  if (symbolId) {
+    for (const [key, elem] of Object.entries(layout.elements)) {
+      if (elem.symbolId === symbolId || key === symbolId) {
+        return elem;
+      }
+    }
+  }
+  return layout.elements[name];
+}
+
+/**
  * Update element positions in the layout structure.
+ * Preserves stable `symbolId` associations across position updates.
  * Returns a new layout (does not mutate the input).
  */
 export function updateElementPositions(
   layout: SysML2Layout,
-  updates: { name: string; x: number; y: number; width: number; height: number; rotation?: number | undefined }[],
+  updates: {
+    name: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation?: number | undefined;
+    symbolId?: string | undefined;
+  }[],
 ): SysML2Layout {
   const newElements = { ...layout.elements };
   for (const item of updates) {
+    const existing = newElements[item.name];
     newElements[item.name] = {
       x: Math.round(item.x),
       y: Math.round(item.y),
       width: Math.round(item.width),
       height: Math.round(item.height),
-      ...(item.rotation ? { rotation: Math.round(item.rotation) } : {}),
+      ...(item.rotation !== undefined
+        ? { rotation: Math.round(item.rotation) }
+        : existing?.rotation !== undefined
+          ? { rotation: existing.rotation }
+          : {}),
+      ...(item.symbolId !== undefined
+        ? { symbolId: item.symbolId }
+        : existing?.symbolId !== undefined
+          ? { symbolId: existing.symbolId }
+          : {}),
     };
   }
   return { ...layout, elements: newElements };

@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerRelap5ToDae } from "./dae/relap5-to-dae.js";
+import { relap5DeckGrammar } from "./grammar/relap5-grammar.js";
 import { lintRelap5 } from "./lints/index.js";
 import { parseRelap5 } from "./parser/relap5-parser.js";
 import { relap5ToModelica } from "./projections/relap5-to-modelica.js";
@@ -20,14 +21,15 @@ export const relap5Language = language({
       light: "./assets/relap5/icon-light.png",
       dark: "./assets/relap5/icon-dark.png",
     },
+    folding: relap5DeckGrammar.lsp?.folding,
+    outline: relap5DeckGrammar.lsp?.outline,
   },
+  word: relap5DeckGrammar.word,
+  extras: relap5DeckGrammar.extras,
+  rules: relap5DeckGrammar.rules,
 
-  writeback: (ctx) => {
-    const { entry, newValue } = ctx;
-    if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
-      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
-    }
-    return null;
+  writeback: {
+    operators: ["="],
   },
 
   actions: [
@@ -107,3 +109,5 @@ export const relap5Language = language({
     },
   ],
 });
+
+export default relap5Language;

@@ -237,5 +237,37 @@ describe("SysML v2 Element Table & Attribute Rewriting Engine", () => {
     );
     assert.ok(sspEdits.length === 1);
     assert.ok(sspEdits[0]?.newText.includes("resources/MotorV2.fmu"));
+
+    // Verify SysML v2 TabularConfig handles nested part blocks without truncation
+    const nestedSysmlSrc = `package Vehicle {
+  part car : Car {
+    attribute mass = 1200 [kg];
+    part engine : Engine {
+      attribute power = 150 [kW];
+    }
+    attribute cost = 25000;
+  }
+}`;
+    const nestedTable = ElementTableEngine.buildFromTabularConfig(sysml2TabularConfig, nestedSysmlSrc, "parts");
+    assert.strictEqual(nestedTable.totalCount, 2);
+    const carRow = nestedTable.rows.find((r) => r.name === "car");
+    assert.ok(carRow);
+    assert.strictEqual(carRow.mass, "1200 [kg]");
+    assert.strictEqual(carRow.cost, "25000");
+    const engineRow = nestedTable.rows.find((r) => r.name === "engine");
+    assert.ok(engineRow);
+    assert.strictEqual(engineRow.power, "150 [kW]");
+
+    // Update cost on car (placed after nested engine)
+    const costEdits = ElementTableEngine.updateFromTabularConfig(
+      sysml2TabularConfig,
+      nestedSysmlSrc,
+      "parts",
+      "car",
+      "cost",
+      "27000",
+    );
+    assert.ok(costEdits.length === 1);
+    assert.strictEqual(costEdits[0]?.newText, "27000");
   });
 });

@@ -62,6 +62,7 @@ export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
       case "cad":
       case "cad-step":
       case "3d-model":
+      case "qif":
         return <CadVisual isDark={isDark} strokeColor={strokeColor} accentSecondary={accentSecondary} />;
       case "pdf":
       case "tei-document":

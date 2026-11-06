@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { topasDeckGrammar } from "./grammar/topas-grammar.js";
 import { lintTopasDocument } from "./lints/rules.js";
 import { parseTopas } from "./parser/index.js";
 import { computeBraggPeakDepthDose, lowerTopasToDae } from "./physics/index.js";
@@ -20,10 +21,12 @@ export const topasLanguage = language({
   maturity: "experimental",
   lsp: {
     fileExtensions: [".topas", ".mac"],
+    folding: topasDeckGrammar.lsp?.folding,
+    outline: topasDeckGrammar.lsp?.outline,
   },
-  rules: {
-    Root: () => "topas",
-  },
+  word: topasDeckGrammar.word,
+  extras: topasDeckGrammar.extras,
+  rules: topasDeckGrammar.rules,
 
   actions: [
     {
@@ -82,3 +85,5 @@ export const topasLanguage = language({
     },
   ],
 });
+
+export default topasLanguage;

@@ -941,7 +941,27 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   return {
     nodes,
     edges,
-    coordinateSystem: { x: csX, y: csY, width: bgWidth, height: bgHeight },
+    coordinateSystem: {
+      x: csX,
+      y: csY,
+      width: bgWidth,
+      height: bgHeight,
+      extent: [ext0, ext1],
+      grid: diagram?.coordinateSystem?.grid ?? [2, 2],
+      preserveAspectRatio: diagram?.coordinateSystem?.preserveAspectRatio ?? true,
+      initialScale: diagram?.coordinateSystem?.initialScale ?? 0.1,
+      boundsStyle: {
+        visible: true,
+        stroke: "#999",
+        strokeWidth: 1,
+      },
+      axesStyle: {
+        visible: true,
+        stroke: "#999",
+        strokeWidth: 1,
+        boundsOnly: true,
+      },
+    },
     diagramBackground,
     metadata: {
       language: "modelica",
@@ -1594,6 +1614,29 @@ function findClassModInCst(node: any): any {
   return null;
 }
 
+function findDeclarationsInCst(node: any): any[] {
+  const results: any[] = [];
+  if (!node) return results;
+  if (Cst.AnnotationClause.is(node) || node.type === "annotation_clause" || node.type === "AnnotationClause") {
+    return results;
+  }
+  if (Cst.Declaration.is(node) || node.type === "declaration") {
+    results.push(node);
+    return results;
+  }
+  for (const ch of node.children || []) {
+    results.push(...findDeclarationsInCst(ch));
+  }
+  return results;
+}
+
+export function stripCommentsAndStrings(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/.*$/gm, " ")
+    .replace(/"(?:[^"\\]|\\.)*"/g, " ");
+}
+
 export function extractCstModifierValue(cstNode: any, paramName: string): string | undefined {
   if (!cstNode || !paramName) return undefined;
   if (typeof cstNode.tree?.sourceCode === "string") {
@@ -1603,6 +1646,30 @@ export function extractCstModifierValue(cstNode: any, paramName: string): string
     const pos = src.indexOf(paramName, sIdx);
     if (pos === -1 || pos >= eIdx) return undefined;
   }
+
+  // 1. Direct declaration binding: e.g. parameter Real R = 100
+  const decls =
+    Cst.Declaration.is(cstNode) || cstNode.type === "declaration" ? [cstNode] : findDeclarationsInCst(cstNode);
+  for (const decl of decls) {
+    const nameNode = (Cst.Declaration.is(decl) ? (Cst.Declaration as any).name?.(decl) : null) ?? findNameInCst(decl);
+    const identifier = nameNode?.text?.trim() ?? nameNode?.name ?? nameNode?.value;
+    if (identifier === paramName) {
+      const valModNode =
+        (Cst.Declaration.is(decl) ? (Cst.Declaration as any).modification?.(decl) : null) ??
+        (decl.children || []).find((c: any) => Cst.Modification.is(c) || c.type === "modification");
+      if (valModNode) {
+        const text = valModNode.text?.trim() ?? valModNode.value;
+        if (text?.startsWith("=")) {
+          return text.replace(/^=\s*/, "").trim();
+        }
+        if (text && !text.startsWith("(") && !text.startsWith("{")) {
+          return text;
+        }
+      }
+    }
+  }
+
+  // 2. Class modification arguments: e.g. Resistor R(R = 100)
   const args = findArgsInCst(cstNode);
   for (const arg of args) {
     const elemMod = findElemModInCst(arg);
@@ -1661,28 +1728,101 @@ export function extractCstNestedModifierValue(
   return undefined;
 }
 
+export function parseIfThenElse(expr: string): { cond: string; thenVal: string; elseVal: string } | null {
+  const trimmed = expr.trim();
+  if (!/^if\b/i.test(trimmed)) return null;
+
+  let pos = 2;
+  const len = trimmed.length;
+  let parenDepth = 0;
+  let ifDepth = 1;
+  let inString = false;
+  let thenStart = -1;
+  let thenEnd = -1;
+  let elseStart = -1;
+
+  while (pos < len) {
+    const ch = trimmed[pos]!;
+
+    if (inString) {
+      if (ch === "\\") {
+        pos += 2;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      pos++;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      pos++;
+      continue;
+    }
+
+    if (ch === "(") {
+      parenDepth++;
+      pos++;
+      continue;
+    }
+    if (ch === ")") {
+      if (parenDepth > 0) parenDepth--;
+      pos++;
+      continue;
+    }
+
+    if (parenDepth === 0) {
+      const rest = trimmed.slice(pos);
+      if (/^if\b/i.test(rest)) {
+        ifDepth++;
+        pos += 2;
+        continue;
+      }
+      if (/^then\b/i.test(rest)) {
+        if (ifDepth === 1 && thenStart === -1) {
+          thenStart = pos + 4;
+        }
+        pos += 4;
+        continue;
+      }
+      if (/^else\b/i.test(rest)) {
+        if (ifDepth === 1 && thenStart !== -1 && elseStart === -1) {
+          thenEnd = pos;
+          elseStart = pos + 4;
+        } else if (ifDepth > 1) {
+          ifDepth--;
+        }
+        pos += 4;
+        continue;
+      }
+    }
+
+    pos++;
+  }
+
+  if (thenStart !== -1 && elseStart !== -1) {
+    const cond = trimmed.slice(2, thenStart - 4).trim();
+    const thenVal = trimmed.slice(thenStart, thenEnd).trim();
+    const elseVal = trimmed.slice(elseStart).trim();
+    return { cond, thenVal, elseVal };
+  }
+
+  return null;
+}
+
 export function evaluateMacroExpression(
   expr: string,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
 ): string {
   const trimmed = expr.trim();
-  if (/^if\b/i.test(trimmed)) {
-    const thenMatch = trimmed.match(/\bthen\b/i);
-    if (thenMatch && thenMatch.index !== undefined) {
-      const thenIdx = thenMatch.index;
-      const afterThen = trimmed.slice(thenIdx + 4);
-      const elseMatch = afterThen.match(/\belse\b/i);
-      if (elseMatch && elseMatch.index !== undefined) {
-        const condStr = trimmed.slice(2, thenIdx).trim();
-        const thenVal = afterThen.slice(0, elseMatch.index).trim();
-        const elseVal = afterThen.slice(elseMatch.index + 4).trim();
-
-        const isTrue = evalMacroCondition(condStr, classInstance, componentInstance);
-        const chosen = isTrue ? thenVal : elseVal;
-        return stripQuotes(evaluateMacroExpression(chosen, classInstance, componentInstance));
-      }
-    }
+  const ifBranch = parseIfThenElse(trimmed);
+  if (ifBranch) {
+    const isTrue = evalMacroCondition(ifBranch.cond, classInstance, componentInstance);
+    const chosen = isTrue ? ifBranch.thenVal : ifBranch.elseVal;
+    return stripQuotes(evaluateMacroExpression(chosen, classInstance, componentInstance));
   }
 
   const name = trimmed.startsWith("%") ? trimmed.slice(1) : trimmed;
@@ -1707,14 +1847,16 @@ export function evaluateMacroExpression(
       if (pos !== -1 && pos < eIdx) {
         const compText = compCst.text;
         if (typeof compText === "string") {
-          const match = compText.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
+          const sanitized = stripCommentsAndStrings(compText);
+          const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
           if (match && match[1]) {
             compVal = match[1].trim();
           }
         }
       }
     } else if (!compVal && typeof compCst.text === "string") {
-      const match = compCst.text.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
+      const sanitized = stripCommentsAndStrings(compCst.text);
+      const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
       if (match && match[1]) {
         compVal = match[1].trim();
       }
@@ -1725,7 +1867,8 @@ export function evaluateMacroExpression(
     const compArgExpr = compNode?.modification?.getModificationArgument?.(name)?.expression;
     compVal = formatPropertyValue(compArgExpr);
     if (!compVal && typeof compNode?.text === "string") {
-      const match = compNode.text.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
+      const sanitized = stripCommentsAndStrings(compNode.text);
+      const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
       if (match && match[1]) {
         compVal = match[1].trim();
       }
@@ -1754,7 +1897,8 @@ export function evaluateMacroExpression(
       if (elemCst) {
         elemVal = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, name);
         if (!elemVal && typeof elemCst.text === "string" && elemCst.text.includes("=")) {
-          const matchEq = elemCst.text.match(/=\s*([^;()]+(?:\\([^)]*\\)[^;()]*)*);?/);
+          const cleanText = stripCommentsAndStrings(elemCst.text);
+          const matchEq = cleanText.match(/=\s*([^;()]+(?:\([^)]*\)[^;()]*)*);?/);
           if (matchEq && matchEq[1]) {
             elemVal = matchEq[1].replace(/;$/, "").trim();
           }
@@ -2663,7 +2807,8 @@ export function buildComponentProperties(
       }
       if (!variability) {
         const text = node?.parent?.text || node?.text || "";
-        if (/\bparameter\b/.test(text)) {
+        const cleanText = stripCommentsAndStrings(text);
+        if (/\bparameter\b/.test(cleanText)) {
           variability = ModelicaVariability.PARAMETER;
         }
       }
@@ -2683,11 +2828,11 @@ export function buildComponentProperties(
         value = extractCstModifierValue(compCst, element.name ?? "");
       }
       if (!value && component["cstNode"]) {
-        const compCstText = component["cstNode"].text ?? "";
+        const compCstText = stripCommentsAndStrings(component["cstNode"].text ?? "");
         const escapedName = (element.name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const argRegex = new RegExp(`\\b${escapedName}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i");
         const m = compCstText.match(argRegex);
-        if (m) {
+        if (m && m[1]) {
           value = m[1].trim();
         }
       }
@@ -2707,16 +2852,16 @@ export function buildComponentProperties(
       }
       if (!value) {
         const elemCst = (element as any)?.cstNode ?? (element as any)?.abstractSyntaxNode;
-        value = extractCstModifierValue(elemCst, "start");
+        value = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, element.name ?? "");
       }
       if (!value && element.cstNode) {
-        const elemText = element.cstNode.text ?? "";
+        const elemText = stripCommentsAndStrings(element.cstNode.text ?? "");
         const startMatch = elemText.match(/\bstart\s*=\s*([^,()]+)/);
-        if (startMatch) {
+        if (startMatch && startMatch[1]) {
           value = startMatch[1].trim();
         } else {
           const assignMatch = elemText.match(/=\s*([^;"\n]+)/);
-          if (assignMatch) {
+          if (assignMatch && assignMatch[1]) {
             value = assignMatch[1].trim();
           }
         }

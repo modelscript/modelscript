@@ -116,7 +116,16 @@ export function useAttachFlow({ ctx, onAttached, onEdited }: UseAttachFlowParams
       const { file, companions, linked } = entry;
       current.current = entry;
       dispatch({ type: "analyze-start", fileName: file.name });
-      const p = resolveAttachProfile(file.name);
+      let p = resolveAttachProfile(file.name);
+      if ((!p || p.fallback) && file.name.toLowerCase().endsWith(".zip")) {
+        try {
+          const slice = file.slice(0, 4096);
+          const head = await slice.text();
+          if (head.toLowerCase().includes(".qif") || head.includes("QIF")) {
+            p = getAttachProfile("qif") ?? p;
+          }
+        } catch {}
+      }
       if (!p) {
         dispatch({ type: "failed", fileName: file.name, message: `No handler is registered for '${file.name}'.` });
         return;

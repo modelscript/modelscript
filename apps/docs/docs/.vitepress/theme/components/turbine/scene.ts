@@ -361,10 +361,6 @@ void main() {
 }`;
 
 const CAP_FRAG = /* glsl */ `
-#ifdef GL_OES_standard_derivatives
-#extension GL_OES_standard_derivatives : enable
-#endif
-
 precision highp float;
 uniform vec2 uIv[${MAX_INTERVALS}];
 uniform int uCount;
@@ -408,10 +404,6 @@ void main() {
 }`;
 
 const GRID_FRAG = /* glsl */ `
-#ifdef GL_OES_standard_derivatives
-#extension GL_OES_standard_derivatives : enable
-#endif
-
 precision highp float;
 uniform vec3 uColor;
 uniform float uOpacity;

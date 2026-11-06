@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenDssToDae } from "./dae/opendss-to-dae.js";
+import { openDssGrammar } from "./grammar/opendss-grammar.js";
 import { lintOpenDss } from "./lints/index.js";
 import { parseOpenDss } from "./parser/opendss-parser.js";
 import { openDssToModelica } from "./projections/opendss-to-modelica.js";
@@ -20,14 +21,16 @@ export const openDssLanguage = language({
       light: "./assets/opendss/icon-light.png",
       dark: "./assets/opendss/icon-dark.png",
     },
+    folding: openDssGrammar.lsp?.folding,
+    outline: openDssGrammar.lsp?.outline,
   },
+  word: openDssGrammar.word,
+  extras: openDssGrammar.extras,
+  conflicts: openDssGrammar.conflicts,
+  rules: openDssGrammar.rules,
 
-  writeback: (ctx) => {
-    const { entry, newValue } = ctx;
-    if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
-      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
-    }
-    return null;
+  writeback: {
+    operators: ["="],
   },
 
   actions: [
@@ -100,3 +103,6 @@ export const openDssLanguage = language({
     },
   ],
 });
+
+export const opendssLanguage = openDssLanguage;
+export default openDssLanguage;

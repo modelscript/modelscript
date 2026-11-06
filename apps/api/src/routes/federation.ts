@@ -12,6 +12,12 @@ import {
 } from "../middleware/activitypub.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
 import type { FederationWorker } from "../services/federation-worker.js";
+import {
+  attachPostProofToNote,
+  pinRemoteActorSigningKeys,
+  serializeActorAssertionMethods,
+  verifyInboundNoteProof,
+} from "../services/git-sync/federation-signing.js";
 import { computeFollowersSyncDigest, sendSignedGetRequest, sendSignedRequest } from "../util/activitypub-crypto.js";
 import { sanitizeRemoteHtml } from "../util/html-sanitizer.js";
 import { ed25519PemToMultibase } from "../util/multikey.js";
@@ -203,6 +209,7 @@ export async function resolveActorHandle(
 
   const actorProfile = (await actorRes.json()) as Record<string, unknown>;
   const remoteUser = db.getOrCreateRemoteUser(actorUrl, actorProfile);
+  pinRemoteActorSigningKeys(actorUrl, actorProfile, db);
 
   return {
     user: db.getUserById(remoteUser.id),
@@ -440,7 +447,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
                   COALESCE(discoverable, 1) as discoverable,
                   COALESCE(indexable, 1) as indexable,
                   COALESCE(locked, 0) as locked,
-                  also_known_as, moved_to_actor_url, profile_fields
+                  also_known_as, moved_to_actor_url, profile_fields,
+                  COALESCE(signing_verified, 0) as signing_verified,
+                  COALESCE(signing_policy_strict, 0) as signing_policy_strict
            FROM users WHERE id = ?`,
       )
       .get(user.id) as Record<string, unknown> | undefined;
@@ -479,6 +488,15 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         publicKeyMultibase: edMultibase,
         publicKeyPem: fullUser["ed25519_public_key"] as string,
       });
+    }
+
+    const userSigningKeys = serializeActorAssertionMethods(
+      fullUser["id"] as number,
+      fullUser["actor_url"] as string,
+      db,
+    );
+    for (const usk of userSigningKeys) {
+      assertionMethod.push(usk as unknown as Record<string, string>);
     }
 
     let alsoKnownAs: string[] = [];
@@ -551,6 +569,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       },
       publicKey: publicKeys.length === 1 ? publicKeys[0] : publicKeys,
       assertionMethod: assertionMethod.length > 0 ? assertionMethod : undefined,
+      signing_verified: Boolean(fullUser["signing_verified"]),
     });
   });
 
@@ -639,9 +658,12 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           }
         }
 
+        const hasProof = attachPostProofToNote(post.id, noteObject, db);
+
         return {
           "@context": [
             "https://www.w3.org/ns/activitystreams",
+            ...(hasProof ? ["https://w3id.org/security/data-integrity/v1"] : []),
             {
               modelscript: "https://hub.modelscript.org/ns#",
               viewType: "modelscript:viewType",
@@ -1141,6 +1163,29 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       }
     }
 
+    // Check for cryptographic DataIntegrityProof on inbound note
+    const proof = (note["proof"] || (note["object"] as Record<string, unknown> | undefined)?.["proof"]) as
+      | Record<string, unknown>
+      | undefined;
+    if (proof) {
+      try {
+        const verifyResult = verifyInboundNoteProof(note, authorUserId, db);
+        if (verifyResult.valid) {
+          const unsignedNote = { ...note };
+          delete unsignedNote["proof"];
+          db.recordSignedPostEvidence({
+            postId: String(newPost.id),
+            rev: 1,
+            payloadJson: JSON.stringify(unsignedNote),
+            proofJson: JSON.stringify(proof),
+            keyId: verifyResult.keyId ?? null,
+          });
+        }
+      } catch (err) {
+        console.warn(`[Federation] Inbound note proof verification failed:`, err);
+      }
+    }
+
     return { id: newPost.id };
   };
 
@@ -1449,6 +1494,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         if (!actorObj["id"] || actorObj["id"] === remoteActorUrl) {
           invalidateCachedPublicKey(remoteActorUrl);
           db.updateRemoteActorProfile(remoteActorUrl, actorObj);
+          pinRemoteActorSigningKeys(remoteActorUrl, actorObj, db);
         }
       } else if (
         activity.type === "Update" &&

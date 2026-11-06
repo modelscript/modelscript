@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderPscadSvg, type PscadComponentLike } from "@modelscript/diagram";
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import {
-  renderPscadSvg,
-  type PscadBusLike,
-  type PscadComponentLike,
-  type PscadStickyLike,
-  type PscadWireLike,
-} from "@modelscript/diagram";
-import {
+  AlertIcon,
   CheckIcon,
   CodeIcon,
   CopyIcon,
@@ -22,6 +18,7 @@ import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
@@ -86,20 +83,20 @@ const Toolbar = styled.div`
   overflow: hidden;
 `;
 
-const TelemetryStrip = styled.div`
-  height: 28px;
-  min-height: 28px;
-  background: #0b1120;
-  border-bottom: 1px solid #1e293b;
+const TelemetryStrip = styled.div<{ $hasFloatingTools?: boolean }>`
+  height: 32px;
+  min-height: 32px;
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: ${(props) => (props.$hasFloatingTools ? "0 84px 0 12px" : "0 12px")};
   gap: 10px;
   overflow-x: auto;
   font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: 10.5px;
-  color: #94a3b8;
+  font-size: 11px;
+  color: var(--color-fg-muted);
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
@@ -112,9 +109,50 @@ const TelemetryMetric = styled.span`
   gap: 4px;
   white-space: nowrap;
   strong {
-    color: #e2e8f0;
+    color: var(--color-fg-default);
     font-weight: 600;
   }
+`;
+
+const TelemetryPill = styled.span<{ $variant?: "default" | "success" | "warn" | "danger" }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+
+  ${(p) => {
+    switch (p.$variant) {
+      case "success":
+        return `
+          background: var(--ms-status-pass-bg, rgba(16, 185, 129, 0.15));
+          color: var(--ms-status-pass-fg, #047857);
+          border: 1px solid var(--ms-status-pass-border, rgba(16, 185, 129, 0.35));
+        `;
+      case "warn":
+        return `
+          background: var(--ms-status-warn-bg, rgba(245, 158, 11, 0.15));
+          color: var(--ms-status-warn-fg, #b45309);
+          border: 1px solid var(--ms-status-warn-border, rgba(245, 158, 11, 0.35));
+        `;
+      case "danger":
+        return `
+          background: rgba(239, 68, 68, 0.12);
+          color: #dc2626;
+          border: 1px solid rgba(239, 68, 68, 0.35);
+        `;
+      default:
+        return `
+          background: var(--color-canvas-inset, rgba(110, 118, 129, 0.1));
+          color: var(--color-fg-muted);
+          border: 1px solid var(--color-border-subtle, rgba(110, 118, 129, 0.2));
+        `;
+    }
+  }}
 `;
 
 const HeaderLeft = styled.div`
@@ -208,23 +246,24 @@ const ContentArea = styled.div`
 `;
 
 const InspectorDrawer = styled.div`
-  width: 265px;
-  min-width: 265px;
-  background: rgba(15, 23, 42, 0.96);
-  border-left: 1px solid #1e293b;
-  color: #e2e8f0;
+  width: 275px;
+  min-width: 275px;
+  background: var(--color-canvas-default);
+  border-left: 1px solid var(--color-border-default);
+  color: var(--color-fg-default);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   z-index: 6;
   font-size: 11.5px;
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.08);
 `;
 
 const ChipBar = styled.div`
   position: absolute;
   left: 10px;
   bottom: 10px;
-  right: 110px;
+  right: 120px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -232,29 +271,51 @@ const ChipBar = styled.div`
   z-index: 5;
   pointer-events: auto;
   scrollbar-width: none;
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
   &::-webkit-scrollbar {
     display: none;
   }
 `;
 
 const ApparatusChip = styled.button<{ $selected: boolean }>`
-  border: 1px solid ${(p) => (p.$selected ? "#38bdf8" : "rgba(148, 163, 184, 0.25)")};
-  background: ${(p) => (p.$selected ? "rgba(2, 132, 199, 0.32)" : "rgba(15, 23, 42, 0.86)")};
-  color: ${(p) => (p.$selected ? "#f8fafc" : "#cbd5e1")};
+  border: 1px solid ${(p) => (p.$selected ? "var(--color-accent-emphasis, #0969da)" : "var(--color-border-default)")};
+  background: ${(p) =>
+    p.$selected
+      ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
+      : "color-mix(in srgb, var(--color-canvas-default) 88%, transparent)"};
+  color: ${(p) => (p.$selected ? "var(--color-accent-fg, #0969da)" : "var(--color-fg-default)")};
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+
   &:hover {
-    border-color: #38bdf8;
-    color: #ffffff;
+    border-color: var(--color-accent-emphasis, #0969da);
+    color: var(--color-accent-fg, #0969da);
   }
 `;
+
+function getApparatusDotColor(defn: string): string {
+  if (/source|grid|thevenin/i.test(defn)) return "#f59e0b";
+  if (/line|cable|branch|tieline/i.test(defn)) return "#0284c7";
+  if (/fault|tpflt/i.test(defn)) return "#ef4444";
+  if (/breaker|switch|brk/i.test(defn)) return "#ec4899";
+  if (/xfmr|trans|tp3/i.test(defn)) return "#06b6d4";
+  if (/filter|cap|ind|lcl/i.test(defn)) return "#14b8a6";
+  if (/ibr|vsc|inv|bess|pv|wind|fmu/i.test(defn)) return "#10b981";
+  return "#8b5cf6";
+}
 
 const CodePre = styled.pre`
   flex: 1;
@@ -294,209 +355,7 @@ function parseNumericVal(raw: string | number | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export function parsePscadClient(code: string) {
-  const userTagRe = /<(?:User|Component)\b([^>]*)>([\s\S]*?)<\/(?:User|Component)>|<(?:User|Component)\b([^>]*)\/>/gi;
-  const components: PscadComponentLike[] = [];
-  let m: RegExpExecArray | null;
-  let idx = 0;
-  while ((m = userTagRe.exec(code)) !== null) {
-    const attrs = m[1] || m[3] || "";
-    const body = m[2] || "";
-    const nameMatch = attrs.match(/\b(?:name|defn)="([^"]+)"/i);
-    if (!nameMatch?.[1]) continue;
-    const defName = nameMatch[1];
-    const idMatch = attrs.match(/\bid="([^"]+)"/i);
-    const xMatch = attrs.match(/\bx="(-?\d+(?:\.\d+)?)"/i);
-    const yMatch = attrs.match(/\by="(-?\d+(?:\.\d+)?)"/i);
-    const rotMatch = attrs.match(/\b(?:rotation|orient)="(-?\d+(?:\.\d+)?)"/i);
-    const params: Record<string, string> = {};
-    const paramRe = /<param\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
-    let pm: RegExpExecArray | null;
-    while ((pm = paramRe.exec(body)) !== null) {
-      if (pm[1]) params[pm[1]] = pm[2] || "";
-    }
-    const col = idx % 4;
-    const row = Math.floor(idx / 4);
-    components.push({
-      id: idMatch?.[1] || `c_${idx + 1}`,
-      definitionName: defName,
-      instanceName: params.Name || params.name || defName.split(":").pop() || `C${idx + 1}`,
-      position: {
-        x: xMatch?.[1] ? Number.parseFloat(xMatch[1]) : 140 + col * 180,
-        y: yMatch?.[1] ? Number.parseFloat(yMatch[1]) : 140 + row * 120,
-      },
-      rotation: rotMatch?.[1] ? Number.parseFloat(rotMatch[1]) : undefined,
-      parameters: params,
-    });
-    idx++;
-  }
-
-  const buses: PscadBusLike[] = [];
-  const busTagRe = /<Bus\b([^>]*)\/?>/gi;
-  let bm: RegExpExecArray | null;
-  let bIdx = 0;
-  while ((bm = busTagRe.exec(code)) !== null) {
-    const attrs = bm[1] || "";
-    const idMatch = attrs.match(/\bid="([^"]+)"/i);
-    const nameMatch = attrs.match(/\bname="([^"]+)"/i);
-    const xMatch = attrs.match(/\bx="(-?\d+(?:\.\d+)?)"/i);
-    const yMatch = attrs.match(/\by="(-?\d+(?:\.\d+)?)"/i);
-    const vMatch = attrs.match(/\b(?:vbase|v_base)="([0-9.eE+-]+)"/i);
-    const lenMatch = attrs.match(/\blength="([0-9.eE+-]+)"/i);
-    const busId = idMatch?.[1] || nameMatch?.[1] || `Bus_${++bIdx}`;
-    buses.push({
-      id: busId,
-      name: nameMatch?.[1] || busId,
-      voltageBaseKv: vMatch?.[1] ? Number.parseFloat(vMatch[1]) : 230,
-      position: {
-        x: xMatch?.[1] ? Number.parseFloat(xMatch[1]) : 200,
-        y: yMatch?.[1] ? Number.parseFloat(yMatch[1]) : 150,
-      },
-      length: lenMatch?.[1] ? Number.parseFloat(lenMatch[1]) : 80,
-    });
-  }
-
-  const wires: PscadWireLike[] = [];
-  const wireTagRe = /<Wire\b([^>]*)>([\s\S]*?)<\/Wire>|<Wire\b([^>]*)\/>/gi;
-  let wm: RegExpExecArray | null;
-  let wIdx = 0;
-  while ((wm = wireTagRe.exec(code)) !== null) {
-    const attrs = wm[1] || wm[3] || "";
-    const body = wm[2] || "";
-    const classIdMatch = attrs.match(/\bclassid="([^"]+)"/i);
-    if (classIdMatch?.[1]?.toLowerCase() === "branch") continue;
-
-    const idMatch = attrs.match(/\bid="([^"]+)"/i);
-    const wxMatch = attrs.match(/\bx="(-?\d+(?:\.\d+)?)"/i);
-    const wyMatch = attrs.match(/\by="(-?\d+(?:\.\d+)?)"/i);
-    const wx = wxMatch?.[1] ? Number.parseFloat(wxMatch[1]) : 0;
-    const wy = wyMatch?.[1] ? Number.parseFloat(wyMatch[1]) : 0;
-
-    const vertices: { x: number; y: number }[] = [];
-    const vertRe = /<Vertex\b[^>]*x="(-?\d+(?:\.\d+)?)"[^>]*y="(-?\d+(?:\.\d+)?)"/gi;
-    let vm: RegExpExecArray | null;
-    while ((vm = vertRe.exec(body)) !== null) {
-      vertices.push({
-        x: Number.parseFloat(vm[1] || "0") + wx,
-        y: Number.parseFloat(vm[2] || "0") + wy,
-      });
-    }
-
-    if (vertices.length === 0) {
-      const x1Match = attrs.match(/\bx1="(-?\d+(?:\.\d+)?)"/i);
-      const y1Match = attrs.match(/\by1="(-?\d+(?:\.\d+)?)"/i);
-      const x2Match = attrs.match(/\bx2="(-?\d+(?:\.\d+)?)"/i);
-      const y2Match = attrs.match(/\by2="(-?\d+(?:\.\d+)?)"/i);
-      const wMatch = attrs.match(/\bw="(-?\d+(?:\.\d+)?)"/i);
-      const hMatch = attrs.match(/\bh="(-?\d+(?:\.\d+)?)"/i);
-      if (x2Match?.[1] !== undefined || y2Match?.[1] !== undefined) {
-        const x1 = x1Match?.[1] !== undefined ? Number.parseFloat(x1Match[1]) : wx;
-        const y1 = y1Match?.[1] !== undefined ? Number.parseFloat(y1Match[1]) : wy;
-        const x2 = x2Match?.[1] !== undefined ? Number.parseFloat(x2Match[1]) : x1;
-        const y2 = y2Match?.[1] !== undefined ? Number.parseFloat(y2Match[1]) : y1;
-        vertices.push({ x: x1, y: y1 }, { x: x2, y: y2 });
-      } else if (wMatch?.[1] !== undefined || hMatch?.[1] !== undefined) {
-        const dw = wMatch?.[1] !== undefined ? Number.parseFloat(wMatch[1]) : 0;
-        const dh = hMatch?.[1] !== undefined ? Number.parseFloat(hMatch[1]) : 0;
-        if (dw !== 0 || dh !== 0) {
-          vertices.push({ x: wx, y: wy }, { x: wx + dw, y: wy + dh });
-        }
-      }
-    }
-
-    if (classIdMatch?.[1]?.toLowerCase() === "bus" && vertices.length >= 2) {
-      const nameParam = body.match(/<param\b[^>]*name="Name"[^>]*value="([^"]*)"/i)?.[1];
-      const kvParam = body.match(/<param\b[^>]*name="(?:BaseKV|vbase)"[^>]*value="([^"]*)"/i)?.[1];
-      const p0 = vertices[0]!;
-      const p1 = vertices[vertices.length - 1]!;
-      const busId = idMatch?.[1] || nameParam || `Bus_${++bIdx}`;
-      buses.push({
-        id: busId,
-        name: nameParam || busId,
-        voltageBaseKv: kvParam ? Number.parseFloat(kvParam) : 230,
-        position: p0,
-        length: Math.hypot(p1.x - p0.x, p1.y - p0.y) || 80,
-      });
-      continue;
-    }
-
-    if (vertices.length >= 2) {
-      wires.push({ id: idMatch?.[1] || `w_${++wIdx}`, vertices });
-    }
-  }
-
-  const stickies: PscadStickyLike[] = [];
-  const stickyRe = /<Sticky\b([^>]*)>([\s\S]*?)<\/Sticky>/gi;
-  let sm: RegExpExecArray | null;
-  let sIdx = 0;
-  while ((sm = stickyRe.exec(code)) !== null) {
-    const attrs = sm[1] || "";
-    const rawBody = (sm[2] || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
-    if (!rawBody) continue;
-    const idMatch = attrs.match(/\bid="([^"]+)"/i);
-    const xMatch = attrs.match(/\bx="(-?\d+(?:\.\d+)?)"/i);
-    const yMatch = attrs.match(/\by="(-?\d+(?:\.\d+)?)"/i);
-    const wMatch = attrs.match(/\bw="(-?\d+(?:\.\d+)?)"/i);
-    const hMatch = attrs.match(/\bh="(-?\d+(?:\.\d+)?)"/i);
-    stickies.push({
-      id: idMatch?.[1] || `sticky_${++sIdx}`,
-      position: {
-        x: xMatch?.[1] ? Number.parseFloat(xMatch[1]) : 90,
-        y: yMatch?.[1] ? Number.parseFloat(yMatch[1]) : 90,
-      },
-      width: wMatch?.[1] ? Number.parseFloat(wMatch[1]) : 420,
-      height: hMatch?.[1] ? Number.parseFloat(hMatch[1]) : 34,
-      text: rawBody,
-    });
-  }
-
-  // Synthesize T-junction solder dots where a wire endpoint taps the interior of another wire segment
-  const junctions: { x: number; y: number }[] = [];
-  const seenJ = new Set<string>();
-  for (const wA of wires) {
-    for (const endPt of [wA.vertices[0]!, wA.vertices[wA.vertices.length - 1]!]) {
-      for (const wB of wires) {
-        if (wA.id === wB.id) continue;
-        for (let i = 0; i < wB.vertices.length - 1; i++) {
-          const p1 = wB.vertices[i]!;
-          const p2 = wB.vertices[i + 1]!;
-          const minX = Math.min(p1.x, p2.x);
-          const maxX = Math.max(p1.x, p2.x);
-          const minY = Math.min(p1.y, p2.y);
-          const maxY = Math.max(p1.y, p2.y);
-          const onHoriz =
-            Math.abs(p1.y - p2.y) < 1 && Math.abs(endPt.y - p1.y) < 1 && endPt.x > minX + 1 && endPt.x < maxX - 1;
-          const onVert =
-            Math.abs(p1.x - p2.x) < 1 && Math.abs(endPt.x - p1.x) < 1 && endPt.y > minY + 1 && endPt.y < maxY - 1;
-          if (onHoriz || onVert) {
-            const key = `${endPt.x},${endPt.y}`;
-            if (!seenJ.has(key)) {
-              seenJ.add(key);
-              junctions.push({ x: endPt.x, y: endPt.y });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const xfrmrCount = components.filter((c) => /xfmr|trans|tp3/i.test(c.definitionName)).length;
-  const ibrCount = components.filter((c) => /ibr|inv|vsc|pv|bess|wind|fmu/i.test(c.definitionName)).length;
-  const dtMatch = code.match(/time_step\s*=\s*"?([0-9.eE+-]+)"?/i);
-  const timeStepUs = dtMatch?.[1] ? Number.parseFloat(dtMatch[1]) : undefined;
-  return {
-    buses,
-    components,
-    wires,
-    stickies,
-    junctions,
-    componentCount: components.length,
-    busCount: buses.length,
-    transformerCount: xfrmrCount,
-    ibrCount,
-    timeStepUs,
-  };
-}
+export { parsePscadClient, type PscadClientModel } from "./pscad-client-parser.js";
 
 /**
  * Synthesizes deterministic IEEE 2800-2022 Clause 7.2 fault ride-through EMT trajectories
@@ -569,6 +428,8 @@ export function buildRideThroughWaveforms(params: {
 }
 
 export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScreen = false }) => {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -644,6 +505,35 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     // Also update rawText XML parameter in-place if present so Source & Playground stay in sync
     setRawText((prevXml) => {
       if (!prevXml) return prevXml;
+      try {
+        const doc = parseXml(prevXml);
+        if (doc.root) {
+          const findComp = (el: XmlElement): XmlElement | null => {
+            if (
+              (el.name === "User" || el.name === "Component") &&
+              el.attributes.some((a) => a.name === "id" && a.value === compId)
+            ) {
+              return el;
+            }
+            for (const ch of el.children) {
+              const res = findComp(ch);
+              if (res) return res;
+            }
+            return null;
+          };
+          const compEl = findComp(doc.root);
+          if (compEl) {
+            for (const ch of compEl.children) {
+              if (ch.name === "param" && ch.attributes.some((a) => a.name === "name" && a.value === paramKey)) {
+                const valAttr = ch.attributes.find((a) => a.name === "value");
+                if (valAttr) {
+                  return prevXml.slice(0, valAttr.valueStart) + newVal + prevXml.slice(valAttr.valueEnd);
+                }
+              }
+            }
+          }
+        }
+      } catch {}
       const cmpTagRe = new RegExp(
         `(<(?:User|Component)\\b[^>]*\\bid="${compId}"[^>]*>[\\s\\S]*?<param\\b[^>]*\\bname="${paramKey}"[^>]*\\bvalue=")([^"]*)(")`,
         "i",
@@ -661,27 +551,30 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     // Always synthesize fresh interactive SVG with rating subtitles and data-id attributes when client components exist
     if (clientComps.length > 0) {
       try {
-        const built = renderPscadSvg({
-          name: title,
-          rootModule: {
-            name: "Main",
-            buses: parsedClient?.buses || [],
-            components: clientComps,
-            wires: parsedClient?.wires || [],
-            stickies: parsedClient?.stickies || [],
-            junctions: parsedClient?.junctions || [],
+        const built = renderPscadSvg(
+          {
+            name: title,
+            rootModule: {
+              name: "Main",
+              buses: parsedClient?.buses || [],
+              components: clientComps,
+              wires: parsedClient?.wires || [],
+              stickies: parsedClient?.stickies || [],
+              junctions: parsedClient?.junctions || [],
+            },
           },
-        });
-        return sanitizeSvgMarkup(built, { isFullScreen, maxHeight: isFullScreen ? "none" : "370px" });
+          { theme: isDark ? "dark" : "light" },
+        );
+        return sanitizeSvgMarkup(built, { isFullScreen, maxHeight: isFullScreen ? "none" : "370px", isDark });
       } catch {
         // Fallback to server-provided SVG if client render fails
       }
     }
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, maxHeight: isFullScreen ? "none" : "370px" });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, maxHeight: isFullScreen ? "none" : "370px", isDark });
     }
     return "";
-  }, [viewConfig.svg, clientComps, parsedClient, title, isFullScreen]);
+  }, [viewConfig.svg, clientComps, parsedClient, title, isFullScreen, isDark]);
 
   const effectiveViewMode: "diagram" | "waveforms" | "code" =
     viewMode === "diagram" && !sanitizedSvg ? "code" : viewMode;
@@ -891,23 +784,33 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
         </Toolbar>
       )}
 
-      <TelemetryStrip>
+      <TelemetryStrip $hasFloatingTools={hasFooter}>
         <Box display="flex" alignItems="center" gap={3}>
           <TelemetryMetric>
             Δt: <strong>{dtUs} μs</strong>
           </TelemetryMetric>
-          <span>•</span>
+          <span style={{ opacity: 0.35 }}>•</span>
           <TelemetryMetric>
             POI SCR: <strong>{scrVal.toFixed(2)}</strong>
+            {scrVal < 2.0 ? (
+              <TelemetryPill
+                $variant="warn"
+                title="Short Circuit Ratio < 2.0 indicates a weak AC grid interconnection requiring grid-forming (GFM) controls (IEEE 2800)"
+              >
+                Weak Grid
+              </TelemetryPill>
+            ) : scrVal >= 3.0 ? (
+              <TelemetryPill $variant="success">Strong</TelemetryPill>
+            ) : null}
           </TelemetryMetric>
-          <span>•</span>
+          <span style={{ opacity: 0.35 }}>•</span>
           <TelemetryMetric>
             Topology:{" "}
             <strong>
               {busCount} Buses / {clientComps.length} Apparatus
             </strong>
           </TelemetryMetric>
-          <span>•</span>
+          <span style={{ opacity: 0.35 }}>•</span>
           <TelemetryMetric>
             Fault:{" "}
             <strong>
@@ -916,12 +819,10 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           </TelemetryMetric>
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
-          <TelemetryMetric style={{ color: lvrtPass ? "#34d399" : "#f87171" }}>
-            IEEE 2800 Cl. 7.2 LVRT:{" "}
-            <strong style={{ color: lvrtPass ? "#6ee7b7" : "#fca5a5" }}>
-              {lvrtPass ? "PASS" : "CHECK"} (t_90% = {negSeqMs} ms)
-            </strong>
-          </TelemetryMetric>
+          <TelemetryPill $variant={lvrtPass ? "success" : "danger"}>
+            {lvrtPass ? <ShieldCheckIcon size={12} /> : <AlertIcon size={12} />}
+            IEEE 2800 Cl. 7.2 LVRT: {lvrtPass ? "PASS" : "CHECK"} (t₉₀ = {negSeqMs} ms)
+          </TelemetryPill>
         </Box>
       </TelemetryStrip>
 
@@ -950,7 +851,12 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
             flex={1}
             display="flex"
             flexDirection="column"
-            style={{ background: "#0f172a", color: "#e2e8f0", padding: "12px 16px", overflow: "auto" }}
+            style={{
+              background: "var(--color-canvas-default)",
+              color: "var(--color-fg-default)",
+              padding: "12px 16px",
+              overflow: "auto",
+            }}
           >
             <Box
               display="flex"
@@ -959,17 +865,30 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
               style={{ marginBottom: 8, fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}
             >
               <Box display="flex" alignItems="center" gap={3}>
-                <span style={{ color: "#38bdf8", fontWeight: 700 }}>
+                <span style={{ color: "var(--color-accent-fg, #0969da)", fontWeight: 700 }}>
                   POI Fault Ride-Through Oscilloscope ({waveformData.tStart.toFixed(2)}s –{" "}
                   {waveformData.tEnd.toFixed(2)}s)
                 </span>
-                <span style={{ color: "#94a3b8" }}>Cursor t = {activeSample.t.toFixed(3)} s</span>
+                <span style={{ color: "var(--color-fg-muted)" }}>Cursor t = {activeSample.t.toFixed(3)} s</span>
+                {activeSample.t >= waveformData.tf && activeSample.t <= waveformData.tClear ? (
+                  <TelemetryPill $variant="danger">
+                    ⚡ Bolted Fault ({((activeSample.t - waveformData.tf) * 1000).toFixed(0)} ms in)
+                  </TelemetryPill>
+                ) : activeSample.t < waveformData.tf ? (
+                  <TelemetryPill $variant="default">Pre-Fault State</TelemetryPill>
+                ) : (
+                  <TelemetryPill $variant="success">Grid Recovery</TelemetryPill>
+                )}
               </Box>
               <Box display="flex" alignItems="center" gap={3}>
-                <span style={{ color: "#38bdf8" }}>V_POI: {activeSample.vPoiPu.toFixed(3)} pu</span>
-                <span style={{ color: "#34d399" }}>I_1q: {activeSample.i1qPu.toFixed(3)} pu</span>
-                <span style={{ color: "#f59e0b" }}>I_2q: {activeSample.i2qPu.toFixed(3)} pu</span>
-                <span style={{ color: "#c084fc" }}>f_PLL: {activeSample.fPllHz.toFixed(2)} Hz</span>
+                <span style={{ color: isDark ? "#38bdf8" : "#0284c7" }}>
+                  V_POI: {activeSample.vPoiPu.toFixed(3)} pu
+                </span>
+                <span style={{ color: isDark ? "#34d399" : "#059669" }}>I_1q: {activeSample.i1qPu.toFixed(3)} pu</span>
+                <span style={{ color: isDark ? "#f59e0b" : "#d97706" }}>I_2q: {activeSample.i2qPu.toFixed(3)} pu</span>
+                <span style={{ color: isDark ? "#c084fc" : "#7c3aed" }}>
+                  f_PLL: {activeSample.fPllHz.toFixed(2)} Hz
+                </span>
               </Box>
             </Box>
 
@@ -979,9 +898,9 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                 width: "100%",
                 height: "100%",
                 maxHeight: "320px",
-                background: "#090d16",
+                background: isDark ? "#090d16" : "#ffffff",
                 borderRadius: 6,
-                border: "1px solid #1e293b",
+                border: isDark ? "1px solid #1e293b" : "1px solid var(--color-border-default)",
               }}
               onMouseMove={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -1008,7 +927,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                     <text
                       x={(x1 + x2) / 2}
                       y={28}
-                      fill="#f87171"
+                      fill={isDark ? "#f87171" : "#dc2626"}
                       fontSize="9.5"
                       fontFamily="monospace"
                       textAnchor="middle"
@@ -1021,19 +940,48 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
 
               {/* Horizontal Grid Lines */}
               {[45, 95, 145, 195, 245].map((gy) => (
-                <line key={gy} x1={50} y1={gy} x2={740} y2={gy} stroke="#1e293b" strokeWidth="1" />
+                <line
+                  key={gy}
+                  x1={50}
+                  y1={gy}
+                  x2={740}
+                  y2={gy}
+                  stroke={isDark ? "#1e293b" : "#e2e8f0"}
+                  strokeWidth="1"
+                />
               ))}
-              <text x={44} y={48} fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">
+              <text
+                x={44}
+                y={48}
+                fill={isDark ? "#64748b" : "#94a3b8"}
+                fontSize="9"
+                fontFamily="monospace"
+                textAnchor="end"
+              >
                 1.0 pu
               </text>
-              <text x={44} y={148} fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">
+              <text
+                x={44}
+                y={148}
+                fill={isDark ? "#64748b" : "#94a3b8"}
+                fontSize="9"
+                fontFamily="monospace"
+                textAnchor="end"
+              >
                 0.5 pu
               </text>
-              <text x={44} y={248} fill="#64748b" fontSize="9" fontFamily="monospace" textAnchor="end">
+              <text
+                x={44}
+                y={248}
+                fill={isDark ? "#64748b" : "#94a3b8"}
+                fontSize="9"
+                fontFamily="monospace"
+                textAnchor="end"
+              >
                 0.0 pu
               </text>
 
-              {/* Traces: V_POI (sky), I_1q (emerald), I_2q (amber), I_1d (indigo) */}
+              {/* Traces */}
               {(() => {
                 const toX = (t: number) =>
                   50 + ((t - waveformData.tStart) / (waveformData.tEnd - waveformData.tStart)) * 690;
@@ -1052,17 +1000,29 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                   .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i1dPu).toFixed(1)}`)
                   .join(" ");
                 const cursorX = toX(activeSample.t);
+                const vColor = isDark ? "#38bdf8" : "#0284c7";
+                const i1qColor = isDark ? "#34d399" : "#059669";
+                const i2qColor = isDark ? "#f59e0b" : "#d97706";
+                const i1dColor = isDark ? "#818cf8" : "#4f46e5";
 
                 return (
                   <g>
-                    <path d={i1dPath} fill="none" stroke="#818cf8" strokeWidth="1.5" strokeDasharray="4,2" />
-                    <path d={vPath} fill="none" stroke="#38bdf8" strokeWidth="2.2" />
-                    <path d={i1qPath} fill="none" stroke="#34d399" strokeWidth="2.2" />
-                    <path d={i2qPath} fill="none" stroke="#f59e0b" strokeWidth="2.0" />
-                    <line x1={cursorX} y1={16} x2={cursorX} y2={254} stroke="#e2e8f0" strokeWidth="1" opacity="0.5" />
-                    <circle cx={cursorX} cy={toY(activeSample.vPoiPu)} r="3.5" fill="#38bdf8" />
-                    <circle cx={cursorX} cy={toY(activeSample.i1qPu)} r="3.5" fill="#34d399" />
-                    <circle cx={cursorX} cy={toY(activeSample.i2qPu)} r="3.5" fill="#f59e0b" />
+                    <path d={i1dPath} fill="none" stroke={i1dColor} strokeWidth="1.5" strokeDasharray="4,2" />
+                    <path d={vPath} fill="none" stroke={vColor} strokeWidth="2.2" />
+                    <path d={i1qPath} fill="none" stroke={i1qColor} strokeWidth="2.2" />
+                    <path d={i2qPath} fill="none" stroke={i2qColor} strokeWidth="2.0" />
+                    <line
+                      x1={cursorX}
+                      y1={16}
+                      x2={cursorX}
+                      y2={254}
+                      stroke={isDark ? "#e2e8f0" : "#475569"}
+                      strokeWidth="1"
+                      opacity="0.6"
+                    />
+                    <circle cx={cursorX} cy={toY(activeSample.vPoiPu)} r="3.5" fill={vColor} />
+                    <circle cx={cursorX} cy={toY(activeSample.i1qPu)} r="3.5" fill={i1qColor} />
+                    <circle cx={cursorX} cy={toY(activeSample.i2qPu)} r="3.5" fill={i2qColor} />
                   </g>
                 );
               })()}
@@ -1074,15 +1034,37 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
               <InteractiveSvgStage
                 svgMarkup={sanitizedSvg}
                 isFullScreen={isFullScreen}
-                background="#0f172a"
+                background={isDark ? "#0f172a" : "#ffffff"}
                 onClick={handleStageClick}
               >
+                <style>{`
+                  [data-id] {
+                    transition: filter 0.15s ease, opacity 0.15s ease;
+                  }
+                  [data-id]:hover {
+                    filter: drop-shadow(0 0 6px ${isDark ? "rgba(56, 189, 248, 0.85)" : "rgba(2, 132, 199, 0.85)"});
+                  }
+                  ${
+                    selectedId
+                      ? `
+                  [data-id="${selectedId}"] {
+                    filter: drop-shadow(0 0 8px ${isDark ? "#38bdf8" : "#0284c7"}) drop-shadow(0 0 2px ${isDark ? "#38bdf8" : "#0284c7"}) !important;
+                  }
+                  [data-id="${selectedId}"] rect,
+                  [data-id="${selectedId}"] circle {
+                    stroke: ${isDark ? "#38bdf8" : "#0284c7"} !important;
+                    stroke-width: 2.2px !important;
+                  }
+                  `
+                      : ""
+                  }
+                `}</style>
                 {clientComps.length > 0 && (
                   <ChipBar onClick={(e) => e.stopPropagation()}>
                     <span
                       style={{
                         fontSize: 10,
-                        color: "#94a3b8",
+                        color: "var(--color-fg-muted)",
                         fontFamily: "var(--font-mono, monospace)",
                         display: "inline-flex",
                         alignItems: "center",
@@ -1099,6 +1081,15 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                         $selected={selectedId === c.id}
                         onClick={() => setSelectedId((prev) => (prev === c.id ? null : c.id))}
                       >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            backgroundColor: getApparatusDotColor(c.definitionName),
+                            flexShrink: 0,
+                          }}
+                        />
                         {c.instanceName || c.id}
                       </ApparatusChip>
                     ))}
@@ -1113,14 +1104,18 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                   display="flex"
                   justifyContent="space-between"
                   alignItems="center"
-                  style={{ padding: "10px 12px", borderBottom: "1px solid #1e293b", background: "#090d16" }}
+                  style={{
+                    padding: "10px 12px",
+                    borderBottom: "1px solid var(--color-border-default)",
+                    background: "var(--color-canvas-subtle)",
+                  }}
                 >
                   <Box style={{ minWidth: 0 }}>
                     <div
                       style={{
                         fontWeight: 700,
                         fontSize: 12,
-                        color: "#f8fafc",
+                        color: "var(--color-fg-default)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -1128,7 +1123,13 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                     >
                       {selectedComp.instanceName || selectedComp.id}
                     </div>
-                    <div style={{ fontSize: 10, color: "#38bdf8", fontFamily: "var(--font-mono, monospace)" }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "var(--color-accent-fg)",
+                        fontFamily: "var(--font-mono, monospace)",
+                      }}
+                    >
                       {selectedComp.definitionName} • #{selectedComp.id}
                     </div>
                   </Box>
@@ -1138,9 +1139,11 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                     style={{
                       background: "transparent",
                       border: "none",
-                      color: "#94a3b8",
+                      color: "var(--color-fg-muted)",
                       cursor: "pointer",
                       padding: 4,
+                      display: "flex",
+                      alignItems: "center",
                     }}
                     title="Close inspector"
                   >
@@ -1152,8 +1155,8 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                   {derivedMetrics.length > 0 && (
                     <Box
                       style={{
-                        background: "rgba(2, 132, 199, 0.12)",
-                        border: "1px solid rgba(56, 189, 248, 0.28)",
+                        background: "var(--ms-brand-soft, rgba(14, 116, 144, 0.08))",
+                        border: "1px solid var(--ms-brand-border, rgba(14, 116, 144, 0.25))",
                         borderRadius: 6,
                         padding: "8px 10px",
                       }}
@@ -1162,7 +1165,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                         style={{
                           fontSize: 10,
                           fontWeight: 700,
-                          color: "#38bdf8",
+                          color: "var(--ms-brand, #0e7490)",
                           textTransform: "uppercase",
                           letterSpacing: "0.04em",
                           marginBottom: 6,
@@ -1177,8 +1180,8 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                           justifyContent="space-between"
                           style={{ fontSize: 11, fontFamily: "var(--font-mono, monospace)", padding: "2px 0" }}
                         >
-                          <span style={{ color: "#94a3b8" }}>{m.label}</span>
-                          <span style={{ color: "#f8fafc", fontWeight: 600 }}>{m.value}</span>
+                          <span style={{ color: "var(--color-fg-muted)" }}>{m.label}</span>
+                          <span style={{ color: "var(--color-fg-default)", fontWeight: 600 }}>{m.value}</span>
                         </Box>
                       ))}
                     </Box>
@@ -1190,7 +1193,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                         style={{
                           fontSize: 10,
                           fontWeight: 700,
-                          color: "#94a3b8",
+                          color: "var(--color-fg-muted)",
                           textTransform: "uppercase",
                           letterSpacing: "0.04em",
                         }}
@@ -1201,9 +1204,9 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                         type="button"
                         onClick={handleResimulate}
                         style={{
-                          background: "rgba(16, 185, 129, 0.2)",
-                          border: "1px solid rgba(52, 211, 153, 0.5)",
-                          color: "#6ee7b7",
+                          background: "var(--ms-status-pass-bg, rgba(16, 185, 129, 0.15))",
+                          border: "1px solid var(--ms-status-pass-border, rgba(16, 185, 129, 0.35))",
+                          color: "var(--ms-status-pass-fg, #047857)",
                           borderRadius: 4,
                           fontSize: 10,
                           fontWeight: 700,
@@ -1226,11 +1229,11 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                           fontSize: 11,
                           fontFamily: "var(--font-mono, monospace)",
                           padding: "4px 0",
-                          borderBottom: "1px solid rgba(51, 65, 85, 0.45)",
+                          borderBottom: "1px solid var(--color-border-subtle, rgba(110, 118, 129, 0.15))",
                           gap: 8,
                         }}
                       >
-                        <span style={{ color: "#94a3b8" }}>{k}</span>
+                        <span style={{ color: "var(--color-fg-muted)" }}>{k}</span>
                         <input
                           type="text"
                           value={String(v)}
@@ -1239,10 +1242,10 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                           style={{
                             width: 112,
                             textAlign: "right",
-                            background: "rgba(15, 23, 42, 0.9)",
-                            border: "1px solid rgba(71, 85, 105, 0.65)",
+                            background: "var(--color-canvas-inset, var(--color-canvas-default))",
+                            border: "1px solid var(--color-border-default)",
                             borderRadius: 4,
-                            color: "#f8fafc",
+                            color: "var(--color-fg-default)",
                             fontFamily: "var(--font-mono, monospace)",
                             fontSize: 11,
                             fontWeight: 600,

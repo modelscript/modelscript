@@ -89,7 +89,10 @@ export const baselineMigration: Migration = {
         also_known_as           TEXT NOT NULL DEFAULT '[]',
         moved_to_actor_url      TEXT,
         profile_fields          TEXT NOT NULL DEFAULT '[]',
-        default_post_visibility TEXT NOT NULL DEFAULT 'public'
+        default_post_visibility TEXT NOT NULL DEFAULT 'public',
+        signing_verified        INTEGER NOT NULL DEFAULT 0,
+        signing_policy_strict   INTEGER NOT NULL DEFAULT 0,
+        branch_tip_oid          TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -215,6 +218,66 @@ export const baselineMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
       CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
 
+      CREATE TABLE IF NOT EXISTS git_sync_map (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        path         TEXT NOT NULL,
+        entity_type  TEXT NOT NULL,
+        entity_id    TEXT NOT NULL,
+        content_sha  TEXT,
+        updated_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_git_sync_map_user ON git_sync_map(user_id);
+
+      CREATE TABLE IF NOT EXISTS account_signing_keys (
+        id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id                INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        public_key_multibase   TEXT NOT NULL,
+        public_key_openssh     TEXT NOT NULL,
+        fingerprint_sha256     TEXT NOT NULL UNIQUE,
+        algo                   TEXT NOT NULL DEFAULT 'ed25519',
+        label                  TEXT,
+        trust_level            TEXT NOT NULL DEFAULT 'hardware_or_cli',
+        created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+        activated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+        revoked_at             TEXT,
+        revoked_reason         TEXT,
+        prev_key_id            INTEGER REFERENCES account_signing_keys(id),
+        rotation_proof         TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_account_signing_keys_user ON account_signing_keys(user_id);
+      CREATE INDEX IF NOT EXISTS idx_account_signing_keys_fp ON account_signing_keys(fingerprint_sha256);
+
+      CREATE TABLE IF NOT EXISTS account_key_log (
+        seq          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        event        TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        prev_hash    TEXT NOT NULL,
+        entry_hash   TEXT NOT NULL,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_account_key_log_user ON account_key_log(user_id);
+
+      CREATE TABLE IF NOT EXISTS signed_post_evidence (
+        post_id      TEXT NOT NULL,
+        rev          INTEGER NOT NULL DEFAULT 1,
+        payload_json TEXT NOT NULL,
+        proof_json   TEXT NOT NULL,
+        key_id       INTEGER REFERENCES account_signing_keys(id),
+        commit_oid   TEXT,
+        received_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (post_id, rev)
+      );
+      CREATE INDEX IF NOT EXISTS idx_signed_post_evidence_post ON signed_post_evidence(post_id);
+
+      CREATE TABLE IF NOT EXISTS banned_signing_keys (
+        fingerprint_sha256 TEXT PRIMARY KEY,
+        reason             TEXT NOT NULL,
+        banned_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
       -- ── Social Graph, Posts, Feeds & Polls ───────────────────────
 
       CREATE TABLE IF NOT EXISTS follows (
@@ -262,7 +325,8 @@ export const baselineMigration: Migration = {
         title             TEXT,
         thumbnail_url     TEXT,
         remote_origin_url TEXT,
-        created_at        TEXT DEFAULT (datetime('now'))
+        created_at        TEXT DEFAULT (datetime('now')),
+        updated_at        TEXT DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS posts (
@@ -1330,6 +1394,7 @@ export const baselineMigration: Migration = {
       "ALTER TABLE packages ADD COLUMN is_quarantined INTEGER DEFAULT 0",
       "ALTER TABLE artifact_views ADD COLUMN source_ref TEXT",
       "ALTER TABLE artifact_views ADD COLUMN remote_origin_url TEXT",
+      "ALTER TABLE artifact_views ADD COLUMN updated_at TEXT",
       "ALTER TABLE sysml2_commits ADD COLUMN merged_commit TEXT",
       "ALTER TABLE organizations ADD COLUMN credit_balance REAL NOT NULL DEFAULT 0.0",
       "ALTER TABLE organizations ADD COLUMN total_spent REAL NOT NULL DEFAULT 0.0",
@@ -1355,6 +1420,9 @@ export const baselineMigration: Migration = {
       "ALTER TABLE trending_topics ADD COLUMN reviewed_at TEXT",
       "ALTER TABLE classes ADD COLUMN icon_hash TEXT",
       "ALTER TABLE classes ADD COLUMN diagram_hash TEXT",
+      "ALTER TABLE users ADD COLUMN signing_verified INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN signing_policy_strict INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN branch_tip_oid TEXT",
     ];
 
     for (const stmt of alterStatements) {

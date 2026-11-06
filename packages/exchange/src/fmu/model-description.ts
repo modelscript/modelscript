@@ -508,13 +508,46 @@ function extractAttr(xml: string, element: string, attr: string): string | undef
   return extractAttrFromStr(block.attrs, attr);
 }
 
-/** Extract an attribute value from a raw attribute string. */
+/** Extract an attribute value from a raw attribute string (zero-regex). */
 function extractAttrFromStr(attrs: string, attr: string): string | undefined {
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*"([^"]*)"`));
-  if (match) return match[1];
-  const singleMatch = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*'([^']*)'`));
-  return singleMatch ? singleMatch[1] : undefined;
+  const target = attr.toUpperCase();
+  let pos = 0;
+  const len = attrs.length;
+  while (pos < len) {
+    while (pos < len && (attrs.charCodeAt(pos) <= 32 || attrs[pos] === "/")) pos++;
+    if (pos >= len) break;
+    const startKey = pos;
+    while (pos < len && attrs.charCodeAt(pos) > 32 && attrs[pos] !== "=" && attrs[pos] !== "/" && attrs[pos] !== ">") {
+      pos++;
+    }
+    const key = attrs.slice(startKey, pos).trim();
+    while (pos < len && attrs.charCodeAt(pos) <= 32) pos++;
+    if (pos >= len || attrs[pos] !== "=") continue;
+    pos++; // skip '='
+    while (pos < len && attrs.charCodeAt(pos) <= 32) pos++;
+    if (pos >= len) break;
+    const quote = attrs[pos];
+    let val = "";
+    if (quote === '"' || quote === "'") {
+      pos++;
+      const endQuote = attrs.indexOf(quote, pos);
+      if (endQuote === -1) {
+        val = attrs.slice(pos);
+        pos = len;
+      } else {
+        val = attrs.slice(pos, endQuote);
+        pos = endQuote + 1;
+      }
+    } else {
+      const startVal = pos;
+      while (pos < len && attrs.charCodeAt(pos) > 32 && attrs[pos] !== "/" && attrs[pos] !== ">") pos++;
+      val = attrs.slice(startVal, pos);
+    }
+    if (key.toUpperCase() === target) {
+      return val;
+    }
+  }
+  return undefined;
 }
 
 // ── FMI 3.0 Terminals and Icons ──────────────────────────────────

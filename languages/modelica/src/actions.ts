@@ -23,13 +23,26 @@ function resolveClassId(queryEngine: any, queryDB: any, className: string): numb
     }
     firstId = currentId ?? undefined;
   }
+  const isClass = (id: number | undefined): boolean => {
+    if (id === undefined) return false;
+    const entry = queryEngine.index?.symbols?.get(id);
+    return entry && (entry.kind === "Class" || entry.kind === "Def");
+  };
+
+  if (firstId !== undefined && !isClass(firstId)) {
+    firstId = undefined;
+  }
+
   if (firstId === undefined && queryEngine.index?.byName) {
     const entries = queryEngine.index.byName.get(className) || [];
-    firstId = entries[0];
+    firstId = entries.find((id: number) => isClass(id)) ?? entries[0];
   }
   if (firstId === undefined && queryEngine.index?.symbols) {
     for (const [id, entry] of queryEngine.index.symbols.entries()) {
-      if (entry.name === className || entry.qualifiedName === className) {
+      if (
+        (entry.name === className || entry.qualifiedName === className) &&
+        (entry.kind === "Class" || entry.kind === "Def")
+      ) {
         firstId = id;
         break;
       }
@@ -40,11 +53,11 @@ function resolveClassId(queryEngine: any, queryDB: any, className: string): numb
     const shortName = className.split(".").pop()!;
     if (queryEngine.index?.byName) {
       const entries = queryEngine.index.byName.get(shortName) || [];
-      firstId = entries[0];
+      firstId = entries.find((id: number) => isClass(id)) ?? entries[0];
     }
     if (firstId === undefined && queryEngine.index?.symbols) {
       for (const [id, entry] of queryEngine.index.symbols.entries()) {
-        if (entry.name === shortName) {
+        if (entry.name === shortName && (entry.kind === "Class" || entry.kind === "Def")) {
           firstId = id;
           break;
         }
@@ -203,10 +216,18 @@ function ensureClassIndexed(
     if (entries.length === 0 && shortName !== className) {
       entries = ws.unifiedIndex.byName?.get(shortName) || [];
     }
-    firstId = entries[0];
-    if (firstId === undefined && ws.unifiedIndex.symbols) {
+    const isWsClass = (id: number | undefined): boolean => {
+      if (id === undefined) return false;
+      const entry = ws.unifiedIndex.symbols?.get(id);
+      return entry && (entry.kind === "Class" || entry.kind === "Def");
+    };
+    firstId = entries.find((id: number) => isWsClass(id)) ?? entries[0];
+    if ((firstId === undefined || !isWsClass(firstId)) && ws.unifiedIndex.symbols) {
       for (const [id, entry] of ws.unifiedIndex.symbols.entries()) {
-        if (entry.name === className || entry.qualifiedName === className || entry.name === shortName) {
+        if (
+          (entry.name === className || entry.qualifiedName === className || entry.name === shortName) &&
+          (entry.kind === "Class" || entry.kind === "Def")
+        ) {
           firstId = id;
           break;
         }
@@ -230,10 +251,18 @@ function ensureClassIndexed(
       if (entries.length === 0 && shortName !== className) {
         entries = uws.byName.get(shortName) || [];
       }
-      firstId = entries[0];
-      if (firstId === undefined && uws.symbols) {
+      const isUwsClass = (id: number | undefined): boolean => {
+        if (id === undefined) return false;
+        const entry = uws.symbols?.get(id);
+        return entry && (entry.kind === "Class" || entry.kind === "Def");
+      };
+      firstId = entries.find((id: number) => isUwsClass(id)) ?? entries[0];
+      if ((firstId === undefined || !isUwsClass(firstId)) && uws.symbols) {
         for (const [id, entry] of uws.symbols.entries()) {
-          if (entry.name === className || entry.qualifiedName === className || entry.name === shortName) {
+          if (
+            (entry.name === className || entry.qualifiedName === className || entry.name === shortName) &&
+            (entry.kind === "Class" || entry.kind === "Def")
+          ) {
             firstId = id;
             break;
           }
@@ -393,6 +422,20 @@ export const modelicaActionHandlers: Record<
       }
     }
     const outputStringIds = [...tier0Ids, ...tier1Ids, ...tier2Ids, ...derIds];
+    if (outputStringIds.length === 0) {
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        if (arena.hiddenVarIndices?.has(i)) continue;
+        const v = arena.getVarVariability(i);
+        if (v === Variability.Parameter || v === Variability.Constant) continue;
+        if (arena.getVarShape(i).length > 0) continue;
+        const nameId = arena.getVarNameId(i);
+        if (!seenIds.has(nameId)) {
+          seenIds.add(nameId);
+          outputStringIds.push(nameId);
+        }
+      }
+    }
 
     if (arena.experiment.stopTime === undefined && inputs?.stopTime === undefined) {
       let maxFreq = 0;

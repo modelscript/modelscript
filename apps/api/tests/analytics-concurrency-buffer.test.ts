@@ -87,6 +87,7 @@ test("AnalyticsBuffer: In-Memory Write Coalescing & High-Concurrency Telemetry",
   await t.test("Coalesces unified page views across web and docs surfaces with unique tracking", async () => {
     const buffer = db.analyticsBuffer;
 
+    const today = new Date().toISOString().slice(0, 10);
     // 300 hits to /explore (100 unique, 200 repeat) from JP
     for (let i = 0; i < 300; i++) {
       buffer.recordPageView({
@@ -95,7 +96,7 @@ test("AnalyticsBuffer: In-Memory Write Coalescing & High-Concurrency Telemetry",
         isUniqueVisitor: i < 100,
         countryCode: "JP",
         regionCode: "13",
-        date: "2026-10-30",
+        date: today,
       });
     }
 
@@ -107,7 +108,7 @@ test("AnalyticsBuffer: In-Memory Write Coalescing & High-Concurrency Telemetry",
         isUniqueVisitor: i < 50,
         countryCode: "GB",
         regionCode: "ENG",
-        date: "2026-10-30",
+        date: today,
       });
     }
 
@@ -128,12 +129,13 @@ test("AnalyticsBuffer: In-Memory Write Coalescing & High-Concurrency Telemetry",
   await t.test("Coalesces package download events and flushes cleanly on getPackageStats", async () => {
     const buffer = db.analyticsBuffer;
     const pkgName = "FluidDynamics";
+    const today = new Date().toISOString().slice(0, 10);
 
     for (let i = 0; i < 150; i++) {
-      buffer.recordPackageDownload(pkgName, "1.0.0", "2026-10-30");
+      buffer.recordPackageDownload(pkgName, "1.0.0", today);
     }
     for (let i = 0; i < 75; i++) {
-      buffer.recordPackageDownload(pkgName, "2.0.0", "2026-10-30");
+      buffer.recordPackageDownload(pkgName, "2.0.0", today);
     }
 
     const stats = db.getPackageStats(pkgName, 7);

@@ -3,7 +3,7 @@
 import { AlertIcon, LinkExternalIcon } from "@primer/octicons-react";
 import { Button, Heading, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ClassDetail, ClassSummary, JobStatus } from "../../api";
 import { getClassDetail, getClasses, getJobStatus } from "../../api";
 import {
@@ -58,7 +58,29 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
   const [diagramLoaded, setDiagramLoaded] = useState(false);
   const [diagramError, setDiagramError] = useState(false);
   const [allClasses, setAllClasses] = useState<ClassSummary[]>(propAllClasses || []);
-  const [activeTab, setActiveTab] = useState<ClassTabId>("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") as ClassTabId | null;
+  const validTabs = useMemo<ClassTabId[]>(() => ["overview", "parameters", "equations", "studies", "source"], []);
+  const activeTab: ClassTabId = rawTab && validTabs.includes(rawTab) ? rawTab : "overview";
+
+  const setActiveTab = useCallback(
+    (tab: ClassTabId) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === "overview") {
+            next.delete("tab");
+          } else {
+            next.set("tab", tab);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const [linkedStudies, setLinkedStudies] = useState<{
     bundledStudies: (StudyDefinitionPayload & { dbId?: number | undefined })[];
     linkedTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
@@ -92,7 +114,6 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
 
   // Reset tab & diagram state when navigating between classes
   useEffect(() => {
-    setActiveTab("overview");
     setDiagramLoaded(false);
     setDiagramError(false);
     fetchLinkedClassStudies();
@@ -227,21 +248,27 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
             alignItems: "flex-start",
-            gap: "16px",
+            gap: "20px",
             marginBottom: "12px",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <div className="skeleton" style={{ width: "320px", height: "32px", borderRadius: "6px" }} />
-              <div className="skeleton" style={{ width: "80px", height: "22px", borderRadius: "6px" }} />
+          <div className="skeleton" style={{ width: "100px", height: "100px", borderRadius: "18px", flexShrink: 0 }} />
+          <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+            <div
+              className="skeleton"
+              style={{ width: "280px", height: "14px", borderRadius: "4px", marginBottom: "4px" }}
+            />
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+              <div className="skeleton" style={{ width: "200px", height: "28px", borderRadius: "6px" }} />
+              <div className="skeleton" style={{ width: "64px", height: "22px", borderRadius: "6px" }} />
             </div>
+            <div
+              className="skeleton"
+              style={{ width: "160px", height: "20px", borderRadius: "6px", marginBottom: "8px" }}
+            />
             <div className="skeleton" style={{ width: "80%", height: "16px", borderRadius: "4px" }} />
-            <div className="skeleton" style={{ width: "100%", height: "36px", borderRadius: "8px" }} />
           </div>
-          <div className="skeleton" style={{ width: "72px", height: "72px", borderRadius: "14px", flexShrink: 0 }} />
         </div>
         <ContentWrap style={{ marginTop: "16px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -335,14 +362,17 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
 
         {activeTab === "parameters" && (
           <>
-            {cls.components.length === 0 ? (
+            {cls.components.length === 0 && (!cls.extends || cls.extends.length === 0) ? (
               <GlassCard>
                 <Text style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}>
-                  No parameters, ports, or subcomponents declared on this class.
+                  No base classes, parameters, ports, or subcomponents declared on this class.
                 </Text>
               </GlassCard>
             ) : (
               <ClassParametersSection
+                extendsList={cls.extends}
+                className={className}
+                allClasses={allClasses}
                 parameters={categorized.parameters}
                 connectors={categorized.connectors}
                 submodels={categorized.submodels}

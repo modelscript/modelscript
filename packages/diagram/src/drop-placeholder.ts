@@ -15,6 +15,7 @@ export function isEphemeralDiagramNode(id: string): boolean {
     id === "__diagram_background__" ||
     id === "__diagram_axes__" ||
     id.startsWith("solder_dot_") ||
+    id.startsWith("wire_crossing_") ||
     id.startsWith("__seq_stem_") ||
     id.startsWith("__alignment_guide_") ||
     id === "placement-ghost" ||
@@ -275,6 +276,104 @@ export function ensureDiagramStyles(): void {
     rect.x6-edge-tool-segment:hover {
       fill: var(--vscode-focusBorder, #0284c7) !important;
       cursor: move !important;
+    }
+    /* Level-of-Detail (LOD) Rules */
+    .x6-lod-low text,
+    .x6-lod-low tspan {
+      display: none !important;
+    }
+    .x6-lod-minimal .x6-port {
+      display: none !important;
+    }
+
+    /* Port Proximity Magnet Glow & Target Snap Rings */
+    .x6-port-body:hover,
+    .x6-port:hover circle[magnet="true"] {
+      stroke: var(--ms-brand, #0891b2) !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 5px var(--ms-brand, #0891b2)) !important;
+      cursor: crosshair;
+    }
+
+    circle.x6-magnet-available {
+      stroke: var(--ms-brand, #0891b2) !important;
+      stroke-width: 3px !important;
+      fill: var(--ms-bg, #ffffff) !important;
+      filter: drop-shadow(0 0 6px var(--ms-brand, #0891b2)) !important;
+      animation: ms-magnet-pulse 1.4s infinite ease-in-out;
+    }
+
+    circle.x6-magnet-adsorbed {
+      stroke: var(--ms-accent-cyan, #22d3ee) !important;
+      stroke-width: 5px !important;
+      fill: var(--ms-brand, #0891b2) !important;
+      filter: drop-shadow(0 0 10px var(--ms-accent-cyan, #22d3ee)) !important;
+      transform-origin: center;
+      transform: scale(1.4);
+      transition: transform 0.12s ease;
+    }
+
+    @keyframes ms-magnet-pulse {
+      0%, 100% {
+        stroke-width: 2.5px;
+        opacity: 0.9;
+      }
+      50% {
+        stroke-width: 4px;
+        opacity: 1;
+      }
+    }
+
+    /* Multi-Node Alignment & Distribution Toolbar */
+    .modelscript-alignment-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 4px 6px;
+      background: var(--ms-bg-soft, var(--color-canvas-subtle, #1e293b));
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--ms-border, var(--color-border-default, #334155));
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      user-select: none;
+    }
+    .modelscript-alignment-toolbar .align-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: transparent;
+      border: none;
+      border-radius: 5px;
+      color: var(--ms-text-2, var(--color-fg-muted, #94a3b8));
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+    }
+    .modelscript-alignment-toolbar .align-btn:hover {
+      background: var(--ms-surface-hover, rgba(255, 255, 255, 0.12));
+      color: var(--ms-brand, #38bdf8);
+      transform: scale(1.05);
+    }
+    .modelscript-alignment-toolbar .align-btn:active {
+      transform: scale(0.95);
+    }
+    .modelscript-alignment-toolbar .align-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--ms-divider, var(--color-border-subtle, #475569));
+      margin: 0 2px;
+    }
+
+    /* CAD Spacebar Hand Pan Mode */
+    .x6-hand-panning,
+    .x6-hand-panning * {
+      cursor: grab !important;
+    }
+    .x6-hand-panning-active,
+    .x6-hand-panning-active * {
+      cursor: grabbing !important;
     }
   `;
   document.head.appendChild(style);

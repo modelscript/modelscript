@@ -193,4 +193,66 @@ describe("Standard Library Persistence, Self-Healing & Registry Parity", () => {
     assert.doesNotMatch(healedPkg.description!, /v3\.2\.3/);
     healedDb.close();
   });
+
+  it("5. Flagship DigitalOcean preset only seeds Modelica MSL standard libraries by default", async () => {
+    db.resetDevData();
+    assert.equal(db.listPackages().length, 0);
+
+    const prevPreset = process.env["DEPLOYMENT_PRESET"];
+    const prevPacks = process.env["STDLIB_PACKS"];
+    try {
+      process.env["DEPLOYMENT_PRESET"] = "tier3_flagship";
+      delete process.env["STDLIB_PACKS"];
+
+      // Clean out test dummy directories for non-Modelica libraries
+      for (const entry of fs.readdirSync(storage.dataDir)) {
+        if (entry !== "Modelica" && entry !== "Complex" && entry !== "ModelicaServices") {
+          fs.rmSync(path.join(storage.dataDir, entry), { recursive: true, force: true });
+        }
+      }
+
+      await seedPrepackagedLibraries(storage, db, jobQueue);
+
+      const dbPackages = db.listPackages().map((p) => p.name);
+      assert.ok(dbPackages.includes("Modelica"), "Modelica MSL must be in DB");
+      assert.ok(dbPackages.includes("Complex"), "Complex must be in DB");
+      assert.ok(dbPackages.includes("ModelicaServices"), "ModelicaServices must be in DB");
+
+      assert.equal(dbPackages.includes("SysML"), false, "SysML should not be seeded in DB in flagship");
+      assert.equal(dbPackages.includes("SPICE-Standard"), false, "SPICE should not be seeded in DB in flagship");
+      assert.equal(dbPackages.includes("AUTOSAR-Metamodels"), false, "AUTOSAR should not be seeded in DB in flagship");
+      assert.equal(
+        dbPackages.includes("EPANET-Benchmark-Networks"),
+        false,
+        "EPANET should not be seeded in DB in flagship",
+      );
+      assert.equal(dbPackages.includes("STEP-Fasteners"), false, "STEP should not be seeded in DB in flagship");
+      assert.equal(
+        dbPackages.includes("BioModels-Curated-Core"),
+        false,
+        "BioModels should not be seeded in DB in flagship",
+      );
+
+      const res = await request(app).get("/api/v1/libraries").expect(200);
+      const names = res.body.packages.map((p: any) => p.name);
+
+      // Modelica standard libraries MUST be present
+      assert.ok(names.includes("Modelica"), "Modelica MSL must be seeded in flagship");
+      assert.ok(names.includes("Complex"), "Complex must be seeded in flagship");
+      assert.ok(names.includes("ModelicaServices"), "ModelicaServices must be seeded in flagship");
+
+      // Non-Modelica polyglot packages must NOT be seeded in flagship
+      assert.equal(names.includes("SysML"), false, "SysML should not be seeded in flagship");
+      assert.equal(names.includes("SPICE-Standard"), false, "SPICE should not be seeded in flagship");
+      assert.equal(names.includes("AUTOSAR-Metamodels"), false, "AUTOSAR should not be seeded in flagship");
+      assert.equal(names.includes("EPANET-Benchmark-Networks"), false, "EPANET should not be seeded in flagship");
+      assert.equal(names.includes("STEP-Fasteners"), false, "STEP should not be seeded in flagship");
+      assert.equal(names.includes("BioModels-Curated-Core"), false, "BioModels should not be seeded in flagship");
+    } finally {
+      if (prevPreset !== undefined) process.env["DEPLOYMENT_PRESET"] = prevPreset;
+      else delete process.env["DEPLOYMENT_PRESET"];
+      if (prevPacks !== undefined) process.env["STDLIB_PACKS"] = prevPacks;
+      else delete process.env["STDLIB_PACKS"];
+    }
+  });
 });

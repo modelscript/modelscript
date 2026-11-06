@@ -102,6 +102,28 @@ test("Twitter Snowflake IDs & Workspace Normalization Parity", async (t) => {
     assert.ok(fetchedExplicit);
     assert.strictEqual(fetchedExplicit.id, explicitArtId);
     assert.notStrictEqual(fetchedExplicit.id, "2117825138435453400");
+
+    // Verify fallback lookup for IEEE-754 precision rounded requests (e.g. ...700 vs ...704)
+    const exactSnowflake = "620763551375560704";
+    const truncatedSnowflake = "620763551375560700";
+    db.createArtifactView(
+      author.id,
+      "morsel",
+      "upload",
+      JSON.stringify({ code: "model Test end Test;" }),
+      "Fuzzy Snowflake Test",
+      null,
+      null,
+      exactSnowflake,
+    );
+    const fetchedFuzzy = db.getArtifactView(truncatedSnowflake);
+    assert.ok(fetchedFuzzy, "Artifact view should be resolvable via fuzzy snowflake envelope");
+    assert.strictEqual(fetchedFuzzy.id, exactSnowflake);
+
+    // Verify via REST API
+    const restRes = await request(app).get(`/api/v1/social/artifact-views/${truncatedSnowflake}`);
+    assert.strictEqual(restRes.status, 200);
+    assert.strictEqual(restRes.body.artifactView.id, exactSnowflake);
   });
 
   await t.test("Social HTTP endpoints handle snowflake post IDs with complete precision", async () => {
@@ -155,5 +177,12 @@ test("Twitter Snowflake IDs & Workspace Normalization Parity", async (t) => {
     assert.strictEqual(resLegacy.status, 200);
     assert.ok(resLegacy.text.includes(`&quot;path&quot;:&quot;/${snowflakeId}&quot;`));
     assert.ok(resLegacy.text.includes("modelscript:ide:memfs:artifact-"));
+  });
+
+  await t.test("CAE cluster status is exempt from feature flags and returns 200 OK", async () => {
+    const res = await request(app).get("/api/v1/cae/cluster/status");
+    assert.strictEqual(res.status, 200);
+    assert.ok(res.body.backend);
+    assert.ok(Array.isArray(res.body.partitions));
   });
 });

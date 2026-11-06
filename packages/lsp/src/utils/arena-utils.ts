@@ -98,7 +98,16 @@ export function getArenaOutputStringIds(arena: DAEBuilder): number[] | undefined
     }
   }
 
-  const ids = [...tier0Ids, ...tier1Ids, ...tier2Ids, ...derIds];
+  let ids = [...tier0Ids, ...tier1Ids, ...tier2Ids, ...derIds];
+  if (ids.length === 0) {
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      const v = arena.getVarVariability(i);
+      if (v === Variability.Parameter || v === Variability.Constant) continue;
+      if (arena.getVarShape(i).length > 0) continue;
+      ids.push(arena.getVarNameId(i));
+    }
+  }
   return ids.length > 0 ? ids : undefined;
 }
 

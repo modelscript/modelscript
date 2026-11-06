@@ -241,7 +241,11 @@ export function renderSpiceSvg(circuit: SpiceCircuitLike): string {
   svg += `    <filter id="spice-glow" x="-20%" y="-20%" width="140%" height="140%">\n`;
   svg += `      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#60a5fa" flood-opacity="0.2" />\n`;
   svg += `    </filter>\n`;
+  svg += `    <pattern id="spice-grid" width="20" height="20" patternUnits="userSpaceOnUse">\n`;
+  svg += `      <circle cx="10" cy="10" r="1" fill="#1e293b" />\n`;
+  svg += `    </pattern>\n`;
   svg += `  </defs>\n\n`;
+  svg += `  <rect x="${minX - padding}" y="${minY - padding}" width="${width}" height="${height}" fill="url(#spice-grid)" />\n\n`;
 
   // Title
   svg += `  <text x="${minX}" y="${minY - 20}" fill="#f9fafb" font-size="15" font-weight="700">${diag.title} — SPICE Circuit Schematic</text>\n\n`;

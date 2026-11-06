@@ -576,12 +576,12 @@ export function buildOWL2DiagramData(
   const edges: DiagramEdge[] = [];
 
   const typeStyles: Record<string, { fill: string; stroke: string; header: string }> = {
-    class: { fill: "#1e293b", stroke: "#e11d48", header: "«owl:Class»" },
-    definedClass: { fill: "#1e293b", stroke: "#d97706", header: "«owl:DefinedClass»" },
+    class: { fill: "#1e293b", stroke: "#ca8a04", header: "«owl:Class»" },
+    definedClass: { fill: "#1e293b", stroke: "#eab308", header: "«owl:DefinedClass»" },
     objectProperty: { fill: "#1e293b", stroke: "#0284c7", header: "«owl:ObjectProperty»" },
     dataProperty: { fill: "#1e293b", stroke: "#16a34a", header: "«owl:DataProperty»" },
     individual: { fill: "#1e293b", stroke: "#7c3aed", header: "«owl:NamedIndividual»" },
-    datatype: { fill: "#1e293b", stroke: "#0891b2", header: "«rdfs:Datatype»" },
+    datatype: { fill: "#1e293b", stroke: "#059669", header: "«rdfs:Datatype»" },
   };
 
   const invisiblePortAttrs = { circle: { r: 0, fill: "transparent", stroke: "transparent" } };
@@ -628,6 +628,7 @@ export function buildOWL2DiagramData(
 
     const markup: { tagName: string; selector: string }[] = [
       { tagName: "rect", selector: "body" },
+      ...(isDefined ? [{ tagName: "rect", selector: "innerBorder" }] : []),
       { tagName: "rect", selector: "headerBand" },
       { tagName: "text", selector: "header" },
       { tagName: "text", selector: "label" },
@@ -639,12 +640,28 @@ export function buildOWL2DiagramData(
       body: {
         fill: style.fill,
         stroke: style.stroke,
-        strokeWidth: isDefined ? 2.25 : 1.75,
+        strokeWidth: isDefined ? 2.5 : 1.75,
         rx,
         ry: rx,
         refWidth: "100%",
         refHeight: "100%",
       },
+      ...(isDefined
+        ? {
+            innerBorder: {
+              x: 3.5,
+              y: 3.5,
+              refWidth: -7,
+              refHeight: -7,
+              fill: "none",
+              stroke: style.stroke,
+              strokeWidth: 1.25,
+              rx: Math.max(0, rx - 2),
+              ry: Math.max(0, rx - 2),
+              pointerEvents: "none",
+            },
+          }
+        : {}),
       headerBand: {
         fill: style.stroke,
         fillOpacity: 0.14,

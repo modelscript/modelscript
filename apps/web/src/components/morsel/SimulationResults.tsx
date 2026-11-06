@@ -578,7 +578,7 @@ export function SimulationResults({
         <div style={{ color: "var(--color-danger-fg)", fontWeight: 700, fontSize: 15 }}>Simulation Failed</div>
         <div
           style={{
-            color: colorMode === "dark" ? "#8b949e" : "#57606a",
+            color: "var(--ms-text-2, var(--color-fg-muted))",
             fontSize: 13,
             textAlign: "center",
             maxWidth: 480,

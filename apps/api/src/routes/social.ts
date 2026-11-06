@@ -13,6 +13,7 @@ import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } fr
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
 import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import type { FederationWorker } from "../services/federation-worker.js";
+import { attachPostProofToNote, verifyRestPostProof } from "../services/git-sync/federation-signing.js";
 import { locationService } from "../services/location.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { isCorporateOrAirgapTier, isFederationDisabled } from "../util/tier-presets.js";
@@ -436,6 +437,7 @@ export function socialRouter(
       ...(content_warning ? { contentWarning: content_warning } : {}),
       ...(client_signature ? { clientSignature: client_signature, client_signature } : {}),
       ...(key_id_string ? { keyIdString: key_id_string, key_id_string } : {}),
+      ...(req.body?.proof ? { proof: req.body.proof } : {}),
     };
 
     const pollInput =
@@ -454,6 +456,33 @@ export function socialRouter(
     if (!content && !repost_of_id && !artifact_view_id && !notebookMeta?.cells?.length && pollOptions.length < 2) {
       res.status(400).json({ error: "Content, artifact, poll, or repost target is required" });
       return;
+    }
+
+    let verifiedProofKeyId: number | undefined;
+    let verifiedPayload: Record<string, unknown> | undefined;
+
+    if (req.body?.proof) {
+      const ver = verifyRestPostProof(req.body.proof, content || "", authorId, database, req.body.proof_payload, {
+        replyToId: reply_to_id,
+        quotePostId: quote_post_id,
+        artifactId: artifact_view_id,
+      });
+      if (!ver.valid) {
+        res.status(400).json({ error: `Cryptographic proof verification failed: ${ver.error}` });
+        return;
+      }
+      verifiedProofKeyId = ver.keyId;
+      verifiedPayload = ver.payload;
+    }
+
+    const authorUser = database.getUserById(authorId);
+    if (authorUser?.signing_policy_strict) {
+      if (!client_signature && !verifiedProofKeyId) {
+        res.status(400).json({
+          error: "Strict signing policy enabled: all posts must carry a valid cryptographic signature or proof",
+        });
+        return;
+      }
     }
 
     try {
@@ -583,6 +612,17 @@ export function socialRouter(
       if (content) {
         database.syncPostCitations(id, content);
       }
+
+      if (req.body?.proof && verifiedProofKeyId) {
+        database.recordSignedPostEvidence({
+          postId: String(id),
+          rev: 1,
+          payloadJson: JSON.stringify(verifiedPayload || { content, created_at: req.body.proof.created }),
+          proofJson: JSON.stringify(req.body.proof),
+          keyId: verifiedProofKeyId,
+        });
+      }
+
       const post = database.getPost(id, authorId);
 
       // Process tasks asynchronously so they don't block the request
@@ -725,6 +765,8 @@ export function socialRouter(
                       created: new Date().toISOString(),
                       signatureValue: client_signature,
                     };
+                  } else {
+                    attachPostProofToNote(id, noteObject, database);
                   }
 
                   const allArtifactIds = Array.from(
@@ -750,9 +792,12 @@ export function socialRouter(
                     }
                   }
 
+                  const hasProof = Boolean(noteObject["proof"]);
+
                   const createActivity = {
                     "@context": [
                       "https://www.w3.org/ns/activitystreams",
+                      ...(hasProof ? ["https://w3id.org/security/data-integrity/v1"] : []),
                       {
                         modelscript: "https://hub.modelscript.org/ns#",
                         viewType: "modelscript:viewType",
@@ -896,7 +941,7 @@ export function socialRouter(
         cells: topLevelCells,
       } = req.body;
 
-      const explicitArtifactId = raw_artifact_view_id ?? artifactId;
+      const explicitArtifactId = raw_artifact_view_id !== undefined ? raw_artifact_view_id : artifactId;
       const rawNotebookInput =
         (topLevelNotebook as RawNotebookInput | undefined) ||
         (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells as RawNotebookCell[] } : null) ||
@@ -919,7 +964,32 @@ export function socialRouter(
         ...(artifact_view_id !== undefined && artifact_view_id !== null ? [artifact_view_id] : []),
         ...(notebookMeta?.artifactIds ?? []),
       ];
+
+      // Collect artifact IDs that were already attached to this post so they are exempt from cross-user checks
+      const existingAttachedArtifactIds = new Set<string>();
+      if (existingPost.artifact_view_id != null) {
+        existingAttachedArtifactIds.add(String(existingPost.artifact_view_id));
+      }
+      let existingMetaObj: Record<string, unknown> = {};
+      if (typeof existingPost.metadata === "string") {
+        try {
+          existingMetaObj = JSON.parse(existingPost.metadata) as Record<string, unknown>;
+        } catch {}
+      } else if (existingPost.metadata && typeof existingPost.metadata === "object") {
+        existingMetaObj = existingPost.metadata as Record<string, unknown>;
+      }
+      const existingNotebookMeta = existingMetaObj["notebook"] as { artifactIds?: unknown[] } | undefined;
+      if (Array.isArray(existingNotebookMeta?.artifactIds)) {
+        for (const id of existingNotebookMeta.artifactIds) existingAttachedArtifactIds.add(String(id));
+      }
+      if (Array.isArray(existingMetaObj["artifactIds"])) {
+        for (const id of existingMetaObj["artifactIds"]) existingAttachedArtifactIds.add(String(id));
+      }
+
       for (const aid of candidateArtifactIds) {
+        if (existingAttachedArtifactIds.has(String(aid))) {
+          continue; // Already attached to this post; exempt from cross-user check
+        }
         if (!canAttachArtifactView(aid, userId, req)) {
           res.status(403).json({ error: "Forbidden: Cannot attach another user's artifact view" });
           return;
@@ -929,24 +999,215 @@ export function socialRouter(
       const existingMeta =
         typeof existingPost.metadata === "object" && existingPost.metadata !== null ? existingPost.metadata : {};
 
-      const mergedMetadata = {
+      const effectiveFinalContent = content ?? existingPost.content;
+      const contentChanged =
+        (content !== undefined && content !== existingPost.content) ||
+        (artifact_view_id !== undefined && artifact_view_id !== existingPost.artifact_view_id);
+
+      const authorUser = database.getUserById(existingPost.author_id);
+      const isStrict = Boolean(authorUser?.signing_policy_strict);
+
+      const effectiveContentWarning =
+        content_warning !== undefined
+          ? typeof content_warning === "string" && content_warning.trim()
+            ? content_warning.trim()
+            : null
+          : (existingPost.content_warning ??
+            (typeof existingMeta["contentWarning"] === "string" ? existingMeta["contentWarning"] : null));
+
+      const mergedMetadata: Record<string, unknown> = {
         ...existingMeta,
         ...(typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {}),
         ...(notebookMeta ? { notebook: notebookMeta } : {}),
-        ...(content_warning !== undefined ? { contentWarning: content_warning } : {}),
+        ...(effectiveContentWarning ? { contentWarning: effectiveContentWarning } : {}),
         ...(client_signature ? { clientSignature: client_signature, client_signature } : {}),
         ...(key_id_string ? { keyIdString: key_id_string, key_id_string } : {}),
       };
+
+      if (artifact_view_id === null) {
+        delete mergedMetadata["artifactIds"];
+      }
+
+      if (req.body?.proof) {
+        const ver = verifyRestPostProof(
+          req.body.proof,
+          effectiveFinalContent || "",
+          existingPost.author_id,
+          database,
+          req.body.proof_payload,
+          {
+            replyToId: existingPost.reply_to_id,
+            quotePostId: existingPost.quote_post_id,
+            artifactId: artifact_view_id ?? existingPost.artifact_view_id,
+          },
+        );
+        if (!ver.valid) {
+          res.status(400).json({ error: `Cryptographic proof verification failed on update: ${ver.error}` });
+          return;
+        }
+
+        const oldEvidence = database.getSignedPostEvidence(postId);
+        const nextRev = (oldEvidence?.rev || 1) + 1;
+
+        database.recordSignedPostEvidence({
+          postId: String(postId),
+          rev: nextRev,
+          payloadJson: JSON.stringify(
+            ver.payload || { content: effectiveFinalContent, created_at: req.body.proof.created },
+          ),
+          proofJson: JSON.stringify(req.body.proof),
+          keyId: ver.keyId ?? null,
+        });
+
+        mergedMetadata["proof"] = req.body.proof;
+        mergedMetadata["proof_payload"] = ver.payload;
+        mergedMetadata["signature_rev"] = nextRev;
+        delete mergedMetadata["signature_invalidated"];
+        delete mergedMetadata["edited_unverified"];
+      } else if (contentChanged) {
+        if (isStrict) {
+          res.status(400).json({
+            error: "Strict signing policy enabled: all post updates must carry a valid cryptographic proof",
+          });
+          return;
+        }
+
+        // Content modified without new cryptographic proof: strip stale signatures
+        delete mergedMetadata["proof"];
+        delete mergedMetadata["proof_payload"];
+        delete mergedMetadata["clientSignature"];
+        delete mergedMetadata["client_signature"];
+        delete mergedMetadata["signature"];
+        mergedMetadata["signature_invalidated"] = true;
+        mergedMetadata["edited_unverified"] = true;
+      }
 
       database.updatePost(postId, {
         content: content ?? existingPost.content,
         artifactViewId: artifact_view_id,
         metadata: mergedMetadata,
         replyVisibility: reply_visibility ?? existingPost.reply_visibility,
+        contentWarning: effectiveContentWarning,
       });
       database.syncPostCitations(postId, content ?? existingPost.content);
 
       const updatedPost = database.getPost(postId, userId);
+
+      // Asynchronously broadcast ActivityPub Update to remote followers and relays
+      setTimeout(() => {
+        (async () => {
+          try {
+            if (isFederationDisabled(database.getInstanceSettings())) return;
+            const fullAuthor = database.getUserFederationInfo(existingPost.author_id);
+            if (!fullAuthor?.actor_url) return;
+
+            const remoteFollowers = database.getRemoteFollowersInboxes(existingPost.author_id);
+            const activeRelays = database.listFederationRelays().filter((r) => r.state === "accepted");
+            const apPostId = existingPost.ap_id || `${fullAuthor.actor_url}/posts/${postId}`;
+
+            const { buildAddressingForVisibility, serializeArtifactAttachment } = await import("./federation.js");
+            const addressing = buildAddressingForVisibility(
+              (updatedPost?.visibility as PostVisibility) || "public",
+              fullAuthor.actor_url,
+              [],
+            );
+
+            if (
+              remoteFollowers.length > 0 ||
+              (activeRelays.length > 0 && (updatedPost?.visibility || "public") === "public")
+            ) {
+              const noteObject: Record<string, unknown> = {
+                id: apPostId,
+                type: updatedPost?.poll ? "Question" : "Note",
+                published: existingPost.created_at
+                  ? new Date(existingPost.created_at).toISOString()
+                  : new Date().toISOString(),
+                updated: new Date().toISOString(),
+                attributedTo: fullAuthor.actor_url,
+                content: updatedPost?.content || "",
+                to: addressing.to,
+                cc: addressing.cc,
+              };
+
+              if (effectiveContentWarning) {
+                noteObject["summary"] = effectiveContentWarning;
+              }
+
+              if (updatedPost?.poll) {
+                const optionItems = updatedPost.poll.options.map((opt) => ({
+                  type: "Note",
+                  name: opt.title,
+                  replies: {
+                    type: "Collection",
+                    totalItems: opt.votes_count,
+                  },
+                }));
+                noteObject[updatedPost.poll.multiple ? "anyOf" : "oneOf"] = optionItems;
+                if (updatedPost.poll.expires_at) {
+                  noteObject["endTime"] = updatedPost.poll.expires_at;
+                }
+              }
+
+              if (mergedMetadata["proof"]) {
+                noteObject["proof"] = mergedMetadata["proof"];
+              } else {
+                attachPostProofToNote(postId, noteObject, database);
+              }
+
+              const allArtifactIds = Array.from(
+                new Set(
+                  [artifact_view_id, ...(notebookMeta?.artifactIds || [])]
+                    .filter(
+                      (aid): aid is string | number =>
+                        aid !== undefined && aid !== null && String(aid).trim().length > 0,
+                    )
+                    .map((aid) => String(aid).trim()),
+                ),
+              );
+              if (allArtifactIds.length > 0) {
+                const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+                const attachments = allArtifactIds
+                  .map((aid) => {
+                    const artifact = database.getArtifactView(aid);
+                    return serializeArtifactAttachment(artifact, publicUrl);
+                  })
+                  .filter(Boolean);
+                if (attachments.length > 0) {
+                  noteObject["attachment"] = attachments;
+                }
+              }
+
+              const hasProof = Boolean(noteObject["proof"]);
+              const updateActivity = {
+                "@context": [
+                  "https://www.w3.org/ns/activitystreams",
+                  ...(hasProof ? ["https://w3id.org/security/data-integrity/v1"] : []),
+                  {
+                    modelscript: "https://hub.modelscript.org/ns#",
+                    viewType: "modelscript:viewType",
+                    viewConfig: "modelscript:viewConfig",
+                    sourceType: "modelscript:sourceType",
+                  },
+                ],
+                id: `${apPostId}#updates/${Date.now()}`,
+                type: "Update",
+                actor: fullAuthor.actor_url,
+                published: new Date().toISOString(),
+                to: addressing.to,
+                cc: addressing.cc,
+                object: noteObject,
+              };
+
+              const { FederationWorker } = await import("../services/federation-worker.js");
+              const fedWorker = worker || new FederationWorker(database);
+              fedWorker.enqueueActivityBroadcast(updateActivity, existingPost.author_id);
+            }
+          } catch (err) {
+            console.error("Failed to broadcast ActivityPub update", err);
+          }
+        })();
+      }, 0);
+
       res.json({ post: updatedPost });
     } catch (err: unknown) {
       console.error("PUT /posts/:id error:", err);
@@ -956,6 +1217,45 @@ export function socialRouter(
 
   router.put("/posts/:id", requireAuth, handleUpdatePost);
   router.patch("/posts/:id", requireAuth, handleUpdatePost);
+
+  /**
+   * GET /api/v1/social/posts/:id/revisions
+   * Retrieves revision evidence history for a post.
+   */
+  router.get("/posts/:id/revisions", optionalAuth, (req: Request, res: Response): void => {
+    const postId = String(req.params["id"] || "");
+    const post = database.getPost(postId, req.user?.id);
+    if (!post) {
+      res.status(404).json({ error: "Post not found" });
+      return;
+    }
+
+    const revisions = database.listSignedPostEvidence(postId).map((r) => {
+      let parsedPayload: unknown = null;
+      let parsedProof: unknown = null;
+      try {
+        parsedPayload = JSON.parse(r.payload_json);
+      } catch {}
+      try {
+        parsedProof = JSON.parse(r.proof_json);
+      } catch {}
+
+      return {
+        rev: r.rev,
+        key_id: r.key_id,
+        commit_oid: r.commit_oid,
+        received_at: r.received_at,
+        payload: parsedPayload,
+        proof: parsedProof,
+      };
+    });
+
+    res.json({
+      postId,
+      currentRev: revisions.length > 0 ? revisions[revisions.length - 1]!.rev : 1,
+      revisions,
+    });
+  });
 
   /**
    * DELETE /api/v1/social/posts/:id
@@ -1712,6 +2012,20 @@ export function socialRouter(
         return;
       }
 
+      // If the artifact already has an official vector SVG thumbnail, protect it from being clobbered by a raster canvas capture
+      if (
+        artifact.thumbnail_url &&
+        typeof artifact.thumbnail_url === "string" &&
+        artifact.thumbnail_url.endsWith(".svg")
+      ) {
+        res.json({
+          success: true,
+          thumbnailUrl: artifact.thumbnail_url,
+          message: "Official vector SVG thumbnail preserved.",
+        });
+        return;
+      }
+
       // Extract base64 and restrict extension to safe raster formats
       const matches = rawData.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
       const rawExt = matches ? (matches[1] === "jpeg" ? "jpg" : matches[1]!.toLowerCase()) : "webp";
@@ -1911,7 +2225,7 @@ export function socialRouter(
         effectiveTitle,
       );
 
-      database.updateArtifactViewConfig(id, viewConfigStr);
+      database.updateArtifactViewConfig(id, viewConfigStr, effectiveTitle);
       if (thumbnailUrl) {
         database.updateArtifactThumbnail(id, thumbnailUrl);
       }

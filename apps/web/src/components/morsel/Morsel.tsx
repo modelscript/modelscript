@@ -682,7 +682,6 @@ export default function MorselEditor(props: MorselEditorProps) {
       try {
         const conn = await startLsp(dialect);
         conn.onNotification("modelscript/projectTreeChanged", () => {
-          console.log("[Morsel] Received modelscript/projectTreeChanged");
           if (isSpatialEditPending.current) {
             isSpatialEditPending.current = false;
             setIsDiagramLoading(false);
@@ -691,7 +690,6 @@ export default function MorselEditor(props: MorselEditorProps) {
           }
         });
         conn.onNotification("modelscript/status", (params: any) => {
-          console.log("[Morsel] Received modelscript/status:", params);
           if (params?.state === "ready") {
             setContextVersion((v) => v + 1);
           }

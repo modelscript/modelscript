@@ -11,6 +11,7 @@ export interface SeedPersona {
   initialCredits?: number;
   avatarSvg: string;
   bannerSvg: string;
+  signingVerified?: boolean | undefined;
 }
 
 export const SEED_PERSONAS: SeedPersona[] = [
@@ -25,6 +26,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
     initialCredits: 5000.0,
     avatarSvg: "/ms-logo.png",
     bannerSvg: "/banners/omar.png",
+    signingVerified: true,
   },
   {
     username: "elena_vance",
@@ -36,6 +38,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
     initialCredits: 1200.0,
     avatarSvg: "/avatars/elena_vance.png",
     bannerSvg: "/banners/elena_vance.png",
+    signingVerified: true,
   },
   {
     username: "marcus_chen",
@@ -47,6 +50,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
     initialCredits: 1500.0,
     avatarSvg: "/avatars/marcus_chen.png",
     bannerSvg: "/banners/marcus_chen.png",
+    signingVerified: true,
   },
   {
     username: "claire_dubois",
@@ -58,6 +62,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
     initialCredits: 1100.0,
     avatarSvg: "/avatars/claire_dubois.png",
     bannerSvg: "/banners/claire_dubois.png",
+    signingVerified: true,
   },
   {
     username: "henrik_lindqvist",
@@ -102,6 +107,7 @@ export const SEED_PERSONAS: SeedPersona[] = [
     initialCredits: 1150.0,
     avatarSvg: "/avatars/kenji_takahashi.png",
     bannerSvg: "/banners/kenji_takahashi.png",
+    signingVerified: true,
   },
   {
     username: "sarah_lin",

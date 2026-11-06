@@ -165,13 +165,50 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       }, delayMs);
     };
 
-    const applyTextEdits = async (uri: string, edits: vscode.TextEdit[]) => {
+    const applyCompoundEdits = async (
+      uri: string,
+      edits?: vscode.TextEdit[] | undefined,
+      sidecar?: { uri: string; content: string } | undefined,
+    ) => {
       const workspaceEdit = new vscode.WorkspaceEdit();
       const parsedUri = vscode.Uri.parse(uri);
-      for (const edit of edits) {
-        workspaceEdit.replace(parsedUri, edit.range, edit.newText);
+      if (edits && edits.length > 0) {
+        for (const edit of edits) {
+          workspaceEdit.replace(parsedUri, edit.range, edit.newText);
+        }
       }
-      // Apply the edit without saving the file so the CustomEditor tracks dirty state
+
+      if (sidecar?.uri && typeof sidecar.content === "string") {
+        try {
+          const sidecarUri = vscode.Uri.parse(sidecar.uri);
+          let sidecarDoc: vscode.TextDocument | undefined;
+          try {
+            sidecarDoc = await vscode.workspace.openTextDocument(sidecarUri);
+          } catch {
+            // Not opened / may not exist yet
+          }
+          if (sidecarDoc) {
+            const lastLine = Math.max(0, sidecarDoc.lineCount - 1);
+            const lastChar = sidecarDoc.lineCount > 0 ? sidecarDoc.lineAt(lastLine).text.length : 0;
+            const fullRange = new vscode.Range(0, 0, lastLine, lastChar);
+            workspaceEdit.replace(sidecarUri, fullRange, sidecar.content);
+          } else {
+            workspaceEdit.createFile(sidecarUri, {
+              overwrite: true,
+              contents: new TextEncoder().encode(sidecar.content),
+            });
+          }
+        } catch (e) {
+          console.error("[diagram] Error staging compound sidecar edit:", e);
+          try {
+            const sidecarUri = vscode.Uri.parse(sidecar.uri);
+            await vscode.workspace.fs.writeFile(sidecarUri, new TextEncoder().encode(sidecar.content));
+          } catch (fsErr) {
+            console.error("[diagram] Error fallback-writing sidecar layout to disk:", fsErr);
+          }
+        }
+      }
+
       await vscode.workspace.applyEdit(workspaceEdit);
     };
 
@@ -482,25 +519,22 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     actions,
                   });
 
-                  if (response?.sidecarUri && typeof response.sidecarContent === "string") {
-                    try {
-                      const sidecarUri = vscode.Uri.parse(response.sidecarUri);
-                      await vscode.workspace.fs.writeFile(
-                        sidecarUri,
-                        new TextEncoder().encode(response.sidecarContent),
-                      );
-                    } catch (e) {
-                      console.error("[diagram] Error writing sidecar layout:", e);
-                    }
-                  }
+                  const sidecar =
+                    response?.sidecarUri && typeof response.sidecarContent === "string"
+                      ? { uri: response.sidecarUri, content: response.sidecarContent }
+                      : undefined;
+                  const hasEdits = Boolean(response?.edits && response.edits.length > 0);
+                  const hasSidecar = Boolean(sidecar);
 
-                  if (response?.edits && response.edits.length > 0) {
+                  if (hasEdits || hasSidecar) {
                     // Mark as optimistic so onDidChangeTextDocument skips re-render
                     pendingRenderHint = "none";
                     lastOptimisticEditTime = Date.now();
-                    await applyTextEdits(uriString, response.edits);
-                    // Wait for the document change event to fire and consume the hint
-                    await waitForDocumentChange();
+                    await applyCompoundEdits(uriString, response?.edits, sidecar);
+                    if (hasEdits) {
+                      // Wait for the document change event to fire and consume the hint
+                      await waitForDocumentChange();
+                    }
                     // Consume the hint if the change event didn't fire
                     if (pendingRenderHint !== null) {
                       pendingRenderHint = null;
@@ -529,23 +563,20 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
                   console.log("[diagramEditorProvider] applyEdits LSP response:", response);
 
-                  if (response?.sidecarUri && typeof response.sidecarContent === "string") {
-                    try {
-                      const sidecarUri = vscode.Uri.parse(response.sidecarUri);
-                      await vscode.workspace.fs.writeFile(
-                        sidecarUri,
-                        new TextEncoder().encode(response.sidecarContent),
-                      );
-                    } catch (e) {
-                      console.error("[diagram] Error writing sidecar layout:", e);
-                    }
-                  }
+                  const sidecar =
+                    response?.sidecarUri && typeof response.sidecarContent === "string"
+                      ? { uri: response.sidecarUri, content: response.sidecarContent }
+                      : undefined;
+                  const hasEdits = Boolean(response?.edits && response.edits.length > 0);
+                  const hasSidecar = Boolean(sidecar);
 
-                  if (response && response.edits && response.edits.length > 0) {
-                    pendingRenderHint = response.renderHint ?? null;
-                    await applyTextEdits(uriString, response.edits);
-                    // Wait for the document change event to fire and consume the render hint
-                    await waitForDocumentChange();
+                  if (hasEdits || hasSidecar) {
+                    pendingRenderHint = response?.renderHint ?? null;
+                    await applyCompoundEdits(uriString, response?.edits, sidecar);
+                    if (hasEdits) {
+                      // Wait for the document change event to fire and consume the render hint
+                      await waitForDocumentChange();
+                    }
 
                     // If the document change event didn't fire (e.g. text didn't change despite edits)
                     if (pendingRenderHint !== null) {
@@ -630,7 +661,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     // React to semantic pipeline completions from the language server
     const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
-      if (isSpatialEditPending || (lastOptimisticEditTime > 0 && Date.now() - lastOptimisticEditTime < 800)) {
+      if (isSpatialEditPending || (lastOptimisticEditTime > 0 && Date.now() - lastOptimisticEditTime < 2000)) {
         isSpatialEditPending = false;
         webviewPanel.webview.postMessage({ type: "stopLoading" }); // Hide spinner when edit finishes
         return;

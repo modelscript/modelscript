@@ -256,6 +256,7 @@ END
     filename: "Dexterous_7DOF_Torque_Cobot.urdf",
     authorUsername: "kenji_takahashi",
     createdHoursAgo: 66,
+    signed: true,
     postContent:
       "Published our ROS 2 URDF kinematic & inertial tree (`.urdf`) for a 7-DOF redundant torque-controlled collaborative manipulator with an integrated parallel-jaw force-sensing gripper. All link inertia tensors are positive-definite and triangle-inequality verified via `@modelscript/urdf` for Pinocchio / MuJoCo / Modelica multibody lowering.",
     code: `<?xml version="1.0" encoding="UTF-8"?>

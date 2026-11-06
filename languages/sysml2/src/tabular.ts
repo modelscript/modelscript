@@ -44,22 +44,89 @@ function extractDocComment(body: string): string {
   return "";
 }
 
+function findClosingBrace(text: string, openBraceIdx: number): number {
+  let depth = 0;
+  let inString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = openBraceIdx; i < text.length; i++) {
+    const ch = text[i];
+    const next = i + 1 < text.length ? text[i + 1] : "";
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
 /**
  * Extracts SysML v2 Part Definitions & Part Usages into a BOM / Element Table.
  */
 export function extractSysml2PartRows(text: string): TabularRow[] {
   const rows: TabularRow[] = [];
-  const blockRegex =
-    /\b(part\s+def|part)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_:]+))?(?:\s*\[([^\]]+)\])?\s*(\{[\s\S]*?\}|;)/g;
+  const blockHeaderRegex =
+    /\b(part\s+def|part)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_:]+))?(?:\s*\[([^\]]+)\])?\s*([{;])/g;
   let match: RegExpExecArray | null;
-  while ((match = blockRegex.exec(text)) !== null) {
+  while ((match = blockHeaderRegex.exec(text)) !== null) {
     const kind = match[1]!.replace(/\s+/g, " ");
     const name = match[2]!;
     const typeName = match[3] ?? (kind === "part def" ? "PartDefinition" : "");
     const multiplicity = match[4] ? `[${match[4]}]` : "[1]";
-    const body = match[5] ?? ";";
+    const delimiter = match[5]!;
     const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
+    let body = ";";
+    let endOffset = match.index + match[0].length;
+
+    if (delimiter === "{") {
+      const openBraceIdx = match.index + match[0].length - 1;
+      const closeBraceIdx = findClosingBrace(text, openBraceIdx);
+      if (closeBraceIdx !== -1) {
+        body = text.slice(openBraceIdx, closeBraceIdx + 1);
+        endOffset = closeBraceIdx + 1;
+      }
+    }
 
     const extractAttr = (attrName: string): string => {
       const m = body.match(
@@ -115,14 +182,26 @@ export function extractSysml2RequirementRows(text: string): TabularRow[] {
     verifiedByMap.set(reqKey, list);
   }
 
-  const reqRegex =
-    /\b(requirement\s+def|requirement)\s+(?:<'([^']+)'(?:\s+([A-Za-z_][A-Za-z0-9_]*))?|([A-Za-z_][A-Za-z0-9_]*))(?:\s*:\s*([A-Za-z0-9_:]+))?\s*(\{[\s\S]*?\}|;)/g;
+  const reqHeaderRegex =
+    /\b(requirement\s+def|requirement)\s+(?:<'([^']+)'(?:\s+([A-Za-z_][A-Za-z0-9_]*))?|([A-Za-z_][A-Za-z0-9_]*))(?:\s*:\s*([A-Za-z0-9_:]+))?\s*([{;])/g;
   let match: RegExpExecArray | null;
-  while ((match = reqRegex.exec(text)) !== null) {
+  while ((match = reqHeaderRegex.exec(text)) !== null) {
     const shortId = match[2] ?? "";
     const name = match[3] ?? match[4] ?? shortId ?? "UnnamedRequirement";
     if (!shortId && !match[3] && !match[4]) continue;
-    const body = match[6] ?? ";";
+    const delimiter = match[6]!;
+    const startOffset = match.index;
+    let body = ";";
+    let endOffset = match.index + match[0].length;
+
+    if (delimiter === "{") {
+      const openBraceIdx = match.index + match[0].length - 1;
+      const closeBraceIdx = findClosingBrace(text, openBraceIdx);
+      if (closeBraceIdx !== -1) {
+        body = text.slice(openBraceIdx, closeBraceIdx + 1);
+        endOffset = closeBraceIdx + 1;
+      }
+    }
     const docText = extractDocComment(body);
 
     const satisfiedBy = [...(satisfiedByMap.get(name) ?? []), ...(shortId ? (satisfiedByMap.get(shortId) ?? []) : [])];
@@ -130,7 +209,7 @@ export function extractSysml2RequirementRows(text: string): TabularRow[] {
 
     rows.push({
       id: name,
-      span: { startOffset: match.index, endOffset: match.index + match[0].length },
+      span: { startOffset, endOffset },
       cells: {
         shortId: shortId || name,
         name,
@@ -161,27 +240,35 @@ export function updateSysml2TabularCell(
 ): TabularMutationResult {
   const escapedId = escapeRegex(rowId);
   if (sheetId === "requirements" && columnId === "doc") {
-    const reqBlockRe = new RegExp(
-      `(\\b(?:requirement\\s+def|requirement)\\s+(?:<'[^']+'\\s*)?${escapedId}[^;{]*\\{[\\s\\S]*?doc\\s*\\/\\*\\s*)([\\s\\S]*?)(\\s*\\*\\/)`,
+    const reqHeaderRe = new RegExp(
+      `\\b(?:requirement\\s+def|requirement)\\s+(?:<'[^']+'\\s*)?${escapedId}[^;{]*([{;])`,
     );
-    const m = text.match(reqBlockRe);
-    if (m && m.index !== undefined) {
-      const startOffset = m.index + m[1]!.length;
-      const endOffset = startOffset + m[2]!.length;
-      const edit = { startOffset, endOffset, newText: newValue };
-      return {
-        success: true,
-        newText: applyWritebackEdits(text, [edit]),
-        edits: [edit],
-      };
+    const m = text.match(reqHeaderRe);
+    if (m && m.index !== undefined && m[1] === "{") {
+      const openBraceIdx = m.index + m[0].length - 1;
+      const closeBraceIdx = findClosingBrace(text, openBraceIdx);
+      if (closeBraceIdx !== -1) {
+        const body = text.slice(openBraceIdx, closeBraceIdx + 1);
+        const docMatch = body.match(/(doc\s*\/\*\s*)([\s\S]*?)(\s*\*\/)/);
+        if (docMatch && docMatch.index !== undefined) {
+          const startOffset = openBraceIdx + docMatch.index + docMatch[1]!.length;
+          const endOffset = startOffset + docMatch[2]!.length;
+          const edit = { startOffset, endOffset, newText: newValue };
+          return {
+            success: true,
+            newText: applyWritebackEdits(text, [edit]),
+            edits: [edit],
+          };
+        }
+      }
     }
   }
 
   // Part attribute update (`mass`, `power`, `cost`)
-  const partBlockRe = new RegExp(
-    `(\\b(?:part\\s+def|part)\\s+${escapedId}(?:\\s*:\\s*[A-Za-z0-9_:]+)?(?:\\s*\\[[^\\]]+\\])?\\s*)(\\{[\\s\\S]*?\\}|;)`,
+  const partHeaderRe = new RegExp(
+    `\\b(?:part\\s+def|part)\\s+${escapedId}(?:\\s*:\\s*[A-Za-z0-9_:]+)?(?:\\s*\\[[^\\]]+\\])?\\s*([{;])`,
   );
-  const pm = text.match(partBlockRe);
+  const pm = text.match(partHeaderRe);
   if (!pm || pm.index === undefined) {
     return {
       success: false,
@@ -191,9 +278,21 @@ export function updateSysml2TabularCell(
     };
   }
 
-  const header = pm[1]!;
-  const body = pm[2]!;
-  const bodyStart = pm.index + header.length;
+  const delimiter = pm[1]!;
+  const headerEnd = pm.index + pm[0].length;
+  let body = ";";
+  let bodyStart = headerEnd - 1;
+  let bodyEnd = headerEnd;
+
+  if (delimiter === "{") {
+    const openBraceIdx = headerEnd - 1;
+    const closeBraceIdx = findClosingBrace(text, openBraceIdx);
+    if (closeBraceIdx !== -1) {
+      body = text.slice(openBraceIdx, closeBraceIdx + 1);
+      bodyStart = openBraceIdx;
+      bodyEnd = closeBraceIdx + 1;
+    }
+  }
 
   if (columnId === "mass" || columnId === "power" || columnId === "cost") {
     const attrRe = new RegExp(
@@ -211,7 +310,7 @@ export function updateSysml2TabularCell(
       };
     }
     if (body.startsWith("{") && body.endsWith("}")) {
-      const closeBrace = bodyStart + body.length - 1;
+      const closeBrace = bodyEnd - 1;
       const edit = {
         startOffset: closeBrace,
         endOffset: closeBrace,

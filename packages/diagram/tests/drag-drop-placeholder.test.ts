@@ -11,6 +11,7 @@ import {
   getTypicalNodeSize,
 } from "../src/drop-placeholder.js";
 import * as Spinner from "../src/spinner.js";
+import { performViewportCulling } from "../src/viewport-culling.js";
 
 test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) => {
   await t.test("should ensure bounce animation style keyframes are defined", () => {
@@ -49,6 +50,11 @@ test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) =
         mockStyle.textContent,
         /\.modelscript-anchor-halo text,\s*\.modelscript-anchor-halo tspan\s*\{[^}]*stroke:\s*none\s*!important;/,
       );
+      assert.match(
+        mockStyle.textContent,
+        /\.x6-lod-low text,\s*\.x6-lod-low tspan\s*\{[^}]*display:\s*none\s*!important;/,
+      );
+      assert.match(mockStyle.textContent, /\.x6-lod-minimal \.x6-port\s*\{[^}]*display:\s*none\s*!important;/);
     } finally {
       delete (globalThis as any).document;
     }
@@ -206,6 +212,63 @@ test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) =
       assert.strictEqual(mockSpinnerEl.style.display, "block");
       await new Promise((r) => setTimeout(r, 270));
       assert.strictEqual(mockSpinnerEl.style.display, "none");
+    } finally {
+      delete (globalThis as any).document;
+    }
+  });
+
+  await t.test("performViewportCulling should cull offscreen SVG nodes when graph has >250 nodes", () => {
+    const nodeElements: Record<string, { style: { visibility: string } }> = {};
+    const nodes = [];
+
+    // Create 260 nodes
+    for (let i = 0; i < 260; i++) {
+      const id = `node_${i}`;
+      nodeElements[id] = { style: { visibility: "" } };
+      // Node 0 is on-screen at (100, 100)
+      // Node 259 is far off-screen at (5000, 5000)
+      const x = i === 259 ? 5000 : 100 + (i % 5) * 40;
+      const y = i === 259 ? 5000 : 100 + Math.floor(i / 5) * 40;
+      nodes.push({
+        id,
+        getPosition: () => ({ x, y }),
+        getSize: () => ({ width: 30, height: 30 }),
+      });
+    }
+
+    const mockGraph: any = {
+      container: { clientWidth: 800, clientHeight: 600 },
+      getNodes: () => nodes,
+      scale: () => ({ sx: 1, sy: 1 }),
+      translate: () => ({ tx: 0, ty: 0 }),
+      findViewByCell: (n: any) => ({ container: nodeElements[n.id] }),
+    };
+
+    (globalThis as any).document = {
+      querySelector: (selector: string) => {
+        const match = selector.match(/data-cell-id="([^"]+)"/);
+        return match ? nodeElements[match[1]!] : null;
+      },
+    };
+
+    try {
+      performViewportCulling(mockGraph);
+      // Node 0 should be visible
+      assert.strictEqual(nodeElements["node_0"]?.style.visibility, "");
+      // Node 259 is at 5000, 5000 and should be culled (visibility: hidden)
+      assert.strictEqual(nodeElements["node_259"]?.style.visibility, "hidden");
+
+      // Verify that graphs with <= 250 nodes do not trigger culling
+      const smallMockGraph: any = {
+        container: { clientWidth: 800, clientHeight: 600 },
+        getNodes: () => nodes.slice(0, 100),
+        scale: () => ({ sx: 1, sy: 1 }),
+        translate: () => ({ tx: 0, ty: 0 }),
+        findViewByCell: (n: any) => ({ container: nodeElements[n.id] }),
+      };
+      nodeElements["node_99"] = { style: { visibility: "" } };
+      performViewportCulling(smallMockGraph);
+      assert.strictEqual(nodeElements["node_99"]?.style.visibility, "");
     } finally {
       delete (globalThis as any).document;
     }

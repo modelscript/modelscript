@@ -126,14 +126,14 @@ export const CreatePlaygroundRepoModal: React.FC<CreatePlaygroundRepoModalProps>
         style={{
           width: "100%",
           maxWidth: "540px",
-          backgroundColor: "var(--color-canvas-default, #0d1117)",
-          border: "1px solid var(--color-border-default, #30363d)",
-          borderRadius: "12px",
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.56)",
+          backgroundColor: "var(--color-canvas-default, var(--ms-bg, #0d1117))",
+          border: "1px solid var(--color-border-default, var(--ms-border, #30363d))",
+          borderRadius: "var(--ms-radius-lg, 12px)",
+          boxShadow: "var(--ms-shadow-pop, 0 24px 64px rgba(0, 0, 0, 0.56))",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          color: "var(--color-fg-default, #e6edf3)",
+          color: "var(--color-fg-default, var(--ms-text-1, #e6edf3))",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -141,20 +141,21 @@ export const CreatePlaygroundRepoModal: React.FC<CreatePlaygroundRepoModalProps>
         <div
           style={{
             padding: "16px 20px",
-            borderBottom: "1px solid var(--color-border-default, #30363d)",
+            borderBottom: "1px solid var(--color-border-default, var(--ms-border, #30363d))",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            background: "linear-gradient(180deg, var(--color-canvas-subtle, #161b22) 0%, transparent 100%)",
+            background:
+              "linear-gradient(180deg, var(--color-canvas-subtle, var(--ms-bg-soft, #161b22)) 0%, transparent 100%)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <RepoIcon size={18} style={{ color: "var(--color-accent-fg, #58a6ff)" }} />
+            <RepoIcon size={18} style={{ color: "var(--ms-brand, var(--color-accent-fg, #0891b2))" }} />
             <div>
               <div id="create-repo-title" style={{ fontSize: "16px", fontWeight: 700 }}>
                 Create Ansatz Repository
               </div>
-              <div style={{ fontSize: "12px", color: "var(--color-fg-muted, #8b949e)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginTop: "2px" }}>
                 Publish your model to a version-controlled repository on Ansatz
               </div>
             </div>

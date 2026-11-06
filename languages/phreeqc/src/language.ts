@@ -22,12 +22,8 @@ export const phreeqcLanguage = language({
     },
   },
 
-  writeback: (ctx) => {
-    const { entry, newValue } = ctx;
-    if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
-      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
-    }
-    return null;
+  writeback: {
+    operators: ["="],
   },
 
   actions: [

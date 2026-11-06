@@ -5,7 +5,7 @@ import { buildProjectModel, type Pt } from "../model/pscad-model.js";
 import { registeredExternalDefinitions } from "../model/workspace-registry.js";
 import { computePortWorldPosition, parsePscx } from "../parser/pscx-parser.js";
 import type { PscxModule } from "../types.js";
-import { planPscadEdits, splicesToTextEdits, type PscadEditOp } from "./edit-engine.js";
+import { findElementById, planPscadEdits, splicesToTextEdits, type PscadEditOp } from "./edit-engine.js";
 
 /**
  * Translates diagram-protocol actions (move, connect, updateParameter, ...) into structural
@@ -101,6 +101,7 @@ const stripPrefix = (raw: string): string =>
         : raw;
 
 export interface ObstacleBox {
+  id?: string;
   x: number;
   y: number;
   w: number;
@@ -182,6 +183,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
   const instances = [...model.definitions.values()].flatMap((d) => d.instances.map((i) => ({ d, i })));
   const wires = [...model.definitions.values()].flatMap((d) => d.wires.map((w) => ({ d, w })));
   const obstacles: ObstacleBox[] = instances.map(({ i }) => ({
+    id: i.id,
     x: i.x,
     y: i.y,
     w: i.w > 0 ? i.w : 54,
@@ -245,10 +247,10 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     if (direct) return direct;
     return wires.find(({ w }) => wireTouches(w.id, e.source) && wireTouches(w.id, e.target));
   };
-  const setPoints = (wid: string, pts: Pt[]) => {
+  const setPoints = (wid: string, pts: Pt[], customObstacles?: ObstacleBox[]) => {
     if (touchedWires.has(wid)) return;
     touchedWires.add(wid);
-    ops.push({ type: "setWirePoints", id: wid, points: orthogonalize(pts, obstacles) });
+    ops.push({ type: "setWirePoints", id: wid, points: orthogonalize(pts, customObstacles ?? obstacles) });
   };
   const orientCode = (rotation: number): number => {
     const deg = ((Math.round(rotation) % 360) + 360) % 360;
@@ -306,6 +308,11 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           const dx = nx - hit.i.x;
           const dy = ny - hit.i.y;
           if (dx !== 0 || dy !== 0) {
+            const obs = obstacles.find((b) => b.id === hit.i.id);
+            if (obs) {
+              obs.x = nx;
+              obs.y = ny;
+            }
             const lc = legacyCmps.find((c) => c.id === hit.i.id);
             const ids = new Set(lc?.ports.map((p) => p.id) ?? []);
             for (const lw of legacyWires) {
@@ -313,27 +320,78 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
               const startAttached = Boolean(lw.startPortId && ids.has(lw.startPortId));
               const endAttached = Boolean(lw.endPortId && ids.has(lw.endPortId));
               if (!startAttached && !endAttached) continue;
-              const pts = lw.vertices.map((v) => ({ x: v.x, y: v.y }));
-              if (startAttached && pts.length >= 2) {
+              let pts = lw.vertices.map((v) => ({ x: v.x, y: v.y }));
+              if (pts.length < 2) continue;
+
+              if (startAttached && endAttached) {
+                // Both ends attached to moved component: translate entire wire
+                pts = pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+              } else if (startAttached) {
                 const oldStart = { ...pts[0]! };
                 pts[0] = { x: oldStart.x + dx, y: oldStart.y + dy };
-                if (pts.length >= 3) {
+                if (pts.length === 2) {
+                  const wasHoriz = oldStart.y === pts[1]!.y;
+                  const wasVert = oldStart.x === pts[1]!.x;
+                  if (wasHoriz && pts[0]!.y !== pts[1]!.y && pts[0]!.x !== pts[1]!.x) {
+                    const midX = Math.round((pts[0]!.x + pts[1]!.x) / 2 / 18) * 18;
+                    if (midX === pts[0]!.x) {
+                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+                    } else if (midX === pts[1]!.x) {
+                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+                    } else {
+                      pts = [pts[0]!, { x: midX, y: pts[0]!.y }, { x: midX, y: pts[1]!.y }, pts[1]!];
+                    }
+                  } else if (wasVert && pts[0]!.x !== pts[1]!.x && pts[0]!.y !== pts[1]!.y) {
+                    const midY = Math.round((pts[0]!.y + pts[1]!.y) / 2 / 18) * 18;
+                    if (midY === pts[0]!.y) {
+                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+                    } else if (midY === pts[1]!.y) {
+                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+                    } else {
+                      pts = [pts[0]!, { x: pts[0]!.x, y: midY }, { x: pts[1]!.x, y: midY }, pts[1]!];
+                    }
+                  }
+                } else {
                   // Adjust adjacent elbow so the interior segment stays orthogonal
                   if (pts[1]!.x === oldStart.x) pts[1]!.x = pts[0]!.x;
                   else if (pts[1]!.y === oldStart.y) pts[1]!.y = pts[0]!.y;
                 }
-              }
-              if (endAttached && pts.length >= 2) {
+              } else if (endAttached) {
                 const lastIdx = pts.length - 1;
                 const oldEnd = { ...pts[lastIdx]! };
                 pts[lastIdx] = { x: oldEnd.x + dx, y: oldEnd.y + dy };
-                if (pts.length >= 3) {
+                if (pts.length === 2) {
+                  const wasHoriz = pts[0]!.y === oldEnd.y;
+                  const wasVert = pts[0]!.x === oldEnd.x;
+                  if (wasHoriz && pts[0]!.y !== pts[1]!.y && pts[0]!.x !== pts[1]!.x) {
+                    const midX = Math.round((pts[0]!.x + pts[1]!.x) / 2 / 18) * 18;
+                    if (midX === pts[0]!.x) {
+                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+                    } else if (midX === pts[1]!.x) {
+                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+                    } else {
+                      pts = [pts[0]!, { x: midX, y: pts[0]!.y }, { x: midX, y: pts[1]!.y }, pts[1]!];
+                    }
+                  } else if (wasVert && pts[0]!.x !== pts[1]!.x && pts[0]!.y !== pts[1]!.y) {
+                    const midY = Math.round((pts[0]!.y + pts[1]!.y) / 2 / 18) * 18;
+                    if (midY === pts[0]!.y) {
+                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+                    } else if (midY === pts[1]!.y) {
+                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+                    } else {
+                      pts = [pts[0]!, { x: pts[0]!.x, y: midY }, { x: pts[1]!.x, y: midY }, pts[1]!];
+                    }
+                  }
+                } else {
                   const prevIdx = lastIdx - 1;
                   if (pts[prevIdx]!.x === oldEnd.x) pts[prevIdx]!.x = pts[lastIdx]!.x;
                   else if (pts[prevIdx]!.y === oldEnd.y) pts[prevIdx]!.y = pts[lastIdx]!.y;
                 }
               }
-              if (wireIndex(lw.id)) setPoints(lw.id, pts);
+              if (wireIndex(lw.id)) {
+                const relevantObstacles = obstacles.filter((b) => b.id !== hit.i.id);
+                setPoints(lw.id, pts, relevantObstacles);
+              }
             }
           }
         }
@@ -362,8 +420,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             continue;
           }
           const isSticky =
-            item.name.startsWith("sticky_") ||
-            new RegExp(`<Sticky\\b[^>]*\\bid\\s*=\\s*["']${cleanId}["']`, "i").test(text);
+            item.name.startsWith("sticky_") || findElementById(model.root, cleanId, new Set(["Sticky"])) !== undefined;
           if (isSticky) {
             ops.push({
               type: "editSticky",

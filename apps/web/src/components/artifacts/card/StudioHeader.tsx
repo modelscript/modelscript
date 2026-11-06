@@ -64,6 +64,9 @@ export interface StudioHeaderProps {
   onOpenDiff: () => void;
   onToggleSidebar: () => void;
   onRunOnHpc?: () => void;
+  onSaveArtifact?: (() => void) | undefined;
+  isSavingArtifact?: boolean | undefined;
+  hasUnsavedChanges?: boolean | undefined;
 }
 
 export const StudioHeader: React.FC<StudioHeaderProps> = ({
@@ -81,6 +84,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onOpenDiff,
   onToggleSidebar,
   onRunOnHpc,
+  onSaveArtifact,
+  isSavingArtifact,
+  hasUnsavedChanges,
 }) => {
   const navigate = useNavigate();
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
@@ -403,6 +409,34 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 title="Dispatch simulation job against this model artifact on Cloud HPC"
               >
                 ☁️ Run on HPC
+              </button>
+            )}
+            {onSaveArtifact && hasUnsavedChanges && (
+              <button
+                type="button"
+                className="studio-hide-mobile"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSaveArtifact();
+                }}
+                disabled={isSavingArtifact}
+                style={{
+                  background: "var(--ms-brand, #0e7490)",
+                  color: "#ffffff",
+                  border: "1px solid var(--ms-brand, #0e7490)",
+                  borderRadius: "6px",
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: isSavingArtifact ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.2)",
+                }}
+                title="Save changes to this artifact"
+              >
+                💾 {isSavingArtifact ? "Saving…" : "Save Artifact"}
               </button>
             )}
             {isEditable && !isMultiFile && (

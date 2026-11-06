@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 65 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 66 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -19,7 +19,8 @@
 - [Administration](https://modelscript.org/guide/administration): Enterprise deployment, licensing, and security disclosures.
 
 ## Ansatz Platform (`ansatz.social`)
-- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Federated social network, CAS package registry, scholarly citations hub, personal activity Git vault, and cloud HPC hub.
+- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Collaborative systems engineering cloud, package registry, literature hub, and cloud HPC dispatcher.
+- [Workflow Replacement Guide](https://modelscript.org/ansatz/workflow-replacement): Displacing legacy first-party engineering monoliths (Dymola, Cameo, Simulink, PSCAD, OLGA) through a 5-stage wedge.
 - [ActivityPub Federation](https://modelscript.org/ansatz/federation): W3C ActivityPub S2S federation, WebFinger, and peer verification.
 - [Package Registry](https://modelscript.org/ansatz/package-registry): Content-addressable package registry with Ed25519 signatures and multi-lens manifests.
 - [Cloud HPC Simulation](https://modelscript.org/ansatz/cloud-hpc): Slurm HPC offload, WebGPU batched sweeps, and compute credit billing.
@@ -56,10 +57,10 @@
 
 ## Command-Line Interface (`msx`)
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
-- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 101 CLI commands and subcommands.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 103 CLI commands and subcommands.
 
-## Polyglot Languages (65 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 65 formats.
+## Polyglot Languages (66 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 66 formats.
 - [Modelica (.mo) [stable]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [SysML v2 / KerML (.sysml) [stable]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
 - [ReqIF (.reqif) [stable]](https://modelscript.org/languages/reqif): Requirements interchange & contract entailment.
@@ -71,6 +72,7 @@
 - [OpenSCAD (.scad) [stable]](https://modelscript.org/languages/scad): Parametric constructive solid geometry.
 - [CFD (SU2 / OpenFOAM) (.su2) [preview]](https://modelscript.org/languages/cfd): Computational fluid dynamics meshes.
 - [FEA (CalculiX / Abaqus / NASTRAN) (.inp) [preview]](https://modelscript.org/languages/fea): Finite-element structural analysis.
+- [OpenUSD (.usd / .usda / .usdz) [preview]](https://modelscript.org/languages/usd): Universal Scene Description 3D stages & UsdPhysics digital twins.
 - [CSV (.csv) [stable]](https://modelscript.org/languages/csv): Time-series & sensor logs.
 - [C (.c) [beta]](https://modelscript.org/languages/c): Numerical & embedded C integration.
 - [Fortran (.f90) [preview]](https://modelscript.org/languages/fortran): Legacy scientific subroutines.

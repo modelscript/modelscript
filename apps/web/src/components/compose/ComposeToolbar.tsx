@@ -9,9 +9,11 @@ import {
   PaperclipIcon,
   PulseIcon,
   ServerIcon,
+  ShieldCheckIcon,
   SmileyIcon,
   SparklesFillIcon,
 } from "@primer/octicons-react";
+import { Tooltip } from "@primer/react";
 import React from "react";
 import type { AiPolishMode } from "../../api";
 import { useFeatureFlag } from "../../FeatureFlagContext";
@@ -58,6 +60,7 @@ export interface ComposeToolbarProps {
   aiEngine?: ComposerAiEngineMode | undefined;
   onChangeAiEngine?: ((mode: ComposerAiEngineMode) => void) | undefined;
   aiLastSourceLabel?: string | null | undefined;
+  hasDeviceKey?: boolean | undefined;
 }
 
 export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
@@ -96,6 +99,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   aiEngine = "auto",
   onChangeAiEngine,
   aiLastSourceLabel,
+  hasDeviceKey,
 }) => {
   const emojiWrapperRef = React.useRef<HTMLDivElement>(null);
   const aiMenuWrapperRef = React.useRef<HTMLDivElement>(null);
@@ -656,6 +660,52 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
                 />
               </svg>
             </div>
+          )}
+          {hasDeviceKey ? (
+            <Tooltip text="Cryptographically signing posts with your local Web Browser Device Key" direction="s">
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "var(--color-success-fg, #1a7f37)",
+                  background: "var(--color-success-subtle, rgba(46, 160, 67, 0.1))",
+                  border: "1px solid var(--color-success-emphasis, rgba(46, 160, 67, 0.3))",
+                  padding: "2px 7px",
+                  borderRadius: "999px",
+                  cursor: "default",
+                  userSelect: "none",
+                }}
+              >
+                <ShieldCheckIcon size={12} />
+                <span>Auto-signing</span>
+              </div>
+            </Tooltip>
+          ) : (
+            <Tooltip text="Click to enable 1-click device cryptographic signing in Settings" direction="s">
+              <a
+                href="/settings/security"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  color: "var(--color-fg-muted, #656d76)",
+                  background: "var(--color-canvas-subtle, rgba(175, 184, 193, 0.1))",
+                  border: "1px dashed var(--color-border-default, #d0d7de)",
+                  padding: "2px 7px",
+                  borderRadius: "999px",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <ShieldCheckIcon size={12} />
+                <span>Enable Signing</span>
+              </a>
+            </Tooltip>
           )}
           <TweetButton
             onClick={handleSubmit}

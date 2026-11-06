@@ -5,12 +5,17 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { buildDiagramData, evaluateMacroExpression, extractCstNestedModifierValue } from "../src/diagram/data.js";
 import {
+  applyEditsToText,
+  computeComponentInsert,
   computeConnectInsert,
   computeConnectRemove,
+  computeCoordinateSystemEdits,
   computeDescriptionEdit,
   computeEdgePointEdits,
   computeParameterEdit,
   computePlacementEdits,
+  findMatchingParen,
+  findStatementSemicolon,
 } from "../src/diagram/edits.js";
 
 describe("Diagram Edits CST Unparser & Edge Cases", () => {
@@ -739,6 +744,187 @@ end WithClassAnnot;`;
         3,
         "Must insert new equation section BEFORE class-level annotation (line 3)",
       );
+    });
+
+    it("findMatchingParen and findStatementSemicolon ignore parentheses and semicolons in strings and comments", () => {
+      const textWithParensInString =
+        'annotation(Documentation(info="Formula: f(x) = (a + b)"), Placement(transformation(origin={0,0})))';
+      // Search for opening paren of annotation(
+      const annOpen = textWithParensInString.indexOf("(") + 1;
+      const annClose = findMatchingParen(textWithParensInString, annOpen);
+      assert.strictEqual(annClose, textWithParensInString.length - 1);
+
+      const textWithCommentParens = "annotation(Line(points={{0,0},{10,10}} // comment with (open paren\n))";
+      const lineOpen = textWithCommentParens.indexOf("(") + 1;
+      const lineClose = findMatchingParen(textWithCommentParens, lineOpen);
+      assert.strictEqual(lineClose, textWithCommentParens.length - 1);
+
+      const compLine = 'Modelica.Electrical.Analog.Basic.Resistor R1(R=100) "Label; with semicolon"; // line comment;';
+      const semi = findStatementSemicolon(compLine);
+      // The true statement semicolon is after the description string: right after "Label; with semicolon"
+      const expectedSemiPos = compLine.indexOf('";') + 1;
+      assert.strictEqual(semi, expectedSemiPos);
+    });
+
+    it("computeCoordinateSystemEdits updates existing coordinateSystem extent and grid", () => {
+      const docText = `model ResizedDiagram
+  Real x;
+  annotation(Diagram(coordinateSystem(preserveAspectRatio = true, extent = {{-100, -100}, {100, 100}})));
+end ResizedDiagram;`;
+
+      const classInstance: any = {
+        name: "ResizedDiagram",
+        cstNode: {
+          startPosition: { row: 0, column: 0 },
+          endPosition: { row: 3, column: 19 },
+        },
+        annotation: () => ({
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+            preserveAspectRatio: true,
+          },
+        }),
+      };
+
+      const edits = computeCoordinateSystemEdits(docText, classInstance, {
+        extent: [
+          [-200, -150],
+          [200, 150],
+        ],
+        grid: [5, 5],
+      });
+
+      assert.strictEqual(edits.length, 1);
+      const updatedText = applyEditsToText(docText, edits);
+      assert.match(updatedText, /extent = \{\{-200, -150\}, \{200, 150\}\}/);
+      assert.match(updatedText, /grid = \{5, 5\}/);
+      assert.match(updatedText, /preserveAspectRatio = true/);
+    });
+
+    it("computeCoordinateSystemEdits inserts new coordinateSystem annotation when none exists", () => {
+      const docText = `model CleanModel
+  Real x;
+equation
+  x = 1.0;
+end CleanModel;`;
+
+      const classInstance: any = {
+        name: "CleanModel",
+        cstNode: {
+          startPosition: { row: 0, column: 0 },
+          endPosition: { row: 4, column: 15 },
+        },
+        annotation: () => null,
+      };
+
+      const edits = computeCoordinateSystemEdits(docText, classInstance, {
+        extent: [
+          [-150, -150],
+          [150, 150],
+        ],
+        grid: [10, 10],
+      });
+
+      assert.strictEqual(edits.length, 1);
+      const updatedText = applyEditsToText(docText, edits);
+      assert.match(updatedText, /annotation\(Diagram\(coordinateSystem\(/);
+      assert.match(updatedText, /extent = \{\{-150, -150\}, \{150, 150\}\}/);
+      assert.match(updatedText, /grid = \{10, 10\}/);
+      assert.match(updatedText, /end CleanModel;/);
+    });
+
+    it("computeComponentInsert positions new component before CST equation section", () => {
+      const doc = `model HasSections
+  Real a;
+equation
+  a = 1.0;
+end HasSections;`;
+
+      const tree = parser.parse(doc);
+      const classInstance: any = {
+        name: "HasSections",
+        cstNode: tree.rootNode,
+        annotation: () => null,
+      };
+
+      const edits = computeComponentInsert(
+        classInstance,
+        "Modelica.Electrical.Analog.Basic.Resistor",
+        "R1",
+        10,
+        20,
+        doc,
+      );
+      assert.strictEqual(edits.length, 1);
+      // The insert should be placed before the equation section on line 2
+      assert.strictEqual(edits[0]!.range.start.line, 2);
+      assert.ok(edits[0]!.newText.includes("Resistor R1"));
+      assert.ok(edits[0]!.newText.includes("origin={10,-20}"));
+    });
+
+    it("computePlacementEdits skips connectedOnly items that already have CST Placement annotation", () => {
+      const doc = `model ConnectedModel
+  Modelica.Electrical.Analog.Basic.Resistor R1 annotation(Placement(transformation(origin={0, 0}, extent={{-10, -10}, {10, 10}})));
+  Modelica.Electrical.Analog.Basic.Capacitor C1;
+equation
+  connect(R1.n, C1.p);
+end ConnectedModel;`;
+
+      const tree = parser.parse(doc);
+      const compNodes: any[] = [];
+      const findComps = (n: any) => {
+        if (!n) return;
+        if (n.type === "component_declaration") compNodes.push(n);
+        for (const ch of n.children || []) findComps(ch);
+      };
+      findComps(tree.rootNode);
+
+      const classInstance: any = {
+        name: "ConnectedModel",
+        components: [
+          {
+            name: "R1",
+            cstNode: compNodes[0],
+            annotation: (k: string) => (k === "Placement" ? { transformation: { origin: [0, 0] } } : null),
+          },
+          {
+            name: "C1",
+            cstNode: compNodes[1],
+            annotation: () => null,
+          },
+        ],
+        connectEquations: [],
+      };
+
+      // When connectedOnly: true is passed for R1 (which has Placement), no edit should be emitted
+      const editsR1 = computePlacementEdits(doc, classInstance, [
+        {
+          name: "R1",
+          x: 50,
+          y: 50,
+          width: 20,
+          height: 20,
+          connectedOnly: true,
+        },
+      ]);
+      assert.strictEqual(editsR1.length, 0);
+
+      // When connectedOnly: true is passed for C1 (which lacks Placement), an edit should be emitted
+      const editsC1 = computePlacementEdits(doc, classInstance, [
+        {
+          name: "C1",
+          x: 100,
+          y: 100,
+          width: 20,
+          height: 20,
+          connectedOnly: true,
+        },
+      ]);
+      assert.strictEqual(editsC1.length, 1);
+      assert.ok(editsC1[0]!.newText.includes("annotation(Placement"));
     });
   });
 });

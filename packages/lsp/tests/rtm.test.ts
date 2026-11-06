@@ -203,4 +203,45 @@ end Chassis;`;
     assert.ok(removeEdits && removeEdits.length > 0);
     assert.equal(removeEdits[0]!.newText, "");
   });
+
+  test("CstLinkSynthesizer ignores comments and string literals when locating SysML v2 elements", () => {
+    const sysmlWithComments = `package VehiclePkg {
+  // part battery : FakeBattery;
+  /* part battery : OldBattery; */
+  attribute note = "part battery : StringBattery;";
+  part battery : Battery;
+}`;
+
+    const edits = CstLinkSynthesizer.synthesizeSysMLTraceLink(sysmlWithComments, "battery", "WeightReq", "satisfy");
+    assert.ok(edits && edits.length === 1);
+    assert.strictEqual(edits[0].newText, ` {\n  satisfy WeightReq;\n}`);
+    // Verify position is at the real declaration semicolon, not the comments
+    assert.ok(edits[0].range.start.line === 4);
+  });
+
+  test("CstLinkSynthesizer handles multi-model Modelica documents and nested annotations", () => {
+    const multiModelica = `package VehicleModels
+  // end Motor;
+  model Motor
+    parameter Real power = 100;
+  end Motor;
+
+  model Inverter
+    parameter Real freq = 50;
+    annotation(__modelscript(nested(a=1), satisfies="EfficiencyReq"));
+  end Inverter;
+end VehicleModels;`;
+
+    // Synthesize into Motor
+    const edits = CstLinkSynthesizer.synthesizeModelicaTraceLink(multiModelica, "Motor", "PowerReq", "satisfy");
+    assert.ok(edits && edits.length === 1);
+    assert.match(edits[0].newText, /annotation\(__modelscript\(satisfies="PowerReq"\)\);/);
+    assert.strictEqual(edits[0].range.start.line, 4);
+
+    // Remove nested annotation from Inverter
+    const removeEdits = CstLinkSynthesizer.removeModelicaTraceLink(multiModelica, "EfficiencyReq");
+    assert.ok(removeEdits && removeEdits.length === 1);
+    assert.strictEqual(removeEdits[0].newText, "");
+    assert.strictEqual(removeEdits[0].range.start.line, 8);
+  });
 });

@@ -16,6 +16,7 @@ import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../../../util/keystore";
+import { SigningKeysSection } from "../components/SigningKeysSection";
 import {
   DangerButton,
   DetailSubtitle,
@@ -582,6 +583,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
           )}
         </Box>
       </Box>
+
+      <SigningKeysSection />
 
       <TwoFactorModal
         isOpen={is2FAModalOpen}

@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { evaluateScad, ScadEvaluator } from "../src/evaluator.js";
+import { compileScadToUsd, compileScadToUsdz } from "../src/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const wasmPath = path.join(__dirname, "../dist/parser.wasm");
@@ -184,7 +185,18 @@ difference() {
     throw new Error(`Expected bounding box X span >= 45, got ${bbox.max[0] - bbox.min[0]}`);
   }
 
-  console.log("✔ ScadEvaluator successfully lowered Hybrid SCAD into watertight Solid tree and STEP geometry!");
+  // Verify OpenUSD and USDZ export
+  const sampleUsd = await compileScadToUsd("cube([10, 20, 30]);");
+  if (!sampleUsd.startsWith("#usda 1.0") || !sampleUsd.includes('def Mesh "geometry"')) {
+    throw new Error("Expected valid OpenUSD scene from compileScadToUsd");
+  }
+
+  const sampleUsdz = await compileScadToUsdz("cube([10, 20, 30]);");
+  if (!(sampleUsdz instanceof Uint8Array) || sampleUsdz.length < 100) {
+    throw new Error("Expected non-empty USDZ buffer from compileScadToUsdz");
+  }
+
+  console.log("✔ ScadEvaluator successfully lowered Hybrid SCAD into watertight Solid tree, STEP, and OpenUSD/USDZ!");
 }
 
 main().catch((err) => {

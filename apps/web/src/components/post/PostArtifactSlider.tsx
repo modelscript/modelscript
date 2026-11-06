@@ -14,7 +14,7 @@ export interface PostSlideItem {
   lang?: string | undefined;
   code?: string | undefined;
   rawBlock?: string | undefined;
-  artifactId?: number | undefined;
+  artifactId?: string | number | undefined;
   initialArtifactView?: unknown;
   caption?: string | undefined;
   figureNumber?: number | undefined;
@@ -458,7 +458,7 @@ export function extractShortPostSlides(
         >);
 
   const slides: PostSlideItem[] = [];
-  const seenArtifactIds = new Set<number>();
+  const seenArtifactIds = new Set<string>();
 
   // 1. Extract fenced code blocks from content
   const FENCED_CODE_REGEX = /```([a-zA-Z0-9_.-]*)\s*\n([\s\S]*?)```/g;
@@ -475,11 +475,11 @@ export function extractShortPostSlides(
     });
   }
 
-  // 2. Extract artifact IDs and views (must be valid positive numeric IDs)
-  const metaArtIds: number[] = Array.isArray(postMeta?.["artifactIds"])
+  // 2. Extract artifact IDs and views (must be valid non-empty string or numeric IDs)
+  const metaArtIds: string[] = Array.isArray(postMeta?.["artifactIds"])
     ? (postMeta["artifactIds"] as unknown[])
-        .filter((id: unknown) => id !== null && id !== undefined && Number(id) > 0)
-        .map(Number)
+        .filter((id: unknown) => id !== null && id !== undefined && String(id).trim() !== "" && String(id) !== "0")
+        .map(String)
     : [];
 
   const nbObj = (notebookData && typeof notebookData === "object" ? notebookData : {}) as Record<string, unknown>;
@@ -487,42 +487,56 @@ export function extractShortPostSlides(
     ? (nbObj["cells"] as { id?: string; type?: string; artifactId?: unknown; title?: string; caption?: string }[])
     : [];
   const notebookArtCells = notebookCells.filter(
-    (c) => c.type === "artifact" && c.artifactId !== null && c.artifactId !== undefined && Number(c.artifactId) > 0,
+    (c) =>
+      c.type === "artifact" &&
+      c.artifactId !== null &&
+      c.artifactId !== undefined &&
+      String(c.artifactId).trim() !== "" &&
+      String(c.artifactId) !== "0",
   );
 
   const rawPrimary = postObj["artifact_view_id"];
   const primaryArtId =
-    rawPrimary !== null && rawPrimary !== undefined && Number(rawPrimary) > 0 ? Number(rawPrimary) : null;
+    rawPrimary !== null && rawPrimary !== undefined && String(rawPrimary).trim() !== "" && String(rawPrimary) !== "0"
+      ? String(rawPrimary)
+      : null;
 
   // Directives in content
   const directiveRegex = /::artifact(?:\[([^\]]*)\])?\{([^}]*)\}/g;
   let dirMatch: RegExpExecArray | null;
-  const directiveArtIds: { id: number; title?: string; caption?: string }[] = [];
+  const directiveArtIds: { id: string; title?: string; caption?: string }[] = [];
   while ((dirMatch = directiveRegex.exec(rawContent)) !== null) {
     const idM = (dirMatch[2] || "").match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
     const capM = (dirMatch[2] || "").match(/(?:^|\s)caption\s*=\s*(?:"([^"]*)"|'([^']*)')/);
-    if (idM && idM[1] && Number(idM[1]) > 0) {
+    if (idM && idM[1] && idM[1] !== "0") {
       directiveArtIds.push({
-        id: Number(idM[1]),
+        id: idM[1],
         title: dirMatch[1]?.trim(),
         caption: capM ? (capM[1] ?? capM[2]) : undefined,
       });
     }
   }
 
-  const combinedArtifacts: { id: number; title?: string; caption?: string; initialView?: unknown }[] = [];
+  const combinedArtifacts: { id: string; title?: string; caption?: string; initialView?: unknown }[] = [];
 
-  const addArtifact = (id: number, title?: string, caption?: string) => {
-    if (!id || id <= 0 || seenArtifactIds.has(id)) return;
-    seenArtifactIds.add(id);
-    const artViews = postObj["artifact_views"] as Record<number, unknown> | undefined;
-    const initialView = artViews?.[id] || (id === primaryArtId ? postObj["artifact_view"] : undefined);
-    combinedArtifacts.push({ id, title, caption, initialView });
+  const addArtifact = (id: string | number, title?: string, caption?: string) => {
+    const strId = String(id).trim();
+    if (!strId || strId === "0" || seenArtifactIds.has(strId)) return;
+    seenArtifactIds.add(strId);
+    const artViews = postObj["artifact_views"] as Record<string, unknown> | undefined;
+    const isMatchingPrimary =
+      primaryArtId &&
+      (strId === primaryArtId ||
+        (/^\d{16,}$/.test(strId) &&
+          /^\d{16,}$/.test(primaryArtId) &&
+          Math.abs(Number(strId) - Number(primaryArtId)) <= 128));
+    const initialView = artViews?.[strId] || (isMatchingPrimary ? postObj["artifact_view"] : undefined);
+    combinedArtifacts.push({ id: strId, title, caption, initialView });
   };
 
   // Add from notebook cells first
   for (const cell of notebookArtCells) {
-    addArtifact(Number(cell.artifactId), cell.title, cell.caption);
+    addArtifact(String(cell.artifactId), cell.title, cell.caption);
   }
 
   // Add from directives

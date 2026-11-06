@@ -21,6 +21,16 @@ describe("iOS 15 / Safari 15 & Legacy Mobile WebKit Compatibility (iPhone 7)", (
     );
   });
 
+  it("configures build target in docs config.ts to support Safari 15 / iOS 15", () => {
+    const docsConfigPath = path.resolve(webDir, "../docs/docs/.vitepress/config.ts");
+    const content = fs.readFileSync(docsConfigPath, "utf-8");
+    assert.match(
+      content,
+      /target:\s*\[.*"safari15".*\]/,
+      "docs/.vitepress/config.ts must explicitly include safari15 in build.target so esbuild downlevels ES2022+ features (such as class static initialization blocks)",
+    );
+  });
+
   it("ensures index.html preserves min-height: 100vh fallback for browsers without 100dvh support", () => {
     const indexHtmlPath = path.resolve(distDir, "index.html");
     if (!fs.existsSync(indexHtmlPath)) return;
@@ -86,6 +96,30 @@ describe("iOS 15 / Safari 15 & Legacy Mobile WebKit Compatibility (iPhone 7)", (
         staticBlockMatch,
         null,
         `File ${file} contains class static initialization block 'static { ... }' unsupported on Safari < 16.4 / iOS 15 (iPhone 7): ${staticBlockMatch?.join(", ")}`,
+      );
+    }
+  });
+
+  it("ensures no production JavaScript bundle in docs dist contains class static initialization blocks", () => {
+    const docsDistDir = path.resolve(webDir, "../docs/docs/.vitepress/dist/assets");
+    if (!fs.existsSync(docsDistDir)) return;
+    const getJsFiles = (dir: string): string[] => {
+      const results: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) results.push(...getJsFiles(full));
+        else if (entry.name.endsWith(".js")) results.push(full);
+      }
+      return results;
+    };
+    const files = getJsFiles(docsDistDir);
+    for (const file of files) {
+      const code = fs.readFileSync(file, "utf-8");
+      const staticBlockMatch = code.match(/\bclass\b[^{]*\{[^{}]*\bstatic\s*\{/g);
+      assert.strictEqual(
+        staticBlockMatch,
+        null,
+        `Docs bundle ${path.basename(file)} contains class static initialization block 'static { ... }' unsupported on Safari < 16.4 / iOS 15 (iPhone 7): ${staticBlockMatch?.join(", ")}`,
       );
     }
   });

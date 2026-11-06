@@ -49,9 +49,18 @@ The ModelScript engine is designed to be completely headless and can run inside 
 | :----------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
 | **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.         |
 | **Ansatz Sketch**        | `/sketch`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
+| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.       |
 | **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.          |
 | **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.           |
 | **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.     |
 | **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal morsels, models, and scholarly records. |
 | **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.        |
 | **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.              |
+
+---
+
+## Replacing Legacy Desktop Workflows
+
+Ansatz serves as the collaborative platform layer designed to systematically displace the file silos, seat-tax barriers, and isolated environments of legacy first-party engineering tools (Dassault Systèmes Dymola and Cameo, MathWorks Simulink, Manitoba Hydro PSCAD, and SLB OLGA).
+
+For a detailed analysis of the 5-stage adoption wedge (Zero-Install Review, Cross-Domain Digital Thread, Git-Native CI/CD, Executable Decision Records, and Cloud HPC Offload) and tool-specific displacement playbooks, see the [Workflow Replacement Guide](/ansatz/workflow-replacement).

@@ -33,6 +33,7 @@ export interface StepAp242Entity {
   numericParams: number[];
   mappedFeatureType?: QifFeatureType | undefined;
   mappedGdtType?: QifGdtType | undefined;
+  location?: [number, number, number] | undefined;
 }
 
 export interface StepFeatureMatch {
@@ -42,6 +43,7 @@ export interface StepFeatureMatch {
   stepEntityId: string;
   stepEntityType: string;
   geometryCompatible: boolean;
+  matchType?: "entityId" | "semanticName" | "spatialProximity" | undefined;
 }
 
 export interface StepReconciliationResult {
@@ -109,20 +111,35 @@ export function extractStepEntities(stepText: string): Map<string, StepAp242Enti
     if (mappedFeatureType) entity.mappedFeatureType = mappedFeatureType;
     if (mappedGdtType) entity.mappedGdtType = mappedGdtType;
 
+    if (entityType === "CARTESIAN_POINT" && numericParams.length >= 2) {
+      entity.location = [numericParams[0] || 0, numericParams[1] || 0, numericParams[2] || 0];
+    }
+
     entityMap.set(id, entity);
   }
 
-  // Second pass: for ADVANCED_FACE entities, infer mappedFeatureType from referenced surface entity
-  for (const ent of entityMap.values()) {
-    if (ent.entityType === "ADVANCED_FACE" && !ent.mappedFeatureType) {
-      for (const refId of ent.referencedIds) {
-        const refEnt = entityMap.get(refId);
-        if (refEnt?.mappedFeatureType) {
-          ent.mappedFeatureType = refEnt.mappedFeatureType;
-          if (ent.numericParams.length === 0 && refEnt.numericParams.length > 0) {
-            ent.numericParams.push(...refEnt.numericParams);
+  // Second pass: for ADVANCED_FACE entities, infer mappedFeatureType and propagate locations
+  for (let pass = 0; pass < 2; pass++) {
+    for (const ent of entityMap.values()) {
+      if (ent.entityType === "ADVANCED_FACE" && !ent.mappedFeatureType) {
+        for (const refId of ent.referencedIds) {
+          const refEnt = entityMap.get(refId);
+          if (refEnt?.mappedFeatureType) {
+            ent.mappedFeatureType = refEnt.mappedFeatureType;
+            if (ent.numericParams.length === 0 && refEnt.numericParams.length > 0) {
+              ent.numericParams.push(...refEnt.numericParams);
+            }
+            break;
           }
-          break;
+        }
+      }
+      if (!ent.location) {
+        for (const refId of ent.referencedIds) {
+          const refEnt = entityMap.get(refId);
+          if (refEnt?.location) {
+            ent.location = refEnt.location;
+            break;
+          }
         }
       }
     }
@@ -136,40 +153,149 @@ export function reconcileStepWithQif(stepText: string, qifDoc: QifDocument): Ste
   const matchedFeatures: StepFeatureMatch[] = [];
   const unresolvedFeatures: { featureId: string; featureName: string; stepEntityId: string }[] = [];
   const diagnostics: QifDiagnostic[] = [];
+  const matchedStepEntityIds = new Set<string>();
+
+  // Pass 1: Exact stepEntityId matches
+  const unassignedFeatures: QifFeature[] = [];
 
   for (const feat of qifDoc.features) {
-    if (!feat.stepEntityId) continue;
+    if (feat.stepEntityId) {
+      const normalizedId = normalizeStepEntityId(feat.stepEntityId);
+      const stepEnt = entityMap.get(normalizedId);
+      if (stepEnt) {
+        const geometryCompatible =
+          stepEnt.mappedFeatureType === undefined ||
+          stepEnt.mappedFeatureType === feat.featureType ||
+          stepEnt.entityType === "ADVANCED_FACE";
 
-    const normalizedId = normalizeStepEntityId(feat.stepEntityId);
-    const stepEnt = entityMap.get(normalizedId);
+        matchedFeatures.push({
+          featureId: feat.id,
+          featureName: feat.name,
+          featureType: feat.featureType,
+          stepEntityId: feat.stepEntityId,
+          stepEntityType: stepEnt.entityType,
+          geometryCompatible,
+          matchType: "entityId",
+        });
+        matchedStepEntityIds.add(stepEnt.id);
+        continue;
+      }
+    }
+    unassignedFeatures.push(feat);
+  }
 
-    if (!stepEnt) {
-      unresolvedFeatures.push({
-        featureId: feat.id,
-        featureName: feat.name,
-        stepEntityId: feat.stepEntityId,
-      });
-      diagnostics.push({
-        code: QifErrorCode.UNRESOLVED_STEP_ENTITY.code,
-        rule: QifErrorCode.UNRESOLVED_STEP_ENTITY.rule,
-        severity: QifErrorCode.UNRESOLVED_STEP_ENTITY.severity,
-        message: QifErrorCode.UNRESOLVED_STEP_ENTITY.message(feat.stepEntityId, feat.name),
-        range: feat.range,
-      });
-    } else {
-      const geometryCompatible =
-        stepEnt.mappedFeatureType === undefined ||
-        stepEnt.mappedFeatureType === feat.featureType ||
-        stepEnt.entityType === "ADVANCED_FACE";
+  // Map surfaces to their parent ADVANCED_FACE if one wraps them
+  const faceForSurface = new Map<string, StepAp242Entity>();
+  for (const ent of entityMap.values()) {
+    if (ent.entityType === "ADVANCED_FACE") {
+      for (const refId of ent.referencedIds) {
+        faceForSurface.set(refId, ent);
+      }
+    }
+  }
+  const resolveToFace = (ent: StepAp242Entity): StepAp242Entity => faceForSurface.get(ent.id) ?? ent;
 
+  // Pass 2: Semantic Name Matching for unassigned features
+  const stillUnassigned: QifFeature[] = [];
+  const normalizeForMatch = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[_\s-]+/g, "")
+      .replace(/(face|adv|cyl|plane|surf|surface|hole|bore)$/g, "");
+
+  for (const feat of unassignedFeatures) {
+    const featNorm = normalizeForMatch(feat.name);
+    let nameMatch: StepAp242Entity | undefined;
+
+    if (featNorm.length >= 3) {
+      for (const ent of entityMap.values()) {
+        if (matchedStepEntityIds.has(ent.id)) continue;
+        const entNorm = normalizeForMatch(ent.name);
+        if (
+          entNorm === featNorm ||
+          (entNorm.length >= 3 && (entNorm.includes(featNorm) || featNorm.includes(entNorm)))
+        ) {
+          const compatible =
+            ent.mappedFeatureType === undefined ||
+            ent.mappedFeatureType === feat.featureType ||
+            ent.entityType === "ADVANCED_FACE";
+          if (compatible) {
+            nameMatch = ent;
+            break;
+          }
+        }
+      }
+    }
+
+    if (nameMatch) {
+      const target = resolveToFace(nameMatch);
       matchedFeatures.push({
         featureId: feat.id,
         featureName: feat.name,
         featureType: feat.featureType,
-        stepEntityId: feat.stepEntityId,
-        stepEntityType: stepEnt.entityType,
-        geometryCompatible,
+        stepEntityId: target.id,
+        stepEntityType: target.entityType,
+        geometryCompatible: true,
+        matchType: "semanticName",
       });
+      matchedStepEntityIds.add(nameMatch.id);
+      matchedStepEntityIds.add(target.id);
+    } else {
+      stillUnassigned.push(feat);
+    }
+  }
+
+  // Pass 3: Spatial Nearest-Neighbor Proximity Matching
+  for (const feat of stillUnassigned) {
+    let spatialMatch: StepAp242Entity | undefined;
+    if (feat.location) {
+      const [fx, fy, fz] = feat.location;
+      let minDistance = 15.0; // Within 15mm proximity threshold
+      for (const ent of entityMap.values()) {
+        if (matchedStepEntityIds.has(ent.id)) continue;
+        if (!ent.location) continue;
+        const compatible =
+          ent.mappedFeatureType === undefined ||
+          ent.mappedFeatureType === feat.featureType ||
+          ent.entityType === "ADVANCED_FACE";
+        if (!compatible) continue;
+
+        const dist = Math.hypot(fx - ent.location[0], fy - ent.location[1], fz - ent.location[2]);
+        if (dist < minDistance) {
+          minDistance = dist;
+          spatialMatch = ent;
+        }
+      }
+    }
+
+    if (spatialMatch) {
+      const target = resolveToFace(spatialMatch);
+      matchedFeatures.push({
+        featureId: feat.id,
+        featureName: feat.name,
+        featureType: feat.featureType,
+        stepEntityId: target.id,
+        stepEntityType: target.entityType,
+        geometryCompatible: true,
+        matchType: "spatialProximity",
+      });
+      matchedStepEntityIds.add(spatialMatch.id);
+      matchedStepEntityIds.add(target.id);
+    } else {
+      if (feat.stepEntityId) {
+        unresolvedFeatures.push({
+          featureId: feat.id,
+          featureName: feat.name,
+          stepEntityId: feat.stepEntityId,
+        });
+        diagnostics.push({
+          code: QifErrorCode.UNRESOLVED_STEP_ENTITY.code,
+          rule: QifErrorCode.UNRESOLVED_STEP_ENTITY.rule,
+          severity: QifErrorCode.UNRESOLVED_STEP_ENTITY.severity,
+          message: QifErrorCode.UNRESOLVED_STEP_ENTITY.message(feat.stepEntityId, feat.name),
+          range: feat.range,
+        });
+      }
     }
   }
 
@@ -521,6 +647,8 @@ export interface Qif3dMbdScene {
   geometry: "external-step" | "none";
   reconciliation: StepReconciliationResult;
   spcSummary: Qif3dSpcSummary;
+  availableSerialNumbers?: string[] | undefined;
+  activeSerialNumber?: string | undefined;
 }
 
 export function getAsmeGdtUnicodeSymbol(gdtType: QifGdtType | string): string {
@@ -559,6 +687,127 @@ export function getAsmeGdtUnicodeSymbol(gdtType: QifGdtType | string): string {
  * preserving exact `#StepEntityId` topological face bindings (`ADVANCED_FACE`, `PLANE`,
  * `CYLINDRICAL_SURFACE`, `DATUM`, and `GEOMETRIC_TOLERANCE`).
  */
+/**
+ * Canonical ISO-10303-21 STEP AP242 B-Rep solid model of a High-Pressure Turbine (HPT)
+ * blade fir-tree root and platform shroud deck. Matches QIF features #101 (Datum A plane),
+ * #108 (Datum B cooling bore), #112 (Datum C retention slot), and #118 (damper wire pin bore).
+ */
+export const TURBINE_BLADE_ROOT_STEP = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Aerospace Single-Crystal CMSX-4 HPT Turbine Blade Fir-Tree Root','STEP AP242 B-Rep Solid'),'2;1');
+FILE_NAME('TurbineBladeRoot.step','2026-03-19T10:00:00',('Dr. Kenji Takahashi'),('Precision Metrology Lab'),'ModelScript CAD Kernel','ModelScript AP242 Exporter','');
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));
+ENDSEC;
+DATA;
+#1 = APPLICATION_CONTEXT('managed model based 3d engineering');
+#2 = PRODUCT_DEFINITION_CONTEXT('part definition',#1,'design');
+#3 = PRODUCT('HPT_TURBINE_BLADE_ROOT','CMSX-4 HPT Turbine Blade Fir-Tree Root','',(#4));
+#4 = PRODUCT_CONTEXT('',#1,'mechanical');
+#5 = PRODUCT_DEFINITION_FORMATION('REV_D','',#3);
+#6 = PRODUCT_DEFINITION('design','',#5,#2);
+
+/* Points for Platform Deck (Z=14 to Z=22, X=-28 to 48, Y=-20 to 20) */
+#11 = CARTESIAN_POINT('P11',(-28.0,-20.0,14.0));
+#12 = CARTESIAN_POINT('P12',( 48.0,-20.0,14.0));
+#13 = CARTESIAN_POINT('P13',( 48.0, 20.0,14.0));
+#14 = CARTESIAN_POINT('P14',(-28.0, 20.0,14.0));
+#15 = CARTESIAN_POINT('P15',(-28.0,-20.0,22.0));
+#16 = CARTESIAN_POINT('P16',( 48.0,-20.0,22.0));
+#17 = CARTESIAN_POINT('P17',( 48.0, 20.0,22.0));
+#18 = CARTESIAN_POINT('P18',(-28.0, 20.0,22.0));
+
+/* Points for Fir-Tree Lobe Mid (Z=7 to Z=14, X=-24 to 44, Y=-15 to 15) */
+#21 = CARTESIAN_POINT('P21',(-24.0,-15.0,7.0));
+#22 = CARTESIAN_POINT('P22',( 44.0,-15.0,7.0));
+#23 = CARTESIAN_POINT('P23',( 44.0, 15.0,7.0));
+#24 = CARTESIAN_POINT('P24',(-24.0, 15.0,7.0));
+
+/* Points for Fir-Tree Root Base Datum A (Z=0 to Z=7, X=-20 to 40, Y=-10 to 10) */
+#31 = CARTESIAN_POINT('P31',(-20.0,-10.0,0.0));
+#32 = CARTESIAN_POINT('P32',( 40.0,-10.0,0.0));
+#33 = CARTESIAN_POINT('P33',( 40.0, 10.0,0.0));
+#34 = CARTESIAN_POINT('P34',(-20.0, 10.0,0.0));
+
+/* Feature Locations & Coordinate Placements */
+#41 = CARTESIAN_POINT('DatumA_Loc',(0.0,0.0,0.0));
+#42 = DIRECTION('Z_Axis',(0.0,0.0,1.0));
+#43 = DIRECTION('X_Axis',(1.0,0.0,0.0));
+#44 = DIRECTION('Y_Axis',(0.0,1.0,0.0));
+#45 = AXIS2_PLACEMENT_3D('DatumA_Placement',#41,#42,#43);
+
+#48 = CARTESIAN_POINT('Bore_Loc',(24.0,0.0,15.0));
+#49 = AXIS2_PLACEMENT_3D('Bore_Placement',#48,#42,#43);
+
+#51 = CARTESIAN_POINT('Slot_Loc',(-18.0,0.0,8.0));
+#52 = AXIS2_PLACEMENT_3D('Slot_Placement',#51,#44,#43);
+
+#54 = CARTESIAN_POINT('Pin_Loc',(42.0,12.5,15.0));
+#55 = AXIS2_PLACEMENT_3D('Pin_Placement',#54,#42,#43);
+
+/* Surfaces */
+#71 = PLANE('DatumA_Plane',#45);
+#72 = CYLINDRICAL_SURFACE('CoolingBore_Cyl',#49,6.0);
+#73 = PLANE('Slot_Plane',#52);
+#74 = CYLINDRICAL_SURFACE('Pin_Cyl',#55,2.25);
+#75 = PLANE('PlatformTop_Plane',#45);
+#76 = PLANE('Side_Plane',#45);
+
+/* Poly Loops for B-Rep Solid Faces */
+#81 = POLY_LOOP('Loop_BaseA',(#31,#32,#33,#34));
+#82 = POLY_LOOP('Loop_Mid_Bot',(#31,#32,#22,#21));
+#83 = POLY_LOOP('Loop_Mid_Right',(#32,#33,#23,#22));
+#84 = POLY_LOOP('Loop_Mid_Top',(#33,#34,#24,#23));
+#85 = POLY_LOOP('Loop_Mid_Left',(#34,#31,#21,#24));
+#86 = POLY_LOOP('Loop_Platform_Bot',(#21,#22,#12,#11));
+#87 = POLY_LOOP('Loop_Platform_Right',(#22,#23,#13,#12));
+#88 = POLY_LOOP('Loop_Platform_TopSide',(#23,#24,#14,#13));
+#89 = POLY_LOOP('Loop_Platform_LeftSide',(#24,#21,#11,#14));
+#90 = POLY_LOOP('Loop_Platform_Deck',(#15,#16,#17,#18));
+#91 = POLY_LOOP('Loop_Deck_Front',(#11,#12,#16,#15));
+#92 = POLY_LOOP('Loop_Deck_Right',(#12,#13,#17,#16));
+#93 = POLY_LOOP('Loop_Deck_Back',(#13,#14,#18,#17));
+#94 = POLY_LOOP('Loop_Deck_Left',(#14,#11,#15,#18));
+
+/* Face Outer Bounds */
+#181 = FACE_OUTER_BOUND('',#81,.T.);
+#182 = FACE_OUTER_BOUND('',#82,.T.);
+#183 = FACE_OUTER_BOUND('',#83,.T.);
+#184 = FACE_OUTER_BOUND('',#84,.T.);
+#185 = FACE_OUTER_BOUND('',#85,.T.);
+#186 = FACE_OUTER_BOUND('',#86,.T.);
+#187 = FACE_OUTER_BOUND('',#87,.T.);
+#188 = FACE_OUTER_BOUND('',#88,.T.);
+#189 = FACE_OUTER_BOUND('',#89,.T.);
+#190 = FACE_OUTER_BOUND('',#90,.T.);
+#191 = FACE_OUTER_BOUND('',#91,.T.);
+#192 = FACE_OUTER_BOUND('',#92,.T.);
+#193 = FACE_OUTER_BOUND('',#93,.T.);
+#194 = FACE_OUTER_BOUND('',#94,.T.);
+
+/* ADVANCED_FACE Entities - including the 4 QIF-reconciled faces #101, #108, #112, #118 */
+#101 = ADVANCED_FACE('FirTreePlatformDatumPlaneA',(#181),#71,.T.);
+#102 = ADVANCED_FACE('FirTreeLobeFront_Lower',(#182),#76,.T.);
+#103 = ADVANCED_FACE('FirTreeLobeRight_Lower',(#183),#76,.T.);
+#104 = ADVANCED_FACE('FirTreeLobeBack_Lower',(#184),#76,.T.);
+#105 = ADVANCED_FACE('FirTreeLobeLeft_Lower',(#185),#76,.T.);
+#106 = ADVANCED_FACE('FirTreeLobeFront_Upper',(#186),#76,.T.);
+#107 = ADVANCED_FACE('FirTreeLobeRight_Upper',(#187),#76,.T.);
+#108 = ADVANCED_FACE('RootInternalCoolingBoreB',(#188),#72,.T.);
+#109 = ADVANCED_FACE('FirTreeLobeLeft_Upper',(#189),#76,.T.);
+#110 = ADVANCED_FACE('PlatformDeck_Top',(#190),#75,.T.);
+#111 = ADVANCED_FACE('PlatformShroud_Front',(#191),#76,.T.);
+#112 = ADVANCED_FACE('AxialLockingPinSlotC',(#192),#73,.T.);
+#113 = ADVANCED_FACE('PlatformShroud_Back',(#193),#76,.T.);
+#114 = ADVANCED_FACE('PlatformShroud_Left',(#194),#76,.T.);
+#118 = ADVANCED_FACE('DamperWirePinBore',(#190),#74,.T.);
+
+#200 = CLOSED_SHELL('HPT_Blade_Root_Shell',(#101,#102,#103,#104,#105,#106,#107,#108,#109,#110,#111,#112,#113,#114,#118));
+#201 = MANIFOLD_SOLID_BREP('HPT_Blade_FirTree_Root_Solid',#200);
+
+ENDSEC;
+END-ISO-10303-21;
+`;
+
 export function synthesizeStepAp242FromQif(doc: QifDocument): string {
   const lines: string[] = [
     "ISO-10303-21;",
@@ -719,7 +968,17 @@ function pushQuad(
  * feature surface meshes, 3D CMM touch-probe point clouds, Datum badges, and collision-free
  * 3D ASME Y14.5 Feature Control Frame callouts) from a QIF 3.0 document.
  */
-export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string): Qif3dMbdScene {
+export function buildQif3dMbdScene(
+  doc: QifDocument,
+  externalStepSource?: string,
+  activeSerialNumber?: string,
+): Qif3dMbdScene {
+  const availableSerialNumbers = Array.from(new Set(doc.actuals.map((a) => a.partSerialNumber).filter(Boolean)));
+  const selectedSerial =
+    activeSerialNumber && availableSerialNumbers.includes(activeSerialNumber)
+      ? activeSerialNumber
+      : availableSerialNumbers[0];
+
   const stepSource =
     externalStepSource && externalStepSource.trim().length > 0 ? externalStepSource : synthesizeStepAp242FromQif(doc);
   const reconciliation = reconcileStepWithQif(stepSource, doc);
@@ -778,7 +1037,8 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
 
     for (const c of linkedChars) {
       const acts = actualsByChar.get(c.id) ?? [];
-      for (const a of acts) {
+      const relevantActs = selectedSerial ? acts.filter((a) => a.partSerialNumber === selectedSerial) : acts;
+      for (const a of relevantActs.length > 0 ? relevantActs : acts) {
         if (a.status === "FAIL") hasFail = true;
         if (a.deviationVector) primaryDevVec = a.deviationVector;
         const dev = c.nominalValue !== undefined ? Math.abs(a.measuredValue - c.nominalValue) : a.measuredValue;
@@ -1042,7 +1302,9 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
     const surfaceAnchor: [number, number, number] = (feat ? resolvedLocations.get(feat.id) : undefined) ?? [0, 0, 0];
 
     const acts = actualsByChar.get(char.id) ?? [];
-    const latestAct = acts[acts.length - 1];
+    const latestAct = selectedSerial
+      ? (acts.find((a) => a.partSerialNumber === selectedSerial) ?? acts[acts.length - 1])
+      : acts[acts.length - 1];
 
     // Calculate MMC/LMC bonus tolerance if applicable
     let bonusTolerance = 0;
@@ -1170,5 +1432,7 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
       minCpk: cpks.length > 0 ? Math.min(...cpks) : 1.33,
       minTur: turs.length > 0 ? Math.min(...turs) : undefined,
     },
+    availableSerialNumbers,
+    activeSerialNumber: selectedSerial,
   };
 }

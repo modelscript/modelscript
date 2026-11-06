@@ -399,10 +399,41 @@ export function computeSysML2ConnectionInsert(
   target: string,
   tree?: DiagramCstTree | null,
 ): TextEdit[] {
-  // Auto-detect state machine context — if source text contains state keywords,
-  // insert a transition instead of a generic connection
-  if (/\bstate\s+(def\s+)?\w+/.test(docText)) {
+  // Context-aware connection detection: check if source/target elements are states or actions
+  let isStateMachineContext = false;
+  let isActivityContext = false;
+
+  if (tree?.rootNode) {
+    const srcNode = findCstNodeByName(tree.rootNode, source);
+    const tgtNode = findCstNodeByName(tree.rootNode, target);
+    const isState = (n: DiagramCstNode | null) =>
+      Boolean(n && (n.type?.includes("State") || n.parent?.type?.includes("State")));
+    const isAction = (n: DiagramCstNode | null) =>
+      Boolean(n && (n.type?.includes("Action") || n.parent?.type?.includes("Action")));
+
+    if (isState(srcNode) || isState(tgtNode)) {
+      isStateMachineContext = true;
+    } else if (isAction(srcNode) || isAction(tgtNode)) {
+      isActivityContext = true;
+    }
+  } else {
+    // Text fallback: inspect source and target declaration lines
+    const lines = docText.split("\n");
+    const isStateLine = (name: string) => lines.some((l) => new RegExp(`^\\s*state\\s+(def\\s+)?${name}\\b`).test(l));
+    const isActionLine = (name: string) => lines.some((l) => new RegExp(`^\\s*action\\s+(def\\s+)?${name}\\b`).test(l));
+
+    if (isStateLine(source) || isStateLine(target)) {
+      isStateMachineContext = true;
+    } else if (isActionLine(source) || isActionLine(target)) {
+      isActivityContext = true;
+    }
+  }
+
+  if (isStateMachineContext) {
     return computeSysML2TransitionInsert(docText, source, target, tree);
+  }
+  if (isActivityContext) {
+    return computeSysML2SuccessionInsert(docText, source, target, tree);
   }
 
   const lines = docText.split("\n");
@@ -576,14 +607,31 @@ export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: s
 // ── Update Component Description ──
 
 export function computeSysML2DescriptionEdit(
-  _tree: unknown,
+  tree: DiagramCstTree | null | undefined,
   docText: string,
   elementName: string,
   newDescription: string,
 ): TextEdit[] {
   const edits: TextEdit[] = [];
   const lines = docText.split("\n");
-  const { startLine, endLine } = findElementRange(lines, elementName);
+
+  let startLine = -1;
+  let endLine = -1;
+
+  if (tree?.rootNode) {
+    const cstNode = findCstNodeByName(tree.rootNode, elementName);
+    if (cstNode?.startPosition && cstNode?.endPosition) {
+      startLine = cstNode.startPosition.row;
+      endLine = cstNode.endPosition.row;
+    }
+  }
+
+  if (startLine === -1) {
+    const range = findElementRange(lines, elementName);
+    startLine = range.startLine;
+    endLine = range.endLine;
+  }
+
   if (startLine === -1) return [];
 
   const escapedDesc = newDescription.replace(/\*\//g, "* /");
@@ -773,14 +821,12 @@ function findElementRange(lines: string[], name: string): { startLine: number; e
  */
 function findStatementRange(lines: string[], startLine: number): { startLine: number; endLine: number } {
   let endLine = startLine;
-  // Walk backwards to find statement start (if the current line is a continuation)
+  // Match common SysML v2 declaration prefixes including visibility, features, and doc comments
+  const declKeywordRegex =
+    /^(?:(?:public|private|protected|abstract|readonly|derived|constant|ref|in|out|inout)\s+)*(?:doc\s+\/\*[\s\S]*?\*\/\s*)*(?:part|attribute|port|action|state|calc|requirement|constraint|use case|verification|analysis case|case|connection|interface|allocation|flow|item|enum|concern|view|viewpoint|rendering|occurrence|package|import)\b/;
+
   let line = lines[startLine]!.trim();
-  while (
-    startLine > 0 &&
-    !line.match(
-      /^(part|attribute|port|action|state|calc|requirement|constraint|use case|verification|analysis case|case|connection|interface|allocation|flow|item|enum|concern|view|viewpoint|rendering|occurrence|package|import)\b/,
-    )
-  ) {
+  while (startLine > 0 && !declKeywordRegex.test(line)) {
     startLine--;
     line = lines[startLine]!.trim();
   }
@@ -799,11 +845,52 @@ function findStatementRange(lines: string[], startLine: number): { startLine: nu
 
 /**
  * Find the line with the matching closing brace for an opening brace on the given line.
+ * Accurately tracks nested strings and line/block comments to ignore braces inside comments or literals.
  */
 function findMatchingBrace(lines: string[], startLine: number): number {
   let depth = 0;
+  let inString = false;
+  let inBlockComment = false;
+  let escaped = false;
+
   for (let i = startLine; i < lines.length; i++) {
-    for (const ch of lines[i]!) {
+    const line = lines[i]!;
+    for (let c = 0; c < line.length; c++) {
+      const ch = line[c]!;
+      const next = c + 1 < line.length ? line[c + 1]! : "";
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (inBlockComment) {
+        if (ch === "*" && next === "/") {
+          inBlockComment = false;
+          c++;
+        }
+        continue;
+      }
+
+      if (ch === "/" && next === "/") {
+        break; // line comment, skip rest of line
+      }
+      if (ch === "/" && next === "*") {
+        inBlockComment = true;
+        c++;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+
       if (ch === "{") depth++;
       if (ch === "}") {
         depth--;

@@ -2,6 +2,7 @@
 
 import csvLanguage from "@modelscript/csv/language";
 import modelicaLanguage from "@modelscript/modelica/language";
+import modelscriptLanguage from "@modelscript/modelscript/language";
 import owl2Language from "@modelscript/owl2/language";
 import scadLanguage from "@modelscript/scad/language";
 import { stepLanguage } from "@modelscript/step";
@@ -47,6 +48,12 @@ globalLanguageRegistry.register({
   name: "CSV",
   extensions: [".csv"],
   languageDef: csvLanguage,
+});
+globalLanguageRegistry.register({
+  id: "modelscript",
+  name: "ModelScript",
+  extensions: [".modelscript", ".msx"],
+  languageDef: modelscriptLanguage,
 });
 
 function applyEditsToText(text: string, edits: any[]): string {
@@ -324,4 +331,227 @@ test("WritebackService: Dynamic / Generic DSL assignment replacement", async () 
     updatedText.includes("speed_limit = 240.0;"),
     `Expected updated speed limit in custom DSL, got:\n${updatedText}`,
   );
+});
+
+test("WritebackService: Modelica parameter writeback utilizing exact CST fieldRanges.value", async () => {
+  const uri = "file:///workspace/motor.mo";
+  const sourceText = `model DC_Motor
+  parameter Real J = 0.05 "Rotor inertia";
+  parameter Real R = 1.5 "Armature resistance";
+end DC_Motor;`;
+
+  const jValStart = sourceText.indexOf("0.05");
+  const jValEnd = jValStart + "0.05".length;
+
+  const symbols = new Map<number, any>([
+    [
+      1,
+      {
+        id: 1,
+        name: "J",
+        ruleName: "component_declaration",
+        parentId: 2,
+        startOffset: sourceText.indexOf("parameter Real J"),
+        endOffset: sourceText.indexOf(";", sourceText.indexOf("parameter Real J")) + 1,
+        fieldRanges: {
+          value: { startOffset: jValStart, endOffset: jValEnd },
+          expression: { startOffset: jValStart, endOffset: jValEnd },
+        },
+        resourceId: uri,
+      },
+    ],
+    [2, { id: 2, name: "DC_Motor", parentId: null }],
+  ]);
+
+  const mockContext: any = createMockContext(uri, sourceText, symbols);
+
+  const result = await computeWritebackEdit(mockContext, {
+    target: "DC_Motor.J",
+    newValue: "0.08",
+  });
+
+  assert.equal(result.success, true);
+  const edits = result.workspaceEdit!.changes![uri];
+  const updatedText = applyEditsToText(sourceText, edits);
+  assert.ok(
+    updatedText.includes('parameter Real J = 0.08 "Rotor inertia";'),
+    `Expected updated J via fieldRanges.value, got:\n${updatedText}`,
+  );
+  assert.ok(updatedText.includes('parameter Real R = 1.5 "Armature resistance";'));
+});
+
+test("WritebackService: Modelica parameter writeback utilizing fieldRanges.modification with leading operator", async () => {
+  const uri = "file:///workspace/motor2.mo";
+  const sourceText = `model DC_Motor
+  parameter Real J = 0.05 "Rotor inertia";
+end DC_Motor;`;
+
+  const modStart = sourceText.indexOf("= 0.05");
+  const modEnd = modStart + "= 0.05".length;
+
+  const symbols = new Map<number, any>([
+    [
+      1,
+      {
+        id: 1,
+        name: "J",
+        ruleName: "component_declaration",
+        parentId: 2,
+        startOffset: sourceText.indexOf("parameter Real J"),
+        endOffset: sourceText.indexOf(";", sourceText.indexOf("parameter Real J")) + 1,
+        fieldRanges: {
+          modification: { startOffset: modStart, endOffset: modEnd },
+        },
+        resourceId: uri,
+      },
+    ],
+    [2, { id: 2, name: "DC_Motor", parentId: null }],
+  ]);
+
+  const mockContext: any = createMockContext(uri, sourceText, symbols);
+
+  const result = await computeWritebackEdit(mockContext, {
+    target: "DC_Motor.J",
+    newValue: "0.12",
+  });
+
+  assert.equal(result.success, true);
+  const edits = result.workspaceEdit!.changes![uri];
+  const updatedText = applyEditsToText(sourceText, edits);
+  assert.ok(
+    updatedText.includes('parameter Real J = 0.12 "Rotor inertia";'),
+    `Expected updated J via fieldRanges.modification with leading operator stripped, got:\n${updatedText}`,
+  );
+});
+
+test("WritebackService: SysML v2 attribute writeback utilizing exact CST fieldRanges.value with unit preservation", async () => {
+  const uri = "file:///workspace/satellite.sysml";
+  const sourceText = `package SatPkg {
+  part def ReactionWheel {
+    attribute maxTorque : Torque = 0.25 [N*m];
+  }
+}`;
+
+  const valStart = sourceText.indexOf("0.25 [N*m]");
+  const valEnd = valStart + "0.25 [N*m]".length;
+
+  const symbols = new Map<number, any>([
+    [
+      1,
+      {
+        id: 1,
+        name: "maxTorque",
+        ruleName: "AttributeUsage",
+        parentId: 2,
+        startOffset: sourceText.indexOf("attribute maxTorque"),
+        endOffset: sourceText.indexOf(";", sourceText.indexOf("attribute maxTorque")) + 1,
+        fieldRanges: {
+          value: { startOffset: valStart, endOffset: valEnd },
+        },
+        resourceId: uri,
+      },
+    ],
+    [2, { id: 2, name: "ReactionWheel", parentId: 3 }],
+    [3, { id: 3, name: "SatPkg", parentId: null }],
+  ]);
+
+  const mockContext: any = createMockContext(uri, sourceText, symbols);
+
+  const result = await computeWritebackEdit(mockContext, {
+    target: "SatPkg.ReactionWheel.maxTorque",
+    newValue: "0.50",
+  });
+
+  assert.equal(result.success, true);
+  const edits = result.workspaceEdit!.changes![uri];
+  const updatedText = applyEditsToText(sourceText, edits);
+  assert.ok(
+    updatedText.includes("attribute maxTorque : Torque = 0.50 [N*m];"),
+    `Expected updated maxTorque via fieldRanges with unit preserved, got:\n${updatedText}`,
+  );
+});
+
+test("WritebackService: Generic writeback utilizing fieldRanges.initializer", async () => {
+  const uri = "file:///workspace/config.custom";
+  const sourceText = `config SystemConfig {
+  threshold := 99.5;
+}`;
+
+  const initStart = sourceText.indexOf("99.5");
+  const initEnd = initStart + "99.5".length;
+
+  const symbols = new Map<number, any>([
+    [
+      1,
+      {
+        id: 1,
+        name: "threshold",
+        ruleName: "ConfigField",
+        parentId: 2,
+        startOffset: sourceText.indexOf("threshold :="),
+        endOffset: sourceText.indexOf(";", sourceText.indexOf("threshold :=")) + 1,
+        fieldRanges: {
+          initializer: { startOffset: initStart, endOffset: initEnd },
+        },
+        resourceId: uri,
+      },
+    ],
+    [2, { id: 2, name: "SystemConfig", parentId: null }],
+  ]);
+
+  const mockContext: any = createMockContext(uri, sourceText, symbols);
+
+  const result = await computeWritebackEdit(mockContext, {
+    target: "SystemConfig.threshold",
+    newValue: "85.0",
+  });
+
+  assert.equal(result.success, true);
+  const edits = result.workspaceEdit!.changes![uri];
+  const updatedText = applyEditsToText(sourceText, edits);
+  assert.ok(
+    updatedText.includes("threshold := 85.0;"),
+    `Expected updated threshold via fieldRanges.initializer, got:\n${updatedText}`,
+  );
+});
+
+test("WritebackService: ModelScript parameter declaration replacement via operators", async () => {
+  const uri = "file:///workspace/script.msx";
+  const sourceText = `parameter damping = 0.15;
+parameter stiffness = 100.0;
+let x = 1.0;`;
+
+  const startOffset = sourceText.indexOf("parameter damping =");
+  const endOffset = sourceText.indexOf(";", startOffset) + 1;
+
+  const symbols = new Map<number, any>([
+    [
+      1,
+      {
+        id: 1,
+        name: "damping",
+        ruleName: "parameter_declaration",
+        parentId: null,
+        startOffset,
+        endOffset,
+        resourceId: uri,
+      },
+    ],
+  ]);
+
+  const mockContext: any = createMockContext(uri, sourceText, symbols);
+
+  const result = await computeWritebackEdit(mockContext, {
+    target: "damping",
+    newValue: "0.25",
+  });
+
+  assert.equal(result.success, true);
+  const edits = result.workspaceEdit!.changes![uri];
+  const updatedText = applyEditsToText(sourceText, edits);
+  assert.ok(
+    updatedText.includes("parameter damping = 0.25;"),
+    `Expected updated damping in ModelScript without wiping statement, got:\n${updatedText}`,
+  );
+  assert.ok(updatedText.includes("parameter stiffness = 100.0;"));
 });

@@ -205,4 +205,40 @@ describe("Profile Hover Card UX & Layout Suite", () => {
       "Avatar must declare position: 'relative' and zIndex: 2 to prevent banner hover filter from hiding avatar",
     );
   });
+
+  it("verifies AboutHoverCard is portaled to document.body to avoid being trapped below sticky TabBar", () => {
+    assert.ok(
+      profileHeaderSrc.includes("createPortal(cardElement, document.body)"),
+      "AboutHoverCard must be portaled to document.body so sticky tabs (Packages, Articles) do not seep through it",
+    );
+    assert.ok(
+      profileHeaderSrc.includes("updateHoverCardCoords"),
+      "ProfileHeader must dynamically calculate hover card viewport coordinates",
+    );
+  });
+
+  it("verifies VerifiedAccountBadge is portaled to document.body to prevent sticky TabBar and feed posts from seeping through", () => {
+    const verifiedBadgeSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/VerifiedAccountBadge.tsx"),
+      "utf-8",
+    );
+
+    assert.ok(
+      verifiedBadgeSrc.includes("createPortal(modalNode, document.body)"),
+      "VerifiedAccountBadge modal must be portaled to document.body so background tabs and feed do not seep through",
+    );
+
+    assert.match(
+      verifiedBadgeSrc,
+      /z-index:\s*(?:100000|99999);/,
+      "VerifiedAccountBadge ModalOverlay must have high z-index (at least 99999) to render above all UI layers",
+    );
+
+    assert.ok(
+      verifiedBadgeSrc.includes('document.body.style.overflow = "hidden"'),
+      "VerifiedAccountBadge must lock document.body scroll while modal is open",
+    );
+
+    assert.ok(verifiedBadgeSrc.includes('e.key === "Escape"'), "VerifiedAccountBadge must dismiss on Escape key");
+  });
 });

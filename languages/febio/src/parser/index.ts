@@ -5,6 +5,7 @@
  * and line-oriented Biomechanics DSL.
  */
 
+import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   FebioBoundaryCondition,
   FebioContact,
@@ -68,6 +69,53 @@ function makeRange(lineOffsets: number[], startOffset: number, endOffset: number
   };
 }
 
+function localName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchTag(el: XmlElement, name: string): boolean {
+  return localName(el.name).toLowerCase() === name.toLowerCase();
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  const target = name.toLowerCase();
+  const attr = el.attributes.find((a: XmlAttribute) => localName(a.name).toLowerCase() === target);
+  return attr?.value;
+}
+
+function getAttrsMap(el: XmlElement): Record<string, string> {
+  const res: Record<string, string> = {};
+  for (const a of el.attributes) {
+    res[localName(a.name)] = a.value;
+  }
+  return res;
+}
+
+function getChild(el: XmlElement | null | undefined, name: string): XmlElement | undefined {
+  if (!el) return undefined;
+  return el.children.find((c: XmlElement) => matchTag(c, name));
+}
+
+function getChildren(el: XmlElement | null | undefined, name?: string): XmlElement[] {
+  if (!el) return [];
+  if (!name) return el.children;
+  return el.children.filter((c: XmlElement) => matchTag(c, name));
+}
+
+function findDescendants(el: XmlElement | null | undefined, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  if (!el) return [];
+  const res: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    for (const child of node.children) {
+      if (predicate(child)) res.push(child);
+      walk(child);
+    }
+  }
+  walk(el);
+  return res;
+}
+
 function parseAttributes(attrString: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   const re = /([A-Za-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>/]+))/g;
@@ -82,16 +130,9 @@ function parseAttributes(attrString: string): Record<string, string> {
   return attrs;
 }
 
-function extractTagValue(block: string, tagName: string): string | undefined {
-  const re = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, "i");
-  const m = re.exec(block);
-  return m?.[1]?.trim();
-}
-
-function extractTagNumber(block: string, tagName: string): number | undefined {
-  const raw = extractTagValue(block, tagName);
+function parseNumber(raw: string | undefined): number | undefined {
   if (raw === undefined || raw === "") return undefined;
-  const num = Number(raw);
+  const num = Number(raw.trim());
   return Number.isFinite(num) ? num : undefined;
 }
 
@@ -109,35 +150,39 @@ export function parseFebio(content: string, sourceUri?: string): FebioDocument {
 }
 
 function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: string): FebioDocument {
-  const specMatch = /<febio_spec\b([^>]*)>/i.exec(content);
-  const specAttrs = specMatch ? parseAttributes(specMatch[1] ?? "") : {};
-  const version = specAttrs["version"] ?? "4.0";
+  const xmlDoc = parseXml(content);
+  const root = xmlDoc.root;
+  const specEl =
+    root && matchTag(root, "febio_spec") ? root : (findDescendants(root, (e) => matchTag(e, "febio_spec"))[0] ?? root);
 
-  const moduleMatch = /<Module\b([^>]*)\/?>/i.exec(content);
-  const moduleAttrs = moduleMatch ? parseAttributes(moduleMatch[1] ?? "") : {};
-  const moduleType = moduleAttrs["type"] ?? "solid";
-
-  const title = extractTagValue(content, "title") ?? "FEBioBiomechanicsModel";
+  const version = (specEl ? getAttr(specEl, "version") : undefined) ?? "4.0";
+  const moduleEl = specEl
+    ? (getChild(specEl, "Module") ?? findDescendants(specEl, (e) => matchTag(e, "Module"))[0])
+    : undefined;
+  const moduleType = (moduleEl ? getAttr(moduleEl, "type") : undefined) ?? "solid";
+  const titleEl = specEl ? getChild(specEl, "title") : undefined;
+  const title = titleEl ? titleEl.text.trim() : "FEBioBiomechanicsModel";
 
   // 1. Parse <Control>
   let control: FebioControl | undefined;
-  const controlMatch = /<Control\b[^>]*>([\s\S]*?)<\/Control>/i.exec(content);
-  if (controlMatch) {
-    const body = controlMatch[1] ?? "";
-    const analysisRaw = (extractTagValue(body, "analysis") ?? "STATIC").toUpperCase();
+  const controlEl = specEl
+    ? (getChild(specEl, "Control") ?? findDescendants(specEl, (e) => matchTag(e, "Control"))[0])
+    : undefined;
+  if (controlEl) {
+    const analysisRaw = (getChild(controlEl, "analysis")?.text.trim() ?? "STATIC").toUpperCase();
     const analysis =
       analysisRaw === "DYNAMIC" || analysisRaw === "BIPHASIC" || analysisRaw === "STEADY-STATE"
         ? analysisRaw
         : "STATIC";
-    const timeSteps = extractTagNumber(body, "time_steps") ?? 10;
-    const stepSize = extractTagNumber(body, "step_size") ?? 0.1;
-    const maxRefs = extractTagNumber(body, "max_refs");
-    const dtol = extractTagNumber(body, "dtol");
+    const timeSteps = parseNumber(getChild(controlEl, "time_steps")?.text) ?? 10;
+    const stepSize = parseNumber(getChild(controlEl, "step_size")?.text) ?? 0.1;
+    const maxRefs = parseNumber(getChild(controlEl, "max_refs")?.text);
+    const dtol = parseNumber(getChild(controlEl, "dtol")?.text);
     control = {
       analysis,
       timeSteps,
       stepSize,
-      range: makeRange(lineOffsets, controlMatch.index, controlMatch.index + controlMatch[0].length),
+      range: makeRange(lineOffsets, controlEl.start, controlEl.end),
     };
     if (maxRefs !== undefined) control.maxRefs = maxRefs;
     if (dtol !== undefined) control.dtol = dtol;
@@ -145,29 +190,30 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
 
   // 2. Parse <Material>
   const materials: FebioMaterial[] = [];
-  const matRegex = /<material\b(\s+[^>]*)>([\s\S]*?)<\/material>/gi;
-  let matMatch: RegExpExecArray | null;
-  while ((matMatch = matRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(matMatch[1] ?? "");
-    const body = matMatch[2] ?? "";
+  const materialContainer = specEl ? getChild(specEl, "Material") : undefined;
+  const matEls = materialContainer
+    ? getChildren(materialContainer, "material")
+    : findDescendants(specEl, (e) => matchTag(e, "material"));
+  for (const matEl of matEls) {
+    const attrs = getAttrsMap(matEl);
     const id = attrs["id"] ?? String(materials.length + 1);
     const name = attrs["name"] ?? `Mat_${id}`;
     const type = attrs["type"] ?? "neo-Hookean";
 
-    const E = extractTagNumber(body, "E");
-    const v = extractTagNumber(body, "v");
-    const density = extractTagNumber(body, "density");
-    const c1 = extractTagNumber(body, "c1");
-    const c2 = extractTagNumber(body, "c2");
-    const k = extractTagNumber(body, "k");
-    const perm = extractTagNumber(body, "perm") ?? extractTagNumber(body, "permeability");
-    const phi0 = extractTagNumber(body, "phi0");
+    const E = parseNumber(getChild(matEl, "E")?.text);
+    const v = parseNumber(getChild(matEl, "v")?.text);
+    const density = parseNumber(getChild(matEl, "density")?.text);
+    const c1 = parseNumber(getChild(matEl, "c1")?.text);
+    const c2 = parseNumber(getChild(matEl, "c2")?.text);
+    const k = parseNumber(getChild(matEl, "k")?.text);
+    const perm = parseNumber(getChild(matEl, "perm")?.text ?? getChild(matEl, "permeability")?.text);
+    const phi0 = parseNumber(getChild(matEl, "phi0")?.text);
 
     const mat: FebioMaterial = {
       id,
       name,
       type,
-      range: makeRange(lineOffsets, matMatch.index, matMatch.index + matMatch[0].length),
+      range: makeRange(lineOffsets, matEl.start, matEl.end),
     };
     if (E !== undefined) mat.E = E;
     if (v !== undefined) mat.v = v;
@@ -180,14 +226,14 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
     materials.push(mat);
   }
 
-  // 3. Parse <Nodes>
+  // 3. Parse <Nodes> / <node>
   const nodes: FebioNode[] = [];
-  const nodeRegex = /<node\b([^>]*)>([^<]+)<\/node>/gi;
-  let nodeMatch: RegExpExecArray | null;
-  while ((nodeMatch = nodeRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(nodeMatch[1] ?? "");
+  const nodeEls = findDescendants(specEl, (e) => matchTag(e, "node"));
+  for (const nodeEl of nodeEls) {
+    if (nodeEl.parent && (matchTag(nodeEl.parent, "NodeSet") || matchTag(nodeEl.parent, "bc"))) continue;
+    const attrs = getAttrsMap(nodeEl);
     const id = attrs["id"] ?? String(nodes.length + 1);
-    const coords = (nodeMatch[2] ?? "")
+    const coords = nodeEl.text
       .trim()
       .split(/[\s,]+/)
       .map(Number);
@@ -196,39 +242,42 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
       x: coords[0] ?? 0,
       y: coords[1] ?? 0,
       z: coords[2] ?? 0,
-      range: makeRange(lineOffsets, nodeMatch.index, nodeMatch.index + nodeMatch[0].length),
+      range: makeRange(lineOffsets, nodeEl.start, nodeEl.end),
     });
   }
 
   // 4. Parse <Elements>
   const elements: FebioElement[] = [];
-  const elemsBlockRegex = /<Elements\b([^>]*)>([\s\S]*?)<\/Elements>/gi;
-  let elemsBlock: RegExpExecArray | null;
-  while ((elemsBlock = elemsBlockRegex.exec(content)) !== null) {
-    const blockAttrs = parseAttributes(elemsBlock[1] ?? "");
-    const blockStart = elemsBlock.index;
+  const elemsContainer = findDescendants(specEl, (e) => matchTag(e, "Elements"));
+  for (const elemsEl of elemsContainer) {
+    const blockAttrs = getAttrsMap(elemsEl);
     const rawType = (blockAttrs["type"] ?? "tet4").toLowerCase();
     const elemType: FebioElementType =
       rawType === "hex8" || rawType === "tri3" || rawType === "quad4" ? rawType : "tet4";
     const domainName = blockAttrs["name"];
     const matId = blockAttrs["mat"];
-    const body = elemsBlock[2] ?? "";
 
-    const elemRegex = /<(?:elem|tet4|hex8|tri3|quad4)\b([^>]*)>([^<]+)<\/(?:elem|tet4|hex8|tri3|quad4)>/gi;
-    let elemMatch: RegExpExecArray | null;
-    while ((elemMatch = elemRegex.exec(body)) !== null) {
-      const eAttrs = parseAttributes(elemMatch[1] ?? "");
+    for (const elemEl of elemsEl.children) {
+      if (
+        !matchTag(elemEl, "elem") &&
+        !matchTag(elemEl, "tet4") &&
+        !matchTag(elemEl, "hex8") &&
+        !matchTag(elemEl, "tri3") &&
+        !matchTag(elemEl, "quad4")
+      ) {
+        continue;
+      }
+      const eAttrs = getAttrsMap(elemEl);
       const id = eAttrs["id"] ?? String(elements.length + 1);
-      const nodeIds = (elemMatch[2] ?? "")
+      const nodeIds = elemEl.text
         .trim()
         .split(/[\s,]+/)
         .filter(Boolean);
-      const absStart = blockStart + elemMatch.index;
       const elem: FebioElement = {
         id,
         type: elemType,
         nodeIds,
-        range: makeRange(lineOffsets, absStart, absStart + elemMatch[0].length),
+        range: makeRange(lineOffsets, elemEl.start, elemEl.end),
       };
       if (domainName !== undefined) elem.domainName = domainName;
       if (matId !== undefined) elem.materialId = matId;
@@ -238,24 +287,21 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
 
   // 5. Parse <NodeSet>
   const nodeSets: FebioNodeSet[] = [];
-  const nodeSetRegex = /<NodeSet\b([^>]*)>([\s\S]*?)<\/NodeSet>/gi;
-  let nsMatch: RegExpExecArray | null;
-  while ((nsMatch = nodeSetRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(nsMatch[1] ?? "");
+  const nsEls = findDescendants(specEl, (e) => matchTag(e, "NodeSet"));
+  for (const nsEl of nsEls) {
+    const attrs = getAttrsMap(nsEl);
     const name = attrs["name"] ?? `NodeSet_${nodeSets.length + 1}`;
-    const body = nsMatch[2] ?? "";
     const nodeIds: string[] = [];
-
-    const childNodeRegex = /<(?:node|n)\b([^>]*)\/?>/gi;
-    let cnMatch: RegExpExecArray | null;
-    while ((cnMatch = childNodeRegex.exec(body)) !== null) {
-      const cAttrs = parseAttributes(cnMatch[1] ?? "");
-      if (cAttrs["id"]) {
-        nodeIds.push(cAttrs["id"]);
+    for (const cn of nsEl.children) {
+      if (matchTag(cn, "node") || matchTag(cn, "n")) {
+        const cAttrs = getAttrsMap(cn);
+        if (cAttrs["id"]) {
+          nodeIds.push(cAttrs["id"]);
+        }
       }
     }
     if (nodeIds.length === 0) {
-      const stripped = body.replace(/<[^>]+>/g, " ").trim();
+      const stripped = nsEl.text.trim();
       if (stripped) {
         for (const tok of stripped.split(/[\s,]+/)) {
           if (tok) nodeIds.push(tok);
@@ -265,62 +311,52 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
     nodeSets.push({
       name,
       nodeIds,
-      range: makeRange(lineOffsets, nsMatch.index, nsMatch.index + nsMatch[0].length),
+      range: makeRange(lineOffsets, nsEl.start, nsEl.end),
     });
   }
 
   // 6. Parse <Surface>
   const surfaces: FebioSurface[] = [];
-  const surfaceRegex = /<Surface\b([^>]*)>([\s\S]*?)<\/Surface>/gi;
-  let surfMatch: RegExpExecArray | null;
-  while ((surfMatch = surfaceRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(surfMatch[1] ?? "");
+  const surfEls = findDescendants(specEl, (e) => matchTag(e, "Surface"));
+  for (const surfEl of surfEls) {
+    const attrs = getAttrsMap(surfEl);
     const name = attrs["name"] ?? `Surface_${surfaces.length + 1}`;
-    const body = surfMatch[2] ?? "";
-    const surfStart = surfMatch.index;
     const facets: FebioSurfaceFacet[] = [];
-
-    const facetRegex = /<(tri3|quad4)\b([^>]*)>([^<]+)<\/\1>/gi;
-    let fMatch: RegExpExecArray | null;
-    while ((fMatch = facetRegex.exec(body)) !== null) {
-      const fType = (fMatch[1] ?? "tri3").toLowerCase() === "quad4" ? "quad4" : "tri3";
-      const fAttrs = parseAttributes(fMatch[2] ?? "");
+    for (const fEl of surfEl.children) {
+      if (!matchTag(fEl, "tri3") && !matchTag(fEl, "quad4")) continue;
+      const fType = matchTag(fEl, "quad4") ? "quad4" : "tri3";
+      const fAttrs = getAttrsMap(fEl);
       const fId = fAttrs["id"] ?? String(facets.length + 1);
-      const nodeIds = (fMatch[3] ?? "")
+      const nodeIds = fEl.text
         .trim()
         .split(/[\s,]+/)
         .filter(Boolean);
-      const absStart = surfStart + fMatch.index;
       facets.push({
         id: fId,
         type: fType,
         nodeIds,
-        range: makeRange(lineOffsets, absStart, absStart + fMatch[0].length),
+        range: makeRange(lineOffsets, fEl.start, fEl.end),
       });
     }
-
     surfaces.push({
       name,
       facets,
-      range: makeRange(lineOffsets, surfStart, surfStart + surfMatch[0].length),
+      range: makeRange(lineOffsets, surfEl.start, surfEl.end),
     });
   }
 
   // 7. Parse <MeshDomains> / <SolidDomain>
   const solidDomains: FebioSolidDomain[] = [];
-  const sdRegex = /<SolidDomain\b([^>]*)\/?>/gi;
-  let sdMatch: RegExpExecArray | null;
-  while ((sdMatch = sdRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(sdMatch[1] ?? "");
+  const sdEls = findDescendants(specEl, (e) => matchTag(e, "SolidDomain"));
+  for (const sdEl of sdEls) {
+    const attrs = getAttrsMap(sdEl);
     const name = attrs["name"] ?? `Domain_${solidDomains.length + 1}`;
     const materialId = attrs["mat"] ?? "";
     solidDomains.push({
       name,
       materialId,
-      range: makeRange(lineOffsets, sdMatch.index, sdMatch.index + sdMatch[0].length),
+      range: makeRange(lineOffsets, sdEl.start, sdEl.end),
     });
-
-    // Propagate domain materialId to matching elements if not already set on <Elements>
     for (const el of elements) {
       if (el.domainName === name && el.materialId === undefined && materialId) {
         el.materialId = materialId;
@@ -328,13 +364,11 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
     }
   }
 
-  // 8. Parse <Boundary>
+  // 8. Parse <Boundary> / <bc>, <fix>, <prescribe>
   const boundaryConditions: FebioBoundaryCondition[] = [];
-  const bcBlockRegex = /<bc\b([^>]*)>([\s\S]*?)<\/bc>|<bc\b([^>]*)\/>/gi;
-  let bcMatch: RegExpExecArray | null;
-  while ((bcMatch = bcBlockRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(bcMatch[1] ?? bcMatch[3] ?? "");
-    const body = bcMatch[2] ?? "";
+  const bcEls = findDescendants(specEl, (e) => matchTag(e, "bc"));
+  for (const bcEl of bcEls) {
+    const attrs = getAttrsMap(bcEl);
     const id = attrs["id"] ?? `BC_${boundaryConditions.length + 1}`;
     const name = attrs["name"] ?? id;
     const rawType = (attrs["type"] ?? "zero displacement").toLowerCase();
@@ -345,13 +379,13 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
         : rawType === "fix"
           ? "fix"
           : "zero displacement";
-    const nodeSet = attrs["node_set"] ?? attrs["set"] ?? extractTagValue(body, "node_set") ?? "";
+    const nodeSet = attrs["node_set"] ?? attrs["set"] ?? getChild(bcEl, "node_set")?.text.trim() ?? "";
 
     const dofs: string[] = [];
-    if (extractTagNumber(body, "x_dof") === 1) dofs.push("x");
-    if (extractTagNumber(body, "y_dof") === 1) dofs.push("y");
-    if (extractTagNumber(body, "z_dof") === 1) dofs.push("z");
-    const dofTag = extractTagValue(body, "dof") ?? attrs["bc"] ?? attrs["dof"];
+    if (parseNumber(getChild(bcEl, "x_dof")?.text) === 1) dofs.push("x");
+    if (parseNumber(getChild(bcEl, "y_dof")?.text) === 1) dofs.push("y");
+    if (parseNumber(getChild(bcEl, "z_dof")?.text) === 1) dofs.push("z");
+    const dofTag = getChild(bcEl, "dof")?.text.trim() ?? attrs["bc"] ?? attrs["dof"];
     if (dofTag) {
       for (const d of dofTag.split(/[\s,]+/)) {
         if (d && !dofs.includes(d)) dofs.push(d);
@@ -359,24 +393,22 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
     }
     if (dofs.length === 0) dofs.push("x", "y", "z");
 
-    const value = extractTagNumber(body, "value") ?? extractTagNumber(body, "scale");
+    const value = parseNumber(getChild(bcEl, "value")?.text) ?? parseNumber(getChild(bcEl, "scale")?.text);
     const bcEntry: FebioBoundaryCondition = {
       id,
       name,
       type,
       nodeSet,
       dofs,
-      range: makeRange(lineOffsets, bcMatch.index, bcMatch.index + bcMatch[0].length),
+      range: makeRange(lineOffsets, bcEl.start, bcEl.end),
     };
     if (value !== undefined) bcEntry.value = value;
     boundaryConditions.push(bcEntry);
   }
 
-  // FEBio 3.x <fix> and <prescribe> tags
-  const fixRegex = /<fix\b([^>]*)\/?>/gi;
-  let fixMatch: RegExpExecArray | null;
-  while ((fixMatch = fixRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(fixMatch[1] ?? "");
+  const fixEls = findDescendants(specEl, (e) => matchTag(e, "fix"));
+  for (const fixEl of fixEls) {
+    const attrs = getAttrsMap(fixEl);
     const id = `BC_${boundaryConditions.length + 1}`;
     const nodeSet = attrs["node_set"] ?? attrs["set"] ?? "";
     const dofs = (attrs["bc"] ?? "x,y,z").split(/[\s,]+/).filter(Boolean);
@@ -386,19 +418,17 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
       type: "fix",
       nodeSet,
       dofs,
-      range: makeRange(lineOffsets, fixMatch.index, fixMatch.index + fixMatch[0].length),
+      range: makeRange(lineOffsets, fixEl.start, fixEl.end),
     });
   }
 
-  const prescRegex = /<prescribe\b([^>]*)>([\s\S]*?)<\/prescribe>/gi;
-  let prescMatch: RegExpExecArray | null;
-  while ((prescMatch = prescRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(prescMatch[1] ?? "");
-    const body = prescMatch[2] ?? "";
+  const prescEls = findDescendants(specEl, (e) => matchTag(e, "prescribe"));
+  for (const prescEl of prescEls) {
+    const attrs = getAttrsMap(prescEl);
     const id = `BC_${boundaryConditions.length + 1}`;
     const nodeSet = attrs["node_set"] ?? attrs["set"] ?? "";
     const dofs = (attrs["bc"] ?? attrs["dof"] ?? "z").split(/[\s,]+/).filter(Boolean);
-    const val = extractTagNumber(body, "scale") ?? extractTagNumber(body, "value") ?? 0;
+    const val = parseNumber(getChild(prescEl, "scale")?.text) ?? parseNumber(getChild(prescEl, "value")?.text) ?? 0;
     boundaryConditions.push({
       id,
       name: attrs["name"] ?? id,
@@ -406,73 +436,70 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
       nodeSet,
       dofs,
       value: val,
-      range: makeRange(lineOffsets, prescMatch.index, prescMatch.index + prescMatch[0].length),
+      range: makeRange(lineOffsets, prescEl.start, prescEl.end),
     });
   }
 
-  // 9. Parse <Loads>
+  // 9. Parse <Loads> / <surface_load>, <nodal_load>
   const loads: FebioLoad[] = [];
-  const surfLoadRegex = /<surface_load\b([^>]*)>([\s\S]*?)<\/surface_load>/gi;
-  let slMatch: RegExpExecArray | null;
-  while ((slMatch = surfLoadRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(slMatch[1] ?? "");
-    const body = slMatch[2] ?? "";
+  const slEls = findDescendants(specEl, (e) => matchTag(e, "surface_load"));
+  for (const slEl of slEls) {
+    const attrs = getAttrsMap(slEl);
     const id = `Load_${loads.length + 1}`;
     const name = attrs["name"] ?? id;
     const rawType = (attrs["type"] ?? "pressure").toLowerCase();
     const type: FebioLoad["type"] = rawType.includes("traction") ? "traction" : "pressure";
-    const surface = attrs["surface"] ?? extractTagValue(body, "surface");
+    const surface = attrs["surface"] ?? getChild(slEl, "surface")?.text.trim();
     const value =
-      extractTagNumber(body, "pressure") ?? extractTagNumber(body, "scale") ?? extractTagNumber(body, "value") ?? 0;
+      parseNumber(getChild(slEl, "pressure")?.text) ??
+      parseNumber(getChild(slEl, "scale")?.text) ??
+      parseNumber(getChild(slEl, "value")?.text) ??
+      0;
     const loadEntry: FebioLoad = {
       id,
       name,
       type,
       value,
-      range: makeRange(lineOffsets, slMatch.index, slMatch.index + slMatch[0].length),
+      range: makeRange(lineOffsets, slEl.start, slEl.end),
     };
     if (surface !== undefined) loadEntry.surface = surface;
     loads.push(loadEntry);
   }
 
-  const nodalLoadRegex = /<nodal_load\b([^>]*)>([\s\S]*?)<\/nodal_load>/gi;
-  let nlMatch: RegExpExecArray | null;
-  while ((nlMatch = nodalLoadRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(nlMatch[1] ?? "");
-    const body = nlMatch[2] ?? "";
+  const nlEls = findDescendants(specEl, (e) => matchTag(e, "nodal_load"));
+  for (const nlEl of nlEls) {
+    const attrs = getAttrsMap(nlEl);
     const id = `Load_${loads.length + 1}`;
     const name = attrs["name"] ?? id;
-    const nodeSet = attrs["node_set"] ?? attrs["set"] ?? extractTagValue(body, "node_set");
-    const dof = attrs["bc"] ?? attrs["dof"] ?? extractTagValue(body, "dof");
-    const value = extractTagNumber(body, "scale") ?? extractTagNumber(body, "value") ?? 0;
+    const nodeSet = attrs["node_set"] ?? attrs["set"] ?? getChild(nlEl, "node_set")?.text.trim();
+    const dof = attrs["bc"] ?? attrs["dof"] ?? getChild(nlEl, "dof")?.text.trim();
+    const value = parseNumber(getChild(nlEl, "scale")?.text) ?? parseNumber(getChild(nlEl, "value")?.text) ?? 0;
     const loadEntry: FebioLoad = {
       id,
       name,
       type: "nodal_load",
       value,
-      range: makeRange(lineOffsets, nlMatch.index, nlMatch.index + nlMatch[0].length),
+      range: makeRange(lineOffsets, nlEl.start, nlEl.end),
     };
     if (nodeSet !== undefined) loadEntry.nodeSet = nodeSet;
     if (dof !== undefined) loadEntry.dof = dof;
     loads.push(loadEntry);
   }
 
-  // 10. Parse <Contact>
+  // 10. Parse <Contact> / <contact>
   const contacts: FebioContact[] = [];
-  const contactRegex = /<contact\b(\s+[^>]*)>([\s\S]*?)<\/contact>|<contact\b(\s+[^>]*)\/>/gi;
-  let cMatch: RegExpExecArray | null;
-  while ((cMatch = contactRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(cMatch[1] ?? cMatch[3] ?? "");
-    const body = cMatch[2] ?? "";
+  const contactEls = findDescendants(specEl, (e) => matchTag(e, "contact"));
+  for (const cEl of contactEls) {
+    const attrs = getAttrsMap(cEl);
     const id = `Contact_${contacts.length + 1}`;
     const name = attrs["name"] ?? attrs["surface_pair"] ?? id;
     const type = attrs["type"] ?? "sliding-elastic";
     const primarySurface =
-      attrs["primary"] ?? extractTagValue(body, "primary") ?? extractTagValue(body, "master") ?? "";
+      attrs["primary"] ?? getChild(cEl, "primary")?.text.trim() ?? getChild(cEl, "master")?.text.trim() ?? "";
     const secondarySurface =
-      attrs["secondary"] ?? extractTagValue(body, "secondary") ?? extractTagValue(body, "slave") ?? "";
+      attrs["secondary"] ?? getChild(cEl, "secondary")?.text.trim() ?? getChild(cEl, "slave")?.text.trim() ?? "";
     const penaltyAttr = attrs["penalty"] !== undefined ? Number(attrs["penalty"]) : undefined;
-    const penalty = penaltyAttr ?? extractTagNumber(body, "penalty") ?? 100.0;
+    const penalty = penaltyAttr ?? parseNumber(getChild(cEl, "penalty")?.text) ?? 100.0;
 
     contacts.push({
       id,
@@ -481,7 +508,7 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
       primarySurface,
       secondarySurface,
       penalty,
-      range: makeRange(lineOffsets, cMatch.index, cMatch.index + cMatch[0].length),
+      range: makeRange(lineOffsets, cEl.start, cEl.end),
     });
   }
 
@@ -508,6 +535,8 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
 }
 
 function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: string): FebioDocument {
+  const xmlDoc = parseXml(content);
+  const root = xmlDoc.root;
   const sofaNodes: SofaSceneNode[] = [];
   const materials: FebioMaterial[] = [];
   const nodes: FebioNode[] = [];
@@ -516,14 +545,17 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
   const boundaryConditions: FebioBoundaryCondition[] = [];
   const loads: FebioLoad[] = [];
 
-  // Match each <Node ...> opening tag and inspect direct child components before nested <Node>
-  const openNodeRegex = /<Node\b([^>]*)>/gi;
-  let openMatch: RegExpExecArray | null;
+  const allNodeEls: XmlElement[] = [];
+  if (root) {
+    if (matchTag(root, "Node")) allNodeEls.push(root);
+    allNodeEls.push(...findDescendants(root, (e) => matchTag(e, "Node")));
+  }
+
   let title = "SofaSurgicalScene";
   let dt = 0.01;
 
-  while ((openMatch = openNodeRegex.exec(content)) !== null) {
-    const attrs = parseAttributes(openMatch[1] ?? "");
+  for (const nodeEl of allNodeEls) {
+    const attrs = getAttrsMap(nodeEl);
     const nodeName = attrs["name"] ?? `SofaNode_${sofaNodes.length + 1}`;
     if (sofaNodes.length === 0) {
       title = nodeName;
@@ -533,21 +565,15 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
       }
     }
 
-    const startIdx = openMatch.index;
-    const afterOpenIdx = startIdx + openMatch[0].length;
-    // Find the segment belonging directly to this <Node> up to either the next <Node or </Node>
-    const nextNodeIdx = content.slice(afterOpenIdx).search(/<\/?Node\b/i);
-    const localBody =
-      nextNodeIdx >= 0 ? content.slice(afterOpenIdx, afterOpenIdx + nextNodeIdx) : content.slice(afterOpenIdx);
-    const endIdx = nextNodeIdx >= 0 ? afterOpenIdx + nextNodeIdx : content.length;
-    const nodeRange = makeRange(lineOffsets, startIdx, endIdx);
+    const nodeRange = makeRange(lineOffsets, nodeEl.start, nodeEl.end);
+    const directChildren = nodeEl.children.filter((c) => !matchTag(c, "Node"));
 
-    const mechMatch = /<MechanicalObject\b([^>]*)\/?>/i.exec(localBody);
-    const hasMechanicalObject = mechMatch !== null;
+    const mechEl = directChildren.find((c) => matchTag(c, "MechanicalObject"));
+    const hasMechanicalObject = mechEl !== undefined;
     let mechanicalObjectName: string | undefined;
 
-    if (mechMatch) {
-      const mAttrs = parseAttributes(mechMatch[1] ?? "");
+    if (mechEl) {
+      const mAttrs = getAttrsMap(mechEl);
       mechanicalObjectName = mAttrs["name"] ?? "DOFs";
       if (mAttrs["position"] && nodes.length === 0) {
         const nums = mAttrs["position"].trim().split(/\s+/).map(Number).filter(Number.isFinite);
@@ -563,10 +589,11 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
       }
     }
 
-    // Check topology for positions and tetrahedra
-    const topoMatch = /<(?:MeshTopology|TetrahedronSetTopologyContainer)\b([^>]*)\/?>/i.exec(localBody);
-    if (topoMatch) {
-      const tAttrs = parseAttributes(topoMatch[1] ?? "");
+    const topoEl = directChildren.find(
+      (c) => matchTag(c, "MeshTopology") || matchTag(c, "TetrahedronSetTopologyContainer"),
+    );
+    if (topoEl) {
+      const tAttrs = getAttrsMap(topoEl);
       if (tAttrs["position"] && nodes.length === 0) {
         const nums = tAttrs["position"].trim().split(/\s+/).map(Number).filter(Number.isFinite);
         for (let i = 0; i + 2 < nums.length; i += 3) {
@@ -582,7 +609,6 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
       if (tAttrs["tetrahedra"]) {
         const tetIds = tAttrs["tetrahedra"].trim().split(/\s+/).filter(Boolean);
         for (let i = 0; i + 3 < tetIds.length; i += 4) {
-          // SOFA uses 0-based indexing if '0' is present
           const usesZeroBase = tetIds.includes("0");
           const mapIdx = (raw: string) => (usesZeroBase ? String(Number(raw) + 1) : raw);
           elements.push({
@@ -595,14 +621,12 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
       }
     }
 
-    // Parse ForceFields inside this <Node>
     const forceFields: SofaForceField[] = [];
-    const ffRegex = /<([A-Za-z0-9_]*ForceField)\b([^>]*)\/?>/gi;
-    let ffMatch: RegExpExecArray | null;
-    while ((ffMatch = ffRegex.exec(localBody)) !== null) {
-      const ffType = ffMatch[1] ?? "TetrahedronFEMForceField";
+    const ffEls = directChildren.filter((c) => localName(c.name).toLowerCase().endsWith("forcefield"));
+    for (const ffEl of ffEls) {
+      const ffType = localName(ffEl.name);
       if (ffType === "ConstantForceField" || ffType === "LinearForceField") {
-        const cAttrs = parseAttributes(ffMatch[2] ?? "");
+        const cAttrs = getAttrsMap(ffEl);
         const forceVals = (cAttrs["forces"] ?? cAttrs["force"] ?? "0 0 -1").trim().split(/\s+/).map(Number);
         const mag = Math.hypot(forceVals[0] ?? 0, forceVals[1] ?? 0, forceVals[2] ?? 0);
         loads.push({
@@ -610,21 +634,17 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
           name: cAttrs["name"] ?? ffType,
           type: "nodal_load",
           value: mag,
-          range: makeRange(lineOffsets, afterOpenIdx + ffMatch.index, afterOpenIdx + ffMatch.index + ffMatch[0].length),
+          range: makeRange(lineOffsets, ffEl.start, ffEl.end),
         });
         continue;
       }
 
-      const ffAttrs = parseAttributes(ffMatch[2] ?? "");
+      const ffAttrs = getAttrsMap(ffEl);
       const ffName = ffAttrs["name"] ?? ffType;
       const youngModulus = ffAttrs["youngModulus"] !== undefined ? Number(ffAttrs["youngModulus"]) : undefined;
       const poissonRatio = ffAttrs["poissonRatio"] !== undefined ? Number(ffAttrs["poissonRatio"]) : undefined;
       const stiffness = ffAttrs["stiffness"] !== undefined ? Number(ffAttrs["stiffness"]) : undefined;
-      const ffRange = makeRange(
-        lineOffsets,
-        afterOpenIdx + ffMatch.index,
-        afterOpenIdx + ffMatch.index + ffMatch[0].length,
-      );
+      const ffRange = makeRange(lineOffsets, ffEl.start, ffEl.end);
 
       const ff: SofaForceField = {
         type: ffType,
@@ -649,12 +669,13 @@ function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: str
       }
     }
 
-    // Parse FixedConstraint inside this <Node>
-    const fixedMatch = /<(?:FixedConstraint|FixedProjectiveConstraint)\b([^>]*)\/?>/i.exec(localBody);
-    const hasFixedConstraint = fixedMatch !== null;
+    const fixedEl = directChildren.find(
+      (c) => matchTag(c, "FixedConstraint") || matchTag(c, "FixedProjectiveConstraint"),
+    );
+    const hasFixedConstraint = fixedEl !== undefined;
     const fixedIndices: number[] = [];
-    if (fixedMatch) {
-      const fAttrs = parseAttributes(fixedMatch[1] ?? "");
+    if (fixedEl) {
+      const fAttrs = getAttrsMap(fixedEl);
       const idxList = (fAttrs["indices"] ?? "0")
         .trim()
         .split(/[\s,]+/)

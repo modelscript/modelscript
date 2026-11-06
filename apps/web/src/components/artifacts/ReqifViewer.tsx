@@ -35,9 +35,12 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { updateArtifactView } from "../../api/artifacts";
+import { useAuth } from "../../AuthContext";
 import { useTheme } from "../../theme";
 import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import { useToast } from "../ToastContext";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface ReqifViewerProps {
@@ -50,6 +53,7 @@ export interface ReqifViewerProps {
     specId?: string | undefined;
     [key: string]: unknown;
   };
+  artifactId?: string | number | undefined;
   isFullScreen?: boolean | undefined;
   onCodeChange?: ((newXml: string) => void) | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
@@ -358,6 +362,7 @@ const NEXT_LINK_CYCLE: (string | null)[] = [
 
 export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   viewConfig,
+  artifactId: propArtifactId,
   isFullScreen = false,
   onCodeChange,
   onRevealLine,
@@ -365,6 +370,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
+  const { token } = useAuth();
+  const toast = useToast();
+  const targetArtifactId = propArtifactId || viewConfig?.artifactId;
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const initialSource = useMemo(() => {
     if (typeof viewConfig?.code === "string" && viewConfig.code.trim().length > 0) {
@@ -440,6 +450,40 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   }, [diagramModel, isDark]);
 
   const isEdited = xmlText !== baselineXml;
+
+  const handleSaveToArtifact = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!targetArtifactId) return;
+    if (!token) {
+      toast.error("Please log in to save changes to this artifact");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const updated = await updateArtifactView(targetArtifactId, {
+        view_config: {
+          ...viewConfig,
+          code: xmlText,
+        },
+        title: (viewConfig?.title as string) || diagramData.model.title || undefined,
+      });
+      setSaveSuccess(true);
+      setBaselineXml(xmlText);
+      toast.success("ReqIF specification saved to artifact!");
+      window.dispatchEvent(
+        new CustomEvent("modelscript:artifact-updated", {
+          detail: { artifactId: targetArtifactId, artifactView: updated?.artifactView },
+        }),
+      );
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err: unknown) {
+      console.error("Failed to save artifact:", err);
+      toast.error("Failed to save changes. Make sure you own this artifact.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const revealRequirementInEditor = useCallback(
     (reqId: string) => {
@@ -1219,6 +1263,31 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             >
               ● Edited (Synced to XML)
             </BadgePill>
+          )}
+          {isEdited && targetArtifactId && (
+            <button
+              type="button"
+              onClick={handleSaveToArtifact}
+              disabled={isSaving}
+              style={{
+                background: saveSuccess ? "rgba(16, 185, 129, 0.2)" : "var(--ms-brand, #0e7490)",
+                color: saveSuccess ? "#10b981" : "#ffffff",
+                border: "1px solid " + (saveSuccess ? "rgba(16, 185, 129, 0.4)" : "var(--ms-brand, #0e7490)"),
+                borderRadius: "6px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 700,
+                cursor: isSaving ? "not-allowed" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                transition: "all 0.15s ease",
+              }}
+              title="Save modified ReqIF specification back to server artifact"
+            >
+              {saveSuccess ? <CheckIcon size={12} /> : isSaving ? <SyncIcon size={12} /> : null}
+              <span>{saveSuccess ? "Saved!" : isSaving ? "Saving…" : "Save to Artifact"}</span>
+            </button>
           )}
         </div>
 

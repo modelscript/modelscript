@@ -68,6 +68,14 @@ test("getStdlibsByPack groups correctly", () => {
 
   const allLibs = getStdlibsByPack("all");
   assert.equal(allLibs.length, getStdlibCatalog().libraries.length);
+
+  const modelicaLibs = getStdlibsByPack("modelica");
+  assert.ok(modelicaLibs.length >= 1);
+  assert.ok(modelicaLibs.every((l) => l.language === "modelica" || l.packageName === "Modelica"));
+  assert.ok(!modelicaLibs.some((l) => l.packageName === "SysML"));
+
+  const mslLibs = getStdlibsByPack("msl");
+  assert.deepEqual(mslLibs, modelicaLibs);
 });
 
 test("getStdlibsByTier filters core vs domain correctly", () => {

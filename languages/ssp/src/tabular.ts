@@ -9,10 +9,26 @@ import {
   type TabularMutationResult,
   type TabularRow,
 } from "@modelscript/dsl";
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { parseSsd } from "./ssd-parser.js";
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function sspLocalName(name: string): string {
+  const idx = name.indexOf(":");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+function sspMatchName(actual: string, expected: string): boolean {
+  return actual === expected || sspLocalName(actual).toLowerCase() === sspLocalName(expected).toLowerCase();
+}
+
+function findXmlElement(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement | null {
+  if (!root) return null;
+  if (predicate(root)) return root;
+  for (const child of root.children) {
+    const found = findXmlElement(child, predicate);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -91,32 +107,68 @@ export function updateSspTabularCell(
   columnId: string,
   newValue: string,
 ): TabularMutationResult {
+  const doc = parseXmlSync(xmlContent);
+  if (!doc.root) {
+    return {
+      success: false,
+      newText: xmlContent,
+      edits: [],
+      error: `Could not parse SSP XML document.`,
+    };
+  }
+
   if (sheetId === "components" && (columnId === "source" || columnId === "type")) {
-    const compRe = new RegExp(
-      `(<(?:ssd:)?Component[^>]*\\bname="${escapeRegex(rowId)}"[^>]*\\b${escapeRegex(columnId)}=")([^"]*)(")`,
+    const compEl = findXmlElement(
+      doc.root,
+      (el) => sspMatchName(el.name, "Component") && el.attributes.some((a) => a.name === "name" && a.value === rowId),
     );
-    if (compRe.test(xmlContent)) {
-      const newText = xmlContent.replace(compRe, `$1${newValue}$3`);
-      return {
-        success: true,
-        newText,
-        edits: [{ startOffset: 0, endOffset: xmlContent.length, newText }],
-      };
+    if (compEl) {
+      const attr = compEl.attributes.find((a) => a.name === columnId);
+      if (attr) {
+        const edit = {
+          startOffset: attr.valueStart,
+          endOffset: attr.valueEnd,
+          newText: newValue,
+        };
+        const newText = xmlContent.slice(0, attr.valueStart) + newValue + xmlContent.slice(attr.valueEnd);
+        return {
+          success: true,
+          newText,
+          edits: [edit],
+        };
+      }
     }
   }
 
   if (sheetId === "parameters" && columnId === "value") {
     const paramName = rowId.includes(".") ? rowId.split(".").slice(1).join(".") : rowId;
-    const paramRe = new RegExp(
-      `(<(?:ssv:)?Parameter[^>]*\\bname="${escapeRegex(paramName)}"[^>]*>[\\s\\S]*?<(?:ssv:)?(?:Real|Integer|Boolean|String)[^>]*\\bvalue=")([^"]*)(")`,
+    const paramEl = findXmlElement(
+      doc.root,
+      (el) =>
+        sspMatchName(el.name, "Parameter") && el.attributes.some((a) => a.name === "name" && a.value === paramName),
     );
-    if (paramRe.test(xmlContent)) {
-      const newText = xmlContent.replace(paramRe, `$1${newValue}$3`);
-      return {
-        success: true,
-        newText,
-        edits: [{ startOffset: 0, endOffset: xmlContent.length, newText }],
-      };
+    if (paramEl) {
+      const typeEl = findXmlElement(paramEl, (el) =>
+        ["real", "integer", "boolean", "string", "enumeration"].includes(
+          (el.name.includes(":") ? el.name.slice(el.name.indexOf(":") + 1) : el.name).toLowerCase(),
+        ),
+      );
+      if (typeEl) {
+        const attr = typeEl.attributes.find((a) => a.name === "value");
+        if (attr) {
+          const edit = {
+            startOffset: attr.valueStart,
+            endOffset: attr.valueEnd,
+            newText: newValue,
+          };
+          const newText = xmlContent.slice(0, attr.valueStart) + newValue + xmlContent.slice(attr.valueEnd);
+          return {
+            success: true,
+            newText,
+            edits: [edit],
+          };
+        }
+      }
     }
   }
 

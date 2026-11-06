@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 const DB_NAME = "modelscript_keystore";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "ap_keys";
+const DEVICE_KEY_STORE = "device_signing_keys";
+
+export interface StoredDeviceKey {
+  id: string;
+  privateKey: CryptoKey;
+  publicKeyOpenssh: string;
+  publicKeyMultibase: string;
+  fingerprintSha256: string;
+  label: string;
+  createdAt: string;
+  trustLevel: "web_browser";
+  isActive?: boolean;
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -15,6 +28,9 @@ function openDb(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
+      }
+      if (!db.objectStoreNames.contains(DEVICE_KEY_STORE)) {
+        db.createObjectStore(DEVICE_KEY_STORE, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -141,5 +157,91 @@ export async function migrateLegacyKeys(): Promise<void> {
     } catch (err) {
       console.error(`Failed to migrate legacy key ${keyName}:`, err);
     }
+  }
+}
+
+/**
+ * Save an active Ed25519 Web Browser Device Key in IndexedDB.
+ */
+export async function saveDeviceSigningKey(keyRecord: StoredDeviceKey): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DEVICE_KEY_STORE, "readwrite");
+    const store = tx.objectStore(DEVICE_KEY_STORE);
+    const req = store.put(keyRecord);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Retrieve a device signing key by its ID or fingerprint.
+ */
+export async function getDeviceSigningKey(id: string): Promise<StoredDeviceKey | null> {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(DEVICE_KEY_STORE, "readonly");
+      const store = tx.objectStore(DEVICE_KEY_STORE);
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * List all device signing keys stored in this browser.
+ */
+export async function getAllDeviceSigningKeys(): Promise<StoredDeviceKey[]> {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(DEVICE_KEY_STORE, "readonly");
+      const store = tx.objectStore(DEVICE_KEY_STORE);
+      const req = store.getAll();
+      req.onsuccess = () => resolve((req.result as StoredDeviceKey[]) || []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Retrieve the currently active Web Browser Device Key.
+ */
+export async function getActiveDeviceSigningKey(): Promise<StoredDeviceKey | null> {
+  const all = await getAllDeviceSigningKeys();
+  if (all.length === 0) return null;
+  const active = all.find((k) => k.isActive);
+  return active || all[all.length - 1] || null;
+}
+
+/**
+ * Remove a device signing key by ID or fingerprint.
+ */
+export async function removeDeviceSigningKey(idOrFingerprint: string): Promise<void> {
+  try {
+    const db = await openDb();
+    const all = await getAllDeviceSigningKeys();
+    const target = all.find(
+      (k) =>
+        k.id === idOrFingerprint ||
+        k.fingerprintSha256 === idOrFingerprint ||
+        k.publicKeyOpenssh.includes(idOrFingerprint),
+    );
+    const idToDelete = target?.id || idOrFingerprint;
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(DEVICE_KEY_STORE, "readwrite");
+      const store = tx.objectStore(DEVICE_KEY_STORE);
+      const req = store.delete(idToDelete);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.error("Failed to delete device signing key:", err);
   }
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { deflateRaw, inflateRaw } from "pako";
 import type {
   CanonicalBOMItem,
@@ -9,6 +10,36 @@ import type {
   DataPackageSchemaField,
   PackageJsonProjection,
 } from "../lens/types.js";
+
+function localXmlName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchXmlTag(element: XmlElement, expected: string): boolean {
+  return localXmlName(element.name).toUpperCase() === expected.toUpperCase();
+}
+
+function findXmlDescendant(element: XmlElement, predicate: (e: XmlElement) => boolean): XmlElement | undefined {
+  for (const child of element.children) {
+    if (predicate(child)) return child;
+    const found = findXmlDescendant(child, predicate);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findXmlDescendants(element: XmlElement, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  const result: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    for (const child of node.children) {
+      if (predicate(child)) result.push(child);
+      walk(child);
+    }
+  }
+  walk(element);
+  return result;
+}
 
 /**
  * Complete extension-to-language mapping across all 44 ModelScript languages.
@@ -173,6 +204,10 @@ export const EXTENSION_TO_LANGUAGE_ID: Record<string, string> = {
   ".sedml": "sedml",
   ".smi": "smiles",
   ".smarts": "smiles",
+  ".usd": "usd",
+  ".usda": "usd",
+  ".usdc": "usd",
+  ".usdz": "usd",
 };
 
 /**
@@ -588,9 +623,13 @@ export function adaptFmuModelDescription(
   guid?: string | undefined;
   fmiVersion?: string | undefined;
 } {
-  const getAttr = (attr: string): string | undefined => {
-    const m = xml.match(new RegExp(`\\b${attr}\\s*=\\s*"([^"]*)"`, "i"));
-    return m?.[1]?.trim() || undefined;
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
+  const getAttr = (attrName: string): string | undefined => {
+    if (!root) return undefined;
+    const target = attrName.toUpperCase();
+    const a = root.attributes.find((x) => localXmlName(x.name).toUpperCase() === target);
+    return a?.value?.trim() || undefined;
   };
   const name = getAttr("modelName") || fallbackName;
   const version = normalizeToSemver(getAttr("version"), fallbackVersion);
@@ -616,31 +655,43 @@ export function adaptSspSystemStructure(
   author?: string | undefined;
   submodels: CanonicalSubmodelDescriptor[];
 } {
-  const sysTag = xml.match(/<(?:ssd:)?System\b(?![A-Za-z])([^>]*)>/i)?.[1] ?? "";
-  const rootTag = xml.match(/<(?:ssd:)?SystemStructureDescription\b([^>]*)>/i)?.[1] ?? "";
-  const getAttr = (src: string, attr: string): string | undefined => {
-    const m = src.match(new RegExp(`\\b${attr}\\s*=\\s*"([^"]*)"`, "i"));
-    return m?.[1]?.trim() || undefined;
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
+  const sysEl = root
+    ? matchXmlTag(root, "System")
+      ? root
+      : findXmlDescendant(root, (e) => matchXmlTag(e, "System"))
+    : undefined;
+
+  const getAttr = (el: XmlElement | undefined, attrName: string): string | undefined => {
+    if (!el) return undefined;
+    const target = attrName.toUpperCase();
+    const a = el.attributes.find((x) => localXmlName(x.name).toUpperCase() === target);
+    return a?.value?.trim() || undefined;
   };
-  const name = getAttr(sysTag, "name") || getAttr(rootTag, "name") || fallbackName;
-  const version = normalizeToSemver(getAttr(sysTag, "version") || getAttr(rootTag, "version"), fallbackVersion);
-  const description = getAttr(sysTag, "description") || getAttr(rootTag, "description");
-  const author = getAttr(sysTag, "author") || getAttr(rootTag, "author");
+
+  const name = getAttr(sysEl, "name") || getAttr(root ?? undefined, "name") || fallbackName;
+  const version = normalizeToSemver(
+    getAttr(sysEl, "version") || getAttr(root ?? undefined, "version"),
+    fallbackVersion,
+  );
+  const description = getAttr(sysEl, "description") || getAttr(root ?? undefined, "description");
+  const author = getAttr(sysEl, "author") || getAttr(root ?? undefined, "author");
 
   const submodels: CanonicalSubmodelDescriptor[] = [];
-  const compRegex = /<(?:ssd:)?Component\b([^>]*)\/?>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = compRegex.exec(xml)) !== null) {
-    const attrs = m[1] ?? "";
-    const compName = getAttr(attrs, "name");
-    const source = getAttr(attrs, "source");
-    if (compName) {
-      submodels.push({
-        idShort: compName,
-        category: "FMU",
-        path: source,
-        description: getAttr(attrs, "description") ?? `SSP Component ${compName}`,
-      });
+  if (root) {
+    const compEls = findXmlDescendants(root, (e) => matchXmlTag(e, "Component"));
+    for (const compEl of compEls) {
+      const compName = getAttr(compEl, "name");
+      const source = getAttr(compEl, "source");
+      if (compName) {
+        submodels.push({
+          idShort: compName,
+          category: "FMU",
+          path: source,
+          description: getAttr(compEl, "description") ?? `SSP Component ${compName}`,
+        });
+      }
     }
   }
   return { name, version, description, author, submodels };
@@ -661,30 +712,42 @@ export function adaptRosOrGazeboXml(
   author?: string | undefined;
   dependencies: Record<string, string>;
 } {
-  const getTag = (tag: string): string | undefined => {
-    const m = xml.match(new RegExp(`<${tag}\\b[^>]*>([^<]*)<\\/${tag}>`, "i"));
-    return m?.[1]?.trim() || undefined;
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
+
+  const getTagText = (tag: string): string | undefined => {
+    if (!root) return undefined;
+    const el = findXmlDescendant(root, (e) => matchXmlTag(e, tag));
+    return el?.text?.trim() || undefined;
   };
-  const name = getTag("name") || fallbackName;
-  const version = normalizeToSemver(getTag("version"), fallbackVersion);
-  const description = getTag("description");
-  const license = getTag("license");
-  const maintainerMatch = xml.match(/<maintainer\b([^>]*)>([^<]*)<\/maintainer>/i);
-  const maintainerEmail = maintainerMatch?.[1]?.match(/\bemail="([^"]*)"/i)?.[1];
-  const maintainerName = maintainerMatch?.[2]?.trim();
-  const author = maintainerMatch
-    ? maintainerEmail
-      ? `${maintainerName} <${maintainerEmail}>`
-      : maintainerName
-    : getTag("author");
+
+  const name = getTagText("name") || fallbackName;
+  const version = normalizeToSemver(getTagText("version"), fallbackVersion);
+  const description = getTagText("description");
+  const license = getTagText("license");
+
+  let author: string | undefined;
+  const maintainerEl = root ? findXmlDescendant(root, (e) => matchXmlTag(e, "maintainer")) : undefined;
+  if (maintainerEl) {
+    const emailAttr = maintainerEl.attributes.find((a) => localXmlName(a.name).toUpperCase() === "EMAIL");
+    const mEmail = emailAttr?.value?.trim();
+    const mName = maintainerEl.text.trim();
+    author = mEmail ? `${mName} <${mEmail}>` : mName;
+  } else {
+    author = getTagText("author");
+  }
 
   const dependencies: Record<string, string> = {};
-  const depRegex = /<(?:depend|exec_depend|build_depend)\b[^>]*>([^<]*)<\/(?:depend|exec_depend|build_depend)>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = depRegex.exec(xml)) !== null) {
-    const dep = m[1]?.trim();
-    if (dep && dep !== "xacro" && dep !== "roscpp" && dep !== "rospy" && dep !== "rclcpp" && dep !== "rclpy") {
-      dependencies[dep] = "*";
+  if (root) {
+    const depEls = findXmlDescendants(root, (e) => {
+      const u = localXmlName(e.name).toUpperCase();
+      return u === "DEPEND" || u === "EXEC_DEPEND" || u === "BUILD_DEPEND";
+    });
+    for (const d of depEls) {
+      const dep = d.text.trim();
+      if (dep && dep !== "xacro" && dep !== "roscpp" && dep !== "rospy" && dep !== "rclcpp" && dep !== "rclpy") {
+        dependencies[dep] = "*";
+      }
     }
   }
   return { name, version, description, license, author, dependencies };
@@ -1165,14 +1228,14 @@ export function detectAndAdaptArchiveManifest(
     if (!detectedLangs.includes("sima")) detectedLangs.push("sima");
   } else if (ipxactEntry && /(?:spirit|ipxact):component/i.test(ipxactEntry.content)) {
     format = "ipxact";
-    const nameMatch = ipxactEntry.content.match(/<(?:spirit|ipxact):name>([^<]+)<\/(?:spirit|ipxact):name>/i);
-    const verMatch = ipxactEntry.content.match(/<(?:spirit|ipxact):version>([^<]+)<\/(?:spirit|ipxact):version>/i);
-    const descMatch = ipxactEntry.content.match(
-      /<(?:spirit|ipxact):description>([^<]+)<\/(?:spirit|ipxact):description>/i,
-    );
-    name = nameMatch?.[1]?.trim() || fallbackName;
-    version = normalizeToSemver(verMatch?.[1], fallbackVersion);
-    description = descMatch?.[1]?.trim();
+    const doc = parseXmlSync(ipxactEntry.content);
+    const root = doc.root;
+    const nameEl = root ? findXmlDescendant(root, (e) => matchXmlTag(e, "name")) : undefined;
+    const verEl = root ? findXmlDescendant(root, (e) => matchXmlTag(e, "version")) : undefined;
+    const descEl = root ? findXmlDescendant(root, (e) => matchXmlTag(e, "description")) : undefined;
+    name = nameEl?.text.trim() || fallbackName;
+    version = normalizeToSemver(verEl?.text.trim(), fallbackVersion);
+    description = descEl?.text.trim();
     main = ipxactEntry.path;
   }
 

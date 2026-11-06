@@ -10,6 +10,7 @@
  * 3. JSON serialized representation
  */
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   IgtlDataSource,
   IgtlDevice,
@@ -67,16 +68,28 @@ function makeRange(startOffset: number, endOffset: number, lineOffsets: number[]
   };
 }
 
-function parseAttributes(attrString: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  const attrRegex = /([A-Za-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  let m: RegExpExecArray | null;
-  while ((m = attrRegex.exec(attrString)) !== null) {
-    const key = m[1]!;
-    const val = m[2] ?? m[3] ?? "";
-    attrs[key] = val;
+function getLocalName(name: string): string {
+  const idx = name.indexOf(":");
+  return (idx >= 0 ? name.slice(idx + 1) : name).toLowerCase();
+}
+
+function getAttr(el: XmlElement, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    for (const a of el.attributes) {
+      const aName = a.name.toLowerCase();
+      const aLocal = aName.includes(":") ? aName.slice(aName.indexOf(":") + 1) : aName;
+      if (aName === lower || aLocal === lower) return a.value;
+    }
   }
-  return attrs;
+  return undefined;
+}
+
+function walkElements(node: XmlElement, visit: (el: XmlElement) => void): void {
+  visit(node);
+  for (const child of node.children) {
+    walkElements(child, visit);
+  }
 }
 
 function parseMatrix4x4(raw: string | undefined): Matrix4x4 {
@@ -128,11 +141,17 @@ export function parseIgtl(text: string, sourceUri?: string): IgtlDocument {
   const lineOffsets = computeLineOffsets(text);
   const docRange = makeRange(0, text.length, lineOffsets);
 
+  let xmlDoc = parseXmlSync(text);
+  let offsetShift = 0;
+  if ((!xmlDoc.root && text.includes("<")) || (xmlDoc.root && text.slice(xmlDoc.root.end).includes("<"))) {
+    const prefix = "<_root_>";
+    xmlDoc = parseXmlSync(prefix + text + "</_root_>");
+    offsetShift = prefix.length;
+  }
+
   let version = "2.1";
-  const plusMatch = /<PlusConfiguration\b([^>]*)>/i.exec(text);
-  if (plusMatch) {
-    const attrs = parseAttributes(plusMatch[1]!);
-    if (attrs["version"]) version = attrs["version"];
+  if (xmlDoc.root && getLocalName(xmlDoc.root.name) === "plusconfiguration") {
+    version = getAttr(xmlDoc.root, "version") ?? "2.1";
   }
 
   const devices: IgtlDevice[] = [];
@@ -142,236 +161,200 @@ export function parseIgtl(text: string, sourceUri?: string): IgtlDocument {
   let fiducialConfig: IgtlFiducialConfig | undefined;
   const messages: IgtlMessageRecord[] = [];
 
-  // 1. Parse <Device ...>...</Device> or self-closing <Device .../>
-  const devRegex = /<Device\b([^>]*)(?:\/>|>([\s\S]*?)<\/Device>)/gi;
-  let devMatch: RegExpExecArray | null;
-  while ((devMatch = devRegex.exec(text)) !== null) {
-    const dAttrs = parseAttributes(devMatch[1]!);
-    const dBody = devMatch[2] ?? "";
-    const dStart = devMatch.index;
-    const dRange = makeRange(dStart, dStart + devMatch[0].length, lineOffsets);
+  if (xmlDoc.root) {
+    walkElements(xmlDoc.root, (el) => {
+      const tag = getLocalName(el.name);
 
-    const id = dAttrs["Id"] ?? dAttrs["id"] ?? `Device_${devices.length + 1}`;
-    const type = dAttrs["Type"] ?? dAttrs["type"] ?? "TrackerDevice";
-    const acqRate =
-      dAttrs["AcquisitionRate"] !== undefined
-        ? Number(dAttrs["AcquisitionRate"])
-        : dAttrs["acquisitionRate"] !== undefined
-          ? Number(dAttrs["acquisitionRate"])
-          : undefined;
-    const toolRef = dAttrs["ToolReferenceFrame"] ?? dAttrs["toolReferenceFrame"];
+      // 1. <Device ...>...</Device>
+      if (tag === "device") {
+        const id = getAttr(el, "Id", "id") ?? `Device_${devices.length + 1}`;
+        const type = getAttr(el, "Type", "type") ?? "TrackerDevice";
+        const acqRaw = getAttr(el, "AcquisitionRate", "acquisitionRate");
+        const acqRate = acqRaw !== undefined ? Number(acqRaw) : undefined;
+        const toolRef = getAttr(el, "ToolReferenceFrame", "toolReferenceFrame");
 
-    const dataSources: IgtlDataSource[] = [];
-    const dsRegex = /<DataSource\b([^>]*)\/?>/gi;
-    let dsMatch: RegExpExecArray | null;
-    while ((dsMatch = dsRegex.exec(dBody)) !== null) {
-      const dsAttrs = parseAttributes(dsMatch[1]!);
-      const dsStart = dStart + dsMatch.index;
-      dataSources.push({
-        id: dsAttrs["Id"] ?? dsAttrs["id"] ?? "",
-        type: dsAttrs["Type"] ?? dsAttrs["type"] ?? "Tool",
-        portName: dsAttrs["PortName"],
-        bufferSize: dsAttrs["BufferSize"] !== undefined ? Number(dsAttrs["BufferSize"]) : undefined,
-        range: makeRange(dsStart, dsStart + dsMatch[0].length, lineOffsets),
-      });
-    }
+        const dataSources: IgtlDataSource[] = [];
+        const outputChannelIds: string[] = [];
+        const inputChannelIds: string[] = [];
 
-    const outputChannelIds: string[] = [];
-    const outChRegex = /<OutputChannel\b([^>]*)\/?>/gi;
-    let outChMatch: RegExpExecArray | null;
-    while ((outChMatch = outChRegex.exec(dBody)) !== null) {
-      const ocAttrs = parseAttributes(outChMatch[1]!);
-      const ocId = ocAttrs["Id"] ?? ocAttrs["id"];
-      if (ocId) outputChannelIds.push(ocId);
-    }
+        walkElements(el, (child) => {
+          const cTag = getLocalName(child.name);
+          if (cTag === "datasource") {
+            const dsStart = Math.max(0, child.start - offsetShift);
+            const dsEnd = Math.max(0, child.end - offsetShift);
+            const bufRaw = getAttr(child, "BufferSize", "bufferSize");
+            dataSources.push({
+              id: getAttr(child, "Id", "id") ?? "",
+              type: getAttr(child, "Type", "type") ?? "Tool",
+              portName: getAttr(child, "PortName", "portName"),
+              bufferSize: bufRaw !== undefined ? Number(bufRaw) : undefined,
+              range: makeRange(dsStart, dsEnd, lineOffsets),
+            });
+          } else if (cTag === "outputchannel") {
+            const ocId = getAttr(child, "Id", "id");
+            if (ocId) outputChannelIds.push(ocId);
+          } else if (cTag === "inputchannel") {
+            const icId = getAttr(child, "Id", "id", "InputChannelId", "inputchannelid");
+            if (icId) inputChannelIds.push(icId);
+          }
+        });
 
-    const inputChannelIds: string[] = [];
-    const inChRegex = /<InputChannel\b([^>]*)\/?>/gi;
-    let inChMatch: RegExpExecArray | null;
-    while ((inChMatch = inChRegex.exec(dBody)) !== null) {
-      const icAttrs = parseAttributes(inChMatch[1]!);
-      const icId = icAttrs["Id"] ?? icAttrs["id"] ?? icAttrs["InputChannelId"];
-      if (icId) inputChannelIds.push(icId);
-    }
-
-    const dev: IgtlDevice = {
-      id,
-      type,
-      dataSources,
-      outputChannelIds,
-      inputChannelIds,
-      range: dRange,
-    };
-    if (acqRate !== undefined) dev.acquisitionRate = acqRate;
-    if (toolRef !== undefined) dev.toolReferenceFrame = toolRef;
-    devices.push(dev);
-  }
-
-  // 2. Parse <Transform From="..." To="..." Matrix="..." Error="..."/> inside CoordinateDefinitions or top-level
-  const tfRegex = /<Transform\b([^>]*)\/?>/gi;
-  let tfMatch: RegExpExecArray | null;
-  while ((tfMatch = tfRegex.exec(text)) !== null) {
-    const tAttrs = parseAttributes(tfMatch[1]!);
-    const from = tAttrs["From"] ?? tAttrs["from"];
-    const to = tAttrs["To"] ?? tAttrs["to"];
-    if (!from || !to) continue; // skip <Transform Name="..."/> inside DefaultClientInfo
-
-    const tStart = tfMatch.index;
-    const matrix = parseMatrix4x4(tAttrs["Matrix"] ?? tAttrs["matrix"]);
-    const errVal =
-      tAttrs["Error"] !== undefined
-        ? Number(tAttrs["Error"])
-        : tAttrs["error"] !== undefined
-          ? Number(tAttrs["error"])
-          : undefined;
-
-    const tfDef: IgtlTransformDefinition = {
-      from,
-      to,
-      matrix,
-      range: makeRange(tStart, tStart + tfMatch[0].length, lineOffsets),
-    };
-    if (errVal !== undefined) tfDef.errorMm = errVal;
-    if (tAttrs["Date"]) tfDef.date = tAttrs["Date"];
-    transforms.push(tfDef);
-  }
-
-  // 3. Parse <PlusOpenIGTLinkServer ...>...</PlusOpenIGTLinkServer>
-  const srvRegex = /<PlusOpenIGTLinkServer\b([^>]*)(?:\/>|>([\s\S]*?)<\/PlusOpenIGTLinkServer>)/gi;
-  let srvMatch: RegExpExecArray | null;
-  while ((srvMatch = srvRegex.exec(text)) !== null) {
-    const sAttrs = parseAttributes(srvMatch[1]!);
-    const sBody = srvMatch[2] ?? "";
-    const sStart = srvMatch.index;
-    const sRange = makeRange(sStart, sStart + srvMatch[0].length, lineOffsets);
-
-    const listeningPort = Number(sAttrs["ListeningPort"] ?? sAttrs["listeningPort"] ?? 18944);
-    const outputChannelId = sAttrs["OutputChannelId"] ?? sAttrs["outputChannelId"];
-    const deviceId = sAttrs["DeviceId"] ?? sAttrs["deviceId"];
-    const maxMsg =
-      sAttrs["MaxNumberOfIgtlMessagesToSend"] !== undefined
-        ? Number(sAttrs["MaxNumberOfIgtlMessagesToSend"])
-        : undefined;
-
-    const messageTypes: string[] = [];
-    const msgRegex = /<Message\b([^>]*)\/?>/gi;
-    let mMatch: RegExpExecArray | null;
-    while ((mMatch = msgRegex.exec(sBody)) !== null) {
-      const mAttrs = parseAttributes(mMatch[1]!);
-      if (mAttrs["Type"]) messageTypes.push(mAttrs["Type"]);
-    }
-
-    const transformNames: Array<{ from: string; to: string; rawName: string }> = [];
-    const tnRegex = /<Transform\b([^>]*)\/?>/gi;
-    let tnMatch: RegExpExecArray | null;
-    while ((tnMatch = tnRegex.exec(sBody)) !== null) {
-      const tnAttrs = parseAttributes(tnMatch[1]!);
-      const rawName = tnAttrs["Name"] ?? tnAttrs["name"];
-      if (rawName) {
-        transformNames.push(splitPlusTransformName(rawName));
+        const dStart = Math.max(0, el.start - offsetShift);
+        const dEnd = Math.max(0, el.end - offsetShift);
+        const dev: IgtlDevice = {
+          id,
+          type,
+          dataSources,
+          outputChannelIds,
+          inputChannelIds,
+          range: makeRange(dStart, dEnd, lineOffsets),
+        };
+        if (acqRate !== undefined) dev.acquisitionRate = acqRate;
+        if (toolRef !== undefined) dev.toolReferenceFrame = toolRef;
+        devices.push(dev);
       }
-    }
 
-    const srv: IgtlServerConfig = {
-      id: sAttrs["Id"] ?? `IGTLServer_${listeningPort}`,
-      listeningPort,
-      messageTypes,
-      transformNames,
-      range: sRange,
-    };
-    if (outputChannelId !== undefined) srv.outputChannelId = outputChannelId;
-    if (deviceId !== undefined) srv.deviceId = deviceId;
-    if (maxMsg !== undefined) srv.maxMessagesToSend = maxMsg;
-    servers.push(srv);
-  }
+      // 2. <Transform From="..." To="..." Matrix="..." Error="..."/>
+      else if (tag === "transform") {
+        const from = getAttr(el, "From", "from");
+        const to = getAttr(el, "To", "to");
+        if (from && to) {
+          const tStart = Math.max(0, el.start - offsetShift);
+          const tEnd = Math.max(0, el.end - offsetShift);
+          const matrix = parseMatrix4x4(getAttr(el, "Matrix", "matrix"));
+          const errRaw = getAttr(el, "Error", "error");
+          const errVal = errRaw !== undefined ? Number(errRaw) : undefined;
+          const date = getAttr(el, "Date", "date");
 
-  // 4. Parse <PivotCalibration> / <PivotPose Matrix="..."/>
-  const poseRegex = /<(?:PivotPose|Pose)\b([^>]*)\/?>/gi;
-  let poseMatch: RegExpExecArray | null;
-  while ((poseMatch = poseRegex.exec(text)) !== null) {
-    const pAttrs = parseAttributes(poseMatch[1]!);
-    const pStart = poseMatch.index;
-    const mat = parseMatrix4x4(pAttrs["Matrix"] ?? pAttrs["matrix"]);
-    pivotPoses.push({
-      matrix: mat,
-      range: makeRange(pStart, pStart + poseMatch[0].length, lineOffsets),
+          const tfDef: IgtlTransformDefinition = {
+            from,
+            to,
+            matrix,
+            range: makeRange(tStart, tEnd, lineOffsets),
+          };
+          if (errVal !== undefined) tfDef.errorMm = errVal;
+          if (date) tfDef.date = date;
+          transforms.push(tfDef);
+        }
+      }
+
+      // 3. <PlusOpenIGTLinkServer ...>
+      else if (tag === "plusopenigtlinkserver") {
+        const sStart = Math.max(0, el.start - offsetShift);
+        const sEnd = Math.max(0, el.end - offsetShift);
+
+        const listeningPort = Number(getAttr(el, "ListeningPort", "listeningPort") ?? 18944);
+        const outputChannelId = getAttr(el, "OutputChannelId", "outputChannelId");
+        const deviceId = getAttr(el, "DeviceId", "deviceId");
+        const maxMsgRaw = getAttr(el, "MaxNumberOfIgtlMessagesToSend", "maxNumberOfIgtlMessagesToSend");
+        const maxMsg = maxMsgRaw !== undefined ? Number(maxMsgRaw) : undefined;
+
+        const messageTypes: string[] = [];
+        const transformNames: Array<{ from: string; to: string; rawName: string }> = [];
+
+        walkElements(el, (child) => {
+          const cTag = getLocalName(child.name);
+          if (cTag === "message") {
+            const mType = getAttr(child, "Type", "type");
+            if (mType) messageTypes.push(mType);
+          } else if (cTag === "transform") {
+            const rawName = getAttr(child, "Name", "name");
+            if (rawName) {
+              transformNames.push(splitPlusTransformName(rawName));
+            }
+          }
+        });
+
+        const srv: IgtlServerConfig = {
+          id: getAttr(el, "Id", "id") ?? `IGTLServer_${listeningPort}`,
+          listeningPort,
+          messageTypes,
+          transformNames,
+          range: makeRange(sStart, sEnd, lineOffsets),
+        };
+        if (outputChannelId !== undefined) srv.outputChannelId = outputChannelId;
+        if (deviceId !== undefined) srv.deviceId = deviceId;
+        if (maxMsg !== undefined) srv.maxMessagesToSend = maxMsg;
+        servers.push(srv);
+      }
+
+      // 4. <PivotPose Matrix="..."/> or <Pose Matrix="..."/>
+      else if (tag === "pivotpose" || tag === "pose") {
+        const pStart = Math.max(0, el.start - offsetShift);
+        const pEnd = Math.max(0, el.end - offsetShift);
+        const mat = parseMatrix4x4(getAttr(el, "Matrix", "matrix"));
+        pivotPoses.push({
+          matrix: mat,
+          range: makeRange(pStart, pEnd, lineOffsets),
+        });
+      }
+
+      // 5. <FiducialRegistration ...>
+      else if (tag === "fiducialregistration") {
+        const fStart = Math.max(0, el.start - offsetShift);
+        const fEnd = Math.max(0, el.end - offsetShift);
+        const fleMm = Number(getAttr(el, "FLE", "fle") ?? 0.5);
+        const freRaw = getAttr(el, "FRE", "fre");
+        const freMm = freRaw !== undefined ? Number(freRaw) : undefined;
+        const treRaw = getAttr(el, "TRE", "tre");
+        const treMm = treRaw !== undefined ? Number(treRaw) : undefined;
+        const targetPoint = parseVec3(getAttr(el, "Target", "target"));
+
+        const fiducials: Array<[number, number, number]> = [];
+        walkElements(el, (child) => {
+          if (getLocalName(child.name) === "fiducial") {
+            const pt = parseVec3(
+              getAttr(child, "Position", "position") ??
+                `${getAttr(child, "x") ?? 0} ${getAttr(child, "y") ?? 0} ${getAttr(child, "z") ?? 0}`,
+            );
+            if (pt) fiducials.push(pt);
+          }
+        });
+
+        fiducialConfig = {
+          fleMm,
+          fiducials,
+          range: makeRange(fStart, fEnd, lineOffsets),
+        };
+        if (freMm !== undefined) fiducialConfig.freMm = freMm;
+        if (treMm !== undefined) fiducialConfig.treMm = treMm;
+        if (targetPoint !== undefined) fiducialConfig.targetPoint = targetPoint;
+      }
+
+      // 6. <IgtlMessage .../>
+      else if (tag === "igtlmessage") {
+        const imStart = Math.max(0, el.start - offsetShift);
+        const imEnd = Math.max(0, el.end - offsetShift);
+        const imRange = makeRange(imStart, imEnd, lineOffsets);
+        const msgType = (getAttr(el, "Type", "type") ?? "TRANSFORM") as IgtlMessageRecord["messageType"];
+        const devName = getAttr(el, "DeviceName", "Name", "name") ?? "StylusTipToReference";
+        const parsedName = splitPlusTransformName(devName);
+        const fromFrame = getAttr(el, "From", "from") ?? parsedName.from;
+        const toFrame = getAttr(el, "To", "to") ?? parsedName.to;
+        const matRaw = getAttr(el, "Matrix", "matrix");
+        const mat = matRaw ? parseMatrix4x4(matRaw) : undefined;
+
+        const rec: IgtlMessageRecord = {
+          deviceName: devName,
+          messageType: msgType,
+          fromFrame,
+          toFrame,
+          range: imRange,
+        };
+        if (mat) {
+          rec.matrix = mat;
+          const errRaw = getAttr(el, "Error", "error");
+          transforms.push({
+            from: fromFrame,
+            to: toFrame,
+            matrix: mat,
+            errorMm: errRaw !== undefined ? Number(errRaw) : undefined,
+            range: imRange,
+          });
+        }
+        messages.push(rec);
+      }
     });
-  }
-
-  // 5. Parse <FiducialRegistration ...>
-  const fidRegMatch = /<FiducialRegistration\b([^>]*)(?:\/>|>([\s\S]*?)<\/FiducialRegistration>)/i.exec(text);
-  if (fidRegMatch) {
-    const fAttrs = parseAttributes(fidRegMatch[1]!);
-    const fBody = fidRegMatch[2] ?? "";
-    const fStart = fidRegMatch.index;
-    const fleMm = Number(fAttrs["FLE"] ?? fAttrs["fle"] ?? 0.5);
-    const freMm =
-      fAttrs["FRE"] !== undefined
-        ? Number(fAttrs["FRE"])
-        : fAttrs["fre"] !== undefined
-          ? Number(fAttrs["fre"])
-          : undefined;
-    const treMm =
-      fAttrs["TRE"] !== undefined
-        ? Number(fAttrs["TRE"])
-        : fAttrs["tre"] !== undefined
-          ? Number(fAttrs["tre"])
-          : undefined;
-    const targetPoint = parseVec3(fAttrs["Target"] ?? fAttrs["target"]);
-
-    const fiducials: Array<[number, number, number]> = [];
-    const fidPtRegex = /<Fiducial\b([^>]*)\/?>/gi;
-    let fpMatch: RegExpExecArray | null;
-    while ((fpMatch = fidPtRegex.exec(fBody)) !== null) {
-      const fpAttrs = parseAttributes(fpMatch[1]!);
-      const pt = parseVec3(
-        fpAttrs["Position"] ?? fpAttrs["position"] ?? `${fpAttrs["x"] ?? 0} ${fpAttrs["y"] ?? 0} ${fpAttrs["z"] ?? 0}`,
-      );
-      if (pt) fiducials.push(pt);
-    }
-
-    fiducialConfig = {
-      fleMm,
-      fiducials,
-      range: makeRange(fStart, fStart + fidRegMatch[0].length, lineOffsets),
-    };
-    if (freMm !== undefined) fiducialConfig.freMm = freMm;
-    if (treMm !== undefined) fiducialConfig.treMm = treMm;
-    if (targetPoint !== undefined) fiducialConfig.targetPoint = targetPoint;
-  }
-
-  // 6. Parse <IgtlMessage .../> or line-based OpenIGTLink `.igtl` stream records
-  const igtlMsgRegex = /<IgtlMessage\b([^>]*)\/?>/gi;
-  let imMatch: RegExpExecArray | null;
-  while ((imMatch = igtlMsgRegex.exec(text)) !== null) {
-    const imAttrs = parseAttributes(imMatch[1]!);
-    const imStart = imMatch.index;
-    const imRange = makeRange(imStart, imStart + imMatch[0].length, lineOffsets);
-    const msgType = (imAttrs["Type"] ?? imAttrs["type"] ?? "TRANSFORM") as IgtlMessageRecord["messageType"];
-    const devName = imAttrs["DeviceName"] ?? imAttrs["Name"] ?? "StylusTipToReference";
-    const parsedName = splitPlusTransformName(devName);
-    const fromFrame = imAttrs["From"] ?? parsedName.from;
-    const toFrame = imAttrs["To"] ?? parsedName.to;
-    const mat = imAttrs["Matrix"] ? parseMatrix4x4(imAttrs["Matrix"]) : undefined;
-
-    const rec: IgtlMessageRecord = {
-      deviceName: devName,
-      messageType: msgType,
-      fromFrame,
-      toFrame,
-      range: imRange,
-    };
-    if (mat) {
-      rec.matrix = mat;
-      transforms.push({
-        from: fromFrame,
-        to: toFrame,
-        matrix: mat,
-        errorMm: imAttrs["Error"] !== undefined ? Number(imAttrs["Error"]) : undefined,
-        range: imRange,
-      });
-    }
-    messages.push(rec);
   }
 
   const doc: IgtlDocument = {

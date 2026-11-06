@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { AlertIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { createArtifactView, getArtifactView } from "../api";
+import { createArtifactView, getArtifactView, getPost } from "../api";
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { extractPrimaryModelicaClassName } from "../components/morsel/util/lsp-bridge";
@@ -88,6 +90,23 @@ export const PlaygroundPage: React.FC = () => {
 
   const editPostId = editPostIdParam || undefined;
   const replyToPostId = replyToPostIdParam || undefined;
+
+  const [editPostContent, setEditPostContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editPostId) return;
+    let mounted = true;
+    getPost(editPostId)
+      .then((res) => {
+        if (mounted && res?.post?.content) {
+          setEditPostContent(res.post.content);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [editPostId]);
 
   const hasInitialArtifactTarget = Boolean(
     fromArtifactParam ||
@@ -874,7 +893,7 @@ export const PlaygroundPage: React.FC = () => {
     const effectiveArtifactId = resolvedFromArtifact || null;
 
     const defaultContent = editPostId
-      ? undefined
+      ? (editPostContent ?? undefined)
       : replyToPostId
         ? `Here is my updated **${currentTitle}** (${currentLang.toUpperCase()}) model:`
         : effectiveArtifactId
@@ -1063,12 +1082,12 @@ export const PlaygroundPage: React.FC = () => {
     return () => window.removeEventListener("morsel:sidebar-changed", handleSidebarChange);
   }, []);
 
-  const handleToggleSidebar = () => {
+  const handleToggleSidebar = useCallback(() => {
     setIsSidebarOpen((v) => !v);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("morsel:toggle-sidebar"));
     }
-  };
+  }, []);
   const [simulateTriggerCount, setSimulateTriggerCount] = useState(0);
   const [isSimulating, setIsSimulating] = useState(false);
 
@@ -1096,13 +1115,74 @@ export const PlaygroundPage: React.FC = () => {
     [handleActiveViewChange],
   );
 
-  const handleRunSimulation = () => {
+  const handleRunSimulation = useCallback(() => {
     if (currentView !== "simulation" && currentView !== "split") {
       setCurrentView("simulation");
       handleActiveViewChange("simulation");
     }
     setSimulateTriggerCount((c) => c + 1);
-  };
+  }, [currentView, handleActiveViewChange, setCurrentView]);
+
+  // Desktop-grade global keyboard shortcuts for workbench view navigation and actions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInputFocused =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          target.classList.contains("inputarea") ||
+          Boolean(target.closest(".monaco-editor")));
+
+      // F5 or Shift+Enter to run simulation
+      if (e.key === "F5" || (e.shiftKey && e.key === "Enter" && !isInputFocused)) {
+        e.preventDefault();
+        handleRunSimulation();
+        return;
+      }
+
+      // Ctrl+B / Cmd+B to toggle libraries sidebar
+      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        handleToggleSidebar();
+        return;
+      }
+
+      // Ctrl+O / Cmd+O to open template gallery
+      if ((e.ctrlKey || e.metaKey) && (e.key === "o" || e.key === "O")) {
+        e.preventDefault();
+        setIsTemplatesModalOpen(true);
+        return;
+      }
+
+      // Alt+1..6 / Option+1..6 for workbench views
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (e.key === "1") {
+          e.preventDefault();
+          handleViewChange("diagram");
+        } else if (e.key === "2") {
+          e.preventDefault();
+          handleViewChange("3d");
+        } else if (e.key === "3") {
+          e.preventDefault();
+          handleViewChange("simulation");
+        } else if (e.key === "4") {
+          e.preventDefault();
+          handleViewChange("inspector");
+        } else if (e.key === "5") {
+          e.preventDefault();
+          handleViewChange("code");
+        } else if (e.key === "6") {
+          e.preventDefault();
+          handleViewChange("split");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleRunSimulation, handleToggleSidebar, handleViewChange]);
 
   const handleParametersChange = (nextParams: Record<string, number>) => {
     setPayload((prev) => {
@@ -1230,29 +1310,96 @@ export const PlaygroundPage: React.FC = () => {
             <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Sketch…</div>
           </div>
         ) : (
-          <MorselEditor
-            dataUrl={null}
-            initialCode={currentCode}
-            embed={false}
-            hideFloatingDock={true}
-            hideCenterFloatingToolbar={true}
-            initialDialect={currentLang}
-            initialView={currentView}
-            initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
-            initialAnchor={payload?.anchor}
-            externalParams={payload?.params}
-            simulateTriggerCount={simulateTriggerCount}
-            onCodeChange={handleCodeChange}
-            onActiveViewChange={handleActiveViewChange}
-            onParametersChange={handleParametersChange}
-            onSimulationStatus={(status: { status?: string } | string | null | undefined) => {
-              const s = typeof status === "string" ? status : status?.status;
-              setIsSimulating(s === "pending" || s === "processing");
-            }}
-            onDialectChange={(dialect: string) => {
-              setCurrentLang(dialect);
-            }}
-          />
+          <ErrorBoundary
+            name="Ansatz Sketch Editor"
+            fallback={
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  padding: 32,
+                  textAlign: "center",
+                  backgroundColor: "var(--color-canvas-default)",
+                  color: "var(--color-fg-default)",
+                  gap: 16,
+                }}
+              >
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--ms-status-fail-bg, rgba(248, 81, 73, 0.12))",
+                    border: "1px solid var(--ms-status-fail-border, var(--ms-danger, #f85149))",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--ms-danger, #f85149)",
+                  }}
+                >
+                  <AlertIcon size={28} />
+                </div>
+                <h2 style={{ fontSize: 20, margin: 0, fontWeight: 600 }}>Sketch Editor Encountered an Issue</h2>
+                <p style={{ color: "var(--color-fg-muted)", fontSize: 14, maxWidth: 480, margin: 0, lineHeight: 1.5 }}>
+                  The editor component crashed during rendering. Your draft is preserved in local storage and can be
+                  recovered safely.
+                </p>
+                <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      try {
+                        const saved = localStorage.getItem("ansatz_sketch_draft");
+                        if (saved) {
+                          const parsed = JSON.parse(saved);
+                          if (parsed?.code) setCurrentCode(parsed.code);
+                        }
+                      } catch {}
+                      window.location.reload();
+                    }}
+                  >
+                    Recover Draft & Reload
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      applySelectedExample(HERO_EXAMPLES[0]!);
+                      window.location.reload();
+                    }}
+                  >
+                    Reset to Blank Model
+                  </Button>
+                </div>
+              </div>
+            }
+          >
+            <MorselEditor
+              dataUrl={null}
+              initialCode={currentCode}
+              embed={false}
+              hideFloatingDock={true}
+              hideCenterFloatingToolbar={true}
+              initialDialect={currentLang}
+              initialView={currentView}
+              initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
+              initialAnchor={payload?.anchor}
+              externalParams={payload?.params}
+              simulateTriggerCount={simulateTriggerCount}
+              onCodeChange={handleCodeChange}
+              onActiveViewChange={handleActiveViewChange}
+              onParametersChange={handleParametersChange}
+              onSimulationStatus={(status: { status?: string } | string | null | undefined) => {
+                const s = typeof status === "string" ? status : status?.status;
+                setIsSimulating(s === "pending" || s === "processing");
+              }}
+              onDialectChange={(dialect: string) => {
+                setCurrentLang(dialect);
+              }}
+            />
+          </ErrorBoundary>
         )}
       </EditorArea>
 

@@ -2791,6 +2791,7 @@ export function authRouter(database: LibraryDatabase): Router {
     const validScopes = new Set([
       "*",
       "admin",
+      "admin:accounts:read",
       "packages:read",
       "packages:publish",
       "packages:yank",
@@ -2812,7 +2813,7 @@ export function authRouter(database: LibraryDatabase): Router {
           .json({ error: `Invalid scope: '${scope}'. Valid scopes: ${Array.from(validScopes).join(", ")}` });
         return;
       }
-      if ((scope === "admin" || scope === "*") && !isAdminUser) {
+      if ((scope === "admin" || scope === "*" || scope.startsWith("admin:")) && !isAdminUser) {
         res.status(403).json({ error: `Insufficient privileges to mint token with '${scope}' scope` });
         return;
       }

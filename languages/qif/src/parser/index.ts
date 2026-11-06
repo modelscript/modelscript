@@ -7,6 +7,7 @@
  * concise declarative QIF DSL and JSON representations with exact line/column source ranges.
  */
 
+import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   QifActualStatus,
   QifCharacteristic,
@@ -132,6 +133,236 @@ function createEmptyDocument(range: QifSourceRange, uri?: string): QifDocument {
 // 1. XML QIF 3.0 Parser
 // ─────────────────────────────────────────────────────────────────────────────
 
+function localName(tag: string): string {
+  const idx = tag.indexOf(":");
+  return idx >= 0 ? tag.slice(idx + 1) : tag;
+}
+
+function matchTag(el: XmlElement, name: string): boolean {
+  return localName(el.name).toLowerCase() === name.toLowerCase();
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  const target = name.toLowerCase();
+  const attr = el.attributes.find(
+    (a: XmlAttribute) => localName(a.name).toLowerCase() === target || a.name.toLowerCase() === target,
+  );
+  return attr?.value;
+}
+
+function getChild(el: XmlElement | null | undefined, name: string): XmlElement | undefined {
+  if (!el) return undefined;
+  return el.children.find((c: XmlElement) => matchTag(c, name));
+}
+
+function getDescendant(el: XmlElement | null | undefined, name: string): XmlElement | undefined {
+  if (!el) return undefined;
+  for (const c of el.children) {
+    if (matchTag(c, name)) return c;
+    const found = getDescendant(c, name);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findDescendants(el: XmlElement | null | undefined, predicate: (e: XmlElement) => boolean): XmlElement[] {
+  const res: XmlElement[] = [];
+  if (!el) return res;
+  for (const c of el.children) {
+    if (predicate(c)) res.push(c);
+    res.push(...findDescendants(c, predicate));
+  }
+  return res;
+}
+
+function getChildText(el: XmlElement | null | undefined, name: string): string | undefined {
+  const child = getChild(el, name);
+  return child ? child.text.trim() : undefined;
+}
+
+function getDescendantText(el: XmlElement | null | undefined, name: string): string | undefined {
+  const descendant = getDescendant(el, name);
+  return descendant ? descendant.text.trim() : undefined;
+}
+
+function isFeatureElement(el: XmlElement): boolean {
+  const tag = localName(el.name);
+  if (/Actual$/i.test(tag)) return false;
+  if (/^Rule|Rules|Item$/i.test(tag) || /Rule$/i.test(tag)) return false;
+  if (/^(?:FeatureNominalIds|FeatureId|FeatureNominals|Features|FeatureItems)$/i.test(tag)) return false;
+  return (
+    /^(?:Cylinder|Plane|Sphere|Cone|Circle|Slot|OppositeParallelPlanes|Point)?Feature(?:Nominal|Definition|Item)?$/i.test(
+      tag,
+    ) || tag.toLowerCase() === "feature"
+  );
+}
+
+function isCharacteristicElement(el: XmlElement): boolean {
+  const tag = localName(el.name);
+  if (/Actual$/i.test(tag)) return false;
+  if (/^(?:Characteristics|CharacteristicNominals|CharacteristicDefinitions|CharacteristicItems)$/i.test(tag)) {
+    return false;
+  }
+  return (
+    /^(?:Flatness|Straightness|Circularity|Cylindricity|ProfileOfSurface|ProfileOfLine|Perpendicularity|Parallelism|Angularity|Position|CircularRunout|TotalRunout|DimensionalSize|DimensionalDistance|Diameter|DistanceBetween|Geometric)?Characteristic(?:Nominal|Definition|Item)?$/i.test(
+      tag,
+    ) || tag.toLowerCase() === "characteristic"
+  );
+}
+
+function isDeviceElement(el: XmlElement): boolean {
+  const tag = localName(el.name).toLowerCase();
+  return (
+    tag === "measurementdevice" ||
+    tag === "cmm" ||
+    tag === "laserscanner" ||
+    tag === "opticalgauge" ||
+    tag === "caliper" ||
+    tag === "device"
+  );
+}
+
+function isActualElement(el: XmlElement): boolean {
+  const tag = localName(el.name);
+  if (/^(?:Results|Actuals)$/i.test(tag)) return false;
+  return (
+    /^(?:Geometric|Position|Flatness|Perpendicularity|Dimensional|Diameter)?CharacteristicActual$/i.test(tag) ||
+    tag.toLowerCase() === "actual"
+  );
+}
+
+function parseCstDatumRefs(el: XmlElement, attrDatums?: string): QifDatumRef[] {
+  const refs: QifDatumRef[] = [];
+  const candidateDatumTags = findDescendants(el, (c) => {
+    const t = localName(c.name).toLowerCase();
+    if (t === "datumreference" || t === "datum") {
+      let p: XmlElement | null = c.parent;
+      while (p && p !== el) {
+        const pt = localName(p.name).toLowerCase();
+        if (pt === "compositelowertier" || pt === "lowersegment") return false;
+        p = p.parent;
+      }
+      return true;
+    }
+    return false;
+  });
+
+  let idx = 1;
+  for (const c of candidateDatumTags) {
+    const label =
+      getAttr(c, "datumLabel") ??
+      getAttr(c, "label") ??
+      getChildText(c, "DatumLabel") ??
+      getChildText(c, "SimpleDatum") ??
+      c.text.trim();
+    if (!label) continue;
+    const matStr =
+      getAttr(c, "materialCondition") ??
+      getAttr(c, "materialModifier") ??
+      getChildText(c, "MaterialModifier") ??
+      getChildText(c, "MaterialCondition");
+    const precStr = getAttr(c, "precedence") ?? getChildText(c, "Precedence");
+
+    const ref: QifDatumRef = {
+      datumLabel: label.trim(),
+      precedence: precStr !== undefined && !Number.isNaN(Number(precStr)) ? Number(precStr) : idx,
+    };
+    if (matStr) {
+      ref.materialCondition = normalizeMaterialCondition(matStr);
+    }
+    refs.push(ref);
+    idx++;
+  }
+
+  if (refs.length === 0 && attrDatums) {
+    return parseDatumRefListString(attrDatums);
+  }
+  return refs;
+}
+
+function parseCstCompositeLowerTier(el: XmlElement): QifCompositeLowerTier | undefined {
+  const lowerEl = findDescendants(el, (c) => {
+    const t = localName(c.name).toLowerCase();
+    return t === "compositelowertier" || t === "lowersegment";
+  })[0];
+
+  if (lowerEl) {
+    const tolStr =
+      getAttr(lowerEl, "toleranceZone") ??
+      getAttr(lowerEl, "toleranceValue") ??
+      getChildText(lowerEl, "ToleranceValue") ??
+      getChildText(lowerEl, "ToleranceZone") ??
+      "0";
+    const matStr =
+      getAttr(lowerEl, "materialCondition") ??
+      getAttr(lowerEl, "materialModifier") ??
+      getChildText(lowerEl, "MaterialCondition") ??
+      getChildText(lowerEl, "MaterialModifier");
+
+    const datumTags = findDescendants(lowerEl, (c) => {
+      const t = localName(c.name).toLowerCase();
+      return t === "datumreference" || t === "datum";
+    });
+    const datumRefs: string[] = [];
+    for (const d of datumTags) {
+      const l =
+        getAttr(d, "datumLabel") ??
+        getAttr(d, "label") ??
+        getChildText(d, "DatumLabel") ??
+        getChildText(d, "SimpleDatum") ??
+        d.text.trim();
+      if (l) datumRefs.push(l.trim());
+    }
+    if (datumRefs.length === 0) {
+      const attrDatums = getAttr(lowerEl, "datumReferences") ?? getAttr(lowerEl, "datums");
+      if (attrDatums) {
+        datumRefs.push(...parseListString(attrDatums));
+      }
+    }
+
+    const tier: QifCompositeLowerTier = {
+      toleranceZone: Number(tolStr) || 0,
+      datumReferences: datumRefs,
+    };
+    if (matStr) {
+      tier.materialCondition = normalizeMaterialCondition(matStr);
+    }
+    return tier;
+  }
+
+  const compTolZone = getAttr(el, "compositeToleranceZone");
+  if (compTolZone !== undefined) {
+    const tier: QifCompositeLowerTier = {
+      toleranceZone: Number(compTolZone) || 0,
+      datumReferences: parseListString(getAttr(el, "compositeDatumReferences") ?? ""),
+    };
+    const compMat = getAttr(el, "compositeMaterialCondition");
+    if (compMat) {
+      tier.materialCondition = normalizeMaterialCondition(compMat);
+    }
+    return tier;
+  }
+
+  return undefined;
+}
+
+function parseCstFeatureIds(el: XmlElement, attrFeatures?: string): string[] {
+  const ids: string[] = [];
+  const fnBlock = getChild(el, "FeatureNominalIds") ?? el;
+  const idTags = findDescendants(fnBlock, (c) => {
+    const t = localName(c.name).toLowerCase();
+    return t === "id" || t === "featureid" || t === "featurenominalid";
+  });
+  for (const it of idTags) {
+    const v = it.text.trim();
+    if (v) ids.push(v);
+  }
+  if (ids.length === 0 && attrFeatures) {
+    return parseListString(attrFeatures);
+  }
+  return ids;
+}
+
 function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRange, uri?: string): QifDocument {
   if (
     !text.includes(">") ||
@@ -140,84 +371,81 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     throw new Error("Malformed QIF XML document: unclosed <QIFDocument> element.");
   }
 
+  const parsed = parseXml(text);
+  if (!parsed.root) {
+    throw new Error("Malformed QIF XML document: unclosed <QIFDocument> element.");
+  }
+
+  const rootElement = matchTag(parsed.root, "QIFDocument")
+    ? parsed.root
+    : (findDescendants(parsed.root, (e) => matchTag(e, "QIFDocument"))[0] ?? parsed.root);
+
   const doc = createEmptyDocument(fullRange, uri);
 
   // Extract root QIFDocument attributes & QPId
-  const rootMatch = /<QIFDocument\b([^>]*)>/i.exec(text);
-  if (rootMatch) {
-    const attrs = parseXmlAttributes(rootMatch[1] ?? "");
-    const verQif = attrs.get("versionQIF") ?? attrs.get("version");
-    if (verQif) doc.version = verQif;
-    const qp = attrs.get("qpId") ?? attrs.get("id");
-    if (qp) doc.qpId = qp;
-  }
+  const verQif = getAttr(rootElement, "versionQIF") ?? getAttr(rootElement, "version");
+  if (verQif) doc.version = verQif;
+  const qp = getAttr(rootElement, "qpId") ?? getAttr(rootElement, "id");
+  if (qp) doc.qpId = qp;
 
-  const firstSectionIdx = findFirstSectionIndex(text);
-  const rootHeadSlice = text.slice(0, firstSectionIdx);
-  const rootQpId = extractTagText(rootHeadSlice, "QPId");
+  const rootQpId = getChildText(rootElement, "QPId");
   if (rootQpId) {
     doc.qpId = rootQpId;
   }
 
   // Parse <Header>
-  const headerMatch = /<Header\b[^>]*>([\s\S]*?)<\/Header>/i.exec(text);
-  if (headerMatch) {
-    const hBody = headerMatch[1] ?? "";
-    const hAttrs = parseXmlAttributes(headerMatch[0] ?? "");
-    const authorBlock = extractTagText(hBody, "Author");
-    const authorName = authorBlock ? (extractTagText(authorBlock, "Name") ?? authorBlock.trim()) : hAttrs.get("author");
-    const appBlock = extractTagText(hBody, "Application");
-    const appName = appBlock ? (extractTagText(appBlock, "Name") ?? appBlock.trim()) : hAttrs.get("application");
+  const headerEl = findDescendants(rootElement, (e) => matchTag(e, "Header"))[0];
+  if (headerEl) {
+    const authorEl = getChild(headerEl, "Author");
+    const authorName = authorEl
+      ? (getChildText(authorEl, "Name") ?? authorEl.text.trim())
+      : getAttr(headerEl, "author");
+    const appEl = getChild(headerEl, "Application");
+    const appName = appEl ? (getChildText(appEl, "Name") ?? appEl.text.trim()) : getAttr(headerEl, "application");
     const unitName =
-      extractTagText(hBody, "UnitName") ??
-      extractTagText(hBody, "SIUnitName") ??
-      extractTagText(hBody, "LinearUnit") ??
-      extractTagText(hBody, "FileUnits") ??
-      hAttrs.get("fileUnits") ??
+      getDescendantText(headerEl, "UnitName") ??
+      getDescendantText(headerEl, "SIUnitName") ??
+      getDescendantText(headerEl, "LinearUnit") ??
+      getChildText(headerEl, "FileUnits") ??
+      getAttr(headerEl, "fileUnits") ??
+      getDescendantText(rootElement, "UnitName") ??
       "mm";
-    const partName = extractTagText(hBody, "PartName") ?? hAttrs.get("partName");
-    const partNumber = extractTagText(hBody, "PartNumber") ?? hAttrs.get("partNumber");
+    const partName = getDescendantText(headerEl, "PartName") ?? getAttr(headerEl, "partName");
+    const partNumber = getDescendantText(headerEl, "PartNumber") ?? getAttr(headerEl, "partNumber");
 
     const header: QifHeader = {
       fileUnits: unitName.trim(),
     };
-    if (authorName) header.author = stripTags(authorName).trim();
-    if (appName) header.application = stripTags(appName).trim();
-    if (partName) header.partName = stripTags(partName).trim();
-    if (partNumber) header.partNumber = stripTags(partNumber).trim();
+    if (authorName) header.author = authorName.trim();
+    if (appName) header.application = appName.trim();
+    if (partName) header.partName = partName.trim();
+    if (partNumber) header.partNumber = partNumber.trim();
     doc.header = header;
   }
 
   // Parse <DatumDefinitions> / <DatumDefinition>
-  const datumRegex = /<DatumDefinition\b([^>]*)(?:\/>|>([\s\S]*?)<\/DatumDefinition>)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = datumRegex.exec(text)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const body = match[2] ?? "";
-    const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
-    const id = attrs.get("id") ?? extractTagText(body, "Id") ?? `D_${doc.datumDefinitions.length + 1}`;
-    const qpId = attrs.get("qpId") ?? extractTagText(body, "QPId");
+  const datumElements = findDescendants(rootElement, (e) => matchTag(e, "DatumDefinition"));
+  for (const el of datumElements) {
+    const id = getAttr(el, "id") ?? getChildText(el, "Id") ?? `D_${doc.datumDefinitions.length + 1}`;
+    const qpId = getAttr(el, "qpId") ?? getChildText(el, "QPId");
     const label =
-      attrs.get("label") ??
-      attrs.get("datumLabel") ??
-      extractTagText(body, "DatumLabel") ??
-      extractTagText(body, "Label") ??
+      getAttr(el, "label") ??
+      getAttr(el, "datumLabel") ??
+      getChildText(el, "DatumLabel") ??
+      getChildText(el, "Label") ??
       id;
-    const featureNominalBlock = extractTagText(body, "FeatureNominalIds") ?? body;
+    const fnBlock = getChild(el, "FeatureNominalIds");
     const featureId =
-      attrs.get("featureId") ??
-      attrs.get("featureNominalId") ??
-      extractTagText(featureNominalBlock, "Id") ??
-      extractTagText(body, "FeatureNominalId") ??
-      extractTagText(body, "FeatureId");
+      getAttr(el, "featureId") ??
+      getAttr(el, "featureNominalId") ??
+      (fnBlock ? getChildText(fnBlock, "Id") : undefined) ??
+      getChildText(el, "FeatureNominalId") ??
+      getChildText(el, "FeatureId");
 
     const datumDef: QifDatumDefinition = {
       id: id.trim(),
       label: label.trim(),
-      range,
+      range: makeRange(el.start, el.end, lineOffsets),
     };
     if (qpId) datumDef.qpId = qpId.trim();
     if (featureId) datumDef.featureId = featureId.trim();
@@ -225,33 +453,26 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
   }
 
   // Parse Features (<*FeatureNominal>, <*FeatureDefinition>, <Feature>)
-  const featureRegex =
-    /<((?:Cylinder|Plane|Sphere|Cone|Circle|Slot|OppositeParallelPlanes|Point)?Feature(?:Nominal|Definition|Item)?)\b([^>]*)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-  while ((match = featureRegex.exec(text)) !== null) {
-    const tagName = match[1] ?? "Feature";
-    const attrs = parseXmlAttributes(match[2] ?? "");
-    const body = match[3] ?? "";
-    const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
+  const featureElements = findDescendants(rootElement, isFeatureElement);
+  for (const el of featureElements) {
+    const tagName = localName(el.name);
     const ft = resolveFeatureType(
       tagName,
-      attrs.get("featureType") ?? attrs.get("type") ?? extractTagText(body, "FeatureType"),
+      getAttr(el, "featureType") ?? getAttr(el, "type") ?? getChildText(el, "FeatureType"),
     );
-    const id = attrs.get("id") ?? extractTagText(body, "Id") ?? `F_${doc.features.length + 1}`;
-    const qpId = (attrs.get("qpId") ?? extractTagText(body, "QPId") ?? `qpid-${id}`).trim();
-    const name = (attrs.get("name") ?? extractTagText(body, "Name") ?? id).trim();
+    const id = (getAttr(el, "id") ?? getChildText(el, "Id") ?? `F_${doc.features.length + 1}`).trim();
+    const qpId = (getAttr(el, "qpId") ?? getChildText(el, "QPId") ?? `qpid-${id}`).trim();
+    const name = (getAttr(el, "name") ?? getChildText(el, "Name") ?? id).trim();
 
-    const explicitFos = attrs.get("isFeatureOfSize") ?? extractTagText(body, "IsFeatureOfSize");
+    const explicitFos = getAttr(el, "isFeatureOfSize") ?? getChildText(el, "IsFeatureOfSize");
     const isFeatureOfSize =
       explicitFos !== undefined ? explicitFos.trim().toLowerCase() === "true" : isDefaultFeatureOfSize(ft);
 
     const internalRaw =
-      attrs.get("isInternal") ??
-      attrs.get("internal") ??
-      extractTagText(body, "InternalExternal") ??
-      extractTagText(body, "IsInternal");
+      getAttr(el, "isInternal") ??
+      getAttr(el, "internal") ??
+      getChildText(el, "InternalExternal") ??
+      getChildText(el, "IsInternal");
     let isInternal: boolean | undefined;
     if (internalRaw !== undefined) {
       const upper = internalRaw.trim().toUpperCase();
@@ -260,14 +481,14 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     }
 
     const nominalStr =
-      attrs.get("nominalSize") ??
-      attrs.get("diameter") ??
-      attrs.get("size") ??
-      extractTagText(body, "Diameter") ??
-      extractTagText(body, "NominalSize") ??
-      extractTagText(body, "Width") ??
-      extractTagText(body, "Size");
-    const radiusStr = attrs.get("radius") ?? extractTagText(body, "Radius");
+      getAttr(el, "nominalSize") ??
+      getAttr(el, "diameter") ??
+      getAttr(el, "size") ??
+      getChildText(el, "Diameter") ??
+      getChildText(el, "NominalSize") ??
+      getChildText(el, "Width") ??
+      getChildText(el, "Size");
+    const radiusStr = getAttr(el, "radius") ?? getChildText(el, "Radius");
     let nominalSize: number | undefined;
     if (nominalStr !== undefined && nominalStr.trim() !== "") {
       nominalSize = Number(nominalStr.trim());
@@ -276,48 +497,48 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     }
 
     const upperSizeTolStr =
-      attrs.get("upperSizeTolerance") ??
-      attrs.get("upperTolerance") ??
-      extractTagText(body, "UpperTolerance") ??
-      extractTagText(body, "UpperSizeTolerance");
+      getAttr(el, "upperSizeTolerance") ??
+      getAttr(el, "upperTolerance") ??
+      getChildText(el, "UpperTolerance") ??
+      getChildText(el, "UpperSizeTolerance");
     const lowerSizeTolStr =
-      attrs.get("lowerSizeTolerance") ??
-      attrs.get("lowerTolerance") ??
-      extractTagText(body, "LowerTolerance") ??
-      extractTagText(body, "LowerSizeTolerance");
+      getAttr(el, "lowerSizeTolerance") ??
+      getAttr(el, "lowerTolerance") ??
+      getChildText(el, "LowerTolerance") ??
+      getChildText(el, "LowerSizeTolerance");
 
     const locStr =
-      attrs.get("location") ??
-      extractTagText(body, "Location") ??
-      extractTagText(body, "CenterPoint") ??
-      extractTagText(body, "Point");
+      getAttr(el, "location") ??
+      getChildText(el, "Location") ??
+      getChildText(el, "CenterPoint") ??
+      getChildText(el, "Point");
     const normStr =
-      attrs.get("normal") ??
-      extractTagText(body, "Normal") ??
-      extractTagText(body, "AxisVector") ??
-      extractTagText(body, "Direction");
+      getAttr(el, "normal") ??
+      getChildText(el, "Normal") ??
+      getChildText(el, "AxisVector") ??
+      getChildText(el, "Direction");
 
     const stepId =
-      attrs.get("stepEntityId") ??
-      attrs.get("cadEntityId") ??
-      extractTagText(body, "StepEntityId") ??
-      extractTagText(body, "CADEntityId") ??
-      extractTagText(body, "EntityId");
+      getAttr(el, "stepEntityId") ??
+      getAttr(el, "cadEntityId") ??
+      getChildText(el, "StepEntityId") ??
+      getChildText(el, "CADEntityId") ??
+      getChildText(el, "EntityId");
 
     const pointsStr =
-      attrs.get("probingPoints") ??
-      attrs.get("points") ??
-      extractTagText(body, "ProbingPoints") ??
-      extractTagText(body, "MinPoints") ??
-      extractTagText(body, "PointCount");
+      getAttr(el, "probingPoints") ??
+      getAttr(el, "points") ??
+      getChildText(el, "ProbingPoints") ??
+      getChildText(el, "MinPoints") ??
+      getChildText(el, "PointCount");
 
     const feature: QifFeature = {
-      id: id.trim(),
+      id,
       qpId,
       name,
       featureType: ft,
       isFeatureOfSize,
-      range,
+      range: makeRange(el.start, el.end, lineOffsets),
     };
     if (isInternal !== undefined) feature.isInternal = isInternal;
     if (nominalSize !== undefined && !Number.isNaN(nominalSize)) feature.nominalSize = nominalSize;
@@ -340,79 +561,67 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
   }
 
   // Parse Characteristics (<*CharacteristicNominal>, <*CharacteristicDefinition>, <Characteristic>)
-  const charRegex =
-    /<((?:Flatness|Straightness|Circularity|Cylindricity|ProfileOfSurface|ProfileOfLine|Perpendicularity|Parallelism|Angularity|Position|CircularRunout|TotalRunout|DimensionalSize|DimensionalDistance|Diameter|DistanceBetween|Geometric)?Characteristic(?:Nominal|Definition|Item)?)\b([^>]*)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-  while ((match = charRegex.exec(text)) !== null) {
-    const tagName = match[1] ?? "Characteristic";
-    if (/Actual$/i.test(tagName)) continue;
-    const attrs = parseXmlAttributes(match[2] ?? "");
-    const body = match[3] ?? "";
-    const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
+  const charElements = findDescendants(rootElement, isCharacteristicElement);
+  for (const el of charElements) {
+    const tagName = localName(el.name);
     const gdtType = resolveGdtType(
       tagName,
-      attrs.get("gdtType") ??
-        attrs.get("type") ??
-        extractTagText(body, "GdtType") ??
-        extractTagText(body, "CharacteristicType"),
+      getAttr(el, "gdtType") ??
+        getAttr(el, "type") ??
+        getChildText(el, "GdtType") ??
+        getChildText(el, "CharacteristicType"),
     );
-    const id = (attrs.get("id") ?? extractTagText(body, "Id") ?? `C_${doc.characteristics.length + 1}`).trim();
-    const qpId = (attrs.get("qpId") ?? extractTagText(body, "QPId") ?? `qpid-${id}`).trim();
-    const name = (attrs.get("name") ?? extractTagText(body, "Name") ?? id).trim();
+    const id = (getAttr(el, "id") ?? getChildText(el, "Id") ?? `C_${doc.characteristics.length + 1}`).trim();
+    const qpId = (getAttr(el, "qpId") ?? getChildText(el, "QPId") ?? `qpid-${id}`).trim();
+    const name = (getAttr(el, "name") ?? getChildText(el, "Name") ?? id).trim();
 
-    const balloonStr = attrs.get("balloonNumber") ?? attrs.get("balloon") ?? extractTagText(body, "BalloonNumber");
+    const balloonStr = getAttr(el, "balloonNumber") ?? getAttr(el, "balloon") ?? getChildText(el, "BalloonNumber");
     const nominalStr =
-      attrs.get("nominalValue") ??
-      attrs.get("nominal") ??
-      attrs.get("targetValue") ??
-      extractTagText(body, "NominalValue") ??
-      extractTagText(body, "TargetValue");
+      getAttr(el, "nominalValue") ??
+      getAttr(el, "nominal") ??
+      getAttr(el, "targetValue") ??
+      getChildText(el, "NominalValue") ??
+      getChildText(el, "TargetValue");
     const tolStr =
-      attrs.get("toleranceZone") ??
-      attrs.get("toleranceValue") ??
-      attrs.get("tolerance") ??
-      extractTagText(body, "ToleranceValue") ??
-      extractTagText(body, "ToleranceZone") ??
-      extractTagText(body, "Tolerance") ??
+      getAttr(el, "toleranceZone") ??
+      getAttr(el, "toleranceValue") ??
+      getAttr(el, "tolerance") ??
+      getChildText(el, "ToleranceValue") ??
+      getChildText(el, "ToleranceZone") ??
+      getChildText(el, "Tolerance") ??
       "0";
-    const upperTolStr = attrs.get("upperTolerance") ?? attrs.get("upper") ?? extractTagText(body, "UpperTolerance");
-    const lowerTolStr = attrs.get("lowerTolerance") ?? attrs.get("lower") ?? extractTagText(body, "LowerTolerance");
+    const upperTolStr = getAttr(el, "upperTolerance") ?? getAttr(el, "upper") ?? getChildText(el, "UpperTolerance");
+    const lowerTolStr = getAttr(el, "lowerTolerance") ?? getAttr(el, "lower") ?? getChildText(el, "LowerTolerance");
 
     const diamStr =
-      attrs.get("isDiametrical") ??
-      attrs.get("diametrical") ??
-      extractTagText(body, "DiametricalZone") ??
-      extractTagText(body, "IsDiametrical") ??
-      extractTagText(body, "ZoneType");
+      getAttr(el, "isDiametrical") ??
+      getAttr(el, "diametrical") ??
+      getChildText(el, "DiametricalZone") ??
+      getChildText(el, "IsDiametrical") ??
+      getChildText(el, "ZoneType");
     const isDiametrical =
       diamStr !== undefined
         ? diamStr.trim().toLowerCase() === "true" || diamStr.trim().toUpperCase() === "DIAMETRICAL"
         : gdtType === "Position" || gdtType === "DimensionalSize";
 
     const matRaw =
-      attrs.get("materialCondition") ??
-      attrs.get("materialModifier") ??
-      attrs.get("material") ??
-      extractTagText(body, "MaterialCondition") ??
-      extractTagText(body, "MaterialModifier") ??
+      getAttr(el, "materialCondition") ??
+      getAttr(el, "materialModifier") ??
+      getAttr(el, "material") ??
+      getChildText(el, "MaterialCondition") ??
+      getChildText(el, "MaterialModifier") ??
       "RFS";
     const materialCondition = normalizeMaterialCondition(matRaw);
 
-    const bodyWithoutLower = body.replace(
-      /<(?:CompositeLowerTier|LowerSegment)\b[\s\S]*?<\/(?:CompositeLowerTier|LowerSegment)>/gi,
-      "",
-    );
-    const datumRefs = parseXmlDatumRefs(bodyWithoutLower, attrs.get("datumReferences") ?? attrs.get("datums"));
-    const lowerTier = parseXmlCompositeLowerTier(body, attrs);
-    const featureIds = parseXmlFeatureIds(body, attrs.get("featureIds") ?? attrs.get("featureId"));
+    const datumRefs = parseCstDatumRefs(el, getAttr(el, "datumReferences") ?? getAttr(el, "datums"));
+    const lowerTier = parseCstCompositeLowerTier(el);
+    const featureIds = parseCstFeatureIds(el, getAttr(el, "featureIds") ?? getAttr(el, "featureId"));
 
     const deviceId =
-      attrs.get("deviceId") ??
-      attrs.get("measurementDeviceId") ??
-      extractTagText(body, "MeasurementDeviceId") ??
-      extractTagText(body, "DeviceId");
+      getAttr(el, "deviceId") ??
+      getAttr(el, "measurementDeviceId") ??
+      getChildText(el, "MeasurementDeviceId") ??
+      getChildText(el, "DeviceId");
 
     const characteristic: QifCharacteristic = {
       id,
@@ -424,7 +633,7 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       materialCondition,
       datumReferences: datumRefs,
       featureIds,
-      range,
+      range: makeRange(el.start, el.end, lineOffsets),
     };
     if (balloonStr !== undefined && !Number.isNaN(Number(balloonStr))) {
       characteristic.balloonNumber = Number(balloonStr);
@@ -449,29 +658,22 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
   }
 
   // Parse Measurement Devices
-  const deviceRegex =
-    /<(MeasurementDevice|CMM|LaserScanner|OpticalGauge|Caliper|Device)\b([^>]*)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-  while ((match = deviceRegex.exec(text)) !== null) {
-    const tagName = match[1] ?? "MeasurementDevice";
-    const attrs = parseXmlAttributes(match[2] ?? "");
-    const body = match[3] ?? "";
-    const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
-    const id = (attrs.get("id") ?? extractTagText(body, "Id") ?? `DEV_${doc.devices.length + 1}`).trim();
-    const qpId = attrs.get("qpId") ?? extractTagText(body, "QPId");
-    const name = (attrs.get("name") ?? extractTagText(body, "Name") ?? id).trim();
+  const devElements = findDescendants(rootElement, isDeviceElement);
+  for (const el of devElements) {
+    const tagName = localName(el.name);
+    const id = (getAttr(el, "id") ?? getChildText(el, "Id") ?? `DEV_${doc.devices.length + 1}`).trim();
+    const qpId = getAttr(el, "qpId") ?? getChildText(el, "QPId");
+    const name = (getAttr(el, "name") ?? getChildText(el, "Name") ?? id).trim();
     const devType = resolveDeviceType(
       tagName,
-      attrs.get("deviceType") ?? attrs.get("type") ?? extractTagText(body, "DeviceType"),
+      getAttr(el, "deviceType") ?? getAttr(el, "type") ?? getChildText(el, "DeviceType"),
     );
     const uncStr =
-      attrs.get("calibrationUncertainty") ??
-      attrs.get("uncertainty") ??
-      extractTagText(body, "CalibrationUncertainty") ??
-      extractTagText(body, "ExpandedUncertainty") ??
-      extractTagText(body, "Uncertainty") ??
+      getAttr(el, "calibrationUncertainty") ??
+      getAttr(el, "uncertainty") ??
+      getChildText(el, "CalibrationUncertainty") ??
+      getChildText(el, "ExpandedUncertainty") ??
+      getChildText(el, "Uncertainty") ??
       "0.001";
 
     const device: QifMeasurementDevice = {
@@ -479,47 +681,40 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       name,
       deviceType: devType,
       calibrationUncertainty: Number(uncStr) || 0,
-      range,
+      range: makeRange(el.start, el.end, lineOffsets),
     };
     if (qpId) device.qpId = qpId.trim();
     doc.devices.push(device);
   }
 
   // Parse Rules (<Rules> or <QIFRules>)
-  const rulesMatch = /<(?:QIF)?Rules\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:QIF)?Rules>)/i.exec(text);
-  if (rulesMatch) {
-    const rAttrs = parseXmlAttributes(rulesMatch[1] ?? "");
-    const rBody = rulesMatch[2] ?? "";
-    const rRange = makeRange(rulesMatch.index, rulesMatch.index + rulesMatch[0].length, lineOffsets);
+  const rulesEl = findDescendants(rootElement, (c) => {
+    const t = localName(c.name).toLowerCase();
+    return t === "rules" || t === "qifrules";
+  })[0];
+  if (rulesEl) {
+    doc.rules.range = makeRange(rulesEl.start, rulesEl.end, lineOffsets);
     const minTurStr =
-      rAttrs.get("minTurRatio") ??
-      rAttrs.get("minTur") ??
-      extractTagText(rBody, "MinTurRatio") ??
-      extractTagText(rBody, "MinTUR");
+      getAttr(rulesEl, "minTurRatio") ??
+      getAttr(rulesEl, "minTur") ??
+      getChildText(rulesEl, "MinTurRatio") ??
+      getChildText(rulesEl, "MinTUR");
     if (minTurStr !== undefined && !Number.isNaN(Number(minTurStr))) {
       doc.rules.minTurRatio = Number(minTurStr);
     }
-    doc.rules.range = rRange;
-
     for (const ftKey of ["Point", "Plane", "Circle", "Slot", "Sphere", "Cylinder", "Cone"]) {
-      const attrVal = rAttrs.get(ftKey) ?? rAttrs.get(ftKey.toLowerCase());
+      const attrVal = getAttr(rulesEl, ftKey) ?? getAttr(rulesEl, ftKey.toLowerCase());
       if (attrVal !== undefined && !Number.isNaN(Number(attrVal))) {
         doc.rules.minPointsPerFeature[ftKey] = Number(attrVal);
       }
     }
-
-    const ruleItemRegex =
-      /<(?:FeatureRule|MinPointsRule|MinPoints)\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:FeatureRule|MinPointsRule|MinPoints)>)/gi;
-    let rm: RegExpExecArray | null;
-    while ((rm = ruleItemRegex.exec(rBody)) !== null) {
-      const itemAttrs = parseXmlAttributes(rm[1] ?? "");
-      const itemBody = rm[2] ?? "";
-      const ft = itemAttrs.get("featureType") ?? itemAttrs.get("type") ?? extractTagText(itemBody, "FeatureType");
-      const pts =
-        itemAttrs.get("minPoints") ??
-        itemAttrs.get("points") ??
-        extractTagText(itemBody, "MinPoints") ??
-        itemBody.trim();
+    const ruleItems = findDescendants(rulesEl, (c) => {
+      const t = localName(c.name).toLowerCase();
+      return t === "featurerule" || t === "minpointsrule" || t === "minpoints";
+    });
+    for (const rm of ruleItems) {
+      const ft = getAttr(rm, "featureType") ?? getAttr(rm, "type") ?? getChildText(rm, "FeatureType");
+      const pts = getAttr(rm, "minPoints") ?? getAttr(rm, "points") ?? getChildText(rm, "MinPoints") ?? rm.text.trim();
       if (ft && pts && !Number.isNaN(Number(pts))) {
         doc.rules.minPointsPerFeature[ft.trim()] = Number(pts);
       }
@@ -527,41 +722,38 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
   }
 
   // Parse PlanSteps (<PlanStep>, <MeasureFeatureStep>)
-  const stepRegex = /<(?:PlanStep|MeasureFeatureStep)\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:PlanStep|MeasureFeatureStep)>)/gi;
-  while ((match = stepRegex.exec(text)) !== null) {
-    const attrs = parseXmlAttributes(match[1] ?? "");
-    const body = match[2] ?? "";
-    const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
-    const id = (attrs.get("id") ?? extractTagText(body, "Id") ?? `S_${doc.planSteps.length + 1}`).trim();
+  const stepElements = findDescendants(rootElement, (c) => {
+    const t = localName(c.name).toLowerCase();
+    return t === "planstep" || t === "measurefeaturestep";
+  });
+  for (const el of stepElements) {
+    const id = (getAttr(el, "id") ?? getChildText(el, "Id") ?? `S_${doc.planSteps.length + 1}`).trim();
     const stepNumStr =
-      attrs.get("stepNumber") ??
-      attrs.get("step") ??
-      extractTagText(body, "StepNumber") ??
+      getAttr(el, "stepNumber") ??
+      getAttr(el, "step") ??
+      getChildText(el, "StepNumber") ??
       String(doc.planSteps.length + 1);
     const featureId = (
-      attrs.get("featureId") ??
-      extractTagText(body, "FeatureId") ??
-      extractTagText(body, "FeatureNominalId") ??
+      getAttr(el, "featureId") ??
+      getChildText(el, "FeatureId") ??
+      getChildText(el, "FeatureNominalId") ??
       ""
     ).trim();
     const charId =
-      attrs.get("characteristicId") ??
-      extractTagText(body, "CharacteristicId") ??
-      extractTagText(body, "CharacteristicNominalId");
+      getAttr(el, "characteristicId") ??
+      getChildText(el, "CharacteristicId") ??
+      getChildText(el, "CharacteristicNominalId");
     const deviceId = (
-      attrs.get("deviceId") ??
-      extractTagText(body, "DeviceId") ??
-      extractTagText(body, "MeasurementDeviceId") ??
+      getAttr(el, "deviceId") ??
+      getChildText(el, "DeviceId") ??
+      getChildText(el, "MeasurementDeviceId") ??
       ""
     ).trim();
     const ptsStr =
-      attrs.get("probingPointCount") ??
-      attrs.get("points") ??
-      extractTagText(body, "ProbingPointCount") ??
-      extractTagText(body, "NumberOfPoints") ??
+      getAttr(el, "probingPointCount") ??
+      getAttr(el, "points") ??
+      getChildText(el, "ProbingPointCount") ??
+      getChildText(el, "NumberOfPoints") ??
       "0";
 
     const step: QifPlanStep = {
@@ -570,51 +762,44 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       featureId,
       deviceId,
       probingPointCount: Number(ptsStr) || 0,
-      range,
+      range: makeRange(el.start, el.end, lineOffsets),
     };
     if (charId) step.characteristicId = charId.trim();
     doc.planSteps.push(step);
   }
 
   // Parse Actuals
-  const actualRegex =
-    /<((?:Geometric|Position|Flatness|Perpendicularity|Dimensional|Diameter)?CharacteristicActual|Actual)\b([^>]*)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-  while ((match = actualRegex.exec(text)) !== null) {
-    const attrs = parseXmlAttributes(match[2] ?? "");
-    const body = match[3] ?? "";
-    const startOffset = match.index;
-    const endOffset = match.index + match[0].length;
-    const range = makeRange(startOffset, endOffset, lineOffsets);
-
-    const id = (attrs.get("id") ?? extractTagText(body, "Id") ?? `A_${doc.actuals.length + 1}`).trim();
+  const actualElements = findDescendants(rootElement, isActualElement);
+  for (const el of actualElements) {
+    const id = (getAttr(el, "id") ?? getChildText(el, "Id") ?? `A_${doc.actuals.length + 1}`).trim();
     const characteristicId = (
-      attrs.get("characteristicId") ??
-      attrs.get("characteristicNominalId") ??
-      extractTagText(body, "CharacteristicNominalId") ??
-      extractTagText(body, "CharacteristicId") ??
+      getAttr(el, "characteristicId") ??
+      getAttr(el, "characteristicNominalId") ??
+      getChildText(el, "CharacteristicNominalId") ??
+      getChildText(el, "CharacteristicId") ??
       ""
     ).trim();
     const partSerialNumber = (
-      attrs.get("partSerialNumber") ??
-      attrs.get("serialNumber") ??
-      attrs.get("serial") ??
-      extractTagText(body, "PartSerialNumber") ??
-      extractTagText(body, "SerialNumber") ??
+      getAttr(el, "partSerialNumber") ??
+      getAttr(el, "serialNumber") ??
+      getAttr(el, "serial") ??
+      getChildText(el, "PartSerialNumber") ??
+      getChildText(el, "SerialNumber") ??
       "SN-001"
     ).trim();
     const valStr =
-      attrs.get("measuredValue") ??
-      attrs.get("value") ??
-      extractTagText(body, "MeasuredValue") ??
-      extractTagText(body, "Value") ??
+      getAttr(el, "measuredValue") ??
+      getAttr(el, "value") ??
+      getChildText(el, "MeasuredValue") ??
+      getChildText(el, "Value") ??
       "0";
     const actualSizeStr =
-      attrs.get("actualFeatureSize") ??
-      attrs.get("actualSize") ??
-      extractTagText(body, "ActualFeatureSize") ??
-      extractTagText(body, "ActualSize");
-    const devVecStr = attrs.get("deviationVector") ?? attrs.get("deviation") ?? extractTagText(body, "DeviationVector");
-    const statusRaw = attrs.get("status") ?? extractTagText(body, "Status") ?? "PASS";
+      getAttr(el, "actualFeatureSize") ??
+      getAttr(el, "actualSize") ??
+      getChildText(el, "ActualFeatureSize") ??
+      getChildText(el, "ActualSize");
+    const devVecStr = getAttr(el, "deviationVector") ?? getAttr(el, "deviation") ?? getChildText(el, "DeviationVector");
+    const statusRaw = getAttr(el, "status") ?? getChildText(el, "Status") ?? "PASS";
 
     const actual: QifCharacteristicActual = {
       id,
@@ -622,7 +807,7 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       partSerialNumber,
       measuredValue: Number(valStr) || 0,
       status: normalizeStatus(statusRaw),
-      range,
+      range: makeRange(el.start, el.end, lineOffsets),
     };
     if (actualSizeStr !== undefined && actualSizeStr.trim() !== "" && !Number.isNaN(Number(actualSizeStr))) {
       actual.actualFeatureSize = Number(actualSizeStr);
@@ -1038,41 +1223,6 @@ function parseQifJson(text: string, lineOffsets: number[], fullRange: QifSourceR
 // Helper Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-function findFirstSectionIndex(text: string): number {
-  const m =
-    /<(?:Header|DatumDefinitions|Features|FeatureNominals|Characteristics|CharacteristicNominals|MeasurementResources|MeasurementDevices|Rules|Plan|Results)\b/i.exec(
-      text,
-    );
-  return m ? m.index : text.length;
-}
-
-function parseXmlAttributes(attrString: string): Map<string, string> {
-  const result = new Map<string, string>();
-  const regex = /\b([a-zA-Z_][a-zA-Z0-9_:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(attrString)) !== null) {
-    const key = m[1];
-    const val = m[2] ?? m[3] ?? "";
-    if (key) {
-      result.set(key, val);
-    }
-  }
-  return result;
-}
-
-function extractTagText(xml: string, tagName: string): string | undefined {
-  const regex = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
-  const m = regex.exec(xml);
-  return m?.[1]?.trim();
-}
-
-function stripTags(xml: string): string {
-  return xml
-    .replace(/<[^<>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function resolveFeatureType(tagName: string, explicitType?: string): QifFeatureType {
   const combined = `${explicitType ?? ""} ${tagName}`.toLowerCase();
   if (combined.includes("cylinder") || combined.includes("cylindrical")) return "Cylinder";
@@ -1144,45 +1294,6 @@ function parseVector3(raw?: string): [number, number, number] | undefined {
   return [x, y, z];
 }
 
-function parseXmlDatumRefs(body: string, attrDatums?: string): QifDatumRef[] {
-  const refs: QifDatumRef[] = [];
-  const datumTagRegex = /<(?:DatumReference|Datum)\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:DatumReference|Datum)>)/gi;
-  let m: RegExpExecArray | null;
-  let idx = 1;
-  while ((m = datumTagRegex.exec(body)) !== null) {
-    const attrs = parseXmlAttributes(m[1] ?? "");
-    const inner = m[2] ?? "";
-    const label =
-      attrs.get("datumLabel") ??
-      attrs.get("label") ??
-      extractTagText(inner, "DatumLabel") ??
-      extractTagText(inner, "SimpleDatum") ??
-      inner.trim();
-    if (!label) continue;
-    const matStr =
-      attrs.get("materialCondition") ??
-      attrs.get("materialModifier") ??
-      extractTagText(inner, "MaterialModifier") ??
-      extractTagText(inner, "MaterialCondition");
-    const precStr = attrs.get("precedence") ?? extractTagText(inner, "Precedence");
-
-    const ref: QifDatumRef = {
-      datumLabel: stripTags(label).trim(),
-      precedence: precStr !== undefined && !Number.isNaN(Number(precStr)) ? Number(precStr) : idx,
-    };
-    if (matStr) {
-      ref.materialCondition = normalizeMaterialCondition(matStr);
-    }
-    refs.push(ref);
-    idx++;
-  }
-
-  if (refs.length === 0 && attrDatums) {
-    return parseDatumRefListString(attrDatums);
-  }
-  return refs;
-}
-
 function parseDatumRefListString(raw: string): QifDatumRef[] {
   const cleaned = raw.replace(/^\[|\]$/g, "").trim();
   if (!cleaned) return [];
@@ -1200,67 +1311,6 @@ function parseDatumRefListString(raw: string): QifDatumRef[] {
     }
     return ref;
   });
-}
-
-function parseXmlCompositeLowerTier(body: string, charAttrs: Map<string, string>): QifCompositeLowerTier | undefined {
-  const m =
-    /<(?:CompositeLowerTier|LowerSegment)\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:CompositeLowerTier|LowerSegment)>)/i.exec(
-      body,
-    );
-  if (m) {
-    const attrs = parseXmlAttributes(m[1] ?? "");
-    const inner = m[2] ?? "";
-    const tolStr =
-      attrs.get("toleranceZone") ??
-      attrs.get("toleranceValue") ??
-      extractTagText(inner, "ToleranceValue") ??
-      extractTagText(inner, "ToleranceZone") ??
-      "0";
-    const matStr =
-      attrs.get("materialCondition") ??
-      attrs.get("materialModifier") ??
-      extractTagText(inner, "MaterialCondition") ??
-      extractTagText(inner, "MaterialModifier");
-    const datumRefs = parseXmlDatumRefs(inner, attrs.get("datumReferences") ?? attrs.get("datums"));
-    const tier: QifCompositeLowerTier = {
-      toleranceZone: Number(tolStr) || 0,
-      datumReferences: datumRefs.map((d) => d.datumLabel),
-    };
-    if (matStr) {
-      tier.materialCondition = normalizeMaterialCondition(matStr);
-    }
-    return tier;
-  }
-
-  const compTolZone = charAttrs.get("compositeToleranceZone");
-  if (compTolZone !== undefined) {
-    const tier: QifCompositeLowerTier = {
-      toleranceZone: Number(compTolZone) || 0,
-      datumReferences: parseListString(charAttrs.get("compositeDatumReferences") ?? ""),
-    };
-    const compMat = charAttrs.get("compositeMaterialCondition");
-    if (compMat) {
-      tier.materialCondition = normalizeMaterialCondition(compMat);
-    }
-    return tier;
-  }
-
-  return undefined;
-}
-
-function parseXmlFeatureIds(body: string, attrFeatures?: string): string[] {
-  const ids: string[] = [];
-  const fnBlock = extractTagText(body, "FeatureNominalIds") ?? body;
-  const idRegex = /<(?:Id|FeatureId|FeatureNominalId)\b[^>]*>([^<]+)<\/(?:Id|FeatureId|FeatureNominalId)>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = idRegex.exec(fnBlock)) !== null) {
-    const val = m[1]?.trim();
-    if (val) ids.push(val);
-  }
-  if (ids.length === 0 && attrFeatures) {
-    return parseListString(attrFeatures);
-  }
-  return ids;
 }
 
 function parseListString(raw: string): string[] {

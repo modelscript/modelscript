@@ -51,6 +51,7 @@ tag_port("base_mount", "frame", [0, 0, -1])
 
 - **Surgical AST Writeback (`ScadPatcher` in `languages/scad/src/patcher.ts`)**: When a user drags a 3D translation/rotation/scale gizmo in the CAD viewport, `ScadPatcher` (`patchNode`, `patchVariable`, `patchTransformArgument`, `patchVectorComponent`, `wrapPrimitiveWithTransform`, `patchOrInsertTransform`) updates the exact CST byte spans in the `.scad` source without reformatting surrounding code or comments.
 - **STEP AP214/AP242 Export (`compileScadToStep`)**: Evaluates the `.scad` CSG tree and serializes exact B-Rep analytical surfaces (`PLANE`, `CYLINDRICAL_SURFACE`, `SPHERICAL_SURFACE`, `MANIFOLD_SOLID_BREP`) to ISO 10303-21 `.step`.
+- **OpenUSD & USDZ Export (`compileScadToUsd`, `compileScadToUsdz`)**: Evaluates CSG trees and exports `.usda` or 64-byte aligned `.usdz` archives for Apple AR Quick Look and NVIDIA Omniverse.
 
 ```bash
 # Project a parametric OpenSCAD file to an ISO 10303-21 STEP CAD file

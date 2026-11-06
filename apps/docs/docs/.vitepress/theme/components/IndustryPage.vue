@@ -3,9 +3,12 @@
 import { computed } from "vue";
 import { INDUSTRIES, INDUSTRY_BY_SLUG } from "../data/industries";
 import { LANGUAGE_BY_SLUG, TIER_LABELS } from "../data/languages";
+import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
 
 const props = defineProps<{ slug: string }>();
+
+const { ansatzOrigin } = useAnsatzOrigin();
 
 const industry = computed(() => INDUSTRY_BY_SLUG[props.slug]);
 const languages = computed(() =>
@@ -42,7 +45,7 @@ const related = computed(() => {
             <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
               Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
             </a>
-            <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/sketch" target="_self">Open Sketch</a>
+            <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/sketch`" target="_blank" rel="noopener noreferrer">Open Sketch</a>
           </div>
         </div>
 

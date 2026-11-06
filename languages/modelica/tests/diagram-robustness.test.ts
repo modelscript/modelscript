@@ -186,4 +186,31 @@ describe("Modelica Diagram Data Robustness & DynamicSelect", () => {
     assert(lineFromParent, "Should extract Line annotation when passing some_equation CST node");
     assert.deepStrictEqual(lineFromParent.points, lineFromConnect.points);
   });
+
+  it("should extract customizable grid, bounds, and axes from Diagram coordinateSystem annotation", async () => {
+    const { createWasmParser } = await import("@modelscript/modelica/parser");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { parser } = await createWasmParser(modelicaWasm);
+
+    const code = `
+      model GridCircuit
+        annotation(Diagram(coordinateSystem(extent = {{-120, -80}, {120, 80}}, grid = {5, 5})));
+      end GridCircuit;
+    `;
+    const tree = parser.parse(code);
+    const evaluator = new AnnotationEvaluator();
+    const diagram = evaluator.evaluate(tree.rootNode, "Diagram");
+
+    assert(diagram, "Diagram annotation should be extracted");
+    assert(diagram.coordinateSystem, "Coordinate system should be extracted");
+    assert.deepStrictEqual(diagram.coordinateSystem.grid, [5, 5], "Grid {5, 5} should be parsed");
+    assert.deepStrictEqual(diagram.coordinateSystem.extent, [
+      [-120, -80],
+      [120, 80],
+    ]);
+  });
 });

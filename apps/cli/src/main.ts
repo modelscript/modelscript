@@ -536,6 +536,23 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "keys <action>",
+      "Manage cryptographic signing keys and signed account identity",
+      () => import("./commands/keys.js"),
+      "KeysCommand",
+      ["key"],
+    ),
+  )
+  .command(
+    lazy(
+      "sign <file>",
+      "Cryptographically sign a post or verify a W3C Data Integrity proof",
+      () => import("./commands/sign.js"),
+      "SignCommand",
+    ),
+  )
+  .command(
+    lazy(
       "install [package]",
       "Install a package from the Ansatz Package Registry into the local workspace",
       () => import("./commands/install.js"),

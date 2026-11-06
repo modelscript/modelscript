@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
+import { TURBINE_BLADE_ROOT_STEP } from "@modelscript/qif/step-bridge";
 import type { SeedPostSpec } from "../types.js";
+
+export { TURBINE_BLADE_ROOT_STEP };
 
 export const CAE_CAD_MANUFACTURING_POSTS: SeedPostSpec[] = [
   // 35. STEP (.step)
@@ -630,6 +632,11 @@ OUTPUT_WRT_FREQ = 250
     </GeometricCharacteristicActual>
   </Results>
 </QIFDocument>`,
+    extraViewConfig: {
+      stepCode: TURBINE_BLADE_ROOT_STEP,
+      stepFilename: "TurbineBladeRoot.step",
+      stepTitle: "TurbineBladeRoot.step",
+    },
     likedBy: ["omar", "david_kowalski", "sofia_rossi", "lukas_weber", "vikram_patel"],
     repostedBy: ["omar", "david_kowalski"],
     bookmarkedBy: ["sofia_rossi", "omar"],

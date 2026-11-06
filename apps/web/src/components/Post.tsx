@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { bookmarkPost, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
 import { parseFederatedHandle } from "../util/federation";
+import { safeJsonParse } from "../util/json";
 import {
   estimateReadingTimeMinutes,
   extractNotebookHeadings,
@@ -24,6 +25,7 @@ import { PostAnalyticsModal } from "./post/PostAnalyticsModal";
 import { PostAuthorHeader } from "./post/PostAuthorHeader";
 import { PostBodyContent } from "./post/PostBodyContent";
 import { PostQuotedPost } from "./post/PostQuotedPost";
+import { PostRevisionHistoryModal } from "./post/PostRevisionHistoryModal";
 import { PostSignatureModal } from "./post/PostSignatureModal";
 import type { PostProps } from "./post/styles";
 import { HoverAvatar, PostWrapper, ProfileNameLink } from "./post/styles";
@@ -101,6 +103,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   const [pendingPin, setPendingPin] = useState<SpatialPin | undefined>(undefined);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -146,9 +149,23 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     return null;
   }, [displayPost.url, displayPost.ap_id]);
 
+  const postMeta = useMemo<Record<string, any>>(() => {
+    if (typeof displayPost.metadata === "string") {
+      return safeJsonParse<Record<string, any>>(displayPost.metadata, {});
+    }
+    return displayPost.metadata && typeof displayPost.metadata === "object"
+      ? (displayPost.metadata as Record<string, any>)
+      : {};
+  }, [displayPost.metadata]);
+
   const signatureDigest =
     (displayPost as any).signature ||
     displayPost.client_signature ||
+    postMeta?.client_signature ||
+    postMeta?.clientSignature ||
+    postMeta?.proof?.proofValue ||
+    postMeta?.proof?.signature ||
+    postMeta?.signature ||
     displayPost.metadata?.client_signature ||
     displayPost.metadata?.clientSignature ||
     displayPost.metadata?.proof?.proofValue ||
@@ -158,14 +175,22 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
 
   const hasSignature = Boolean(signatureDigest);
 
-  const signatureScheme = displayPost.metadata?.proof?.cryptosuite
-    ? `Data Integrity (${displayPost.metadata.proof.cryptosuite})`
-    : displayPost.client_signature || displayPost.metadata?.client_signature || displayPost.metadata?.clientSignature
-      ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
-      : "ActivityPub RFC 9421 / Cavage HTTP Signatures";
+  const signatureScheme =
+    postMeta?.proof?.cryptosuite || displayPost.metadata?.proof?.cryptosuite
+      ? `Data Integrity (${postMeta?.proof?.cryptosuite || displayPost.metadata?.proof?.cryptosuite})`
+      : displayPost.client_signature ||
+          postMeta?.client_signature ||
+          postMeta?.clientSignature ||
+          displayPost.metadata?.client_signature ||
+          displayPost.metadata?.clientSignature
+        ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
+        : "ActivityPub RFC 9421 / Cavage HTTP Signatures";
 
   const keyIdentifier =
     displayPost.key_id_string ||
+    postMeta?.key_id_string ||
+    postMeta?.keyIdString ||
+    postMeta?.proof?.verificationMethod ||
     displayPost.metadata?.key_id_string ||
     displayPost.metadata?.keyIdString ||
     displayPost.metadata?.proof?.verificationMethod ||
@@ -194,16 +219,21 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   const validArtifactId =
     displayPost.artifact_view_id !== null &&
     displayPost.artifact_view_id !== undefined &&
-    Number(displayPost.artifact_view_id) > 0
-      ? Number(displayPost.artifact_view_id)
+    String(displayPost.artifact_view_id).trim() !== "" &&
+    String(displayPost.artifact_view_id) !== "0"
+      ? String(displayPost.artifact_view_id)
       : undefined;
   const isNotebook = isNotebookPost(displayPost);
   const notebookData = useMemo(
     () =>
       isNotebook
-        ? parseNotebookFromContent(displayPost.content, validArtifactId, displayPost.metadata?.notebook)
+        ? parseNotebookFromContent(
+            displayPost.content,
+            validArtifactId,
+            postMeta?.notebook || displayPost.metadata?.notebook,
+          )
         : null,
-    [isNotebook, displayPost.content, validArtifactId, displayPost.metadata?.notebook],
+    [isNotebook, displayPost.content, validArtifactId, postMeta?.notebook, displayPost.metadata?.notebook],
   );
   const notebookHeadings = useMemo(
     () => (notebookData ? extractNotebookHeadings(notebookData.cells) : []),
@@ -354,6 +384,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     setShowPostMenu,
     canEditPost,
     onOpenEditModal: () => setShowEditModal(true),
+    onOpenRevisionModal: () => setShowRevisionModal(true),
     onOpenSignatureModal: () => setShowSignatureModal(true),
     onOpenLoginModal: () => setShowLoginModal(true),
     onPostDeleted: () => {
@@ -407,6 +438,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     onCopyLink: handleCopyLink,
     onDownload: handleDownload,
     onPostAsAttachment: handlePostAsAttachment,
+    onOpenRevisionModal: () => setShowRevisionModal(true),
     isDetail: Boolean(isDetail),
   };
 
@@ -415,7 +447,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   }
 
   const hasActiveModal =
-    showLoginModal || showQuoteModal || showReplyModal || showEditModal || showAnalyticsModal || showSignatureModal;
+    showLoginModal ||
+    showQuoteModal ||
+    showReplyModal ||
+    showEditModal ||
+    showAnalyticsModal ||
+    showSignatureModal ||
+    showRevisionModal;
 
   const modalsContent = hasActiveModal ? (
     <Suspense fallback={null}>
@@ -444,6 +482,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
             editPostId: displayPost.id,
             content: displayPost.content,
             initialContent: displayPost.content,
+            contentWarning:
+              (typeof (displayPost as any).content_warning === "string" &&
+                (displayPost as any).content_warning.trim()) ||
+              (typeof (displayPost.metadata as any)?.contentWarning === "string" &&
+                (displayPost.metadata as any).contentWarning.trim()) ||
+              (typeof postMeta?.contentWarning === "string" && postMeta.contentWarning.trim()) ||
+              "",
             artifactId: displayPost.artifact_view_id,
             notebookMode: isNotebook,
             notebookTitle: notebookData?.title || "",
@@ -488,6 +533,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
           keyIdentifier={keyIdentifier}
           signatureDigest={signatureDigest}
           onClose={() => setShowSignatureModal(false)}
+        />
+      )}
+      {showRevisionModal && (
+        <PostRevisionHistoryModal
+          postId={displayPost.id}
+          displayPost={displayPost}
+          onClose={() => setShowRevisionModal(false)}
         />
       )}
     </Suspense>

@@ -77,6 +77,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
     pendingPin,
     content: controlledContent,
     setContent: setControlledContent,
+    contentWarning: controlledContentWarning,
+    setContentWarning: setControlledContentWarning,
     artifactId: controlledArtifactId,
     setArtifactId: setControlledArtifactId,
     isModal,
@@ -148,8 +150,16 @@ export default function ComposeBox(props: ComposeBoxProps) {
   }, [user?.default_post_visibility]);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showContentWarning, setShowContentWarning] = useState(false);
-  const [contentWarning, setContentWarning] = useState("");
+  const [internalContentWarning, setInternalContentWarning] = useState("");
+  const contentWarning = controlledContentWarning !== undefined ? controlledContentWarning : internalContentWarning;
+  const setContentWarning = setControlledContentWarning || setInternalContentWarning;
+  const [showContentWarning, setShowContentWarning] = useState(Boolean(contentWarning));
+
+  useEffect(() => {
+    if (controlledContentWarning) {
+      setShowContentWarning(true);
+    }
+  }, [controlledContentWarning]);
   const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [showMorselModal, setShowMorselModal] = useState(false);
   const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
@@ -1683,6 +1693,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   aiEngine={aiEngine}
                   onChangeAiEngine={handleChangeAiEngine}
                   aiLastSourceLabel={aiLastSourceLabel}
+                  hasDeviceKey={submitHandler.hasDeviceKey}
                 />
               </Box>
             </Box>

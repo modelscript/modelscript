@@ -173,18 +173,17 @@ const PackageDetailSkeleton: React.FC = () => (
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
             alignItems: "flex-start",
-            gap: "24px",
+            gap: "20px",
             marginBottom: "16px",
           }}
         >
+          <div className="skeleton" style={{ width: "100px", height: "100px", borderRadius: "18px", flexShrink: 0 }} />
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
             <div className="skeleton" style={{ width: "240px", height: "28px" }} />
             <div className="skeleton" style={{ width: "420px", height: "16px" }} />
             <div className="skeleton" style={{ width: "320px", height: "14px" }} />
           </div>
-          <div className="skeleton" style={{ width: "80px", height: "80px", borderRadius: "16px", flexShrink: 0 }} />
         </div>
         <div
           style={{

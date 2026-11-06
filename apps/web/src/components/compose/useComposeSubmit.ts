@@ -11,6 +11,7 @@ import {
   updatePost,
   uploadStorageFile,
 } from "../../api";
+import { hasActiveDeviceSigningKey, signPostWithDeviceKey } from "../../util/device-signing";
 import { getAllPrivateKeyIds, getPrivateKey, migrateLegacyKeys } from "../../util/keystore";
 import {
   estimateReadingTimeMinutes,
@@ -116,8 +117,19 @@ export function useComposeSubmit({
   onArtifactEdited,
 }: UseComposeSubmitParams) {
   const [submitting, setSubmitting] = useState(false);
+  const [hasDeviceKey, setHasDeviceKey] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    let mounted = true;
+    hasActiveDeviceSigningKey().then((res) => {
+      if (mounted) setHasDeviceKey(res);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const attachCtx = useMemo<AttachContext>(
     () => ({
@@ -170,7 +182,35 @@ export function useComposeSubmit({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const signContent = async (text: string) => {
+  const signContent = async (
+    text: string,
+    context?: {
+      replyToId?: number | string | null;
+      quotePostId?: number | string | null;
+      artifactId?: number | string | null;
+    },
+  ) => {
+    // 1. Try modern Ed25519 Web Browser Device Key first
+    try {
+      const deviceSignResult = await signPostWithDeviceKey(text, {
+        replyToId: context?.replyToId,
+        quotePostId: context?.quotePostId,
+        artifactId: context?.artifactId,
+        domain: typeof window !== "undefined" ? window.location?.hostname : undefined,
+      });
+      if (deviceSignResult) {
+        return {
+          signatureBase64: deviceSignResult.proof.proofValue,
+          keyIdString: deviceSignResult.keyId,
+          proof: deviceSignResult.proof,
+          proofPayload: deviceSignResult.payload,
+        };
+      }
+    } catch (e) {
+      console.warn("Device key signing attempt skipped:", e);
+    }
+
+    // 2. Fall back to legacy RSA key if present
     try {
       await migrateLegacyKeys();
       const keyIds = await getAllPrivateKeyIds();
@@ -242,12 +282,16 @@ export function useComposeSubmit({
         : resolvedArtifactId
           ? [resolvedArtifactId]
           : [];
-      const primaryArtifactId = effectiveArtIds[0] ?? resolvedArtifactId ?? undefined;
+      const primaryArtifactId = effectiveArtIds[0] ?? resolvedArtifactId ?? (editPostId ? null : undefined);
       const text = isNotebookMode
         ? serializeCellsToMarkdown(effectiveCells || [], notebookTitle).trim()
         : content.trim();
 
-      const signatureObj = await signContent(text);
+      const signatureObj = await signContent(text, {
+        replyToId: replyToPost?.id,
+        quotePostId: quotePost?.id,
+        artifactId: primaryArtifactId,
+      });
 
       const notebookPayload =
         isNotebookMode && effectiveCells
@@ -270,8 +314,8 @@ export function useComposeSubmit({
 
       const payload: any = {
         content: text,
-        content_warning: contentWarning.trim() || undefined,
-        artifact_view_id: primaryArtifactId,
+        content_warning: contentWarning.trim() || (editPostId ? null : undefined),
+        artifact_view_id: primaryArtifactId !== undefined ? primaryArtifactId : undefined,
         quote_post_id: quotePost?.id,
         reply_to_id: replyToPost?.id,
         visibility,
@@ -291,6 +335,12 @@ export function useComposeSubmit({
       if (signatureObj) {
         payload.client_signature = signatureObj.signatureBase64;
         payload.key_id_string = signatureObj.keyIdString;
+        if ("proof" in signatureObj && signatureObj.proof) {
+          payload.proof = signatureObj.proof;
+          payload.proof_payload = signatureObj.proofPayload;
+          if (!payload.metadata) payload.metadata = {};
+          payload.metadata.proof = signatureObj.proof;
+        }
       }
 
       const data = editPostId ? await updatePost(editPostId, payload) : await createPost(payload);
@@ -344,6 +394,7 @@ export function useComposeSubmit({
     submitting,
     uploadingFile,
     hasNotebookContent,
+    hasDeviceKey,
     handleSubmit,
     handleFileUpload,
     attachFlow,

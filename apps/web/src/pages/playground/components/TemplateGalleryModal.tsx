@@ -84,14 +84,14 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
           width: "100%",
           maxWidth: "960px",
           maxHeight: "88vh",
-          backgroundColor: "var(--color-canvas-default, #0d1117)",
-          border: "1px solid var(--color-border-default, #30363d)",
-          borderRadius: "14px",
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.56)",
+          backgroundColor: "var(--color-canvas-default, var(--ms-bg, #0d1117))",
+          border: "1px solid var(--color-border-default, var(--ms-border, #30363d))",
+          borderRadius: "var(--ms-radius-lg, 14px)",
+          boxShadow: "var(--ms-shadow-pop, 0 24px 64px rgba(0, 0, 0, 0.56))",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          color: "var(--color-fg-default, #e6edf3)",
+          color: "var(--color-fg-default, var(--ms-text-1, #e6edf3))",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -99,11 +99,12 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         <div
           style={{
             padding: "18px 24px",
-            borderBottom: "1px solid var(--color-border-default, #30363d)",
+            borderBottom: "1px solid var(--color-border-default, var(--ms-border, #30363d))",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            background: "linear-gradient(180deg, var(--color-canvas-subtle, #161b22) 0%, transparent 100%)",
+            background:
+              "linear-gradient(180deg, var(--color-canvas-subtle, var(--ms-bg-soft, #161b22)) 0%, transparent 100%)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -111,13 +112,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               style={{
                 width: 36,
                 height: 36,
-                borderRadius: 8,
-                backgroundColor: "rgba(9, 105, 218, 0.15)",
-                border: "1px solid rgba(9, 105, 218, 0.35)",
+                borderRadius: "var(--ms-radius-sm, 8px)",
+                backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.15))",
+                border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 35%, transparent)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#58a6ff",
+                color: "var(--ms-brand, #0891b2)",
               }}
             >
               <CrossReferenceIcon size={18} />
@@ -126,7 +127,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               <div id="template-gallery-title" style={{ fontSize: "17px", fontWeight: 700, letterSpacing: "-0.01em" }}>
                 Starter Engineering Templates
               </div>
-              <div style={{ fontSize: "12px", color: "var(--color-fg-muted, #8b949e)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginTop: "2px" }}>
                 Curated multi-physics, controls, CAD, and system models ready to simulate and modify
               </div>
             </div>

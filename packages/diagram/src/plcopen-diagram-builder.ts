@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { findXmlNodes, parseMiniXml, unescapeXmlEntities } from "./xml-utils.js";
+
 export interface PlcopenDiagramPort {
   id: string;
   name: string;
@@ -1039,14 +1041,6 @@ export function renderPlcopenSvg(project: PlcProjectLike): string {
  * or IEC 61131-3 Structured Text (`.st`) into a `PlcProjectLike` structure for client-side diagramming.
  */
 export function parsePlcopenTextToProject(source: string, fallbackTitle = "PLC_Project"): PlcProjectLike {
-  const unescapeXmlEntities = (s: string) =>
-    s
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&amp;/g, "&");
-
   const stripStComments = (s: string) => {
     let result = "";
     let i = 0;
@@ -1248,24 +1242,32 @@ export function parsePlcopenTextToProject(source: string, fallbackTitle = "PLC_P
 
   // 1. Check if XML format (<project ...> or <pou ...>)
   if (/<(?:project|pou)\b/i.test(source)) {
-    const contentName = /<contentHeader\b[^>]*\bname=["']([^"']+)["']/i.exec(source)?.[1] || fallbackTitle;
-    const pouMatch = /<pou\b[^>]*\bname=["']([^"']+)["'][^>]*\bpouType=["']([^"']+)["']/i.exec(source);
-    const pouName = pouMatch?.[1] || contentName;
-    const pouType = pouMatch?.[2] || "program";
+    const xmlRoot = parseMiniXml(source);
+    const contentHeader = xmlRoot ? findXmlNodes(xmlRoot, "contentHeader")[0] : null;
+    const contentName = contentHeader?.attrs["name"] || fallbackTitle;
+
+    const pou = xmlRoot ? findXmlNodes(xmlRoot, "pou")[0] : null;
+    const pouName = pou?.attrs["name"] || contentName;
+    const pouType = pou?.attrs["pouType"] || "program";
 
     const variables: PlcVariableLike[] = [];
     const extractVarSection = (tag: string, scope: PlcVariableLike["scope"]) => {
-      const secRe = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");
-      let sm: RegExpExecArray | null;
-      while ((sm = secRe.exec(source)) !== null) {
-        const body = sm[1] || "";
-        const varRe = /<variable\b([^>]*)>\s*<type>\s*<(?:derived\s+name=["']([^"']+)["']|([A-Za-z0-9_]+))\s*\/?>/gi;
-        let vm: RegExpExecArray | null;
-        while ((vm = varRe.exec(body)) !== null) {
-          const attrs = vm[1] || "";
-          const vName = /\bname=["']([^"']+)["']/i.exec(attrs)?.[1];
-          const vAddr = /\baddress=["']([^"']+)["']/i.exec(attrs)?.[1];
-          const vType = vm[2] || vm[3] || "BOOL";
+      const sectionNodes = xmlRoot ? findXmlNodes(xmlRoot, tag) : [];
+      for (const sec of sectionNodes) {
+        const varNodes = findXmlNodes(sec, "variable");
+        for (const v of varNodes) {
+          const vName = v.attrs["name"];
+          const vAddr = v.attrs["address"];
+          let vType = "BOOL";
+          const typeNode = findXmlNodes(v, "type")[0];
+          if (typeNode) {
+            const derived = findXmlNodes(typeNode, "derived")[0];
+            if (derived && derived.attrs["name"]) {
+              vType = derived.attrs["name"];
+            } else if (typeNode.children.length > 0) {
+              vType = typeNode.children[0]!.tag;
+            }
+          }
           if (vName) {
             variables.push({ name: vName, scope, dataType: vType, address: vAddr });
           }
@@ -1279,18 +1281,16 @@ export function parsePlcopenTextToProject(source: string, fallbackTitle = "PLC_P
     extractVarSection("localVars", "local");
     extractVarSection("tempVars", "temp");
 
-    const stMatch = /<ST\b[^>]*>([\s\S]*?)<\/ST>/i.exec(source);
-    const rawStXml = stMatch?.[1]?.replace(/<\/?(?:xhtml(?::p)?|p)\b[^>]*>/gi, "") ?? "";
+    const stNode = xmlRoot ? findXmlNodes(xmlRoot, "ST")[0] : null;
+    const rawStXml = stNode ? stNode.text : "";
     const statements = parseSimpleStatements(rawStXml);
 
     const tasks: PlcTaskLike[] = [];
-    const taskRe = /<task\b([^>]*)\/?>/gi;
-    let tm: RegExpExecArray | null;
-    while ((tm = taskRe.exec(source)) !== null) {
-      const tAttrs = tm[1] || "";
-      const tName = /\bname=["']([^"']+)["']/i.exec(tAttrs)?.[1] || "MainTask";
-      const tPrio = Number(/\bpriority=["'](\d+)["']/i.exec(tAttrs)?.[1] ?? 1);
-      const tInterval = /\binterval=["']([^"']+)["']/i.exec(tAttrs)?.[1];
+    const taskNodes = xmlRoot ? findXmlNodes(xmlRoot, "task") : [];
+    for (const t of taskNodes) {
+      const tName = t.attrs["name"] || "MainTask";
+      const tPrio = Number(t.attrs["priority"] ?? 1);
+      const tInterval = t.attrs["interval"];
       tasks.push({ name: tName, priority: tPrio, interval: tInterval });
     }
 

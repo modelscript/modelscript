@@ -392,13 +392,14 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                 )}
 
                 {authorHeaderProps.hasSignature && (
-                  <Tooltip text="Cryptographically signed by author device key (Click to verify proof)" direction="s">
+                  <Tooltip text="Cryptographically signed by author (Click to view signature proof)" direction="s">
                     <SignatureBadge
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         authorHeaderProps.onOpenSignatureModal();
                       }}
+                      aria-label="View cryptographic post signature"
                     >
                       <ShieldCheckIcon size={12} />
                       <span>Signed</span>

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseUrdf } from "@modelscript/urdf";
 import React, { useMemo, useState } from "react";
-import { ReqifViewer } from "../../artifacts/ReqifViewer";
+const ReqifViewer = React.lazy(() => import("../../artifacts/ReqifViewer").then((m) => ({ default: m.ReqifViewer })));
 
 export interface PolyglotDomainPanelProps {
   dialect: string;
   code: string;
   colorMode: "dark" | "light";
+  documentSymbols?: any[] | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
   onCodeChange?: ((newCode: string) => void) | undefined;
 }
@@ -275,44 +277,91 @@ function analyzeMultibody(dialect: string, code: string, lines: string[]): Domai
   const kinematicChain: KinematicLink[] = [];
 
   if (dialect === "urdf" || code.includes("<robot") || code.includes("<link")) {
-    const linkRegex = /<link\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/link>|<link\s+name=["']([^"']+)["'][^>]*\/>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = linkRegex.exec(code)) !== null) {
-      const name = (m[1] || m[3])!;
-      const body = m[2] ?? "";
-      const mass = /<mass\s+value=["']([^"']+)["']/i.exec(body)?.[1] ?? "0.0";
-      const ixx = /ixx=["']([^"']+)["']/i.exec(body)?.[1];
-      const iyy = /iyy=["']([^"']+)["']/i.exec(body)?.[1];
-      const izz = /izz=["']([^"']+)["']/i.exec(body)?.[1];
-      const line = code.slice(0, m.index).split("\n").length;
-      bodyRows.push({
-        name,
-        mass: `${mass} kg`,
-        cg: /<origin[^>]*xyz=["']([^"']+)["']/i.exec(body)?.[1] ?? "0 0 0",
-        inertia: ixx ? `I=(${ixx}, ${iyy ?? "0"}, ${izz ?? "0"})` : "Default",
-        line,
-      });
+    let parsedOk = false;
+    try {
+      const robot = parseUrdf(code);
+      if (robot.links.size > 0 || robot.joints.size > 0) {
+        for (const [name, link] of robot.links) {
+          const mass = link.inertial?.mass ?? 0;
+          const pos = link.inertial?.origin?.xyz;
+          const cg = pos ? `(${pos.x}, ${pos.y}, ${pos.z})` : "0 0 0";
+          const ixx = link.inertial?.ixx;
+          const iyy = link.inertial?.iyy;
+          const izz = link.inertial?.izz;
+          bodyRows.push({
+            name,
+            mass: `${mass.toFixed(3)} kg`,
+            cg,
+            inertia: ixx !== undefined ? `I=(${ixx}, ${iyy ?? 0}, ${izz ?? 0})` : "Default",
+            line: link.range?.startLine ?? 1,
+          });
+        }
+        for (const [name, joint] of robot.joints) {
+          const dof = jointDofForType(joint.type);
+          const axisStr = joint.axis ? `axis=(${joint.axis.x} ${joint.axis.y} ${joint.axis.z})` : "axis=(0 0 1)";
+          jointRows.push({
+            name,
+            type: joint.type,
+            bodies: `${joint.parentLink} → ${joint.childLink}`,
+            dof,
+            axisOrParams: axisStr,
+            line: joint.range?.startLine ?? 1,
+          });
+          kinematicChain.push({
+            joint: name,
+            type: joint.type,
+            dof,
+            parent: joint.parentLink,
+            child: joint.childLink,
+            line: joint.range?.startLine ?? 1,
+          });
+        }
+        parsedOk = true;
+      }
+    } catch {
+      parsedOk = false;
     }
 
-    const jointRegex = /<joint\s+name=["']([^"']+)["']\s+type=["']([^"']+)["'][^>]*>([\s\S]*?)<\/joint>/gi;
-    while ((m = jointRegex.exec(code)) !== null) {
-      const name = m[1]!;
-      const jtype = m[2]!;
-      const body = m[3]!;
-      const parent = /<parent\s+link=["']([^"']+)["']/i.exec(body)?.[1] ?? "world";
-      const child = /<child\s+link=["']([^"']+)["']/i.exec(body)?.[1] ?? "—";
-      const axis = /<axis\s+xyz=["']([^"']+)["']/i.exec(body)?.[1] ?? "0 0 1";
-      const dof = jointDofForType(jtype);
-      const line = code.slice(0, m.index).split("\n").length;
-      jointRows.push({
-        name,
-        type: jtype,
-        bodies: `${parent} → ${child}`,
-        dof,
-        axisOrParams: `axis=(${axis})`,
-        line,
-      });
-      kinematicChain.push({ joint: name, type: jtype, dof, parent, child, line });
+    if (!parsedOk) {
+      const linkRegex = /<link\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/link>|<link\s+name=["']([^"']+)["'][^>]*\/>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = linkRegex.exec(code)) !== null) {
+        const name = (m[1] || m[3])!;
+        const body = m[2] ?? "";
+        const mass = /<mass\s+value=["']([^"']+)["']/i.exec(body)?.[1] ?? "0.0";
+        const ixx = /ixx=["']([^"']+)["']/i.exec(body)?.[1];
+        const iyy = /iyy=["']([^"']+)["']/i.exec(body)?.[1];
+        const izz = /izz=["']([^"']+)["']/i.exec(body)?.[1];
+        const line = code.slice(0, m.index).split("\n").length;
+        bodyRows.push({
+          name,
+          mass: `${mass} kg`,
+          cg: /<origin[^>]*xyz=["']([^"']+)["']/i.exec(body)?.[1] ?? "0 0 0",
+          inertia: ixx ? `I=(${ixx}, ${iyy ?? "0"}, ${izz ?? "0"})` : "Default",
+          line,
+        });
+      }
+
+      const jointRegex = /<joint\s+name=["']([^"']+)["']\s+type=["']([^"']+)["'][^>]*>([\s\S]*?)<\/joint>/gi;
+      while ((m = jointRegex.exec(code)) !== null) {
+        const name = m[1]!;
+        const jtype = m[2]!;
+        const body = m[3]!;
+        const parent = /<parent\s+link=["']([^"']+)["']/i.exec(body)?.[1] ?? "world";
+        const child = /<child\s+link=["']([^"']+)["']/i.exec(body)?.[1] ?? "—";
+        const axis = /<axis\s+xyz=["']([^"']+)["']/i.exec(body)?.[1] ?? "0 0 1";
+        const dof = jointDofForType(jtype);
+        const line = code.slice(0, m.index).split("\n").length;
+        jointRows.push({
+          name,
+          type: jtype,
+          bodies: `${parent} → ${child}`,
+          dof,
+          axisOrParams: `axis=(${axis})`,
+          line,
+        });
+        kinematicChain.push({ joint: name, type: jtype, dof, parent, child, line });
+      }
     }
   } else if (dialect === "gensys") {
     for (let i = 0; i < lines.length; i++) {
@@ -1416,47 +1465,114 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
 
 // ── 6. Modelica / ModelScript / General Polyglot Inspector ──────────────────
 
-function analyzeGeneralModel(dialect: string, _code: string, lines: string[]): DomainAnalysisResult {
+function analyzeGeneralModel(
+  dialect: string,
+  _code: string,
+  lines: string[],
+  documentSymbols?: any[],
+): DomainAnalysisResult {
   const componentRows: Record<string, any>[] = [];
   const equationRows: Record<string, any>[] = [];
+
+  if (documentSymbols && documentSymbols.length > 0) {
+    const flattenSymbols = (syms: any[]): any[] => {
+      const res: any[] = [];
+      for (const s of syms) {
+        res.push(s);
+        if (Array.isArray(s.children) && s.children.length > 0) {
+          res.push(...flattenSymbols(s.children));
+        }
+      }
+      return res;
+    };
+    const flat = flattenSymbols(documentSymbols);
+    for (const sym of flat) {
+      const line =
+        sym.range?.start?.line !== undefined
+          ? sym.range.start.line + 1
+          : sym.location?.range?.start?.line !== undefined
+            ? sym.location.range.start.line + 1
+            : 1;
+      const rawDetail = sym.detail || "";
+      const variability = /parameter\b/i.test(rawDetail)
+        ? "parameter"
+        : /constant\b/i.test(rawDetail)
+          ? "constant"
+          : /discrete\b/i.test(rawDetail)
+            ? "discrete"
+            : /input\b/i.test(rawDetail)
+              ? "input"
+              : /output\b/i.test(rawDetail)
+                ? "output"
+                : sym.kind === 14
+                  ? "constant"
+                  : "component";
+      const typeName =
+        rawDetail.replace(/^(?:parameter|constant|discrete|input|output)\s+/i, "").trim() ||
+        sym.containerName ||
+        "Variable";
+      // Skip top-level module/class definitions without detail
+      if ((sym.kind === 5 || sym.kind === 1 || sym.kind === 2) && !rawDetail) {
+        continue;
+      }
+      componentRows.push({
+        name: sym.name,
+        variability,
+        typeName,
+        valueOrMod: sym.value || "—",
+        line,
+      });
+    }
+  }
+
+  if (componentRows.length === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      if (!trimmed || trimmed.startsWith("//")) continue;
+      const paramOrVar =
+        /^(?:(parameter|constant|discrete|input|output)\s+)?(Real|Integer|Boolean|String|[A-Z][A-Za-z0-9_.]+)\s+([A-Za-z0-9_]+)(?:\(([^)]*)\))?(?:\s*=\s*([^;]+))?/.exec(
+          trimmed,
+        );
+      if (
+        paramOrVar &&
+        ![
+          "model",
+          "class",
+          "package",
+          "block",
+          "connector",
+          "record",
+          "function",
+          "end",
+          "equation",
+          "algorithm",
+          "connect",
+        ].includes(paramOrVar[2]!)
+      ) {
+        componentRows.push({
+          name: paramOrVar[3]!,
+          variability: paramOrVar[1] || "component",
+          typeName: paramOrVar[2]!,
+          valueOrMod: paramOrVar[5]?.trim() || paramOrVar[4]?.trim() || "—",
+          line: i + 1,
+        });
+        continue;
+      }
+    }
+  }
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i]!.trim();
     if (!trimmed || trimmed.startsWith("//")) continue;
-    const paramOrVar =
-      /^(?:(parameter|constant|discrete|input|output)\s+)?(Real|Integer|Boolean|String|[A-Z][A-Za-z0-9_.]+)\s+([A-Za-z0-9_]+)(?:\(([^)]*)\))?(?:\s*=\s*([^;]+))?/.exec(
-        trimmed,
-      );
-    if (
-      paramOrVar &&
-      ![
-        "model",
-        "class",
-        "package",
-        "block",
-        "connector",
-        "record",
-        "function",
-        "end",
-        "equation",
-        "algorithm",
-        "connect",
-      ].includes(paramOrVar[2]!)
-    ) {
-      componentRows.push({
-        name: paramOrVar[3]!,
-        variability: paramOrVar[1] || "component",
-        typeName: paramOrVar[2]!,
-        valueOrMod: paramOrVar[5]?.trim() || paramOrVar[4]?.trim() || "—",
-        line: i + 1,
-      });
-      continue;
-    }
     if (
       trimmed.startsWith("connect(") ||
       trimmed.startsWith("der(") ||
-      (trimmed.includes("=") && !trimmed.startsWith("annotation"))
+      (trimmed.includes("=") &&
+        !trimmed.startsWith("annotation") &&
+        !trimmed.startsWith("parameter") &&
+        !trimmed.startsWith("constant"))
     ) {
+      if (componentRows.some((r) => r.line === i + 1)) continue;
       equationRows.push({
         kind: trimmed.startsWith("connect(") ? "connect" : trimmed.startsWith("der(") ? "ODE" : "Relation",
         expression: trimmed.replace(/;\s*$/, "").slice(0, 80),
@@ -1629,23 +1745,20 @@ function analyzePlcopenAndAutomation(dialect: string, code: string, lines: strin
   }
 
   return {
-    domainTitle:
+    domainGroup: "control-automation",
+    domainLabel:
       dialect === "plcopen"
         ? "IEC 61131-3 / PLCopen TC6 Safety & Control Inspector"
         : `${dialect.toUpperCase()} Automation Inspector`,
-    standardRef: "IEC 61131-3 Ed. 3 / PLCopen TC6 XML v2.01",
-    accentColor: "#eab308",
     kpis: [
-      { label: "POUs", value: Math.max(1, pouCount), tone: "accent" },
-      { label: "Inputs / Outputs", value: `${inputCount} IN / ${outputCount} OUT`, tone: "good" },
-      { label: "Logic Statements", value: logicRows.length },
-      { label: "Scan Cycle", value: taskInterval, tone: "good" },
+      { label: "POUs", value: Math.max(1, pouCount), accent: "#eab308" },
+      { label: "Inputs / Outputs", value: `${inputCount} IN / ${outputCount} OUT`, accent: "#3fb950" },
+      { label: "Logic Statements", value: logicRows.length, accent: "#58a6ff" },
+      { label: "Scan Cycle", value: taskInterval, accent: "#bc8cff" },
     ],
     sections: [
       {
-        id: "plc-interface",
         title: "POUs & Interface Variables (VAR_INPUT / VAR_OUTPUT / VAR)",
-        badgeCount: varRows.length,
         columns: [
           { key: "name", header: "Symbol", mono: true },
           { key: "direction", header: "Section", badge: true },
@@ -1655,9 +1768,7 @@ function analyzePlcopenAndAutomation(dialect: string, code: string, lines: strin
         rows: varRows,
       },
       {
-        id: "plc-logic",
         title: "Structured Text (ST) & FBD Synthesis Networks",
-        badgeCount: logicRows.length,
         columns: [
           { key: "kind", header: "Network Kind", badge: true },
           { key: "target", header: "Target / Guard", mono: true },
@@ -1674,6 +1785,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   dialect,
   code,
   colorMode,
+  documentSymbols,
   onRevealLine,
   onCodeChange,
 }) => {
@@ -1718,21 +1830,23 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     if (["fea", "cfd", "step", "scad"].includes(d) || code.trimStart().startsWith("ISO-10303-21;")) {
       return analyzeCae(d, code, lines);
     }
-    return analyzeGeneralModel(d, code, lines);
-  }, [dialect, code]);
+    return analyzeGeneralModel(d, code, lines, documentSymbols);
+  }, [dialect, code, documentSymbols]);
 
   if (isReqIf) {
     return (
       <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <ReqifViewer viewConfig={{ code }} isFullScreen onCodeChange={onCodeChange} onRevealLine={onRevealLine} />
+        <React.Suspense fallback={null}>
+          <ReqifViewer viewConfig={{ code }} isFullScreen onCodeChange={onCodeChange} onRevealLine={onRevealLine} />
+        </React.Suspense>
       </div>
     );
   }
 
-  const borderCol = "var(--color-border-default)";
-  const cardBg = "var(--color-bg-card)";
-  const textPrimary = isDark ? "#e6edf3" : "#1f2328";
-  const textMuted = isDark ? "#8b949e" : "#656d76";
+  const borderCol = "var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))";
+  const cardBg = "var(--color-bg-card, var(--ms-bg-card, rgba(22, 27, 34, 0.5)))";
+  const textPrimary = "var(--ms-text-1, var(--color-fg-default))";
+  const textMuted = "var(--ms-text-2, var(--color-fg-muted))";
 
   const normalizedFilter = filterText.trim().toLowerCase();
 
@@ -1894,8 +2008,8 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
                   fontSize: 11,
                   padding: "2px 8px",
                   borderRadius: 10,
-                  backgroundColor: isDark ? "rgba(88,166,255,0.15)" : "rgba(9,105,218,0.1)",
-                  color: isDark ? "#58a6ff" : "#0969da",
+                  backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
+                  color: "var(--ms-brand, var(--color-accent-fg))",
                   fontWeight: 600,
                 }}
               >

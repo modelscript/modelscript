@@ -209,6 +209,20 @@ describe("CLI Consolidation, Disambiguation & Universal Lifecycle Verbs", () => 
     const daeMeta = JSON.parse(fs.readFileSync(daeJsonOut, "utf-8"));
     assert.equal(daeMeta.model, "pendulum");
     assert.ok(daeMeta.variables > 0);
+
+    // Test universal `msx simulate pendulum.urdf`
+    const urdfCsvOut = path.join(scratchDir, "pendulum-sim.csv");
+    await Simulate.handler({
+      _: ["simulate"],
+      $0: "msx",
+      name: urdfFile,
+      output: urdfCsvOut,
+      stopTime: 0.1,
+      stepSize: 0.05,
+      format: "csv",
+    } as any);
+    assert.equal(fs.existsSync(urdfCsvOut), true);
+    assert.match(fs.readFileSync(urdfCsvOut, "utf-8"), /^time/m);
   });
 
   it("strips block and line comments in parsePackageMo and parsePackageUses", async () => {

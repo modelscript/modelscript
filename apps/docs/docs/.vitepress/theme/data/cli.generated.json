@@ -3629,6 +3629,269 @@
     "subcommands": []
   },
   {
+    "name": "keys",
+    "specs": [
+      "keys <action>"
+    ],
+    "aliases": [
+      "key"
+    ],
+    "describe": "Manage cryptographic signing keys and signed account identity",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "list",
+        "specs": [
+          "list"
+        ],
+        "aliases": [],
+        "describe": "List registered signing keys and verification status",
+        "positionals": [],
+        "options": [
+          {
+            "name": "user",
+            "aliases": [
+              "u"
+            ],
+            "type": "string",
+            "description": "Username to query (defaults to currently authenticated user)"
+          },
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "generate",
+        "specs": [
+          "generate [path]"
+        ],
+        "aliases": [],
+        "describe": "Generate a new Ed25519 signing keypair",
+        "positionals": [
+          {
+            "name": "path",
+            "aliases": [],
+            "type": "string",
+            "description": "Output file path for private key (default: ~/.ssh/id_ed25519_modelscript)"
+          }
+        ],
+        "options": [
+          {
+            "name": "comment",
+            "aliases": [
+              "c"
+            ],
+            "type": "string",
+            "description": "Key comment (e.g. email or username)",
+            "default": "modelscript"
+          },
+          {
+            "name": "force",
+            "aliases": [
+              "f"
+            ],
+            "type": "boolean",
+            "description": "Overwrite existing key files if they exist",
+            "default": false
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output key details as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "register",
+        "specs": [
+          "register <pubkey>"
+        ],
+        "aliases": [],
+        "describe": "Register an Ed25519 public key and enable Signed Account status",
+        "positionals": [
+          {
+            "name": "pubkey",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to public key file (.pub) or OpenSSH public key string"
+          }
+        ],
+        "options": [
+          {
+            "name": "key",
+            "aliases": [
+              "k"
+            ],
+            "type": "string",
+            "description": "Path to matching private key file (defaults to pubkey path without .pub)"
+          },
+          {
+            "name": "label",
+            "aliases": [
+              "l"
+            ],
+            "type": "string",
+            "description": "Human-readable label for this key (e.g. 'Laptop')"
+          },
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "revoke",
+        "specs": [
+          "revoke <id>"
+        ],
+        "aliases": [],
+        "describe": "Revoke a registered signing key",
+        "positionals": [
+          {
+            "name": "id",
+            "aliases": [],
+            "type": "number",
+            "description": "Signing key numeric ID to revoke"
+          }
+        ],
+        "options": [
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "policy",
+        "specs": [
+          "policy <mode>"
+        ],
+        "aliases": [],
+        "describe": "Set signing policy: 'strict' (reject unsigned pushes) or 'optional'",
+        "positionals": [
+          {
+            "name": "mode",
+            "aliases": [],
+            "description": "Policy mode: 'strict' or 'optional'",
+            "choices": [
+              "strict",
+              "optional"
+            ]
+          }
+        ],
+        "options": [
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "attest",
+        "specs": [
+          "attest"
+        ],
+        "aliases": [],
+        "describe": "Sign a delegation statement with a master key to authorize a browser device key",
+        "positionals": [],
+        "options": [
+          {
+            "name": "master",
+            "aliases": [
+              "m"
+            ],
+            "type": "string",
+            "description": "Path to master OpenSSH private key file (e.g. ~/.ssh/id_ed25519)"
+          },
+          {
+            "name": "device",
+            "aliases": [
+              "d"
+            ],
+            "type": "string",
+            "description": "Fingerprint or multibase of the browser device key to authorize"
+          },
+          {
+            "name": "user-id",
+            "aliases": [],
+            "type": "number",
+            "description": "Numeric user ID"
+          },
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
     "name": "language",
     "specs": [
       "language <action> [target]",
@@ -6197,6 +6460,65 @@
     "subcommands": []
   },
   {
+    "name": "sign",
+    "specs": [
+      "sign <file>"
+    ],
+    "aliases": [],
+    "describe": "Cryptographically sign a post or verify a W3C Data Integrity proof",
+    "positionals": [
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to post markdown file to sign or verify"
+      }
+    ],
+    "options": [
+      {
+        "name": "key",
+        "aliases": [
+          "k"
+        ],
+        "type": "string",
+        "description": "Path to Ed25519 private key file (defaults to ~/.ssh/id_ed25519_modelscript)"
+      },
+      {
+        "name": "pubkey",
+        "aliases": [
+          "p"
+        ],
+        "type": "string",
+        "description": "Path to matching public key file (.pub)"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output path for the .proof.json file (default: <file>.proof.json)"
+      },
+      {
+        "name": "verify",
+        "aliases": [
+          "v"
+        ],
+        "type": "boolean",
+        "description": "Verify an existing proof file instead of generating one",
+        "default": false
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output result as JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "sima",
     "specs": [
       "sima <action> [files..]"
@@ -7980,16 +8302,18 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: inspect | summary | lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
+        "description": "Action to perform: inspect | summary | lint | rnea | simulate | to-modelica | to-simpack | to-adams | to-dae | to-usd",
         "choices": [
           "inspect",
           "summary",
           "lint",
           "rnea",
+          "simulate",
           "to-modelica",
           "to-simpack",
           "to-adams",
-          "to-dae"
+          "to-dae",
+          "to-usd"
         ]
       },
       {
@@ -8009,6 +8333,43 @@
         ],
         "type": "string",
         "description": "Output file path"
+      },
+      {
+        "name": "usdz",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Package as 64-byte aligned OpenUSD ZIP archive (.usdz)",
+        "default": false
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Simulation output format",
+        "choices": [
+          "csv",
+          "json"
+        ],
+        "default": "csv"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [
+          "stopTime"
+        ],
+        "type": "number",
+        "description": "Simulation stop time in seconds",
+        "default": 1
+      },
+      {
+        "name": "step-size",
+        "aliases": [
+          "stepSize",
+          "interval"
+        ],
+        "type": "number",
+        "description": "Simulation communication step size in seconds",
+        "default": 0.01
       },
       {
         "name": "gravity",

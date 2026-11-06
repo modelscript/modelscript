@@ -13,6 +13,13 @@ let connection: ProtocolConnection | null = null;
 let worker: Worker | null = null;
 let initPromise: Promise<ProtocolConnection> | null = null;
 
+function isDebugLsp(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (Boolean((window as any).__DEBUG_LSP__) || window.localStorage?.getItem("DEBUG_LSP") === "true")
+  );
+}
+
 /**
  * Start the LSP WebWorker and send `initialize` + `initialized`.
  * Resolves once the server has acknowledged `initialize`.
@@ -76,13 +83,23 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
       conn.listen();
 
       conn.onNotification("window/logMessage", (params: any) => {
-        console.log(`[LSP-server] [type=${params.type}] ${params.message}`);
+        if (params.type === 1) {
+          console.error(`[LSP-server] ${params.message}`);
+        } else if (params.type === 2) {
+          console.warn(`[LSP-server] ${params.message}`);
+        } else if (isDebugLsp()) {
+          console.debug(`[LSP-server] [type=${params.type}] ${params.message}`);
+        }
       });
       conn.onNotification("modelscript/status", (params: any) => {
-        console.log(`[LSP-status] state=${params.state} message=${params.message}`);
+        if (isDebugLsp()) {
+          console.debug(`[LSP-status] state=${params.state} message=${params.message}`);
+        }
       });
 
-      console.log("[lsp-worker] Connection listening. Sending initialize request...");
+      if (isDebugLsp()) {
+        console.debug("[lsp-worker] Connection listening. Sending initialize request...");
+      }
 
       try {
         const initResponse = await Promise.race([
@@ -148,7 +165,9 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
           startupErrorPromise,
         ]);
         rejectStartup = null;
-        console.log("[lsp-worker] Initialize response received:", initResponse);
+        if (isDebugLsp()) {
+          console.debug("[lsp-worker] Initialize response received:", initResponse);
+        }
 
         conn.sendNotification("initialized", {});
         connection = conn;

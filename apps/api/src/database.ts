@@ -13,6 +13,8 @@ import {
   UserRepository,
 } from "./database/repositories/index.js";
 import type {
+  AccountKeyLogEntry,
+  AccountSigningKey,
   AccountWarningRow,
   AdminUserSummaryRow,
   ArtifactViewRow,
@@ -41,6 +43,7 @@ import type {
   RemoteArtifactCacheRow,
   RemotePackageRow,
   RssFeedRow,
+  SignedPostEvidence,
   SolutionReleaseRow,
   SolutionRow,
   StaffNoteRow,
@@ -500,6 +503,10 @@ export class LibraryDatabase {
     return this.#db;
   }
 
+  transaction<T>(fn: () => T): T {
+    return this.#db.transaction(fn)();
+  }
+
   get dbPath(): string {
     return this.#dbPath;
   }
@@ -622,6 +629,20 @@ export class LibraryDatabase {
       if (!classCols.includes("diagram_hash")) {
         this.#db.exec(`ALTER TABLE classes ADD COLUMN diagram_hash TEXT;`);
       }
+    } catch {}
+
+    try {
+      const userCols = (this.#db.prepare(`PRAGMA table_info(users)`).all() as { name: string }[]).map((c) => c.name);
+      if (!userCols.includes("signing_verified")) {
+        this.#db.exec(`ALTER TABLE users ADD COLUMN signing_verified INTEGER NOT NULL DEFAULT 0;`);
+      }
+      if (!userCols.includes("signing_policy_strict")) {
+        this.#db.exec(`ALTER TABLE users ADD COLUMN signing_policy_strict INTEGER NOT NULL DEFAULT 0;`);
+      }
+      if (!userCols.includes("branch_tip_oid")) {
+        this.#db.exec(`ALTER TABLE users ADD COLUMN branch_tip_oid TEXT;`);
+      }
+      this.#db.exec(`DELETE FROM _modelscript_migrations WHERE name = '0002_account_signing_keys';`);
     } catch {}
 
     // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
@@ -2277,7 +2298,7 @@ export class LibraryDatabase {
   getUserByUsername(username: string): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE username = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, location, website, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, signing_verified, signing_policy_strict, branch_tip_oid FROM users WHERE username = ?`,
       )
       .get(username) as UserRow | undefined;
   }
@@ -2285,7 +2306,7 @@ export class LibraryDatabase {
   getUserById(id: number): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, invites_remaining FROM users WHERE id = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, location, website, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, invites_remaining, signing_verified, signing_policy_strict, branch_tip_oid FROM users WHERE id = ?`,
       )
       .get(id) as UserRow | undefined;
   }
@@ -2293,7 +2314,7 @@ export class LibraryDatabase {
   getUserByActorUrl(actorUrl: string): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, account_type, avatar_url, banner_url, display_name, bio, status, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, ed25519_public_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE actor_url = ?`,
+        `SELECT id, username, email, account_type, avatar_url, banner_url, display_name, bio, status, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, ed25519_public_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, signing_verified, signing_policy_strict FROM users WHERE actor_url = ?`,
       )
       .get(actorUrl) as UserRow | undefined;
   }
@@ -2330,7 +2351,7 @@ export class LibraryDatabase {
   getUserFederationInfo(userId: number): UserFederationInfo | undefined {
     const row = this.#db
       .prepare(
-        `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key, ed25519_public_key, ed25519_private_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE id = ?`,
+        `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key, ed25519_public_key, ed25519_private_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, signing_verified, signing_policy_strict FROM users WHERE id = ?`,
       )
       .get(userId) as UserFederationInfo | undefined;
     if (!row) return undefined;
@@ -2371,10 +2392,11 @@ export class LibraryDatabase {
     account_type: string;
     status: string;
     created_at: string;
+    branch_tip_oid?: string | null | undefined;
   }[] {
     return this.#db
       .prepare(
-        `SELECT id, username, email, display_name, account_type, status, created_at FROM users WHERE status != 'deleted' ORDER BY id ASC`,
+        `SELECT id, username, email, display_name, account_type, status, created_at, branch_tip_oid FROM users WHERE status != 'deleted' ORDER BY id ASC`,
       )
       .all() as {
       id: number;
@@ -2384,6 +2406,7 @@ export class LibraryDatabase {
       account_type: string;
       status: string;
       created_at: string;
+      branch_tip_oid?: string | null | undefined;
     }[];
   }
 
@@ -2409,6 +2432,8 @@ export class LibraryDatabase {
         u.moved_to_actor_url,
         COALESCE(u.profile_fields, '[]') as profile_fields,
         COALESCE(u.default_post_visibility, 'public') as default_post_visibility,
+        COALESCE(u.signing_verified, 0) as signing_verified,
+        COALESCE(u.signing_policy_strict, 0) as signing_policy_strict,
         (SELECT username FROM users WHERE id = u.owner_id) as owner_username,
         (SELECT COUNT(*) FROM follows WHERE following_id = u.id AND (state = 'accepted' OR state IS NULL)) as follower_count,
         (SELECT COUNT(*) FROM follows WHERE follower_id = u.id AND (state = 'accepted' OR state IS NULL)) as following_count,
@@ -3360,11 +3385,12 @@ export class LibraryDatabase {
       artifactViewId?: number | string | null | undefined;
       metadata?: PostMetadata | string | null | undefined;
       replyVisibility?: string | undefined;
+      contentWarning?: string | null | undefined;
     },
   ): void {
     const existing = this.#db
       .prepare(
-        `SELECT content, CAST(artifact_view_id AS TEXT) as artifact_view_id, metadata, reply_visibility FROM posts WHERE id = ?`,
+        `SELECT content, CAST(artifact_view_id AS TEXT) as artifact_view_id, metadata, reply_visibility, content_warning FROM posts WHERE id = ?`,
       )
       .get(String(postId)) as
       | {
@@ -3372,6 +3398,7 @@ export class LibraryDatabase {
           artifact_view_id: string | null;
           metadata: string | null;
           reply_visibility: string;
+          content_warning: string | null;
         }
       | undefined;
     if (!existing) return;
@@ -3391,14 +3418,22 @@ export class LibraryDatabase {
         : existing.metadata;
     const nextReplyVisibility =
       updates.replyVisibility !== undefined ? updates.replyVisibility : existing.reply_visibility;
+    const nextContentWarning = updates.contentWarning !== undefined ? updates.contentWarning : existing.content_warning;
 
     this.#db
       .prepare(
         `UPDATE posts
-         SET content = ?, artifact_view_id = ?, metadata = ?, reply_visibility = ?, updated_at = datetime('now')
+         SET content = ?, artifact_view_id = ?, metadata = ?, reply_visibility = ?, content_warning = ?, updated_at = datetime('now')
          WHERE id = ?`,
       )
-      .run(nextContent ?? null, nextArtifactViewId ?? null, nextMetadata ?? null, nextReplyVisibility, postId);
+      .run(
+        nextContent ?? null,
+        nextArtifactViewId ?? null,
+        nextMetadata ?? null,
+        nextReplyVisibility,
+        nextContentWarning ?? null,
+        postId,
+      );
 
     if (updates.content !== undefined) {
       try {
@@ -3901,7 +3936,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3932,7 +3967,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3965,7 +4000,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3995,7 +4030,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -4203,7 +4238,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -4359,7 +4394,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -4470,7 +4505,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -4558,7 +4593,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -4612,7 +4647,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -4820,7 +4855,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -6576,6 +6611,7 @@ export class LibraryDatabase {
       this.#db.prepare(`DELETE FROM bookmarks WHERE post_id = ?`).run(postId);
       this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
       this.#db.prepare(`DELETE FROM post_location_stats WHERE post_id = ?`).run(postId);
+      this.#db.prepare(`DELETE FROM signed_post_evidence WHERE post_id = ?`).run(postId);
       // Clean up child relationships to prevent orphans
       this.#db.prepare(`DELETE FROM posts WHERE repost_of_id = ?`).run(postId);
       this.#db.prepare(`UPDATE posts SET quote_post_id = NULL WHERE quote_post_id = ?`).run(postId);
@@ -9368,9 +9404,28 @@ export class LibraryDatabase {
   }
 
   getArtifactView(id: number | string): ArtifactViewRow | undefined {
-    const row = this.#db.prepare(`SELECT *, CAST(id AS TEXT) as id FROM artifact_views WHERE id = ?`).get(id) as
+    let row = this.#db.prepare(`SELECT *, CAST(id AS TEXT) as id FROM artifact_views WHERE id = ?`).get(id) as
       | ArtifactViewRow
       | undefined;
+    if (!row) {
+      const idStr = String(id).trim();
+      if (idStr.length >= 17 && /^\d+$/.test(idStr)) {
+        const num = Number(idStr);
+        if (Number.isFinite(num)) {
+          row = this.#db
+            .prepare(
+              `
+            SELECT *, CAST(id AS TEXT) as id
+            FROM artifact_views
+            WHERE id BETWEEN ? AND ?
+            ORDER BY ABS(id - ?) ASC
+            LIMIT 1
+          `,
+            )
+            .get(num - 128, num + 128, num) as ArtifactViewRow | undefined;
+        }
+      }
+    }
     if (row && row.created_at) {
       row.created_at = normalizeUtcTimestamp(row.created_at);
     }
@@ -9439,8 +9494,28 @@ export class LibraryDatabase {
       .get(title) as ArtifactViewRow | undefined;
   }
 
-  updateArtifactViewConfig(id: number | string, viewConfig: string): void {
-    this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
+  updateArtifactViewConfig(id: number | string, viewConfig: string, title?: string | null | undefined): void {
+    try {
+      if (title !== undefined && title !== null) {
+        this.#db
+          .prepare(`UPDATE artifact_views SET view_config = ?, title = ?, updated_at = datetime('now') WHERE id = ?`)
+          .run(viewConfig, title, id);
+      } else {
+        this.#db
+          .prepare(`UPDATE artifact_views SET view_config = ?, updated_at = datetime('now') WHERE id = ?`)
+          .run(viewConfig, id);
+      }
+      return;
+    } catch {
+      // Fallback if updated_at column is not present
+      if (title !== undefined && title !== null) {
+        this.#db
+          .prepare(`UPDATE artifact_views SET view_config = ?, title = ? WHERE id = ?`)
+          .run(viewConfig, title, id);
+      } else {
+        this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
+      }
+    }
   }
 
   updateArtifactThumbnail(id: number | string, thumbnailUrl: string, thumbnailUrlDark?: string): void {
@@ -9597,6 +9672,228 @@ export class LibraryDatabase {
     } catch {}
 
     return { posts, libraries, billingHistory, auditHistory, bookmarks, studies, following, followers };
+  }
+
+  // ── Git Sync Mapping (Bidirectional Account Portability) ────────
+
+  getGitSyncMapping(
+    userId: number,
+    path: string,
+  ): { id: number; entity_type: string; entity_id: string; content_sha?: string } | undefined {
+    return this.#db
+      .prepare(`SELECT id, entity_type, entity_id, content_sha FROM git_sync_map WHERE user_id = ? AND path = ?`)
+      .get(userId, path) as { id: number; entity_type: string; entity_id: string; content_sha?: string } | undefined;
+  }
+
+  setGitSyncMapping(userId: number, path: string, entityType: string, entityId: string, contentSha?: string): void {
+    this.#db
+      .prepare(
+        `INSERT INTO git_sync_map (user_id, path, entity_type, entity_id, content_sha, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(user_id, path) DO UPDATE SET
+           entity_type = excluded.entity_type,
+           entity_id = excluded.entity_id,
+           content_sha = excluded.content_sha,
+           updated_at = datetime('now')`,
+      )
+      .run(userId, path, entityType, entityId, contentSha ?? null);
+  }
+
+  deleteGitSyncMapping(userId: number, path: string): boolean {
+    const res = this.#db.prepare(`DELETE FROM git_sync_map WHERE user_id = ? AND path = ?`).run(userId, path);
+    return res.changes > 0;
+  }
+
+  // ── Account Signing Keys & Cryptographic Verification ─────────────
+
+  registerSigningKey(key: {
+    userId: number;
+    publicKeyMultibase: string;
+    publicKeyOpenssh: string;
+    fingerprintSha256: string;
+    algo?: string;
+    label?: string | null;
+    trustLevel?: string;
+    prevKeyId?: number | null;
+    rotationProof?: string | null;
+  }): AccountSigningKey {
+    const info = this.#db
+      .prepare(
+        `INSERT INTO account_signing_keys
+         (user_id, public_key_multibase, public_key_openssh, fingerprint_sha256, algo, label, trust_level, prev_key_id, rotation_proof)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        key.userId,
+        key.publicKeyMultibase,
+        key.publicKeyOpenssh,
+        key.fingerprintSha256,
+        key.algo || "ed25519",
+        key.label ?? null,
+        key.trustLevel || "hardware_or_cli",
+        key.prevKeyId ?? null,
+        key.rotationProof ?? null,
+      );
+
+    // Auto-mark account as signing_verified only if trustLevel is verified (not unverified_paste)
+    if (key.trustLevel !== "unverified_paste") {
+      this.#db.prepare(`UPDATE users SET signing_verified = 1 WHERE id = ?`).run(key.userId);
+    }
+
+    return this.getSigningKeyById(Number(info.lastInsertRowid))!;
+  }
+
+  getSigningKeyById(keyId: number): AccountSigningKey | null {
+    const row = this.#db.prepare(`SELECT * FROM account_signing_keys WHERE id = ?`).get(keyId);
+    return (row as AccountSigningKey) || null;
+  }
+
+  getSigningKeyByFingerprint(fingerprint: string): AccountSigningKey | null {
+    const row = this.#db.prepare(`SELECT * FROM account_signing_keys WHERE fingerprint_sha256 = ?`).get(fingerprint);
+    return (row as AccountSigningKey) || null;
+  }
+
+  getSigningKeysForUser(userId: number, includeRevoked: boolean = false): AccountSigningKey[] {
+    const query = includeRevoked
+      ? `SELECT * FROM account_signing_keys WHERE user_id = ? ORDER BY id ASC`
+      : `SELECT * FROM account_signing_keys WHERE user_id = ? AND revoked_at IS NULL ORDER BY id ASC`;
+    return this.#db.prepare(query).all(userId) as AccountSigningKey[];
+  }
+
+  revokeSigningKey(keyId: number, userId: number, reason: string = "User revoked key"): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE account_signing_keys
+         SET revoked_at = datetime('now'), revoked_reason = ?
+         WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+      )
+      .run(reason, keyId, userId);
+
+    if (res.changes > 0) {
+      // Check if user still has any active keys
+      const activeCount = this.#db
+        .prepare(`SELECT COUNT(*) as cnt FROM account_signing_keys WHERE user_id = ? AND revoked_at IS NULL`)
+        .get(userId) as { cnt: number } | undefined;
+      if (!activeCount || activeCount.cnt === 0) {
+        this.#db.prepare(`UPDATE users SET signing_verified = 0 WHERE id = ?`).run(userId);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  delegateSigningKey(keyId: number, userId: number, masterKeyId: number, delegationProof: string): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE account_signing_keys
+         SET trust_level = 'delegated_by_master', prev_key_id = ?, rotation_proof = ?
+         WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
+      )
+      .run(masterKeyId, delegationProof, keyId, userId);
+    return res.changes > 0;
+  }
+
+  insertKeyLogEntry(entry: {
+    user_id: number;
+    event: string;
+    payload_json: string;
+    prev_hash: string;
+    entry_hash: string;
+  }): AccountKeyLogEntry {
+    const info = this.#db
+      .prepare(
+        `INSERT INTO account_key_log (user_id, event, payload_json, prev_hash, entry_hash)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(entry.user_id, entry.event, entry.payload_json, entry.prev_hash, entry.entry_hash);
+    return {
+      seq: Number(info.lastInsertRowid),
+      user_id: entry.user_id,
+      event: entry.event,
+      payload_json: entry.payload_json,
+      prev_hash: entry.prev_hash,
+      entry_hash: entry.entry_hash,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  getKeyLogForUser(userId: number): AccountKeyLogEntry[] {
+    return this.#db
+      .prepare(
+        `SELECT seq, user_id, event, payload_json, prev_hash, entry_hash, created_at FROM account_key_log WHERE user_id = ? ORDER BY seq ASC`,
+      )
+      .all(userId) as AccountKeyLogEntry[];
+  }
+
+  recordSignedPostEvidence(evidence: {
+    postId: string;
+    rev?: number;
+    payloadJson: string;
+    proofJson: string;
+    keyId?: number | null;
+    commitOid?: string | null;
+  }): void {
+    this.#db
+      .prepare(
+        `INSERT INTO signed_post_evidence (post_id, rev, payload_json, proof_json, key_id, commit_oid, received_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(post_id, rev) DO UPDATE SET
+           payload_json = excluded.payload_json,
+           proof_json = excluded.proof_json,
+           key_id = excluded.key_id,
+           commit_oid = excluded.commit_oid,
+           received_at = datetime('now')`,
+      )
+      .run(
+        evidence.postId,
+        evidence.rev || 1,
+        evidence.payloadJson,
+        evidence.proofJson,
+        evidence.keyId ?? null,
+        evidence.commitOid ?? null,
+      );
+  }
+
+  getSignedPostEvidence(postId: string, rev?: number): SignedPostEvidence | null {
+    if (rev !== undefined) {
+      const row = this.#db.prepare(`SELECT * FROM signed_post_evidence WHERE post_id = ? AND rev = ?`).get(postId, rev);
+      return (row as SignedPostEvidence) || null;
+    }
+    const row = this.#db
+      .prepare(`SELECT * FROM signed_post_evidence WHERE post_id = ? ORDER BY rev DESC LIMIT 1`)
+      .get(postId);
+    return (row as SignedPostEvidence) || null;
+  }
+
+  listSignedPostEvidence(postId: string): SignedPostEvidence[] {
+    return this.#db
+      .prepare(`SELECT * FROM signed_post_evidence WHERE post_id = ? ORDER BY rev ASC`)
+      .all(postId) as SignedPostEvidence[];
+  }
+
+  isSigningKeyBanned(fingerprint: string): boolean {
+    const row = this.#db.prepare(`SELECT 1 FROM banned_signing_keys WHERE fingerprint_sha256 = ?`).get(fingerprint);
+    return Boolean(row);
+  }
+
+  banSigningKey(fingerprint: string, reason: string): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO banned_signing_keys (fingerprint_sha256, reason, banned_at) VALUES (?, ?, datetime('now'))`,
+      )
+      .run(fingerprint, reason);
+  }
+
+  setSigningPolicyStrict(userId: number, strict: boolean): void {
+    this.#db.prepare(`UPDATE users SET signing_policy_strict = ? WHERE id = ?`).run(strict ? 1 : 0, userId);
+  }
+
+  setSigningVerified(userId: number, verified: boolean): void {
+    this.#db.prepare(`UPDATE users SET signing_verified = ? WHERE id = ?`).run(verified ? 1 : 0, userId);
+  }
+
+  updateUserBranchTip(userId: number, tipOid: string): void {
+    this.#db.prepare(`UPDATE users SET branch_tip_oid = ? WHERE id = ?`).run(tipOid, userId);
   }
 
   // ── Remote Packages (Federated Registry) ─────────────────────────
@@ -10101,7 +10398,7 @@ export class LibraryDatabase {
         CAST(p.reply_to_id AS TEXT) as reply_to_id,
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
-        u.username, u.display_name, u.avatar_url, u.account_type,
+        u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,

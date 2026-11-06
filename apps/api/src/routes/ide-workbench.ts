@@ -8,7 +8,6 @@ import path, { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
-import { ensureUserActivityRepo } from "../services/activity-git.js";
 import { normalizeWorkspaceTemplate } from "../util/snowflake.js";
 
 const ROUTES_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1004,60 +1003,6 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
     try {
       const cleanSubpath = "/" + (req.url || "/").replace(/^\/+/, "");
       const [pathOnly] = cleanSubpath.split("?");
-
-      // Intercept Personal Activity Git Vault (/api/github/repos/:owner/activity/...) for VS Code Web IDE github-fs
-      const activityMatch = (pathOnly || "").match(/^\/repos\/([^/]+)\/(activity(?:\.git)?)\/(.+)$/i);
-      if (database && activityMatch) {
-        const ownerParam = decodeURIComponent(activityMatch[1] || "").trim();
-        const restPath = activityMatch[3] || "";
-
-        res.setHeader("Cache-Control", "private, no-store, max-age=0");
-
-        if (!req.user) {
-          res.status(401).json({
-            message: "Authentication required to access personal activity repository in Web IDE.",
-          });
-          return;
-        }
-
-        const targetUser = ownerParam.toLowerCase() === "me" ? req.user : database.getUserByUsername(ownerParam);
-        if (!targetUser) {
-          res.status(404).json({ message: `User '${ownerParam}' not found.` });
-          return;
-        }
-
-        if (req.user.id !== targetUser.id || Boolean(req.user.isBot)) {
-          res.status(403).json({
-            message: "Personal activity repositories are strictly private to the account owner.",
-          });
-          return;
-        }
-
-        if (req.tokenScopes) {
-          const hasScope =
-            req.tokenScopes.includes("*") ||
-            req.tokenScopes.includes("admin") ||
-            req.tokenScopes.includes("repos:read") ||
-            req.tokenScopes.includes("repos:write") ||
-            req.tokenScopes.includes("account:read");
-          const hasUnrestrictedPattern = !req.tokenPackagePattern || req.tokenPackagePattern === "*";
-          if (!hasScope || !hasUnrestrictedPattern) {
-            res.status(403).json({
-              message:
-                "Personal access token requires unrestricted 'repos:read' or 'account:read' scope to access activity.git.",
-            });
-            return;
-          }
-        }
-
-        const sync = ensureUserActivityRepo(database, targetUser.id);
-        const headSha = sync.fingerprint || "main";
-        if (serveGitRepoApiRequest(req, res, sync.repoPath, targetUser.username, "activity", restPath, headSha)) {
-          return;
-        }
-        res.status(404).json({ message: "Unsupported activity repository GitHub API endpoint" });
-        return;
-      }
 
       // Intercept local extracted standard libraries (ModelicaStandardLibrary, SysML-v2-Release) & local git repositories
       const repoMatch = (pathOnly || "").match(/^\/repos\/([^/]+)\/([^/]+)\/(.+)$/i);

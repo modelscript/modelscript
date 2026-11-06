@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { computeMeshVolumeAndArea, computeProjectedFrontalArea, ManifoldWorker } from "@modelscript/cad";
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { ScadEvaluator } from "@modelscript/scad";
 import { CodeLens, Range } from "vscode-languageserver";
 import { type LspContext, resolveFeatureFlags } from "../lsp-context.js";
@@ -1007,63 +1008,68 @@ export function registerCodeLensProvider(context: LspContext) {
           });
         }
 
-        const lines = text.split(/\r?\n/);
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx]!;
-
-          // Flowpath declaration
-          const fpMatch = /<Flowpath[^>]*\s(?:name|id)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (fpMatch && showVerification) {
-            const name = fpMatch[1]!;
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-            lenses.push({
-              range,
-              command: {
-                title: `🌊 Flowpath '${name}' | Verify Multiphase Limits (WAT, Hydrates, Slug Surge)`,
-                command: "modelscript.olga.verify_flow_assurance",
-                arguments: [uri, name],
-              },
-            });
-          }
-
-          // Valve declaration
-          const valveMatch = /<Valve[^>]*\s(?:name|id)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (valveMatch && showSimulate) {
-            const name = valveMatch[1]!;
-            const openMatch = /opening\s*=\s*["']([0-9.]+)["']/i.exec(line);
-            const opening = openMatch ? `${(parseFloat(openMatch[1]!) * 100).toFixed(0)}%` : "100%";
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-            lenses.push({
-              range,
-              command: {
-                title: `🎛️ Choke '${name}' (Opening: ${opening}) | What-If Perturbation Sweep`,
-                command: "modelscript.olga.whatIfChoke",
-                arguments: [uri, name],
-              },
-            });
-          }
-
-          // Pipe declaration
-          const pipeMatch = /<Pipe[^>]*\s(?:label|name)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (pipeMatch && showSimulate) {
-            const name = pipeMatch[1]!;
-            const lenMatch = /length\s*=\s*["']([0-9.]+)["']/i.exec(line);
-            const diamMatch = /diameter\s*=\s*["']([0-9.]+)["']/i.exec(line);
-            const len = lenMatch ? `${lenMatch[1]}m` : "";
-            const diam = diamMatch ? `Ø${diamMatch[1]}m` : "";
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-            lenses.push({
-              range,
-              command: {
-                title: `📏 Pipe '${name}' [${len} ${diam}] | Inspect Pressure & Holdup Profile`,
-                command: "modelscript.olga.inspect_olga_elevation_profile",
-                arguments: [uri, name],
-              },
-            });
-          }
+        const xmlDoc = parseXmlSync(text);
+        if (xmlDoc.root) {
+          const lineOffsets = computeLineOffsets(text);
+          const walkOlga = (el: XmlElement): void => {
+            const tag = (el.name.includes(":") ? el.name.slice(el.name.indexOf(":") + 1) : el.name).toLowerCase();
+            if (tag === "flowpath" && showVerification) {
+              const name = getXmlAttr(el, "name", "id");
+              if (name) {
+                const pos = offsetToPosition(el.start, lineOffsets);
+                const col = text.indexOf(name, el.start);
+                const namePos = col !== -1 && col < el.end ? offsetToPosition(col, lineOffsets) : pos;
+                lenses.push({
+                  range: Range.create(namePos.line, namePos.character, namePos.line, namePos.character + name.length),
+                  command: {
+                    title: `🌊 Flowpath '${name}' | Verify Multiphase Limits (WAT, Hydrates, Slug Surge)`,
+                    command: "modelscript.olga.verify_flow_assurance",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+            } else if (tag === "valve" && showSimulate) {
+              const name = getXmlAttr(el, "name", "id");
+              if (name) {
+                const openVal = getXmlAttr(el, "opening");
+                const opening = openVal ? `${(parseFloat(openVal) * 100).toFixed(0)}%` : "100%";
+                const pos = offsetToPosition(el.start, lineOffsets);
+                const col = text.indexOf(name, el.start);
+                const namePos = col !== -1 && col < el.end ? offsetToPosition(col, lineOffsets) : pos;
+                lenses.push({
+                  range: Range.create(namePos.line, namePos.character, namePos.line, namePos.character + name.length),
+                  command: {
+                    title: `🎛️ Choke '${name}' (Opening: ${opening}) | What-If Perturbation Sweep`,
+                    command: "modelscript.olga.whatIfChoke",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+            } else if (tag === "pipe" && showSimulate) {
+              const name = getXmlAttr(el, "label", "name");
+              if (name) {
+                const lenVal = getXmlAttr(el, "length");
+                const diamVal = getXmlAttr(el, "diameter");
+                const len = lenVal ? `${lenVal}m` : "";
+                const diam = diamVal ? `Ø${diamVal}m` : "";
+                const pos = offsetToPosition(el.start, lineOffsets);
+                const col = text.indexOf(name, el.start);
+                const namePos = col !== -1 && col < el.end ? offsetToPosition(col, lineOffsets) : pos;
+                lenses.push({
+                  range: Range.create(namePos.line, namePos.character, namePos.line, namePos.character + name.length),
+                  command: {
+                    title: `📏 Pipe '${name}' [${len} ${diam}] | Inspect Pressure & Holdup Profile`,
+                    command: "modelscript.olga.inspect_olga_elevation_profile",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+            }
+            for (const child of el.children) {
+              walkOlga(child);
+            }
+          };
+          walkOlga(xmlDoc.root);
         }
       }
       return lenses;
@@ -1202,53 +1208,104 @@ export function registerCodeLensProvider(context: LspContext) {
       }
 
       if ((detectedPlugin.id === "pscad" || /\.(pscx|pslx)$/i.test(uri)) && currentText) {
-        const lines = currentText.split(/\r?\n/);
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx]!;
-          const defMatch = /<Definition\b[^>]*\bname="([^"]+)"/i.exec(line);
-          if (defMatch && showDiagram) {
-            const defName = defMatch[1]!;
-            const col = Math.max(0, line.indexOf(defName));
-            lenses.push({
-              range: Range.create(lineIdx, col, lineIdx, col + defName.length),
-              command: {
-                title: `⊞ Open Schematic Sub-Page '${defName}'`,
-                command: "modelscript.openDiagram",
-                arguments: [uri, defName],
-              },
-            });
-          }
-          const userMatch = /<User\b[^>]*\bdefn="([^"]+)"/i.exec(line);
-          if (userMatch) {
-            const defn = userMatch[1]!;
-            const idMatch = /\bid="([^"]+)"/i.exec(line);
-            const compId = idMatch?.[1] ?? defn;
-            const col = Math.max(0, line.indexOf(defn));
-            const range = Range.create(lineIdx, col, lineIdx, col + defn.length);
-            if (/tline|cable/i.test(defn) && (showSimulate || showDiagram)) {
-              lenses.push({
-                range,
-                command: {
-                  title: `🗼 Inspect Line Constants & Tower Geometry (${defn})`,
-                  command: "modelscript.pscad.inspect_line_constants",
-                  arguments: [uri, compId],
-                },
-              });
-            } else if (/inverter|ibr|grid_forming|vsc|statcom/i.test(defn) && (showVerification || showSimulate)) {
-              lenses.push({
-                range,
-                command: {
-                  title: `✓ Verify IEEE 2800 Ride-Through & Sequence Current (${defn})`,
-                  command: "modelscript.pscad.verify_ieee2800",
-                  arguments: [uri, compId],
-                },
-              });
+        const xmlDoc = parseXmlSync(currentText);
+        if (xmlDoc.root) {
+          const lineOffsets = computeLineOffsets(currentText);
+          const walkPscad = (el: XmlElement): void => {
+            const tag = (el.name.includes(":") ? el.name.slice(el.name.indexOf(":") + 1) : el.name).toLowerCase();
+            if (tag === "definition" && showDiagram) {
+              const defName = getXmlAttr(el, "name");
+              if (defName) {
+                const col = currentText.indexOf(defName, el.start);
+                const pos = offsetToPosition(el.start, lineOffsets);
+                const namePos = col !== -1 && col < el.end ? offsetToPosition(col, lineOffsets) : pos;
+                lenses.push({
+                  range: Range.create(
+                    namePos.line,
+                    namePos.character,
+                    namePos.line,
+                    namePos.character + defName.length,
+                  ),
+                  command: {
+                    title: `⊞ Open Schematic Sub-Page '${defName}'`,
+                    command: "modelscript.openDiagram",
+                    arguments: [uri, defName],
+                  },
+                });
+              }
+            } else if (tag === "user") {
+              const defn = getXmlAttr(el, "defn");
+              if (defn) {
+                const compId = getXmlAttr(el, "id") ?? defn;
+                const col = currentText.indexOf(defn, el.start);
+                const pos = offsetToPosition(el.start, lineOffsets);
+                const namePos = col !== -1 && col < el.end ? offsetToPosition(col, lineOffsets) : pos;
+                const range = Range.create(
+                  namePos.line,
+                  namePos.character,
+                  namePos.line,
+                  namePos.character + defn.length,
+                );
+                if (/tline|cable/i.test(defn) && (showSimulate || showDiagram)) {
+                  lenses.push({
+                    range,
+                    command: {
+                      title: `🗼 Inspect Line Constants & Tower Geometry (${defn})`,
+                      command: "modelscript.pscad.inspect_line_constants",
+                      arguments: [uri, compId],
+                    },
+                  });
+                } else if (/inverter|ibr|grid_forming|vsc|statcom/i.test(defn) && (showVerification || showSimulate)) {
+                  lenses.push({
+                    range,
+                    command: {
+                      title: `✓ Verify IEEE 2800 Ride-Through & Sequence Current (${defn})`,
+                      command: "modelscript.pscad.verify_ieee2800",
+                      arguments: [uri, compId],
+                    },
+                  });
+                }
+              }
             }
-          }
+            for (const child of el.children) {
+              walkPscad(child);
+            }
+          };
+          walkPscad(xmlDoc.root);
         }
       }
     }
 
     return lenses;
   });
+}
+
+function computeLineOffsets(text: string): number[] {
+  const offsets = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") offsets.push(i + 1);
+  }
+  return offsets;
+}
+
+function offsetToPosition(offset: number, lineOffsets: number[]): { line: number; character: number } {
+  let low = 0;
+  let high = lineOffsets.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (lineOffsets[mid]! <= offset) low = mid + 1;
+    else high = mid - 1;
+  }
+  const line = Math.max(0, low - 1);
+  return { line, character: offset - (lineOffsets[line] ?? 0) };
+}
+
+function getXmlAttr(el: XmlElement, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    for (const a of el.attributes) {
+      if (a.name.toLowerCase() === lower) return a.value;
+    }
+  }
+  return undefined;
 }

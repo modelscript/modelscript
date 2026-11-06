@@ -4,7 +4,7 @@ import { ColumnsIcon, EyeIcon, PencilIcon, ScreenFullIcon, XIcon } from "@primer
 import { IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { createArtifactView } from "../../api";
+import { createArtifactView, getPost } from "../../api";
 import { createCellId, type NotebookCell, type TutorialDifficulty } from "../../util/notebook";
 import Box from "../Box";
 import ComposeBox from "../ComposeBox";
@@ -32,6 +32,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [isExpandedWidth, setIsExpandedWidth] = useState<boolean>(false);
 
   const [content, setContent] = useState(initialState?.content || initialState?.defaultText || "");
+  const [contentWarning, setContentWarning] = useState(initialState?.contentWarning || "");
   const [artifactId, setArtifactId] = useState<number | null>(
     initialState?.artifactId ?? initialState?.artifactViewId ?? null,
   );
@@ -91,6 +92,24 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     }
     if (initialState.notebookTopics !== undefined) {
       setNotebookTopics(initialState.notebookTopics);
+    }
+    if (initialState.contentWarning !== undefined) {
+      setContentWarning(initialState.contentWarning || "");
+    }
+    if (initialState.editPostId && !initialState.content && !initialState.defaultText) {
+      getPost(initialState.editPostId)
+        .then((data) => {
+          if (data?.post) {
+            if (data.post.content) {
+              setContent((prev) => (prev ? prev : data.post.content));
+            }
+            if (data.post.content_warning || (data.post.metadata as any)?.contentWarning) {
+              const cw = data.post.content_warning || (data.post.metadata as any)?.contentWarning;
+              setContentWarning((prev) => (prev ? prev : cw));
+            }
+          }
+        })
+        .catch(() => {});
     }
     if (initialState.notebookCells && initialState.notebookCells.length > 0) {
       setNotebookCells(initialState.notebookCells);
@@ -180,17 +199,21 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         ""
       ).trim();
       const baselineArtifactId = initialState.artifactId ?? initialState.artifactViewId ?? null;
+      const baselineCW = (initialState.contentWarning ?? "").trim();
       if (notebookMode) {
         const baselineTitle = (initialState.notebookTitle ?? initialState.initialTitle ?? "").trim();
         const baselineSummary = (initialState.notebookSummary ?? "").trim();
         return (
           content.trim() !== baselineContent ||
+          contentWarning.trim() !== baselineCW ||
           notebookTitle.trim() !== baselineTitle ||
           notebookSummary.trim() !== baselineSummary ||
           artifactId !== baselineArtifactId
         );
       }
-      return content.trim() !== baselineContent || artifactId !== baselineArtifactId;
+      return (
+        content.trim() !== baselineContent || contentWarning.trim() !== baselineCW || artifactId !== baselineArtifactId
+      );
     }
     if (notebookMode) {
       return Boolean(
@@ -200,7 +223,12 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
       );
     }
     return Boolean(
-      content.trim().length > 0 || artifactId !== null || currentQuotePost || currentReplyToPost || currentPendingPin,
+      content.trim().length > 0 ||
+      contentWarning.trim().length > 0 ||
+      artifactId !== null ||
+      currentQuotePost ||
+      currentReplyToPost ||
+      currentPendingPin,
     );
   }, [
     initialState,
@@ -209,6 +237,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     notebookSummary,
     notebookCells,
     content,
+    contentWarning,
     artifactId,
     currentQuotePost,
     currentReplyToPost,
@@ -675,6 +704,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       forkedFromArtifactId={initialState?.forkedFromArtifactId}
                       content={content}
                       setContent={setContent}
+                      contentWarning={contentWarning}
+                      setContentWarning={setContentWarning}
                       artifactId={artifactId}
                       setArtifactId={setArtifactId}
                       notebookMode={notebookMode}

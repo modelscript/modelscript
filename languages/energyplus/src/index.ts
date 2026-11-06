@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./dae/index.js";
+export * from "./grammar/index.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

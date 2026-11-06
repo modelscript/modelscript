@@ -54,6 +54,7 @@ import { referencesRouter } from "./routes/references.js";
 import { reposRouter } from "./routes/repos.js";
 import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
+import { createPostEvidenceRouter, createSigningKeysRouter } from "./routes/signing-keys.js";
 import { simulateRouter } from "./routes/simulate.js";
 import { sitemapsRouter } from "./routes/sitemaps.js";
 import { socialRouter } from "./routes/social.js";
@@ -68,7 +69,6 @@ import { waitlistRouter } from "./routes/waitlist.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
 import { seedPolyglotSocialData, seedPolyglotUsers } from "./seed/index.js";
-import { cleanupExpiredActivityRepos } from "./services/activity-git.js";
 import { defaultArchiveQueue } from "./services/archive-queue.js";
 import { FeatureFlagService } from "./services/feature-flag-service.js";
 import { FederationWorker } from "./services/federation-worker.js";
@@ -198,16 +198,18 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     activePreset?.id === "tier2_corporate";
   const isProductionEnv = process.env["NODE_ENV"] === "production" || isProductionPreset;
 
-  // Pre-seed bundled standard libraries (MSL, SysML v2 KerML, and polyglot domain libraries) in:
+  // Pre-seed bundled standard libraries (MSL for DigitalOcean flagship) in:
   // 1. DigitalOcean flagship deployment (isFlagship) ALWAYS — ensures flagship never has missing packages even after a database reset
   // 2. Airgapped production appliances
   // 3. Any production/staging node when SEED_STDLIB_ON_BOOT=true, when target standard libraries are missing, or when database has 0 packages
-  const requestedStdlibPacks = (process.env["STDLIB_PACKS"] || "all")
+  const defaultStdlibPacks = isFlagship ? "modelica" : "all";
+  const requestedStdlibPacks = (process.env["STDLIB_PACKS"] || defaultStdlibPacks)
     .split(",")
     .map((p) => p.trim())
     .filter(Boolean);
   const targetStdlibs = requestedStdlibPacks.flatMap((p) => getStdlibsByPack(p as StdlibPackId | "all"));
   const hasMissingStdlibs = targetStdlibs.some((lib) => {
+    if (lib.tier === "tier3_ondemand") return false;
     const pkg = database.getPackage(lib.packageName);
     if (!pkg) return true;
     const ver = database.getPackageVersion(pkg.id, lib.version);
@@ -362,12 +364,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         const { removedCount } = defaultArchiveQueue.cleanupExpiredArchives();
         if (removedCount > 0) {
           console.log(`[ArchiveRetentionWorker] Cleaned up ${removedCount} expired data archive files (> 24h TTL).`);
-        }
-        const { removedCount: removedActivityRepos } = cleanupExpiredActivityRepos(undefined, undefined, database);
-        if (removedActivityRepos > 0) {
-          console.log(
-            `[ActivityGitRetentionWorker] Cleaned up ${removedActivityRepos} expired activity Git repositories (> 24h TTL).`,
-          );
         }
       } catch (err) {
         console.error("[LogRetentionWorker] Error executing retention log purge:", err);
@@ -648,6 +644,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const mountedUsersRouter = usersRouter(database, federationWorker);
   app.use("/api/v1/users", mountedUsersRouter);
   app.use("/api/v1/user", mountedUsersRouter);
+  app.use("/api/v1/users", createSigningKeysRouter(database));
+  app.use("/api/v1/posts", createPostEvidenceRouter(database));
   app.use("/api/v1/solutions", solutionsRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
   const mountedReferencesRouter = referencesRouter(database);
@@ -662,34 +660,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.locals["fmuStorage"] = fmuStorage;
   app.locals["fmuStorageDir"] = fmuStorageDir;
 
-  // ── Personal Activity Git Vault API (/api/v1/git/projects/:username%2Factivity) ──
-  // Available in all editions (GDPR Art. 20 / CCPA § 1798.100 right to data portability)
   const sharedGitRouter = gitRouter(database);
-  app.use(["/api/v1/git", "/api/v1/gitlab"], (req, res, next) => {
-    const match = req.path.match(/^\/projects\/([^/]+)/);
-    if (match && match[1]) {
-      try {
-        const decoded = decodeURIComponent(match[1])
-          .trim()
-          .replace(/^\/+|\/+$/g, "");
-        const parts = decoded.split("/");
-        const proj = parts.length === 2 ? parts[1]?.toLowerCase() : "";
-        if (proj === "activity" || proj === "activity.git") {
-          optionalAuth(req, res, (err?: unknown) => {
-            if (err) {
-              next(err);
-              return;
-            }
-            sharedGitRouter(req, res, next);
-          });
-          return;
-        }
-      } catch {
-        // Fall through to edition routes
-      }
-    }
-    next();
-  });
 
   // ── Enterprise Edition (ee/) Subsystems (Batches A–I) ──
   const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
@@ -709,7 +680,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       },
       hpcBilling: {
         optionalAuthMiddleware: optionalAuth,
-        caeFeatureGuard: requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
+        caeFeatureGuard: requireFeatureFlag(() => featureFlagService, "cae_cloud_solver", {
+          exemptPaths: ["/cluster/status", "/cae/cluster/status"],
+        }),
         billingFeatureGuard: requireFeatureFlag(() => featureFlagService, "billing_stripe_live"),
         caeRouter: caeRouter(jobQueue, database),
         cloudRouter: cloudRouter(libraryStorage, jobQueue, database),

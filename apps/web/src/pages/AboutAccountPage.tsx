@@ -20,6 +20,7 @@ import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
+import VerifiedAccountBadge from "../components/VerifiedAccountBadge";
 import { getAvatarUrl } from "../util/avatar";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
@@ -252,8 +253,13 @@ export default function AboutAccountPage() {
                 <Heading as="h2" style={{ fontSize: "20px", fontWeight: 700, margin: 0 }}>
                   {data.displayName || data.username}
                 </Heading>
-                {data.isVerified && (
-                  <CheckCircleFillIcon size={18} fill="var(--color-accent-fg, #0969da)" title="Verified Account" />
+                {data.signing_verified && <VerifiedAccountBadge username={data.username} size={18} />}
+                {data.isVerified && !data.signing_verified && (
+                  <CheckCircleFillIcon
+                    size={18}
+                    fill="var(--color-accent-fg, #0969da)"
+                    title="Connected Account (GitHub/Twitter)"
+                  />
                 )}
                 {data.accountType === "bot" && <HubotIcon size={18} color="var(--color-fg-muted)" title="Bot" />}
                 {data.accountType === "rss" && <RssIcon size={18} color="var(--color-fg-muted)" title="RSS Feed" />}

@@ -122,22 +122,28 @@ export const ContentGrid = ContentWrap;
 export const HeaderBar = styled.div`
   width: 100%;
   margin: 0 auto;
-  padding: 20px 24px 16px;
+  padding: 20px 24px 20px;
   box-sizing: border-box;
 
   @media (max-width: 768px) {
-    padding: 16px 16px 12px;
+    padding: 16px 16px 16px;
   }
 `;
 
 export const TabBar = styled.div`
   display: flex;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
   padding: 0 24px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--color-border);
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 45;
@@ -148,23 +154,30 @@ export const TabBar = styled.div`
 
   @media (max-width: 768px) {
     padding: 0 16px;
+    gap: 4px;
   }
 `;
 
 export const TabButton = styled.button<{ $active: boolean }>`
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  height: 44px;
+  padding: 0 14px;
   background: transparent;
   border: none;
   border-bottom: 2px solid ${(p) => (p.$active ? "var(--color-accent-cyan, #06b6d4)" : "transparent")};
+  margin-bottom: -1px;
+  box-sizing: border-box;
+  flex-shrink: 0;
   color: ${(p) => (p.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: ${(p) => (p.$active ? 600 : 500)};
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  border-radius: 6px 6px 0 0;
 
   &:hover {
     color: var(--color-text-heading);

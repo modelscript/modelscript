@@ -5,7 +5,7 @@ import { Heading, Text } from "@primer/react";
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { getArtifactView, getPopularRepos, getRepos } from "../api";
+import { getArtifactView, getPopularRepos, getPost, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
@@ -333,6 +333,23 @@ export const IdeWorkspacePage: React.FC = () => {
   const editPostId = editPostIdParam ? Number(editPostIdParam) : undefined;
   const replyToPostId = replyToPostIdParam ? Number(replyToPostIdParam) : undefined;
 
+  const [editPostContent, setEditPostContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (editPostId === undefined || Number.isNaN(editPostId)) return;
+    let mounted = true;
+    getPost(editPostId)
+      .then((res) => {
+        if (mounted && res?.post?.content) {
+          setEditPostContent(res.post.content);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [editPostId]);
+
   const [artifactMetadata, setArtifactMetadata] = useState<IdeArtifactMetadata | null>(null);
   const [repoSearchQuery, setRepoSearchQuery] = useState("");
   const [gitProvider, setGitProvider] = useState<"github" | "gitlab">("github");
@@ -606,7 +623,7 @@ export const IdeWorkspacePage: React.FC = () => {
         baseMorsel.title || incomingPayload?.title || displayTitle.replace(/\.[^/.]+$/, "") || "Workspace";
 
       const defaultContent = editPostId
-        ? undefined
+        ? (editPostContent ?? undefined)
         : replyToPostId
           ? `Here is my updated **${cleanTitle}** workspace:`
           : incomingPayload?.content ||

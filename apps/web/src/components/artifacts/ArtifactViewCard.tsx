@@ -203,11 +203,22 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       setLoading(false);
       return;
     }
-    if (initialArtifactView && (!validArtifactId || String(initialArtifactView.id) === String(validArtifactId))) {
-      setArtifact(initialArtifactView);
-      setLoading(false);
-      cacheArtifact(initialArtifactView);
-      return;
+    if (initialArtifactView) {
+      const initialIdStr = String(initialArtifactView.id || "").trim();
+      const validIdStr = String(validArtifactId).trim();
+      const isMatch =
+        !validArtifactId ||
+        initialIdStr === validIdStr ||
+        (/^\d{16,}$/.test(initialIdStr) &&
+          /^\d{16,}$/.test(validIdStr) &&
+          Math.abs(Number(initialIdStr) - Number(validIdStr)) <= 128);
+
+      if (isMatch) {
+        setArtifact(initialArtifactView);
+        setLoading(false);
+        cacheArtifact(initialArtifactView);
+        return;
+      }
     }
     async function fetchArtifact() {
       if (!validArtifactId) {

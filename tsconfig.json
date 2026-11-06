@@ -192,6 +192,8 @@
       "@modelscript/touchstone/*": ["./languages/touchstone/src/*"],
       "@modelscript/urdf": ["./languages/urdf/src/index.ts"],
       "@modelscript/urdf/*": ["./languages/urdf/src/*"],
+      "@modelscript/usd": ["./languages/usd/src/index.ts"],
+      "@modelscript/usd/*": ["./languages/usd/src/*"],
       "@modelscript/verilog-a": ["./languages/verilog-a/src/index.ts"],
       "@modelscript/verilog-a/*": ["./languages/verilog-a/src/*"],
       "@modelscript/*": ["./packages/*/src/index.ts", "./languages/*/src/index.ts", "./languages/*/language.ts"]

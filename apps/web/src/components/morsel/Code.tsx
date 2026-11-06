@@ -126,6 +126,23 @@ if (!self.MonacoEnvironment) {
 
 if (typeof window !== "undefined") {
   (window as any).monaco = monaco;
+
+  // Suppress benign Monaco internal cancellation errors (e.g. WordHighlighter / Delayer cancellation on model swap)
+  if (!(window as any).__monacoCancellationFilterInstalled__) {
+    (window as any).__monacoCancellationFilterInstalled__ = true;
+    window.addEventListener("unhandledrejection", (event) => {
+      const reason = event.reason;
+      if (
+        reason &&
+        (reason.name === "Canceled" ||
+          reason.message === "Canceled" ||
+          reason.name === "CancellationError" ||
+          (typeof reason.message === "string" && reason.message.includes("Canceled")))
+      ) {
+        event.preventDefault();
+      }
+    });
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────

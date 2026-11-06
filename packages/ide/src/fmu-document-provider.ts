@@ -12,6 +12,7 @@
  * intercepts `.fmu` file clicks and redirects to the virtual document.
  */
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import * as vscode from "vscode";
 
 /** URI scheme for virtual FMU documents. */
@@ -28,6 +29,35 @@ interface FmuVariable {
   unit?: string | undefined;
 }
 
+function getAttr(elem: XmlElement, name: string): string | undefined {
+  const norm = name.toLowerCase();
+  return elem.attributes.find((a) => a.name.toLowerCase() === norm)?.value;
+}
+
+function findChild(parent: XmlElement, tag: string): XmlElement | undefined {
+  const norm = tag.toLowerCase();
+  return parent.children.find((c) => {
+    const cName = c.name.toLowerCase();
+    return cName === norm || cName.endsWith(`:${norm}`);
+  });
+}
+
+function findDescendants(parent: XmlElement, tag: string): XmlElement[] {
+  const norm = tag.toLowerCase();
+  const results: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    const name = node.name.toLowerCase();
+    if (name === norm || name.endsWith(`:${norm}`)) {
+      results.push(node);
+    }
+    for (const child of node.children) {
+      walk(child);
+    }
+  }
+  walk(parent);
+  return results;
+}
+
 /** Parse modelDescription.xml into structured data. */
 function parseModelDescription(xml: string): {
   modelName: string;
@@ -37,37 +67,37 @@ function parseModelDescription(xml: string): {
   generationTool: string;
   variables: FmuVariable[];
 } {
-  const attr = (s: string, name: string): string => s.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`))?.[1] ?? "";
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
 
-  const headerMatch = xml.match(/<fmiModelDescription([^>]*)>/);
-  const header = headerMatch?.[1] ?? "";
-  const modelName = attr(header, "modelName") || "FMU";
-  const description = attr(header, "description");
-  const guid = attr(header, "guid");
-  const fmiVersion = attr(header, "fmiVersion");
-  const generationTool = attr(header, "generationTool");
+  const modelName = (root ? getAttr(root, "modelName") : undefined) || "FMU";
+  const description = (root ? getAttr(root, "description") : undefined) || "";
+  const guid = (root ? getAttr(root, "guid") : undefined) || "";
+  const fmiVersion = (root ? getAttr(root, "fmiVersion") : undefined) || "";
+  const generationTool = (root ? getAttr(root, "generationTool") : undefined) || "";
 
   const variables: FmuVariable[] = [];
-  const scalarRegex =
-    /<ScalarVariable\b([^>]*)\/?>([\s\S]*?)(?:<\/ScalarVariable>|(?=<ScalarVariable|<\/ModelVariables))/g;
-  let match: RegExpExecArray | null;
+  const scalarElements = root ? findDescendants(root, "ScalarVariable") : [];
 
-  while ((match = scalarRegex.exec(xml)) !== null) {
-    const headerAttrs = match[1] ?? "";
-    const body = match[0] ?? "";
-
-    const name = attr(headerAttrs, "name");
+  for (const sv of scalarElements) {
+    const name = getAttr(sv, "name");
     if (!name) continue;
 
-    const causality = attr(headerAttrs, "causality") || "local";
-    const variability = attr(headerAttrs, "variability") || "continuous";
-    const varDesc = attr(headerAttrs, "description");
+    const causality = getAttr(sv, "causality") || "local";
+    const variability = getAttr(sv, "variability") || "continuous";
+    const varDesc = getAttr(sv, "description") || "";
 
-    const typeMatch = body.match(/<(Real|Integer|Boolean|String)\b([^>]*)/);
-    const type = typeMatch?.[1] ?? "Real";
-    const typeAttrs = typeMatch?.[2] ?? "";
-    const start = attr(typeAttrs, "start") || undefined;
-    const unit = attr(typeAttrs, "unit") || undefined;
+    let type = "Real";
+    let start: string | undefined;
+    let unit: string | undefined;
+
+    const typeChild =
+      findChild(sv, "Real") ?? findChild(sv, "Integer") ?? findChild(sv, "Boolean") ?? findChild(sv, "String");
+    if (typeChild) {
+      type = typeChild.name.split(":").pop() ?? "Real";
+      start = getAttr(typeChild, "start");
+      unit = getAttr(typeChild, "unit");
+    }
 
     variables.push({ name, causality, variability, type, description: varDesc, start, unit });
   }

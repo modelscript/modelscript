@@ -1,7 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import type { IconName } from "../data/icons";
+import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
+
+const { ansatzOrigin } = useAnsatzOrigin();
 
 const pillars: { icon: IconName; title: string; body: string }[] = [
   { icon: "code", title: "Open-core architecture", body: "AGPL-3.0 core compiler & solvers, with OEM & Enterprise editions." },
@@ -35,10 +38,10 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
           <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/pricing">
             <MsIcon name="shield" :size="16" /> Plans &amp; Pricing
           </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/sketch" target="_self">
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/sketch`" target="_blank" rel="noopener noreferrer">
             <MsIcon name="play" :size="16" /> Try Sketch
           </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/studio" target="_self">
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/studio`" target="_blank" rel="noopener noreferrer">
             <MsIcon name="layers" :size="16" /> Launch Studio
           </a>
           <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener">

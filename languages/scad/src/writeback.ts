@@ -27,7 +27,39 @@ export const scadWriteback: WritebackHandler = (ctx: WritebackContext): Writebac
     }
   }
 
-  // 2. Precise CST byte-range replacement within the indexed declaration
+  // 2. Exact CST node field range from AST indexing
+  if (entry.fieldRanges) {
+    const valField =
+      entry.fieldRanges.value ?? entry.fieldRanges.expression ?? entry.fieldRanges.val ?? entry.fieldRanges.initializer;
+    if (
+      valField &&
+      valField.startOffset != null &&
+      valField.endOffset != null &&
+      valField.endOffset > valField.startOffset
+    ) {
+      let valStart = valField.startOffset;
+      let valEnd = valField.endOffset;
+      const valSlice = fullText.substring(valStart, valEnd);
+      const opMatch = valSlice.match(/^(=(?!=))\s*/);
+      if (opMatch) {
+        valStart += opMatch[0].length;
+      }
+      const trimmedVal = fullText
+        .substring(valStart, valEnd)
+        .replace(/[;\r\n]+$/, "")
+        .trimEnd();
+      valEnd = valStart + trimmedVal.length;
+      if (valEnd > valStart) {
+        return {
+          startOffset: valStart,
+          endOffset: valEnd,
+          newText: String(newValue).trim(),
+        };
+      }
+    }
+  }
+
+  // 3. Precise CST byte-range replacement within the indexed declaration
   if (entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset) {
     const declText = fullText.substring(entry.startOffset, entry.endOffset);
     const eqMatch = declText.match(/(=(?!=))\s*([^;}\r\n]+)/);

@@ -2,7 +2,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildKinematicTree, computeForwardDynamicsAba, computeInverseDynamicsRnea } from "../src/kinematics/index.js";
+import {
+  buildKinematicTree,
+  computeForwardDynamicsAba,
+  computeForwardKinematics,
+  computeInverseDynamicsRnea,
+} from "../src/kinematics/index.js";
 import { parseUrdf } from "../src/parser/index.js";
 
 const ROBOT_DECK = `<?xml version="1.0"?>
@@ -144,5 +149,24 @@ describe("URDF Kinematics & Featherstone Algorithms (@modelscript/urdf)", () => 
       Math.abs(qddRecovered - 1.4) < 1e-5,
       `Expected RNEA-ABA equivalence with RPY + COM offset (1.4 vs ${qddRecovered})`,
     );
+  });
+
+  it("should compute forward kinematics 3D link positions and orientations", () => {
+    const robot = parseUrdf(ROBOT_DECK);
+    const posesZero = computeForwardKinematics(
+      robot,
+      new Map([
+        ["joint_1", 0],
+        ["joint_2", 0],
+      ]),
+    );
+    assert.equal(posesZero.size, 3);
+    assert.ok(posesZero.has("base_link"));
+    assert.ok(posesZero.has("link_1"));
+    assert.ok(posesZero.has("link_2"));
+
+    const posesRotated = computeForwardKinematics(robot, new Map([["joint_1", Math.PI / 2]]));
+    const link1 = posesRotated.get("link_1")!;
+    assert.ok(link1.rotation[0] !== undefined);
   });
 });

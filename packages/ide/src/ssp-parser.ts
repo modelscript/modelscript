@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+
 export type SspConnectorKind = "input" | "output" | "inout" | "parameter" | "calculatedParameter";
 export type SspConnectorType = "Real" | "Integer" | "Boolean" | "String" | "Enumeration";
 
@@ -51,22 +53,71 @@ export interface SspSystem {
   defaultExperiment?: SspDefaultExperiment | undefined;
 }
 
+function getAttr(elem: XmlElement, name: string): string | undefined {
+  const norm = name.toLowerCase();
+  return elem.attributes.find((a) => a.name.toLowerCase() === norm)?.value;
+}
+
+function findChild(parent: XmlElement, tag: string): XmlElement | undefined {
+  const norm = tag.toLowerCase();
+  return parent.children.find((c) => {
+    const cName = c.name.toLowerCase();
+    return cName === norm || cName.endsWith(`:${norm}`);
+  });
+}
+
+function findChildren(parent: XmlElement, tag: string): XmlElement[] {
+  const norm = tag.toLowerCase();
+  return parent.children.filter((c) => {
+    const cName = c.name.toLowerCase();
+    return cName === norm || cName.endsWith(`:${norm}`);
+  });
+}
+
+function findDescendant(parent: XmlElement, tag: string): XmlElement | undefined {
+  const norm = tag.toLowerCase();
+  if (parent.name.toLowerCase() === norm || parent.name.toLowerCase().endsWith(`:${norm}`)) {
+    return parent;
+  }
+  for (const child of parent.children) {
+    const found = findDescendant(child, tag);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findDescendants(parent: XmlElement, tag: string): XmlElement[] {
+  const norm = tag.toLowerCase();
+  const results: XmlElement[] = [];
+  function walk(node: XmlElement) {
+    const name = node.name.toLowerCase();
+    if (name === norm || name.endsWith(`:${norm}`)) {
+      results.push(node);
+    }
+    for (const child of node.children) {
+      walk(child);
+    }
+  }
+  walk(parent);
+  return results;
+}
+
 export function parseSsd(xml: string): SspSystem {
-  const version = extractAttr(xml, "ssd:SystemStructureDescription", "version") ?? "1.0";
-  const name = extractAttr(xml, "ssd:SystemStructureDescription", "name") ?? "System";
-  const description = extractAttr(xml, "ssd:SystemStructureDescription", "description");
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
 
-  const systemMatch = xml.match(/<ssd:System\s+([^>]*)>([\s\S]*?)<\/ssd:System>/);
-  const systemAttrs = systemMatch?.[1] ?? "";
-  const systemBody = systemMatch?.[2] ?? "";
+  const version = root ? (getAttr(root, "version") ?? "1.0") : "1.0";
+  const rootName = root ? (getAttr(root, "name") ?? "System") : "System";
+  const rootDesc = root ? getAttr(root, "description") : undefined;
 
-  const systemName = extractAttrFromStr(systemAttrs, "name") ?? name;
-  const systemDescription = extractAttrFromStr(systemAttrs, "description") ?? description;
+  const systemElem = root ? findDescendant(root, "System") : undefined;
+  const systemName = (systemElem ? getAttr(systemElem, "name") : undefined) ?? rootName;
+  const systemDescription = (systemElem ? getAttr(systemElem, "description") : undefined) ?? rootDesc;
 
-  const components = parseComponents(systemBody);
-  const connections = parseConnections(systemBody);
-  const parameterBindings = parseParameterBindings(systemBody);
-  const defaultExperiment = parseDefaultExperiment(xml);
+  const components = systemElem ? parseComponents(systemElem) : [];
+  const connections = systemElem ? parseConnections(systemElem) : [];
+  const parameterBindings = systemElem ? parseParameterBindings(systemElem) : [];
+  const defaultExperiment = root ? parseDefaultExperiment(root) : undefined;
 
   return {
     name: systemName,
@@ -79,101 +130,49 @@ export function parseSsd(xml: string): SspSystem {
   };
 }
 
-export function parseSsv(xml: string): SspParameterValue[] {
-  const values: SspParameterValue[] = [];
-  const paramRegex = /<ssv:Parameter\s+([^>]*)>([\s\S]*?)<\/ssv:Parameter>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = paramRegex.exec(xml)) !== null) {
-    const attrs = match[1] ?? "";
-    const body = match[2] ?? "";
-    const paramName = extractAttrFromStr(attrs, "name") ?? "";
-
-    const realMatch = body.match(/<ssv:Real\s+([^>]*)\/?>/);
-    if (realMatch) {
-      const val = extractAttrFromStr(realMatch[1] ?? "", "value");
-      if (val !== undefined) values.push({ name: paramName, type: "Real", value: parseFloat(val) });
-      continue;
-    }
-
-    const intMatch = body.match(/<ssv:Integer\s+([^>]*)\/?>/);
-    if (intMatch) {
-      const val = extractAttrFromStr(intMatch[1] ?? "", "value");
-      if (val !== undefined) values.push({ name: paramName, type: "Integer", value: parseInt(val, 10) });
-      continue;
-    }
-
-    const boolMatch = body.match(/<ssv:Boolean\s+([^>]*)\/?>/);
-    if (boolMatch) {
-      const val = extractAttrFromStr(boolMatch[1] ?? "", "value");
-      if (val !== undefined) values.push({ name: paramName, type: "Boolean", value: val === "true" || val === "1" });
-      continue;
-    }
-
-    const strMatch = body.match(/<ssv:String\s+([^>]*)\/?>/);
-    if (strMatch) {
-      const val = extractAttrFromStr(strMatch[1] ?? "", "value");
-      if (val !== undefined) values.push({ name: paramName, type: "String", value: val });
-    }
-  }
-
-  return values;
-}
-
-function parseComponents(systemBody: string): SspComponent[] {
+function parseComponents(systemElem: XmlElement): SspComponent[] {
   const components: SspComponent[] = [];
-  const elementsMatch = systemBody.match(/<ssd:Elements>([\s\S]*?)<\/ssd:Elements>/);
-  if (!elementsMatch) return components;
-  const elementsBody = elementsMatch[1] ?? "";
+  const elementsElem = findChild(systemElem, "Elements") ?? systemElem;
+  const compElements = findChildren(elementsElem, "Component");
 
-  const compRegex = /<ssd:Component\s+([^>]*)>([\s\S]*?)<\/ssd:Component>|<ssd:Component\s+([^>]*)\/?>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = compRegex.exec(elementsBody)) !== null) {
-    const attrs = match[1] ?? match[3] ?? "";
-    const body = match[2] ?? "";
-    const compName = extractAttrFromStr(attrs, "name") ?? "";
-    const type = extractAttrFromStr(attrs, "type");
-    const source = extractAttrFromStr(attrs, "source") ?? "";
-    const connectors = parseConnectors(body);
-    components.push({ name: compName, type, source, connectors });
+  for (const compElem of compElements) {
+    const name = getAttr(compElem, "name") ?? "";
+    const type = getAttr(compElem, "type");
+    const source = getAttr(compElem, "source") ?? "";
+    const connectors = parseConnectors(compElem);
+    components.push({ name, type, source, connectors });
   }
+
   return components;
 }
 
-function parseConnectors(componentBody: string): SspConnector[] {
+function parseConnectors(compElem: XmlElement): SspConnector[] {
   const connectors: SspConnector[] = [];
-  const connectorsMatch = componentBody.match(/<ssd:Connectors>([\s\S]*?)<\/ssd:Connectors>/);
-  if (!connectorsMatch) return connectors;
-  const connectorsBody = connectorsMatch[1] ?? "";
+  const connectorsElem = findChild(compElem, "Connectors") ?? compElem;
+  const connElements = findChildren(connectorsElem, "Connector");
 
-  const connRegex = /<ssd:Connector\s+([^>]*)>([\s\S]*?)<\/ssd:Connector>|<ssd:Connector\s+([^>]*)\/?>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = connRegex.exec(connectorsBody)) !== null) {
-    const attrs = match[1] ?? match[3] ?? "";
-    const body = match[2] ?? "";
-    const connName = extractAttrFromStr(attrs, "name") ?? "";
-    const kind = (extractAttrFromStr(attrs, "kind") ?? "input") as SspConnectorKind;
+  for (const conn of connElements) {
+    const name = getAttr(conn, "name") ?? "";
+    const kind = (getAttr(conn, "kind") ?? "input") as SspConnectorKind;
 
     let type: SspConnectorType = "Real";
     let unit: string | undefined;
 
-    if (body.match(/<ssc:Real/)) {
+    const realChild = findChild(conn, "Real");
+    if (realChild) {
       type = "Real";
-      const realMatch = body.match(/<ssc:Real\s+([^>]*)\/?>/);
-      if (realMatch) unit = extractAttrFromStr(realMatch[1] ?? "", "unit");
-    } else if (body.match(/<ssc:Integer/)) {
+      unit = getAttr(realChild, "unit");
+    } else if (findChild(conn, "Integer")) {
       type = "Integer";
-    } else if (body.match(/<ssc:Boolean/)) {
+    } else if (findChild(conn, "Boolean")) {
       type = "Boolean";
-    } else if (body.match(/<ssc:String/)) {
+    } else if (findChild(conn, "String")) {
       type = "String";
-    } else if (body.match(/<ssc:Enumeration/)) {
+    } else if (findChild(conn, "Enumeration")) {
       type = "Enumeration";
     }
 
-    const connector: SspConnector = { name: connName, kind, type };
+    const connector: SspConnector = { name, kind, type };
     if (unit) connector.unit = unit;
     connectors.push(connector);
   }
@@ -181,73 +180,98 @@ function parseConnectors(componentBody: string): SspConnector[] {
   return connectors;
 }
 
-function parseConnections(systemBody: string): SspConnection[] {
+function parseConnections(systemElem: XmlElement): SspConnection[] {
   const connections: SspConnection[] = [];
-  const connectionsMatch = systemBody.match(/<ssd:Connections>([\s\S]*?)<\/ssd:Connections>/);
-  if (!connectionsMatch) return connections;
-  const connectionsBody = connectionsMatch[1] ?? "";
+  const connectionsElem = findChild(systemElem, "Connections") ?? systemElem;
+  const connElements = findChildren(connectionsElem, "Connection");
 
-  const connRegex = /<ssd:Connection\s+([^>]*)\/?>/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = connRegex.exec(connectionsBody)) !== null) {
-    const attrs = match[1] ?? "";
-    const startElement = extractAttrFromStr(attrs, "startElement") ?? "";
-    const startConnector = extractAttrFromStr(attrs, "startConnector") ?? "";
-    const endElement = extractAttrFromStr(attrs, "endElement") ?? "";
-    const endConnector = extractAttrFromStr(attrs, "endConnector") ?? "";
+  for (const conn of connElements) {
+    const startElement = getAttr(conn, "startElement") ?? "";
+    const startConnector = getAttr(conn, "startConnector") ?? "";
+    const endElement = getAttr(conn, "endElement") ?? "";
+    const endConnector = getAttr(conn, "endConnector") ?? "";
     connections.push({ startElement, startConnector, endElement, endConnector });
   }
 
   return connections;
 }
 
-function parseParameterBindings(systemBody: string): SspParameterBinding[] {
+function extractParamValue(paramElem: XmlElement): SspParameterValue | null {
+  const paramName = getAttr(paramElem, "name") ?? "";
+
+  const realChild = findChild(paramElem, "Real");
+  if (realChild) {
+    const val = getAttr(realChild, "value");
+    if (val !== undefined) return { name: paramName, type: "Real", value: parseFloat(val) };
+  }
+
+  const intChild = findChild(paramElem, "Integer");
+  if (intChild) {
+    const val = getAttr(intChild, "value");
+    if (val !== undefined) return { name: paramName, type: "Integer", value: parseInt(val, 10) };
+  }
+
+  const boolChild = findChild(paramElem, "Boolean");
+  if (boolChild) {
+    const val = getAttr(boolChild, "value");
+    if (val !== undefined) return { name: paramName, type: "Boolean", value: val === "true" || val === "1" };
+  }
+
+  const strChild = findChild(paramElem, "String");
+  if (strChild) {
+    const val = getAttr(strChild, "value");
+    if (val !== undefined) return { name: paramName, type: "String", value: val };
+  }
+
+  return null;
+}
+
+function parseParameterBindings(systemElem: XmlElement): SspParameterBinding[] {
   const bindings: SspParameterBinding[] = [];
-  const bindRegex =
-    /<ssd:ParameterBinding\s+([^>]*)>([\s\S]*?)<\/ssd:ParameterBinding>|<ssd:ParameterBinding\s+([^>]*)\/?>/g;
-  let match: RegExpExecArray | null;
+  const bindingsElem = findChild(systemElem, "ParameterBindings") ?? systemElem;
+  const bindElements = findChildren(bindingsElem, "ParameterBinding");
 
-  while ((match = bindRegex.exec(systemBody)) !== null) {
-    const attrs = match[1] ?? match[3] ?? "";
-    const body = match[2] ?? "";
-    const prefix = extractAttrFromStr(attrs, "prefix");
-    const source = extractAttrFromStr(attrs, "source");
-
+  for (const bind of bindElements) {
+    const prefix = getAttr(bind, "prefix");
+    const source = getAttr(bind, "source");
     const values: SspParameterValue[] = [];
-    if (body) {
-      values.push(...parseSsv(body));
+
+    const paramElements = findDescendants(bind, "Parameter");
+    for (const param of paramElements) {
+      const val = extractParamValue(param);
+      if (val) values.push(val);
     }
+
     bindings.push({ prefix, source, values });
   }
 
   return bindings;
 }
 
-function parseDefaultExperiment(xml: string): SspDefaultExperiment | undefined {
-  const expMatch = xml.match(/<ssd:DefaultExperiment\s+([^>]*)\/?>/);
-  if (!expMatch) return undefined;
+export function parseSsv(xml: string): SspParameterValue[] {
+  const values: SspParameterValue[] = [];
+  const doc = parseXmlSync(xml);
+  if (!doc.root) return values;
 
-  const attrs = expMatch[1] ?? "";
-  const startTimeStr = extractAttrFromStr(attrs, "startTime");
-  const stopTimeStr = extractAttrFromStr(attrs, "stopTime");
+  const paramElements = findDescendants(doc.root, "Parameter");
+  for (const param of paramElements) {
+    const val = extractParamValue(param);
+    if (val) values.push(val);
+  }
+
+  return values;
+}
+
+function parseDefaultExperiment(root: XmlElement): SspDefaultExperiment | undefined {
+  const expElem = findDescendant(root, "DefaultExperiment");
+  if (!expElem) return undefined;
+
+  const startTimeStr = getAttr(expElem, "startTime");
+  const stopTimeStr = getAttr(expElem, "stopTime");
 
   const exp: SspDefaultExperiment = {};
   if (startTimeStr !== undefined) exp.startTime = parseFloat(startTimeStr);
   if (stopTimeStr !== undefined) exp.stopTime = parseFloat(stopTimeStr);
 
   return exp;
-}
-
-function extractAttr(xml: string, element: string, attr: string): string | undefined {
-  const escapedElement = element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const elemMatch = xml.match(new RegExp(`<${escapedElement}\\s+([^>]*)>`, "s"));
-  if (!elemMatch) return undefined;
-  return extractAttrFromStr(elemMatch[1] ?? "", attr);
-}
-
-function extractAttrFromStr(attrs: string, attr: string): string | undefined {
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*"([^"]*)"`, "s"));
-  return match ? (match[1] ?? undefined) : undefined;
 }

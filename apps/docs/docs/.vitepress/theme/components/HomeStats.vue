@@ -5,7 +5,10 @@ import { INDUSTRIES } from "../data/industries";
 import type { IconName } from "../data/icons";
 import { LANGUAGE_COUNT } from "../data/languages";
 import languagesData from "../data/languages.generated.json";
+import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
+
+const { ansatzOrigin } = useAnsatzOrigin();
 
 interface StatItem {
   value: string;
@@ -45,7 +48,7 @@ const stats = computed<StatItem[]>(() => [
     label: "Installs required",
     description: "Native WebAssembly runs in the browser, Node.js, and the CLI.",
     icon: "cube",
-    link: "/sketch",
+    link: `${ansatzOrigin.value}/sketch`,
   },
 ]);
 </script>

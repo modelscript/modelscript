@@ -844,3 +844,42 @@ msx db <status|upgrade|rollback|plan|verify> [--db <file.sqlite>] [--dry-run] [-
 # Request, poll, or download long-term regulatory cold-storage archives
 msx archive <request|status|download> <targetId> [-o <path>]
 ```
+
+---
+
+### `keys`
+
+Manages user-held cryptographic signing keys (Ed25519 and FIDO2/U2F hardware keys) for **Signed Accounts** and bidirectional Git transport.
+
+| Subcommand | Arguments                        | Description                                                                                                       |
+| :--------- | :------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `list`     | —                                | List all registered user-held signing keys, active status, SHA-256 fingerprints, and trust levels.                |
+| `generate` | `[-o <file>] [-c <comment>]`     | Generate a new, non-custodial Ed25519 keypair for commit and post signing.                                        |
+| `register` | `<keyPathOrString> [-l <label>]` | Register a public key (`~/.ssh/id_ed25519.pub`) with the server via Proof-of-Possession (PoP) challenge/response. |
+| `revoke`   | `<keyId> [-r <reason>]`          | Revoke a compromised or retired signing key.                                                                      |
+| `policy`   | `[strict\|flexible]`             | Query or update the account's signing policy (strict mode rejects unsigned commits and posts).                    |
+
+```bash
+# Generate a new local Ed25519 signing keypair
+msx keys generate
+
+# Register a public key to activate Signed Account status
+msx keys register ~/.ssh/id_ed25519.pub --label "Work Laptop"
+
+# Enforce strict signing mode (all git pushes and posts must be signed)
+msx keys policy strict
+```
+
+---
+
+### `sign`
+
+Generates or verifies W3C Data Integrity (`eddsa-jcs-2022`) proofs for Markdown posts, tutorials, and engineering artifacts.
+
+```bash
+# Sign a post file with your Ed25519 private key
+msx sign posts/thruster-design.md -k ~/.ssh/id_ed25519
+
+# Verify a post's cryptographic proof sidecar against a public key or server registry
+msx sign posts/thruster-design.md --verify -k ~/.ssh/id_ed25519.pub
+```

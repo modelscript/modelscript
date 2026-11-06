@@ -14,12 +14,22 @@ import { FLUIDS_PROCESS_ENERGY_POSTS } from "./artifacts-catalog/fluids-process-
 import { MULTIBODY_ROBOTICS_POSTS } from "./artifacts-catalog/multibody-robotics.js";
 import { POWER_ELECTRONICS_POSTS } from "./artifacts-catalog/power-electronics.js";
 import { SYSTEMS_ONTOLOGICAL_POSTS } from "./artifacts-catalog/systems-ontological.js";
+import { createSeedPostProof, getSeedSigningKeyForUser, seedSigningKeys } from "./keys.js";
 import { SEED_FOLLOW_PAIRS, SEED_PERSONAS } from "./personas.js";
 import type { SeedPostSpec } from "./types.js";
 
 const SEED_DIR = path.dirname(fileURLToPath(import.meta.url));
 const API_ROOT = path.resolve(SEED_DIR, "../..");
 
+export {
+  createSeedPostProof,
+  getSeedSigningKeyForUser,
+  SEED_SIGNING_KEYS,
+  seedSigningKeys,
+  type SeedKeyDefinition,
+  type SeedKeyRecord,
+  type SeedProofResult,
+} from "./keys.js";
 export { SEED_FOLLOW_PAIRS, SEED_PERSONAS, type SeedPersona } from "./personas.js";
 export type { SeedComment, SeedCommentReply, SeedPostSpec } from "./types.js";
 
@@ -98,6 +108,9 @@ export function seedPolyglotUsers(db: LibraryDatabase): Map<string, number> {
       db.followUser(followerId, followingId);
     }
   }
+
+  // Seed verified signing keys, master key delegations, and transparency logs
+  seedSigningKeys(db, userIds);
 
   const showcaseRepos: {
     owner: string;
@@ -281,7 +294,31 @@ export async function seedPolyglotSocialData(
 
     const existingArtifact = db.getArtifactViewByTitle(spec.title);
     if (existingArtifact && !options?.force) {
-      if (!existingArtifact.thumbnail_url) {
+      if (spec.extraViewConfig && existingArtifact.view_config) {
+        try {
+          const parsedVc = JSON.parse(existingArtifact.view_config) as Record<string, unknown>;
+          let changed = false;
+          for (const [k, v] of Object.entries(spec.extraViewConfig)) {
+            if (parsedVc[k] === undefined) {
+              parsedVc[k] = v;
+              changed = true;
+            }
+          }
+          if (changed) {
+            db.updateArtifactViewConfig(existingArtifact.id, JSON.stringify(parsedVc));
+          }
+        } catch {}
+      }
+      if (spec.extraViewConfig?.["stepCode"] && typeof spec.extraViewConfig["stepFilename"] === "string") {
+        const stepPath = path.join(uploadDir, spec.extraViewConfig["stepFilename"] as string);
+        if (!fs.existsSync(stepPath)) {
+          fs.writeFileSync(stepPath, spec.extraViewConfig["stepCode"] as string, "utf8");
+        }
+      }
+      const isStaleRasterThumb =
+        typeof existingArtifact.thumbnail_url === "string" &&
+        existingArtifact.thumbnail_url.startsWith("/thumbnails/artifact_");
+      if (!existingArtifact.thumbnail_url || isStaleRasterThumb) {
         try {
           const filePath = path.join(uploadDir, spec.filename);
           if (!fs.existsSync(filePath)) {
@@ -290,16 +327,27 @@ export async function seedPolyglotSocialData(
           const pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);
           if (pre.thumbnailUrl) {
             db.updateArtifactThumbnail(existingArtifact.id, pre.thumbnailUrl, pre.thumbnailUrl);
-            if (pre.svg && existingArtifact.view_config) {
+            if (existingArtifact.view_config) {
               try {
                 const parsedVc = JSON.parse(existingArtifact.view_config) as Record<string, unknown>;
-                parsedVc["svg"] = pre.svg;
+                if (pre.svg) {
+                  parsedVc["svg"] = pre.svg;
+                }
                 parsedVc["thumbnailUrl"] = pre.thumbnailUrl;
                 parsedVc["thumbnailUrlLight"] = pre.thumbnailUrl;
                 parsedVc["thumbnailUrlDark"] = pre.thumbnailUrl;
                 db.updateArtifactViewConfig(existingArtifact.id, JSON.stringify(parsedVc));
               } catch {}
             }
+          }
+          if (isStaleRasterThumb && typeof existingArtifact.thumbnail_url === "string") {
+            try {
+              const staleBasename = path.basename(existingArtifact.thumbnail_url);
+              const stalePath = path.join(process.cwd(), "public", "thumbnails", staleBasename);
+              if (fs.existsSync(stalePath)) {
+                fs.unlinkSync(stalePath);
+              }
+            } catch {}
           }
         } catch {}
       }
@@ -313,6 +361,12 @@ export async function seedPolyglotSocialData(
     const authorId = userIds.get(authorUsername) ?? userIds.get("omar") ?? 1;
     const filePath = path.join(uploadDir, spec.filename);
     fs.writeFileSync(filePath, spec.code, "utf8");
+    if (spec.extraViewConfig?.["stepCode"] && typeof spec.extraViewConfig["stepFilename"] === "string") {
+      const stepPath = path.join(uploadDir, spec.extraViewConfig["stepFilename"] as string);
+      if (!fs.existsSync(stepPath)) {
+        fs.writeFileSync(stepPath, spec.extraViewConfig["stepCode"] as string, "utf8");
+      }
+    }
 
     const pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);
 
@@ -351,6 +405,32 @@ export async function seedPolyglotSocialData(
       : `${spec.postContent}\n\n#${langTag} #ModelScript #Engineering`;
     const createdAt = hoursAgoSqliteTimestamp(postHoursAgo);
 
+    let postProofResult: ReturnType<typeof createSeedPostProof> | undefined;
+    if (spec.signed) {
+      const keySpec = getSeedSigningKeyForUser(authorUsername);
+      if (keySpec) {
+        postProofResult = createSeedPostProof(fullPostContent, createdAt, keySpec, {
+          artifactId: artifactViewId,
+        });
+      }
+    }
+
+    const postMetadata: Record<string, unknown> = {
+      language,
+      artifactTitle: spec.title,
+      filename: spec.filename,
+      ...(postProofResult
+        ? {
+            clientSignature: postProofResult.clientSignature,
+            client_signature: postProofResult.clientSignature,
+            keyIdString: postProofResult.keyIdString,
+            key_id_string: postProofResult.keyIdString,
+            proof: postProofResult.proof,
+            signedPayload: fullPostContent,
+          }
+        : {}),
+    };
+
     const { id: postId } = db.createPost(
       authorId,
       fullPostContent,
@@ -362,13 +442,21 @@ export async function seedPolyglotSocialData(
       undefined,
       createdAt,
       createdAt,
-      {
-        language,
-        artifactTitle: spec.title,
-        filename: spec.filename,
-      },
+      postMetadata,
     );
     postsCreated++;
+
+    if (postProofResult) {
+      const keyRecord = db.getSigningKeyByFingerprint(postProofResult.keyIdString);
+      db.recordSignedPostEvidence({
+        postId: String(postId),
+        rev: 1,
+        payloadJson: JSON.stringify(postProofResult.payload),
+        proofJson: JSON.stringify(postProofResult.proof),
+        keyId: keyRecord?.id ?? null,
+      });
+    }
+
     createdPostByLanguage.set(language, { postId, artifactViewId, spec });
 
     indexPostHashtags(db, postId, fullPostContent);
@@ -507,6 +595,32 @@ export async function seedPolyglotSocialData(
     const forkCreatedAt = hoursAgoSqliteTimestamp(1);
     const forkContent =
       "Forked @elena_vance's primary flight control EHA Modelica model (`ElectroHydrostaticActuator.mo`) and increased position loop proportional gain `Kp_pos` from `1.80e4` to `2.40e4 rad/(s·m)` with degassed Skydrol bulk modulus `beta_oil = 1.45e9 Pa` and reduced internal cross-port laminar leakage `C_leak = 1.20e-12 m³/(s·Pa)`.\n\n#modelica #ParameterSweep #FlightControl #ModelScript";
+
+    const omarKeySpec = getSeedSigningKeyForUser("omar");
+    let forkProofResult: ReturnType<typeof createSeedPostProof> | undefined;
+    if (omarKeySpec) {
+      forkProofResult = createSeedPostProof(forkContent, forkCreatedAt, omarKeySpec, {
+        artifactId: forkArtifactId,
+        quotePostId: modelicaEntry.postId,
+      });
+    }
+
+    const forkMetadata: Record<string, unknown> = {
+      forkedFromId: modelicaEntry.artifactViewId,
+      forkedFromPostId: modelicaEntry.postId,
+      parameterDeltas: forkConfig["parameterDeltas"],
+      ...(forkProofResult
+        ? {
+            clientSignature: forkProofResult.clientSignature,
+            client_signature: forkProofResult.clientSignature,
+            keyIdString: forkProofResult.keyIdString,
+            key_id_string: forkProofResult.keyIdString,
+            proof: forkProofResult.proof,
+            signedPayload: forkContent,
+          }
+        : {}),
+    };
+
     const { id: forkPostId } = db.createPost(
       omarId,
       forkContent,
@@ -518,13 +632,21 @@ export async function seedPolyglotSocialData(
       undefined,
       forkCreatedAt,
       forkCreatedAt,
-      {
-        forkedFromId: modelicaEntry.artifactViewId,
-        forkedFromPostId: modelicaEntry.postId,
-        parameterDeltas: forkConfig["parameterDeltas"],
-      },
+      forkMetadata,
     );
     postsCreated++;
+
+    if (forkProofResult) {
+      const keyRecord = db.getSigningKeyByFingerprint(forkProofResult.keyIdString);
+      db.recordSignedPostEvidence({
+        postId: String(forkPostId),
+        rev: 1,
+        payloadJson: JSON.stringify(forkProofResult.payload),
+        proofJson: JSON.stringify(forkProofResult.proof),
+        keyId: keyRecord?.id ?? null,
+      });
+    }
+
     indexPostHashtags(db, forkPostId, forkContent);
     for (const u of ["elena_vance", "claire_dubois", "mateo_silva", "kenji_takahashi"]) {
       const uid = userIds.get(u);

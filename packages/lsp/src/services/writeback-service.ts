@@ -55,16 +55,46 @@ function computeGenericWriteback(
   newValue: string,
   doc?: { positionAt: (offset: number) => { line: number; character: number } },
   operators: string[] = [":=", "="],
+  customValueField?: string,
 ): TextEdit[] {
   // Tier 1: Check precomputed CST fieldRanges from AST indexing
   if (entry.fieldRanges) {
-    const valField = entry.fieldRanges.value ?? entry.fieldRanges.expression ?? entry.fieldRanges.val;
-    const valStart = valField?.startOffset;
-    const valEnd = valField?.endOffset;
-    if (valField && valStart != null && valEnd != null && valEnd > valStart) {
-      const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
-      const endPos = doc ? doc.positionAt(valEnd) : offsetToPosition(fullText, valEnd);
-      return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
+    const valField =
+      (customValueField ? entry.fieldRanges[customValueField] : undefined) ??
+      entry.fieldRanges.value ??
+      entry.fieldRanges.expression ??
+      entry.fieldRanges.val ??
+      entry.fieldRanges.modification ??
+      entry.fieldRanges.initializer ??
+      entry.fieldRanges.init ??
+      entry.fieldRanges.binding ??
+      entry.fieldRanges.defaultValue ??
+      entry.fieldRanges.default ??
+      entry.fieldRanges.assignedExpression ??
+      entry.fieldRanges.ownedRelatedElement ??
+      entry.fieldRanges.featureValue;
+
+    const rawStart = valField?.startOffset;
+    const rawEnd = valField?.endOffset;
+    if (valField && rawStart != null && rawEnd != null && rawEnd > rawStart) {
+      let valStart = rawStart;
+      let valEnd = rawEnd;
+      const valSlice = fullText.substring(valStart, valEnd);
+      const opPattern = operators.map(escapeRegex).join("|");
+      const opMatch = valSlice.match(new RegExp(`^(?:${opPattern})\\s*`));
+      if (opMatch) {
+        valStart += opMatch[0].length;
+      }
+      const trimmedVal = fullText
+        .substring(valStart, valEnd)
+        .replace(/[;}\r\n,]+$/, "")
+        .trimEnd();
+      valEnd = valStart + trimmedVal.length;
+      if (valEnd > valStart) {
+        const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
+        const endPos = doc ? doc.positionAt(valEnd) : offsetToPosition(fullText, valEnd);
+        return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
+      }
     }
   }
 
@@ -207,7 +237,8 @@ export async function computeWritebackEdit(
   if (edits.length === 0) {
     const operators =
       typeof writebackDef === "object" && writebackDef?.operators ? writebackDef.operators : [":=", "="];
-    edits = computeGenericWriteback(fullText, matchedEntry, newValue, doc, operators);
+    const valueField = typeof writebackDef === "object" ? writebackDef.valueField : undefined;
+    edits = computeGenericWriteback(fullText, matchedEntry, newValue, doc, operators, valueField);
   }
 
   if (edits.length === 0) {

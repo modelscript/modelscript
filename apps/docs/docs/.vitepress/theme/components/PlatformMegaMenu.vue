@@ -1,31 +1,24 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed } from "vue";
 import mcpData from "../data/mcp-tools.generated.json";
+import { useAnsatzOrigin } from "../util/ansatz";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
 
-const ansatzHref = ref("https://ansatz.social/explore");
-const ansatzLabel = ref("Ansatz Network (ansatz.social)");
-
-onMounted(() => {
-  if (typeof window !== "undefined") {
-    const { hostname, port, protocol } = window.location;
-    const isLocal =
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "[::1]" ||
-      hostname.endsWith(".localhost");
-    if (isLocal) {
-      const targetPort = port && port !== "5173" && port !== "4173" ? port : "3001";
-      ansatzHref.value = `${protocol}//${hostname}:${targetPort}/explore`;
-      ansatzLabel.value = `Ansatz Network (${hostname}:${targetPort})`;
-    }
+const { ansatzOrigin } = useAnsatzOrigin();
+const ansatzHref = computed(() => `${ansatzOrigin.value}/explore`);
+const ansatzLabel = computed(() => {
+  try {
+    const host = new URL(ansatzOrigin.value).host;
+    return `Ansatz Network (${host})`;
+  } catch {
+    return "Ansatz Network (ansatz.social)";
   }
 });
 
-const columns: MegaMenuColumn[] = [
+const columns = computed<MegaMenuColumn[]>(() => [
   {
     id: "surfaces",
     label: "Workbenches & Surfaces",
@@ -33,18 +26,18 @@ const columns: MegaMenuColumn[] = [
       {
         name: "Sketch",
         tagline: "Zero-install drafting, schematics & live simulator",
-        href: "/sketch",
+        href: `${ansatzOrigin.value}/sketch`,
         icon: "play",
         accent: "#22d3ee",
-        target: "_self",
+        target: "_blank",
       },
       {
         name: "Studio",
         tagline: "VS Code workbench with schematics, 3D CAD & plots",
-        href: "/studio",
+        href: `${ansatzOrigin.value}/studio`,
         icon: "layers",
         accent: "#818cf8",
-        target: "_self",
+        target: "_blank",
       },
       {
         name: "VS Code Extension",
@@ -139,7 +132,7 @@ const columns: MegaMenuColumn[] = [
       },
     ],
   },
-];
+]);
 
 const feature: MegaMenuFeature = {
   eyebrow: "Agentic Engineering",

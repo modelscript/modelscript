@@ -183,10 +183,10 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             fontSize: "12px",
             fontWeight: 500,
             padding: "3px 8px",
-            borderRadius: "6px",
+            borderRadius: "var(--ms-radius-sm, 6px)",
             color: "var(--color-fg-muted)",
             textDecoration: "none",
-            border: "1px solid var(--color-border-subtle, rgba(255,255,255,0.1))",
+            border: "1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.12)))",
             background: "var(--color-canvas-subtle)",
             transition: "all 0.15s ease",
             flexShrink: 0,
@@ -206,12 +206,12 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               alignItems: "center",
               gap: "5px",
               fontSize: "11px",
-              fontFamily: "var(--font-mono, monospace)",
+              fontFamily: "var(--ms-font-mono, monospace)",
               padding: "2px 8px",
-              borderRadius: "999px",
-              background: "rgba(245, 158, 11, 0.15)",
-              color: "#f59e0b",
-              border: "1px solid rgba(245, 158, 11, 0.3)",
+              borderRadius: "var(--ms-radius-pill, 999px)",
+              background: "var(--ms-status-warn-bg, rgba(217, 119, 6, 0.12))",
+              color: "var(--ms-status-warn-fg, #d97706)",
+              border: "1px solid var(--ms-status-warn-border, rgba(217, 119, 6, 0.32))",
               textDecoration: "none",
               fontWeight: 600,
               flexShrink: 0,
@@ -245,13 +245,15 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 maxWidth: "38vw",
                 height: 28,
                 padding: "2px 8px",
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: 600,
-                borderRadius: 6,
-                border: "1px solid var(--color-accent-fg, #0969da)",
+                borderRadius: "var(--ms-radius-sm, 6px)",
+                border: "1px solid var(--ms-brand, #0891b2)",
+                boxShadow: "var(--ms-focus-ring, 0 0 0 3px rgba(8, 145, 178, 0.25))",
                 background: "var(--color-canvas-default)",
                 color: "var(--color-fg-default)",
                 outline: "none",
+                fontFamily: "inherit",
               }}
             />
           ) : (
@@ -260,8 +262,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 <span
                   style={{
                     display: "inline-block",
-                    minWidth: 120,
-                    maxWidth: "clamp(120px, 20vw, 240px)",
+                    minWidth: 100,
+                    maxWidth: "clamp(100px, 18vw, 240px)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -279,9 +281,10 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      backgroundColor: "#f59e0b",
+                      backgroundColor: "var(--ms-warning, #d97706)",
                       marginLeft: 6,
                       verticalAlign: "middle",
+                      boxShadow: "0 0 4px var(--ms-warning, #d97706)",
                     }}
                   />
                 )}
@@ -346,7 +349,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                         <ActionList.LeadingVisual>
                           <CrossReferenceIcon />
                         </ActionList.LeadingVisual>
-                        <span style={{ color: "var(--color-accent-fg, #0969da)", fontWeight: 600 }}>
+                        <span style={{ color: "var(--ms-link, var(--color-accent-fg, #0891b2))", fontWeight: 600 }}>
                           View all in template gallery →
                         </span>
                       </ActionList.Item>
@@ -513,6 +516,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                     selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
                     leadingVisual={tab.icon}
                     title={tab.title}
+                    aria-label={tab.label}
                     onClick={tab.onClick}
                   >
                     {tab.label}
@@ -535,23 +539,40 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             style={{
               fontWeight: 600,
               height: 32,
-              borderRadius: 6,
+              borderRadius: "var(--ms-radius-sm, 6px)",
               background: isSimulating
-                ? "var(--color-neutral-muted, #4b5563)"
-                : "linear-gradient(180deg, #10b981 0%, #059669 100%)",
-              borderColor: isSimulating ? "transparent" : "#047857",
-              boxShadow: isSimulating ? "none" : "0 1px 2px rgba(5, 150, 105, 0.2)",
+                ? "var(--color-neutral-muted, var(--ms-text-3, #4b5563))"
+                : "linear-gradient(180deg, var(--ms-accent-teal, #14b8a6) 0%, var(--ms-brand, #0e7490) 100%)",
+              borderColor: isSimulating ? "transparent" : "var(--ms-brand-active, #155e75)",
+              boxShadow: isSimulating ? "none" : "0 1px 3px rgba(14, 116, 144, 0.25)",
               color: "#ffffff",
-              minWidth: 74,
+              minWidth: 78,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 4,
-              transition: "all 0.15s ease",
+              gap: 5,
+              transition: "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
             title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⇧↵" : "F5"})`}
           >
-            {isSimulating ? "Running…" : "Run"}
+            {isSimulating ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    width: 12,
+                    height: 12,
+                    border: "2px solid #ffffff",
+                    borderTopColor: "transparent",
+                    borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite",
+                    display: "inline-block",
+                  }}
+                />
+                Running…
+              </span>
+            ) : (
+              "Run"
+            )}
           </Button>
         )}
 
@@ -681,7 +702,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         ) : (
           <div style={{ display: "flex", gap: "6px" }}>
             <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-sm">
-              <Button size="small" variant="default">
+              <Button size="small" variant="invisible">
                 Sign In
               </Button>
             </Link>

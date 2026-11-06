@@ -9,6 +9,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEnergyPlusToDae } from "./dae/energyplus-to-dae.js";
+import { energyPlusGrammar } from "./grammar/energyplus-grammar.js";
 import { lintEnergyPlus } from "./lints/rules.js";
 import { parseEnergyPlus } from "./parser/index.js";
 import { energyPlusToModelica } from "./projections/energyplus-to-modelica.js";
@@ -19,10 +20,12 @@ export const energyplusLanguage = language({
   maturity: "experimental",
   lsp: {
     fileExtensions: [".idf", ".epjson"],
+    folding: energyPlusGrammar.lsp?.folding,
+    outline: energyPlusGrammar.lsp?.outline,
   },
-  rules: {
-    Root: () => "energyplus",
-  },
+  word: energyPlusGrammar.word,
+  extras: energyPlusGrammar.extras,
+  rules: energyPlusGrammar.rules,
 
   actions: [
     {
@@ -64,3 +67,5 @@ export const energyplusLanguage = language({
     },
   ],
 });
+
+export default energyplusLanguage;

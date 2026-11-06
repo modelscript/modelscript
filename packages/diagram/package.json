@@ -101,6 +101,10 @@
       "types": "./dist/polyglot-diagram-builder.d.ts",
       "default": "./dist/polyglot-diagram-builder.js"
     },
+    "./code-thumbnail-builder": {
+      "types": "./dist/code-thumbnail-builder.d.ts",
+      "default": "./dist/code-thumbnail-builder.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"
