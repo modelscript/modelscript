@@ -3,7 +3,7 @@
 
 # @modelscript/gproms
 
-gPROMS Process Modeling Language (`.gproms`, `.pml`) equation-oriented chemical process engineering, dynamic CSTR, and spatially distributed tubular reactor PDE-DAE modeling package for ModelScript. Features a zero-regex character-by-character `.gproms` / `.pml` lexer and parser (`parseGproms`), roundtrip serializer (`serializeGproms`), multi-file workspace indexing (`GpromsWorkspaceIndex`), a deterministic RK4 Method-of-Lines (MOL) PDE-DAE process solver (`solveGpromsProcess`), direct linear-memory `DAEBuilder` finite-difference lowering (`lowerGpromsToDae`), 10 pre-flight structural and mathematical lint rules (`M9451`–`M9460`), Modelica 3.x projections (`gpromsToModelica`), and Language Server Protocol (LSP) services.
+gPROMS-compatible Process Modeling Language (`.gproms`, `.pml`) equation-oriented chemical process engineering, dynamic CSTR, and spatially distributed tubular reactor PDE-DAE modeling package for ModelScript. Features a zero-regex character-by-character `.gproms` / `.pml` lexer and parser (`parseGproms`), roundtrip serializer (`serializeGproms`), multi-file workspace indexing (`GpromsWorkspaceIndex`), a deterministic RK4 Method-of-Lines (MOL) PDE-DAE process solver (`solveGpromsProcess`), direct linear-memory `DAEBuilder` finite-difference lowering (`lowerGpromsToDae`), 10 pre-flight structural and mathematical lint rules (`M9451`–`M9460`), Modelica 3.x projections (`gpromsToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 

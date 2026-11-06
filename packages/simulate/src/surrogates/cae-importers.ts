@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @modelscript/simulate/surrogates — Commercial CAE Field & Ansys ROM Importers (VTK, VTU, .romz).
+ * @modelscript/simulate/surrogates — Commercial CAE Field & Ansys-compatible ROM Importers (VTK, VTU, .romz).
  *
- * Bridges external 3D continuum solvers (Ansys Fluent, Ansys Mechanical, OpenFOAM, SU2, ParaView)
- * and Ansys Twin Builder Reduced Order Model packages into ModelScript's surrogate & DAE engines.
+ * Bridges external 3D continuum solvers (such as Ansys Fluent-, Ansys Mechanical-, OpenFOAM-, SU2-, or ParaView-compatible exports)
+ * and Ansys Twin Builder-compatible Reduced Order Model packages into ModelScript's surrogate & DAE engines.
  */
 
 import { xml } from "@modelscript/dsl";
@@ -280,11 +280,11 @@ export function flattenVtkSnapshotToFeatureVector(snapshot: VtkFieldSnapshot, fi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Ansys Twin Builder / Reduced Order Model (`.romz` / JSON) Importer
+// 2. Ansys Twin Builder-compatible / Reduced Order Model (`.romz` / JSON) Importer
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface AnsysRomArchiveSpec {
-  /** Model name or identifier from Ansys Twin Builder / Fluent ROM Wizard. */
+  /** Model name or identifier from Ansys Twin Builder / Fluent-compatible ROM Wizard. */
   modelName: string;
   /** ROM type: linear time-invariant ("lti") or linear parameter-varying ("lpv"). */
   romType: "lti" | "lpv";
@@ -329,7 +329,7 @@ export interface AnsysRomArchiveSpec {
 }
 
 /**
- * Import an Ansys Twin Builder / Fluent Reduced Order Model specification into a native
+ * Import an Ansys Twin Builder- / Fluent-compatible Reduced Order Model specification into a native
  * ModelScript `DmdcSurrogate` (for LTI dynamic ROMs) or `LpvStateSpaceSurrogate` (for LPV scheduled ROMs).
  */
 export function importAnsysRomPackage(

@@ -3,13 +3,13 @@
 
 # @modelscript/eclipse
 
-Schlumberger ECLIPSE black-oil reservoir simulation and multiphase porous-media engineering package (`.data`, `.dat`, `.inc`) for ModelScript. Features a zero-regex character-scanning ECLIPSE deck parser (`parseEclipse`), multi-file workspace indexing (`EclipseWorkspaceIndex`), a multiphase Darcy flow & Peaceman well inflow performance (IPR) depletion solver (`solveReservoirDepletion`), direct linear-memory `DAEBuilder` lowering (`lowerEclipseToDae`), 10 pre-flight reservoir & PVT lint rules (`M8701`–`M8710`), Modelica 3.x porous-media projections (`eclipseToModelica`), and Language Server Protocol (LSP) services.
+ECLIPSE-compatible black-oil reservoir simulation and multiphase porous-media engineering package (`.data`, `.dat`, `.inc`) for ModelScript. Features a zero-regex character-scanning ECLIPSE deck parser (`parseEclipse`), multi-file workspace indexing (`EclipseWorkspaceIndex`), a multiphase Darcy flow & Peaceman well inflow performance (IPR) depletion solver (`solveReservoirDepletion`), direct linear-memory `DAEBuilder` lowering (`lowerEclipseToDae`), 10 pre-flight reservoir & PVT lint rules (`M8701`–`M8710`), Modelica 3.x porous-media projections (`eclipseToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
 ## Core Capabilities
 
-- **Schlumberger ECLIPSE Deck Parser (`parseEclipse`)**: Zero-regex parser for ECLIPSE 100/300 `.data`, `.dat`, and `.inc` files with native `N*val` repeat-count expansion (`300*0.22`), slash-terminated records (`/`), and `--` comment stripping across all 8 canonical sections:
+- **ECLIPSE-Compatible Deck Parser (`parseEclipse`)**: Zero-regex parser for ECLIPSE 100/300 `.data`, `.dat`, and `.inc` files with native `N*val` repeat-count expansion (`300*0.22`), slash-terminated records (`/`), and `--` comment stripping across all 8 canonical sections:
   - **`RUNSPEC`**: `TITLE`, unit conventions (`FIELD`, `METRIC`, `LAB`), active fluid phases (`OIL`, `WATER`, `GAS`, `DISGAS`, `VAPOIL`), and `DIMENS` ($N_x \times N_y \times N_z$).
   - **`GRID`**: Cell dimensions (`DX`, `DY`, `DZ`), top depth (`TOPS`), porosity (`PORO`), and directional permeability tensors (`PERMX`, `PERMY`, `PERMZ` in mD).
   - **`PROPS`**: Dead-oil & live-oil PVT tables (`PVDO`, `PVTW`, `PVDG`), rock compressibility (`ROCK`), fluid surface densities (`DENSITY`), and two-phase relative permeability & capillary pressure tables (`SWOF`, `SGOF`).

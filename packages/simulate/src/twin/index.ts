@@ -2,6 +2,7 @@
 
 export * from "./arena-mhe.js";
 export * from "./drift-detector.js";
+export * from "./frac/index.js";
 export * from "./prognostics.js";
 export * from "./sindy-discovery.js";
 export * from "./telemetry-buffer.js";

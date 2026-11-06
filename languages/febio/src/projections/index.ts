@@ -4,7 +4,7 @@
  * @modelscript/febio — Cross-Domain Projections to CalculiX (.inp) and Modelica 3.x (.mo).
  *
  * - `febioToCalculixInp(doc)`: Projects FEBio meshes, node sets, hyperelastic/elastic
- *   materials, boundary conditions, and time steps to CalculiX / Abaqus `.inp` deck format.
+ *   materials, boundary conditions, and time steps to CalculiX- / Abaqus-compatible `.inp` deck format.
  * - `febioToModelica(doc)`: Projects FEBio tissue constitutive models, Mooney-Rivlin
  *   strain energy equations, and Cauchy stress laws to a Modelica 3.x package.
  */

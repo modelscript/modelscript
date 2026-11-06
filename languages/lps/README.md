@@ -9,7 +9,7 @@ High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`
 
 ## Core Capabilities
 
-- **PipelineStudio Project & Keyword Ingestion (`parseLps`, `parseLpsXml`, `parseLpsKeyDeck`)**:
+- **PipelineStudio-Compatible Project & Keyword Ingestion (`parseLps`, `parseLpsXml`, `parseLpsKeyDeck`)**:
   - High-performance XML parser built on `@modelscript/dsl/xml` for `.lps`, `.tgx`, and `.tlx` studies.
   - Full keyword parser and serializer for legacy TGNET and TLNET ASCII input decks (`.tgn`, `.tln`, `.psg`, `.psl`).
   - Automatic extraction of supply sources, delivery city gates, pipes, multi-stage compressor stations, pumps, regulators, and valves.

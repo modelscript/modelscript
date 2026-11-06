@@ -18,7 +18,7 @@ import type { CommandModule } from "yargs";
 
 export const AspenCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "aspen <action> [files...]",
-  describe: "Inspect, lint, solve, and lower Aspen Plus chemical process flowsheets (.in, .inp, .bkp)",
+  describe: "Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (.in, .inp, .bkp)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
@@ -28,7 +28,7 @@ export const AspenCommand: CommandModule<Record<string, unknown>, Record<string,
         demandOption: true,
       })
       .positional("files", {
-        description: "Aspen Plus input deck file(s) to process",
+        description: "Aspen flowsheet input deck file(s) to process",
         type: "string",
         array: true,
       })

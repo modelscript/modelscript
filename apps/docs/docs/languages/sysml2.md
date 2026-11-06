@@ -50,7 +50,7 @@
 
 - **Direct Arena DAE Lowering (`sysml2-dae-lowerer.ts`)**: Compiles SysML v2 `calc def`, `constraint def`, `attribute` bindings, and `flow` connections directly into `@modelscript/runtime`'s `DAEBuilder` without requiring an intermediate Modelica code-generation pass.
 - **`.sysmlx` JSON-LD & Container Export (`sysmlx-interchange.ts`, `sysml2-container-exporter.ts`)**: Serializes and imports OMG SysML v2 REST/JSON-LD payloads (`.sysmlx`) and multi-artifact engineering containers.
-- **Enterprise MBSE Gateway (`enterprise-sync-gateway.ts`)**: Synchronizes SysML v2 packages, elements, and cross-domain traceability links with **Dassault Cameo Teamwork Cloud (TWC)**, **OpenMBEE MMS**, and standard **OMG SysML v2 REST API** repositories (`npx msx sysml sync`).
+- **Enterprise MBSE Gateway (`enterprise-sync-gateway.ts`)**: Synchronizes SysML v2 packages, elements, and cross-domain traceability links with **Cameo Teamwork Cloud (TWC) repositories**, **OpenMBEE MMS**, and standard **OMG SysML v2 REST API** repositories (`npx msx sysml sync`).
 
 ---
 

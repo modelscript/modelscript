@@ -13,7 +13,7 @@ Systems Modeling Language v2 (SysML v2) and Kernel Modeling Language (KerML) com
 - **KerML & SysML v2 Standard Library**: Embedded snapshots of the KerML and SysML v2 standard libraries (`loadEmbeddedKerMLStdlib`) for full symbol resolution, type hierarchy deduction, and dimensional quantities (`ISQ`).
 - **Systems Architecture & Decomposition**: Full query support for part definitions, item definitions, ports, connection definitions, allocations, and parametric constraints.
 - **Behavioral Modeling & Formal Verification**: State machine determinism/deadlock verification (`state-machine-verifier.ts`), activity control-flow & soundness analysis (`activity-cfa.ts`, `activity-soundness.ts`, `activity-verifier.ts`), decision table exhaustiveness/disjointness verification (`decision-table-verifier.ts`), contract verification (`contract-verifier.ts`), and SMT / reasoner bridges (`smt-bridge.ts`, `reasoner-bridge.ts`, `nra-solver.ts`).
-- **Standard Model Interchange & Enterprise Coexistence**: Lossless OMG JSON-LD `.sysmlx` interchange (`sysmlx-interchange.ts`), SSP/FMU container export (`sysml2-container-exporter.ts`), and Cameo Teamwork Cloud (TWC) / OpenMBEE MMS synchronization (`enterprise-sync-gateway.ts`).
+- **Standard Model Interchange & Enterprise Coexistence**: Lossless OMG JSON-LD `.sysmlx` interchange (`sysmlx-interchange.ts`), SSP/FMU container export (`sysml2-container-exporter.ts`), and Cameo Teamwork Cloud (TWC)-compatible servers / OpenMBEE MMS synchronization (`enterprise-sync-gateway.ts`).
 - **Bidirectional Polyglot TGG Rules**: AOT-compiled Triple Graph Grammar rules for bidirectional co-evolution across domains:
   - **SysML v2 ↔ Modelica**: Map part definitions to Modelica components and attributes to physics parameters (`SysML2ToModelica`).
   - **SysML v2 ↔ OWL 2**: Map taxonomies and concepts to ontology subclasses, individuals, and object properties (`SysML2ToOWL2SubClassOf`, `SysML2ToOWL2ObjectProperty`, etc.).
@@ -41,7 +41,7 @@ Systems Modeling Language v2 (SysML v2) and Kernel Modeling Language (KerML) com
 | `src/sysml2-dae-lowerer.ts`                        | Direct lowering of SysML v2 parametric constraints and state machines into `DAEBuilder`                            |
 | `src/sysmlx-interchange.ts`                        | OMG SysML v2 JSON-LD (`.sysmlx`) serializer and deserializer                                                       |
 | `src/sysml2-container-exporter.ts`                 | SSP (`.ssp`) and monolithic FMI 3.0 FMU container exporter                                                         |
-| `src/enterprise-sync-gateway.ts`                   | Cameo Teamwork Cloud (TWC) and OpenMBEE MMS pull/push synchronization gateway                                      |
+| `src/enterprise-sync-gateway.ts`                   | Cameo Teamwork Cloud (TWC)-compatible and OpenMBEE MMS pull/push synchronization gateway                           |
 | `src/diagram/`                                     | BDD, IBD, and state machine diagram layout and interactive editing handlers                                        |
 | `transformers/`                                    | Bidirectional Modelica and cross-domain AST transformers (`modelica-transformer.ts`, `generic-modelica-bridge.ts`) |
 | `build.js`                                         | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                       |
@@ -129,7 +129,7 @@ msx sysml export Spacecraft.sysml --format=ssp --output=Spacecraft.ssp
 # Import an OMG .sysmlx interchange file back into textual SysML v2
 msx sysml import Spacecraft.sysmlx --output=Spacecraft.sysml
 
-# Synchronize with Cameo Teamwork Cloud (TWC) or OpenMBEE MMS
+# Synchronize with Cameo Teamwork Cloud (TWC)-compatible or OpenMBEE MMS servers
 msx sysml sync pull --target=twc --url=https://twc.example.com --resource=proj-123 --output=Model.sysml
 ```
 

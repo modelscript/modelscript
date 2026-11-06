@@ -1,6 +1,6 @@
 # EASY5 Dynamic Simulation & Linear Control (`.ez5`, `.ezm`, `.ezd`, `.eas`)
 
-The `@modelscript/easy5` package (`languages/easy5`) provides native support for **Boeing / MSC Software EASY5™** dynamic system simulation models, control block diagrams, and empirical table lookups. It delivers multi-syntax parsing, embedded Fortran user block (`UG`/`UX`) compilation via `@modelscript/fortran`, pre-flight static topological linting (`M7001`–`M7012`) including Tarjan algebraic cycle detection, direct continuous DAE arena lowering (`IDaeBuilder`), linear control system analysis (trim solver, numerical $(A, B, C, D)$ Jacobian extraction, QR eigenvalue/pole analysis, Bode frequency sweeps), multi-domain projections to **Modelica 3.x** and **FMI SSP**, and interactive AntV X6 / SVG schematic diagram generation.
+The `@modelscript/easy5` package (`languages/easy5`) provides native support for **EASY5-compatible** dynamic system simulation models, control block diagrams, and empirical table lookups. It delivers multi-syntax parsing, embedded Fortran user block (`UG`/`UX`) compilation via `@modelscript/fortran`, pre-flight static topological linting (`M7001`–`M7012`) including Tarjan algebraic cycle detection, direct continuous DAE arena lowering (`IDaeBuilder`), linear control system analysis (trim solver, numerical $(A, B, C, D)$ Jacobian extraction, QR eigenvalue/pole analysis, Bode frequency sweeps), multi-domain projections to **Modelica 3.x** and **FMI SSP**, and interactive AntV X6 / SVG schematic diagram generation.
 
 ---
 

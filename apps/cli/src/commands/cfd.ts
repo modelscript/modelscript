@@ -3,7 +3,7 @@
 /**
  * ModelScript CLI: CFD Subcommand.
  *
- * Provides headless CLI operations for SU2 and OpenFOAM Computational Fluid Dynamics models:
+ * Provides headless CLI operations for SU2- and OpenFOAM-compatible Computational Fluid Dynamics models:
  * - `msx cfd inspect <path>`
  * - `msx cfd lint <path>`
  * - `msx cfd to-dae <path> [--out=dae.json]`

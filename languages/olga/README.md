@@ -76,7 +76,7 @@ High-fidelity transient multiphase dynamic flow assurance package (`.opi`, `.olg
 | `src/verification/flow-assurance-verifier.ts` | Verification engine for hydrate/wax margins, slug surge, and state machines  |
 | `src/verification/flow-assurance-gate.ts`     | CI/CD safety gate evaluator with automatic markdown summary generation       |
 | `src/lints/index.ts`                          | Pre-flight multiphase diagnostic linter (`M7001`–`M7013`)                    |
-| `src/engine/olga-orchestrator.ts`             | Batch orchestrator for Schlumberger OLGA (`olga.exe`) with WASM fallback     |
+| `src/engine/olga-orchestrator.ts`             | Batch orchestrator for OLGA engine (`olga.exe`) with WASM fallback           |
 
 ---
 

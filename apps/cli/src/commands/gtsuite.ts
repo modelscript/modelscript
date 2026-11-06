@@ -32,7 +32,8 @@ import type { CommandModule } from "yargs";
 
 export const GtSuiteCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "gtsuite <action> [files...]",
-  describe: "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER engine models (.gtm, .gtd, .gtx)",
+  describe:
+    "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER-compatible engine models (.gtm, .gtd, .gtx)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

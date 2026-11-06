@@ -3,16 +3,16 @@
 
 # @modelscript/fea
 
-Finite Element Analysis (FEA) solver deck DSL supporting CalculiX/Abaqus (`.inp`, `.inpt`), NASTRAN Bulk Data (`.bdf`), and `.fea` files, with a WebAssembly GLR parser, `{{ expr }}` parametric deck materializer, 3D CAD boundary/load card synthesizer, pre-flight structural linter (`F1001`–`F1008` / `M7401`–`M7408`), structural theory slicer, and 3D Tet4/Tet10 FEA solver integration.
+Finite Element Analysis (FEA) solver deck DSL supporting CalculiX- and Abaqus-compatible (`.inp`, `.inpt`), NASTRAN-compatible Bulk Data (`.bdf`), and `.fea` files, with a WebAssembly GLR parser, `{{ expr }}` parametric deck materializer, 3D CAD boundary/load card synthesizer, pre-flight structural linter (`F1001`–`F1008` / `M7401`–`M7408`), structural theory slicer, and 3D Tet4/Tet10 FEA solver integration.
 
 ---
 
 ## Core Capabilities
 
-- **Multi-Dialect FEA Solver Deck DSL (`.fea`, `.inp`, `.inpt`, `.bdf`)**: Declarative grammar (`feaLanguage`) and dialect parsers supporting CalculiX / Abaqus keyword cards (`*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*MATERIAL`, `*ELASTIC`, `*DENSITY`, `*SOLID SECTION`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*STEP`) via `InpDialect` and NASTRAN Bulk Data cards (`GRID`, `CTETRA`, `CHEXA`, `PSOLID`, `MAT1`, `SPC1`, `FORCE`, `MOMENT`, `ENDDATA`) via `BdfDialect`.
+- **Multi-Dialect FEA Solver Deck DSL (`.fea`, `.inp`, `.inpt`, `.bdf`)**: Declarative grammar (`feaLanguage`) and dialect parsers supporting CalculiX- and Abaqus-compatible keyword cards (`*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*MATERIAL`, `*ELASTIC`, `*DENSITY`, `*SOLID SECTION`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*STEP`) via `InpDialect` and NASTRAN-compatible Bulk Data cards (`GRID`, `CTETRA`, `CHEXA`, `PSOLID`, `MAT1`, `SPC1`, `FORCE`, `MOMENT`, `ENDDATA`) via `BdfDialect`.
 - **WASM GLR Incremental Parser**: Built on `@modelscript/dsl` (`language()`), indexing `FeaDeck`, `KeywordCard`, and `EmbeddedExpression` symbols with Salsa query hooks (`instantiate`, `resolveSimpleName`).
 - **`{{ expr }}` Parametric Deck Materializer (`materializeFeaDeck`)**: Evaluates embedded expressions (`{{ ... }}`) inside `.inpt` parametric templates against a safe mathematical function library (`sin`, `cos`, `sind`, `cosd`, `sqrt`, `cbrt`, `pow`, `PI`, etc.) and external parameter tables (`evaluateFeaExpression`, `materializeCalculixDeck`), reporting precise 1-indexed line and column diagnostics on unresolved parameters.
-- **3D Face Boundary & Load Card Synthesizer (`synthesizeFeaBoundary`)**: Translates interactive 3D CAD face/node selections (`BoundaryActionPayload` for `fix`, `displacement`, `force`, `moment`, and `pressure`) into CalculiX/Abaqus (`*BOUNDARY`, `*CLOAD`, `*DLOAD`) or NASTRAN (`SPC1`, `FORCE`, `MOMENT`) cards, and injects them before `*END STEP` or `ENDDATA` via `applyBoundaryActionToDeck`.
+- **3D Face Boundary & Load Card Synthesizer (`synthesizeFeaBoundary`)**: Translates interactive 3D CAD face/node selections (`BoundaryActionPayload` for `fix`, `displacement`, `force`, `moment`, and `pressure`) into CalculiX- and Abaqus-compatible (`*BOUNDARY`, `*CLOAD`, `*DLOAD`) or NASTRAN-compatible (`SPC1`, `FORCE`, `MOMENT`) cards, and injects them before `*END STEP` or `ENDDATA` via `applyBoundaryActionToDeck`.
 - **Pre-Flight Structural Linter (`lintFeaModel`, `FeaErrorCode`)**: Validates elastic modulus positivity, Poisson's ratio physical stability bounds ($-1.0 < \nu < 0.5$), rigid-body boundary constraints, non-empty meshes, material assignments, degenerate element nodes, yield strength, and mass density with Quick-Fix actions.
 - **Structural Theory Slicing (`extractFeaSlicingProperties`)**: Extracts reduced-order structural bounding scalars—total mass ($m$), maximum von Mises stress ($\sigma_{\text{max}}$), material yield strength ($\sigma_y$), safety factor ($\text{SF} = \sigma_y / \sigma_{\text{max}}$), and safety predicate (`isSafe`)—for continuous 1D DAE co-simulation and formal contract verification.
 - **Built-in 3D Tet4/Tet10 FEA Solver Integration**: Parses 3D tetrahedral (`C3D4`, `C3D10`, `CTETRA`) and hexahedral (`C3D8`, `C3D8R`, `CHEXA`) meshes, node sets, isotropic material properties ($E, \nu, \rho$), Dirichlet boundary fixities, and concentrated nodal loads into `FeaModelData` for direct execution on `@modelscript/simulate`'s 3D finite element structural solver (`run_simulation`, `open_fea_viewer`).
@@ -32,8 +32,8 @@ Finite Element Analysis (FEA) solver deck DSL supporting CalculiX/Abaqus (`.inp`
 | `src/lints/fea-linter.ts` | `lintFeaModel` pre-flight structural diagnostic engine with Quick-Fix actions                                                          |
 | `src/lsp.ts`              | LSP diagnostic validation, hover tooltips, and document symbol providers                                                               |
 | `src/dialects/index.ts`   | Dialect registry (`registerFeaDialect`, `getFeaDialect`)                                                                               |
-| `src/dialects/inp.ts`     | `InpDialect` parser and materializer for CalculiX / Abaqus `.inp` decks (`parseInpDeck`, `materializeCalculixDeck`)                    |
-| `src/dialects/bdf.ts`     | `BdfDialect` parser and materializer for NASTRAN `.bdf` Bulk Data decks                                                                |
+| `src/dialects/inp.ts`     | `InpDialect` parser and materializer for CalculiX- and Abaqus-compatible `.inp` decks (`parseInpDeck`, `materializeCalculixDeck`)      |
+| `src/dialects/bdf.ts`     | `BdfDialect` parser and materializer for NASTRAN-compatible `.bdf` Bulk Data decks                                                     |
 
 ---
 
@@ -138,3 +138,9 @@ const model = parseInpDeck(withLoad);
 const slicing = extractFeaSlicingProperties(withLoad);
 console.log(model.nodes.size, slicing.safetyFactor, slicing.isSafe);
 ```
+
+---
+
+## Trademarks & Disclaimers
+
+CalculiX, Abaqus, NASTRAN, and all other third-party software marks referenced herein are trademarks or registered trademarks of their respective owners (including Dassault Systèmes Simulia Corp., NASA, and MSC Software / Hexagon AB). Reference to these marks is strictly for nominative identification of input deck compatibility, syntax parsing, and data interchange. ModelScript is an independent open-core project and is not affiliated with, endorsed by, or sponsored by these entities.

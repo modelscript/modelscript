@@ -3,13 +3,13 @@
 
 # @modelscript/adams
 
-MSC Adams Multibody Dynamics (MBD) and Kinematics Domain Module (`.adm`, `.cmd`, `.acf`) for ModelScript. Features zero-regex AST parsing, pre-flight kinematic linter diagnostics (`M7301`–`M7310`), Grübler-Kutzbach spatial mobility analysis, direct linear-memory WebAssembly `DAEBuilder` lowering with Baumgarte constraint stabilization, cross-format bidirectional projections (SIMPACK `.spck`, Modelica `MultiBody`), multi-file workspace indexing, and Language Server Protocol (LSP) services.
+MSC Adams-compatible Multibody Dynamics (MBD) and Kinematics Domain Module (`.adm`, `.cmd`, `.acf`) for ModelScript. Features zero-regex AST parsing, pre-flight kinematic linter diagnostics (`M7301`–`M7310`), Grübler-Kutzbach spatial mobility analysis, direct linear-memory WebAssembly `DAEBuilder` lowering with Baumgarte constraint stabilization, cross-format bidirectional projections (SIMPACK `.spck`, Modelica `MultiBody`), multi-file workspace indexing, and Language Server Protocol (LSP) services.
 
 ---
 
 ## Core Capabilities
 
-- **MSC Adams Dataset & Command Parser (`parseAdams`)**: Zero-regex character-level parser supporting `.adm` dataset statements (`PART`, `MARKER`, `JOINT`, `GCON`, `SPRINGDAMPER`, `SFORCE`, `VFORCE`, `GFORCE`, `BUSHING`, `MOTION`, `REQUEST`), `.cmd` Adams View scripts (`model create`, `part create`, `marker create`, `constraint create joint`), and `.acf` analysis control decks (`SIMULATE/DYNAMIC`, `EQUILIBRIUM`, `LINEAR/EIGEN`).
+- **Adams Dataset & Command Parser (`parseAdams`)**: Zero-regex character-level parser supporting `.adm` dataset statements (`PART`, `MARKER`, `JOINT`, `GCON`, `SPRINGDAMPER`, `SFORCE`, `VFORCE`, `GFORCE`, `BUSHING`, `MOTION`, `REQUEST`), `.cmd` Adams View scripts (`model create`, `part create`, `marker create`, `constraint create joint`), and `.acf` analysis control decks (`SIMULATE/DYNAMIC`, `EQUILIBRIUM`, `LINEAR/EIGEN`).
 - **Grübler-Kutzbach Spatial Mobility & Kinematic Solver (`analyzeAdamsMobility`, `solveAdamsKinematics`)**: Computes spatial mechanism degrees of freedom ($M = 6(N - 1) - \sum (6 - f_i)$), detects overconstrained topologies, and evaluates spatial orientation transformations and joint frames.
 - **Direct Linear-Memory DAE Arena Lowering (`lowerAdamsToDae`)**: Lowers rigid body Newton-Euler equations of motion and holonomic joint constraints directly into `@modelscript/runtime`'s `DAEBuilder` with Baumgarte constraint stabilization ($\ddot{\Phi} + 2\alpha\dot{\Phi} + \beta^2\Phi = 0$).
 - **Pre-Flight Multibody Linter (`lintAdamsModel`, `AdamsErrorCode`)**: Static structural, inertial, and kinematic validation (`M7301`–`M7310`) with 1-click LSP quick-fix code actions.

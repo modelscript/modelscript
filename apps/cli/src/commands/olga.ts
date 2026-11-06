@@ -57,7 +57,7 @@ import type { CommandModule } from "yargs";
 
 export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "olga <action> [files...]",
-  describe: "Simulate, lint, verify, and visualize OLGA multiphase flowline models (.opi, .key, .genkey)",
+  describe: "Simulate, lint, verify, and visualize OLGA-compatible multiphase flowline models (.opi, .key, .genkey)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

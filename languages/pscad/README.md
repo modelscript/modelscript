@@ -3,7 +3,7 @@
 
 # @modelscript/pscad
 
-PSCAD v4/v5 electromagnetic transients (EMT) and power systems engineering package (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`) for ModelScript. Features multi-file workspace indexing (`PscadWorkspaceIndex`), Dommel companion-circuit & Bergeron traveling-wave EMT netlist extraction, IEEE 2800-2022 & NERC PRC-029-1 grid-code compliance verification, IEEE C37.111 COMTRADE & PSCAD V5 `.psout` waveform I/O, 17 pre-flight electrical & control lint rules (`M6001`–`M6017`), Single-Line Diagram (SLD) synthesis, and Modelica/SSP co-simulation projections.
+PSCAD-compatible electromagnetic transients (EMT) and power systems engineering package (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`) for ModelScript. Features multi-file workspace indexing (`PscadWorkspaceIndex`), Dommel companion-circuit & Bergeron traveling-wave EMT netlist extraction, IEEE 2800-2022 & NERC PRC-029-1 grid-code compliance verification, IEEE C37.111 COMTRADE & PSCAD V5 `.psout` waveform I/O, 17 pre-flight electrical & control lint rules (`M6001`–`M6017`), Single-Line Diagram (SLD) synthesis, and Modelica/SSP co-simulation projections.
 
 ---
 

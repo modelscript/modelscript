@@ -3,16 +3,16 @@
 
 # @modelscript/cfd
 
-Computational Fluid Dynamics (CFD) and SU2 / OpenFOAM aerodynamic configuration DSL (`.cfd`, `.cfg`, `.cfgt`, `.su2`, `.foam`), parametric template materializer, 3D CAD boundary condition synthesizer, Reynolds/Mach theory slicer, pre-flight aerodynamic linter (`C1001`–`C1008` / `M7301`–`M7308`), and WebGPU D3Q19 Lattice Boltzmann integration package for ModelScript.
+Computational Fluid Dynamics (CFD) and SU2- / OpenFOAM-compatible aerodynamic configuration DSL (`.cfd`, `.cfg`, `.cfgt`, `.su2`, `.foam`), parametric template materializer, 3D CAD boundary condition synthesizer, Reynolds/Mach theory slicer, pre-flight aerodynamic linter (`C1001`–`C1008` / `M7301`–`M7308`), and WebGPU D3Q19 Lattice Boltzmann integration package for ModelScript.
 
 ---
 
 ## Core Capabilities
 
-- **SU2 & Multi-Dialect CFD Configuration DSL (`.cfd`, `.cfg`, `.cfgt`, `.su2`, `.foam`)**: Declarative grammar specification (`cfdLanguage`) supporting key-value solver directives, tuple vectors, boundary marker definitions (`MARKER_INLET`, `MARKER_OUTLET`, `MARKER_HEATFLUX`, `MARKER_ISOTHERMAL`, `MARKER_EULER`, `MARKER_FARFIELD`, `MARKER_SYM`), and pluggable solver dialects (`Su2Dialect`, `OpenFoamDialect`).
+- **SU2- & Multi-Dialect CFD Configuration DSL (`.cfd`, `.cfg`, `.cfgt`, `.su2`, `.foam`)**: Declarative grammar specification (`cfdLanguage`) supporting key-value solver directives, tuple vectors, boundary marker definitions (`MARKER_INLET`, `MARKER_OUTLET`, `MARKER_HEATFLUX`, `MARKER_ISOTHERMAL`, `MARKER_EULER`, `MARKER_FARFIELD`, `MARKER_SYM`), and pluggable solver dialects (`Su2Dialect`, `OpenFoamDialect`).
 - **WASM GLR Incremental Parser**: Built on `@modelscript/dsl` (`language()`), compiling into a native WebAssembly GLR parser for syntax validation, symbol indexing (`CfdConfig`, `Directive`, `EmbeddedExpression`), and Salsa query resolution (`instantiate`, `resolveSimpleName`).
 - **`{{ expr }}` Parametric Config Materializer (`materializeCfdConfig`)**: Evaluates embedded mathematical and parametric expressions inside `.cfgt` templates (`{{ ... }}`) against a safe math environment (`sin`, `cos`, `sind`, `cosd`, `sqrt`, `pow`, `log`, `PI`, etc.) and workspace parameter bindings, emitting concrete `.cfg` solver decks with exact line/column diagnostic reporting (`evaluateCfdExpression`, `materializeSu2Config`).
-- **3D CAD Boundary Condition Synthesizer (`synthesizeCfdBoundary`)**: Translates interactive 3D CAD surface selections (`BoundaryActionPayload` for `inlet`, `outlet`, `wall`, `heatflux`, and `isothermal` markers) directly into syntactic SU2 `MARKER_*` directives or OpenFOAM `boundaryField` dictionary blocks, with in-place configuration patching via `applyBoundaryActionToConfig`.
+- **3D CAD Boundary Condition Synthesizer (`synthesizeCfdBoundary`)**: Translates interactive 3D CAD surface selections (`BoundaryActionPayload` for `inlet`, `outlet`, `wall`, `heatflux`, and `isothermal` markers) directly into syntactic SU2-compatible `MARKER_*` directives or OpenFOAM-compatible `boundaryField` dictionary blocks, with in-place configuration patching via `applyBoundaryActionToConfig`.
 - **Pre-Flight Aerodynamic Linter (`lintCfdModel`, `CfdErrorCode`)**: Validates CFL numerical stability, grid mesh file resolution, inlet/outlet boundary completeness, freestream Mach/Reynolds bounds, reference surface area, and turbulent viscosity ratios with Quick-Fix actions.
 - **Reynolds/Mach Aerodynamic Theory Slicing (`extractCfdSlicingProperties`)**: Extracts reduced-order aerodynamic scalars—drag coefficient ($C_d$), reference frontal area ($A_{\text{ref}}$), freestream density ($\rho$), and freestream velocity ($v_\infty$)—from CFD configurations for continuous 1D DAE flight dynamics slicing and SMT verification.
 - **WebGPU D3Q19 Lattice Boltzmann Integration**: Couples parsed boundary markers, inlet velocity vectors, Reynolds/Mach numbers (`CfdModelData`), and discretized surface meshes with `@modelscript/simulate`'s GPU-accelerated D3Q19 Lattice Boltzmann Method (LBM) fluid solver and interactive 3D aerodynamics viewer (`open_cfd_viewer`).
@@ -32,8 +32,8 @@ Computational Fluid Dynamics (CFD) and SU2 / OpenFOAM aerodynamic configuration 
 | `src/lints/cfd-linter.ts`  | `lintCfdModel` pre-flight aerodynamic diagnostic engine with Quick-Fix actions                                                                                                                          |
 | `src/lsp.ts`               | LSP diagnostic validation, hover tooltips, and document symbol providers                                                                                                                                |
 | `src/dialects/index.ts`    | Dialect registry (`registerCfdDialect`, `getCfdDialect`)                                                                                                                                                |
-| `src/dialects/su2.ts`      | `Su2Dialect` parser and materializer (`parseSu2Config`, `materializeSu2Config`)                                                                                                                         |
-| `src/dialects/openfoam.ts` | `OpenFoamDialect` dictionary parser and boundary condition generator                                                                                                                                    |
+| `src/dialects/su2.ts`      | `Su2Dialect` parser and materializer for SU2-compatible configs (`parseSu2Config`, `materializeSu2Config`)                                                                                              |
+| `src/dialects/openfoam.ts` | `OpenFoamDialect` dictionary parser and boundary condition generator for OpenFOAM-compatible decks                                                                                                      |
 
 ---
 
@@ -138,3 +138,9 @@ const model = parseSu2Config(updatedCfg);
 const slicing = extractCfdSlicingProperties(updatedCfg);
 console.log(model.markers, slicing);
 ```
+
+---
+
+## Trademarks & Disclaimers
+
+SU2 and OpenFOAM are trademarks or registered trademarks of their respective owners (including the SU2 Foundation and OpenCFD Ltd / ESI Group). Reference to these marks is strictly for nominative identification of aerodynamic configuration compatibility, dictionary syntax parsing, and case interchange. ModelScript is an independent open-core project and is not affiliated with, endorsed by, or sponsored by these organizations.

@@ -15,10 +15,10 @@ A single `@modelscript/lsp` server instance indexes and cross-references symbols
 
 - **Native & Systems Engineering (7)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), OWL 2 Ontologies (`.owl`, `.ofn`), CSV Telemetry (`.csv`).
 - **Power Grids, RF & Electronics (7)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), Siemens PTI PSS/E (`.raw`), EPRI OpenDSS (`.dss`), SPICE (`.cir`, `.sp`, `.spice`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`).
-- **Fluid, Process, Subsurface, Civil Water & Nuclear (8)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus (`.in`, `.inp`, `.bkp`), ECLIPSE 100/300 (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`).
-- **Multibody, Automotive, Robotics, Marine & Rail (9)**: MSC ADAMS (`.adm`, `.cmd`, `.acf`), SIMPACK (`.spck`, `.sim`, `.fbi`), GENSYS (`.calc`, `.run`, `.trax`), GT-SUITE (`.gtm`, `.gtx`), SIMA (`.sima`, `.sys`), URDF/SDF (`.urdf`, `.sdf`), ASAM OpenDRIVE (`.xodr`), ASAM OpenSCENARIO (`.xosc`, `.osc`), AUTOSAR (`.arxml`).
-- **Aerospace, Flight Dynamics, Astrodynamics & Controls (6)**: Simulink (`.slx`, `.mdl`), Boeing/MSC EASY5 (`.ez5`, `.ezm`), JSBSim (`.xml`), NASA ROCETS (`.roc`), CCSDS / XTCE (`.oem`, `.opm`, `.omm`, `.xtce`), PLCopen IEC 61131-3 (`.st`, `.iec`, `.plcxml`).
-- **3D CAD & Continuum Physics (4)**: ISO 10303-21 STEP (`.step`, `.stp`), OpenSCAD CSG (`.scad`), CalculiX/Nastran FEA (`.fea`, `.inp`, `.bdf`), SU2/OpenFOAM CFD (`.cfd`, `.cfg`, `.su2`, `.foam`).
+- **Fluid, Process, Subsurface, Civil Water & Nuclear (8)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus-compatible (`.in`, `.inp`, `.bkp`), ECLIPSE 100/300-compatible (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D-compatible (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`).
+- **Multibody, Automotive, Robotics, Marine & Rail (9)**: MSC Adams-compatible (`.adm`, `.cmd`, `.acf`), SIMPACK-compatible (`.spck`, `.sim`, `.fbi`), GENSYS (`.calc`, `.run`, `.trax`), GT-SUITE-compatible (`.gtm`, `.gtx`), SIMA (`.sima`, `.sys`), URDF/SDF (`.urdf`, `.sdf`), ASAM OpenDRIVE (`.xodr`), ASAM OpenSCENARIO (`.xosc`, `.osc`), AUTOSAR (`.arxml`).
+- **Aerospace, Flight Dynamics, Astrodynamics & Controls (6)**: Simulink-compatible (`.slx`, `.mdl`), Boeing/MSC EASY5-compatible (`.ez5`, `.ezm`), JSBSim (`.xml`), NASA ROCETS (`.roc`), CCSDS / XTCE (`.oem`, `.opm`, `.omm`, `.xtce`), PLCopen IEC 61131-3 (`.st`, `.iec`, `.plcxml`).
+- **3D CAD & Continuum Physics (4)**: ISO 10303-21 STEP (`.step`, `.stp`), OpenSCAD CSG (`.scad`), CalculiX/NASTRAN-compatible FEA (`.fea`, `.inp`, `.bdf`), SU2/OpenFOAM-compatible CFD (`.cfd`, `.cfg`, `.su2`, `.foam`).
 - **Systems Biology & Scientific / Embedded Code (3)**: SBML (`.sbml`, `.xml`), Fortran 77/90/95 (`.f`, `.for`, `.f90`), ISO C99 (`.c`, `.h`).
 
 Supports both Node.js IPC/stdio (`src/nodeServerMain.ts`, `@modelscript/lsp/node`) and browser WebWorker (`src/browserServerMain.ts`, `@modelscript/lsp/server`) transports.
@@ -81,3 +81,9 @@ npm run test --workspace=@modelscript/lsp
 npm run typecheck --workspace=@modelscript/lsp
 npm run lint --workspace=@modelscript/lsp
 ```
+
+---
+
+## Trademarks & Disclaimers
+
+All third-party product names, software packages, and registered trademarks referenced throughout `@modelscript/lsp` are the property of their respective owners. Reference to third-party tools is strictly for nominative identification of language grammar, file format compatibility, and multi-domain engineering interoperability. ModelScript is an independent open-core project.

@@ -1,6 +1,6 @@
-# PSS/E Transmission Power Flow (`.raw`)
+# PSS/E-Compatible Transmission Power Flow (`.raw`)
 
-The `@modelscript/psse` language package (`languages/psse`) provides native support for **Siemens PSS®E RAW (`.raw`)** transmission grid power flow base cases (Revisions 30 through 35). It delivers streaming parsing, round-trip serialization, pre-flight topological linting (`P1001`–`P4001`), sparse nodal admittance matrix ($Y_{bus} = G + jB$) assembly, in-engine non-linear AC power flow solving (Newton-Raphson & Fast Decoupled), multi-domain projections to **Modelica** and **PSCAD/EMT**, interactive Single-Line Diagrams (SLD) via AntV X6, and a dual-mode VS Code custom webview editor.
+The `@modelscript/psse` language package (`languages/psse`) provides native support for **PSS/E-compatible RAW (`.raw`)** transmission grid power flow base cases (Revisions 30 through 35). It delivers streaming parsing, round-trip serialization, pre-flight topological linting (`P1001`–`P4001`), sparse nodal admittance matrix ($Y_{bus} = G + jB$) assembly, in-engine non-linear AC power flow solving (Newton-Raphson & Fast Decoupled), multi-domain projections to **Modelica** and **PSCAD/EMT**, interactive Single-Line Diagrams (SLD) via AntV X6, and a dual-mode VS Code custom webview editor.
 
 ---
 

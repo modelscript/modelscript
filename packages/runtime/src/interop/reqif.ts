@@ -4,7 +4,7 @@
  * Native OMG ReqIF 1.2 (Requirements Interchange Format) Parser & Generator.
  *
  * Implements lossless requirements ingestion and export across the Digital Thread,
- * mapping DOORS / Polarion / Teamcenter requirements into SysML v2 and Modelica verifier models
+ * mapping DOORS-, Polarion-, and Teamcenter-compatible requirements into SysML v2 and Modelica verifier models
  * with full support for hierarchical specifications and traceability relations.
  */
 

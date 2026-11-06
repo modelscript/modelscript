@@ -1,6 +1,6 @@
-# RELAP5 Nuclear Reactor Thermal-Hydraulics (`.i`, `.inp`, `.r5`)
+# RELAP5-3D-Compatible Nuclear Reactor Thermal-Hydraulics (`.i`, `.inp`, `.r5`)
 
-`@modelscript/relap5` (`languages/relap5`) provides high-fidelity 80-column card deck parsing, non-equilibrium two-phase hydrodynamic modeling, 6-group delayed neutron point kinetics solving, DAE lowering, and Modelica 3.x projection for **INL RELAP5-3D** nuclear reactor systems, thermal-hydraulic loops, and safety margin evaluations.
+`@modelscript/relap5` (`languages/relap5`) provides high-fidelity 80-column card deck parsing, non-equilibrium two-phase hydrodynamic modeling, 6-group delayed neutron point kinetics solving, DAE lowering, and Modelica 3.x projection for **RELAP5-3D-compatible** nuclear reactor systems, thermal-hydraulic loops, and safety margin evaluations.
 
 ---
 

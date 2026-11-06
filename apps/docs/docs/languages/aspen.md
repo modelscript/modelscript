@@ -1,6 +1,6 @@
-# Aspen Plus & HYSYS Chemical Process (`.in`, `.inp`, `.bkp`)
+# Aspen-Compatible Chemical Process Modeling (`.in`, `.inp`, `.bkp`)
 
-`@modelscript/aspen` (`languages/aspen`) provides zero-regex parsing, vapor-liquid equilibrium (VLE) flash computation, distillation column MESH equations, DAE lowering, and Modelica 3.x projection for **Aspen Plus** and **Aspen HYSYS** chemical flowsheet input decks.
+`@modelscript/aspen` (`languages/aspen`) provides zero-regex parsing, vapor-liquid equilibrium (VLE) flash computation, distillation column MESH equations, DAE lowering, and Modelica 3.x projection for **Aspen Plus- and Aspen HYSYS-compatible** chemical flowsheet input decks.
 
 ---
 

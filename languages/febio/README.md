@@ -12,7 +12,7 @@ FEBio 3.x / 4.x (`.feb`) and SOFA Framework (`.scn`) soft-tissue biomechanics, h
 - **FEBio 3.x/4.x & SOFA `.scn` Parser**: Parses `<febio_spec>` XML models (materials, nodes, `tet4`/`hex8` elements, node sets, surfaces, solid domains, boundary conditions, loads, contact interfaces, time steppers) and SOFA Framework `<Node>` surgical scene graphs (`<MechanicalObject>`, `<TetrahedronFEMForceField>`, `<MassSpringForceField>`, `<FixedConstraint>`).
 - **Biomechanics & Mesh Quality Linter (`M9401`–`M9410`)**: Validates hyperelastic/elastic material constants, element Jacobian determinants ($\det(\mathbf{J}) > 0$), connectivity references, rigid-body constraints, biphasic permeability and porosity bounds, time-stepper parameters, contact penalties, and SOFA state containers.
 - **Hyperelastic & Biphasic Mechanics Solver**: Evaluates neo-Hookean and Mooney-Rivlin strain energy density $W = C_1(I_1 - 3) + C_2(I_2 - 3) + \frac{K}{2}(J - 1)^2$, principal Cauchy stresses $\boldsymbol{\sigma}$, von Mises stresses, Darcy interstitial fluid flux, and nodal displacements.
-- **Linear-Memory DAE Lowering & Cross-Domain Projections**: Lowers tissue constitutive laws and nodal kinematics into ModelScript's `DAEBuilder` arena and projects models to CalculiX/Abaqus (`.inp`) and Modelica 3.x (`.mo`).
+- **Linear-Memory DAE Lowering & Cross-Domain Projections**: Lowers tissue constitutive laws and nodal kinematics into ModelScript's `DAEBuilder` arena and projects models to CalculiX- / Abaqus-compatible (`.inp`) and Modelica 3.x (`.mo`).
 - **LSP & Workspace Index Integration**: Provides document symbols, constitutive hover cards, completions, go-to-definition, and multi-file symbol indexing via `FebioWorkspaceIndex`.
 
 ---

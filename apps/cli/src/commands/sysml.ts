@@ -496,7 +496,8 @@ interface SysMLSyncPullArgs {
 
 const SysMLSyncPullCommand: CommandModule<{}, SysMLSyncPullArgs> = {
   command: "pull",
-  describe: "Pull model elements from Cameo Teamwork Cloud (TWC) or OpenMBEE MMS and generate .sysml",
+  describe:
+    "Pull model elements from Cameo Teamwork Cloud (TWC)-compatible servers or OpenMBEE MMS and generate .sysml",
   builder: (yargs) => {
     return yargs
       .option("target", {
@@ -590,7 +591,7 @@ interface SysMLSyncPushArgs {
 
 const SysMLSyncPushCommand: CommandModule<{}, SysMLSyncPushArgs> = {
   command: "push <file>",
-  describe: "Push local SysML v2 source changes upstream to Cameo Teamwork Cloud or OpenMBEE MMS",
+  describe: "Push local SysML v2 source changes upstream to Cameo Teamwork Cloud-compatible servers or OpenMBEE MMS",
   builder: (yargs) => {
     return yargs
       .positional("file", {
@@ -703,7 +704,8 @@ const SysMLSyncPushCommand: CommandModule<{}, SysMLSyncPushArgs> = {
 
 const SysMLSyncCommand: CommandModule = {
   command: "sync <action>",
-  describe: "Synchronize SysML v2 models with Cameo Teamwork Cloud (TWC) or OpenMBEE MMS enterprise servers",
+  describe:
+    "Synchronize SysML v2 models with Cameo Teamwork Cloud (TWC)-compatible servers or OpenMBEE MMS enterprise servers",
   builder: (yargs) => {
     return yargs
       .command(SysMLSyncPullCommand)

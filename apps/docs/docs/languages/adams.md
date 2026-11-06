@@ -1,11 +1,11 @@
 ---
-title: MSC Adams Multibody Dynamics & Mechanism Simulation
-description: Native compiler support for MSC Adams (.adm, .cmd) mechanism decks, 3D kinematics, Grübler mobility analysis, and bidirectional SIMPACK/Modelica projections in ModelScript.
+title: Adams-Compatible Multibody Dynamics & Mechanism Simulation
+description: Native compiler support for Adams-compatible (.adm, .cmd) mechanism decks, 3D kinematics, Grübler mobility analysis, and bidirectional SIMPACK/Modelica projections in ModelScript.
 ---
 
-# MSC Adams Multibody Dynamics
+# Adams-Compatible Multibody Dynamics
 
-ModelScript features comprehensive, native support for **MSC Adams** (`.adm`, `.cmd`), the classic industrial standard for mechanical systems simulation and multibody dynamics (MBD). Engineers can parse legacy Adams View command files and solver datasets, perform Grübler-Kutzbach spatial mobility analysis, evaluate 3D joint constraint residuals, and project mechanisms to modern SIMPACK and Modelica formats.
+ModelScript features comprehensive, native support for **Adams-compatible** (`.adm`, `.cmd`) mechanism modeling, the classic industrial standard for mechanical systems simulation and multibody dynamics (MBD). Engineers can parse legacy Adams View command files and solver datasets, perform Grübler-Kutzbach spatial mobility analysis, evaluate 3D joint constraint residuals, and project mechanisms to modern SIMPACK and Modelica formats.
 
 ---
 

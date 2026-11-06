@@ -25,7 +25,7 @@
 
 ### 2. CalculiX FEA, Modelica & DAE Lowering
 
-- Solves Principal stretches, Cauchy stresses, and strain energy densities (`solveHyperelasticMechanics`), exports to **CalculiX / Abaqus `.inp`** (`febioToCalculixInp`) and **Modelica** (`febioToModelica`), and lowers lumped compliance dynamics into `DAEBuilder`.
+- Solves Principal stretches, Cauchy stresses, and strain energy densities (`solveHyperelasticMechanics`), exports to **CalculiX- / Abaqus-compatible `.inp`** (`febioToCalculixInp`) and **Modelica** (`febioToModelica`), and lowers lumped compliance dynamics into `DAEBuilder`.
 
 ---
 
@@ -47,7 +47,7 @@ msx febio validate LiverHyperelastic.feb
 # Solve hyperelastic strain energy and Cauchy stress response
 msx febio solve LiverHyperelastic.feb
 
-# Project FEBio mesh and materials to CalculiX/Abaqus .inp or Modelica
+# Project FEBio mesh and materials to CalculiX- / Abaqus-compatible .inp or Modelica
 msx febio to-inp LiverHyperelastic.feb > LiverHyperelastic.inp
 msx febio to-modelica LiverHyperelastic.feb > LiverHyperelastic.mo
 ```

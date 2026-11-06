@@ -4,7 +4,7 @@
  * SysML v2 Enterprise Sync Gateway.
  *
  * Implements bi-directional model synchronization with enterprise repositories:
- *   1. Dassault Cameo Teamwork Cloud (TWC) OSMC REST API:
+ *   1. Cameo Teamwork Cloud-compatible (TWC) OSMC REST API:
  *      - Resources, branches, revisions, elements, and commits.
  *      - JSON-LD element synchronization conforming to OMG ptc/2024-02-03.
  *   2. OpenMBEE Model Management System (MMS 4 / MMS 5) REST API:

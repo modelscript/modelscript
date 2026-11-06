@@ -27,7 +27,7 @@ const ADAMS_ACTIONS = [
 
 export const AdamsCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "adams <action> [files...]",
-  describe: "Inspect, analyze, solve, and project MSC Adams multibody models (.adm, .cmd, .acf)",
+  describe: "Inspect, analyze, solve, and project Adams-compatible multibody models (.adm, .cmd, .acf)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
@@ -40,7 +40,7 @@ export const AdamsCommand: CommandModule<Record<string, unknown>, Record<string,
       .positional("files", {
         type: "string",
         array: true,
-        describe: "Input MSC Adams files (.adm, .cmd, .acf)",
+        describe: "Input Adams-format model files (.adm, .cmd, .acf)",
       })
       .option("out", {
         alias: ["o", "output"],

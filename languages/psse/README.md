@@ -3,7 +3,7 @@
 
 # @modelscript/psse
 
-Siemens PTI PSS/E transmission grid power flow and dynamic network simulation package (`.raw`, `.dyr`) for ModelScript. Features multi-file workspace indexing (`PsseWorkspaceIndex`), RAW format parsing (v30, v32, v33), high-performance Newton-Raphson & Fast Decoupled AC power flow solver (`solveAcPowerFlow` / `solvePowerFlow`), 15 pre-flight transmission grid lint rules (`P1001`–`P4001`), DAE lowering (`lowerPsseToDae`), and turnkey projections to Modelica and PSCAD (`.pscx`).
+PSS/E-compatible transmission grid power flow and dynamic network simulation package (`.raw`, `.dyr`) for ModelScript. Features multi-file workspace indexing (`PsseWorkspaceIndex`), RAW format parsing (v30, v32, v33), high-performance Newton-Raphson & Fast Decoupled AC power flow solver (`solveAcPowerFlow` / `solvePowerFlow`), 15 pre-flight transmission grid lint rules (`P1001`–`P4001`), DAE lowering (`lowerPsseToDae`), and turnkey projections to Modelica and PSCAD (`.pscx`).
 
 ---
 

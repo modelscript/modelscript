@@ -501,7 +501,7 @@ export const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: str
 
 export const ReqIf: CommandModule = {
   command: "reqif <action>",
-  describe: "Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter",
+  describe: "Lossless OMG ReqIF 1.2 requirements interchange (DOORS, Polarion, Teamcenter compatible)",
   builder: (yargs) => {
     return yargs
       .command(ReqIfImportCommand)

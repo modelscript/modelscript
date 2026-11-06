@@ -400,7 +400,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "oslc <action>",
-      "OSLC Core 3.0 enterprise coexistence gateway for Teamcenter, Windchill, and DOORS",
+      "OSLC Core 3.0 enterprise coexistence gateway for Teamcenter-, Windchill-, and DOORS-compatible repositories",
       () => import("./commands/oslc.js"),
       "Oslc",
     ),
@@ -416,7 +416,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "reqif <action>",
-      "Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter",
+      "Lossless OMG ReqIF 1.2 requirements interchange with DOORS-, Polarion-, and Teamcenter-compatible files",
       () => import("./commands/reqif.js"),
       "ReqIf",
     ),
@@ -621,7 +621,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "aspen <action> [files..]",
-      "Inspect, lint, solve, and lower Aspen Plus chemical process flowsheets (.in, .inp, .bkp)",
+      "Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (.in, .inp, .bkp)",
       () => import("./commands/aspen.js"),
       "AspenCommand",
     ),
@@ -677,7 +677,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "pscad <action> [files..]",
-      "Inspect, lint, diff, and simulate PSCAD projects (.pscx, .pslx)",
+      "Inspect, lint, diff, and simulate PSCAD-compatible projects (.pscx, .pslx)",
       () => import("./commands/pscad.js"),
       "PscadCommand",
     ),
@@ -685,7 +685,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "psse <action> [files..]",
-      "Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)",
+      "Inspect, lint, and visualize PSS/E-compatible RAW power flow cases (.raw)",
       () => import("./commands/psse.js"),
       "PsseCommand",
     ),
@@ -701,7 +701,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "relap5 <action> [files..]",
-      "Inspect, lint, solve kinetics, and lower US NRC RELAP5-3D decks (.i, .inp, .r5)",
+      "Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (.i, .inp, .r5)",
       () => import("./commands/relap5.js"),
       "Relap5Command",
     ),
@@ -709,7 +709,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "eclipse <action> [files..]",
-      "Inspect, lint, solve reservoir depletion, and lower Schlumberger ECLIPSE decks (.data, .dat, .inc)",
+      "Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (.data, .dat, .inc)",
       () => import("./commands/eclipse.js"),
       "EclipseCommand",
     ),
@@ -733,9 +733,17 @@ await yargs(rawArgs)
   .command(
     lazy(
       "olga <action> [files..]",
-      "Simulate, lint, verify, and visualize OLGA multiphase flow models (.opi, .key, .genkey)",
+      "Simulate, lint, verify, and visualize OLGA-compatible multiphase flow models (.opi, .key, .genkey)",
       () => import("./commands/olga.js"),
       "OlgaCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "frac <action> [files..]",
+      "Real-time hydraulic completions, slurry hydraulics, perforation erosion, fracture compliance, and screen-out analytics",
+      () => import("./commands/frac.js"),
+      "FracCommand",
     ),
   )
   .command(
@@ -757,7 +765,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "gensys <action> [files..]",
-      "Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)",
+      "Inspect, lint, and verify GENSYS-compatible railway vehicle models (.calc, .run, .sub)",
       () => import("./commands/gensys.js"),
       "GensysCommand",
     ),
@@ -765,7 +773,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "adams <action> [files..]",
-      "Inspect, analyze, solve, and project MSC Adams multibody models (.adm, .cmd, .acf)",
+      "Inspect, analyze, solve, and project Adams-compatible multibody models (.adm, .cmd, .acf)",
       () => import("./commands/adams.js"),
       "AdamsCommand",
     ),
@@ -773,7 +781,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "simpack <action> [files..]",
-      "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
+      "Inspect, analyze, and lower SIMPACK-compatible multibody models (.spck, .sim, .mbs)",
       () => import("./commands/simpack.js"),
       "SimpackCommand",
     ),
@@ -837,7 +845,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "simulink <action> [files..]",
-      "Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)",
+      "Inspect, lint, lower to DAE, and project Simulink-compatible control models (.slx, .mdl)",
       () => import("./commands/simulink.js"),
       "SimulinkCommand",
     ),
@@ -853,7 +861,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "lps <action> [files..]",
-      "Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
+      "Inspect, lint, simulate, and verify PipelineStudio-compatible gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
       () => import("./commands/lps.js"),
       "LpsCommand",
     ),
@@ -861,7 +869,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "sima <action> [files..]",
-      "Inspect, lint, verify, and project SINTEF Ocean SIMO / RIFLEX offshore models (.inp, .sima, .hyd)",
+      "Inspect, lint, verify, and project SIMO/RIFLEX-compatible offshore marine models (.inp, .sima, .hyd)",
       () => import("./commands/sima.js"),
       "SimaCommand",
     ),
@@ -869,7 +877,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "gtsuite <action> [files..]",
-      "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER engine models (.gtm, .gtd, .gtx)",
+      "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER-compatible engine models (.gtm, .gtd, .gtx)",
       () => import("./commands/gtsuite.js"),
       "GtSuiteCommand",
     ),
@@ -988,4 +996,7 @@ await yargs(rawArgs)
   .demandCommand()
   .help()
   .version(pkgVersion)
+  .epilogue(
+    "Notice: ModelScript (msx) is an independent engineering platform. Third-party software titles, formats, and registered trademarks are the property of their respective owners and are referenced solely for file format identification, parsing, and interoperability under nominative fair use.",
+  )
   .parse();

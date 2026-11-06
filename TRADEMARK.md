@@ -134,3 +134,61 @@ If you have questions regarding this policy, wish to request written permission 
 
 - **Email:** `contact@modelscript.org` or `omar@modelscript.org`
 - **Project Repository:** [github.com/modelscript/modelscript](https://github.com/modelscript/modelscript)
+
+---
+
+## 8. Third-Party Trademarks & Nominative Fair Use
+
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 66 engineering domains, modeling formats, and file standards.
+
+### Non-Affiliation & Disclaimers
+
+All third-party product names, software titles, logos, and registered trademarks referenced throughout ModelScript, the `msx` command-line interface, documentation, and `@modelscript/*` packages are the property of their respective trademark owners, including but not limited to:
+
+- **Simulink®** and **MATLAB®** are registered trademarks of The MathWorks, Inc.
+- **MSC Adams®** is a registered trademark of MSC Software Corporation / Hexagon AB.
+- **SIMPACK®** is a registered trademark of Dassault Systèmes SE.
+- **GT-SUITE®** and **GT-POWER®** are registered trademarks of Gamma Technologies LLC.
+- **Aspen Plus®** and **Aspen HYSYS®** are registered trademarks of Aspen Technology, Inc.
+- **OLGA®** and **ECLIPSE®** are registered trademarks of Schlumberger Technology Corporation / SLB.
+- **PSS®E** is a registered trademark of Siemens AG.
+- **PSCAD®** is a registered trademark of Manitoba Hydro International Ltd.
+- **EASY5®** is a registered trademark of The Boeing Company / MSC Software.
+- **PipelineStudio®** is a registered trademark of Energy Solutions International / Emerson Electric Co.
+- **GENSYS®** is a registered trademark of AB GENSYS.
+- **gPROMS®** is a registered trademark of Siemens Process Systems Engineering Limited (formerly Process Systems Enterprise Ltd).
+- **RELAP5®** and **RELAP5-3D®** are registered or licensed trademarks of the Idaho National Laboratory / US Department of Energy.
+- **SIMO®** and **RIFLEX®** are software products and marks of SINTEF Ocean AS.
+- **Cameo®**, **MagicDraw®**, **Dymola®**, and **CATIA®** are registered trademarks of Dassault Systèmes SE / No Magic, Inc.
+- **Teamcenter®** and **Polarion®** are registered trademarks of Siemens AG.
+- **Windchill®** is a registered trademark of PTC Inc.
+- **IBM®** and **DOORS®** are registered trademarks of International Business Machines Corporation.
+- **AUTOSAR®** is a registered trademark of the AUTOSAR development partnership (Automotive Open System Architecture GbR).
+- **OpenDRIVE®** and **OpenSCENARIO®** are registered trademarks of ASAM e.V.
+- **PLCopen®** is a registered trademark of the PLCopen association.
+- **AutomationML®** is a registered trademark of AutomationML e.V.
+- **SysML®** is a registered trademark of the Object Management Group, Inc. (OMG).
+- **FMI®** and **Modelica®** are registered trademarks of the Modelica Association.
+- **DICOM®** is a registered trademark of the National Electrical Manufacturers Association (NEMA).
+- **3MF®** is a registered trademark of the 3MF Consortium.
+- **ANSYS®**, **Fluent®**, and **Twin Builder®** are registered trademarks of ANSYS, Inc.
+- **Abaqus®** is a registered trademark of Dassault Systèmes Simulia Corp.
+- **NASTRAN®** is a registered trademark of the National Aeronautics and Space Administration (NASA) and Hexagon AB / MSC Software Corporation.
+- **OpenFOAM®** is a registered trademark of OpenCFD Limited (an ESI Group company).
+- **SU2** is an open-source suite developed by the SU2 Foundation and Stanford University.
+- **NONMEM®** is a registered trademark of ICON plc.
+- **Pirana®** is a trademark or software product of Certara, L.P.
+- **CarSim®** is a registered trademark of Mechanical Simulation Corporation.
+- **Simcenter Amesim®** and **Amesim®** are registered trademarks of Siemens Industry Software NV.
+- **LabVIEW®** is a registered trademark of National Instruments Corporation / NI.
+- **COMSOL®** and **COMSOL Multiphysics®** are registered trademarks of COMSOL AB.
+- **Wolfram SystemModeler®** and **SystemModeler®** are registered trademarks of Wolfram Research, Inc.
+- **ParaView®** is a registered trademark of Kitware, Inc.
+- **Jama Connect®** is a registered trademark of Jama Software, Inc.
+- **CFrac®** is a registered trademark licensed to Odin Ai Inc. (ModelScript provides independent, generic fracture compliance and Nolte-Smith screen-out analytics and does not offer or implement CFrac®).
+
+### Purpose of Use
+
+The use of these third-party trademarks in ModelScript is strictly for **nominative fair use** to describe file format compatibility, data interchange, translation, and interoperability (e.g., indicating that a ModelScript parser or bridge ingests or generates files compatible with that standard or software).
+
+**ModelScript is an independent open-core project. ModelScript, its contributors, and maintainers are not affiliated with, endorsed by, sponsored by, or associated with any of the trademark owners listed above.**

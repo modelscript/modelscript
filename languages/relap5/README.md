@@ -3,13 +3,13 @@
 
 # @modelscript/relap5
 
-US NRC RELAP5-3D nuclear reactor transient thermal-hydraulics, two-phase hydrodynamic volume/junction networks, and 6-group point reactor kinetics engineering package (`.i`, `.inp`, `.r5`) for ModelScript. Features a zero-regex RELAP5 card deck parser (`parseRelap5`), multi-file workspace indexing (`Relap5WorkspaceIndex`), an AssemblyScript WebAssembly 6-group delayed neutron point kinetics & Doppler/moderator thermal feedback kernel (`assembly/point_kinetics.ts` → `dist/point_kinetics.wasm`, `solvePointKinetics`), direct linear-memory `DAEBuilder` lowering (`lowerRelap5ToDae`), 10 pre-flight nuclear safety & thermal-hydraulic lint rules (`M8601`–`M8610`), Modelica 3.x nuclear system projections (`relap5ToModelica`), and Language Server Protocol (LSP) services.
+RELAP5-3D-compatible nuclear reactor transient thermal-hydraulics, two-phase hydrodynamic volume/junction networks, and 6-group point reactor kinetics engineering package (`.i`, `.inp`, `.r5`) for ModelScript. Features a zero-regex RELAP5 card deck parser (`parseRelap5`), multi-file workspace indexing (`Relap5WorkspaceIndex`), an AssemblyScript WebAssembly 6-group delayed neutron point kinetics & Doppler/moderator thermal feedback kernel (`assembly/point_kinetics.ts` → `dist/point_kinetics.wasm`, `solvePointKinetics`), direct linear-memory `DAEBuilder` lowering (`lowerRelap5ToDae`), 10 pre-flight nuclear safety & thermal-hydraulic lint rules (`M8601`–`M8610`), Modelica 3.x nuclear system projections (`relap5ToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
 ## Core Capabilities
 
-- **US NRC RELAP5-3D Card Deck Parser (`parseRelap5`)**: Zero-regex parser for `.i`, `.inp`, and `.r5` input decks (`*` and `$` comments, `.` card terminators) extracting:
+- **RELAP5-3D Card Deck Parser (`parseRelap5`)**: Zero-regex parser for `.i`, `.inp`, and `.r5` input decks (`*` and `$` comments, `.` card terminators) extracting:
   - **Problem Control & Time Step Cards (`100`–`299`)**: Title (`=`), problem type (`NEW`, `RESTART`), execution mode (`TRANSNT`, `STDY-ST`), and `201` time-step control cards (`endTime`, `minDt`, `maxDt`).
   - **Hydrodynamic Components (`CCCXXNN`)**: Control volumes (`snglvol`, `pipe`, `annulus`, `branch`, `tmdpvol`, `acum`) with flow area, length, volume, elevation change $\Delta z$, initial thermodynamic pressure ($P$), temperature ($T$), and static quality ($x$), plus junctions (`sngljun`, `tmdpjun`, `valve`, `pump`) with forward/reverse form loss coefficients ($K_f, K_r$) and Henry-Fauske / Ransom-Trapp sonic choked-flow flags.
   - **Trips (`400`–`799`), Heat Structures (`1CCCGNNN`), & Point Kinetics (`30000000`–`30000999`)**: Variable and logical trip cutsets (`AND`, `OR`, `XOR`), cylindrical fuel-pin and steam-generator tube heat structures, and `POINT` reactor kinetics cards ($\Lambda$, $\beta_{\text{eff}}$, 6 delayed neutron precursor groups $\beta_i, \lambda_i$, Doppler reactivity coefficient $\alpha_D$, and moderator temperature coefficient $\alpha_M$).

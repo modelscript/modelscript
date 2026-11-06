@@ -56,7 +56,7 @@ Exposes standard FMI input and output ports via `OlgaCoSimParticipant` in `@mode
 
 ### 3. Tier 3: Industrial OLGA Engine Orchestration
 
-Automates invocation of local Schlumberger OLGA executable engines (`olga.exe` / `olga-cli`), dynamically ingesting binary `.tpl` trajectories into ModelScript's data structures for verification.
+Automates invocation of locally installed OLGA executable engines (`olga.exe` / `olga-cli`), dynamically ingesting binary `.tpl` trajectories into ModelScript's data structures for verification.
 
 ---
 

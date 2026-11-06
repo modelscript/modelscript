@@ -3,7 +3,7 @@
 
 # @modelscript/gensys
 
-GENSYS railway vehicle dynamics, wheel-rail contact mechanics, track geometry, and European homologation engineering package (`.calc`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel`) for ModelScript. Features GENSYS deck and track geometry parsers (`parseGensysDeck`, `parseGensysTrack`), multi-file workspace indexing (`GensysWorkspaceIndex`), an AssemblyScript WebAssembly wheel-rail contact kernel (`assembly/contact.ts` → `dist/contact.wasm`) implementing Kalker FASTSIM and Polach creep force theories, EN 14363 / UIC 518 / EN 12299 / EN 14067-6 homologation verification (`evaluateEn14363`, `createHomologationReport`), direct linear-memory `DAEBuilder` lowering (`lowerGensysToDae`), 6 pre-flight railway lint rules (`G1001`–`G1006`), kinematic SVG diagram generation, and Modelica projections (`gensysToModelica`).
+GENSYS-compatible railway vehicle dynamics, wheel-rail contact mechanics, track geometry, and European homologation engineering package (`.calc`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel`) for ModelScript. Features GENSYS deck and track geometry parsers (`parseGensysDeck`, `parseGensysTrack`), multi-file workspace indexing (`GensysWorkspaceIndex`), an AssemblyScript WebAssembly wheel-rail contact kernel (`assembly/contact.ts` → `dist/contact.wasm`) implementing Kalker FASTSIM and Polach creep force theories, EN 14363 / UIC 518 / EN 12299 / EN 14067-6 homologation verification (`evaluateEn14363`, `createHomologationReport`), direct linear-memory `DAEBuilder` lowering (`lowerGensysToDae`), 6 pre-flight railway lint rules (`G1001`–`G1006`), kinematic SVG diagram generation, and Modelica projections (`gensysToModelica`).
 
 ---
 

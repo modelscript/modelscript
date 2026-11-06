@@ -28,7 +28,7 @@ const SIMPACK_ACTIONS = [
 
 export const SimpackCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "simpack <action> [files...]",
-  describe: "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
+  describe: "Inspect, analyze, and lower SIMPACK-compatible multibody models (.spck, .sim, .mbs)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
@@ -41,7 +41,7 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
       .positional("files", {
         type: "string",
         array: true,
-        describe: "Input SIMPACK files (.spck, .sim, .mbs)",
+        describe: "Input SIMPACK-format files (.spck, .sim, .mbs)",
       })
       .option("out", {
         alias: ["o", "output"],

@@ -3,15 +3,15 @@
 
 # @modelscript/sima
 
-MARINTEK / SINTEF Ocean **SIMO** (Simulation of Marine Operations) and **RIFLEX** (Riser and Slender Marine Structure Dynamics) package (`.inp`, `.sima`, `.sys`, `.hyd`) for ModelScript. Features multi-file workspace indexing (`SimaWorkspaceIndex`), card-deck and modern `.sima` XML parsers, SINTEF `.hyd` hydrodynamic RAO ingestion, DNV-OS-E301 & DNV-ST-0119 mooring line tension safety factor verification, fast in-WASM catenary shooting solver (`solveCatenary`), 15 pre-flight static marine linter rules (`M7001`–`M7015`), and turnkey Modelica/SSP co-simulation projections.
+SIMO / RIFLEX-compatible marine operations and slender marine structure dynamics package (`.inp`, `.sima`, `.sys`, `.hyd`) for ModelScript. Features multi-file workspace indexing (`SimaWorkspaceIndex`), card-deck and modern `.sima` XML parsers, hydrodynamic RAO table ingestion (`.hyd` format), DNV-OS-E301 & DNV-ST-0119 mooring line tension safety factor verification, fast in-WASM catenary shooting solver (`solveCatenary`), 15 pre-flight static marine linter rules (`M7001`–`M7015`), and turnkey Modelica/SSP co-simulation projections.
 
 ---
 
 ## Core Capabilities
 
 - **SIMO & RIFLEX Card Deck Parser (`parseCardDeck`)**: Ingests classical card decks (`SYS`, `BODY`, `MASS`, `FAIRLEAD`, `LINE`, `SEGM`, `CRS`, `WAVE`, `WIND`, `CURR`, `DYNMOD`).
-- **Modern SIMA XML Archive Parser (`parseSimaXml`)**: Ingests modern SINTEF Ocean `.sima` XML manifests, tasks, floater geometry, and line cross-section tables.
-- **Hydrodynamic Transfer Function Reader (`parseHydFile`)**: Reads SINTEF `.hyd` and WAMIT `.out` tables: 1st-order Force RAO amplitude/phase tables, frequency-dependent added mass $A(\omega)$, potential damping $B(\omega)$, and restoring matrices.
+- **Modern SIMA XML Archive Parser (`parseSimaXml`)**: Ingests modern `.sima` XML manifests, tasks, floater geometry, and line cross-section tables.
+- **Hydrodynamic Transfer Function Reader (`parseHydFile`)**: Reads `.hyd` and WAMIT `.out` tables: 1st-order Force RAO amplitude/phase tables, frequency-dependent added mass $A(\omega)$, potential damping $B(\omega)$, and restoring matrices.
 - **Analytical & Elastic Catenary Solver (`solveCatenary`)**: High-performance shooting solver calculating fairlead horizontal tension $H$, vertical tension $V_f$, suspended length, touchdown point (TDP), anchor uplift angle, and 2D catenary sag profile in $< 1\text{ ms}$.
 - **DNV-OS-E301 & DNV-ST-0119 Compliance Engine (`verifyDnvMooringCompliance`)**: Evaluates line tension safety factors against Minimum Breaking Load (MBL) for intact ($S_F \ge 1.67$) and damaged ($S_F \ge 1.25$) conditions, as well as anchor uplift angles.
 - **15 Pre-Flight Marine Linter Rules (`M7001`–`M7015`, `lintSimaProject`)**: Detects hydrostatic instability ($GM < 0$), line length underflow, acoustic Courant time-step violations, unconnected fairleads, RAO frequency extrapolation, non-physical stiffness, and unphysical seabed friction.

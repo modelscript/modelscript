@@ -1,6 +1,6 @@
-# SIMPACK Multibody Dynamics (`.spck`, `.sim`, `.mbs`)
+# SIMPACK-Compatible Multibody Dynamics (`.spck`, `.sim`, `.mbs`)
 
-ModelScript integrates native support for **SIMPACK** (Dassault Systèmes), the premier high-frequency vibration, kinematic, and spatial multibody dynamics (MBD) simulation system.
+ModelScript integrates native support for **SIMPACK-compatible** high-frequency vibration, kinematic, and spatial multibody dynamics (MBD) simulation models.
 
 ---
 

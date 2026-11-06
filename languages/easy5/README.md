@@ -3,7 +3,7 @@
 
 # @modelscript/easy5
 
-Boeing / MSC Software **EASY5** multidisciplinary systems dynamic modeling, simulation, and linear control systems engineering package (`.ez5`, `.ezm`, `.ezd`, `.eas`, `.tab`) for ModelScript. Features component & lookup-table parsing, GP Standard Component Library lowering to linear-memory `DAEBuilder`, embedded Fortran `UG`/`UX` block compilation, equilibrium trim & Jacobian state-space linearization, Bode/Nyquist frequency-response analysis, 12 pre-flight static lint rules (`M7001`–`M7012`), and bidirectional Modelica/SSP projections.
+EASY5-compatible multidisciplinary systems dynamic modeling, simulation, and linear control systems engineering package (`.ez5`, `.ezm`, `.ezd`, `.eas`, `.tab`) for ModelScript. Features component & lookup-table parsing, GP Standard Component Library lowering to linear-memory `DAEBuilder`, embedded Fortran `UG`/`UX` block compilation, equilibrium trim & Jacobian state-space linearization, Bode/Nyquist frequency-response analysis, 12 pre-flight static lint rules (`M7001`–`M7012`), and bidirectional Modelica/SSP projections.
 
 ---
 

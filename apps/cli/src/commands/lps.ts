@@ -49,7 +49,8 @@ const LPS_ACTIONS = [
 
 export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "lps <action> [files..]",
-  describe: "Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
+  describe:
+    "Inspect, lint, simulate, and verify PipelineStudio-compatible gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

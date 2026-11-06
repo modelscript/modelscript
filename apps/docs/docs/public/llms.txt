@@ -57,7 +57,7 @@
 
 ## Command-Line Interface (`msx`)
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
-- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 104 CLI commands and subcommands.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 105 CLI commands and subcommands.
 
 ## Polyglot Languages (66 Formats)
 - [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 66 formats.

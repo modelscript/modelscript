@@ -1,4 +1,4 @@
-# FEA (CalculiX, Abaqus & NASTRAN)
+# FEA (CalculiX, Abaqus & NASTRAN Compatible)
 
 `@modelscript/fea` (`languages/fea`) provides native parsing, parametric template materialization, 3D CAD boundary condition synthesis, structural theory slicing, and cross-domain TGG synchronization for Finite Element Analysis input decks.
 
@@ -6,12 +6,12 @@
 
 ## Supported Dialects & Extensions
 
-| Extension | Dialect                               | Key Directives                                                                                                                                                               |
-| :-------- | :------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.inp`    | CalculiX / Abaqus input deck          | `*HEADING`, `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*MATERIAL`, `*ELASTIC`, `*DENSITY`, `*SOLID SECTION`, `*STEP`, `*STATIC`, `*FREQUENCY`, `*BOUNDARY`, `*CLOAD`, `*DLOAD` |
-| `.inpt`   | Parametric CalculiX / Abaqus template | Supports <code v-pre>{{ expression }}</code> mustache substitutions over workspace parameters                                                                                |
-| `.bdf`    | NASTRAN Bulk Data Deck                | `SOL`, `CEND`, `BEGIN BULK`, `GRID`, `CTETRA`, `CHEXA`, `PSOLID`, `MAT1`, `SPC1`, `FORCE`, `MOMENT`, `LOAD`, `ENDDATA`                                                       |
-| `.fea`    | ModelScript native FEA configuration  | Structured material, mesh, boundary, and load study definitions                                                                                                              |
+| Extension | Dialect                                           | Key Directives                                                                                                                                                               |
+| :-------- | :------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.inp`    | CalculiX- / Abaqus-compatible input deck          | `*HEADING`, `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*MATERIAL`, `*ELASTIC`, `*DENSITY`, `*SOLID SECTION`, `*STEP`, `*STATIC`, `*FREQUENCY`, `*BOUNDARY`, `*CLOAD`, `*DLOAD` |
+| `.inpt`   | Parametric CalculiX- / Abaqus-compatible template | Supports <code v-pre>{{ expression }}</code> mustache substitutions over workspace parameters                                                                                |
+| `.bdf`    | NASTRAN-compatible Bulk Data Deck                 | `SOL`, `CEND`, `BEGIN BULK`, `GRID`, `CTETRA`, `CHEXA`, `PSOLID`, `MAT1`, `SPC1`, `FORCE`, `MOMENT`, `LOAD`, `ENDDATA`                                                       |
+| `.fea`    | ModelScript native FEA configuration              | Structured material, mesh, boundary, and load study definitions                                                                                                              |
 
 ---
 
@@ -37,7 +37,7 @@ LOAD_SET, 3, {{ -tip_mass * 9.81 }}
 
 When a user selects a topological face in the 3D CAD viewer, `synthesizeFeaBoundary` and `applyBoundaryActionToDeck` (`languages/fea/src/boundary-synthesizer.ts`) automatically generate solver-native boundary and load cards for the target dialect:
 
-| Boundary Kind                            | CalculiX / Abaqus (`.inp`)                                                          | NASTRAN Bulk Data (`.bdf`)                                           |
+| Boundary Kind                            | CalculiX / Abaqus Compatible (`.inp`)                                               | NASTRAN-Compatible Bulk Data (`.bdf`)                                |
 | :--------------------------------------- | :---------------------------------------------------------------------------------- | :------------------------------------------------------------------- |
 | **Fixed Support (`fixed`)**              | `*BOUNDARY` constraining DOFs `1, 6` (or `1, 3`) on `NSET_<FACE>`                   | `SPC1` card locking DOFs `123456` (or `123`) on `SET_<FACE>`         |
 | **Point / Concentrated Force (`force`)** | `*CLOAD` directional nodal force components $(F_x, F_y, F_z)$ along the face normal | `FORCE` card with magnitude and normal unit vector $(n_x, n_y, n_z)$ |
@@ -87,19 +87,19 @@ Returning `{ mass, maxVonMisesPa, yieldStrengthPa, safetyFactor, isSafe }` direc
 msx fea <action> [files...] [options]
 ```
 
-| Action            | Description                                                                                          | Key Options         |
-| :---------------- | :--------------------------------------------------------------------------------------------------- | :------------------ |
-| **`lint`**        | Validates CalculiX, Abaqus, and NASTRAN syntax, element topologies, material cards, and constraints. | —                   |
-| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.    | —                   |
-| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.               | —                   |
-| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.          | `--out=<file.mo>`   |
-| **`to-dae`**      | Lowers structural mass and stiffness matrices into ModelScript linear-memory DAE arena.              | `--out=<file.json>` |
-| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.   | —                   |
+| Action            | Description                                                                                                       | Key Options         |
+| :---------------- | :---------------------------------------------------------------------------------------------------------------- | :------------------ |
+| **`lint`**        | Validates CalculiX-, Abaqus-, and NASTRAN-compatible syntax, element topologies, material cards, and constraints. | —                   |
+| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.                 | —                   |
+| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.                            | —                   |
+| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.                       | `--out=<file.mo>`   |
+| **`to-dae`**      | Lowers structural mass and stiffness matrices into ModelScript linear-memory DAE arena.                           | `--out=<file.json>` |
+| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.                | —                   |
 
 ### Examples
 
 ```bash
-# Validate element connectivity and material properties in an Abaqus deck
+# Validate element connectivity and material properties in an Abaqus-compatible deck
 msx fea lint BracketAssembly.inp
 
 # Display mesh statistics, node count, and material properties
@@ -114,3 +114,9 @@ msx fea solve BracketAssembly.inp
 ## Diagnostic Rules
 
 <LintRules lang="fea" />
+
+---
+
+## Trademarks & Disclaimers
+
+CalculiX, Abaqus, and NASTRAN are trademarks or registered trademarks of their respective owners (including Dassault Systèmes Simulia Corp., NASA, and MSC Software / Hexagon AB). Reference to these marks is solely for nominative identification of format compatibility and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.

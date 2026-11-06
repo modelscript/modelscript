@@ -1,11 +1,11 @@
 ---
-title: MATLAB Simulink Modeling & DAE Lowering
-description: Native compiler support for MATLAB Simulink (.slx, .mdl) block diagrams, algebraic loop detection, continuous and discrete DAE lowering, and Modelica standard block projections in ModelScript.
+title: Simulink-Compatible Modeling & DAE Lowering
+description: Native compiler support for Simulink-compatible (.slx, .mdl) block diagrams, algebraic loop detection, continuous and discrete DAE lowering, and Modelica standard block projections in ModelScript.
 ---
 
-# MATLAB Simulink Control Systems
+# Simulink-Compatible Control Systems
 
-ModelScript provides first-class, polyglot compiler support for **MATLAB Simulink** (`.slx`, `.mdl`) control models and dynamic block diagrams. Engineers can author, inspect, lint, formally lower to differential-algebraic equations (DAEs), and project Simulink systems into standard Modelica blocks without requiring a MATLAB license or desktop installation.
+ModelScript provides first-class, polyglot compiler support for **Simulink-compatible** (`.slx`, `.mdl`) control models and dynamic block diagrams. Engineers can author, inspect, lint, formally lower to differential-algebraic equations (DAEs), and project Simulink systems into standard Modelica blocks without requiring a MATLAB license or desktop installation.
 
 ---
 

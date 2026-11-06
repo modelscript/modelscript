@@ -29,7 +29,7 @@ import type { CommandModule } from "yargs";
 
 export const SimaCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "sima <action> [files...]",
-  describe: "Inspect, lint, verify, and project SINTEF Ocean SIMO / RIFLEX offshore models (.inp, .sima, .hyd)",
+  describe: "Inspect, lint, verify, and project SIMO/RIFLEX-compatible offshore marine models (.inp, .sima, .hyd)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

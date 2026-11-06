@@ -77,7 +77,7 @@ function lineColToByte(text: string, line1: number, col1: number): number {
   return offset + Math.max(0, col1 - 1);
 }
 
-/** Recognized Abaqus/CalculiX `.inp` FEA keyword card names for syntax validation. */
+/** Recognized CalculiX- and Abaqus-compatible `.inp` FEA keyword card names for syntax validation. */
 const VALID_FEA_CARDS = new Set([
   "HEADING",
   "NODE",
@@ -137,7 +137,7 @@ const VALID_FEA_CARDS = new Set([
 ]);
 
 /**
- * Performs lexical and structural linting on an SU2/CFD configuration file (`KEY = VALUE` directives,
+ * Performs lexical and structural linting on an SU2-compatible CFD configuration file (`KEY = VALUE` directives,
  * balanced parentheses, and embedded `{{...}}` parameter expressions).
  */
 function lintCfdText(text: string, resourceId: string): LintDiagnosticItem[] {
@@ -254,7 +254,7 @@ function lintCfdText(text: string, resourceId: string): LintDiagnosticItem[] {
 }
 
 /**
- * Performs lexical and card-schema linting on a CalculiX/Abaqus `.inp` FEA deck.
+ * Performs lexical and card-schema linting on a CalculiX- and Abaqus-compatible `.inp` FEA deck.
  */
 function lintFeaText(text: string, resourceId: string): LintDiagnosticItem[] {
   const diags: LintDiagnosticItem[] = [];

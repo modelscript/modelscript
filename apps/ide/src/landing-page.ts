@@ -222,7 +222,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "cfd",
-    name: "SU2 & OpenFOAM CFD",
+    name: "CFD Aerodynamics (.cfg)",
     badge: "CFD",
     ext: ".cfg",
     group: "geometry",
@@ -236,7 +236,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "fea",
-    name: "Abaqus / CalculiX FEA",
+    name: "FEA Structural (.inp)",
     badge: "FEA",
     ext: ".inp",
     group: "geometry",
@@ -473,7 +473,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "psse",
-    name: "Siemens PSS®E",
+    name: "PSS®E (Transmission Grid)",
     badge: "PSE",
     ext: ".raw",
     group: "power",
@@ -487,7 +487,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "opendss",
-    name: "EPRI OpenDSS",
+    name: "OpenDSS (Distribution Grid)",
     badge: "DSS",
     ext: ".dss",
     group: "power",
@@ -501,7 +501,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "olga",
-    name: "Schlumberger OLGA",
+    name: "OLGA (Multiphase Flow)",
     badge: "OLG",
     ext: ".opi",
     group: "oil-gas",
@@ -515,7 +515,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "lps",
-    name: "Pipeline Studio (TGNET/TLNET)",
+    name: "PipelineStudio (TGNET/TLNET)",
     badge: "LPS",
     ext: ".lps",
     group: "oil-gas",
@@ -529,7 +529,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "eclipse",
-    name: "SLB ECLIPSE",
+    name: "ECLIPSE (Reservoir)",
     badge: "ECL",
     ext: ".data",
     group: "oil-gas",
@@ -557,7 +557,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "sima",
-    name: "SINTEF SIMA (SIMO/RIFLEX)",
+    name: "SIMA (SIMO/RIFLEX)",
     badge: "SIM",
     ext: ".sima",
     group: "marine",
@@ -655,7 +655,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "adams",
-    name: "MSC Adams Solver (.adm)",
+    name: "Adams Multibody (.adm)",
     badge: "ADM",
     ext: ".adm",
     group: "robotics",
@@ -663,7 +663,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     tier: "beta",
     role: "Mechanical Multibody Mechanisms",
     summary:
-      "MSC Adams PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
+      "Adams-compatible PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
     docsUrl: "https://modelscript.org/languages/adams",
     defaultTemplateId: "adams-pendulum",
   },
@@ -893,7 +893,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   },
   {
     id: "nmtran",
-    name: "NONMEM NM-TRAN",
+    name: "NMTRAN / NONMEM PK/PD",
     badge: "NMT",
     ext: ".ctl",
     group: "life-sciences",
@@ -901,7 +901,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     tier: "preview",
     role: "Pharmacometrics & Population PK/PD",
     summary:
-      "NONMEM control streams ($PROBLEM, $PK, $DES, $THETA, $OMEGA, $SIGMA) with ADVAN/TRANS validation and compartment ODEs.",
+      "NONMEM-compatible control streams ($PROBLEM, $PK, $DES, $THETA, $OMEGA, $SIGMA) with ADVAN/TRANS validation and compartment ODEs.",
     docsUrl: "https://modelscript.org/languages/nmtran",
     defaultTemplateId: "nmtran-pk",
   },
@@ -1035,7 +1035,7 @@ export const LANDING_EXAMPLE_TILES: LandingExampleTile[] = [
     languageId: "modelica",
     title: "Polyglot Drone Reachability Verification",
     summary:
-      "End-to-end cyber-physical workspace coupling Modelica DAE, SysML v2 requirements, OpenSCAD CAD, CalculiX FEA, and SU2 CFD.",
+      "End-to-end cyber-physical workspace coupling Modelica DAE, SysML v2 requirements, OpenSCAD CAD, CalculiX-compatible FEA, and SU2-compatible CFD.",
     badge: "MO",
     tone: "teal",
     ext: ".mo",
@@ -1130,9 +1130,9 @@ export const LANDING_EXAMPLE_TILES: LandingExampleTile[] = [
   {
     id: "cfd-aerodynamics",
     languageId: "cfd",
-    title: "SU2 Incompressible RANS Rotor Drag Polar",
+    title: "SU2-Compatible Incompressible RANS Rotor Drag Polar",
     summary:
-      "SU2 aerodynamic configuration evaluating climb drag polar with SST turbulence model and boundary heat-flux markers.",
+      "SU2-compatible aerodynamic configuration evaluating climb drag polar with SST turbulence model and boundary heat-flux markers.",
     badge: "CFD",
     tone: "sky",
     ext: ".cfg",
@@ -1143,7 +1143,7 @@ export const LANDING_EXAMPLE_TILES: LandingExampleTile[] = [
   {
     id: "fea-chassis",
     languageId: "fea",
-    title: "CalculiX / Abaqus Composite Arm Stress Deck",
+    title: "CalculiX- & Abaqus-Compatible Composite Arm Stress Deck",
     summary:
       "3D C3D8R hexahedral finite element mesh with carbon-epoxy elastic material, fixed hub boundary, and tip thrust load.",
     badge: "FEA",
@@ -1795,7 +1795,7 @@ export const LANDING_EXAMPLE_TILES: LandingExampleTile[] = [
     languageId: "nmtran",
     title: "Two-Compartment Oral & IV Population PK Control Stream",
     summary:
-      "NONMEM NM-TRAN pharmacometric control stream with ADVAN4 TRANS4, inter-individual random effects, and FOCE-I estimation.",
+      "NMTRAN / NONMEM-compatible pharmacometric control stream with ADVAN4 TRANS4, inter-individual random effects, and FOCE-I estimation.",
     badge: "NMT",
     tone: "amber",
     ext: ".ctl",

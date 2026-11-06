@@ -1,4 +1,4 @@
-# CFD (SU2 & OpenFOAM)
+# CFD (SU2 & OpenFOAM Compatible)
 
 `@modelscript/cfd` (`languages/cfd`) provides native WebAssembly GLR parsing, parametric configuration materialization, 3D CAD boundary marker synthesis, aerodynamic flow regime analysis, and cross-domain TGG synchronization for Computational Fluid Dynamics solver configurations.
 
@@ -6,11 +6,11 @@
 
 ## Supported Extensions & Dialects
 
-| Extension      | Dialect                 | Description                                                                                                |
-| :------------- | :---------------------- | :--------------------------------------------------------------------------------------------------------- |
-| `.cfg`, `.su2` | SU2 Configuration       | Native Stanford University Unstructured (`SU2_CFD`) key-value & marker configuration                       |
-| `.cfgt`        | Parametric CFD Template | SU2 or OpenFOAM template supporting <code v-pre>{{ expr }}</code> parameter expressions                    |
-| `.cfd`         | OpenFOAM / Native CFD   | OpenFOAM dictionary syntax (`FoamFile`, `dimensions`, `internalField`, `boundaryField`) and SU2 directives |
+| Extension      | Dialect                          | Description                                                                                                |
+| :------------- | :------------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| `.cfg`, `.su2` | SU2-Compatible Configuration     | Stanford University Unstructured (`SU2_CFD`)-compatible key-value & marker configuration                   |
+| `.cfgt`        | Parametric CFD Template          | SU2- or OpenFOAM-compatible template supporting <code v-pre>{{ expr }}</code> parameter expressions        |
+| `.cfd`         | OpenFOAM-Compatible / Native CFD | OpenFOAM dictionary syntax (`FoamFile`, `dimensions`, `internalField`, `boundaryField`) and SU2 directives |
 
 ---
 
@@ -33,7 +33,7 @@ MARKER_HEATFLUX= ( battery_plate, {{ heat_dissipation_watts / plate_area }} )
 
 ## 3D CAD Boundary Condition Synthesis
 
-When a user assigns a fluid or thermal boundary condition to a 3D CAD face in the viewport, `synthesizeCfdBoundary` and `applyBoundaryActionToConfig` (`languages/cfd/src/boundary-synthesizer.ts`) synthesize and merge the appropriate directives for either **SU2** or **OpenFOAM**:
+When a user assigns a fluid or thermal boundary condition to a 3D CAD face in the viewport, `synthesizeCfdBoundary` and `applyBoundaryActionToConfig` (`languages/cfd/src/boundary-synthesizer.ts`) synthesize and merge the appropriate directives for either **SU2-compatible** or **OpenFOAM-compatible** formats:
 
 | Boundary Condition                      | SU2 Directive (`.cfg` / `.su2`)                                    | OpenFOAM `boundaryField` Entry (`.cfd`)                      |
 | :-------------------------------------- | :----------------------------------------------------------------- | :----------------------------------------------------------- |
@@ -78,19 +78,19 @@ These properties feed directly into Modelica 1D aerodynamic drag models ($F_d = 
 msx cfd <action> [files...] [options]
 ```
 
-| Action            | Description                                                                                       | Key Options         |
-| :---------------- | :------------------------------------------------------------------------------------------------ | :------------------ |
-| **`lint`**        | Validates SU2 and OpenFOAM configuration syntax, boundary markers, and thermodynamic consistency. | —                   |
-| **`summary`**     | Prints turbulence model, freestream conditions, reference areas, and configured markers.          | —                   |
-| **`inspect`**     | Dumps parsed marker tree, solver settings, and evaluated parametric expressions.                  | —                   |
-| **`to-modelica`** | Generates Modelica 1D aerodynamic drag models (`Modelica.Mechanics.Translational`) and ports.     | `--out=<file.mo>`   |
-| **`to-dae`**      | Lowers boundary conditions and drag polar into ModelScript linear-memory DAE arena.               | `--out=<file.json>` |
-| **`solve`**       | Invokes external or embedded SU2 flow solver iteration for steady/unsteady aerodynamic fields.    | —                   |
+| Action            | Description                                                                                                   | Key Options         |
+| :---------------- | :------------------------------------------------------------------------------------------------------------ | :------------------ |
+| **`lint`**        | Validates SU2- and OpenFOAM-compatible configuration syntax, boundary markers, and thermodynamic consistency. | —                   |
+| **`summary`**     | Prints turbulence model, freestream conditions, reference areas, and configured markers.                      | —                   |
+| **`inspect`**     | Dumps parsed marker tree, solver settings, and evaluated parametric expressions.                              | —                   |
+| **`to-modelica`** | Generates Modelica 1D aerodynamic drag models (`Modelica.Mechanics.Translational`) and ports.                 | `--out=<file.mo>`   |
+| **`to-dae`**      | Lowers boundary conditions and drag polar into ModelScript linear-memory DAE arena.                           | `--out=<file.json>` |
+| **`solve`**       | Invokes external or embedded SU2-compatible flow solver iteration for steady/unsteady aerodynamic fields.     | —                   |
 
 ### Examples
 
 ```bash
-# Validate boundary markers and turbulence settings in an SU2 configuration
+# Validate boundary markers and turbulence settings in an SU2-compatible configuration
 msx cfd lint transonic_wing.cfg
 
 # Display mesh markers, Mach number, and reference area
@@ -105,3 +105,9 @@ msx cfd to-modelica transonic_wing.cfg --out=AeroDrag.mo
 ## Diagnostic Rules
 
 <LintRules lang="cfd" />
+
+---
+
+## Trademarks & Disclaimers
+
+SU2 and OpenFOAM are trademarks or registered trademarks of their respective owners (including the SU2 Foundation and OpenCFD Ltd / ESI Group). Reference to these marks is strictly for nominative identification of format compatibility, dictionary parsing, and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.

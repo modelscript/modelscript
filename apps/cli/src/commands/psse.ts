@@ -30,7 +30,7 @@ import type { CommandModule } from "yargs";
 
 export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "psse <action> [files...]",
-  describe: "Inspect, lint, and analyze PSS/E RAW power flow cases (.raw)",
+  describe: "Inspect, lint, and analyze PSS/E-compatible RAW power flow cases (.raw)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
@@ -65,7 +65,8 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       })
       .option("algorithm", {
         alias: "alg",
-        description: "Power flow algorithm: 'nr' (Newton-Raphson), 'fdpf' (Fast Decoupled), or 'helm' (Holomorphic Embedding)",
+        description:
+          "Power flow algorithm: 'nr' (Newton-Raphson), 'fdpf' (Fast Decoupled), or 'helm' (Holomorphic Embedding)",
         type: "string",
         choices: ["nr", "fdpf", "helm"],
         default: "nr",
@@ -93,8 +94,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
     const files = (argv["files"] as string[]) ?? [];
     const out = argv["out"] as string | undefined;
     const rawAlg = argv["algorithm"] as string;
-    const algorithm =
-      rawAlg === "helm" ? "helm" : rawAlg === "fdpf" ? "fast_decoupled" : "newton_raphson";
+    const algorithm = rawAlg === "helm" ? "helm" : rawAlg === "fdpf" ? "fast_decoupled" : "newton_raphson";
     const tolerance = (argv["tol"] as number) ?? 1e-4;
     const maxIterations = (argv["max-iter"] as number) ?? 25;
 
@@ -269,10 +269,13 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
 
         case "opf": {
           const form = (argv["formulation"] as string) === "ac" ? "ac" : "dc";
-          console.log(`[psse] Running Optimal Power Flow (${form.toUpperCase()}-OPF) dispatch & LMP analysis on ${path.basename(file)}...`);
-          const opfSol = form === "ac"
-            ? solveAcOpf(parsed, { enforceThermalLimits: true, caseTitle: parsed.title1 || path.basename(file) })
-            : solveDcOpf(parsed, { enforceThermalLimits: true, caseTitle: parsed.title1 || path.basename(file) });
+          console.log(
+            `[psse] Running Optimal Power Flow (${form.toUpperCase()}-OPF) dispatch & LMP analysis on ${path.basename(file)}...`,
+          );
+          const opfSol =
+            form === "ac"
+              ? solveAcOpf(parsed, { enforceThermalLimits: true, caseTitle: parsed.title1 || path.basename(file) })
+              : solveDcOpf(parsed, { enforceThermalLimits: true, caseTitle: parsed.title1 || path.basename(file) });
           console.log(opfSol.reportText);
           if (out) {
             fs.writeFileSync(path.resolve(process.cwd(), out), opfSol.reportText);

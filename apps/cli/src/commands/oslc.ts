@@ -141,7 +141,7 @@ const OslcServeCommand: CommandModule<{}, OslcServeArgs> = {
 
 export const Oslc: CommandModule = {
   command: "oslc <action>",
-  describe: "OSLC Core 3.0 enterprise coexistence gateway for Teamcenter, Windchill, and DOORS",
+  describe: "OSLC Core 3.0 enterprise coexistence gateway for PLM/ALM tools (Teamcenter, Windchill, DOORS compatible)",
   builder: (yargs) => {
     return yargs
       .command(OslcExportCommand)

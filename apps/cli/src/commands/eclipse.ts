@@ -3,7 +3,7 @@
 /**
  * ModelScript CLI: ECLIPSE Subcommand.
  *
- * Provides headless CLI operations for Schlumberger ECLIPSE reservoir decks (.data, .dat, .inc):
+ * Provides headless CLI operations for ECLIPSE-compatible reservoir decks (.data, .dat, .inc):
  * - `msx eclipse inspect <file>`
  * - `msx eclipse lint <file>`
  * - `msx eclipse solve <file>`
@@ -24,7 +24,7 @@ import type { CommandModule } from "yargs";
 
 export const EclipseCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "eclipse <action> [files...]",
-  describe: "Inspect, lint, solve reservoir depletion, and lower Schlumberger ECLIPSE decks (.data, .dat, .inc)",
+  describe: "Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (.data, .dat, .inc)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

@@ -18,7 +18,7 @@ import type { CommandModule } from "yargs";
 
 export const Relap5Command: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "relap5 <action> [files...]",
-  describe: "Inspect, lint, solve kinetics, and lower US NRC RELAP5-3D decks (.i, .inp, .r5)",
+  describe: "Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (.i, .inp, .r5)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

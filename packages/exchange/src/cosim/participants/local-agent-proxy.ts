@@ -6,7 +6,7 @@
  * Industrial Context & Problem:
  * Web browsers and cloud sandboxes cannot directly load native 64-bit platform binaries
  * (.dll on Windows, .so on Linux, .dylib on macOS) or interface with commercial engineering
- * suites (MATLAB/Simulink, Amesim, CarSim, Ansys Twin Builder, LabVIEW, Adams) or local HIL
+ * suites (including MATLAB/Simulink-, Siemens Amesim-, CarSim-, Ansys Twin Builder-, NI LabVIEW-, or Adams-compatible tools) or local HIL
  * DAQ hardware due to OS security sandboxing.
  *
  * The Local Desktop Agent Bridge connects an in-browser ModelScript Web IDE, remote cloud runner,
@@ -616,7 +616,7 @@ export class LocalAgentProxyParticipant implements CoSimParticipant {
 // ── Mock Desktop Agent Daemon (for Unit Testing & Headless CI) ──
 
 /**
- * In-process mock server emulating a native desktop agent daemon (Simulink, Amesim, or native FMU).
+ * In-process mock server emulating a native desktop agent daemon (compatible with Simulink, Amesim, or native FMUs).
  */
 export class MockLocalAgentServer {
   private readonly transport: InMemoryAgentTransport;

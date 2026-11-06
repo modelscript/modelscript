@@ -57,7 +57,7 @@ const PSCAD_ACTIONS = [
 
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "pscad <action> [files...]",
-  describe: "Inspect, lint, diff, simulate, and verify PSCAD projects (.pscx, .pslx, .psout)",
+  describe: "Inspect, lint, diff, simulate, and verify PSCAD-compatible projects (.pscx, .pslx, .psout)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

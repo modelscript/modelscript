@@ -338,7 +338,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "cfd",
-    name: "SU2 & OpenFOAM CFD",
+    name: "CFD Aerodynamics (.cfg)",
     badge: "CFD",
     ext: ".cfg",
     group: "geometry",
@@ -353,7 +353,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "fea",
-    name: "Abaqus / CalculiX FEA",
+    name: "FEA Structural (.inp)",
     badge: "FEA",
     ext: ".inp",
     group: "geometry",
@@ -617,7 +617,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "psse",
-    name: "Siemens PSS®E",
+    name: "PSS®E (Transmission Grid)",
     badge: "PSE",
     ext: ".raw",
     group: "power",
@@ -632,7 +632,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "opendss",
-    name: "EPRI OpenDSS",
+    name: "OpenDSS (Distribution Grid)",
     badge: "DSS",
     ext: ".dss",
     group: "power",
@@ -649,7 +649,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   // 8. Oil, Gas & Subsurface
   {
     id: "olga",
-    name: "Schlumberger OLGA",
+    name: "OLGA (Multiphase Flow)",
     badge: "OLG",
     ext: ".opi",
     group: "oil-gas",
@@ -664,7 +664,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "lps",
-    name: "Pipeline Studio (TGNET/TLNET)",
+    name: "PipelineStudio (TGNET/TLNET)",
     badge: "LPS",
     ext: ".lps",
     group: "oil-gas",
@@ -679,7 +679,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "eclipse",
-    name: "SLB ECLIPSE",
+    name: "ECLIPSE (Reservoir)",
     badge: "ECL",
     ext: ".data",
     group: "oil-gas",
@@ -713,7 +713,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   // 10. Marine & Offshore
   {
     id: "sima",
-    name: "SINTEF SIMA (SIMO/RIFLEX)",
+    name: "SIMA (SIMO/RIFLEX)",
     badge: "SIM",
     ext: ".sima",
     group: "marine",
@@ -822,7 +822,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "adams",
-    name: "MSC Adams Solver (.adm)",
+    name: "Adams Multibody (.adm)",
     badge: "ADM",
     ext: ".adm",
     group: "robotics",
@@ -830,7 +830,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     tier: "beta",
     role: "Mechanical Multibody Mechanisms",
     summary:
-      "MSC Adams PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
+      "Adams-compatible PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
     capabilities: STANDARD_CAPABILITIES,
     docsUrl: "https://modelscript.org/languages/adams",
     defaultTemplateId: "adams-pendulum",
@@ -1083,7 +1083,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   },
   {
     id: "nmtran",
-    name: "NONMEM NM-TRAN",
+    name: "NMTRAN / NONMEM PK/PD",
     badge: "NMT",
     ext: ".ctl",
     group: "life-sciences",
@@ -1091,7 +1091,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     tier: "preview",
     role: "Pharmacometrics & Population PK/PD",
     summary:
-      "NONMEM control streams (`$PROBLEM`, `$PK`, `$DES`, `$THETA`, `$OMEGA`, `$SIGMA`) with ADVAN/TRANS validation and compartment ODEs.",
+      "NONMEM-compatible control streams (`$PROBLEM`, `$PK`, `$DES`, `$THETA`, `$OMEGA`, `$SIGMA`) with ADVAN/TRANS validation and compartment ODEs.",
     capabilities: STANDARD_CAPABILITIES,
     docsUrl: "https://modelscript.org/languages/nmtran",
     defaultTemplateId: "nmtran-pk",
@@ -1804,9 +1804,9 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
   {
     id: "cfd-aerodynamics",
     languageId: "cfd",
-    title: "SU2 Incompressible RANS Rotor Drag Polar",
+    title: "SU2-Compatible Incompressible RANS Rotor Drag Polar",
     summary:
-      "SU2 aerodynamic configuration evaluating climb drag polar with SST turbulence model and boundary heat-flux markers.",
+      "SU2-compatible aerodynamic configuration evaluating climb drag polar with SST turbulence model and boundary heat-flux markers.",
     badge: "CFD",
     tone: "sky",
     ext: ".cfg",
@@ -1841,7 +1841,7 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
   {
     id: "fea-chassis",
     languageId: "fea",
-    title: "CalculiX / Abaqus Composite Arm Stress Deck",
+    title: "CalculiX- & Abaqus-Compatible Composite Arm Stress Deck",
     summary:
       "3D C3D8R hexahedral finite element mesh with carbon-epoxy elastic material, fixed hub boundary, and tip thrust load.",
     badge: "FEA",
@@ -2789,7 +2789,7 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
     },
   },
 
-  // 28. Schlumberger OLGA (.opi)
+  // 28. OLGA Multiphase (.opi)
   {
     id: "olga-flowline",
     languageId: "olga",
@@ -4244,9 +4244,9 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
   {
     id: "nmtran-pk",
     languageId: "nmtran",
-    title: "NONMEM NM-TRAN Two-Compartment Population PK Control Stream",
+    title: "NMTRAN / NONMEM-Compatible Two-Compartment Population PK Control Stream",
     summary:
-      "Pharmacometric control stream (ADVAN4 TRANS4) with between-subject exponential random effects and proportional residual error.",
+      "NMTRAN / NONMEM-compatible pharmacometric control stream (ADVAN4 TRANS4) with between-subject exponential random effects and proportional residual error.",
     badge: "NMT",
     tone: "amber",
     ext: ".ctl",

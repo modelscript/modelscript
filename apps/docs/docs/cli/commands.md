@@ -453,7 +453,7 @@ msx autosar simulate-rte PowertrainSystem.arxml --duration=0.5 --step=0.01 --out
 
 ### `olga`
 
-Provides complete command-line tooling for Schlumberger **OLGA** transient multiphase flow models (`.opi`, `.key`, `.genkey`, `.tab`, `.tpl`, `.ppl`), including drift-flux hydrodynamic simulation, severe slugging analysis, PVT flash, autonomous history matching, and flow assurance verification.
+Provides complete command-line tooling for OLGA-compatible transient multiphase flow models (`.opi`, `.key`, `.genkey`, `.tab`, `.tpl`, `.ppl`), including drift-flux hydrodynamic simulation, severe slugging analysis, PVT flash, autonomous history matching, and flow assurance verification.
 
 <CliCommand name="olga" :show-actions="false" />
 
@@ -482,7 +482,7 @@ msx olga flash --comp="C1:0.75,C2:0.10,C3:0.08,nC4:0.04,C7:0.03" --p=50 --t=295.
 
 ### `simpack`
 
-Tooling for Dassault Systèmes **SIMPACK** multibody dynamics (`.spck` XML and `.sim` ASCII decks), including Grübler mobility analysis, 3D kinematic joint evaluation, Berg elastomeric bushings, and Craig-Bampton flexible body lowering.
+Tooling for SIMPACK-compatible multibody dynamics (`.spck` XML and `.sim` ASCII decks), including Grübler mobility analysis, 3D kinematic joint evaluation, Berg elastomeric bushings, and Craig-Bampton flexible body lowering.
 
 <CliCommand name="simpack" :show-actions="false" />
 
@@ -542,7 +542,7 @@ msx spice simulate AudioAmplifier.sp --analysis ac --format csv --out bode.csv
 
 ### `adams`
 
-Tooling for **MSC Adams** mechanism datasets (`.adm`) and command files (`.cmd`), including 3D Euler/Cardan kinematics, Grübler spatial mobility analysis, and cross-domain SIMPACK / Modelica projections.
+Tooling for **Adams-compatible** mechanism datasets (`.adm`) and command files (`.cmd`), including 3D Euler/Cardan kinematics, Grübler spatial mobility analysis, and cross-domain SIMPACK / Modelica projections.
 
 <CliCommand name="adams" :show-actions="false" />
 
@@ -574,7 +574,7 @@ Robotics compiler tooling for **ROS URDF** (`.urdf`) and **Xacro** (`.xacro`) de
 | `rnea`        | Evaluate inverse dynamics (RNEA) at test joint coordinates.                                          |
 | `to-modelica` | Generate a `Modelica.Mechanics.MultiBody` robotic system.                                            |
 | `to-simpack`  | Project the robot description into SIMPACK `.spck` XML.                                              |
-| `to-adams`    | Project the robot description into an MSC Adams `.adm` dataset.                                      |
+| `to-adams`    | Project the robot description into an Adams-compatible `.adm` dataset.                               |
 | `to-dae`      | Lower kinematic state equations directly into the `DAEBuilder` arena.                                |
 
 ```bash
@@ -587,7 +587,7 @@ msx urdf to-modelica PandaArm.urdf --out=PandaArm.mo
 
 ### `easy5`
 
-Tooling for Boeing / MSC **EASY5** dynamic models (`.ez5`, `.ezm`, `.ezd`), including linear state-space analysis, User General (UG) Fortran routines, tabular map interpolation, and Modelica/SSP projections.
+Tooling for **EASY5-compatible** dynamic models (`.ez5`, `.ezm`, `.ezd`), including linear state-space analysis, User General (UG) Fortran routines, tabular map interpolation, and Modelica/SSP projections.
 
 <CliCommand name="easy5" :show-actions="false" />
 
@@ -603,7 +603,7 @@ Tooling for Boeing / MSC **EASY5** dynamic models (`.ez5`, `.ezm`, `.ezd`), incl
 
 ### `gtsuite`
 
-Tooling for Gamma Technologies **GT-SUITE** powertrain and engine models (`.gtm`, `.gtd`), including crank-slider kinematics, Wiebe combustion, Woschni heat transfer, Zeldovich NOx emissions, and DAE lowering.
+Tooling for **GT-SUITE-compatible** powertrain and engine models (`.gtm`, `.gtd`), including crank-slider kinematics, Wiebe combustion, Woschni heat transfer, Zeldovich NOx emissions, and DAE lowering.
 
 <CliCommand name="gtsuite" :show-actions="false" />
 
@@ -619,7 +619,7 @@ Tooling for Gamma Technologies **GT-SUITE** powertrain and engine models (`.gtm`
 
 ### `sima`
 
-Tooling for DNV / SINTEF **SIMA** marine systems (`.inp`, `.sima`, `.sys`, `.hyd`), including Cummins equation 6-DOF floater dynamics, catenary mooring solvers, and DNV-OS-E301 station-keeping verification.
+Tooling for **SIMA-compatible** marine systems (`.inp`, `.sima`, `.sys`, `.hyd`), including Cummins equation 6-DOF floater dynamics, catenary mooring solvers, and DNV-OS-E301 station-keeping verification.
 
 <CliCommand name="sima" :show-actions="false" />
 

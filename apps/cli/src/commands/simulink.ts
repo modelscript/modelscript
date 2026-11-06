@@ -25,7 +25,7 @@ function loadSimulinkModel(filePath: string): SimulinkModel {
 
 export const SimulinkCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "simulink <action> [files...]",
-  describe: "Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)",
+  describe: "Inspect, lint, lower to DAE, and project Simulink-compatible control models (.slx, .mdl)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

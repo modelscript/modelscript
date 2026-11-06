@@ -1,15 +1,15 @@
-# NONMEM NMTRAN Pharmacometrics & PK/PD (`.ctl`, `.mod`)
+# NMTRAN / NONMEM-Compatible Pharmacometrics & PK/PD (`.ctl`, `.mod`)
 
-`@modelscript/nmtran` (`languages/nmtran`) provides native WebAssembly GLR parsing, `ADVAN1`–`ADVAN13` compartmental pharmacokinetic/pharmacodynamic (PK/PD) solving, multi-dose (`AMT`, `RATE`, `II`, `ADDL`) exposure calculation ($\text{AUC}$, $C_{\max}$, $T_{\max}$, $t_{1/2}$), `DAEBuilder` lowering, and SBML / Modelica projections for **NONMEM NMTRAN** clinical trial and population pharmacometrics control streams.
+`@modelscript/nmtran` (`languages/nmtran`) provides native WebAssembly GLR parsing, `ADVAN1`–`ADVAN13` compartmental pharmacokinetic/pharmacodynamic (PK/PD) solving, multi-dose (`AMT`, `RATE`, `II`, `ADDL`) exposure calculation ($\text{AUC}$, $C_{\max}$, $T_{\max}$, $t_{1/2}$), `DAEBuilder` lowering, and SBML / Modelica projections for **NMTRAN / NONMEM-compatible** clinical trial and population pharmacometrics control streams.
 
 ---
 
 ## Supported Extensions & Standards
 
-| Extension | Format                | Description                                                                                                                               |
-| :-------- | :-------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
-| `.ctl`    | NMTRAN Control Stream | NONMEM control file (`$PROBLEM`, `$INPUT`, `$DATA`, `$SUBROUTINES`, `$PK`, `$DES`, `$ERROR`, `$THETA`, `$OMEGA`, `$SIGMA`, `$ESTIMATION`) |
-| `.mod`    | PsN / NONMEM Model    | Perl-speaks-NONMEM (PsN) and Pirana pharmacometric model file                                                                             |
+| Extension | Format                | Description                                                                                                                                          |
+| :-------- | :-------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.ctl`    | NMTRAN Control Stream | NONMEM-compatible control file (`$PROBLEM`, `$INPUT`, `$DATA`, `$SUBROUTINES`, `$PK`, `$DES`, `$ERROR`, `$THETA`, `$OMEGA`, `$SIGMA`, `$ESTIMATION`) |
+| `.mod`    | PsN / NONMEM Model    | PsN- and Pirana-compatible pharmacometric model file                                                                                                 |
 
 ---
 
@@ -46,3 +46,9 @@ msx lint TwoCompOralPK.ctl
 # Parse and inspect NMTRAN control stream blocks
 msx parse TwoCompOralPK.ctl
 ```
+
+---
+
+## Trademarks & Disclaimers
+
+NONMEM is a registered trademark of ICON plc. PsN and Pirana are trademarks or software products of their respective authors and Certara, L.P. Reference to these marks is strictly for nominative identification of control stream format compatibility and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.

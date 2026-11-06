@@ -3,7 +3,7 @@
 
 # @modelscript/gtsuite
 
-Gamma Technologies **GT-SUITE / GT-POWER** 1D powertrain, internal combustion engine, turbocharging, and thermo-fluid dynamic simulation package (`.gtm`, `.gtd`, `.gtx`, `.gt`, `.dat`, `.gdx`) for ModelScript. Features XML and ASCII engine deck parsing, crank-angle resolved 0D/1D cylinder combustion & Woschni heat-transfer simulation, Mean-Value Engine Model (MVEM) lowering to `DAEBuilder`, 15 pre-flight powertrain lint rules (`M9001`–`M9015`), GT-POST `.gdx` trajectory verification gates, and SysML v2 / Modelica / SSP projections.
+GT-SUITE / GT-POWER-compatible 1D powertrain, internal combustion engine, turbocharging, and thermo-fluid dynamic simulation package (`.gtm`, `.gtd`, `.gtx`, `.gt`, `.dat`, `.gdx`) for ModelScript. Features XML and ASCII engine deck parsing, crank-angle resolved 0D/1D cylinder combustion & Woschni heat-transfer simulation, Mean-Value Engine Model (MVEM) lowering to `DAEBuilder`, 15 pre-flight powertrain lint rules (`M9001`–`M9015`), GT-POST `.gdx` trajectory verification gates, and SysML v2 / Modelica / SSP projections.
 
 ---
 

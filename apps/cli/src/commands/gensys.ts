@@ -32,7 +32,7 @@ const GENSYS_ACTIONS = [
 
 export const GensysCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "gensys <action> [files...]",
-  describe: "Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)",
+  describe: "Inspect, lint, and verify GENSYS-compatible railway vehicle models (.calc, .run, .sub)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

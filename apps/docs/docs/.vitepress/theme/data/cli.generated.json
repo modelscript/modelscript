@@ -5,7 +5,7 @@
       "adams <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, analyze, solve, and project MSC Adams multibody models (.adm, .cmd, .acf)",
+    "describe": "Inspect, analyze, solve, and project Adams-compatible multibody models (.adm, .cmd, .acf)",
     "positionals": [
       {
         "name": "action",
@@ -27,7 +27,7 @@
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "Input MSC Adams files (.adm, .cmd, .acf)",
+        "description": "Input Adams-format model files (.adm, .cmd, .acf)",
         "array": true
       }
     ],
@@ -274,7 +274,7 @@
       "aspen <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, solve, and lower Aspen Plus chemical process flowsheets (.in, .inp, .bkp)",
+    "describe": "Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (.in, .inp, .bkp)",
     "positionals": [
       {
         "name": "action",
@@ -294,7 +294,7 @@
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "Aspen Plus input deck file(s) to process",
+        "description": "Aspen flowsheet input deck file(s) to process",
         "array": true
       }
     ],
@@ -1712,7 +1712,7 @@
       "eclipse <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, solve reservoir depletion, and lower Schlumberger ECLIPSE decks (.data, .dat, .inc)",
+    "describe": "Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (.data, .dat, .inc)",
     "positionals": [
       {
         "name": "action",
@@ -2458,6 +2458,69 @@
     "subcommands": []
   },
   {
+    "name": "frac",
+    "specs": [
+      "frac <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Real-time hydraulic completions, slurry hydraulics, perforation erosion, fracture compliance, and screen-out analytics",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (simulate, monitor, inspect)",
+        "choices": [
+          "simulate",
+          "monitor",
+          "inspect"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Telemetry CSV file(s) or well/stage JSON configurations",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "well",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to wellbore geometry JSON file"
+      },
+      {
+        "name": "stage-cfg",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to stage completion JSON file"
+      },
+      {
+        "name": "units",
+        "aliases": [],
+        "type": "string",
+        "description": "Telemetry unit convention: FIELD (psi, bpm, ppa) or SI (Pa, m³/s, kg/m³)",
+        "choices": [
+          "FIELD",
+          "SI"
+        ],
+        "default": "FIELD"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path for analysis JSON summary"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "generate",
     "specs": [
       "generate [target] [entries..]"
@@ -2573,7 +2636,7 @@
       "gensys <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)",
+    "describe": "Inspect, lint, and verify GENSYS-compatible railway vehicle models (.calc, .run, .sub)",
     "positionals": [
       {
         "name": "action",
@@ -2762,7 +2825,7 @@
       "gtsuite <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER engine models (.gtm, .gtd, .gtx)",
+    "describe": "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER-compatible engine models (.gtm, .gtd, .gtx)",
     "positionals": [
       {
         "name": "action",
@@ -4126,7 +4189,7 @@
       "lps <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
+    "describe": "Inspect, lint, simulate, and verify PipelineStudio-compatible gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
     "positionals": [
       {
         "name": "action",
@@ -4493,7 +4556,7 @@
       "olga <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Simulate, lint, verify, and visualize OLGA multiphase flow models (.opi, .key, .genkey)",
+    "describe": "Simulate, lint, verify, and visualize OLGA-compatible multiphase flow models (.opi, .key, .genkey)",
     "positionals": [
       {
         "name": "action",
@@ -5152,7 +5215,7 @@
       "oslc <action>"
     ],
     "aliases": [],
-    "describe": "OSLC Core 3.0 enterprise coexistence gateway for Teamcenter, Windchill, and DOORS",
+    "describe": "OSLC Core 3.0 enterprise coexistence gateway for Teamcenter-, Windchill-, and DOORS-compatible repositories",
     "positionals": [],
     "options": [],
     "subcommands": [
@@ -5723,7 +5786,7 @@
       "pscad <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, diff, and simulate PSCAD projects (.pscx, .pslx)",
+    "describe": "Inspect, lint, diff, and simulate PSCAD-compatible projects (.pscx, .pslx)",
     "positionals": [
       {
         "name": "action",
@@ -5810,7 +5873,7 @@
       "psse <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)",
+    "describe": "Inspect, lint, and visualize PSS/E-compatible RAW power flow cases (.raw)",
     "positionals": [
       {
         "name": "action",
@@ -6002,7 +6065,7 @@
       "relap5 <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, solve kinetics, and lower US NRC RELAP5-3D decks (.i, .inp, .r5)",
+    "describe": "Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (.i, .inp, .r5)",
     "positionals": [
       {
         "name": "action",
@@ -6117,7 +6180,7 @@
       "reqif <action>"
     ],
     "aliases": [],
-    "describe": "Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter",
+    "describe": "Lossless OMG ReqIF 1.2 requirements interchange with DOORS-, Polarion-, and Teamcenter-compatible files",
     "positionals": [],
     "options": [],
     "subcommands": [
@@ -6594,7 +6657,7 @@
       "sima <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, verify, and project SINTEF Ocean SIMO / RIFLEX offshore models (.inp, .sima, .hyd)",
+    "describe": "Inspect, lint, verify, and project SIMO/RIFLEX-compatible offshore marine models (.inp, .sima, .hyd)",
     "positionals": [
       {
         "name": "action",
@@ -6647,7 +6710,7 @@
       "simpack <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
+    "describe": "Inspect, analyze, and lower SIMPACK-compatible multibody models (.spck, .sim, .mbs)",
     "positionals": [
       {
         "name": "action",
@@ -6670,7 +6733,7 @@
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "Input SIMPACK files (.spck, .sim, .mbs)",
+        "description": "Input SIMPACK-format files (.spck, .sim, .mbs)",
         "array": true
       }
     ],
@@ -7008,7 +7071,7 @@
       "simulink <action> [files..]"
     ],
     "aliases": [],
-    "describe": "Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)",
+    "describe": "Inspect, lint, lower to DAE, and project Simulink-compatible control models (.slx, .mdl)",
     "positionals": [
       {
         "name": "action",
@@ -7873,7 +7936,7 @@
           "sync <action>"
         ],
         "aliases": [],
-        "describe": "Synchronize SysML v2 models with Cameo Teamwork Cloud (TWC) or OpenMBEE MMS enterprise servers",
+        "describe": "Synchronize SysML v2 models with Cameo Teamwork Cloud (TWC)-compatible servers or OpenMBEE MMS enterprise servers",
         "positionals": [],
         "options": [],
         "subcommands": [
@@ -7883,7 +7946,7 @@
               "pull"
             ],
             "aliases": [],
-            "describe": "Pull model elements from Cameo Teamwork Cloud (TWC) or OpenMBEE MMS and generate .sysml",
+            "describe": "Pull model elements from Cameo Teamwork Cloud (TWC)-compatible servers or OpenMBEE MMS and generate .sysml",
             "positionals": [],
             "options": [
               {
@@ -7949,7 +8012,7 @@
               "push <file>"
             ],
             "aliases": [],
-            "describe": "Push local SysML v2 source changes upstream to Cameo Teamwork Cloud or OpenMBEE MMS",
+            "describe": "Push local SysML v2 source changes upstream to Cameo Teamwork Cloud-compatible servers or OpenMBEE MMS",
             "positionals": [
               {
                 "name": "file",

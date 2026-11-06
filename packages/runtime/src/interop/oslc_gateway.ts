@@ -4,8 +4,8 @@
  * Native OSLC Core 3.0 Linked Data Gateway for @modelscript/runtime.
  *
  * Implements W3C Linked Data Platform (LDP) and Open Services for Lifecycle Collaboration (OSLC)
- * interfaces for enterprise coexistence with Siemens Teamcenter, PTC Windchill, IBM DOORS Next,
- * and Jama Connect.
+ * interfaces for enterprise coexistence with Siemens Teamcenter-, PTC Windchill-, IBM DOORS Next-,
+ * and Jama Connect-compatible repositories.
  *
  * Exposes:
  * - OSLC-RM (Requirements Management: http://open-services.net/ns/rm#)

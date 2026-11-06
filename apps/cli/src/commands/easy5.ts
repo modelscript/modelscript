@@ -3,7 +3,7 @@
 /**
  * ModelScript CLI: EASY5 Subcommand.
  *
- * Provides headless CLI operations for Boeing/MSC EASY5 (.ez5, .ezm, .ezd, .eas) models:
+ * Provides headless CLI operations for EASY5-compatible (.ez5, .ezm, .ezd, .eas) models:
  * - `msx easy5 lint <path>`
  * - `msx easy5 summary <path>`
  * - `msx easy5 linearize <path>`
@@ -31,7 +31,8 @@ import type { CommandModule } from "yargs";
 
 export const Easy5Command: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "easy5 <action> [files...]",
-  describe: "Inspect, lint, linearize, and project EASY5 continuous simulation models (.ez5, .ezm, .ezd, .eas)",
+  describe:
+    "Inspect, lint, linearize, and project EASY5-compatible continuous simulation models (.ez5, .ezm, .ezd, .eas)",
   builder: (yargs) => {
     return yargs
       .positional("action", {

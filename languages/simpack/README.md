@@ -3,7 +3,7 @@
 
 # @modelscript/simpack
 
-Dassault Systèmes SIMPACK multibody systems (MBS), spatial 3D kinematics, Craig-Bampton flexible body dynamics, and non-linear elastomeric suspension package (`.spck`, `.sim`, `.mbs`) for ModelScript. Features `.spck` XML, `.sim` card deck, and `.fbi` Flexible Body Interface parsers (`parseSpckXml`, `parseSimDeck`, `parseFbi`), multi-file workspace indexing (`SimpackWorkspaceIndex`), an AssemblyScript WebAssembly spatial kinematics & cut-joint loop closure kernel (`assembly/kinematics.ts` → `dist/kinematics.wasm`), Grübler-Kutzbach mobility analysis (`analyzeMobility`), non-linear Berg elastomeric bushing dynamics (`evaluateBergBushing`), direct linear-memory `DAEBuilder` lowering (`lowerSimpackToDae`, `lowerFbiToDae`), 6 pre-flight kinematic lint rules (`K7001`–`K7006`), kinematic SVG diagram synthesis, and Modelica projections (`simpackToModelica`).
+SIMPACK-compatible multibody systems (MBS), spatial 3D kinematics, Craig-Bampton flexible body dynamics, and non-linear elastomeric suspension package (`.spck`, `.sim`, `.mbs`) for ModelScript. Features `.spck` XML, `.sim` card deck, and `.fbi` Flexible Body Interface parsers (`parseSpckXml`, `parseSimDeck`, `parseFbi`), multi-file workspace indexing (`SimpackWorkspaceIndex`), an AssemblyScript WebAssembly spatial kinematics & cut-joint loop closure kernel (`assembly/kinematics.ts` → `dist/kinematics.wasm`), Grübler-Kutzbach mobility analysis (`analyzeMobility`), non-linear Berg elastomeric bushing dynamics (`evaluateBergBushing`), direct linear-memory `DAEBuilder` lowering (`lowerSimpackToDae`, `lowerFbiToDae`), 6 pre-flight kinematic lint rules (`K7001`–`K7006`), kinematic SVG diagram synthesis, and Modelica projections (`simpackToModelica`).
 
 ---
 

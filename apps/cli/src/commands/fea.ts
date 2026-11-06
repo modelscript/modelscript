@@ -3,7 +3,7 @@
 /**
  * ModelScript CLI: FEA Subcommand.
  *
- * Provides headless CLI operations for Abaqus/CalculiX and Nastran Finite Element Analysis models:
+ * Provides headless CLI operations for CalculiX- and Abaqus-compatible and NASTRAN-compatible Finite Element Analysis models:
  * - `msx fea inspect <path>`
  * - `msx fea lint <path>`
  * - `msx fea to-dae <path> [--out=dae.json]`

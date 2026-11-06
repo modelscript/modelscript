@@ -3,7 +3,7 @@
 
 # @modelscript/simulink
 
-Native MATLAB **Simulink** (`.slx`, `.mdl`) compiler, pre-flight control system linter (`M7201`–`M7210`), Tarjan SCC algebraic loop detector, direct linear-memory WebAssembly `DAEBuilder` lowering, and bidirectional `Modelica.Blocks` / FMI projections for ModelScript.
+Native Simulink-compatible (`.slx`, `.mdl`) compiler, pre-flight control system linter (`M7201`–`M7210`), Tarjan SCC algebraic loop detector, direct linear-memory WebAssembly `DAEBuilder` lowering, and bidirectional `Modelica.Blocks` / FMI projections for ModelScript.
 
 ---
 
