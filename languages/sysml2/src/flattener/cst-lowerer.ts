@@ -135,7 +135,7 @@ export interface SysmlCstNode {
 /**
  * Zero-allocation linear-memory CST text extractor from raw `(startOffset, pad, len)` in `Tree`.
  */
-function extractLinearNodeText(tree: SysmlCstTree, startOffset: number, pad: number, len: number): string {
+export function extractLinearNodeText(tree: SysmlCstTree, startOffset: number, pad: number, len: number): string {
   const enc = tree.facade?.getInputEncoding ? tree.facade.getInputEncoding() : (tree._encoding ?? 1);
   const wasmMemory = (tree.facade as { wasmMemory?: WebAssembly.Memory } | undefined)?.wasmMemory;
   if ((enc === 0 || enc === 3 || enc === 4) && tree.facade && wasmMemory) {
@@ -397,277 +397,6 @@ export function findFirstDescendant(node: SysmlCstNode | null | undefined, type:
 }
 
 /**
- * Lowers a SysML v2 / KerML CST expression directly from WASM linear memory (`mem32` u32 pointers)
- * into `DAEBuilder` without allocating intermediate `SyntaxNode` wrapper objects.
- */
-function lowerLinearWasmCstExpression(
-  tree: SysmlCstTree,
-  ptr: number,
-  startOffset: number,
-  pad: number,
-  len: number,
-  typeId: number,
-  arena: DAEBuilder,
-  prefix: string,
-  localNames?: Set<string>,
-): number {
-  if (!ptr || !tree.mem32 || !tree.facade?.syntaxNames) return arena.addRealLiteral(0.0);
-  const mem32: Uint32Array = tree.mem32;
-  const syntaxNames: string[] = tree.facade.syntaxNames;
-  const exports = tree.facade.exports;
-
-  // Helper to collect visible direct children as flat (ptr, startOffset, pad, len, typeId) tuples
-  const getVisibleChildren = (pPtr: number, pStartOffset: number, pPad: number) => {
-    const cPtrs: number[] = [];
-    const cOffsets: number[] = [];
-    const cPads: number[] = [];
-    const cLens: number[] = [];
-    const cTypes: number[] = [];
-
-    const ptrStack: number[] = [];
-    const offsetStack: number[] = [];
-    let curPtr = mem32[(pPtr + 12) >>> 2]!;
-    let curOff = pStartOffset + pPad;
-
-    while (true) {
-      if (curPtr !== 0) {
-        const tf = mem32[curPtr >>> 2]!;
-        const tid = tf & 0x03ff;
-        const tName = syntaxNames[tid] || "";
-        const ehp = mem32[(curPtr + 4) >>> 2]!;
-        const rPad = tf >>> 22;
-        const isFat = (ehp >>> 23) & 1;
-        const cPad = isFat
-          ? mem32[(curPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad)
-          : rPad;
-        const cLen = ehp & 0x007fffff;
-        const isInv = (tf & (1 << 14)) !== 0;
-
-        const nextPtr = mem32[(curPtr + 16) >>> 2]!;
-        const nextOff = curOff + cPad + cLen;
-
-        if (tName.startsWith("_") || isInv) {
-          if (nextPtr !== 0) {
-            ptrStack.push(nextPtr);
-            offsetStack.push(nextOff);
-          }
-          curPtr = mem32[(curPtr + 12) >>> 2]!;
-          curOff = curOff + cPad;
-          continue;
-        } else {
-          cPtrs.push(curPtr);
-          cOffsets.push(curOff);
-          cPads.push(cPad);
-          cLens.push(cLen);
-          cTypes.push(tid);
-        }
-
-        curOff = nextOff;
-        curPtr = nextPtr;
-      } else {
-        if (ptrStack.length === 0) break;
-        curPtr = ptrStack.pop()!;
-        curOff = offsetStack.pop()!;
-      }
-    }
-    return { cPtrs, cOffsets, cPads, cLens, cTypes };
-  };
-
-  // Unwrap wrapper nodes
-  let curPtr = ptr;
-  let curOff = startOffset;
-  let curPad = pad;
-  let curLen = len;
-  let curTypeId = typeId;
-  let type = syntaxNames[curTypeId] || "";
-
-  while (
-    type === "OwnedExpression" ||
-    type === "SequenceExpression" ||
-    type === "ArgumentValue" ||
-    type === "ResultExpressionMember" ||
-    type === "_Expression" ||
-    type === "_BaseExpression"
-  ) {
-    const kids = getVisibleChildren(curPtr, curOff, curPad);
-    if (kids.cPtrs.length > 0 && kids.cPtrs[0] !== curPtr) {
-      curPtr = kids.cPtrs[0]!;
-      curOff = kids.cOffsets[0]!;
-      curPad = kids.cPads[0]!;
-      curLen = kids.cLens[0]!;
-      curTypeId = kids.cTypes[0]!;
-      type = syntaxNames[curTypeId] || "";
-    } else {
-      break;
-    }
-  }
-
-  const kids = getVisibleChildren(curPtr, curOff, curPad);
-  const count = kids.cPtrs.length;
-
-  // Parenthesized expression: ( expr )
-  if (count === 3) {
-    const firstText = extractLinearNodeText(tree, kids.cOffsets[0]!, kids.cPads[0]!, kids.cLens[0]!);
-    const lastText = extractLinearNodeText(tree, kids.cOffsets[2]!, kids.cPads[2]!, kids.cLens[2]!);
-    if (firstText === "(" && lastText === ")") {
-      return lowerLinearWasmCstExpression(
-        tree,
-        kids.cPtrs[1]!,
-        kids.cOffsets[1]!,
-        kids.cPads[1]!,
-        kids.cLens[1]!,
-        kids.cTypes[1]!,
-        arena,
-        prefix,
-        localNames,
-      );
-    }
-  }
-
-  // 1. Literals
-  if (type === "LiteralReal" || type === "RealValue" || type === "LiteralInteger" || type === "DECIMAL_VALUE") {
-    const val = parseFloat(extractLinearNodeText(tree, curOff, curPad, curLen).trim());
-    return arena.addRealLiteral(isNaN(val) ? 0.0 : val);
-  }
-  if (type === "LiteralBoolean") {
-    return arena.addBoolLiteral(extractLinearNodeText(tree, curOff, curPad, curLen).trim() === "true");
-  }
-
-  // 2. Unary Expression
-  if (type === "UnaryExpression" && count >= 2) {
-    const opText = extractLinearNodeText(tree, kids.cOffsets[0]!, kids.cPads[0]!, kids.cLens[0]!).trim() || "-";
-    const childId = lowerLinearWasmCstExpression(
-      tree,
-      kids.cPtrs[1]!,
-      kids.cOffsets[1]!,
-      kids.cPads[1]!,
-      kids.cLens[1]!,
-      kids.cTypes[1]!,
-      arena,
-      prefix,
-      localNames,
-    );
-    if (opText === "-") return arena.addUnaryExpr(UnaryOp.Negate, childId);
-    if (opText === "!" || opText === "not") return arena.addUnaryExpr(UnaryOp.Not, childId);
-    return childId;
-  }
-
-  // 3. Additive / Multiplicative / Relational / Equality / And / Or Expressions
-  if (
-    (type === "AdditiveExpression" ||
-      type === "MultiplicativeExpression" ||
-      type === "RelationalExpression" ||
-      type === "EqualityExpression" ||
-      type === "AndExpression" ||
-      type === "OrExpression") &&
-    count >= 1
-  ) {
-    let left = lowerLinearWasmCstExpression(
-      tree,
-      kids.cPtrs[0]!,
-      kids.cOffsets[0]!,
-      kids.cPads[0]!,
-      kids.cLens[0]!,
-      kids.cTypes[0]!,
-      arena,
-      prefix,
-      localNames,
-    );
-    for (let i = 1; i + 1 < count; i += 2) {
-      const opText = extractLinearNodeText(tree, kids.cOffsets[i]!, kids.cPads[i]!, kids.cLens[i]!).trim();
-      const right = lowerLinearWasmCstExpression(
-        tree,
-        kids.cPtrs[i + 1]!,
-        kids.cOffsets[i + 1]!,
-        kids.cPads[i + 1]!,
-        kids.cLens[i + 1]!,
-        kids.cTypes[i + 1]!,
-        arena,
-        prefix,
-        localNames,
-      );
-      if (type === "AdditiveExpression") {
-        left = arena.addBinaryExpr(opText === "-" ? BinOp.Sub : BinOp.Add, left, right);
-      } else if (type === "MultiplicativeExpression") {
-        if (opText === "%") left = arena.addCallExpr("mod", [left, right]);
-        else left = arena.addBinaryExpr(opText === "/" ? BinOp.Div : BinOp.Mul, left, right);
-      } else if (type === "RelationalExpression") {
-        let op = BinOp.Lt;
-        if (opText === "<=") op = BinOp.Lte;
-        else if (opText === ">") op = BinOp.Gt;
-        else if (opText === ">=") op = BinOp.Gte;
-        left = arena.addBinaryExpr(op, left, right);
-      } else if (type === "EqualityExpression") {
-        left = arena.addBinaryExpr(opText === "!=" ? BinOp.Neq : BinOp.Eq, left, right);
-      } else if (type === "AndExpression") {
-        left = arena.addBinaryExpr(BinOp.And, left, right);
-      } else {
-        left = arena.addBinaryExpr(BinOp.Or, left, right);
-      }
-    }
-    return left;
-  }
-
-  // 4. Exponentiation Expression
-  if (type === "ExponentiationExpression" && count >= 3) {
-    const baseId = lowerLinearWasmCstExpression(
-      tree,
-      kids.cPtrs[0]!,
-      kids.cOffsets[0]!,
-      kids.cPads[0]!,
-      kids.cLens[0]!,
-      kids.cTypes[0]!,
-      arena,
-      prefix,
-      localNames,
-    );
-    const expId = lowerLinearWasmCstExpression(
-      tree,
-      kids.cPtrs[2]!,
-      kids.cOffsets[2]!,
-      kids.cPads[2]!,
-      kids.cLens[2]!,
-      kids.cTypes[2]!,
-      arena,
-      prefix,
-      localNames,
-    );
-    return arena.addBinaryExpr(BinOp.Pow, baseId, expId);
-  }
-
-  // 5. Measurement Expression
-  if (type === "MeasurementExpression" && count >= 1) {
-    return lowerLinearWasmCstExpression(
-      tree,
-      kids.cPtrs[0]!,
-      kids.cOffsets[0]!,
-      kids.cPads[0]!,
-      kids.cLens[0]!,
-      kids.cTypes[0]!,
-      arena,
-      prefix,
-      localNames,
-    );
-  }
-
-  // 6. Feature Reference / Identifier
-  if (type === "FeatureReferenceExpression" || type === "Name" || type === "ID" || type === "QualifiedName") {
-    let rawName = extractLinearNodeText(tree, curOff, curPad, curLen).trim();
-    if (prefix && localNames) {
-      const dotIdx = rawName.indexOf(".");
-      const root = dotIdx === -1 ? rawName : rawName.slice(0, dotIdx);
-      if (localNames.has(root)) {
-        rawName = prefix + rawName;
-      }
-    }
-    return arena.addName(arena.interner.intern(rawName));
-  }
-
-  return -1;
-}
-
-/**
  * Lowers a SysML v2 / KerML CST expression node directly into an integer `ExprId` in `DAEBuilder`.
  */
 export function lowerCstExpression(
@@ -677,262 +406,10 @@ export function lowerCstExpression(
   localNames?: Set<string>,
 ): number {
   if (!node) return arena.addRealLiteral(0.0);
-
-  if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
-    const fastId = lowerLinearWasmCstExpression(
-      node.tree,
-      node.ptr,
-      node._startOffset ?? 0,
-      node._cachedPad ?? 0,
-      node._cachedLen ?? 0,
-      node.typeId ?? node.tree.mem32[node.ptr >>> 2]! & 0x03ff,
-      arena,
-      prefix,
-      localNames,
-    );
-    if (fastId >= 0) return fastId;
-  }
-
-  // Unwrap wrapper nodes
-  while (
-    node.type === "OwnedExpression" ||
-    node.type === "SequenceExpression" ||
-    node.type === "ArgumentValue" ||
-    node.type === "ResultExpressionMember" ||
-    node.type === "_Expression" ||
-    node.type === "_BaseExpression"
-  ) {
-    const inner: SysmlCstNode | null | undefined =
-      node.childForFieldName?.("ownedRelatedElement") ||
-      ((node.childCount ?? 0) > 0 ? (node.child ? node.child(0) : node.children?.[0]) : null);
-    if (inner && inner !== node) {
-      node = inner;
-    } else {
-      break;
-    }
-  }
-
-  // Handle parenthesized expressions: ( expr )
-  const topCount = node.childCount ?? 0;
-  if (topCount >= 3) {
-    const first = node.child ? node.child(0) : node.children?.[0];
-    const last = node.child ? node.child(topCount - 1) : node.children?.[topCount - 1];
-    if (first?.text === "(" && last?.text === ")") {
-      const inner = node.child ? node.child(1) : node.children?.[1];
-      if (inner && topCount === 3) {
-        return lowerCstExpression(inner, arena, prefix, localNames);
-      }
-    }
-  }
-
-  const type = node.type;
-
-  // 1. Literals
-  if (type === "LiteralReal" || type === "RealValue") {
-    const val = parseFloat(node.text.trim());
-    return arena.addRealLiteral(isNaN(val) ? 0.0 : val);
-  }
-  if (type === "LiteralInteger" || type === "DECIMAL_VALUE") {
-    const val = parseFloat(node.text.trim());
-    return arena.addRealLiteral(isNaN(val) ? 0.0 : val);
-  }
-  if (type === "LiteralBoolean") {
-    return arena.addBoolLiteral(node.text.trim() === "true");
-  }
-
-  // 2. Unary Expression: -x, +x, !x, not x
-  if (type === "UnaryExpression") {
-    const opNode = node.childForFieldName?.("operator") || (node.child ? node.child(0) : node.children?.[0]);
-    const operandNode = node.childForFieldName?.("operand") || (node.child ? node.child(1) : node.children?.[1]);
-    const opText = opNode?.text?.trim() || "-";
-    const childId = lowerCstExpression(operandNode, arena, prefix, localNames);
-
-    if (opText === "-") {
-      return arena.addUnaryExpr(UnaryOp.Negate, childId);
-    }
-    if (opText === "!" || opText === "not") {
-      return arena.addUnaryExpr(UnaryOp.Not, childId);
-    }
-    return childId; // Unary + is a no-op
-  }
-
-  // 3. Additive Expression: a + b - c
-  if (type === "AdditiveExpression") {
-    const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
-
-    for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children?.[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
-      if (!rightNode) break;
-
-      const right = lowerCstExpression(rightNode, arena, prefix, localNames);
-      const op = opNode?.text?.trim() === "-" ? BinOp.Sub : BinOp.Add;
-      left = arena.addBinaryExpr(op, left, right);
-    }
-    return left;
-  }
-
-  // 4. Multiplicative Expression: a * b / c % d
-  if (type === "MultiplicativeExpression") {
-    const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
-
-    for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children?.[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
-      if (!rightNode) break;
-
-      const right = lowerCstExpression(rightNode, arena, prefix, localNames);
-      const opText = opNode?.text?.trim();
-      if (opText === "%") {
-        left = arena.addCallExpr("mod", [left, right]);
-      } else {
-        const op = opText === "/" ? BinOp.Div : BinOp.Mul;
-        left = arena.addBinaryExpr(op, left, right);
-      }
-    }
-    return left;
-  }
-
-  // 5. Exponentiation Expression: a ** b or a ^ b
-  if (type === "ExponentiationExpression") {
-    const baseNode = node.childForFieldName?.("base") || (node.child ? node.child(0) : node.children?.[0]);
-    const expNode = node.childForFieldName?.("exponent") || (node.child ? node.child(2) : node.children?.[2]);
-    const baseId = lowerCstExpression(baseNode, arena, prefix, localNames);
-    const expId = lowerCstExpression(expNode, arena, prefix, localNames);
-    return arena.addBinaryExpr(BinOp.Pow, baseId, expId);
-  }
-
-  // 6. Relational Expression: a < b, a <= b, a > b, a >= b
-  if (type === "RelationalExpression") {
-    const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
-
-    for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children?.[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
-      if (!rightNode) break;
-
-      const right = lowerCstExpression(rightNode, arena, prefix, localNames);
-      const opText = opNode?.text?.trim();
-      let op = BinOp.Lt;
-      if (opText === "<=") op = BinOp.Lte;
-      else if (opText === ">") op = BinOp.Gt;
-      else if (opText === ">=") op = BinOp.Gte;
-
-      left = arena.addBinaryExpr(op, left, right);
-    }
-    return left;
-  }
-
-  // 7. Equality Expression: a == b, a != b
-  if (type === "EqualityExpression") {
-    const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
-
-    for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children?.[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
-      if (!rightNode) break;
-
-      const right = lowerCstExpression(rightNode, arena, prefix, localNames);
-      const op = opNode?.text?.trim() === "!=" ? BinOp.Neq : BinOp.Eq;
-      left = arena.addBinaryExpr(op, left, right);
-    }
-    return left;
-  }
-
-  // 8. Logical And / Or
-  if (type === "AndExpression") {
-    const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
-    for (let i = 1; i < count; i += 2) {
-      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
-      if (!rightNode) break;
-      const right = lowerCstExpression(rightNode, arena, prefix, localNames);
-      left = arena.addBinaryExpr(BinOp.And, left, right);
-    }
-    return left;
-  }
-  if (type === "OrExpression") {
-    const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
-    for (let i = 1; i < count; i += 2) {
-      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
-      if (!rightNode) break;
-      const right = lowerCstExpression(rightNode, arena, prefix, localNames);
-      left = arena.addBinaryExpr(BinOp.Or, left, right);
-    }
-    return left;
-  }
-
-  // 9. Invocation Expression: der(x), sin(x), sqrt(x)
-  if (type === "InvocationExpression") {
-    const fnNameNode = findFirstDescendant(node, "ID") || node.childForFieldName?.("instantiatedType");
-    const fnName = fnNameNode?.text?.trim() || "";
-
-    // Check der(variable)
-    if (fnName === "der") {
-      const argNode = findFirstDescendant(node, "Argument") || findFirstDescendant(node, "FeatureReferenceExpression");
-      let varName = argNode?.text?.trim() || "";
-      if (prefix && localNames && localNames.has(varName.split(".")[0]!)) {
-        varName = prefix + varName;
-      }
-      const nameId = arena.interner.intern(varName);
-      const nameExprId = arena.addName(nameId);
-      return arena.addDerExpr(nameExprId);
-    }
-
-    // Elementary math functions (sin, cos, exp, log, sqrt, etc.)
-    const argsNodes = findCstDescendants(node, "Argument");
-    const argExprIds = argsNodes.map((a) => lowerCstExpression(a, arena, prefix, localNames));
-    const fnNameId = arena.interner.intern(fnName);
-    return arena.addCallExpr(fnNameId, argExprIds);
-  }
-
-  // 10. Measurement Expression: 100.0 [km / h]
-  if (type === "MeasurementExpression") {
-    const valNode = node.childForFieldName?.("value") || (node.child ? node.child(0) : node.children?.[0]);
-    return lowerCstExpression(valNode, arena, prefix, localNames);
-  }
-
-  // 11. Feature Reference (Identifier / Variable Name)
-  if (type === "FeatureReferenceExpression" || type === "Name" || type === "ID" || type === "QualifiedName") {
-    let rawName = node.text.trim();
-    if (prefix && localNames) {
-      const dotIdx = rawName.indexOf(".");
-      const root = dotIdx === -1 ? rawName : rawName.slice(0, dotIdx);
-      if (localNames.has(root)) {
-        rawName = prefix + rawName;
-      }
-    }
-    const nameId = arena.interner.intern(rawName);
-    return arena.addName(nameId);
-  }
-
-  // Fallback: If node has a numeric or identifier string text
-  const rawText = node.text?.trim() || "";
-  const numVal = parseFloat(rawText);
-  if (!isNaN(numVal) && isFinite(numVal) && /^[0-9.eE+-]+$/.test(rawText)) {
-    return arena.addRealLiteral(numVal);
-  }
-
-  // Fallback variable reference
-  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(rawText)) {
-    let name = rawText;
-    if (prefix && localNames) {
-      const dotIdx = name.indexOf(".");
-      const root = dotIdx === -1 ? name : name.slice(0, dotIdx);
-      if (localNames.has(root)) {
-        name = prefix + name;
-      }
-    }
-    const nameId = arena.interner.intern(name);
-    return arena.addName(nameId);
-  }
-
-  return arena.addRealLiteral(0.0);
+  const text = node.text?.trim() || "";
+  if (!text) return arena.addRealLiteral(0.0);
+  const prefixed = prefixSysmlExpression(text, prefix, localNames ?? new Set<string>());
+  return lowerSysmlExpr(prefixed, arena);
 }
 
 /**
@@ -1247,6 +724,19 @@ export class SysmlExprParser {
       if (t.val === "false") return this.arena.addBoolLiteral(false);
     }
     if (t.type === "ident") {
+      let varName = t.val;
+      while (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "[") {
+        this.next(); // consume '['
+        const idx = this.peek()?.val ?? "";
+        this.next(); // consume index/num
+        if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "]") {
+          this.next(); // consume ']'
+        }
+        varName += `[${idx}]`;
+        if (this.peek() && this.peek()!.type === "ident" && this.peek()!.val.startsWith(".")) {
+          varName += this.next().val;
+        }
+      }
       if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "(") {
         this.next(); // consume '('
         const args: number[] = [];
@@ -1263,12 +753,12 @@ export class SysmlExprParser {
         if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === ")") {
           this.next(); // consume ')'
         }
-        if (t.val === "der" && args.length === 1) {
+        if (varName === "der" && args.length === 1) {
           return this.arena.addDerExpr(args[0]!);
         }
-        return this.arena.addCallExpr(t.val, args);
+        return this.arena.addCallExpr(varName, args);
       }
-      const nameId = this.arena.interner.intern(t.val);
+      const nameId = this.arena.interner.intern(varName);
       return this.arena.addName(nameId);
     }
     if (t.type === "paren" && t.val === "(") {
@@ -1984,6 +1474,16 @@ export class SysML2CstFlattener {
     return false;
   }
 
+  private isDescendantOfError(node: SysmlCstNode, currentComp: SysmlCstNode): boolean {
+    if (node.type === "ERROR" || (typeof node.hasError === "function" && node.hasError())) return true;
+    let p = node.parent;
+    while (p && p !== currentComp) {
+      if (p.type === "ERROR" || (typeof p.hasError === "function" && p.hasError())) return true;
+      p = p.parent;
+    }
+    return false;
+  }
+
   private isDescendantOf(node: SysmlCstNode, ancestor: SysmlCstNode): boolean {
     let p = node.parent;
     while (p) {
@@ -2037,21 +1537,33 @@ export class SysML2CstFlattener {
     for (const re of directResultExprs) {
       if (this.isDescendantOfPartUsage(re, compNode)) continue;
       if (this.isDescendantOfActionOrCalc(re, compNode)) continue;
+      if (this.isDescendantOfError(re, compNode)) continue;
+      const trimmedText = re.text.replace(/;$/, "").trim();
+      if (!trimmedText || trimmedText === ";") continue;
       if (assertUsages.some((au) => this.isDescendantOf(re, au) || (au.text && re.text && au.text.includes(re.text))))
         continue;
 
-      const eqNode = findFirstDescendant(re, "EqualityExpression");
-      if (eqNode && (eqNode.childCount ?? 0) >= 3) {
-        const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children?.[0];
-        const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children?.[2];
-
-        const lhsId = lowerCstExpression(lhsNode, this.arena, prefix, localNames);
-        const rhsId = lowerCstExpression(rhsNode, this.arena, prefix, localNames);
+      const dblEqIdx = trimmedText.indexOf("==");
+      if (dblEqIdx !== -1) {
+        const lhs = trimmedText.slice(0, dblEqIdx).trim();
+        const rhs = trimmedText.slice(dblEqIdx + 2).trim();
+        const lhsId = lowerSysmlExpr(prefixSysmlExpression(lhs, prefix, localNames), this.arena);
+        const rhsId = lowerSysmlExpr(prefixSysmlExpression(rhs, prefix, localNames), this.arena);
         this.arena.addEquation(EqKind.Simple, lhsId, rhsId);
       } else {
-        const exprId = lowerCstExpression(re, this.arena, prefix, localNames);
-        const trueId = this.arena.addBoolLiteral(true);
-        this.arena.addEquation(EqKind.Simple, exprId, trueId);
+        const eqNode = findFirstDescendant(re, "EqualityExpression");
+        if (eqNode && (eqNode.childCount ?? 0) >= 3) {
+          const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children?.[0];
+          const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children?.[2];
+
+          const lhsId = lowerCstExpression(lhsNode, this.arena, prefix, localNames);
+          const rhsId = lowerCstExpression(rhsNode, this.arena, prefix, localNames);
+          this.arena.addEquation(EqKind.Simple, lhsId, rhsId);
+        } else {
+          const exprId = lowerCstExpression(re, this.arena, prefix, localNames);
+          const trueId = this.arena.addBoolLiteral(true);
+          this.arena.addEquation(EqKind.Simple, exprId, trueId);
+        }
       }
     }
 
@@ -2163,8 +1675,12 @@ export class SysML2CstFlattener {
             continue;
           }
           if (emittedFromCst > 0 && directResultExprs.length > 0) {
-            const reText = directResultExprs[0]!.text.replace(/;$/, "").trim();
-            if (stmt === reText || `${lhsText} == ${rhsText}` === reText) {
+            const isDup = directResultExprs.some((re) => {
+              if (this.isDescendantOfError(re, compNode)) return false;
+              const reText = re.text.replace(/;$/, "").trim();
+              return stmt === reText || `${lhsText} == ${rhsText}` === reText;
+            });
+            if (isDup) {
               continue;
             }
           }
