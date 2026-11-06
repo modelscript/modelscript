@@ -395,6 +395,10 @@ export default defineConfig({
           dest: "lsp/server/dist",
         },
         {
+          src: "../../packages/lsp/dist/msl-icons.json.gz",
+          dest: "lsp/server/dist",
+        },
+        {
           src: "../../scripts/SysML-v2-Release-2026-03.zip",
           dest: "lsp/server/dist",
         },

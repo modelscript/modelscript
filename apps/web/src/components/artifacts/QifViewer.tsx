@@ -750,7 +750,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   leadingVisual={DraftingTriangleIcon}
                   onClick={handleOpenInPlayground}
                 >
-                  Open in Sketch
+                  Open in Morsel
                 </Button>
               )}
             </Box>

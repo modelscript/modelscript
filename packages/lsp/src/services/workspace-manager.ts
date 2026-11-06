@@ -988,31 +988,56 @@ export class WorkspaceManager {
                 const compCst = (child.cstNode || getChildCst()) as {
                   parent?: { type?: string; children?: Array<{ type?: string; text?: string }> };
                 } | null;
-                let p = compCst?.parent;
+                let p = compCst as any;
                 while (p) {
                   if (p.type === "component_clause" || p.type === "ComponentClause") {
-                    const ts = p.children?.find((c) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+                    const ts = p.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
                     if (ts) {
                       typeSpec = ts.text?.trim() ?? null;
                       break;
                     }
                   }
-                  p = (p as { parent?: typeof p }).parent;
+                  p = p.parent;
                 }
               }
               if (!typeSpec && entry.resourceId) {
                 try {
-                  const text = getSourceText(entry.resourceId);
-                  const sOff = child.startOffset;
-                  const eOff = child.endOffset;
-                  if (text && sOff != null && eOff != null) {
-                    const lineStart = text.lastIndexOf("\n", sOff);
-                    const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
-                    const m = declLine.match(
-                      /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
-                    );
-                    if (m) {
-                      typeSpec = m[1]!.trim();
+                  const cachedTree = (this as any).documentManager?.documentTrees?.get(entry.resourceId);
+                  const root = cachedTree?.tree?.rootNode;
+                  if (root && child.startOffset != null && child.endOffset != null) {
+                    const findInCst = (n: any): string | null => {
+                      if (!n) return null;
+                      if (
+                        (n.type === "component_clause" || n.type === "ComponentClause") &&
+                        n.startIndex <= child.startOffset &&
+                        n.endIndex >= child.endOffset
+                      ) {
+                        const ts = (n.children || []).find(
+                          (c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier",
+                        );
+                        if (ts?.text) return ts.text.trim();
+                      }
+                      for (const ch of n.children || []) {
+                        const res = findInCst(ch);
+                        if (res) return res;
+                      }
+                      return null;
+                    };
+                    typeSpec = findInCst(root) ?? null;
+                  }
+                  if (!typeSpec) {
+                    const text = getSourceText(entry.resourceId);
+                    const sOff = child.startOffset;
+                    const eOff = child.endOffset;
+                    if (text && sOff != null && eOff != null) {
+                      const lineStart = text.lastIndexOf("\n", sOff);
+                      const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
+                      const m = declLine.match(
+                        /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
+                      );
+                      if (m) {
+                        typeSpec = m[1]!.trim();
+                      }
                     }
                   }
                 } catch {}
@@ -1149,22 +1174,48 @@ export class WorkspaceManager {
           const connCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
           if ((!lhsStr || !rhsStr) && connCst) {
             try {
-              const cstText = connCst.text ?? "";
-              const connectMatch = cstText.match(/connect\s*\(/);
-              if (connectMatch && connectMatch.index !== undefined) {
-                const start = connectMatch.index + connectMatch[0].length;
-                const closeIdx = cstText.lastIndexOf(")");
-                if (closeIdx > start) {
-                  const inner = cstText.slice(start, closeIdx);
-                  const commaIdx = inner.indexOf(",");
-                  if (commaIdx !== -1) {
-                    lhsStr = inner.slice(0, commaIdx).trim();
-                    rhsStr = inner.slice(commaIdx + 1).trim();
+              // 1. CST-native resolution of connect equation endpoints
+              const compRefs: any[] = [];
+              const collectCompRefs = (node: any) => {
+                if (!node) return;
+                if (node.type === "component_reference" || node.type === "ComponentReference") {
+                  compRefs.push(node);
+                  return;
+                }
+                for (const c of node.children || []) {
+                  collectCompRefs(c);
+                }
+              };
+              collectCompRefs(connCst);
+              if (compRefs.length >= 2) {
+                lhsStr = compRefs[0].text?.trim() ?? lhsStr;
+                rhsStr = compRefs[1].text?.trim() ?? rhsStr;
+              } else if (connCst.lhs && connCst.rhs) {
+                lhsStr = (typeof connCst.lhs === "string" ? connCst.lhs : connCst.lhs.text)?.trim() ?? lhsStr;
+                rhsStr = (typeof connCst.rhs === "string" ? connCst.rhs : connCst.rhs.text)?.trim() ?? rhsStr;
+              }
+            } catch {}
+
+            // 2. Degraded text-based fallback only if CST lacked endpoints
+            if (!lhsStr || !rhsStr) {
+              try {
+                const cstText = connCst.text ?? "";
+                const connectMatch = cstText.match(/connect\s*\(/);
+                if (connectMatch && connectMatch.index !== undefined) {
+                  const start = connectMatch.index + connectMatch[0].length;
+                  const closeIdx = cstText.lastIndexOf(")");
+                  if (closeIdx > start) {
+                    const inner = cstText.slice(start, closeIdx);
+                    const commaIdx = inner.indexOf(",");
+                    if (commaIdx !== -1) {
+                      lhsStr = inner.slice(0, commaIdx).trim();
+                      rhsStr = inner.slice(commaIdx + 1).trim();
+                    }
                   }
                 }
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
             }
           }
           if (lhsStr && rhsStr) {

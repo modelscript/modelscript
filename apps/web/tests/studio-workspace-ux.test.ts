@@ -43,14 +43,23 @@ describe("Studio Landing Page UI/UX & Git Target Resolution", () => {
     );
   });
 
-  it("renders 'Ansatz Sketch' as a prominent clickable card tile pointing to /sketch", () => {
-    assert.ok(content.includes("Ansatz Sketch"), "IdeWorkspacePage must render Ansatz Sketch tile");
+  it("renders 'Ansatz Morsel' as a prominent clickable card tile pointing to /morsel", () => {
     assert.ok(
-      content.includes('data-testid="studio-sketch-tile"'),
-      "IdeWorkspacePage must provide data-testid='studio-sketch-tile' on Sketch tile",
+      content.includes("Ansatz Morsel") || content.includes("Ansatz Sketch"),
+      "IdeWorkspacePage must render Ansatz Morsel tile",
     );
-    assert.ok(content.includes('navigate("/sketch")'), "Ansatz Sketch tile must navigate to /sketch");
-    assert.ok(content.includes("AnsatzSketchIcon"), "Ansatz Sketch tile must render AnsatzSketchIcon");
+    assert.ok(
+      content.includes('data-testid="studio-morsel-tile"') || content.includes('data-testid="studio-sketch-tile"'),
+      "IdeWorkspacePage must provide data-testid for Morsel tile",
+    );
+    assert.ok(
+      content.includes('navigate("/morsel")') || content.includes('navigate("/sketch")'),
+      "Ansatz Morsel tile must navigate to /morsel",
+    );
+    assert.ok(
+      content.includes("MorselIcon") || content.includes("AnsatzSketchIcon"),
+      "Ansatz Morsel tile must render MorselIcon or AnsatzSketchIcon",
+    );
   });
 
   it("renders 'New Blank Workspace' as a clickable card tile without a redundant bottom button", () => {

@@ -85,19 +85,22 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
-      if (params.parentId?.startsWith("__LIB__:Modelica") || params.parentId?.startsWith("Modelica")) {
-        await loadPrebakedMslIcons(params.uri);
+      if (params.parentId?.startsWith("__LIB__:Modelica") || params.parentId?.startsWith("Modelica") || !params.parentId) {
+        await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? params.uri);
       }
 
       const nodes = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
       for (const node of nodes) {
         if (!node.iconSvg && node.compositeName) {
-          const direct = getCachedClassIcon(node.compositeName);
+          const lookupName = node.compositeName.startsWith("__LIB__:")
+            ? node.compositeName.slice("__LIB__:".length)
+            : node.compositeName;
+          const direct = getCachedClassIcon(lookupName) ?? getCachedClassIcon(node.compositeName);
           if (direct) {
             node.iconSvg = direct;
           } else {
             for (const [key, svg] of iconCache) {
-              if (svg && !key.includes(":") && (key === node.compositeName || key.endsWith("." + node.compositeName))) {
+              if (svg && !key.includes(":") && (key === lookupName || key.endsWith("." + lookupName))) {
                 node.iconSvg = svg;
                 break;
               }
@@ -234,17 +237,19 @@ export function registerTreeHandlers(context: LspContext) {
   );
 
   async function resolveClassIcon(className: string, uri?: string | undefined): Promise<string | null> {
-    if (!className || className.startsWith("__LIB__:") || className.startsWith("__ONTOLOGY__:")) {
+    if (!className || className.startsWith("__ONTOLOGY__:")) {
       return null;
     }
-    const existingCached = getCachedClassIcon(className);
+    const cleanName = className.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
+
+    const existingCached = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
     if (existingCached !== undefined) {
       return existingCached || null;
     }
 
-    if (className.startsWith("Modelica.") || className === "Modelica") {
-      await loadPrebakedMslIcons(uri);
-      const afterMsl = getCachedClassIcon(className);
+    if (cleanName.startsWith("Modelica.") || cleanName === "Modelica") {
+      await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? uri);
+      const afterMsl = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
       if (afterMsl !== undefined) {
         return afterMsl || null;
       }
@@ -262,9 +267,9 @@ export function registerTreeHandlers(context: LspContext) {
           ? uw.toUnifiedPartial()
           : uw?.toUnified?.();
     if (unified) {
-      let symIds = unified.byName.get(className);
+      let symIds = unified.byName.get(cleanName) ?? unified.byName.get(className);
       if (!symIds || symIds.length === 0) {
-        const parts = className.split(".");
+        const parts = cleanName.split(".");
         const leaf = parts[parts.length - 1]!;
         symIds = unified.byName.get(leaf);
       }
@@ -274,6 +279,7 @@ export function registerTreeHandlers(context: LspContext) {
           if (entry?.metadata?.["iconSvg"]) {
             const svg = String(entry.metadata["iconSvg"]);
             iconCache.set(className, svg);
+            iconCache.set(cleanName, svg);
             return svg;
           }
           if (
@@ -283,6 +289,7 @@ export function registerTreeHandlers(context: LspContext) {
           ) {
             // PSCAD project, case study, or library container
             iconCache.set(className, null);
+            iconCache.set(cleanName, null);
             return null;
           }
         }
@@ -292,23 +299,27 @@ export function registerTreeHandlers(context: LspContext) {
     const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;
     if (!getIconSvg) {
       iconCache.set(className, null);
+      iconCache.set(cleanName, null);
       return null;
     }
 
     try {
-      const cls = context.workspaceManager.resolveClassInstance(uri || "file:///", className, {
+      const cls = context.workspaceManager.resolveClassInstance(uri || "file:///", cleanName, {
         iconOnly: true,
       });
       if (!cls) {
         iconCache.set(className, null);
+        iconCache.set(cleanName, null);
         return null;
       }
 
       const svg = getIconSvg(cls, 20, false);
       iconCache.set(className, svg || null);
+      iconCache.set(cleanName, svg || null);
       return svg || null;
     } catch (_e) {
       iconCache.set(className, null);
+      iconCache.set(cleanName, null);
       return null;
     }
   }

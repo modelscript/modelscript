@@ -11,11 +11,12 @@
  */
 
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
+import { solveHelmPowerFlow } from "./helm-powerflow.js";
 import type { PsseCase } from "../types.js";
 
 export interface PowerFlowOptions {
   /** Numerical algorithm to execute (default: "newton_raphson"). */
-  algorithm?: "newton_raphson" | "fast_decoupled";
+  algorithm?: "newton_raphson" | "fast_decoupled" | "helm";
   /** Maximum allowable non-linear iterations (default: 25). */
   maxIterations?: number;
   /** Convergence tolerance for max active/reactive mismatch in p.u. (default: 1e-4). */
@@ -128,6 +129,9 @@ function solveLinearSystem(A: Float64Array, b: Float64Array, n: number): boolean
  * Solves the non-linear AC Power Flow equations for a PSS/E base case.
  */
 export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {}): PowerFlowSolution {
+  if (options.algorithm === "helm") {
+    return solveHelmPowerFlow(psseCase, options);
+  }
   const netlist = extractPowerFlowNetlist(psseCase);
   const maxIter = options.maxIterations ?? 25;
   const tol = options.tolerance ?? 1e-4;

@@ -345,10 +345,32 @@ export class ValidationService {
   }
 
   /**
-   * Sends a throttled `modelscript/projectTreeChanged` notification to the client
-   * (leading-edge immediate fire followed by a 500ms trailing-edge cooldown).
+   * Tracks the last document text for which `modelscript/projectTreeChanged` was emitted,
+   * preventing duplicate notifications from Tier 2 (60ms) and Tier 3 (180ms) for the same edit.
    */
-  public sendProjectTreeChanged(): void {
+  public lastNotifiedProjectTreeText = new Map<string, string>();
+
+  /**
+   * Sends a throttled `modelscript/projectTreeChanged` notification to the client
+   * (leading-edge immediate fire followed by a 100ms trailing-edge cooldown).
+   */
+  public sendProjectTreeChanged(uri?: string): void {
+    if (uri) {
+      const effectiveUri = uri.startsWith("modelscript-lib://global")
+        ? "file://" + uri.substring("modelscript-lib://global".length)
+        : uri;
+      const currentText =
+        this.lastIndexedText.get(effectiveUri) ??
+        this.lastIndexedText.get(uri) ??
+        this.documentManager?.documents?.get(uri)?.getText();
+      if (currentText !== undefined) {
+        if (this.lastNotifiedProjectTreeText.get(effectiveUri) === currentText) {
+          return;
+        }
+        this.lastNotifiedProjectTreeText.set(effectiveUri, currentText);
+        this.lastNotifiedProjectTreeText.set(uri, currentText);
+      }
+    }
     const g = globalThis as any;
     if (g.projectTreeChangedTimer) {
       g.projectTreeChangedPending = true;
@@ -361,7 +383,7 @@ export class ValidationService {
         g.projectTreeChangedPending = false;
         this.connection.sendNotification("modelscript/projectTreeChanged");
       }
-    }, 500);
+    }, 100);
   }
 
   /**
@@ -438,6 +460,8 @@ export class ValidationService {
     this.lastSemanticDiagnostics.delete(eff);
     this.lastIndexedText.delete(uri);
     this.lastIndexedText.delete(eff);
+    this.lastNotifiedProjectTreeText.delete(uri);
+    this.lastNotifiedProjectTreeText.delete(eff);
     this.documentRevisions.delete(uri);
     this.documentRevisions.delete(eff);
     this.documentViewports.delete(uri);
@@ -707,8 +731,39 @@ export class ValidationService {
 
       // Modelica M4004: Do not flag models as unbalanced if exogenous 'input' variables account for the difference
       if (codeNum === 4004 && langId === "modelica") {
-        const inputMatches = text.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
-        const inputCount = inputMatches ? inputMatches.length : 0;
+        let inputCount = 0;
+        const docUri = (textDocument as any)?.uri;
+        const cachedTree = docUri ? this.documentManager?.documentTrees?.get(docUri) : null;
+        const root = cachedTree?.tree?.rootNode;
+        if (root) {
+          const countInputsInCst = (n: any) => {
+            if (!n) return;
+            if (n.type === "component_clause" || n.type === "ComponentClause") {
+              const hasInput = (n.children || []).some(
+                (c: any) => c.type === "input" || (c.type === "type_prefix" && /\binput\b/.test(c.text ?? "")),
+              );
+              if (hasInput) {
+                const compDecls = (n.children || []).filter(
+                  (c: any) => c.type === "component_declaration" || c.type === "declaration",
+                );
+                inputCount += Math.max(1, compDecls.length);
+              }
+            }
+            for (const ch of n.children || []) {
+              countInputsInCst(ch);
+            }
+          };
+          countInputsInCst(root);
+        } else {
+          // Mask comments and strings to prevent false positives from documentation
+          const cleanText = text
+            .replace(/\/\/[^\n]*/g, " ")
+            .replace(/\/\*[\s\S]*?\*\//g, " ")
+            .replace(/"(?:[^"\\]|\\.)*"/g, " ");
+          const inputMatches = cleanText.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
+          inputCount = inputMatches ? inputMatches.length : 0;
+        }
+
         const msgToCheck = message || d.message || "";
         const m = msgToCheck.match(/\b(\d+)\s+equations\s+for\s+(\d+)\s+variables\b/);
         if (m && inputCount > 0) {
@@ -843,6 +898,207 @@ export class ValidationService {
         if (inflight) await inflight;
       }
     }
+  }
+
+  /**
+   * Synchronizes the incremental WASM CST, `WorkspaceIndex`, Salsa `QueryEngine`, and class wrappers
+   * for `uri` without running heavy background lints, abstract interpretation, or DAE reachability.
+   *
+   * Used by `DiagramService` (`getDiagramData`, `applyEdits`) and Tier 2 short debounce so diagram
+   * operations and outline trees see up-to-date AST and class instances in ~1–2ms.
+   */
+  public async syncDocumentForDiagram(uri: string): Promise<boolean> {
+    const effectiveUri = uri.startsWith("modelscript-lib://global")
+      ? "file://" + uri.substring("modelscript-lib://global".length)
+      : uri;
+    const doc = this.documentManager.documents.get(uri) ?? this.documentManager.documents.get(effectiveUri);
+    if (!doc) return false;
+
+    const text = doc.getText();
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    const langId =
+      plugin?.id ??
+      (doc.languageId || (uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim") ? "modelica" : "sysml2"));
+    const isModelica = langId === "modelica";
+
+    let cached = this.documentManager.documentTrees.get(uri) ?? this.documentManager.documentTrees.get(effectiveUri);
+    if (!cached?.tree || cached.text !== text) {
+      await this.parserService.ensureLanguageParserLoaded(doc.languageId || uri);
+      const parser =
+        plugin?.parser ??
+        this.parserService.getParserForUri(uri) ??
+        (isModelica && this.parserService.isParserReady("modelica")
+          ? this.parserService.getParser("modelica")
+          : undefined);
+      let processedText = text;
+      if (plugin?.preprocessText) {
+        processedText = plugin.preprocessText(text);
+      } else if (typeof (globalThis as any).preprocessLanguageText === "function") {
+        processedText = (globalThis as any).preprocessLanguageText(langId, text);
+      }
+
+      let tree: any;
+      if (cached?.tree && cached.text !== text && parser) {
+        const edit = computeTreeEdit(cached.text, text);
+        tree = parser.parse(processedText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
+      } else if (parser) {
+        tree = parser.parse(processedText);
+      } else if (this.parserService.sharedContext && isModelica) {
+        tree = this.parserService.sharedContext.parse(".mo", processedText);
+      }
+
+      if (tree) {
+        if (cached?.tree && cached.tree !== tree) {
+          cached.tree.delete?.();
+        }
+        const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+        const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
+        const docEntry = {
+          text,
+          tree,
+          classCache: cached?.classCache ?? new Map(),
+        };
+        this.documentManager.documentTrees.set(uri, docEntry);
+        this.documentManager.documentTrees.set(normUri, docEntry);
+        this.documentManager.documentTrees.set(oneSlashUri, docEntry);
+        cached = docEntry;
+      }
+    }
+
+    if (!cached?.tree) return false;
+
+    const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+    const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
+    if (this.workspaceManager.unifiedWorkspace) {
+      this.workspaceManager.unifiedWorkspace.setDocumentTree(uri, cached.tree);
+      this.workspaceManager.unifiedWorkspace.setDocumentTree(normUri, cached.tree);
+      this.workspaceManager.unifiedWorkspace.setDocumentTree(oneSlashUri, cached.tree);
+      const uDoc =
+        this.workspaceManager.unifiedWorkspace.getDocument(uri) ??
+        this.workspaceManager.unifiedWorkspace.getDocument(normUri) ??
+        this.workspaceManager.unifiedWorkspace.getDocument(oneSlashUri);
+      if (uDoc) {
+        uDoc.text = text;
+        uDoc.tree = cached.tree;
+      }
+    }
+
+    const prevIndexedText = this.lastIndexedText.get(effectiveUri) ?? this.lastIndexedText.get(uri);
+    const hasInstances = Boolean(
+      this.workspaceManager.documentInstances.get(uri)?.length ||
+        this.workspaceManager.documentInstances.get(effectiveUri)?.length,
+    );
+    if (prevIndexedText === text && hasInstances) {
+      return false;
+    }
+
+    const wsIndex = plugin?.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(langId);
+    let changedIds: Set<number> | null = null;
+    let changedNames: Set<string> | null = null;
+    let structuralChangedIds: Set<number> | null = null;
+
+    if (wsIndex) {
+      if (prevIndexedText !== text) {
+        let actualEditRanges: { startOffset: number; endOffset: number }[] | undefined;
+        let totalDelta = 0;
+        if (prevIndexedText !== undefined) {
+          const edit = computeTreeEdit(prevIndexedText, text);
+          actualEditRanges = [
+            {
+              startOffset: edit.startIndex,
+              endOffset: Math.max(edit.oldEndIndex, edit.newEndIndex),
+            },
+          ];
+          totalDelta = edit.newEndIndex - edit.oldEndIndex;
+        }
+        if (typeof wsIndex.has === "function") {
+          if (wsIndex.has(effectiveUri)) {
+            wsIndex.reindexDocument?.(effectiveUri, () => cached!.tree.rootNode, actualEditRanges, totalDelta);
+          } else {
+            wsIndex.register?.(effectiveUri, () => cached!.tree.rootNode);
+          }
+          wsIndex.getFileIndex?.(effectiveUri);
+        }
+        const wsInstances = this.workspaceManager.workspaceInstances;
+        if (wsInstances) {
+          for (const key of wsInstances.keys()) {
+            if (key.startsWith(effectiveUri + "#")) {
+              wsInstances.delete(key);
+            }
+          }
+        }
+        this.workspaceManager.workspaceInstances.delete(uri);
+        this.workspaceManager.workspaceInstances.delete(effectiveUri);
+        this.workspaceManager.documentInstances.delete(uri);
+        this.workspaceManager.documentInstances.delete(effectiveUri);
+        this.lastIndexedText.set(effectiveUri, text);
+        this.lastIndexedText.set(uri, text);
+        const activeEngine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
+        if (activeEngine && typeof (activeEngine as any).disposeDocument === "function") {
+          (activeEngine as any).disposeDocument(effectiveUri);
+          if (uri !== effectiveUri) (activeEngine as any).disposeDocument(uri);
+          (activeEngine as any).disposeDocument(normUri);
+        }
+      }
+
+      const changedIdsObj =
+        typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null;
+      changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
+      structuralChangedIds = changedIdsObj ? (changedIdsObj as any).structuralChangedIds : null;
+      changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
+    }
+
+    if (changedNames && changedNames.size > 0) {
+      if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = setTimeout(() => {
+        for (const d of this.documentManager.documents.all()) {
+          const eff = d.uri.startsWith("modelscript-lib://global")
+            ? "file://" + d.uri.substring("modelscript-lib://global".length)
+            : d.uri;
+          if (eff !== effectiveUri) {
+            this.validateTextDocument(d);
+          }
+        }
+      }, 500);
+    }
+
+    const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+    const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
+
+    let engine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
+    if (!engine) {
+      engine = this.createDefaultQueryEngine(langId, unifiedIndex, cstTreeWrapper);
+      if (engine) {
+        this.workspaceManager.setQueryEngine(langId, engine);
+      }
+    } else {
+      if (langId === "modelica") {
+        const injectFn = (globalThis as any).injectPredefinedTypes;
+        if (typeof injectFn === "function") injectFn(unifiedIndex);
+      }
+      if (changedIds && typeof (engine as any).swapIndex === "function") {
+        (engine as any).swapIndex(unifiedIndex, changedIds, structuralChangedIds || undefined);
+      } else if (prevIndexedText !== text && typeof (engine as any).updateIndex === "function") {
+        (engine as any).updateIndex(unifiedIndex);
+      }
+      if (typeof (engine as any).updateTree === "function") {
+        (engine as any).updateTree(cstTreeWrapper);
+      }
+    }
+
+    const context = this.parserService.sharedContext;
+    if (context && langId === "modelica") {
+      if (typeof (context as any).setQueryEngine === "function") context.setQueryEngine(engine);
+      else context.queryEngine = engine;
+      if (typeof (context as any).setWorkspaceIndex === "function") context.setWorkspaceIndex(wsIndex);
+      else context.workspaceIndex = wsIndex;
+    }
+
+    const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), uri);
+    this.documentLSPBridges.set(uri, bridge as any);
+
+    this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
+    return true;
   }
 
   /**
@@ -1394,7 +1650,7 @@ export class ValidationService {
         }
         if (changedIds && typeof (engine as any).swapIndex === "function") {
           (engine as any).swapIndex(unifiedIndex, changedIds, structuralChangedIds || undefined);
-        } else if (typeof (engine as any).updateIndex === "function") {
+        } else if (textChanged && typeof (engine as any).updateIndex === "function") {
           (engine as any).updateIndex(unifiedIndex);
         }
         if (typeof (engine as any).updateTree === "function") {
@@ -1418,7 +1674,9 @@ export class ValidationService {
       this.documentLSPBridges.set(uri, bridge as any);
 
       // Populate class wrappers immediately so diagram edit handlers always see up-to-date CST nodes
-      this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
+      if (textChanged || !this.workspaceManager.documentInstances.get(uri)?.length) {
+        this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
+      }
 
       await yieldToEventLoop();
       if (isStale()) return;
@@ -1561,29 +1819,75 @@ export class ValidationService {
           (uri.endsWith(".mo") || langId === "modelica") &&
           (uri.includes("DroneSimulation") || text.includes("DroneSimulation"))
         ) {
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]!;
+          const cachedTree = this.documentManager?.documentTrees?.get(uri);
+          const rootNode = cachedTree?.tree?.rootNode;
+          let handledViaCst = false;
+          if (rootNode && textDocument) {
+            const findCstNodes = (n: any, type: string, out: any[] = []) => {
+              if (!n) return out;
+              if (n.type === type) out.push(n);
+              for (const ch of n.children || []) findCstNodes(ch, type, out);
+              return out;
+            };
+            const compDecls = findCstNodes(rootNode, "component_declaration");
+            for (const cd of compDecls) {
+              const idNode = (cd.children || []).find((c: any) => c.type === "identifier");
+              if (idNode?.text === "m") {
+                const modNode = (cd.children || []).find((c: any) => c.type === "modification");
+                const modText = modNode?.text ?? "";
+                const valMatch = /=\s*([0-9.]+)/.exec(modText);
+                if (valMatch) {
+                  const val = parseFloat(valMatch[1]!);
+                  const startPos = textDocument.positionAt(idNode.startIndex);
+                  const endPos = textDocument.positionAt(idNode.endIndex);
+                  handledViaCst = true;
+                  if (Math.abs(val - 1.2) > 0.01) {
+                    newSemanticDiagnostics.push({
+                      severity: DiagnosticSeverity.Warning,
+                      range: { start: startPos, end: endPos },
+                      message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (1.20 kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
+                      source: "modelscript-digital-thread",
+                    });
+                  } else {
+                    newSemanticDiagnostics.push({
+                      severity: DiagnosticSeverity.Information,
+                      range: { start: startPos, end: endPos },
+                      message:
+                        "[Digital Thread In Parity] Parameter 'm' (1.20 kg) is synchronized with FEA structural mass and SysML v2 DroneAssembly.",
+                      source: "modelscript-digital-thread",
+                    });
+                  }
+                  break;
+                }
+              }
+            }
+          }
 
-            const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
-            if (massMatch) {
-              const val = parseFloat(massMatch[1]!);
-              const colMatch = /\bReal\s+(m)\b/.exec(line);
-              const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
-              if (Math.abs(val - 1.2) > 0.01) {
-                newSemanticDiagnostics.push({
-                  severity: DiagnosticSeverity.Warning,
-                  range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-                  message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (1.20 kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
-                  source: "modelscript-digital-thread",
-                });
-              } else {
-                newSemanticDiagnostics.push({
-                  severity: DiagnosticSeverity.Information,
-                  range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-                  message:
-                    "[Digital Thread In Parity] Parameter 'm' (1.20 kg) is synchronized with FEA structural mass and SysML v2 DroneAssembly.",
-                  source: "modelscript-digital-thread",
-                });
+          if (!handledViaCst) {
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]!;
+
+              const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
+              if (massMatch) {
+                const val = parseFloat(massMatch[1]!);
+                const colMatch = /\bReal\s+(m)\b/.exec(line);
+                const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
+                if (Math.abs(val - 1.2) > 0.01) {
+                  newSemanticDiagnostics.push({
+                    severity: DiagnosticSeverity.Warning,
+                    range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
+                    message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (1.20 kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
+                    source: "modelscript-digital-thread",
+                  });
+                } else {
+                  newSemanticDiagnostics.push({
+                    severity: DiagnosticSeverity.Information,
+                    range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
+                    message:
+                      "[Digital Thread In Parity] Parameter 'm' (1.20 kg) is synchronized with FEA structural mass and SysML v2 DroneAssembly.",
+                    source: "modelscript-digital-thread",
+                  });
+                }
               }
             }
           }
@@ -1631,7 +1935,9 @@ export class ValidationService {
       }
 
       // ── Step 7: Populate Class / Symbol Wrappers for Trees ───────────────
-      this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
+      if (!this.workspaceManager.documentInstances.get(uri)?.length) {
+        this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
+      }
 
       // ── Step 8: Deliver Diagnostics and Notify UI ────────────────────────
       if (isStale()) return;
@@ -1640,7 +1946,7 @@ export class ValidationService {
       const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
       if (diagnostics.length > 1000) diagnostics.length = 1000;
       this.connection.sendDiagnostics({ uri, diagnostics });
-      this.sendProjectTreeChanged();
+      this.sendProjectTreeChanged(uri);
     } catch (e: any) {
       this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
@@ -1648,7 +1954,7 @@ export class ValidationService {
         const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
         if (diagnostics.length > 1000) diagnostics.length = 1000;
         this.connection.sendDiagnostics({ uri, diagnostics });
-        this.sendProjectTreeChanged();
+        this.sendProjectTreeChanged(uri);
       }
     }
   }
@@ -3739,50 +4045,112 @@ export class ValidationService {
         const rawClassEnd = cls.endOffset;
         const classEnd = rawClassEnd > classStart ? rawClassEnd : text.length;
         const body = text.slice(classStart, classEnd);
+        const cachedTree = this.documentManager.documentTrees.get(effectiveUri);
+        const rootCst = cachedTree?.tree?.rootNode ?? (cachedTree?.tree as any)?.tree?.rootNode;
+        let classCst: any = null;
+        let findCstNodesByType: any;
+        try {
+          const mod = await import("@modelscript/modelica");
+          findCstNodesByType = mod.findCstNodesByType;
+          if (rootCst && findCstNodesByType) {
+            const classNodes = findCstNodesByType(rootCst, "class_definition");
+            for (const cNode of classNodes) {
+              const idNode = findCstNodesByType(cNode, "identifier")[0];
+              if (idNode?.text === cls.name || (cNode.startIndex <= classStart && cNode.endIndex >= classEnd)) {
+                classCst = cNode;
+                break;
+              }
+            }
+          }
+        } catch {}
+
         for (const issue of record.issues) {
           let issueOffset = classStart;
           let issueLength = issue.varName?.length ?? 10;
-          const varIdx = issue.varName ? body.indexOf(issue.varName) : -1;
-          if (varIdx >= 0) {
-            issueOffset = classStart + varIdx;
-            issueLength = issue.varName!.length;
-          } else if (typeof issue.eqIdx === "number" && issue.eqIdx >= 0) {
-            // Find corresponding equation in body
-            const eqLines = body.split("\n");
-            let eqCount = 0;
-            let currOffset = 0;
-            let foundEq = false;
-            for (const line of eqLines) {
-              const trimmed = line.trim();
-              if (
-                trimmed.length > 0 &&
-                !trimmed.startsWith("//") &&
-                !trimmed.startsWith("/*") &&
-                /der\s*\(|[a-zA-Z_][a-zA-Z0-9_]*\s*=[^=]/.test(line)
-              ) {
-                if (eqCount === issue.eqIdx) {
-                  const leadingSpaces = line.search(/\S/);
-                  issueOffset = classStart + currOffset + (leadingSpaces >= 0 ? leadingSpaces : 0);
-                  issueLength = trimmed.length;
-                  foundEq = true;
+          let foundLoc = false;
+
+          // 1. Primary: resolve using CST nodes (exact AST positions)
+          if (classCst && findCstNodesByType) {
+            if (issue.varName) {
+              const cleanVar = issue.varName.replace(/^der\((.*)\)$/, "$1");
+              const targetName = cleanVar.includes(".") ? cleanVar.split(".")[0]! : cleanVar;
+              const compDecls = findCstNodesByType(classCst, "component_declaration");
+              for (const cd of compDecls) {
+                const idNode = findCstNodesByType(cd, "identifier")[0];
+                if (idNode?.text === targetName) {
+                  issueOffset = idNode.startIndex;
+                  issueLength = idNode.endIndex - idNode.startIndex;
+                  foundLoc = true;
                   break;
                 }
-                eqCount++;
               }
-              currOffset += line.length + 1;
             }
-            if (!foundEq) {
+
+            if (!foundLoc && typeof issue.eqIdx === "number" && issue.eqIdx >= 0) {
+              const eqSec = findCstNodesByType(classCst, "equation_section")[0];
+              if (eqSec) {
+                const eqNodes = (eqSec.children || []).filter((c: any) =>
+                  c.type &&
+                  c.type !== "equation_section" &&
+                  c.type !== "annotation_clause" &&
+                  c.type !== ";" &&
+                  c.type !== "equation",
+                );
+                if (issue.eqIdx < eqNodes.length) {
+                  const targetEq = eqNodes[issue.eqIdx];
+                  issueOffset = targetEq.startIndex;
+                  issueLength = Math.max(1, targetEq.endIndex - targetEq.startIndex);
+                  foundLoc = true;
+                } else {
+                  // Equation belongs to an imported/subcomponent model: anchor to the "equation" keyword node
+                  const eqKeyword = (eqSec.children || []).find((c: any) => c.type === "equation" || c.text === "equation");
+                  issueOffset = eqKeyword ? eqKeyword.startIndex : eqSec.startIndex;
+                  issueLength = eqKeyword ? (eqKeyword.endIndex - eqKeyword.startIndex) : 8;
+                  foundLoc = true;
+                }
+              }
+            }
+          }
+
+          // 2. Fallback: text-based heuristic when CST is unavailable (e.g. headless mock tests)
+          if (!foundLoc) {
+            if (issue.varName) {
+              const cleanVar = issue.varName.replace(/^der\((.*)\)$/, "$1");
+              const escapedVar = cleanVar.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const varMatch = new RegExp(`\\b${escapedVar}\\b`).exec(body);
+              if (varMatch) {
+                issueOffset = classStart + varMatch.index;
+                issueLength = cleanVar.length;
+                foundLoc = true;
+              } else if (cleanVar.includes(".")) {
+                const compName = cleanVar.split(".")[0]!;
+                const compMatch = new RegExp(`\\b${compName}\\b`).exec(body);
+                if (compMatch) {
+                  issueOffset = classStart + compMatch.index;
+                  issueLength = compName.length;
+                  foundLoc = true;
+                }
+              }
+            }
+
+            if (!foundLoc && typeof issue.eqIdx === "number" && issue.eqIdx >= 0) {
               const eqKeywordIdx = body.indexOf("equation");
               if (eqKeywordIdx >= 0) {
                 issueOffset = classStart + eqKeywordIdx;
                 issueLength = 8;
+                foundLoc = true;
               }
             }
-          } else {
+          }
+
+          if (!foundLoc) {
             const eqIdx = body.indexOf("equation");
             if (eqIdx >= 0) {
               issueOffset = classStart + eqIdx;
               issueLength = 8;
+            } else {
+              issueOffset = classStart;
+              issueLength = Math.min(cls.name.length, body.length);
             }
           }
           const startPos = textDocument.positionAt(issueOffset);

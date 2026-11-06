@@ -36,7 +36,7 @@ const feature: MegaMenuFeature = {
 const footerLinks = computed<MegaMenuFooterLink[]>(() => [
   { label: "All industries", href: "/industries/", icon: "globe" },
   { label: `Browse all ${LANGUAGE_COUNT} languages & formats`, href: "/languages/overview", icon: "layers" },
-  { label: "Try it in Sketch", href: `${ansatzOrigin.value}/sketch`, icon: "terminal", target: "_blank" },
+  { label: "Try it in Morsel", href: `${ansatzOrigin.value}/morsel`, icon: "terminal", target: "_blank" },
 ]);
 </script>
 

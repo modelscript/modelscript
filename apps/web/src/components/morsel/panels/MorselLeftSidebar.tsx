@@ -230,16 +230,28 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         {showLibrariesSection && (
           <>
             <div
-              className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
-              style={{ gap: 8 }}
+              className="text-bold px-3 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+              style={{
+                height: 36,
+                gap: 6,
+                backgroundColor: "var(--color-canvas-subtle)",
+                borderBottom: "1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.1)))",
+                boxSizing: "border-box",
+              }}
             >
               <div
                 className="d-flex flex-items-center"
-                style={{ display: isSearchExpanded || libraryFilter ? "none" : "flex" }}
+                style={{
+                  display: isSearchExpanded || libraryFilter ? "none" : "flex",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  color: "var(--color-fg-default)",
+                }}
               >
                 {translations.libraries}
               </div>
-              <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0 }}>
+              <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0, gap: 2 }}>
                 <TextInput
                   ref={inputRef}
                   aria-label={translations.filterClasses}
@@ -277,6 +289,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                     padding: isSearchExpanded || libraryFilter ? undefined : "0px",
                     borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
                     height: "28px",
+                    borderRadius: 6,
+                    fontSize: 12,
                     transition: "all 0.2s ease-in-out",
                     overflow: "hidden",
                   }}
@@ -292,6 +306,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   }}
                   style={{
                     width: isSearchExpanded || libraryFilter ? "0px" : "28px",
+                    height: "28px",
+                    borderRadius: 6,
                     opacity: isSearchExpanded || libraryFilter ? 0 : 1,
                     padding: isSearchExpanded || libraryFilter ? "0px" : undefined,
                     overflow: "hidden",
@@ -305,22 +321,30 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   variant="invisible"
                   ref={addLibraryButtonRef}
                   onClick={onOpenAddLibrary}
+                  style={{ width: 28, height: 28, borderRadius: 6 }}
                 />
-                {setTreeVisible && (
-                  <IconButton
-                    icon={SidebarCollapseIcon}
-                    aria-label={translations.collapseTree || "Collapse Libraries sidebar"}
-                    title={translations.collapseTree || "Collapse Libraries sidebar"}
-                    size="small"
-                    variant="invisible"
-                    onClick={() => {
-                      setTreeVisible(false);
-                      if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: false } }));
-                      }
-                    }}
-                  />
-                )}
+                {setTreeVisible &&
+                  !(
+                    typeof window !== "undefined" &&
+                    (window.location.pathname.startsWith("/playground") ||
+                      window.location.pathname.startsWith("/sketch") ||
+                      window.location.pathname.startsWith("/morsel"))
+                  ) && (
+                    <IconButton
+                      icon={SidebarCollapseIcon}
+                      aria-label={translations.collapseTree || "Collapse Libraries sidebar"}
+                      title={translations.collapseTree || "Collapse Libraries sidebar"}
+                      size="small"
+                      variant="invisible"
+                      onClick={() => {
+                        setTreeVisible(false);
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: false } }));
+                        }
+                      }}
+                      style={{ width: 28, height: 28, borderRadius: 6 }}
+                    />
+                  )}
               </div>
             </div>
             <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>

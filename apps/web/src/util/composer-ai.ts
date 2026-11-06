@@ -567,7 +567,7 @@ export function draftLocallyFromSummary(
     const draft = [
       `Sharing **${summary.title}** for ${summary.domain.toLowerCase()} verification and analysis.`,
       `### Key Highlights\n${bullets}`,
-      `Open the attached artifact in the playground to inspect parameters and simulation trajectories.\n\n${tags}`,
+      `Open the attached morsel in Morsel to inspect parameters and simulation trajectories.\n\n${tags}`,
     ].join("\n\n");
     return {
       draft,
@@ -699,8 +699,8 @@ export async function runComposerAiDraft(options: {
     const localSummary = classifyArtifactLocally(rawView);
 
     const systemPrompt =
-      "You are Ansatz AI Composer Assistant (powered by ModelScript). Draft a concise, engaging technical engineering post introducing the attached artifact with 2-3 relevant hashtags. Output ONLY the post text.";
-    const userPrompt = `Draft a ${tone} post for artifact "${localSummary.title}" (${localSummary.domain}). Highlights: ${
+      "You are Ansatz AI Composer Assistant (powered by ModelScript). Draft a concise, engaging technical engineering post introducing the attached morsel with 2-3 relevant hashtags. Output ONLY the post text.";
+    const userPrompt = `Draft a ${tone} post for morsel "${localSummary.title}" (${localSummary.domain}). Highlights: ${
       localSummary.highlights.join("; ") || "Interactive model"
     }. Suggested hashtags: ${localSummary.suggestedHashtags.join(" ")}`;
 

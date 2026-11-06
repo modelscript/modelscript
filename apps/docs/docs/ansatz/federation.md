@@ -11,7 +11,7 @@ In conventional social networks, posts consist of plain text, images, or static 
 1. **Simulation Runs:** Encapsulated DAE/ODE trajectory datasets with time-series plots, parameter configurations, and solver settings.
 2. **Interactive 3D CAD/FEA/CFD Views:** Compressed STEP geometries or VTK Unstructured Grid (`.vtu`) stress fields viewable directly in the feed using Three.js and WebXR.
 3. **Schematic & Architecture Diffs:** Visual diffs (`PolyglotVersionDiffView`) showing added, modified, or removed components across Modelica and SysML diagrams.
-4. **Executable Scripts:** Self-contained ModelScript scripts that other engineers can open in `/sketch` with a single click.
+4. **Executable Scripts:** Self-contained ModelScript scripts that other engineers can open in `/morsel` with a single click.
 
 ---
 

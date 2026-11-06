@@ -2128,10 +2128,10 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                   code: rawText || `Ontology(<http://example.org/ontology>\n)\n`,
                   title: displayTitle,
                 });
-                navigate(`/sketch#m=${hash}`);
+                navigate(`/morsel#m=${hash}`);
               }}
             >
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

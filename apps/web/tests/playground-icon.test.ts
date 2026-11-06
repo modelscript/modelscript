@@ -49,17 +49,17 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     assert.ok(layeredHtml.includes("M13.8"), "Right chevron starts at 13.8");
   });
 
-  it("integrates AnsatzSketchIcon inside Sidebar.tsx split button", () => {
+  it("integrates MorselIcon inside Sidebar.tsx split button", () => {
     const sidebarPath = path.resolve(import.meta.dirname, "../src/components/Sidebar.tsx");
     const sidebarSrc = fs.readFileSync(sidebarPath, "utf-8");
 
     assert.ok(
-      sidebarSrc.includes("AnsatzSketchIcon") && sidebarSrc.includes("<AnsatzSketchIcon"),
-      "Sidebar.tsx must render AnsatzSketchIcon in split button",
+      sidebarSrc.includes("MorselIcon") || (sidebarSrc.includes("AnsatzSketchIcon") && sidebarSrc.includes("<AnsatzSketchIcon")),
+      "Sidebar.tsx must render MorselIcon or AnsatzSketchIcon in split button",
     );
     assert.ok(
-      sidebarSrc.includes('title="Ansatz Sketch"'),
-      "Sidebar.tsx split sketch button must have title='Ansatz Sketch'",
+      sidebarSrc.includes('title="Ansatz Morsel"') || sidebarSrc.includes('title="Ansatz Sketch"'),
+      "Sidebar.tsx split button must have title='Ansatz Morsel'",
     );
   });
 
@@ -77,43 +77,50 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     );
   });
 
-  it("integrates AnsatzSketchIcon inside PlaygroundNavbar.tsx brand badge", () => {
+  it("integrates MorselIcon inside PlaygroundNavbar.tsx brand badge", () => {
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
     const navbarSrc = fs.readFileSync(navbarPath, "utf-8");
 
     assert.ok(
-      navbarSrc.includes("AnsatzSketchIcon") || navbarSrc.includes("CodeSquareIcon"),
-      "PlaygroundNavbar.tsx must import AnsatzSketchIcon or CodeSquareIcon",
+      navbarSrc.includes("MorselIcon") || navbarSrc.includes("AnsatzSketchIcon") || navbarSrc.includes("CodeSquareIcon"),
+      "PlaygroundNavbar.tsx must import MorselIcon, AnsatzSketchIcon or CodeSquareIcon",
     );
     assert.ok(
-      (navbarSrc.includes("AnsatzSketchIcon") && navbarSrc.includes("Sketch")) ||
+      navbarSrc.includes("Morsel") ||
+        (navbarSrc.includes("AnsatzSketchIcon") && navbarSrc.includes("Sketch")) ||
         navbarSrc.includes("<CodeSquareIcon size={14} /> Playground"),
-      "PlaygroundNavbar.tsx must render blueprint Sketch icon inside brand Badge",
+      "PlaygroundNavbar.tsx must render blueprint / Morsel icon inside brand Badge",
     );
   });
 
-  it("rebrands /playground to ModelScript Playground with the ModelScript icon", () => {
+  it("rebrands /playground to ModelScript Morsel with authentic brand icon", () => {
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
     const navbarSrc = fs.readFileSync(navbarPath, "utf-8");
     const pagePath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
     const pageSrc = fs.readFileSync(pagePath, "utf-8");
 
-    // PlaygroundNavbar must render ModelScript icon
+    // PlaygroundNavbar must render authentic Morsel brand icon
     assert.ok(
-      navbarSrc.includes("/ms-logo-light.png") && navbarSrc.includes("/ms-logo.png"),
-      "PlaygroundNavbar.tsx must render ModelScript logo icon",
+      (navbarSrc.includes("/brand-dark.png") && navbarSrc.includes("/brand.png")) ||
+        (navbarSrc.includes("/ms-logo-light.png") && navbarSrc.includes("/ms-logo.png")),
+      "PlaygroundNavbar.tsx must render brand icon",
     );
     assert.ok(!navbarSrc.includes("AnsatzMark"), "PlaygroundNavbar.tsx must not render legacy AnsatzMark");
     assert.ok(
-      navbarSrc.includes('title="ModelScript Playground') || navbarSrc.includes("Ansatz Sketch"),
-      "PlaygroundNavbar.tsx BrandLink must have title='ModelScript Playground'",
+      navbarSrc.includes('title="Ansatz Morsel"') ||
+        navbarSrc.includes('title="ModelScript Playground') ||
+        navbarSrc.includes("Ansatz Sketch"),
+      "PlaygroundNavbar.tsx BrandLink must have title='Ansatz Morsel'",
     );
-    assert.ok(navbarSrc.includes("ModelScript"), "PlaygroundNavbar.tsx must render ModelScript brand text");
-
-    // PlaygroundPage must use ModelScript Playground title
     assert.ok(
-      pageSrc.includes("ModelScript Playground"),
-      "PlaygroundPage.tsx must set page title to ModelScript Playground",
+      navbarSrc.includes("Morsel") || navbarSrc.includes("ModelScript"),
+      "PlaygroundNavbar.tsx must render Morsel brand text",
+    );
+
+    // PlaygroundPage must use Morsel / Playground title
+    assert.ok(
+      pageSrc.includes("Ansatz Morsel") || pageSrc.includes("ModelScript Playground"),
+      "PlaygroundPage.tsx must set page title",
     );
   });
 

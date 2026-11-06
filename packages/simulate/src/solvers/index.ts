@@ -8,5 +8,6 @@ export * from "./rodas4p.js";
 export * from "./sde-solver.js";
 export * from "./sparse-solver-bridge.js";
 export * from "./sundials-wasm.js";
+export * from "./opf/index.js";
 export * from "./trbdf2.js";
 export * from "./tsit5.js";

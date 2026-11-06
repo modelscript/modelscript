@@ -3301,7 +3301,14 @@ documents.onDidChangeContent((change) => {
         if (oldCached?.tree && oldCached.tree !== tree) {
           oldCached.tree.delete?.();
         }
-        documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
+        const classCache = oldCached && oldCached.text === text ? oldCached.classCache : new Map();
+        documentManager.documentTrees.set(uri, { text, tree, classCache });
+        workspaceManager.unifiedWorkspace.setDocumentTree(uri, tree);
+        const uDoc = workspaceManager.unifiedWorkspace.getDocument(uri);
+        if (uDoc) {
+          uDoc.text = text;
+          uDoc.tree = tree;
+        }
         const { syntaxDiags, wasmLintDiags } = validationService.collectSyntaxErrors(
           tree.rootNode,
           change.document,
@@ -3347,61 +3354,18 @@ documents.onDidChangeContent((change) => {
     connection.console.info(`[perf][keypress] Synchronous Tier 1: ${(tKeypressEnd - tKeypressStart).toFixed(2)}ms`);
   }
 
-  // === TIER 2: Short Debounce (~60ms) — Local File Index & Outline Update ===
+  // === TIER 2: Short Debounce (~60ms) — Local File Index, QueryEngine Swap & Outline Update ===
   activeShortDebounceTimers.set(
     uri,
     setTimeout(() => {
       activeShortDebounceTimers.delete(uri);
       if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
 
-      const cached = documentManager.documentTrees.get(uri);
-      if (cached?.tree) {
-        const langId = plugin?.id ?? (change.document.languageId || "modelica");
-        const wsIndex = plugin?.workspaceIndex ?? workspaceManager.getWorkspaceIndex(langId);
-        if (wsIndex && typeof wsIndex.has === "function") {
-          const effectiveUri = uri.startsWith("modelscript-lib://global")
-            ? "file://" + uri.substring("modelscript-lib://global".length)
-            : uri;
-          const prevIndexedText = validationService.lastIndexedText.get(effectiveUri);
-          if (prevIndexedText !== cached.text) {
-            validationService.lastIndexedText.set(effectiveUri, cached.text);
-            let actualEditRanges: { startOffset: number; endOffset: number }[] | undefined;
-            let totalDelta: number | undefined;
-            if (prevIndexedText !== undefined) {
-              const edit = computeTreeEdit(prevIndexedText, cached.text);
-              actualEditRanges = [
-                {
-                  startOffset: edit.startIndex,
-                  endOffset: Math.max(edit.oldEndIndex, edit.newEndIndex),
-                },
-              ];
-              totalDelta = edit.newEndIndex - edit.oldEndIndex;
-            }
-            if (wsIndex.has(effectiveUri)) {
-              wsIndex.reindexDocument?.(effectiveUri, () => cached.tree.rootNode, actualEditRanges, totalDelta);
-            } else {
-              wsIndex.register?.(effectiveUri, () => cached.tree.rootNode);
-            }
-            wsIndex.getFileIndex?.(effectiveUri);
-            const wsInstances = workspaceManager.workspaceInstances;
-            if (wsInstances) {
-              for (const key of wsInstances.keys()) {
-                if (key.startsWith(effectiveUri + "#")) {
-                  wsInstances.delete(key);
-                }
-              }
-            }
-            workspaceManager.documentInstances.delete(uri);
-            workspaceManager.documentInstances.delete(effectiveUri);
-            const activeEngine = plugin?.queryEngine ?? workspaceManager.getQueryEngine(langId);
-            if (activeEngine && typeof activeEngine.disposeDocument === "function") {
-              activeEngine.disposeDocument(effectiveUri);
-              if (uri !== effectiveUri) activeEngine.disposeDocument(uri);
-            }
-            validationService.sendProjectTreeChanged();
-          }
+      void validationService.syncDocumentForDiagram(uri).then((didSync) => {
+        if (didSync && (validationService.documentRevisions.get(uri) ?? 0) === currentRevision) {
+          validationService.sendProjectTreeChanged(uri);
         }
-      }
+      });
     }, 60),
   );
 

@@ -9,5 +9,6 @@ export * from "./lsp.js";
 export * from "./parser/opendss-parser.js";
 export * from "./projections/opendss-to-modelica.js";
 export * from "./solvers/power-flow-solver.js";
+export * from "./solvers/d-opf.js";
 export * from "./types.js";
 export * from "./workspace-index.js";

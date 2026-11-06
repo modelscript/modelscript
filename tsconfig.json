@@ -74,6 +74,8 @@
       "@modelscript/cellml/*": ["./languages/cellml/src/*"],
       "@modelscript/cfd": ["./languages/cfd/src/index.ts"],
       "@modelscript/cfd/*": ["./languages/cfd/src/*"],
+      "@modelscript/cgmes": ["./languages/cgmes/src/index.ts"],
+      "@modelscript/cgmes/*": ["./languages/cgmes/src/*"],
       "@modelscript/csv": ["./languages/csv/src/index.ts", "./languages/csv/language.ts"],
       "@modelscript/csv/language": ["./languages/csv/src/language.ts", "./languages/csv/language.ts"],
       "@modelscript/csv/parser": ["./languages/csv/src-gen/bindings.js"],

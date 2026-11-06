@@ -2,6 +2,18 @@
 
 import { parseUrdf } from "@modelscript/urdf";
 import React, { useMemo, useState } from "react";
+import { BltVisualizer } from "./BltVisualizer.js";
+import { analyzeModelBlt } from "./blt-analysis.js";
+import {
+  DaeAdvancedInspector,
+  PowerGridInspector,
+  MultibodyInspector,
+  ThermoFluidInspector,
+  CaeContinuumInspector,
+  RequirementsOntologyInspector,
+  BiochemInspector,
+  AutomationControlInspector,
+} from "./inspectors/index.js";
 const ReqifViewer = React.lazy(() => import("../../artifacts/ReqifViewer").then((m) => ({ default: m.ReqifViewer })));
 
 export interface PolyglotDomainPanelProps {
@@ -1793,6 +1805,81 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   const isDark = colorMode === "dark";
   const isReqIf = dialect.toLowerCase() === "reqif" || dialect.toLowerCase() === "reqifz" || code.includes("<REQ-IF");
 
+  const isAcausalDae =
+    ["modelica", "modelscript", "mo", "msx"].includes(dialect.toLowerCase()) ||
+    ((dialect.toLowerCase() === "spice" || dialect.toLowerCase() === "verilog-a") && code.includes("="));
+
+  const bltAnalysis = useMemo(() => {
+    if (!isAcausalDae) return null;
+    const lns = code.split(/\r?\n/);
+    return analyzeModelBlt(code, lns);
+  }, [code, isAcausalDae]);
+
+  const hasBltData = Boolean(bltAnalysis && (bltAnalysis.equations.length > 0 || bltAnalysis.variables.length > 0));
+  const d = dialect.toLowerCase();
+  const lines = useMemo(() => code.split(/\r?\n/), [code]);
+
+  // Dynamically compute which specialized inspector views are appropriate for this specific model
+  const availableSubTabs = useMemo(() => {
+    const tabs: Array<{ id: string; label: string }> = [];
+
+    // 1. BLT Causal Architecture: only for acausal DAE models with equations
+    if (isAcausalDae && hasBltData) {
+      tabs.push({ id: "blt", label: "⚡ BLT Causal Architecture" });
+    }
+
+    // 2. DAE Physics & Pantelides: for DAE models with continuous derivatives, connectors, units
+    if (isAcausalDae && (code.includes("der(") || code.includes("connect(") || code.includes("unit=") || code.includes("initial equation"))) {
+      tabs.push({ id: "dae_physics", label: "🔬 Pantelides & Kirchhoff" });
+    }
+
+    // 3. Electrical Power Grid: for power transmission/distribution/netlists
+    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis"].includes(d) || code.includes("BUS DATA") || code.includes("BRANCH DATA")) {
+      tabs.push({ id: "power_grid", label: "⚡ Power Grid & Y-Bus" });
+    }
+
+    // 4. Multibody Kinematics: for mechanism models
+    if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario"].includes(d) || code.includes("<robot") || code.includes("<joint") || code.includes("PART/")) {
+      tabs.push({ id: "multibody", label: "🤖 Multibody & Mobility" });
+    }
+
+    // 5. Thermo-Fluid Hydraulics: for pipe networks, wells, process flows
+    if (["olga", "lps", "gtsuite", "easy5", "rocets", "relap5", "aspen", "epanet", "swmm", "eclipse", "energyplus"].includes(d) || code.includes("PIPE") || code.includes("HYDRAULIC")) {
+      tabs.push({ id: "thermo_fluid", label: "🌊 Hydraulics & HGL" });
+    }
+
+    // 6. CAD / CAE Continuum: for STEP, FEA, CFD
+    if (["fea", "cfd", "step", "scad", "qif"].includes(d) || code.trimStart().startsWith("ISO-10303-21;") || code.includes("*ELEMENT") || code.includes("MARKER_")) {
+      tabs.push({ id: "cae", label: "📐 CAD B-Rep & FEA" });
+    }
+
+    // 7. Requirements & Ontologies: for SysML v2, ReqIF, OWL2
+    if (["sysml2", "reqif", "oscal", "owl2"].includes(d) || code.includes("<REQ-IF") || code.includes("requirement def") || code.includes("owl:")) {
+      tabs.push({ id: "requirements", label: "🎯 Requirements & DL" });
+    }
+
+    // 8. Biochemistry & Metabolic Networks: for SBML, Cantera, SMILES
+    if (["sbml", "cantera", "smiles", "antimony", "bngl"].includes(d) || code.includes("<sbml") || code.includes("reaction")) {
+      tabs.push({ id: "biochem", label: "🧬 Stoichiometry & Pathways" });
+    }
+
+    // 9. Industrial Automation & Control: for PLCOpen, AutomationML
+    if (["plcopen", "automationml", "aml"].includes(d) || code.includes("PROGRAM ") || code.includes("INITIAL_STEP")) {
+      tabs.push({ id: "automation", label: "⚙️ SFC State Machine & WCET" });
+    }
+
+    // Always include entity & parameter inspector table
+    tabs.push({ id: "entities", label: "📋 Declared Entities & Parameters" });
+
+    return tabs;
+  }, [d, isAcausalDae, hasBltData, code]);
+
+  const defaultSubTab = isAcausalDae && hasBltData ? "blt" : "entities";
+  const [activeSubTab, setActiveSubTab] = useState<string>(defaultSubTab);
+  const effectiveSubTab = availableSubTabs.some((t) => t.id === activeSubTab)
+    ? activeSubTab
+    : (availableSubTabs.some((t) => t.id === defaultSubTab) ? defaultSubTab : (availableSubTabs[0]?.id || "entities"));
+
   const analysis = useMemo<DomainAnalysisResult>(() => {
     const lines = code.split(/\r?\n/);
     const d = dialect.toLowerCase();
@@ -1883,24 +1970,80 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
             Live structural inspection synchronized with editor buffer — click any row to jump to source line
           </div>
         </div>
-        <input
-          type="search"
-          placeholder="Filter entities, IDs, or parameters…"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          style={{
-            padding: "5px 10px",
-            borderRadius: 6,
-            border: `1px solid ${borderCol}`,
-            backgroundColor: cardBg,
-            color: textPrimary,
-            fontSize: 12,
-            minWidth: 230,
-          }}
-        />
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {availableSubTabs.length > 1 && (
+            <div
+              style={{
+                display: "inline-flex",
+                borderRadius: 6,
+                border: `1px solid ${borderCol}`,
+                overflow: "hidden",
+                backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
+              }}
+            >
+              {availableSubTabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveSubTab(t.id)}
+                  style={{
+                    padding: "5px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    border: "none",
+                    cursor: "pointer",
+                    backgroundColor: effectiveSubTab === t.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
+                    color: effectiveSubTab === t.id ? "#ffffff" : textMuted,
+                    transition: "all 0.15s ease",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <input
+            type="search"
+            placeholder="Filter entities, IDs, or parameters…"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 6,
+              border: `1px solid ${borderCol}`,
+              backgroundColor: cardBg,
+              color: textPrimary,
+              fontSize: 12,
+              minWidth: 210,
+            }}
+          />
+        </div>
       </div>
 
-      {/* KPI Cards */}
+      {effectiveSubTab === "blt" && bltAnalysis ? (
+        <BltVisualizer analysis={bltAnalysis} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "dae_physics" ? (
+        <DaeAdvancedInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "power_grid" ? (
+        <PowerGridInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "multibody" ? (
+        <MultibodyInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "thermo_fluid" ? (
+        <ThermoFluidInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "cae" ? (
+        <CaeContinuumInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "requirements" ? (
+        <RequirementsOntologyInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "biochem" ? (
+        <BiochemInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "automation" ? (
+        <AutomationControlInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : (
+        <>
+          {/* KPI Cards */}
       <div
         style={{
           display: "grid",
@@ -2103,6 +2246,8 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
           </div>
         );
       })}
+        </>
+      )}
     </div>
   );
 };

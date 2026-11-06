@@ -16,7 +16,7 @@ import DOMPurify from "dompurify";
 import React from "react";
 import { getKindBadgeStyle } from "../ClassTree";
 import type { Translations } from "./util/i18n";
-import type { DiagramNode } from "./util/lsp-bridge";
+import { getClassIcon, globalClassIconCache, type DiagramNode } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
 
 interface ComponentListProps {
@@ -29,6 +29,7 @@ interface ComponentListProps {
 
 interface ComponentIconProps {
   iconSvg?: string | undefined;
+  className?: string | undefined;
   kind?: string | undefined;
   size?: number | undefined;
   darkMode?: boolean | undefined;
@@ -78,13 +79,51 @@ export function getSemanticKindIcon(kind: string | undefined, size = 16): React.
 }
 
 export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
-  const { iconSvg, kind, size = 18, darkMode } = props;
+  const { iconSvg: propSvg, className, kind, size = 18, darkMode } = props;
+  const cleanClassName = className?.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
 
-  if (!iconSvg) {
+  const [svg, setSvg] = React.useState<string | null>(
+    propSvg ?? (cleanClassName ? (globalClassIconCache.get(cleanClassName) ?? null) : null),
+  );
+
+  React.useEffect(() => {
+    if (propSvg) {
+      setSvg(propSvg);
+      if (cleanClassName) globalClassIconCache.set(cleanClassName, propSvg);
+      return;
+    }
+    if (!cleanClassName) {
+      setSvg(null);
+      return;
+    }
+    if (globalClassIconCache.has(cleanClassName)) {
+      setSvg(globalClassIconCache.get(cleanClassName) ?? null);
+      return;
+    }
+    let cancelled = false;
+    getClassIcon(cleanClassName)
+      .then((result) => {
+        if (!cancelled) {
+          setSvg(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSvg(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propSvg, cleanClassName]);
+
+  const effectiveSvg = propSvg || svg;
+
+  if (!effectiveSvg) {
     return getSemanticKindIcon(kind, size - 2);
   }
 
-  const displaySvg = invertSvgColors(iconSvg, !!darkMode);
+  const displaySvg = invertSvgColors(effectiveSvg, !!darkMode);
   const rawSizedSvg = displaySvg
     .replace(/width=(["']).*?\1/, 'width="100%"')
     .replace(/height=(["']).*?\1/, 'height="100%"');
@@ -115,7 +154,9 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
   }
 
   const validComponents = components.filter((c) => {
-    if (!c.id || c.id.startsWith("__diagram_")) return false;
+    if (!c.id || c.id.startsWith("__diagram_") || c.id.startsWith("solder_dot_")) return false;
+    // Exclude synthetic junction dots or nodes without properties
+    if (!c.properties || (c as any).shape === "circle") return false;
     const kind = c.properties?.classKind?.toLowerCase();
     // Exclude Modelica connectors from the top-level components list
     if (kind && kind.includes("connector")) return false;
@@ -150,7 +191,12 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
             onClick={() => component.id && onSelect(component.id)}
           >
             <NavList.LeadingVisual>
-              <ComponentIcon iconSvg={component.properties?.iconSvg} kind={rawKind} darkMode={isDark} />
+              <ComponentIcon
+                iconSvg={component.properties?.iconSvg}
+                className={rawClassName || component.properties?.className}
+                kind={rawKind}
+                darkMode={isDark}
+              />
             </NavList.LeadingVisual>
             <div
               style={{
@@ -192,7 +238,7 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
                     {shortTypeName}
                   </span>
                 )}
-                {badgeStyle && (
+                {!shortTypeName && badgeStyle && (
                   <span
                     style={{
                       fontSize: 9,

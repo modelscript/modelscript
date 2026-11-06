@@ -72,10 +72,11 @@ const activeSvg = computed<string>(() => {
   return isDark.value ? example.value.svgDark : example.value.svgLight;
 });
 
-const sketchHref = computed<string>(() => {
-  if (!example.value) return `${ansatzOrigin.value}/sketch`;
-  return `${ansatzOrigin.value}/sketch#m=${example.value.permalinkToken}`;
+const morselHref = computed<string>(() => {
+  if (!example.value) return `${ansatzOrigin.value}/morsel`;
+  return `${ansatzOrigin.value}/morsel#m=${example.value.permalinkToken}`;
 });
+const sketchHref = morselHref;
 
 const canvasTransform = computed<string>(() => {
   return `translate(${panX.value}px, ${panY.value}px) scale(${zoom.value})`;
@@ -209,13 +210,13 @@ function onPointerUp(e: PointerEvent) {
         </div>
 
         <a
-          :href="sketchHref"
+          :href="morselHref"
           target="_blank"
           rel="noopener noreferrer"
           class="open-playground-link"
-          title="Open this model in Ansatz Sketch"
+          title="Open this model in Ansatz Morsel"
         >
-          <span>Sketch</span>
+          <span>Morsel</span>
           <MsIcon name="arrow-up-right" :size="13" />
         </a>
       </div>

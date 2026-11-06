@@ -35,6 +35,7 @@ const DOMAIN_COMMAND_LOADERS: Record<string, DomainModuleLoader> = {
   c: async () => (await import("../commands/c.js")).CCommand,
   ccsds: async () => (await import("../commands/ccsds.js")).CcsdsCommand,
   cfd: async () => (await import("../commands/cfd.js")).CfdCommand,
+  cgmes: async () => (await import("../commands/cgmes.js")).CgmesCommand,
   easy5: async () => (await import("../commands/easy5.js")).Easy5Command,
   eclipse: async () => (await import("../commands/eclipse.js")).EclipseCommand,
   energyplus: async () => (await import("../commands/energyplus.js")).EnergyPlusCommand,

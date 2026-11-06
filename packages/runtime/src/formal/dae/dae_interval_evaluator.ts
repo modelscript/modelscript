@@ -207,7 +207,11 @@ export class DaeIntervalEvaluator {
     // 2. Constants / Parameters with start or binding values
     const variability = this.arena.getVarVariability(varIdx);
     if (variability === Variability.Parameter || variability === Variability.Constant) {
-      const bindingExpr = (this.arena as any).getVarBindingExpr?.(varIdx) ?? -1;
+      const bindingExpr =
+        this.arena.getExplicitVarExpression?.(varIdx) ??
+        this.arena.getVarExpression?.(varIdx) ??
+        (this.arena as any).getVarBindingExpr?.(varIdx) ??
+        -1;
       if (bindingExpr >= 0) {
         const res = this.evaluateExpr(bindingExpr);
         if (!res.interval.isBottom()) {
@@ -290,6 +294,14 @@ export class DaeIntervalEvaluator {
         }
         return toIv(b);
       },
+      derivative: (_varIdx, name) => {
+        const derIdx = this.arena.getVarIdxByName(`der(${name})`);
+        if (derIdx >= 0) {
+          const b = boundOf(derIdx);
+          return toIv(b);
+        }
+        return undefined;
+      },
     };
     const ivRes = evalArenaExpr(this.arena, exprId, ivEnv, IntervalDomain);
     issues.push(...ivRes.issues);
@@ -305,6 +317,18 @@ export class DaeIntervalEvaluator {
         const form = this.affineDomain.fresh(b);
         this.affineCache.set(varIdx, { lo: b.lo, hi: b.hi, form });
         return form;
+      },
+      derivative: (_varIdx, name) => {
+        const derIdx = this.arena.getVarIdxByName(`der(${name})`);
+        if (derIdx >= 0) {
+          const b = toIv(boundOf(derIdx));
+          const hit = this.affineCache.get(derIdx);
+          if (hit && hit.lo === b.lo && hit.hi === b.hi) return hit.form;
+          const form = this.affineDomain.fresh(b);
+          this.affineCache.set(derIdx, { lo: b.lo, hi: b.hi, form });
+          return form;
+        }
+        return undefined;
       },
     };
     const affRes = evalArenaExpr(this.arena, exprId, affEnv, this.affineDomain);

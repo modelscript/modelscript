@@ -520,7 +520,7 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
 
           {displayPost.artifact_view_id && (
             <>
-              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Artifact Context:</Text>
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Morsel Context:</Text>
               <Text style={{ color: "var(--color-success-fg, #1a7f37)", fontWeight: 500 }}>
                 ✓ Simulation model #{displayPost.artifact_view_id} (Tamper-evident)
               </Text>

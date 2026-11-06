@@ -55,6 +55,7 @@ COPY languages/cantera/package.json languages/cantera/
 COPY languages/ccsds/package.json languages/ccsds/
 COPY languages/cellml/package.json languages/cellml/
 COPY languages/cfd/package.json languages/cfd/
+COPY languages/cgmes/package.json languages/cgmes/
 COPY languages/csv/package.json languages/csv/
 COPY languages/dicom-rt/package.json languages/dicom-rt/
 COPY languages/easy5/package.json languages/easy5/

@@ -4,6 +4,7 @@ import { Context } from "@modelscript/modelica/context";
 import { registerWindow } from "@svgdotjs/svg.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import v8 from "node:v8";
 import { createSVGWindow } from "svgdom";
 import xmlFormat from "xml-formatter";
@@ -11,12 +12,28 @@ import xmlFormat from "xml-formatter";
 import type { ClassMetadata, ComponentMetadata } from "../database.js";
 import { NodeFileSystem } from "./filesystem.js";
 
+interface HeadlessSvgWindow {
+  document?: {
+    documentElement?: {
+      childNodes?: { length: number };
+    } | null;
+    body?: {
+      innerHTML?: string;
+    } | null;
+  } | null;
+}
+
 /** Initialize the headless SVG environment once. */
 let svgWindowInitialized = false;
+let globalSvgWindow: HeadlessSvgWindow | null = null;
 function ensureSvgWindow(): void {
   if (svgWindowInitialized) return;
-  const window = createSVGWindow();
-  registerWindow(window, window.document);
+  const win = createSVGWindow();
+  registerWindow(
+    win as unknown as Parameters<typeof registerWindow>[0],
+    win.document as unknown as Parameters<typeof registerWindow>[1],
+  );
+  globalSvgWindow = win as unknown as HeadlessSvgWindow;
   svgWindowInitialized = true;
 }
 
@@ -538,14 +555,22 @@ function buildClassAdapter(
   context: Context,
   symbolId: number,
   AnnotationEvaluatorClass: AnnotationEvaluatorConstructor,
+  depth = 0,
+  adapterCache = new Map<number, ClassAdapter | null>(),
   visited = new Set<number>(),
 ): ClassAdapter | null {
   if (visited.has(symbolId)) return null;
+  const cached = adapterCache.get(symbolId);
+  if (cached !== undefined) return cached;
+
   visited.add(symbolId);
 
   const queryDB = context.queryEngine.toQueryDB();
   const entry = queryDB.symbol(symbolId);
-  if (!entry) return null;
+  if (!entry) {
+    adapterCache.set(symbolId, null);
+    return null;
+  }
   const cstNode = queryDB.cstNode(symbolId) as CstNodeLike | null;
   const children = queryDB.childrenOf(symbolId) || [];
   const components: ClassAdapterComponent[] = [];
@@ -554,8 +579,14 @@ function buildClassAdapter(
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
-      const _childCst = queryDB.cstNode(child.id) as CstNodeLike | null;
-      void _childCst;
+      const isConnector =
+        child.metadata?.["causality"] === "connector" || classKindFromEntry(child) === "connector";
+
+      // Depth-bounding: components of components (depth >= 1) are only needed if they are
+      // interface connectors (pins/ports). Internal subcomponents of subcomponents are never
+      // rendered on a parent diagram.
+      if (depth >= 1 && !isConnector) continue;
+
       let childClassId = queryDB.query("classInstance", child.id) as number | undefined;
       if (typeof childClassId !== "number") {
         const compTypeName = (child.metadata?.["typeSpecifier"] as string | undefined) || "";
@@ -564,8 +595,15 @@ function buildClassAdapter(
         }
       }
       const compCls =
-        typeof childClassId === "number"
-          ? buildClassAdapter(context, childClassId, AnnotationEvaluatorClass, new Set(visited))
+        typeof childClassId === "number" && depth < 2
+          ? buildClassAdapter(
+              context,
+              childClassId,
+              AnnotationEvaluatorClass,
+              depth + 1,
+              adapterCache,
+              new Set(visited),
+            )
           : null;
       const childMod = queryDB.query("effectiveModification", child.id) as ModificationLike | undefined;
       let exprText = childMod?.bindingExpression?.text ?? childMod?.bindingExpression?.value;
@@ -585,8 +623,8 @@ function buildClassAdapter(
         id: child.id,
         name: child.name,
         entry: child,
-        cstNode: _childCst,
-        abstractSyntaxNode: _childCst,
+        cstNode: null,
+        abstractSyntaxNode: null,
         classInstance: compCls,
         classKind: compCls?.classKind ?? classKindFromEntry(child),
         modification: {
@@ -607,7 +645,10 @@ function buildClassAdapter(
           },
         },
       });
-    } else if (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) {
+    } else if (
+      (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) &&
+      depth === 0
+    ) {
       const connCst = queryDB.cstNode(child.id) as CstNodeLike | null;
       let lhs = "";
       let rhs = "";
@@ -632,8 +673,15 @@ function buildClassAdapter(
         const baseId = resolveSymbolIdInScope(context, symbolId, baseName);
         if (baseId) baseSym = queryDB.symbol(baseId);
       }
-      if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id)) {
-        const baseAdapter = buildClassAdapter(context, baseSym.id, AnnotationEvaluatorClass, new Set(visited));
+      if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id) && depth < 2) {
+        const baseAdapter = buildClassAdapter(
+          context,
+          baseSym.id,
+          AnnotationEvaluatorClass,
+          depth + 1,
+          adapterCache,
+          new Set(visited),
+        );
         if (baseAdapter) {
           extendsClassInstances.push({ classInstance: baseAdapter });
         }
@@ -692,6 +740,8 @@ function buildClassAdapter(
     }
     return evaluator.evaluate(cstNode, name);
   };
+
+  adapterCache.set(symbolId, adapter);
   return adapter;
 }
 
@@ -784,14 +834,23 @@ export async function processLibrary(
     await onReady(context);
   }
 
-  // Dynamic safety limit: 75% of the configured V8 heap size limit, capped at 5 GB
+  // Dynamic safety limit: on low-memory hosts (e.g. 2GB droplet with --max-old-space-size=1400),
+  // trip SVG skipping and cache pruning much earlier (55% of limit or 700MB) before V8 old space
+  // fragmentation causes fatal "Ineffective mark-compacts near heap limit".
   const v8Limit = v8.getHeapStatistics().heap_size_limit;
-  const HEAP_LIMIT = Math.min(5 * 1024 * 1024 * 1024, Math.floor(v8Limit * 0.75));
+  const isLowMem = os.totalmem() <= 2.5 * 1024 * 1024 * 1024 || v8Limit <= 2048 * 1024 * 1024;
+  const HEAP_LIMIT = isLowMem
+    ? Math.min(Math.floor(v8Limit * 0.55), 700 * 1024 * 1024)
+    : Math.min(5 * 1024 * 1024 * 1024, Math.floor(v8Limit * 0.70));
   let classesProcessed = 0;
   let classesReused = 0;
 
   function isMemoryTight(): boolean {
-    return process.memoryUsage().heapUsed > HEAP_LIMIT;
+    const mem = process.memoryUsage();
+    if (mem.heapUsed > HEAP_LIMIT) return true;
+    if (isLowMem && mem.rss > 1400 * 1024 * 1024) return true;
+    if (os.freemem() < 250 * 1024 * 1024) return true;
+    return false;
   }
 
   function tryGC() {
@@ -1142,26 +1201,12 @@ export async function processLibrary(
               }
             } catch {}
 
-            const win = (
-              globalThis as {
-                window?:
-                  | {
-                      document?:
-                        | {
-                            body?: { innerHTML: string } | undefined;
-                            documentElement?: { childNodes?: unknown[] } | undefined;
-                          }
-                        | undefined;
-                    }
-                  | undefined;
+            if (globalSvgWindow?.document) {
+              if (globalSvgWindow.document.documentElement?.childNodes) {
+                globalSvgWindow.document.documentElement.childNodes.length = 0;
               }
-            ).window;
-            if (win?.document) {
-              if (win.document.documentElement?.childNodes) {
-                win.document.documentElement.childNodes.length = 0;
-              }
-              if (win.document.body) {
-                win.document.body.innerHTML = "";
+              if (globalSvgWindow.document.body) {
+                globalSvgWindow.document.body.innerHTML = "";
               }
             }
           }
@@ -1181,10 +1226,18 @@ export async function processLibrary(
           classesProcessed++;
         }
 
-        if (classesProcessed % 50 === 0) {
+        if (classesProcessed % 50 === 0 || isMemoryTight()) {
           context.pruneCaches();
           queryDB.flushVolatile?.();
           queryDB.clearMemos?.();
+          if (globalSvgWindow?.document) {
+            if (globalSvgWindow.document.documentElement?.childNodes) {
+              globalSvgWindow.document.documentElement.childNodes.length = 0;
+            }
+            if (globalSvgWindow.document.body) {
+              globalSvgWindow.document.body.innerHTML = "";
+            }
+          }
           tryGC();
         }
 

@@ -206,14 +206,14 @@ end MySystem;`,
     }
   };
 
-  const handleOpenInFullSketch = () => {
+  const handleOpenInFullMorsel = () => {
     const hash = compressMorselPayload({
       v: 1,
       lang: dialect,
       code,
       title: modelTitle.trim() || "Model",
     });
-    window.open(`/sketch#m=${hash}`, "_blank", "noopener,noreferrer");
+    window.open(`/morsel#m=${hash}`, "_blank", "noopener,noreferrer");
   };
 
   const modal = (
@@ -221,7 +221,7 @@ end MySystem;`,
       <ModalContent $isFullScreen={isFullScreen} onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <HeaderLeft>
-            <Badge>⚡ Sketch</Badge>
+            <Badge>⚡ Morsel</Badge>
             <input
               type="text"
               value={modelTitle}
@@ -279,11 +279,11 @@ end MySystem;`,
 
           <HeaderRight>
             <IconButton
-              aria-label="Open in full Sketch workbench"
+              aria-label="Open in full Morsel workbench"
               icon={LinkExternalIcon}
               size="small"
-              onClick={handleOpenInFullSketch}
-              title="Open in full Sketch workbench"
+              onClick={handleOpenInFullMorsel}
+              title="Open in full Morsel workbench"
             />
             <IconButton
               aria-label={isFullScreen ? "Exit Full Screen" : "Full Screen"}

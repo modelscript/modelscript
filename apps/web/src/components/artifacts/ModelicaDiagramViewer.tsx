@@ -517,7 +517,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
       title,
     });
     const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    return `/sketch${fromArtifact}#m=${hash}`;
+    return `/morsel${fromArtifact}#m=${hash}`;
   };
 
   const handleFork = () => {
@@ -717,7 +717,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
             )}
             {Boolean(viewConfig?.standalone) && (
               <Button size="small" variant="primary" leadingVisual={DraftingTriangleIcon} onClick={handleFork}>
-                Sketch
+                Morsel
               </Button>
             )}
           </ToolbarRight>

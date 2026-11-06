@@ -98,7 +98,7 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     assert.strictEqual(SketchIcon, AnsatzSketchIcon, "SketchIcon must be an exact alias of AnsatzSketchIcon");
   });
 
-  it("verifies Caddyfile redirects morsel.modelscript.org to ansatz.social/sketch", () => {
+  it("verifies Caddyfile redirects morsel.modelscript.org to ansatz.social/morsel", () => {
     const caddyPath = path.resolve(import.meta.dirname, "../../../config/Caddyfile");
     const caddySrc = fs.readFileSync(caddyPath, "utf-8");
 
@@ -107,16 +107,16 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       "Caddyfile must define morsel.modelscript.org server block",
     );
     assert.ok(
-      caddySrc.includes("redir @embed https://ansatz.social/embed/sketch{?query} permanent"),
-      "Caddyfile must redirect embed paths to https://ansatz.social/embed/sketch",
+      caddySrc.includes("redir @embed https://ansatz.social/embed/morsel{?query} permanent"),
+      "Caddyfile must redirect embed paths to https://ansatz.social/embed/morsel",
     );
     assert.ok(
-      caddySrc.includes("redir @root https://ansatz.social/sketch{?query} permanent"),
-      "Caddyfile must redirect root path to https://ansatz.social/sketch",
+      caddySrc.includes("redir @root https://ansatz.social/morsel{?query} permanent"),
+      "Caddyfile must redirect root path to https://ansatz.social/morsel",
     );
     assert.ok(
-      caddySrc.includes("redir https://ansatz.social/sketch{uri} permanent"),
-      "Caddyfile must redirect arbitrary paths under https://ansatz.social/sketch",
+      caddySrc.includes("redir https://ansatz.social/morsel{uri} permanent"),
+      "Caddyfile must redirect arbitrary paths under https://ansatz.social/morsel",
     );
     assert.ok(caddySrc.includes("ide.modelscript.org {"), "Caddyfile must define ide.modelscript.org server block");
     assert.ok(
@@ -133,25 +133,25 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     );
   });
 
-  it("verifies App.tsx mounts /sketch and /studio with backward-compatible redirects", () => {
+  it("verifies App.tsx mounts /morsel and /studio with backward-compatible redirects", () => {
     const appPath = path.resolve(import.meta.dirname, "../src/App.tsx");
     const appSrc = fs.readFileSync(appPath, "utf-8");
 
     assert.ok(
-      appSrc.includes('<Route path="/sketch" element={<PlaygroundPage />} />'),
-      "App.tsx must route /sketch to PlaygroundPage",
+      appSrc.includes('<Route path="/morsel" element={<PlaygroundPage />} />'),
+      "App.tsx must route /morsel to PlaygroundPage",
     );
     assert.ok(
-      appSrc.includes('<Route path="/embed/sketch" element={<EmbedPlaygroundPage />} />'),
-      "App.tsx must route /embed/sketch to EmbedPlaygroundPage",
+      appSrc.includes('<Route path="/embed/morsel" element={<EmbedPlaygroundPage />} />'),
+      "App.tsx must route /embed/morsel to EmbedPlaygroundPage",
     );
     assert.ok(
-      appSrc.includes('<Route path="/morsel" element={<PreserveParamsNavigate to="/sketch" />} />'),
-      "App.tsx must redirect /morsel to /sketch",
+      appSrc.includes('<Route path="/sketch" element={<PreserveParamsNavigate to="/morsel" />} />'),
+      "App.tsx must redirect /sketch to /morsel",
     );
     assert.ok(
-      appSrc.includes('<Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/sketch" />} />'),
-      "App.tsx must redirect /embed/morsel to /embed/sketch",
+      appSrc.includes('<Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/morsel" />} />'),
+      "App.tsx must redirect /embed/sketch to /embed/morsel",
     );
     assert.ok(
       appSrc.includes('<Route path="/studio" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />'),
@@ -163,15 +163,18 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     );
   });
 
-  it("verifies Sidebar.tsx integrates AnsatzSketchIcon in split button pointing to /sketch and omits redundant top-left icon", () => {
+  it("verifies Sidebar.tsx integrates MorselIcon in split button pointing to /morsel and omits redundant top-left icon", () => {
     const sidebarPath = path.resolve(import.meta.dirname, "../src/components/Sidebar.tsx");
     const sidebarSrc = fs.readFileSync(sidebarPath, "utf-8");
 
-    assert.ok(sidebarSrc.includes('to="/sketch"'), "Sidebar.tsx must link sketch button to /sketch");
-    assert.ok(sidebarSrc.includes("AnsatzSketchIcon"), "Sidebar.tsx must render AnsatzSketchIcon");
+    assert.ok(sidebarSrc.includes('to="/morsel"'), "Sidebar.tsx must link morsel button to /morsel");
     assert.ok(
-      sidebarSrc.includes('title="Ansatz Sketch"'),
-      "Sidebar.tsx sketch button must have title='Ansatz Sketch'",
+      sidebarSrc.includes("MorselIcon") || sidebarSrc.includes("AnsatzSketchIcon"),
+      "Sidebar.tsx must render MorselIcon or AnsatzSketchIcon",
+    );
+    assert.ok(
+      sidebarSrc.includes('title="Ansatz Morsel"'),
+      "Sidebar.tsx morsel button must have title='Ansatz Morsel'",
     );
     assert.ok(
       !sidebarSrc.includes("<BrandSketchLink") && !sidebarSrc.includes("<BrandPlaygroundLink"),
@@ -179,18 +182,18 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     );
   });
 
-  it("verifies post components and artifact card viewers use DraftingTriangleIcon and 'Sketch' label", () => {
+  it("verifies post components and artifact card viewers use DraftingTriangleIcon and 'Morsel' label", () => {
     // CardFooter.tsx
     const cardFooterPath = path.resolve(import.meta.dirname, "../src/components/artifacts/card/CardFooter.tsx");
     const cardFooterSrc = fs.readFileSync(cardFooterPath, "utf-8");
     assert.ok(cardFooterSrc.includes("DraftingTriangleIcon"), "CardFooter must import and render DraftingTriangleIcon");
     assert.ok(
-      cardFooterSrc.includes('aria-label="Open in Sketch"'),
-      "CardFooter must have aria-label='Open in Sketch'",
+      cardFooterSrc.includes('aria-label="Open in Morsel"'),
+      "CardFooter must have aria-label='Open in Morsel'",
     );
     assert.ok(
-      cardFooterSrc.includes('data-tip={"Sketch\\nEdit and run in the browser"}'),
-      "CardFooter must have Sketch tooltip",
+      cardFooterSrc.includes('data-tip={"Morsel\\nEdit and run in the browser"}'),
+      "CardFooter must have Morsel tooltip",
     );
 
     // ModelicaCodeViewer.tsx
@@ -200,8 +203,8 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       codeViewerSrc.includes("leadingVisual={DraftingTriangleIcon}"),
       "ModelicaCodeViewer must use DraftingTriangleIcon",
     );
-    assert.ok(codeViewerSrc.includes("Open in Sketch"), "ModelicaCodeViewer must say 'Open in Sketch'");
-    assert.ok(codeViewerSrc.includes("navigate(`/sketch"), "ModelicaCodeViewer must navigate to /sketch");
+    assert.ok(codeViewerSrc.includes("Open in Morsel"), "ModelicaCodeViewer must say 'Open in Morsel'");
+    assert.ok(codeViewerSrc.includes("navigate(`/morsel"), "ModelicaCodeViewer must navigate to /morsel");
 
     // ModelicaDiagramViewer.tsx
     const diagViewerPath = path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaDiagramViewer.tsx");
@@ -210,26 +213,26 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       diagViewerSrc.includes("leadingVisual={DraftingTriangleIcon}"),
       "ModelicaDiagramViewer must use DraftingTriangleIcon",
     );
-    assert.ok(diagViewerSrc.includes("return `/sketch"), "ModelicaDiagramViewer must return /sketch in getForkUrl");
+    assert.ok(diagViewerSrc.includes("return `/morsel"), "ModelicaDiagramViewer must return /morsel in getForkUrl");
 
     // PostBodyContent.tsx
     const postBodyPath = path.resolve(import.meta.dirname, "../src/components/post/PostBodyContent.tsx");
     const postBodySrc = fs.readFileSync(postBodyPath, "utf-8");
     assert.ok(postBodySrc.includes("<DraftingTriangleIcon"), "PostBodyContent must render DraftingTriangleIcon");
-    assert.ok(postBodySrc.includes("Open in Sketch"), "PostBodyContent must say 'Open in Sketch'");
+    assert.ok(postBodySrc.includes("Open in Morsel"), "PostBodyContent must say 'Open in Morsel'");
 
     // PostMarkdownContent.tsx
     const postMdPath = path.resolve(import.meta.dirname, "../src/components/post/PostMarkdownContent.tsx");
     const postMdSrc = fs.readFileSync(postMdPath, "utf-8");
-    assert.ok(postMdSrc.includes("Open in Sketch"), "PostMarkdownContent must say 'Open in Sketch'");
-    assert.ok(postMdSrc.includes("navigate(`/sketch#m="), "PostMarkdownContent must navigate to /sketch");
+    assert.ok(postMdSrc.includes("Open in Morsel"), "PostMarkdownContent must say 'Open in Morsel'");
+    assert.ok(postMdSrc.includes("navigate(`/morsel#m="), "PostMarkdownContent must navigate to /morsel");
 
     // PostActionMenu.tsx
     const postActionPath = path.resolve(import.meta.dirname, "../src/components/post/PostActionMenu.tsx");
     const postActionSrc = fs.readFileSync(postActionPath, "utf-8");
     assert.ok(
-      postActionSrc.includes("<DraftingTriangleIcon size={16} /> Edit Artifact in Sketch / VS Code"),
-      "PostActionMenu must say Sketch / VS Code",
+      postActionSrc.includes("<DraftingTriangleIcon size={16} /> Edit Morsel in Morsel / VS Code"),
+      "PostActionMenu must say Morsel / VS Code",
     );
 
     // Polyglot and specialized viewers

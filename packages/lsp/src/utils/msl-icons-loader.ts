@@ -11,7 +11,17 @@ let mslIconsPromise: Promise<number> | null = null;
  */
 export function loadPrebakedMslIcons(serverDistBase?: string): Promise<number> {
   if (!mslIconsPromise) {
-    mslIconsPromise = doLoadPrebakedMslIcons(serverDistBase);
+    mslIconsPromise = doLoadPrebakedMslIcons(serverDistBase)
+      .then((count) => {
+        if (count === 0) {
+          mslIconsPromise = null;
+        }
+        return count;
+      })
+      .catch((err) => {
+        mslIconsPromise = null;
+        throw err;
+      });
   }
   return mslIconsPromise;
 }
@@ -81,8 +91,20 @@ async function doLoadPrebakedMslIcons(serverDistBase?: string): Promise<number> 
   // Browser / Network environment
   if (typeof fetch === "function") {
     try {
-      const base = serverDistBase?.replace(/\/$/, "") || "";
-      const fetchUrls = [`${base}/msl-icons.json.gz`, `${base}/assets/msl-icons.json.gz`, "msl-icons.json.gz"];
+      const globalBase = (globalThis as any).serverDistBase?.replace(/\/$/, "");
+      const base =
+        serverDistBase &&
+        (serverDistBase.startsWith("http://") ||
+          serverDistBase.startsWith("https://") ||
+          serverDistBase.startsWith("/"))
+          ? serverDistBase.replace(/\/$/, "")
+          : globalBase || "";
+      const fetchUrls = [
+        `${base}/msl-icons.json.gz`,
+        `${base}/assets/msl-icons.json.gz`,
+        "msl-icons.json.gz",
+        "/lsp/server/dist/msl-icons.json.gz",
+      ];
 
       for (const url of fetchUrls) {
         try {

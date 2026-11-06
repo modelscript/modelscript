@@ -498,7 +498,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const stencils = useMemo(() => getStencilsForDialect(dialect), [dialect]);
   const isPlaygroundRoute =
     typeof window !== "undefined" &&
-    (window.location.pathname.startsWith("/playground") || window.location.pathname.startsWith("/sketch"));
+    (window.location.pathname.startsWith("/playground") ||
+      window.location.pathname.startsWith("/sketch") ||
+      window.location.pathname.startsWith("/morsel"));
 
   const supports3dView = activeLangInfo.supports3d || cadComponents.length > 0 || Boolean(vtkBuffer);
   const centerViewTabs = useMemo(() => {
@@ -1259,25 +1261,26 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "var(--ms-text-2, var(--color-fg-muted))",
-                        letterSpacing: "0.02em",
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {selectedTreeClassName || activeLangInfo.label}
-                    </span>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "var(--color-fg-default, var(--ms-text-1))",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={selectedTreeClassName || activeLangInfo.label || activeLangInfo.name}
+                      >
+                        {selectedTreeClassName || activeLangInfo.label || activeLangInfo.name}
+                      </span>
+                    </div>
                   )}
                 </div>
 
                 {/* Right: History (Undo/Redo), Zoom Controls, Diagram Type Selector, Add Element, Auto-Layout */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                   {activeLangInfo.supportsDiagram && (
                     <>
                       {/* Undo / Redo */}
@@ -1286,11 +1289,6 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 1,
-                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-                          borderRadius: 6,
-                          border:
-                            colorMode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
-                          padding: 1,
                         }}
                       >
                         <button
@@ -1357,17 +1355,21 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         </button>
                       </div>
 
+                      <div
+                        style={{
+                          width: 1,
+                          height: 14,
+                          backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+                          margin: "0 2px",
+                        }}
+                      />
+
                       {/* Zoom Controls */}
                       <div
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 1,
-                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-                          borderRadius: 6,
-                          border:
-                            colorMode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
-                          padding: 1,
                         }}
                       >
                         <button
@@ -1414,16 +1416,23 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                               background: "transparent",
                               borderRadius: 4,
                               padding: "2px 5px",
-                              fontSize: 10,
+                              fontSize: 11,
                               fontWeight: 600,
                               color: "var(--ms-text-1, var(--color-fg-default))",
                               cursor: "pointer",
-                              minWidth: 38,
+                              minWidth: 44,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 3,
                               textAlign: "center",
                               fontVariantNumeric: "tabular-nums",
                             }}
                           >
-                            {Math.round(currentZoom * 100)}%
+                            <span>{Math.round(currentZoom * 100)}%</span>
+                            <svg width="7" height="7" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.65 }}>
+                              <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z" />
+                            </svg>
                           </button>
                           {showZoomMenu && (
                             <div
@@ -1593,17 +1602,21 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         </button>
                       </div>
 
+                      <div
+                        style={{
+                          width: 1,
+                          height: 14,
+                          backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
+                          margin: "0 2px",
+                        }}
+                      />
+
                       {/* Rotate & Canvas View Tools */}
                       <div
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 1,
-                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-                          borderRadius: 6,
-                          border:
-                            colorMode === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
-                          padding: 1,
                         }}
                       >
                         <button
@@ -1825,7 +1838,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           width: 1,
                           height: 14,
                           backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
-                          margin: "0 1px",
+                          margin: "0 2px",
                         }}
                       />
                     </>
@@ -1877,15 +1890,17 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       display: "flex",
                       alignItems: "center",
                       gap: 4,
-                      padding: "3px 8px",
+                      padding: "2px 8px",
+                      height: 24,
                       fontSize: 11,
                       fontWeight: 600,
-                      borderRadius: 999,
-                      border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 40%, transparent)",
+                      borderRadius: 6,
+                      border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 35%, transparent)",
                       background: showPalette ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : "transparent",
                       color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
+                      transition: "all 0.15s ease",
                     }}
                     title="Open interactive element & stencil palette"
                   >
@@ -1934,7 +1949,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     marginRight: 4,
                   }}
                 >
-                  {activeLangInfo.label} Palette:
+                  {activeLangInfo.label || activeLangInfo.name} Palette:
                 </span>
                 {stencils.map((item) => (
                   <button
@@ -1954,7 +1969,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
                       color: "var(--ms-text-1, var(--color-fg-default))",
                     }}
-                    title={`Insert ${item.label} into ${activeLangInfo.label} document`}
+                    title={`Insert ${item.label} into ${activeLangInfo.label || activeLangInfo.name} document`}
                   >
                     + {item.label}
                   </button>

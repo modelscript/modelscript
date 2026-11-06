@@ -43,6 +43,8 @@ export interface PlacementItem {
   width: number;
   height: number;
   rotation?: number | undefined;
+  flipX?: boolean | undefined;
+  flipY?: boolean | undefined;
   edges?: EdgeUpdate[] | undefined;
   connectedOnly?: boolean | undefined;
 }

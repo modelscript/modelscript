@@ -14,7 +14,7 @@ import { ChevronRightIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnsatzSketchIcon } from "../icons";
+import { MorselIcon } from "../icons";
 import Spinner from "../Spinner";
 import { ComponentIcon } from "./ComponentList";
 import type { Translations } from "./util/i18n";
@@ -160,29 +160,32 @@ function ParameterRow({
   const [localValue, setLocalValue] = useState(value);
   const [isSaving, setIsSaving] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const lastCommittedRef = useRef(value);
+  const onParameterChangeRef = useRef(onParameterChange);
+  onParameterChangeRef.current = onParameterChange;
 
   useEffect(() => {
     setLocalValue(value);
+    lastCommittedRef.current = value;
     setIsSaving(false);
   }, [value, parameter.name]);
 
   useEffect(() => {
     if (isBoolean) return; // Boolean toggle calls onParameterChange immediately via onClick
-    if (localValue === value || localValue === "-") {
+    if (localValue === lastCommittedRef.current || localValue === "-") {
       setIsSaving(false);
       return;
     }
 
     setIsSaving(true);
     const timeoutId = setTimeout(() => {
-      if (onParameterChange) {
-        onParameterChange(parameter.name, localValue);
-      }
+      lastCommittedRef.current = localValue;
+      onParameterChangeRef.current?.(parameter.name, localValue);
       setIsSaving(false);
-    }, 150);
+    }, 60);
 
     return () => clearTimeout(timeoutId);
-  }, [localValue, value, parameter.name, onParameterChange, isBoolean]);
+  }, [localValue, parameter.name, isBoolean]);
 
   const isNumeric = !isBoolean && !isNaN(parseFloat(localValue));
 
@@ -394,28 +397,35 @@ function SchemaFieldRow({
   onResolveConflict?: ((resolution: "keep_local" | "accept_remote") => void) | undefined;
 }) {
   const isEnabled = evaluatePropertyPredicate(field.enabledIf, contextValues) && !field.readOnly;
-  const [localVal, setLocalVal] = useState<string>(String(currentValue ?? field.defaultValue ?? ""));
+  const initialValStr = String(currentValue ?? field.defaultValue ?? "");
+  const [localVal, setLocalVal] = useState<string>(initialValStr);
   const [isSaving, setIsSaving] = useState(false);
+  const lastCommittedRef = useRef<string>(initialValStr);
+  const onParameterChangeRef = useRef(onParameterChange);
+  onParameterChangeRef.current = onParameterChange;
 
   useEffect(() => {
-    setLocalVal(String(currentValue ?? field.defaultValue ?? ""));
+    const nextVal = String(currentValue ?? field.defaultValue ?? "");
+    setLocalVal(nextVal);
+    lastCommittedRef.current = nextVal;
     setIsSaving(false);
   }, [currentValue, field.defaultValue]);
 
   useEffect(() => {
     if (field.kind === "boolean") return;
-    if (localVal === "-" || localVal === String(currentValue ?? field.defaultValue ?? "")) {
+    if (localVal === "-" || localVal === lastCommittedRef.current) {
       setIsSaving(false);
       return;
     }
 
     setIsSaving(true);
     const timeout = setTimeout(() => {
-      onParameterChange?.(field.key, localVal);
+      lastCommittedRef.current = localVal;
+      onParameterChangeRef.current?.(field.key, localVal);
       setIsSaving(false);
-    }, 150);
+    }, 60);
     return () => clearTimeout(timeout);
-  }, [localVal, currentValue, field.key, field.defaultValue, field.kind, onParameterChange]);
+  }, [localVal, field.key, field.kind]);
 
   const validationErr = validatePropertyValue(field, localVal, contextValues);
   const unitStr = field.unit ? formatUnit(field.unit) : undefined;
@@ -789,37 +799,42 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
   const [localName, setLocalName] = useState(properties?.name || "");
   const [localDescription, setLocalDescription] = useState(properties?.description || "");
   const [descriptionEditing, setDescriptionEditing] = useState(false);
+  const lastCommittedNameRef = useRef(properties?.name || "");
+  const lastCommittedDescRef = useRef(properties?.description || "");
+  const onNameChangeRef = useRef(onNameChange);
+  onNameChangeRef.current = onNameChange;
+  const onDescriptionChangeRef = useRef(onDescriptionChange);
+  onDescriptionChangeRef.current = onDescriptionChange;
 
   useEffect(() => {
     setLocalName(properties?.name || "");
+    lastCommittedNameRef.current = properties?.name || "";
     setLocalDescription(properties?.description || "");
+    lastCommittedDescRef.current = properties?.description || "";
     setDescriptionEditing(false);
   }, [properties?.name, properties?.description]);
 
   useEffect(() => {
-    if (!localName || localName === properties?.name) return;
+    if (!localName || localName === lastCommittedNameRef.current) return;
 
     const timeoutId = setTimeout(() => {
-      if (onNameChange) {
-        onNameChange(localName);
-      }
-    }, 150);
+      lastCommittedNameRef.current = localName;
+      onNameChangeRef.current?.(localName);
+    }, 60);
 
     return () => clearTimeout(timeoutId);
-  }, [localName, properties?.name, onNameChange]);
+  }, [localName]);
 
   useEffect(() => {
-    const propertiesDescription = properties?.description || "";
-    if (localDescription === propertiesDescription) return;
+    if (localDescription === lastCommittedDescRef.current) return;
 
     const timeoutId = setTimeout(() => {
-      if (onDescriptionChange) {
-        onDescriptionChange(localDescription);
-      }
-    }, 150);
+      lastCommittedDescRef.current = localDescription;
+      onDescriptionChangeRef.current?.(localDescription);
+    }, 60);
 
     return () => clearTimeout(timeoutId);
-  }, [localDescription, properties?.description, onDescriptionChange]);
+  }, [localDescription]);
 
   // Optimistic local values map with 3-way bidirectional conflict management
   const conflictMgrRef = useRef<ConflictManager>(new ConflictManager());
@@ -930,7 +945,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             color: "var(--ms-brand, #0891b2)",
           }}
         >
-          <AnsatzSketchIcon size={24} variant="triangle" />
+          <MorselIcon size={24} />
         </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-fg-default)", marginBottom: 6 }}>
           {translations.noComponentSelected}
@@ -1362,7 +1377,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                     key={parameter.name}
                     parameter={parameter}
                     colorMode={colorMode}
-                    onParameterChange={onParameterChange}
+                    onParameterChange={handleParameterChangeWrapper}
                   />
                 ))}
             </div>

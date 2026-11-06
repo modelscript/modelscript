@@ -33,7 +33,7 @@ import { useInstanceBranding } from "../InstanceBrandingContext";
 import { getSearchCompletions } from "../api";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useTheme } from "../theme";
-import { AnsatzSketchIcon } from "./icons";
+import { MorselIcon } from "./icons";
 
 interface CommandItem {
   id: string;
@@ -370,13 +370,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         },
       },
       {
-        id: "nav-sketch",
+        id: "nav-morsel",
         category: "Navigation",
-        title: "Ansatz Sketch",
+        title: "Ansatz Morsel",
         subtitle: "Draft, simulate, and visualize engineering models in the browser",
-        icon: <AnsatzSketchIcon size={16} variant="outline" />,
+        icon: <MorselIcon size={16} />,
         action: () => {
-          navigate("/sketch");
+          navigate("/morsel");
           onClose();
         },
       },

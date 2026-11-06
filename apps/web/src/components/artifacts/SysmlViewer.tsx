@@ -1179,7 +1179,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       title: systemName,
     });
     const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    navigate(`/sketch${fromArtifact}#m=${hash}`);
+    navigate(`/morsel${fromArtifact}#m=${hash}`);
   };
 
   const filteredParts = useMemo(() => {
@@ -1305,10 +1305,10 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                     size="small"
                     variant="primary"
                     onClick={handleOpenPlayground}
-                    title="Open SysML v2 model in Sketch"
+                    title="Open SysML v2 model in Morsel"
                   >
                     <DraftingTriangleIcon size={13} />
-                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Sketch</Text>
+                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Morsel</Text>
                   </Button>
                 )}
               </Box>

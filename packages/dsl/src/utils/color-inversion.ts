@@ -179,13 +179,19 @@ const MAX_CACHE_SIZE = 2000;
 /**
  * Adapt a single CSS color for dark mode using split-path Oklch perceptual adaptation.
  * - Achromatic neutrals (black, white, greys) undergo smooth lightness inversion (black -> off-white, white -> dark).
+ * - Pastels and light canvas backgrounds (cream, beige, peach) invert to dark tinted tones.
  * - Chromatic colors (red, blue, green, yellow, etc.) strictly preserve their hue and chroma,
  *   with an adaptive lightness floor ensuring vibrant contrast against dark surfaces.
  */
-export function adaptColorForDarkMode(color: string, options?: DarkModeColorOptions): string {
+export function adaptColorForDarkMode(
+  color: string,
+  options?: DarkModeColorOptions,
+  role?: "stroke" | "text" | "fill" | "general",
+): string {
   if (options?.isDark === false) return color;
 
-  const cacheKey = `${color}::${options?.targetBg ?? ""}::${options?.minChromaticLightness ?? ""}`;
+  const roleKey = role ?? "general";
+  const cacheKey = `${color}::${options?.targetBg ?? ""}::${options?.minChromaticLightness ?? ""}::${roleKey}`;
   const cached = colorCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -200,6 +206,7 @@ export function adaptColorForDarkMode(color: string, options?: DarkModeColorOpti
 
   const chromaThreshold = options?.chromaThreshold ?? 0.04;
   const isNeutral = C < chromaThreshold;
+  const isPastel = C < 0.12 && L >= 0.65;
 
   let targetBgL = 0.12;
   if (options?.targetBg) {
@@ -214,10 +221,39 @@ export function adaptColorForDarkMode(color: string, options?: DarkModeColorOpti
   let outG: number;
   let outB: number;
 
-  if (isNeutral) {
+  if (role === "text") {
+    // Text in dark mode must ALWAYS be clearly legible against dark surfaces
+    if (isNeutral || isPastel) {
+      // Both black text (L=0) and white text (L=1) map to crisp off-white in dark mode
+      const textL = 0.93;
+      [outR, outG, outB] = oklchToSrgb(textL, 0, 0);
+    } else {
+      // Chromatic text: ensure minimum lightness 0.75
+      const textL = Math.max(0.75, L);
+      [outR, outG, outB] = oklchToSrgb(textL, Math.min(C, 0.28), h);
+    }
+  } else if (role === "stroke") {
+    // Strokes/lines/wires/axes must NEVER be crushed to invisible dark grey in dark mode
+    if (isNeutral) {
+      // S-curve inversion preserving high contrast for foreground lines
+      // Dark grey lines like #5f5f5f (L=0.48) map to L >= 0.78, #c0c0c0 (L=0.81) maps to L >= 0.68
+      const t = Math.max(0, Math.min(1, L));
+      const strokeL = Math.max(0.68, Math.min(0.93, 0.93 - 0.25 * Math.pow(t, 1.2) - 0.45 * Math.pow(t, 3.5)));
+      [outR, outG, outB] = oklchToSrgb(strokeL, 0, 0);
+    } else {
+      // Chromatic stroke: ensure minimum lightness 0.65
+      const strokeL = Math.max(0.65, L);
+      [outR, outG, outB] = oklchToSrgb(strokeL, Math.min(C, 0.28), h);
+    }
+  } else if (isNeutral) {
     // Non-linear inversion: black (L=0) maps to 0.93 (#ececec), white (L=1) maps to 0.13 (#1a1a1a).
     const invertedL = Math.max(0.12, Math.min(0.93, 0.93 - L * 0.8));
     [outR, outG, outB] = oklchToSrgb(invertedL, 0, 0);
+  } else if (isPastel) {
+    // Pastel fills (like beige #dfd3a9, peach #ffd5aa, or cream #ffd788):
+    // Invert lightness to dark tinted surface tone (0.15 - 0.28) while preserving warm hue and muted chroma!
+    const invertedL = Math.max(0.15, Math.min(0.28, 0.93 - L * 0.75));
+    [outR, outG, outB] = oklchToSrgb(invertedL, C * 0.7, h);
   } else {
     // Chromatic: PRESERVE HUE AND CHROMA.
     // Ensure sufficient lightness floor relative to dark container background.
@@ -246,22 +282,38 @@ export function adaptColorForDarkMode(color: string, options?: DarkModeColorOpti
 /**
  * Backwards-compatible alias for `adaptColorForDarkMode`.
  */
-export function invertColorHelmlab(color: string, options?: DarkModeColorOptions): string {
-  return adaptColorForDarkMode(color, options);
+export function invertColorHelmlab(
+  color: string,
+  options?: DarkModeColorOptions,
+  role?: "stroke" | "text" | "fill" | "general",
+): string {
+  return adaptColorForDarkMode(color, options, role);
+}
+
+/**
+ * Determines whether a color is a light paper or canvas background tone
+ * (white, off-white, beige, cream, pastel yellow/peach, or light grey with L >= 0.68).
+ */
+export function isLightPaperColor(color: string): boolean {
+  const parsed = parseCssColor(color);
+  if (!parsed) {
+    const c = color.trim().toLowerCase();
+    return c === "white" || c === "#fff" || c === "#ffffff" || c === "rgb(255,255,255)" || c === "rgb(255, 255, 255)";
+  }
+  const [L] = srgbToOklch(parsed.r / 255, parsed.g / 255, parsed.b / 255);
+  return L >= 0.68;
 }
 
 /** Regex matching CSS color values (hex, rgb, rgba). */
 const COLOR_VALUE_RE = /rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*[\d.]+)?\s*\)|#[0-9a-fA-F]{3,8}\b/g;
 
-/** Regex matching standard Modelica or diagram full-canvas background rects. */
-const FULL_CANVAS_RECT_RE =
-  /<rect\b([^>]*\b(?:width=["'](?:200(?:\.0+)?|100%)["']\s+height=["'](?:200(?:\.0+)?|100%)["']|height=["'](?:200(?:\.0+)?|100%)["']\s+width=["'](?:200(?:\.0+)?|100%)["'])[^>]*)>/gi;
-
 /**
  * Adapt all color values in an SVG string for dark mode.
  * - Inverts neutrals (black strokes become crisp off-white).
  * - Preserves semantic chromatic colors (Modelica red dot, pins, fluid lines).
- * - Optionally makes full-bleed white background bounding-box rectangles transparent.
+ * - Makes full-bleed white or light paper background bounding-box rectangles transparent (fill="none").
+ * - Boosts contrast on strokes and text so waveforms, axes, and labels remain crisp and readable.
+ * - Preserves white foreground glyphs without strokes (e.g. Information 'i').
  */
 export function adaptSvgColors(str: string, options?: boolean | DarkModeColorOptions): string {
   const opts: DarkModeColorOptions = typeof options === "boolean" ? { isDark: options } : (options ?? { isDark: true });
@@ -270,29 +322,93 @@ export function adaptSvgColors(str: string, options?: boolean | DarkModeColorOpt
 
   let out = str;
 
-  // 1. Strip or make transparent full-canvas white bounding-box rectangles if requested
+  // 1. Strip or make transparent full-canvas bounding-box rectangles if requested
+  // Matches rects with width/height >= 180, 100%, or 200 spanning canvas
   if (opts.stripBackgroundRects !== false) {
-    out = out.replace(FULL_CANVAS_RECT_RE, (match, attrs: string) => {
-      // Check if fill is white or near-white
-      const fillMatch = attrs.match(/\bfill=["']([^"']+)["']/i);
-      if (fillMatch && fillMatch[1]) {
-        const fillVal = fillMatch[1].trim().toLowerCase();
-        const isWhite =
-          fillVal === "#fff" ||
-          fillVal === "#ffffff" ||
-          fillVal === "white" ||
-          fillVal === "rgb(255,255,255)" ||
-          fillVal === "rgb(255, 255, 255)";
-        if (isWhite) {
-          return match.replace(/\bfill=["'][^"']+["']/i, 'fill="none"');
+    const RECT_TAG_RE = /<rect\b([^>]*?)>/gi;
+    out = out.replace(RECT_TAG_RE, (match, attrs: string) => {
+      const wM = attrs.match(/\bwidth=["']([^"']+)["']/i);
+      const hM = attrs.match(/\bheight=["']([^"']+)["']/i);
+      const wStr = wM ? wM[1] : undefined;
+      const hStr = hM ? hM[1] : undefined;
+      const w = wStr ? (wStr.endsWith("%") ? 200 : parseFloat(wStr)) : 0;
+      const h = hStr ? (hStr.endsWith("%") ? 200 : parseFloat(hStr)) : 0;
+
+      const isFullCanvas =
+        (w >= 180 || attrs.includes('width="100%"')) &&
+        (h >= 180 || attrs.includes('height="100%"'));
+
+      if (isFullCanvas) {
+        const fillM = attrs.match(/\bfill=["']([^"']+)["']/i);
+        const fillVal = fillM ? fillM[1] : undefined;
+        if (fillVal && !fillVal.startsWith("url(")) {
+          if (isLightPaperColor(fillVal)) {
+            return match.replace(/\bfill=["'][^"']+["']/i, 'fill="none"');
+          }
+        }
+        const styleFillM = attrs.match(/\bstyle=["'][^"']*\bfill:\s*([^;]+)[^"']*["']/i);
+        const styleFillVal = styleFillM ? styleFillM[1] : undefined;
+        if (styleFillVal && !styleFillVal.startsWith("url(")) {
+          if (isLightPaperColor(styleFillVal.trim())) {
+            return match.replace(/(\bstyle=["'][^"']*\bfill:\s*)[^;]+(;?[^"']*["'])/i, '$1none$2');
+          }
         }
       }
       return match;
     });
   }
 
-  // 2. Adapt all embedded color values
-  return out.replace(COLOR_VALUE_RE, (match) => adaptColorForDarkMode(match, opts));
+  // 2. Preserve white on foreground icon glyphs with no stroke (e.g. 'i' in Information)
+  out = out.replace(/<(path|polygon|circle|ellipse)\b([^>]*?)>/gi, (match, tag, attrs: string) => {
+    const strokeM = attrs.match(/\bstroke=["']([^"']+)["']/i);
+    const hasStroke = strokeM && strokeM[1] !== "none";
+    if (!hasStroke) {
+      const fillM = attrs.match(/\bfill=["']([^"']+)["']/i);
+      const fillVal = fillM ? fillM[1]?.toLowerCase() : undefined;
+      if (fillVal && (fillVal === "#ffffff" || fillVal === "#fff" || fillVal === "white")) {
+        return `<${tag}${attrs.replace(/\bfill=["'][^"']+["']/i, 'fill="rgb(245, 245, 245)"')}>`;
+      }
+    }
+    return match;
+  });
+
+  // 3. Process tags by category:
+  // (a) <text ...> elements
+  out = out.replace(/<text\b([^>]*?)>/gi, (_match, attrs: string) => {
+    const adaptedAttrs = attrs.replace(/\bfill=["']([^"']+)["']/gi, (fMatch, val: string) => {
+      if (val === "none" || val.startsWith("url(")) return fMatch;
+      return `fill="${adaptColorForDarkMode(val, opts, "text")}"`;
+    });
+    return `<text${adaptedAttrs}>`;
+  });
+
+  // (b) Non-text element tags
+  out = out.replace(/<(?!(?:text|\/text)\b)([a-zA-Z0-9_-]+)\b([^>]*?)>/gi, (_match, tag: string, attrs: string) => {
+    const adaptedAttrs = attrs.replace(/\bfill=["']([^"']+)["']/gi, (fMatch, val: string) => {
+      if (val === "none" || val.startsWith("url(") || val.startsWith("rgb(245, 245, 245)")) return fMatch;
+      return `fill="${adaptColorForDarkMode(val, opts, "fill")}"`;
+    });
+    return `<${tag}${adaptedAttrs}>`;
+  });
+
+  // 4. Adapt stroke attributes across all elements with high contrast floor
+  out = out.replace(/\bstroke=["']([^"']+)["']/gi, (match, val: string) => {
+    if (val === "none" || val.startsWith("url(")) return match;
+    return `stroke="${adaptColorForDarkMode(val, opts, "stroke")}"`;
+  });
+
+  // 5. Adapt stop-colors in gradients
+  out = out.replace(/\bstop-color=["']([^"']+)["']/gi, (_match, val: string) => {
+    return `stop-color="${adaptColorForDarkMode(val, opts, "general")}"`;
+  });
+
+  // 6. Adapt style attributes
+  out = out.replace(/\bstyle=["']([^"']+)["']/gi, (_match, styleBody: string) => {
+    const adaptedStyle = styleBody.replace(COLOR_VALUE_RE, (c) => adaptColorForDarkMode(c, opts, "general"));
+    return `style="${adaptedStyle}"`;
+  });
+
+  return out;
 }
 
 /**

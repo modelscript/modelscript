@@ -456,9 +456,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                   alignItems: "center",
                   gap: "6px",
                 }}
-                title="Open model in interactive Sketch"
+                title="Open model in interactive Morsel"
               >
-                <DraftingTriangleIcon size={14} /> Open in Sketch
+                <DraftingTriangleIcon size={14} /> Open in Morsel
               </button>
             )}
             {isEditable && (
@@ -527,7 +527,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                       if (navigator.share) {
                         navigator
                           .share({
-                            title: artifact.title || artifact.name || "Ansatz Artifact",
+                            title: artifact.title || artifact.name || "Ansatz Morsel",
                             url: `${window.location.origin}/render-artifact/${artifactId}`,
                           })
                           .catch(() => onCopyLink());
@@ -546,7 +546,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                       <ActionList.LeadingVisual>
                         <DraftingTriangleIcon />
                       </ActionList.LeadingVisual>
-                      Open in Sketch
+                      Open in Morsel
                     </ActionList.Item>
                   )}
                   {hasCloudSolverFlag && onRunOnHpc && (

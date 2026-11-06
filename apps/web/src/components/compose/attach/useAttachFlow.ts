@@ -174,11 +174,11 @@ export function useAttachFlow({ ctx, onAttached, onEdited }: UseAttachFlowParams
   /** Open the wizard for an edit/derive session (loading the view first when the caller did not have it). */
   const openSession = useCallback(
     async (s: Session) => {
-      let fileName = s.view?.title || "Artifact";
+      let fileName = s.view?.title || "Morsel";
       dispatch({ type: "analyze-start", fileName });
       try {
         const view = s.view ?? (await ctx.loadArtifactView(s.artifactId));
-        if (!view) throw new Error("This artifact could not be loaded.");
+        if (!view) throw new Error("This morsel could not be loaded.");
         s.view = view;
         fileName = view.title || fileName;
         const p = s.mode === "edit" ? findEditProfile(view) : findDeriveProfile(view);
@@ -198,7 +198,7 @@ export function useAttachFlow({ ctx, onAttached, onEdited }: UseAttachFlowParams
         dispatch({
           type: "failed",
           fileName,
-          message: err instanceof Error ? err.message : "Could not open this artifact.",
+          message: err instanceof Error ? err.message : "Could not open this morsel.",
         });
       }
     },
@@ -209,7 +209,7 @@ export function useAttachFlow({ ctx, onAttached, onEdited }: UseAttachFlowParams
   const startSession = useCallback(
     (s: Session): boolean => {
       if (current.current) return false;
-      current.current = { file: new File([], s.view?.title || "Artifact"), companions: [] };
+      current.current = { file: new File([], s.view?.title || "Morsel"), companions: [] };
       session.current = s;
       void openSession(s);
       return true;

@@ -225,9 +225,9 @@ function GlobalModals() {
             e.preventDefault();
             navWithScroll("/feeds");
           }
-        } else if (k === "p") {
+        } else if (k === "p" || k === "m") {
           e.preventDefault();
-          navWithScroll("/sketch");
+          navWithScroll("/morsel");
         } else if (k === "k") {
           e.preventDefault();
           navWithScroll("/packages");
@@ -310,7 +310,7 @@ function IdeFallbackNavigate() {
     searchParams.set("repo", `${params.provider}/${params.namespace}/${params.project}`);
   }
   const qs = searchParams.toString();
-  return <Navigate to={`/sketch${qs ? `?${qs}` : ""}${location.hash}`} replace />;
+  return <Navigate to={`/morsel${qs ? `?${qs}` : ""}${location.hash}`} replace />;
 }
 
 function LegacyUserRedirect() {
@@ -607,16 +607,19 @@ function App() {
                   <Route path="/verify-email" element={<VerifyEmailPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
-                  <Route path="/embed/playground" element={<EmbedPlaygroundPage />} />
-                  <Route path="/embed/sketch" element={<EmbedPlaygroundPage />} />
-                  <Route path="/morsel" element={<PreserveParamsNavigate to="/sketch" />} />
-                  <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/sketch" />} />
+                  <Route path="/embed/morsel" element={<EmbedPlaygroundPage />} />
+                  <Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/morsel" />} />
+                  <Route path="/embed/playground" element={<PreserveParamsNavigate to="/embed/morsel" />} />
+                  <Route path="/morsel" element={<PlaygroundPage />} />
+                  <Route path="/sketch" element={<PreserveParamsNavigate to="/morsel" />} />
+                  <Route path="/playground" element={<PreserveParamsNavigate to="/morsel" />} />
                   <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                   {/* Social shell routes */}
                   <Route element={<AppShell />}>
-                    <Route path="/sketch" element={<PlaygroundPage />} />
-                    <Route path="/playground" element={<PlaygroundPage />} />
+                    <Route path="/morsel" element={<PlaygroundPage />} />
+                    <Route path="/sketch" element={<PreserveParamsNavigate to="/morsel" />} />
+                    <Route path="/playground" element={<PreserveParamsNavigate to="/morsel" />} />
                     <Route
                       path="/home"
                       element={

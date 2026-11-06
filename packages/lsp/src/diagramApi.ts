@@ -5251,12 +5251,12 @@ export function processDiagramEditBatch(
       case "updateParameter":
         if (ops.computeParameterEdit)
           allEdits.push(...ops.computeParameterEdit(classInstance, action.name, action.parameter, action.value));
-        if (needsRender === "none") needsRender = "none";
+        if (needsRender === "none") needsRender = "debounced";
         break;
       case "updateProperty":
         if (ops.computeParameterEdit)
           allEdits.push(...ops.computeParameterEdit(classInstance, action.name, action.key, String(action.value)));
-        if (needsRender === "none") needsRender = "none";
+        if (needsRender === "none") needsRender = "debounced";
         break;
     }
   }

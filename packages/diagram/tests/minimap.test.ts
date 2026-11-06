@@ -177,4 +177,117 @@ describe("CAD Interactive Minimap HUD", () => {
     assert.match(svg.innerHTML, /<line x1="80" y1="50" x2="150" y2="140"/);
     assert.match(svg.innerHTML, /rgba\(56, 189, 248, 0\.2\)/); // Viewfinder rect
   });
+
+  it("renders multi-segment path for edges with intermediate vertices", () => {
+    const mockDoc = {
+      createElement: (tag: string) => createMockElement(tag),
+      createElementNS: (_ns: string, tag: string) => createMockElement(tag),
+    };
+    (globalThis as any).document = mockDoc;
+
+    const mockContainer = createMockElement("div");
+    const hud = ensureMinimapHud(mockContainer, () => {});
+    assert.ok(hud);
+
+    // Simulates an orthogonal circuit wire (e.g. Vb.p to L.p in RLC circuit)
+    const mockGraph: MinimapGraph = {
+      container: mockContainer,
+      getNodes: () => [
+        { id: "Vb", getPosition: () => ({ x: -70, y: 0 }), getSize: () => ({ width: 20, height: 20 }) },
+        { id: "L", getPosition: () => ({ x: 0, y: -40 }), getSize: () => ({ width: 20, height: 20 }) },
+      ],
+      getEdges: () => [
+        {
+          id: "e_vb_l",
+          getSourcePoint: () => ({ x: -70, y: -10 }),
+          getTargetPoint: () => ({ x: -10, y: -40 }),
+          getVertices: () => [{ x: -70, y: -40 }],
+        },
+      ],
+    };
+
+    updateMinimapHud(hud, mockGraph);
+
+    const svg = hud.querySelector("#minimap-svg");
+    assert.ok(svg);
+    // Must render a <path> connecting through the vertex, NOT a direct diagonal <line>
+    assert.match(svg.innerHTML, /<path d="M -70 -10 L -70 -40 L -10 -40"/);
+    assert.doesNotMatch(svg.innerHTML, /<line x1="-70" y1="-10" x2="-10" y2="-40"/);
+  });
+
+  it("renders exact path from EdgeView when available in X6 graph", () => {
+    const mockDoc = {
+      createElement: (tag: string) => createMockElement(tag),
+      createElementNS: (_ns: string, tag: string) => createMockElement(tag),
+    };
+    (globalThis as any).document = mockDoc;
+
+    const mockContainer = createMockElement("div");
+    const hud = ensureMinimapHud(mockContainer, () => {});
+    assert.ok(hud);
+
+    const edgeObj = { id: "edge_routed" };
+    const mockGraph: MinimapGraph = {
+      container: mockContainer,
+      getNodes: () => [
+        { id: "A", getPosition: () => ({ x: 0, y: 0 }), getSize: () => ({ width: 30, height: 30 }) },
+        { id: "B", getPosition: () => ({ x: 100, y: 100 }), getSize: () => ({ width: 30, height: 30 }) },
+      ],
+      getEdges: () => [edgeObj as any],
+      findViewByCell: (cell: any) => {
+        if (cell === edgeObj) {
+          return {
+            getConnectionPathData: () => "M 15 30 L 15 60 L 100 60 L 100 100",
+          };
+        }
+        return null;
+      },
+    };
+
+    updateMinimapHud(hud, mockGraph);
+
+    const svg = hud.querySelector("#minimap-svg");
+    assert.ok(svg);
+    assert.match(svg.innerHTML, /<path d="M 15 30 L 15 60 L 100 60 L 100 100"/);
+  });
+
+  it("expands minimap viewBox bounding box to encompass distant edge routes", () => {
+    const mockDoc = {
+      createElement: (tag: string) => createMockElement(tag),
+      createElementNS: (_ns: string, tag: string) => createMockElement(tag),
+    };
+    (globalThis as any).document = mockDoc;
+
+    const mockContainer = createMockElement("div");
+    const hud = ensureMinimapHud(mockContainer, () => {});
+    assert.ok(hud);
+
+    // Nodes are from 0..50, but edge vertices route out to (200, 300)
+    const mockGraph: MinimapGraph = {
+      container: mockContainer,
+      getNodes: () => [
+        { id: "N1", getPosition: () => ({ x: 0, y: 0 }), getSize: () => ({ width: 20, height: 20 }) },
+        { id: "N2", getPosition: () => ({ x: 40, y: 40 }), getSize: () => ({ width: 20, height: 20 }) },
+      ],
+      getEdges: () => [
+        {
+          id: "wide_edge",
+          getSourcePoint: () => ({ x: 10, y: 20 }),
+          getTargetPoint: () => ({ x: 50, y: 40 }),
+          getVertices: () => [{ x: 200, y: 300 }],
+        },
+      ],
+    };
+
+    updateMinimapHud(hud, mockGraph);
+
+    const svg = hud.querySelector("#minimap-svg");
+    assert.ok(svg);
+    const viewBox = svg.getAttribute("viewBox");
+    assert.ok(viewBox);
+    const [vx, vy, vw, vh] = viewBox.split(" ").map(Number);
+    // The total width and height must comfortably encompass (200, 300) plus margin
+    assert.ok(vw! >= 240);
+    assert.ok(vh! >= 340);
+  });
 });

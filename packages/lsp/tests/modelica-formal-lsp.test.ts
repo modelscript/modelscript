@@ -619,4 +619,71 @@ end PressureInterlock;
       );
     },
   );
+
+  await t.test(
+    "should not report false vanishing derivative warnings or attach diagnostics to annotation lines (RLCCircuit)",
+    async () => {
+      const rlcUri = "file:///workspace/RLCTest.mo";
+      const rlcContent = `model RLCTest
+  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)
+    annotation(Placement(transformation(origin = {-70, 0})));
+  Modelica.Electrical.Analog.Basic.Inductor L(L = 0.5)
+    annotation(Placement(transformation(origin = {0, 40})));
+  Modelica.Electrical.Analog.Basic.Capacitor C(C = 1e-4)
+    annotation(Placement(transformation(origin = {20, 0})));
+equation
+  connect(Vb.p, L.p)
+    annotation(Line(points = {{-70, 10}, {-70, 40}}));
+end RLCTest;
+`;
+      const rlcDoc = TextDocument.create(rlcUri, "modelica", 1, rlcContent);
+      mockDocManager.documents.set(rlcUri, rlcDoc);
+
+      const { DAEBuilder, VarType, Variability, Causality, BinOp, EqKind } = await import("@modelscript/runtime");
+      const modelStart = rlcContent.indexOf("model RLCTest");
+      (validationService as any).listModelicaClassesForUri = () => [
+        { name: "RLCTest", symbolId: 30, startOffset: modelStart, endOffset: rlcContent.length },
+      ];
+      (validationService as any).flattenModelicaClassForVerification = () => {
+        const arena: any = new DAEBuilder();
+        const lVar = arena.addVariable("L.i", VarType.Real, Variability.Continuous, Causality.Local);
+        const l_L = arena.addVariable("L.L", VarType.Real, Variability.Parameter, Causality.Local);
+        arena.setVarExpression(l_L, arena.addRealLiteral(0.5));
+        const l_v = arena.addVariable("L.v", VarType.Real, Variability.Continuous, Causality.Local);
+
+        const cVar = arena.addVariable("C.v", VarType.Real, Variability.Continuous, Causality.Local);
+        const c_C = arena.addVariable("C.C", VarType.Real, Variability.Parameter, Causality.Local);
+        arena.setVarExpression(c_C, arena.addRealLiteral(1e-4));
+        const c_i = arena.addVariable("C.i", VarType.Real, Variability.Continuous, Causality.Local);
+
+        // L.L * der(L.i) = L.v
+        const derL = arena.addDerExpr(arena.addNameExpr("L.i"));
+        const lhsL = arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("L.L"), derL);
+        arena.addEquation(EqKind.Simple, lhsL, arena.addNameExpr("L.v"));
+
+        // C.i = C.C * der(C.v)
+        const derC = arena.addDerExpr(arena.addNameExpr("C.v"));
+        const rhsC = arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("C.C"), derC);
+        arena.addEquation(EqKind.Simple, arena.addNameExpr("C.i"), rhsC);
+
+        return arena;
+      };
+
+      const diagnostics: any[] = [];
+      await validationService.postValidateModelicaDaeReachability(rlcUri, rlcDoc, diagnostics);
+
+      // 1. Must not report false singular algebraic loop or vanishing derivative
+      const vanishing = diagnostics.filter((d) => d.code === "singular_algebraic_loop");
+      assert.strictEqual(vanishing.length, 0, "Scaled derivatives with constant parameters must not vanish");
+
+      // 2. Diagnostics must never target annotation lines
+      for (const diag of diagnostics) {
+        const textOnLine = rlcContent.split("\n")[diag.range.start.line] ?? "";
+        assert.ok(
+          !textOnLine.trim().startsWith("annotation"),
+          `Diagnostic must not be placed on annotation line: "${textOnLine.trim()}"`,
+        );
+      }
+    },
+  );
 });

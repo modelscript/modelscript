@@ -251,14 +251,20 @@ export class JobQueue extends EventEmitter {
     try {
       await this.#runChildProcess(key, scriptPath, data, options);
     } catch (err) {
+      const recentLogs = this.#status.get(key)?.logs?.slice(-20).join(" ") ?? "";
       const isOom =
         err instanceof Error &&
         (err.message.includes("Out of memory") ||
           err.message.includes("out of memory") ||
           err.message.includes("heap limit") ||
           err.message.includes("Allocation failed") ||
+          err.message.includes("Ineffective mark-compacts") ||
           err.message.includes("SIGABRT") ||
-          err.message.includes("SIGKILL"));
+          err.message.includes("SIGKILL") ||
+          recentLogs.includes("heap limit") ||
+          recentLogs.includes("Allocation failed") ||
+          recentLogs.includes("JavaScript heap out of memory") ||
+          recentLogs.includes("Ineffective mark-compacts"));
 
       const retryOnOom = options?.retryOnOom ?? true;
       if (isOom && retryOnOom && !data["skipSvg"]) {
@@ -425,11 +431,13 @@ export class JobQueue extends EventEmitter {
         this.appendLog(key, chunk);
       });
 
+      let lastStderr = "";
       child.stderr?.setEncoding("utf8");
       child.stderr?.on("data", (chunk: string) => {
         resetInactivity();
         process.stderr.write(chunk);
         this.appendLog(key, chunk);
+        lastStderr = (lastStderr + chunk).slice(-4000);
       });
 
       child.on(
@@ -460,18 +468,40 @@ export class JobQueue extends EventEmitter {
       child.on("disconnect", () => {
         setTimeout(() => {
           if (!settled) {
-            settle(new Error(`Child process IPC disconnected unexpectedly`));
+            const stderrHasOom =
+              lastStderr.includes("heap limit") ||
+              lastStderr.includes("Allocation failed") ||
+              lastStderr.includes("JavaScript heap out of memory") ||
+              lastStderr.includes("Ineffective mark-compacts") ||
+              lastStderr.includes("Out of memory") ||
+              lastStderr.includes("out of memory");
+            settle(
+              new Error(
+                stderrHasOom
+                  ? `Child process IPC disconnected unexpectedly (Out of memory: JavaScript heap out of memory)`
+                  : `Child process IPC disconnected unexpectedly`,
+              ),
+            );
           }
         }, 500).unref();
       });
 
       child.on("exit", (code, signal) => {
+        const isOomSignal = signal === "SIGABRT" || signal === "SIGKILL" || (code !== null && code === 134);
+        const stderrHasOom =
+          lastStderr.includes("heap limit") ||
+          lastStderr.includes("Allocation failed") ||
+          lastStderr.includes("JavaScript heap out of memory") ||
+          lastStderr.includes("Ineffective mark-compacts") ||
+          lastStderr.includes("Out of memory") ||
+          lastStderr.includes("out of memory");
+
         if (ipcError) {
           settle(new Error(ipcError));
         } else if (code === 0) {
           settle();
-        } else if (signal === "SIGABRT" || signal === "SIGKILL" || (code !== null && code === 134)) {
-          settle(new Error(`Child process terminated by ${signal || `exit code ${code}`} (Out of memory)`));
+        } else if (isOomSignal || stderrHasOom) {
+          settle(new Error(`Child process terminated by ${signal || `exit code ${code}`} (Out of memory: heap limit exceeded)`));
         } else if (signal) {
           settle(new Error(`Child process killed by signal ${signal}`));
         } else {

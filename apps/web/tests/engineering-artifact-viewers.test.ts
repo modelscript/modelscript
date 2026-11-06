@@ -131,4 +131,30 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
       "PolyglotArtifactViewer must render OSCAL boundary SVG from source",
     );
   });
+
+  it("verifies PscadViewer and SspViewer statically import and bind client-side parsers", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const pscadSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/PscadViewer.tsx"),
+      "utf8",
+    );
+    assert.match(
+      pscadSrc,
+      /import\s*\{[^}]*parsePscadClient[^}]*\}\s*from\s*["']\.\/pscad-client-parser\.js["']/,
+      "PscadViewer must explicitly import parsePscadClient to bind it in local scope",
+    );
+
+    const sspSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/SspViewer.tsx"),
+      "utf8",
+    );
+    assert.match(
+      sspSrc,
+      /import\s*\{[^}]*parseSsdClientModel[^}]*\}\s*from\s*["']\.\/ssp-client-parser\.js["']/,
+      "SspViewer must explicitly import parseSsdClientModel to bind it in local scope",
+    );
+  });
 });
+

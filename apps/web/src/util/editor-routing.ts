@@ -529,7 +529,7 @@ export interface BuildEditorUrlOptions {
 
 /**
  * Builds the canonical URL to open, fork, edit, or reply to an artifact:
- * - Single-file artifacts route to `/sketch`
+ * - Single-file artifacts route to `/morsel`
  * - Multi-file artifacts route to `/studio`
  */
 export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): string {
@@ -602,7 +602,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
     return `/studio${qs ? `?${qs}` : ""}${hash}`;
   }
 
-  // Single-file -> /sketch
+  // Single-file -> /morsel
   const params = new URLSearchParams();
   if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
     params.set("fromArtifact", String(artifactId));
@@ -633,7 +633,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
   }
 
   const qs = params.toString();
-  return `/sketch${qs ? `?${qs}` : ""}${hash}`;
+  return `/morsel${qs ? `?${qs}` : ""}${hash}`;
 }
 
 /**

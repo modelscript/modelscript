@@ -307,5 +307,8 @@ export const DraftingTriangleIcon: React.FC<AnsatzSketchIconProps> = (props) => 
   <AnsatzSketchIcon color={props.color ?? "currentColor"} size={props.size ?? 16} {...props} variant="triangle" />
 );
 
+export const MorselIcon = DraftingTriangleIcon;
+export const AnsatzMorselIcon = AnsatzSketchIcon;
 export { AnsatzSketchIcon as SketchIcon };
 export default AnsatzSketchIcon;
+

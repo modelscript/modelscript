@@ -29,9 +29,11 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  const embedSrc = shareUrl.includes("/sketch")
-    ? shareUrl.replace("/sketch", "/embed/sketch")
-    : shareUrl.replace("/playground", "/embed/playground");
+  const embedSrc = shareUrl.includes("/morsel")
+    ? shareUrl.replace("/morsel", "/embed/morsel")
+    : shareUrl.includes("/sketch")
+      ? shareUrl.replace("/sketch", "/embed/morsel")
+      : shareUrl.replace("/playground", "/embed/morsel");
   const origin = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
   const defaultMorselTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel src="${embedSrc}" height="480px"></modelscript-morsel>`;
   const defaultCustomTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-viewer src="${embedSrc}" height="480px"></modelscript-viewer>`;

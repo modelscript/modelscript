@@ -1,0 +1,56 @@
+{
+  "name": "@modelscript/cgmes",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/cgmes-rdf-parser.d.ts",
+      "default": "./dist/src/parser/cgmes-rdf-parser.js"
+    },
+    "./topology": {
+      "types": "./dist/src/topology/topology-processor.d.ts",
+      "default": "./dist/src/topology/topology-processor.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/cgmes-to-psse.d.ts",
+      "default": "./dist/src/projections/cgmes-to-psse.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/psse": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "preview",
+    "category": "language"
+  }
+}

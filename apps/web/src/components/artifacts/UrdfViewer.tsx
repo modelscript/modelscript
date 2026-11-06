@@ -368,7 +368,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
       title: modelName,
     });
     const fromArt = artifactId || viewConfig.artifactId ? `?fromArtifact=${artifactId || viewConfig.artifactId}` : "";
-    navigate(`/sketch${fromArt}#m=${hash}`);
+    navigate(`/morsel${fromArt}#m=${hash}`);
   };
 
   const codeLines = projectedCode ? projectedCode.split(/\r?\n/) : [];
@@ -423,9 +423,9 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
               onClick={handleOpenPlayground}
-              title="Open in Sketch"
+              title="Open in Morsel"
             >
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

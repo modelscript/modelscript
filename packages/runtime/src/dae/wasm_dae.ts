@@ -1229,6 +1229,13 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   /**
+   * Returns the binding expression ID for `varIdx`, checking explicit binding first then falling back to expression.
+   */
+  getVarBindingExpr(varIdx: number): number | undefined {
+    return this.getExplicitVarExpression(varIdx) ?? this.getVarExpression(varIdx);
+  }
+
+  /**
    * Sets the explicit declaration binding expression (`= expr`) for `varIdx`.
    *
    * @param varIdx - 0-based variable index.

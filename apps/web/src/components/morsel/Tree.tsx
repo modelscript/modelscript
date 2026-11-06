@@ -25,7 +25,7 @@ import React from "react";
 import { getKindBadgeStyle } from "../ClassTree";
 import { getSemanticKindIcon } from "./ComponentList";
 import { startPlacement } from "./placement";
-import { getClassIcon, getLibraryTree, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
+import { getClassIcon, getLibraryTree, globalClassIconCache, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
 
 // ────────────────────────────────────────────────────────────────────
@@ -51,11 +51,12 @@ interface TreeWidgetProps {
 // Icon component (fetches SVG from LSP with caching)
 // ────────────────────────────────────────────────────────────────────
 
-const iconCache = new Map<string, string | null>();
+const iconCache = globalClassIconCache;
 
 function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: string, depth = 0): React.ReactElement {
+  const clean = className.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
   const k = (classKind || "").toLowerCase();
-  const n = (className || "").toLowerCase();
+  const n = (clean || "").toLowerCase();
   const id = (nodeId || "").toLowerCase();
 
   if (k === "loading-package") {
@@ -99,13 +100,13 @@ function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: str
   ) {
     return getSemanticKindIcon(k, 16);
   }
-  if (k.includes("sysml") || /\.(sysml|sysml2|kerml)$/i.test(n) || n === "sysml2") {
+  if (k.includes("sysml") || /\.(sysml|sysml2|kerml)$/i.test(n) || n === "sysml2" || n === "sysml") {
     return <WorkflowIcon size={16} style={{ color: "#8b5cf6", flexShrink: 0 }} />;
   }
   if (/\.(step|stp|p21|scad)$/i.test(n) || k.includes("cad") || k.includes("product")) {
     return <StackIcon size={16} style={{ color: "#10b981", flexShrink: 0 }} />;
   }
-  if (/\.(pscx|pslx|pswx|raw)$/i.test(n)) {
+  if (/\.(pscx|pslx|pswx|raw)$/i.test(n) || n === "pscad") {
     return <ZapIcon size={16} style={{ color: "#eab308", flexShrink: 0 }} />;
   }
   if (depth === 0 && (n === "modelica" || n === "complex" || n === "modelicaservices" || /\.mo$/i.test(n))) {
@@ -122,53 +123,54 @@ function ClassIcon({
   classKind,
   nodeId,
   depth = 0,
+  iconSvg: propSvg,
 }: {
   className: string;
   classKind?: string | undefined;
   nodeId?: string | undefined;
   depth?: number | undefined;
+  iconSvg?: string | null | undefined;
 }) {
-  const { colorMode } = useTheme();
-  const isDark = colorMode === "dark";
-  const skipModelicaIconFetch = Boolean(
-    classKind?.startsWith("owl2-") ||
-    classKind?.startsWith("ontology-") ||
-    nodeId?.startsWith("__owl2") ||
-    nodeId?.startsWith("__ontology") ||
-    /\.(owl|owl2|ofn|fss|ttl|sysml|sysml2|kerml|step|stp|scad|pscx|csv)$/i.test(className),
-  );
+  const cleanClassName = className.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
+  const { colorMode, resolvedColorMode } = useTheme();
+  const isDark = colorMode === "dark" || resolvedColorMode === "dark";
   const [svg, setSvg] = React.useState<string | null>(
-    skipModelicaIconFetch ? null : (iconCache.get(className) ?? null),
+    propSvg ?? (iconCache.get(cleanClassName) ?? null),
   );
   const requested = React.useRef(false);
 
   React.useEffect(() => {
-    if (skipModelicaIconFetch) {
-      setSvg(null);
+    if (propSvg) {
+      setSvg(propSvg);
+      iconCache.set(cleanClassName, propSvg);
       return;
     }
-    if (iconCache.has(className)) {
-      setSvg(iconCache.get(className) ?? null);
+    if (iconCache.has(cleanClassName)) {
+      setSvg(iconCache.get(cleanClassName) ?? null);
       return;
     }
     if (requested.current) return;
     requested.current = true;
 
-    getClassIcon(className)
+    getClassIcon(cleanClassName)
       .then((result) => {
-        iconCache.set(className, result);
+        iconCache.set(cleanClassName, result);
         setSvg(result);
       })
       .catch(() => {
-        iconCache.set(className, null);
+        iconCache.set(cleanClassName, null);
       });
-  }, [className, skipModelicaIconFetch]);
+  }, [cleanClassName, propSvg]);
 
   if (!svg) {
-    return getFallbackTreeIcon(className, classKind, nodeId, depth);
+    return getFallbackTreeIcon(cleanClassName, classKind, nodeId, depth);
   }
 
-  const displaySvg = DOMPurify.sanitize(invertSvgColors(svg, isDark), {
+  const inverted = invertSvgColors(svg, isDark);
+  const rawSizedSvg = inverted
+    .replace(/width=(["']).*?\1/, 'width="100%"')
+    .replace(/height=(["']).*?\1/, 'height="100%"');
+  const displaySvg = DOMPurify.sanitize(rawSizedSvg, {
     USE_PROFILES: { svg: true, svgFilters: true },
   });
   return (
@@ -362,7 +364,10 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             e.preventDefault();
             return;
           }
-          const iconSvg = node.iconSvg || iconCache.get(compositeName);
+          const cleanCompositeName = compositeName.startsWith("__LIB__:")
+            ? compositeName.slice("__LIB__:".length)
+            : compositeName;
+          const iconSvg = node.iconSvg || iconCache.get(cleanCompositeName) || iconCache.get(compositeName);
           const payload = {
             className: compositeName,
             classKind: node.classKind,
@@ -426,7 +431,13 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             <span style={{ width: 16 }} />
           )}
           <span style={{ display: "flex", alignItems: "center" }}>
-            <ClassIcon className={compositeName} classKind={node.classKind} nodeId={node.id} depth={depth} />
+            <ClassIcon
+              className={compositeName}
+              classKind={node.classKind}
+              nodeId={node.id}
+              depth={depth}
+              iconSvg={node.iconSvg}
+            />
           </span>
         </span>
         <div

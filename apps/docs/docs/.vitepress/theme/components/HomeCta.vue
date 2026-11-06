@@ -38,8 +38,8 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
           <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/pricing">
             <MsIcon name="shield" :size="16" /> Plans &amp; Pricing
           </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/sketch`" target="_blank" rel="noopener noreferrer">
-            <MsIcon name="play" :size="16" /> Try Sketch
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/morsel`" target="_blank" rel="noopener noreferrer">
+            <MsIcon name="play" :size="16" /> Try Morsel
           </a>
           <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/studio`" target="_blank" rel="noopener noreferrer">
             <MsIcon name="layers" :size="16" /> Launch Studio

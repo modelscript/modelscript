@@ -33,7 +33,7 @@ import { useTheme } from "../theme";
 import { safeCssImageUrl } from "../util/url";
 import AnsatzMark from "./AnsatzLogo";
 import Box from "./Box";
-import { AnsatzSketchIcon } from "./icons";
+import { MorselIcon } from "./icons";
 import { scrollToTop } from "./ScrollToTop";
 
 const SidebarContainer = styled.header`
@@ -852,7 +852,7 @@ const SplitPostButtonAction = styled.button`
   }
 `;
 
-const SplitSketchButtonLink = styled(Link)`
+const SplitMorselButtonLink = styled(Link)`
   flex: 1;
   display: flex;
   align-items: center;
@@ -913,7 +913,7 @@ const SplitPostButtonDivider = styled.div`
   }
 `;
 
-const GuestSketchButtonLink = styled(Link)`
+const GuestMorselButtonLink = styled(Link)`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -976,13 +976,14 @@ interface SidebarLinkItem {
 
 interface SidebarProps {
   onPostClick?: (() => void) | undefined;
+  onMorselClick?: (() => void) | undefined;
   onSketchClick?: (() => void) | undefined;
 }
 
 const THEME_THUMB_TRAVEL_PX = 26;
 const THEME_DRAG_THRESHOLD_PX = 6;
 
-const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onSketchClick }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchClick }) => {
   const { user, isAdmin, logout, unreadCount, setUnreadCount, adminPendingCount } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
   const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
@@ -1102,13 +1103,23 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onSketchClick }) => {
     return "ansatz.social";
   }, []);
 
-  const handleSketchClick = (e: React.MouseEvent) => {
+  const handleMorselClick = (e: React.MouseEvent) => {
+    if (onMorselClick) {
+      e.preventDefault();
+      onMorselClick();
+      return;
+    }
     if (onSketchClick) {
       e.preventDefault();
       onSketchClick();
       return;
     }
-    if (location.pathname === "/sketch" || location.pathname.startsWith("/sketch/")) {
+    if (
+      location.pathname === "/morsel" ||
+      location.pathname.startsWith("/morsel/") ||
+      location.pathname === "/sketch" ||
+      location.pathname.startsWith("/sketch/")
+    ) {
       e.preventDefault();
       scrollToTop({ smooth: true });
     } else {
@@ -1292,32 +1303,32 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onSketchClick }) => {
                 <span className="post-text">Post</span>
               </SplitPostButtonAction>
               <SplitPostButtonDivider aria-hidden="true" className="post-split-divider" />
-              <SplitSketchButtonLink
-                to="/sketch"
-                onClick={handleSketchClick}
-                className="post-split-btn post-split-btn-sketch"
-                aria-label="New sketch"
-                title="Ansatz Sketch"
-                data-testid="sidebar-sketch-button"
+              <SplitMorselButtonLink
+                to="/morsel"
+                onClick={handleMorselClick}
+                className="post-split-btn post-split-btn-morsel"
+                aria-label="New morsel"
+                title="Ansatz Morsel"
+                data-testid="sidebar-morsel-button"
               >
-                <AnsatzSketchIcon size={16} variant="triangle" color="currentColor" className="post-split-icon" />
-                <span className="post-text">Sketch</span>
-              </SplitSketchButtonLink>
+                <MorselIcon size={16} color="currentColor" className="post-split-icon" />
+                <span className="post-text">Morsel</span>
+              </SplitMorselButtonLink>
             </SplitPostButtonContainer>
           </Box>
         ) : (
           <Box mt={2} width="100%" px={1} className="post-btn-container">
-            <GuestSketchButtonLink
-              to="/sketch"
-              onClick={handleSketchClick}
-              className="post-split-btn-sketch"
-              aria-label="Ansatz Sketch"
-              title="Ansatz Sketch"
-              data-testid="sidebar-guest-sketch-button"
+            <GuestMorselButtonLink
+              to="/morsel"
+              onClick={handleMorselClick}
+              className="post-split-btn-morsel"
+              aria-label="Ansatz Morsel"
+              title="Ansatz Morsel"
+              data-testid="sidebar-guest-morsel-button"
             >
-              <AnsatzSketchIcon size={16} variant="triangle" color="currentColor" className="post-split-icon" />
-              <span className="post-text">Sketch</span>
-            </GuestSketchButtonLink>
+              <MorselIcon size={16} color="currentColor" className="post-split-icon" />
+              <span className="post-text">Morsel</span>
+            </GuestMorselButtonLink>
           </Box>
         )}
       </Box>

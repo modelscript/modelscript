@@ -291,8 +291,42 @@ export async function getClassSource(
   return (await lsp()).sendRequest("modelscript/getClassSource", { className });
 }
 
+export const globalClassIconCache = new Map<string, string | null>();
+const pendingIconRequests = new Map<string, Promise<string | null>>();
+
 export async function getClassIcon(className: string, uri?: string): Promise<string | null> {
-  return (await lsp()).sendRequest("modelscript/getClassIcon", { className, uri });
+  if (!className) return null;
+  const clean = className.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
+
+  if (globalClassIconCache.has(clean)) {
+    const val = globalClassIconCache.get(clean) ?? null;
+    if (className !== clean && !globalClassIconCache.has(className)) {
+      globalClassIconCache.set(className, val);
+    }
+    return val;
+  }
+  if (pendingIconRequests.has(clean)) {
+    return pendingIconRequests.get(clean)!;
+  }
+
+  const req = (async () => {
+    try {
+      const conn = await lsp();
+      const res = await conn.sendRequest<string | null>("modelscript/getClassIcon", { className: clean, uri });
+      globalClassIconCache.set(clean, res ?? null);
+      if (className !== clean) globalClassIconCache.set(className, res ?? null);
+      return res ?? null;
+    } catch {
+      globalClassIconCache.set(clean, null);
+      if (className !== clean) globalClassIconCache.set(className, null);
+      return null;
+    } finally {
+      pendingIconRequests.delete(clean);
+    }
+  })();
+
+  pendingIconRequests.set(clean, req);
+  return req;
 }
 
 export async function searchClasses(query: string, limit = 50): Promise<{ results: TreeNodeInfo[] }> {

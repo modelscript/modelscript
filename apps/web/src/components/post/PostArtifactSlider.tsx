@@ -475,10 +475,17 @@ export function extractShortPostSlides(
     });
   }
 
-  // 2. Extract artifact IDs and views (must be valid non-empty string or numeric IDs)
+  const isValidArtifactId = (id: unknown): boolean => {
+    if (id === null || id === undefined) return false;
+    if (typeof id === "number") return !isNaN(id) && id > 0;
+    if (typeof id === "string") return /^\d+$/.test(id.trim()) && Number(id.trim()) > 0;
+    return false;
+  };
+
+  // 2. Extract artifact IDs and views (must be valid positive numeric/snowflake IDs)
   const metaArtIds: string[] = Array.isArray(postMeta?.["artifactIds"])
     ? (postMeta["artifactIds"] as unknown[])
-        .filter((id: unknown) => id !== null && id !== undefined && String(id).trim() !== "" && String(id) !== "0")
+        .filter(isValidArtifactId)
         .map(String)
     : [];
 
@@ -486,20 +493,10 @@ export function extractShortPostSlides(
   const notebookCells = Array.isArray(nbObj["cells"])
     ? (nbObj["cells"] as { id?: string; type?: string; artifactId?: unknown; title?: string; caption?: string }[])
     : [];
-  const notebookArtCells = notebookCells.filter(
-    (c) =>
-      c.type === "artifact" &&
-      c.artifactId !== null &&
-      c.artifactId !== undefined &&
-      String(c.artifactId).trim() !== "" &&
-      String(c.artifactId) !== "0",
-  );
+  const notebookArtCells = notebookCells.filter((c) => c.type === "artifact" && isValidArtifactId(c.artifactId));
 
   const rawPrimary = postObj["artifact_view_id"];
-  const primaryArtId =
-    rawPrimary !== null && rawPrimary !== undefined && String(rawPrimary).trim() !== "" && String(rawPrimary) !== "0"
-      ? String(rawPrimary)
-      : null;
+  const primaryArtId = isValidArtifactId(rawPrimary) ? String(rawPrimary) : null;
 
   // Directives in content
   const directiveRegex = /::artifact(?:\[([^\]]*)\])?\{([^}]*)\}/g;
@@ -520,8 +517,9 @@ export function extractShortPostSlides(
   const combinedArtifacts: { id: string; title?: string; caption?: string; initialView?: unknown }[] = [];
 
   const addArtifact = (id: string | number, title?: string, caption?: string) => {
+    if (!isValidArtifactId(id)) return;
     const strId = String(id).trim();
-    if (!strId || strId === "0" || seenArtifactIds.has(strId)) return;
+    if (seenArtifactIds.has(strId)) return;
     seenArtifactIds.add(strId);
     const artViews = postObj["artifact_views"] as Record<string, unknown> | undefined;
     const isMatchingPrimary =
@@ -574,10 +572,12 @@ export function extractShortPostSlides(
     // Add artifacts as slides
     for (let i = 0; i < combinedArtifacts.length; i++) {
       const art = combinedArtifacts[i]!;
+      const parsedNum = Number(art.id);
+      const artIdValue = !isNaN(parsedNum) && String(parsedNum) === art.id ? parsedNum : art.id;
       slides.push({
         id: `art-${art.id}-${i}`,
         type: "artifact",
-        artifactId: art.id,
+        artifactId: artIdValue,
         initialArtifactView: art.initialView,
         caption: art.caption,
         figureNumber: i + 1,

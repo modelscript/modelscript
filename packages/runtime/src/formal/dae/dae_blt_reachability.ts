@@ -665,10 +665,25 @@ export class DaeBltReachabilityEngine {
         message: `Equation block #${blockId} solving for '${varName}' has vanishing derivative: \u2202g/\u2202${varName} \u2208 [${dResEval.interval.low}, ${dResEval.interval.high}] contains 0.`,
         interval: dResEval.interval,
       });
+      varBounds.set(varIdx, this.evaluator.getVarBound(varIdx));
+    } else {
+      const g0Env = new Map(globalBounds);
+      g0Env.set(varIdx, new NumericalInterval(0, 0));
+      const g0Eval = this.evaluator.evaluateExpr(residualExpr, g0Env);
+      const computedY = g0Eval.interval.neg().div(dResEval.interval).result;
+      if (!computedY.isBottom() && !computedY.isTop()) {
+        varBounds.set(varIdx, computedY);
+        if (varName.startsWith("der(") && varName.endsWith(")")) {
+          const stateVarName = varName.slice(4, -1);
+          const stateVarIdx = this.arena.getVarIdxByName(stateVarName);
+          if (stateVarIdx >= 0) {
+            derBounds.set(stateVarIdx, computedY);
+          }
+        }
+      } else {
+        varBounds.set(varIdx, this.evaluator.getVarBound(varIdx));
+      }
     }
-
-    // Fall back to current bounds
-    varBounds.set(varIdx, this.evaluator.getVarBound(varIdx));
 
     return {
       blockId,
@@ -676,6 +691,7 @@ export class DaeBltReachabilityEngine {
       equations: [eqIdx],
       variables: [varIdx],
       variableBounds: varBounds,
+      derivativeBounds: derBounds.size > 0 ? derBounds : undefined,
       issues,
       recomputed: true,
     };
@@ -703,6 +719,13 @@ export class DaeBltReachabilityEngine {
           const b = globalBounds.get(idx) ?? this.evaluator.getVarBound(idx);
           const v = b.isBottom() || b.isTop() ? WHOLE_LINE() : new Interval(b.low, b.high);
           const s = slot.get(idx);
+          return { v, g: Array.from({ length: m }, (_, k) => pt(k === s ? 1 : 0)) };
+        },
+        derivative: (_idx, name): IntervalDual | undefined => {
+          const derIdx = this.arena.getVarIdxByName(`der(${name})`);
+          const s = derIdx >= 0 ? slot.get(derIdx) : undefined;
+          const b = derIdx >= 0 ? (globalBounds.get(derIdx) ?? this.evaluator.getVarBound(derIdx)) : undefined;
+          const v = !b || b.isBottom() || b.isTop() ? WHOLE_LINE() : new Interval(b.low, b.high);
           return { v, g: Array.from({ length: m }, (_, k) => pt(k === s ? 1 : 0)) };
         },
       },

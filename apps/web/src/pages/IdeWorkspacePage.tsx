@@ -9,7 +9,7 @@ import { getArtifactView, getPopularRepos, getPost, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
-import { AnsatzSketchIcon } from "../components/icons/AnsatzSketchIcon";
+import { MorselIcon } from "../components/icons/AnsatzSketchIcon";
 import { VsCodeIcon } from "../components/icons/VsCodeIcon";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -841,7 +841,7 @@ export const IdeWorkspacePage: React.FC = () => {
               Studio
             </Heading>
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-              Engineering creation suite — interactive in-browser sketching and full VS Code workspaces
+              Engineering creation suite — interactive in-browser morsel modeling and full VS Code workspaces
             </Text>
           </Box>
 
@@ -975,20 +975,20 @@ export const IdeWorkspacePage: React.FC = () => {
       </Box>
 
       <ActionTilesGrid>
-        {/* Tile 1: Ansatz Sketch */}
+        {/* Tile 1: Ansatz Morsel */}
         <ActionTile
           role="button"
           tabIndex={0}
-          onClick={() => navigate("/sketch")}
+          onClick={() => navigate("/morsel")}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              navigate("/sketch");
+              navigate("/morsel");
             }
           }}
           style={{ cursor: "pointer" }}
-          aria-label="Launch Ansatz Sketch"
-          data-testid="studio-sketch-tile"
+          aria-label="Launch Ansatz Morsel"
+          data-testid="studio-morsel-tile"
         >
           <Box display="flex" flexDirection="column" gap={1.5}>
             <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
@@ -1005,7 +1005,7 @@ export const IdeWorkspacePage: React.FC = () => {
                   color: "var(--color-accent-cyan, #06b6d4)",
                 }}
               >
-                <AnsatzSketchIcon size={20} variant="triangle" color="currentColor" />
+                <MorselIcon size={20} color="currentColor" />
               </div>
               <Box display="flex" alignItems="center" gap={1.5}>
                 <span
@@ -1035,7 +1035,7 @@ export const IdeWorkspacePage: React.FC = () => {
             </Box>
 
             <Heading as="h3" style={{ fontSize: "16px", fontWeight: 700, margin: "8px 0 2px" }}>
-              Ansatz Sketch
+              Ansatz Morsel
             </Heading>
 
             <Text style={{ fontSize: "13px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
@@ -1058,7 +1058,7 @@ export const IdeWorkspacePage: React.FC = () => {
                 gap: "4px",
               }}
             >
-              <span>Open Sketch</span>
+              <span>Open Morsel</span>
               <span>↗</span>
             </Text>
           </Box>

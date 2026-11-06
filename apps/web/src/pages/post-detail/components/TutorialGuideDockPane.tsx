@@ -497,7 +497,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
             }}
           >
             <ZapIcon size={13} />
-            <span>{isMultiFileArticle ? "Open in Studio" : "Open in Ansatz Sketch"}</span>
+            <span>{isMultiFileArticle ? "Open in Studio" : "Open in Ansatz Morsel"}</span>
           </button>
         )}
 

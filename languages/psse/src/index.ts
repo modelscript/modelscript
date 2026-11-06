@@ -14,5 +14,8 @@ export * from "./projections/fmu-to-psse.js";
 export * from "./projections/psse-to-modelica.js";
 export * from "./projections/psse-to-pscad.js";
 export * from "./solver/ac-powerflow.js";
+export * from "./solver/continuation-powerflow.js";
+export * from "./solver/helm-powerflow.js";
+export * from "./solver/small-signal.js";
 export * from "./types.js";
 export * from "./workspace-index.js";

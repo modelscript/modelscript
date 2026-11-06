@@ -277,7 +277,7 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

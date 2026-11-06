@@ -14,6 +14,7 @@ import {
   rerouteEdgeOrthogonal,
   setDiagramOptions,
   toggleMinimapHud,
+  updateMinimapHud,
   updateParameterText,
   type ComponentPropertyData,
   type PropertyTabConfig,
@@ -1443,7 +1444,13 @@ function initKeyboardAccelerators() {
       e.preventDefault();
       const container = g.container as HTMLElement | undefined;
       if (container) {
-        toggleMinimapHud(container);
+        const isOpen = toggleMinimapHud(container);
+        if (isOpen) {
+          const hud = container.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
+          if (hud) {
+            updateMinimapHud(hud, g);
+          }
+        }
       }
       return;
     }

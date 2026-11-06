@@ -114,7 +114,7 @@ export const modelicaAttachProfile: AttachProfile<ModelicaAttachDraft> = {
     {
       id: "model",
       title: "Which model should we show?",
-      description: "Pick the model to feature and how the artifact first opens. Everything else stays in the source.",
+      description: "Pick the model to feature and how the morsel first opens. Everything else stays in the source.",
       // Only a real decision: more than one candidate.
       when: (d) => Boolean(d.forceStep) || d.candidates.length > 1,
       validate: (d) => (d.selected ? [] : [{ severity: "error", message: "Pick a model to show." }]),
@@ -135,7 +135,7 @@ export const modelicaAttachProfile: AttachProfile<ModelicaAttachDraft> = {
         if (!res.ok) throw new Error("The model source could not be loaded.");
         text = await res.text();
       }
-      if (!text.trim()) throw new Error("This artifact has no Modelica source to customize.");
+      if (!text.trim()) throw new Error("This morsel has no Modelica source to customize.");
 
       const file = new File([text], view.title ? `${view.title}.mo` : "model.mo");
       const analysis = await modelicaAttachProfile.analyze(file, ctx);

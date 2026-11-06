@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   analyzeN1Contingencies,
+  analyzeSmallSignalStability,
   applyPsseDiagramWriteback,
   calculateShortCircuit,
   createPsseWasmParser,
@@ -602,4 +603,46 @@ test("PSS/E Phase 2: Lowers .dyr GENROU, EXST1, and TGOV1 dynamic state equation
   assert.ok(varNames.includes("Edp_1_1"), "Expected GENROU d-axis transient flux state Edp_1_1");
   assert.ok(varNames.includes("Efd_1_1"), "Expected EXST1 exciter field voltage state Efd_1_1");
   assert.ok(varNames.includes("Pm_1_1"), "Expected TGOV1 governor mechanical power state Pm_1_1");
+});
+
+test("PSS/E HELM Power Flow: Solves non-iterative Holomorphic Embedding Load Flow with exact Padé continuation", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const nrSol = solvePowerFlow(parsed, { algorithm: "newton_raphson" });
+  const helmSol = solvePowerFlow(parsed, { algorithm: "helm" });
+
+  assert.equal(helmSol.algorithm, "helm");
+  assert.ok(helmSol.converged, "HELM power flow must converge to operable root");
+  assert.equal(helmSol.buses.length, nrSol.buses.length);
+
+  for (let i = 0; i < nrSol.buses.length; i++) {
+    const nrB = nrSol.buses[i]!;
+    const helmB = helmSol.buses[i]!;
+    assert.equal(helmB.busNumber, nrB.busNumber);
+    // Voltage magnitude matches within 0.005 pu
+    assert.ok(
+      Math.abs(helmB.vm - nrB.vm) < 0.005,
+      `Bus ${nrB.busNumber} Vm mismatch: HELM=${helmB.vm.toFixed(4)} vs NR=${nrB.vm.toFixed(4)}`,
+    );
+    // Voltage angle matches within 0.15 deg
+    assert.ok(
+      Math.abs(helmB.va - nrB.va) < 0.15,
+      `Bus ${nrB.busNumber} Va mismatch: HELM=${helmB.va.toFixed(2)} deg vs NR=${nrB.va.toFixed(2)} deg`,
+    );
+  }
+});
+
+test("PSS/E Small-Signal Stability: Computes electromechanical DAE eigenvalues, damping ratios, and mode participation factors", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const modal = analyzeSmallSignalStability(parsed);
+  assert.equal(modal.summary.totalMachines, 3);
+  assert.equal(modal.summary.totalStates, 15);
+  assert.ok(modal.modes.length > 0);
+  assert.ok(modal.summary.stable);
+  for (const m of modal.modes) {
+    assert.ok(Number.isFinite(m.real));
+    assert.ok(Number.isFinite(m.imag));
+    assert.ok(m.dampingRatio >= 0);
+    assert.ok(m.participations.length > 0);
+  }
+  assert.ok(modal.reportText.includes("SMALL-SIGNAL STABILITY & MODAL ANALYSIS REPORT"));
 });

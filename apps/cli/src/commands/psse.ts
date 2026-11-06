@@ -12,26 +12,45 @@
 
 import { renderPsseSvg } from "@modelscript/diagram/psse-diagram-builder";
 import {
+  analyzeN1Contingencies,
+  analyzeSmallSignalStability,
+  calculateShortCircuit,
   extractPowerFlowNetlist,
   lintPsse,
   lowerPsseToDae,
   parseRaw,
   psseToModelica,
+  solveContinuationPowerFlow,
   solvePowerFlow,
 } from "@modelscript/psse";
+import { solveAcOpf, solveDcOpf } from "@modelscript/simulate/opf";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
 export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "psse <action> [files...]",
-  describe: "Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)",
+  describe: "Inspect, lint, and analyze PSS/E RAW power flow cases (.raw)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, summary, diagram, netlist, solve)",
+        description: "Action to perform (lint, summary, diagram, netlist, solve, opf, fault, modes, n1)",
         type: "string",
-        choices: ["inspect", "to-dae", "to-modelica", "lint", "summary", "diagram", "netlist", "solve"],
+        choices: [
+          "inspect",
+          "to-dae",
+          "to-modelica",
+          "lint",
+          "summary",
+          "diagram",
+          "netlist",
+          "solve",
+          "opf",
+          "fault",
+          "modes",
+          "n1",
+          "cpf",
+        ],
         demandOption: true,
       })
       .positional("files", {
@@ -41,15 +60,22 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       })
       .option("out", {
         alias: ["o", "output"],
-        description: "Output file path (e.g. for SVG diagram)",
+        description: "Output file path (e.g. for SVG diagram or report)",
         type: "string",
       })
       .option("algorithm", {
         alias: "alg",
-        description: "Power flow algorithm: 'nr' (Newton-Raphson) or 'fdpf' (Fast Decoupled)",
+        description: "Power flow algorithm: 'nr' (Newton-Raphson), 'fdpf' (Fast Decoupled), or 'helm' (Holomorphic Embedding)",
         type: "string",
-        choices: ["nr", "fdpf"],
+        choices: ["nr", "fdpf", "helm"],
         default: "nr",
+      })
+      .option("formulation", {
+        alias: "form",
+        description: "OPF formulation: 'dc' (linearized) or 'ac' (nonlinear)",
+        type: "string",
+        choices: ["dc", "ac"],
+        default: "dc",
       })
       .option("tol", {
         description: "Convergence tolerance in p.u.",
@@ -57,7 +83,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         default: 1e-4,
       })
       .option("max-iter", {
-        description: "Maximum allowable power flow iterations",
+        description: "Maximum allowable power flow iterations / HELM orders",
         type: "number",
         default: 25,
       });
@@ -66,7 +92,9 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
     const action = argv["action"] as string;
     const files = (argv["files"] as string[]) ?? [];
     const out = argv["out"] as string | undefined;
-    const algorithm = (argv["algorithm"] as string) === "fdpf" ? "fast_decoupled" : "newton_raphson";
+    const rawAlg = argv["algorithm"] as string;
+    const algorithm =
+      rawAlg === "helm" ? "helm" : rawAlg === "fdpf" ? "fast_decoupled" : "newton_raphson";
     const tolerance = (argv["tol"] as number) ?? 1e-4;
     const maxIterations = (argv["max-iter"] as number) ?? 25;
 
@@ -235,6 +263,59 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           }
           if (solution.buses.length > 10) {
             console.log(`  ... and ${solution.buses.length - 10} more buses.`);
+          }
+          break;
+        }
+
+        case "opf": {
+          const form = (argv["formulation"] as string) === "ac" ? "ac" : "dc";
+          console.log(`[psse] Running Optimal Power Flow (${form.toUpperCase()}-OPF) dispatch & LMP analysis on ${path.basename(file)}...`);
+          const opfSol = form === "ac"
+            ? solveAcOpf(parsed, { enforceThermalLimits: true, caseTitle: parsed.title1 || path.basename(file) })
+            : solveDcOpf(parsed, { enforceThermalLimits: true, caseTitle: parsed.title1 || path.basename(file) });
+          console.log(opfSol.reportText);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), opfSol.reportText);
+          }
+          break;
+        }
+
+        case "fault": {
+          console.log(`[psse] Running IEC 60909 / ANSI C37 short-circuit analysis on ${path.basename(file)}...`);
+          const sc = calculateShortCircuit(parsed);
+          console.log(sc.reportText);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), sc.reportText);
+          }
+          break;
+        }
+
+        case "modes": {
+          console.log(`[psse] Running small-signal stability modal analysis on ${path.basename(file)}...`);
+          const modal = analyzeSmallSignalStability(parsed);
+          console.log(modal.reportText);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), modal.reportText);
+          }
+          break;
+        }
+
+        case "n1": {
+          console.log(`[psse] Running N-1 contingency security screening on ${path.basename(file)}...`);
+          const n1 = analyzeN1Contingencies(parsed);
+          console.log(n1.reportText);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), n1.reportText);
+          }
+          break;
+        }
+
+        case "cpf": {
+          console.log(`[psse] Running Continuation Power Flow (CPF) P-V curve tracing on ${path.basename(file)}...`);
+          const cpf = solveContinuationPowerFlow(parsed);
+          console.log(cpf.reportText);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), cpf.reportText);
           }
           break;
         }

@@ -738,6 +738,51 @@ export const Lint: CommandModule<{}, LintArgs> = {
           const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer, findCstNodesByType } =
             await import("@modelscript/modelica");
           const rootNode = astMap.get(item.uri);
+          if (rootNode && findCstNodesByType) {
+            const classNodes = findCstNodesByType(rootNode, "class_definition");
+            for (const classNode of classNodes) {
+              const idNode = findCstNodesByType(classNode, "identifier")[0];
+              const name = idNode?.text?.trim() || "";
+              const algSections = findCstNodesByType(classNode, "algorithm_section");
+              if (algSections.length === 0) continue;
+
+              const algOffset = algSections[0].startIndex ?? 0;
+              const variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
+              const statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
+              if (statements.length === 0) continue;
+
+              const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, { functionName: name });
+              for (const bug of result.definiteBugs) {
+                diagnostics.push({
+                  severity: "error",
+                  lintName: bug.category || "formal-proof-defect",
+                  code: bug.category,
+                  domain: "modelica",
+                  message: `[Formal Proof Defect] ${bug.description}`,
+                  symbolId: null,
+                  resourceId: item.uri,
+                  startOffset: bug.startOffset ?? algOffset,
+                  endOffset: bug.endOffset ?? algOffset + 10,
+                });
+              }
+              for (const warn of result.potentialBugs) {
+                diagnostics.push({
+                  severity: "warning",
+                  lintName: warn.category || "formal-proof-unproven",
+                  code: warn.category,
+                  domain: "modelica",
+                  message: `[Formal Proof Unproven] ${warn.description}`,
+                  symbolId: null,
+                  resourceId: item.uri,
+                  startOffset: warn.startOffset ?? algOffset,
+                  endOffset: warn.endOffset ?? algOffset + 10,
+                });
+              }
+            }
+            continue;
+          }
+
+          // Fallback: match class / function definitions via text regex when CST unavailable
           const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
           let match: RegExpExecArray | null;
           while ((match = funcRegex.exec(item.text)) !== null) {
@@ -750,23 +795,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
 
             let variables: ReturnType<typeof ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst> = [];
             let statements: ReturnType<typeof ModelicaCFGLowerer.parseStatements> = [];
-            if (rootNode && findCstNodesByType) {
-              const classNodes = findCstNodesByType(rootNode, "class_definition");
-              const classNode = classNodes.find((cn: CstRootLike) => {
-                const idNode = findCstNodesByType(cn, "identifier")[0];
-                return idNode?.text?.trim() === name;
-              });
-              if (classNode) {
-                variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
-                const algSections = findCstNodesByType(classNode, "algorithm_section");
-                if (algSections.length > 0) {
-                  statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
-                }
-              }
-            }
-            if (statements.length === 0) {
-              statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
-            }
+            statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
             if (statements.length === 0) continue;
 
             const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, { functionName: name });

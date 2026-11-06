@@ -16,8 +16,8 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: Try Sketch
-      link: /sketch
+      text: Try Morsel
+      link: /morsel
       target: _self
     - theme: alt
       text: Studio

@@ -338,10 +338,10 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
                 });
                 const resolvedId = artifactId ?? viewConfig.artifactId;
                 const fromArtifact = resolvedId ? `?fromArtifact=${resolvedId}` : "";
-                navigate(`/sketch${fromArtifact}#m=${hash}`);
+                navigate(`/morsel${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

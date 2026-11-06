@@ -231,7 +231,7 @@ export function useComposeNotebookState({
       if (existingArtifactIds.has(String(newArtifactId))) return;
       if (existingArtifactIds.size >= 4) {
         toast.error(
-          "Short posts are limited to a maximum of 4 artifacts. Switch to Article mode for longer articles with unlimited artifacts.",
+          "Short posts are limited to a maximum of 4 morsels. Switch to Article mode for longer articles with unlimited morsels.",
         );
         return;
       }

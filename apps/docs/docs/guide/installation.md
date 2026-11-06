@@ -6,11 +6,11 @@ ModelScript runs from the same WebAssembly compiler core across browsers, deskto
 
 ## For Users & Engineers
 
-### 1. Zero-Install Ansatz Sketch & Web IDE
+### 1. Zero-Install Ansatz Morsel & Web IDE
 
 To explore ModelScript without installing anything locally:
 
-- **[Ansatz Sketch (`/sketch`)](https://modelscript.org/sketch)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
+- **[Ansatz Morsel (`/morsel`)](https://modelscript.org/morsel)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
 - **Studio (`https://ansatz.social/studio`)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
 
 ### 2. Command-Line Interface (`msx`)

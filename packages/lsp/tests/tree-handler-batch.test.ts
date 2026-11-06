@@ -84,6 +84,12 @@ test("test-tree-handler-batch-icons", async () => {
   // Verify iconCache was populated
   assert(iconCache.has("Modelica.Electrical.Analog.Basic.Resistor"), "iconCache must have Resistor");
 
+  // Verify __LIB__:Modelica resolves through getClassIcon
+  const getClassIcon = handlers.get("modelscript/getClassIcon")!;
+  const libIcon = await getClassIcon({ className: "__LIB__:Modelica" });
+  assert(libIcon, "__LIB__:Modelica icon must be resolved");
+  assert(libIcon.startsWith("<svg"), "__LIB__:Modelica icon must be valid SVG");
+
   // Test that getLibraryTree now returns nodes with pre-populated iconSvg
   const getLibraryTree = handlers.get("modelscript/getLibraryTree")!;
   const treeNodes = await getLibraryTree({
@@ -96,6 +102,14 @@ test("test-tree-handler-batch-icons", async () => {
   assert(resistorNode, "Resistor node must be in library tree");
   assert(resistorNode.iconSvg, "Resistor node iconSvg must be pre-populated from iconCache");
   assert(resistorNode.iconSvg.startsWith("<svg"), "Resistor node iconSvg must be valid SVG");
+
+  // Test root library tree pre-population
+  const rootNodes = await getLibraryTree({ uri: "file:///" });
+  assert(Array.isArray(rootNodes), "rootNodes must be an array");
+  const modelicaRoot = rootNodes.find((n: any) => n.id === "__LIB__:Modelica" || n.name === "Modelica");
+  if (modelicaRoot) {
+    assert(modelicaRoot.iconSvg, "Modelica root node iconSvg must be pre-populated from iconCache");
+  }
 
   console.log("test-tree-handler-batch-icons passed successfully!");
 });

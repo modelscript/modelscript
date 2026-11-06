@@ -7,7 +7,7 @@ import { type Tone, toneStyle } from "../data/tones";
 import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
 
-type SurfaceId = "sketch" | "playground" | "webide" | "vscode" | "cli" | "mcp" | "desktop";
+type SurfaceId = "morsel" | "sketch" | "playground" | "webide" | "vscode" | "cli" | "mcp" | "desktop";
 
 interface Surface {
   id: SurfaceId;
@@ -25,13 +25,13 @@ const { ansatzOrigin } = useAnsatzOrigin();
 
 const surfaces = computed<Surface[]>(() => [
   {
-    id: "sketch",
+    id: "morsel",
     icon: "globe",
     tone: ["cyan", "emerald"],
-    title: "Sketch",
+    title: "Morsel",
     body: "Draft, simulate, and visualize models in your browser. Nothing to install.",
-    cta: "Try Sketch",
-    link: `${ansatzOrigin.value}/sketch`,
+    cta: "Try Morsel",
+    link: `${ansatzOrigin.value}/morsel`,
     tag: "Zero install",
     target: "_blank",
   },
@@ -107,8 +107,8 @@ const surfaces = computed<Surface[]>(() => [
         >
           <div class="ms-schematic surf-schematic" aria-hidden="true">
             <svg viewBox="0 0 280 100" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <!-- 1. Browser Sketch: editor + live plot -->
-              <template v-if="s.id === 'sketch' || s.id === 'playground'">
+              <!-- 1. Browser Morsel: editor + live plot -->
+              <template v-if="s.id === 'morsel' || s.id === 'sketch' || s.id === 'playground'">
                 <rect class="sx-ink-f" x="16" y="10" width="248" height="80" rx="7" />
                 <path class="sx-ink" d="M16 26 H264 M140 26 V90" />
                 <circle class="sx-ink-d" cx="27" cy="18" r="2.5" />

@@ -2,7 +2,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computeNodeAlignment, type AlignableNode } from "../src/alignment.js";
+import {
+  computeNodeAlignment,
+  computeNodeNudge,
+  showAlignmentToolbar,
+  type AlignableNode,
+} from "../src/alignment.js";
 
 describe("CAD Multi-Node Alignment & Distribution Engine", () => {
   const nodes: AlignableNode[] = [
@@ -117,5 +122,110 @@ describe("CAD Multi-Node Alignment & Distribution Engine", () => {
   it("returns empty array when fewer than 2 nodes are provided", () => {
     assert.deepStrictEqual(computeNodeAlignment([], "align-left"), []);
     assert.deepStrictEqual(computeNodeAlignment([nodes[0]!], "align-left"), []);
+  });
+
+  describe("3-Gear Precision Arrow Key Shifting (computeNodeNudge)", () => {
+    it("shifts nodes by baseStep (2px) in normal mode across all 4 directions", () => {
+      const single = [{ id: "C", x: 100, y: 200, width: 40, height: 40 }];
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowUp"), [{ id: "C", x: 100, y: 198, dx: 0, dy: -2 }]);
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowDown"), [{ id: "C", x: 100, y: 202, dx: 0, dy: 2 }]);
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowLeft"), [{ id: "C", x: 98, y: 200, dx: -2, dy: 0 }]);
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowRight"), [{ id: "C", x: 102, y: 200, dx: 2, dy: 0 }]);
+    });
+
+    it("shifts nodes by coarse step (10px) when shiftKey is true", () => {
+      const single = [{ id: "C", x: 100, y: 200, width: 40, height: 40 }];
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowRight", { shiftKey: true }), [
+        { id: "C", x: 110, y: 200, dx: 10, dy: 0 },
+      ]);
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowUp", { shiftKey: true }), [
+        { id: "C", x: 100, y: 190, dx: 0, dy: -10 },
+      ]);
+    });
+
+    it("shifts nodes by sub-grid fine step (1px) when altKey is true", () => {
+      const single = [{ id: "C", x: 100, y: 200, width: 40, height: 40 }];
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowLeft", { altKey: true }), [
+        { id: "C", x: 99, y: 200, dx: -1, dy: 0 },
+      ]);
+      assert.deepStrictEqual(computeNodeNudge(single, "ArrowDown", { altKey: true }), [
+        { id: "C", x: 100, y: 201, dx: 0, dy: 1 },
+      ]);
+    });
+  });
+
+  describe("Contextual Floating Edit Bar (showAlignmentToolbar)", () => {
+    const createMockToolbar = () => {
+      const classSet = new Set<string>();
+      return {
+        innerHTML: "",
+        dataset: {} as Record<string, string | undefined>,
+        style: { left: "", top: "" },
+        classList: {
+          add: (c: string) => classSet.add(c),
+          remove: (c: string) => classSet.delete(c),
+          contains: (c: string) => classSet.has(c),
+        },
+      } as unknown as HTMLElement;
+    };
+
+    const mockContainer = { clientWidth: 1000, clientHeight: 800 } as unknown as HTMLElement;
+
+    it("renders single-node contextual edit bar with identity chip, quick parameter pill, rotate, flip, duplicate, properties, and delete", () => {
+      const toolbar = createMockToolbar();
+      showAlignmentToolbar(
+        toolbar,
+        mockContainer,
+        [
+          {
+            id: "C",
+            x: 200,
+            y: 150,
+            width: 40,
+            height: 40,
+            name: "C",
+            primaryParam: { name: "C", value: "1e-4" },
+          },
+        ],
+        { sx: 1, sy: 1 },
+        { tx: 0, ty: 0 },
+      );
+
+      assert.strictEqual(toolbar.classList.contains("visible"), true);
+      assert.strictEqual(toolbar.dataset["mode"], "single:C:C=1e-4");
+      assert.equal(toolbar.innerHTML.includes('data-align="rename"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="edit-param"'), true);
+      assert.equal(toolbar.innerHTML.includes("C=1e-4"), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="rotate-ccw"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="rotate-cw"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="flip-h"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="flip-v"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="duplicate"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="properties"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="delete"'), true);
+    });
+
+    it("flips floating toolbar below the component when near the top of the viewport", () => {
+      const toolbar = createMockToolbar();
+      showAlignmentToolbar(
+        toolbar,
+        mockContainer,
+        [{ id: "C", x: 200, y: 10, width: 40, height: 40, name: "C" }],
+        { sx: 1, sy: 1 },
+        { tx: 0, ty: 0 },
+      );
+      // screenTopY = 10 - 14 = -4 < 48 -> flips below maxY (50) + 14 = 64px
+      assert.strictEqual(toolbar.style.top, "64px");
+    });
+
+    it("renders multi-node CAD alignment & batch toolbar when 2 or more nodes are selected", () => {
+      const toolbar = createMockToolbar();
+      showAlignmentToolbar(toolbar, mockContainer, nodes, { sx: 1, sy: 1 }, { tx: 0, ty: 0 });
+      assert.strictEqual(toolbar.classList.contains("visible"), true);
+      assert.strictEqual(toolbar.dataset["mode"], "multi:3");
+      assert.equal(toolbar.innerHTML.includes("3 selected"), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="align-left"'), true);
+      assert.equal(toolbar.innerHTML.includes('data-align="distribute-horizontal"'), true);
+    });
   });
 });

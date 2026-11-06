@@ -338,7 +338,7 @@ export const FortranViewer: React.FC<FortranViewerProps> = ({ artifactId, viewCo
       code: rawCode,
       title: resolvedTitle,
     });
-    navigate(`/sketch?fromArtifact=${resolvedId}#m=${hash}`);
+    navigate(`/morsel?fromArtifact=${resolvedId}#m=${hash}`);
   };
 
   if (loadingText) {
@@ -385,7 +385,7 @@ export const FortranViewer: React.FC<FortranViewerProps> = ({ artifactId, viewCo
           )}
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" variant="primary" leadingVisual={DraftingTriangleIcon} onClick={handleOpenPlayground}>
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

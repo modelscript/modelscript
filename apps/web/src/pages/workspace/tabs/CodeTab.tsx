@@ -872,12 +872,12 @@ git push -u origin ${defaultBranch}`}
                           const dialect = getDialectForFileName(currentFile) || "modelica";
                           const title = currentFile.split("/").pop() || "Model";
                           navigate(
-                            `/sketch?dialect=${encodeURIComponent(dialect)}&title=${encodeURIComponent(title)}&code=${encodeURIComponent(fileContent)}`,
+                            `/morsel?dialect=${encodeURIComponent(dialect)}&title=${encodeURIComponent(title)}&code=${encodeURIComponent(fileContent)}`,
                           );
                         }}
-                        title="Simulate or inspect this model in interactive Ansatz Sketch"
+                        title="Simulate or inspect this model in interactive Ansatz Morsel"
                       >
-                        Open in Sketch
+                        Open in Morsel
                       </Button>
                     )}
 

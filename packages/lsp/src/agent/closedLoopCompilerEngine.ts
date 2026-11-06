@@ -1295,15 +1295,25 @@ export async function verifyGate4DAEBalance(
     if (_tree?.rootNode) {
       const visitCst = (node: any) => {
         if (node.type === "component_clause") {
-          const text = String(node.text ?? "");
-          if (!/\b(?:parameter|constant|input)\b/.test(text)) {
-            const m = text.match(
-              /^\s*(?:(?:public|protected)\s+)?(?:(?:output|discrete)\s+)?(?!public\b|protected\b|output\b|discrete\b)[A-Za-z_][a-zA-Z0-9_.]*\s+([^=;()]+)/,
+          const isNonState = (node.children || []).some((c: any) => {
+            const t = c.type ?? "";
+            return (
+              t === "parameter" ||
+              t === "constant" ||
+              t === "input" ||
+              (t === "type_prefix" && /\b(parameter|constant|input)\b/.test(c.text ?? ""))
             );
-            if (m?.[1]) {
-              for (const rawId of m[1].split(",")) {
-                const id = rawId.trim().split(/\s+/)[0];
-                if (id && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) declaredVars.add(id);
+          });
+          if (!isNonState) {
+            for (const child of node.children || []) {
+              if (child.type === "component_declaration" || child.type === "declaration") {
+                const idNode = (child.children || []).find(
+                  (gc: any) => gc.type === "identifier" || gc.type === "IDENT",
+                );
+                const id = idNode?.text?.trim();
+                if (id && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) {
+                  declaredVars.add(id);
+                }
               }
             }
           }

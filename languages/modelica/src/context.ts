@@ -189,10 +189,17 @@ export class Context {
         rangeCache.clear();
       }
     }
-    if (this.#trees.size > 50) {
-      const keys = Array.from(this.#trees.keys());
-      for (let i = 0; i < keys.length - 50; i++) {
-        this.#trees.delete(keys[i]!);
+    this.#trees.clear();
+    for (const parser of (Context as any)._parsers.values()) {
+      if (typeof (parser as any)?.reset === "function") {
+        (parser as any).reset();
+      } else {
+        const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
+        if (typeof facade?.resetParser === "function") {
+          facade.resetParser();
+        } else if (typeof facade?.exports?.resetParser === "function") {
+          facade.exports.resetParser();
+        }
       }
     }
   }
@@ -792,7 +799,6 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".mo", text);
-              this.#cacheTree(dir, tree);
               return tree.rootNode as any;
             },
             parentFQN,
@@ -804,7 +810,6 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".csv", text);
-              this.#cacheTree(dir, tree);
               return tree.rootNode as any;
             },
             parentFQN,
@@ -873,8 +878,31 @@ export class Context {
       return library;
     }
 
-    // Update the engine
-    const unified = await this.#workspaceIndex.toUnifiedAsync();
+    // Temporarily switch parser to single-file mode during bulk library indexing
+    // to prevent unbounded linear WASM memory growth across thousands of files.
+    const parser = (Context as any)._parsers.get(".mo");
+    const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
+    const prevMultiFile = facade?.exports?.configEnableMultiFile?.value;
+    if (facade?.exports?.lsp_setConfigEnableMultiFile) {
+      facade.exports.lsp_setConfigEnableMultiFile(false);
+    }
+    if (facade?.exports?.configEnableMultiFile) {
+      facade.exports.configEnableMultiFile.value = 0;
+    }
+
+    let unified: any;
+    try {
+      unified = await this.#workspaceIndex.toUnifiedAsync();
+    } finally {
+      this.#trees.clear();
+      this.pruneCaches();
+      if (facade?.exports?.lsp_setConfigEnableMultiFile) {
+        facade.exports.lsp_setConfigEnableMultiFile(prevMultiFile !== 0);
+      }
+      if (facade?.exports?.configEnableMultiFile) {
+        facade.exports.configEnableMultiFile.value = prevMultiFile ?? 1;
+      }
+    }
     injectPredefinedTypes(unified);
     this.#queryEngine.updateIndex(unified);
 
@@ -911,7 +939,29 @@ export class Context {
    * Call this once after batching multiple `addLibrary({ skipIndex: true })` calls.
    */
   async finalizeLibraries(): Promise<void> {
-    const unified = await this.#workspaceIndex.toUnifiedAsync();
+    const parser = (Context as any)._parsers.get(".mo");
+    const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
+    const prevMultiFile = facade?.exports?.configEnableMultiFile?.value;
+    if (facade?.exports?.lsp_setConfigEnableMultiFile) {
+      facade.exports.lsp_setConfigEnableMultiFile(false);
+    }
+    if (facade?.exports?.configEnableMultiFile) {
+      facade.exports.configEnableMultiFile.value = 0;
+    }
+
+    let unified: any;
+    try {
+      unified = await this.#workspaceIndex.toUnifiedAsync();
+    } finally {
+      this.#trees.clear();
+      this.pruneCaches();
+      if (facade?.exports?.lsp_setConfigEnableMultiFile) {
+        facade.exports.lsp_setConfigEnableMultiFile(prevMultiFile !== 0);
+      }
+      if (facade?.exports?.configEnableMultiFile) {
+        facade.exports.configEnableMultiFile.value = prevMultiFile ?? 1;
+      }
+    }
     injectPredefinedTypes(unified);
     this.#queryEngine.updateIndex(unified);
 

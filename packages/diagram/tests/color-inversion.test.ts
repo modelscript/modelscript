@@ -175,6 +175,82 @@ describe("Dark Mode Perceptual Color Adaptation Engine", () => {
       assert.ok(!adapted.includes('stroke="#000000"'));
     });
 
+    it("strips Modelica discrete block beige backgrounds (#dfd3a9) to fill='none'", () => {
+      const discreteSvg = `
+        <svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+          <rect width="200" height="200" x="-100" y="-100" fill="#dfd3a9" stroke="#00007f" stroke-width="1" />
+          <text x="0" y="-50" fill="#00007f">1</text>
+        </svg>
+      `;
+      const adapted = adaptSvgColors(discreteSvg, true);
+      assert.ok(adapted.includes('<rect width="200" height="200" x="-100" y="-100" fill="none"'));
+      assert.ok(!adapted.includes('fill="#dfd3a9"'));
+      assert.ok(!adapted.includes('stroke="#00007f"'));
+    });
+
+    it("strips Modelica integer and table peach/yellow backgrounds (#ffd5aa, #ffd788)", () => {
+      const integerSvg = `
+        <svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+          <rect width="200" height="200" x="-100" y="-100" fill="#ffd5aa" stroke="#ff7f00" />
+        </svg>
+      `;
+      const tableSvg = `
+        <svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+          <rect width="200" height="200" x="-100" y="-100" fill="#ffd788" stroke="#00007f" />
+        </svg>
+      `;
+      assert.ok(adaptSvgColors(integerSvg, true).includes('fill="none"'));
+      assert.ok(adaptSvgColors(tableSvg, true).includes('fill="none"'));
+    });
+
+    it("boosts contrast of neutral strokes (#5f5f5f, #c0c0c0) for maximum legibility on dark canvases", () => {
+      const pkgSvg = `
+        <svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+          <path d="M -80 0 L 80 0" stroke="#5f5f5f" stroke-width="1" />
+          <line x1="0" y1="-80" x2="0" y2="80" stroke="#c0c0c0" stroke-width="1" />
+        </svg>
+      `;
+      const adapted = adaptSvgColors(pkgSvg, true);
+      const strokeMatches = Array.from(adapted.matchAll(/stroke="rgb\((\d+),\s*(\d+),\s*(\d+)\)"/g));
+      assert.ok(strokeMatches.length >= 2, "Must adapt both strokes");
+      const r1 = parseInt(strokeMatches[0]![1]!, 10);
+      const r2 = parseInt(strokeMatches[1]![1]!, 10);
+      // Both lines must be bright enough to be clearly visible against #121212 dark canvas
+      assert.ok(r1 >= 170, `Stroke #5f5f5f must be bright in dark mode, got ${r1}`);
+      assert.ok(r2 >= 140, `Stroke #c0c0c0 must remain legible in dark mode, got ${r2}`);
+    });
+
+    it("ensures text elements remain bright and legible in dark mode", () => {
+      const textSvg = `
+        <svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+          <text x="0" y="0" fill="#000000">Black Text</text>
+          <text x="0" y="50" fill="#ffffff">White Text</text>
+        </svg>
+      `;
+      const adapted = adaptSvgColors(textSvg, true);
+      const fills = Array.from(adapted.matchAll(/fill="rgb\((\d+),\s*(\d+),\s*(\d+)\)"/g)).map((m) =>
+        parseInt(m[1]!, 10),
+      );
+      assert.ok(fills.length >= 2);
+      // Both black text and white text must be crisp and bright in dark mode
+      for (const val of fills) {
+        assert.ok(val >= 210, `Text must be bright on dark surface, got ${val}`);
+      }
+    });
+
+    it("preserves white foreground glyphs with stroke='none' (e.g. Information 'i')", () => {
+      const infoSvg = `
+        <svg viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+          <ellipse rx="100" ry="100" cx="0" cy="0" fill="#4b8a49" stroke="none" />
+          <path d="M 0 0 L 10 10" fill="#ffffff" stroke="none" />
+          <circle cx="5" cy="5" r="3" fill="#ffffff" />
+        </svg>
+      `;
+      const adapted = adaptSvgColors(infoSvg, true);
+      assert.ok(!adapted.includes('fill="rgb(7, 7, 7)"'), "White foreground glyph must not be crushed to black");
+      assert.ok(adapted.includes('fill="rgb(245, 245, 245)"'), "White glyph must be preserved as bright off-white");
+    });
+
     it("preserves backwards-compatibility with invertSvgColors and invertColorHelmlab", () => {
       assert.strictEqual(typeof invertColorHelmlab("rgb(200, 16, 46)"), "string");
       assert.strictEqual(typeof invertSvgColors("<svg></svg>", true), "string");
@@ -182,3 +258,4 @@ describe("Dark Mode Perceptual Color Adaptation Engine", () => {
     });
   });
 });
+

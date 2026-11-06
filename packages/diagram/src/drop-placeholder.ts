@@ -207,9 +207,9 @@ export function ensureDiagramStyles(): void {
     .x6-widget-selection-box,
     .x6-widget-selection-inner {
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
-      box-shadow: none !important;
+      box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.18), 0 4px 12px rgba(2, 132, 199, 0.1) !important;
       border-radius: 4px;
-      background-color: rgba(2, 132, 199, 0.05);
+      background-color: rgba(2, 132, 199, 0.04);
     }
 
     .x6-widget-selection-box-node {
@@ -225,23 +225,35 @@ export function ensureDiagramStyles(): void {
 
     .x6-widget-transform {
       border: none !important;
+      margin: -4px 0 0 -4px !important;
+      padding: 4px !important;
+      box-sizing: content-box !important;
     }
 
+    /* Hide midpoint resize handles (t, b, l, r) so they never occlude or block component pins/ports */
+    .x6-widget-transform-resize[data-position="t"],
+    .x6-widget-transform-resize[data-position="b"],
+    .x6-widget-transform-resize[data-position="l"],
+    .x6-widget-transform-resize[data-position="r"],
+    .x6-widget-transform-rotate {
+      display: none !important;
+      pointer-events: none !important;
+    }
+
+    /* Corner-only precision resize handles (Figma / Linear / KiCad grade) */
     .x6-widget-transform > div {
+      width: 7px !important;
+      height: 7px !important;
       background-color: var(--vscode-editor-background, #ffffff) !important;
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
-      border-radius: 50% !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      border-radius: 2px !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+      transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.12s ease;
     }
 
     .x6-widget-transform > div:hover {
       background-color: var(--vscode-focusBorder, #0284c7) !important;
-    }
-
-    .x6-widget-transform-rotate {
-      background-color: var(--vscode-editor-background, #ffffff) !important;
-      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
-      border-radius: 50% !important;
+      transform: scale(1.25);
     }
 
     /* Edge Selection and Vertex/Segment Handle Controls */
@@ -324,19 +336,21 @@ export function ensureDiagramStyles(): void {
       }
     }
 
-    /* Multi-Node Alignment & Distribution Toolbar */
+    /* Contextual Floating Edit Bar (Single-Node & Multi-Node HUD Pill) */
     .modelscript-alignment-toolbar {
       display: flex;
       align-items: center;
       gap: 3px;
       padding: 4px 6px;
-      background: var(--ms-bg-soft, var(--color-canvas-subtle, #1e293b));
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--ms-border, var(--color-border-default, #334155));
-      border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      background: var(--ms-bg-soft, var(--vscode-editorWidget-background, #1e293b));
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--ms-border, var(--vscode-widget-border, rgba(148, 163, 184, 0.25)));
+      border-radius: 9px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.14);
       user-select: none;
+      white-space: nowrap;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .modelscript-alignment-toolbar .align-btn {
       display: inline-flex;
@@ -346,24 +360,109 @@ export function ensureDiagramStyles(): void {
       height: 26px;
       background: transparent;
       border: none;
-      border-radius: 5px;
-      color: var(--ms-text-2, var(--color-fg-muted, #94a3b8));
+      border-radius: 6px;
+      color: var(--ms-text-2, var(--vscode-foreground, #cbd5e1));
       cursor: pointer;
       transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+      padding: 0;
     }
     .modelscript-alignment-toolbar .align-btn:hover {
-      background: var(--ms-surface-hover, rgba(255, 255, 255, 0.12));
+      background: var(--ms-surface-hover, rgba(56, 189, 248, 0.14));
       color: var(--ms-brand, #38bdf8);
-      transform: scale(1.05);
+      transform: translateY(-0.5px);
     }
     .modelscript-alignment-toolbar .align-btn:active {
-      transform: scale(0.95);
+      transform: scale(0.94);
+    }
+    .modelscript-alignment-toolbar .align-btn.align-btn-danger:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
     }
     .modelscript-alignment-toolbar .align-sep {
       width: 1px;
       height: 16px;
-      background: var(--ms-divider, var(--color-border-subtle, #475569));
+      background: var(--ms-divider, rgba(148, 163, 184, 0.24));
       margin: 0 2px;
+      flex-shrink: 0;
+    }
+    .modelscript-alignment-toolbar .align-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+    .modelscript-alignment-toolbar .align-chip-name {
+      background: rgba(2, 132, 199, 0.14);
+      color: var(--ms-brand, #38bdf8);
+      font-family: "JetBrains Mono", "Fira Code", var(--vscode-editor-font-family, monospace);
+    }
+    .modelscript-alignment-toolbar .align-chip-name:hover {
+      background: rgba(2, 132, 199, 0.24);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .modelscript-alignment-toolbar .align-chip-param {
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--ms-text-1, var(--vscode-foreground, #e2e8f0));
+      font-family: "JetBrains Mono", "Fira Code", var(--vscode-editor-font-family, monospace);
+      font-weight: 500;
+    }
+    .modelscript-alignment-toolbar .align-chip-param:hover {
+      background: rgba(56, 189, 248, 0.14);
+      border-color: rgba(56, 189, 248, 0.35);
+      color: var(--ms-brand, #38bdf8);
+    }
+    .modelscript-alignment-toolbar .align-badge-count {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(2, 132, 199, 0.16);
+      color: var(--ms-brand, #38bdf8);
+    }
+    .modelscript-alignment-toolbar .align-param-input {
+      width: 72px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 4px;
+      border: 1.5px solid var(--ms-brand, #0284c7);
+      background: var(--vscode-input-background, #0f172a);
+      color: var(--vscode-input-foreground, #f8fafc);
+      font-family: "JetBrains Mono", "Fira Code", var(--vscode-editor-font-family, monospace);
+      font-size: 11px;
+      outline: none;
+    }
+
+    /* Live Coordinate & Delta Nudge HUD Pill */
+    .modelscript-nudge-hud {
+      position: absolute;
+      z-index: 1001;
+      pointer-events: none;
+      transform: translate(-50%, 0);
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: #f1f5f9;
+      font-family: "JetBrains Mono", "Fira Code", var(--vscode-editor-font-family, monospace);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      transition: opacity 0.15s ease;
     }
 
     /* CAD Spacebar Hand Pan Mode */

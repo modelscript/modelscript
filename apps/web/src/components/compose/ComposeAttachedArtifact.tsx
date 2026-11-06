@@ -368,7 +368,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
                 boxShadow: isDark ? "0 2px 6px rgba(0,0,0,0.4)" : "0 1px 3px rgba(0,0,0,0.12)",
                 backdropFilter: "blur(8px)",
               }}
-              title="Generate or regenerate post draft from this engineering artifact using AI"
+              title="Generate or regenerate post draft from this morsel using AI"
             >
               <span>✨</span>
               <span>{aiDrafting ? "Drafting..." : "Draft Post"}</span>
@@ -436,7 +436,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
             icon={XIcon}
             variant="invisible"
             onClick={onRemove}
-            aria-label="Remove artifact"
+            aria-label="Remove morsel"
             style={{
               backgroundColor: isDark ? "rgba(13, 17, 23, 0.85)" : "rgba(255, 255, 255, 0.92)",
               color: isDark ? "var(--color-fg-muted, #8b949e)" : "var(--color-fg-muted, #656d76)",

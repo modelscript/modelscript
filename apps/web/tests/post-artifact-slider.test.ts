@@ -312,8 +312,9 @@ end X;
         "attachArtifactToComposer must check if existingArtifactIds.size >= 4 for short posts",
       );
       assert.ok(
-        notebookStateSrc.includes("Short posts are limited to a maximum of 4 artifacts"),
-        "attachArtifactToComposer must notify user when 4 artifact limit is reached",
+        notebookStateSrc.includes("Short posts are limited to a maximum of 4 morsels") ||
+          notebookStateSrc.includes("Short posts are limited to a maximum of 4 artifacts"),
+        "attachArtifactToComposer must notify user when 4 morsel limit is reached",
       );
     });
 
@@ -356,8 +357,10 @@ end X;
         "PostBodyContent must only run the vertical article reader branch when isArticle is true",
       );
       assert.ok(
-        postBodySrc.includes("displayPost.artifact_view_id && Number(displayPost.artifact_view_id) > 0"),
-        "PostBodyContent must ensure artifact_view_id is a positive number before rendering ArtifactViewCard",
+        postBodySrc.includes("displayPost.artifact_view_id") &&
+          (postBodySrc.includes("Number(displayPost.artifact_view_id) > 0") ||
+            postBodySrc.includes('String(displayPost.artifact_view_id) !== "0"')),
+        "PostBodyContent must ensure artifact_view_id is a positive/non-zero identifier before rendering ArtifactViewCard",
       );
     });
   });

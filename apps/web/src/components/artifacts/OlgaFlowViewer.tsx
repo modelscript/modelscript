@@ -380,7 +380,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
       title,
     });
     const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
-    navigate(`/sketch${fromParam}#m=${hash}`);
+    navigate(`/morsel${fromParam}#m=${hash}`);
   };
 
   const slugRisk = viewConfig.slugRisk;
@@ -426,7 +426,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

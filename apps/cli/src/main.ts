@@ -692,6 +692,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "cgmes <action> [files..]",
+      "Inspect, lint, convert and solve ENTSO-E CIM / CGMES European grid models",
+      () => import("./commands/cgmes.js"),
+      "CgmesCommand",
+    ),
+  )
+  .command(
+    lazy(
       "relap5 <action> [files..]",
       "Inspect, lint, solve kinetics, and lower US NRC RELAP5-3D decks (.i, .inp, .r5)",
       () => import("./commands/relap5.js"),

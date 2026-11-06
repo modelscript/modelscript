@@ -2,11 +2,12 @@
 
 import { AlertIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createArtifactView, getArtifactView, getPost } from "../api";
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
+import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
@@ -143,7 +144,7 @@ export const PlaygroundPage: React.FC = () => {
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
 
-  usePageTitle(currentTitle ? `${currentTitle} — Ansatz Sketch` : "Ansatz Sketch — ModelScript Playground");
+  usePageTitle(currentTitle ? `${currentTitle} — Ansatz Morsel` : "Ansatz Morsel — ModelScript Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isCreateRepoModalOpen, setIsCreateRepoModalOpen] = useState(false);
@@ -157,7 +158,7 @@ export const PlaygroundPage: React.FC = () => {
     }
   }, [fromArtifactParam]);
 
-  // Protect against accidental tab close or navigation when sketch has unsaved modifications
+  // Protect against accidental tab close or navigation when model has unsaved modifications
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty) {
@@ -174,15 +175,14 @@ export const PlaygroundPage: React.FC = () => {
     if (!isDirty || !currentCode) return;
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem(
-          "ansatz_sketch_draft",
-          JSON.stringify({
-            code: currentCode,
-            title: currentTitle,
-            lang: currentLang,
-            timestamp: Date.now(),
-          }),
-        );
+        const draftData = JSON.stringify({
+          code: currentCode,
+          title: currentTitle,
+          lang: currentLang,
+          timestamp: Date.now(),
+        });
+        localStorage.setItem("ansatz_morsel_draft", draftData);
+        localStorage.setItem("ansatz_sketch_draft", draftData);
       } catch {}
     }, 1000);
     return () => clearTimeout(timer);
@@ -192,7 +192,7 @@ export const PlaygroundPage: React.FC = () => {
   useEffect(() => {
     if (hasInitialTarget) return;
     try {
-      const saved = localStorage.getItem("ansatz_sketch_draft");
+      const saved = localStorage.getItem("ansatz_morsel_draft") || localStorage.getItem("ansatz_sketch_draft");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed?.code && typeof parsed.code === "string" && Date.now() - (parsed.timestamp || 0) < 86_400_000) {
@@ -505,7 +505,7 @@ export const PlaygroundPage: React.FC = () => {
           if (cancelled) return;
           const art = res?.artifactView || res;
           if (!art) {
-            toast.error("Failed to load model into Sketch");
+            toast.error("Failed to load model into Morsel");
             setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
             setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
             return;
@@ -613,7 +613,7 @@ export const PlaygroundPage: React.FC = () => {
         } catch (err) {
           console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", effectiveArtifactId, err);
           if (!cancelled) {
-            toast.error("Failed to load model into Sketch");
+            toast.error("Failed to load model into Morsel");
             setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
             setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
           }
@@ -841,7 +841,11 @@ export const PlaygroundPage: React.FC = () => {
       anchor: payload?.anchor,
       ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
     });
-    const basePath = location.pathname.startsWith("/playground") ? "/playground" : "/sketch";
+    const basePath = location.pathname.startsWith("/playground")
+      ? "/playground"
+      : location.pathname.startsWith("/sketch")
+        ? "/sketch"
+        : "/morsel";
     return `${window.location.origin}${basePath}#m=${hash}`;
   };
 
@@ -861,7 +865,11 @@ export const PlaygroundPage: React.FC = () => {
       anchor: payload?.anchor,
       ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
     });
-    const embedBase = location.pathname.startsWith("/playground") ? "/embed/playground" : "/embed/sketch";
+    const embedBase = location.pathname.startsWith("/playground")
+      ? "/embed/playground"
+      : location.pathname.startsWith("/sketch")
+        ? "/embed/sketch"
+        : "/embed/morsel";
     const embedSrc = `${window.location.origin}${embedBase}#m=${hash}`;
     if (format === "morsel-tag") {
       return `<script type="module" src="https://cdn.modelscript.org/embed/v1/modelscript-embed.js"></script>\n<modelscript-morsel src="${embedSrc}" height="500px" theme="dark"></modelscript-morsel>`;
@@ -1091,6 +1099,14 @@ export const PlaygroundPage: React.FC = () => {
   const [simulateTriggerCount, setSimulateTriggerCount] = useState(0);
   const [isSimulating, setIsSimulating] = useState(false);
 
+  const compilerDiagnostics = useMemo(() => {
+    return analyzeSnippetDiagnostics(currentCode, currentLang);
+  }, [currentCode, currentLang]);
+
+  const compilerErrorCount = useMemo(() => {
+    return compilerDiagnostics.filter((d) => d.severity === "error").length;
+  }, [compilerDiagnostics]);
+
   const handleActiveViewChange = useCallback(
     (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => {
       setCurrentView((prev) => (prev === nextView ? prev : (nextView as any)));
@@ -1215,6 +1231,13 @@ export const PlaygroundPage: React.FC = () => {
         currentView={currentView}
         isDirty={isDirty}
         isSimulating={isSimulating}
+        runStatus={{
+          state: compilerErrorCount > 0 ? "error" : isSimulating ? "compiling" : "ok",
+          errors: compilerErrorCount,
+        }}
+        onOpenProblems={() => {
+          handleViewChange("code");
+        }}
         publishLabel={publishLabel}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={handleToggleSidebar}
@@ -1307,11 +1330,11 @@ export const PlaygroundPage: React.FC = () => {
             }}
           >
             <Spinner size="large" />
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Sketch…</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Morsel…</div>
           </div>
         ) : (
           <ErrorBoundary
-            name="Ansatz Sketch Editor"
+            name="Ansatz Morsel Editor"
             fallback={
               <div
                 style={{
@@ -1342,7 +1365,7 @@ export const PlaygroundPage: React.FC = () => {
                 >
                   <AlertIcon size={28} />
                 </div>
-                <h2 style={{ fontSize: 20, margin: 0, fontWeight: 600 }}>Sketch Editor Encountered an Issue</h2>
+                <h2 style={{ fontSize: 20, margin: 0, fontWeight: 600 }}>Morsel Editor Encountered an Issue</h2>
                 <p style={{ color: "var(--color-fg-muted)", fontSize: 14, maxWidth: 480, margin: 0, lineHeight: 1.5 }}>
                   The editor component crashed during rendering. Your draft is preserved in local storage and can be
                   recovered safely.
@@ -1352,7 +1375,8 @@ export const PlaygroundPage: React.FC = () => {
                     variant="primary"
                     onClick={() => {
                       try {
-                        const saved = localStorage.getItem("ansatz_sketch_draft");
+                        const saved =
+                          localStorage.getItem("ansatz_morsel_draft") || localStorage.getItem("ansatz_sketch_draft");
                         if (saved) {
                           const parsed = JSON.parse(saved);
                           if (parsed?.code) setCurrentCode(parsed.code);

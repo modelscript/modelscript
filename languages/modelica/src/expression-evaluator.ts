@@ -172,7 +172,38 @@ function getEnumLiteralIndex(text: string, db: QueryDB): number | null {
       ? Array.from((db as any).index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
       : [];
   for (const s of candidateSyms as any[]) {
-    const cstText = (db.cstNode(s.id) as any)?.text ?? "";
+    // 1. Check indexed metadata literals
+    const metaLits = (s.metadata as any)?.literals;
+    if (Array.isArray(metaLits)) {
+      const idx = metaLits.indexOf(litName);
+      if (idx >= 0) return idx + 1;
+    }
+
+    // 2. CST-native enumeration literals extraction
+    const cst = db.cstNode ? db.cstNode(s.id) : null;
+    if (cst) {
+      const lits: string[] = [];
+      const collectEnumLits = (node: any) => {
+        if (!node) return;
+        if (node.type === "enumeration_literal" || node.type === "EnumerationLiteral") {
+          const idNode = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "IDENT");
+          const name = idNode?.text?.trim() ?? node.text?.trim()?.split(/\s+/)[0];
+          if (name) lits.push(name);
+          return;
+        }
+        for (const ch of node.children || []) {
+          collectEnumLits(ch);
+        }
+      };
+      collectEnumLits(cst);
+      if (lits.length > 0) {
+        const idx = lits.indexOf(litName);
+        if (idx >= 0) return idx + 1;
+      }
+    }
+
+    // 3. Fallback text parsing only if CST inspection did not find literals
+    const cstText = (cst as any)?.text ?? "";
     const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
     if (match && match[1]) {
       const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);

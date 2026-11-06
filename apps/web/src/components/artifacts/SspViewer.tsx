@@ -24,14 +24,25 @@ import Spinner from "../Spinner";
 import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
-export type {
-  SspClientModel,
-  SspConnectionMeta,
-  SspFmuComponentMeta,
-  SspParamMeta,
-  SspPortMeta,
-  SspViewConfigLike,
+import {
+  parseSsdClientModel,
+  type SspClientModel,
+  type SspConnectionMeta,
+  type SspFmuComponentMeta,
+  type SspParamMeta,
+  type SspPortMeta,
+  type SspViewConfigLike,
 } from "./ssp-client-parser.js";
+
+export {
+  parseSsdClientModel,
+  type SspClientModel,
+  type SspConnectionMeta,
+  type SspFmuComponentMeta,
+  type SspParamMeta,
+  type SspPortMeta,
+  type SspViewConfigLike,
+};
 
 export interface SspViewerProps {
   viewConfig: {
@@ -390,8 +401,6 @@ function escapeXmlText(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
-export { parseSsdClientModel } from "./ssp-client-parser.js";
 
 function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): string {
   const { systemName, sspVersion, masterAlgorithm, communicationStepMs, startTime, stopTime, fmus, connections } =
@@ -855,10 +864,10 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                   title,
                 });
                 const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/sketch${fromArtifact}#m=${hash}`);
+                navigate(`/morsel${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Sketch
+              Open in Morsel
             </Button>
           )}
         </Box>

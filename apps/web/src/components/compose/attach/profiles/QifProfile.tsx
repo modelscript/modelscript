@@ -265,7 +265,7 @@ const GeometryStep: React.FC<WizardStepProps<QifAttachDraft>> = ({ draft, update
         onChange={chooseMode}
         options={[
           { value: "upload", title: "Upload STEP", hint: "Attach the part this report inspects" },
-          { value: "linked", title: "My artifacts", hint: "Reuse a STEP model you already posted" },
+          { value: "linked", title: "My morsels", hint: "Reuse a STEP model you already posted" },
           { value: "none", title: "No 3D model", hint: "Show GD&T and measurements only" },
         ]}
       />

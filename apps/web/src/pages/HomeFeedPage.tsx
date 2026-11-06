@@ -8,7 +8,7 @@ import { AnsatzMark } from "../components/AnsatzLogo";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
-import { AnsatzSketchIcon } from "../components/icons";
+import { MorselIcon } from "../components/icons";
 import PostSkeleton from "../components/PostSkeleton";
 import { scrollToTop } from "../components/ScrollToTop";
 import Spinner from "../components/Spinner";
@@ -216,9 +216,9 @@ const HomeFeedPage: React.FC = () => {
           <span>{brandName}</span>
         </button>
         <Link
-          to="/sketch"
-          title="Open Ansatz Sketch"
-          aria-label="Open Ansatz Sketch"
+          to="/morsel"
+          title="Open Ansatz Morsel"
+          aria-label="Open Ansatz Morsel"
           style={{
             width: 30,
             height: 30,
@@ -232,7 +232,7 @@ const HomeFeedPage: React.FC = () => {
             flexShrink: 0,
           }}
         >
-          <AnsatzSketchIcon size={16} variant="outline" />
+          <MorselIcon size={16} />
         </Link>
       </MobileFeedTopBar>
 

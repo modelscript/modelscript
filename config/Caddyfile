@@ -1,18 +1,18 @@
 # Caddy configuration for ModelScript (modelscript.org) & Ansatz (ansatz.social)
 # Automatically provisions and renews Let's Encrypt / ZeroSSL TLS certificates
 
-# Redirect legacy Morsel subdomain to Ansatz Sketch on ansatz.social
+# Redirect Morsel subdomain to Ansatz Morsel on ansatz.social
 morsel.modelscript.org {
-    # Route embed links to /embed/sketch
+    # Route embed links to /embed/morsel
     @embed path /embed /embed/*
-    redir @embed https://ansatz.social/embed/sketch{?query} permanent
+    redir @embed https://ansatz.social/embed/morsel{?query} permanent
 
-    # Route root directly to /sketch
+    # Route root directly to /morsel
     @root path /
-    redir @root https://ansatz.social/sketch{?query} permanent
+    redir @root https://ansatz.social/morsel{?query} permanent
 
-    # Route all other paths under /sketch
-    redir https://ansatz.social/sketch{uri} permanent
+    # Route all other paths under /morsel
+    redir https://ansatz.social/morsel{uri} permanent
 }
 
 # Redirect legacy IDE subdomain to Studio on ansatz.social

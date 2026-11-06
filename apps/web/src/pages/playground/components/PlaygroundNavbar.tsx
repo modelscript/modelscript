@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertIcon,
   ArrowLeftIcon,
   BookmarkIcon,
   CodeIcon,
@@ -28,7 +29,7 @@ import { ActionList, ActionMenu, Button, IconButton, SegmentedControl } from "@p
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
-import { AnsatzSketchIcon } from "../../../components/icons";
+import { MorselIcon } from "../../../components/icons";
 import { getLanguageInfo } from "../../../components/morsel/constants";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
@@ -42,7 +43,9 @@ import {
 import {
   Badge,
   BrandLink,
+  NavBackLink,
   NavCenter,
+  NavDivider,
   NavLeft,
   NavRight,
   NavText,
@@ -68,6 +71,12 @@ export interface PlaygroundNavbarProps {
   onOpenTemplates?: () => void;
   onSaveToArtifact?: () => void;
   onCreateRepo?: () => void;
+  runStatus?: {
+    state: "idle" | "compiling" | "ok" | "error";
+    errors?: number;
+    message?: string;
+  };
+  onOpenProblems?: () => void;
   onDownloadModel: () => void;
   onCopyEmbed: () => void;
   onOpenShare: () => void;
@@ -81,6 +90,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   currentView = "diagram",
   isDirty = false,
   isSimulating = false,
+  runStatus,
+  onOpenProblems,
   publishLabel,
   isSidebarOpen,
   onToggleSidebar,
@@ -129,6 +140,10 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   };
 
   const effectivePublishLabel = publishLabel || (fromArtifactParam ? "Post your fork" : "Post");
+  const displayTitle =
+    currentTitle.includes(".") && !currentTitle.includes(" ")
+      ? currentTitle.split(".").pop() || currentTitle
+      : currentTitle;
 
   return (
     <NavbarContainer>
@@ -145,62 +160,46 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 : `Hide Libraries sidebar (${isMac ? "⌘B" : "Ctrl+B"})`
             }
             onClick={onToggleSidebar}
-            style={{ height: 32, width: 32, borderRadius: 6, marginRight: 4 }}
+            style={{ height: 30, width: 30, borderRadius: 6, flexShrink: 0 }}
           />
         )}
         <BrandLink
           href={branding.docsBaseUrl || "https://modelscript.org"}
           target="_blank"
           rel="noopener noreferrer"
-          title="Ansatz Sketch"
-          aria-label="ModelScript Homepage"
+          title="Ansatz Morsel"
+          aria-label="ModelScript Morsel"
         >
           <img
-            src={customLogoSrc || (theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png")}
-            alt="ModelScript"
-            width={24}
-            height={24}
-            style={{ borderRadius: "5px", flexShrink: 0, display: "block" }}
+            src={customLogoSrc || (theme === "dark" ? "/brand-dark.png" : "/brand.png")}
+            alt="Morsel"
+            height={22}
+            style={{ height: "22px", width: "auto", flexShrink: 0, display: "block" }}
+            data-testid="morsel-brand-icon"
           />
-          <span
-            className="nav-hide-md"
-            style={{ fontWeight: 700, letterSpacing: "-0.01em", color: "var(--color-fg-default)" }}
-          >
-            ModelScript
-          </span>
-          <Badge data-testid="playground-brand-badge" title="Ansatz Sketch">
-            <AnsatzSketchIcon size={14} variant="outline" style={{ marginRight: "3px" }} />
-            <span>Sketch</span>
-          </Badge>
+          {Boolean(customLogoSrc) && (
+            <Badge data-testid="playground-brand-badge" title="Ansatz Morsel">
+              <MorselIcon size={13} style={{ marginRight: "3px" }} />
+              <span>Morsel</span>
+            </Badge>
+          )}
         </BrandLink>
 
-        <Link
+        <NavBackLink
+          as={Link}
           to={user ? "/home" : "/explore"}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "5px",
-            fontSize: "12px",
-            fontWeight: 500,
-            padding: "3px 8px",
-            borderRadius: "var(--ms-radius-sm, 6px)",
-            color: "var(--color-fg-muted)",
-            textDecoration: "none",
-            border: "1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.12)))",
-            background: "var(--color-canvas-subtle)",
-            transition: "all 0.15s ease",
-            flexShrink: 0,
-          }}
           title="Return to Ansatz Platform"
           aria-label="Back to Ansatz Platform"
         >
           <ArrowLeftIcon size={12} />
           <span className="nav-hide-md">Ansatz</span>
-        </Link>
+        </NavBackLink>
+
+        <NavDivider />
 
         {fromArtifactParam && (
           <Link
-            to={`/sketch?fromArtifact=${fromArtifactParam}`}
+            to={`/morsel?fromArtifact=${fromArtifactParam}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -216,14 +215,14 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               fontWeight: 600,
               flexShrink: 0,
             }}
-            title={`Forked from Artifact #${fromArtifactParam}`}
+            title={`Forked from Morsel #${fromArtifactParam}`}
           >
             <RepoForkedIcon size={12} /> Fork of #{fromArtifactParam}
           </Link>
         )}
 
         {/* Preset Example Picker & Inline Title Rename */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", minWidth: 0, flexShrink: 1 }}>
           {isEditingTitle ? (
             <input
               type="text"
@@ -241,7 +240,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 }
               }}
               style={{
-                width: 150,
+                width: 180,
                 maxWidth: "38vw",
                 height: 28,
                 padding: "2px 8px",
@@ -258,19 +257,39 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             />
           ) : (
             <ActionMenu>
-              <ActionMenu.Button size="small">
+              <ActionMenu.Button
+                size="small"
+                title={
+                  onTitleChange
+                    ? `${currentTitle} — Click for model options & templates, double-click to rename`
+                    : currentTitle
+                }
+                onDoubleClick={(e) => {
+                  if (onTitleChange) {
+                    e.stopPropagation();
+                    setDraftTitle(currentTitle);
+                    setIsEditingTitle(true);
+                  }
+                }}
+                style={{
+                  height: 28,
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  padding: "0 8px",
+                }}
+              >
                 <span
                   style={{
                     display: "inline-block",
-                    minWidth: 100,
-                    maxWidth: "clamp(100px, 18vw, 240px)",
+                    minWidth: 0,
+                    maxWidth: "clamp(110px, 18vw, 240px)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     verticalAlign: "bottom",
                   }}
                 >
-                  {currentTitle}
+                  {displayTitle}
                 </span>
                 {isDirty && (
                   <span
@@ -359,44 +378,31 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               </ActionMenu.Overlay>
             </ActionMenu>
           )}
-          {onTitleChange && !isEditingTitle && (
-            <IconButton
-              aria-label="Rename model"
-              title="Rename model"
-              icon={PencilIcon}
-              size="small"
-              variant="invisible"
-              className="nav-hide-sm"
-              onClick={() => {
-                setDraftTitle(currentTitle);
-                setIsEditingTitle(true);
-              }}
-            />
-          )}
         </div>
 
-        {/* Templates Gallery Button */}
-        {onOpenTemplates && (
-          <Button
-            size="small"
-            variant="invisible"
-            leadingVisual={CrossReferenceIcon}
-            onClick={onOpenTemplates}
-            title="Browse starter engineering templates"
-            className="nav-hide-md"
-          >
-            <NavText>Templates</NavText>
-          </Button>
-        )}
-
-        {/* Language / Dialect Selector */}
+        {/* Language / Dialect Selector Chip */}
         {onSelectLang && (
           <ActionMenu>
-            <ActionMenu.Button size="small" leadingVisual={CodeIcon} aria-label="Select engineering dialect">
+            <ActionMenu.Button
+              size="small"
+              aria-label="Select engineering dialect"
+              title={`Engineering Dialect: ${currentLangOption.label} (${currentLangOption.ext})`}
+              style={{
+                height: 26,
+                padding: "0 8px",
+                borderRadius: 6,
+                fontWeight: 600,
+                fontSize: 11,
+                color: "var(--ms-brand, #0891b2)",
+                background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.08))",
+                borderColor: "color-mix(in srgb, var(--ms-brand, #0891b2) 24%, transparent)",
+                flexShrink: 0,
+              }}
+            >
               <span
                 style={{
                   display: "inline-block",
-                  maxWidth: "clamp(64px, 18vw, 140px)",
+                  maxWidth: "clamp(56px, 12vw, 110px)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -439,6 +445,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             id: "diagram" | "3d" | "simulation" | "inspector" | "code" | "split";
             label: string;
             icon: any;
+            title: string;
             onClick: () => void;
           }> = [];
 
@@ -528,6 +535,35 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         })()}
 
       <NavRight>
+        {/* Compilation / Solver Error Status Pill */}
+        {Boolean(runStatus && (runStatus.state === "error" || (runStatus.errors ?? 0) > 0)) && (
+          <button
+            type="button"
+            onClick={onOpenProblems}
+            title={`${runStatus?.errors ?? 1} issue${(runStatus?.errors ?? 1) > 1 ? "s" : ""} detected. Click to inspect.`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              height: 28,
+              padding: "0 8px",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              background: "var(--ms-status-danger-bg, rgba(239, 68, 68, 0.12))",
+              color: "var(--ms-status-danger-fg, #ef4444)",
+              border: "1px solid var(--ms-status-danger-border, rgba(239, 68, 68, 0.3))",
+              cursor: onOpenProblems ? "pointer" : "default",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <AlertIcon size={12} />
+            <span>
+              {runStatus?.errors ?? 1} {(runStatus?.errors ?? 1) === 1 ? "error" : "errors"}
+            </span>
+          </button>
+        )}
+
         {/* Primary Run Simulation CTA */}
         {onSimulate && (
           <Button
@@ -538,19 +574,19 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             disabled={isSimulating}
             style={{
               fontWeight: 600,
-              height: 32,
+              height: 30,
+              padding: "0 12px",
               borderRadius: "var(--ms-radius-sm, 6px)",
               background: isSimulating
                 ? "var(--color-neutral-muted, var(--ms-text-3, #4b5563))"
                 : "linear-gradient(180deg, var(--ms-accent-teal, #14b8a6) 0%, var(--ms-brand, #0e7490) 100%)",
               borderColor: isSimulating ? "transparent" : "var(--ms-brand-active, #155e75)",
-              boxShadow: isSimulating ? "none" : "0 1px 3px rgba(14, 116, 144, 0.25)",
+              boxShadow: isSimulating ? "none" : "0 1px 2px rgba(14, 116, 144, 0.25)",
               color: "#ffffff",
-              minWidth: 78,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 5,
+              gap: 4,
               transition: "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
             title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⇧↵" : "F5"})`}
@@ -571,40 +607,44 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 Running…
               </span>
             ) : (
-              "Run"
+              <span>Run</span>
             )}
           </Button>
         )}
 
         {/* Global Search / Command Palette */}
         <IconButton
+          icon={SearchIcon}
           size="small"
           variant="invisible"
-          icon={SearchIcon}
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
           aria-label={`Search models & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
           title={`Search models, packages & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
-          style={{ height: 32, width: 32, borderRadius: 6 }}
+          style={{ height: 30, width: 30, borderRadius: 6 }}
         />
 
         {/* Promote to Multi-File VS Code Workbench */}
         {onOpenInVsCode && (
-          <Button
+          <IconButton
+            icon={TerminalIcon}
             size="small"
-            variant="default"
-            leadingVisual={TerminalIcon}
+            variant="invisible"
             onClick={onOpenInVsCode}
+            aria-label="Open in VS Code Workbench"
             title="Promote this model to the full multi-file VS Code Workbench"
-            className="nav-hide-lg"
-            style={{ height: 32, borderRadius: 6 }}
-          >
-            <NavText>Open in VS Code</NavText>
-          </Button>
+            className="nav-hide-sm"
+            style={{ height: 30, width: 30, borderRadius: 6 }}
+          />
         )}
 
         {/* Unified Share & Export Menu */}
         <ActionMenu>
-          <ActionMenu.Button size="small" leadingVisual={ShareIcon} style={{ height: 32, borderRadius: 6 }}>
+          <ActionMenu.Button
+            size="small"
+            leadingVisual={ShareIcon}
+            className="nav-icon-only-xl"
+            style={{ height: 30, borderRadius: 6 }}
+          >
             <NavText>Share</NavText>
           </ActionMenu.Button>
           <ActionMenu.Overlay width="medium">
@@ -645,14 +685,27 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                   Create Git Repository…
                 </ActionList.Item>
               )}
+              {onOpenInVsCode && (
+                <>
+                  <ActionList.Divider />
+                  <ActionList.Item onSelect={onOpenInVsCode}>
+                    <ActionList.LeadingVisual>
+                      <TerminalIcon />
+                    </ActionList.LeadingVisual>
+                    Open in VS Code Workbench
+                  </ActionList.Item>
+                </>
+              )}
             </ActionList>
           </ActionMenu.Overlay>
         </ActionMenu>
 
+        <NavDivider />
+
         {/* Publish / Save Edit / Reply / Fork to Feed & Ansatz Profile Menu */}
         {user ? (
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={onPublishToFeed}>
+            <Button size="small" variant="default" leadingVisual={ZapIcon} onClick={onPublishToFeed} style={{ height: 30, borderRadius: 6, fontWeight: 600 }}>
               {effectivePublishLabel}
             </Button>
             <ActionMenu>
@@ -700,14 +753,14 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             </ActionMenu>
           </div>
         ) : (
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
             <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-sm">
-              <Button size="small" variant="invisible">
+              <Button size="small" variant="invisible" style={{ height: 30, borderRadius: 6 }}>
                 Sign In
               </Button>
             </Link>
             <Link to="/signup" style={{ textDecoration: "none" }}>
-              <Button size="small" variant="primary">
+              <Button size="small" variant="default" style={{ height: 30, borderRadius: 6, fontWeight: 600 }}>
                 Sign Up
               </Button>
             </Link>

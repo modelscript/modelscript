@@ -48,7 +48,7 @@ const stats = computed<StatItem[]>(() => [
     label: "Installs required",
     description: "Native WebAssembly runs in the browser, Node.js, and the CLI.",
     icon: "cube",
-    link: `${ansatzOrigin.value}/sketch`,
+    link: `${ansatzOrigin.value}/morsel`,
   },
 ]);
 </script>

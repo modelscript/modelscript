@@ -1,6 +1,6 @@
 # Embedding Artifacts & Models
 
-The **ModelScript Embed Service** allows you to embed interactive 2D schematics, 3D CAD/STEP models, simulation trajectory charts, and editable Ansatz Sketch canvases directly into external websites, blogs, Notion, and documentation portals.
+The **ModelScript Embed Service** allows you to embed interactive 2D schematics, 3D CAD/STEP models, simulation trajectory charts, and editable Ansatz Morsel canvases directly into external websites, blogs, Notion, and documentation portals.
 
 ---
 
@@ -34,7 +34,7 @@ end RLC;"
 | `anchor`      | `undefined`    | Target component element ID to visually highlight and auto-center (e.g. `"R1"` or `"chassis"`).                                                |
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
-| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Sketch.                                                             |
+| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Morsel.                                                             |
 | `artifact-id` | `undefined`    | Numerical ID of a published artifact on the ModelScript Hub.                                                                                   |
 
 ---
@@ -181,7 +181,7 @@ Every ModelScript post (`https://modelscript.org/p/:id`) includes standard auto-
 
 ### Direct oEmbed Query
 
-Clients can query the oEmbed endpoint directly using either a post URL or a sketch permalink hash (`#m=...`):
+Clients can query the oEmbed endpoint directly using either a post URL or a morsel permalink hash (`#m=...`):
 
 ```bash
 curl "https://api.modelscript.org/api/v1/oembed?url=https%3A%2F%2Fmodelscript.org%2F%23m%3DeJy...&maxwidth=800&format=json"

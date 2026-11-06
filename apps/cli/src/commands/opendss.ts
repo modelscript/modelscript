@@ -16,6 +16,7 @@ import {
   lowerOpenDssToDae,
   openDssToModelica,
   parseOpenDss,
+  solveDistributionOpf,
   solveDistributionPowerFlow,
 } from "@modelscript/opendss";
 import fs from "node:fs";
@@ -28,9 +29,9 @@ export const OpenDssCommand: CommandModule<Record<string, unknown>, Record<strin
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (inspect, lint, powerflow, to-dae, to-modelica)",
+        description: "Action to perform (inspect, lint, powerflow, opf, to-dae, to-modelica)",
         type: "string",
-        choices: ["inspect", "summary", "lint", "powerflow", "to-dae", "to-modelica"],
+        choices: ["inspect", "summary", "lint", "powerflow", "opf", "d-opf", "to-dae", "to-modelica"],
         demandOption: true,
       })
       .positional("files", {
@@ -110,6 +111,13 @@ export const OpenDssCommand: CommandModule<Record<string, unknown>, Record<strin
           for (const [bName, bRes] of pf.buses) {
             console.log(`  Bus '${bName}': ${bRes.voltagePu.toFixed(4)} pu (${bRes.voltageKv.toFixed(2)} kV)`);
           }
+          break;
+        }
+
+        case "opf":
+        case "d-opf": {
+          const dopf = solveDistributionOpf(deck);
+          console.log(dopf.reportText);
           break;
         }
 

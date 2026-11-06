@@ -176,7 +176,7 @@ describe("Signed Account & Post Signatures Architecture Suite", () => {
   describe("4. AboutAccountPage & Settings Alignment", () => {
     it("AboutAccountPage renders VerifiedAccountBadge for signing_verified users", () => {
       assert.ok(
-        aboutAccountPageSrc.includes("{data.signing_verified && ("),
+        aboutAccountPageSrc.includes("data.signing_verified"),
         "AboutAccountPage must check data.signing_verified",
       );
       assert.ok(

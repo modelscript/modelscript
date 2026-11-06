@@ -49,6 +49,7 @@
     "@modelscript/ccsds": "*",
     "@modelscript/cellml": "*",
     "@modelscript/cfd": "*",
+    "@modelscript/cgmes": "*",
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dicom-rt": "*",

@@ -1637,6 +1637,11 @@ export function stripCommentsAndStrings(text: string): string {
     .replace(/"(?:[^"\\]|\\.)*"/g, " ");
 }
 
+export function stripAnnotationsAndComments(text: string): string {
+  const stripped = stripCommentsAndStrings(text);
+  return stripped.replace(/\bannotation\s*\([^;]*\)/gi, " ");
+}
+
 export function extractCstModifierValue(cstNode: any, paramName: string): string | undefined {
   if (!cstNode || !paramName) return undefined;
   if (typeof cstNode.tree?.sourceCode === "string") {
@@ -1830,8 +1835,8 @@ export function evaluateMacroExpression(
   let compVal: string | undefined;
   const compNode = componentInstance as
     | {
-        cstNode?: { tree?: { sourceCode?: string }; startIndex?: number; endIndex?: number; text?: string };
-        abstractSyntaxNode?: { tree?: { sourceCode?: string }; startIndex?: number; endIndex?: number; text?: string };
+        cstNode?: { tree?: { sourceCode?: string }; startIndex?: number; endIndex?: number; text?: string; children?: any[] };
+        abstractSyntaxNode?: { tree?: { sourceCode?: string }; startIndex?: number; endIndex?: number; text?: string; children?: any[] };
         modification?: { getModificationArgument?: (n: string) => { expression?: unknown } };
         text?: string;
       }
@@ -1839,23 +1844,17 @@ export function evaluateMacroExpression(
   const compCst = compNode?.cstNode ?? compNode?.abstractSyntaxNode;
   if (compCst) {
     compVal = extractCstModifierValue(compCst, name);
-    if (!compVal && typeof compCst.tree?.sourceCode === "string") {
-      const src: string = compCst.tree.sourceCode;
-      const sIdx = compCst.startIndex ?? 0;
-      const eIdx = compCst.endIndex ?? src.length;
-      const pos = src.indexOf(name, sIdx);
-      if (pos !== -1 && pos < eIdx) {
-        const compText = compCst.text;
-        if (typeof compText === "string") {
-          const sanitized = stripCommentsAndStrings(compText);
-          const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
-          if (match && match[1]) {
-            compVal = match[1].trim();
-          }
-        }
+    if (!compVal) {
+      const nonAnnChildren = (compCst.children || []).filter(
+        (c: any) => c.type !== "annotation_clause" && c.type !== "AnnotationClause",
+      );
+      for (const ch of nonAnnChildren) {
+        compVal = extractCstModifierValue(ch, name);
+        if (compVal) break;
       }
-    } else if (!compVal && typeof compCst.text === "string") {
-      const sanitized = stripCommentsAndStrings(compCst.text);
+    }
+    if (!compVal && typeof compCst.text === "string") {
+      const sanitized = stripAnnotationsAndComments(compCst.text);
       const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
       if (match && match[1]) {
         compVal = match[1].trim();
@@ -1867,7 +1866,7 @@ export function evaluateMacroExpression(
     const compArgExpr = compNode?.modification?.getModificationArgument?.(name)?.expression;
     compVal = formatPropertyValue(compArgExpr);
     if (!compVal && typeof compNode?.text === "string") {
-      const sanitized = stripCommentsAndStrings(compNode.text);
+      const sanitized = stripAnnotationsAndComments(compNode.text);
       const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
       if (match && match[1]) {
         compVal = match[1].trim();
@@ -1897,7 +1896,7 @@ export function evaluateMacroExpression(
       if (elemCst) {
         elemVal = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, name);
         if (!elemVal && typeof elemCst.text === "string" && elemCst.text.includes("=")) {
-          const cleanText = stripCommentsAndStrings(elemCst.text);
+          const cleanText = stripAnnotationsAndComments(elemCst.text);
           const matchEq = cleanText.match(/=\s*([^;()]+(?:\([^)]*\)[^;()]*)*);?/);
           if (matchEq && matchEq[1]) {
             elemVal = matchEq[1].replace(/;$/, "").trim();
@@ -2828,7 +2827,7 @@ export function buildComponentProperties(
         value = extractCstModifierValue(compCst, element.name ?? "");
       }
       if (!value && component["cstNode"]) {
-        const compCstText = stripCommentsAndStrings(component["cstNode"].text ?? "");
+        const compCstText = stripAnnotationsAndComments(component["cstNode"].text ?? "");
         const escapedName = (element.name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const argRegex = new RegExp(`\\b${escapedName}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i");
         const m = compCstText.match(argRegex);
@@ -2855,14 +2854,25 @@ export function buildComponentProperties(
         value = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, element.name ?? "");
       }
       if (!value && element.cstNode) {
-        const elemText = stripCommentsAndStrings(element.cstNode.text ?? "");
-        const startMatch = elemText.match(/\bstart\s*=\s*([^,()]+)/);
-        if (startMatch && startMatch[1]) {
-          value = startMatch[1].trim();
-        } else {
-          const assignMatch = elemText.match(/=\s*([^;"\n]+)/);
-          if (assignMatch && assignMatch[1]) {
-            value = assignMatch[1].trim();
+        const valModNode = (element.cstNode.children || []).find(
+          (c: any) => Cst.Modification.is(c) || c.type === "modification",
+        );
+        if (valModNode) {
+          const modText = valModNode.text?.trim();
+          if (modText?.startsWith("=")) {
+            value = modText.replace(/^=\s*/, "").replace(/;$/, "").trim();
+          }
+        }
+        if (!value) {
+          const elemText = stripAnnotationsAndComments(element.cstNode.text ?? "");
+          const startMatch = elemText.match(/\bstart\s*=\s*([^,()]+)/);
+          if (startMatch && startMatch[1]) {
+            value = startMatch[1].trim();
+          } else {
+            const assignMatch = elemText.match(/=\s*([^;"\n]+)/);
+            if (assignMatch && assignMatch[1]) {
+              value = assignMatch[1].trim();
+            }
           }
         }
       }

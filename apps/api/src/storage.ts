@@ -260,6 +260,9 @@ export class LibraryStorage {
         return [];
       }
     }
+    if (!fs.existsSync(dir)) {
+      return [];
+    }
 
     return fs
       .readdirSync(dir)

@@ -25,6 +25,7 @@ import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { parsePscadClient, type PscadClientModel } from "./pscad-client-parser.js";
 
 export interface PscadViewerProps {
   viewConfig: {
@@ -355,7 +356,7 @@ function parseNumericVal(raw: string | number | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export { parsePscadClient, type PscadClientModel } from "./pscad-client-parser.js";
+export { parsePscadClient, type PscadClientModel };
 
 /**
  * Synthesizes deterministic IEEE 2800-2022 Clause 7.2 fault ride-through EMT trajectories
@@ -681,7 +682,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
       title,
     });
     const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
-    navigate(`/sketch${fromParam}#m=${hash}`);
+    navigate(`/morsel${fromParam}#m=${hash}`);
   };
 
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
@@ -777,7 +778,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
             </Button>
             {Boolean(viewConfig?.standalone) && !isFullScreen && (
               <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
-                Open in Sketch
+                Open in Morsel
               </Button>
             )}
           </Box>

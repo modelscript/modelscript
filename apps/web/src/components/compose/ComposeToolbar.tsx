@@ -185,7 +185,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
               onClick={onAiDraft}
               disabled={isAiRunning}
               data-testid="composer-ai-draft-btn"
-              title="Automatically draft or regenerate a post summarizing the attached engineering artifact"
+              title="Automatically draft or regenerate a post summarizing the attached engineering morsel"
               style={{
                 borderColor: "var(--color-accent-blue-border)",
                 background: aiBusy === "drafting" ? "var(--ms-brand-soft)" : undefined,
@@ -195,7 +195,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
               <span className="pill-icon" style={{ color: "var(--color-accent-cyan, #06b6d4)" }}>
                 <SparklesFillIcon size={12} />
               </span>
-              <span>{aiBusy === "drafting" ? "Drafting..." : "Draft from artifact"}</span>
+              <span>{aiBusy === "drafting" ? "Drafting..." : "Draft from morsel"}</span>
             </CommandPill>
           )}
 
@@ -358,9 +358,9 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
                           fontSize: "12px",
                         }}
                       >
-                        <span style={{ fontWeight: 600 }}>📝 Draft from Artifact</span>
+                        <span style={{ fontWeight: 600 }}>📝 Draft from Morsel</span>
                         <span style={{ fontSize: "10.5px", color: "var(--color-text-muted, #8b949e)" }}>
-                          Synthesize post from attached artifact
+                          Synthesize post from attached morsel
                         </span>
                       </button>
                     </>
@@ -509,8 +509,8 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           {hasHpc && (
             <ActionIconButton
               onClick={() => setShowHpcPicker(true)}
-              aria-label="Attach HPC Artifact"
-              title="Attach HPC Simulation Artifact (FEA, CFD, DOEs)"
+              aria-label="Attach HPC Morsel"
+              title="Attach HPC Simulation Morsel (FEA, CFD, DOEs)"
             >
               <ServerIcon size={20} />
             </ActionIconButton>

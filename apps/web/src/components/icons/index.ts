@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export { AnsatzSketchIcon, DraftingTriangleIcon, SketchIcon } from "./AnsatzSketchIcon";
+export {
+  AnsatzMorselIcon,
+  AnsatzSketchIcon,
+  DraftingTriangleIcon,
+  MorselIcon,
+  SketchIcon,
+} from "./AnsatzSketchIcon";
 export type { AnsatzSketchIconProps, SketchIconVariant } from "./AnsatzSketchIcon";
 export { PlaygroundIcon } from "./PlaygroundIcon";
 export type { PlaygroundIconFillMode, PlaygroundIconProps } from "./PlaygroundIcon";

@@ -389,7 +389,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
 
   const rotationPart = r !== 0 ? `, rotation=${r}` : "";
 
-  // Detect flip from the original extent in the source text
+  // Detect flip from explicit item override or original extent in the source text
   let flipX = false;
   let flipY = false;
 
@@ -400,6 +400,8 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
     if (!isNaN(x1) && !isNaN(x2)) flipX = x1 > x2;
     if (!isNaN(y1) && !isNaN(y2)) flipY = y1 > y2;
   }
+  if (item.flipX !== undefined) flipX = Boolean(item.flipX);
+  if (item.flipY !== undefined) flipY = Boolean(item.flipY);
 
   const ex1 = flipX ? w / 2 : -(w / 2);
   const ex2 = flipX ? -(w / 2) : w / 2;

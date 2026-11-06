@@ -1388,7 +1388,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                   leadingVisual={DraftingTriangleIcon}
                   onClick={handleOpenInPlayground}
                 >
-                  Open in Sketch
+                  Open in Morsel
                 </Button>
               )}
             </Box>
@@ -1457,7 +1457,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                     leadingVisual={DraftingTriangleIcon}
                     onClick={handleOpenInPlayground}
                   >
-                    Open in Sketch
+                    Open in Morsel
                   </Button>
                 )}
               </Box>

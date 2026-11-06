@@ -210,7 +210,7 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
                   onMouseDown={(e) => e.preventDefault()}
                   aria-pressed={Boolean(isNotebookMode)}
                   data-testid="composer-article-mode-btn"
-                  title="Toggle long-form Article Mode with interspersed Markdown & interactive Artifacts"
+                  title="Toggle long-form Article Mode with interspersed Markdown & interactive Morsels"
                 >
                   <span className="pill-icon">
                     <BookIcon size={12} />

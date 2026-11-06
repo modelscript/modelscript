@@ -157,6 +157,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [documentModels, setDocumentModels] = useState<{ name: string; kind: string }[]>([]);
   const [drillDownPath, setDrillDownPath] = useState<string[]>([]);
   const isSpatialEditPending = useRef(false);
+  const lastDiagramEditTimeRef = useRef(0);
+  const diagramDataRef = useRef<any>(null);
+  diagramDataRef.current = diagramData;
+  const lastDiagramTargetKeyRef = useRef<string>("");
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
@@ -405,9 +409,44 @@ export default function MorselEditor(props: MorselEditorProps) {
       pendingDiagramActionsRef.current.push(action);
       if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
 
+      // Optimistically update selectedComponentProperties so Property Panel stays in sync immediately
+      if (action.type === "updateParameter" || action.type === "updateProperty") {
+        const paramKey = action.type === "updateParameter" ? action.parameter : action.key;
+        const paramVal = String(action.value ?? "");
+        setSelectedComponentProperties((prev: any) => {
+          if (!prev || prev.name !== action.name) return prev;
+          return {
+            ...prev,
+            parameters: Array.isArray(prev.parameters)
+              ? prev.parameters.map((p: any) => (p.name === paramKey ? { ...p, value: paramVal } : p))
+              : prev.parameters,
+            properties:
+              prev.properties && typeof prev.properties === "object"
+                ? { ...prev.properties, [paramKey]: action.value }
+                : prev.properties,
+          };
+        });
+      } else if (action.type === "updateName") {
+        setSelectedComponentProperties((prev: any) =>
+          prev && prev.name === action.oldName ? { ...prev, name: action.newName } : prev,
+        );
+      } else if (action.type === "updateDescription") {
+        setSelectedComponentProperties((prev: any) =>
+          prev && prev.name === action.name ? { ...prev, description: action.description } : prev,
+        );
+      }
+
       const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
-      if (!isSpatial) setIsDiagramLoading(true);
-      const delay = isSpatial ? 10 : 0; // reduced delay since diagram-core batches correctly now
+      const isOptimisticOnly =
+        isSpatial ||
+        action.type === "updateParameter" ||
+        action.type === "updateProperty" ||
+        action.type === "updateName" ||
+        action.type === "updateDescription";
+      if (!isOptimisticOnly && !diagramDataRef.current) {
+        setIsDiagramLoading(true);
+      }
+      const delay = isSpatial ? 8 : 0;
 
       diagramActionTimerRef.current = setTimeout(() => {
         const actions = pendingDiagramActionsRef.current;
@@ -421,11 +460,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                 setSidecarContent(response.sidecarContent);
               }
               if (response && response.edits && response.edits.length > 0) {
-                if (response.renderHint === "none") {
-                  isSpatialEditPending.current = true;
-                } else {
-                  isSpatialEditPending.current = false;
-                }
+                isSpatialEditPending.current = true;
+                lastDiagramEditTimeRef.current = Date.now();
                 if (editorRef.current) {
                   applyLspEdits(editorRef.current, response.edits, actions[0].type);
                   const updatedCode = editorRef.current.getValue();
@@ -442,15 +478,12 @@ export default function MorselEditor(props: MorselEditorProps) {
                   setLastLoadedContent(updatedCode);
                   didChange(documentUriRef.current, updatedCode);
                   onCodeChangeRef.current?.(updatedCode);
-                  if (response.renderHint === "none") {
-                    isSpatialEditPending.current = false;
-                    setIsDiagramLoading(false);
-                  } else {
-                    setContextVersion((v) => v + 1);
-                  }
                 }
-                // Yield to event loop to ensure didChange is processed by LSP before next edit is computed
-                await new Promise((resolve) => setTimeout(resolve, 20));
+                if (response.renderHint === "none") {
+                  setIsDiagramLoading(false);
+                } else {
+                  setContextVersion((v) => v + 1);
+                }
               } else if (response?.sidecarContent !== undefined) {
                 setIsDiagramLoading(false);
                 setContextVersion((v) => v + 1);
@@ -682,7 +715,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       try {
         const conn = await startLsp(dialect);
         conn.onNotification("modelscript/projectTreeChanged", () => {
-          if (isSpatialEditPending.current) {
+          if (
+            isSpatialEditPending.current ||
+            (lastDiagramEditTimeRef.current > 0 && Date.now() - lastDiagramEditTimeRef.current < 1000)
+          ) {
             isSpatialEditPending.current = false;
             setIsDiagramLoading(false);
           } else {
@@ -985,7 +1021,13 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
 
     let cancelled = false;
-    setIsDiagramLoading(true);
+    const targetKey = `${documentUri}|${dialect}|${selectedTreeClassName ?? ""}|${diagramType}`;
+    const isTargetSwitch = lastDiagramTargetKeyRef.current !== targetKey;
+    lastDiagramTargetKeyRef.current = targetKey;
+
+    if (isTargetSwitch || !diagramDataRef.current || diagramDataRef.current.isLoading) {
+      setIsDiagramLoading(true);
+    }
 
     getDiagramData(documentUri, selectedTreeClassName || undefined, diagramType, sidecarContent)
       .then((data) => {

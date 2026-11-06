@@ -13,6 +13,7 @@ export * from "./solvers/gpu-codegen.js";
 export * from "./solvers/ipopt-solver.js";
 export * from "./solvers/lbfgsb.js";
 export * from "./solvers/nsga2.js";
+export * from "./solvers/nsga3.js";
 export * from "./solvers/pso.js";
 
 // Re-export ArenaSimulator from the sibling simulator package for convenience

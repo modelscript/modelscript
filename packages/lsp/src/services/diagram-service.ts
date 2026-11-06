@@ -186,21 +186,28 @@ export class DiagramService {
       : params.uri;
 
     // Check if the document has pending edits or has not been re-indexed yet.
-    // If so, flush validation immediately to produce up-to-date AST and diagram data without delay.
+    // If so, run the fast diagram sync immediately to produce up-to-date CST/index/QueryEngine data without waiting on full lints.
     if (this.validationService) {
       const doc = this.documentManager.documents.get(params.uri) ?? this.documentManager.documents.get(effectiveUri);
-      const isTimerPending =
-        this.validationService.activeValidationTimers.has(params.uri) ||
-        this.validationService.activeValidationTimers.has(effectiveUri);
       const lastIndexed =
         this.validationService.lastIndexedText.get(params.uri) ??
         this.validationService.lastIndexedText.get(effectiveUri);
-      const isTextStale = doc && lastIndexed !== undefined && doc.getText() !== lastIndexed;
+      const isTextStale = doc && (lastIndexed === undefined || doc.getText() !== lastIndexed);
+      const hasInstances =
+        (this.workspaceManager.documentInstances.get(params.uri)?.length ?? 0) > 0 ||
+        (this.workspaceManager.documentInstances.get(effectiveUri)?.length ?? 0) > 0;
 
-      if (isTimerPending || isTextStale) {
-        await this.validationService.flushValidation(params.uri);
-        if (effectiveUri !== params.uri) {
-          await this.validationService.flushValidation(effectiveUri);
+      if (isTextStale || !hasInstances) {
+        if (typeof this.validationService.syncDocumentForDiagram === "function") {
+          await this.validationService.syncDocumentForDiagram(params.uri);
+          if (effectiveUri !== params.uri) {
+            await this.validationService.syncDocumentForDiagram(effectiveUri);
+          }
+        } else {
+          await this.validationService.flushValidation(params.uri);
+          if (effectiveUri !== params.uri) {
+            await this.validationService.flushValidation(effectiveUri);
+          }
         }
       }
     }
@@ -297,19 +304,29 @@ export class DiagramService {
         resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
         isDocumentStale: (uri: string) => {
           if (!this.validationService) return false;
-          if (this.validationService.activeValidationTimers?.has(uri)) return true;
           const doc = this.documentManager.documents.get(uri);
           if (doc && this.validationService.lastIndexedText) {
-            const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            const effectiveUri = uri.startsWith("modelscript-lib://global")
+              ? "file://" + uri.substring("modelscript-lib://global".length)
+              : uri;
+            const normUri = effectiveUri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
             const indexedText =
-              this.validationService.lastIndexedText.get(uri) ?? this.validationService.lastIndexedText.get(normUri);
+              this.validationService.lastIndexedText.get(uri) ??
+              this.validationService.lastIndexedText.get(effectiveUri) ??
+              this.validationService.lastIndexedText.get(normUri);
             if (indexedText === undefined || indexedText !== doc.getText()) {
               return true;
             }
           }
+          const hasInstances = (this.workspaceManager.documentInstances.get(uri)?.length ?? 0) > 0;
+          if (!hasInstances) return true;
           return false;
         },
         flushValidation: async (uri: string) => {
+          if (typeof this.validationService?.syncDocumentForDiagram === "function") {
+            await this.validationService.syncDocumentForDiagram(uri);
+            return;
+          }
           if (this.validationService?.flushValidation) {
             await this.validationService.flushValidation(uri);
             return;

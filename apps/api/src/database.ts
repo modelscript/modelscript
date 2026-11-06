@@ -3,6 +3,7 @@
 import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import semver from "semver";
 import webpush from "web-push";
@@ -466,12 +467,18 @@ export class LibraryDatabase {
       fs.mkdirSync(openalexParentDir, { recursive: true });
     }
 
+    const isLowMem = os.totalmem() <= 2.5 * 1024 * 1024 * 1024;
+    const dbMmapSize = isLowMem ? 33554432 : 268435456; // 32MB on low-memory host, else 256MB
+    const dbCacheSize = isLowMem ? -16000 : -64000; // 16MB on low-memory host, else 64MB
+    const openalexMmapSize = isLowMem ? 33554432 : 536870912; // 32MB on low-memory host, else 512MB
+    const openalexCacheSize = isLowMem ? -16000 : -64000;
+
     this.#db = new Database(dbPath);
     this.#db.pragma("journal_mode = WAL");
     this.#db.pragma("synchronous = NORMAL");
     this.#db.pragma("temp_store = MEMORY");
-    this.#db.pragma("mmap_size = 268435456"); // 256 MB memory-mapped I/O
-    this.#db.pragma("cache_size = -64000"); // 64 MB RAM cache
+    this.#db.pragma(`mmap_size = ${dbMmapSize}`);
+    this.#db.pragma(`cache_size = ${dbCacheSize}`);
     this.#db.pragma("foreign_keys = ON");
     this.#db.pragma("busy_timeout = 5000");
     this.#db.function("_msx_invalidate_audit_cache", () => {
@@ -483,8 +490,8 @@ export class LibraryDatabase {
     this.#openalexDb.pragma("journal_mode = WAL");
     this.#openalexDb.pragma("synchronous = NORMAL");
     this.#openalexDb.pragma("temp_store = MEMORY");
-    this.#openalexDb.pragma("mmap_size = 536870912"); // 512 MB memory-mapped I/O for fast FTS5 scans
-    this.#openalexDb.pragma("cache_size = -64000"); // 64 MB RAM cache
+    this.#openalexDb.pragma(`mmap_size = ${openalexMmapSize}`);
+    this.#openalexDb.pragma(`cache_size = ${openalexCacheSize}`);
     this.#openalexDb.pragma("busy_timeout = 5000");
 
     this.#runner = new SqliteMigrationRunner(this.#db, dbPath);

@@ -8,10 +8,12 @@ import * as x6 from "@antv/x6";
 
 import {
   computeNodeAlignment,
+  computeNodeNudge,
   ensureAlignmentToolbar,
   showAlignmentToolbar,
   type AlignableNode,
   type AlignmentType,
+  type ArrowKeyDirection,
 } from "./alignment.js";
 import { hideContextMenu, showContextMenu } from "./context-menu.js";
 import {
@@ -124,7 +126,9 @@ export interface Cell {
   getBBox(): RectLike;
   getData(): CellData | undefined;
   setData(data: Record<string, unknown>, options?: { overwrite?: boolean | undefined; [key: string]: unknown }): void;
+  getMarkup?: (() => unknown) | undefined;
   setMarkup(markup: unknown): void;
+  getAttrs?: (() => Record<string, unknown>) | undefined;
   setAttrs(attrs: Record<string, unknown>): void;
   attr(path: string, val?: unknown): unknown;
   prop?: ((path: string, val?: unknown, options?: unknown) => unknown) | undefined;
@@ -908,6 +912,40 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
   });
 
+  let triggerInlineNodeEdit: ((node: Node) => void) | null = null;
+
+  // ── Extract Primary Parameter Chip (e.g. "C=1e-4", "R=100") ──
+  const extractNodePrimaryParam = (
+    targetGraph: Graph,
+    node: Node,
+  ): { label: string; paramName: string; paramValue: string } | undefined => {
+    const view = targetGraph.findViewByCell?.(node);
+    const svgEl = view?.container;
+    if (svgEl && typeof svgEl.querySelectorAll === "function") {
+      const texts = Array.from(svgEl.querySelectorAll("text"));
+      for (const t of texts) {
+        const raw = (t.textContent ?? "").trim();
+        const eqIdx = raw.indexOf("=");
+        if (eqIdx > 0 && eqIdx < raw.length - 1) {
+          const paramName = raw.slice(0, eqIdx).trim();
+          const paramValue = raw.slice(eqIdx + 1).trim();
+          if (/^[A-Za-z_]\w*$/.test(paramName)) {
+            return { label: `${paramName}=${paramValue}`, paramName, paramValue };
+          }
+        }
+      }
+    }
+    const cached = propertyCache.get(node.id) as
+      | { parameters?: { name?: string; value?: string; defaultValue?: string }[] }
+      | undefined;
+    const firstParam = cached?.parameters?.find((p) => p.name && (p.value || p.defaultValue));
+    if (firstParam?.name) {
+      const val = String(firstParam.value || firstParam.defaultValue || "");
+      return { label: `${firstParam.name}=${val}`, paramName: firstParam.name, paramValue: val };
+    }
+    return undefined;
+  };
+
   // ── Node Rotation Helper ──
   const rotateSelectedNodes = (deltaDegrees: number, targetGraph: Graph = g) => {
     const selectedNodes = targetGraph
@@ -924,7 +962,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const p = node.getPosition();
         const s = node.getSize();
         const edges = getConnectedEdges(targetGraph, node);
-        const name = (node.getData?.()?.["name"] as string) || node.id;
+        const data = node.getData?.() || {};
+        const name = (data["name"] as string) || node.id;
         moveItems.push({
           name,
           x: p.x,
@@ -932,6 +971,53 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           width: s.width,
           height: s.height,
           rotation: newAngle,
+          ...(typeof data["flipX"] === "boolean" ? { flipX: data["flipX"] } : {}),
+          ...(typeof data["flipY"] === "boolean" ? { flipY: data["flipY"] } : {}),
+          edges,
+        });
+      }
+    });
+
+    syncAllNodeSelectionBoxes(targetGraph, selectionImpl?.container);
+    syncAlignmentToolbar();
+
+    if (moveItems.length > 0) {
+      enqueueDiagramAction({ type: "move", items: moveItems }, targetGraph);
+      scheduleUpdateSolderDots(targetGraph);
+    }
+  };
+
+  // ── Node Flip Helper (Horizontal / Vertical Mirror) ──
+  const flipSelectedNodes = (axis: "x" | "y", targetGraph: Graph = g) => {
+    const selectedNodes = targetGraph
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+    if (selectedNodes.length === 0) return;
+
+    const moveItems: Record<string, unknown>[] = [];
+    targetGraph.batchUpdate("flip", () => {
+      for (const node of selectedNodes) {
+        const curData = node.getData?.() || {};
+        const curFlipX = Boolean(curData["flipX"]);
+        const curFlipY = Boolean(curData["flipY"]);
+        const nextFlipX = axis === "x" ? !curFlipX : curFlipX;
+        const nextFlipY = axis === "y" ? !curFlipY : curFlipY;
+        node.setData?.({ ...curData, flipX: nextFlipX, flipY: nextFlipY });
+
+        const p = node.getPosition();
+        const s = node.getSize();
+        const curAngle = node.getAngle?.() || 0;
+        const edges = getConnectedEdges(targetGraph, node);
+        const name = (curData["name"] as string) || node.id;
+        moveItems.push({
+          name,
+          x: p.x,
+          y: p.y,
+          width: s.width,
+          height: s.height,
+          rotation: curAngle,
+          flipX: nextFlipX,
+          flipY: nextFlipY,
           edges,
         });
       }
@@ -943,15 +1029,251 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
   };
 
-  // ── Multi-Node Alignment & Distribution Toolbar ──
+  // ── Node Duplicate Helper (Ctrl+D / Floating Toolbar) ──
+  const duplicateSelectedNodes = (targetGraph: Graph = g) => {
+    if (isCurrentDiagramReadOnly) return;
+    const selectedNodes = targetGraph
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+    if (selectedNodes.length === 0) return;
+
+    for (const node of selectedNodes) {
+      const data = node.getData?.() || {};
+      const className =
+        (data.properties?.className as string | undefined) || (data["className"] as string | undefined);
+      if (!className) continue;
+      const p = node.getPosition();
+      const s = node.getSize();
+      const centerX = p.x + s.width / 2;
+      const centerY = -(p.y + s.height / 2);
+      enqueueDiagramAction(
+        {
+          type: "addComponent",
+          className,
+          x: Math.round(centerX + 20),
+          y: Math.round(centerY - 20),
+        },
+        targetGraph,
+      );
+    }
+  };
+
+  // ── Delete Selected Cells Helper (Del/Backspace / Floating Toolbar) ──
+  const deleteSelectedCells = (targetGraph: Graph = g) => {
+    if (isCurrentDiagramReadOnly) return;
+    const cells = targetGraph.getSelectedCells();
+    if (cells.length === 0) return;
+
+    const edgesToDelete: { source: string; target: string }[] = [];
+    const componentNames: string[] = [];
+
+    cells.forEach((cell: Cell) => {
+      if (cell.isEdge()) {
+        const source = cell.getSource();
+        const target = cell.getTarget();
+        const wireId = cell.getData()?.wireId;
+        if (source?.cell && source?.port && target?.cell && target?.port) {
+          edgesToDelete.push({
+            source: `${source.cell}.${source.port}`,
+            target: `${target.cell}.${target.port}`,
+          });
+        } else if (wireId || cell.id) {
+          const idStr = String(wireId || cell.id);
+          edgesToDelete.push({
+            source: idStr,
+            target: idStr,
+          });
+        }
+      } else if (cell.isNode() && !isEphemeralDiagramNode(cell.id)) {
+        const name = (cell.getData?.()?.["name"] as string) || cell.id;
+        componentNames.push(name);
+      }
+    });
+
+    if (edgesToDelete.length > 0) {
+      for (const edge of edgesToDelete) {
+        enqueueDiagramAction({ type: "disconnect", ...edge }, targetGraph);
+      }
+    }
+    if (componentNames.length > 0) {
+      enqueueDiagramAction({ type: "deleteComponents", names: componentNames }, targetGraph);
+    }
+    targetGraph.removeCells(cells);
+    showAlignmentToolbar(alignmentToolbar, container, [], { sx: 1, sy: 1 }, { tx: 0, ty: 0 });
+    scheduleUpdateSolderDots(targetGraph);
+  };
+
+  // ── Quick Inline Parameter Value Editor in Floating Toolbar ──
+  const startInlineParamEdit = (node: Node, targetGraph: Graph = g) => {
+    if (isCurrentDiagramReadOnly || isEphemeralDiagramNode(node.id)) return;
+    const paramInfo = extractNodePrimaryParam(targetGraph, node);
+    if (!paramInfo) {
+      const nodeName = (node.getData?.()?.["name"] as string) || node.id;
+      postMessageToHost({ type: "getProperties", componentName: nodeName }, targetGraph);
+      return;
+    }
+
+    const paramBtn = alignmentToolbar?.querySelector(
+      "[data-action='edit-param'], [data-align='edit-param']",
+    ) as HTMLElement | null | undefined;
+    if (!paramBtn) return;
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "align-param-input";
+    input.value = paramInfo.paramValue;
+    input.title = `Edit ${paramInfo.paramName} (Enter to apply, Esc to cancel)`;
+    paramBtn.replaceWith(input);
+
+    let committed = false;
+    const commit = (applyChange: boolean) => {
+      if (committed) return;
+      committed = true;
+      const newVal = input.value.trim();
+      if (applyChange && newVal && newVal !== paramInfo.paramValue) {
+        updateParameterText(node.id, paramInfo.paramName, paramInfo.paramValue, newVal);
+        const nodeName = (node.getData?.()?.["name"] as string) || node.id;
+        enqueueDiagramAction(
+          {
+            type: "updateProperty",
+            componentName: nodeName,
+            propKey: paramInfo.paramName,
+            propValue: newVal,
+          },
+          targetGraph,
+        );
+      }
+      syncAlignmentToolbar();
+    };
+
+    input.addEventListener("mousedown", (ev) => ev.stopPropagation());
+    input.addEventListener("keydown", (ev: KeyboardEvent) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        commit(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        commit(false);
+      }
+    });
+    input.addEventListener("blur", () => commit(true));
+    input.focus();
+    input.select();
+  };
+
+  // ── Live Coordinate & Delta Nudge HUD Pill ──
+  let nudgeHudEl: HTMLElement | null = null;
+  let nudgeHudFadeTimeout: ReturnType<typeof setTimeout> | null = null;
+  let nudgeAccumDx = 0;
+  let nudgeAccumDy = 0;
+
+  const showNudgeHud = (targetGraph: Graph, nodes: Node[], deltaX: number, deltaY: number) => {
+    if (!container || typeof document === "undefined" || nodes.length === 0) return;
+    if (!nudgeHudEl || !container.contains(nudgeHudEl)) {
+      nudgeHudEl = container.querySelector(".modelscript-nudge-hud") as HTMLElement | null;
+      if (!nudgeHudEl) {
+        nudgeHudEl = document.createElement("div");
+        nudgeHudEl.className = "modelscript-nudge-hud";
+        container.appendChild(nudgeHudEl);
+      }
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const n of nodes) {
+      const p = n.getPosition();
+      const s = n.getSize();
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + s.width);
+      maxY = Math.max(maxY, p.y + s.height);
+    }
+
+    const sc = typeof targetGraph.scale === "function" ? targetGraph.scale() : { sx: 1, sy: 1 };
+    const tr = typeof targetGraph.translate === "function" ? targetGraph.translate() : { tx: 0, ty: 0 };
+    const screenCenterX = ((minX + maxX) / 2) * sc.sx + tr.tx;
+    const screenBottomY = maxY * sc.sy + tr.ty + 18;
+
+    const modelX = Math.round((minX + maxX) / 2);
+    const modelY = Math.round(-((minY + maxY) / 2));
+    const signX = deltaX >= 0 ? `+${Math.round(deltaX)}` : `${Math.round(deltaX)}`;
+    const signY = -deltaY >= 0 ? `+${Math.round(-deltaY)}` : `${Math.round(-deltaY)}`;
+
+    nudgeHudEl.innerHTML = `<span class="nudge-coords">(${modelX}, ${modelY})</span><span class="nudge-delta">Δ(${signX}, ${signY})</span>`;
+    nudgeHudEl.style.left = `${Math.round(screenCenterX)}px`;
+    nudgeHudEl.style.top = `${Math.round(screenBottomY)}px`;
+    nudgeHudEl.classList.add("visible");
+
+    if (nudgeHudFadeTimeout) clearTimeout(nudgeHudFadeTimeout);
+    nudgeHudFadeTimeout = setTimeout(() => {
+      nudgeHudEl?.classList.remove("visible");
+      nudgeAccumDx = 0;
+      nudgeAccumDy = 0;
+      nudgeHudFadeTimeout = null;
+    }, 900);
+  };
+
+  // ── Contextual Floating Edit Bar (Single-Node & Multi-Node) ──
   const alignmentToolbar = ensureAlignmentToolbar(container, (type: AlignmentType) => {
+    const currentSelected = g
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+    if (currentSelected.length === 0) return;
+
     if (type === "rotate-cw") {
       rotateSelectedNodes(90, g);
       return;
     }
-    const currentSelected = g
-      .getSelectedCells()
-      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode()) as Node[];
+    if (type === "rotate-ccw") {
+      rotateSelectedNodes(-90, g);
+      return;
+    }
+    if (type === "flip-h") {
+      flipSelectedNodes("x", g);
+      return;
+    }
+    if (type === "flip-v") {
+      flipSelectedNodes("y", g);
+      return;
+    }
+    if (type === "duplicate") {
+      duplicateSelectedNodes(g);
+      return;
+    }
+    if (type === "delete") {
+      deleteSelectedCells(g);
+      return;
+    }
+    if (type === "properties") {
+      const first = currentSelected[0]!;
+      const nodeName = (first.getData?.()?.["name"] as string) || first.id;
+      const cachedProps = propertyCache.get(first.id);
+      if (cachedProps) {
+        showProperties({ id: first.id, properties: cachedProps }, g);
+      } else {
+        showProperties({ id: first.id, properties: first.getData?.()?.properties, isLoading: true }, g);
+        postMessageToHost({ type: "getProperties", componentName: nodeName }, g);
+      }
+      return;
+    }
+    if (type === "rename") {
+      const first = currentSelected[0];
+      if (first && triggerInlineNodeEdit) {
+        triggerInlineNodeEdit(first);
+      }
+      return;
+    }
+    if (type === "edit-param") {
+      const first = currentSelected[0];
+      if (first) {
+        startInlineParamEdit(first, g);
+      }
+      return;
+    }
+
     if (currentSelected.length < 2) return;
     const nodesToAlign: AlignableNode[] = currentSelected.map((n: Node) => {
       const pos = n.getPosition();
@@ -987,25 +1309,40 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       g,
     );
 
-    const updatedNodes: AlignableNode[] = currentSelected.map((n: Node) => {
-      const pos = n.getPosition();
-      const sz = n.getSize();
-      return { id: n.id, x: pos.x, y: pos.y, width: sz.width, height: sz.height };
-    });
-    const sc = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
-    const tr = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
-    showAlignmentToolbar(alignmentToolbar, container, updatedNodes, sc, tr);
+    syncAlignmentToolbar();
   });
 
   const syncAlignmentToolbar = () => {
+    if (
+      typeof document !== "undefined" &&
+      document.activeElement &&
+      alignmentToolbar?.contains(document.activeElement) &&
+      document.activeElement.tagName === "INPUT"
+    ) {
+      return;
+    }
     const selectedNodes = g
       .getSelectedCells()
-      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode()) as Node[];
-    if (selectedNodes.length >= 2) {
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+    if (selectedNodes.length >= 1) {
       const nodesToAlign: AlignableNode[] = selectedNodes.map((n: Node) => {
         const pos = n.getPosition();
         const sz = n.getSize();
-        return { id: n.id, x: pos.x, y: pos.y, width: sz.width, height: sz.height };
+        const data = n.getData?.() || {};
+        const name = String(data["name"] ?? data.properties?.name ?? n.id);
+        const extractedParam = selectedNodes.length === 1 ? extractNodePrimaryParam(g, n) : undefined;
+        const primaryParam = extractedParam
+          ? { name: extractedParam.paramName, value: extractedParam.paramValue }
+          : undefined;
+        return {
+          id: n.id,
+          x: pos.x,
+          y: pos.y,
+          width: sz.width,
+          height: sz.height,
+          name,
+          primaryParam,
+        };
       });
       const sc = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
       const tr = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
@@ -1066,6 +1403,30 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   g.on("node:change:position", () => {
     syncAlignmentToolbar();
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("node:change:size", () => {
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("edge:change:vertices", () => {
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("edge:change:source", () => {
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("edge:change:target", () => {
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("cell:added", () => {
+    updateMinimapHud(minimapHud, g);
+  });
+
+  g.on("cell:removed", () => {
     updateMinimapHud(minimapHud, g);
   });
 
@@ -1524,6 +1885,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     const p = node.getPosition();
     const s = node.getSize();
     const r = node.getAngle();
+    syncAlignmentToolbar();
     const edges = getConnectedEdges(g, node);
     enqueueDiagramAction(
       {
@@ -2013,9 +2375,32 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           shortcut: "Shift+R",
           action: () => rotateSelectedNodes(-90, g),
         },
+        {
+          label: "Flip Horizontal",
+          shortcut: "H",
+          action: () => flipSelectedNodes("x", g),
+        },
+        {
+          label: "Flip Vertical",
+          shortcut: "V",
+          action: () => flipSelectedNodes("y", g),
+        },
         { type: "separator" },
         {
+          label: "Rename Component…",
+          shortcut: "F2",
+          action: () => {
+            if (triggerInlineNodeEdit) triggerInlineNodeEdit(node);
+          },
+        },
+        {
+          label: "Duplicate Component",
+          shortcut: "Ctrl+D",
+          action: () => duplicateSelectedNodes(g),
+        },
+        {
           label: "Inspect Properties",
+          shortcut: "Enter",
           action: () => {
             postMessageToHost({ type: "getProperties", componentName: nodeName }, g);
           },
@@ -2025,11 +2410,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           label: "Delete Component",
           shortcut: "Del",
           danger: true,
-          action: () => {
-            enqueueDiagramAction({ type: "deleteComponents", names: [nodeName] }, g);
-            g.removeCell?.(node);
-            scheduleUpdateSolderDots(g);
-          },
+          action: () => deleteSelectedCells(g),
         },
       ],
     });
@@ -2133,69 +2514,31 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     if (e.key === "Alt" || !e.altKey) isAltPressed = false;
   };
 
-  // Delete key: delete selected edges/components
+  let nudgeCommitTimeout: ReturnType<typeof setTimeout> | null = null;
+  const pendingNudgeNodeIds = new Set<string>();
+
+  // Keyboard shortcuts: Delete, Arrow Key Shifting, Flip, Duplicate, Rename, Align, Zoom
   const onDocKeyDown = (e: KeyboardEvent) => {
     if (g.disposed) return;
+
+    const active = document.activeElement;
+    if (
+      active &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        (active as HTMLElement).isContentEditable ||
+        Boolean((active as HTMLElement).closest?.(".monaco-editor")))
+    ) {
+      return;
+    }
+
     if (e.key === "Delete" || e.key === "Backspace") {
-      // Do not trigger deletion if the user is typing in an input or textarea
-      const activeTag = document.activeElement?.tagName;
-      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") {
-        return;
-      }
+      deleteSelectedCells(g);
+      return;
+    }
 
-      const cells = g.getSelectedCells();
-      if (cells.length === 0) return;
-
-      // Separate edges and nodes
-      const edgesToDelete: { source: string; target: string }[] = [];
-      const componentNames: string[] = [];
-
-      cells.forEach((cell: Cell) => {
-        if (cell.isEdge()) {
-          const source = cell.getSource();
-
-          const target = cell.getTarget();
-          const wireId = cell.getData()?.wireId;
-          if (source?.cell && source?.port && target?.cell && target?.port) {
-            edgesToDelete.push({
-              source: `${source.cell}.${source.port}`,
-              target: `${target.cell}.${target.port}`,
-            });
-          } else if (wireId || cell.id) {
-            const idStr = String(wireId || cell.id);
-            edgesToDelete.push({
-              source: idStr,
-              target: idStr,
-            });
-          }
-        } else if (cell.isNode() && !isEphemeralDiagramNode(cell.id)) {
-          componentNames.push(cell.id);
-        }
-      });
-
-      if (edgesToDelete.length > 0) {
-        for (const edge of edgesToDelete) {
-          enqueueDiagramAction({ type: "disconnect", ...edge }, g);
-        }
-      }
-      if (componentNames.length > 0) {
-        enqueueDiagramAction({ type: "deleteComponents", names: componentNames }, g);
-      }
-      g.removeCells(cells);
-      scheduleUpdateSolderDots(g);
-    } else if (graph === g) {
-      const active = document.activeElement;
-      if (
-        active &&
-        (active.tagName === "INPUT" ||
-          active.tagName === "TEXTAREA" ||
-          active.tagName === "SELECT" ||
-          (active as HTMLElement).isContentEditable ||
-          Boolean((active as HTMLElement).closest?.(".monaco-editor")))
-      ) {
-        return;
-      }
-
+    if (graph === g) {
       const nav = navigator as unknown as {
         platform?: string | undefined;
         userAgent?: string | undefined;
@@ -2204,6 +2547,83 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const platform = (nav.platform || nav.userAgentData?.platform || nav.userAgent || "").toUpperCase();
       const isMac = platform.indexOf("MAC") >= 0;
       const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      // ── 3-Gear Precision Arrow Key Shifting (Normal: 2px, Shift: 10px, Alt: 1px) ──
+      if (
+        !mod &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")
+      ) {
+        const selectedNodes = g
+          .getSelectedCells()
+          .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+        if (selectedNodes.length > 0 && !isCurrentDiagramReadOnly) {
+          e.preventDefault();
+          const alignable: AlignableNode[] = selectedNodes.map((n: Node) => {
+            const p = n.getPosition();
+            const s = n.getSize();
+            return { id: n.id, x: p.x, y: p.y, width: s.width, height: s.height };
+          });
+          const nudges = computeNodeNudge(alignable, e.key as ArrowKeyDirection, {
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            baseStep: 2,
+          });
+          if (nudges.length > 0) {
+            const stepDx = nudges[0]!.dx;
+            const stepDy = nudges[0]!.dy;
+            nudgeAccumDx += stepDx;
+            nudgeAccumDy += stepDy;
+
+            isSnappingPortAlignment = true;
+            g.batchUpdate("nudge", () => {
+              for (const u of nudges) {
+                const node = g.getCellById(u.id) as Node;
+                if (node && typeof node.isNode === "function" && node.isNode()) {
+                  node.setPosition(u.x, u.y);
+                  translateConnectedEdgeStubs(g, node, u.dx, u.dy);
+                  pendingNudgeNodeIds.add(u.id);
+                }
+              }
+            });
+            isSnappingPortAlignment = false;
+
+            syncAllNodeSelectionBoxes(g, selectionImpl?.container);
+            syncAlignmentToolbar();
+            showNudgeHud(g, selectedNodes, nudgeAccumDx, nudgeAccumDy);
+            scheduleUpdateSolderDots(g);
+
+            if (nudgeCommitTimeout) clearTimeout(nudgeCommitTimeout);
+            nudgeCommitTimeout = setTimeout(() => {
+              const moveItems: Record<string, unknown>[] = [];
+              pendingNudgeNodeIds.forEach((id) => {
+                const n = g.getCellById(id) as Node | null;
+                if (n && typeof n.isNode === "function" && n.isNode()) {
+                  const p = n.getPosition();
+                  const s = n.getSize();
+                  const r = n.getAngle?.() || 0;
+                  const edges = getConnectedEdges(g, n);
+                  const name = (n.getData?.()?.["name"] as string) || n.id;
+                  moveItems.push({
+                    name,
+                    x: p.x,
+                    y: p.y,
+                    width: s.width,
+                    height: s.height,
+                    rotation: r,
+                    edges,
+                  });
+                }
+              });
+              pendingNudgeNodeIds.clear();
+              nudgeCommitTimeout = null;
+              if (moveItems.length > 0) {
+                enqueueDiagramAction({ type: "move", items: moveItems }, g);
+              }
+            }, 150);
+          }
+          return;
+        }
+      }
 
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -2217,6 +2637,9 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         e.preventDefault();
         Spinner.show();
         postMessageToHost({ type: "redo" }, g);
+      } else if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        duplicateSelectedNodes(g);
       } else if (mod && (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd")) {
         e.preventDefault();
         const current = g.zoom();
@@ -2243,6 +2666,57 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       } else if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         rotateSelectedNodes(e.shiftKey ? -90 : 90, g);
+      } else if ((e.key === "h" || e.key === "H") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        flipSelectedNodes("x", g);
+      } else if ((e.key === "v" || e.key === "V") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        flipSelectedNodes("y", g);
+      } else if (e.key === "F2" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const selectedNodes = g
+          .getSelectedCells()
+          .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+        if (selectedNodes.length === 1 && triggerInlineNodeEdit) {
+          e.preventDefault();
+          triggerInlineNodeEdit(selectedNodes[0]!);
+        }
+      } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const selectedNodes = g
+          .getSelectedCells()
+          .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+        if (selectedNodes.length === 1) {
+          e.preventDefault();
+          const first = selectedNodes[0]!;
+          const nodeName = (first.getData?.()?.["name"] as string) || first.id;
+          const cachedProps = propertyCache.get(first.id);
+          if (cachedProps) {
+            showProperties({ id: first.id, properties: cachedProps }, g);
+          } else {
+            showProperties({ id: first.id, properties: first.getData?.()?.properties, isLoading: true }, g);
+            postMessageToHost({ type: "getProperties", componentName: nodeName }, g);
+          }
+        }
+      } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const alignMap: Record<string, AlignmentType> = {
+          l: "align-left",
+          c: "align-center",
+          r: "align-right",
+          t: "align-top",
+          m: "align-middle",
+          b: "align-bottom",
+          h: "distribute-horizontal",
+          v: "distribute-vertical",
+        };
+        const alignType = alignMap[e.key.toLowerCase()];
+        if (alignType) {
+          const btn = alignmentToolbar?.querySelector(
+            `[data-action="${alignType}"], [data-align="${alignType}"]`,
+          ) as HTMLButtonElement | null | undefined;
+          if (btn) {
+            e.preventDefault();
+            btn.click();
+          }
+        }
       }
     }
   };
@@ -2442,35 +2916,45 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       );
     }
 
-    // Smoothly pan to center the node horizontally in the visible portion
+    // Only pan to the clicked node if it is clipped or outside the comfortable visible viewport
     const bbox = node.getBBox();
     const scale = g.scale().sx;
     const cx = bbox.x + bbox.width / 2;
     const cy = bbox.y + bbox.height / 2;
 
-    // Panel width is roughly 300px, so we offset by 300
     const paddingRight = 300;
     const containerRect = g.container.getBoundingClientRect();
-    const visibleWidth = containerRect.width - paddingRight;
-
-    // Calculate target translation
-    const targetTx = visibleWidth / 2 - cx * scale;
-    const targetTy = containerRect.height / 2 - cy * scale;
-
+    const visibleWidth = Math.max(200, containerRect.width - paddingRight);
     const { tx: ctx, ty: cty } = g.translate();
-    const duration = 250;
-    const startTime = performance.now();
 
-    const animate = (time: number) => {
-      const elapsed = time - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3); // cubic ease-out
-      g.translate(ctx + (targetTx - ctx) * ease, cty + (targetTy - cty) * ease);
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      }
-    };
-    requestAnimationFrame(animate);
+    const screenLeft = bbox.x * scale + ctx;
+    const screenTop = bbox.y * scale + cty;
+    const screenRight = (bbox.x + bbox.width) * scale + ctx;
+    const screenBottom = (bbox.y + bbox.height) * scale + cty;
+    const margin = 36;
+    const isComfortablyVisible =
+      screenLeft >= margin &&
+      screenTop >= margin &&
+      screenRight <= visibleWidth - margin &&
+      screenBottom <= containerRect.height - margin;
+
+    if (!isComfortablyVisible && containerRect.width > 0 && containerRect.height > 0) {
+      const targetTx = visibleWidth / 2 - cx * scale;
+      const targetTy = containerRect.height / 2 - cy * scale;
+      const duration = 250;
+      const startTime = performance.now();
+
+      const animate = (time: number) => {
+        const elapsed = time - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3); // cubic ease-out
+        g.translate(ctx + (targetTx - ctx) * ease, cty + (targetTy - cty) * ease);
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+      requestAnimationFrame(animate);
+    }
   });
 
   const startInlineNodeEdit = (node: Node) => {
@@ -2521,6 +3005,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       if (newName && newName !== currentName) {
         node.setData({ ...node.getData(), name: newName });
         enqueueDiagramAction({ type: "updateName", oldName: currentName, newName }, g);
+        syncAlignmentToolbar();
       }
       input.remove();
     };
@@ -2545,6 +3030,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     input.focus();
     input.select();
   };
+  triggerInlineNodeEdit = startInlineNodeEdit;
 
   // ── Double-click navigation: drill into child diagram views ──
   // E.g., double-click a StateDefinition in BDD → open StateMachine view for it.
@@ -3767,10 +4253,10 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         }
 
         // Update markup and attrs (e.g. parameter ratings, breaker open/closed color, labels)
-        if (nodeData.markup) {
+        if (nodeData.markup && JSON.stringify(cell.getMarkup?.()) !== JSON.stringify(nodeData.markup)) {
           cell.setMarkup(nodeData.markup);
         }
-        if (nodeData.attrs) {
+        if (nodeData.attrs && JSON.stringify(cell.getAttrs?.()) !== JSON.stringify(nodeData.attrs)) {
           cell.setAttrs(nodeData.attrs);
         }
 
@@ -3880,6 +4366,10 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     scheduleUpdateSolderDots(g);
     scheduleViewportCulling(g);
     updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
+    const hud = (g.container as HTMLElement | undefined)?.querySelector?.("#modelscript-minimap-hud") as HTMLElement | null;
+    if (hud) {
+      updateMinimapHud(hud, g);
+    }
     return;
   }
 
@@ -3995,10 +4485,18 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   updateSolderDots(g);
   scheduleUpdateSolderDots(g);
   scheduleViewportCulling(g);
+  const hud = (g.container as HTMLElement | undefined)?.querySelector?.("#modelscript-minimap-hud") as HTMLElement | null;
+  if (hud) {
+    updateMinimapHud(hud, g);
+  }
   setTimeout(() => {
     if (graph === g && !g.disposed) {
       updateSolderDots(g);
       scheduleViewportCulling(g);
+      const h = (g.container as HTMLElement | undefined)?.querySelector?.("#modelscript-minimap-hud") as HTMLElement | null;
+      if (h) {
+        updateMinimapHud(h, g);
+      }
     }
   }, 50);
 }
@@ -4844,7 +5342,14 @@ export function setDiagramSnap(enabled: boolean, g?: Graph | null): void {
 export function toggleMinimap(container?: HTMLElement | null): boolean {
   const c = container ?? graph?.container;
   if (!c) return false;
-  return toggleMinimapHud(c);
+  const isOpened = toggleMinimapHud(c);
+  if (isOpened && graph && !graph.disposed) {
+    const hud = c.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
+    if (hud) {
+      updateMinimapHud(hud, graph);
+    }
+  }
+  return isOpened;
 }
 
 /**

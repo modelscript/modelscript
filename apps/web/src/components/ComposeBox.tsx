@@ -1586,7 +1586,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       {shortPostArtifacts.length > 1 && (
                         <Box display="flex" justifyContent="space-between" alignItems="center" mb={1} px={1}>
                           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                            Attached Artifacts ({shortPostArtifacts.length}/4)
+                            Attached Morsels ({shortPostArtifacts.length}/4)
                           </span>
                           {shortPostArtifacts.length >= 4 && (
                             <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>

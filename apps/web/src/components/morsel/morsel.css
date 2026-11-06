@@ -96,12 +96,33 @@
 }
 
 /* Morsel application specific rules */
+.modelica-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
 .modelica-icon svg,
 .modelica-icon img {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
   overflow: visible !important;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.modelica-icon svg path:not([fill]),
+.modelica-icon svg polyline:not([fill]),
+.modelica-icon svg line:not([fill]) {
+  fill: none;
+}
+
+.modelica-icon svg text {
+  stroke: none;
 }
 
 #__primerPortalRoot__ div {

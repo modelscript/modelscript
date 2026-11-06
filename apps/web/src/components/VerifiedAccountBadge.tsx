@@ -287,8 +287,7 @@ export function VerifiedAccountBadge({
             authenticity, key continuity, and preventing forgery.
             <div style={{ marginTop: "6px", fontSize: "12px", opacity: 0.85 }}>
               <em>
-                Note: This guarantees cryptographic authorship and tamper resistance, not legal or real-world identity
-                verification.
+                Note: This guarantees cryptographic authorship and tamper resistance, not legal or real-world identity verification.
               </em>
             </div>
           </DescriptionBox>

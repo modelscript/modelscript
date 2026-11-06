@@ -57,7 +57,7 @@ flowchart TD
 
 - **The Problem:** Non-authoring stakeholders—project managers, systems certifiers, contracting officers, and downstream integration teams—are routinely locked out of inspecting engineering models because acquiring a dedicated desktop license seat cannot be justified for read-only evaluation.
 - **The Ansatz Workflow:**
-  1. An author opens or imports an existing model in **Ansatz Sketch** (`/sketch`).
+  1. An author opens or imports an existing model in **Ansatz Morsel** (`/morsel`).
   2. The entire multi-domain model is encoded into a deterministic, compressed permalink or published as a versioned engineering morsel.
   3. The reviewer opens the URL in any standard web browser on Linux, macOS, Windows, or iPadOS.
   4. The model compiles and simulates directly on the client using WebAssembly, exposing interactive parameter sliders, schematic diagrams, 3D CAD viewports, and numerical time-series charts.
@@ -132,7 +132,7 @@ graph LR
 
     subgraph "Ansatz Platform Architecture"
         Studio["Ansatz Studio (/studio)"]
-        Sketch["Ansatz Sketch (/sketch)"]
+        Morsel["Ansatz Morsel (/morsel)"]
         Registry["Package Registry (/packages)"]
         Thread["Digital Thread (/thread)"]
     end
@@ -140,7 +140,7 @@ graph LR
     Dymola -->|WASM DAE & DAP Debugger| Studio
     Cameo -->|SysML v2 Native Engine| Thread
     PSCAD -->|IEEE 2800 CI Gates| Registry
-    Simulink -->|B2B Trajectory Parity| Sketch
+    Simulink -->|B2B Trajectory Parity| Morsel
     OLGA -->|Flow Assurance Pre-Flight| Studio
 ```
 
@@ -189,6 +189,6 @@ graph LR
 
 To satisfy operational requirements in regulated and defense engineering environments, Ansatz provides specific architectural guarantees:
 
-1. **Client-Side Sandbox Execution:** In Ansatz Sketch, compilation, Salsa dependency resolution, and numerical integration execute inside the client's WebAssembly sandbox. Model source code and equations do not need to be transmitted to remote servers.
+1. **Client-Side Sandbox Execution:** In Ansatz Morsel, compilation, Salsa dependency resolution, and numerical integration execute inside the client's WebAssembly sandbox. Model source code and equations do not need to be transmitted to remote servers.
 2. **Cryptographic Data Sovereignty:** Every project repository is backed by standard Git Smart HTTP infrastructure with support for Ed25519 commit verification. Teams retain complete local data ownership and can clone or export full histories at any time.
 3. **Air-Gapped On-Premises Deployment:** Organizations can deploy standalone Ansatz nodes (`ansatz-ce` or `ansatz-ee`) inside sovereign VPCs, Kubernetes clusters, or air-gapped internal intranets with LDAP, SAML/SSO, and Slurm HPC cluster federation.
