@@ -39,7 +39,7 @@ jobs:
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
       - name: Run Repository Hygiene Doctor
         run: npm run lint:repo
       - name: Build DSL Templates
@@ -87,7 +87,7 @@ jobs:
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
       - name: Cache MSL
         id: cache-msl
         uses: actions/cache@v4
@@ -173,7 +173,7 @@ jobs:
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
       - name: Check If Modelica Affected
         id: check-affected
         run: |
@@ -351,7 +351,7 @@ jobs:
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
       - name: Cache WASM Parsers
         uses: actions/cache@v4
         with:
@@ -455,7 +455,7 @@ jobs:
           cache: "npm"
       - name: Calculate Affected Bounds
         id: set-shas
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
       - name: Check If Docker Services Affected
         id: check-affected
         run: |
