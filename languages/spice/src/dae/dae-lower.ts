@@ -182,10 +182,38 @@ export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAE
     return u === "0" || u === "GND" ? "0" : n;
   };
 
-  // Collect all unique nodes
+  // Pre-index inductors and mutual couplings (K cards)
+  const inductorValMap = new Map<string, number>();
+  for (const comp of components) {
+    if (comp.kind === "L") {
+      inductorValMap.set(comp.name.toUpperCase(), comp.value ?? 1e-6);
+    }
+  }
+  const mutualCouplings = new Map<string, { otherNameUpper: string; M: number }[]>();
+  for (const comp of components) {
+    if (comp.kind === "K") {
+      const l1Name = (comp.nodes[0] ?? "").toUpperCase();
+      const l2Name = (comp.nodes[1] ?? "").toUpperCase();
+      const kCoeff = comp.value ?? 0.99;
+      const L1 = inductorValMap.get(l1Name);
+      const L2 = inductorValMap.get(l2Name);
+      if (L1 !== undefined && L2 !== undefined && L1 > 0 && L2 > 0) {
+        const M = kCoeff * Math.sqrt(L1 * L2);
+        const list1 = mutualCouplings.get(l1Name) ?? [];
+        list1.push({ otherNameUpper: l2Name, M });
+        mutualCouplings.set(l1Name, list1);
+        const list2 = mutualCouplings.get(l2Name) ?? [];
+        list2.push({ otherNameUpper: l1Name, M });
+        mutualCouplings.set(l2Name, list2);
+      }
+    }
+  }
+
+  // Collect all unique nodes (excluding K mutual inductor cards whose nodes are inductor names)
   const nodeNames = new Set<string>();
   nodeNames.add("0");
   for (const comp of components) {
+    if (comp.kind === "K") continue;
     for (const node of comp.nodes) {
       nodeNames.add(normalizeNode(node));
     }
@@ -220,9 +248,10 @@ export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAE
     }
   }
 
-  // Pre-declare primary component current variables so F and H controlled sources can reference them
+  // Pre-declare primary component current variables so F, H, and K coupled inductors can reference them
   const compCurrentExprMap = new Map<string, number>();
   for (const comp of components) {
+    if (comp.kind === "K") continue;
     const iName = `i_${comp.name}`;
     const iNameId = interner.intern(iName);
     arena.addVariable(iName, VarType.Real, Variability.Continuous, Causality.Local);
@@ -242,6 +271,7 @@ export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAE
   };
 
   for (const comp of components) {
+    if (comp.kind === "K") continue;
     const n1 = normalizeNode(comp.nodes[0]);
     const n2 = normalizeNode(comp.nodes[1]);
     const v1Expr = nodeExprMap.get(n1) ?? arena.addRealLiteral(0.0);
@@ -404,11 +434,23 @@ export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAE
         break;
       }
       case "L": {
-        // Inductor: v_diff = L * der(i)
+        // Inductor: v_diff = L * der(i) + sum(M * der(i_other))
         const lVal = comp.value ?? 1e-6;
         const lLit = arena.addRealLiteral(lVal);
         const derI = arena.addExpression(ExprKind.Der, iExprId);
-        const rhs = arena.addBinaryExpr(BinOp.Mul, lLit, derI);
+        let rhs = arena.addBinaryExpr(BinOp.Mul, lLit, derI);
+        const couplings = mutualCouplings.get(comp.name.toUpperCase());
+        if (couplings) {
+          for (const cpl of couplings) {
+            const otherIExpr = compCurrentExprMap.get(cpl.otherNameUpper);
+            if (otherIExpr !== undefined) {
+              const mLit = arena.addRealLiteral(cpl.M);
+              const derOtherI = arena.addExpression(ExprKind.Der, otherIExpr);
+              const mutTerm = arena.addBinaryExpr(BinOp.Mul, mLit, derOtherI);
+              rhs = arena.addBinaryExpr(BinOp.Add, rhs, mutTerm);
+            }
+          }
+        }
         arena.addEquation(EqKind.Simple, vDiffExpr, rhs);
         break;
       }

@@ -3,10 +3,12 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { twinManager } from "../services/twin/index.js";
 
 export function twinsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+  router.use(optionalAuth);
 
   /**
    * POST /api/v1/twins
@@ -136,12 +138,15 @@ export function twinsRouter(database: LibraryDatabase): Router {
           return;
         }
         let lastResult: Awaited<ReturnType<typeof twinManager.ingestTelemetry>> | undefined;
-        for (const sample of samples) {
+        for (let idx = 0; idx < samples.length; idx++) {
+          const sample = samples[idx]!;
+          const isLast = idx === samples.length - 1;
           lastResult = await twinManager.ingestTelemetry(
             twinId,
             Number(sample.timestamp ?? sample.t),
             sample.channels ?? sample.y ?? [],
             database,
+            !isLast,
           );
         }
         res.json({ success: true, processed: samples.length, lastResult });

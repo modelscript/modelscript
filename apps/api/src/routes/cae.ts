@@ -4,6 +4,7 @@ import express, { type Router } from "express";
 import multer from "multer";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
@@ -40,7 +41,10 @@ function sanitizeHash(hash: string): string {
 }
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) => cb(null, `msx-cae-upload-${crypto.randomBytes(8).toString("hex")}.tmp`),
+  }),
   limits: { fileSize: 250 * 1024 * 1024 }, // 250 MB
 });
 
@@ -82,34 +86,44 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 1. Upload Mesh or CAD Geometry with CAS deduplication
   router.post("/cae/upload", upload.single("file"), (req, res) => {
-    const userId = resolveRequestUserId(req, database);
-    if (process.env["NODE_ENV"] === "production" && !userId) {
-      return res.status(401).json({ error: "Authentication required" });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded." });
-    }
+    const tmpPath = req.file?.path;
+    try {
+      const userId = resolveRequestUserId(req, database);
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded." });
+      }
 
-    const hash = sha256(req.file.buffer);
-    const safe = sanitizeHash(hash);
-    const safeFileName =
-      path.basename(req.file.originalname || "payload.dat").replace(/[^a-zA-Z0-9._-]/g, "_") || "payload.dat";
-    const targetDir = path.join(CAE_CACHE_DIR, safe);
-    const resolvedDir = path.resolve(targetDir);
-    const targetFile = path.resolve(resolvedDir, safeFileName);
-    if (!targetFile.startsWith(resolvedDir + path.sep)) {
-      return res.status(400).json({ error: "Invalid filename." });
+      const fileBuffer = req.file.buffer ?? (tmpPath ? fs.readFileSync(tmpPath) : Buffer.alloc(0));
+      const hash = sha256(fileBuffer);
+      const safe = sanitizeHash(hash);
+      const safeFileName =
+        path.basename(req.file.originalname || "payload.dat").replace(/[^a-zA-Z0-9._-]/g, "_") || "payload.dat";
+      const targetDir = path.join(CAE_CACHE_DIR, safe);
+      const resolvedDir = path.resolve(targetDir);
+      const targetFile = path.resolve(resolvedDir, safeFileName);
+      if (!targetFile.startsWith(resolvedDir + path.sep)) {
+        return res.status(400).json({ error: "Invalid filename." });
+      }
+
+      if (fs.existsSync(targetFile)) {
+        return res.json({ hash, cached: true, message: "File already cached." });
+      }
+
+      fs.mkdirSync(resolvedDir, { recursive: true });
+      fs.writeFileSync(targetFile, fileBuffer);
+
+      res.json({ hash, cached: false, filename: req.file.originalname, message: "File cached successfully." });
+      return;
+    } finally {
+      if (tmpPath) {
+        try {
+          if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+        } catch {}
+      }
     }
-
-    if (fs.existsSync(targetFile)) {
-      return res.json({ hash, cached: true, message: "File already cached." });
-    }
-
-    fs.mkdirSync(resolvedDir, { recursive: true });
-    fs.writeFileSync(targetFile, req.file.buffer);
-
-    res.json({ hash, cached: false, filename: req.file.originalname, message: "File cached successfully." });
-    return;
   });
 
   router.post(
@@ -187,11 +201,12 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           estimatedCost = quota.estimatedCost;
         }
 
-        // Create DB job
-        const deckHash = sha256(deckContent);
+        // Create DB job with isolated per-run resultDir
+        const deckHash = sha256(`${deckContent}:${geometry?.casHash || ""}`);
         const safeDeckHash = deckHash.replace(/[^a-f0-9]/g, "").slice(0, 16);
+        const runNonce = crypto.randomBytes(4).toString("hex");
         const safeSolver = ["calculix", "su2", "openfoam"].includes(solverType) ? solverType : "calculix";
-        const resultDir = path.resolve(CAE_CACHE_DIR, "results", `${safeSolver}_${safeDeckHash}`);
+        const resultDir = path.resolve(CAE_CACHE_DIR, "results", `${safeSolver}_${safeDeckHash}_${runNonce}`);
         const dbJobId = database.createJob(
           `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
           "RUNNING",

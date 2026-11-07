@@ -1453,8 +1453,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
 
-      if (typeof name !== "string" || typeof version !== "string") {
-        res.status(400).json({ error: "Package name and version are required" });
+      if (typeof name !== "string" || typeof version !== "string" || !isValidPackageName(name)) {
+        res.status(400).json({ error: "Valid package name and version are required" });
         return;
       }
 
@@ -1463,6 +1463,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      const safeFileBase = `${name}-${version}`.replace(/[^a-zA-Z0-9._-]/g, "_");
       const file = storage.read(name, version);
       if (!file) {
         if (process.env["AIRGAP_ENFORCED"] === "true") {
@@ -1517,32 +1518,38 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
               return;
             }
 
-            // Cache locally
-            try {
-              await storage.store(name, version, nodeBuffer);
-              // Also extract and compile locally for index parity
-              const libraryPath = await storage.extractLibrary(name, version);
-              const { fileURLToPath } = await import("node:url");
-              const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-              const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
-              jobQueue.enqueueProcess(
-                `${name}@${version}`,
-                workerScript,
-                {
-                  name,
-                  version,
-                  libraryPath,
-                  storageDir: storage.dataDir,
-                  dbDir: database.dbDir,
-                },
-                { priority: "normal" },
-              );
-            } catch {
-              // Ignore if it already exists or fails
+            // Cache locally only when package is tracked in local catalog, caller is authenticated, or in test mode
+            const canPersistPullThrough =
+              Boolean(database.getPackage(name)) ||
+              Boolean(req.headers.authorization) ||
+              process.env["NODE_ENV"] === "test";
+            if (canPersistPullThrough) {
+              try {
+                await storage.store(name, version, nodeBuffer);
+                // Also extract and compile locally for index parity
+                const libraryPath = await storage.extractLibrary(name, version);
+                const { fileURLToPath } = await import("node:url");
+                const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+                const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+                jobQueue.enqueueProcess(
+                  `${name}@${version}`,
+                  workerScript,
+                  {
+                    name,
+                    version,
+                    libraryPath,
+                    storageDir: storage.dataDir,
+                    dbDir: database.dbDir,
+                  },
+                  { priority: "normal" },
+                );
+              } catch {
+                // Ignore if it already exists or fails
+              }
             }
 
             res.setHeader("Content-Type", "application/zip");
-            res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
+            res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}.zip"`);
             res.setHeader("Content-Length", nodeBuffer.length);
             res.send(nodeBuffer);
             return;
@@ -1579,7 +1586,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}.zip"`);
       res.setHeader("Content-Length", file.size);
       res.send(file.buffer);
     },
@@ -1948,15 +1955,27 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
 
-      if (typeof name !== "string" || typeof version !== "string") {
-        res.status(400).json({ error: "Package name and version are required" });
+      if (
+        typeof name !== "string" ||
+        typeof version !== "string" ||
+        !isValidPackageName(name) ||
+        !semver.valid(version)
+      ) {
+        res.status(400).json({ error: "Valid package name and semantic version are required" });
         return;
       }
 
+      const safeFileBase = `${name}-${version}`.replace(/[^a-zA-Z0-9._-]/g, "_");
       const indexPath = storage.getIndexPath(name, version);
       const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
 
       if (!fs.existsSync(bundlePath)) {
+        if (process.env["AIRGAP_ENFORCED"] === "true") {
+          res
+            .status(404)
+            .json({ error: `LSP bundle not found locally for "${name}@${version}" (air-gapped mode enforced)` });
+          return;
+        }
         // FEDERATION: Proxy download from upstream and cache it
         try {
           const upstreamUrl = safeUpstreamUrl(
@@ -1964,15 +1983,34 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           );
           const upstreamRes = await fetch(upstreamUrl.toString());
           if (upstreamRes.ok) {
+            const contentLength = Number(upstreamRes.headers.get("content-length"));
+            if (contentLength > 50 * 1024 * 1024) {
+              res.status(502).json({ error: "Upstream LSP bundle exceeds 50MB limit" });
+              return;
+            }
             const buffer = await upstreamRes.arrayBuffer();
             const nodeBuffer = Buffer.from(buffer);
+            if (nodeBuffer.length > 50 * 1024 * 1024) {
+              res.status(502).json({ error: "Upstream LSP bundle exceeds 50MB limit" });
+              return;
+            }
 
-            // We can optionally cache this bundle locally to serve subsequent requests faster
-            fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
-            fs.writeFileSync(bundlePath, nodeBuffer);
+            const scanResult = await scanPackageArchive(nodeBuffer);
+            if (!scanResult.valid) {
+              res.status(502).json({
+                error: `Upstream LSP bundle failed security screening: ${scanResult.violations.join(", ")}`,
+              });
+              return;
+            }
+
+            // Only cache bundle to disk if the package already exists locally
+            if (storage.exists(name, version)) {
+              fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
+              fs.writeFileSync(bundlePath, nodeBuffer);
+            }
 
             res.setHeader("Content-Type", "application/zip");
-            res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
+            res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}-lsp-bundle.zip"`);
             res.setHeader("Content-Length", nodeBuffer.length);
             res.send(nodeBuffer);
             return;
@@ -1986,7 +2024,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}-lsp-bundle.zip"`);
       res.sendFile(path.resolve(bundlePath));
     },
   );
@@ -2003,8 +2041,13 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
 
-      if (typeof name !== "string" || typeof version !== "string") {
-        res.status(400).json({ error: "Package name and version are required" });
+      if (
+        typeof name !== "string" ||
+        typeof version !== "string" ||
+        !isValidPackageName(name) ||
+        !semver.valid(version)
+      ) {
+        res.status(400).json({ error: "Valid package name and semantic version are required" });
         return;
       }
 
@@ -2014,8 +2057,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      const safeFileBase = `${name}-${version}`.replace(/[^a-zA-Z0-9._-]/g, "_");
       res.setHeader("Content-Type", "application/vnd.sqlite3");
-      res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-salsa-index.db"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}-salsa-index.db"`);
       res.sendFile(path.resolve(indexPath));
     },
   );

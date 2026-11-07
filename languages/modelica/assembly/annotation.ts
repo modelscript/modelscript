@@ -1261,7 +1261,7 @@ function initGraphicSlot(slotIdx: i32, kind: u8): void {
   slot.arrowStart = ARROW_NONE;
   slot.arrowEnd = ARROW_NONE;
   slot.borderPattern = BORDER_NONE;
-  slot.closure = CLOSURE_NONE;
+  slot.closure = CLOSURE_AUTOMATIC;
   slot.textStyleMask = 0;
   slot.hasEndAngle = 0;
 }
@@ -2167,28 +2167,83 @@ function renderCurrentIconSvg(size: f32): u32 {
       let ry = eh / 2.0;
       let cx = Math.min(x1, x2) + rx;
       let cy = Math.min(y1, y2) + ry;
+      let deltaAngle = slot.endAngle - slot.startAngle;
 
-      writeString('<ellipse cx="');
-      writeFloat(cx, 2);
-      writeString('" cy="');
-      writeFloat(cy, 2);
-      writeString('" rx="');
-      writeFloat(rx, 2);
-      writeString('" ry="');
-      writeFloat(ry, 2);
-      writeSlotFillAttr(slot, i);
-      writeString('" stroke="');
-      if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
-      else writeString("none");
-      if (hasStroke) {
-        writeString('" stroke-width="');
-        writeFloat(strokeW, 2);
-        if (dashArray != "none") {
-          writeString('" stroke-dasharray="');
-          writeString(dashArray);
+      if (Math.abs(deltaAngle) < 360.0 && Math.abs(deltaAngle) > 1e-6) {
+        let radStart = (slot.startAngle * Math.PI) / 180.0;
+        let radEnd = (slot.endAngle * Math.PI) / 180.0;
+        let xStart = cx + rx * Math.cos(radStart);
+        let yStart = cy - ry * Math.sin(radStart);
+        let xEnd = cx + rx * Math.cos(radEnd);
+        let yEnd = cy - ry * Math.sin(radEnd);
+        let largeArc: i32 = Math.abs(deltaAngle) > 180.0 ? 1 : 0;
+        let sweep: i32 = deltaAngle >= 0.0 ? 0 : 1;
+
+        writeString('<path d="M ');
+        if (slot.closure == CLOSURE_RADIAL || slot.closure == CLOSURE_AUTOMATIC) {
+          writeFloat(cx, 2);
+          writeByte(32);
+          writeFloat(cy, 2);
+          writeString(" L ");
         }
+        writeFloat(xStart, 2);
+        writeByte(32);
+        writeFloat(yStart, 2);
+        writeString(" A ");
+        writeFloat(rx, 2);
+        writeByte(32);
+        writeFloat(ry, 2);
+        writeString(" 0 ");
+        writeInt(largeArc);
+        writeByte(32);
+        writeInt(sweep);
+        writeByte(32);
+        writeFloat(xEnd, 2);
+        writeByte(32);
+        writeFloat(yEnd, 2);
+        if (
+          slot.closure == CLOSURE_RADIAL ||
+          slot.closure == CLOSURE_AUTOMATIC ||
+          slot.closure == CLOSURE_CHORD
+        ) {
+          writeString(" Z");
+        }
+        writeSlotFillAttr(slot, i);
+        writeString('" stroke="');
+        if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
+        else writeString("none");
+        if (hasStroke) {
+          writeString('" stroke-width="');
+          writeFloat(strokeW, 2);
+          if (dashArray != "none") {
+            writeString('" stroke-dasharray="');
+            writeString(dashArray);
+          }
+        }
+        writeString('"/>');
+      } else {
+        writeString('<ellipse cx="');
+        writeFloat(cx, 2);
+        writeString('" cy="');
+        writeFloat(cy, 2);
+        writeString('" rx="');
+        writeFloat(rx, 2);
+        writeString('" ry="');
+        writeFloat(ry, 2);
+        writeSlotFillAttr(slot, i);
+        writeString('" stroke="');
+        if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
+        else writeString("none");
+        if (hasStroke) {
+          writeString('" stroke-width="');
+          writeFloat(strokeW, 2);
+          if (dashArray != "none") {
+            writeString('" stroke-dasharray="');
+            writeString(dashArray);
+          }
+        }
+        writeString('"/>');
       }
-      writeString('"/>');
     } else if (kind == GRAPHIC_TEXT && slot.poolTextLen > 0) {
       let x1 = slot.x1;
       let y1 = -slot.y1;

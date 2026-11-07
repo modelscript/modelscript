@@ -1,3 +1,8 @@
+---
+title: Nelson-Oppen Theory Combination & SMT Solvers
+description: Academic foundations and ModelScript modifications for Nelson-Oppen DPLL(T) theory combination across 13 engineering domains, CDCL SAT, Craig interpolation, HC4 contractors, STL robustness, and constrained zonotopes.
+---
+
 # Nelson-Oppen Theory Combination & SMT Solvers
 
 **Implementation**: [`packages/runtime/src/formal/`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/formal/)
@@ -17,9 +22,25 @@
 
 ### ModelScript Rationale & Modifications
 
-Proves cross-domain assertions spanning discrete architectural modes, differential equations, interval constraints, and 3D CAD collisions.
+Proves cross-domain assertions spanning discrete architectural modes, differential equations, interval constraints, 3D CAD collisions, and clinical radiology/surgical safety envelopes.
 
-- **Modifications**: Extended beyond traditional software theories (uninterpreted functions, bit-vectors) to **12 engineering domains** including OWL2 Description Logic, CAD B-Rep spatial physics, and DAE continuous trajectories; combines learned conflict clause propagation with Salsa query invalidation.
+- **Modifications**: Extended beyond traditional software theories (uninterpreted functions, bit-vectors) to **13 engineering domains** (matching [Multi-Domain Theory Coordinator](../architecture/theory-coordinator.md)) including OWL2 Description Logic, CAD B-Rep spatial physics, DAE continuous trajectories, and `RadiologyCasTheoryOracle` for radiation oncology and computer-assisted surgery; combines learned conflict clause propagation with Salsa query invalidation:
+
+| #   | Theory Oracle                           | Domain (`TheoryDomain`)   | Primary Decision / Propagation Procedure                                                                                                                                                         |
+| :-- | :-------------------------------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `OntologyTheoryOracle`                  | `ontology`                | $\mathcal{SROIQ}(\mathcal{D})$ Tableau reasoning over OWL 2 axioms, class disjointness, and property domains                                                                                     |
+| 2   | `ConstraintTheoryOracle`                | `constraints`             | HC4 interval arithmetic and relational constraint propagation over SysML v2 requirements                                                                                                         |
+| 3   | `AbstractDomainOracle`                  | `abstract_interpretation` | Floyd-Warshall Difference Bound Matrix (DBM) closure over Zone ($x_i - x_j \le c$) and Octagon ($\pm x_i \pm x_j \le c$) domains                                                                 |
+| 4   | `ContinuousSafetyOracle`                | `continuous_safety`       | Control Barrier Function (CBF) Lie-derivative positivity and Taylor-model flowpipe reachability                                                                                                  |
+| 5   | `DynamicSimulationOracle`               | `simulation`              | Sensitivity-guided DAE trajectory integration (CVODE/IDA) with exact zero-crossing root finding                                                                                                  |
+| 6   | `SpatialPhysicsOracle`                  | `spatial`                 | 3D CAD B-Rep minimum clearance distance, mass budget, and BVH interference checks                                                                                                                |
+| 7   | `CaeContractOracle`                     | `cae`                     | FEA structural safety factor ($\sigma_{\text{vM}} \le \sigma_{\text{yield}} / \text{SF}$) and CFD aerodynamic/thermal envelope bounds                                                            |
+| 8   | `CausalizationOracle`                   | `causalization`           | Hopcroft-Karp maximum bipartite matching ($O(E\sqrt{V})$), Tarjan BLT decomposition, and Pantelides index reduction                                                                              |
+| 9   | `DimensionalOracle`                     | `dimensional`             | Gaussian elimination over the 7-base SI unit exponent matrix $[\text{m}, \text{kg}, \text{s}, \text{A}, \text{K}, \text{mol}, \text{cd}]$                                                        |
+| 10  | `EntailmentOracle`                      | `entailment`              | Assume-Guarantee contract compatibility ($\bigwedge A_i \neq \bot$) and compositional refinement ($A_P \Rightarrow A_C \land G_C \Rightarrow G_P$)                                               |
+| 11  | `FlowAlgebraOracle`                     | `flow_algebra`            | Acausal connection graph conservation ($\sum i_k = 0$ for flow variables, $v_1 = \dots = v_n$ for potential variables)                                                                           |
+| 12  | `ToleranceStackOracle`                  | `tolerance`               | STEP AP242 / ISO 23952 QIF GD&T 1D/3D tolerance chain stack-up via Worst-Case and Root-Sum-Square (RSS)                                                                                          |
+| 13  | `UqOracle` / `RadiologyCasTheoryOracle` | `uq` / `radiology_cas`    | Latin Hypercube / PCE Sobol & conformal UQ, plus QUANTEC OAR DVH/BED/EQD2 dose limits, Bethe-Bloch Bragg peak range, Hill muscle dynamics, and $SE(3)$ surgical navigation TRE (`M9101`–`M9810`) |
 
 ---
 

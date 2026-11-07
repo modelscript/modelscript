@@ -26,7 +26,7 @@ import { PigTracker } from "./pig-tracker.js";
 import { SlugTracker } from "./slug-tracker.js";
 import { computeChurchillFriction, computeZuberFindlaySlip } from "./zuber-findlay.js";
 
-interface DaeCellMeta {
+export interface DaeCellMeta {
   pIdx: number;
   alphaGIdx: number;
   tempIdx: number;
@@ -38,6 +38,13 @@ interface DaeCellMeta {
   roughness: number;
   uHeatTransfer: number;
   ambientTemp: number;
+}
+
+export interface FlowpathJunctionCoupling {
+  jInExpr?: number | undefined;
+  alphaInExpr?: number | undefined;
+  tempInExpr?: number | undefined;
+  pOutExpr?: number | undefined;
 }
 
 /**
@@ -52,7 +59,13 @@ export function lowerFlowpathToDae(
   builder: DAEBuilder,
   model: OlgaModel,
   flowpath: OlgaFlowpath,
-): { varIndices: number[]; cellCount: number } {
+  junctionCoupling?: FlowpathJunctionCoupling,
+): {
+  varIndices: number[];
+  cellCount: number;
+  firstCellMeta?: DaeCellMeta | undefined;
+  lastCellMeta?: DaeCellMeta | undefined;
+} {
   const varIndices: number[] = [];
   const cellsMeta: DaeCellMeta[] = [];
   let cellOffset = 0;
@@ -72,6 +85,7 @@ export function lowerFlowpathToDae(
   }
 
   for (const node of model.nodes) {
+    if (node.flowpath && node.flowpath !== flowpath.name) continue;
     if (node.type === "PRESSURE" || node.type === "SEPARATOR") {
       if (node.pressure != null) outletPressure = node.pressure;
     } else if (node.type === "TERMINAL" || node.type === "MASS_SOURCE") {
@@ -181,7 +195,6 @@ export function lowerFlowpathToDae(
 
     const theta = Math.asin(Math.max(-1.0, Math.min(1.0, cell.sinTheta)));
     const { c0, ugj } = computeZuberFindlaySlip(alphaG0, fluid.rhoG, fluid.rhoL, fluid.sigma, theta);
-    const ugNominal = Math.max(0.1, Math.abs(c0 * jNominal + ugj));
     const reM = (rhoM * Math.abs(jNominal) * cell.diameter) / Math.max(1e-7, muM);
     const fChurchill = computeChurchillFriction(reM, cell.roughness, cell.diameter);
 
@@ -192,9 +205,9 @@ export function lowerFlowpathToDae(
 
     if (i === 0) {
       const jIn = inletMassRate / Math.max(1e-3, cell.area * rhoM);
-      jUp = builder.addRealLiteral(jIn);
-      alphaUp = builder.addRealLiteral(inletGasFraction);
-      tempUp = builder.addRealLiteral(inletTemp);
+      jUp = junctionCoupling?.jInExpr ?? builder.addRealLiteral(jIn);
+      alphaUp = junctionCoupling?.alphaInExpr ?? builder.addRealLiteral(inletGasFraction);
+      tempUp = junctionCoupling?.tempInExpr ?? builder.addRealLiteral(inletTemp);
     } else {
       const prev = cellsMeta[i - 1]!;
       jUp = builder.addName(prev.jFaceIdx);
@@ -205,7 +218,7 @@ export function lowerFlowpathToDae(
     // Downstream boundary / cell reference for momentum balance
     let pDown: number;
     if (i === N - 1) {
-      pDown = builder.addRealLiteral(outletPressure);
+      pDown = junctionCoupling?.pOutExpr ?? builder.addRealLiteral(outletPressure);
     } else {
       pDown = builder.addName(cellsMeta[i + 1]!.pIdx);
     }
@@ -218,12 +231,17 @@ export function lowerFlowpathToDae(
     const rhsP = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(c1), deltaJ);
     builder.addEquation(EqKind.Simple, derP, rhsP);
 
-    // 2. Gas mass continuity (gas void fraction advection using Zuber-Findlay gas phase velocity)
-    // d(alpha_g)/dt = - (u_g / dx) * (alpha_g - alpha_up)
-    const c2 = -ugNominal / cell.dx;
+    // 2. Gas mass continuity (gas void fraction advection using dynamic Zuber-Findlay gas phase velocity u_g = C_0 * j_i + u_gj)
+    // d(alpha_g)/dt = - ((C_0 * j_i + u_gj) / dx) * (alpha_g - alpha_up)
     const derAlpha = builder.addDer(cell.alphaGIdx);
+    const ugDynamic = builder.addBinaryExpr(
+      BinOp.Add,
+      builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(c0), builder.addName(cell.jFaceIdx)),
+      builder.addRealLiteral(ugj),
+    );
+    const c2Dynamic = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(-1.0 / cell.dx), ugDynamic);
     const deltaAlpha = builder.addBinaryExpr(BinOp.Sub, builder.addName(cell.alphaGIdx), alphaUp);
-    const rhsAlpha = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(c2), deltaAlpha);
+    const rhsAlpha = builder.addBinaryExpr(BinOp.Mul, c2Dynamic, deltaAlpha);
     builder.addEquation(EqKind.Simple, derAlpha, rhsAlpha);
 
     // 3. Mixture momentum balance (using Churchill friction factor)
@@ -241,13 +259,17 @@ export function lowerFlowpathToDae(
     builder.addEquation(EqKind.Simple, derJ, rhsJ);
 
     // 4. Mixture thermal energy balance
-    // dT/dt = - (j / dx) * (T_i - T_up) - (4*U / (rho_m * Cp * D)) * (T_i - T_amb)
-    const cAdv = -jNominal / cell.dx;
+    // dT/dt = - (j_i / dx) * (T_i - T_up) - (4*U / (rho_m * Cp * D)) * (T_i - T_amb)
+    const cAdvDynamic = builder.addBinaryExpr(
+      BinOp.Mul,
+      builder.addRealLiteral(-1.0 / cell.dx),
+      builder.addName(cell.jFaceIdx),
+    );
     const cLoss = -(4.0 * cell.uHeatTransfer) / (rhoM * cpM * cell.diameter);
 
     const derT = builder.addDer(cell.tempIdx);
     const deltaT = builder.addBinaryExpr(BinOp.Sub, builder.addName(cell.tempIdx), tempUp);
-    const advTerm = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(cAdv), deltaT);
+    const advTerm = builder.addBinaryExpr(BinOp.Mul, cAdvDynamic, deltaT);
     const deltaTamb = builder.addBinaryExpr(
       BinOp.Sub,
       builder.addName(cell.tempIdx),
@@ -258,7 +280,12 @@ export function lowerFlowpathToDae(
     builder.addEquation(EqKind.Simple, derT, rhsT);
   }
 
-  return { varIndices, cellCount: cellOffset };
+  return {
+    varIndices,
+    cellCount: cellOffset,
+    firstCellMeta: cellsMeta[0],
+    lastCellMeta: cellsMeta[cellsMeta.length - 1],
+  };
 }
 
 export interface SimulationOptions {
@@ -325,6 +352,7 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
   // Assemble 1D grid across all consecutive pipes
   interface GridCell {
     x: number;
+    z: number;
     dx: number;
     diameter: number;
     area: number;
@@ -337,10 +365,12 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
 
   const cells: GridCell[] = [];
   let currentX = 0;
+  let currentZ = 0;
 
   for (const pipe of flowpath.pipes) {
     const nCells = Math.max(2, pipe.discretization);
     const dx = pipe.length / nCells;
+    const dz = pipe.elevation / nCells;
     const diameter = Math.max(0.05, pipe.diameter);
     const area = 0.25 * Math.PI * diameter * diameter;
     const hyp = Math.sqrt(pipe.length * pipe.length + pipe.elevation * pipe.elevation);
@@ -363,6 +393,7 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
     for (let c = 0; c < nCells; c++) {
       cells.push({
         x: currentX + 0.5 * dx,
+        z: currentZ + 0.5 * dz,
         dx,
         diameter,
         area,
@@ -372,6 +403,7 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
         ambientTemp,
       });
       currentX += dx;
+      currentZ += dz;
     }
   }
 
@@ -800,7 +832,7 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
         });
 
         xArr.push(cell.x);
-        elevArr.push(cell.x * cell.sinTheta);
+        elevArr.push(cell.z);
         pArr.push(P[i]!);
         tArr.push(T[i]!);
         holdupArr.push(al);

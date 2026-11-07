@@ -1,3 +1,8 @@
+---
+title: "Salsa Incremental Query Engine"
+description: "ModelScript's semantic analysis and symbol resolution pipeline is driven by an incremental query computation engine inspired by the open-source Salsa incremental query framework."
+---
+
 # Salsa Incremental Query Engine
 
 ModelScript's semantic analysis and symbol resolution pipeline is driven by an incremental query computation engine inspired by the open-source [Salsa](https://github.com/salsa-rs/salsa) incremental query framework.

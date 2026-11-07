@@ -233,11 +233,29 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
     {
       inputs: [
         { name: "u", type: "Real" },
-        { name: "shift", type: "Integer" },
+        { name: "shiftCounter", type: "Integer" },
         { name: "resolution", type: "Integer", defaultValue: 1 },
       ],
       outputType: "Real",
       preserveIntegerType: true,
+      overloads: [
+        {
+          inputs: [
+            { name: "u", type: "Real" },
+            { name: "shiftCounter", type: "Integer" },
+            { name: "resolution", type: "Integer", defaultValue: 1 },
+          ],
+          outputType: "Real",
+        },
+        {
+          inputs: [
+            { name: "u", type: "Real" },
+            { name: "shift", type: "Integer" },
+            { name: "resolution", type: "Integer", defaultValue: 1 },
+          ],
+          outputType: "Real",
+        },
+      ],
     },
   ],
   [
@@ -245,17 +263,56 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
     {
       inputs: [
         { name: "u", type: "Real" },
-        { name: "back", type: "Integer" },
+        { name: "backCounter", type: "Integer" },
         { name: "resolution", type: "Integer", defaultValue: 1 },
       ],
       outputType: "Real",
       preserveIntegerType: true,
+      overloads: [
+        {
+          inputs: [
+            { name: "u", type: "Real" },
+            { name: "backCounter", type: "Integer" },
+            { name: "resolution", type: "Integer", defaultValue: 1 },
+          ],
+          outputType: "Real",
+        },
+        {
+          inputs: [
+            { name: "u", type: "Real" },
+            { name: "back", type: "Integer" },
+            { name: "resolution", type: "Integer", defaultValue: 1 },
+          ],
+          outputType: "Real",
+        },
+      ],
     },
   ],
   ["previous", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", preserveIntegerType: true }],
   ["hold", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", preserveIntegerType: true }],
-  ["interval", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
+  [
+    "interval",
+    {
+      inputs: [{ name: "u", type: "Real" }],
+      outputType: "Real",
+      overloads: [
+        { inputs: [], outputType: "Real" },
+        { inputs: [{ name: "u", type: "Real" }], outputType: "Real" },
+      ],
+    },
+  ],
   ["noClock", { inputs: [{ name: "u", type: "Real" }], outputType: "Real", preserveIntegerType: true }],
+  [
+    "firstTick",
+    {
+      inputs: [{ name: "u", type: "Real" }],
+      outputType: "Boolean",
+      overloads: [
+        { inputs: [], outputType: "Boolean" },
+        { inputs: [{ name: "u", type: "Real" }], outputType: "Boolean" },
+      ],
+    },
+  ],
 
   // §17 State Machines
   ["activeState", { inputs: [{ name: "state", type: "TypeName" }], outputType: "Boolean" }],
@@ -589,76 +646,6 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ],
   ["terminate", { inputs: [{ name: "message", type: "String" }], outputType: null }],
   ["print", { inputs: [{ name: "str", type: "String" }], outputType: null }],
-
-  // §16 Synchronous Language Elements
-  ["Clock", { inputs: [{ name: "interval", type: "Real" }], outputType: "Real" }],
-  ["hold", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["previous", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  [
-    "backSample",
-    {
-      inputs: [
-        { name: "u", type: "Real" },
-        { name: "backCounter", type: "Integer" },
-        { name: "resolution", type: "Integer", defaultValue: 1 },
-      ],
-      outputType: "Real",
-    },
-  ],
-  [
-    "shiftSample",
-    {
-      inputs: [
-        { name: "u", type: "Real" },
-        { name: "shiftCounter", type: "Integer" },
-        { name: "resolution", type: "Integer", defaultValue: 1 },
-      ],
-      outputType: "Real",
-    },
-  ],
-  [
-    "subSample",
-    {
-      inputs: [
-        { name: "u", type: "Real" },
-        { name: "factor", type: "Integer" },
-      ],
-      outputType: "Real",
-    },
-  ],
-  [
-    "superSample",
-    {
-      inputs: [
-        { name: "u", type: "Real" },
-        { name: "factor", type: "Integer" },
-      ],
-      outputType: "Real",
-    },
-  ],
-  ["noClock", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["interval", { inputs: [{ name: "u", type: "Real" }], outputType: "Real" }],
-  ["initialState", { inputs: [{ name: "state", type: "Real" }], outputType: "Real" }],
-  ["activeState", { inputs: [{ name: "state", type: "Real" }], outputType: "Boolean" }],
-  ["ticksInState", { inputs: [], outputType: "Integer" }],
-  ["timeInState", { inputs: [], outputType: "Real" }],
-  ["firstTick", { inputs: [], outputType: "Boolean" }],
-  ["interval", { inputs: [], outputType: "Real" }],
-  [
-    "transition",
-    {
-      inputs: [
-        { name: "from", type: "Real" },
-        { name: "to", type: "Real" },
-        { name: "condition", type: "Boolean" },
-        { name: "immediate", type: "Boolean", defaultValue: true },
-        { name: "reset", type: "Boolean", defaultValue: true },
-        { name: "synchronize", type: "Boolean", defaultValue: false },
-        { name: "priority", type: "Integer", defaultValue: 1 },
-      ],
-      outputType: null,
-    },
-  ],
 
   // §16.6 Stream Operators
   ["inStream", { inputs: [{ name: "v", type: "Real" }], outputType: "Real" }],

@@ -1283,37 +1283,38 @@ export declare enum SyntaxKind {
   BlockStatement = 88,
   VariableDeclaration = 89,
   AssignmentStatement = 90,
-  ReturnStatement = 91,
-  IfStatement = 92,
-  WhileStatement = 93,
-  ForStatement = 94,
-  ExpressionStatement = 95,
-  Expression = 96,
-  NewExpression = 97,
-  FLWORExpression = 98,
-  ForClause = 99,
-  LetClause = 100,
-  WhereClause = 101,
-  OrderByClause = 102,
-  ReturnClause = 103,
-  BinaryExpression = 104,
-  UnaryExpression = 105,
-  PostfixExpression = 106,
-  ArgumentList = 107,
-  Argument = 108,
-  PrimaryExpression = 109,
-  ArrayLiteral = 110,
-  ObjectLiteral = 111,
-  ObjectField = 112,
-  ParenthesizedExpression = 113,
-  BOOLEAN = 114,
-  START = 115,
-  _START = 115,
-  EmptyStatement = 142,
-  _EmptyStatement = 142,
-  IDENTIFIER = 179,
-  NUMBER = 180,
-  STRING = 181,
+  ForUpdate = 91,
+  ReturnStatement = 92,
+  IfStatement = 93,
+  WhileStatement = 94,
+  ForStatement = 95,
+  ExpressionStatement = 96,
+  Expression = 97,
+  NewExpression = 98,
+  FLWORExpression = 99,
+  ForClause = 100,
+  LetClause = 101,
+  WhereClause = 102,
+  OrderByClause = 103,
+  ReturnClause = 104,
+  BinaryExpression = 105,
+  UnaryExpression = 106,
+  PostfixExpression = 107,
+  ArgumentList = 108,
+  Argument = 109,
+  PrimaryExpression = 110,
+  ArrayLiteral = 111,
+  ObjectLiteral = 112,
+  ObjectField = 113,
+  ParenthesizedExpression = 114,
+  BOOLEAN = 115,
+  START = 116,
+  _START = 116,
+  EmptyStatement = 144,
+  _EmptyStatement = 144,
+  IDENTIFIER = 181,
+  NUMBER = 182,
+  STRING = 183,
   EOF = 1023,
 }
 
@@ -1481,6 +1482,10 @@ export interface AssignmentStatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.AssignmentStatement;
 }
 export declare function isAssignmentStatement(node: SyntaxNode | null | undefined): node is AssignmentStatementNode;
+export interface ForUpdateNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForUpdate;
+}
+export declare function isForUpdate(node: SyntaxNode | null | undefined): node is ForUpdateNode;
 export interface ReturnStatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ReturnStatement;
 }
@@ -1723,6 +1728,17 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is AssignmentStatementNode;
+    target(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    targetList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ForUpdate: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForUpdateNode;
     target(node: SyntaxNode | null | undefined): SyntaxNode | null;
     targetList(node: SyntaxNode | null | undefined): SyntaxNode[];
     operator(node: SyntaxNode | null | undefined): SyntaxNode | null;

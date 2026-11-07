@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { LibraryDatabase } from "../database.js";
-import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAdmin, requireAuth } from "../middleware/auth-middleware.js";
 import {
   buildCitationKey,
   buildFts5MatchQuery,
@@ -891,9 +891,10 @@ export function referencesRouter(database: LibraryDatabase): Router {
            FROM post_citations pc
            JOIN posts p ON pc.post_id = p.id
            JOIN users u ON p.author_id = u.id
-           WHERE pc.work_id = ?
+           WHERE (pc.work_id = ?
               OR LOWER(pc.urn) = LOWER(?)
-              OR LOWER(pc.urn) = LOWER(?)
+              OR LOWER(pc.urn) = LOWER(?))
+             AND COALESCE(p.visibility, 'public') = 'public'
            ORDER BY p.created_at DESC
            LIMIT 25`,
         )
@@ -1109,6 +1110,13 @@ export function referencesRouter(database: LibraryDatabase): Router {
         ? body.externalLocations
         : [];
       const localPdfUrl = body.localPdfUrl ? String(body.localPdfUrl).trim() : null;
+      if (
+        localPdfUrl &&
+        !((localPdfUrl.startsWith("/") && !localPdfUrl.startsWith("//")) || /^https?:\/\//i.test(localPdfUrl))
+      ) {
+        res.status(400).json({ error: "Invalid localPdfUrl: must be a relative path or http(s) URL" });
+        return;
+      }
       if (localPdfUrl) {
         externalLocations.unshift({
           source: "Ansatz Local Instance Archive",
@@ -1185,6 +1193,11 @@ export function referencesRouter(database: LibraryDatabase): Router {
 
       if (!rawUrn || !localPdfUrl) {
         res.status(400).json({ error: "Both 'urn' and 'localPdfUrl' are required" });
+        return;
+      }
+
+      if (!((localPdfUrl.startsWith("/") && !localPdfUrl.startsWith("//")) || /^https?:\/\//i.test(localPdfUrl))) {
+        res.status(400).json({ error: "Invalid localPdfUrl: must be a relative path or http(s) URL" });
         return;
       }
 
@@ -1925,7 +1938,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
    * POST /api/v1/references/s3-sync/preload-first-slice
    * Preloads (with local caching) the first slice of data for OpenAlex on S3 into openalex.db.
    */
-  router.post("/s3-sync/preload-first-slice", requireAuth, async (req: Request, res: Response) => {
+  router.post("/s3-sync/preload-first-slice", requireAdmin, async (req: Request, res: Response) => {
     try {
       const force = Boolean(req.body?.force);
       const maxRecords = typeof req.body?.maxRecords === "number" ? req.body.maxRecords : undefined;
@@ -1978,7 +1991,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
    * Discovers available S3 partitions from `s3://openalex/data/<entity>/manifest` and registers them
    * in `openalex.db`'s `openalex_s3_partitions` table with `status = 'unloaded'` by default.
    */
-  router.post("/s3-sync/manifest/sync", requireAuth, async (req: Request, res: Response) => {
+  router.post("/s3-sync/manifest/sync", requireAdmin, async (req: Request, res: Response) => {
     try {
       const entity = (String(req.body?.entity || "works").toLowerCase() as OpenAlexS3EntityType) || "works";
       const limit = Math.min(500, Math.max(1, Number(req.body?.limit || 100)));
@@ -2033,7 +2046,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
    * POST /api/v1/references/s3-sync/partitions/load
    * Selectively streams and loads one or more S3 partitions into `openalex.db` (and indexes into FTS5).
    */
-  router.post("/s3-sync/partitions/load", requireAuth, async (req: Request, res: Response) => {
+  router.post("/s3-sync/partitions/load", requireAdmin, async (req: Request, res: Response) => {
     try {
       const {
         s3Urls,
@@ -2118,16 +2131,11 @@ export function referencesRouter(database: LibraryDatabase): Router {
           const raw = localFilePath.trim();
           const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
           const tmpDir = path.resolve(os.tmpdir());
-          const cwdDir = path.resolve(process.cwd());
+          const allowTmp = process.env["NODE_ENV"] === "test";
           const resolved = path.resolve(raw);
-          if (
-            !resolved.startsWith(cacheDir + path.sep) &&
-            !resolved.startsWith(tmpDir + path.sep) &&
-            !resolved.startsWith(cwdDir + path.sep) &&
-            resolved !== cacheDir &&
-            resolved !== tmpDir &&
-            resolved !== cwdDir
-          ) {
+          const inCache = resolved.startsWith(cacheDir + path.sep);
+          const inTmp = allowTmp && resolved.startsWith(tmpDir + path.sep);
+          if (!inCache && !inTmp) {
             res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
             return;
           }
@@ -2210,7 +2218,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
    * POST /api/v1/references/s3-sync/partitions/unload
    * Evicts works belonging to the specified S3 partition(s) from `openalex.db`, updates FTS5, and marks the partition `'unloaded'`.
    */
-  router.post("/s3-sync/partitions/unload", requireAuth, (req: Request, res: Response) => {
+  router.post("/s3-sync/partitions/unload", requireAdmin, (req: Request, res: Response) => {
     try {
       const { s3Urls, s3Url, unloadAll } = req.body || {};
       const oaDb = database.openalexDb;
@@ -2288,7 +2296,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
    * POST /api/v1/references/s3-sync/fts-optimize
    * Rebuilds and optimizes the SQLite FTS5 inverted index inside `openalex.db`.
    */
-  router.post("/s3-sync/fts-optimize", requireAuth, (_req: Request, res: Response) => {
+  router.post("/s3-sync/fts-optimize", requireAdmin, (_req: Request, res: Response) => {
     try {
       const oaDb = database.openalexDb;
       const startMs = Date.now();
@@ -2318,7 +2326,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
    * - `localFilePath`: path to a local `.gz` or `.jsonl` snapshot file downloaded from `s3://openalex/data/works/`
    * - `jsonl`: raw newline-delimited OpenAlex Work JSON objects
    */
-  router.post("/s3-sync/ingest", requireAuth, async (req: Request, res: Response) => {
+  router.post("/s3-sync/ingest", requireAdmin, async (req: Request, res: Response) => {
     try {
       const {
         s3PartitionUrl,
@@ -2365,16 +2373,11 @@ export function referencesRouter(database: LibraryDatabase): Router {
           const raw = String(localFilePath).trim();
           const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
           const tmpDir = path.resolve(os.tmpdir());
-          const cwdDir = path.resolve(process.cwd());
+          const allowTmp = process.env["NODE_ENV"] === "test";
           const resolved = path.resolve(raw);
-          if (
-            !resolved.startsWith(cacheDir + path.sep) &&
-            !resolved.startsWith(tmpDir + path.sep) &&
-            !resolved.startsWith(cwdDir + path.sep) &&
-            resolved !== cacheDir &&
-            resolved !== tmpDir &&
-            resolved !== cwdDir
-          ) {
+          const inCache = resolved.startsWith(cacheDir + path.sep);
+          const inTmp = allowTmp && resolved.startsWith(tmpDir + path.sep);
+          if (!inCache && !inTmp) {
             res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
             return;
           }

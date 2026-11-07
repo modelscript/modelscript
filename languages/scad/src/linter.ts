@@ -145,6 +145,7 @@ const BUILTIN_MODULES = new Set<string>([
   "echo",
   "assert",
   "import",
+  "torus",
   "tag_port",
 ]);
 
@@ -155,6 +156,7 @@ const BUILTIN_METHODS = new Set<string>([
   "translate",
   "rotate",
   "scale",
+  "resize",
   "mirror",
   "multmatrix",
   "color",

@@ -117,10 +117,11 @@ export function verifyReqIfEntailment(doc: ReqIfDocument): ReqIfEntailmentReport
 
     const hasCompoundOrMultiVar =
       isCompoundContractExpr(parentExpr) ||
+      parentContract?.comparator === "!=" ||
       allContractChildren.some((cid) => {
         const c = doc.specObjects.get(cid);
         const expr = c?.contract?.expression ?? (c?.text ? extractContractExpression(c.text) : undefined);
-        return isCompoundContractExpr(expr);
+        return isCompoundContractExpr(expr) || c?.contract?.comparator === "!=";
       }) ||
       sameVarChildren.length === 0;
 

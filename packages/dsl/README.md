@@ -11,7 +11,7 @@ ModelScript Grammar Workbench, native WebAssembly GLR parser compiler, linear-me
 
 ### 1. Declarative Language Workbench DSL (`@modelscript/dsl/dsl`)
 
-Every polyglot language across all **44 engineering domains** in ModelScript (`modelica`, `sysml2`, `modelscript`, `pscad`, `psse`, `opendss`, `spice`, `verilog-a`, `ibis`, `touchstone`, `olga`, `lps`, `aspen`, `eclipse`, `epanet`, `swmm`, `relap5`, `energyplus`, `adams`, `simpack`, `gensys`, `gtsuite`, `sima`, `urdf`, `opendrive`, `openscenario`, `autosar`, `simulink`, `easy5`, `jsbsim`, `rocets`, `ccsds`, `plcopen`, `step`, `scad`, `cfd`, `fea`, `ssp`, `reqif`, `owl2`, `csv`, `sbml`, `fortran`, `c`) is defined via a single declarative `defineLanguage({...})` specification (`src/dsl/language.ts`):
+Every polyglot language across all **68 engineering domains** in ModelScript (`modelscript`, `modelica`, `sysml2`, `ssp`, `reqif`, `oscal`, `owl2`, `csv`, `pscad`, `psse`, `cgmes`, `opendss`, `spice`, `verilog-a`, `ibis`, `touchstone`, `olga`, `lps`, `aspen`, `eclipse`, `epanet`, `swmm`, `relap5`, `energyplus`, `adams`, `simpack`, `gensys`, `gtsuite`, `sima`, `urdf`, `opendrive`, `openscenario`, `autosar`, `simulink`, `easy5`, `jsbsim`, `rocets`, `ccsds`, `plcopen`, `automationml`, `step`, `qif`, `scad`, `usd`, `fea`, `cfd`, `sbml`, `antimony`, `cantera`, `smiles`, `nmtran`, `sbol`, `bngl`, `sedml`, `pdb`, `genbank`, `gproms`, `phreeqc`, `fortran`, `c`, `opensim`, `dicom-rt`, `cellml`, `febio`, `nifti`, `topas`, `three-mf`, `igtl`) is defined via a single declarative `language({...})` specification (`src/dsl/language.ts`):
 
 - **Grammar Combinators (`src/dsl/combinators.ts`, `src/dsl/grammar.ts`)**: `seq`, `choice`, `repeat`, `repeat1`, `optional`, `prec`, `prec.left`, `prec.right`, `prec.dynamic`, `field`, `token`, `alias`, and external scanner hooks (`src/dsl/scanner-types.ts`).
 - **Unified Language Facets**: A `LanguageDefinition` co-locates grammar rules with scope/symbol indexing (`scopes`), Salsa semantic queries (`queries`), static lints (`lints`), graphical diagram mappings (`diagram`), DAE lowering rules (`dae`), 3D CAD bindings (`cad`), bidirectional writeback rules (`writeback`), and MCP tool declarations (`mcp`).
@@ -42,28 +42,28 @@ Every polyglot language across all **44 engineering domains** in ModelScript (`m
 
 ## Subpath Exports
 
-| Subpath                     | Description                                                                                               |
-| :-------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| `@modelscript/dsl`          | Root barrel exporting grammar combinators, codegen, bindings, unparser, and tools                         |
-| `@modelscript/dsl/dsl`      | `defineLanguage`, grammar combinators (`seq`, `choice`, `repeat`, `field`, `prec`), and `CodeGraph` types |
-| `@modelscript/dsl/parser`   | Native WebAssembly GLR parser compiler (`buildParser`)                                                    |
-| `@modelscript/dsl/bindings` | Runtime WASM parser loader (`createWasmParser`) and linear CST accessors                                  |
-| `@modelscript/dsl/tgg`      | Triple Graph Grammar compiler and bidirectional synchronization engine                                    |
-| `@modelscript/dsl/cpa`      | Critical Pair Analysis (CPA) conflict detector for graph transformation rules                             |
-| `@modelscript/dsl/egraph`   | E-graph equality saturation and cost-based term extraction                                                |
-| `@modelscript/dsl/unparser` | Format-preserving CST unparser and surgical source patcher                                                |
-| `@modelscript/dsl/tools`    | Internationalization (i18n) catalog and semantic CST diff utilities                                       |
+| Subpath                     | Description                                                                                         |
+| :-------------------------- | :-------------------------------------------------------------------------------------------------- |
+| `@modelscript/dsl`          | Root barrel exporting grammar combinators, codegen, bindings, unparser, and tools                   |
+| `@modelscript/dsl/dsl`      | `language`, grammar combinators (`seq`, `choice`, `repeat`, `field`, `prec`), and `CodeGraph` types |
+| `@modelscript/dsl/parser`   | Native WebAssembly GLR parser compiler (`buildParser`)                                              |
+| `@modelscript/dsl/bindings` | Runtime WASM parser loader (`createWasmParser`) and linear CST accessors                            |
+| `@modelscript/dsl/tgg`      | Triple Graph Grammar compiler and bidirectional synchronization engine                              |
+| `@modelscript/dsl/cpa`      | Critical Pair Analysis (CPA) conflict detector for graph transformation rules                       |
+| `@modelscript/dsl/egraph`   | E-graph equality saturation and cost-based term extraction                                          |
+| `@modelscript/dsl/unparser` | Format-preserving CST unparser and surgical source patcher                                          |
+| `@modelscript/dsl/tools`    | Internationalization (i18n) catalog and semantic CST diff utilities                                 |
 
 ---
 
 ## Usage
 
 ```typescript
-import { buildParser, choice, defineLanguage, field, prec, repeat, seq } from "@modelscript/dsl";
+import { buildParser, choice, field, language, prec, repeat, seq } from "@modelscript/dsl";
 import { createWasmParser } from "@modelscript/dsl/bindings";
 
 // 1. Define a language grammar and lint rules
-export const miniCalc = defineLanguage({
+export const miniCalc = language({
   name: "minicalc",
   extensions: [".calc"],
   grammar: {

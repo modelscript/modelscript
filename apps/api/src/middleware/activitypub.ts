@@ -282,6 +282,19 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           .map((c) => c.replace(/^"|"$/g, ""))
           .filter(Boolean);
 
+        if (process.env["NODE_ENV"] === "production") {
+          const coversTarget =
+            coveredComponents.includes("@request-target") ||
+            (coveredComponents.includes("@method") &&
+              (coveredComponents.includes("@path") || coveredComponents.includes("@target-uri")));
+          if (!coversTarget) {
+            res.status(401).json({
+              error: "Signature-Input must cover @method and @path (or @target-uri / @request-target)",
+            });
+            return;
+          }
+        }
+
         const paramsPart = innerParams.slice(closeParen + 1);
         const paramPairs = paramsPart
           .split(";")

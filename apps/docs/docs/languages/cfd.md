@@ -1,3 +1,8 @@
+---
+title: "CFD (SU2 & OpenFOAM Compatible)"
+description: "@modelscript/cfd (languages/cfd) provides native WebAssembly GLR parsing, parametric configuration materialization, 3D CAD boundary marker synthesis, aerodynamic flow regime analysis, and cross-dom..."
+---
+
 # CFD (SU2 & OpenFOAM Compatible)
 
 `@modelscript/cfd` (`languages/cfd`) provides native WebAssembly GLR parsing, parametric configuration materialization, 3D CAD boundary marker synthesis, aerodynamic flow regime analysis, and cross-domain TGG synchronization for Computational Fluid Dynamics solver configurations.

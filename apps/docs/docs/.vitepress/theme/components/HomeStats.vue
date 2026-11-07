@@ -64,6 +64,13 @@ const stats = computed<StatItem[]>(() => [
           <span class="stat-desc">{{ item.description }}</span>
         </a>
       </div>
+      <div class="stats-licensing">
+        <span class="licensing-badge">Open Core · AGPL-3.0</span>
+        <span class="licensing-text">
+          Free for open-source, academic, and internal browser/CLI workflows — with
+          <a href="/pricing">Commercial OEM &amp; Air-Gapped Enterprise Licenses</a> available.
+        </span>
+      </div>
     </div>
   </section>
 </template>
@@ -171,6 +178,41 @@ const stats = computed<StatItem[]>(() => [
   font-size: 0.84rem;
   line-height: 1.5;
   color: var(--vp-c-text-2);
+}
+
+.stats-licensing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--vp-c-text-2);
+  text-align: center;
+}
+
+.licensing-badge {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 35%, transparent);
+}
+
+.licensing-text a {
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.licensing-text a:hover {
+  color: var(--vp-c-brand-1);
 }
 
 @media (max-width: 960px) {

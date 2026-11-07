@@ -86,7 +86,7 @@ export async function prepareNativeSimulation(
       foldArenaConstants(arena);
     }
 
-    const fileNamePrefix = spec.modelName.replace(/\./g, "_");
+    const fileNamePrefix = spec.modelName.replace(/[^a-zA-Z0-9_]/g, "_") || "model";
     const fmuResult = generateFmu(arena, {
       modelIdentifier: fileNamePrefix,
       generationTool: "ModelScript Cloud HPC",
@@ -107,18 +107,29 @@ export async function prepareNativeSimulation(
       tolerance: spec.tolerance ?? 1e-6,
     });
 
-    const cFile = path.join(workingDir, `${fileNamePrefix}_sim.c`);
-    const binFile = path.join(workingDir, `${fileNamePrefix}_sim`);
-    const csvFile = path.join(workingDir, `${fileNamePrefix}_res.csv`);
-    const runScript = path.join(workingDir, `run_${fileNamePrefix}.sh`);
+    const resolvedWorkDir = path.resolve(workingDir);
+    const cFile = path.resolve(resolvedWorkDir, `${fileNamePrefix}_sim.c`);
+    const binFile = path.resolve(resolvedWorkDir, `${fileNamePrefix}_sim`);
+    const csvFile = path.resolve(resolvedWorkDir, `${fileNamePrefix}_res.csv`);
+    const runScript = path.resolve(resolvedWorkDir, `run_${fileNamePrefix}.sh`);
+    if (
+      !cFile.startsWith(resolvedWorkDir + path.sep) ||
+      !binFile.startsWith(resolvedWorkDir + path.sep) ||
+      !csvFile.startsWith(resolvedWorkDir + path.sep) ||
+      !runScript.startsWith(resolvedWorkDir + path.sep)
+    ) {
+      throw new Error("Invalid simulation output path outside working directory");
+    }
 
     fs.writeFileSync(cFile, cSource, "utf8");
 
-    const cc = process.env["CC"] ?? "gcc";
+    const rawCc = process.env["CC"] ?? "gcc";
+    const cc = /^[a-zA-Z0-9_./+-]+$/.test(rawCc) ? rawCc : "gcc";
+    const shellQuote = (s: string): string => `'${s.replace(/'/g, "'\\''")}'`;
     const scriptContent = `#!/bin/bash
 set -e
-${cc} -O3 -fno-math-errno -w "${cFile}" -o "${binFile}" -lm
-"${binFile}" > "${csvFile}"
+${shellQuote(cc)} -O3 -fno-math-errno -w ${shellQuote(cFile)} -o ${shellQuote(binFile)} -lm
+${shellQuote(binFile)} > ${shellQuote(csvFile)}
 `;
     fs.writeFileSync(runScript, scriptContent, { mode: 0o755, encoding: "utf8" });
 

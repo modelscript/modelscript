@@ -13,8 +13,11 @@
 import type {
   ComponentKind,
   DirectiveKind,
+  ExpWaveform,
   ModelType,
   PulseWaveform,
+  PwlWaveform,
+  SffmWaveform,
   SineWaveform,
   SourceSpec,
   SpiceCircuit,
@@ -184,9 +187,18 @@ function evaluateExpression(expr: string, params?: Map<string, number>): number 
       continue;
     }
 
-    // Number or identifier
+    // Number or identifier (preserving +/- in scientific notation e.g. 1e-3, 2.5E+6)
     const start = idx;
-    while (idx < expr.length && !" +-*/()^\t".includes(expr[idx] ?? "")) {
+    while (idx < expr.length) {
+      const c = expr[idx] ?? "";
+      if (" */()^\t".includes(c)) break;
+      if (c === "+" || c === "-") {
+        const prev = idx > start ? (expr[idx - 1] ?? "") : "";
+        const prevBeforeE = idx > start + 1 ? (expr[idx - 2] ?? "") : "";
+        const isExponentSign =
+          (prev === "e" || prev === "E") && ((prevBeforeE >= "0" && prevBeforeE <= "9") || prevBeforeE === ".");
+        if (!isExponentSign) break;
+      }
       idx++;
     }
     const tok = expr.slice(start, idx);
@@ -785,12 +797,15 @@ export class SpiceParser {
 
   private parseModelCard(tokens: string[], span: SpiceSourceSpan): SpiceModel {
     const name = tokens[1] ?? "UNNAMED";
-    const rawType = (tokens[2] ?? "UNKNOWN").replace(/[()]/g, "").toUpperCase();
+    const tok2 = tokens[2] ?? "UNKNOWN";
+    const parenIdx = tok2.indexOf("(");
+    const rawType = (parenIdx !== -1 ? tok2.slice(0, parenIdx) : tok2).replace(/[()]/g, "").toUpperCase();
     const type: ModelType = this.resolveModelType(rawType);
     const params = new Map<string, number>();
 
-    // Flatten all parameter tokens, strip parentheses, and split on whitespace
-    const allParamText = tokens.slice(3).join(" ").replace(/[()]/g, " ");
+    // Flatten all parameter tokens (including any attached to tokens[2] after '('), strip parentheses, and split on whitespace
+    const leadingParamPart = parenIdx !== -1 ? tok2.slice(parenIdx + 1) : "";
+    const allParamText = [leadingParamPart, ...tokens.slice(3)].join(" ").replace(/[()]/g, " ");
     const paramTokens: string[] = [];
     let curTok = "";
     for (let i = 0; i < allParamText.length; i++) {
@@ -869,10 +884,15 @@ export class SpiceParser {
           spec.acMag = parseSpiceNumber(tokens[i + 1] ?? "1", this.globalParams);
           i += 2;
           const nextTok = tokens[i] ?? "";
+          const nextUpper = nextTok.toUpperCase();
           if (
             i < tokens.length &&
-            !nextTok.toUpperCase().startsWith("PULSE") &&
-            !nextTok.toUpperCase().startsWith("SINE")
+            !nextUpper.startsWith("PULSE") &&
+            !nextUpper.startsWith("SINE") &&
+            !nextUpper.startsWith("SIN") &&
+            !nextUpper.startsWith("PWL") &&
+            !nextUpper.startsWith("EXP") &&
+            !nextUpper.startsWith("SFFM")
           ) {
             const maybePhase = parseSpiceNumber(nextTok, this.globalParams);
             if (!Number.isNaN(maybePhase)) {
@@ -891,6 +911,24 @@ export class SpiceParser {
         i++;
       } else if (upper.startsWith("SINE") || upper.startsWith("SIN")) {
         spec.waveform = this.parseSineWaveform(tok, tokens.slice(i + 1));
+        while (i < tokens.length && !(tokens[i] ?? "").includes(")")) {
+          i++;
+        }
+        i++;
+      } else if (upper.startsWith("PWL")) {
+        spec.waveform = this.parsePwlWaveform(tok, tokens.slice(i + 1));
+        while (i < tokens.length && !(tokens[i] ?? "").includes(")")) {
+          i++;
+        }
+        i++;
+      } else if (upper.startsWith("EXP")) {
+        spec.waveform = this.parseExpWaveform(tok, tokens.slice(i + 1));
+        while (i < tokens.length && !(tokens[i] ?? "").includes(")")) {
+          i++;
+        }
+        i++;
+      } else if (upper.startsWith("SFFM")) {
+        spec.waveform = this.parseSffmWaveform(tok, tokens.slice(i + 1));
         while (i < tokens.length && !(tokens[i] ?? "").includes(")")) {
           i++;
         }
@@ -930,6 +968,48 @@ export class SpiceParser {
       freq: allArgs[2] !== undefined ? parseSpiceNumber(allArgs[2], this.globalParams) : 1e3,
       td: allArgs[3] !== undefined ? parseSpiceNumber(allArgs[3], this.globalParams) : 0,
       theta: allArgs[4] !== undefined ? parseSpiceNumber(allArgs[4], this.globalParams) : 0,
+      phi: allArgs[5] !== undefined ? parseSpiceNumber(allArgs[5], this.globalParams) : 0,
+    };
+  }
+
+  private parsePwlWaveform(initialTok: string, followingTokens: string[]): PwlWaveform {
+    const allArgs = this.extractFunctionArgs(initialTok, followingTokens);
+    const points: [number, number][] = [];
+    for (let i = 0; i + 1 < allArgs.length; i += 2) {
+      const tVal = parseSpiceNumber(allArgs[i] ?? "0", this.globalParams);
+      const vVal = parseSpiceNumber(allArgs[i + 1] ?? "0", this.globalParams);
+      if (!Number.isNaN(tVal) && !Number.isNaN(vVal)) {
+        points.push([tVal, vVal]);
+      }
+    }
+    return {
+      kind: "PWL",
+      points,
+    };
+  }
+
+  private parseExpWaveform(initialTok: string, followingTokens: string[]): ExpWaveform {
+    const allArgs = this.extractFunctionArgs(initialTok, followingTokens);
+    return {
+      kind: "EXP",
+      v1: allArgs[0] !== undefined ? parseSpiceNumber(allArgs[0], this.globalParams) : 0,
+      v2: allArgs[1] !== undefined ? parseSpiceNumber(allArgs[1], this.globalParams) : 1,
+      td1: allArgs[2] !== undefined ? parseSpiceNumber(allArgs[2], this.globalParams) : 0,
+      tau1: allArgs[3] !== undefined ? parseSpiceNumber(allArgs[3], this.globalParams) : 1e-6,
+      td2: allArgs[4] !== undefined ? parseSpiceNumber(allArgs[4], this.globalParams) : 2e-6,
+      tau2: allArgs[5] !== undefined ? parseSpiceNumber(allArgs[5], this.globalParams) : 1e-6,
+    };
+  }
+
+  private parseSffmWaveform(initialTok: string, followingTokens: string[]): SffmWaveform {
+    const allArgs = this.extractFunctionArgs(initialTok, followingTokens);
+    return {
+      kind: "SFFM",
+      vo: allArgs[0] !== undefined ? parseSpiceNumber(allArgs[0], this.globalParams) : 0,
+      va: allArgs[1] !== undefined ? parseSpiceNumber(allArgs[1], this.globalParams) : 1,
+      fc: allArgs[2] !== undefined ? parseSpiceNumber(allArgs[2], this.globalParams) : 1e3,
+      modIndex: allArgs[3] !== undefined ? parseSpiceNumber(allArgs[3], this.globalParams) : 0,
+      fs: allArgs[4] !== undefined ? parseSpiceNumber(allArgs[4], this.globalParams) : 100,
     };
   }
 
@@ -982,8 +1062,33 @@ export class SpiceParser {
     };
   }
 
+  private normalizeKeyValueTokens(tokens: string[]): string[] {
+    const merged: string[] = [];
+    let i = 0;
+    while (i < tokens.length) {
+      const cur = tokens[i] ?? "";
+      const next = tokens[i + 1] ?? "";
+      const next2 = tokens[i + 2] ?? "";
+      if (next === "=" && next2 !== "") {
+        merged.push(`${cur}=${next2}`);
+        i += 3;
+      } else if (cur.endsWith("=") && next !== "") {
+        merged.push(`${cur}${next}`);
+        i += 2;
+      } else if (next.startsWith("=") && !cur.includes("=")) {
+        merged.push(`${cur}${next}`);
+        i += 2;
+      } else {
+        merged.push(cur);
+        i++;
+      }
+    }
+    return merged;
+  }
+
   private parseKeyValues(tokens: string[], target: Map<string, number | string>): void {
-    for (const tok of tokens) {
+    const normalized = this.normalizeKeyValueTokens(tokens);
+    for (const tok of normalized) {
       const eqIdx = tok.indexOf("=");
       if (eqIdx !== -1) {
         const key = tok.slice(0, eqIdx).trim().toUpperCase();
@@ -999,7 +1104,8 @@ export class SpiceParser {
   }
 
   private extractParams(tokens: string[], target: Map<string, number>): void {
-    for (const tok of tokens) {
+    const normalized = this.normalizeKeyValueTokens(tokens);
+    for (const tok of normalized) {
       const eqIdx = tok.indexOf("=");
       if (eqIdx !== -1) {
         const key = tok.slice(0, eqIdx).trim().toUpperCase();
@@ -1111,7 +1217,20 @@ function serializeWaveform(w: WaveformSpec): string {
     return `PULSE(${w.v1} ${w.v2} ${w.td} ${w.tr} ${w.tf} ${w.pw} ${w.per})`;
   }
   if (w.kind === "SINE") {
+    if (w.phi !== undefined && w.phi !== 0) {
+      return `SINE(${w.vo} ${w.va} ${w.freq} ${w.td ?? 0} ${w.theta ?? 0} ${w.phi})`;
+    }
     return `SINE(${w.vo} ${w.va} ${w.freq} ${w.td ?? 0} ${w.theta ?? 0})`;
+  }
+  if (w.kind === "PWL") {
+    const pts = w.points.map(([t, v]) => `${t} ${v}`).join(" ");
+    return `PWL(${pts})`;
+  }
+  if (w.kind === "EXP") {
+    return `EXP(${w.v1} ${w.v2} ${w.td1} ${w.tau1} ${w.td2} ${w.tau2})`;
+  }
+  if (w.kind === "SFFM") {
+    return `SFFM(${w.vo} ${w.va} ${w.fc} ${w.modIndex} ${w.fs})`;
   }
   return "";
 }

@@ -127,6 +127,27 @@ export class ShapeFlattener {
           minor: (this.evalParam("minor", classInstId, childStack) as number) ?? 0.2,
           name: entry.name,
         });
+      } else if (classEntry.name === "Cone") {
+        const radiusBottom = (this.evalParam("radiusBottom", classInstId, childStack) as number) ?? 0.5;
+        const radiusTop = (this.evalParam("radiusTop", classInstId, childStack) as number) ?? 0;
+        const height = (this.evalParam("height", classInstId, childStack) as number) ?? 1;
+        solid = cylinder({
+          radius: Math.max(radiusBottom, radiusTop),
+          radiusBottom,
+          radiusTop,
+          height,
+          name: entry.name,
+        });
+      } else if (classEntry.name === "Prism") {
+        const sides = Math.max(3, Math.round((this.evalParam("sides", classInstId, childStack) as number) ?? 6));
+        const radius = (this.evalParam("radius", classInstId, childStack) as number) ?? 0.5;
+        const height = (this.evalParam("height", classInstId, childStack) as number) ?? 1;
+        solid = cylinder({
+          radius,
+          height,
+          segments: sides,
+          name: entry.name,
+        });
       } else {
         // Nested shape assembly — recurse!
         this.walkClass(classInstId, childStack, globalTransform, parts);

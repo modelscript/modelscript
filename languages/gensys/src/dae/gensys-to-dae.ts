@@ -195,15 +195,9 @@ export function lowerGensysToDae(model: GensysModel, builder?: DAEBuilder): DAEB
     const fyCreepVar = dae.addNameExpr(`${wName}.fy_creep`);
     const fzRailVar = dae.addNameExpr(`${wName}.fz_rail`);
 
-    // creep_x = vx / V + (conicity / r0) * y + (halfGauge / V) * vyaw
-    const vxOverV = dae.addBinaryExpr(BinOp.Div, dae.addNameExpr(`${wName}.vx`), dae.addRealLiteral(forwardSpeed));
-    const conicityTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(conicity / r0), dae.addNameExpr(`${wName}.y`));
-    const yawRateTerm = dae.addBinaryExpr(
-      BinOp.Mul,
-      dae.addRealLiteral(halfGauge / forwardSpeed),
-      dae.addNameExpr(`${wName}.vyaw`),
-    );
-    const creepXRhs = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Add, vxOverV, conicityTerm), yawRateTerm);
+    // Symmetric axle-center longitudinal creepage: creep_x = vx / V
+    // (Anti-symmetric left/right wheel longitudinal creepage cancels in net Fx and produces yaw moment Mz below)
+    const creepXRhs = dae.addBinaryExpr(BinOp.Div, dae.addNameExpr(`${wName}.vx`), dae.addRealLiteral(forwardSpeed));
     dae.addEquation(EqKind.Simple, creepXVar, creepXRhs);
 
     // creep_y = vy / V - psi

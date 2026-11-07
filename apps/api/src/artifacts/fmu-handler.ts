@@ -284,14 +284,18 @@ export class FmuArtifactHandler implements ArtifactHandler {
       const dataStart = offset + 30 + nameLength + extraLength;
 
       if (name === targetName) {
+        const MAX_EXTRACTED_ENTRY_BYTES = 10 * 1024 * 1024;
         if (compressionMethod === 0) {
           // Stored (uncompressed)
-          return zipBuffer.subarray(dataStart, dataStart + uncompressedSize);
+          if (uncompressedSize > MAX_EXTRACTED_ENTRY_BYTES) return null;
+          return zipBuffer.subarray(dataStart, Math.min(zipBuffer.length, dataStart + uncompressedSize));
         }
         if (compressionMethod === 8) {
           // Deflate compressed
           try {
-            return zlib.inflateRawSync(zipBuffer.subarray(dataStart, dataStart + compressedSize));
+            return zlib.inflateRawSync(zipBuffer.subarray(dataStart, dataStart + compressedSize), {
+              maxOutputLength: MAX_EXTRACTED_ENTRY_BYTES,
+            });
           } catch {
             return null;
           }

@@ -1,3 +1,8 @@
+---
+title: "ISO 23952 QIF Digital Metrology & GD&T (.qif, .xml)"
+description: "@modelscript/qif (languages/qif) provides native WebAssembly parsing, ASME Y14.5 / ISO 1101 Geometric Dimensioning and Tolerancing (GD&T) validation, Statistical Process Control (SPC) capability ev..."
+---
+
 # ISO 23952 QIF Digital Metrology & GD&T (`.qif`, `.xml`)
 
 `@modelscript/qif` (`languages/qif`) provides native WebAssembly parsing, ASME Y14.5 / ISO 1101 Geometric Dimensioning and Tolerancing (GD&T) validation, Statistical Process Control (SPC) capability evaluation ($C_p$, $C_{pk}$, Test Uncertainty Ratio $\text{TUR}$), STEP AP242 PMI reconciliation, and `DAEBuilder` / Modelica / SysML v2 lowering for **ISO 23952 Quality Information Framework (QIF 3.0)** metrology documents.

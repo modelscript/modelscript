@@ -1,3 +1,8 @@
+---
+title: "EnergyPlus Building Simulation (.idf, .epjson)"
+description: "@modelscript/energyplus (languages/energyplus) provides compiler, thermal lumped-capacitance DAE lowering, and bidirectional TGG synchronization for US Department of Energy (DOE) EnergyPlus buildin..."
+---
+
 # EnergyPlus Building Simulation (`.idf`, `.epjson`)
 
 `@modelscript/energyplus` (`languages/energyplus`) provides compiler, thermal lumped-capacitance DAE lowering, and bidirectional TGG synchronization for **US Department of Energy (DOE) EnergyPlus** building energy and HVAC models.

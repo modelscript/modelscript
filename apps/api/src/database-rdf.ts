@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Literal, NamedNode, Source, Term } from "@rdfjs/types";
+import type { Literal, NamedNode, Quad, Source, Term } from "@rdfjs/types";
 import type { Database } from "better-sqlite3";
 import { DataFactory } from "n3";
 import { Readable } from "node:stream";
@@ -11,14 +11,17 @@ const { namedNode, literal, quad } = DataFactory;
 const NS = "https://modelica.org/ontology#";
 
 /**
- * An RDF/JS Source that lazily executes SQLite queries to retrieve Quads
- * instead of loading all triples into an in-memory store.
+ * An RDF/JS Source that executes bulk JOIN SQLite queries once per source instance
+ * and serves triple pattern matches from indexed quads without hitting SQLite variable limits.
  */
 export class SqliteRdfSource implements Source {
   readonly #db: Database;
   readonly #libraryName: string;
   readonly #libraryVersion: string;
   readonly #libPrefix: string;
+  #allQuads: Quad[] | null = null;
+  #bySubject: Map<string, Quad[]> | null = null;
+  #byPredicate: Map<string, Quad[]> | null = null;
 
   constructor(db: Database, libraryName: string, libraryVersion: string) {
     this.#db = db;
@@ -29,22 +32,17 @@ export class SqliteRdfSource implements Source {
 
   /**
    * Comunica uses this to retrieve matching quads.
-   * We translate the match(subject, predicate, object) bounds into SQLite queries.
    */
   match(subject?: Term | null, predicate?: Term | null, object?: Term | null): Readable {
     const stream = new Readable({
       objectMode: true,
-      read() {
-        // We push all at once in this implementation.
-        // For massive DBs, this could be refactored to use #db.prepare().iterate().
-      },
+      read() {},
     });
 
-    // Execute the database retrieval asynchronously so we don't block the stream
     setImmediate(() => {
       try {
         this.#executeMatch(stream, subject, predicate, object);
-        stream.push(null); // End stream
+        stream.push(null);
       } catch (err) {
         stream.destroy(err instanceof Error ? err : new Error(String(err)));
       }
@@ -53,81 +51,92 @@ export class SqliteRdfSource implements Source {
     return stream;
   }
 
-  #executeMatch(stream: Readable, subject?: Term | null, predicate?: Term | null, object?: Term | null): void {
-    // Determine bounds
-    const sValue = subject?.value;
-    const pValue = predicate?.value;
-    const oValue = object?.value;
+  #ensureLoaded(): void {
+    if (this.#allQuads !== null) {
+      return;
+    }
 
-    // For complex SPARQL queries, Comunica will ask for everything with unbound variables `match(undefined, undefined, undefined)`.
-    const params: (string | number)[] = [this.#libraryName, this.#libraryVersion];
+    const allQuads: Quad[] = [];
+    const bySubject = new Map<string, Quad[]>();
+    const byPredicate = new Map<string, Quad[]>();
 
     const classes = this.#db
       .prepare(
-        `SELECT id, class_name, class_kind, description FROM classes WHERE library_name = ? AND library_version = ?`,
+        `SELECT id, class_name, class_kind, description
+         FROM classes
+         WHERE library_name = ? AND library_version = ?`,
       )
-      .all(...params) as ClassRow[];
+      .all(this.#libraryName, this.#libraryVersion) as ClassRow[];
 
-    if (classes.length === 0) return;
-
-    const classIds = classes.map((c) => c.id);
-    const placeholders = classIds.map(() => "?").join(",");
+    if (classes.length === 0) {
+      this.#allQuads = allQuads;
+      this.#bySubject = bySubject;
+      this.#byPredicate = byPredicate;
+      return;
+    }
 
     const extendsRows = this.#db
-      .prepare(`SELECT class_id, base_class FROM extends WHERE class_id IN (${placeholders})`)
-      .all(...classIds) as { class_id: number; base_class: string }[];
+      .prepare(
+        `SELECT e.class_id, e.base_class
+         FROM extends e
+         JOIN classes c ON c.id = e.class_id
+         WHERE c.library_name = ? AND c.library_version = ?`,
+      )
+      .all(this.#libraryName, this.#libraryVersion) as { class_id: number; base_class: string }[];
 
     const componentsRows = this.#db
       .prepare(
-        `SELECT id, class_id, component_name, type_name, description, causality, variability FROM components WHERE class_id IN (${placeholders})`,
+        `SELECT comp.id, comp.class_id, comp.component_name, comp.type_name, comp.description, comp.causality, comp.variability
+         FROM components comp
+         JOIN classes c ON c.id = comp.class_id
+         WHERE c.library_name = ? AND c.library_version = ?`,
       )
-      .all(...classIds) as ComponentRow[];
+      .all(this.#libraryName, this.#libraryVersion) as ComponentRow[];
 
-    const compIds = componentsRows.map((c) => c.id);
-    let modifiersRows: ModifierRow[] = [];
-    if (compIds.length > 0) {
-      const compPlaceholders = compIds.map(() => "?").join(",");
-      modifiersRows = this.#db
-        .prepare(
-          `SELECT component_id, modifier_name, modifier_value FROM modifiers WHERE component_id IN (${compPlaceholders})`,
-        )
-        .all(...compIds) as ModifierRow[];
-    }
+    const modifiersRows = this.#db
+      .prepare(
+        `SELECT m.component_id, m.modifier_name, m.modifier_value
+         FROM modifiers m
+         JOIN components comp ON comp.id = m.component_id
+         JOIN classes c ON c.id = comp.class_id
+         WHERE c.library_name = ? AND c.library_version = ?`,
+      )
+      .all(this.#libraryName, this.#libraryVersion) as ModifierRow[];
 
-    // Grouping
     const extendsByClass = new Map<number, string[]>();
     for (const row of extendsRows) {
-      const list = extendsByClass.get(row.class_id) ?? [];
-      list.push(row.base_class);
-      extendsByClass.set(row.class_id, list);
+      const list = extendsByClass.get(row.class_id);
+      if (list) list.push(row.base_class);
+      else extendsByClass.set(row.class_id, [row.base_class]);
     }
 
     const modsByComp = new Map<number, ModifierRow[]>();
     for (const row of modifiersRows) {
-      const list = modsByComp.get(row.component_id) ?? [];
-      list.push(row);
-      modsByComp.set(row.component_id, list);
+      const list = modsByComp.get(row.component_id);
+      if (list) list.push(row);
+      else modsByComp.set(row.component_id, [row]);
     }
 
     const compsByClass = new Map<number, ComponentRow[]>();
     for (const row of componentsRows) {
-      const list = compsByClass.get(row.class_id) ?? [];
-      list.push(row);
-      compsByClass.set(row.class_id, list);
+      const list = compsByClass.get(row.class_id);
+      if (list) list.push(row);
+      else compsByClass.set(row.class_id, [row]);
     }
 
-    // Generate Quads and emit them
-    const emit = (s: string, p: string, o: NamedNode | Literal) => {
-      // Apply exact bounds filtering
-      if (sValue && sValue !== s) return;
-      if (pValue && pValue !== p) return;
-      if (oValue && object && !o.equals(object)) return;
-
-      stream.push(quad(namedNode(s), namedNode(p), o));
+    const addQuad = (s: string, p: string, o: NamedNode | Literal) => {
+      const q = quad(namedNode(s), namedNode(p), o);
+      allQuads.push(q);
+      const sList = bySubject.get(s);
+      if (sList) sList.push(q);
+      else bySubject.set(s, [q]);
+      const pList = byPredicate.get(p);
+      if (pList) pList.push(q);
+      else byPredicate.set(p, [q]);
     };
 
-    const emitUri = (s: string, p: string, oStr: string) => emit(s, p, namedNode(oStr));
-    const emitLit = (s: string, p: string, oStr: string) => emit(s, p, literal(oStr));
+    const emitUri = (s: string, p: string, oStr: string) => addQuad(s, p, namedNode(oStr));
+    const emitLit = (s: string, p: string, oStr: string) => addQuad(s, p, literal(oStr));
 
     for (const cls of classes) {
       const classUri = `${this.#libPrefix}${cls.class_name}`;
@@ -171,6 +180,34 @@ export class SqliteRdfSource implements Source {
           }
         }
       }
+    }
+
+    this.#allQuads = allQuads;
+    this.#bySubject = bySubject;
+    this.#byPredicate = byPredicate;
+  }
+
+  #executeMatch(stream: Readable, subject?: Term | null, predicate?: Term | null, object?: Term | null): void {
+    this.#ensureLoaded();
+
+    const sValue = subject?.value;
+    const pValue = predicate?.value;
+    const oValue = object?.value;
+
+    let candidates: Quad[];
+    if (sValue) {
+      candidates = this.#bySubject?.get(sValue) ?? [];
+    } else if (pValue) {
+      candidates = this.#byPredicate?.get(pValue) ?? [];
+    } else {
+      candidates = this.#allQuads ?? [];
+    }
+
+    for (const q of candidates) {
+      if (sValue && q.subject.value !== sValue) continue;
+      if (pValue && q.predicate.value !== pValue) continue;
+      if (oValue && object && !q.object.equals(object)) continue;
+      stream.push(q);
     }
   }
 }

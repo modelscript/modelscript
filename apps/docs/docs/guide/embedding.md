@@ -1,6 +1,11 @@
-# Embedding Artifacts & Models
+---
+title: Embedding & Programmatic SDK
+description: Guide to embedding interactive 2D schematics, 3D CAD views, and live simulation plots via Web Components, React hooks, and the programmatic TypeScript & WebAssembly compiler SDK.
+---
 
-The **ModelScript Embed Service** allows you to embed interactive 2D schematics, 3D CAD/STEP models, simulation trajectory charts, and editable Ansatz Morsel canvases directly into external websites, blogs, Notion, and documentation portals.
+# Embedding Artifacts & Programmatic Compiler SDK
+
+The **ModelScript Embed Service** and **Core TypeScript / WebAssembly SDK** allow you to embed interactive 2D schematics, 3D CAD/STEP models, simulation trajectory charts, and in-process compiler/solver pipelines directly into external websites, desktop applications, custom test harnesses, and engineering portals.
 
 ---
 
@@ -211,3 +216,123 @@ To guarantee rock-solid stability when multiple 3D CAD or WebGPU viewers exist o
 - **Context Pooling (`CanvasContextPool`):** Restricts active WebGL contexts to 6 on mobile/Safari and 8 on desktop. Inactive canvases automatically sleep and display an ultra-crisp WebP raster snapshot with a glassmorphic `🧊 Click to re-activate 3D` overlay pill.
 - **Scroll Hijacking Protection:** Embeds intercept wheel events and require holding `Ctrl` (Windows/Linux) or `⌘` (macOS) to zoom, displaying a non-intrusive badge hint if scrolling is attempted without the key.
 - **Mobile Touch Passthrough:** Single-finger dragging vertically passes straight through to scroll the host webpage; two-finger pinch and drag gestures control 3D orbit and dolly zoom.
+
+---
+
+## 9. Programmatic TypeScript & WebAssembly Compiler SDK
+
+Beyond visual UI embedding, you can embed the ModelScript compiler, linear-memory DAE arena, numerical solvers, grammar workbench, and FMI/SSP exchange engines directly inside Node.js services, browser WebWorkers, or custom verification pipelines.
+
+### 9.1 Linear-Memory DAE Construction & Salsa Queries (`@modelscript/runtime`)
+
+Use `DAEBuilder`, `ArenaDAEPrinter`, `foldArenaConstants`, `eliminateArenaAliases`, and `QueryEngine` to construct or lower Differential-Algebraic Equation systems in contiguous WebAssembly linear memory without allocating AST wrapper objects:
+
+```typescript
+import {
+  ArenaDAEPrinter,
+  BinaryOp,
+  Causality,
+  DAEBuilder,
+  eliminateArenaAliases,
+  foldArenaConstants,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
+
+// Allocate a Struct-of-Arrays DAE arena in linear memory
+const dae = new DAEBuilder("RLCDamper");
+
+// Declare parameters and continuous state variables
+const R = dae.addVariable("R", VarType.Real, Variability.Parameter, Causality.Local, dae.addRealLiteral(10.0));
+const C = dae.addVariable("C", VarType.Real, Variability.Parameter, Causality.Local, dae.addRealLiteral(1e-3));
+const v = dae.addVariable("v", VarType.Real, Variability.Continuous, Causality.Local, dae.addRealLiteral(5.0));
+
+// Emit equation: der(v) = -v / (R * C)
+const rcProd = dae.addBinary(BinaryOp.Mul, dae.addVarRef(R), dae.addVarRef(C));
+const rhs = dae.addUnaryMinus(dae.addBinary(BinaryOp.Div, dae.addVarRef(v), rcProd));
+dae.addEquation(dae.addDer(dae.addVarRef(v)), rhs);
+
+// Run arena-level constant folding and alias elimination
+foldArenaConstants(dae);
+eliminateArenaAliases(dae);
+
+console.log(ArenaDAEPrinter.print(dae));
+```
+
+### 9.2 Numerical Integration & Ensemble Sweeps (`@modelscript/simulate`)
+
+Pass any `DAEBuilder` arena directly to `@modelscript/simulate` to run Tarjan Block Lower Triangular (BLT) Pantelides index reduction followed by stiff DAE/ODE integration (`cvode`, `ida`, `radau5`, `rodas4p`, `dopri5`):
+
+```typescript
+import { simulateArenaAsync } from "@modelscript/simulate";
+
+const trajectory = await simulateArenaAsync(dae, {
+  tStart: 0.0,
+  tStop: 0.1,
+  interval: 0.001,
+  solver: "rodas4p",
+  tolerance: 1e-6,
+});
+
+console.log("Final capacitor voltage v(0.1):", trajectory.series["v"]?.at(-1));
+```
+
+### 9.3 Custom Language Grammars & Static Lints (`@modelscript/dsl`)
+
+Author custom engineering DSLs with `language()`, compile native `.wasm` GLR parsers via `buildParser`, and attach zero-allocation linear CST lint rules (`CompilerLint`):
+
+```typescript
+import {
+  choice,
+  type CodeGraph,
+  type CompilerLint,
+  language,
+  prec,
+  repeat,
+  seq,
+  token,
+  type u32,
+} from "@modelscript/dsl";
+
+export const thermalNetlistLints: Record<string, CompilerLint> = {
+  nonPositiveConductance: {
+    nodes: ["conductance_decl"],
+    severity: "error",
+    code: 8901,
+    message: (target) => `Thermal conductance '${target.text}' must be strictly positive.`,
+    query: (db: CodeGraph, node: u32) => {
+      const valText = db.ast.fieldText(node, "value");
+      if (Number(valText) <= 0) {
+        db.diagnostic(node);
+      }
+    },
+  },
+};
+
+export default language({
+  name: "thermal_netlist",
+  extensions: [".tnet"],
+  rules: {
+    source_file: ($) => repeat($.conductance_decl),
+    conductance_decl: ($) => seq("G", field("name", $.ident), "=", field("value", $.number), ";"),
+    ident: () => token(/[a-zA-Z_][a-zA-Z0-9_]*/),
+    number: () => token(/-?[0-9]+(\.[0-9]+)?/),
+  },
+  lints: thermalNetlistLints,
+});
+```
+
+### 9.4 FMI 2.0 / 3.0 FMU Packaging & SSP Co-Simulation (`@modelscript/exchange`)
+
+Export flattened `DAEBuilder` models to portable FMI 2.0/3.0 Functional Mock-up Units (`.fmu` ZIP archives with C99 and WebAssembly binaries) or orchestrate multi-FMU System Structure and Parameterization (`.ssp`) graphs:
+
+```typescript
+import { generateFmu } from "@modelscript/exchange/fmu";
+
+const fmuBytes = await generateFmu(dae, {
+  modelIdentifier: "RLCDamper",
+  fmiVersion: "3.0",
+  fmuType: "cs",
+  includeWasmBinary: true,
+});
+```

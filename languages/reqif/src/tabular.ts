@@ -35,6 +35,11 @@ import {
   type WritebackEdit,
 } from "@modelscript/dsl";
 import { extractAsilLevel, extractFormalContract, parseReqIf, serializeReqIf } from "./parser/reqif-parser.js";
+import {
+  checkContractEntailment,
+  extractContractExpression,
+  type LabeledContractFormula,
+} from "./smt/contract-verifier.js";
 import type {
   ReqIfDataTypeKind,
   ReqIfDocument,
@@ -54,7 +59,7 @@ export interface LightweightEntailmentSummary {
 /**
  * Pure-TypeScript browser-safe V-Model requirement contract entailment evaluator.
  * Checks parent-child `SPEC-HIERARCHY` decompositions and `SPEC-RELATIONS` (`refines`, `derives`, `satisfies`)
- * to verify whether child quantitative bounds mathematically entail parent bounds.
+ * to verify whether child quantitative bounds mathematically entail parent bounds via LRA/SMT solving.
  */
 export function evaluateReqIfDecompositionEntailment(doc: ReqIfDocument): LightweightEntailmentSummary {
   const queries: { parentId: string; childIds: string[] }[] = [];
@@ -101,46 +106,45 @@ export function evaluateReqIfDecompositionEntailment(doc: ReqIfDocument): Lightw
   for (const q of queries) {
     const parentObj = doc.specObjects.get(q.parentId);
     const pContract = parentObj?.contract;
-    if (!parentObj || !pContract) continue;
+    const pExpr =
+      pContract?.expression ??
+      (parentObj?.text ? extractContractExpression(parentObj.text) : undefined) ??
+      (pContract ? `${pContract.variable} ${pContract.comparator} ${pContract.limitValue}` : undefined);
+    if (!parentObj || !pExpr) continue;
 
-    const matchingChildren = q.childIds
+    const contractedChildren = q.childIds
       .map((cid) => doc.specObjects.get(cid))
-      .filter((c): c is ReqIfSpecObject => Boolean(c && c.contract && c.contract.variable === pContract.variable));
+      .filter((c): c is ReqIfSpecObject => Boolean(c && (c.contract || (c.text && extractContractExpression(c.text)))));
 
-    if (matchingChildren.length === 0) continue;
+    if (contractedChildren.length === 0) continue;
 
-    let isEntailed = true;
-    for (const child of matchingChildren) {
-      const cContract = child.contract;
-      if (!cContract) continue;
-      if (pContract.comparator === "<=" || pContract.comparator === "<") {
-        if (
-          (cContract.comparator !== "<=" && cContract.comparator !== "<" && cContract.comparator !== "==") ||
-          cContract.limitValue > pContract.limitValue
-        ) {
-          isEntailed = false;
-        }
-      } else if (pContract.comparator === ">=" || pContract.comparator === ">") {
-        if (
-          (cContract.comparator !== ">=" && cContract.comparator !== ">" && cContract.comparator !== "==") ||
-          cContract.limitValue < pContract.limitValue
-        ) {
-          isEntailed = false;
-        }
-      } else if (pContract.comparator === "==") {
-        if (cContract.comparator !== "==" || cContract.limitValue !== pContract.limitValue) {
-          isEntailed = false;
-        }
-      }
-    }
+    const sameVarChildren = pContract
+      ? contractedChildren.filter((c) => c.contract?.variable === pContract.variable)
+      : [];
+    const activeChildren = sameVarChildren.length > 0 ? sameVarChildren : contractedChildren;
+
+    const premises: LabeledContractFormula[] = activeChildren.map((c) => {
+      const expr =
+        c.contract?.expression ??
+        (c.text ? extractContractExpression(c.text) : undefined) ??
+        (c.contract ? `${c.contract.variable} ${c.contract.comparator} ${c.contract.limitValue}` : "true");
+      return { id: c.identifier, formula: expr };
+    });
+
+    const smtRes = checkContractEntailment(premises, {
+      id: q.parentId,
+      formula: pExpr,
+    });
 
     results.push({
       parentReqId: q.parentId,
-      childReqIds: matchingChildren.map((c) => c.identifier),
-      isEntailed,
-      diagnosticMessage: isEntailed
-        ? `Sub-requirements (${matchingChildren.map((c) => c.identifier).join(", ")}) formally entail parent '${q.parentId}' (${pContract.variable} ${pContract.comparator} ${pContract.limitValue}).`
-        : `Requirement gap: sub-requirements (${matchingChildren.map((c) => c.identifier).join(", ")}) do not guarantee parent '${q.parentId}' bound (${pContract.variable} ${pContract.comparator} ${pContract.limitValue}).`,
+      childReqIds: activeChildren.map((c) => c.identifier),
+      isEntailed: smtRes.isEntailed,
+      counterexample: smtRes.counterexample,
+      diagnosticMessage: smtRes.isEntailed
+        ? `Sub-requirements (${activeChildren.map((c) => c.identifier).join(", ")}) formally entail parent '${q.parentId}' (${pExpr}).`
+        : smtRes.diagnosticMessage ||
+          `Requirement gap: sub-requirements (${activeChildren.map((c) => c.identifier).join(", ")}) do not guarantee parent '${q.parentId}' bound (${pExpr}).`,
     });
   }
 

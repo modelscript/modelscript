@@ -1,3 +1,8 @@
+---
+title: "SysML v2 & KerML (.sysml, .sysml2, .kerml)"
+description: "@modelscript/sysml2 (languages/sysml2) implements the OMG Systems Modeling Language v2 (SysML v2) and Kernel Modeling Language (KerML) textual notation, pairing a bundled KerML/SysML v2 standard li..."
+---
+
 # SysML v2 & KerML (`.sysml`, `.sysml2`, `.kerml`)
 
 `@modelscript/sysml2` (`languages/sysml2`) implements the OMG **Systems Modeling Language v2 (SysML v2)** and **Kernel Modeling Language (KerML)** textual notation, pairing a bundled KerML/SysML v2 standard library snapshot with a suite of formal verification, safety analysis, direct DAE compilation, and enterprise synchronization engines.

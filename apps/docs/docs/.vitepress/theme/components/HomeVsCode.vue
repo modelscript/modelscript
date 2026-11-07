@@ -105,13 +105,10 @@ async function copyCodiumCmd() {
               href="https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript"
               target="_blank"
               rel="noopener noreferrer"
-              class="badge-link"
+              class="badge-pill badge-pill-vs"
             >
-              <img
-                src="https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode"
-                alt="VS Marketplace Version"
-                loading="lazy"
-              />
+              <span class="badge-pill-label">VS Marketplace</span>
+              <span class="badge-pill-val">modelscript.modelscript</span>
             </a>
           </div>
 
@@ -166,13 +163,10 @@ async function copyCodiumCmd() {
               href="https://open-vsx.org/extension/modelscript/modelscript"
               target="_blank"
               rel="noopener noreferrer"
-              class="badge-link"
+              class="badge-pill badge-pill-ovsx"
             >
-              <img
-                src="https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide"
-                alt="Open VSX Version"
-                loading="lazy"
-              />
+              <span class="badge-pill-label">Open VSX</span>
+              <span class="badge-pill-val">modelscript/modelscript</span>
             </a>
           </div>
 
@@ -376,14 +370,43 @@ async function copyCodiumCmd() {
   margin-bottom: 18px;
 }
 
-.badge-link {
-  display: inline-block;
-  line-height: 0;
-  transition: opacity 0.2s ease;
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  border: 1px solid var(--vp-c-divider);
+  transition: border-color 0.2s ease, transform 0.15s ease;
 }
 
-.badge-link:hover {
-  opacity: 0.85;
+.badge-pill:hover {
+  transform: translateY(-1px);
+  border-color: var(--vp-c-brand-1);
+}
+
+.badge-pill-label {
+  padding: 5px 8px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-2);
+}
+
+.badge-pill-val {
+  padding: 5px 9px;
+  font-family: var(--vp-font-family-mono);
+}
+
+.badge-pill-vs .badge-pill-val {
+  background: rgba(2, 132, 199, 0.16);
+  color: #38bdf8;
+}
+
+.badge-pill-ovsx .badge-pill-val {
+  background: rgba(217, 119, 6, 0.16);
+  color: #f59e0b;
 }
 
 .cli-install-box {

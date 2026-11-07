@@ -1,3 +1,8 @@
+---
+title: "Pantelides Structural Index Reduction"
+description: "Implementation: PantelidesEngine in packages/runtime/src/wasm/structural/pantelides.ts"
+---
+
 # Pantelides Structural Index Reduction
 
 **Implementation**: `PantelidesEngine` in [`packages/runtime/src/wasm/structural/pantelides.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/wasm/structural/pantelides.ts)

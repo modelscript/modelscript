@@ -1,3 +1,8 @@
+---
+title: "Semidefinite Programming, BVP, Continuum Physics & CAD/ECAD"
+description: "Implementation:"
+---
+
 # Semidefinite Programming, BVP, Continuum Physics & CAD/ECAD
 
 **Implementation**:

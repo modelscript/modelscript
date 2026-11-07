@@ -1,3 +1,8 @@
+---
+title: "OpenDRIVE Road Networks (.xodr)"
+description: "@modelscript/opendrive (languages/opendrive) provides compiler, analytical 3D clothoid sampling, path-following DAE lowering, and vehicle dynamics integration for the ASAM OpenDRIVE standard."
+---
+
 # OpenDRIVE Road Networks (`.xodr`)
 
 `@modelscript/opendrive` (`languages/opendrive`) provides compiler, analytical 3D clothoid sampling, path-following DAE lowering, and vehicle dynamics integration for the **ASAM OpenDRIVE** standard.

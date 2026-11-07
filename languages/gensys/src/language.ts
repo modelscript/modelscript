@@ -9,7 +9,7 @@ import { gensysDeckGrammar } from "./grammar/gensys-grammar.js";
 export const gensysLanguage = language({
   name: "gensys",
   fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
     folding: gensysDeckGrammar.lsp?.folding,

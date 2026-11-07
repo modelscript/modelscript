@@ -112,6 +112,33 @@ function toggle(): void {
   }
 }
 
+function onPointerEnter(e: PointerEvent): void {
+  if (e.pointerType === "mouse") {
+    scheduleOpen();
+  }
+}
+
+function onPointerLeave(e: PointerEvent): void {
+  if (e.pointerType === "mouse") {
+    scheduleClose();
+  }
+}
+
+function onPanelPointerEnter(e: PointerEvent): void {
+  if (e.pointerType === "mouse") {
+    show();
+  }
+}
+
+function onFocusOut(e: FocusEvent): void {
+  if (!open.value) return;
+  const next = e.relatedTarget as Node | null;
+  if (next && (panelRef.value?.contains(next) || triggerRef.value?.contains(next))) {
+    return;
+  }
+  scheduleClose();
+}
+
 function onKeydown(e: KeyboardEvent): void {
   if (e.key === "Escape" && open.value) {
     hide();
@@ -190,13 +217,12 @@ function onScreenLink(): void {
   </div>
 
   <!-- Desktop nav bar trigger + teleported panel -->
-  <div v-else class="ms-mega" @mouseenter="scheduleOpen" @mouseleave="scheduleClose">
+  <div v-else class="ms-mega" @pointerenter="onPointerEnter" @pointerleave="onPointerLeave" @focusout="onFocusOut">
     <button
       ref="triggerRef"
       type="button"
       class="mega-trigger"
       :class="{ active: isActive, open }"
-      aria-haspopup="true"
       :aria-expanded="open"
       :aria-controls="panelDomId"
       @click="toggle"
@@ -214,8 +240,9 @@ function onScreenLink(): void {
           class="mega-panel"
           role="region"
           :aria-label="props.label"
-          @mouseenter="show"
-          @mouseleave="scheduleClose"
+          @pointerenter="onPanelPointerEnter"
+          @pointerleave="onPointerLeave"
+          @focusout="onFocusOut"
         >
           <div class="mega-inner">
             <div class="mega-columns">

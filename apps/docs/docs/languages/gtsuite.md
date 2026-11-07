@@ -1,3 +1,8 @@
+---
+title: "GT-SUITE / GT-POWER-Compatible Modeling (.gtm, .gtd, .gtx, .gt)"
+description: "The @modelscript/gtsuite package (languages/gtsuite) provides native compilation, simulation, analysis, and multi-domain projections for GT-SUITE- and GT-POWER-compatible 1D engine, powertrain, tur..."
+---
+
 # GT-SUITE / GT-POWER-Compatible Modeling (`.gtm`, `.gtd`, `.gtx`, `.gt`)
 
 The `@modelscript/gtsuite` package (`languages/gtsuite`) provides native compilation, simulation, analysis, and multi-domain projections for **GT-SUITE- and GT-POWER-compatible** 1D engine, powertrain, turbocharging, and thermo-fluid dynamic simulation models.

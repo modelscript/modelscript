@@ -165,10 +165,16 @@ export async function extractZipToDir(buffer: Buffer, targetDir: string): Promis
           }
 
           const writeStream = fs.createWriteStream(entryPath);
+          let entryBytesWritten = 0;
           readStream.on("data", (chunk: Buffer) => {
+            entryBytesWritten += chunk.length;
             totalBytesWritten += chunk.length;
+            if (entryBytesWritten > MAX_SINGLE_FILE_BYTES) {
+              readStream.destroy(new Error(`Zip entry "${entry.fileName}" exceeds maximum single-file size`));
+              return;
+            }
             if (totalBytesWritten > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-              readStream.destroy(new Error("Zip archive exceeds maximum total uncompressed size (250 MB)"));
+              readStream.destroy(new Error("Zip archive exceeds maximum total uncompressed size (500 MB)"));
             }
           });
           readStream.on("error", (streamErr) => {
@@ -310,7 +316,15 @@ export async function extractManifestFromZip(
           }
 
           const chunks: Buffer[] = [];
-          readStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          let totalRead = 0;
+          readStream.on("data", (chunk: Buffer) => {
+            totalRead += chunk.length;
+            if (totalRead > MAX_SINGLE_FILE_BYTES) {
+              readStream.destroy(new Error("Manifest file exceeds maximum allowed size (50 MB)"));
+              return;
+            }
+            chunks.push(chunk);
+          });
           readStream.on("end", () => {
             resolve({ type: manifestType, content: Buffer.concat(chunks).toString("utf-8") });
           });

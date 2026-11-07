@@ -2,7 +2,17 @@
 
 import type { Router } from "express";
 import { Router as createRouter } from "express";
-import { GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLSchema, GraphQLString } from "graphql";
+import {
+  GraphQLList,
+  GraphQLNonNull,
+  GraphQLObjectType,
+  GraphQLSchema,
+  GraphQLString,
+  Kind,
+  parse,
+  type FragmentDefinitionNode,
+  type SelectionSetNode,
+} from "graphql";
 import { createHandler } from "graphql-http/lib/use/express";
 
 import type { LibraryDatabase } from "../database.js";
@@ -90,7 +100,77 @@ export function graphqlRouter(database: LibraryDatabase): Router {
         res.status(400).json({ errors: [{ message: "GraphQL query exceeds maximum nesting depth of 12" }] });
         return;
       }
+
+      try {
+        const doc = parse(rawQuery);
+        const fragments = new Map<string, FragmentDefinitionNode>();
+        for (const def of doc.definitions) {
+          if (def.kind === Kind.FRAGMENT_DEFINITION) {
+            fragments.set(def.name.value, def);
+          }
+        }
+        let aliasCount = 0;
+        let totalSelections = 0;
+        const measureSelectionDepth = (
+          selSet: SelectionSetNode | undefined,
+          currentDepth: number,
+          visitedFragments: Set<string>,
+        ): number => {
+          if (!selSet) return currentDepth;
+          let deepest = currentDepth;
+          for (const sel of selSet.selections) {
+            totalSelections++;
+            if (sel.kind === Kind.FIELD) {
+              if (sel.alias) aliasCount++;
+              const d = measureSelectionDepth(sel.selectionSet, currentDepth + 1, visitedFragments);
+              if (d > deepest) deepest = d;
+            } else if (sel.kind === Kind.INLINE_FRAGMENT) {
+              const d = measureSelectionDepth(sel.selectionSet, currentDepth + 1, visitedFragments);
+              if (d > deepest) deepest = d;
+            } else if (sel.kind === Kind.FRAGMENT_SPREAD) {
+              const fragName = sel.name.value;
+              if (visitedFragments.has(fragName)) {
+                return 999; // Cyclic fragment
+              }
+              const fragDef = fragments.get(fragName);
+              if (fragDef) {
+                const nextVisited = new Set(visitedFragments);
+                nextVisited.add(fragName);
+                const d = measureSelectionDepth(fragDef.selectionSet, currentDepth + 1, nextVisited);
+                if (d > deepest) deepest = d;
+              }
+            }
+          }
+          return deepest;
+        };
+
+        for (const def of doc.definitions) {
+          if (def.kind === Kind.OPERATION_DEFINITION) {
+            const astDepth = measureSelectionDepth(def.selectionSet, 0, new Set());
+            if (astDepth > 12) {
+              res.status(400).json({ errors: [{ message: "GraphQL query exceeds maximum nesting depth of 12" }] });
+              return;
+            }
+          }
+        }
+        if (aliasCount > 30 || totalSelections > 250) {
+          res.status(400).json({
+            errors: [{ message: "GraphQL query exceeds maximum allowed field alias or selection complexity" }],
+          });
+          return;
+        }
+      } catch {
+        // Syntax errors will be handled by graphql-http
+      }
     }
+
+    let cachedAllClasses: ReturnType<typeof database.getAllClasses> | null = null;
+    const getAllClassesMemo = () => {
+      if (!cachedAllClasses) {
+        cachedAllClasses = database.getAllClasses(name, version);
+      }
+      return cachedAllClasses;
+    };
 
     const schema = new GraphQLSchema({
       query: new GraphQLObjectType({
@@ -103,7 +183,7 @@ export function graphqlRouter(database: LibraryDatabase): Router {
               q: { type: GraphQLString },
             },
             resolve: (_root, args: { kind?: string | undefined; q?: string | undefined }) => {
-              let results = database.getAllClasses(name, version);
+              let results = getAllClassesMemo();
 
               if (args.kind) {
                 results = results.filter((c) => c.classKind === args.kind);

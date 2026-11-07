@@ -3,27 +3,27 @@
 
 # @modelscript/psse
 
-PSS/E-compatible transmission grid power flow and dynamic network simulation package (`.raw`, `.dyr`) for ModelScript. Features multi-file workspace indexing (`PsseWorkspaceIndex`), RAW format parsing (v30, v32, v33), high-performance Newton-Raphson & Fast Decoupled AC power flow solver (`solveAcPowerFlow` / `solvePowerFlow`), 15 pre-flight transmission grid lint rules (`P1001`–`P4001`), DAE lowering (`lowerPsseToDae`), and turnkey projections to Modelica and PSCAD (`.pscx`).
+PSS/E-compatible transmission grid power flow and dynamic network simulation package (`.raw`, `.dyr`) for ModelScript. Features multi-file workspace indexing (`PsseWorkspaceIndex`), RAW format parsing (v30, v32, v33, `parseRaw`), high-performance Newton-Raphson & Fast Decoupled AC power flow solver (`solvePowerFlow`), 15 pre-flight transmission grid lint rules (`P1001`–`P4001`), DAE lowering (`lowerPsseToDae`), and turnkey projections to Modelica (`psseToModelica`) and PSCAD EMT netlists (`psseToEmtNetlist`).
 
 ---
 
 ## Core Capabilities
 
-- **PSS/E RAW Base Case Parser (`parsePsseRaw`, `parseRaw`)**: High-performance parser extracting transmission grid network elements:
+- **PSS/E RAW Base Case Parser (`parseRaw`)**: High-performance parser extracting transmission grid network elements:
   - Substation buses (Type 1 PQ, Type 2 PV, Type 3 Swing/Slack, Type 4 Isolated)
   - Synchronous & renewable generators ($P_{gen}, Q_{gen}, Q_{max}, Q_{min}, V_{sched}$)
   - Static & constant-power/current/admittance loads ($P_{load}, Q_{load}$)
   - Fixed & switched shunt capacitor/reactor banks ($B_{init}, B_{steps}$)
   - AC transmission lines (resistance $R$, reactance $X$, charging susceptance $B$, thermal MVA ratings)
   - Two-winding and three-winding transformers with complex tap ratios ($a \angle \phi$) and magnetizing admittance
-- **AC Power Flow Solver (`solveAcPowerFlow`, `solvePowerFlow`, `extractPowerFlowNetlist`)**:
+- **AC Power Flow Solver (`solvePowerFlow`, `extractPowerFlowNetlist`)**:
   - Full Newton-Raphson and Fast Decoupled power flow solvers with sparse Jacobian formulation
   - Exact calculation of bus voltage phasors ($V_i \angle \theta_i$), active and reactive branch flows ($P_{ij}, Q_{ij}$), and system active/reactive losses
   - Automatic PV-to-PQ bus switching upon reactive capability ($Q_{min} / Q_{max}$) limit exhaustion
 - **15 Pre-Flight Transmission Grid Lint Rules (`lintPsse`, `P1001`–`P4001`)**: Comprehensive static validation across generators, buses, slack topology, AC transmission branches, transformers, and loads.
-- **Turnkey Projections to Modelica, PSCAD & DAE**:
+- **Turnkey Projections to Modelica, PSCAD EMT & DAE**:
   - `psseToModelica`: Synthesizes standardized `Modelica.Electrical.Analog` AC network circuits for transient and dynamic co-simulation.
-  - `psseToPscad`: Lowers PSS/E base cases into PSCAD XML projects (`.pscx`) with automated single-line busbar layout and transformer parameters.
+  - `psseToEmtNetlist`: Lowers PSS/E base cases into three-phase EMT netlists (`PsseEmtNetlist`) with Bergeron/$\pi$-section transmission lines, three-phase transformers, and synchronous voltage sources.
   - `lowerPsseToDae`: Lowers power flow equations directly into linear-memory `DAEBuilder`.
 - **Multi-File Workspace Indexing (`PsseWorkspaceIndex`)**: Global indexing for cross-file model resolution and VS Code Library tree navigation.
 
@@ -37,14 +37,14 @@ PSS/E-compatible transmission grid power flow and dynamic network simulation pac
 | `src/language.ts`                     | `psseLanguage` grammar definition, LSP actions, and polyglot TGG rules                              |
 | `src/types.ts`                        | Core TypeScript interfaces (`PsseCase`, `PsseBus`, `PsseGenerator`, `PsseBranch`, `PsseLoad`, etc.) |
 | `src/errors.ts`                       | `PsseErrorCode` diagnostic registry (`P1001`–`P4001`)                                               |
-| `src/parser/raw-parser.ts`            | `parsePsseRaw` / `parseRaw` parser for PSS/E `.raw` v30/v32/v33 base cases                          |
+| `src/parser/raw-parser.ts`            | `parseRaw` parser for PSS/E `.raw` v30/v32/v33 base cases                                           |
 | `src/parser/wasm-loader.ts`           | WebAssembly GLR parser loader (`parser.wasm`)                                                       |
 | `src/netlist/powerflow-netlist.ts`    | `extractPowerFlowNetlist` and admittance matrix ($Y_{\text{bus}}$) builder                          |
-| `src/solver/ac-powerflow.ts`          | `solveAcPowerFlow` / `solvePowerFlow` Newton-Raphson and Fast Decoupled AC power flow solver        |
+| `src/solver/ac-powerflow.ts`          | `solvePowerFlow` Newton-Raphson and Fast Decoupled AC power flow solver                             |
 | `src/lints/index.ts`                  | `lintPsse` pre-flight transmission grid diagnostic engine (`P1001`–`P4001`)                         |
 | `src/dae/index.ts`                    | `lowerPsseToDae` DAE arena lowering                                                                 |
 | `src/projections/psse-to-modelica.ts` | `psseToModelica` translator to `Modelica.Electrical.Analog`                                         |
-| `src/projections/psse-to-pscad.ts`    | `psseToPscad` translator to PSCAD `.pscx` XML schematics                                            |
+| `src/projections/psse-to-pscad.ts`    | `psseToEmtNetlist` translator to three-phase EMT netlists (`PsseEmtNetlist`)                        |
 | `src/projections/fmu-to-psse.ts`      | `fmuToPsse` bridge for FMU co-simulation integration                                                |
 | `src/workspace-index.ts`              | `PsseWorkspaceIndex` multi-file symbol indexer                                                      |
 | `src/lsp.ts`                          | LSP diagnostics, hover, and document symbols                                                        |
@@ -112,22 +112,20 @@ msx psse to-dae IEEE14.raw --out=ieee14-dae.json
 ## Programmatic Usage
 
 ```typescript
-import { parsePsseRaw, solveAcPowerFlow, lintPsse, psseToModelica, psseToPscad } from "@modelscript/psse";
+import { lintPsse, parseRaw, psseToEmtNetlist, psseToModelica, solvePowerFlow } from "@modelscript/psse";
 
 // Parse a PSS/E RAW base case
 const rawContent = `...`;
-const psseCase = parsePsseRaw(rawContent);
+const psseCase = parseRaw(rawContent);
 
 // Run pre-flight lint checks (P1001-P4001)
 const diagnostics = lintPsse(psseCase);
 
 // Solve AC power flow
-const powerFlowResult = solveAcPowerFlow(psseCase);
-console.log(
-  `Converged in ${powerFlowResult.iterations} iterations. Active losses: ${powerFlowResult.totalLossesMw} MW`,
-);
+const powerFlowResult = solvePowerFlow(psseCase);
+console.log(`Converged in ${powerFlowResult.iterations} iterations. Active losses: ${powerFlowResult.totalLossMw} MW`);
 
-// Export to Modelica or PSCAD
+// Export to Modelica or three-phase EMT netlist
 const modelicaSource = psseToModelica(psseCase);
-const pscadXml = psseToPscad(psseCase);
+const emtNetlist = psseToEmtNetlist(psseCase);
 ```

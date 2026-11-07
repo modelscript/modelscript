@@ -28,6 +28,7 @@ function getParam(val: string | string[] | undefined): string {
 
 export function sysml2OmgRouter(service?: SysML2OmgService): Router {
   const router = createRouter();
+  const projectOwners = new Map<string, number>();
   router.use("/projects", defaultApiLimiter);
   router.use("/projects", optionalAuth);
   router.use("/projects", (req: Request, res: Response, next) => {
@@ -39,6 +40,27 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
     ) {
       res.status(401).json({ error: "Authentication required" });
       return;
+    }
+    next();
+  });
+  router.use("/projects/:projectId", (req: Request, res: Response, next) => {
+    if (
+      (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE") &&
+      !req.path.endsWith("/queries") &&
+      !req.path.endsWith("/export/ssp") &&
+      !req.path.endsWith("/export/fmu3")
+    ) {
+      const projectId = getParam(req.params["projectId"]);
+      const ownerId = projectOwners.get(projectId);
+      if (ownerId !== undefined) {
+        const user = req.user as { id?: number | undefined; isAdmin?: boolean | undefined } | undefined;
+        if (!user?.id || (user.id !== ownerId && !user.isAdmin)) {
+          res
+            .status(403)
+            .json({ error: "Forbidden: only the project owner or an administrator can modify this project." });
+          return;
+        }
+      }
     }
     next();
   });
@@ -89,6 +111,9 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
     }
 
     const project = omgService.createProject(name, description);
+    if (req.user?.id) {
+      projectOwners.set(project["@id"], req.user.id);
+    }
     sendJsonLd(req, res, project, 201);
   });
 
@@ -115,6 +140,7 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
       res.status(404).json({ error: `Project '${projectId}' not found.` });
       return;
     }
+    projectOwners.delete(projectId);
     res.sendStatus(204);
   });
 

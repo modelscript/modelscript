@@ -1,3 +1,8 @@
+---
+title: "Self-Hosting Ansatz & ModelScript"
+description: "Ansatz can be deployed as an independent federated instance, a public flagship cluster, or a private corporate intranet appliance using Docker Compose, Cloudflare Tunnels (Zero Open Ports), or Cadd..."
+---
+
 # Self-Hosting Ansatz & ModelScript
 
 Ansatz can be deployed as an independent federated instance, a public flagship cluster, or a private corporate intranet appliance using **Docker Compose**, **Cloudflare Tunnels (Zero Open Ports)**, or **Caddy** for automated TLS certificate provisioning.

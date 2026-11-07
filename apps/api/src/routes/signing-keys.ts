@@ -2,7 +2,7 @@
 
 import { Router, type Request, type Response } from "express";
 import type { LibraryDatabase } from "../database.js";
-import { requireAuth } from "../middleware/auth-middleware.js";
+import { requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import {
   appendKeyLogEntry,
   createDelegationStatement,
@@ -15,6 +15,7 @@ import { parseSshPublicKey } from "../services/git-sync/sshsig.js";
 
 export function createSigningKeysRouter(database: LibraryDatabase): Router {
   const router = Router();
+  const requireSigningScope = requireTokenScope("account:write", "signing:write");
 
   /**
    * GET /api/v1/users/:username/signing-keys
@@ -87,7 +88,7 @@ export function createSigningKeysRouter(database: LibraryDatabase): Router {
    * GET /api/v1/users/me/signing-challenge
    * Generates a nonce-based challenge for Proof of Possession (PoP).
    */
-  router.get("/me/signing-challenge", requireAuth, (req: Request, res: Response): void => {
+  router.get("/me/signing-challenge", requireAuth, requireSigningScope, (req: Request, res: Response): void => {
     const user = req.user!;
     const challenge = createRegistrationChallenge(user.id);
     res.json({
@@ -102,7 +103,7 @@ export function createSigningKeysRouter(database: LibraryDatabase): Router {
    * POST /api/v1/users/me/signing-keys
    * Registers a new signing key for the authenticated user with Proof of Possession.
    */
-  router.post("/me/signing-keys", requireAuth, (req: Request, res: Response): void => {
+  router.post("/me/signing-keys", requireAuth, requireSigningScope, (req: Request, res: Response): void => {
     const user = req.user!;
     const { label, trustLevel } = req.body || {};
     const publicKeyOpenssh = (req.body?.publicKeyOpenssh || req.body?.publicKeyOpenSsh) as string | undefined;
@@ -275,101 +276,111 @@ export function createSigningKeysRouter(database: LibraryDatabase): Router {
    * GET /api/v1/users/me/signing-keys/:id/delegation-statement
    * Generates the deterministic delegation statement for signing offline.
    */
-  router.get("/me/signing-keys/:id/delegation-statement", requireAuth, (req: Request, res: Response): void => {
-    const user = req.user!;
-    const keyId = Number.parseInt(String(req.params["id"] || ""), 10);
-    const masterKeyId = Number.parseInt(String(req.query["masterKeyId"] || ""), 10);
-    if (!Number.isFinite(keyId) || !Number.isFinite(masterKeyId)) {
-      res.status(400).json({ error: "Device key ID and masterKeyId query param required" });
-      return;
-    }
+  router.get(
+    "/me/signing-keys/:id/delegation-statement",
+    requireAuth,
+    requireSigningScope,
+    (req: Request, res: Response): void => {
+      const user = req.user!;
+      const keyId = Number.parseInt(String(req.params["id"] || ""), 10);
+      const masterKeyId = Number.parseInt(String(req.query["masterKeyId"] || ""), 10);
+      if (!Number.isFinite(keyId) || !Number.isFinite(masterKeyId)) {
+        res.status(400).json({ error: "Device key ID and masterKeyId query param required" });
+        return;
+      }
 
-    const deviceKey = database.getSigningKeyById(keyId);
-    const masterKey = database.getSigningKeyById(masterKeyId);
-    if (!deviceKey || deviceKey.user_id !== user.id || !masterKey || masterKey.user_id !== user.id) {
-      res.status(404).json({ error: "Signing key not found" });
-      return;
-    }
+      const deviceKey = database.getSigningKeyById(keyId);
+      const masterKey = database.getSigningKeyById(masterKeyId);
+      if (!deviceKey || deviceKey.user_id !== user.id || !masterKey || masterKey.user_id !== user.id) {
+        res.status(404).json({ error: "Signing key not found" });
+        return;
+      }
 
-    const statement = createDelegationStatement(user.id, masterKey.fingerprint_sha256, deviceKey.fingerprint_sha256);
-    res.json({ statement });
-  });
+      const statement = createDelegationStatement(user.id, masterKey.fingerprint_sha256, deviceKey.fingerprint_sha256);
+      res.json({ statement });
+    },
+  );
 
   /**
    * POST /api/v1/users/me/signing-keys/:id/delegate
    * Attests and links an existing device key to an authorized master key.
    */
-  router.post("/me/signing-keys/:id/delegate", requireAuth, (req: Request, res: Response): void => {
-    const user = req.user!;
-    const keyId = Number.parseInt(String(req.params["id"] || ""), 10);
-    if (!Number.isFinite(keyId)) {
-      res.status(400).json({ error: "Invalid key ID" });
-      return;
-    }
+  router.post(
+    "/me/signing-keys/:id/delegate",
+    requireAuth,
+    requireSigningScope,
+    (req: Request, res: Response): void => {
+      const user = req.user!;
+      const keyId = Number.parseInt(String(req.params["id"] || ""), 10);
+      if (!Number.isFinite(keyId)) {
+        res.status(400).json({ error: "Invalid key ID" });
+        return;
+      }
 
-    const deviceKey = database.getSigningKeyById(keyId);
-    if (!deviceKey || deviceKey.user_id !== user.id || deviceKey.revoked_at) {
-      res.status(404).json({ error: "Device signing key not found or revoked" });
-      return;
-    }
+      const deviceKey = database.getSigningKeyById(keyId);
+      if (!deviceKey || deviceKey.user_id !== user.id || deviceKey.revoked_at) {
+        res.status(404).json({ error: "Device signing key not found or revoked" });
+        return;
+      }
 
-    const { masterKeyId, signature } = req.body || {};
-    if (!masterKeyId || !signature) {
-      res.status(400).json({ error: "Missing masterKeyId or signature" });
-      return;
-    }
+      const { masterKeyId, signature } = req.body || {};
+      if (!masterKeyId || !signature) {
+        res.status(400).json({ error: "Missing masterKeyId or signature" });
+        return;
+      }
 
-    const masterKey = database.getSigningKeyById(Number(masterKeyId));
-    if (!masterKey || masterKey.user_id !== user.id || masterKey.revoked_at) {
-      res.status(400).json({ error: "Master signing key not found or revoked" });
-      return;
-    }
+      const masterKey = database.getSigningKeyById(Number(masterKeyId));
+      if (!masterKey || masterKey.user_id !== user.id || masterKey.revoked_at) {
+        res.status(400).json({ error: "Master signing key not found or revoked" });
+        return;
+      }
 
-    const valid = verifyDelegationSignature(
-      user.id,
-      masterKey.public_key_openssh,
-      masterKey.fingerprint_sha256,
-      deviceKey.fingerprint_sha256,
-      String(signature),
-    );
-    if (!valid) {
-      res.status(400).json({ error: "Delegation signature verification failed" });
-      return;
-    }
+      const valid = verifyDelegationSignature(
+        user.id,
+        masterKey.public_key_openssh,
+        masterKey.fingerprint_sha256,
+        deviceKey.fingerprint_sha256,
+        String(signature),
+      );
+      if (!valid) {
+        res.status(400).json({ error: "Delegation signature verification failed" });
+        return;
+      }
 
-    const updated = database.delegateSigningKey(deviceKey.id, user.id, masterKey.id, String(signature));
-    if (!updated) {
-      res.status(500).json({ error: "Failed to update key delegation status" });
-      return;
-    }
+      const updated = database.delegateSigningKey(deviceKey.id, user.id, masterKey.id, String(signature));
+      if (!updated) {
+        res.status(500).json({ error: "Failed to update key delegation status" });
+        return;
+      }
 
-    appendKeyLogEntry(database, user.id, "delegate_device", {
-      keyId: deviceKey.id,
-      masterKeyId: masterKey.id,
-      masterFingerprint: masterKey.fingerprint_sha256,
-      deviceFingerprint: deviceKey.fingerprint_sha256,
-    });
-
-    database.logAudit({
-      actorId: user.id,
-      action: "signing_key_delegated",
-      resourceType: "signing_key",
-      resourceId: String(deviceKey.id),
-      details: {
+      appendKeyLogEntry(database, user.id, "delegate_device", {
+        keyId: deviceKey.id,
         masterKeyId: masterKey.id,
         masterFingerprint: masterKey.fingerprint_sha256,
         deviceFingerprint: deviceKey.fingerprint_sha256,
-      },
-    });
+      });
 
-    res.json({ success: true, key: database.getSigningKeyById(deviceKey.id) });
-  });
+      database.logAudit({
+        actorId: user.id,
+        action: "signing_key_delegated",
+        resourceType: "signing_key",
+        resourceId: String(deviceKey.id),
+        details: {
+          masterKeyId: masterKey.id,
+          masterFingerprint: masterKey.fingerprint_sha256,
+          deviceFingerprint: deviceKey.fingerprint_sha256,
+        },
+      });
+
+      res.json({ success: true, key: database.getSigningKeyById(deviceKey.id) });
+    },
+  );
 
   /**
    * POST /api/v1/users/me/signing-keys/:id/revoke
    * Revokes an active signing key.
    */
-  router.post("/me/signing-keys/:id/revoke", requireAuth, (req: Request, res: Response): void => {
+  router.post("/me/signing-keys/:id/revoke", requireAuth, requireSigningScope, (req: Request, res: Response): void => {
     const user = req.user!;
     const keyId = Number.parseInt(String(req.params["id"] || ""), 10);
     if (!Number.isFinite(keyId)) {
@@ -411,7 +422,7 @@ export function createSigningKeysRouter(database: LibraryDatabase): Router {
    * PUT /api/v1/users/me/signing-policy
    * Updates strict signing policy.
    */
-  router.put("/me/signing-policy", requireAuth, (req: Request, res: Response): void => {
+  router.put("/me/signing-policy", requireAuth, requireSigningScope, (req: Request, res: Response): void => {
     const user = req.user!;
     const strict = Boolean(req.body?.strict);
     database.setSigningPolicyStrict(user.id, strict);

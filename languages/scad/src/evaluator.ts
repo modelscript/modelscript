@@ -239,13 +239,355 @@ function applyEulerRotation(solid: Solid, rot: Vec3, sourceMeta?: SolidSourceMet
 }
 
 /**
+ * Extracts unique 3D vertices from a Solid by evaluating its surface mesh.
+ */
+function extractSolidVertices(solid: Solid): Vec3[] {
+  const mesh = ManifoldWorker.evaluateSolid(solid);
+  const verts = mesh.vertices;
+  const out: Vec3[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i + 2 < verts.length; i += 3) {
+    const x = verts[i]!;
+    const y = verts[i + 1]!;
+    const z = verts[i + 2]!;
+    const key = `${Math.round(x * 1e4)},${Math.round(y * 1e4)},${Math.round(z * 1e4)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push([x, y, z]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Subsamples a point cloud to at most `maxPoints` extreme vertices along uniformly distributed
+ * unit-sphere directions, preserving exact convex hull support points while bounding complexity.
+ */
+function extractExtremeVertices(pts: Vec3[], maxPoints = 64): Vec3[] {
+  if (pts.length <= maxPoints) return pts;
+  const selected = new Map<number, Vec3>();
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < maxPoints; i++) {
+    const z = 1 - (2 * (i + 0.5)) / maxPoints;
+    const r = Math.sqrt(Math.max(0, 1 - z * z));
+    const theta = i * goldenAngle;
+    const dx = r * Math.cos(theta);
+    const dy = r * Math.sin(theta);
+    let bestIdx = 0;
+    let bestDot = -Infinity;
+    for (let j = 0; j < pts.length; j++) {
+      const p = pts[j]!;
+      const dot = p[0] * dx + p[1] * dy + p[2] * z;
+      if (dot > bestDot) {
+        bestDot = dot;
+        bestIdx = j;
+      }
+    }
+    selected.set(bestIdx, pts[bestIdx]!);
+  }
+  return Array.from(selected.values());
+}
+
+/**
+ * Computes the 3D Convex Hull of a set of 3D points using an incremental beneath-beyond
+ * (Quickhull) polyhedral algorithm, returning outward-oriented triangular faces.
+ */
+function computeConvexHull3D(rawPoints: Vec3[]): { points: Vec3[]; faces: number[][] } | null {
+  const pts = extractExtremeVertices(rawPoints, 96);
+  if (pts.length < 4) return null;
+
+  const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (a: Vec3, b: Vec3): Vec3 => [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+  const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const normSq = (a: Vec3): number => dot(a, a);
+
+  // 1. Find two most distant points
+  let i0 = 0;
+  let i1 = 1;
+  let maxDistSq = -1;
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const d2 = normSq(sub(pts[i]!, pts[j]!));
+      if (d2 > maxDistSq) {
+        maxDistSq = d2;
+        i0 = i;
+        i1 = j;
+      }
+    }
+  }
+  if (maxDistSq < 1e-10) return null;
+
+  // 2. Find point i2 maximizing distance to line (i0, i1)
+  const lineDir = sub(pts[i1]!, pts[i0]!);
+  let i2 = -1;
+  let maxAreaSq = -1;
+  for (let i = 0; i < pts.length; i++) {
+    if (i === i0 || i === i1) continue;
+    const areaSq = normSq(cross(lineDir, sub(pts[i]!, pts[i0]!)));
+    if (areaSq > maxAreaSq) {
+      maxAreaSq = areaSq;
+      i2 = i;
+    }
+  }
+  if (i2 === -1 || maxAreaSq < 1e-10) return null;
+
+  // 3. Find point i3 maximizing distance to plane (i0, i1, i2)
+  const baseNormal = cross(sub(pts[i1]!, pts[i0]!), sub(pts[i2]!, pts[i0]!));
+  let i3 = -1;
+  let maxVol = -1;
+  for (let i = 0; i < pts.length; i++) {
+    if (i === i0 || i === i1 || i === i2) continue;
+    const vol = Math.abs(dot(baseNormal, sub(pts[i]!, pts[i0]!)));
+    if (vol > maxVol) {
+      maxVol = vol;
+      i3 = i;
+    }
+  }
+  if (i3 === -1 || maxVol < 1e-8) return null;
+
+  interface HullFace {
+    a: number;
+    b: number;
+    c: number;
+    normal: Vec3;
+  }
+
+  const makeFace = (a: number, b: number, c: number, insidePt: Vec3): HullFace => {
+    let n = cross(sub(pts[b]!, pts[a]!), sub(pts[c]!, pts[a]!));
+    const len = Math.hypot(n[0], n[1], n[2]) || 1;
+    n = [n[0] / len, n[1] / len, n[2] / len];
+    if (dot(n, sub(insidePt, pts[a]!)) > 0) {
+      return { a, b: c, c: b, normal: [-n[0], -n[1], -n[2]] };
+    }
+    return { a, b, c, normal: n };
+  };
+
+  const centroid: Vec3 = [
+    (pts[i0]![0] + pts[i1]![0] + pts[i2]![0] + pts[i3]![0]) / 4,
+    (pts[i0]![1] + pts[i1]![1] + pts[i2]![1] + pts[i3]![1]) / 4,
+    (pts[i0]![2] + pts[i1]![2] + pts[i2]![2] + pts[i3]![2]) / 4,
+  ];
+
+  let faces: HullFace[] = [
+    makeFace(i0, i1, i2, pts[i3]!),
+    makeFace(i0, i2, i3, pts[i1]!),
+    makeFace(i0, i3, i1, pts[i2]!),
+    makeFace(i1, i3, i2, pts[i0]!),
+  ];
+
+  // 4. Incrementally add remaining points
+  for (let pIdx = 0; pIdx < pts.length; pIdx++) {
+    if (pIdx === i0 || pIdx === i1 || pIdx === i2 || pIdx === i3) continue;
+    const p = pts[pIdx]!;
+
+    const visibleIdx = new Set<number>();
+    for (let f = 0; f < faces.length; f++) {
+      const face = faces[f]!;
+      if (dot(face.normal, sub(p, pts[face.a]!)) > 1e-6) {
+        visibleIdx.add(f);
+      }
+    }
+    if (visibleIdx.size === 0) continue;
+
+    const visibleEdges = new Set<string>();
+    const edgeList: [number, number][] = [];
+    for (const f of visibleIdx) {
+      const face = faces[f]!;
+      const edges: [number, number][] = [
+        [face.a, face.b],
+        [face.b, face.c],
+        [face.c, face.a],
+      ];
+      for (const [u, v] of edges) {
+        visibleEdges.add(`${u},${v}`);
+        edgeList.push([u, v]);
+      }
+    }
+
+    const horizon: [number, number][] = [];
+    for (const [u, v] of edgeList) {
+      if (!visibleEdges.has(`${v},${u}`)) {
+        horizon.push([u, v]);
+      }
+    }
+
+    if (horizon.length < 3) continue;
+    faces = faces.filter((_, idx) => !visibleIdx.has(idx));
+    for (const [u, v] of horizon) {
+      faces.push(makeFace(u, v, pIdx, centroid));
+    }
+  }
+
+  const usedMap = new Map<number, number>();
+  const compactPoints: Vec3[] = [];
+  const compactFaces: number[][] = [];
+  for (const f of faces) {
+    const mapIdx = (orig: number): number => {
+      let mapped = usedMap.get(orig);
+      if (mapped === undefined) {
+        mapped = compactPoints.length;
+        usedMap.set(orig, mapped);
+        compactPoints.push(pts[orig]!);
+      }
+      return mapped;
+    };
+    compactFaces.push([mapIdx(f.a), mapIdx(f.b), mapIdx(f.c)]);
+  }
+
+  return compactFaces.length >= 4 ? { points: compactPoints, faces: compactFaces } : null;
+}
+
+/**
+ * Offsets a 2D polygon by distance `d` along mitered outward edge normals.
+ */
+function offsetPolygon2D(poly: [number, number][], d: number): [number, number][] {
+  const n = poly.length;
+  if (n < 3 || Math.abs(d) < 1e-9) return poly;
+
+  let signedArea2 = 0;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = poly[i]!;
+    const [x1, y1] = poly[(i + 1) % n]!;
+    signedArea2 += x0 * y1 - x1 * y0;
+  }
+  const orient = signedArea2 >= 0 ? 1 : -1;
+
+  const out: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n]!;
+    const curr = poly[i]!;
+    const next = poly[(i + 1) % n]!;
+
+    const e1x = curr[0] - prev[0];
+    const e1y = curr[1] - prev[1];
+    const l1 = Math.hypot(e1x, e1y) || 1;
+    const n1x = (orient * e1y) / l1;
+    const n1y = (-orient * e1x) / l1;
+
+    const e2x = next[0] - curr[0];
+    const e2y = next[1] - curr[1];
+    const l2 = Math.hypot(e2x, e2y) || 1;
+    const n2x = (orient * e2y) / l2;
+    const n2y = (-orient * e2x) / l2;
+
+    const bx = n1x + n2x;
+    const by = n1y + n2y;
+    const dotN = n1x * n2x + n1y * n2y;
+    const denom = 1 + dotN;
+    const miterScale = denom > 0.25 ? d / denom : d;
+    out.push([curr[0] + bx * miterScale, curr[1] + by * miterScale]);
+  }
+  return out;
+}
+
+/**
+ * Extracts a 2D polygon profile `[x, y][]` from a 2D `ExtrusionSolid` or transformed 2D solid tree.
+ */
+function extract2DProfile(solid: Solid): [number, number][] | null {
+  switch (solid.kind) {
+    case SolidKind.Extrusion:
+      return solid.polygon.map(([x, y]) => [x, y]);
+    case SolidKind.Transform: {
+      const inner = extract2DProfile(solid.child);
+      if (!inner) return null;
+      const m = solid.matrix;
+      return inner.map(([x, y]) => [m[0] * x + m[4] * y + m[12], m[1] * x + m[5] * y + m[13]]);
+    }
+    case SolidKind.TaggedPatch:
+      return extract2DProfile(solid.child);
+    case SolidKind.Union:
+      return extract2DProfile(solid.left);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Revolves a 2D profile `poly` around the Z axis over `angleDeg` degrees with `fn` segments
+ * into a watertight `PolyhedronSolid`.
+ */
+function buildRotateExtrudeSolid(poly: [number, number][], angleDeg: number, fn: number): Solid | null {
+  if (poly.length < 3) return null;
+
+  let signedArea2 = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [x0, y0] = poly[i]!;
+    const [x1, y1] = poly[(i + 1) % poly.length]!;
+    signedArea2 += x0 * y1 - x1 * y0;
+  }
+  const orderedPoly = signedArea2 >= 0 ? poly : [...poly].reverse();
+  const M = orderedPoly.length;
+
+  const clampedAngle = Math.max(-360, Math.min(360, Number.isFinite(angleDeg) ? angleDeg : 360));
+  const absAngle = Math.abs(clampedAngle) || 360;
+  const isFull = absAngle >= 359.999;
+  const steps = Math.max(3, Math.ceil((fn * absAngle) / 360));
+  const ringCount = isFull ? steps : steps + 1;
+  const dirSign = clampedAngle < 0 ? -1 : 1;
+
+  const points: Vec3[] = [];
+  for (let s = 0; s < ringCount; s++) {
+    const theta = (dirSign * ((s / steps) * (absAngle * Math.PI))) / 180;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+    for (let k = 0; k < M; k++) {
+      const [px, py] = orderedPoly[k]!;
+      const r = Math.max(1e-4, Math.abs(px));
+      points.push([r * cosT, r * sinT, py]);
+    }
+  }
+
+  const faces: number[][] = [];
+  for (let s = 0; s < steps; s++) {
+    const nextRing = isFull ? (s + 1) % steps : s + 1;
+    const r0 = s * M;
+    const r1 = nextRing * M;
+    for (let k = 0; k < M; k++) {
+      const nextK = (k + 1) % M;
+      const v00 = r0 + k;
+      const v10 = r1 + k;
+      const v11 = r1 + nextK;
+      const v01 = r0 + nextK;
+      if (dirSign > 0) {
+        faces.push([v00, v10, v11]);
+        faces.push([v00, v11, v01]);
+      } else {
+        faces.push([v00, v11, v10]);
+        faces.push([v00, v01, v11]);
+      }
+    }
+  }
+
+  if (!isFull) {
+    const endOffset = steps * M;
+    for (let k = 1; k < M - 1; k++) {
+      if (dirSign > 0) {
+        faces.push([0, k + 1, k]);
+        faces.push([endOffset, endOffset + k, endOffset + k + 1]);
+      } else {
+        faces.push([0, k, k + 1]);
+        faces.push([endOffset, endOffset + k + 1, endOffset + k]);
+      }
+    }
+  }
+
+  return polyhedron({ points, faces });
+}
+
+/**
  * Interpreter that evaluates OpenSCAD CST nodes into `@modelscript/cad` CSG `Solid` trees.
  */
 export class ScadEvaluator {
+  private static readonly MAX_CALL_DEPTH = 64;
   private globalScope: Scope;
   private workspaceIndex?: ScadWorkspaceIndex | undefined;
   private currentUri?: string | undefined;
   private activeDirectiveStack = new Set<string>();
+  private callDepth = 0;
 
   constructor(options?: ScadEvaluationOptions) {
     this.globalScope = new Scope();
@@ -695,8 +1037,207 @@ export class ScadEvaluator {
   }
 
   /**
+   * Recursively offsets 2D/extruded profiles within a solid tree using edge-normal offsetting.
+   */
+  private applyOffsetToTree(solid: Solid, d: number): Solid {
+    if (Math.abs(d) <= 1e-9) return solid;
+    switch (solid.kind) {
+      case SolidKind.Extrusion: {
+        if (solid.polygon.length >= 3) {
+          const offsetPoly = offsetPolygon2D(
+            solid.polygon.map(([x, y]) => [x, y]),
+            d,
+          );
+          return linearExtrude(offsetPoly, solid.height ?? 1.0, {
+            twist: solid.twist,
+            scale: solid.scale,
+            name: solid.name,
+            sourceMetadata: solid.sourceMetadata,
+          });
+        }
+        return solid;
+      }
+      case SolidKind.Cylinder: {
+        const newR = Math.max(1e-4, solid.radius + d);
+        return cylinder({ radius: newR, height: solid.height, segments: solid.segments });
+      }
+      case SolidKind.Box: {
+        return box({
+          width: Math.max(1e-4, solid.width + 2 * d),
+          height: solid.height,
+          depth: Math.max(1e-4, solid.depth + 2 * d),
+        });
+      }
+      case SolidKind.Transform:
+        return Object.freeze({
+          ...solid,
+          child: this.applyOffsetToTree(solid.child, d),
+        }) as Solid;
+      case SolidKind.Union:
+      case SolidKind.Subtract:
+      case SolidKind.Intersect:
+        return Object.freeze({
+          ...solid,
+          left: this.applyOffsetToTree(solid.left, d),
+          right: this.applyOffsetToTree(solid.right, d),
+        }) as Solid;
+      case SolidKind.TaggedPatch:
+        return tagPatch(this.applyOffsetToTree(solid.child, d), solid.tag);
+      default:
+        return solid;
+    }
+  }
+
+  /**
+   * Decomposes a 4x3 or 4x4 affine transformation matrix into scale, rotation (axis-angle),
+   * mirror (if negative determinant), and translation.
+   */
+  private applyMultmatrix(
+    target: Solid,
+    args: { positional: ScadValue[]; named: Map<string, ScadValue> },
+    sourceMeta?: SolidSourceMetadata,
+  ): Solid {
+    const m = args.positional[0] ?? args.named.get("m");
+    if (!Array.isArray(m) || m.length < 3) return target;
+    const r0 = Array.isArray(m[0]) ? m[0] : [1, 0, 0, 0];
+    const r1 = Array.isArray(m[1]) ? m[1] : [0, 1, 0, 0];
+    const r2 = Array.isArray(m[2]) ? m[2] : [0, 0, 1, 0];
+    const m00 = Number(r0[0] ?? 1),
+      m01 = Number(r0[1] ?? 0),
+      m02 = Number(r0[2] ?? 0),
+      tx = Number(r0[3] ?? 0);
+    const m10 = Number(r1[0] ?? 0),
+      m11 = Number(r1[1] ?? 1),
+      m12 = Number(r1[2] ?? 0),
+      ty = Number(r1[3] ?? 0);
+    const m20 = Number(r2[0] ?? 0),
+      m21 = Number(r2[1] ?? 0),
+      m22 = Number(r2[2] ?? 1),
+      tz = Number(r2[3] ?? 0);
+
+    let sx = Math.hypot(m00, m10, m20) || 1;
+    const sy = Math.hypot(m01, m11, m21) || 1;
+    const sz = Math.hypot(m02, m12, m22) || 1;
+
+    const det = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20);
+    if (det < 0) sx = -sx;
+
+    const u00 = m00 / sx,
+      u01 = m01 / sy,
+      u02 = m02 / sz;
+    const u10 = m10 / sx,
+      u11 = m11 / sy,
+      u12 = m12 / sz;
+    const u20 = m20 / sx,
+      u21 = m21 / sy,
+      u22 = m22 / sz;
+
+    const trace = u00 + u11 + u22;
+    let qx = 0,
+      qy = 0,
+      qz = 0,
+      qw = 1;
+    if (trace > 0) {
+      const s = 0.5 / Math.sqrt(trace + 1.0);
+      qw = 0.25 / s;
+      qx = (u21 - u12) * s;
+      qy = (u02 - u20) * s;
+      qz = (u10 - u01) * s;
+    } else if (u00 > u11 && u00 > u22) {
+      const s = 2.0 * Math.sqrt(1.0 + u00 - u11 - u22);
+      qw = (u21 - u12) / s;
+      qx = 0.25 * s;
+      qy = (u01 + u10) / s;
+      qz = (u02 + u20) / s;
+    } else if (u11 > u22) {
+      const s = 2.0 * Math.sqrt(1.0 + u11 - u00 - u22);
+      qw = (u02 - u20) / s;
+      qx = (u01 + u10) / s;
+      qy = 0.25 * s;
+      qz = (u12 + u21) / s;
+    } else {
+      const s = 2.0 * Math.sqrt(1.0 + u22 - u00 - u11);
+      qw = (u10 - u01) / s;
+      qx = (u02 + u20) / s;
+      qy = (u12 + u21) / s;
+      qz = 0.25 * s;
+    }
+    const qLen = Math.hypot(qx, qy, qz, qw) || 1;
+    qx /= qLen;
+    qy /= qLen;
+    qz /= qLen;
+    qw /= qLen;
+
+    let transformed = target;
+    if (sx < 0) {
+      transformed = mirror(transformed, [1, 0, 0], sourceMeta);
+      sx = -sx;
+    }
+    if (Math.abs(sx - 1) > 1e-6 || Math.abs(sy - 1) > 1e-6 || Math.abs(sz - 1) > 1e-6) {
+      transformed = scale(transformed, [sx, sy, sz], sourceMeta);
+    }
+    const rotAngleDeg = (2 * Math.acos(Math.min(1, Math.max(-1, qw))) * 180) / Math.PI;
+    if (Math.abs(rotAngleDeg) > 1e-4 && Math.abs(rotAngleDeg - 360) > 1e-4) {
+      const sinHalf = Math.hypot(qx, qy, qz);
+      if (sinHalf > 1e-6) {
+        transformed = rotate(transformed, [qx / sinHalf, qy / sinHalf, qz / sinHalf], rotAngleDeg, sourceMeta);
+      }
+    }
+    if (Math.abs(tx) > 1e-9 || Math.abs(ty) > 1e-9 || Math.abs(tz) > 1e-9) {
+      transformed = translate(transformed, [tx, ty, tz], {
+        ...sourceMeta,
+        translation: [tx, ty, tz],
+      });
+    }
+    return transformed;
+  }
+
+  /**
+   * Resizes a target solid to match `newsize = [x, y, z]` using bounding-box ratios and `auto` flags.
+   */
+  private applyResize(
+    target: Solid,
+    args: { positional: ScadValue[]; named: Map<string, ScadValue> },
+    sourceMeta?: SolidSourceMetadata,
+  ): Solid {
+    const newSizeVal = args.positional[0] ?? args.named.get("newsize");
+    if (!Array.isArray(newSizeVal)) return target;
+    const autoVal = args.positional[1] ?? args.named.get("auto") ?? false;
+    const autoFlags: [boolean, boolean, boolean] = Array.isArray(autoVal)
+      ? [Boolean(autoVal[0]), Boolean(autoVal[1]), Boolean(autoVal[2])]
+      : [Boolean(autoVal), Boolean(autoVal), Boolean(autoVal)];
+
+    const targetSize: [number, number, number] = [
+      Number(newSizeVal[0] ?? 0),
+      Number(newSizeVal[1] ?? 0),
+      Number(newSizeVal[2] ?? 0),
+    ];
+
+    const bbox = computeSolidAABB(target);
+    const curSize: [number, number, number] = [
+      Math.max(1e-6, bbox.max[0] - bbox.min[0]),
+      Math.max(1e-6, bbox.max[1] - bbox.min[1]),
+      Math.max(1e-6, bbox.max[2] - bbox.min[2]),
+    ];
+
+    let explicitRatio = 1.0;
+    for (let i = 0; i < 3; i++) {
+      if (targetSize[i]! > 0) {
+        explicitRatio = targetSize[i]! / curSize[i]!;
+        break;
+      }
+    }
+    const vec: Vec3 = [
+      targetSize[0] > 0 ? targetSize[0] / curSize[0] : autoFlags[0] ? explicitRatio : 1.0,
+      targetSize[1] > 0 ? targetSize[1] / curSize[1] : autoFlags[1] ? explicitRatio : 1.0,
+      targetSize[2] > 0 ? targetSize[2] / curSize[2] : autoFlags[2] ? explicitRatio : 1.0,
+    ];
+    return scale(target, vec, sourceMeta ? { ...sourceMeta, scale: vec } : { scale: vec });
+  }
+
+  /**
    * Applies a single fluent CAD transformation or feature operation (`fillet`, `chamfer`, `translate`,
-   * `rotate`, `scale`, `mirror`, `color`) to `target`.
+   * `rotate`, `scale`, `resize`, `mirror`, `color`) to `target`.
    */
   private applyMethod(
     target: Solid,
@@ -730,6 +1271,9 @@ export class ScadEvaluator {
           : [Number(v), Number(v), Number(v)];
         return scale(target, vec, sourceMeta ? { ...sourceMeta, scale: vec } : { scale: vec });
       }
+      case "resize": {
+        return this.applyResize(target, args, sourceMeta);
+      }
       case "mirror": {
         const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 1];
         const vec: Vec3 = Array.isArray(v)
@@ -757,8 +1301,9 @@ export class ScadEvaluator {
   }
 
   /**
-   * Evaluates a prefix-style OpenSCAD operation (`linear_extrude`, `tag_port`, `union`, `difference`,
-   * `intersection`, `translate`, `rotate`, `scale`, `mirror`, `color`) applied to a child statement or block.
+   * Evaluates a prefix-style OpenSCAD operation (`linear_extrude`, `rotate_extrude`, `tag_port`,
+   * `union`, `difference`, `intersection`, `hull`, `minkowski`, `translate`, `rotate`, `scale`,
+   * `resize`, `mirror`, `multmatrix`, `color`, `offset`) applied to a child statement or block.
    */
   private evaluatePrefixSolid(prefixNode: ScadCstNode, scope: Scope): Solid | null {
     const opNode =
@@ -813,13 +1358,14 @@ export class ScadEvaluator {
       this.evaluateStatement(childNode, scope, childSolids);
       if (childSolids.length > 0) {
         const first = childSolids[0]!;
-        if (first.kind === SolidKind.Extrusion && first.polygon.length >= 3) {
+        const profile = extract2DProfile(first);
+        if (profile && profile.length >= 3) {
           let sumR = 0;
           let minR = Infinity;
           let maxR = -Infinity;
           let minZ = Infinity;
           let maxZ = -Infinity;
-          for (const [px, py] of first.polygon) {
+          for (const [px, py] of profile) {
             const r = Math.abs(px);
             sumR += r;
             if (r < minR) minR = r;
@@ -827,9 +1373,9 @@ export class ScadEvaluator {
             if (py < minZ) minZ = py;
             if (py > maxZ) maxZ = py;
           }
-          const majorR = sumR / first.polygon.length;
-          const minorR = Math.max(0.5, (maxR - minR + (maxZ - minZ)) / 4);
-          if (minR > 1e-3 && angle >= 359) {
+          if (first.kind === SolidKind.Extrusion && minR > 1e-3 && angle >= 359) {
+            const majorR = sumR / profile.length;
+            const minorR = Math.max(0.5, (maxR - minR + (maxZ - minZ)) / 4);
             return torus({
               major: majorR,
               minor: minorR,
@@ -837,8 +1383,8 @@ export class ScadEvaluator {
               minorSegments: Math.max(8, Math.floor(fn / 2)),
             });
           }
-          const h = Math.max(1, maxZ - minZ);
-          return cylinder({ radius: Math.max(1, maxR), height: h, segments: fn });
+          const revolved = buildRotateExtrudeSolid(profile, angle, fn);
+          if (revolved) return revolved;
         }
         return first;
       }
@@ -870,7 +1416,45 @@ export class ScadEvaluator {
 
     // 2. BooleanOp: union, difference, intersection, hull, minkowski
     if (opNode.type === "BooleanOp" || /^(union|difference|intersection|hull|minkowski)/.test(opText)) {
-      if (opText.startsWith("union") || opText.startsWith("hull") || opText.startsWith("minkowski")) {
+      if (opText.startsWith("union")) {
+        let acc = childSolids[0]!;
+        for (let i = 1; i < childSolids.length; i++) {
+          acc = union(acc, childSolids[i]!);
+        }
+        return acc;
+      }
+      if (opText.startsWith("hull")) {
+        const allVerts: Vec3[] = [];
+        for (const s of childSolids) {
+          allVerts.push(...extractSolidVertices(s));
+        }
+        const hullData = computeConvexHull3D(allVerts);
+        if (hullData) {
+          return polyhedron(hullData);
+        }
+        let acc = childSolids[0]!;
+        for (let i = 1; i < childSolids.length; i++) {
+          acc = union(acc, childSolids[i]!);
+        }
+        return acc;
+      }
+      if (opText.startsWith("minkowski")) {
+        if (childSolids.length === 1) return childSolids[0]!;
+        let accVerts = extractExtremeVertices(extractSolidVertices(childSolids[0]!), 48);
+        for (let i = 1; i < childSolids.length; i++) {
+          const bVerts = extractExtremeVertices(extractSolidVertices(childSolids[i]!), 32);
+          const sumVerts: Vec3[] = [];
+          for (const [ax, ay, az] of accVerts) {
+            for (const [bx, by, bz] of bVerts) {
+              sumVerts.push([ax + bx, ay + by, az + bz]);
+            }
+          }
+          accVerts = extractExtremeVertices(sumVerts, 64);
+        }
+        const minkData = computeConvexHull3D(accVerts);
+        if (minkData) {
+          return polyhedron(minkData);
+        }
         let acc = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
           acc = union(acc, childSolids[i]!);
@@ -893,7 +1477,7 @@ export class ScadEvaluator {
       }
     }
 
-    // 3. TransformOp: translate, rotate, scale, mirror, multmatrix, color, offset
+    // 3. TransformOp: translate, rotate, scale, resize, mirror, multmatrix, color, offset
     const argListNode = this.findChildByType(opNode, "ArgumentList");
     const args = this.evaluateArgumentList(argListNode, scope);
 
@@ -949,6 +1533,9 @@ export class ScadEvaluator {
         : [Number(v), Number(v), Number(v)];
       return scale(combinedChild, vec, { ...sourceMeta, scale: vec });
     }
+    if (opText.startsWith("resize")) {
+      return this.applyResize(combinedChild, args, sourceMeta);
+    }
     if (opText.startsWith("mirror")) {
       const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 1];
       const vec: Vec3 = Array.isArray(v)
@@ -957,48 +1544,11 @@ export class ScadEvaluator {
       return mirror(combinedChild, vec, sourceMeta);
     }
     if (opText.startsWith("multmatrix")) {
-      const m = args.positional[0] ?? args.named.get("m");
-      if (Array.isArray(m) && m.length >= 3) {
-        const r0 = Array.isArray(m[0]) ? m[0] : [1, 0, 0, 0];
-        const r1 = Array.isArray(m[1]) ? m[1] : [0, 1, 0, 0];
-        const r2 = Array.isArray(m[2]) ? m[2] : [0, 0, 1, 0];
-        const sx = Math.hypot(Number(r0[0] ?? 1), Number(r1[0] ?? 0), Number(r2[0] ?? 0)) || 1;
-        const sy = Math.hypot(Number(r0[1] ?? 0), Number(r1[1] ?? 1), Number(r2[1] ?? 0)) || 1;
-        const sz = Math.hypot(Number(r0[2] ?? 0), Number(r1[2] ?? 0), Number(r2[2] ?? 1)) || 1;
-        const tx = Number(r0[3] ?? 0);
-        const ty = Number(r1[3] ?? 0);
-        const tz = Number(r2[3] ?? 0);
-        let transformed = combinedChild;
-        if (Math.abs(sx - 1) > 1e-6 || Math.abs(sy - 1) > 1e-6 || Math.abs(sz - 1) > 1e-6) {
-          transformed = scale(transformed, [sx, sy, sz], sourceMeta);
-        }
-        if (Math.abs(tx) > 1e-9 || Math.abs(ty) > 1e-9 || Math.abs(tz) > 1e-9) {
-          transformed = translate(transformed, [tx, ty, tz], { ...sourceMeta, translation: [tx, ty, tz] });
-        }
-        return transformed;
-      }
-      return combinedChild;
+      return this.applyMultmatrix(combinedChild, args, sourceMeta);
     }
     if (opText.startsWith("offset")) {
       const d = Number(args.positional[0] ?? args.named.get("r") ?? args.named.get("delta") ?? 0);
-      if (combinedChild.kind === SolidKind.Extrusion && combinedChild.polygon.length >= 3 && Math.abs(d) > 1e-9) {
-        let cx = 0;
-        let cy = 0;
-        for (const [px, py] of combinedChild.polygon) {
-          cx += px;
-          cy += py;
-        }
-        cx /= combinedChild.polygon.length;
-        cy /= combinedChild.polygon.length;
-        const offsetPoly: [number, number][] = combinedChild.polygon.map(([px, py]) => {
-          const dx = px - cx;
-          const dy = py - cy;
-          const len = Math.hypot(dx, dy) || 1;
-          return [px + (dx / len) * d, py + (dy / len) * d];
-        });
-        return linearExtrude(offsetPoly, combinedChild.height ?? 1.0);
-      }
-      return combinedChild;
+      return this.applyOffsetToTree(combinedChild, d);
     }
 
     return combinedChild;
@@ -1311,6 +1861,33 @@ export class ScadEvaluator {
       const argListNode = this.findChildByType(node, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
 
+      // Evaluate any child statements attached to this module instantiation (`mod() { ... }`)
+      const childStmt =
+        externalChildStmt ??
+        this.findChildByType(node, "Statement") ??
+        this.findChildByType(node, "OperatorChildStatement") ??
+        this.findChildByType(node, "BlockStatement");
+      const evaluateAttachedChildren = (): Solid[] => {
+        const instChildren: Solid[] = [];
+        if (childStmt) {
+          const unwrappedChild =
+            childStmt.type === "Statement" || childStmt.type === "OperatorChildStatement"
+              ? (childStmt.child(0) ?? childStmt)
+              : childStmt;
+          if (unwrappedChild.type === "BlockStatement") {
+            for (let i = 0; i < unwrappedChild.childCount; i++) {
+              const ch = unwrappedChild.child(i);
+              if (ch && ch.type !== "{" && ch.type !== "}") {
+                this.evaluateStatement(ch, scope, instChildren);
+              }
+            }
+          } else {
+            this.evaluateStatement(unwrappedChild, scope, instChildren);
+          }
+        }
+        return instChildren;
+      };
+
       // Built-in children() module inside user-defined modules
       if (modName === "children") {
         const childList = scope.getChildren();
@@ -1342,7 +1919,83 @@ export class ScadEvaluator {
         if (!args.positional[0]) {
           throw new Error(String(args.positional[1] ?? "OpenSCAD assert() failed"));
         }
-        return null;
+        const attached = evaluateAttachedChildren();
+        if (attached.length === 0) return null;
+        let acc = attached[0]!;
+        for (let i = 1; i < attached.length; i++) acc = union(acc, attached[i]!);
+        return acc;
+      }
+
+      if (modName === "render") {
+        const attached = evaluateAttachedChildren();
+        if (attached.length === 0) return null;
+        let acc = attached[0]!;
+        for (let i = 1; i < attached.length; i++) acc = union(acc, attached[i]!);
+        return acc;
+      }
+
+      if (modName === "resize") {
+        const attached = evaluateAttachedChildren();
+        if (attached.length === 0) return null;
+        let acc = attached[0]!;
+        for (let i = 1; i < attached.length; i++) acc = union(acc, attached[i]!);
+        return this.applyResize(acc, args);
+      }
+
+      if (modName === "projection") {
+        const attached = evaluateAttachedChildren();
+        if (attached.length === 0) return null;
+        let acc = attached[0]!;
+        for (let i = 1; i < attached.length; i++) acc = union(acc, attached[i]!);
+        const bbox = computeSolidAABB(acc);
+        const minX = bbox.min[0];
+        const maxX = bbox.max[0];
+        const minY = bbox.min[1];
+        const maxY = bbox.max[1];
+        if (maxX - minX < 1e-6 || maxY - minY < 1e-6) return null;
+        return linearExtrude(
+          [
+            [minX, minY],
+            [maxX, minY],
+            [maxX, maxY],
+            [minX, maxY],
+          ],
+          1.0,
+        );
+      }
+
+      if (modName === "text") {
+        const txt = String(args.positional[0] ?? args.named.get("text") ?? "");
+        if (!txt) return null;
+        const size = Math.max(0.5, Number(args.positional[1] ?? args.named.get("size") ?? 10));
+        const halign = String(args.named.get("halign") ?? "left");
+        const valign = String(args.named.get("valign") ?? "baseline");
+        const charAdvance = size * 0.72;
+        const charWidth = size * 0.56;
+        const totalWidth = Math.max(charWidth, txt.length * charAdvance - (charAdvance - charWidth));
+        const startX = halign === "center" ? -totalWidth / 2 : halign === "right" ? -totalWidth : 0;
+        const startY = valign === "center" ? -size / 2 : valign === "top" ? -size : 0;
+        const glyphSolids: Solid[] = [];
+        for (let i = 0; i < txt.length; i++) {
+          if (txt[i] === " ") continue;
+          const x0 = startX + i * charAdvance;
+          const x1 = x0 + charWidth;
+          glyphSolids.push(
+            linearExtrude(
+              [
+                [x0, startY],
+                [x1, startY],
+                [x1, startY + size],
+                [x0, startY + size],
+              ],
+              1.0,
+            ),
+          );
+        }
+        if (glyphSolids.length === 0) return null;
+        let acc = glyphSolids[0]!;
+        for (let i = 1; i < glyphSolids.length; i++) acc = union(acc, glyphSolids[i]!);
+        return acc;
       }
 
       if (modName === "torus") {
@@ -1353,30 +2006,11 @@ export class ScadEvaluator {
 
       const modDef = scope.getModule(modName);
       if (!modDef) return null;
-
-      // Evaluate any child statements attached to this module instantiation (`mod() { ... }`)
-      const childStmt =
-        externalChildStmt ??
-        this.findChildByType(node, "Statement") ??
-        this.findChildByType(node, "OperatorChildStatement") ??
-        this.findChildByType(node, "BlockStatement");
-      const instChildren: Solid[] = [];
-      if (childStmt) {
-        const unwrappedChild =
-          childStmt.type === "Statement" || childStmt.type === "OperatorChildStatement"
-            ? (childStmt.child(0) ?? childStmt)
-            : childStmt;
-        if (unwrappedChild.type === "BlockStatement") {
-          for (let i = 0; i < unwrappedChild.childCount; i++) {
-            const ch = unwrappedChild.child(i);
-            if (ch && ch.type !== "{" && ch.type !== "}") {
-              this.evaluateStatement(ch, scope, instChildren);
-            }
-          }
-        } else {
-          this.evaluateStatement(unwrappedChild, scope, instChildren);
-        }
+      if (this.callDepth >= ScadEvaluator.MAX_CALL_DEPTH) {
+        return null;
       }
+
+      const instChildren = evaluateAttachedChildren();
 
       const modScope = new Scope(modDef.scope);
       modScope.childrenSolids = instChildren;
@@ -1400,7 +2034,12 @@ export class ScadEvaluator {
       }
 
       const modSolids: Solid[] = [];
-      this.evaluateStatement(modDef.bodyNode, modScope, modSolids);
+      this.callDepth++;
+      try {
+        this.evaluateStatement(modDef.bodyNode, modScope, modSolids);
+      } finally {
+        this.callDepth--;
+      }
       if (modSolids.length === 0) return null;
       if (modSolids.length === 1) {
         const single = modSolids[0]!;
@@ -1865,6 +2504,9 @@ export class ScadEvaluator {
 
         const userFunc = scope.getFunc(funcName);
         if (userFunc) {
+          if (this.callDepth >= ScadEvaluator.MAX_CALL_DEPTH) {
+            return undefined;
+          }
           const fnScope = new Scope(userFunc.scope);
           for (let i = 0; i < userFunc.params.length; i++) {
             const p = userFunc.params[i]!;
@@ -1877,7 +2519,12 @@ export class ScadEvaluator {
             }
             fnScope.setVar(p, v);
           }
-          return this.evaluateExpression(userFunc.bodyNode, fnScope);
+          this.callDepth++;
+          try {
+            return this.evaluateExpression(userFunc.bodyNode, fnScope);
+          } finally {
+            this.callDepth--;
+          }
         }
       }
     }

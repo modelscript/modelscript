@@ -1,6 +1,11 @@
+---
+title: CLI Commands Reference
+description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 68 engineering domain formats.
+---
+
 # CLI Commands Reference
 
-This reference documents every command, subcommand, and flag registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All commands can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **92+ commands** across **68 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -318,7 +323,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 44 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 68 supported languages.
 
 <CliCommand name="polyglot" :show-actions="false" />
 
@@ -692,6 +697,289 @@ Tooling for Energy Solutions **PipelineStudio** gas and liquid pipeline networks
 
 ---
 
+### `cgmes`
+
+Tooling for **ENTSO-E CIM / CGMES** (IEC 61970-600-1/2) European transmission grid RDF/XML profiles (`Equipment`, `Topology`, `SteadyStateHypothesis`, `StateVariables`), including bus-branch Union-Find topology consolidation, `C1001`–`C1010` static linting, AC/DC OPF solving, and projections to Siemens PSS/E and Modelica.
+
+<CliCommand name="cgmes" :show-actions="false" />
+
+| Action        | Description                                                                                                        |
+| :------------ | :----------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Summarize topological nodes, buses, AC line segments, power transformers, synchronous machines, and loads.         |
+| `lint`        | Run CGMES static checks (`C1001`–`C1010`: slack bus presence, non-positive impedance, transformer apparent power). |
+| `to-psse`     | Project consolidated bus-branch topology and per-unit impedances into a PSS/E v33 `.raw` case.                     |
+| `to-modelica` | Generate an acausal 3-phase positive-sequence Modelica `.mo` transmission network model.                           |
+| `solve`       | Solve steady-state power flow or optimal power flow (`--alg nr \| helm \| dc-opf \| ac-opf`).                      |
+
+```bash
+msx cgmes inspect Grid_EQ.xml Grid_TP.xml Grid_SSH.xml
+msx cgmes lint Grid_EQ.xml Grid_SSH.xml
+msx cgmes to-psse Grid_EQ.xml Grid_TP.xml --out=Grid.raw
+msx cgmes solve Grid_EQ.xml Grid_SSH.xml --alg ac-opf
+```
+
+---
+
+### `qif`
+
+Tooling for **ISO 23952 Quality Information Framework (QIF)** digital metrology documents (`.qif`), including ASME Y14.5 GD&T and NIST QIF semantic validation (`Q1001`–`Q1010`), Statistical Process Control ($C_p$, $C_{pk}$, Test Uncertainty Ratio, MMC/LMC bonus tolerance), STEP AP242 reconciliation, and SysML v2 / Modelica projections.
+
+<CliCommand name="qif" :show-actions="false" />
+
+| Action           | Description                                                                                                    |
+| :--------------- | :------------------------------------------------------------------------------------------------------------- |
+| `inspect`        | Summarize datums, geometric features, GD&T characteristics, measurement devices, and inspection actuals.       |
+| `validate`       | Run NIST QIF and ASME Y14.5 GD&T static checks (`Q1001`–`Q1010`).                                              |
+| `spc`            | Compute Statistical Process Control metrics ($C_p$, $C_{pk}$, TUR, pass/fail status, and MMC/LMC bonus).       |
+| `reconcile-step` | Reconcile QIF metrology characteristics against a companion STEP AP242 B-Rep CAD model (`--step <file.step>`). |
+| `from-step`      | Synthesize an initial QIF inspection plan from STEP AP242 Product and Manufacturing Information (PMI).         |
+| `to-sysml`       | Project GD&T characteristics and SPC bounds into SysML v2 `requirement def` and `verification def` blocks.     |
+| `to-modelica`    | Generate a Modelica 3.x tolerance stack-up and CMM error budget model.                                         |
+| `to-dae`         | Lower metrology tolerance chains directly into the `DAEBuilder` arena.                                         |
+
+```bash
+msx qif inspect TurbineBlade.qif
+msx qif validate TurbineBlade.qif
+msx qif spc TurbineBlade.qif --out=spc_report.json
+msx qif reconcile-step TurbineBlade.qif --step=TurbineBlade.step
+```
+
+---
+
+### `oscal`
+
+Tooling for **NIST OSCAL** (Open Security Controls Assessment Language `.oscal.json`, `.oscal.yaml`, `.oscal.xml`), including profile baseline resolution, **NIST SP 800-53 Rev 5** and **NIST SP 800-82 Rev 3** OT/ICS cyber-physical architecture compliance auditing, lossless format conversion, and SysML v2 / ReqIF projections.
+
+<CliCommand name="oscal" :show-actions="false" />
+
+| Action      | Description                                                                                                          |
+| :---------- | :------------------------------------------------------------------------------------------------------------------- |
+| `inspect`   | Summarize OSCAL document metadata, controls, system components, implemented requirements, findings, and POA&M items. |
+| `verify`    | Run NIST OSCAL structural and OT/ICS cyber-physical security diagnostics (`O1001`–`O1010`).                          |
+| `resolve`   | Resolve an OSCAL Profile import/merge/modify pipeline into a flat baseline Catalog.                                  |
+| `audit-cps` | Audit cyber-physical architecture components (PLCs, IEDs, OT controllers) against SP 800-53 / SP 800-82 controls.    |
+| `convert`   | Convert an OSCAL document across JSON, YAML, and XML representations (`--format json \| yaml \| xml`).               |
+| `to-sysml`  | Project security controls and component implementations into SysML v2 security requirement definitions.              |
+| `to-reqif`  | Export security controls and assessment findings into an OMG ReqIF 1.2 XML archive.                                  |
+
+```bash
+msx oscal inspect SubstationSSP.oscal.json
+msx oscal verify SubstationSSP.oscal.json
+msx oscal audit-cps SubstationSSP.oscal.json
+msx oscal to-sysml SubstationSSP.oscal.json --out=SecurityReqs.sysml
+```
+
+---
+
+### `aml`
+
+Tooling for **IEC 62714 AutomationML / CAEX** industrial plant topologies (`.aml`, `.caex`, `.amlx`), including Product-Process-Resource (PPR) semantic validation (`A1001`–`A1010`), closed-loop Virtual PLC commissioning, and SSP / SysML v2 / Modelica projections (`automationml` and `caex` are aliases for `aml`).
+
+<CliCommand name="aml" :show-actions="false" />
+
+| Action        | Description                                                                                                       |
+| :------------ | :---------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Summarize CAEX InstanceHierarchy elements, SystemUnitClasses, RoleClasses, InterfaceClasses, and InternalLinks.   |
+| `lint`        | Validate CAEX role bindings, COLLADA/PLCopen external references, and port directions (`A1001`–`A1010`).          |
+| `commission`  | Execute closed-loop virtual commissioning coupling `VirtualPlc` scan cycles (`--cycles`, `--dt`) with plant ODEs. |
+| `to-ssp`      | Export the AutomationML topology as an FMI System Structure and Parameterization (`SystemStructure.ssd`).         |
+| `to-sysml`    | Project the CAEX hierarchy into SysML v2 `part def` and `connection` blocks.                                      |
+| `to-modelica` | Project the workcell into an acausal Modelica multi-domain plant model.                                           |
+| `to-dae`      | Lower workcell actuator/sensor equations into the `DAEBuilder` arena.                                             |
+
+```bash
+msx aml inspect RoboticWorkcell.aml
+msx aml lint RoboticWorkcell.aml
+msx aml commission RoboticWorkcell.aml --cycles 50 --dt 10
+msx aml to-sysml RoboticWorkcell.aml --out=Workcell.sysml
+```
+
+---
+
+### `opensim`
+
+Tooling for **OpenSim** musculoskeletal biomechanics models (`.osim`), including anatomical joint and Hill-type muscle-tendon equilibrium validation (`M9101`–`M9110`), activation-contraction dynamics simulation, and Modelica / ROS URDF projections.
+
+<CliCommand name="opensim" :show-actions="false" />
+
+| Action        | Description                                                                                                           |
+| :------------ | :-------------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Summarize rigid bodies, anatomical joints, Hill-type muscle actuators (`Thelen2003Muscle`, `Millard2012`), & markers. |
+| `validate`    | Run biomechanical static checks (`M9101`–`M9110`: mass/inertia positivity, physiological muscle parameters).          |
+| `simulate`    | Integrate Zajac / Thelen Hill-type muscle activation and fiber contraction dynamics.                                  |
+| `to-modelica` | Project skeletal bodies, joints, and muscle actuators into `Modelica.Mechanics.MultiBody`.                            |
+| `to-urdf`     | Export the skeletal kinematic tree as a ROS `.urdf` robot description.                                                |
+| `to-dae`      | Lower multibody equations of motion and muscle contraction ODEs into `DAEBuilder`.                                    |
+
+```bash
+msx opensim inspect Gait2392.osim
+msx opensim validate Gait2392.osim
+msx opensim simulate Arm26.osim
+```
+
+---
+
+### `dicom-rt`
+
+Tooling for **DICOM-RT** radiation oncology treatment plans (`.rtplan`, `.rtstruct`, `.rtdose`), including QUANTEC Organ-at-Risk (OAR) dose-volume constraint verification, Multi-Leaf Collimator (MLC) leaf kinematics and gantry collision checks (`M9201`–`M9210`), DVH / BED / $\text{EQD}_2$ dosimetry evaluation, and OpenSCAD / SysML v2 projections.
+
+<CliCommand name="dicom-rt" :show-actions="false" />
+
+| Action      | Description                                                                                                        |
+| :---------- | :----------------------------------------------------------------------------------------------------------------- |
+| `inspect`   | Summarize prescription dose, fractionation, PTV/OAR structures, and linac beam control points.                     |
+| `validate`  | Run radiation oncology safety rules (`M9201`–`M9210`: QUANTEC OAR limits, MLC leaf overtravel, gantry collision).  |
+| `dosimetry` | Compute cumulative Dose-Volume Histograms (DVH), Conformity/Homogeneity Indices (CI/HI), BED, and $\text{EQD}_2$.  |
+| `to-scad`   | Project treatment beam cones, MLC apertures, and anatomical ROI contours into 3D OpenSCAD geometry.                |
+| `to-sysml`  | Project prescription goals and QUANTEC OAR tolerances into SysML v2 safety requirements.                           |
+| `to-dae`    | Lower linear-quadratic (LQ) fractionated cell-survival and normal-tissue complication equations into `DAEBuilder`. |
+
+```bash
+msx dicom-rt inspect ProstateIMRT.rtplan
+msx dicom-rt validate ProstateIMRT.rtplan
+msx dicom-rt dosimetry HeadNeckVMAT.rtplan
+```
+
+---
+
+### `cellml`
+
+Tooling for **CellML 1.0 / 1.1 / 2.0** cellular electrophysiology and physiological models (`.cellml`), including SI dimensional unit consistency (`M9301`–`M9310`), Hodgkin-Huxley / Noble / Ten Tusscher cardiac action-potential integration, and Modelica / SBML projections.
+
+<CliCommand name="cellml" :show-actions="false" />
+
+| Action        | Description                                                                                                         |
+| :------------ | :------------------------------------------------------------------------------------------------------------------ |
+| `inspect`     | Summarize CellML components, variables, custom unit definitions, encapsulation trees, and variable mappings.        |
+| `validate`    | Run physiological and MathML dimensional checks (`M9301`–`M9310`: unit homogeneity, encapsulation port directions). |
+| `simulate`    | Integrate stiff cellular electrophysiology and ion-channel gating ODEs.                                             |
+| `to-modelica` | Project encapsulated CellML components and MathML equations into Modelica 3.x classes.                              |
+| `to-sbml`     | Translate compartmental state variables and reaction fluxes into SBML Level 3 XML.                                  |
+| `to-dae`      | Lower CellML differential-algebraic equations into the `DAEBuilder` arena.                                          |
+
+```bash
+msx cellml inspect TenTusscher2006.cellml
+msx cellml validate TenTusscher2006.cellml
+msx cellml simulate HodgkinHuxley1952.cellml
+```
+
+---
+
+### `febio`
+
+Tooling for **FEBio** nonlinear soft-tissue biomechanics (`.feb`) and **SOFA** interactive surgical simulation scenes (`.scn`), including hyperelastic/biphasic material stability and mesh Jacobian checks (`M9401`–`M9410`), strain-energy evaluation, and CalculiX `.inp` / Modelica projections (`sofa` is an alias for `febio`).
+
+<CliCommand name="febio" :show-actions="false" />
+
+| Action        | Description                                                                                                                  |
+| :------------ | :--------------------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Summarize hyperelastic/viscoelastic/biphasic materials, nodal coordinates, finite elements, and boundary loads.              |
+| `validate`    | Check Drucker/polyconvexity material stability, element Jacobian determinants, and hydraulic permeability (`M9401`–`M9410`). |
+| `solve`       | Evaluate hyperelastic strain-energy density ($\Psi$), principal Cauchy stresses, and biphasic interstitial pore pressure.    |
+| `to-inp`      | Convert the FEBio mesh and hyperelastic material cards into an Abaqus / CalculiX `.inp` deck.                                |
+| `to-modelica` | Project lumped tissue compliance and viscoelastic damping into Modelica mechanical components.                               |
+| `to-dae`      | Lower tissue constitutive and poroelastic filtration equations into `DAEBuilder`.                                            |
+
+```bash
+msx febio inspect ArterialWall.feb
+msx febio validate ArticularCartilage.feb
+msx febio solve LiverDeformation.scn
+```
+
+---
+
+### `nifti`
+
+Tooling for **NIfTI-1 / NIfTI-2** (`.nii`) and **NRRD** (`.nrrd`, `.nhdr`) volumetric medical imaging headers and segmentation masks, including `qform`/`sform` RAS+ affine orientation validation (`M9501`–`M9510`), marching-cubes iso-surface mesh extraction, and OpenSCAD / STEP projections (`nrrd` is an alias for `nifti`).
+
+<CliCommand name="nifti" :show-actions="false" />
+
+| Action     | Description                                                                                                            |
+| :--------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `inspect`  | Print voxel grid dimensions (`dim`), millimeter spacing (`pixdim`), datatype, and `qform`/`sform` affine matrices.     |
+| `validate` | Check quaternion normalization, affine determinant handedness, slice spacing, and intensity scaling (`M9501`–`M9510`). |
+| `mesh`     | Extract a 3D triangulated surface mesh and anatomical bounding box from segmented voxel labels.                        |
+| `to-scad`  | Project anatomical bounding boxes and fiducial landmarks into 3D OpenSCAD CSG primitives.                              |
+| `to-step`  | Export segmented anatomical surface geometry as an ISO 10303-21 STEP AP242 solid model.                                |
+| `to-dae`   | Lower voxel-to-world affine coordinate transformations into `DAEBuilder`.                                              |
+
+```bash
+msx nifti inspect BrainT1w.nii
+msx nifti validate PelvicCT.nrrd
+msx nifti mesh MandibleSegmentation.nii
+```
+
+---
+
+### `topas`
+
+Tooling for **TOPAS** (`.topas`) and **GATE** (`.mac`) Monte Carlo proton, carbon-ion, and photon radiation transport parameter files, including Geant4 geometry overlap and beamline validation (`M9601`–`M9610`), analytical Bortfeld Bragg-peak depth-dose calculation, and OpenSCAD / Modelica projections (`gate` is an alias for `topas`).
+
+<CliCommand name="topas" :show-actions="false" />
+
+| Action        | Description                                                                                                          |
+| :------------ | :------------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Summarize hierarchical `Ge/` geometry components, `So/` particle beam sources, and `Sc/` dose/LET scorers.           |
+| `validate`    | Check parent-child volume containment, range-shifter water-equivalent thickness, and SOBP weights (`M9601`–`M9610`). |
+| `bragg-peak`  | Compute analytical Bethe-Bloch / Bortfeld depth-dose curves, CSDA range $R_0$, and distal $R_{80}$ in water.         |
+| `to-scad`     | Project nozzle collimators, range shifters, and water phantoms into 3D OpenSCAD CSG geometry.                        |
+| `to-modelica` | Project beamline scanning magnet currents and dose-rate delivery dynamics into Modelica.                             |
+| `to-dae`      | Lower continuous-slowing-down approximation (CSDA) stopping-power equations into `DAEBuilder`.                       |
+
+```bash
+msx topas inspect ProtonPencilBeam.topas
+msx topas validate ProtonPencilBeam.topas
+msx topas bragg-peak ProtonPencilBeam.topas
+```
+
+---
+
+### `three-mf`
+
+Tooling for **ISO/ASTM 52915 3MF Medical** additive manufacturing archives (`.3mf`) for patient-specific surgical cutting guides, cranial plates, and orthopedic implants, including 2-manifold Euler-Poincaré topology verification (`M9701`–`M9710`) and STEP / OpenSCAD projections (`3mf` is an alias for `three-mf`).
+
+<CliCommand name="three-mf" :show-actions="false" />
+
+| Action     | Description                                                                                                             |
+| :--------- | :---------------------------------------------------------------------------------------------------------------------- |
+| `inspect`  | Summarize mesh objects, vertex/triangle counts, build items, biocompatible materials, and surgical guide sleeves.       |
+| `validate` | Check 2-manifold watertightness, outward normal volume, minimum wall thickness, and K-wire clearance (`M9701`–`M9710`). |
+| `topology` | Compute exact edge-valence histograms, signed mesh volume, surface area, and Euler characteristic $\chi = V - E + F$.   |
+| `to-step`  | Convert the triangulated 3MF implant or cutting guide mesh into an ISO 10303-21 STEP B-Rep shell.                       |
+| `to-scad`  | Export the mesh and osteotomy cutting plane cylinders as an OpenSCAD `polyhedron()` module.                             |
+| `to-dae`   | Lower surgical guide sleeve trajectory constraints and structural stiffness bounds into `DAEBuilder`.                   |
+
+```bash
+msx three-mf inspect MandibularOsteotomyGuide.3mf
+msx three-mf validate MandibularOsteotomyGuide.3mf
+msx three-mf topology CranialImplant_Ti6Al4V.3mf
+```
+
+---
+
+### `igtl`
+
+Tooling for **OpenIGTLink** and **PLUS Toolkit** surgical navigation configurations (`.igtl`, `.plus.xml`), including $SE(3)$ rotation matrix orthogonality and coordinate-frame tree validation (`M9801`–`M9810`), stylus pivot calibration and Fitzpatrick Target Registration Error (TRE) solving, and ROS URDF / Modelica projections (`openigtlink` is an alias for `igtl`).
+
+<CliCommand name="igtl" :show-actions="false" />
+
+| Action        | Description                                                                                                            |
+| :------------ | :--------------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Summarize optical/EM tracker devices, tracked tool reference frames, `Transform` matrices, and OpenIGTLink servers.    |
+| `validate`    | Check $\mathrm{SO}(3)$ orthogonality, coordinate-frame tree connectivity, and fiducial collinearity (`M9801`–`M9810`). |
+| `calibrate`   | Solve algebraic stylus tip pivot calibration ($\mathbf{p}_{\text{tip}}, \mathbf{p}_{\text{pivot}}$) and estimate TRE.  |
+| `to-urdf`     | Project the surgical coordinate-frame hierarchy (`World -> Tracker -> Reference -> Stylus`) into a ROS `.urdf` tree.   |
+| `to-modelica` | Project 6-DOF frame transformations and tracking latency filters into Modelica.                                        |
+| `to-dae`      | Lower rigid-body $SE(3)$ kinematic chains and TRE propagation equations into `DAEBuilder`.                             |
+
+```bash
+msx igtl inspect CranialNavigation.plus.xml
+msx igtl validate CranialNavigation.plus.xml
+msx igtl calibrate StylusPivotConfig.igtl
+```
+
+---
+
 ## Language Workbench, Daemon & IDE Tooling
 
 ### `daemon`
@@ -849,15 +1137,17 @@ msx archive <request|status|download> <targetId> [-o <path>]
 
 ### `keys`
 
-Manages user-held cryptographic signing keys (Ed25519 and FIDO2/U2F hardware keys) for **Signed Accounts** and bidirectional Git transport.
+Manages user-held cryptographic signing keys (Ed25519 and FIDO2/U2F hardware keys) for **Signed Accounts** and bidirectional Git transport (53. `msx keys`).
 
-| Subcommand | Arguments                        | Description                                                                                                       |
-| :--------- | :------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
-| `list`     | —                                | List all registered user-held signing keys, active status, SHA-256 fingerprints, and trust levels.                |
-| `generate` | `[-o <file>] [-c <comment>]`     | Generate a new, non-custodial Ed25519 keypair for commit and post signing.                                        |
-| `register` | `<keyPathOrString> [-l <label>]` | Register a public key (`~/.ssh/id_ed25519.pub`) with the server via Proof-of-Possession (PoP) challenge/response. |
-| `revoke`   | `<keyId> [-r <reason>]`          | Revoke a compromised or retired signing key.                                                                      |
-| `policy`   | `[strict\|flexible]`             | Query or update the account's signing policy (strict mode rejects unsigned commits and posts).                    |
+<CliCommand name="keys" :show-actions="false" />
+
+| Subcommand | Arguments               | Description                                                                                                       |
+| :--------- | :---------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `list`     | —                       | List all registered user-held signing keys, active status, SHA-256 fingerprints, and trust levels.                |
+| `generate` | `[path] [-c <comment>]` | Generate a new, non-custodial Ed25519 keypair for commit and post signing.                                        |
+| `register` | `<pubkey> [-l <label>]` | Register a public key (`~/.ssh/id_ed25519.pub`) with the server via Proof-of-Possession (PoP) challenge/response. |
+| `revoke`   | `<id>`                  | Revoke a compromised or retired signing key.                                                                      |
+| `policy`   | `<strict\|optional>`    | Query or update the account's signing policy (strict mode rejects unsigned commits and posts).                    |
 
 ```bash
 # Generate a new local Ed25519 signing keypair
@@ -874,12 +1164,14 @@ msx keys policy strict
 
 ### `sign`
 
-Generates or verifies W3C Data Integrity (`eddsa-jcs-2022`) proofs for Markdown posts, tutorials, and engineering artifacts.
+Generates or verifies W3C Data Integrity (`eddsa-jcs-2022`) proofs for Markdown posts, tutorials, and engineering artifacts (54. `msx sign`).
+
+<CliCommand name="sign" />
 
 ```bash
 # Sign a post file with your Ed25519 private key
 msx sign posts/thruster-design.md -k ~/.ssh/id_ed25519
 
 # Verify a post's cryptographic proof sidecar against a public key or server registry
-msx sign posts/thruster-design.md --verify -k ~/.ssh/id_ed25519.pub
+msx sign posts/thruster-design.md --verify -p ~/.ssh/id_ed25519.pub
 ```

@@ -1,3 +1,8 @@
+---
+title: "Numerical ODE, DAE & Co-Simulation Solvers"
+description: "Implementation: packages/simulate/src/solvers/ and packages/runtime/src/solvers/"
+---
+
 # Numerical ODE, DAE & Co-Simulation Solvers
 
 **Implementation**: [`packages/simulate/src/solvers/`](https://github.com/modelscript/modelscript/tree/main/packages/simulate/src/solvers/) and [`packages/runtime/src/solvers/`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/solvers/)

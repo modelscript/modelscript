@@ -17,6 +17,7 @@ interface SymbolInfo {
   kind: "variable" | "function" | "struct" | "parameter" | "flwor-var";
   type?: string | undefined;
   semanticType?: ModelScriptType | undefined;
+  isConst?: boolean | undefined;
 }
 
 /**
@@ -44,17 +45,33 @@ function formatModelScriptType(type: ModelScriptType): string {
       return type.name;
     case "array":
       return `Array<${formatModelScriptType(type.element)}>`;
+    case "ptr":
+      return `ptr<${formatModelScriptType(type.element)}>`;
     default:
       return type.kind;
   }
 }
 
 function isNumericType(type: ModelScriptType): boolean {
-  return type.kind === "i32" || type.kind === "u32" || type.kind === "i64" || type.kind === "f64";
+  return (
+    type.kind === "i32" ||
+    type.kind === "u32" ||
+    type.kind === "i64" ||
+    type.kind === "u64" ||
+    type.kind === "usize" ||
+    type.kind === "f32" ||
+    type.kind === "f64"
+  );
 }
 
 function isIntegerType(type: ModelScriptType): boolean {
-  return type.kind === "i32" || type.kind === "u32" || type.kind === "i64";
+  return (
+    type.kind === "i32" || type.kind === "u32" || type.kind === "i64" || type.kind === "u64" || type.kind === "usize"
+  );
+}
+
+function isFloatType(type: ModelScriptType): boolean {
+  return type.kind === "f32" || type.kind === "f64";
 }
 
 function isTypeCompatible(target: ModelScriptType, source: ModelScriptType): boolean {
@@ -66,10 +83,13 @@ function isTypeCompatible(target: ModelScriptType, source: ModelScriptType): boo
     if (target.kind === "array" && source.kind === "array") {
       return isTypeCompatible(target.element, source.element);
     }
+    if (target.kind === "ptr" && source.kind === "ptr") {
+      return isTypeCompatible(target.element, source.element);
+    }
     return true;
   }
   if (isIntegerType(target) && isIntegerType(source)) return true;
-  if (target.kind === "f64" && isNumericType(source)) return true;
+  if (isFloatType(target) && isNumericType(source)) return true;
   return false;
 }
 
@@ -112,6 +132,7 @@ export class ModelScriptLinter {
     node: ModelScriptCstNode | null | undefined,
     type?: string,
     semanticType?: ModelScriptType,
+    isConst?: boolean,
   ): boolean {
     const scope = this.currentScope();
     if (scope.has(name)) {
@@ -125,7 +146,7 @@ export class ModelScriptLinter {
       return false;
     }
     const resolvedSemantic = semanticType ?? (type && this.isKnownType(type) ? parseTypeName(type) : undefined);
-    scope.set(name, { name, kind, type, semanticType: resolvedSemantic });
+    scope.set(name, { name, kind, type, semanticType: resolvedSemantic, isConst });
     return true;
   }
 
@@ -266,9 +287,12 @@ export class ModelScriptLinter {
       if (lType.kind === "unknown" || rType.kind === "unknown") {
         return { kind: "unknown" };
       }
-      if (lType.kind === "f64" || rType.kind === "f64") {
-        return { kind: "f64" };
-      }
+      if (lType.kind === "f64" || rType.kind === "f64") return { kind: "f64" };
+      if (lType.kind === "f32" || rType.kind === "f32") return { kind: "f32" };
+      if (lType.kind === "u64" || rType.kind === "u64") return { kind: "u64" };
+      if (lType.kind === "i64" || rType.kind === "i64") return { kind: "i64" };
+      if (lType.kind === "u32" || rType.kind === "u32") return { kind: "u32" };
+      if (lType.kind === "usize" || rType.kind === "usize") return { kind: "usize" };
       return lType;
     }
 
@@ -462,6 +486,7 @@ export class ModelScriptLinter {
         const typeNode = node.childForFieldName?.("type");
         const valNode = node.childForFieldName?.("value");
         const name = idNode?.text;
+        const isConst = node.child(0)?.text === "const" || node.text?.trimStart().startsWith("const ") === true;
 
         const isTypeValid = this.validateTypeAnnotation(typeNode);
 
@@ -500,16 +525,31 @@ export class ModelScriptLinter {
         }
 
         if (name) {
-          this.declareSymbol(name, "variable", idNode, resolvedType, semanticType);
+          this.declareSymbol(name, "variable", idNode, resolvedType, semanticType, isConst);
         }
         return;
       }
 
-      case "AssignmentStatement": {
+      case "AssignmentStatement":
+      case "ForUpdate": {
         const targetNode = node.childForFieldName?.("target");
         const valNode = node.childForFieldName?.("value");
         this.walk(targetNode);
         this.walk(valNode);
+
+        const unwrappedTarget = unwrapNode(targetNode);
+        if (unwrappedTarget?.type === "IDENTIFIER") {
+          const sym = this.lookupSymbol(unwrappedTarget.text);
+          if (sym?.isConst) {
+            this.addDiagnostic(
+              ModelScriptErrorCode.CONST_REASSIGNMENT.code,
+              ModelScriptErrorCode.CONST_REASSIGNMENT.rule,
+              "error",
+              ModelScriptErrorCode.CONST_REASSIGNMENT.message(unwrappedTarget.text),
+              targetNode,
+            );
+          }
+        }
 
         if (targetNode && valNode) {
           const targetType = this.inferExprType(targetNode);
@@ -766,18 +806,20 @@ export class ModelScriptLinter {
       }
 
       case "PostfixExpression": {
-        // Validate function call argument count against hoisted signature
+        // Validate function call argument count and types against hoisted signature
         const calleeNode = node.childForFieldName?.("callee");
         if (calleeNode) {
           const fnName = calleeNode.text;
           const fnSig = this.functions.get(fnName);
           const argsNode = node.childForFieldName?.("arguments");
-          let argCount = 0;
+          const argNodes: ModelScriptCstNode[] = [];
           if (argsNode) {
             for (let i = 0; i < argsNode.childCount; i++) {
-              if (argsNode.child(i)?.type === "Argument") argCount++;
+              const child = argsNode.child(i);
+              if (child?.type === "Argument") argNodes.push(child);
             }
           }
+          const argCount = argNodes.length;
           if (fnSig && fnSig.paramCount !== argCount) {
             this.addDiagnostic(
               ModelScriptErrorCode.ARGUMENT_COUNT_MISMATCH.code,
@@ -786,6 +828,26 @@ export class ModelScriptLinter {
               ModelScriptErrorCode.ARGUMENT_COUNT_MISMATCH.message(fnName, String(fnSig.paramCount), String(argCount)),
               argsNode || calleeNode,
             );
+          } else if (fnSig) {
+            for (let i = 0; i < argNodes.length; i++) {
+              const expectedTypeStr = fnSig.paramTypes[i];
+              if (!expectedTypeStr || !this.isKnownType(expectedTypeStr)) continue;
+              const expectedType = parseTypeName(expectedTypeStr);
+              const argValNode = argNodes[i]!.childForFieldName?.("value") ?? argNodes[i]!;
+              const actualType = this.inferExprType(argValNode);
+              if (!isTypeCompatible(expectedType, actualType)) {
+                this.addDiagnostic(
+                  ModelScriptErrorCode.TYPE_MISMATCH.code,
+                  ModelScriptErrorCode.TYPE_MISMATCH.rule,
+                  "error",
+                  ModelScriptErrorCode.TYPE_MISMATCH.message(
+                    formatModelScriptType(expectedType),
+                    formatModelScriptType(actualType),
+                  ),
+                  argValNode,
+                );
+              }
+            }
           }
         }
 

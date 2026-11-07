@@ -193,6 +193,48 @@ export function extractModelicaModel(
       }
     }
 
+    if (
+      node.type === "connect_clause" ||
+      node.type === "ConnectClause" ||
+      (node.type === "equation" && node.text.trimStart().startsWith("connect"))
+    ) {
+      const connMatch = node.text.match(/connect\s*\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)/);
+      if (connMatch) {
+        equations.push({
+          lhs: connMatch[1]!.trim(),
+          rhs: connMatch[2]!.trim(),
+          kind: "connect",
+          rawText: node.text.trim().replace(/;$/, ""),
+        });
+      }
+      return;
+    }
+
+    if (node.type === "simple_equation" || node.type === "equality_equation" || node.type === "SimpleEquation") {
+      const lhsNode = node.childForFieldName?.("lhs") || node.childForFieldName?.("left");
+      const rhsNode = node.childForFieldName?.("rhs") || node.childForFieldName?.("right");
+      if (lhsNode && rhsNode) {
+        equations.push({
+          lhs: lhsNode.text.trim(),
+          rhs: rhsNode.text.trim(),
+          kind: "equality",
+          rawText: node.text.trim().replace(/;$/, ""),
+        });
+        return;
+      }
+      const raw = node.text.trim().replace(/;$/, "");
+      const eqIdx = raw.indexOf("=");
+      if (eqIdx > 0) {
+        equations.push({
+          lhs: raw.slice(0, eqIdx).trim(),
+          rhs: raw.slice(eqIdx + 1).trim(),
+          kind: "equality",
+          rawText: raw,
+        });
+        return;
+      }
+    }
+
     for (let i = 0; i < node.childCount; i++) {
       walk(node.child(i));
     }
@@ -304,8 +346,8 @@ export function extractModelicaModel(
     }
   }
 
-  // Extract equations from equation section
-  if (eqSection) {
+  // Extract equations from equation section if not already populated from CST
+  if (equations.length === 0 && eqSection) {
     const eqStmts = eqSection
       .split(";")
       .map((s) => s.trim())
@@ -347,10 +389,10 @@ export function extractModelicaModel(
 
 /**
  * Extracts structured parameters, variables, ports, part usages, and constraints/connections
- * from a SysML v2 (`.sysml`) model.
+ * from a SysML v2 (`.sysml`) CST root node and/or source text.
  */
 export function extractSysML2Model(
-  _sysmlTreeRoot: ModelScriptCstNode | null | undefined,
+  sysmlTreeRoot: ModelScriptCstNode | null | undefined,
   sourceText: string,
 ): PolyglotModel {
   const components: ModelicaComponentInfo[] = [];
@@ -358,79 +400,154 @@ export function extractSysML2Model(
   const variables: PolyglotVariableInfo[] = [];
   const equations: PolyglotEquationInfo[] = [];
   const ports: PolyglotPortInfo[] = [];
+  let modelName = "AnonymousSysMLModel";
 
-  const clean = sourceText.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  const nameMatch = clean.match(/\b(?:package|part\s+def|part)\s+([A-Za-z_][A-Za-z0-9_]*)/);
-  const modelName = nameMatch?.[1] ?? "AnonymousSysMLModel";
+  function walkSysml(node: ModelScriptCstNode | null | undefined): void {
+    if (!node) return;
+    if (
+      modelName === "AnonymousSysMLModel" &&
+      (node.type === "Package" ||
+        node.type === "PartDef" ||
+        node.type === "PartDefinition" ||
+        node.type === "PartUsage")
+    ) {
+      const nameNode = node.childForFieldName?.("name") || node.childForFieldName?.("id");
+      if (nameNode?.text) modelName = nameNode.text;
+    }
 
-  // 1. Extract attribute declarations: `attribute mass : Real = 1200 [kg];` or `in attribute v : Real;`
-  const attrRegex =
-    /\b(?:(in|out|inout)\s+)?attribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::>?|:)\s*([A-Za-z_][A-Za-z0-9_:]*)(?:\s*\[([^\]]+)\])?(?:\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|"[^"]*"|true|false))?/g;
-  let m: RegExpExecArray | null;
-  while ((m = attrRegex.exec(clean)) !== null) {
-    const dir = m[1];
-    const attrName = m[2]!;
-    const attrType = m[3]!;
-    const unit = m[4]?.trim();
-    const rawVal = m[5];
-    const numVal = rawVal !== undefined && /^[+-]?(?:\d|\.)/.test(rawVal) ? parseFloat(rawVal) : undefined;
+    if (node.type === "AttributeUsage" || node.type === "AttributeDeclaration") {
+      const nameNode = node.childForFieldName?.("name");
+      const typeNode = node.childForFieldName?.("type") || node.childForFieldName?.("typeName");
+      const valNode = node.childForFieldName?.("value") || node.childForFieldName?.("defaultValue");
+      const dirNode = node.childForFieldName?.("direction");
+      if (nameNode?.text && typeNode?.text) {
+        const attrName = nameNode.text.trim();
+        const attrType = typeNode.text.trim();
+        const dir = dirNode?.text?.trim();
+        const rawVal = valNode?.text?.trim();
+        const numVal = rawVal !== undefined && /^[+-]?(?:\d|\.)/.test(rawVal) ? parseFloat(rawVal) : undefined;
+        components.push({
+          name: attrName,
+          type: attrType,
+          value: numVal,
+          properties: { ...(dir ? { direction: dir } : {}) },
+        });
+        if (rawVal !== undefined && !dir) {
+          parameters.push({
+            name: attrName,
+            type: attrType,
+            value: numVal ?? rawVal.replace(/^"|"$/g, ""),
+          });
+        } else {
+          variables.push({
+            name: attrName,
+            type: attrType,
+            variability: "continuous",
+            causality: dir === "in" ? "input" : dir === "out" ? "output" : "local",
+            start: numVal,
+          });
+        }
+        return;
+      }
+    }
 
-    components.push({
-      name: attrName,
-      type: attrType,
-      value: numVal,
-      properties: { ...(unit ? { unit } : {}), ...(dir ? { direction: dir } : {}) },
-    });
+    if (node.type === "PortUsage" || node.type === "PortDeclaration") {
+      const nameNode = node.childForFieldName?.("name");
+      const typeNode = node.childForFieldName?.("type") || node.childForFieldName?.("typeName");
+      const dirNode = node.childForFieldName?.("direction");
+      if (nameNode?.text && typeNode?.text) {
+        const portName = nameNode.text.trim();
+        const portType = typeNode.text.trim();
+        const dir = (dirNode?.text?.trim() as "in" | "out" | "inout" | undefined) ?? "inout";
+        ports.push({ name: portName, type: portType, direction: dir, properties: {} });
+        components.push({ name: portName, type: portType, properties: { kind: "port", direction: dir } });
+        return;
+      }
+    }
 
-    if (rawVal !== undefined && !dir) {
-      parameters.push({
-        name: attrName,
-        type: attrType,
-        value: numVal ?? rawVal.replace(/^"|"$/g, ""),
-        unit,
-      });
-    } else {
-      variables.push({
-        name: attrName,
-        type: attrType,
-        variability: "continuous",
-        causality: dir === "in" ? "input" : dir === "out" ? "output" : "local",
-        start: numVal,
-        unit,
-      });
+    for (let i = 0; i < node.childCount; i++) {
+      walkSysml(node.child(i));
     }
   }
 
-  // 2. Extract port declarations: `in port p_in : PowerPort;` or `port fuelPort : FuelInterface;`
-  const portRegex =
-    /\b(?:(in|out|inout)\s+)?port\s+(?!def\b)([A-Za-z_][A-Za-z0-9_]*)\s*(?::>?|:)\s*([A-Za-z_][A-Za-z0-9_:.~]*)/g;
-  while ((m = portRegex.exec(clean)) !== null) {
-    const dir = (m[1] as "in" | "out" | "inout" | undefined) ?? "inout";
-    const portName = m[2]!;
-    const portType = m[3]!;
-    ports.push({
-      name: portName,
-      type: portType,
-      direction: dir,
-      properties: {},
-    });
-    components.push({
-      name: portName,
-      type: portType,
-      properties: { kind: "port", direction: dir },
-    });
+  walkSysml(sysmlTreeRoot);
+
+  const clean = sourceText.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  if (modelName === "AnonymousSysMLModel") {
+    const nameMatch = clean.match(/\b(?:package|part\s+def|part)\s+([A-Za-z_][A-Za-z0-9_]*)/);
+    if (nameMatch?.[1]) modelName = nameMatch[1];
   }
 
-  // 3. Extract part usages: `part engine : Engine;`
-  const partRegex = /\bpart\s+(?!def\b)([A-Za-z_][A-Za-z0-9_]*)\s*(?::>?|:)\s*([A-Za-z_][A-Za-z0-9_:.]*)/g;
-  while ((m = partRegex.exec(clean)) !== null) {
-    const partName = m[1]!;
-    const partType = m[2]!;
-    components.push({
-      name: partName,
-      type: partType,
-      properties: { kind: "part" },
-    });
+  let m: RegExpExecArray | null;
+  if (components.length === 0) {
+    // 1. Extract attribute declarations: `attribute mass : Real = 1200 [kg];` or `in attribute v : Real;`
+    const attrRegex =
+      /\b(?:(in|out|inout)\s+)?attribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::>?|:)\s*([A-Za-z_][A-Za-z0-9_:]*)(?:\s*\[([^\]]+)\])?(?:\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|"[^"]*"|true|false))?/g;
+    while ((m = attrRegex.exec(clean)) !== null) {
+      const dir = m[1];
+      const attrName = m[2]!;
+      const attrType = m[3]!;
+      const unit = m[4]?.trim();
+      const rawVal = m[5];
+      const numVal = rawVal !== undefined && /^[+-]?(?:\d|\.)/.test(rawVal) ? parseFloat(rawVal) : undefined;
+
+      components.push({
+        name: attrName,
+        type: attrType,
+        value: numVal,
+        properties: { ...(unit ? { unit } : {}), ...(dir ? { direction: dir } : {}) },
+      });
+
+      if (rawVal !== undefined && !dir) {
+        parameters.push({
+          name: attrName,
+          type: attrType,
+          value: numVal ?? rawVal.replace(/^"|"$/g, ""),
+          unit,
+        });
+      } else {
+        variables.push({
+          name: attrName,
+          type: attrType,
+          variability: "continuous",
+          causality: dir === "in" ? "input" : dir === "out" ? "output" : "local",
+          start: numVal,
+          unit,
+        });
+      }
+    }
+
+    // 2. Extract port declarations: `in port p_in : PowerPort;` or `port fuelPort : FuelInterface;`
+    const portRegex =
+      /\b(?:(in|out|inout)\s+)?port\s+(?!def\b)([A-Za-z_][A-Za-z0-9_]*)\s*(?::>?|:)\s*([A-Za-z_][A-Za-z0-9_:.~]*)/g;
+    while ((m = portRegex.exec(clean)) !== null) {
+      const dir = (m[1] as "in" | "out" | "inout" | undefined) ?? "inout";
+      const portName = m[2]!;
+      const portType = m[3]!;
+      ports.push({
+        name: portName,
+        type: portType,
+        direction: dir,
+        properties: {},
+      });
+      components.push({
+        name: portName,
+        type: portType,
+        properties: { kind: "port", direction: dir },
+      });
+    }
+
+    // 3. Extract part usages: `part engine : Engine;`
+    const partRegex = /\bpart\s+(?!def\b)([A-Za-z_][A-Za-z0-9_]*)\s*(?::>?|:)\s*([A-Za-z_][A-Za-z0-9_:.]*)/g;
+    while ((m = partRegex.exec(clean)) !== null) {
+      const partName = m[1]!;
+      const partType = m[2]!;
+      components.push({
+        name: partName,
+        type: partType,
+        properties: { kind: "part" },
+      });
+    }
   }
 
   // 4. Extract connect / bind / constraint equations
@@ -480,11 +597,37 @@ export function extractSysML2Model(
 }
 
 /**
+ * Splits ISO 10303-21 STEP source text on top-level `;` terminators outside single-quoted strings.
+ */
+function splitStepStatementsOutsideQuotes(sourceText: string): string[] {
+  const stmts: string[] = [];
+  let start = 0;
+  let inSingleQuote = false;
+  for (let i = 0; i < sourceText.length; i++) {
+    const ch = sourceText[i];
+    if (ch === "'") {
+      if (inSingleQuote && sourceText[i + 1] === "'") {
+        i++; // escaped '' inside STEP string
+        continue;
+      }
+      inSingleQuote = !inSingleQuote;
+    } else if (ch === ";" && !inSingleQuote) {
+      stmts.push(sourceText.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (start < sourceText.length) {
+    stmts.push(sourceText.slice(start));
+  }
+  return stmts;
+}
+
+/**
  * Extracts structured geometric/product entities, parameters, ports (placements/mates),
- * and assembly relationships from an ISO 10303-21 STEP (`.step` / `.stp`) file.
+ * and assembly relationships from an ISO 10303-21 STEP (`.step` / `.stp`) CST root node and/or source text.
  */
 export function extractStepModel(
-  _stepTreeRoot: ModelScriptCstNode | null | undefined,
+  stepTreeRoot: ModelScriptCstNode | null | undefined,
   sourceText: string,
 ): PolyglotModel {
   const components: ModelicaComponentInfo[] = [];
@@ -499,7 +642,22 @@ export function extractStepModel(
     modelName = fileMatch[1].replace(/\.(?:step|stp|p21)$/i, "");
   }
 
-  for (const rawStatement of sourceText.split(";")) {
+  const rawStatements: string[] = [];
+  function collectCstEntities(node: ModelScriptCstNode | null | undefined): void {
+    if (!node) return;
+    if (node.type === "entity_instance" || node.type === "EntityInstance" || node.type === "simple_entity_instance") {
+      rawStatements.push(node.text.replace(/;$/, ""));
+      return;
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      collectCstEntities(node.child(i));
+    }
+  }
+  collectCstEntities(stepTreeRoot);
+
+  const statements = rawStatements.length > 0 ? rawStatements : splitStepStatementsOutsideQuotes(sourceText);
+
+  for (const rawStatement of statements) {
     const eqIdx = rawStatement.indexOf("=");
     if (eqIdx === -1) continue;
     const left = rawStatement.slice(0, eqIdx).trim();
@@ -516,15 +674,15 @@ export function extractStepModel(
     if (!/^[A-Z0-9_]+$/.test(entityType)) continue;
     const argsRaw = right.slice(openParen + 1, closeParen).trim();
 
-    const labelMatch = argsRaw.match(/^'([^']*)'/);
-    const label = labelMatch?.[1] || id;
+    const labelMatch = argsRaw.match(/^'((?:[^']|'')*)'/);
+    const label = labelMatch?.[1]?.replace(/''/g, "'") || id;
     const nums = [...argsRaw.matchAll(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/g)]
       .filter((nm) => !argsRaw.slice(0, nm.index).endsWith("#"))
       .map((nm) => parseFloat(nm[0]));
     const firstNum = nums[0];
 
     if (entityType === "PRODUCT" && labelMatch?.[1] && modelName === "AnonymousStepModel") {
-      modelName = labelMatch[1];
+      modelName = labelMatch[1].replace(/''/g, "'");
     }
 
     components.push({

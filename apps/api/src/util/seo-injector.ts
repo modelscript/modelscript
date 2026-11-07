@@ -25,18 +25,31 @@ export function escapeHtml(str: unknown): string {
 }
 
 export function resolveRequestHost(req: Request, fallback: string = "https://ansatz.social"): string {
+  const configuredPublicUrl = process.env["PUBLIC_URL"]?.trim();
+  if (configuredPublicUrl && process.env["NODE_ENV"] === "production") {
+    return configuredPublicUrl.replace(/\/+$/, "");
+  }
+
   const forwardedProto = req.headers["x-forwarded-proto"];
   const forwardedHost = req.headers["x-forwarded-host"];
   const hostHeader = (forwardedHost || req.headers.host || "").toString().trim();
 
   // If host is absent or points to local loopback (common in unit tests / ephemeral test runners), use default canonical host
   if (!hostHeader || hostHeader.includes("127.0.0.1") || hostHeader.includes("localhost")) {
-    return (process.env["PUBLIC_URL"] || fallback).replace(/\/+$/, "");
+    return (configuredPublicUrl || fallback).replace(/\/+$/, "");
   }
 
   const protocol = forwardedProto || req.protocol || "https";
-  const cleanProto = String(protocol).split(",")[0]!.trim();
+  const cleanProto = String(protocol).split(",")[0]!.trim().toLowerCase();
   const cleanHost = hostHeader.split(",")[0]!.trim();
+
+  if (
+    (cleanProto !== "http" && cleanProto !== "https") ||
+    !/^(?:[a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\])(?::\d{1,5})?$/.test(cleanHost)
+  ) {
+    return (configuredPublicUrl || fallback).replace(/\/+$/, "");
+  }
+
   return `${cleanProto}://${cleanHost}`;
 }
 

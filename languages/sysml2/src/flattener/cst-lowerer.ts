@@ -1380,8 +1380,36 @@ export class SysML2CstFlattener {
         }
       }
 
-      // Extract subpart overrides if any
+      // Extract subpart overrides from child AttributeUsage CST nodes and redefinitions
       const subOverrides: Record<string, number> = {};
+      const subAttrUsages = findCstDescendants(pu, "AttributeUsage");
+      for (const sau of subAttrUsages) {
+        if (this.isDescendantOfPartUsage(sau, pu)) continue;
+        const sauNameNode = findFirstDescendant(sau, "Name") || findFirstDescendant(sau, "ID");
+        const sauName = sauNameNode?.text?.trim();
+        if (!sauName) continue;
+        const valNode = findFirstDescendant(sau, "FeatureValue") || findFirstDescendant(sau, "OwnedExpression");
+        if (valNode) {
+          const rawVal = valNode.text.replace(/^[=:\s]+/, "").trim();
+          const parsed = parseFloat(rawVal);
+          if (!isNaN(parsed) && isFinite(parsed)) {
+            subOverrides[sauName] = parsed;
+          }
+        }
+      }
+      const subRedefRegex =
+        /\b(?:attribute\s+|redefines\s+|:>>\s*)([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*[A-Za-z0-9_:]+\s*)?=\s*([+-]?[0-9.]+(?:[eE][+-]?[0-9]+)?)/g;
+      let srm: RegExpExecArray | null;
+      const puText = pu.text || "";
+      while ((srm = subRedefRegex.exec(puText)) !== null) {
+        const attrKey = srm[1]!;
+        if (subOverrides[attrKey] === undefined) {
+          const parsed = parseFloat(srm[2]!);
+          if (!isNaN(parsed) && isFinite(parsed)) {
+            subOverrides[attrKey] = parsed;
+          }
+        }
+      }
       const subCompDef = this.compDefs.get(subTypeName);
 
       if (subCompDef) {

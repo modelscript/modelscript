@@ -1,3 +1,8 @@
+---
+title: "CCSDS Astrodynamics & Space Telemetry (.oem, .opm, .omm, .xtce)"
+description: "@modelscript/ccsds (languages/ccsds) provides comprehensive compiler, trajectory propagation, and verification support for the Consultative Committee for Space Data Systems (CCSDS) and OMG XML Tele..."
+---
+
 # CCSDS Astrodynamics & Space Telemetry (`.oem`, `.opm`, `.omm`, `.xtce`)
 
 `@modelscript/ccsds` (`languages/ccsds`) provides comprehensive compiler, trajectory propagation, and verification support for the **Consultative Committee for Space Data Systems (CCSDS)** and **OMG XML Telemetric & Command Exchange (XTCE)** standards.

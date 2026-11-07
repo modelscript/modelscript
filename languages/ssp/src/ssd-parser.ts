@@ -246,6 +246,15 @@ export function parseSsv(xml: string, fullXml: string = xml, baseOffset: number 
       if (val !== undefined) {
         values.push({ name: paramName, type: "String", value: val, line });
       }
+      continue;
+    }
+
+    const enumEl = getChild(paramEl, "Enumeration");
+    if (enumEl) {
+      const val = getAttr(enumEl, "value");
+      if (val !== undefined) {
+        values.push({ name: paramName, type: "Enumeration", value: val, line });
+      }
     }
   }
 
@@ -481,6 +490,13 @@ function parseParameterBindings(systemEl: XmlElement, lineStarts: number[]): Ssp
       if (strEl) {
         const val = getAttr(strEl, "value");
         if (val !== undefined) values.push({ name: paramName, type: "String", value: val, line });
+        continue;
+      }
+
+      const enumEl = getChild(paramEl, "Enumeration");
+      if (enumEl) {
+        const val = getAttr(enumEl, "value");
+        if (val !== undefined) values.push({ name: paramName, type: "Enumeration", value: val, line });
       }
     }
 
@@ -608,6 +624,130 @@ export function parseSsb(xml: string): SspSignalDictionary {
   return { version, name, entries };
 }
 
+function serializeSystemXmlLines(system: SspSystem, indent: string, lines: string[]): void {
+  const descAttr = system.description ? ` description="${escapeXml(system.description)}"` : "";
+  lines.push(`${indent}<ssd:System name="${escapeXml(system.name)}"${descAttr}>`);
+
+  if (system.geometry) {
+    const g = system.geometry;
+    const rotAttr = g.rotation !== undefined ? ` rotation="${g.rotation}"` : "";
+    lines.push(`${indent}  <ssd:SystemGeometry x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}"${rotAttr} />`);
+  }
+
+  // Connectors
+  if (system.connectors && system.connectors.length > 0) {
+    lines.push(`${indent}  <ssd:Connectors>`);
+    for (const c of system.connectors) {
+      lines.push(`${indent}    <ssd:Connector name="${escapeXml(c.name)}" kind="${c.kind}">`);
+      const uAttr = c.unit ? ` unit="${escapeXml(c.unit)}"` : "";
+      lines.push(`${indent}      <ssc:${c.type}${uAttr} />`);
+      if (c.geometry) {
+        lines.push(`${indent}      <ssd:ConnectorGeometry x="${c.geometry.x}" y="${c.geometry.y}" />`);
+      }
+      lines.push(`${indent}    </ssd:Connector>`);
+    }
+    lines.push(`${indent}  </ssd:Connectors>`);
+  }
+
+  // Elements (Components & nested Systems)
+  const subSystems = system.systems ?? system.elements?.systems ?? [];
+  if (system.components.length > 0 || subSystems.length > 0) {
+    lines.push(`${indent}  <ssd:Elements>`);
+    for (const cmp of system.components) {
+      const typeAttr = cmp.type ? ` type="${escapeXml(cmp.type)}"` : "";
+      lines.push(
+        `${indent}    <ssd:Component name="${escapeXml(cmp.name)}" source="${escapeXml(cmp.source)}"${typeAttr}>`,
+      );
+      if (cmp.connectors.length > 0) {
+        lines.push(`${indent}      <ssd:Connectors>`);
+        for (const c of cmp.connectors) {
+          lines.push(`${indent}        <ssd:Connector name="${escapeXml(c.name)}" kind="${c.kind}">`);
+          const uAttr = c.unit ? ` unit="${escapeXml(c.unit)}"` : "";
+          lines.push(`${indent}          <ssc:${c.type}${uAttr} />`);
+          if (c.geometry) {
+            lines.push(`${indent}          <ssd:ConnectorGeometry x="${c.geometry.x}" y="${c.geometry.y}" />`);
+          }
+          lines.push(`${indent}        </ssd:Connector>`);
+        }
+        lines.push(`${indent}      </ssd:Connectors>`);
+      }
+      if (cmp.geometry) {
+        const g = cmp.geometry;
+        const rotAttr = g.rotation !== undefined ? ` rotation="${g.rotation}"` : "";
+        lines.push(
+          `${indent}      <ssd:ElementGeometry x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}"${rotAttr} />`,
+        );
+      }
+      lines.push(`${indent}    </ssd:Component>`);
+    }
+    for (const sub of subSystems) {
+      serializeSystemXmlLines(sub, `${indent}    `, lines);
+    }
+    lines.push(`${indent}  </ssd:Elements>`);
+  }
+
+  // Connections
+  if (system.connections.length > 0) {
+    lines.push(`${indent}  <ssd:Connections>`);
+    for (const conn of system.connections) {
+      if (conn.points && conn.points.length > 0) {
+        const px = conn.points.map((p) => p.x).join(" ");
+        const py = conn.points.map((p) => p.y).join(" ");
+        lines.push(
+          `${indent}    <ssd:Connection startElement="${escapeXml(conn.startElement)}" startConnector="${escapeXml(conn.startConnector)}" endElement="${escapeXml(conn.endElement)}" endConnector="${escapeXml(conn.endConnector)}">`,
+        );
+        lines.push(`${indent}      <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />`);
+        lines.push(`${indent}    </ssd:Connection>`);
+      } else {
+        lines.push(
+          `${indent}    <ssd:Connection startElement="${escapeXml(conn.startElement)}" startConnector="${escapeXml(conn.startConnector)}" endElement="${escapeXml(conn.endElement)}" endConnector="${escapeXml(conn.endConnector)}" />`,
+        );
+      }
+    }
+    lines.push(`${indent}  </ssd:Connections>`);
+  }
+
+  // ParameterBindings
+  if (system.parameterBindings.length > 0) {
+    for (const pb of system.parameterBindings) {
+      const pfxAttr = pb.prefix ? ` prefix="${escapeXml(pb.prefix)}"` : "";
+      const srcAttr = pb.source ? ` source="${escapeXml(pb.source)}"` : "";
+      lines.push(`${indent}  <ssd:ParameterBinding${pfxAttr}${srcAttr}>`);
+      if (pb.values && pb.values.length > 0) {
+        lines.push(
+          `${indent}    <ssd:ParameterValues xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues">`,
+        );
+        lines.push(`${indent}      <ssv:Parameters>`);
+        for (const v of pb.values) {
+          const uAttr = v.unit ? ` unit="${escapeXml(v.unit)}"` : "";
+          lines.push(`${indent}        <ssv:Parameter name="${escapeXml(v.name)}">`);
+          lines.push(`${indent}          <ssv:${v.type} value="${escapeXml(String(v.value))}"${uAttr} />`);
+          lines.push(`${indent}        </ssv:Parameter>`);
+        }
+        lines.push(`${indent}      </ssv:Parameters>`);
+        lines.push(`${indent}    </ssd:ParameterValues>`);
+      }
+      lines.push(`${indent}  </ssd:ParameterBinding>`);
+    }
+  }
+
+  // DefaultExperiment
+  if (system.defaultExperiment) {
+    const sStart =
+      system.defaultExperiment.startTime !== undefined ? ` startTime="${system.defaultExperiment.startTime}"` : "";
+    const sStop =
+      system.defaultExperiment.stopTime !== undefined ? ` stopTime="${system.defaultExperiment.stopTime}"` : "";
+    const sStep =
+      system.defaultExperiment.stepSize !== undefined ? ` stepSize="${system.defaultExperiment.stepSize}"` : "";
+    const sAlgo = system.defaultExperiment.algorithm
+      ? ` algorithm="${escapeXml(system.defaultExperiment.algorithm)}"`
+      : "";
+    lines.push(`${indent}  <ssd:DefaultExperiment${sStart}${sStop}${sStep}${sAlgo} />`);
+  }
+
+  lines.push(`${indent}</ssd:System>`);
+}
+
 /**
  * Serialize an SspSystem back to valid SystemStructure.ssd XML.
  */
@@ -623,85 +763,8 @@ export function serializeSsd(system: SspSystem): string {
   }
   lines.push(">");
 
-  lines.push(`  <ssd:System name="${escapeXml(system.name)}">`);
+  serializeSystemXmlLines(system, "  ", lines);
 
-  // Connectors
-  if (system.connectors && system.connectors.length > 0) {
-    lines.push("    <ssd:Connectors>");
-    for (const c of system.connectors) {
-      lines.push(`      <ssd:Connector name="${escapeXml(c.name)}" kind="${c.kind}">`);
-      const uAttr = c.unit ? ` unit="${escapeXml(c.unit)}"` : "";
-      lines.push(`        <ssc:${c.type}${uAttr} />`);
-      lines.push("      </ssd:Connector>");
-    }
-    lines.push("    </ssd:Connectors>");
-  }
-
-  // Elements (Components)
-  if (system.components.length > 0) {
-    lines.push("    <ssd:Elements>");
-    for (const cmp of system.components) {
-      const typeAttr = cmp.type ? ` type="${escapeXml(cmp.type)}"` : "";
-      lines.push(`      <ssd:Component name="${escapeXml(cmp.name)}" source="${escapeXml(cmp.source)}"${typeAttr}>`);
-      if (cmp.connectors.length > 0) {
-        lines.push("        <ssd:Connectors>");
-        for (const c of cmp.connectors) {
-          lines.push(`          <ssd:Connector name="${escapeXml(c.name)}" kind="${c.kind}">`);
-          const uAttr = c.unit ? ` unit="${escapeXml(c.unit)}"` : "";
-          lines.push(`            <ssc:${c.type}${uAttr} />`);
-          lines.push("          </ssd:Connector>");
-        }
-        lines.push("        </ssd:Connectors>");
-      }
-      lines.push("      </ssd:Component>");
-    }
-    lines.push("    </ssd:Elements>");
-  }
-
-  // Connections
-  if (system.connections.length > 0) {
-    lines.push("    <ssd:Connections>");
-    for (const conn of system.connections) {
-      lines.push(
-        `      <ssd:Connection startElement="${escapeXml(conn.startElement)}" startConnector="${escapeXml(conn.startConnector)}" endElement="${escapeXml(conn.endElement)}" endConnector="${escapeXml(conn.endConnector)}" />`,
-      );
-    }
-    lines.push("    </ssd:Connections>");
-  }
-
-  // ParameterBindings
-  if (system.parameterBindings.length > 0) {
-    for (const pb of system.parameterBindings) {
-      const pfxAttr = pb.prefix ? ` prefix="${escapeXml(pb.prefix)}"` : "";
-      const srcAttr = pb.source ? ` source="${escapeXml(pb.source)}"` : "";
-      lines.push(`    <ssd:ParameterBinding${pfxAttr}${srcAttr}>`);
-      if (pb.values && pb.values.length > 0) {
-        lines.push(
-          '      <ssd:ParameterValues xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues">',
-        );
-        lines.push("        <ssv:Parameters>");
-        for (const v of pb.values) {
-          lines.push(`          <ssv:Parameter name="${escapeXml(v.name)}">`);
-          lines.push(`            <ssv:${v.type} value="${v.value}" />`);
-          lines.push("          </ssv:Parameter>");
-        }
-        lines.push("        </ssv:Parameters>");
-        lines.push("      </ssd:ParameterValues>");
-      }
-      lines.push("    </ssd:ParameterBinding>");
-    }
-  }
-
-  // DefaultExperiment
-  if (system.defaultExperiment) {
-    const sStart =
-      system.defaultExperiment.startTime !== undefined ? ` startTime="${system.defaultExperiment.startTime}"` : "";
-    const sStop =
-      system.defaultExperiment.stopTime !== undefined ? ` stopTime="${system.defaultExperiment.stopTime}"` : "";
-    lines.push(`    <ssd:DefaultExperiment${sStart}${sStop} />`);
-  }
-
-  lines.push("  </ssd:System>");
   lines.push("</ssd:SystemStructureDescription>");
   return lines.join("\n");
 }
@@ -717,8 +780,9 @@ export function serializeSsv(params: SspParameterValue[], name: string = "Defaul
   lines.push(`                  name="${escapeXml(name)}">`);
   lines.push("  <ssv:Parameters>");
   for (const p of params) {
+    const uAttr = p.unit ? ` unit="${escapeXml(p.unit)}"` : "";
     lines.push(`    <ssv:Parameter name="${escapeXml(p.name)}">`);
-    lines.push(`      <ssv:${p.type} value="${p.value}" />`);
+    lines.push(`      <ssv:${p.type} value="${escapeXml(String(p.value))}"${uAttr} />`);
     lines.push("    </ssv:Parameter>");
   }
   lines.push("  </ssv:Parameters>");

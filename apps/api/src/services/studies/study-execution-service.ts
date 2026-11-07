@@ -1789,6 +1789,21 @@ export function executeStudyRun(
   results.studyInstance = studyInstance;
 
   // Persist artifacts & logs in a dedicated job directory
+  try {
+    const tmpBase = os.tmpdir();
+    const existing = fs.readdirSync(tmpBase).filter((f) => f.startsWith("msx-study-run-"));
+    if (existing.length > 50) {
+      const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+      for (const runDir of existing) {
+        const full = path.join(tmpBase, runDir);
+        try {
+          if (fs.statSync(full).mtimeMs < cutoff) {
+            fs.rmSync(full, { recursive: true, force: true });
+          }
+        } catch {}
+      }
+    }
+  } catch {}
   const resultDir = path.join(os.tmpdir(), `msx-study-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   fs.mkdirSync(resultDir, { recursive: true });
   const logPath = path.join(resultDir, "study.log");
@@ -2022,6 +2037,8 @@ export function getLinkedPackageStudies(
     targetArtifact?: string | undefined;
     targetModel?: string | undefined;
     domain?: string | undefined;
+    userId?: number | null | undefined;
+    isAdmin?: boolean | undefined;
   },
 ): {
   bundledStudies: (StudyDefinition & { dbId?: number | undefined })[];
@@ -2102,6 +2119,19 @@ export function getLinkedPackageStudies(
     try {
       if (j.metadata) meta = JSON.parse(j.metadata) as Record<string, unknown>;
     } catch {}
+
+    const explicitlyPublished = Boolean(
+      meta["linkToPackage"] || meta["saveInstanceToPackage"] || meta["isPublic"] === true,
+    );
+    if (
+      j.user_id !== null &&
+      j.user_id !== undefined &&
+      !opts.isAdmin &&
+      !explicitlyPublished &&
+      j.user_id !== (opts.userId ?? null)
+    ) {
+      continue;
+    }
 
     const jobPkg =
       (meta["packageName"] as string | undefined) ||

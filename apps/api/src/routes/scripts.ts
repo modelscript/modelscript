@@ -35,6 +35,7 @@ import type {
   StudyStandardFormat,
 } from "../services/studies/study-types.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 import { getActiveCloudJob } from "./cloud.js";
 
 export function scriptsRouter(db: LibraryDatabase) {
@@ -215,6 +216,8 @@ export function scriptsRouter(db: LibraryDatabase) {
         targetArtifact,
         targetModel,
         domain,
+        userId: req.user?.id ?? null,
+        isAdmin: req.user?.role === "admin" || req.user?.accountType === "admin",
       });
 
       return res.json(linked);
@@ -373,9 +376,21 @@ export function scriptsRouter(db: LibraryDatabase) {
 
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const userId = reqUser?.id ?? null;
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const executionTarget = req.body?.executionTarget || "local-wasm";
 
-      if (userId && executionTarget === "hpc-cluster") {
+      if (userId && (executionTarget === "hpc-cluster" || executionTarget === "hpc-slurm")) {
+        const user = db.getUserById(userId);
+        const sandbox = checkComputeSandboxing(user);
+        if (sandbox.sandboxed) {
+          return res.status(403).json({
+            error: sandbox.error,
+            code: sandbox.code,
+            fallbackAvailable: sandbox.fallbackAvailable,
+          });
+        }
         const quota = checkComputeQuota(userId, req.body?.computeProfile || "standard", db, 0.05);
         if (!quota.allowed) {
           return res.status(402).json({ error: quota.reason });
@@ -650,78 +665,109 @@ export function scriptsRouter(db: LibraryDatabase) {
   });
 
   // ── 7b. Re-run a Job's Study Instance Artifact (.sedml, .ssv, .dakota) ──
-  router.post("/:id/rerun", optionalAuth, express.json(), (req, res) => {
-    try {
-      const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      if (process.env["NODE_ENV"] === "production" && !reqUser) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
-      const job = db.getJob(paramId);
-      if (!job) {
-        return res.status(404).json({ error: "Job not found" });
-      }
-      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-        return res.status(403).json({ error: "Forbidden: Not authorized to re-run this job" });
-      }
-      const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
-      const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
-      const studyResults = meta["studyResults"] as StudyRunResultsPayload | undefined;
+  router.post(
+    "/:id/rerun",
+    optionalAuth,
+    enforceExportCompliance(() => db),
+    express.json(),
+    (req, res) => {
+      try {
+        const paramId = req.params["id"] as string;
+        const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+        if (process.env["NODE_ENV"] === "production" && !reqUser) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+        const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
+        const job = db.getJob(paramId);
+        if (!job) {
+          return res.status(404).json({ error: "Job not found" });
+        }
+        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+          return res.status(403).json({ error: "Forbidden: Not authorized to re-run this job" });
+        }
+        const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
+        const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
+        const studyResults = meta["studyResults"] as StudyRunResultsPayload | undefined;
 
-      const templateIdOrSlug = String(
-        req.body?.templateIdOrSlug ||
-          meta["templateSlug"] ||
-          storedInstance?.["templateSlug"] ||
-          studyResults?.templateSlug ||
-          "modelica-sundials-dae",
-      );
+        const templateIdOrSlug = String(
+          req.body?.templateIdOrSlug ||
+            meta["templateSlug"] ||
+            storedInstance?.["templateSlug"] ||
+            studyResults?.templateSlug ||
+            "modelica-sundials-dae",
+        );
 
-      const studyReq: StudyRunRequest = {
-        templateIdOrSlug,
-        modelId: req.body?.modelId || (meta["modelId"] as string) || (storedInstance?.["modelId"] as string),
-        modelName:
-          req.body?.modelName || (meta["modelName"] as string) || (storedInstance?.["modelName"] as string) || job.name,
-        modelDomain: (req.body?.modelDomain || meta["modelDomain"] || storedInstance?.["modelDomain"]) as
-          | StudyDomain
-          | undefined,
-        modelCode: req.body?.modelCode || (meta["modelCode"] as string | undefined),
-        packageName: (req.body?.packageName || meta["packageName"] || storedInstance?.["packageName"]) as
-          | string
-          | undefined,
-        packageVersion: (req.body?.packageVersion || meta["packageVersion"] || storedInstance?.["packageVersion"]) as
-          | string
-          | undefined,
-        executionTarget: (req.body?.executionTarget || meta["executionTarget"] || "local-wasm") as StudyExecutionTarget,
-        computeProfile:
-          req.body?.computeProfile || job.compute_profile || (meta["computeProfile"] as string) || "standard",
-        inputs: (req.body?.inputs || meta["inputs"] || storedInstance?.["inputs"] || {}) as Record<
-          string,
-          string | number | boolean
-        >,
-        parameterBindings: (req.body?.parameterBindings ||
-          meta["parameterBindings"] ||
-          storedInstance?.["parameterBindings"] ||
-          []) as StudyParameterBinding[],
-        observables: (req.body?.observables ||
-          meta["observables"] ||
-          storedInstance?.["observables"] ||
-          []) as string[],
-        studyInstanceSource: req.body?.studyInstanceSource || (storedInstance?.["sourceContent"] as string | undefined),
-      };
+        const executionTarget = (req.body?.executionTarget ||
+          meta["executionTarget"] ||
+          "local-wasm") as StudyExecutionTarget;
+        const computeProfile =
+          req.body?.computeProfile || job.compute_profile || (meta["computeProfile"] as string) || "standard";
+        const billingUserId = reqUser?.id ?? (process.env["NODE_ENV"] === "test" ? (job.user_id ?? null) : null);
 
-      const billingUserId = reqUser?.id ?? (process.env["NODE_ENV"] === "test" ? (job.user_id ?? null) : null);
-      const runOutput = executeStudyRun(db, studyReq, billingUserId);
-      return res.json({
-        ...runOutput,
-        previousJobId: job.id,
-        studyResults: runOutput.results,
-      });
-    } catch (error) {
-      console.error("Error re-running study instance:", error);
-      return res.status(500).json({ error: "Failed to re-run study instance" });
-    }
-  });
+        if (billingUserId && (executionTarget === "hpc-cluster" || (executionTarget as string) === "hpc-slurm")) {
+          const user = db.getUserById(billingUserId);
+          const sandbox = checkComputeSandboxing(user);
+          if (sandbox.sandboxed) {
+            return res.status(403).json({
+              error: sandbox.error,
+              code: sandbox.code,
+              fallbackAvailable: sandbox.fallbackAvailable,
+            });
+          }
+          const quota = checkComputeQuota(billingUserId, computeProfile, db, 0.05);
+          if (!quota.allowed) {
+            return res.status(402).json({ error: quota.reason });
+          }
+        }
+
+        const studyReq: StudyRunRequest = {
+          templateIdOrSlug,
+          modelId: req.body?.modelId || (meta["modelId"] as string) || (storedInstance?.["modelId"] as string),
+          modelName:
+            req.body?.modelName ||
+            (meta["modelName"] as string) ||
+            (storedInstance?.["modelName"] as string) ||
+            job.name,
+          modelDomain: (req.body?.modelDomain || meta["modelDomain"] || storedInstance?.["modelDomain"]) as
+            | StudyDomain
+            | undefined,
+          modelCode: req.body?.modelCode || (meta["modelCode"] as string | undefined),
+          packageName: (req.body?.packageName || meta["packageName"] || storedInstance?.["packageName"]) as
+            | string
+            | undefined,
+          packageVersion: (req.body?.packageVersion || meta["packageVersion"] || storedInstance?.["packageVersion"]) as
+            | string
+            | undefined,
+          executionTarget,
+          computeProfile,
+          inputs: (req.body?.inputs || meta["inputs"] || storedInstance?.["inputs"] || {}) as Record<
+            string,
+            string | number | boolean
+          >,
+          parameterBindings: (req.body?.parameterBindings ||
+            meta["parameterBindings"] ||
+            storedInstance?.["parameterBindings"] ||
+            []) as StudyParameterBinding[],
+          observables: (req.body?.observables ||
+            meta["observables"] ||
+            storedInstance?.["observables"] ||
+            []) as string[],
+          studyInstanceSource:
+            req.body?.studyInstanceSource || (storedInstance?.["sourceContent"] as string | undefined),
+        };
+
+        const runOutput = executeStudyRun(db, studyReq, billingUserId);
+        return res.json({
+          ...runOutput,
+          previousJobId: job.id,
+          studyResults: runOutput.results,
+        });
+      } catch (error) {
+        console.error("Error re-running study instance:", error);
+        return res.status(500).json({ error: "Failed to re-run study instance" });
+      }
+    },
+  );
 
   // ── 7c. Save a Job's Study Instance as a Reusable Study Template in the Gallery / Package ──
   router.post("/:id/save-as-template", optionalAuth, express.json(), (req, res) => {
@@ -1163,15 +1209,24 @@ export function scriptsRouter(db: LibraryDatabase) {
       }
 
       let bytesRead = 0;
+      let isReadingLog = false;
       const sendNewLogs = () => {
-        if (!logPath || !fs.existsSync(logPath)) return;
+        if (isReadingLog || !logPath || !fs.existsSync(logPath)) return;
         const stats = fs.statSync(logPath);
         if (stats.size > bytesRead) {
-          const stream = fs.createReadStream(logPath, { start: bytesRead, end: stats.size - 1 });
+          const targetEnd = stats.size;
+          isReadingLog = true;
+          const stream = fs.createReadStream(logPath, { start: bytesRead, end: targetEnd - 1 });
           stream.on("data", (chunk) => {
             res.write(`event: log\ndata: ${JSON.stringify(chunk.toString())}\n\n`);
           });
-          bytesRead = stats.size;
+          stream.on("end", () => {
+            bytesRead = targetEnd;
+            isReadingLog = false;
+          });
+          stream.on("error", () => {
+            isReadingLog = false;
+          });
         }
       };
 

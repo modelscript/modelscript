@@ -1,3 +1,8 @@
+---
+title: Platform Administration & Enterprise Hub Guide
+description: Self-hosting, RBAC, SSO/SAML, Git Smart HTTP, content-addressable package registry, Slurm HPC offload, and air-gapped appliance runbooks for ModelScript.
+---
+
 # Platform Administration & Enterprise Hub Guide
 
 The **ModelScript Enterprise Hub** (`@modelscript/api`, `@modelscript/web`, and `@modelscript/ee`) provides a self-hostable or cloud-managed control plane for polyglot package management, Git Smart HTTP hosting, OMG SysML v2 / Semantic Web APIs, Slurm HPC simulation offload, operational digital twins, and cryptographically verifiable regulatory compliance.
@@ -193,7 +198,7 @@ msx dhf audit release_v1.dhf.md
 Enterprise teams can connect cloud AI agents and internal copilot orchestrators directly to the Hub's **Hosted Model Context Protocol (MCP) Gateway**:
 
 - **`GET /api/v1/mcp/sse`**: Authenticates via Bearer token (`JWT` or `ms_bot_*`) and opens a server-sent events transport session.
-- **`POST /api/v1/mcp/messages`**: Dispatches any of the [31 MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.
+- **`POST /api/v1/mcp/messages`**: Dispatches any of the [60 MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.
 
 ---
 
@@ -217,7 +222,7 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
 
 - Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
-- Includes the full 44-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Web IDE, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
+- Includes the full 68-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Web IDE, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
 - Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/stats`, `/api/v1/admin/ee/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
 
 ```bash
@@ -389,7 +394,7 @@ npm run ee:verify-license -- msx_lic_<PAYLOAD>.<SIGNATURE>
 
 ---
 
-### 7. Upgrading & Rollback Runbook
+### 9.7 Upgrading & Rollback Runbook
 
 Follow this standard operating procedure whenever upgrading a self-hosted Ansatz hub or Enterprise appliance:
 

@@ -17,7 +17,7 @@ export function sitemapsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 
   function getBaseContext(req: Request) {
-    const host = resolveRequestHost(req);
+    const host = escapeXml(resolveRequestHost(req));
     return { host };
   }
 

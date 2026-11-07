@@ -6,8 +6,10 @@ import type { IconName } from "../data/icons";
 import MsIcon from "./MsIcon.vue";
 
 const path = ref("");
+const isMac = ref(false);
 onMounted(() => {
   path.value = window.location.pathname;
+  isMac.value = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 });
 
 const links: { icon: IconName; title: string; detail: string; href: string }[] = [
@@ -44,7 +46,7 @@ function openSearch(): void {
       <button id="nf-search" type="button" class="nf-btn nf-btn-primary" @click="openSearch">
         <MsIcon name="search" :size="16" />
         Search the docs
-        <kbd>Ctrl K</kbd>
+        <kbd>{{ isMac ? "⌘K" : "Ctrl K" }}</kbd>
       </button>
       <a id="nf-home" class="nf-btn" :href="withBase('/')">Back to home</a>
     </div>

@@ -69,26 +69,28 @@ export function sparqlRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      if (/\bSERVICE\s+(?:SILENT\s+)?[<a-zA-Z?]/i.test(query)) {
+      if (/\bSERVICE(?:\s+SILENT)?\s*[<a-zA-Z?(]/i.test(query)) {
         res.status(400).json({ error: "Federated SPARQL SERVICE clauses are not permitted" });
         return;
       }
 
       // Build streaming SQL-backed source
-      // Note: LibraryDatabase.#db is private, so we need to either expose it or use a getter.
-      // I will add a getter to LibraryDatabase in the next step, for now I assume it's available or we pass the Database proxy.
       const source = new SqliteRdfSource(database.db, name, version);
 
       try {
-        // Dynamically import comunica to avoid top-level import issues
+        // Dynamically import comunica and reuse a singleton QueryEngine instance
         const { QueryEngine } = await import("@comunica/query-sparql-rdfjs");
-        const engine = new QueryEngine();
+        const globalAny = globalThis as { __msxSparqlEngine?: InstanceType<typeof QueryEngine> | undefined };
+        if (!globalAny.__msxSparqlEngine) {
+          globalAny.__msxSparqlEngine = new QueryEngine();
+        }
+        const engine = globalAny.__msxSparqlEngine;
 
         const queryType = query.trim().toUpperCase();
 
         if (queryType.startsWith("SELECT") || queryType.startsWith("PREFIX")) {
           const bindingsStream = await engine.queryBindings(query, { sources: [source] });
-          const bindings = await bindingsStream.toArray();
+          const bindings = await bindingsStream.toArray({ limit: 5000 });
 
           const firstBinding = bindings[0];
           const variables = firstBinding ? [...firstBinding.keys()].map((v) => v.value) : [];

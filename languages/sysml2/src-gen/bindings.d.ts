@@ -1610,25 +1610,25 @@ export declare enum SyntaxKind {
   QualifiedName = 461,
   START = 462,
   _START = 462,
-  MetaClassificationTestOperator = 643,
-  CastOperator = 644,
-  MetaCastOperator = 645,
-  LiteralInfinity = 689,
-  DECIMALVALUE = 694,
-  DECIMAL_VALUE = 694,
-  EXPVALUE = 695,
-  EXP_VALUE = 695,
-  ID = 696,
-  UNRESTRICTEDNAME = 697,
-  UNRESTRICTED_NAME = 697,
-  STRINGVALUE = 698,
-  STRING_VALUE = 698,
-  REGULARCOMMENT = 699,
-  REGULAR_COMMENT = 699,
-  MLNOTE = 700,
-  ML_NOTE = 700,
-  SLNOTE = 701,
-  SL_NOTE = 701,
+  MetaClassificationTestOperator = 644,
+  CastOperator = 645,
+  MetaCastOperator = 646,
+  LiteralInfinity = 690,
+  DECIMALVALUE = 695,
+  DECIMAL_VALUE = 695,
+  EXPVALUE = 696,
+  EXP_VALUE = 696,
+  ID = 697,
+  UNRESTRICTEDNAME = 698,
+  UNRESTRICTED_NAME = 698,
+  STRINGVALUE = 699,
+  STRING_VALUE = 699,
+  REGULARCOMMENT = 700,
+  REGULAR_COMMENT = 700,
+  MLNOTE = 701,
+  ML_NOTE = 701,
+  SLNOTE = 702,
+  SL_NOTE = 702,
   EOF = 1023,
 }
 
@@ -1723,10 +1723,10 @@ export declare enum FieldId {
   sentItem = 44,
   Receiver = 45,
   receiver = 45,
-  AssignedValue = 46,
-  assignedValue = 46,
-  TargetFeature = 47,
-  targetFeature = 47,
+  TargetFeature = 46,
+  targetFeature = 46,
+  AssignedValue = 47,
+  assignedValue = 47,
   IsNegated = 48,
   isNegated = 48,
   ConstraintKind = 49,
@@ -4455,14 +4455,14 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is AssignActionNodeNode;
-    assignedValue(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    assignedValueList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    targetFeature(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    targetFeatureList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declaredShortName(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaredShortNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declaredName(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaredNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    targetFeature(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    targetFeatureList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    assignedValue(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    assignedValueList(node: SyntaxNode | null | undefined): SyntaxNode[];
     isEnd(node: SyntaxNode | null | undefined): SyntaxNode | null;
     isEndList(node: SyntaxNode | null | undefined): SyntaxNode[];
     direction(node: SyntaxNode | null | undefined): SyntaxNode | null;

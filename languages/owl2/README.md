@@ -28,18 +28,18 @@ Web Ontology Language (OWL 2 DL) Functional-Style Syntax and Turtle compiler, CS
 
 ## Package Structure
 
-| Path                             | Description                                                                                                               |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                   | Public exports (`owl2Language`, `lowerCstToAxioms`, `lintOwl2Document`, `Owl2ErrorCode`, `OWL2Factory`, diagram builders) |
-| `src/language.ts`                | OWL 2 grammar specification, writeback handler, LSP actions, `owl2-mcp` tool definitions, and 5 polyglot TGG rules        |
-| `src/cst-lowering.ts`            | `lowerCstToAxioms` CST walker lowering 25+ OWL 2 DL axiom constructs into `OWL2Axiom` arena records                       |
-| `src/errors.ts`                  | `Owl2ErrorCode` diagnostic registry (`O1001`–`O6001` / numeric `1001`–`6001`)                                             |
-| `src/lints.ts` (`src/linter.ts`) | `lintOwl2Document` static, OWL 2 DL global restriction, reasoner satisfiability, and OWL 2 EL profile linter              |
-| `src/workspace-index.ts`         | Multi-file OWL 2 ontology workspace indexer and `Import(...)` resolver                                                    |
-| `src/factory.ts`                 | Fluent `OWL2Factory` builder API for programmatic ontology construction                                                   |
-| `src/diagram/data.ts`            | `buildOWL2DiagramData` converting asserted and reasoner-inferred axioms into interactive 2D node-link diagrams            |
-| `src/diagram/edits.ts`           | `computeOWL2ElementInsert`, `computeOWL2ElementDelete`, and `computeOWL2ConnectionInsert` LSP `TextEdit` generators       |
-| `build.js`                       | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                              |
+| Path                     | Description                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`           | Public exports (`owl2Language`, `lowerCstToAxioms`, `lintOwl2Document`, `Owl2ErrorCode`, `OWL2Factory`, diagram builders) |
+| `src/language.ts`        | OWL 2 grammar specification, writeback handler, LSP actions, `owl2-mcp` tool definitions, and 5 polyglot TGG rules        |
+| `src/cst-lowering.ts`    | `lowerCstToAxioms` CST walker lowering 25+ OWL 2 DL axiom constructs into `OWL2Axiom` arena records                       |
+| `src/errors.ts`          | `Owl2ErrorCode` diagnostic registry (`O1001`–`O6001` / numeric `1001`–`6001`)                                             |
+| `src/lints.ts`           | `lintOwl2Document` static, OWL 2 DL global restriction, reasoner satisfiability, and OWL 2 EL profile linter              |
+| `src/workspace-index.ts` | Multi-file OWL 2 ontology workspace indexer and `Import(...)` resolver                                                    |
+| `src/factory.ts`         | Fluent `OWL2Factory` builder API for programmatic ontology construction                                                   |
+| `src/diagram/data.ts`    | `buildOWL2DiagramData` converting asserted and reasoner-inferred axioms into interactive 2D node-link diagrams            |
+| `src/diagram/edits.ts`   | `computeOWL2ElementInsert`, `computeOWL2ElementDelete`, and `computeOWL2ConnectionInsert` LSP `TextEdit` generators       |
+| `build.js`               | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                              |
 
 ---
 

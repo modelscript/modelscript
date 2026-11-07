@@ -3,6 +3,8 @@
 import type { ActionExecutionContext } from "@modelscript/dsl";
 import { ExprKind, initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/runtime";
 import { simulateArenaAsync } from "@modelscript/simulate";
+import { Context } from "./context.js";
+import { createModelicaWorkspaceIndex } from "./factory.js";
 import { ModelicaFlattener } from "./flattener.js";
 
 import { injectPredefinedTypes } from "./predefined-types.js";
@@ -646,8 +648,55 @@ export const modelicaActionHandlers: Record<
     };
   },
 
-  parse: async (_context: ActionExecutionContext, inputs: any) => {
-    const code = inputs?.code ?? "";
+  parse: async (context: ActionExecutionContext, inputs: Record<string, unknown>) => {
+    const code = typeof inputs?.["code"] === "string" ? inputs["code"] : "";
+    const parser =
+      (context as { parser?: { parse: (c: string) => { rootNode: unknown } } })?.parser ?? Context._parsers.get(".mo");
+    if (parser && typeof parser.parse === "function") {
+      const tree = parser.parse(code);
+      const wsIndex = createModelicaWorkspaceIndex();
+      wsIndex.register("input.mo", () => tree.rootNode as never);
+      const unified = wsIndex.toUnified();
+      const classes: { name: string; kind: string }[] = [];
+      for (const sym of unified.symbols.values()) {
+        if (sym.kind === "Class") {
+          const rawKind = String(sym.metadata?.["classPrefixes"] ?? sym.metadata?.["classKind"] ?? "class").trim();
+          const kind = rawKind.split(/\s+/).pop() || "class";
+          classes.push({
+            kind,
+            name: sym.name,
+          });
+        }
+      }
+      const syntaxErrors: { message: string; startIndex: number; endIndex: number }[] = [];
+      type ErrorCstNode = {
+        type?: string;
+        isError?: boolean;
+        isMissing?: boolean;
+        text?: string;
+        startIndex?: number;
+        endIndex?: number;
+        children?: unknown[];
+      };
+      const collectErrors = (node: ErrorCstNode | null | undefined) => {
+        if (!node) return;
+        if (node.type === "ERROR" || node.isError || node.isMissing) {
+          syntaxErrors.push({
+            message: node.isMissing ? `Missing ${node.type}` : `Syntax error near '${(node.text ?? "").slice(0, 32)}'`,
+            startIndex: node.startIndex ?? 0,
+            endIndex: node.endIndex ?? 0,
+          });
+        }
+        const children = (Array.isArray(node.children) ? node.children : []) as ErrorCstNode[];
+        for (const ch of children) collectErrors(ch);
+      };
+      if (tree?.rootNode) collectErrors(tree.rootNode as ErrorCstNode);
+      return {
+        classes,
+        syntaxErrors,
+      };
+    }
+
     const classes: { name: string; kind: string }[] = [];
     const classRegex = /\b(model|block|class|record|connector|function|package)\s+([A-Za-z0-9_]+)/g;
     let m: RegExpExecArray | null;

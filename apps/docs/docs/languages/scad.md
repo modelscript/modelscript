@@ -1,3 +1,8 @@
+---
+title: "OpenSCAD (.scad)"
+description: "@modelscript/scad (languages/scad) parses parametric OpenSCAD scripts and evaluates Constructive Solid Geometry (CSG) trees via @modelscript/cad into exact OpenCascade B-Rep solids, watertight tria..."
+---
+
 # OpenSCAD (`.scad`)
 
 `@modelscript/scad` (`languages/scad`) parses parametric OpenSCAD scripts and evaluates Constructive Solid Geometry (CSG) trees via `@modelscript/cad` into exact OpenCascade B-Rep solids, watertight triangle meshes, STEP AP214/AP242 exports, and Modelica MultiBody parameters.

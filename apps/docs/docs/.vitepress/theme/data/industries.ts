@@ -297,7 +297,7 @@ export const INDUSTRIES: Industry[] = [
     headline: "Grid-code compliance, from PSCAD to IEEE 2800 in one pipeline",
     summary:
       "Run PSCAD/EMTDC electromagnetic transients, PSS/E transmission power flow, and OpenDSS distribution studies in one open toolchain, with IEEE 2800 and NERC PRC-029 ride-through verification built in.",
-    languages: ["pscad", "psse", "opendss", "oscal", "modelica", "c", "fortran", "csv"],
+    languages: ["pscad", "psse", "cgmes", "opendss", "oscal", "modelica", "c", "fortran", "csv"],
     standards: [
       "IEEE 2800-2022",
       "NERC PRC-029-1",

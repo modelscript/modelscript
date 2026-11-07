@@ -677,19 +677,28 @@ export class CubicEos {
    * via guarded Newton-Raphson.
    */
   private solveRachfordRice(z: Float64Array, K: Float64Array): number {
-    let betaMin = 0.0;
-    let betaMax = 1.0;
+    let f0 = 0.0;
+    let f1 = 0.0;
+    let kMax = -Infinity;
+    let kMin = Infinity;
 
     for (let i = 0; i < this.numComponents; i++) {
-      if (K[i]! > 1.0) {
-        betaMin = Math.max(betaMin, 0.0);
-      } else if (K[i]! < 1.0) {
-        const bound = 1.0 / (1.0 - K[i]!);
-        betaMax = Math.min(betaMax, bound);
-      }
+      const ki = K[i]!;
+      const zi = z[i]!;
+      if (zi <= 0) continue;
+      f0 += zi * (ki - 1.0);
+      f1 += zi * (1.0 - 1.0 / Math.max(1e-12, ki));
+      if (ki > kMax) kMax = ki;
+      if (ki < kMin) kMin = ki;
     }
 
-    let beta = 0.5;
+    if (f0 <= 0.0) return 0.0;
+    if (f1 >= 0.0) return 1.0;
+
+    let betaMin = kMax > 1.0 ? Math.max(0.0, 1.0 / (1.0 - kMax)) : 0.0;
+    let betaMax = kMin < 1.0 ? Math.min(1.0, 1.0 / (1.0 - kMin)) : 1.0;
+
+    let beta = 0.5 * (betaMin + betaMax);
     for (let iter = 0; iter < 50; iter++) {
       let f = 0.0;
       let df = 0.0;
@@ -703,13 +712,14 @@ export class CubicEos {
 
       if (Math.abs(f) < 1e-12) break;
 
+      if (f > 0) betaMin = Math.max(betaMin, beta);
+      else betaMax = Math.min(betaMax, beta);
+
       const delta = f / (df !== 0 ? df : -1e-6);
       let nextBeta = beta - delta;
 
-      // Guarded step
-      if (nextBeta <= 0.0 || nextBeta >= 1.0) {
-        if (f > 0) betaMin = beta;
-        else betaMax = beta;
+      // Guarded step within [betaMin, betaMax]
+      if (nextBeta <= betaMin || nextBeta >= betaMax) {
         nextBeta = 0.5 * (betaMin + betaMax);
       }
 

@@ -1,6 +1,11 @@
+---
+title: Multi-Domain Theory Coordinator
+description: System architecture of the Nelson-Oppen and CDCL(T) Multi-Domain Theory Coordinator across 13 specialized engineering theory oracles.
+---
+
 # Multi-Domain Theory Coordinator (Nelson-Oppen & CDCL(T))
 
-The **Multi-Domain Theory Coordinator** (`packages/runtime/src/formal/theory_coordinator.ts`) is ModelScript's cross-language formal verification engine. It combines **Nelson-Oppen equality sharing** with **Conflict-Driven Clause Learning Modulo Theories ($\text{CDCL}(\mathcal{T})$)** to verify system-wide invariants across ontological, structural, geometric, physical, causal, and dynamic simulation domains simultaneously.
+The **Multi-Domain Theory Coordinator** (`packages/runtime/src/formal/theory_coordinator.ts`) is ModelScript's cross-language formal verification engine. It combines **Nelson-Oppen equality sharing** with **Conflict-Driven Clause Learning Modulo Theories ($\text{CDCL}(\mathcal{T})$)** to verify system-wide invariants across ontological, structural, geometric, physical, causal, dynamic simulation, and clinical radiology/surgical navigation domains simultaneously.
 
 ---
 

@@ -1,3 +1,8 @@
+---
+title: "IEC 62714 AutomationML & CAEX Plant Topology (.aml, .caex, .amlx)"
+description: "@modelscript/automationml (languages/automationml) provides native WebAssembly parsing, CAEX 2.15 / 3.0 hierarchy and InternalLink validation, discrete-event virtual commissioning simulation, DAEBu..."
+---
+
 # IEC 62714 AutomationML & CAEX Plant Topology (`.aml`, `.caex`, `.amlx`)
 
 `@modelscript/automationml` (`languages/automationml`) provides native WebAssembly parsing, CAEX 2.15 / 3.0 hierarchy and `InternalLink` validation, discrete-event virtual commissioning simulation, `DAEBuilder` lowering, and SSP / SysML v2 / Modelica projections for **IEC 62714 AutomationML** industrial automation and mechatronic plant engineering models.

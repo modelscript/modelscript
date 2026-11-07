@@ -35,6 +35,13 @@ export type TableauClassExpr =
       property: string;
       filler: TableauClassExpr;
     }
+  | {
+      kind: "DataCardinality";
+      cardType: "min" | "max" | "exact";
+      count: number;
+      property: string;
+      range: DataRangeSpec;
+    }
   | { kind: "DataSomeValuesFrom"; property: string; range: DataRangeSpec }
   | { kind: "DataAllValuesFrom"; property: string; range: DataRangeSpec }
   | { kind: "DataHasValue"; property: string; value: string | number };
@@ -300,6 +307,8 @@ function exprKey(expr: TableauClassExpr): string {
       return `SELF(${expr.property})`;
     case "ObjectCardinality":
       return `CARD(${expr.cardType},${expr.count},${expr.property},${exprKey(expr.filler)})`;
+    case "DataCardinality":
+      return `DCARD(${expr.cardType},${expr.count},${expr.property},${expr.range.datatypeIri}:${expr.range.facets.map((f) => `${f.facet}=${f.value}`).join(",")})`;
     case "DataSomeValuesFrom":
       return `DSOME(${expr.property},${expr.range.datatypeIri}:${expr.range.facets.map((f) => `${f.facet}=${f.value}`).join(",")})`;
     case "DataAllValuesFrom":
@@ -325,6 +334,8 @@ interface TableauState {
   nominalIndividuals: Set<string>;
   /** Canonical representative mapping for merged individuals (`SameIndividual` / nominal / max-cardinality merge). */
   repOf: Map<string, string>;
+  /** Parent map for anonymous witness individuals (`_:anonN -> parentInd`) used for subset blocking. */
+  parentOf: Map<string, string>;
   /** Explicit inequality pairs (`DifferentIndividuals` and $\ge n$ generated successors). */
   differentPairs: Set<string>;
   /** Map from canonical individual ID to set of `exprKey(expr)` strings. */
@@ -337,8 +348,10 @@ interface TableauState {
   dataLiterals: Map<string, Set<string>>;
   /** Negative data property literal assertions `ind|prop -> Set<string>`. */
   negDataLiterals: Map<string, Set<string>>;
-  /** Data property numeric intervals `ind|prop -> NumericInterval`. */
+  /** Universal data property numeric intervals (`DataAllValuesFrom` & `DataPropertyRange`) `ind|prop -> NumericInterval`. */
   dataIntervals: Map<string, NumericInterval>;
+  /** Existential data property ranges (`DataSomeValuesFrom`) `ind|prop -> DataRangeSpec[]`. */
+  dataSomeRanges: Map<string, DataRangeSpec[]>;
   /** Applied existential/min-cardinality witness keys to prevent infinite re-application. */
   appliedWitnesses: Set<string>;
   /** Applied choice keys `(ind|prop|fillerKey|targetInd)`. */
@@ -375,10 +388,18 @@ function cloneState(st: TableauState): TableauState {
   for (const [k, iv] of st.dataIntervals) {
     dataIntervals.set(k, { ...iv });
   }
+  const dataSomeRanges = new Map<string, DataRangeSpec[]>();
+  for (const [k, list] of st.dataSomeRanges) {
+    dataSomeRanges.set(
+      k,
+      list.map((r) => ({ datatypeIri: r.datatypeIri, facets: [...r.facets] })),
+    );
+  }
   return {
     individuals: new Set(st.individuals),
     nominalIndividuals: new Set(st.nominalIndividuals),
     repOf: new Map(st.repOf),
+    parentOf: new Map(st.parentOf),
     differentPairs: new Set(st.differentPairs),
     conceptsByInd,
     roleEdges,
@@ -386,6 +407,7 @@ function cloneState(st: TableauState): TableauState {
     dataLiterals,
     negDataLiterals,
     dataIntervals,
+    dataSomeRanges,
     appliedWitnesses: new Set(st.appliedWitnesses),
     appliedChoices: new Set(st.appliedChoices),
     nextAnonId: st.nextAnonId,
@@ -397,7 +419,7 @@ function cloneState(st: TableauState): TableauState {
 /**
  * $\mathcal{SROIQ}(D)$ Tableau Reasoner supporting:
  * - Nominals (`ObjectOneOf`, `ObjectHasValue`)
- * - Qualified Cardinality Restrictions (`ObjectMinCardinality`, `ObjectMaxCardinality`, `ObjectExactCardinality`)
+ * - Qualified Cardinality Restrictions (`ObjectMinCardinality`, `ObjectMaxCardinality`, `ObjectExactCardinality`, `DataMinCardinality`, `DataMaxCardinality`, `DataExactCardinality`)
  * - Transitive roles & sub-property chains (`TransitiveObjectProperty`, `SubObjectPropertyOf(ObjectPropertyChain(...))`)
  * - Numeric datatype facet restrictions (`DatatypeRestriction` with `xsd:minInclusive`, `xsd:maxInclusive`, `xsd:minExclusive`, `xsd:maxExclusive`)
  */
@@ -416,6 +438,7 @@ interface TableauAxiomInput {
   propertyIri?: unknown;
   fillerClassIri?: unknown;
   isNominal?: boolean;
+  isDataCardinality?: boolean;
   classIri?: unknown;
   individualIri?: unknown;
   targetClassIri?: unknown;
@@ -852,6 +875,18 @@ export class Owl2TableauReasoner {
         raw.args.length >= 3 ? this.parseClassExpr(raw.args[2]!) : { kind: "NamedClass", iri: "owl:Thing" };
       return { kind: "ObjectCardinality", cardType, count, property: prop, filler };
     }
+    if (
+      (h === "DataMinCardinality" || h === "DataMaxCardinality" || h === "DataExactCardinality") &&
+      raw.args.length >= 2
+    ) {
+      const cardType = h === "DataMinCardinality" ? "min" : h === "DataMaxCardinality" ? "max" : "exact";
+      const count = Math.max(0, parseInt(String(raw.args[0]), 10) || 0);
+      const prop = this.normIri(String(raw.args[1]));
+      this.dataProperties.add(prop);
+      const range: DataRangeSpec =
+        raw.args.length >= 3 ? this.parseDataRange(raw.args[2]!) : { datatypeIri: "rdfs:Literal", facets: [] };
+      return { kind: "DataCardinality", cardType, count, property: prop, range };
+    }
     if (h === "DataSomeValuesFrom" && raw.args.length >= 2) {
       const prop = this.normIri(String(raw.args[0]));
       this.dataProperties.add(prop);
@@ -1153,20 +1188,35 @@ export class Owl2TableauReasoner {
         const cardType: "min" | "max" | "exact" =
           a.cardinalityType === "max" ? "max" : a.cardinalityType === "exact" ? "exact" : "min";
         const count = Number(a.count ?? 1);
-        const fillerIri = String(a.fillerClassIri ?? "owl:Thing");
         this.addNamedClass(clsIri);
-        this.addNamedClass(fillerIri);
-        this.objectProperties.add(propIri);
-        this.subClassAxioms.push({
-          sub: { kind: "NamedClass", iri: clsIri },
-          sup: {
-            kind: "ObjectCardinality",
-            cardType,
-            count,
-            property: propIri,
-            filler: { kind: "NamedClass", iri: fillerIri },
-          },
-        });
+        if (a.isDataCardinality || a.fillerDatatypeIri !== undefined || this.dataProperties.has(propIri)) {
+          const dtIri = String(a.fillerDatatypeIri ?? a.fillerClassIri ?? "rdfs:Literal");
+          this.dataProperties.add(propIri);
+          this.subClassAxioms.push({
+            sub: { kind: "NamedClass", iri: clsIri },
+            sup: {
+              kind: "DataCardinality",
+              cardType,
+              count,
+              property: propIri,
+              range: { datatypeIri: dtIri, facets: Array.isArray(a.facets) ? a.facets : [] },
+            },
+          });
+        } else {
+          const fillerIri = String(a.fillerClassIri ?? "owl:Thing");
+          this.addNamedClass(fillerIri);
+          this.objectProperties.add(propIri);
+          this.subClassAxioms.push({
+            sub: { kind: "NamedClass", iri: clsIri },
+            sup: {
+              kind: "ObjectCardinality",
+              cardType,
+              count,
+              property: propIri,
+              filler: { kind: "NamedClass", iri: fillerIri },
+            },
+          });
+        }
         break;
       }
       case "SubObjectPropertyOf": {
@@ -1478,8 +1528,55 @@ export class Owl2TableauReasoner {
         st.dataLiterals.delete(k);
       }
     }
+    for (const [k, ranges] of [...st.dataSomeRanges.entries()]) {
+      const idx = k.indexOf("|");
+      const owner = k.slice(0, idx);
+      const prop = k.slice(idx + 1);
+      if (owner === absorbed) {
+        const targetKey = `${keep}|${prop}`;
+        const tList = st.dataSomeRanges.get(targetKey) ?? [];
+        for (const r of ranges) tList.push(r);
+        st.dataSomeRanges.set(targetKey, tList);
+        st.dataSomeRanges.delete(k);
+      }
+    }
 
     return true;
+  }
+
+  /**
+   * Subset / ancestor blocking for anonymous witnesses (`_:anonN`):
+   * Returns `true` if `ind` is an anonymous individual and has an ancestor `anc`
+   * in the witness tree whose concept label is a superset of `ind`'s concept label
+   * ($\mathcal{L}(\text{ind}) \subseteq \mathcal{L}(\text{anc})$).
+   */
+  private isBlocked(st: TableauState, ind: string): boolean {
+    if (!ind.startsWith("_:anon")) return false;
+    if (st.nextAnonId > 256) return true;
+    const indConcepts = st.conceptsByInd.get(ind);
+    if (!indConcepts || indConcepts.size === 0) return false;
+
+    const visited = new Set<string>([ind]);
+    let curr = st.parentOf.get(ind);
+    while (curr && !visited.has(curr)) {
+      visited.add(curr);
+      const anc = this.getRep(st, curr);
+      if (anc.startsWith("_:anon")) {
+        const ancConcepts = st.conceptsByInd.get(anc);
+        if (ancConcepts && ancConcepts.size >= indConcepts.size) {
+          let isSubset = true;
+          for (const k of indConcepts.keys()) {
+            if (!ancConcepts.has(k)) {
+              isSubset = false;
+              break;
+            }
+          }
+          if (isSubset) return true;
+        }
+      }
+      curr = st.parentOf.get(curr);
+    }
+    return false;
   }
 
   private exprContains(haystack: TableauClassExpr, needle: TableauClassExpr): boolean {
@@ -1498,6 +1595,7 @@ export class Owl2TableauReasoner {
       individuals: new Set(),
       nominalIndividuals: new Set(),
       repOf: new Map(),
+      parentOf: new Map(),
       differentPairs: new Set(),
       conceptsByInd: new Map(),
       roleEdges: new Map(),
@@ -1505,6 +1603,7 @@ export class Owl2TableauReasoner {
       dataLiterals: new Map(),
       negDataLiterals: new Map(),
       dataIntervals: new Map(),
+      dataSomeRanges: new Map(),
       appliedWitnesses: new Set(),
       appliedChoices: new Set(),
       nextAnonId: 1,
@@ -1700,7 +1799,7 @@ export class Owl2TableauReasoner {
       for (const [prop, rngs] of this.dataPropertyRanges) {
         for (const ind of [...st.individuals]) {
           const key = `${ind}|${prop}`;
-          if (st.dataLiterals.has(key) || st.dataIntervals.has(key)) {
+          if (st.dataLiterals.has(key) || st.dataIntervals.has(key) || st.dataSomeRanges.has(key)) {
             let iv = st.dataIntervals.get(key) ?? createDefaultInterval(rngs[0]?.datatypeIri);
             for (const rng of rngs) {
               iv = intersectIntervalWithRange(iv, rng);
@@ -1781,7 +1880,7 @@ export class Owl2TableauReasoner {
             }
           } else if (c.kind === "ObjectComplementOf") {
             const inner = c.operand;
-            // De Morgan laws
+            // De Morgan and NNF laws
             if (inner.kind === "ObjectUnionOf") {
               for (const op of inner.operands) {
                 if (this.addConcept(st, ind, negateClassExpr(op))) changed = true;
@@ -1808,6 +1907,221 @@ export class Owl2TableauReasoner {
                 })
               ) {
                 changed = true;
+              }
+            } else if (inner.kind === "ObjectCardinality") {
+              if (inner.cardType === "min") {
+                if (inner.count <= 0) {
+                  if (this.addConcept(st, ind, { kind: "NamedClass", iri: "owl:Nothing" })) changed = true;
+                } else {
+                  if (
+                    this.addConcept(st, ind, {
+                      kind: "ObjectCardinality",
+                      cardType: "max",
+                      count: inner.count - 1,
+                      property: inner.property,
+                      filler: inner.filler,
+                    })
+                  ) {
+                    changed = true;
+                  }
+                }
+              } else if (inner.cardType === "max") {
+                if (
+                  this.addConcept(st, ind, {
+                    kind: "ObjectCardinality",
+                    cardType: "min",
+                    count: inner.count + 1,
+                    property: inner.property,
+                    filler: inner.filler,
+                  })
+                ) {
+                  changed = true;
+                }
+              } else if (inner.cardType === "exact") {
+                const disj: TableauClassExpr[] = [];
+                if (inner.count > 0) {
+                  disj.push({
+                    kind: "ObjectCardinality",
+                    cardType: "max",
+                    count: inner.count - 1,
+                    property: inner.property,
+                    filler: inner.filler,
+                  });
+                }
+                disj.push({
+                  kind: "ObjectCardinality",
+                  cardType: "min",
+                  count: inner.count + 1,
+                  property: inner.property,
+                  filler: inner.filler,
+                });
+                if (this.addConcept(st, ind, { kind: "ObjectUnionOf", operands: disj })) changed = true;
+              }
+            } else if (inner.kind === "DataCardinality") {
+              if (inner.cardType === "min") {
+                if (inner.count <= 0) {
+                  if (this.addConcept(st, ind, { kind: "NamedClass", iri: "owl:Nothing" })) changed = true;
+                } else {
+                  if (
+                    this.addConcept(st, ind, {
+                      kind: "DataCardinality",
+                      cardType: "max",
+                      count: inner.count - 1,
+                      property: inner.property,
+                      range: inner.range,
+                    })
+                  ) {
+                    changed = true;
+                  }
+                }
+              } else if (inner.cardType === "max") {
+                if (
+                  this.addConcept(st, ind, {
+                    kind: "DataCardinality",
+                    cardType: "min",
+                    count: inner.count + 1,
+                    property: inner.property,
+                    range: inner.range,
+                  })
+                ) {
+                  changed = true;
+                }
+              } else if (inner.cardType === "exact") {
+                const disj: TableauClassExpr[] = [];
+                if (inner.count > 0) {
+                  disj.push({
+                    kind: "DataCardinality",
+                    cardType: "max",
+                    count: inner.count - 1,
+                    property: inner.property,
+                    range: inner.range,
+                  });
+                }
+                disj.push({
+                  kind: "DataCardinality",
+                  cardType: "min",
+                  count: inner.count + 1,
+                  property: inner.property,
+                  range: inner.range,
+                });
+                if (this.addConcept(st, ind, { kind: "ObjectUnionOf", operands: disj })) changed = true;
+              }
+            } else if (inner.kind === "ObjectHasValue") {
+              this.ensureIndividual(st, inner.individual, true);
+              const set = st.negRoleEdges.get(inner.property) ?? new Set<string>();
+              const edgeKey = `${this.getRep(st, ind)}|${this.getRep(st, inner.individual)}`;
+              if (!set.has(edgeKey)) {
+                set.add(edgeKey);
+                st.negRoleEdges.set(inner.property, set);
+                changed = true;
+              }
+            } else if (inner.kind === "ObjectHasSelf") {
+              const set = st.negRoleEdges.get(inner.property) ?? new Set<string>();
+              const rep = this.getRep(st, ind);
+              const edgeKey = `${rep}|${rep}`;
+              if (!set.has(edgeKey)) {
+                set.add(edgeKey);
+                st.negRoleEdges.set(inner.property, set);
+                changed = true;
+              }
+            } else if (inner.kind === "ObjectOneOf") {
+              const rep = this.getRep(st, ind);
+              for (const nom of inner.individuals) {
+                this.ensureIndividual(st, nom, true);
+                const nomRep = this.getRep(st, nom);
+                if (rep === nomRep) {
+                  return { clash: `Clash on '${ind}': member of ObjectComplementOf(ObjectOneOf(${nom}))` };
+                }
+                const pk = pairKey(rep, nomRep);
+                if (!st.differentPairs.has(pk)) {
+                  st.differentPairs.add(pk);
+                  changed = true;
+                }
+              }
+            } else if (inner.kind === "DataHasValue") {
+              const key = `${ind}|${inner.property}`;
+              const set = st.negDataLiterals.get(key) ?? new Set<string>();
+              const strVal = String(inner.value);
+              if (!set.has(strVal)) {
+                set.add(strVal);
+                st.negDataLiterals.set(key, set);
+                changed = true;
+              }
+            } else if (inner.kind === "DataSomeValuesFrom") {
+              const r = inner.range;
+              const branches: DataRangeSpec[] = [];
+              for (const f of r.facets) {
+                if (f.facet === "minInclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "maxExclusive", value: f.value }] });
+                } else if (f.facet === "minExclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "maxInclusive", value: f.value }] });
+                } else if (f.facet === "maxInclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "minExclusive", value: f.value }] });
+                } else if (f.facet === "maxExclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "minInclusive", value: f.value }] });
+                }
+              }
+              if (branches.length === 1) {
+                if (
+                  this.addConcept(st, ind, {
+                    kind: "DataAllValuesFrom",
+                    property: inner.property,
+                    range: branches[0]!,
+                  })
+                ) {
+                  changed = true;
+                }
+              } else if (branches.length > 1) {
+                if (
+                  this.addConcept(st, ind, {
+                    kind: "ObjectUnionOf",
+                    operands: branches.map((b) => ({
+                      kind: "DataAllValuesFrom" as const,
+                      property: inner.property,
+                      range: b,
+                    })),
+                  })
+                ) {
+                  changed = true;
+                }
+              }
+            } else if (inner.kind === "DataAllValuesFrom") {
+              const r = inner.range;
+              const branches: DataRangeSpec[] = [];
+              for (const f of r.facets) {
+                if (f.facet === "minInclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "maxExclusive", value: f.value }] });
+                } else if (f.facet === "minExclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "maxInclusive", value: f.value }] });
+                } else if (f.facet === "maxInclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "minExclusive", value: f.value }] });
+                } else if (f.facet === "maxExclusive") {
+                  branches.push({ datatypeIri: r.datatypeIri, facets: [{ facet: "minInclusive", value: f.value }] });
+                }
+              }
+              if (branches.length === 1) {
+                if (
+                  this.addConcept(st, ind, {
+                    kind: "DataSomeValuesFrom",
+                    property: inner.property,
+                    range: branches[0]!,
+                  })
+                ) {
+                  changed = true;
+                }
+              } else if (branches.length > 1) {
+                if (
+                  this.addConcept(st, ind, {
+                    kind: "ObjectUnionOf",
+                    operands: branches.map((b) => ({
+                      kind: "DataSomeValuesFrom" as const,
+                      property: inner.property,
+                      range: b,
+                    })),
+                  })
+                ) {
+                  changed = true;
+                }
               }
             }
           } else if (c.kind === "ObjectHasValue") {
@@ -1855,7 +2169,39 @@ export class Owl2TableauReasoner {
             ) {
               changed = true;
             }
-          } else if (c.kind === "DataSomeValuesFrom" || c.kind === "DataAllValuesFrom") {
+          } else if (c.kind === "DataCardinality" && c.cardType === "exact") {
+            if (
+              this.addConcept(st, ind, {
+                kind: "DataCardinality",
+                cardType: "min",
+                count: c.count,
+                property: c.property,
+                range: c.range,
+              })
+            ) {
+              changed = true;
+            }
+            if (
+              this.addConcept(st, ind, {
+                kind: "DataCardinality",
+                cardType: "max",
+                count: c.count,
+                property: c.property,
+                range: c.range,
+              })
+            ) {
+              changed = true;
+            }
+          } else if (c.kind === "DataCardinality" && c.cardType === "min" && c.count > 0) {
+            const key = `${ind}|${c.property}`;
+            const list = st.dataSomeRanges.get(key) ?? [];
+            const rKey = JSON.stringify(c.range);
+            if (!list.some((r) => JSON.stringify(r) === rKey)) {
+              list.push(c.range);
+              st.dataSomeRanges.set(key, list);
+              changed = true;
+            }
+          } else if (c.kind === "DataAllValuesFrom") {
             const key = `${ind}|${c.property}`;
             const prev = st.dataIntervals.get(key) ?? createDefaultInterval(c.range.datatypeIri);
             const nextIv = intersectIntervalWithRange(prev, c.range);
@@ -1868,6 +2214,15 @@ export class Owl2TableauReasoner {
               !st.dataIntervals.has(key)
             ) {
               st.dataIntervals.set(key, nextIv);
+              changed = true;
+            }
+          } else if (c.kind === "DataSomeValuesFrom") {
+            const key = `${ind}|${c.property}`;
+            const list = st.dataSomeRanges.get(key) ?? [];
+            const rKey = JSON.stringify(c.range);
+            if (!list.some((r) => JSON.stringify(r) === rKey)) {
+              list.push(c.range);
+              st.dataSomeRanges.set(key, list);
               changed = true;
             }
           } else if (c.kind === "DataHasValue") {
@@ -1906,7 +2261,7 @@ export class Owl2TableauReasoner {
       const clash = this.detectClash(st);
       if (clash) return { clash };
 
-      // 9. Existential (\exists R.C) and MinCardinality (\ge n R.C) witness generation (with cycle blocking)
+      // 9. Existential (\exists R.C) and MinCardinality (\ge n R.C) witness generation (with ancestor subset blocking)
       for (const ind of [...st.individuals]) {
         const conceptMap = st.conceptsByInd.get(ind);
         if (!conceptMap) continue;
@@ -1922,14 +2277,15 @@ export class Owl2TableauReasoner {
               st.appliedWitnesses.add(wKey);
               continue;
             }
-            // Cycle blocking: prevent infinite anonymous chain if an ancestor already has identical concept set
-            if (ind.startsWith("_:anon") && st.nextAnonId > 32) {
+            // Ancestor subset blocking: block anonymous witness generation if an ancestor has a superset of concepts
+            if (this.isBlocked(st, ind) || (ind.startsWith("_:anon") && st.nextAnonId > 64)) {
               st.appliedWitnesses.add(wKey);
               continue;
             }
             st.appliedWitnesses.add(wKey);
             const newInd = `_:anon${st.nextAnonId++}`;
             this.ensureIndividual(st, newInd, false);
+            st.parentOf.set(newInd, ind);
             this.addRoleEdge(st, c.property, ind, newInd);
             this.addConcept(st, newInd, c.filler);
             changed = true;
@@ -1956,7 +2312,7 @@ export class Owl2TableauReasoner {
               st.appliedWitnesses.add(wKey);
               continue;
             }
-            if (ind.startsWith("_:anon") && st.nextAnonId > 32) {
+            if (this.isBlocked(st, ind) || (ind.startsWith("_:anon") && st.nextAnonId > 64)) {
               st.appliedWitnesses.add(wKey);
               continue;
             }
@@ -1965,6 +2321,7 @@ export class Owl2TableauReasoner {
             for (let k = 0; k < c.count; k++) {
               const newInd = `_:anon${st.nextAnonId++}`;
               this.ensureIndividual(st, newInd, false);
+              st.parentOf.set(newInd, ind);
               this.addRoleEdge(st, c.property, ind, newInd);
               this.addConcept(st, newInd, c.filler);
               created.push(newInd);
@@ -2120,6 +2477,51 @@ export class Owl2TableauReasoner {
         ([s, o]) => s === rep && this.satisfiesConceptDeterministically(st, o, expr.filler),
       );
     }
+    if (expr.kind === "ObjectCardinality" && expr.cardType === "min") {
+      if (expr.count <= 0) return true;
+      const rep = this.getRep(st, ind);
+      const qualified = [
+        ...new Set(
+          this.getRolePairs(st, expr.property)
+            .filter(([s, o]) => s === rep && this.satisfiesConceptDeterministically(st, o, expr.filler))
+            .map(([, o]) => o),
+        ),
+      ];
+      if (qualified.length < expr.count) return false;
+      if (expr.count === 1) return true;
+      for (let i = 0; i < expr.count; i++) {
+        for (let j = i + 1; j < expr.count; j++) {
+          if (!st.differentPairs.has(pairKey(qualified[i]!, qualified[j]!))) return false;
+        }
+      }
+      return true;
+    }
+    if (expr.kind === "DataHasValue") {
+      const rep = this.getRep(st, ind);
+      const lits = st.dataLiterals.get(`${rep}|${expr.property}`);
+      return lits ? lits.has(String(expr.value)) : false;
+    }
+    if (expr.kind === "DataSomeValuesFrom") {
+      const rep = this.getRep(st, ind);
+      const key = `${rep}|${expr.property}`;
+      const targetIv = intersectIntervalWithRange(createDefaultInterval(expr.range.datatypeIri), expr.range);
+      const lits = st.dataLiterals.get(key);
+      if (lits) {
+        for (const lit of lits) {
+          const num = Number(lit);
+          if (!Number.isNaN(num) && valueSatisfiesInterval(num, targetIv)) return true;
+        }
+      }
+      const someList = st.dataSomeRanges.get(key);
+      if (someList) {
+        for (const r of someList) {
+          const rIv = intersectIntervalWithRange(createDefaultInterval(r.datatypeIri), r);
+          if (rIv.min >= targetIv.min && rIv.max <= targetIv.max && isIntervalSatisfiable(rIv)) {
+            return true;
+          }
+        }
+      }
+    }
     return false;
   }
 
@@ -2135,6 +2537,46 @@ export class Owl2TableauReasoner {
         if (c.kind === "ObjectComplementOf") {
           if (this.satisfiesConceptDeterministically(st, ind, c.operand)) {
             return `Clash on '${ind}': both ${exprKey(c.operand)} and its complement hold`;
+          }
+        }
+        if (c.kind === "DataCardinality") {
+          const key = `${ind}|${c.property}`;
+          const rangeIv = intersectIntervalWithRange(createDefaultInterval(c.range.datatypeIri), c.range);
+          const lits = st.dataLiterals.get(key);
+          const matchingLits = lits
+            ? [...lits].filter((lit) => {
+                const n = Number(lit);
+                return Number.isNaN(n) ? true : valueSatisfiesInterval(n, rangeIv);
+              })
+            : [];
+          if (c.cardType === "max") {
+            if (matchingLits.length > c.count) {
+              return `DataMaxCardinality(${c.count} ${c.property}) violated on '${ind}': ${matchingLits.length} values`;
+            }
+            if (c.count === 0) {
+              const someList = st.dataSomeRanges.get(key) ?? [];
+              for (const r of someList) {
+                const comb = intersectIntervalWithRange(rangeIv, r);
+                if (isIntervalSatisfiable(comb)) {
+                  return `DataMaxCardinality(0 ${c.property}) violated on '${ind}' by existential data restriction`;
+                }
+              }
+            }
+          }
+          if (c.cardType === "min") {
+            if (this.functionalDataProperties.has(c.property) && c.count > 1) {
+              return `DataMinCardinality(${c.count} ${c.property}) contradicts FunctionalDataProperty(${c.property}) on '${ind}'`;
+            }
+            for (const other of conceptMap.values()) {
+              if (
+                other.kind === "DataCardinality" &&
+                other.cardType === "max" &&
+                other.property === c.property &&
+                c.count > other.count
+              ) {
+                return `DataMinCardinality(${c.count} ${c.property}) contradicts DataMaxCardinality(${other.count} ${c.property}) on '${ind}'`;
+              }
+            }
           }
         }
       }
@@ -2183,15 +2625,46 @@ export class Owl2TableauReasoner {
 
     // 3. Datatype interval & literal clashes (D)
     for (const [key, iv] of st.dataIntervals) {
-      if (!isIntervalSatisfiable(iv)) {
+      const lits = st.dataLiterals.get(key);
+      const someList = st.dataSomeRanges.get(key);
+      if (!isIntervalSatisfiable(iv) && ((lits && lits.size > 0) || (someList && someList.length > 0))) {
         return `Unsatisfiable DatatypeRestriction interval on '${key}': [${iv.min}, ${iv.max}]`;
       }
-      const lits = st.dataLiterals.get(key);
       if (lits) {
         for (const lit of lits) {
           const num = Number(lit);
-          if (!valueSatisfiesInterval(num, iv)) {
+          if (!Number.isNaN(num) && !valueSatisfiesInterval(num, iv)) {
             return `DataPropertyAssertion value '${lit}' on '${key}' violates DatatypeRestriction [${iv.min}, ${iv.max}]`;
+          }
+        }
+      }
+    }
+    for (const [key, someList] of st.dataSomeRanges) {
+      const idx = key.indexOf("|");
+      const prop = key.slice(idx + 1);
+      const universalIv = st.dataIntervals.get(key);
+      for (const r of someList) {
+        const baseIv = universalIv ? { ...universalIv } : createDefaultInterval(r.datatypeIri);
+        const effIv = intersectIntervalWithRange(baseIv, r);
+        if (!isIntervalSatisfiable(effIv)) {
+          return `Unsatisfiable DataSomeValuesFrom interval on '${key}': [${effIv.min}, ${effIv.max}]`;
+        }
+      }
+      if (this.functionalDataProperties.has(prop) && someList.length > 0) {
+        let combIv = universalIv ? { ...universalIv } : createDefaultInterval(someList[0]!.datatypeIri);
+        for (const r of someList) {
+          combIv = intersectIntervalWithRange(combIv, r);
+        }
+        if (!isIntervalSatisfiable(combIv)) {
+          return `FunctionalDataProperty(${prop}) violated on '${key}': disjoint DataSomeValuesFrom intervals`;
+        }
+        const lits = st.dataLiterals.get(key);
+        if (lits) {
+          for (const lit of lits) {
+            const num = Number(lit);
+            if (!Number.isNaN(num) && !valueSatisfiesInterval(num, combIv)) {
+              return `FunctionalDataProperty(${prop}) value '${lit}' on '${key}' violates DataSomeValuesFrom interval`;
+            }
           }
         }
       }
@@ -2217,9 +2690,9 @@ export class Owl2TableauReasoner {
 
   /**
    * Depth-first backtracking tableau search. Returns a clash-free completed `TableauState`
-   * if one exists, or `{ state: null, clashes }` if all branches close with a clash.
+   * if one exists, or `{ model: null, clashes }` if all branches close with a clash.
    */
-  private solveTableau(initialState: TableauState, maxDepth = 24): { model: TableauState | null; clashes: string[] } {
+  private solveTableau(initialState: TableauState, maxDepth = 64): { model: TableauState | null; clashes: string[] } {
     const clashes: string[] = [];
 
     const dfs = (st: TableauState, depth: number): TableauState | null => {
@@ -2228,8 +2701,12 @@ export class Owl2TableauReasoner {
         clashes.push(res.clash);
         return null;
       }
-      if (!res.branches || res.branches.length === 0 || depth >= maxDepth) {
+      if (!res.branches || res.branches.length === 0) {
         return st;
+      }
+      if (depth >= maxDepth) {
+        clashes.push(`Maximum tableau branching depth (${maxDepth}) exceeded`);
+        return null;
       }
       for (const makeBranch of res.branches) {
         const nextSt = makeBranch();

@@ -30,10 +30,19 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
     }
   });
 
-  const user = db.createUser("researcher", "researcher@modelscript.test", "hash_pw", "Dr. Ada Lovelace");
+  const user = db.createUser("researcher", "researcher@modelscript.test", "hash_pw", {
+    accountType: "admin",
+  });
   assert.ok(user);
+  db.updateProfile(user.id, { display_name: "Dr. Ada Lovelace" });
   const sessionToken = jwt.sign(
-    { id: user.id, username: user.username, email: user.email, accountType: user.account_type },
+    { id: user.id, username: user.username, email: user.email, accountType: "admin", role: "admin" },
+    JWT_SECRET,
+    { expiresIn: "1h" },
+  );
+  const nonAdminUser = db.createUser("student", "student@modelscript.test", "hash_pw");
+  const nonAdminToken = jwt.sign(
+    { id: nonAdminUser.id, username: nonAdminUser.username, email: nonAdminUser.email, accountType: "user" },
     JWT_SECRET,
     { expiresIn: "1h" },
   );
@@ -491,6 +500,13 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
       assert.equal(optRes.status, 200);
       assert.equal(optRes.body.ok, true);
       assert.ok(optRes.body.ftsIndexedCount >= 4);
+
+      // Non-admin user must be rejected with 403
+      const forbiddenUnload = await request(app)
+        .post("/api/v1/references/s3-sync/partitions/unload")
+        .set("Authorization", `Bearer ${nonAdminToken}`)
+        .send({ unloadAll: true });
+      assert.equal(forbiddenUnload.status, 403);
 
       const targetS3Url = "s3://openalex/data/works/updated_date=2026-03-15/part_000.gz";
       const unloadRes = await request(app)

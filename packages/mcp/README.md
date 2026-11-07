@@ -3,21 +3,21 @@
 
 # @modelscript/mcp
 
-Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **52 specialized engineering tools** across multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 grid compliance, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, and federated social engineering threads to AI coding agents.
+Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **60 specialized engineering tools** across multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 grid compliance, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, ISO 23952 QIF metrology, NIST OSCAL cybersecurity compliance, IEC 62714 AutomationML virtual commissioning, and radiology/biomechanics/surgical CAS verification to AI coding agents.
 
 ---
 
 ## Transports & Deployment Modes
 
 1. **`modelscript-mcp` Stdio Binary (`src/main.ts`)**: Standard MCP `StdioServerTransport` binary for local desktop AI assistants (Claude Desktop, Claude Code, Cursor, VS Code Copilot, Windsurf, Zed, Antigravity).
-2. **`PolyglotMcpHost` In-WASM AOT Dispatch (`src/polyglot-server.ts`)**: Dynamically mounts declarative MCP manifests (`defineLanguage({ mcp })`) and dispatches tool calls directly into compiled WebAssembly linear memory (`mcpDispatchTool`) with zero JS object marshaling overhead, plus real-time `DigitalThreadHypergraph` conflict tracking.
+2. **`PolyglotMcpHost` In-WASM AOT Dispatch (`src/polyglot-server.ts`)**: Dynamically mounts declarative MCP manifests (`language({ mcp })`) and dispatches tool calls directly into compiled WebAssembly linear memory (`mcpDispatchTool`) with zero JS object marshaling overhead, plus real-time `DigitalThreadHypergraph` conflict tracking.
 3. **HTTP / SSE Cloud Transport**: Integrates with the ModelScript API server (`/api/v1/mcp/sse` and `/api/v1/mcp/messages`) with built-in compute quota pre-flight checks (`ctx.checkQuota`).
 
 ---
 
-## All 52 Registered MCP Tools (Across 11 Categories)
+## All 60 Registered MCP Tools (Across 12 Categories)
 
-The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **52 specialized engineering tools** organized across 11 categories:
+The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **60 specialized engineering tools** organized across 12 categories:
 
 ### 1. Modelica Compilation, Inspection & Control Linearization (6 Tools)
 
@@ -126,6 +126,19 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **52 special
 | `formal_verify_safety_and_mcdc`   | Prove unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and generate DO-178C / ISO 26262 MC/DC independence-pair test vectors.     |
 | `twin_discover_sindy_and_rom`     | Discover sparse nonlinear governing differential equations (SINDy STLSQ) from hardware telemetry residuals and calibrate a Reduced-Order Model (ROM) digital twin.      |
 
+### 12. Digital Metrology, Cybersecurity, AutomationML & Radiology / Surgical CAS (8 Tools)
+
+| Tool                            | Description                                                                                                                                                                 |
+| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `qif_inspect_and_spc`           | Evaluate an ISO 23952 Quality Information Framework (QIF) document, run NIST QIF & ASME Y14.5 GD&T checks (`M8101`–`M8108`), and compute SPC capability ($C_p/C_{pk}$).     |
+| `oscal_audit_cps_compliance`    | Audit a NIST OSCAL document against NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS overlays (`M8201`–`M8208`) and verify cyber-physical architectural component coverage.  |
+| `aml_run_virtual_commissioning` | Parse an IEC 62714 AutomationML / CAEX workcell topology (`M8301`–`M8308`) and execute closed-loop virtual commissioning coupling `VirtualPlc` logic and plant dynamics.    |
+| `opensim_analyze`               | Parse an OpenSim (`.osim`) musculoskeletal biomechanics model (`M9101`–`M9110`) and simulate Hill-type muscle activation and contraction dynamics.                          |
+| `dicom_rt_verify_dvh`           | Evaluate a DICOM-RT treatment plan (`RTPLAN`, `RTSTRUCT`, `RTDOSE`), verify QUANTEC OAR dose constraints (`M9201`–`M9210`), and compute DVH, CI, HI, BED, and EQD2 metrics. |
+| `cellml_simulate`               | Parse a CellML 1.0/1.1/2.0 electrophysiology or microvascular model, verify SI dimensional consistency (`M9301`–`M9310`), and integrate action potential ODEs.              |
+| `igtl_verify_calibration`       | Parse an OpenIGTLink / PLUS surgical navigation configuration (`M9801`–`M9810`) and solve stylus pivot calibration and Fitzpatrick Target Registration Error (TRE).         |
+| `three_mf_verify_guide`         | Verify an ISO/ASTM 52915 3MF Medical patient-specific surgical guide mesh for 2-manifold watertightness, wall thickness, osteotomy normals, and biocompatibility (`M9701`). |
+
 ---
 
 ## MCP Resources (`src/resources.ts`)
@@ -191,10 +204,11 @@ claude mcp add modelscript -- npx -y @modelscript/mcp
 ## Programmatic Usage
 
 ```typescript
-import { createServer, PolyglotMcpHost } from "@modelscript/mcp";
+import { createModelScriptMcpServer, PolyglotMcpHost, type ServerContext } from "@modelscript/mcp";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-const { server, context } = createServer();
+const ctx: ServerContext = { current: null };
+const server = createModelScriptMcpServer(ctx, { name: "modelscript", version: "0.1.0" });
 const transport = new StdioServerTransport();
 await server.connect(transport);
 ```

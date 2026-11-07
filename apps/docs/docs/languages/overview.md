@@ -1,6 +1,11 @@
+---
+title: "Polyglot Language Ecosystem"
+description: "ModelScript is not a single-language compiler—it is a polyglot systems engineering framework. All 68 engineering, scientific, and clinical languages share the same WebAssembly GLR parser compiler..."
+---
+
 # Polyglot Language Ecosystem
 
-ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **65+ engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **68 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 
@@ -12,7 +17,7 @@ Every language package under `languages/<slug>/` declares an explicit maturity t
 | :---------- | :-------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Stable**  | `Stable`  | Production-ready with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, EN 14363 Manchester Benchmark, IEEE 2800-2022, NIST STEP AP242). |
 | **Beta**    |  `Beta`   | Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including AUTOSAR, Simulink, SIMPACK, ADAMS, URDF, PLCopen, AutomationML, NIST OSCAL, ISO 23952 QIF, and the Radiology / Oncology / Surgical CAS suite).                |
-| **Preview** | `Preview` | Specialized domain and dialect support with native WASM parser, static diagnostics, core AST/DAE lowering, and baseline verification test suites (including CFD, FEA, PSS/E, OpenDSS, Aspen Plus, gPROMS, Cantera, PHREEQC, SMILES, and the Systems & Synthetic Biology suite).                                                                             |
+| **Preview** | `Preview` | Specialized domain and dialect support with native WASM parser, static diagnostics, core AST/DAE lowering, and baseline verification test suites (including CFD, FEA, PSS/E, CIM / CGMES, OpenDSS, Aspen Plus, gPROMS, Cantera, PHREEQC, SMILES, and the Systems & Synthetic Biology suite).                                                                |
 
 ---
 

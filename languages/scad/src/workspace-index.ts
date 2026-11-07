@@ -435,7 +435,15 @@ export class ScadWorkspaceIndex implements IWorkspaceIndex {
 
     // 2. Check dependencies
     for (const dep of fileInfo.dependencies) {
-      // Find matching registered URI ending with targetPath
+      const resolvedDep = this.resolveDependencyInfo(dep.targetPath, fromUri);
+      if (resolvedDep && resolvedDep.uri !== fromUri) {
+        if (resolvedDep.modules.has(name)) return resolvedDep.modules.get(name);
+        if (resolvedDep.functions.has(name)) return resolvedDep.functions.get(name);
+        if (dep.type === "include" && resolvedDep.variables.has(name)) {
+          return resolvedDep.variables.get(name);
+        }
+      }
+      // Fallback: find matching registered URI ending with targetPath
       for (const [otherUri, otherInfo] of this.fileInfos.entries()) {
         if (otherUri === fromUri) continue;
         if (otherUri.endsWith(dep.targetPath) || otherUri.endsWith(`/${dep.targetPath}`)) {

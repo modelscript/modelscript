@@ -69,15 +69,33 @@ export function pscadToModelica(project: PscxProject): string {
     return `bus_${busId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
   };
 
-  // 0. Declare AC Voltage Sources
+  // 0. Declare AC/DC Voltage Sources and Current Sources
   for (const src of netlist.sources) {
     const id = (src.name || src.id).replace(/[^a-zA-Z0-9_]/g, "_");
     const vPeakVolts = (src.vPeakKv * 1e3).toFixed(1);
-    declarations.push(
-      `  Modelica.Electrical.Analog.Sources.SineVoltage ${id}(V = ${vPeakVolts}, f = ${src.frequencyHz}, phase = ${src.phaseRad.toFixed(4)});`,
-    );
+    if (src.dc) {
+      declarations.push(`  Modelica.Electrical.Analog.Sources.ConstantVoltage ${id}(V = ${vPeakVolts});`);
+    } else {
+      declarations.push(
+        `  Modelica.Electrical.Analog.Sources.SineVoltage ${id}(V = ${vPeakVolts}, f = ${src.frequencyHz}, phase = ${src.phaseRad.toFixed(4)});`,
+      );
+    }
     equations.push(`  connect(${id}.p, ${busPin(src.bus)});`);
     equations.push(`  connect(${id}.n, ground.p);`);
+  }
+
+  for (const csrc of netlist.currentSources ?? []) {
+    const id = (csrc.name || csrc.id).replace(/[^a-zA-Z0-9_]/g, "_");
+    const iPeak = (csrc.iPeakA ?? 0).toFixed(4);
+    if (!csrc.frequencyHz || csrc.frequencyHz === 0) {
+      declarations.push(`  Modelica.Electrical.Analog.Sources.ConstantCurrent ${id}(I = ${iPeak});`);
+    } else {
+      declarations.push(
+        `  Modelica.Electrical.Analog.Sources.SineCurrent ${id}(I = ${iPeak}, f = ${csrc.frequencyHz}, phase = ${(csrc.phaseRad ?? 0).toFixed(4)});`,
+      );
+    }
+    equations.push(`  connect(ground.p, ${id}.p);`);
+    equations.push(`  connect(${id}.n, ${busPin(csrc.bus)});`);
   }
 
   // 1. Declare RLC Branches and Timed Circuit Breakers
@@ -97,12 +115,26 @@ export function pscadToModelica(project: PscxProject): string {
       equations.push(`  connect(${id}_trip.y, ${id}.control);`);
       equations.push(`  connect(${pPin}, ${id}.p);`);
       equations.push(`  connect(${id}.n, ${nPin});`);
+    } else if (b.resistanceOhm > 0 && b.inductanceH > 0 && b.capacitanceF > 0) {
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Resistor ${id}_R(R = ${b.resistanceOhm});`);
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Inductor ${id}_L(L = ${b.inductanceH});`);
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Capacitor ${id}_C(C = ${b.capacitanceF});`);
+      equations.push(`  connect(${pPin}, ${id}_R.p);`);
+      equations.push(`  connect(${id}_R.n, ${id}_L.p);`);
+      equations.push(`  connect(${id}_L.n, ${id}_C.p);`);
+      equations.push(`  connect(${id}_C.n, ${nPin});`);
     } else if (b.resistanceOhm > 0 && b.inductanceH > 0) {
       declarations.push(`  Modelica.Electrical.Analog.Basic.Resistor ${id}_R(R = ${b.resistanceOhm});`);
       declarations.push(`  Modelica.Electrical.Analog.Basic.Inductor ${id}_L(L = ${b.inductanceH});`);
       equations.push(`  connect(${pPin}, ${id}_R.p);`);
       equations.push(`  connect(${id}_R.n, ${id}_L.p);`);
       equations.push(`  connect(${id}_L.n, ${nPin});`);
+    } else if (b.resistanceOhm > 0 && b.capacitanceF > 0) {
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Resistor ${id}_R(R = ${b.resistanceOhm});`);
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Capacitor ${id}_C(C = ${b.capacitanceF});`);
+      equations.push(`  connect(${pPin}, ${id}_R.p);`);
+      equations.push(`  connect(${id}_R.n, ${id}_C.p);`);
+      equations.push(`  connect(${id}_C.n, ${nPin});`);
     } else if (b.resistanceOhm > 0 && b.inductanceH === 0 && b.capacitanceF === 0) {
       declarations.push(`  Modelica.Electrical.Analog.Basic.Resistor ${id}(R = ${b.resistanceOhm});`);
       equations.push(`  connect(${pPin}, ${id}.p);`);

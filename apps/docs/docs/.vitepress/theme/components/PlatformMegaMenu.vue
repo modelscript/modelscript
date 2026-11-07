@@ -157,7 +157,7 @@ const footerLinks = computed<MegaMenuFooterLink[]>(() => [
   <NavMegaMenu
     menu-id="platform"
     label="Platform"
-    :active-prefixes="['/architecture/', '/algorithms/']"
+    :active-prefixes="['/architecture/', '/algorithms/', '/ansatz/']"
     :columns="columns"
     :feature="feature"
     :footer-links="footerLinks"

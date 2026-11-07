@@ -1,3 +1,8 @@
+---
+title: "Replacing First-Party Engineering Workflows with Ansatz"
+description: "Ansatz (ansatz.social) is designed to displace the fragmented, desktop-bound workflows of legacy first-party engineering tools—including Dassault Systèmes Dymola, Cameo / MagicDraw, MathWorks MATLA..."
+---
+
 # Replacing First-Party Engineering Workflows with Ansatz
 
 **Ansatz** (`ansatz.social`) is designed to displace the fragmented, desktop-bound workflows of legacy first-party engineering tools—including Dassault Systèmes Dymola, Cameo / MagicDraw, MathWorks MATLAB/Simulink, Manitoba Hydro PSCAD, and SLB OLGA.

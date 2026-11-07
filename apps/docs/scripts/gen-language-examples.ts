@@ -1164,6 +1164,52 @@ force.coilover.c = 2400.0`,
 0 / END OF BRANCH DATA`,
   },
 
+  cgmes: {
+    filename: "EntsoeInterconnector380kV.xml",
+    title: "ENTSO-E CGMES v2.4.15 380/220 kV Substation & Tie-Line Exchange",
+    description:
+      "IEC 61970-600-2 Common Grid Model Exchange Standard RDF/XML profile defining Substations, VoltageLevels, TopologicalNodes, SynchronousMachines, PowerTransformers, and ACLineSegments.",
+    viewLabel: "CGMES Node-Breaker & Bus-Branch Substation Schematic",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#">
+  <cim:Substation rdf:ID="Sub_Alpha">
+    <cim:IdentifiedObject.name>Substation_Alpha_380kV</cim:IdentifiedObject.name>
+  </cim:Substation>
+  <cim:VoltageLevel rdf:ID="VL_380">
+    <cim:IdentifiedObject.name>Alpha_380kV</cim:IdentifiedObject.name>
+    <cim:VoltageLevel.Substation rdf:resource="#Sub_Alpha"/>
+    <cim:VoltageLevel.BaseVoltage rdf:resource="#BV_380"/>
+  </cim:VoltageLevel>
+  <cim:TopologicalNode rdf:ID="TN_Alpha_380">
+    <cim:IdentifiedObject.name>Bus_Alpha_380</cim:IdentifiedObject.name>
+    <cim:TopologicalNode.ConnectivityNodeContainer rdf:resource="#VL_380"/>
+  </cim:TopologicalNode>
+  <cim:TopologicalNode rdf:ID="TN_Beta_380">
+    <cim:IdentifiedObject.name>Bus_Beta_380</cim:IdentifiedObject.name>
+    <cim:TopologicalNode.ConnectivityNodeContainer rdf:resource="#VL_380"/>
+  </cim:TopologicalNode>
+  <cim:SynchronousMachine rdf:ID="Gen_Nuclear_1">
+    <cim:IdentifiedObject.name>NuclearUnit_1200MW</cim:IdentifiedObject.name>
+    <cim:RotatingMachine.ratedS>1350.0</cim:RotatingMachine.ratedS>
+    <cim:RotatingMachine.p>-1150.0</cim:RotatingMachine.p>
+    <cim:RotatingMachine.q>-220.0</cim:RotatingMachine.q>
+  </cim:SynchronousMachine>
+  <cim:ACLineSegment rdf:ID="Line_Alpha_Beta_1">
+    <cim:IdentifiedObject.name>TieLine_Alpha_Beta_380kV</cim:IdentifiedObject.name>
+    <cim:Conductor.length>84.5</cim:Conductor.length>
+    <cim:ACLineSegment.r>1.85</cim:ACLineSegment.r>
+    <cim:ACLineSegment.x>24.60</cim:ACLineSegment.x>
+    <cim:ACLineSegment.bch>0.000315</cim:ACLineSegment.bch>
+  </cim:ACLineSegment>
+  <cim:EnergyConsumer rdf:ID="Load_Metro_Beta">
+    <cim:IdentifiedObject.name>MetroHub_Beta_Load</cim:IdentifiedObject.name>
+    <cim:EnergyConsumer.p>820.0</cim:EnergyConsumer.p>
+    <cim:EnergyConsumer.q>195.0</cim:EnergyConsumer.q>
+  </cim:EnergyConsumer>
+</rdf:RDF>`,
+  },
+
   opendss: {
     filename: "SolarDistributionFeeder.dss",
     title: "OpenDSS 12.47 kV Unbalanced Distribution Feeder & PV DER",
@@ -4243,6 +4289,139 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
       return renderBothThemesFromDiagramData(data);
     }
 
+    case "cgmes": {
+      const data: DiagramData = {
+        nodes: [
+          makeNode({
+            id: "gen",
+            label: "Gen_Nuclear_1",
+            stereotype: "«cim:SynchronousMachine»",
+            x: 25,
+            y: 30,
+            width: 210,
+            height: 86,
+            stroke: "#f59e0b",
+            sections: [{ header: "SSH Injection", entries: ["ratedS = 1350 MVA", "P = -1150 MW, Q = -220 MVAr"] }],
+            ports: [{ id: "out", x: 210, y: 43, direction: "out" }],
+          }),
+          makeNode({
+            id: "subA",
+            label: "Substation_Alpha_380kV",
+            stereotype: "«cim:TopologicalNode»",
+            x: 280,
+            y: 30,
+            width: 215,
+            height: 86,
+            stroke: "#38bdf8",
+            sections: [{ header: "TP / SV Bus", entries: ["TN_Alpha_380 (380 kV)", "V = 1.024 pu, angle = 0.0 deg"] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "out", x: 215, y: 43, direction: "out" },
+              { id: "bot", x: 107, y: 86, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "subB",
+            label: "Substation_Beta_380kV",
+            stereotype: "«cim:TopologicalNode»",
+            x: 545,
+            y: 30,
+            width: 215,
+            height: 86,
+            stroke: "#10b981",
+            sections: [{ header: "TP / SV Bus", entries: ["TN_Beta_380 (380 kV)", "V = 0.996 pu, angle = -4.8 deg"] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "bot", x: 107, y: 86, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "xfmr",
+            label: "AutoXfmr_380_220",
+            stereotype: "«cim:PowerTransformer»",
+            x: 280,
+            y: 155,
+            width: 215,
+            height: 84,
+            stroke: "#8b5cf6",
+            sections: [{ header: "2-Winding Tap", entries: ["380/220 kV, 600 MVA", "uk = 12.4%, tap = 1.012"] }],
+            ports: [
+              { id: "top", x: 107, y: 0, direction: "in" },
+              { id: "out", x: 215, y: 42, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "load",
+            label: "MetroHub_Beta_Load",
+            stereotype: "«cim:EnergyConsumer»",
+            x: 545,
+            y: 155,
+            width: 215,
+            height: 84,
+            stroke: "#ec4899",
+            sections: [
+              { header: "PQ Demand & Export", entries: ["P = 820 MW, Q = 195 MVAr", "PSS/E RAW + OpenIPSL .mo"] },
+            ],
+            ports: [
+              { id: "top", x: 107, y: 0, direction: "in" },
+              { id: "in", x: 0, y: 42, direction: "in" },
+            ],
+          }),
+        ],
+        edges: [
+          makeEdge({
+            id: "e1",
+            source: "gen",
+            sourcePort: "out",
+            target: "subA",
+            targetPort: "in",
+            label: "CB_101 (Closed)",
+            stroke: "#f59e0b",
+          }),
+          makeEdge({
+            id: "e2",
+            source: "subA",
+            sourcePort: "out",
+            target: "subB",
+            targetPort: "in",
+            label: "TieLine 84.5 km",
+            stroke: "#38bdf8",
+          }),
+          makeEdge({
+            id: "e3",
+            source: "subA",
+            sourcePort: "bot",
+            target: "xfmr",
+            targetPort: "top",
+            label: "End 1 (380 kV)",
+            stroke: "#8b5cf6",
+          }),
+          makeEdge({
+            id: "e4",
+            source: "subB",
+            sourcePort: "bot",
+            target: "load",
+            targetPort: "top",
+            label: "Feeder Bay",
+            stroke: "#10b981",
+          }),
+          makeEdge({
+            id: "e5",
+            source: "xfmr",
+            sourcePort: "out",
+            target: "load",
+            targetPort: "in",
+            label: "220 kV Corridor",
+            stroke: "#ec4899",
+            dash: "5 3",
+          }),
+        ],
+        coordinateSystem: null,
+        diagramBackground: null,
+      };
+      return renderBothThemesFromDiagramData(data);
+    }
+
     case "gproms":
     case "cantera":
     case "phreeqc":
@@ -4269,150 +4448,255 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
           n1: [string, string, string[]];
           n2: [string, string, string[]];
           n3: [string, string, string[]];
+          n4: [string, string, string[]];
+          n5: [string, string, string[]];
           e1: string;
           e2: string;
+          e3: string;
+          e4: string;
+          e5: string;
         }
       > = {
         gproms: {
           n1: ["FeedStream", "«gPROMS Port»", ["Cin = 2.0 kmol/m3", "Tin = 300.0 K"]],
           n2: ["ExothermicCSTR", "«gPROMS Model»", ["r_A = k0*exp(-Ea/RT)*Ca", "V = 2.5 m3"]],
           n3: ["DAE Arena Solver", "«BDF Stiff Solver»", ["states = [Ca, T]", "alg = [r_A]"]],
+          n4: ["CoolingJacket", "«Energy Balance»", ["UA = 4.8 kW/K", "Tc = 292.0 K"]],
+          n5: ["Modelica / FMU", "«Target Projection»", ["Method of Lines", "Index-1 verified"]],
           e1: "F = 1.2 m3/s",
           e2: "lowerToDAE",
+          e3: "heat removal",
+          e4: "thermal coupling",
+          e5: "export DAE",
         },
         cantera: {
           n1: ["h2_air_mix", "«ideal_gas»", ["T = 1200 K", "P = 101325 Pa"]],
           n2: ["ElementaryRxns", "«Arrhenius Network»", ["H + O2 <=> O + OH", "O + H2 <=> H + OH"]],
           n3: ["IgnitionDelay", "«ODE Integrator»", ["species = 7", "reactions = 3"]],
-          e1: "NASA-7 thermo",
+          n4: ["NASA-7 Polynomials", "«Thermo Database»", ["Cp(T), H(T), S(T)", "T_mid = 1000 K"]],
+          n5: ["Zero-D Reactor", "«Sensitivity & Eigen»", ["t_ign = 0.18 ms", "stiff Jacobian"]],
+          e1: "mixture state",
           e2: "net production",
+          e3: "K_eq(T)",
+          e4: "enthalpy flux",
+          e5: "trajectory",
         },
         phreeqc: {
           n1: ["SOLUTION 1", "«Aqueous Phase»", ["pH = 7.35, T = 25 C", "Ca = 1.85 mmol/kgw"]],
           n2: ["EQUILIBRIUM_PHASES", "«Mineral Buffer»", ["Calcite (SI = 0.0)", "CO2(g) (logP = -2.1)"]],
           n3: ["SpeciationResult", "«Newton-Raphson»", ["charge balance", "ionic strength I"]],
+          n4: ["Davies / Debye", "«Activity Model»", ["gamma_i(I, z_i)", "I = 0.0058 mol/kgw"]],
+          n5: ["Saturation Index", "«Scaling Forecast»", ["SI = log10(IAP/Ksp)", "Calcite & Dolomite"]],
           e1: "mass action",
           e2: "equilibrate",
+          e3: "activity coeff",
+          e4: "ion pairing",
+          e5: "SI report",
         },
         smiles: {
           n1: ["OpenSMILES", "«Chemical Graph»", ["CC(=O)Oc1ccccc1C(=O)O", "Aspirin (MW = 180.16)"]],
           n2: ["Valence & Rings", "«Huckel 4n+2»", ["ring = 6-membered", "chiral = R/S verified"]],
           n3: ["Lipinski Ro5", "«ADMET Profile»", ["LogP = 1.19", "HBD = 1, HBA = 4"]],
+          n4: ["Joback Groups", "«Thermo Estimation»", ["Tb = 408.2 K", "Tc = 635.0 K, Pc = 38 bar"]],
+          n5: ["QSAR & SDF V2000", "«3D Conformer»", ["TPSA = 63.6 A^2", "0 Ro5 violations"]],
           e1: "parse graph",
           e2: "descriptors",
+          e3: "fragmentation",
+          e4: "group additivity",
+          e5: "property card",
         },
         antimony: {
           n1: ["TetR_Module", "«Transcriptional»", ["p_TetR -| m_cI", "Hill n = 2.0"]],
           n2: ["cI_Module", "«Transcriptional»", ["p_cI -| m_LacI", "alpha = 216.0"]],
           n3: ["LacI_Module", "«Transcriptional»", ["p_LacI -| m_TetR", "beta = 0.2"]],
-          e1: "represses",
-          e2: "oscillates",
+          n4: ["mRNA Pool", "«Degradation Kinetics»", ["k_deg = 0.012 s^-1", "ribosome binding"]],
+          n5: ["Limit-Cycle ODE", "«SBML / DAE Target»", ["period = 148 min", "sustained oscillation"]],
+          e1: "represses cI",
+          e2: "represses LacI",
+          e3: "transcribes",
+          e4: "translates",
+          e5: "represses TetR",
         },
         bngl: {
           n1: ["EGF(r) + EGFR(l,d)", "«Seed Species»", ["EGF = 1200", "EGFR = 1000"]],
           n2: ["R_Bind & R_Dimer", "«Reaction Rules»", ["kp1 = 1e-3, km1 = 0.1", "kp2 = 5e-3, km2 = 0.05"]],
           n3: ["EGFR(d!+,Y1068~P)", "«Phosphorylated»", ["k_p = 1.20 s^-1", "Rule-based ODE/SSA"]],
+          n4: ["Grb2(sh2,sh3) + SOS", "«Adaptor Complex»", ["Grb2 recruitment", "Y1068~P docking"]],
+          n5: ["Expanded Network", "«24 Species / 68 Rxns»", ["Observable Dimers", "Gillespie SSA / CVODE"]],
           e1: "ligand bind",
           e2: "trans-phos",
+          e3: "SH2 docking",
+          e4: "complexation",
+          e5: "emit observables",
         },
         genbank: {
           n1: ["T7_promoter", "«promoter 1..20»", ["inducible T7-lac", "RBS = 25..36"]],
           n2: ["gfp (CDS)", "«CDS 43..150»", ["codon_start = 1", "His6-GFP fusion"]],
           n3: ["T7_terminator", "«terminator 155..180»", ["180 bp circular", "ORF validated"]],
+          n4: ["Restriction Map", "«Endonuclease Cut»", ["EcoRI, BamHI, NotI", "zero internal cuts"]],
+          n5: ["SBOL3 / AA Translation", "«Protein Sequence»", ["CAI = 0.84 (E. coli)", "MW = 26.9 kDa"]],
           e1: "transcription",
-          e2: "translation",
+          e2: "termination",
+          e3: "digest check",
+          e4: "ORF frame +1",
+          e5: "export SBOL3",
         },
         nmtran: {
           n1: ["Depot (Gut)", "«Compartment 1»", ["KA = THETA(5)*exp(ETA3)", "Oral bolus dose"]],
           n2: ["Central (Plasma)", "«Compartment 2»", ["CL = 4.5 L/h, V2 = 32 L", "WT allometric 0.75"]],
           n3: ["Peripheral", "«Compartment 3»", ["Q = 2.8 L/h, V3 = 48 L", "FOCE-I estimation"]],
+          n4: ["Covariate Model", "«Allometric Scaling»", ["CRCL renal clearance", "OMEGA 3x3 IIV block"]],
+          n5: ["Plasma PK Profile", "«Emax PD & AUC»", ["Cp = A2 / V2", "Proportional + Add Err"]],
           e1: "ka absorption",
-          e2: "Q distribution",
+          e2: "Q inter-comp",
+          e3: "THETA/ETA",
+          e4: "CL elimination",
+          e5: "Cmax & AUC0-inf",
         },
         pdb: {
           n1: ["HELIX H1", "«Secondary Structure»", ["ALA A 1 .. ALA A 5", "Right-handed alpha"]],
           n2: ["Backbone Coordinates", "«ATOM 1..5»", ["N-CA-C-O peptide", "B-factor = 14.2 A^2"]],
           n3: ["Ramachandran Check", "«Steric Validation»", ["phi/psi allowed", "no steric clashes"]],
+          n4: ["Contact Kirchoff", "«GNM / ANM Network»", ["cutoff Rc = 7.0 A", "spring gamma = 1.0"]],
+          n5: ["B-Factor & Modes", "«Normal Mode Analysis»", ["low-freq fluctuations", "RMSD = 0.42 A"]],
           e1: "covalent",
-          e2: "geometry QA",
+          e2: "dihedral angles",
+          e3: "CA-CA distance",
+          e4: "Hessian eigen",
+          e5: "steric QA pass",
         },
         sbol: {
           n1: ["pTet_Promoter", "«sbol:SubComponent»", ["SO:0000167", "TetR repressible"]],
           n2: ["ToggleCassette", "«sbol:Component»", ["SBO:0000251 (DNA)", "SO:0005850 cassette"]],
           n3: ["GFP_Reporter", "«sbol:Sequence»", ["IUPAC nucleotide", "SBOL 3.1 RDF/XML"]],
+          n4: ["RepressionInteraction", "«SBO:0000169»", ["TetR -| pTet", "K_d = 12.5 nM, n = 2"]],
+          n5: ["SBML Hill ODE", "«Projected Model»", ["d[GFP]/dt synthesis", "Provenance verified"]],
           e1: "hasFeature",
           e2: "encodes",
+          e3: "participatesIn",
+          e4: "regulates",
+          e5: "lowerToSBML",
         },
         sedml: {
           n1: ["model_glycolysis", "«sedML:model»", ["urn:sedml:language:sbml", "EnzymeFeedbackPathway"]],
           n2: ["sim_timecourse", "«uniformTimeCourse»", ["KISAO:0000019 (CVODE)", "t = 0..120 (600 steps)"]],
           n3: ["task_baseline", "«sedML:task»", ["DataGenerators", "Reproducible Plot2D"]],
+          n4: ["ChangeAttribute", "«Model Perturbation»", ["Vmax_PFK = 1.85", "ATP inhibition sweep"]],
+          n5: ["COMBINE Archive", "«OMEX / CSV Output»", ["NADH & Pyruvate curves", "Bit-exact trajectory"]],
           e1: "modelRef",
           e2: "simulationRef",
+          e3: "listOfChanges",
+          e4: "executes",
+          e5: "emits report",
         },
         opensim: {
           n1: ["humerus", "«OpenSim Body»", ["mass = 1.85 kg", "parent frame"]],
           n2: ["elbow_joint", "«PinJoint (1-DOF)»", ["coord = elbow_flexion", "range = [0, 2.44 rad]"]],
           n3: ["biceps_brachii", "«Thelen2003Muscle»", ["Fmax = 624.3 N", "Lopt = 0.1157 m"]],
+          n4: ["ActivationDynamics", "«Excitation u(t)»", ["tau_act = 10 ms", "tau_deact = 40 ms"]],
+          n5: ["Inverse Dynamics", "«Joint Moment & EMG»", ["moment arm r(q)", "Featherstone M(q)qdd"]],
           e1: "articulates",
           e2: "actuates",
+          e3: "neural drive",
+          e4: "Hill force-vel",
+          e5: "net torque",
         },
         "dicom-rt": {
           n1: ["LAO_45 Beam", "«6 MV Photon IMRT»", ["Gantry = 45.0 deg", "Meterset = 142.5 MU"]],
           n2: ["PTV_7800 Target", "«Prescription 78 Gy»", ["39 fractions (2 Gy/fx)", "Vol = 94.2 cc"]],
           n3: ["OAR DVH & Gamma", "«QUANTEC QA»", ["Rectum & Bladder", "3%/3mm Pass = 99.4%"]],
-          e1: "PDD * OAR dose",
+          n4: ["RTDOSE 3D Grid", "«DoseGridScaling»", ["2.0 mm isotropic", "D95 = 76.8 Gy, D2 = 80.4 Gy"]],
+          n5: ["LQ Biological Dose", "«BED & EQD2»", ["alpha/beta = 3.0 Gy", "EQD2 = 78.0 Gy verified"]],
+          e1: "fluences",
           e2: "DVH evaluation",
+          e3: "convolves dose",
+          e4: "voxel histogram",
+          e5: "QUANTEC pass",
         },
         cellml: {
           n1: ["Units Registry", "«CellML 2.0 Units»", ["ms = 1e-3 s", "mV = 1e-3 V"]],
           n2: ["membrane", "«CellML Component»", ["V_init = -75.0 mV", "Cm = 1.0 uF/cm2"]],
           n3: ["ActionPotential", "«ODE Solver»", ["dV/dt = -I_ion / Cm", "public port encapsulation"]],
+          n4: ["Na & K Channels", "«Hodgkin-Huxley Gates»", ["m^3*h*g_Na*(V-E_Na)", "n^4*g_K*(V-E_K)"]],
+          n5: ["DAE Arena Lowering", "«BDF / CVODE Target»", ["APD90 = 245 ms", "Zero unit mismatches"]],
           e1: "dimensional check",
           e2: "integrate ODE",
+          e3: "gating kinetics",
+          e4: "ionic current I_ion",
+          e5: "voltage trace",
         },
         febio: {
           n1: ["ArterialMedia", "«Mooney-Rivlin»", ["c1 = 18.5 kPa", "c2 = 4.2 kPa, k = 2.5 MPa"]],
           n2: ["SolidModule", "«FEBio 4.0 Static»", ["dt = 0.05 (20 steps)", "Incompressible J ~ 1"]],
           n3: ["CauchyStress", "«Biomechanical Response»", ["stretch lambda = 1..1.4", "strain energy W"]],
+          n4: ["Hex8 Vessel Mesh", "«Boundary Conditions»", ["Lumen P = 16.0 kPa", "Axial stretch = 1.15"]],
+          n5: ["Nonlinear Newton", "«BFGS / Quasi-Newton»", ["sigma_vm = 142 kPa", "Positive-definite tangent"]],
           e1: "constitutive",
-          e2: "Newton equilibrium",
+          e2: "stress tensor",
+          e3: "discretizes",
+          e4: "virtual work",
+          e5: "converged state",
         },
         nifti: {
           n1: ["Voxel Grid (i,j,k)", "«NIfTI-1 FLOAT32»", ["dim = 192 x 256 x 256", "pixdim = 1.0 mm iso"]],
           n2: ["sform Affine", "«sform_code = 4»", ["MNI152 stereotactic", "det(A) = -1.0 mm^3"]],
           n3: ["RAS+ World (x,y,z)", "«Neuroimaging Space»", ["Right-Anterior-Superior", "FOV = 192x256x256 mm"]],
+          n4: ["Quaternion qform", "«Rigid Orientation»", ["qb, qc, qd unit norm", "qfac = 1.0 handedness"]],
+          n5: ["Marching Cubes Surface", "«3MF / STL Iso-Mesh»", ["Hounsfield threshold", "Watertight anatomy"]],
           e1: "A * [i,j,k,1]^T",
           e2: "spatial registration",
+          e3: "qform check",
+          e4: "orthonormal R",
+          e5: "extract mesh",
         },
         topas: {
           n1: ["ProtonBeam", "«150 MeV Source»", ["Particle = proton", "Histories = 100,000"]],
           n2: ["WaterPhantom", "«TsBox G4_WATER»", ["HLZ = 20.0 cm", "ZBins = 200"]],
           n3: ["BraggPeakDose", "«DoseToMedium»", ["R80 = 15.77 cm", "Bethe-Bloch LET"]],
+          n4: ["RangeModulator", "«SOBP Wheel / Nozzle»", ["Snout pos = 18.0 cm", "Energy spread = 0.8%"]],
+          n5: ["Bortfeld Analytical", "«Depth-Dose Curve»", ["Peak-to-plateau = 4.6", "Distal falloff = 3.2 mm"]],
           e1: "transport",
           e2: "score depth-dose",
+          e3: "collimates",
+          e4: "stopping power",
+          e5: "DICOM-RT export",
         },
         "three-mf": {
           n1: ["Ti-6Al-4V ELI", "«ASTM F136 Material»", ["id = 1", "surgical grade alloy"]],
           n2: ["CuttingGuide Mesh", "«2-Manifold Object»", ["V = 4, E = 6, F = 4", "Euler chi = 2"]],
           n3: ["Build Tray", "«3MF Build Item»", ["watertight = true", "zero non-manifold edges"]],
+          n4: ["K-Wire Drill Sleeve", "«Cylindrical Datum»", ["Clearance = +0.15 mm", "Min wall = 2.4 mm"]],
+          n5: ["Sterilization & Print", "«ISO/ASTM 52915 QA»", ["Positive volume", "Outward normals verified"]],
           e1: "assigns material",
-          e2: "slices build",
+          e2: "places on bed",
+          e3: "boolean guide",
+          e4: "half-edge check",
+          e5: "ready to print",
         },
         igtl: {
           n1: ["TrackerBase", "«Optical Camera»", ["World reference", "6-DOF optical tracking"]],
           n2: ["SurgicalPointer", "«TRANSFORM Stream»", ["t = [124.5, -42.2, 618.3]", "SO(3) ortho verified"]],
           n3: ["Pivot & Hand-Eye", "«AX = XB Calibration»", ["Pivot RMS < 0.35 mm", "Real-time CAS nav"]],
+          n4: ["Fiducial Markers", "«Patient Registration»", ["N = 6 skull fiducials", "FLE = 0.25 mm iso"]],
+          n5: ["Fitzpatrick TRE", "«Target Error Bound»", ["TRE_tip = 0.48 mm", "120 Hz stream active"]],
           e1: "T_tracker_pointer",
           e2: "calibrate tip",
+          e3: "locates fiducials",
+          e4: "SVD registration",
+          e5: "TRE safety gate",
         },
       };
       const meta = domainMeta[slug] ?? {
         n1: [spec.filename, "«Source Artifact»", [`slug = ${slug}`]],
         n2: [spec.title.slice(0, 22), "«Semantic AST»", ["WASM GLR + Lint"]],
         n3: ["Verified Output", "«ModelScript Pipeline»", ["Digital Thread"]],
-        e1: "parse & lint",
-        e2: "verify",
+        n4: ["Domain Constraints", "«Static & Unit Rules»", ["Zero diagnostics"]],
+        n5: ["DAE & Projections", "«Downstream Target»", ["Simulation ready"]],
+        e1: "parse & index",
+        e2: "lower model",
+        e3: "lint rules",
+        e4: "couple constraints",
+        e5: "verify & export",
       };
       const data: DiagramData = {
         nodes: [
@@ -4420,27 +4704,31 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
             id: "n1",
             label: meta.n1[0],
             stereotype: meta.n1[1],
-            x: 30,
-            y: 50,
-            width: 205,
+            x: 25,
+            y: 30,
+            width: 210,
             height: 86,
             stroke: "#38bdf8",
-            sections: [{ header: "Parameters", entries: meta.n1[2] }],
-            ports: [{ id: "out", x: 205, y: 43, direction: "out" }],
+            sections: [{ header: "Inputs & Spec", entries: meta.n1[2] }],
+            ports: [
+              { id: "out", x: 210, y: 43, direction: "out" },
+              { id: "bot", x: 105, y: 86, direction: "out" },
+            ],
           }),
           makeNode({
             id: "n2",
             label: meta.n2[0],
             stereotype: meta.n2[1],
-            x: 285,
-            y: 50,
-            width: 210,
+            x: 280,
+            y: 30,
+            width: 215,
             height: 86,
             stroke: "#8b5cf6",
-            sections: [{ header: "Model", entries: meta.n2[2] }],
+            sections: [{ header: "Core Formulation", entries: meta.n2[2] }],
             ports: [
               { id: "in", x: 0, y: 43, direction: "in" },
-              { id: "out", x: 210, y: 43, direction: "out" },
+              { id: "out", x: 215, y: 43, direction: "out" },
+              { id: "bot", x: 107, y: 86, direction: "in" },
             ],
           }),
           makeNode({
@@ -4448,12 +4736,46 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
             label: meta.n3[0],
             stereotype: meta.n3[1],
             x: 545,
-            y: 50,
-            width: 205,
+            y: 30,
+            width: 215,
             height: 86,
             stroke: "#10b981",
-            sections: [{ header: "Verification", entries: meta.n3[2] }],
-            ports: [{ id: "in", x: 0, y: 43, direction: "in" }],
+            sections: [{ header: "Solver & Analysis", entries: meta.n3[2] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "bot", x: 107, y: 86, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "n4",
+            label: meta.n4[0],
+            stereotype: meta.n4[1],
+            x: 150,
+            y: 155,
+            width: 225,
+            height: 84,
+            stroke: "#f59e0b",
+            sections: [{ header: "Coupled Subsystem", entries: meta.n4[2] }],
+            ports: [
+              { id: "top", x: 60, y: 0, direction: "in" },
+              { id: "topOut", x: 175, y: 0, direction: "out" },
+              { id: "out", x: 225, y: 42, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "n5",
+            label: meta.n5[0],
+            stereotype: meta.n5[1],
+            x: 455,
+            y: 155,
+            width: 235,
+            height: 84,
+            stroke: "#ec4899",
+            sections: [{ header: "Verified Output", entries: meta.n5[2] }],
+            ports: [
+              { id: "in", x: 0, y: 42, direction: "in" },
+              { id: "top", x: 155, y: 0, direction: "in" },
+            ],
           }),
         ],
         edges: [
@@ -4474,6 +4796,33 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
             targetPort: "in",
             label: meta.e2,
             stroke: "#10b981",
+          }),
+          makeEdge({
+            id: "e3",
+            source: "n1",
+            sourcePort: "bot",
+            target: "n4",
+            targetPort: "top",
+            label: meta.e3,
+            stroke: "#f59e0b",
+          }),
+          makeEdge({
+            id: "e4",
+            source: "n4",
+            sourcePort: "topOut",
+            target: "n2",
+            targetPort: "bot",
+            label: meta.e4,
+            stroke: "#8b5cf6",
+          }),
+          makeEdge({
+            id: "e5",
+            source: "n3",
+            sourcePort: "bot",
+            target: "n5",
+            targetPort: "top",
+            label: meta.e5,
+            stroke: "#ec4899",
           }),
         ],
         coordinateSystem: null,

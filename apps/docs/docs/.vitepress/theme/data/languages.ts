@@ -349,6 +349,15 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     tier: "preview",
   },
   {
+    slug: "cgmes",
+    name: "CIM / CGMES",
+    sidebar: "CIM / CGMES",
+    ext: ".xml, .rdf",
+    role: "ENTSO-E IEC 61970 transmission grid exchange & topology",
+    group: "power",
+    tier: "preview",
+  },
+  {
     slug: "opendss",
     name: "OpenDSS",
     sidebar: "OpenDSS Distribution",

@@ -129,7 +129,10 @@ export const csvLanguage = language({
   writeback: (ctx) => {
     const { entry, newValue } = ctx;
     if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
-      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
+      const trimmed = newValue.trim();
+      const needsQuotes = /[",;\t\r\n]/.test(trimmed);
+      const formatted = needsQuotes ? `"${trimmed.replace(/"/g, '""')}"` : trimmed;
+      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: formatted };
     }
     return null;
   },
@@ -193,8 +196,9 @@ export const csvLanguage = language({
       };
       return def({
         syntax: seq(
-          field("rows", getRule("Row")),
-          repeat(seq(getRule("_newline"), field("rows", getRule("Row")))),
+          optional(getRule("_newline")),
+          field("rows", choice(getRule("Row"), getRule("_comment"))),
+          repeat(seq(getRule("_newline"), field("rows", choice(getRule("Row"), getRule("_comment"))))),
           optional(getRule("_newline")),
         ),
         symbol: (self: Record<string, string>) => ({
@@ -261,11 +265,12 @@ export const csvLanguage = language({
       return choice(getRule("_quoted_cell"), getRule("_unquoted_cell"));
     },
 
+    _comment: () => /#[^\r\n]*/,
     _quoted_cell: () => /"([^"]|"")*"/,
-    _unquoted_cell: () => /[^,\r\n\t;"]+/,
+    _unquoted_cell: () => /[^#,\r\n\t;"][^,\r\n\t;"]*/,
 
     _delimiter: () => choice(",", ";", "\t"),
-    _newline: () => choice("\r\n", "\n", "\r"),
+    _newline: () => /(\r\n|\n|\r)+/,
 
     // =====================================================================
     // Dummy Rule for Virtual Component Symbols

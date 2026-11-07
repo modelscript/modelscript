@@ -113,3 +113,22 @@ console.log("Calcite SI:", spec.saturationIndices.Calcite?.si);
 const dae = lowerPhreeqcToDae(doc);
 const modelicaCode = phreeqcToModelica(doc, "KarstAquiferChemistry");
 ```
+
+---
+
+## Scripts
+
+| Command                | Description                                                           |
+| ---------------------- | --------------------------------------------------------------------- |
+| `npm run build`        | Build WASM parser (`node build.js`) and compile TypeScript to `dist/` |
+| `npm run build:parser` | Force-rebuild `parser.wasm` and generated bindings                    |
+| `npm test`             | Run PHREEQC parser, speciation solver, linter, and DAE lowering tests |
+| `npm run lint`         | Run ESLint across `src/` and `tests/`                                 |
+| `npm run typecheck`    | Run `tsc --noEmit` type verification                                  |
+| `npm run clean`        | Remove `dist/`, `src-gen/`, and `.wasm` build artifacts               |
+
+---
+
+## License
+
+`AGPL-3.0-or-later`

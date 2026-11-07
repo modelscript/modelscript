@@ -408,13 +408,27 @@ function enterPlaybackMode(): void {
 }
 
 function formatSimpleMarkdown(text: string): string {
+  // If text already contains trusted inline HTML tags (<strong>, <code>, <sub>, <sup>) and no raw markdown/LaTeX,
+  // still normalize any inline $...$ math tokens cleanly.
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
+    .replace(/\$([^$]+)\$/g, (_, math: string) => {
+      const cleaned = math
+        .replace(/\\rho\b/g, "&rho;")
+        .replace(/\\Delta\b/g, "&Delta;")
+        .replace(/\\le\b/g, "&le;")
+        .replace(/\\ge\b/g, "&ge;")
+        .replace(/\\%/g, "%")
+        .replace(/\\text\{([^}]*)\}/g, "$1")
+        .replace(/_\{([^}]*)\}/g, "<sub>$1</sub>")
+        .replace(/_([a-zA-Z0-9])/g, "<sub>$1</sub>")
+        .replace(/\^\{([^}]*)\}/g, "<sup>$1</sup>")
+        .replace(/\^([a-zA-Z0-9])/g, "<sup>$1</sup>")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      return `<span class="math-inline">${cleaned}</span>`;
+    })
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\$([^$]+)\$/g, '<span class="math-inline">$1</span>');
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
 /**

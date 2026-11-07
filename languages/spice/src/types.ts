@@ -57,6 +57,7 @@ export interface SineWaveform {
   freq: number;
   td?: number | undefined;
   theta?: number | undefined;
+  phi?: number | undefined;
 }
 
 export interface PwlWaveform {

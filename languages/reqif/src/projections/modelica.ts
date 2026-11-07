@@ -36,7 +36,7 @@ export function reqifToModelicaVerifier(doc: ReqIfDocument, blockName = "Require
       contractedObjs.push({
         id: sanitizeIdent(obj.identifier),
         varName: v,
-        comp: obj.contract.comparator,
+        comp: obj.contract.comparator === "!=" ? "<>" : obj.contract.comparator,
         limit: obj.contract.limitValue,
         text: obj.text.replace(/["\\]/g, ""),
       });

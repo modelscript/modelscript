@@ -1,3 +1,8 @@
+---
+title: "Mathematical Optimization & Calibration Solvers"
+description: "Implementation: packages/simulate/src/optimizer/solvers/"
+---
+
 # Mathematical Optimization & Calibration Solvers
 
 **Implementation**: [`packages/simulate/src/optimizer/solvers/`](https://github.com/modelscript/modelscript/tree/main/packages/simulate/src/optimizer/solvers/)

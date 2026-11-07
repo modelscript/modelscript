@@ -117,46 +117,50 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
 
             // Attempt real DAE compilation and simulation via @modelscript/modelica & @modelscript/simulate
             const compiled = compileAndFlattenModelicaSource(modelCode, classNameMatch?.[1]);
-            if (compiled && compiled.arena.varCount > 0 && compiled.arena.eqCount > 0) {
+            if (compiled) {
               try {
-                const simRes = simulateArena(compiled.arena, {
-                  startTime: 0,
-                  stopTime: 1.0,
-                  numberOfIntervals: 20,
-                  solver: "rk4",
-                });
+                if (compiled.arena.varCount > 0 && compiled.arena.eqCount > 0) {
+                  const simRes = simulateArena(compiled.arena, {
+                    startTime: 0,
+                    stopTime: 1.0,
+                    numberOfIntervals: 20,
+                    solver: "rk4",
+                  });
 
-                if (simRes.t.length > 0 && simRes.y.length > 0 && simRes.states.length > 0) {
-                  // Order states so angle/phi appears first when present
-                  const stateOrder = simRes.states
-                    .map((name, idx) => ({ name, idx }))
-                    .sort((a, b) => {
-                      const aIsAngle = /^(phi|angle|x|theta)$/i.test(a.name) ? 0 : 1;
-                      const bIsAngle = /^(phi|angle|x|theta)$/i.test(b.name) ? 0 : 1;
-                      return aIsAngle - bIsAngle;
-                    });
-
-                  const formatStateLabel = (rawName: string): string => {
-                    if (/^(phi|angle|theta)$/i.test(rawName)) return "angle (rad)";
-                    if (/^(w|omega|velocity)$/i.test(rawName)) return "velocity (rad/s)";
-                    return rawName;
-                  };
-
-                  for (let stepIdx = 0; stepIdx < simRes.t.length; stepIdx++) {
-                    const t = Number((simRes.t[stepIdx] ?? 0).toFixed(2));
-                    const row = simRes.y[stepIdx] ?? [];
-                    for (const { name, idx } of stateOrder) {
-                      const rawVal = row[idx] ?? 0;
-                      trajectoryData.push({
-                        time: t,
-                        variable: formatStateLabel(name),
-                        value: Number((Number.isFinite(rawVal) ? rawVal : 0).toFixed(4)),
+                  if (simRes.t.length > 0 && simRes.y.length > 0 && simRes.states.length > 0) {
+                    // Order states so angle/phi appears first when present
+                    const stateOrder = simRes.states
+                      .map((name, idx) => ({ name, idx }))
+                      .sort((a, b) => {
+                        const aIsAngle = /^(phi|angle|x|theta)$/i.test(a.name) ? 0 : 1;
+                        const bIsAngle = /^(phi|angle|x|theta)$/i.test(b.name) ? 0 : 1;
+                        return aIsAngle - bIsAngle;
                       });
+
+                    const formatStateLabel = (rawName: string): string => {
+                      if (/^(phi|angle|theta)$/i.test(rawName)) return "angle (rad)";
+                      if (/^(w|omega|velocity)$/i.test(rawName)) return "velocity (rad/s)";
+                      return rawName;
+                    };
+
+                    for (let stepIdx = 0; stepIdx < simRes.t.length; stepIdx++) {
+                      const t = Number((simRes.t[stepIdx] ?? 0).toFixed(2));
+                      const row = simRes.y[stepIdx] ?? [];
+                      for (const { name, idx } of stateOrder) {
+                        const rawVal = row[idx] ?? 0;
+                        trajectoryData.push({
+                          time: t,
+                          variable: formatStateLabel(name),
+                          value: Number((Number.isFinite(rawVal) ? rawVal : 0).toFixed(4)),
+                        });
+                      }
                     }
                   }
                 }
               } catch {
                 // Fall back below if simulation fails
+              } finally {
+                compiled.arena.free?.();
               }
             }
 

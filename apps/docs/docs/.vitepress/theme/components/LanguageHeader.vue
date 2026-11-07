@@ -225,33 +225,33 @@ const maturity = computed(() => {
 }
 
 .badge-stable {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--ms-tier-stable-bg);
+  color: var(--ms-tier-stable);
+  border: 1px solid var(--ms-tier-stable-border);
 }
 .badge-stable .badge-dot {
-  background: #10b981;
-  box-shadow: 0 0 6px #10b981;
+  background: var(--ms-tier-stable);
+  box-shadow: 0 0 6px var(--ms-tier-stable);
 }
 
 .badge-beta {
-  background: rgba(6, 182, 212, 0.12);
-  color: #06b6d4;
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  background: var(--ms-tier-beta-bg);
+  color: var(--ms-tier-beta);
+  border: 1px solid var(--ms-tier-beta-border);
 }
 .badge-beta .badge-dot {
-  background: #06b6d4;
-  box-shadow: 0 0 6px #06b6d4;
+  background: var(--ms-tier-beta);
+  box-shadow: 0 0 6px var(--ms-tier-beta);
 }
 
 .badge-preview {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: var(--ms-tier-preview-bg);
+  color: var(--ms-tier-preview);
+  border: 1px solid var(--ms-tier-preview-border);
 }
 .badge-preview .badge-dot {
-  background: #f59e0b;
-  box-shadow: 0 0 6px #f59e0b;
+  background: var(--ms-tier-preview);
+  box-shadow: 0 0 6px var(--ms-tier-preview);
 }
 
 .lang-ext-chip code {

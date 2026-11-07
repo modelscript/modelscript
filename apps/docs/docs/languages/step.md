@@ -1,3 +1,8 @@
+---
+title: "STEP (ISO 10303-21)"
+description: "@modelscript/step (languages/step) provides a native WebAssembly GLR parser, assembly hierarchy extractor, AP242 Geometric Dimensioning & Tolerancing (GD&T / PMI) analyzer, and Modelica MultiBody k..."
+---
+
 # STEP (ISO 10303-21)
 
 `@modelscript/step` (`languages/step`) provides a native WebAssembly GLR parser, assembly hierarchy extractor, AP242 Geometric Dimensioning & Tolerancing (GD&T / PMI) analyzer, and Modelica MultiBody kinematic synthesizer for ISO 10303-21 Clear Text Encoding of the Exchange Structure (`.step`, `.stp`, `.p21`).

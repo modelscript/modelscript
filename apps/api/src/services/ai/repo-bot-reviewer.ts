@@ -133,23 +133,27 @@ export class RepoBotReviewer {
               if (!cls?.name) continue;
               const arena = ctx.flattenArena(cls.name);
               if (arena) {
-                let unknownCount = 0;
-                for (let i = 0; i < arena.varCount; i++) {
-                  if (arena.isVarRemoved(i)) continue;
-                  const v = arena.getVarVariability(i);
-                  if (v !== Variability.Parameter && v !== Variability.Constant) {
-                    const name = arena.getVarName(i);
-                    if (name && !name.startsWith("der(") && !name.startsWith("_")) {
-                      unknownCount++;
+                try {
+                  let unknownCount = 0;
+                  for (let i = 0; i < arena.varCount; i++) {
+                    if (arena.isVarRemoved(i)) continue;
+                    const v = arena.getVarVariability(i);
+                    if (v !== Variability.Parameter && v !== Variability.Constant) {
+                      const name = arena.getVarName(i);
+                      if (name && !name.startsWith("der(") && !name.startsWith("_")) {
+                        unknownCount++;
+                      }
                     }
                   }
-                }
-                if (unknownCount > 0 && arena.eqCount > 0 && unknownCount !== arena.eqCount) {
-                  issues.push({
-                    severity: "warning",
-                    message: `Class '${cls.name}' has ${unknownCount} continuous/discrete variable(s) and ${arena.eqCount} equation(s) (unbalanced DAE).`,
-                    file: file.path,
-                  });
+                  if (unknownCount > 0 && arena.eqCount > 0 && unknownCount !== arena.eqCount) {
+                    issues.push({
+                      severity: "warning",
+                      message: `Class '${cls.name}' has ${unknownCount} continuous/discrete variable(s) and ${arena.eqCount} equation(s) (unbalanced DAE).`,
+                      file: file.path,
+                    });
+                  }
+                } finally {
+                  arena.free?.();
                 }
               }
             }

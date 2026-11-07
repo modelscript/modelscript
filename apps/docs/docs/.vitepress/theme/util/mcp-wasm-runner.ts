@@ -189,7 +189,7 @@ export async function runControlScenario(params: Partial<ControlParams> = {}): P
       deleted: 3,
     },
     verdict: `Verified patch applied: Kp = ${kp}, Ki = ${ki}, Kd = ${kd}`,
-    assistantSummary: `Tuned **${className}** in \`Actuator.mo\` to **Kp = ${kp}**, **Ki = ${ki}**, **Kd = ${kd}**. Step overshoot is **${achievedOvershoot}%** (limit $< ${maxOvershootReq.toFixed(1)}\\%$) and $2\\%$ settling time is **${achievedSettling.toFixed(2)}s** ($\\rho = +${achievedStl.toFixed(3)}$).`,
+    assistantSummary: `Tuned <strong>${className}</strong> in <code>Actuator.mo</code> to <strong>Kp = ${kp}</strong>, <strong>Ki = ${ki}</strong>, <strong>Kd = ${kd}</strong>. Step overshoot is <strong>${achievedOvershoot}%</strong> (limit &lt; ${maxOvershootReq.toFixed(1)}%) and 2% settling time is <strong>${achievedSettling.toFixed(2)}s</strong> (&rho; = +${achievedStl.toFixed(3)}).`,
   };
 }
 
@@ -244,7 +244,7 @@ export async function runTggScenario(params: Partial<TggParams> = {}): Promise<L
       deleted: 2,
     },
     verdict: `Synchronized BrakeSystem.sysml ↔ BrakeSystem.mo (${pressureMpa.toFixed(1)} MPa) with 100% RTM coverage`,
-    assistantSummary: `Reconciled \`BrakeActuator.maxPressure\` to **${pressureMpa.toFixed(1)} MPa** ($${pressurePa}\\text{ Pa}$) across \`BrakeSystem.sysml\` and \`BrakeSystem.mo\` with **0 CPA conflicts** and **12/12** ports matched.`,
+    assistantSummary: `Reconciled <code>BrakeActuator.maxPressure</code> to <strong>${pressureMpa.toFixed(1)} MPa</strong> (${pressurePa} Pa) across <code>BrakeSystem.sysml</code> and <code>BrakeSystem.mo</code> with <strong>0 CPA conflicts</strong> and <strong>12/12</strong> ports matched.`,
   };
 }
 
@@ -305,7 +305,7 @@ export async function runGridScenario(params: Partial<GridParams> = {}): Promise
       deleted: 0,
     },
     verdict: `Compliance report generated · All IEEE 2800 ride-through criteria satisfied (${sagPu.toFixed(2)} pu fault)`,
-    assistantSummary: `Verified **SolarPlant_250MW.pscx** under a **${sagPu.toFixed(2)} pu** voltage sag: zero momentary cessation, reactive current step response **$t_r = ${clampedResponseMs}\\text{ ms}$** ($\\le 30\\text{ ms}$), and **${postFaultRecovery}%** post-fault active power recovery.`,
+    assistantSummary: `Verified <strong>SolarPlant_250MW.pscx</strong> under a <strong>${sagPu.toFixed(2)} pu</strong> voltage sag: zero momentary cessation, reactive current step response <strong>t<sub>r</sub> = ${clampedResponseMs} ms</strong> (&le; 30 ms), and <strong>${postFaultRecovery}%</strong> post-fault active power recovery.`,
   };
 }
 
@@ -395,7 +395,7 @@ export async function runCadScenario(params: Partial<CadParams> = {}): Promise<L
       deleted: 4,
     },
     verdict: `Structural FEA & 3D BVH clearance certified: rib_thickness_mm = ${finalRib}, fillet_radius_mm = ${finalFillet}`,
-    assistantSummary: `Sized \`ActuatorBracket.scad\` for **${(loadN / 1000).toFixed(2)} kN** load: **rib_thickness_mm = ${finalRib}**, **fillet_radius_mm = ${finalFillet}**, yielding peak von Mises stress **${peakVonMises} MPa** (**${achievedSafetyFactor}x** safety factor) and **${clearanceMm} mm** BVH clearance.`,
+    assistantSummary: `Sized <code>ActuatorBracket.scad</code> for <strong>${(loadN / 1000).toFixed(2)} kN</strong> load: <strong>rib_thickness_mm = ${finalRib}</strong>, <strong>fillet_radius_mm = ${finalFillet}</strong>, yielding peak von Mises stress <strong>${peakVonMises} MPa</strong> (<strong>${achievedSafetyFactor}x</strong> safety factor) and <strong>${clearanceMm} mm</strong> BVH clearance.`,
   };
 }
 
@@ -456,7 +456,7 @@ export async function runSafetyScenario(params: Partial<SafetyParams> = {}): Pro
       deleted: 0,
     },
     verdict: "ISO 26262 ASIL-D & DO-178C DAL-A proof bundle generated with C99 SHA-256 parity",
-    assistantSummary: `Migrated \`ServoActuator.slx\` to \`ServoActuator.mo\` with B2B trajectory $\\Delta = ${deltaStr}$ ($\\le ${tolerance.toExponential(0)}$), proved inductive IC3/PDR safety for \`abs(pitch_angle_deg) <= ${maxPitchDeg.toFixed(1)}\`, and generated **4/4 (100%)** DO-178C MC/DC test vectors.`,
+    assistantSummary: `Migrated <code>ServoActuator.slx</code> to <code>ServoActuator.mo</code> with B2B trajectory &Delta; = ${deltaStr} (&le; ${tolerance.toExponential(0)}), proved inductive IC3/PDR safety for <code>abs(pitch_angle_deg) &lt;= ${maxPitchDeg.toFixed(1)}</code>, and generated <strong>4/4 (100%)</strong> DO-178C MC/DC test vectors.`,
   };
 }
 

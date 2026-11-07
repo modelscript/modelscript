@@ -76,13 +76,6 @@ msx urdf simulate robot.urdf --stop-time=2.0 -o sim.json
 
 ---
 
-## Semantic Linter Rules (`USD_*`)
+## Semantic Linter Rules (`USD1001`–`USD1007`)
 
-| Code      | Rule                    | Description                                                                              |
-| :-------- | :---------------------- | :--------------------------------------------------------------------------------------- |
-| `USD1002` | `dangling-relationship` | Joint or constraint targets a non-existent prim path in the stage (`rel physics:body0`). |
-| `USD1003` | `invalid-up-axis`       | Stage `upAxis` metadata is not `'Y'` or `'Z'`.                                           |
-| `USD1004` | `non-positive-mass`     | Rigid body declares a mass $\le 0$ (`physics:mass`).                                     |
-| `USD1005` | `invalid-inertia`       | Diagonal inertia tensor component is negative (`physics:diagonalInertia`).               |
-| `USD1006` | `inverted-joint-limits` | Joint lower limit exceeds upper limit (`physics:lowerLimit > physics:upperLimit`).       |
-| `USD1007` | `invalid-axis-token`    | Joint axis token is not `'X'`, `'Y'`, or `'Z'` (`physics:axis`).                         |
+<LintRules lang="usd" />

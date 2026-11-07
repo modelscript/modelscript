@@ -9,7 +9,7 @@
  */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
-import { parseReqIf } from "./parser/reqif-parser.js";
+import { extractReqIfzBundle, parseReqIf } from "./parser/reqif-parser.js";
 import type { ReqIfDocument } from "./types.js";
 
 export class ReqIfWorkspaceIndex implements IWorkspaceIndex {
@@ -65,6 +65,14 @@ export class ReqIfWorkspaceIndex implements IWorkspaceIndex {
         // Ignore loader errors during incremental re-indexing
       }
     }
+  }
+
+  /**
+   * Indexes a `.reqifz` ZIP bundle archive from its raw binary bytes.
+   */
+  public indexArchive(uri: string, data: Uint8Array): SymbolIndex {
+    const bundle = extractReqIfzBundle(data);
+    return this.indexFile(uri, bundle.primaryDocument.rawXml || "");
   }
 
   /**

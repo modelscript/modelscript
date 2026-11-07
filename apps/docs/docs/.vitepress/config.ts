@@ -58,6 +58,13 @@ if (fs.existsSync(grammarPath)) {
   }
 }
 
+const examplesJsonPath = path.resolve(__dirname, "./theme/data/language-examples.generated.json");
+const examplesBySlug: Record<string, unknown> = fs.existsSync(examplesJsonPath)
+  ? Object.fromEntries(
+      (JSON.parse(fs.readFileSync(examplesJsonPath, "utf-8")) as { slug: string }[]).map((e) => [e.slug, e]),
+    )
+  : {};
+
 export default defineConfig({
   markdown: {
     math: true,
@@ -130,6 +137,10 @@ export default defineConfig({
       pageData.description = params.description;
       pageData.frontmatter["description"] = params.description;
     }
+    const langMatch = /^languages\/([a-z0-9-]+)\.md$/.exec(pageData.relativePath);
+    if (langMatch?.[1] && langMatch[1] !== "overview" && examplesBySlug[langMatch[1]]) {
+      pageData.frontmatter["_example"] = examplesBySlug[langMatch[1]];
+    }
   },
   transformHead({ pageData, title, description }) {
     const rawPath = pageData.relativePath
@@ -171,6 +182,7 @@ export default defineConfig({
         industries: { name: "Industries", link: "https://modelscript.org/industries" },
         reference: { name: "Reference", link: "https://modelscript.org/reference/linter-rules" },
         pricing: { name: "Pricing", link: "https://modelscript.org/pricing" },
+        trademark: { name: "Trademark Policy", link: "https://modelscript.org/trademark" },
       };
 
       const items: { "@type": string; position: number; name: string; item: string }[] = [
@@ -412,6 +424,8 @@ export default defineConfig({
         "/ansatz/": ansatzSidebar,
         "/cli/": docsSidebar,
         "/reference/": docsSidebar,
+        "/pricing": docsSidebar,
+        "/trademark": docsSidebar,
         "/architecture/": engineSidebar,
         "/algorithms/": engineSidebar,
         "/languages/": languagesSidebar(),

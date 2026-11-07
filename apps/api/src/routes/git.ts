@@ -20,6 +20,50 @@ export function gitRouter(database?: LibraryDatabase): Router {
   router.use(defaultApiLimiter);
   router.use(requireGitWriteAuth);
 
+  router.use("/projects/:id", (req: Request, res: Response, next: NextFunction) => {
+    if (!database || !database.isOpen()) {
+      next();
+      return;
+    }
+    const rawId = decodeURIComponent(String(req.params["id"] || "")).trim();
+    const cleanId = rawId.replace(/\.git$/i, "");
+    const parts = cleanId.split("/").filter(Boolean);
+    const namespace = parts[0] || "";
+    const project = parts.slice(1).join("/");
+    const matchedRepo = database.getLinkedRepoById(cleanId);
+    const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
+    if (vis !== "private" && vis !== "internal") {
+      next();
+      return;
+    }
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required to access private repository" });
+      return;
+    }
+    const isAdmin = req.user.account_type === "admin" || req.user.accountType === "admin" || req.user.role === "admin";
+    if (isAdmin) {
+      next();
+      return;
+    }
+    const ownerUser = namespace ? database.getUserByUsername(namespace) : undefined;
+    const org = namespace ? database.getOrganizationBySlug(namespace.toLowerCase()) : undefined;
+    const isOwner =
+      (ownerUser !== undefined && req.user.id === ownerUser.id) ||
+      (matchedRepo !== undefined && req.user.id === matchedRepo.user_id);
+    const isOrgMember = org != null && Boolean(database.getOrganizationMemberRole(org.id, req.user.id));
+    if (vis === "private" && !isOwner && !isOrgMember && project) {
+      res.status(403).json({ error: "Forbidden: Repository is private" });
+      return;
+    }
+    if (vis === "internal" && req.user.account_type === "community_federated" && !isOwner && !isOrgMember) {
+      res
+        .status(403)
+        .json({ error: "Forbidden: Internal repository is restricted to organization and instance members" });
+      return;
+    }
+    next();
+  });
+
   /**
    * Get project metadata
    * Example: GET /api/v1/git/projects/modelscript%2Fcore

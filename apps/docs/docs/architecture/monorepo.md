@@ -1,3 +1,8 @@
+---
+title: "Monorepo Architecture: ModelScript & Ansatz"
+description: "ModelScript and Ansatz are developed together within a single unified monorepo. This document details the architectural rationale, the four-layer taxonomy, and the boundary enforcement mechanisms t..."
+---
+
 # Monorepo Architecture: ModelScript & Ansatz
 
 ModelScript and Ansatz are developed together within a single unified monorepo. This document details the architectural rationale, the four-layer taxonomy, and the boundary enforcement mechanisms that keep the computational engine decoupled from web and cloud platforms.

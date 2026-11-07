@@ -14,8 +14,10 @@ function verifyGitHubSignature(secret: string, signature: string | undefined, pa
   try {
     const hmac = crypto.createHmac("sha256", secret).update(payload).digest("hex");
     const expected = `sha256=${hmac}`;
-    if (signature.length !== expected.length) return false;
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    const sigBuf = Buffer.from(signature, "utf-8");
+    const expBuf = Buffer.from(expected, "utf-8");
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
   } catch {
     return false;
   }

@@ -102,6 +102,8 @@ interface CompanionBranch {
   gMut: number;
   alphaHist: number;
   alphaMutHist: number;
+  /** Sign of G_eq * v(t) in trapezoidal history current (+1 for R-L, -1 for R-C). */
+  vCoeffHist: number;
   shuntG: number;
   windingConnection?: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D" | undefined;
   iHistA: number;
@@ -524,30 +526,44 @@ export class EmtSolver {
       const toIdx = toBus === "0" || toBus === "GND" ? -1 : (this.busIdxMap.get(toBus) ?? -1);
       if (fromIdx === -1 && toIdx === -1) return;
 
-      const R1 = Math.max(rOhm, 1e-4);
       const L1 = Math.max(lHenry, 0.0);
-      const denom1 = 2.0 * L1 + R1 * this.timeStepSec;
-      const g1 = denom1 > 1e-12 ? this.timeStepSec / denom1 : 1.0 / R1;
-      const alpha1 = denom1 > 1e-12 ? (2.0 * L1 - R1 * this.timeStepSec) / denom1 : 0.0;
+      const isCapacitiveBranch = L1 === 0.0 && cFarad > 0.0;
+      const R1 = isCapacitiveBranch ? Math.max(rOhm, 0.0) : Math.max(rOhm, 1e-4);
 
-      let gEq = g1;
+      let gEq: number;
       let gMut = 0.0;
-      let alphaHist = alpha1;
+      let alphaHist: number;
       let alphaMutHist = 0.0;
+      let vCoeffHist = 1.0;
+      let shuntG = 0.0;
 
-      if ((r0Ohm !== undefined && r0Ohm > R1) || (l0Henry !== undefined && l0Henry > L1)) {
-        const R0 = Math.max(r0Ohm ?? R1, R1);
-        const L0 = Math.max(l0Henry ?? L1, L1);
-        const denom0 = 2.0 * L0 + R0 * this.timeStepSec;
-        const g0 = denom0 > 1e-12 ? this.timeStepSec / denom0 : 1.0 / R0;
-        const alpha0 = denom0 > 1e-12 ? (2.0 * L0 - R0 * this.timeStepSec) / denom0 : 0.0;
-        gEq = (2.0 * g1 + g0) / 3.0;
-        gMut = (g0 - g1) / 3.0;
-        alphaHist = (2.0 * alpha1 + alpha0) / 3.0;
-        alphaMutHist = (alpha0 - alpha1) / 3.0;
+      if (isCapacitiveBranch) {
+        const denomC = this.timeStepSec + 2.0 * R1 * cFarad;
+        gEq = denomC > 1e-18 ? (2.0 * cFarad) / denomC : 1e4;
+        alphaHist = denomC > 1e-18 ? (2.0 * R1 * cFarad - this.timeStepSec) / denomC : -1.0;
+        vCoeffHist = -1.0;
+        shuntG = 0.0;
+      } else {
+        const denom1 = 2.0 * L1 + R1 * this.timeStepSec;
+        const g1 = denom1 > 1e-12 ? this.timeStepSec / denom1 : 1.0 / R1;
+        const alpha1 = denom1 > 1e-12 ? (2.0 * L1 - R1 * this.timeStepSec) / denom1 : 0.0;
+        gEq = g1;
+        alphaHist = alpha1;
+
+        if ((r0Ohm !== undefined && r0Ohm > R1) || (l0Henry !== undefined && l0Henry > L1)) {
+          const R0 = Math.max(r0Ohm ?? R1, R1);
+          const L0 = Math.max(l0Henry ?? L1, L1);
+          const denom0 = 2.0 * L0 + R0 * this.timeStepSec;
+          const g0 = denom0 > 1e-12 ? this.timeStepSec / denom0 : 1.0 / R0;
+          const alpha0 = denom0 > 1e-12 ? (2.0 * L0 - R0 * this.timeStepSec) / denom0 : 0.0;
+          gEq = (2.0 * g1 + g0) / 3.0;
+          gMut = (g0 - g1) / 3.0;
+          alphaHist = (2.0 * alpha1 + alpha0) / 3.0;
+          alphaMutHist = (alpha0 - alpha1) / 3.0;
+        }
+        shuntG = cFarad > 0 ? (2.0 * cFarad) / this.timeStepSec : 0.0;
       }
 
-      const shuntG = cFarad > 0 ? (2.0 * cFarad) / this.timeStepSec : 0.0;
       const { ia, ib, ic } = this.registerBranchBuffers(id);
 
       this.companionBranches.push({
@@ -561,6 +577,7 @@ export class EmtSolver {
         gMut,
         alphaHist,
         alphaMutHist,
+        vCoeffHist,
         shuntG,
         windingConnection,
         iHistA: 0,
@@ -1374,9 +1391,18 @@ export class EmtSolver {
         const curA = br.gEq * dvA + br.gMut * (dvB + dvC) + br.iHistA;
         const curB = br.gEq * dvB + br.gMut * (dvA + dvC) + br.iHistB;
         const curC = br.gEq * dvC + br.gMut * (dvA + dvB) + br.iHistC;
-        br.iHistA = br.alphaHist * curA + br.alphaMutHist * (curB + curC) + br.gEq * dvA + br.gMut * (dvB + dvC);
-        br.iHistB = br.alphaHist * curB + br.alphaMutHist * (curA + curC) + br.gEq * dvB + br.gMut * (dvA + dvC);
-        br.iHistC = br.alphaHist * curC + br.alphaMutHist * (curA + curB) + br.gEq * dvC + br.gMut * (dvA + dvB);
+        br.iHistA =
+          br.alphaHist * curA +
+          br.alphaMutHist * (curB + curC) +
+          br.vCoeffHist * (br.gEq * dvA + br.gMut * (dvB + dvC));
+        br.iHistB =
+          br.alphaHist * curB +
+          br.alphaMutHist * (curA + curC) +
+          br.vCoeffHist * (br.gEq * dvB + br.gMut * (dvA + dvC));
+        br.iHistC =
+          br.alphaHist * curC +
+          br.alphaMutHist * (curA + curB) +
+          br.vCoeffHist * (br.gEq * dvC + br.gMut * (dvA + dvB));
       }
 
       for (const bl of this.bergeronLines) {
@@ -1870,13 +1896,25 @@ export class EmtSolver {
         br.ic[k] = curC;
 
         const interpAlpha = switchedBusInterpolation.get(br.fromIdx) ?? switchedBusInterpolation.get(br.toIdx);
-        const iHistBeA = curA - (br.gEq * dvA + br.gMut * (dvB + dvC));
-        const iHistBeB = curB - (br.gEq * dvB + br.gMut * (dvA + dvC));
-        const iHistBeC = curC - (br.gEq * dvC + br.gMut * (dvA + dvB));
+        const iHistBeA =
+          br.vCoeffHist < 0 ? -br.gEq * (dvA - br.rOhm * curA) : curA - (br.gEq * dvA + br.gMut * (dvB + dvC));
+        const iHistBeB =
+          br.vCoeffHist < 0 ? -br.gEq * (dvB - br.rOhm * curB) : curB - (br.gEq * dvB + br.gMut * (dvA + dvC));
+        const iHistBeC =
+          br.vCoeffHist < 0 ? -br.gEq * (dvC - br.rOhm * curC) : curC - (br.gEq * dvC + br.gMut * (dvA + dvB));
 
-        const iHistTrapA = br.alphaHist * curA + br.alphaMutHist * (curB + curC) + br.gEq * dvA + br.gMut * (dvB + dvC);
-        const iHistTrapB = br.alphaHist * curB + br.alphaMutHist * (curA + curC) + br.gEq * dvB + br.gMut * (dvA + dvC);
-        const iHistTrapC = br.alphaHist * curC + br.alphaMutHist * (curA + curB) + br.gEq * dvC + br.gMut * (dvA + dvB);
+        const iHistTrapA =
+          br.alphaHist * curA +
+          br.alphaMutHist * (curB + curC) +
+          br.vCoeffHist * (br.gEq * dvA + br.gMut * (dvB + dvC));
+        const iHistTrapB =
+          br.alphaHist * curB +
+          br.alphaMutHist * (curA + curC) +
+          br.vCoeffHist * (br.gEq * dvB + br.gMut * (dvA + dvC));
+        const iHistTrapC =
+          br.alphaHist * curC +
+          br.alphaMutHist * (curA + curB) +
+          br.vCoeffHist * (br.gEq * dvC + br.gMut * (dvA + dvB));
 
         if (interpAlpha !== undefined && this.enableSwitchingInterpolation) {
           br.iHistA = (1.0 - interpAlpha) * iHistBeA + interpAlpha * iHistTrapA;

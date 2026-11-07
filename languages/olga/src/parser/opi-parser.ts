@@ -142,7 +142,7 @@ function parseFlowpathElement(el: XmlElement): OlgaFlowpath {
 
     if (tagName === "Pipe" || tagName === "PIPE") {
       pipes.push({
-        label: getAttr(child, "Label") || `PIPE_${pipes.length + 1}`,
+        label: getAttr(child, "Label") || getAttr(child, "Name") || `PIPE_${pipes.length + 1}`,
         length: parseNum(getAttr(child, "Length"), 1000),
         diameter: parseNum(getAttr(child, "Diameter"), 0.254),
         elevation: parseNum(getAttr(child, "Elevation"), 0),
@@ -315,7 +315,7 @@ export function serializeOpi(model: OlgaModel): string {
   for (const fp of model.flowpaths) {
     xml += `  <Flowpath Name="${escapeXml(fp.name)}">\n`;
     for (const pipe of fp.pipes) {
-      xml += `    <Pipe Name="${escapeXml(pipe.label)}" Length="${pipe.length}" Diameter="${pipe.diameter}" Elevation="${pipe.elevation}" Roughness="${pipe.roughness}" Discretization="${pipe.discretization}" />\n`;
+      xml += `    <Pipe Name="${escapeXml(pipe.label)}" Label="${escapeXml(pipe.label)}" Length="${pipe.length}" Diameter="${pipe.diameter}" Elevation="${pipe.elevation}" Roughness="${pipe.roughness}" Discretization="${pipe.discretization}" />\n`;
     }
     for (const valve of fp.valves) {
       xml += `    <Valve Name="${escapeXml(valve.name)}" Position="${valve.position}" Diameter="${valve.diameter}" Opening="${valve.opening}" Cd="${valve.cd}" />\n`;

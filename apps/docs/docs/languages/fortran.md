@@ -1,3 +1,8 @@
+---
+title: "Fortran Legacy Engineering Integration (.f, .f90)"
+description: "@modelscript/fortran (languages/fortran) provides native GLR parsing, AST analysis, Triple Graph Grammar (TGG) synchronization, and DAE wrapping for legacy Fortran 77 and Fortran 90 computational e..."
+---
+
 # Fortran Legacy Engineering Integration (`.f`, `.f90`)
 
 `@modelscript/fortran` (`languages/fortran`) provides native GLR parsing, AST analysis, Triple Graph Grammar (TGG) synchronization, and DAE wrapping for legacy **Fortran 77** and **Fortran 90** computational engines.

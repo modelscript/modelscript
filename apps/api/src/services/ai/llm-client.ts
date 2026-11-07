@@ -134,11 +134,12 @@ export class OpenAICompatibleProvider implements LLMProvider {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
+      redirect: "error",
       signal: AbortSignal.timeout(25_000),
     });
 
     if (!res.ok) {
-      const errText = await res.text();
+      const errText = (await res.text()).slice(0, 512);
       throw new Error(`LLM provider error (${res.status}): ${errText}`);
     }
 

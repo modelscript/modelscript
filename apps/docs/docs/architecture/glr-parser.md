@@ -1,3 +1,8 @@
+---
+title: "WebAssembly GLR Incremental Parser"
+description: "ModelScript avoids external runtime parser dependencies. Instead, every supported language in languages/ is parsed using a custom, ahead-of-time (AOT) compiled Generalized LR (GLR) parser executing..."
+---
+
 # WebAssembly GLR Incremental Parser
 
 ModelScript avoids external runtime parser dependencies. Instead, every supported language in `languages/` is parsed using a custom, ahead-of-time (AOT) compiled **Generalized LR (GLR)** parser executing directly in WebAssembly (`parser.wasm`).

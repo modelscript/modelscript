@@ -3,6 +3,7 @@
 import express, { type Request, type Response, type Router } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { assertSafePublicUrl } from "../util/ssrf.js";
 
 export function pushRouter(database: LibraryDatabase): Router {
   const router = express.Router();
@@ -57,6 +58,7 @@ export function pushRouter(database: LibraryDatabase): Router {
     }
 
     try {
+      assertSafePublicUrl(String(endpoint));
       const saved = database.upsertPushSubscription(
         userId,
         String(endpoint),

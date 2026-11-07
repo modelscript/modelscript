@@ -1503,7 +1503,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       ) {
         const note = activity.object;
         if (note.id && typeof note.content === "string") {
-          db.updatePostContentByApId(note.id, note.content, remoteUser.id);
+          db.updatePostContentByApId(note.id, sanitizeRemoteHtml(note.content), remoteUser.id);
         }
         if (note.id && (Array.isArray(note.oneOf) || Array.isArray(note.anyOf))) {
           const existingPost = db.getPostByApId(note.id);

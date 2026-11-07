@@ -141,6 +141,23 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
     for (const [branch, bIdx] of indexing.branchToIdx) {
       currentSol[bIdx] = op.branchCurrents.get(branch) ?? 0;
     }
+  } else {
+    for (const dir of circuit.directives) {
+      if (dir.kind === ".IC" || dir.kind === ".NODESET") {
+        for (const [k, v] of dir.params) {
+          if (typeof v === "number") {
+            let nodeKey = k.toUpperCase().trim();
+            if (nodeKey.startsWith("V(") && nodeKey.endsWith(")")) {
+              nodeKey = nodeKey.slice(2, -1).trim();
+            }
+            const idx = indexing.nodeToIdx.get(nodeKey);
+            if (idx !== undefined) {
+              currentSol[idx] = v;
+            }
+          }
+        }
+      }
+    }
   }
 
   // Initialize capacitor voltages and inductor currents from initial solution
@@ -529,12 +546,12 @@ export function evaluateSourceWaveform(comp: SpiceComponent, t: number): number 
   }
 
   if (w.kind === "SINE") {
-    // SINE(vo va freq td theta)
+    // SINE(vo va freq td theta phi)
     const td = w.td ?? 0;
-    if (t < td) return w.vo;
-    const thetaRad = ((w.theta ?? 0) * Math.PI) / 180.0;
+    const phiRad = ((w.phi ?? 0) * Math.PI) / 180.0;
+    if (t < td) return w.vo + w.va * Math.sin(phiRad);
     const edamp = w.theta ? Math.exp(-(t - td) * w.theta) : 1.0;
-    const arg = 2.0 * Math.PI * w.freq * (t - td) + thetaRad;
+    const arg = 2.0 * Math.PI * w.freq * (t - td) + phiRad;
     return w.vo + w.va * edamp * Math.sin(arg);
   }
 

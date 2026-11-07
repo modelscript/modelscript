@@ -1,3 +1,8 @@
+---
+title: "OWL2 Ontology (.owl, .owl2, .ofn, .ttl)"
+description: "@modelscript/owl2 (languages/owl2) brings formal ontological engineering, Description Logic () reasoning, and SPARQL / Leapfrog Triejoin graph querying directly into the ModelScript compiler."
+---
+
 # OWL2 Ontology (`.owl`, `.owl2`, `.ofn`, `.ttl`)
 
 `@modelscript/owl2` (`languages/owl2`) brings formal ontological engineering, Description Logic ($\mathcal{SROIQ}(\mathcal{D})$) reasoning, and SPARQL / Leapfrog Triejoin graph querying directly into the ModelScript compiler.

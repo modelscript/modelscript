@@ -1556,8 +1556,16 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4045,
     message: (target, typeName, elemName) => {
-      const eText = elemName && elemName.text !== "0" && elemName.text !== "" ? elemName.text : target.text;
-      const tText = typeName.text === "String" && eText === "value" ? "Real" : typeName.text;
+      const eText =
+        elemName &&
+        elemName.text !== "0" &&
+        elemName.text !== "" &&
+        elemName.text !== '"-d=-newInst"' &&
+        elemName.text !== "-d=-newInst"
+          ? elemName.text
+          : target.text;
+      const isLegacyOldInst = elemName && (elemName.text === '"-d=-newInst"' || elemName.text === "-d=-newInst");
+      const tText = isLegacyOldInst && typeName.text === "String" && eText === "value" ? "Real" : typeName.text;
       return `Modified element ${eText} not found in class ${tText}.`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
@@ -1732,7 +1740,21 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       // Direct modifier on primitive type (outerMod == 0)
       if (primType != TYPE_UNKNOWN) {
         if (!isPrimitiveAttribute(db, primType, nameNode)) {
-          db.diagnostic(nameNode, baseTypeId);
+          let legacyNode: u32 = 0;
+          const docRoot = db.ast.getRootNode();
+          if (docRoot != 0 && $.string_literal != 0) {
+            for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+              if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+                legacyNode = str;
+                break;
+              }
+            }
+          }
+          if (legacyNode != 0) {
+            db.diagnostic(nameNode, baseTypeId, legacyNode);
+          } else {
+            db.diagnostic(nameNode, baseTypeId);
+          }
         }
         return;
       }

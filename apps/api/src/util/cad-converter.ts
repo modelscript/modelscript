@@ -555,13 +555,25 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
   return meshes;
 }
 
+type OcctModule = {
+  ReadStepFile: (data: Uint8Array, param: null) => ConvertedStepResult | null;
+};
+
+let cachedOcctPromise: Promise<OcctModule> | null = null;
+
+function getOcctModule(): Promise<OcctModule> {
+  if (!cachedOcctPromise) {
+    cachedOcctPromise = (occtimportjs as unknown as () => Promise<OcctModule>)().catch((err) => {
+      cachedOcctPromise = null;
+      throw err;
+    });
+  }
+  return cachedOcctPromise;
+}
+
 export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: string): Promise<ConvertedStepResult> {
-  // occtimportjs is a wasm module factory
-  const occt = await (
-    occtimportjs as unknown as () => Promise<{
-      ReadStepFile: (data: Uint8Array, param: null) => ConvertedStepResult | null;
-    }>
-  )();
+  // Reuse cached occtimportjs WASM module instance across requests
+  const occt = await getOcctModule();
 
   // Read the STEP file from memory
   const result: ConvertedStepResult = occt.ReadStepFile(fileData, null) || { meshes: [] };

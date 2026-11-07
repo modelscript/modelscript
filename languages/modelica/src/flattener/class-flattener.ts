@@ -3386,6 +3386,11 @@ export class ModelicaFlattener {
 
     // 3. Layer 3: Physical connector expansion & flow balance
     let flowThreshold = compilerOpts.flowThreshold;
+    const connState = getFlatteningState(dae, this);
+    connState.db = this.db;
+    connState.flattener = this;
+    connState.currentClassId = rootClassId;
+    connState.currentRootClassId = rootClassId;
     ModelicaPortBalancer.expandConnections(dae, {
       omcCompatibility: this.options.omcCompatibility,
       useWasmKernel: this.options.useWasmKernel,
@@ -4432,6 +4437,9 @@ export class ModelicaFlattener {
       }
     }
 
+    const topoState = getFlatteningState(dae, this);
+    topoState.db = this.db;
+    topoState.flattener = this;
     ModelicaPortBalancer.expandConnections(dae, {
       omcCompatibility: this.options.omcCompatibility,
       useWasmKernel: this.options.useWasmKernel,

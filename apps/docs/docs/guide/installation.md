@@ -1,3 +1,8 @@
+---
+title: Installation & System Requirements
+description: Install the ModelScript CLI (msx), VS Code extension, MCP server, Tauri desktop app, or Docker containers across Linux, macOS, and Windows.
+---
+
 # Installation
 
 ModelScript runs from the same WebAssembly compiler core across browsers, desktop IDEs, headless CI runners, and AI agent hosts. Choose the surface that matches your workflow.
@@ -15,7 +20,7 @@ To explore ModelScript without installing anything locally:
 
 ### 2. Command-Line Interface (`msx`)
 
-The `@modelscript/cli` package installs both the `modelscript` binary and its shorthand alias `msx` for local development, simulation sweeps, formal verification, and CI/CD automation (requires **Node.js ≥ 22**):
+The `@modelscript/cli` package installs both the `modelscript` binary and its shorthand alias `msx` for local development, simulation sweeps, formal verification, and CI/CD automation (requires **Node.js ≥ 24**):
 
 ```bash
 # Run any command via npx without global installation
@@ -46,11 +51,11 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 44 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 68 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **52 deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **60 deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command
@@ -135,4 +140,4 @@ npm run dev           # Start API backend, LSP workers, and Web IDE
 ## Next Steps
 
 - Follow the **[Getting Started Tutorial](./getting-started.md)** to build, verify, simulate, and export your first connected multi-domain model.
-- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 41 `msx` commands.
+- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 92+ `msx` commands.

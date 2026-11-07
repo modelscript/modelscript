@@ -1,3 +1,8 @@
+---
+title: "Export & Exchange Formats Reference"
+description: "ModelScript serves as an open interoperability hub across systems engineering, multi-physics simulation, CAD/ECAD, formal verification, and regulatory compliance. Through @modelscript/exchange, @mo..."
+---
+
 # Export & Exchange Formats Reference
 
 ModelScript serves as an open interoperability hub across systems engineering, multi-physics simulation, CAD/ECAD, formal verification, and regulatory compliance. Through `@modelscript/exchange`, `@modelscript/cad`, `@modelscript/runtime`, and `@modelscript/simulate`, the platform natively imports and exports **over 30 industry-standard formats**.

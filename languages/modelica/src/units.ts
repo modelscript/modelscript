@@ -126,76 +126,187 @@ export function isDimensionless(u: SIUnit): boolean {
 
 // ── Unit parsing ──
 
+function parseBaseAtomicSymbol(sym: string): SIUnit | null {
+  if (sym === "1" || sym === "%" || sym === "ppm" || sym === "rad" || sym === "sr" || sym === "deg" || sym === "rev") {
+    return createDimensionless();
+  }
+  if (sym === "m") return new SIUnit(1, 0, 0, 0, 0, 0, 0);
+  if (sym === "g" || sym === "kg") return new SIUnit(0, 1, 0, 0, 0, 0, 0);
+  if (sym === "s" || sym === "min" || sym === "h" || sym === "d") return new SIUnit(0, 0, 1, 0, 0, 0, 0);
+  if (sym === "A") return new SIUnit(0, 0, 0, 1, 0, 0, 0);
+  if (sym === "K" || sym === "degC") return new SIUnit(0, 0, 0, 0, 1, 0, 0);
+  if (sym === "mol") return new SIUnit(0, 0, 0, 0, 0, 1, 0);
+  if (sym === "cd" || sym === "lm") return new SIUnit(0, 0, 0, 0, 0, 0, 1);
+  if (sym === "Hz" || sym === "Bq") return new SIUnit(0, 0, -1, 0, 0, 0, 0);
+  if (sym === "N") return new SIUnit(1, 1, -2, 0, 0, 0, 0);
+  if (sym === "Pa" || sym === "bar") return new SIUnit(-1, 1, -2, 0, 0, 0, 0);
+  if (sym === "J" || sym === "Wh" || sym === "eV") return new SIUnit(2, 1, -2, 0, 0, 0, 0);
+  if (sym === "W" || sym === "VA" || sym === "var") return new SIUnit(2, 1, -3, 0, 0, 0, 0);
+  if (sym === "C" || sym === "Ah") return new SIUnit(0, 0, 1, 1, 0, 0, 0);
+  if (sym === "V") return new SIUnit(2, 1, -3, -1, 0, 0, 0);
+  if (sym === "F") return new SIUnit(-2, -1, 4, 2, 0, 0, 0);
+  if (sym === "Ohm") return new SIUnit(2, 1, -3, -2, 0, 0, 0);
+  if (sym === "S") return new SIUnit(-2, -1, 3, 2, 0, 0, 0);
+  if (sym === "Wb") return new SIUnit(2, 1, -2, -1, 0, 0, 0);
+  if (sym === "T") return new SIUnit(0, 1, -2, -1, 0, 0, 0);
+  if (sym === "H") return new SIUnit(2, 1, -2, -2, 0, 0, 0);
+  if (sym === "lx") return new SIUnit(-2, 0, 0, 0, 0, 0, 1);
+  if (sym === "Gy" || sym === "Sv") return new SIUnit(2, 0, -2, 0, 0, 0, 0);
+  if (sym === "kat") return new SIUnit(0, 0, -1, 0, 0, 1, 0);
+  if (sym === "l" || sym === "L") return new SIUnit(3, 0, 0, 0, 0, 0, 0);
+  return null;
+}
+
+function parseAtomicUnitSymbol(sym: string): SIUnit | null {
+  const direct = parseBaseAtomicSymbol(sym);
+  if (direct != null) return direct;
+  if (sym.length > 2 && sym.startsWith("da")) {
+    return parseBaseAtomicSymbol(sym.substring(2));
+  }
+  if (sym.length > 1) {
+    const p = sym.charAt(0);
+    if (
+      p === "Y" ||
+      p === "Z" ||
+      p === "E" ||
+      p === "P" ||
+      p === "T" ||
+      p === "G" ||
+      p === "M" ||
+      p === "k" ||
+      p === "h" ||
+      p === "d" ||
+      p === "c" ||
+      p === "m" ||
+      p === "u" ||
+      p === "µ" ||
+      p === "n" ||
+      p === "p" ||
+      p === "f" ||
+      p === "a" ||
+      p === "z" ||
+      p === "y"
+    ) {
+      return parseBaseAtomicSymbol(sym.substring(1));
+    }
+  }
+  return null;
+}
+
+function parseSignedExponent(expStr: string): number {
+  let s = expStr;
+  if (s.startsWith("^")) s = s.substring(1);
+  if (s.length === 0) return 999999;
+  let sign = 1;
+  let idx = 0;
+  if (s.charAt(0) === "-") {
+    sign = -1;
+    idx = 1;
+  } else if (s.charAt(0) === "+") {
+    idx = 1;
+  }
+  if (idx >= s.length) return 999999;
+  let val = 0;
+  while (idx < s.length) {
+    const code = s.charCodeAt(idx);
+    if (code < 48 || code > 57) return 999999;
+    val = val * 10 + (code - 48);
+    idx++;
+  }
+  return sign * val;
+}
+
 /**
- * Parse a Modelica unit string into an SIUnit.
+ * Parse a Modelica unit string (Modelica 3.6 §18.8.3.1) into an SIUnit.
  */
 export function parseUnit(unitStr: string): SIUnit | null {
-  if (!unitStr || unitStr === "1" || unitStr === "") return createDimensionless();
+  if (!unitStr) return createDimensionless();
+  const trimmed = unitStr.trim();
+  if (trimmed === "" || trimmed === "1" || trimmed === "%" || trimmed === "ppm") return createDimensionless();
 
-  // Base units
-  if (unitStr === "m") return new SIUnit(1, 0, 0, 0, 0, 0, 0);
-  if (unitStr === "kg") return new SIUnit(0, 1, 0, 0, 0, 0, 0);
-  if (unitStr === "s") return new SIUnit(0, 0, 1, 0, 0, 0, 0);
-  if (unitStr === "A") return new SIUnit(0, 0, 0, 1, 0, 0, 0);
-  if (unitStr === "K") return new SIUnit(0, 0, 0, 0, 1, 0, 0);
-  if (unitStr === "mol") return new SIUnit(0, 0, 0, 0, 0, 1, 0);
-  if (unitStr === "cd") return new SIUnit(0, 0, 0, 0, 0, 0, 1);
-
-  // Derived units
-  if (unitStr === "Hz") return new SIUnit(0, 0, -1, 0, 0, 0, 0);
-  if (unitStr === "N") return new SIUnit(1, 1, -2, 0, 0, 0, 0);
-  if (unitStr === "Pa") return new SIUnit(-1, 1, -2, 0, 0, 0, 0);
-  if (unitStr === "J") return new SIUnit(2, 1, -2, 0, 0, 0, 0);
-  if (unitStr === "W") return new SIUnit(2, 1, -3, 0, 0, 0, 0);
-  if (unitStr === "C") return new SIUnit(0, 0, 1, 1, 0, 0, 0);
-  if (unitStr === "V") return new SIUnit(2, 1, -3, -1, 0, 0, 0);
-  if (unitStr === "F") return new SIUnit(-2, -1, 4, 2, 0, 0, 0);
-  if (unitStr === "Ohm") return new SIUnit(2, 1, -3, -2, 0, 0, 0);
-  if (unitStr === "S") return new SIUnit(-2, -1, 3, 2, 0, 0, 0);
-  if (unitStr === "Wb") return new SIUnit(2, 1, -2, -1, 0, 0, 0);
-  if (unitStr === "T") return new SIUnit(0, 1, -2, -1, 0, 0, 0);
-  if (unitStr === "H") return new SIUnit(2, 1, -2, -2, 0, 0, 0);
-  if (unitStr === "rad") return new SIUnit(0, 0, 0, 0, 0, 0, 0);
-  if (unitStr === "rad/s") return new SIUnit(0, 0, -1, 0, 0, 0, 0);
-  if (unitStr === "m/s") return new SIUnit(1, 0, -1, 0, 0, 0, 0);
-  if (unitStr === "m/s2" || unitStr === "m/s^2") return new SIUnit(1, 0, -2, 0, 0, 0, 0);
-  if (unitStr === "m2" || unitStr === "m^2") return new SIUnit(2, 0, 0, 0, 0, 0, 0);
-  if (unitStr === "m3" || unitStr === "m^3") return new SIUnit(3, 0, 0, 0, 0, 0, 0);
-  if (unitStr === "kg/m3") return new SIUnit(-3, 1, 0, 0, 0, 0, 0);
-  if (unitStr === "J/(kg.K)" || unitStr === "J/(kg·K)") return new SIUnit(2, 0, -2, 0, -1, 0, 0);
-  if (unitStr === "W/(m.K)" || unitStr === "W/(m·K)") return new SIUnit(1, 1, -3, 0, -1, 0, 0);
-  if (unitStr === "W/(m2.K)" || unitStr === "W/(m2·K)") return new SIUnit(0, 1, -3, 0, -1, 0, 0);
-
-  // Exponent on base unit (e.g. s2, s-1)
-  if (unitStr.startsWith("m") && unitStr.length === 2 && unitStr.charCodeAt(1) >= 48 && unitStr.charCodeAt(1) <= 57) {
-    return new SIUnit(unitStr.charCodeAt(1) - 48, 0, 0, 0, 0, 0, 0);
-  }
-  if (unitStr.startsWith("s") && unitStr.length === 2 && unitStr.charCodeAt(1) >= 48 && unitStr.charCodeAt(1) <= 57) {
-    return new SIUnit(0, 0, unitStr.charCodeAt(1) - 48, 0, 0, 0, 0);
-  }
-
-  // Fraction unit: num/den
-  const slashIdx = unitStr.indexOf("/");
-  if (slashIdx > 0) {
-    const numStr = unitStr.substring(0, slashIdx);
-    let denStr = unitStr.substring(slashIdx + 1);
-    if (denStr.startsWith("(") && denStr.endsWith(")")) {
-      denStr = denStr.substring(1, denStr.length - 1);
+  // Strip balanced outer parentheses
+  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+    let depth = 0;
+    let balanced = true;
+    for (let i = 0; i < trimmed.length - 1; i++) {
+      const ch = trimmed.charAt(i);
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      if (depth === 0) {
+        balanced = false;
+        break;
+      }
     }
-    const num = parseUnit(numStr);
-    const den = parseUnit(denStr);
-    if (num != null && den != null) {
-      return unitDivide(num, den);
+    if (balanced) {
+      const inner = parseUnit(trimmed.substring(1, trimmed.length - 1));
+      if (inner != null) return inner;
     }
   }
 
-  // Dot product unit: a.b
-  const dotIdx = unitStr.indexOf(".");
-  if (dotIdx > 0) {
-    const p1 = parseUnit(unitStr.substring(0, dotIdx));
-    const p2 = parseUnit(unitStr.substring(dotIdx + 1));
-    if (p1 != null && p2 != null) {
-      return unitMultiply(p1, p2);
+  // Split top-level '/' left-to-right: a / b / c = (a / b) / c
+  let depth = 0;
+  let lastSlash = -1;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed.charAt(i);
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (depth === 0 && ch === "/") lastSlash = i;
+  }
+  if (lastSlash > 0) {
+    const num = parseUnit(trimmed.substring(0, lastSlash));
+    const den = parseUnit(trimmed.substring(lastSlash + 1));
+    if (num != null && den != null) return unitDivide(num, den);
+    return null;
+  }
+
+  // Split top-level product operators ('.', '·', '*', whitespace)
+  depth = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed.charAt(i);
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (depth === 0 && (ch === "." || ch === "·" || ch === "*" || ch === " ")) {
+      const left = trimmed.substring(0, i).trim();
+      const right = trimmed.substring(i + 1).trim();
+      if (left.length > 0 && right.length > 0) {
+        const p1 = parseUnit(left);
+        const p2 = parseUnit(right);
+        if (p1 != null && p2 != null) return unitMultiply(p1, p2);
+      }
+    }
+  }
+
+  // Parenthesized base with trailing exponent: (kg.m)^2 or (m.s)-1
+  if (trimmed.startsWith("(")) {
+    const closeIdx = trimmed.lastIndexOf(")");
+    if (closeIdx > 0 && closeIdx < trimmed.length - 1) {
+      const basePart = trimmed.substring(1, closeIdx);
+      const expVal = parseSignedExponent(trimmed.substring(closeIdx + 1));
+      if (expVal !== 999999) {
+        const baseUnit = parseUnit(basePart);
+        if (baseUnit != null) return unitPower(baseUnit, expVal);
+      }
+    }
+  }
+
+  // Atomic symbol with optional exponent (e.g. m2, s-1, s-2, m^3, s^-2, kW, MPa)
+  let splitIdx = trimmed.length;
+  for (let i = 0; i < trimmed.length; i++) {
+    const code = trimmed.charCodeAt(i);
+    if (code === 94 || code === 43 || code === 45 || (code >= 48 && code <= 57)) {
+      splitIdx = i;
+      break;
+    }
+  }
+  if (splitIdx > 0) {
+    const sym = trimmed.substring(0, splitIdx);
+    const baseUnit = parseAtomicUnitSymbol(sym);
+    if (baseUnit != null) {
+      if (splitIdx === trimmed.length) return baseUnit;
+      const expVal = parseSignedExponent(trimmed.substring(splitIdx));
+      if (expVal !== 999999) {
+        return expVal === 1 ? baseUnit : unitPower(baseUnit, expVal);
+      }
     }
   }
 

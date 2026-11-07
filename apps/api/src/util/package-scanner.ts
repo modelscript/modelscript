@@ -145,18 +145,47 @@ export async function scanPackageArchive(buffer: Buffer): Promise<PackageScanRes
             }
 
             const chunks: Buffer[] = [];
-            readStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+            let actualEntryBytes = 0;
+            let aborted = false;
+            readStream.on("data", (chunk: Buffer) => {
+              actualEntryBytes += chunk.length;
+              if (actualEntryBytes > entry.uncompressedSize) {
+                totalUncompressedBytes +=
+                  actualEntryBytes - Math.max(entry.uncompressedSize, actualEntryBytes - chunk.length);
+              }
+              if (
+                actualEntryBytes > 50 * 1024 * 1024 ||
+                totalUncompressedBytes > SCAN_LIMITS.MAX_TOTAL_UNCOMPRESSED_BYTES
+              ) {
+                aborted = true;
+                violations.push(
+                  `Archive exceeds maximum uncompressed size (${(SCAN_LIMITS.MAX_TOTAL_UNCOMPRESSED_BYTES / 1024 / 1024).toFixed(0)} MB)`,
+                );
+                readStream.destroy();
+                return;
+              }
+              chunks.push(chunk);
+            });
             readStream.on("end", () => {
-              const code = Buffer.concat(chunks).toString("utf-8");
-              for (const { pattern, name } of PROHIBITED_MODELICA_CALLS) {
-                if (pattern.test(code)) {
-                  violations.push(`Malicious/prohibited construct detected in "${entry.fileName}": ${name}`);
+              if (!aborted) {
+                const code = Buffer.concat(chunks).toString("utf-8");
+                for (const { pattern, name } of PROHIBITED_MODELICA_CALLS) {
+                  if (pattern.test(code)) {
+                    violations.push(`Malicious/prohibited construct detected in "${entry.fileName}": ${name}`);
+                  }
                 }
               }
               zipfile.readEntry();
             });
+            readStream.on("close", () => {
+              if (aborted) {
+                zipfile.readEntry();
+              }
+            });
             readStream.on("error", () => {
-              zipfile.readEntry();
+              if (!aborted) {
+                zipfile.readEntry();
+              }
             });
           });
           return;

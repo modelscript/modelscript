@@ -30,7 +30,7 @@ import { verifyFlowAssuranceTrajectory } from "./verification/flow-assurance-ver
 export const olgaLanguage = language({
   name: "olga",
   fileExtensions: [".opi", ".olga", ".key", ".genkey", ".inp"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".opi", ".olga", ".key", ".genkey", ".inp"],
     icons: {
@@ -225,11 +225,16 @@ export const olgaLanguage = language({
       }),
 
     XmlElement: ($) =>
-      seq(
-        "<",
-        /[A-Za-z0-9_]+/,
-        repeat(seq(/[A-Za-z0-9_]+/, "=", /"[^"]*"/)),
-        choice("/>", seq(">", repeat(choice($["XmlElement"]!, /[^<]+/)), "</", /[A-Za-z0-9_]+/, ">")),
+      choice(
+        $["FlowpathElement"]!,
+        $["ValveElement"]!,
+        $["NodeElement"]!,
+        seq(
+          "<",
+          /[A-Za-z0-9_]+/,
+          repeat(seq(/[A-Za-z0-9_]+/, "=", /"[^"]*"/)),
+          choice("/>", seq(">", repeat(choice($["XmlElement"]!, /[^<]+/)), "</", /[A-Za-z0-9_]+/, ">")),
+        ),
       ),
 
     FlowpathElement: ($) =>

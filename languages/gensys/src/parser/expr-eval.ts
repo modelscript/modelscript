@@ -46,6 +46,14 @@ export function evaluateMathExpr(
     let token = "";
     while (pos < str.length && /[a-zA-Z0-9_.]/.test(str[pos]!)) {
       token += str[pos++]!;
+      if (
+        (token.endsWith("e") || token.endsWith("E")) &&
+        /^(\d+(\.\d*)?|\.\d+)[eE]$/.test(token) &&
+        pos < str.length &&
+        (str[pos] === "+" || str[pos] === "-")
+      ) {
+        token += str[pos++]!;
+      }
     }
 
     if (token === "") return defaultVal;

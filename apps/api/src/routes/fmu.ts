@@ -26,6 +26,7 @@ export const defaultFmuStorage = new FmuStorage(
 export function fmuRouter(storage?: FmuStorage): express.Router {
   const router = express.Router();
   const fmuStorage = storage ?? defaultFmuStorage;
+  const fmuOwners = new Map<string, number>();
 
   const requireFmuAuthInProd: express.RequestHandler = (req, res, next) => {
     if (process.env["NODE_ENV"] === "production") {
@@ -62,6 +63,10 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
 
       try {
         const stored = fmuStorage.store(id, filename, req.body);
+        const reqUserId = (req as express.Request & { user?: { id?: number | undefined } | undefined }).user?.id;
+        if (reqUserId) {
+          fmuOwners.set(stored.id, reqUserId);
+        }
         res.status(201).json({
           id: stored.id,
           filename: stored.filename,
@@ -159,10 +164,20 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
   // DELETE /api/v1/fmus/:id — Delete an FMU
   router.delete("/:id", optionalAuth, requireFmuAuthInProd, (req, res) => {
     const id = String(req.params["id"] ?? "");
+    const ownerId = fmuOwners.get(id);
+    if (ownerId !== undefined) {
+      const user = (
+        req as express.Request & { user?: { id?: number | undefined; isAdmin?: boolean | undefined } | undefined }
+      ).user;
+      if (!user?.id || (user.id !== ownerId && !user.isAdmin)) {
+        return res.status(403).json({ error: "Forbidden: only the uploader or an administrator can delete this FMU" });
+      }
+    }
     const deleted = fmuStorage.delete(id);
     if (!deleted) {
       return res.status(404).json({ error: "FMU not found" });
     }
+    fmuOwners.delete(id);
     res.json({ ok: true, id });
     return;
   });

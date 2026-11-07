@@ -1296,6 +1296,15 @@ export const baselineMigration: Migration = {
       );
       CREATE INDEX IF NOT EXISTS idx_remote_artifact_cache_domain ON remote_artifact_cache(remote_domain);
       CREATE INDEX IF NOT EXISTS idx_remote_artifact_cache_accessed ON remote_artifact_cache(last_accessed_at);
+
+      -- ── Performance & Case-Insensitive Lookup Indexes ────────────
+      CREATE INDEX IF NOT EXISTS idx_bookmarks_post ON bookmarks(post_id);
+      CREATE INDEX IF NOT EXISTS idx_jobs_user_status ON jobs(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_job_steps_job ON job_steps(job_id);
+      CREATE INDEX IF NOT EXISTS idx_content_reports_post ON content_reports(post_id);
+      CREATE INDEX IF NOT EXISTS idx_content_reports_target_user ON content_reports(target_user_id);
+      CREATE INDEX IF NOT EXISTS idx_users_lower_username ON users(LOWER(username));
+      CREATE INDEX IF NOT EXISTS idx_users_lower_email ON users(LOWER(email));
     `);
 
     // Seed feature flag defaults

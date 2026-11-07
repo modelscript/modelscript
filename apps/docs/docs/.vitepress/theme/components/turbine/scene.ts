@@ -508,6 +508,7 @@ export class TurbineScene {
   private paused = false;
   private reducedMotion: boolean;
   private dark: boolean;
+  private manualSectionPct: number | null = null;
 
   private s = -0.35;
   private time = SWEEP_PERIOD * 0.22;
@@ -771,6 +772,15 @@ export class TurbineScene {
     this.wake();
   }
 
+  setManualSectionCut(pct01: number | null): void {
+    if (pct01 === null || !Number.isFinite(pct01)) {
+      this.manualSectionPct = null;
+    } else {
+      this.manualSectionPct = Math.min(1, Math.max(0, pct01));
+    }
+    this.wake();
+  }
+
   setPaused(paused: boolean): void {
     this.paused = paused;
     this.wake();
@@ -931,12 +941,17 @@ export class TurbineScene {
     // Section plane position.
     let target: number;
     if (this.mode === "section") {
-      const phase = this.reducedMotion ? 0.47 : 0.5 - 0.5 * Math.cos((this.time / SWEEP_PERIOD) * Math.PI * 2);
+      const phase =
+        this.manualSectionPct !== null
+          ? this.manualSectionPct
+          : this.reducedMotion
+            ? 0.47
+            : 0.5 - 0.5 * Math.cos((this.time / SWEEP_PERIOD) * Math.PI * 2);
       target = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * phase;
     } else {
       target = MODE_TARGET[this.mode];
     }
-    const k = this.reducedMotion ? 1 : 1 - Math.exp(-dt * 3.2);
+    const k = this.reducedMotion ? 1 : 1 - Math.exp(-dt * (this.manualSectionPct !== null ? 9.5 : 3.2));
     this.s += (target - this.s) * k;
     const sSettled = Math.abs(target - this.s) < 1e-4;
     if (sSettled) this.s = target;
@@ -1032,6 +1047,7 @@ export class TurbineScene {
       els.line.style.opacity = op;
       els.dot.style.opacity = op;
       els.label.style.opacity = op;
+      els.label.style.pointerEvents = reveal > 0.25 ? "auto" : "none";
       els.label.style.transform = `translate(${ax.toFixed(1)}px, ${ly.toFixed(1)}px) translate(-50%, ${
         c.side < 0 ? "-100%" : "0"
       })`;

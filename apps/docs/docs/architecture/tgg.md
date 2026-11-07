@@ -1,3 +1,8 @@
+---
+title: "Polyglot Triple Graph Grammars (TGG)"
+description: "ModelScript provides declarative, ahead-of-time (AOT) compiled Triple Graph Grammars (TGG) and Double-Pushout (DPO) algebraic graph rewriting via @modelscript/dsl/tgg."
+---
+
 # Polyglot Triple Graph Grammars (TGG)
 
 ModelScript provides declarative, ahead-of-time (AOT) compiled **Triple Graph Grammars (TGG)** and Double-Pushout (DPO) algebraic graph rewriting via `@modelscript/dsl/tgg`.

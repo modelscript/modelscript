@@ -1,3 +1,8 @@
+---
+title: MCP Server & IDE Workbench Reference
+description: Complete reference for all 60 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Web IDE workbench.
+---
+
 # MCP Server & IDE Workbench Reference
 
 ModelScript provides first-class AI agent integration via the **Model Context Protocol (`@modelscript/mcp`)** alongside a comprehensive polyglot **VS Code Extension & Web IDE (`@modelscript/ide-client`, `@modelscript/lsp`)**. Both surfaces share the same zero-allocation WebAssembly GLR parsers, Salsa `QueryEngine`, and linear-memory `DAEBuilder`.
@@ -72,9 +77,9 @@ In browser workers and edge sandboxes (`packages/mcp/src/polyglot-server.ts`), `
 
 ---
 
-### 2. Complete Reference of All 52 Core MCP Tools
+### 2. Complete Reference of All 60 Core MCP Tools
 
-The canonical MCP server (`packages/mcp/src/tools.ts`) registers **52 specialized engineering tools** grouped across nine functional domains:
+The canonical MCP server (`packages/mcp/src/tools.ts`) registers **60 specialized engineering tools** grouped across ten functional domains:
 
 #### Domain 1: Modelica Compilation, Simulation, Linearization & Sensitivity (11 Tools)
 
@@ -173,6 +178,19 @@ The canonical MCP server (`packages/mcp/src/tools.ts`) registers **52 specialize
 | `formal_verify_safety_and_mcdc`   | `code: string`                                   | `className?: string`, `safetyProperty?: string`, `engine?: "ic3-pdr" \| "k-induction" \| "sos-barrier"`, `maxDepth?: number`, `generateMcdcVectors?: boolean`                                                                 | Prove unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and generate DO-178C / ISO 26262 MC/DC independence-pair test vectors.     |
 | `twin_discover_sindy_and_rom`     | —                                                | `className?: string`, `modelicaCode?: string`, `telemetryData?: {time: number[], states: Record<string, number[]>}`, `sparsityThreshold?: number`, `romRank?: number`                                                         | Discover sparse nonlinear governing differential equations (SINDy STLSQ) from hardware telemetry residuals and calibrate a Reduced-Order Model (ROM) digital twin.      |
 
+#### Domain 10: Digital Metrology, Cyber-Physical Security, AutomationML & Radiology / Surgical Navigation (8 Tools)
+
+| Tool Name                       | Required Arguments | Optional Arguments                                                                      | Description                                                                                                                                                                                                                                                  |
+| :------------------------------ | :----------------- | :-------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `qif_inspect_and_spc`           | —                  | `qifXml?: string`, `qifPath?: string`, `stepPath?: string`                              | Evaluates an ISO 23952 Quality Information Framework (QIF) document, runs NIST QIF & ASME Y14.5 GD&T lint checks (`Q1001`–`Q1010`), computes SPC capability ($C_p$, $C_{pk}$, TUR, MMC/LMC bonus tolerances), and optionally reconciles STEP AP242 entities. |
+| `oscal_audit_cps_compliance`    | —                  | `oscalContent?: string`, `oscalPath?: string`, `overlay?: "800-53" \| "800-82"`         | Audits a NIST OSCAL document (Catalog, Profile, Component Definition, SSP, SAR, or POA&M) against NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS overlays, resolves profile baselines, and verifies cyber-physical architectural component coverage.        |
+| `aml_run_virtual_commissioning` | —                  | `amlXml?: string`, `amlPath?: string`, `cycles?: number` (`20`), `dtMs?: number` (`10`) | Parses an IEC 62714 AutomationML / CAEX workcell topology, runs semantic port & PPR role verification (`A1001`–`A1010`), and executes closed-loop virtual commissioning coupling `VirtualPlc` logic and mechatronic plant dynamics.                          |
+| `opensim_analyze`               | —                  | `osimXml?: string`, `osimPath?: string`, `tEnd?: number` (`1.0`)                        | Parses an OpenSim (`.osim`) musculoskeletal biomechanics model, runs pre-flight kinematic and Hill-type muscle diagnostics (`M9101`–`M9110`), and simulates muscle activation/contraction dynamics.                                                          |
+| `dicom_rt_verify_dvh`           | —                  | `planContent?: string`, `planPath?: string`                                             | Evaluates a DICOM-RT treatment plan (`RTPLAN`, `RTSTRUCT`, `RTDOSE`), verifies QUANTEC OAR dose constraints, MLC leaf kinematics, and gantry/couch collision clearance (`M9201`–`M9210`), and computes DVH, CI, HI, BED, and $\text{EQD}_2$ metrics.         |
+| `cellml_simulate`               | —                  | `cellmlXml?: string`, `cellmlPath?: string`, `tEnd?: number` (`500`)                    | Parses a CellML 1.0/1.1/2.0 electrophysiology or microvascular perfusion model, verifies SI dimensional consistency and component interfaces (`M9301`–`M9310`), and integrates action potential / gating ODEs.                                               |
+| `igtl_verify_calibration`       | —                  | `configXml?: string`, `configPath?: string`                                             | Parses an OpenIGTLink / PLUS surgical navigation configuration, verifies $SE(3)$ rotation orthogonality and coordinate frame connectivity (`M9801`–`M9810`), and solves stylus pivot calibration and Fitzpatrick Target Registration Error (TRE).            |
+| `three_mf_verify_guide`         | —                  | `threeMfXml?: string`, `threeMfPath?: string`                                           | Verifies an ISO/ASTM 52915 3MF Medical patient-specific surgical cutting guide or implant mesh for 2-manifold watertightness, outward normal volume, wall thickness, osteotomy plane normals, and biocompatibility (`M9701`–`M9710`).                        |
+
 #### Declarative Polyglot Language Tools (`PolyglotMcpHost`)
 
 When using `PolyglotMcpHost` (`packages/mcp/src/polyglot-server.ts`), additional language-declared tools from `languages/*/src/language.ts` are automatically mounted:
@@ -203,7 +221,7 @@ The official ModelScript extension (`modelscript.modelscript`, source in `apps/i
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
-A single unified Language Server Protocol instance provides incremental language intelligence across the registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.pscx`, `.pswx`, `.scad`, `.stp`, `.step`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.inp`, `.gbr`):
+A single unified Language Server Protocol instance provides incremental language intelligence across the registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.pscx`, `.pswx`, `.scad`, `.stp`, `.step`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.inp`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.3mf`, `.igtl`):
 
 - **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking.
 - **Navigation & Refactoring**: Go-to-Definition, Find All References (across `.sysml` $\leftrightarrow$ `.mo` $\leftrightarrow$ `.msx` boundaries), Workspace Symbol Search, Rename Symbol, and Document Outline.
@@ -247,23 +265,29 @@ ModelScript registers a full **Debug Adapter Protocol** implementation (`"type":
 
 ### 4. Custom Document Editors & Engineering Workbench Panels
 
-The extension contributes **9 custom visual editors** and **over 20 specialized engineering webview panels**:
+The extension contributes **15 custom visual editors** and **over 20 specialized engineering webview panels**:
 
-| Custom Editor / View ID                         | Bound File Types / Trigger               | Capabilities                                                                                                                                                        |
-| :---------------------------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `modelscript.diagramEditor`                     | `.mo`, `.sysml`, `.pscx`                 | Bi-directional graphical schematic & SysML v2 (BDD/IBD/State/Activity) editor; dragging components or routing wires updates the underlying source CST in real time. |
-| `modelscript.monbNotebook`                      | `.monb`                                  | Literate engineering notebook combining Markdown/LaTeX narratives with live simulation and verification cells.                                                      |
-| `modelscript.fmuViewer`                         | `.fmu`                                   | Inspects FMI 2.0/3.0 `modelDescription.xml`, causal ports, dependency sparsity matrices, and runs interactive test simulations on `.fmu` files.                     |
-| `modelscript.sspEditor`                         | `.ssp`, `.ssd`, `.ssv`                   | Visual block-diagram editor for wiring multi-FMU co-simulation topologies and editing `.ssv` parameter tables.                                                      |
-| `modelscript.reqifEditor`                       | `.reqif`, `.reqifz`                      | Tabular requirements specification editor with suspect-link indicators and one-click SysML v2 synchronization.                                                      |
-| `modelscript.cadViewer`                         | `.stp`, `.step`, `.scad`, `.stl`, `.glb` | Hardware-accelerated Three.js / WebGL 3D CAD viewport with section planes, B-Rep face selection, and kinematic animation playback.                                  |
-| `modelscript.gerberViewer`                      | `.gbr`, `.drl`                           | Multi-layer 2D/3D PCB copper, solder mask, silkscreen, and drill stackup inspector.                                                                                 |
-| `modelscript.cfdViewer`                         | `.su2`, `.vtk`, `.cfg`                   | Unstructured CFD mesh wireframe, boundary marker inspector, and pressure/velocity contour viewer.                                                                   |
-| `modelscript.feaViewer`                         | `.inp`, `.frd`                           | Finite-element mesh inspector with deformed shape magnification and von Mises stress colormaps.                                                                     |
-| **Simulation & Bode Plot Studio**               | `modelscript.simulate`                   | Interactive multi-axis oscilloscope, FFT spectrum analyzer, phase portrait plotter, and linearized State-Space ($A,B,C,D$) Bode/Nyquist root-locus analyzer.        |
-| **BLT & Tearing Matrix Inspector**              | `modelscript.inspectBlt`                 | Visualizes the Tarjan Block Lower Triangular incidence matrix, Pantelides differentiated equations, and Cellier-Elmqvist tearing variables.                         |
-| **Formal Verification & Counterexample Center** | `modelscript.verify`                     | Interactive dashboard for running BMC/$k$-induction/IC3/STL falsification and replaying falsifying counterexample traces step-by-step on the schematic.             |
-| **Digital Thread & RTM Explorer**               | `modelscript.digitalThread`              | Interactive graph explorer showing end-to-end traceability across OWL2 $\to$ SysML v2 $\to$ Modelica $\to$ CAD $\to$ Verification DHF.                              |
+| Custom Editor / View ID                                | Bound File Types / Trigger               | Capabilities                                                                                                                                                        |
+| :----------------------------------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `modelscript.diagramEditor`                            | `.mo`, `.sysml`, `.pscx`                 | Bi-directional graphical schematic & SysML v2 (BDD/IBD/State/Activity) editor; dragging components or routing wires updates the underlying source CST in real time. |
+| `modelscript.monbNotebook`                             | `.monb`                                  | Literate engineering notebook combining Markdown/LaTeX narratives with live simulation and verification cells.                                                      |
+| `modelscript.fmuViewer`                                | `.fmu`                                   | Inspects FMI 2.0/3.0 `modelDescription.xml`, causal ports, dependency sparsity matrices, and runs interactive test simulations on `.fmu` files.                     |
+| `modelscript.sspEditor`                                | `.ssp`, `.ssd`, `.ssv`                   | Visual block-diagram editor for wiring multi-FMU co-simulation topologies and editing `.ssv` parameter tables.                                                      |
+| `modelscript.reqifEditor`                              | `.reqif`, `.reqifz`                      | Tabular requirements specification editor with suspect-link indicators and one-click SysML v2 synchronization.                                                      |
+| `modelscript.cadViewer`                                | `.stp`, `.step`, `.scad`, `.stl`, `.glb` | Hardware-accelerated Three.js / WebGL 3D CAD viewport with section planes, B-Rep face selection, and kinematic animation playback.                                  |
+| `modelscript.gerberViewer`                             | `.gbr`, `.drl`                           | Multi-layer 2D/3D PCB copper, solder mask, silkscreen, and drill stackup inspector.                                                                                 |
+| `modelscript.cfdViewer`                                | `.su2`, `.vtk`, `.cfg`                   | Unstructured CFD mesh wireframe, boundary marker inspector, and pressure/velocity contour viewer.                                                                   |
+| `modelscript.feaViewer`                                | `.inp`, `.frd`                           | Finite-element mesh inspector with deformed shape magnification and von Mises stress colormaps.                                                                     |
+| `modelscript.qifEditor` (**QIF Metrology**)            | `.qif`                                   | ISO 23952 GD&T datum/characteristic inspector with live Statistical Process Control ($C_p/C_{pk}$, TUR, MMC/LMC bonus tolerance) control charts.                    |
+| `modelscript.oscalEditor` (**OSCAL Compliance**)       | `.oscal.json`, `.oscal.yaml`, `.oscal`   | NIST SP 800-53 / SP 800-82 Rev 3 OT/ICS control matrix inspector, profile baseline resolver, and POA&M audit dashboard.                                             |
+| `modelscript.amlEditor` (**AutomationML Topology**)    | `.aml`, `.caex`, `.amlx`                 | IEC 62714 CAEX SystemUnitClass / RoleClass / InternalElement hierarchy explorer and Virtual PLC commissioning panel.                                                |
+| `modelscript.opensimViewer` (**OpenSim Biomechanics**) | `.osim`                                  | 3D musculoskeletal kinematic chain viewer with Hill-type muscle activation-contraction curves and moment-arm plots.                                                 |
+| `modelscript.dicomRtViewer` (**DICOM-RT Dosimetry**)   | `.rtplan`, `.rtstruct`, `.rtdose`        | Cumulative Dose-Volume Histogram (DVH) plotter, QUANTEC OAR constraint scorecard, BED/$\text{EQD}_2$ calculator, and Beams-Eye-View MLC aperture inspector.         |
+| `modelscript.igtlViewer` (**OpenIGTLink Navigation**)  | `.igtl`, `.plus.xml`                     | $SE(3)$ surgical navigation coordinate-frame tree inspector, stylus pivot calibration solver, and Fitzpatrick Target Registration Error (TRE) analyzer.             |
+| **Simulation & Bode Plot Studio**                      | `modelscript.simulate`                   | Interactive multi-axis oscilloscope, FFT spectrum analyzer, phase portrait plotter, and linearized State-Space ($A,B,C,D$) Bode/Nyquist root-locus analyzer.        |
+| **BLT & Tearing Matrix Inspector**                     | `modelscript.inspectBlt`                 | Visualizes the Tarjan Block Lower Triangular incidence matrix, Pantelides differentiated equations, and Cellier-Elmqvist tearing variables.                         |
+| **Formal Verification & Counterexample Center**        | `modelscript.verify`                     | Interactive dashboard for running BMC/$k$-induction/IC3/STL falsification and replaying falsifying counterexample traces step-by-step on the schematic.             |
+| **Digital Thread & RTM Explorer**                      | `modelscript.digitalThread`              | Interactive graph explorer showing end-to-end traceability across OWL2 $\to$ SysML v2 $\to$ Modelica $\to$ CAD $\to$ Verification DHF.                              |
 
 ### 5. Three-Tier AI Engineering Copilot
 

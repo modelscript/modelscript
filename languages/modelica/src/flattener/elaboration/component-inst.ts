@@ -2201,6 +2201,11 @@ export function instantiateElements(
               if (prefix) {
                 flattener.varConditionDeps.set(compInst.name, resolvedDeps);
               }
+              if (!dae.extensionMetadata?.["isOldFrontend"]) {
+                for (const rDep of resolvedDeps) {
+                  (state.pendingFinalParamNames ??= new Set<string>()).add(rDep);
+                }
+              }
             }
             let condVal: boolean | null = null;
             if (condText === "true") condVal = true;
@@ -5547,7 +5552,7 @@ export function instantiateElements(
                       idm,
                     ];
                     for (const c of candidates) {
-                      ((state as any).pendingFinalParamNames ??= new Set<string>()).add(c);
+                      (state.pendingFinalParamNames ??= new Set<string>()).add(c);
                       const vi = dae.lookupVariable(c);
                       if (
                         !dae.extensionMetadata?.["isOldFrontend"] &&
@@ -8397,7 +8402,7 @@ export function instantiateElements(
                   idm,
                 ];
                 for (const c of candidates) {
-                  ((state as any).pendingFinalParamNames ??= new Set<string>()).add(c);
+                  (state.pendingFinalParamNames ??= new Set<string>()).add(c);
                   const vi = dae.lookupVariable(c);
                   if (
                     !dae.extensionMetadata?.["isOldFrontend"] &&
@@ -9454,8 +9459,6 @@ export function instantiateElements(
               (meta as any)?.isFinal ||
               (!dae.extensionMetadata?.["isOldFrontend"] &&
                 (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
-              compInst?.name === "nu" ||
-              compInst?.name === "enableExternalTrigger" ||
               (isEvaluated && !prefix) ||
               (!flattener.options.omcCompatibility && isEvaluated)
             ) {
@@ -9679,8 +9682,6 @@ export function instantiateElements(
               (parentMods?.isFinal && parentMods?.isRecord) ||
               (!dae.extensionMetadata?.["isOldFrontend"] &&
                 (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
-              compInst?.name === "nu" ||
-              compInst?.name === "enableExternalTrigger" ||
               (isEvaluated && !prefix) ||
               (!flattener.options.omcCompatibility && isEvaluated)
             ) {
@@ -9858,34 +9859,43 @@ export function instantiateElements(
                 matchingParentArg?.final ||
                 matchingClassArg?.final ||
                 redeclArg?.final ||
-                (isEvaluated && varType === VarType.Enumeration))) ||
-            compInst?.name === "nu" ||
-            compInst?.name === "enableExternalTrigger"
+                (isEvaluated && varType === VarType.Enumeration)))
           ) {
             dae.setVarFinal(varIdx, true);
           }
           applyModifiers(varIdx, []);
+          const ownerClassId = flattener.db.symbol(elemId)?.parentId ?? flattener.currentClassId;
+          const rawConstBindText = String(effectiveBinding?.text ?? "")
+            .replace(/^=/, "")
+            .trim();
+          const isNumericLiteralConst =
+            effectiveBinding?.kind === "literal" ||
+            /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(rawConstBindText);
           if (
             dae.extensionMetadata?.["isOldFrontend"] &&
             variability === Variability.Constant &&
             prefix &&
-            dae.getVarDescription(varIdx) === "Flow coefficient for steam valve"
+            isNumericLiteralConst &&
+            ownerClassId != null
           ) {
-            dae.removeVariable(varIdx);
+            const clsCst = flattener.db.cstNode(ownerClassId) as { text?: string } | undefined;
+            const clsText = String(clsCst?.text ?? "").replace(/"(?:\\.|[^"\\])*"|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
+            const escapedName = compInst.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const identRe = new RegExp(`\\b${escapedName}\\b`, "g");
+            const matches = clsText.match(identRe);
+            if (!matches || matches.length <= 1) {
+              dae.removeVariable(varIdx);
+            }
           }
         }
       }
-      if (
-        !dae.extensionMetadata?.["isOldFrontend"] &&
-        dae.classKind !== "function" &&
-        (state as any).pendingFinalParamNames
-      ) {
-        for (const c of (state as any).pendingFinalParamNames as Set<string>) {
+      if (!dae.extensionMetadata?.["isOldFrontend"] && dae.classKind !== "function" && state.pendingFinalParamNames) {
+        for (const c of state.pendingFinalParamNames) {
           const vi = dae.lookupVariable(c);
           if (
             vi >= 0 &&
             dae.getVarVariability(vi) === Variability.Parameter &&
-            dae.getVarType(vi) === VarType.Integer
+            (dae.getVarType(vi) === VarType.Integer || dae.getVarType(vi) === VarType.Boolean)
           ) {
             dae.setVarFinal(vi, true);
           }

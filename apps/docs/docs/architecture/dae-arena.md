@@ -1,3 +1,8 @@
+---
+title: "Linear Memory DAE Arena & Lowering"
+description: "The Differential Algebraic Equations (DAE) representation in ModelScript is implemented via DAEBuilder in @modelscript/runtime (packages/runtime/src/dae/wasm_dae.ts)."
+---
+
 # Linear Memory DAE Arena & Lowering
 
 The Differential Algebraic Equations (DAE) representation in ModelScript is implemented via `DAEBuilder` in `@modelscript/runtime` (`packages/runtime/src/dae/wasm_dae.ts`).

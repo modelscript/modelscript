@@ -41,6 +41,18 @@ body {
 
   --vp-c-divider: var(--ms-divider);
   --vp-c-border: var(--ms-border);
+
+  /* Semantic tier tokens — shared across Format Strip, Language Explorer,
+     Language Header, Capability Matrix, and Industry Pages. */
+  --ms-tier-stable: #059669;
+  --ms-tier-stable-bg: rgba(16, 185, 129, 0.12);
+  --ms-tier-stable-border: rgba(16, 185, 129, 0.34);
+  --ms-tier-beta: #4f46e5;
+  --ms-tier-beta-bg: rgba(99, 102, 241, 0.12);
+  --ms-tier-beta-border: rgba(99, 102, 241, 0.34);
+  --ms-tier-preview: #d97706;
+  --ms-tier-preview-bg: rgba(245, 158, 11, 0.12);
+  --ms-tier-preview-border: rgba(245, 158, 11, 0.34);
 }
 
 .dark {
@@ -64,6 +76,16 @@ body {
   --sx-ink: rgba(148, 163, 184, 0.5);
   --sx-ink-soft: rgba(148, 163, 184, 0.09);
   --sx-label: #94a3b8;
+
+  --ms-tier-stable: #34d399;
+  --ms-tier-stable-bg: rgba(16, 185, 129, 0.15);
+  --ms-tier-stable-border: rgba(52, 211, 153, 0.38);
+  --ms-tier-beta: #818cf8;
+  --ms-tier-beta-bg: rgba(129, 140, 248, 0.15);
+  --ms-tier-beta-border: rgba(129, 140, 248, 0.38);
+  --ms-tier-preview: #fbbf24;
+  --ms-tier-preview-bg: rgba(251, 191, 36, 0.14);
+  --ms-tier-preview-border: rgba(251, 191, 36, 0.36);
 }
 
 .VPNavBar:not(.home.top) .content-body,
@@ -278,7 +300,26 @@ body {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) and (max-width: 1150px) {
+  .DocSearch-Button {
+    width: 148px !important;
+    padding: 0 8px !important;
+  }
+
+  .VPNavBarMenu .VPNavBarMenuLink,
+  .VPNavBarMenu .mega-trigger {
+    padding: 0 7px !important;
+    font-size: 13px !important;
+  }
+
+  .VPNavBarMenu .ansatz-nav-pill {
+    margin-left: 4px !important;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (min-width: 1151px) {
   .DocSearch-Button {
     width: 240px !important;
   }
@@ -332,6 +373,8 @@ body {
   width: 680px;
   height: 480px;
   background: radial-gradient(circle at 80% 15%, var(--ms-glow-teal), transparent 68%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.25) 360px, transparent 720px);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.25) 360px, transparent 720px);
   pointer-events: none;
   z-index: 0;
 }
@@ -565,7 +608,7 @@ body {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
 }
 
-/* Allow hero 3D turbine model to overflow parent containers seamlessly */
+/* Allow hero 3D turbine model to overflow parent containers cleanly */
 .VPHero,
 .VPHero .container,
 .VPHero .image,

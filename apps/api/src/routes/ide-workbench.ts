@@ -780,6 +780,12 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
       extractedDir,
       virtualFiles,
     };
+    if (localRepoTreeCache.size >= 100 && !localRepoTreeCache.has(repoKeyLower)) {
+      const oldestKey = localRepoTreeCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        localRepoTreeCache.delete(oldestKey);
+      }
+    }
     localRepoTreeCache.set(repoKeyLower, entry);
     return entry;
   }
@@ -1024,25 +1030,42 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
         const localGitDir = resolveLocalGitRepoDir(ownerParam, repoParam);
         if (localGitDir) {
           if (database) {
+            const cleanNsLower = ownerParam.trim().toLowerCase();
+            const cleanProjLower = repoParam.replace(/\.git$/i, "").toLowerCase();
             const ownerUser = database.getUserByUsername(ownerParam);
-            if (ownerUser) {
-              const cleanProjLower = repoParam.replace(/\.git$/i, "").toLowerCase();
-              const matchedRepo = database.getUserRepos(ownerUser.id).find((r) => {
-                const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
-                const rFull = `${r.namespace || ""}/${r.project || ""}`.replace(/\.git$/i, "").toLowerCase();
-                return rProj === cleanProjLower || rFull === `${ownerParam.toLowerCase()}/${cleanProjLower}`;
-              });
-              const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
-              if (vis === "private" || vis === "internal") {
-                res.setHeader("Cache-Control", "private, no-store, max-age=0");
-                if (!req.user) {
-                  res.status(401).json({ message: "Authentication required to access private repository." });
+            const org = database.getOrganizationBySlug(cleanNsLower);
+            let matchedRepo = ownerUser
+              ? database.getUserRepos(ownerUser.id).find((r) => {
+                  const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
+                  const rFull = `${r.namespace || ""}/${r.project || ""}`.replace(/\.git$/i, "").toLowerCase();
+                  return rProj === cleanProjLower || rFull === `${cleanNsLower}/${cleanProjLower}`;
+                })
+              : undefined;
+            if (!matchedRepo) {
+              matchedRepo = database.getLinkedRepoById(`${cleanNsLower}/${cleanProjLower}`);
+            }
+            const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
+            if (vis === "private" || vis === "internal") {
+              res.setHeader("Cache-Control", "private, no-store, max-age=0");
+              if (!req.user) {
+                res.status(401).json({ message: "Authentication required to access private repository." });
+                return;
+              }
+              const isAdmin =
+                req.user.account_type === "admin" || (req.user as { role?: string | undefined }).role === "admin";
+              if (!isAdmin) {
+                const isOwner =
+                  (ownerUser !== undefined && req.user.id === ownerUser.id) ||
+                  (matchedRepo !== undefined && req.user.id === matchedRepo.user_id);
+                const isOrgMember = org != null && Boolean(database.getOrganizationMemberRole(org.id, req.user.id));
+                if (vis === "private" && !isOwner && !isOrgMember) {
+                  res.status(403).json({ message: "Forbidden: This repository is private." });
                   return;
                 }
-                const isAdmin =
-                  req.user.account_type === "admin" || (req.user as { role?: string | undefined }).role === "admin";
-                if (vis === "private" && req.user.id !== ownerUser.id && !isAdmin) {
-                  res.status(403).json({ message: "Forbidden: This repository is private." });
+                if (vis === "internal" && req.user.account_type === "community_federated" && !isOwner && !isOrgMember) {
+                  res.status(403).json({
+                    message: "Forbidden: Internal repository is restricted to organization and instance members.",
+                  });
                   return;
                 }
               }

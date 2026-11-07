@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 66 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 67 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -59,8 +59,8 @@
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
 - [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 105 CLI commands and subcommands.
 
-## Polyglot Languages (66 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 66 formats.
+## Polyglot Languages (67 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 67 formats.
 - [Modelica (.mo) [stable]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [SysML v2 / KerML (.sysml) [stable]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
 - [ReqIF (.reqif) [stable]](https://modelscript.org/languages/reqif): Requirements interchange & contract entailment.
@@ -89,6 +89,7 @@
 - [SIMPACK (.spck) [beta]](https://modelscript.org/languages/simpack): Spatial multibody dynamics.
 - [PSCAD / EMTDC (.pscx) [stable]](https://modelscript.org/languages/pscad): Electromagnetic transients (EMT).
 - [PSS/E (.raw) [preview]](https://modelscript.org/languages/psse): Transmission power flow.
+- [CIM / CGMES (.xml, .rdf) [preview]](https://modelscript.org/languages/cgmes): ENTSO-E IEC 61970 transmission grid exchange & topology.
 - [OpenDSS (.dss) [preview]](https://modelscript.org/languages/opendss): Unbalanced distribution & DER hosting.
 - [OLGA (.genkey) [stable]](https://modelscript.org/languages/olga): Transient multiphase flow assurance.
 - [PipelineStudio (.lps) [stable]](https://modelscript.org/languages/lps): Gas & liquid pipeline hydraulics.
@@ -144,7 +145,7 @@
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1018 diagnostics across 65 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 929 diagnostics across 66 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

@@ -86,6 +86,12 @@ export const ModelScriptErrorCode = {
     severity: "error",
     message: (op: string, type: string) => `Operator '${op}' cannot be applied to operands of type '${type}'.`,
   },
+  CONST_REASSIGNMENT: {
+    code: 3003,
+    rule: "const-reassignment",
+    severity: "error",
+    message: (name: string) => `Cannot assign to '${name}' because it is a constant.`,
+  },
 
   // ── 4xxx: FLWOR & Queries ──────────────────────────────────────────────────
   NON_ITERABLE_COLLECTION: {

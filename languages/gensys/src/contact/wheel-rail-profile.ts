@@ -70,8 +70,8 @@ export function evaluateS1002WheelProfile(y: number): number {
   if (Math.abs(y) < 1e-12) return 0;
 
   if (y > 0.055) {
-    // Flange tip / back
-    return 0.028 - 0.7 * (y - 0.055);
+    // Flange tip / back (continuous with throat curve at y = 0.055 where z = 0.037925)
+    return 0.037925 - 0.7 * (y - 0.055);
   } else if (y > 0.03) {
     // Flange throat curve (fillet into flange)
     const dy = y - 0.03;
@@ -96,6 +96,7 @@ export function evaluateS1002WheelProfile(y: number): number {
  */
 export function evaluateUic60RailProfile(y: number, railCant: number = 1 / 40): number {
   const absY = Math.abs(y);
+  const z012 = Math.sqrt(0.3 * 0.3 - 0.012 * 0.012) - 0.3;
   let crownZ = 0;
 
   if (absY <= 0.012) {
@@ -104,7 +105,7 @@ export function evaluateUic60RailProfile(y: number, railCant: number = 1 / 40): 
   } else if (absY <= 0.025) {
     // Shoulder arc R = 80 mm
     const dy = absY - 0.012;
-    crownZ = -0.00024 + (Math.sqrt(Math.max(0, 0.08 * 0.08 - dy * dy)) - 0.08);
+    crownZ = z012 + (Math.sqrt(Math.max(0, 0.08 * 0.08 - dy * dy)) - 0.08);
   } else {
     // Gauge corner arc R = 13 mm
     const dy = absY - 0.025;

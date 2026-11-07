@@ -1,3 +1,8 @@
+---
+title: "ModelScript (.msx, .modelscript)"
+description: "The native ModelScript (.msx) language compiler and query runtime is currently in experimental alpha and is gated behind the lang_modelscript / lang_modelscript_msx feature flag (disabled by defaul..."
+---
+
 # ModelScript (`.msx`, `.modelscript`)
 
 ::: tip EXPERIMENTAL ALPHA LANGUAGE

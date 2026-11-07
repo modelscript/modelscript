@@ -3,7 +3,7 @@
 
 # @modelscript/runtime
 
-Core runtime engine, linear-memory WebAssembly DAE arena, Salsa incremental query engine, structural analysis kernels, 12-oracle Nelson-Oppen theory coordinator, and formal verification framework for ModelScript.
+Core runtime engine, linear-memory WebAssembly DAE arena, Salsa incremental query engine, structural analysis kernels, 13-oracle Nelson-Oppen theory coordinator, and formal verification framework for ModelScript.
 
 ---
 
@@ -44,9 +44,9 @@ Located under `src/analysis/` and `src/dae/`:
 
 ---
 
-## 4. 12-Oracle Nelson-Oppen `SemanticTheoryCoordinator`
+## 4. 13-Oracle Nelson-Oppen `SemanticTheoryCoordinator`
 
-Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-domain verification is orchestrated by a generalized **Nelson-Oppen multi-solver** that exchanges shared variable equalities (`SharedEquality`), tightened numeric intervals, congruence closures, and learned conflict clauses (`ConflictClause`) across **12 domain theory oracles**:
+Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-domain verification is orchestrated by a generalized **Nelson-Oppen multi-solver** that exchanges shared variable equalities (`SharedEquality`), tightened numeric intervals, congruence closures, and learned conflict clauses (`ConflictClause`) across **13 domain theory oracles**:
 
 | Oracle                                              | Domain               | Responsibility                                                                                                                        |
 | --------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -62,6 +62,7 @@ Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-d
 | `EntailmentOracle` (`EntailmentTheoryOracle`)       | `constraint`         | V-Model requirements decomposition completeness proving ($\bigwedge R_{\text{child},i} \models R_{\text{parent}}$) with signed proofs |
 | `FlowAlgebraOracle` (`FlowAlgebraTheoryOracle`)     | `constraint`         | SysML v2 / KerML conjugated port involution (`~Port`), Kirchhoff conservative flow balance, and 1D–3D CFD boundary flux integrals     |
 | `ToleranceStackOracle` & `UqOracle`                 | `spatial_physics`    | STEP AP242 GD&T 1D/3D tolerance stack-up (Worst-Case, RSS, Six-Sigma $C_{pk}$) and stochastic Uncertainty Quantification (CDF / MC)   |
+| `RadiologyCasTheoryOracle`                          | `spatial_physics`    | QUANTEC OAR dose-volume histogram bounds, $SE(3)$ surgical navigation frame chains, Fitzpatrick TRE bounds, and 3MF medical meshes    |
 
 ---
 
@@ -85,6 +86,38 @@ Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-d
 - **Safety Certification, Equivalence & Proof Auditing**:
   - **`B2BVerifier` (`b2b_verifier.ts`)**: ISO 26262 Part 6 / DO-178C Back-to-Back (MiL DAE vs. SiL generated C99) numerical equivalence verifier with SHA-256 source fingerprinting.
   - **`ProofManifestGenerator` (`proof_manifest.ts`)**: Emits cryptographically signed `DigitalThreadProofManifest` certificates, CTRF (`ctrf_reporter.ts`), and SARIF (`sarif_reporter.ts`) compliance artifacts.
+
+---
+
+## Programmatic Usage
+
+```typescript
+import {
+  ArenaDAEPrinter,
+  DAEBuilder,
+  eliminateArenaAliases,
+  ExprOp,
+  foldArenaConstants,
+  VarCausality,
+  VarType,
+  VarVariability,
+} from "@modelscript/runtime";
+
+// 1. Build a DAE system in WebAssembly linear memory
+const dae = new DAEBuilder();
+const k = dae.addVariable("k", VarType.Real, VarVariability.Parameter, VarCausality.Local);
+dae.setBinding(k, dae.addRealLiteral(2.0));
+const x = dae.addVariable("x", VarType.Real, VarVariability.Continuous, VarCausality.Local, 1.0);
+dae.addEquation(
+  dae.addDer(dae.addVarRef(x)),
+  dae.addBinary(ExprOp.Mul, dae.addUnary(ExprOp.Neg, dae.addVarRef(k)), dae.addVarRef(x)),
+);
+
+// 2. Run constant folding, alias elimination, and print canonical Modelica
+foldArenaConstants(dae);
+eliminateArenaAliases(dae);
+const flattenedText = new ArenaDAEPrinter(dae).print("ExponentialDecay");
+```
 
 ---
 

@@ -1,3 +1,8 @@
+---
+title: "Linear Memory Structures & Indexing"
+description: "Implementation:"
+---
+
 # Linear Memory Structures & Indexing
 
 **Implementation**:
