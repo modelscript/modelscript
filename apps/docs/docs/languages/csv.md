@@ -1,3 +1,8 @@
+---
+title: "CSV Tabular Data (.csv)"
+description: "@modelscript/csv (languages/csv) elevates empirical measurement series, calibration look-up tables, and parameter sweeps into first-class typed symbols inside the WorkspaceIndex."
+---
+
 # CSV Tabular Data (`.csv`)
 
 `@modelscript/csv` (`languages/csv`) elevates empirical measurement series, calibration look-up tables, and parameter sweeps into first-class typed symbols inside the `WorkspaceIndex`.

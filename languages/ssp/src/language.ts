@@ -9,8 +9,9 @@
 
 import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
 import { sspToModelicaBlock } from "./projection.js";
-import { parseSsd } from "./ssd-parser.js";
+import { parseSsd, parseSsv } from "./ssd-parser.js";
 import { sspTabularConfig } from "./tabular.js";
+import type { SspSystem } from "./types.js";
 
 /**
  * ModelScript SSP (System Structure and Parameterization) language specification.
@@ -105,6 +106,21 @@ export const sspLanguage = language({
       if (!ssdContent) return null;
 
       const system = parseSsd(ssdContent);
+      const resolveExternalSsv = (sys: SspSystem) => {
+        for (const pb of sys.parameterBindings ?? []) {
+          if (pb.source && (!pb.values || pb.values.length === 0)) {
+            const cleanSource = pb.source.replace(/^\.\//, "");
+            const ssvText = zip.readText(data, cleanSource) ?? zip.readText(data, pb.source);
+            if (ssvText) {
+              pb.values = parseSsv(ssvText);
+            }
+          }
+        }
+        for (const sub of sys.systems ?? sys.elements?.systems ?? []) {
+          resolveExternalSsv(sub);
+        }
+      };
+      resolveExternalSsv(system);
 
       return {
         manifest: {

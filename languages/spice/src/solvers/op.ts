@@ -46,7 +46,11 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
     if (dir.kind === ".IC" || dir.kind === ".NODESET") {
       for (const [k, v] of dir.params) {
         if (typeof v === "number") {
-          const idx = indexing.nodeToIdx.get(k.toUpperCase());
+          let nodeKey = k.toUpperCase().trim();
+          if (nodeKey.startsWith("V(") && nodeKey.endsWith(")")) {
+            nodeKey = nodeKey.slice(2, -1).trim();
+          }
+          const idx = indexing.nodeToIdx.get(nodeKey);
           if (idx !== undefined) {
             solution[idx] = v;
           }
@@ -239,7 +243,9 @@ export interface PrecomputedBjt {
   iCol: number;
   iBase: number;
   iEmit: number;
+  isPnp: boolean;
   betaF: number;
+  betaR: number;
   Is: number;
 }
 
@@ -291,7 +297,9 @@ export function extractPrecomputedNonlinearDevices(
     } else if (comp.kind === "Q") {
       const modelName = (comp.model ?? "").toUpperCase();
       const model = circuit.models.get(modelName);
+      const isPnp = model?.type === "PNP";
       const betaF = model?.params.get("BF") ?? 100.0;
+      const betaR = model?.params.get("BR") ?? 1.0;
       const Is = model?.params.get("IS") ?? 1e-14;
       const colNode = comp.nodes[0] ?? "";
       const baseNode = comp.nodes[1] ?? "";
@@ -299,7 +307,7 @@ export function extractPrecomputedNonlinearDevices(
       const iCol = indexing.nodeToIdx.get(colNode.toUpperCase()) ?? -1;
       const iBase = indexing.nodeToIdx.get(baseNode.toUpperCase()) ?? -1;
       const iEmit = indexing.nodeToIdx.get(emitNode.toUpperCase()) ?? -1;
-      bjts.push({ iCol, iBase, iEmit, betaF, Is });
+      bjts.push({ iCol, iBase, iEmit, isPnp, betaF, betaR, Is });
     } else if (comp.kind === "M") {
       const modelName = (comp.model ?? "").toUpperCase();
       const model = circuit.models.get(modelName);
@@ -373,22 +381,42 @@ export function stampPrecomputedBjt(
   bjt: PrecomputedBjt,
   currentSol: Float64Array,
 ): void {
-  const { iCol, iBase, iEmit, betaF, Is } = bjt;
+  const { iCol, iBase, iEmit, isPnp, betaF, betaR, Is } = bjt;
+  const vCol = iCol >= 0 ? (currentSol[iCol] ?? 0) : 0;
   const vBase = iBase >= 0 ? (currentSol[iBase] ?? 0) : 0;
   const vEmit = iEmit >= 0 ? (currentSol[iEmit] ?? 0) : 0;
 
-  let vbe = vBase - vEmit;
+  const sign = isPnp ? -1.0 : 1.0;
+  let vbe = sign * (vBase - vEmit);
   if (vbe > 0.8) vbe = 0.8;
   if (vbe < -5) vbe = -5;
 
-  const expVbe = Math.exp(vbe / THERMAL_VOLTAGE_VT);
-  const ib = (Is / betaF) * (expVbe - 1.0);
-  const gpi = (Is / (betaF * THERMAL_VOLTAGE_VT)) * expVbe + 1e-12;
-  const gm = (Is / THERMAL_VOLTAGE_VT) * expVbe;
-  const ieqBase = ib - gpi * vbe;
-  const ieqCol = betaF * ib - gm * vbe;
+  let vbc = sign * (vBase - vCol);
+  if (vbc > 0.8) vbc = 0.8;
+  if (vbc < -5) vbc = -5;
 
-  // Base-emitter conductance
+  const expVbe = Math.exp(vbe / THERMAL_VOLTAGE_VT);
+  const iF = Is * (expVbe - 1.0);
+  const gF = (Is / THERMAL_VOLTAGE_VT) * expVbe;
+
+  const expVbc = Math.exp(vbc / THERMAL_VOLTAGE_VT);
+  const iR = Is * (expVbc - 1.0);
+  const gR = (Is / THERMAL_VOLTAGE_VT) * expVbc;
+
+  const gpi = gF / betaF + 1e-12;
+  const gmu = gR / betaR + 1e-12;
+  const gm = gF;
+  const gmr = gR;
+
+  const ibe = iF / betaF;
+  const ibc = iR / betaR;
+  const ice = iF - iR;
+
+  const ieqBe = sign * (ibe - gpi * vbe);
+  const ieqBc = sign * (ibc - gmu * vbc);
+  const ieqCe = sign * (ice - gm * vbe + gmr * vbc);
+
+  // Base-emitter conductance gpi
   if (iBase >= 0) matrix.add(iBase, iBase, gpi);
   if (iEmit >= 0) matrix.add(iEmit, iEmit, gpi);
   if (iBase >= 0 && iEmit >= 0) {
@@ -396,17 +424,30 @@ export function stampPrecomputedBjt(
     matrix.add(iEmit, iBase, -gpi);
   }
 
-  // Transconductance gm * (Vb - Ve) into collector
+  // Base-collector conductance gmu
+  if (iBase >= 0) matrix.add(iBase, iBase, gmu);
+  if (iCol >= 0) matrix.add(iCol, iCol, gmu);
+  if (iBase >= 0 && iCol >= 0) {
+    matrix.add(iBase, iCol, -gmu);
+    matrix.add(iCol, iBase, -gmu);
+  }
+
+  // Forward transconductance gm * (Vb - Ve) from C to E
   if (iCol >= 0 && iBase >= 0) matrix.add(iCol, iBase, gm);
   if (iCol >= 0 && iEmit >= 0) matrix.add(iCol, iEmit, -gm);
   if (iEmit >= 0 && iBase >= 0) matrix.add(iEmit, iBase, -gm);
-  if (iEmit >= 0 && iEmit >= 0) matrix.add(iEmit, iEmit, gm);
+  if (iEmit >= 0) matrix.add(iEmit, iEmit, gm);
+
+  // Reverse transconductance -gmr * (Vb - Vc) from C to E
+  if (iCol >= 0 && iBase >= 0) matrix.add(iCol, iBase, -gmr);
+  if (iCol >= 0) matrix.add(iCol, iCol, gmr);
+  if (iEmit >= 0 && iBase >= 0) matrix.add(iEmit, iBase, gmr);
+  if (iEmit >= 0 && iCol >= 0) matrix.add(iEmit, iCol, -gmr);
 
   // Equivalent current injections
-  if (iBase >= 0) rhs[iBase] = (rhs[iBase] ?? 0) - ieqBase;
-  if (iEmit >= 0) rhs[iEmit] = (rhs[iEmit] ?? 0) + ieqBase;
-  if (iCol >= 0) rhs[iCol] = (rhs[iCol] ?? 0) - ieqCol;
-  if (iEmit >= 0) rhs[iEmit] = (rhs[iEmit] ?? 0) + ieqCol;
+  if (iBase >= 0) rhs[iBase] = (rhs[iBase] ?? 0) - (ieqBe + ieqBc);
+  if (iCol >= 0) rhs[iCol] = (rhs[iCol] ?? 0) - (ieqCe - ieqBc);
+  if (iEmit >= 0) rhs[iEmit] = (rhs[iEmit] ?? 0) + (ieqBe + ieqCe);
 }
 
 export function stampPrecomputedMosfet(
@@ -429,7 +470,7 @@ export function stampPrecomputedMosfet(
   let gm = 0;
   let gds = 1e-8; // Gmin
 
-  if (vov <= 0) {
+  if (vov <= 0 || vds <= 0) {
     // Cutoff
     id = 0;
     gm = 0;
@@ -445,6 +486,7 @@ export function stampPrecomputedMosfet(
   }
 
   const ieq = id - gm * vgs - gds * vds;
+  const ieqSigned = isPmos ? -ieq : ieq;
 
   // Stamp gds between Drain and Source
   if (iDrain >= 0) matrix.add(iDrain, iDrain, gds);
@@ -460,7 +502,7 @@ export function stampPrecomputedMosfet(
   if (iSource >= 0 && iGate >= 0) matrix.add(iSource, iGate, -gm);
   if (iSource >= 0 && iSource >= 0) matrix.add(iSource, iSource, gm);
 
-  // Stamp ieq
-  if (iDrain >= 0) rhs[iDrain] = (rhs[iDrain] ?? 0) - ieq;
-  if (iSource >= 0) rhs[iSource] = (rhs[iSource] ?? 0) + ieq;
+  // Stamp ieqSigned
+  if (iDrain >= 0) rhs[iDrain] = (rhs[iDrain] ?? 0) - ieqSigned;
+  if (iSource >= 0) rhs[iSource] = (rhs[iSource] ?? 0) + ieqSigned;
 }

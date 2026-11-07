@@ -3,7 +3,7 @@
 
 # @modelscript/cellml
 
-CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-compartment cellular modeling language package (`.cellml`, `.xml`) for ModelScript. Features a zero-regex CellML XML & Content MathML parser with SI dimensional analysis (`parseCellml`), multi-file workspace indexing (`CellmlWorkspaceIndex`), an RK4 & Rush-Larsen gating ODE solver (`solveCellml`), direct linear-memory `DAEBuilder` lowering (`lowerCellmlToDae`), 10 biophysical & structural verification lint rules (`M9301`–`M9310`), Modelica 3.x and SBML Level 3 projections (`cellmlToModelica`, `cellmlToSbml`), and Language Server Protocol (LSP) services.
+CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-compartment cellular modeling language package (`.cellml`, `.xml`) for ModelScript. Features a zero-regex CellML XML & Content MathML parser with SI dimensional analysis (`parseCellml`), multi-file workspace indexing (`CellmlWorkspaceIndex`), an RK4 & Rush-Larsen gating ODE solver (`solveCellml`), direct linear-memory `DAEBuilder` lowering (`lowerCellmlToDae`), 10 biophysical & structural verification lint rules (`M9301`–`M9310`, `lintCellmlDocument`, `CellmlErrorCode`), Modelica 3.x and SBML Level 3 projections (`cellmlToModelica`, `cellmlToSbml`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -26,7 +26,7 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 | Path                       | Description                                                                                         |
 | -------------------------- | --------------------------------------------------------------------------------------------------- |
 | `src/index.ts`             | Public package exports                                                                              |
-| `src/language.ts`          | `cellmlLanguage` definition and LSP actions                                                         |
+| `src/language.ts`          | `cellmlLanguage` definition, LSP actions, and MCP tool (`cellml_simulate`)                          |
 | `src/types.ts`             | `CellmlDocument`, `CellmlComponent`, `CellmlVariable`, `CellmlUnits`, `CellmlDimensionVector` types |
 | `src/parser/index.ts`      | `parseCellml` XML, Content MathML, and SI dimensional analysis parser                               |
 | `src/lints/rules.ts`       | `CellmlErrorCode` and `lintCellmlDocument` (`M9301`–`M9310`)                                        |
@@ -39,7 +39,7 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 
 ---
 
-## Semantic / Biophysical Lint Rules
+## Pre-Flight Semantic Lint Rules (`M9301`–`M9310`)
 
 | Code    | Rule                                     | Severity  | Description                                                                                                                |
 | ------- | ---------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -56,6 +56,51 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 
 ---
 
+## CLI & Programmatic Usage
+
+### Command-Line Interface (`msx cellml`)
+
+```bash
+# Lint a CellML 1.0/1.1/2.0 model (M9301-M9310)
+npx msx cellml lint hodgkin_huxley_1952.cellml
+
+# Simulate cardiac action potential & gating kinetics (RK4 + Rush-Larsen)
+npx msx cellml simulate hodgkin_huxley_1952.cellml --duration 50 --dt 0.01
+
+# Lower to DAE or project to Modelica 3.x (.mo) and SBML Level 3 (.sbml)
+npx msx cellml to-dae hodgkin_huxley_1952.cellml
+npx msx cellml to-modelica hodgkin_huxley_1952.cellml
+npx msx cellml to-sbml hodgkin_huxley_1952.cellml
+```
+
+### Programmatic API
+
+```typescript
+import {
+  cellmlToModelica,
+  cellmlToSbml,
+  lintCellmlDocument,
+  lowerCellmlToDae,
+  parseCellml,
+  solveCellml,
+} from "@modelscript/cellml";
+
+// 1. Parse CellML XML + Content MathML and run SI dimensional/structural lints (M9301-M9310)
+const doc = parseCellml(cellmlXml, "hodgkin_huxley_1952.cellml");
+const diagnostics = lintCellmlDocument(doc);
+
+// 2. Solve electrophysiology ODEs via RK4 and Rush-Larsen gating integration
+const sim = solveCellml(doc, { duration: 50.0, dt: 0.01 });
+console.log("Final state values:", sim.finalStates);
+
+// 3. Lower to WebAssembly DAEBuilder or project to Modelica 3.x and SBML Level 3
+const dae = lowerCellmlToDae(doc);
+const modelicaCode = cellmlToModelica(doc);
+const sbmlXml = cellmlToSbml(doc);
+```
+
+---
+
 ## Scripts
 
 | Command             | Description                                                                                |
@@ -65,3 +110,9 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 | `npm run lint`      | Run ESLint across `src/` and `tests/`                                                      |
 | `npm run typecheck` | Run `tsc --noEmit` type verification                                                       |
 | `npm run clean`     | Remove `dist/` build artifacts                                                             |
+
+---
+
+## License
+
+`AGPL-3.0-or-later`

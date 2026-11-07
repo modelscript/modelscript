@@ -1,3 +1,8 @@
+---
+title: "GENSYS Railway Dynamics (.calc, .sub, .geom, .trax, .wheel)"
+description: "ModelScript provides native support for GENSYS, the world standard railway vehicle dynamics, track-vehicle interaction, and vehicle running safety simulation environment."
+---
+
 # GENSYS Railway Dynamics (`.calc`, `.sub`, `.geom`, `.trax`, `.wheel`)
 
 ModelScript provides native support for **GENSYS**, the world standard railway vehicle dynamics, track-vehicle interaction, and vehicle running safety simulation environment.

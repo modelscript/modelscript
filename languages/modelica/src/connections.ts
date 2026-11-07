@@ -330,14 +330,6 @@ export class ModelicaPortBalancer {
           if (cached) return true;
         }
       }
-      if (
-        !state.db &&
-        (!state.innerComponents || state.innerComponents.size === 0) &&
-        (!state.innerOuterComponents || state.innerOuterComponents.size === 0) &&
-        !state.outerToInner
-      ) {
-        if (stripped === "ip" || stripped.startsWith("ip.") || stripped.includes(".ip.")) return true;
-      }
       return false;
     };
 
@@ -1178,14 +1170,6 @@ export class ModelicaPortBalancer {
           innerOuterSegCache.set(connSeg, Boolean(cached));
         }
         if (cached) return true;
-      }
-      if (
-        !state.db &&
-        (!state.innerComponents || state.innerComponents.size === 0) &&
-        (!state.innerOuterComponents || state.innerOuterComponents.size === 0) &&
-        !state.outerToInner
-      ) {
-        if (connSeg === "ip") return true;
       }
       return false;
     };
@@ -2880,7 +2864,11 @@ export class ModelicaPortBalancer {
               potentialEqs.forEach((eq) => {
                 const lhsName = dae.interner.resolve(dae.getExprData1(eq.lhs));
                 const rhsName = dae.interner.resolve(dae.getExprData1(eq.rhs));
-                if (lhsName.startsWith("b.") && rhsName.startsWith("a1.")) {
+                const lhsInOO = ooGroupData.some((gd) => gd.group.some((p) => lhsName.startsWith(p + ".")));
+                const rhsInOO = ooGroupData.some((gd) => gd.group.some((p) => rhsName.startsWith(p + ".")));
+                const lhsIdx = dae.getVarIdxByName(lhsName);
+                const rhsIdx = dae.getVarIdxByName(rhsName);
+                if (!lhsInOO && rhsInOO && rhsIdx >= 0 && lhsIdx >= 0 && rhsIdx < lhsIdx) {
                   dae.addEquation(eq.kind, eq.rhs, eq.lhs);
                 } else {
                   dae.addEquation(eq.kind, eq.lhs, eq.rhs);
@@ -2981,10 +2969,9 @@ export class ModelicaPortBalancer {
               potentialEqs.forEach((eq) => {
                 const lhsName = dae.interner.resolve(dae.getExprData1(eq.lhs));
                 const rhsName = dae.interner.resolve(dae.getExprData1(eq.rhs));
-                if (
-                  ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
-                  (lhsName.includes(".bout.") && rhsName.includes(".bin."))
-                ) {
+                const lhsIdx = dae.getVarIdxByName(lhsName);
+                const rhsIdx = dae.getVarIdxByName(rhsName);
+                if (options?.isOldFrontend && expBuses.length > 0 && rhsIdx >= 0 && lhsIdx >= 0 && rhsIdx < lhsIdx) {
                   dae.addEquation(eq.kind, eq.rhs, eq.lhs);
                 } else {
                   dae.addEquation(eq.kind, eq.lhs, eq.rhs);
@@ -3060,11 +3047,10 @@ export class ModelicaPortBalancer {
             dae.getExprKind(eq.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.lhs)) : "";
           const rhsName =
             dae.getExprKind(eq.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.rhs)) : "";
+          const lhsIdx = dae.getVarIdxByName(lhsName);
+          const rhsIdx = dae.getVarIdxByName(rhsName);
           let newEqIdx = -1;
-          if (
-            ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
-            (lhsName.includes(".bout.") && rhsName.includes(".bin."))
-          ) {
+          if (options?.isOldFrontend && expBuses.length > 0 && rhsIdx >= 0 && lhsIdx >= 0 && rhsIdx < lhsIdx) {
             newEqIdx = dae.addEquation(eq.kind, eq.rhs, eq.lhs);
           } else {
             newEqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs);

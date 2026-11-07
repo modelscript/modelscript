@@ -1,3 +1,8 @@
+---
+title: "Touchstone RF & Signal Integrity (.sNp, .ts)"
+description: "@modelscript/touchstone (languages/touchstone) provides high-performance zero-regex parsing, Vector Fitting rational macromodeling, Hamiltonian passivity enforcement, linear DAE lowering, and Model..."
+---
+
 # Touchstone RF & Signal Integrity (`.sNp`, `.ts`)
 
 `@modelscript/touchstone` (`languages/touchstone`) provides high-performance zero-regex parsing, Vector Fitting rational macromodeling, Hamiltonian passivity enforcement, linear DAE lowering, and Modelica 3.x projection for **Touchstone 1.0 & 2.0** multi-port RF, microwave, and high-speed digital interconnect decks.

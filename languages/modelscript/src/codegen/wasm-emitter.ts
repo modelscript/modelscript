@@ -48,6 +48,7 @@ function modelScriptTypeToWasm(type: ModelScriptType): string {
     case "f32":
       return "f32";
     case "i64":
+    case "u64":
       return "i64";
     default:
       return "i32";
@@ -67,6 +68,18 @@ export class WasmEmitter {
   private nextDataOffset = 64;
   private queries = new ModelScriptQueryEngine();
   private loopCounter = 0;
+  private currentFnReturnType = "i32";
+  private flworIdMap = new WeakMap<ModelScriptCstNode, number>();
+  private flworCounter = 0;
+
+  private getFlworPrefix(node: ModelScriptCstNode): string {
+    let id = this.flworIdMap.get(node);
+    if (id === undefined) {
+      id = ++this.flworCounter;
+      this.flworIdMap.set(node, id);
+    }
+    return id === 1 ? "__flwor" : `__flwor_${id}`;
+  }
 
   /**
    * Interns a string literal in linear memory at a 4-byte aligned static data offset:
@@ -191,6 +204,8 @@ export class WasmEmitter {
   emitWat(rawRootNode: ModelScriptCstNode): string {
     const rootNode = unwrapNode(rawRootNode);
     this.loopCounter = 0;
+    this.flworCounter = 0;
+    this.flworIdMap = new WeakMap();
     this.structLayouts.clear();
     this.fnReturnTypes.clear();
     this.stringPool.clear();
@@ -234,6 +249,7 @@ export class WasmEmitter {
     if (topLevelStmts.length > 0) {
       this.locals = new Map(topLevelLocals);
       this.localTypes = new Map(topLevelSemanticTypes);
+      this.currentFnReturnType = "i32";
       const needsAlloc = topLevelStmts.some((s) => this.containsHeapAllocation(s));
       const mainLines: string[] = [];
       mainLines.push("  (func $main (result i32)");
@@ -266,6 +282,12 @@ export class WasmEmitter {
           "  (func $__alloc (param $size i32) (result i32)",
           "    (local $ptr i32)",
           "    (local $new_ptr i32)",
+          "    local.get $size",
+          "    i32.const 7",
+          "    i32.add",
+          "    i32.const -8",
+          "    i32.and",
+          "    local.set $size",
           "    global.get $__heap_ptr",
           "    local.tee $ptr",
           "    local.get $size",
@@ -418,7 +440,6 @@ export class WasmEmitter {
     if (valNode.type === "UnaryExpression") {
       const op = valNode.childForFieldName?.("operator")?.text;
       if (op === "!") return { kind: "bool" };
-      if (op === "~") return { kind: "i32" };
       return this.inferSemanticTypeFromValue(valNode.childForFieldName?.("operand"), semanticTypes);
     }
     if (valNode.type === "BinaryExpression") {
@@ -434,11 +455,17 @@ export class WasmEmitter {
       if (leftType.kind === "f32" || rightType.kind === "f32") {
         return { kind: "f32" };
       }
+      if (leftType.kind === "u64" || rightType.kind === "u64") {
+        return { kind: "u64" };
+      }
       if (leftType.kind === "i64" || rightType.kind === "i64") {
         return { kind: "i64" };
       }
       if (leftType.kind === "u32" || rightType.kind === "u32") {
         return { kind: "u32" };
+      }
+      if (leftType.kind === "usize" || rightType.kind === "usize") {
+        return { kind: "usize" };
       }
       return { kind: "i32" };
     }
@@ -474,11 +501,12 @@ export class WasmEmitter {
         semanticTypes.set(name, semanticType);
       }
     } else if (unwrapped.type === "FLWORExpression") {
-      locals.set("__flwor_src", "i32");
-      locals.set("__flwor_len", "i32");
-      locals.set("__flwor_idx", "i32");
-      locals.set("__flwor_dst", "i32");
-      locals.set("__flwor_out_len", "i32");
+      const pfx = this.getFlworPrefix(unwrapped);
+      locals.set(`${pfx}_src`, "i32");
+      locals.set(`${pfx}_len`, "i32");
+      locals.set(`${pfx}_idx`, "i32");
+      locals.set(`${pfx}_dst`, "i32");
+      locals.set(`${pfx}_out_len`, "i32");
 
       let forIdx = 0;
       let orderByClause: ModelScriptCstNode | null = null;
@@ -489,9 +517,9 @@ export class WasmEmitter {
         if (!c) continue;
         if (c.type === "ForClause") {
           if (forIdx >= 1) {
-            locals.set(`__flwor_src_${forIdx}`, "i32");
-            locals.set(`__flwor_len_${forIdx}`, "i32");
-            locals.set(`__flwor_idx_${forIdx}`, "i32");
+            locals.set(`${pfx}_src_${forIdx}`, "i32");
+            locals.set(`${pfx}_len_${forIdx}`, "i32");
+            locals.set(`${pfx}_idx_${forIdx}`, "i32");
           }
           forIdx++;
           const varName = c.childForFieldName?.("variable")?.text;
@@ -522,11 +550,11 @@ export class WasmEmitter {
         const dstSemType = this.inferSemanticTypeFromValue(retValNode, semanticTypes);
         const keyWasmType = modelScriptTypeToWasm(keySemType);
         const dstWasmType = modelScriptTypeToWasm(dstSemType);
-        locals.set("__flwor_keys", "i32");
-        locals.set("__flwor_sort_i", "i32");
-        locals.set("__flwor_sort_j", "i32");
-        locals.set(`__flwor_tmp_key_${keyWasmType}`, keyWasmType);
-        locals.set(`__flwor_tmp_val_${dstWasmType}`, dstWasmType);
+        locals.set(`${pfx}_keys`, "i32");
+        locals.set(`${pfx}_sort_i`, "i32");
+        locals.set(`${pfx}_sort_j`, "i32");
+        locals.set(`${pfx}_tmp_key_${keyWasmType}`, keyWasmType);
+        locals.set(`${pfx}_tmp_val_${dstWasmType}`, dstWasmType);
       }
     }
 
@@ -543,6 +571,7 @@ export class WasmEmitter {
     const paramsNode = node.childForFieldName?.("parameters");
     const returnTypeStr = node.childForFieldName?.("returnType")?.text;
     const retType = toWasmType(returnTypeStr || "i32");
+    this.currentFnReturnType = retType;
     const bodyNode = node.childForFieldName?.("body");
 
     this.locals.clear();
@@ -717,7 +746,8 @@ export class WasmEmitter {
         return "";
       }
 
-      case "AssignmentStatement": {
+      case "AssignmentStatement":
+      case "ForUpdate": {
         const targetNode = unwrapNode(node.childForFieldName?.("target"));
         const opNode = node.childForFieldName?.("operator");
         const valNode = node.childForFieldName?.("value");
@@ -769,7 +799,8 @@ export class WasmEmitter {
         const valWat = this.emitExpressionAs(valNode, targetWasmType);
         if (op === "+=" || op === "-=" || op === "*=" || op === "/=") {
           const isFloat = targetWasmType === "f64" || targetWasmType === "f32";
-          const isUnsigned = targetSemType?.kind === "u32";
+          const isUnsigned =
+            targetSemType?.kind === "u32" || targetSemType?.kind === "u64" || targetSemType?.kind === "usize";
           const prefix = targetWasmType;
           const instr =
             op === "+="
@@ -791,7 +822,10 @@ export class WasmEmitter {
       case "ReturnStatement": {
         const valNode = node.childForFieldName?.("value");
         if (valNode) {
-          const valWat = this.emitExpression(valNode);
+          const valWat =
+            this.currentFnReturnType !== "void"
+              ? this.emitExpressionAs(valNode, this.currentFnReturnType)
+              : this.emitExpression(valNode);
           return `${indent}${valWat}\n${indent}return`;
         }
         return `${indent}return`;
@@ -859,8 +893,14 @@ export class WasmEmitter {
           lines.push(this.emitStatement(bodyNode, indent + "    "));
         }
         if (updateNode) {
-          const updateWat = this.emitStatement(updateNode, indent + "    ");
-          if (updateWat.trim()) lines.push(updateWat);
+          const unwrappedUpdate = unwrapNode(updateNode);
+          if (unwrappedUpdate?.type === "ForUpdate" || unwrappedUpdate?.type === "AssignmentStatement") {
+            const updateWat = this.emitStatement(unwrappedUpdate, indent + "    ");
+            if (updateWat.trim()) lines.push(updateWat);
+          } else if (unwrappedUpdate) {
+            const exprWat = this.emitExpression(unwrappedUpdate);
+            lines.push(`${indent}    ${exprWat}\n${indent}    drop`);
+          }
         }
         lines.push(`${indent}    br $l_${loopId}`);
         lines.push(`${indent}  end`);
@@ -917,7 +957,7 @@ export class WasmEmitter {
     }
     if (node.type === "UnaryExpression") {
       const op = node.childForFieldName?.("operator")?.text;
-      if (op === "!" || op === "~") return "i32";
+      if (op === "!") return "i32";
       return this.exprType(node.childForFieldName?.("operand"));
     }
     if (node.type === "BinaryExpression") {
@@ -974,16 +1014,22 @@ export class WasmEmitter {
    */
   private emitExpressionAs(rawNode: ModelScriptCstNode | null | undefined, targetWasmType: string): string {
     const node = unwrapNode(rawNode);
-    if (node?.type === "NUMBER" && targetWasmType === "f32") {
-      return `f32.const ${node.text || "0"}`;
+    if (node?.type === "NUMBER") {
+      const text = node.text || "0";
+      if (targetWasmType === "f32") return `f32.const ${text}`;
+      if (targetWasmType === "f64") return `f64.const ${text}`;
+      if (targetWasmType === "i64") return `i64.const ${Math.trunc(Number(text))}`;
     }
     const actualType = this.exprType(rawNode);
     const semType = this.semanticType(rawNode);
-    const isUnsigned = semType.kind === "u32";
+    const isUnsigned = semType.kind === "u32" || semType.kind === "u64" || semType.kind === "usize";
     const wat = this.emitExpression(rawNode);
     if (actualType === targetWasmType) return wat;
     if (targetWasmType === "f64" && actualType === "i32") {
       return `${wat}\n${isUnsigned ? "f64.convert_i32_u" : "f64.convert_i32_s"}`;
+    }
+    if (targetWasmType === "f64" && actualType === "i64") {
+      return `${wat}\n${isUnsigned ? "f64.convert_i64_u" : "f64.convert_i64_s"}`;
     }
     if (targetWasmType === "f64" && actualType === "f32") {
       return `${wat}\nf64.promote_f32`;
@@ -993,6 +1039,21 @@ export class WasmEmitter {
     }
     if (targetWasmType === "f32" && actualType === "i32") {
       return `${wat}\n${isUnsigned ? "f32.convert_i32_u" : "f32.convert_i32_s"}`;
+    }
+    if (targetWasmType === "f32" && actualType === "i64") {
+      return `${wat}\n${isUnsigned ? "f32.convert_i64_u" : "f32.convert_i64_s"}`;
+    }
+    if (targetWasmType === "i64" && actualType === "i32") {
+      return `${wat}\n${isUnsigned ? "i64.extend_i32_u" : "i64.extend_i32_s"}`;
+    }
+    if (targetWasmType === "i64" && actualType === "f64") {
+      return `${wat}\n${isUnsigned ? "i64.trunc_f64_u" : "i64.trunc_f64_s"}`;
+    }
+    if (targetWasmType === "i64" && actualType === "f32") {
+      return `${wat}\n${isUnsigned ? "i64.trunc_f32_u" : "i64.trunc_f32_s"}`;
+    }
+    if (targetWasmType === "i32" && actualType === "i64") {
+      return `${wat}\ni32.wrap_i64`;
     }
     if (targetWasmType === "i32" && actualType === "f64") {
       return `${wat}\n${isUnsigned ? "i32.trunc_f64_u" : "i32.trunc_f64_s"}`;
@@ -1119,8 +1180,10 @@ export class WasmEmitter {
           ? "f64"
           : elems.some((e) => this.exprType(e) === "f32")
             ? "f32"
-            : "i32";
-        const elemSize = elemWasmType === "f64" ? 8 : 4;
+            : elems.some((e) => this.exprType(e) === "i64")
+              ? "i64"
+              : "i32";
+        const elemSize = elemWasmType === "f64" || elemWasmType === "i64" ? 8 : 4;
         const alignedSize = Math.ceil((8 + elems.length * elemSize) / 8) * 8;
 
         // Allocate array in linear memory: [offset 0: i32 length, offset 4: padding, offset 8+: elements]
@@ -1143,6 +1206,7 @@ export class WasmEmitter {
       }
 
       case "FLWORExpression": {
+        const pfx = this.getFlworPrefix(node);
         const forClauses: ModelScriptCstNode[] = [];
         const letClauses: ModelScriptCstNode[] = [];
         const whereClauses: ModelScriptCstNode[] = [];
@@ -1176,8 +1240,8 @@ export class WasmEmitter {
         for (let k = 0; k < forClauses.length; k++) {
           const fc = forClauses[k]!;
           const collNode = fc.childForFieldName?.("collection");
-          const srcLocal = k === 0 ? "__flwor_src" : `__flwor_src_${k}`;
-          const lenLocal = k === 0 ? "__flwor_len" : `__flwor_len_${k}`;
+          const srcLocal = k === 0 ? `${pfx}_src` : `${pfx}_src_${k}`;
+          const lenLocal = k === 0 ? `${pfx}_len` : `${pfx}_len_${k}`;
           instrs.push(
             this.emitExpression(collNode),
             `local.set $${srcLocal}`,
@@ -1188,9 +1252,9 @@ export class WasmEmitter {
         }
 
         // 2. Compute maximum output capacity = product of collection lengths
-        instrs.push("local.get $__flwor_len");
+        instrs.push(`local.get $${pfx}_len`);
         for (let k = 1; k < forClauses.length; k++) {
-          instrs.push(`local.get $__flwor_len_${k}`, "i32.mul");
+          instrs.push(`local.get $${pfx}_len_${k}`, "i32.mul");
         }
         instrs.push(
           `i32.const ${dstElemSize}`,
@@ -1198,7 +1262,7 @@ export class WasmEmitter {
           "i32.const 8",
           "i32.add",
           "call $__alloc",
-          "local.set $__flwor_dst",
+          `local.set $${pfx}_dst`,
         );
 
         // If OrderByClause is present, allocate a parallel key buffer
@@ -1211,13 +1275,13 @@ export class WasmEmitter {
           const dirText = (orderByClause.childForFieldName?.("direction")?.text || "ascending").toLowerCase();
           isDescending = dirText === "descending" || dirText === "desc";
           const keySem = this.semanticType(criteriaNode);
-          isKeyUnsigned = keySem.kind === "u32";
+          isKeyUnsigned = keySem.kind === "u32" || keySem.kind === "u64" || keySem.kind === "usize";
           keyWasmType = this.exprType(criteriaNode);
           keyElemSize = keyWasmType === "f64" || keyWasmType === "i64" ? 8 : 4;
 
-          instrs.push("local.get $__flwor_len");
+          instrs.push(`local.get $${pfx}_len`);
           for (let k = 1; k < forClauses.length; k++) {
-            instrs.push(`local.get $__flwor_len_${k}`, "i32.mul");
+            instrs.push(`local.get $${pfx}_len_${k}`, "i32.mul");
           }
           instrs.push(
             `i32.const ${keyElemSize}`,
@@ -1225,11 +1289,11 @@ export class WasmEmitter {
             "i32.const 8",
             "i32.add",
             "call $__alloc",
-            "local.set $__flwor_keys",
+            `local.set $${pfx}_keys`,
           );
         }
 
-        instrs.push("i32.const 0", "local.set $__flwor_out_len");
+        instrs.push("i32.const 0", `local.set $${pfx}_out_len`);
 
         // 3. Open nested loops for each ForClause (relational Cartesian/filtered join)
         for (let k = 0; k < forClauses.length; k++) {
@@ -1238,9 +1302,9 @@ export class WasmEmitter {
           const collNode = fc.childForFieldName?.("collection");
           const srcElemWasmType = this.resolveArrayElementWasmType(collNode);
           const srcElemSize = srcElemWasmType === "f64" || srcElemWasmType === "i64" ? 8 : 4;
-          const srcLocal = k === 0 ? "__flwor_src" : `__flwor_src_${k}`;
-          const lenLocal = k === 0 ? "__flwor_len" : `__flwor_len_${k}`;
-          const idxLocal = k === 0 ? "__flwor_idx" : `__flwor_idx_${k}`;
+          const srcLocal = k === 0 ? `${pfx}_src` : `${pfx}_src_${k}`;
+          const lenLocal = k === 0 ? `${pfx}_len` : `${pfx}_len_${k}`;
+          const idxLocal = k === 0 ? `${pfx}_idx` : `${pfx}_idx_${k}`;
           const bLabel = k === 0 ? `$flwor_b_${loopId}` : `$flwor_b_${loopId}_${k}`;
           const lLabel = k === 0 ? `$flwor_l_${loopId}` : `$flwor_l_${loopId}_${k}`;
 
@@ -1274,8 +1338,8 @@ export class WasmEmitter {
         }
 
         const storeResultInstrs: string[] = [
-          "      local.get $__flwor_dst",
-          "      local.get $__flwor_out_len",
+          `      local.get $${pfx}_dst`,
+          `      local.get $${pfx}_out_len`,
           `      i32.const ${dstElemSize}`,
           "      i32.mul",
           "      i32.add",
@@ -1285,8 +1349,8 @@ export class WasmEmitter {
 
         if (orderByClause && criteriaNode) {
           storeResultInstrs.push(
-            "      local.get $__flwor_keys",
-            "      local.get $__flwor_out_len",
+            `      local.get $${pfx}_keys`,
+            `      local.get $${pfx}_out_len`,
             `      i32.const ${keyElemSize}`,
             "      i32.mul",
             "      i32.add",
@@ -1296,10 +1360,10 @@ export class WasmEmitter {
         }
 
         storeResultInstrs.push(
-          "      local.get $__flwor_out_len",
+          `      local.get $${pfx}_out_len`,
           "      i32.const 1",
           "      i32.add",
-          "      local.set $__flwor_out_len",
+          `      local.set $${pfx}_out_len`,
         );
 
         if (whereClauses.length > 0) {
@@ -1318,7 +1382,7 @@ export class WasmEmitter {
 
         // 4. Close nested ForClause loops from innermost to outermost
         for (let k = forClauses.length - 1; k >= 0; k--) {
-          const idxLocal = k === 0 ? "__flwor_idx" : `__flwor_idx_${k}`;
+          const idxLocal = k === 0 ? `${pfx}_idx` : `${pfx}_idx_${k}`;
           const lLabel = k === 0 ? `$flwor_l_${loopId}` : `$flwor_l_${loopId}_${k}`;
           instrs.push(
             `    local.get $${idxLocal}`,
@@ -1345,38 +1409,38 @@ export class WasmEmitter {
               : isKeyUnsigned
                 ? `${keyWasmType}.gt_u`
                 : `${keyWasmType}.gt_s`;
-          const tmpKeyLocal = `__flwor_tmp_key_${keyWasmType}`;
-          const tmpValLocal = `__flwor_tmp_val_${dstElemWasmType}`;
+          const tmpKeyLocal = `${pfx}_tmp_key_${keyWasmType}`;
+          const tmpValLocal = `${pfx}_tmp_val_${dstElemWasmType}`;
 
           instrs.push(
             "i32.const 0",
-            "local.set $__flwor_sort_i",
+            `local.set $${pfx}_sort_i`,
             `block $flwor_sb_o_${loopId}`,
             `  loop $flwor_sl_o_${loopId}`,
-            "    local.get $__flwor_sort_i",
-            "    local.get $__flwor_out_len",
+            `    local.get $${pfx}_sort_i`,
+            `    local.get $${pfx}_out_len`,
             "    i32.ge_s",
             `    br_if $flwor_sb_o_${loopId}`,
-            "    local.get $__flwor_sort_i",
+            `    local.get $${pfx}_sort_i`,
             "    i32.const 1",
             "    i32.add",
-            "    local.set $__flwor_sort_j",
+            `    local.set $${pfx}_sort_j`,
             `    block $flwor_sb_i_${loopId}`,
             `      loop $flwor_sl_i_${loopId}`,
-            "        local.get $__flwor_sort_j",
-            "        local.get $__flwor_out_len",
+            `        local.get $${pfx}_sort_j`,
+            `        local.get $${pfx}_out_len`,
             "        i32.ge_s",
             `        br_if $flwor_sb_i_${loopId}`,
             // Load key[i]
-            "        local.get $__flwor_keys",
-            "        local.get $__flwor_sort_i",
+            `        local.get $${pfx}_keys`,
+            `        local.get $${pfx}_sort_i`,
             `        i32.const ${keyElemSize}`,
             "        i32.mul",
             "        i32.add",
             `        ${keyWasmType}.load offset=8`,
             // Load key[j]
-            "        local.get $__flwor_keys",
-            "        local.get $__flwor_sort_j",
+            `        local.get $${pfx}_keys`,
+            `        local.get $${pfx}_sort_j`,
             `        i32.const ${keyElemSize}`,
             "        i32.mul",
             "        i32.add",
@@ -1384,71 +1448,71 @@ export class WasmEmitter {
             `        ${cmpInstr}`,
             "        if",
             // Swap keys[i] and keys[j]
-            "          local.get $__flwor_keys",
-            "          local.get $__flwor_sort_i",
+            `          local.get $${pfx}_keys`,
+            `          local.get $${pfx}_sort_i`,
             `          i32.const ${keyElemSize}`,
             "          i32.mul",
             "          i32.add",
             `          ${keyWasmType}.load offset=8`,
             `          local.set $${tmpKeyLocal}`,
-            "          local.get $__flwor_keys",
-            "          local.get $__flwor_sort_i",
+            `          local.get $${pfx}_keys`,
+            `          local.get $${pfx}_sort_i`,
             `          i32.const ${keyElemSize}`,
             "          i32.mul",
             "          i32.add",
-            "          local.get $__flwor_keys",
-            "          local.get $__flwor_sort_j",
+            `          local.get $${pfx}_keys`,
+            `          local.get $${pfx}_sort_j`,
             `          i32.const ${keyElemSize}`,
             "          i32.mul",
             "          i32.add",
             `          ${keyWasmType}.load offset=8`,
             `          ${keyWasmType}.store offset=8`,
-            "          local.get $__flwor_keys",
-            "          local.get $__flwor_sort_j",
+            `          local.get $${pfx}_keys`,
+            `          local.get $${pfx}_sort_j`,
             `          i32.const ${keyElemSize}`,
             "          i32.mul",
             "          i32.add",
             `          local.get $${tmpKeyLocal}`,
             `          ${keyWasmType}.store offset=8`,
             // Swap dst[i] and dst[j]
-            "          local.get $__flwor_dst",
-            "          local.get $__flwor_sort_i",
+            `          local.get $${pfx}_dst`,
+            `          local.get $${pfx}_sort_i`,
             `          i32.const ${dstElemSize}`,
             "          i32.mul",
             "          i32.add",
             `          ${dstElemWasmType}.load offset=8`,
             `          local.set $${tmpValLocal}`,
-            "          local.get $__flwor_dst",
-            "          local.get $__flwor_sort_i",
+            `          local.get $${pfx}_dst`,
+            `          local.get $${pfx}_sort_i`,
             `          i32.const ${dstElemSize}`,
             "          i32.mul",
             "          i32.add",
-            "          local.get $__flwor_dst",
-            "          local.get $__flwor_sort_j",
+            `          local.get $${pfx}_dst`,
+            `          local.get $${pfx}_sort_j`,
             `          i32.const ${dstElemSize}`,
             "          i32.mul",
             "          i32.add",
             `          ${dstElemWasmType}.load offset=8`,
             `          ${dstElemWasmType}.store offset=8`,
-            "          local.get $__flwor_dst",
-            "          local.get $__flwor_sort_j",
+            `          local.get $${pfx}_dst`,
+            `          local.get $${pfx}_sort_j`,
             `          i32.const ${dstElemSize}`,
             "          i32.mul",
             "          i32.add",
             `          local.get $${tmpValLocal}`,
             `          ${dstElemWasmType}.store offset=8`,
             "        end",
-            "        local.get $__flwor_sort_j",
+            `        local.get $${pfx}_sort_j`,
             "        i32.const 1",
             "        i32.add",
-            "        local.set $__flwor_sort_j",
+            `        local.set $${pfx}_sort_j`,
             `        br $flwor_sl_i_${loopId}`,
             "      end",
             "    end",
-            "    local.get $__flwor_sort_i",
+            `    local.get $${pfx}_sort_i`,
             "    i32.const 1",
             "    i32.add",
-            "    local.set $__flwor_sort_i",
+            `    local.set $${pfx}_sort_i`,
             `    br $flwor_sl_o_${loopId}`,
             "  end",
             "end",
@@ -1456,10 +1520,10 @@ export class WasmEmitter {
         }
 
         instrs.push(
-          "local.get $__flwor_dst",
-          "local.get $__flwor_out_len",
+          `local.get $${pfx}_dst`,
+          `local.get $${pfx}_out_len`,
           "i32.store offset=0",
-          "local.get $__flwor_dst",
+          `local.get $${pfx}_dst`,
         );
 
         return instrs.join("\n");
@@ -1471,30 +1535,35 @@ export class WasmEmitter {
         const rightNode = node.childForFieldName?.("right");
         const op = opNode?.text || "+";
 
+        if (op === "&&") {
+          const leftWat = this.emitExpressionAs(leftNode, "i32");
+          const rightWat = this.emitExpressionAs(rightNode, "i32");
+          return `${leftWat}\nif (result i32)\n${rightWat}\nelse\ni32.const 0\nend`;
+        }
+        if (op === "||") {
+          const leftWat = this.emitExpressionAs(leftNode, "i32");
+          const rightWat = this.emitExpressionAs(rightNode, "i32");
+          return `${leftWat}\nif (result i32)\ni32.const 1\nelse\n${rightWat}\nend`;
+        }
+
         const leftSem = this.semanticType(leftNode);
         const rightSem = this.semanticType(rightNode);
         const leftWasm = this.exprType(leftNode);
         const rightWasm = this.exprType(rightNode);
 
-        const isUnsigned = leftSem.kind === "u32" || rightSem.kind === "u32";
+        const isUnsigned =
+          leftSem.kind === "u32" ||
+          rightSem.kind === "u32" ||
+          leftSem.kind === "u64" ||
+          rightSem.kind === "u64" ||
+          leftSem.kind === "usize" ||
+          rightSem.kind === "usize";
         const isF64 = leftWasm === "f64" || rightWasm === "f64";
         const isF32 = !isF64 && (leftWasm === "f32" || rightWasm === "f32");
         const isI64 = !isF64 && !isF32 && (leftWasm === "i64" || rightWasm === "i64");
 
         const operandType =
-          op === "&&" || op === "||"
-            ? "i32"
-            : op === "%"
-              ? isI64
-                ? "i64"
-                : "i32"
-              : isF64
-                ? "f64"
-                : isF32
-                  ? "f32"
-                  : isI64
-                    ? "i64"
-                    : "i32";
+          op === "%" ? (isI64 ? "i64" : "i32") : isF64 ? "f64" : isF32 ? "f32" : isI64 ? "i64" : "i32";
         const isFloat = operandType === "f64" || operandType === "f32";
         const leftWat = this.emitExpressionAs(leftNode, operandType);
         const rightWat = this.emitExpressionAs(rightNode, operandType);
@@ -1535,12 +1604,6 @@ export class WasmEmitter {
           case ">=":
             instr = isFloat ? `${prefix}.ge` : isUnsigned ? `${prefix}.ge_u` : `${prefix}.ge_s`;
             break;
-          case "&&":
-            instr = "i32.and";
-            break;
-          case "||":
-            instr = "i32.or";
-            break;
           default:
             instr = `${prefix}.add`;
         }
@@ -1558,6 +1621,10 @@ export class WasmEmitter {
           return `${operandWat}\ni32.eqz`;
         }
         if (op === "~") {
+          const opType = this.exprType(operandNode);
+          if (opType === "i64") {
+            return `${operandWat}\ni64.const -1\ni64.xor`;
+          }
           return `${operandWat}\ni32.const -1\ni32.xor`;
         }
         if (op === "-") {
@@ -1567,6 +1634,9 @@ export class WasmEmitter {
           }
           if (opType === "f32") {
             return `${operandWat}\nf32.neg`;
+          }
+          if (opType === "i64") {
+            return `i64.const 0\n${operandWat}\ni64.sub`;
           }
           return `i32.const 0\n${operandWat}\ni32.sub`;
         }
@@ -1636,25 +1706,6 @@ export class WasmEmitter {
         }
 
         return "i32.const 0";
-      }
-
-      case "CallExpression": {
-        const callee = node.childForFieldName?.("function")?.text || "fn";
-        const argsNode = node.childForFieldName?.("arguments");
-        const argsWat: string[] = [];
-
-        if (argsNode) {
-          for (let i = 0; i < argsNode.childCount; i++) {
-            const arg = argsNode.child(i);
-            if (arg && (arg.type === "Argument" || (arg.type !== "(" && arg.type !== ")" && arg.type !== ","))) {
-              const val = arg.childForFieldName?.("value") || arg;
-              argsWat.push(this.emitExpression(val));
-            }
-          }
-        }
-
-        const argsStr = argsWat.length > 0 ? argsWat.join("\n") + "\n" : "";
-        return `${argsStr}call $${callee}`;
       }
 
       case "ParenthesizedExpression": {

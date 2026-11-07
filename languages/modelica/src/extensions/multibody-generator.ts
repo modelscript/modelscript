@@ -87,8 +87,12 @@ export function generateMultiBodyModelica(assembly: MultiBodyAssembly, stepUri: 
     lines.push(`  connect(world.frame_b, ${firstBody.name}.frame_a);`);
   }
 
+  const bodyNames = new Set(assembly.bodies.map((b) => b.name));
+  const outConnectorOf = (partName: string) =>
+    bodyNames.has(partName) ? `${partName}.frame_a` : `${partName}.frame_b`;
+
   for (const offset of assembly.fixedTranslations) {
-    lines.push(`  connect(${offset.partA}.frame_b, ${offset.name}.frame_a);`);
+    lines.push(`  connect(${outConnectorOf(offset.partA)}, ${offset.name}.frame_a);`);
 
     // Determine if it connects directly to a part or a joint
     const attachedJoint = assembly.joints.find((j) => j.partB === offset.partB && j.partA === offset.partA);
@@ -104,7 +108,7 @@ export function generateMultiBodyModelica(assembly: MultiBodyAssembly, stepUri: 
   for (const joint of assembly.joints) {
     const hasOffset = assembly.fixedTranslations.some((o) => o.partA === joint.partA && o.partB === joint.partB);
     if (!hasOffset) {
-      lines.push(`  connect(${joint.partA}.frame_b, ${joint.name}.frame_a);`);
+      lines.push(`  connect(${outConnectorOf(joint.partA)}, ${joint.name}.frame_a);`);
       lines.push(`  connect(${joint.name}.frame_b, ${joint.partB}.frame_a);`);
     }
   }

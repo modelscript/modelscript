@@ -23,7 +23,7 @@ interface LpsActionContext {
 export const lpsLanguage = language({
   name: "lps",
   fileExtensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
     icons: {

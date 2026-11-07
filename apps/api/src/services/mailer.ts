@@ -633,9 +633,15 @@ export class MailerService {
       overrideConfig?.smtpCaCertPath?.trim() ||
       this.runtimeConfig.smtpCaCertPath?.trim();
     let ca: Buffer | undefined;
-    if (caPath && fs.existsSync(caPath)) {
+    if (caPath && /\.(pem|crt|cer|ca-bundle)$/i.test(caPath) && fs.existsSync(caPath)) {
       try {
-        ca = fs.readFileSync(caPath);
+        const st = fs.statSync(caPath);
+        if (st.isFile() && st.size > 0 && st.size <= 1024 * 1024) {
+          const buf = fs.readFileSync(caPath);
+          if (buf.toString("utf-8", 0, 256).includes("-----BEGIN CERTIFICATE-----")) {
+            ca = buf;
+          }
+        }
       } catch {
         // Ignore unreadable CA file and rely on system trust store
       }

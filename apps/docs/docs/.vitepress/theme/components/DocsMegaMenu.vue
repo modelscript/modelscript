@@ -1,18 +1,18 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { LANGUAGE_COUNT } from "../data/languages";
-import lintRules from "../data/lint-rules.generated.json";
+import languagesJson from "../data/languages.generated.json";
 import mcpData from "../data/mcp-tools.generated.json";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
 
 const totalRules = (
-  Array.isArray(lintRules)
-    ? lintRules.reduce((acc, l) => acc + (l.rules?.length || 0), 0)
-    : (lintRules as any)?.totalRules ?? 0
+  Array.isArray(languagesJson)
+    ? languagesJson.reduce((acc, l) => acc + ((l as { ruleCount?: number }).ruleCount || 0), 0)
+    : 416
 ).toLocaleString();
-const totalLangs = Array.isArray(lintRules) ? lintRules.length : ((lintRules as any)?.totalLanguages ?? LANGUAGE_COUNT);
+const totalLangs = Array.isArray(languagesJson) ? languagesJson.length : LANGUAGE_COUNT;
 
 const columns: MegaMenuColumn[] = [
   {
@@ -189,7 +189,7 @@ const footerLinks: MegaMenuFooterLink[] = [
   <NavMegaMenu
     menu-id="docs"
     label="Docs"
-    :active-prefixes="['/guide/', '/ansatz/', '/cli/', '/reference/', '/languages/']"
+    :active-prefixes="['/guide/', '/cli/', '/reference/', '/languages/']"
     :columns="columns"
     :feature="feature"
     :footer-links="footerLinks"

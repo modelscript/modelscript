@@ -16,6 +16,7 @@ import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { resolveRequestHost } from "../util/seo-injector.js";
 import { isCorporateOrAirgapTier } from "../util/tier-presets.js";
 
 function getEmbedSigningSecret(): string {
@@ -252,9 +253,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
 
   // ── Standalone Browser Bundle for <modelscript-morsel> / <modelscript-viewer> ──
   router.get("/embed.js", (req: Request, res: Response): void => {
-    const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
-    const hostHeader = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-    const origin = `${String(protocol).split(",")[0]!.trim()}://${String(hostHeader).split(",")[0]!.trim()}`;
+    const origin = resolveRequestHost(req, "http://localhost:3000");
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -416,10 +415,21 @@ export function oembedRouter(database: LibraryDatabase): Router {
       return;
     }
 
+    const canonicalHost = resolveRequestHost(req, parsedUrl.origin);
+    if (process.env["NODE_ENV"] === "production" && process.env["PUBLIC_URL"]) {
+      try {
+        const expectedOrigin = new URL(process.env["PUBLIC_URL"]).origin;
+        if (parsedUrl.origin !== expectedOrigin && parsedUrl.origin !== canonicalHost) {
+          res.status(400).json({ error: "URL origin is not supported by this oEmbed provider" });
+          return;
+        }
+      } catch {}
+    }
+
     const settings = database.getInstanceSettings();
     const isCorporate = isCorporateOrAirgapTier(settings);
     const brandName = settings.instanceName || "Ansatz";
-    const host = parsedUrl.origin;
+    const host = process.env["NODE_ENV"] === "production" ? canonicalHost : parsedUrl.origin;
     let title = `${brandName} Interactive Engineering Model`;
     let authorName = `${brandName} Community`;
     let authorUrl = host;
@@ -476,8 +486,27 @@ export function oembedRouter(database: LibraryDatabase): Router {
 
       const postId = parseInt(postMatch[1], 10);
       try {
-        const post = database.getPost(postId);
+        const post = database.getPost(postId, req.user?.id);
         if (post) {
+          const vis = post.visibility || "public";
+          if (vis === "followers" || vis === "direct") {
+            let canAccess = hasValidEmbedToken;
+            if (!canAccess && req.user) {
+              if (req.user.id === post.author_id || req.user.role === "admin" || req.user.accountType === "admin") {
+                canAccess = true;
+              } else if (vis === "followers") {
+                canAccess = database.isFollowing(req.user.id, post.author_id);
+              } else if (vis === "direct" && req.user.username) {
+                const escaped = req.user.username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                canAccess = new RegExp(`(?:^|\\s)@${escaped}\\b`, "i").test(post.content || "");
+              }
+            }
+            if (!canAccess) {
+              res.status(403).json({ error: "Forbidden: Private or followers-only posts cannot be embedded publicly" });
+              return;
+            }
+          }
+
           const postExt = post as typeof post & {
             author?: { display_name?: string | undefined; username?: string | undefined } | undefined;
             artifact_id?: number | string | null | undefined;

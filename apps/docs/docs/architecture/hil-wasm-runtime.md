@@ -1,3 +1,8 @@
+---
+title: "Software-in-the-Loop (SIL) & Hardware-in-the-Loop (HIL) with ModelScript"
+description: "This guide documents ModelScript's unified SIL and HIL architecture based on eFMI-style deterministic code generation, WebAssembly, FMI Layered Standards (FMI-LS-BUS), and browser-native Soft HIL."
+---
+
 # Software-in-the-Loop (SIL) & Hardware-in-the-Loop (HIL) with ModelScript
 
 This guide documents ModelScript's unified SIL and HIL architecture based on **eFMI-style deterministic code generation**, **WebAssembly**, **FMI Layered Standards (FMI-LS-BUS)**, and **browser-native Soft HIL**.

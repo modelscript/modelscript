@@ -39,6 +39,7 @@ export interface NetworkSimulationResult {
 
 interface InternalGridCell {
   x: number;
+  z: number;
   dx: number;
   diameter: number;
   area: number;
@@ -74,10 +75,12 @@ interface FlowpathState {
 function discretizeFlowpath(flowpath: OlgaFlowpath): InternalGridCell[] {
   const cells: InternalGridCell[] = [];
   let currentX = 0;
+  let currentZ = 0;
 
   for (const pipe of flowpath.pipes) {
     const nCells = Math.max(2, pipe.discretization);
     const dx = pipe.length / nCells;
+    const dz = pipe.elevation / nCells;
     const diameter = Math.max(0.05, pipe.diameter);
     const area = 0.25 * Math.PI * diameter * diameter;
     const hyp = Math.sqrt(pipe.length * pipe.length + pipe.elevation * pipe.elevation);
@@ -99,6 +102,7 @@ function discretizeFlowpath(flowpath: OlgaFlowpath): InternalGridCell[] {
     for (let c = 0; c < nCells; c++) {
       cells.push({
         x: currentX + 0.5 * dx,
+        z: currentZ + 0.5 * dz,
         dx,
         diameter,
         area,
@@ -108,6 +112,7 @@ function discretizeFlowpath(flowpath: OlgaFlowpath): InternalGridCell[] {
         ambientTemp,
       });
       currentX += dx;
+      currentZ += dz;
     }
   }
 
@@ -316,16 +321,28 @@ export function simulateOlgaNetwork(model: OlgaModel, options?: SimulationOption
         const netWaterCut = Math.max(0.0, Math.min(1.0, sumWaterRate / netLiquidRate));
         const netTemp = sumEnthalpyTemp / netMassRate;
 
-        // Propagate merged properties into downstream flowpaths
+        // Propagate merged properties into downstream flowpaths and couple junction backpressure
+        let avgDownInletP = 0;
         for (const down of downstreamStates) {
-          down.inletMassRate = netMassRate;
+          down.inletMassRate = netMassRate / downstreamStates.length;
           down.inletGasFraction = netGasFraction;
           down.inletWaterCut = netWaterCut;
           down.inletTemp = netTemp;
+          const downArea = down.cells[0]?.area ?? 0.05;
+          const jMerged = down.inletMassRate / Math.max(1e-3, downArea * 700.0);
+          for (let k = 0; k <= down.cells.length; k++) {
+            down.jFace[k] = 0.5 * down.jFace[k]! + 0.5 * jMerged;
+          }
+          avgDownInletP += down.P[0]!;
+        }
+        avgDownInletP /= downstreamStates.length;
+        const junctionP = 0.5 * (avgArrivalP + avgDownInletP);
+        for (const feed of feedingStates) {
+          feed.outletPressure = junctionP;
         }
 
         if (!junctionPressures[junction.name]) junctionPressures[junction.name] = [];
-        junctionPressures[junction.name]!.push(avgArrivalP);
+        junctionPressures[junction.name]!.push(junctionP);
       }
     }
 
@@ -337,6 +354,11 @@ export function simulateOlgaNetwork(model: OlgaModel, options?: SimulationOption
       // Dynamic Wellbore IPR Inflow Stepping
       if (flowpath.ipr) {
         state.inletMassRate = stepWellInflow(state.inletMassRate, flowpath.ipr, P[0]!, 0.25);
+        const inArea = cells[0]?.area ?? 0.05;
+        const jIpr = state.inletMassRate / Math.max(1e-3, inArea * 700.0);
+        for (let k = 0; k <= N; k++) {
+          jFace[k] = 0.5 * jFace[k]! + 0.5 * jIpr;
+        }
       }
 
       // Step cells in flowpath
@@ -532,7 +554,7 @@ export function simulateOlgaNetwork(model: OlgaModel, options?: SimulationOption
           );
 
           xArr.push(cell.x);
-          elevArr.push(cell.x * cell.sinTheta);
+          elevArr.push(cell.z);
           pArr.push(P[i]!);
           tArr.push(T[i]!);
           holdupArr.push(al);

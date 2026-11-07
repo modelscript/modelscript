@@ -7,25 +7,9 @@ import DefaultTheme from "vitepress/theme";
 import { defineAsyncComponent } from "vue";
 import AnsatzNavPill from "./components/AnsatzNavPill.vue";
 import DocsMegaMenu from "./components/DocsMegaMenu.vue";
-import HomeAiAgent from "./components/HomeAiAgent.vue";
-import HomeCapabilities from "./components/HomeCapabilities.vue";
-import HomeCta from "./components/HomeCta.vue";
-import HomeFormatStrip from "./components/HomeFormatStrip.vue";
-import HomeIndustries from "./components/HomeIndustries.vue";
-import HomeStats from "./components/HomeStats.vue";
-import HomeSurfaces from "./components/HomeSurfaces.vue";
-import HomeThread from "./components/HomeThread.vue";
-import HomeVsCode from "./components/HomeVsCode.vue";
-import IndustriesIndex from "./components/IndustriesIndex.vue";
 import IndustriesMegaMenu from "./components/IndustriesMegaMenu.vue";
-import IndustryPage from "./components/IndustryPage.vue";
-import LanguageExplorer from "./components/LanguageExplorer.vue";
-import LanguagesMegaMenu from "./components/LanguagesMegaMenu.vue";
-import MermaidBlock from "./components/MermaidBlock.vue";
-import ModelScriptViewer from "./components/ModelScriptViewer.vue";
 import MsIcon from "./components/MsIcon.vue";
 import PlatformMegaMenu from "./components/PlatformMegaMenu.vue";
-import PricingPlans from "./components/PricingPlans.vue";
 import Layout from "./Layout.vue";
 import "./style.css";
 
@@ -33,7 +17,14 @@ export default {
   extends: DefaultTheme,
   Layout,
   enhanceApp({ app, router }) {
-    // Lazy: pulls in the generated CLI / lint-rule metadata only on pages that use it.
+    // Eagerly register lightweight global navbar / icon primitives
+    app.component("MsIcon", MsIcon);
+    app.component("IndustriesMegaMenu", IndustriesMegaMenu);
+    app.component("PlatformMegaMenu", PlatformMegaMenu);
+    app.component("DocsMegaMenu", DocsMegaMenu);
+    app.component("AnsatzNavPill", AnsatzNavPill);
+
+    // Lazy-load page-specific and below-the-fold components so initial JS bundle stays lean
     app.component(
       "CliCommand",
       defineAsyncComponent(() => import("./components/CliCommand.vue")),
@@ -50,27 +41,66 @@ export default {
       "LanguageExample",
       defineAsyncComponent(() => import("./components/LanguageExample.vue")),
     );
-    app.component("HomeAiAgent", HomeAiAgent);
-    app.component("HomeStats", HomeStats);
-    app.component("HomeFormatStrip", HomeFormatStrip);
-    app.component("HomeIndustries", HomeIndustries);
-    app.component("HomeThread", HomeThread);
-    app.component("HomeSurfaces", HomeSurfaces);
-    app.component("HomeVsCode", HomeVsCode);
-    app.component("HomeCapabilities", HomeCapabilities);
-    app.component("HomeCta", HomeCta);
-    app.component("IndustriesMegaMenu", IndustriesMegaMenu);
-    app.component("PlatformMegaMenu", PlatformMegaMenu);
-    app.component("LanguagesMegaMenu", LanguagesMegaMenu);
-    app.component("DocsMegaMenu", DocsMegaMenu);
-    app.component("AnsatzNavPill", AnsatzNavPill);
-    app.component("IndustriesIndex", IndustriesIndex);
-    app.component("IndustryPage", IndustryPage);
-    app.component("MsIcon", MsIcon);
-    app.component("PricingPlans", PricingPlans);
-    app.component("LanguageExplorer", LanguageExplorer);
-    app.component("MermaidBlock", MermaidBlock);
-    app.component("ModelScriptViewer", ModelScriptViewer);
+    app.component(
+      "HomeStats",
+      defineAsyncComponent(() => import("./components/HomeStats.vue")),
+    );
+    app.component(
+      "HomeFormatStrip",
+      defineAsyncComponent(() => import("./components/HomeFormatStrip.vue")),
+    );
+    app.component(
+      "HomeIndustries",
+      defineAsyncComponent(() => import("./components/HomeIndustries.vue")),
+    );
+    app.component(
+      "HomeThread",
+      defineAsyncComponent(() => import("./components/HomeThread.vue")),
+    );
+    app.component(
+      "HomeAiAgent",
+      defineAsyncComponent(() => import("./components/HomeAiAgent.vue")),
+    );
+    app.component(
+      "HomeCapabilities",
+      defineAsyncComponent(() => import("./components/HomeCapabilities.vue")),
+    );
+    app.component(
+      "HomeSurfaces",
+      defineAsyncComponent(() => import("./components/HomeSurfaces.vue")),
+    );
+    app.component(
+      "HomeVsCode",
+      defineAsyncComponent(() => import("./components/HomeVsCode.vue")),
+    );
+    app.component(
+      "HomeCta",
+      defineAsyncComponent(() => import("./components/HomeCta.vue")),
+    );
+    app.component(
+      "IndustriesIndex",
+      defineAsyncComponent(() => import("./components/IndustriesIndex.vue")),
+    );
+    app.component(
+      "IndustryPage",
+      defineAsyncComponent(() => import("./components/IndustryPage.vue")),
+    );
+    app.component(
+      "PricingPlans",
+      defineAsyncComponent(() => import("./components/PricingPlans.vue")),
+    );
+    app.component(
+      "LanguageExplorer",
+      defineAsyncComponent(() => import("./components/LanguageExplorer.vue")),
+    );
+    app.component(
+      "MermaidBlock",
+      defineAsyncComponent(() => import("./components/MermaidBlock.vue")),
+    );
+    app.component(
+      "ModelScriptViewer",
+      defineAsyncComponent(() => import("./components/ModelScriptViewer.vue")),
+    );
 
     if (typeof window !== "undefined") {
       let lastReportedPath = "";

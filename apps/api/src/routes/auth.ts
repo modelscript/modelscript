@@ -833,6 +833,12 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       const secret = generateTotpSecret();
+      if (pendingTotpSecrets.size >= 2_000 && !pendingTotpSecrets.has(user.id)) {
+        const oldestKey = pendingTotpSecrets.keys().next().value;
+        if (oldestKey !== undefined) {
+          pendingTotpSecrets.delete(oldestKey);
+        }
+      }
       pendingTotpSecrets.set(user.id, secret);
       database.setPendingTotpSecret(user.id, secret, Date.now() + 15 * 60 * 1000);
       const otpAuthUri = generateTotpUri({
@@ -2416,9 +2422,14 @@ export function authRouter(database: LibraryDatabase): Router {
         }
       }
 
-      if (typeof totpCode === "string" && totpCode.trim()) {
-        const state2FA = database.getUser2FAState(userId);
-        if (state2FA?.totp_enabled && state2FA.totp_secret) {
+      const state2FA = database.getUser2FAState(userId);
+      if (state2FA?.totp_enabled && state2FA.totp_secret) {
+        const isChangingIdentity = Boolean(username || email);
+        if (isChangingIdentity || (typeof totpCode === "string" && totpCode.trim())) {
+          if (typeof totpCode !== "string" || !totpCode.trim()) {
+            res.status(401).json({ error: "Two-factor authentication code is required" });
+            return;
+          }
           if (!verifyTotpCode(state2FA.totp_secret, totpCode.trim())) {
             res.status(401).json({ error: "Invalid two-factor authentication code" });
             return;

@@ -211,3 +211,33 @@ let badFlwor =
     `Expected FLWOR_UNBOUND_VARIABLE (4002), got: ${JSON.stringify(diags)}`,
   );
 });
+
+test("ModelScript Linter catches const reassignment (3003) and function argument type mismatch (3001)", async () => {
+  const compiler = new ModelScriptCompiler();
+  await compiler.init();
+
+  const code = `
+const maxLimit: i32 = 100;
+maxLimit = 200;
+
+function scaleVal(v: f64, factor: i32): f64 {
+  let acc: f64 = 0.0;
+  for (let i: i32 = 0; i < factor; i += 1) {
+    acc += v;
+  }
+  return acc;
+}
+
+let res = scaleVal(3.14, "not-an-int");
+`;
+
+  const diags = compiler.lint(code);
+  assert.ok(
+    diags.some((d) => d.code === ModelScriptErrorCode.CONST_REASSIGNMENT.code && d.message.includes("maxLimit")),
+    `Expected CONST_REASSIGNMENT (3003), got: ${JSON.stringify(diags)}`,
+  );
+  assert.ok(
+    diags.some((d) => d.code === ModelScriptErrorCode.TYPE_MISMATCH.code),
+    `Expected TYPE_MISMATCH (3001) on function call argument, got: ${JSON.stringify(diags)}`,
+  );
+});

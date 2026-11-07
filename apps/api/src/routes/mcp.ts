@@ -167,9 +167,20 @@ export function mcpRouter(database: LibraryDatabase): Router {
     }
 
     const session = sessions.get(sessionId)!;
+    const hasExplicitCreds = Boolean(req.headers["authorization"] || req.query["token"] || req.headers["cookie"]);
     const callerId = resolveAuth(req);
+    if (callerId === null && (hasExplicitCreds || process.env["NODE_ENV"] === "production")) {
+      res.status(401).json({ error: "Authentication required for MCP session messages." });
+      return;
+    }
     if (callerId !== null && callerId !== session.userId) {
       res.status(403).json({ error: "Session belongs to a different user." });
+      return;
+    }
+    const owner = database.getUserById(session.userId);
+    if (!owner || isAccountBlocked(owner.status)) {
+      sessions.delete(sessionId);
+      res.status(403).json({ error: "Account is suspended or blocked." });
       return;
     }
     await session.transport.handlePostMessage(req, res);

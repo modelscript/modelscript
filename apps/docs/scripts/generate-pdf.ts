@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isModelScriptLangVisible } from "../docs/.vitepress/theme/data/languages.js";
+import { LANGUAGES } from "../docs/.vitepress/theme/data/languages.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +32,7 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
       { title: "Embedding & React SDK", relativePath: "guide/embedding.md" },
       { title: "Platform Administration", relativePath: "guide/administration.md" },
       { title: "Ansatz Platform Overview", relativePath: "ansatz/overview.md" },
+      { title: "Legacy Workflow Replacement", relativePath: "ansatz/workflow-replacement.md" },
       { title: "ActivityPub Federation", relativePath: "ansatz/federation.md" },
       { title: "Content-Addressable Package Registry", relativePath: "ansatz/package-registry.md" },
       { title: "Cloud HPC Simulation", relativePath: "ansatz/cloud-hpc.md" },
@@ -56,41 +57,10 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
     partTitle: "Part III: Polyglot Languages & Formats",
     files: [
       { title: "Language Support Overview", relativePath: "languages/overview.md" },
-      ...(isModelScriptLangVisible
-        ? [{ title: "ModelScript (.msx) Native Language", relativePath: "languages/modelscript.md" }]
-        : []),
-      { title: "Modelica Physical Modeling", relativePath: "languages/modelica.md" },
-      { title: "SysML v2 & KerML", relativePath: "languages/sysml2.md" },
-      { title: "MATLAB Simulink", relativePath: "languages/simulink.md" },
-      { title: "AUTOSAR Architecture", relativePath: "languages/autosar.md" },
-      { title: "ReqIF Requirements", relativePath: "languages/reqif.md" },
-      { title: "SPICE Electronics", relativePath: "languages/spice.md" },
-      { title: "SIMPACK Multibody Dynamics", relativePath: "languages/simpack.md" },
-      { title: "GENSYS Railway Dynamics", relativePath: "languages/gensys.md" },
-      { title: "MSC Adams MBD", relativePath: "languages/adams.md" },
-      { title: "URDF & Xacro Robotics", relativePath: "languages/urdf.md" },
-      { title: "PSCAD Power Systems", relativePath: "languages/pscad.md" },
-      { title: "PSS/E Power Flow (.raw)", relativePath: "languages/psse.md" },
-      { title: "OLGA Multiphase Flow", relativePath: "languages/olga.md" },
-      { title: "PipelineStudio (.lps)", relativePath: "languages/lps.md" },
-      { title: "EASY5 Simulation", relativePath: "languages/easy5.md" },
-      { title: "GT-SUITE / GT-POWER", relativePath: "languages/gtsuite.md" },
-      { title: "SIMA / SIMO / RIFLEX", relativePath: "languages/sima.md" },
-      { title: "NASA ROCETS Propulsion", relativePath: "languages/rocets.md" },
-      { title: "STEP CAD (ISO 10303)", relativePath: "languages/step.md" },
-      { title: "OWL2 Ontologies", relativePath: "languages/owl2.md" },
-      { title: "OpenSCAD CSG Geometry", relativePath: "languages/scad.md" },
-      { title: "SSP System Packaging", relativePath: "languages/ssp.md" },
-      { title: "CFD (SU2 & OpenFOAM)", relativePath: "languages/cfd.md" },
-      { title: "FEA Structural Analysis", relativePath: "languages/fea.md" },
-      { title: "CSV Telemetry", relativePath: "languages/csv.md" },
-      { title: "CCSDS Space Telemetry", relativePath: "languages/ccsds.md" },
-      { title: "EnergyPlus Building Thermal", relativePath: "languages/energyplus.md" },
-      { title: "EPANET Water Networks", relativePath: "languages/epanet.md" },
-      { title: "OpenDRIVE Road Networks", relativePath: "languages/opendrive.md" },
-      { title: "PLCopen Industrial Automation", relativePath: "languages/plcopen.md" },
-      { title: "Verilog-A Compact Modeling", relativePath: "languages/verilog-a.md" },
-      { title: "Fortran Legacy Integration", relativePath: "languages/fortran.md" },
+      ...LANGUAGES.map((l) => ({
+        title: `${l.name} (${l.ext})`,
+        relativePath: `languages/${l.slug}.md`,
+      })),
     ],
   },
   {
@@ -127,6 +97,9 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
       { title: "Compiler Linter Rules", relativePath: "reference/linter-rules.md" },
       { title: "Standards & Export Formats", relativePath: "reference/export-formats.md" },
       { title: "MCP Server & IDE Workbench", relativePath: "reference/mcp-and-ide.md" },
+      { title: "Radiology, Oncology & Surgical CAS Reference", relativePath: "reference/radiology-and-surgery.md" },
+      { title: "Pricing & Licensing Tiers", relativePath: "pricing.md" },
+      { title: "Trademark & Brand Guidelines", relativePath: "trademark.md" },
     ],
   },
 ];
@@ -136,6 +109,7 @@ function toSectionId(relativePath: string): string {
 }
 
 function preprocessAndParseMarkdown(raw: string, currentRelativePath: string): string {
+  raw = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
   const codePlaceholders: string[] = [];
   const mathPlaceholders: string[] = [];
 

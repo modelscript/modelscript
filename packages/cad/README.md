@@ -35,7 +35,7 @@ ModelScript 3D Mechanical CAD (MCAD) and Electronic CAD (ECAD) engine — parame
 - **Inverse Kinematics & Parameter Inversion (`src/parameter-inversion.ts`, `src/rom_load_pipeline.ts`)**:
   - `ParameterInversionEngine` solves constrained inverse design problems—computing the exact CAD geometric parameter updates (`ParameterInversionUpdate`, `CertifiedInversionResult`) required to satisfy target mass, frontal area, or stress safety guards (`SafeRegionGuard`).
   - `RomLoadPipeline` maps peak transient loads from 1D Modelica simulations (`TransientPeakLoad`) onto 3D tagged CAD boundary patches (`FeaBoundaryCondition`).
-- **Kinematics & Animation (`src/kinematics.ts`, `src/animation-controller.ts`, `src/binding-writer.js`)**: Unit quaternion algebra (`quaternionSlerp`, `quaternionFromEuler`, `composeTransformMatrix`), cubic Hermite trajectory interpolation (`hermiteInterpolate`), `AnimationController` for synchronized 6-DOF multibody playback, and `patchModelicaCadAnnotation` for round-trip Modelica CAD annotation persistence.
+- **Kinematics & Animation (`src/kinematics.ts`, `src/animation-controller.ts`, `src/binding-writer.ts`)**: Unit quaternion algebra (`quaternionSlerp`, `quaternionFromEuler`, `composeTransformMatrix`), cubic Hermite trajectory interpolation (`hermiteInterpolate`), `AnimationController` for synchronized 6-DOF multibody playback, and `patchModelicaCadAnnotation` for round-trip Modelica CAD annotation persistence.
 - **Large-Assembly BVH, Instancing & Level of Detail (`src/bvh.ts`, `src/instancing.ts`, `src/lod.ts`)**:
   - `AssemblyBVH`: Hierarchical Bounding Volume Hierarchy for fast raycasting (`RaycastHit`) and 6-plane camera frustum culling.
   - `AssemblyClusteringEngine` & `InstanceBatchBuffer`: Automatic geometric deduplication and GPU instanced draw-call batching.
@@ -43,9 +43,9 @@ ModelScript 3D Mechanical CAD (MCAD) and Electronic CAD (ECAD) engine — parame
 
 ### 5. Electronic CAD (ECAD) Engine (`@modelscript/cad/ecad`)
 
-Located under `src/ecad/`, the ECAD subsystem provides complete printed circuit board (PCB) inspection, routing, and verification:
+Located under `src/ecad/`, the ECAD subsystem provides complete printed circuit board (PCB) inspection, routing, manufacturing file generation, and verification:
 
-- **RS-274X Gerber Parser (`src/ecad/gerber.ts`)**: Parses standard Gerber RS-274X / X2 aperture definitions (`%ADD...*%`), macro primitives, linear/circular interpolation traces, region fills (`G36`/`G37`), and Excellon NC drill files.
+- **RS-274X Gerber & Excellon Drill Generator (`src/ecad/gerber.ts`)**: `generateManufacturingFiles(layout: PCBLayout)` emits standard RS-274X Gerber `.gbr` copper (`F.Cu`, `B.Cu`), silkscreen (`F.SilkS`), solder mask (`F.Mask`), board outline (`Edge.Cuts`) layers (`%ADD...*%`, `D01`/`D02`/`D03`), and Excellon NC drill (`.xln`) manufacturing files.
 - **PCB Netlist & Ratsnest (`src/ecad/netlist.ts`)**: Extracts component footprints, pads, nets, and minimum spanning tree ratsnest connectivity.
 - **Interactive & A\* Autorouter (`src/ecad/engine/router.ts`)**: `PCBRouter` supports grid-based obstacle-avoiding A\* trace routing, interactive push-and-shove / walkaround modes, via insertion, and configurable track width/clearance rules (`RoutingRules`).
 - **Design Rule Checking (`src/ecad/engine/drc.ts`)**: `runDRC` verifies copper-to-copper clearance, minimum trace width, annular ring width, drill-to-drill spacing, board edge keepouts, and unrouted net completeness (`DRCResult`, `DRCViolation`).
@@ -68,7 +68,7 @@ import {
   translate,
   verifyAssemblyClearance,
 } from "@modelscript/cad";
-import { PCBRouter, parseGerber, runDRC } from "@modelscript/cad/ecad";
+import { generateManufacturingFiles, PCBRouter, runDRC, type PCBLayout } from "@modelscript/cad/ecad";
 
 // 1. Construct parametric CSG geometry and export to ISO 10303-21 STEP
 const plate = box({ width: 120, height: 80, depth: 10, name: "BasePlate" });
@@ -93,9 +93,17 @@ const stackResult = stackVerifier.analyze({
   environment: { deltaTemperatureK: 65 },
 });
 
-// 3. Parse Gerber layer and run PCB Design Rule Check (DRC)
-const topCopper = parseGerber(gerberSourceText);
-const drcReport = runDRC({ traces: topCopper.traces, pads: topCopper.pads, vias: [] });
+// 3. Generate RS-274X Gerber & Excellon drill files and run PCB Design Rule Check (DRC)
+const layout: PCBLayout = {
+  boardWidth: 80,
+  boardHeight: 50,
+  components: [],
+  traces: [],
+  vias: [],
+  ratsnest: [],
+};
+const manufacturingFiles = generateManufacturingFiles(layout);
+const drcReport = runDRC(layout);
 ```
 
 ---

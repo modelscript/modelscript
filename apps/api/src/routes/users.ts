@@ -6,7 +6,13 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { defaultArchiveExportLimiter } from "../middleware/archive-limiter.js";
-import { JWT_SECRET, extractTokenFromRequest, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import {
+  JWT_SECRET,
+  extractTokenFromRequest,
+  optionalAuth,
+  requireAuth,
+  requireTokenScope,
+} from "../middleware/auth-middleware.js";
 import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
@@ -84,6 +90,7 @@ export function usersRouter(
   archiveQueue: ArchiveQueue = defaultArchiveQueue,
 ): Router {
   const router = createRouter();
+  const requireAccountWriteScope = requireTokenScope("account:write");
 
   /**
    * GET /api/v1/users/suggestions
@@ -565,7 +572,7 @@ export function usersRouter(
    * POST /api/v1/users/me/verify-fields
    * Verifies profile metadata fields via rel="me" link backlink check or ORCID identifier validation.
    */
-  router.post("/me/verify-fields", requireAuth, async (req: Request, res: Response) => {
+  router.post("/me/verify-fields", requireAuth, requireAccountWriteScope, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const user = database.getUserById(userId);
     const fedInfo = database.getUserFederationInfo(userId);
@@ -591,47 +598,51 @@ export function usersRouter(
     const canonicalProfileUrl = `${baseUrl}/@${user.username}`;
     const orcidRegex = /^(?:https?:\/\/orcid\.org\/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$/i;
 
-    const verifiedFields: Array<{ name: string; value: string; verified_at?: string | null }> = [];
-    for (const field of fields.slice(0, 8)) {
-      const name = String(field.name || "")
-        .trim()
-        .slice(0, 64);
-      const value = String(field.value || "")
-        .trim()
-        .slice(0, 512);
-      if (!name || !value) continue;
+    const rawCandidates = fields.slice(0, 8);
+    const verifiedResults = await Promise.all(
+      rawCandidates.map(async (field) => {
+        const name = String(field.name || "")
+          .trim()
+          .slice(0, 64);
+        const value = String(field.value || "")
+          .trim()
+          .slice(0, 512);
+        if (!name || !value) return null;
 
-      let verifiedAt: string | null = null;
+        let verifiedAt: string | null = null;
 
-      // 1. Check ORCID format
-      if (orcidRegex.test(value)) {
-        verifiedAt = new Date().toISOString();
-      } else if (/^https?:\/\//i.test(value)) {
-        // 2. Check rel="me" backlink on remote HTML page
-        try {
-          const resp = await safePublicFetch(value, {
-            headers: { Accept: "text/html,application/xhtml+xml" },
-          });
-          if (resp.ok) {
-            const html = await resp.text();
-            const hasRelMe =
-              (html.includes(actorUrl) ||
-                html.includes(profilePageUrl) ||
-                html.includes(canonicalProfileUrl) ||
-                html.includes(`/@${user.username}`) ||
-                html.includes(`/users/${user.username}`)) &&
-              /rel=["'][^"']*\bme\b[^"']*["']/i.test(html);
-            if (hasRelMe) {
-              verifiedAt = new Date().toISOString();
+        // 1. Check ORCID format
+        if (orcidRegex.test(value)) {
+          verifiedAt = new Date().toISOString();
+        } else if (/^https?:\/\//i.test(value)) {
+          // 2. Check rel="me" backlink on remote HTML page
+          try {
+            const resp = await safePublicFetch(value, {
+              headers: { Accept: "text/html,application/xhtml+xml" },
+            });
+            if (resp.ok) {
+              const fullText = await resp.text();
+              const html = fullText.slice(0, 512 * 1024);
+              const hasRelMe =
+                (html.includes(actorUrl) ||
+                  html.includes(profilePageUrl) ||
+                  html.includes(canonicalProfileUrl) ||
+                  html.includes(`/@${user.username}`) ||
+                  html.includes(`/users/${user.username}`)) &&
+                /rel=["'][^"']*\bme\b[^"']*["']/i.test(html);
+              if (hasRelMe) {
+                verifiedAt = new Date().toISOString();
+              }
             }
+          } catch {
+            // Network or SSRF rejection leaves verifiedAt unchanged
           }
-        } catch {
-          // Network or SSRF rejection leaves verifiedAt unchanged
         }
-      }
 
-      verifiedFields.push({ name, value, verified_at: verifiedAt });
-    }
+        return { name, value, verified_at: verifiedAt };
+      }),
+    );
+    const verifiedFields = verifiedResults.filter((item): item is NonNullable<typeof item> => item !== null);
 
     database.updateProfile(userId, { profile_fields: verifiedFields });
     res.json({ success: true, profile_fields: verifiedFields });
@@ -729,7 +740,7 @@ export function usersRouter(
    * POST /api/v1/users/me/aliases
    * Configures ActivityPub `alsoKnownAs` identity aliases required before incoming account migration (`Move`).
    */
-  router.post("/me/aliases", requireAuth, (req: Request, res: Response) => {
+  router.post("/me/aliases", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const rawAliases = req.body?.alsoKnownAs ?? req.body?.also_known_as ?? req.body?.aliases ?? [];
     if (!Array.isArray(rawAliases)) {
       res.status(400).json({ error: "alsoKnownAs must be an array of actor URIs" });
@@ -743,7 +754,7 @@ export function usersRouter(
    * POST /api/v1/users/me/move
    * Initiates an outbound ActivityPub `Move` migration to a target account URI.
    */
-  router.post("/me/move", requireAuth, (req: Request, res: Response) => {
+  router.post("/me/move", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const targetActorUrl = String(req.body?.targetActorUrl || req.body?.target_actor_url || "").trim();
     if (!targetActorUrl) {
@@ -810,21 +821,28 @@ export function usersRouter(
     const listType = String(req.query["type"] || "following").toLowerCase();
 
     if (format === "csv") {
+      const sanitizeCsvCell = (val: string): string => {
+        const clean = String(val ?? "").replace(/[\r\n]+/g, " ");
+        if (/^[=+\-@\t]/.test(clean)) {
+          return `'${clean}`;
+        }
+        return clean;
+      };
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       if (listType === "blocks") {
         res.setHeader("Content-Disposition", 'attachment; filename="blocked_accounts.csv"');
-        res.send(["Account address", ...graph.blocks].join("\n"));
+        res.send(["Account address", ...graph.blocks.map(sanitizeCsvCell)].join("\n"));
         return;
       }
       if (listType === "mutes") {
         res.setHeader("Content-Disposition", 'attachment; filename="muted_accounts.csv"');
-        res.send(["Account address", ...graph.mutes].join("\n"));
+        res.send(["Account address", ...graph.mutes.map(sanitizeCsvCell)].join("\n"));
         return;
       }
       res.setHeader("Content-Disposition", 'attachment; filename="following_accounts.csv"');
       const lines = [
         "Account address,Show boosts,Notify on new posts,Languages",
-        ...graph.following.map((addr) => `${addr},true,false,`),
+        ...graph.following.map((addr) => `${sanitizeCsvCell(addr)},true,false,`),
       ];
       res.send(lines.join("\n"));
       return;
@@ -837,7 +855,7 @@ export function usersRouter(
    * POST /api/v1/users/me/social-graph/import
    * Imports following, blocks, or mutes from JSON arrays or Mastodon CSV text.
    */
-  router.post("/me/social-graph/import", requireAuth, (req: Request, res: Response) => {
+  router.post("/me/social-graph/import", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const { following, blocks, mutes, csv, type, mode } = req.body || {};
     let parsedFollowing: string[] | undefined = Array.isArray(following) ? following.map(String) : undefined;
     let parsedBlocks: string[] | undefined = Array.isArray(blocks) ? blocks.map(String) : undefined;
@@ -985,44 +1003,50 @@ export function usersRouter(
    * POST /api/v1/users/me/export
    * Asynchronous queue trigger for GDPR Art. 20 / CCPA data archives.
    */
-  router.post("/me/export", requireAuth, defaultArchiveExportLimiter.middleware(), (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const user = database.getUserById(userId);
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
+  router.post(
+    "/me/export",
+    requireAuth,
+    requireAccountWriteScope,
+    defaultArchiveExportLimiter.middleware(),
+    (req: Request, res: Response) => {
+      const userId = req.user!.id;
+      const user = database.getUserById(userId);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
 
-    const format = (req.body?.format || req.query["format"] || "zip") === "json" ? "json" : "zip";
-    const job = archiveQueue.enqueue(database, userId, user.username, format);
+      const format = (req.body?.format || req.query["format"] || "zip") === "json" ? "json" : "zip";
+      const job = archiveQueue.enqueue(database, userId, user.username, format);
 
-    database.logAudit({
-      actorId: userId,
-      action: "gdpr_data_archive_job_enqueued",
-      resourceType: "user",
-      resourceId: String(userId),
-      details: { jobId: job.id, format, queuePosition: job.queuePosition },
-    });
+      database.logAudit({
+        actorId: userId,
+        action: "gdpr_data_archive_job_enqueued",
+        resourceType: "user",
+        resourceId: String(userId),
+        details: { jobId: job.id, format, queuePosition: job.queuePosition },
+      });
 
-    res.status(202).json({
-      success: true,
-      job: {
-        id: job.id,
-        status: job.status,
-        queuePosition: job.queuePosition,
-        format: job.format,
-        createdAt: job.createdAt,
+      res.status(202).json({
+        success: true,
+        job: {
+          id: job.id,
+          status: job.status,
+          queuePosition: job.queuePosition,
+          format: job.format,
+          createdAt: job.createdAt,
+          concurrency: archiveQueue.getConcurrency(),
+        },
         concurrency: archiveQueue.getConcurrency(),
-      },
-      concurrency: archiveQueue.getConcurrency(),
-    });
-  });
+      });
+    },
+  );
 
   /**
    * GET /api/v1/users/me/export/status
    * Polls the status of the user's latest asynchronous archive job.
    */
-  router.get("/me/export/status", requireAuth, (req: Request, res: Response) => {
+  router.get("/me/export/status", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const jobId = req.query["jobId"] as string | undefined;
     const job = jobId ? archiveQueue.getJob(jobId) : archiveQueue.getLatestUserJob(userId);
@@ -1055,7 +1079,7 @@ export function usersRouter(
    * GET /api/v1/users/me/export/download
    * Streams a completed asynchronous archive from staging storage.
    */
-  router.get("/me/export/download", requireAuth, (req: Request, res: Response) => {
+  router.get("/me/export/download", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const jobId = req.query["jobId"] as string | undefined;
     const job = jobId ? archiveQueue.getJob(jobId) : archiveQueue.getLatestUserJob(userId);
@@ -1076,42 +1100,48 @@ export function usersRouter(
    * GDPR Article 20: Right to Data Portability (synchronous download route).
    * Exports an interactive Twitter-style ZIP archive with offline HTML viewer or raw JSON.
    */
-  router.get("/me/export", requireAuth, defaultArchiveExportLimiter.middleware(), (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const format = (req.query["format"] as string)?.toLowerCase();
-    const isZip = format === "zip" || (!format && req.headers.accept === "application/zip");
+  router.get(
+    "/me/export",
+    requireAuth,
+    requireAccountWriteScope,
+    defaultArchiveExportLimiter.middleware(),
+    (req: Request, res: Response) => {
+      const userId = req.user!.id;
+      const format = (req.query["format"] as string)?.toLowerCase();
+      const isZip = format === "zip" || (!format && req.headers.accept === "application/zip");
 
-    database.logAudit({
-      actorId: userId,
-      action: "gdpr_data_archive_exported",
-      resourceType: "user",
-      resourceId: String(userId),
-      details: { format: isZip ? "zip" : "json" },
-    });
+      database.logAudit({
+        actorId: userId,
+        action: "gdpr_data_archive_exported",
+        resourceType: "user",
+        resourceId: String(userId),
+        details: { format: isZip ? "zip" : "json" },
+      });
 
-    if (isZip) {
-      const zipBuffer = generateUserArchiveZip(database, userId);
-      if (!zipBuffer) {
-        res.status(404).json({ error: "User not found" });
+      if (isZip) {
+        const zipBuffer = generateUserArchiveZip(database, userId);
+        if (!zipBuffer) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+
+        const user = database.getUserById(userId);
+        const username = user?.username || `user-${userId}`;
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader("Content-Disposition", `attachment; filename="modelscript-archive-${username}.zip"`);
+        res.send(zipBuffer);
         return;
       }
 
-      const user = database.getUserById(userId);
-      const username = user?.username || `user-${userId}`;
-      res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="modelscript-archive-${username}.zip"`);
-      res.send(zipBuffer);
-      return;
-    }
-
-    const exportBundle = gatherUserDataBundle(database, userId);
-    if (!exportBundle) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-    res.setHeader("Content-Disposition", `attachment; filename="modelscript-user-export-${userId}.json"`);
-    res.json(exportBundle);
-  });
+      const exportBundle = gatherUserDataBundle(database, userId);
+      if (!exportBundle) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      res.setHeader("Content-Disposition", `attachment; filename="modelscript-user-export-${userId}.json"`);
+      res.json(exportBundle);
+    },
+  );
 
   /**
    * POST /api/v1/users/me/appeals
@@ -1507,7 +1537,7 @@ export function usersRouter(
   /**
    * POST /api/v1/users/me/bots
    */
-  router.post("/me/bots", requireAuth, (req: Request, res: Response) => {
+  router.post("/me/bots", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const { username, display_name, bio, avatar_url, scopes, system_prompt, model, api_key, endpoint_url } = req.body;
 
@@ -1575,7 +1605,7 @@ export function usersRouter(
   /**
    * PATCH /api/v1/users/me/bots/:botId
    */
-  router.patch("/me/bots/:botId", requireAuth, (req: Request, res: Response) => {
+  router.patch("/me/bots/:botId", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const botId = parseInt(req.params["botId"] as string, 10);
 
@@ -1646,7 +1676,7 @@ export function usersRouter(
    * POST /api/v1/users/me/bots/:botId/rotate-token
    * Regenerates and hashes a fresh bearer token for the bot, invalidating the previous token.
    */
-  router.post("/me/bots/:botId/rotate-token", requireAuth, (req: Request, res: Response) => {
+  router.post("/me/bots/:botId/rotate-token", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const botId = parseInt(req.params["botId"] as string, 10);
 
@@ -1685,7 +1715,7 @@ export function usersRouter(
   /**
    * DELETE /api/v1/users/me/bots/:botId
    */
-  router.delete("/me/bots/:botId", requireAuth, (req: Request, res: Response) => {
+  router.delete("/me/bots/:botId", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const botId = parseInt(req.params["botId"] as string, 10);
 
@@ -1709,10 +1739,22 @@ export function usersRouter(
     }
     try {
       const allRepos = database.getUserRepos(targetUser.id);
-      const canViewPrivate = req.user?.id === targetUser.id || req.user?.account_type === "admin";
+      const isAdmin =
+        req.user?.account_type === "admin" || req.user?.accountType === "admin" || req.user?.role === "admin";
+      const canViewPrivate = req.user?.id === targetUser.id || isAdmin;
+      const canViewInternal =
+        canViewPrivate ||
+        (Boolean(req.user) &&
+          req.user?.account_type !== "community_federated" &&
+          req.user?.accountType !== "community_federated");
       const repos = canViewPrivate
         ? allRepos
-        : allRepos.filter((r) => (r as { visibility?: string | undefined }).visibility !== "private");
+        : allRepos.filter((r) => {
+            const vis = (r as { visibility?: string | undefined }).visibility;
+            if (vis === "private") return false;
+            if (vis === "internal" && !canViewInternal) return false;
+            return true;
+          });
       res.json({ repos });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user repositories" });

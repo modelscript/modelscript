@@ -1,3 +1,8 @@
+---
+title: "SSP (System Structure and Parameterization)"
+description: "@modelscript/ssp (languages/ssp) implements the Modelica Association SSP 1.0 / 2.0 standard for packaging and coupling Functional Mock-up Units (FMUs) into multi-domain Co-Simulation architectures."
+---
+
 # SSP (System Structure and Parameterization)
 
 `@modelscript/ssp` (`languages/ssp`) implements the Modelica Association **SSP 1.0 / 2.0** standard for packaging and coupling Functional Mock-up Units (FMUs) into multi-domain Co-Simulation architectures.

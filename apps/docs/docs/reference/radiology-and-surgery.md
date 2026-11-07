@@ -1,3 +1,8 @@
+---
+title: Radiology, Radiation Oncology & Computer-Assisted Surgery Reference
+description: Clinical engineering reference for OpenSim biomechanics, DICOM-RT dosimetry, CellML electrophysiology, FEBio soft-tissue FEA, NIfTI/NRRD imaging, TOPAS proton therapy, 3MF surgical guides, and OpenIGTLink navigation.
+---
+
 # Radiology, Radiation Oncology & Computer-Assisted Surgery Reference
 
 ModelScript provides first-class polyglot compilation, static safety verification (`M9101`–`M9910`), numerical simulation, and cross-domain projections for **Radiology, Radiation Oncology, Biomechanics, and Computer-Assisted Surgery (CAS)**. All nine clinical engineering packages lower directly into the linear-memory `DAEBuilder` arena and interoperate with Modelica 3.x, SysML v2, OpenSCAD, ISO 10303-21 STEP, CalculiX- and Abaqus-compatible `.inp`, SBML, and ROS/Gazebo URDF.
@@ -76,18 +81,18 @@ Models DICOM-RT treatment plans, anatomical ROI contour stacks, linac Multi-Leaf
 
 ### Diagnostic Rules (`M9201`–`M9210`)
 
-| Code    | Rule ID                                  | Severity  | Description                                                                                                |
-| :------ | :--------------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
-| `M9201` | `dicom-rt-missing-target-volume`         | `error`   | Plan contains no clinical target volume ROI (`PTV`, `CTV`, or `GTV`).                                      |
-| `M9202` | `dicom-rt-mlc-leaf-overlap`              | `error`   | Opposite MLC leaf pair violates minimum physical gap ($\text{bankB} - \text{bankA} < 0.5\text{ mm}$).      |
-| `M9203` | `dicom-rt-mlc-speed-exceeded`            | `error`   | MLC leaf speed between consecutive control points exceeds physical motor limit ($25.0\text{ mm/s}$).       |
-| `M9204` | `dicom-rt-gantry-couch-collision`        | `error`   | Non-coplanar couch angle ($                                                                                | \theta\_{\text{couch}} | > 15^\circ$) combined with lateral/posterior gantry angle enters the collision hazard zone. |
-| `M9205` | `dicom-rt-oar-dose-constraint-violated`  | `error`   | Organ-at-Risk (`ORGAN`) DVH exceeds clinical QUANTEC `maxDoseLimitGy` or `meanDoseLimitGy`.                |
-| `M9206` | `dicom-rt-non-monotonic-cum-meterset`    | `error`   | Control point `cumulativeMetersetWeight` sequence is not monotonically non-decreasing from `0.0` to `1.0`. |
-| `M9207` | `dicom-rt-unclosed-roi-contour`          | `error`   | `CLOSED_PLANAR` contour slice contains fewer than 3 vertices.                                              |
-| `M9208` | `dicom-rt-unresolved-frame-of-reference` | `error`   | `RTSTRUCT` or `RTDOSE` `FrameOfReferenceUID` does not match the `RTPLAN` `FrameOfReferenceUID`.            |
-| `M9209` | `dicom-rt-invalid-beam-meterset`         | `error`   | `TREATMENT` beam specifies `metersetMu <= 0` or `energyMeV <= 0`.                                          |
-| `M9210` | `dicom-rt-ptv-underdosage`               | `warning` | Target PTV $D_{95\%}$ is less than $95\%$ of `prescribedDoseGy`.                                           |
+| Code    | Rule ID                                  | Severity  | Description                                                                                                                                                |
+| :------ | :--------------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `M9201` | `dicom-rt-missing-target-volume`         | `error`   | Plan contains no clinical target volume ROI (`PTV`, `CTV`, or `GTV`).                                                                                      |
+| `M9202` | `dicom-rt-mlc-leaf-overlap`              | `error`   | Opposite MLC leaf pair violates minimum physical gap ($\text{bankB} - \text{bankA} < 0.5\text{ mm}$).                                                      |
+| `M9203` | `dicom-rt-mlc-speed-exceeded`            | `error`   | MLC leaf speed between consecutive control points exceeds physical motor limit ($25.0\text{ mm/s}$).                                                       |
+| `M9204` | `dicom-rt-gantry-couch-collision`        | `error`   | Non-coplanar couch angle ($\lvert \theta_{\text{couch}} \rvert > 15^\circ$) combined with lateral/posterior gantry angle enters the collision hazard zone. |
+| `M9205` | `dicom-rt-oar-dose-constraint-violated`  | `error`   | Organ-at-Risk (`ORGAN`) DVH exceeds clinical QUANTEC `maxDoseLimitGy` or `meanDoseLimitGy`.                                                                |
+| `M9206` | `dicom-rt-non-monotonic-cum-meterset`    | `error`   | Control point `cumulativeMetersetWeight` sequence is not monotonically non-decreasing from `0.0` to `1.0`.                                                 |
+| `M9207` | `dicom-rt-unclosed-roi-contour`          | `error`   | `CLOSED_PLANAR` contour slice contains fewer than 3 vertices.                                                                                              |
+| `M9208` | `dicom-rt-unresolved-frame-of-reference` | `error`   | `RTSTRUCT` or `RTDOSE` `FrameOfReferenceUID` does not match the `RTPLAN` `FrameOfReferenceUID`.                                                            |
+| `M9209` | `dicom-rt-invalid-beam-meterset`         | `error`   | `TREATMENT` beam specifies `metersetMu <= 0` or `energyMeV <= 0`.                                                                                          |
+| `M9210` | `dicom-rt-ptv-underdosage`               | `warning` | Target PTV $D_{95\%}$ is less than $95\%$ of `prescribedDoseGy`.                                                                                           |
 
 ---
 
@@ -152,10 +157,10 @@ $$\begin{bmatrix} x_{\text{RAS}} \\ y_{\text{RAS}} \\ z_{\text{RAS}} \\ 1 \end{b
 ### Diagnostic Rules (`M9501`–`M9510`)
 
 | Code    | Rule ID                                 | Severity  | Description                                                                                                                                                 |
-| :------ | :-------------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------ |
+| :------ | :-------------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `M9501` | `nifti-invalid-dimensions`              | `error`   | Volume dimension `dim[0]` is outside `[1, 7]` or spatial dimensions $n_x, n_y, n_z \le 0$.                                                                  |
 | `M9502` | `nifti-non-positive-voxel-spacing`      | `error`   | Voxel spacing `pixdim[1..3]` or NRRD `space directions` norm is $\le 0\text{ mm}$.                                                                          |
-| `M9503` | `nifti-singular-affine-transform`       | `error`   | $4 \times 4$ `sform` affine transformation matrix is singular ($                                                                                            | \det(\mathbf{A}) | < 10^{-9}$). |
+| `M9503` | `nifti-singular-affine-transform`       | `error`   | $4 \times 4$ `sform` affine transformation matrix is singular ($\lvert \det(\mathbf{A}) \rvert < 10^{-9}$).                                                 |
 | `M9504` | `nifti-invalid-quaternion-norm`         | `error`   | Quaternion parameters satisfy $b^2 + c^2 + d^2 > 1.0$.                                                                                                      |
 | `M9505` | `nifti-qform-sform-handedness-mismatch` | `error`   | Active `qform` and `sform` transforms have opposite coordinate handedness ($\text{sign}(q_{\text{fac}}) \ne \text{sign}(\det(\mathbf{A}_{\text{sform}}))$). |
 | `M9506` | `nifti-zero-intensity-scale-slope`      | `error`   | `scl_slope` is explicitly `0` while intensity scaling is active.                                                                                            |

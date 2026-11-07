@@ -1,3 +1,8 @@
+---
+title: "PSCAD & Electromagnetic Transients (.pscx, .pslx, .pswx, .psmx, .psout, .cfg, .dat)"
+description: "The @modelscript/pscad language plugin (languages/pscad) provides native support for PSCAD™ / EMTDC™ projects, multi-project workspaces, component libraries, and IEEE C37.111 COMTRADE transient wav..."
+---
+
 # PSCAD & Electromagnetic Transients (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`)
 
 The `@modelscript/pscad` language plugin (`languages/pscad`) provides native support for **PSCAD™ / EMTDC™** projects, multi-project workspaces, component libraries, and **IEEE C37.111 COMTRADE** transient waveform recordings. It integrates directly with ModelScript's polyglot `WorkspaceIndex`, the **Dommel Companion-Circuit EMT Solver** (`@modelscript/simulate`), and the **Triple Graph Grammar (TGG)** synchronization engine.

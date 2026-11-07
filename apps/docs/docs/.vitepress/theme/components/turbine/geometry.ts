@@ -609,7 +609,7 @@ export function latheGeometry(
       let cb = 1.0;
 
       if (material === "nacelle") {
-        // Polished leading-edge nose rim flowing seamlessly into the brushed titanium fan cowl
+        // Polished leading-edge nose rim flowing smoothly into the brushed titanium fan cowl
         const lip = 1 - smooth01(-2.88, -2.55, x);
         const lipSeam = Math.exp(-Math.pow((x + 2.66) / 0.012, 2));
         const aftNozzle = smooth01(0.18, 0.42, x);

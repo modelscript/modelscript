@@ -21,6 +21,8 @@ const SECTION_MAP: Record<string, { label: string; link: string }> = {
   languages: { label: "Languages", link: "/languages/overview" },
   industries: { label: "Industries", link: "/industries" },
   reference: { label: "Reference", link: "/reference/linter-rules" },
+  pricing: { label: "Pricing & Licensing", link: "/pricing" },
+  trademark: { label: "Trademark Policy", link: "/trademark" },
 };
 
 const cleanRoute = computed(() => {
@@ -71,6 +73,7 @@ function extractPageMarkdown(): string {
     if (docRoot) {
       const blocks = docRoot.querySelectorAll("h1, h2, h3, h4, p, pre, ul, ol, table");
       for (const el of blocks) {
+        if (el.closest(".cap-matrix-container, .lang-example-card, .home-ai")) continue;
         const tag = el.tagName.toLowerCase();
         const text = (el.textContent || "").replace(/\u200b/g, "").trim();
         if (!text) continue;
@@ -78,8 +81,12 @@ function extractPageMarkdown(): string {
         else if (tag === "h2") lines.push(`## ${text}`, "");
         else if (tag === "h3") lines.push(`### ${text}`, "");
         else if (tag === "h4") lines.push(`#### ${text}`, "");
-        else if (tag === "pre") lines.push("```", text, "```", "");
-        else if (tag === "ul" || tag === "ol") {
+        else if (tag === "pre") {
+          const langWrapper = el.closest('[class*="language-"]');
+          const langMatch = langWrapper?.className.match(/language-([a-z0-9_-]+)/i);
+          const fenceLang = langMatch ? langMatch[1] : "";
+          lines.push(`\`\`\`${fenceLang}`, text, "```", "");
+        } else if ((tag === "ul" || tag === "ol") && !el.closest("li, td, th")) {
           const items = el.querySelectorAll(":scope > li");
           items.forEach((li, idx) => {
             const liText = (li.textContent || "").trim().replace(/\s+/g, " ");

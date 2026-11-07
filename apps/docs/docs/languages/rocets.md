@@ -1,3 +1,8 @@
+---
+title: "NASA ROCETS Liquid Propulsion Modeling (.roc, .deck)"
+description: "The @modelscript/rocets package (languages/rocets) provides native compilation, simulation, and analysis for NASA ROCETS (Rocket Engine Transient Simulator) liquid propellant rocket engine decks an..."
+---
+
 # NASA ROCETS Liquid Propulsion Modeling (`.roc`, `.deck`)
 
 The `@modelscript/rocets` package (`languages/rocets`) provides native compilation, simulation, and analysis for **NASA ROCETS (Rocket Engine Transient Simulator)** liquid propellant rocket engine decks and turbomachinery maps. It delivers multi-syntax parsing, embedded Fortran user routine bridge via `@modelscript/fortran`, pre-flight static propulsion diagnostics (`M8001`–`M8014`), direct continuous DAE arena lowering into `@modelscript/runtime` (`IDaeBuilder`), a coupled steady-state power and flow balance solver, dynamic start/shutdown transient integration, multi-domain projections to **Modelica 3.x** and **FMI SSP**, and interactive Piping & Instrumentation Diagram (P&ID) vector schematic generation.

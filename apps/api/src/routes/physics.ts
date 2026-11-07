@@ -21,6 +21,7 @@ import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 
 const PHYSICS_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
 
@@ -56,7 +57,13 @@ function geometryCachePath(hash: string): string {
   return targetPath;
 }
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) => cb(null, `msx-physics-upload-${crypto.randomBytes(8).toString("hex")}.tmp`),
+  }),
+  limits: { fileSize: 200 * 1024 * 1024 },
+});
 
 export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
@@ -67,26 +74,36 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   // ── Upload .step geometry with CAS deduplication ──
 
   router.post("/physics/upload", upload.single("file"), (req, res) => {
-    if (process.env["NODE_ENV"] === "production" && !req.user) {
-      return res.status(401).json({ error: "Authentication required to upload geometry." });
+    const tmpPath = req.file?.path;
+    try {
+      if (process.env["NODE_ENV"] === "production" && !req.user) {
+        return res.status(401).json({ error: "Authentication required to upload geometry." });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded." });
+      }
+
+      const fileBuffer = req.file.buffer ?? (tmpPath ? fs.readFileSync(tmpPath) : Buffer.alloc(0));
+      const hash = sha256(fileBuffer);
+      const cachedPath = geometryCachePath(hash);
+
+      if (fs.existsSync(cachedPath)) {
+        return res.json({ hash, cached: true, message: "Geometry already cached." });
+      }
+
+      const dir = path.dirname(cachedPath);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(cachedPath, fileBuffer);
+
+      res.json({ hash, cached: false, message: "Geometry uploaded and cached." });
+      return;
+    } finally {
+      if (tmpPath) {
+        try {
+          if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+        } catch {}
+      }
     }
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded." });
-    }
-
-    const hash = sha256(req.file.buffer);
-    const cachedPath = geometryCachePath(hash);
-
-    if (fs.existsSync(cachedPath)) {
-      return res.json({ hash, cached: true, message: "Geometry already cached." });
-    }
-
-    const dir = path.dirname(cachedPath);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(cachedPath, req.file.buffer);
-
-    res.json({ hash, cached: false, message: "Geometry uploaded and cached." });
-    return;
   });
 
   // ── Check if a geometry hash already exists (HEAD request) ──
@@ -239,12 +256,24 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         return res.status(400).json({ error: "Invalid result directory." });
       }
 
-      // Pre-flight quota check
+      // Pre-flight sandboxing & quota check
       const profile = getComputeProfile(config["profile"] as string | undefined);
       const userId = resolveRequestUserId(req, database);
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
+      if (userId) {
+        const user = database.getUserById(userId);
+        const sandbox = checkComputeSandboxing(user);
+        if (sandbox.sandboxed) {
+          return res.status(403).json({
+            error: sandbox.error,
+            code: sandbox.code,
+            fallbackAvailable: sandbox.fallbackAvailable,
+          });
+        }
+      }
+      let estimatedCost = 0;
       if (userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
         if (!quota.allowed) {
@@ -256,6 +285,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
             profile: quota.profileId,
           });
         }
+        estimatedCost = quota.estimatedCost;
       }
 
       // Create job in the database
@@ -271,6 +301,25 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
           cached: true,
           resultDir,
         });
+      }
+
+      if (userId && estimatedCost > 0) {
+        const holdRes = database.holdUserCredits(
+          userId,
+          estimatedCost,
+          dbJobId,
+          `HPC Escrow Hold: Physics ${simType}`,
+          { profile: profile.id, simType },
+        );
+        if (!holdRes.success) {
+          database.updateJobStatus(dbJobId, "FAILED");
+          return res.status(402).json({
+            error: "Payment Required: Escrow Hold Failed",
+            message: holdRes.reason,
+            balance: holdRes.newBalance,
+            required: estimatedCost,
+          });
+        }
       }
 
       jobQueue.enqueue(`physics-${dbJobId}`, async () => {
@@ -356,11 +405,17 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
             costCredits: usage.costCredits,
           });
 
-          if (userId && usage.costCredits > 0) {
-            database.deductUserCredits(userId, usage.costCredits, dbJobId, `Physics ${simType} Simulation`, {
-              profile: profile.id,
-              ...usage,
-            });
+          if (userId) {
+            database.settleUserEscrow(
+              userId,
+              dbJobId,
+              Math.max(0, usage.costCredits || 0),
+              `Physics ${simType} Simulation`,
+              {
+                profile: profile.id,
+                ...usage,
+              },
+            );
           }
 
           database.updateJobStepStatus(currentStepId, "SUCCESS");
@@ -372,6 +427,13 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
           logStream.write(`\nERROR: ${err instanceof Error ? err.message : String(err)}\n`);
           if (currentStepId) database.updateJobStepStatus(currentStepId, "FAILED");
           database.updateJobStatus(dbJobId, "FAILED");
+          if (userId) {
+            database.releaseUserEscrow(
+              userId,
+              dbJobId,
+              err instanceof Error ? err.message : "Physics simulation failed",
+            );
+          }
         } finally {
           logStream.end();
           if (tmpDir && fs.existsSync(tmpDir)) {
@@ -405,8 +467,18 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
+      const camProfile = getComputeProfile(config["profile"] as string | undefined);
+      let estimatedCost = 0;
       if (userId) {
-        const camProfile = getComputeProfile(config["profile"] as string | undefined);
+        const user = database.getUserById(userId);
+        const sandbox = checkComputeSandboxing(user);
+        if (sandbox.sandboxed) {
+          return res.status(403).json({
+            error: sandbox.error,
+            code: sandbox.code,
+            fallbackAvailable: sandbox.fallbackAvailable,
+          });
+        }
         const quota = checkComputeQuota(userId, camProfile.id, database);
         if (!quota.allowed) {
           return res.status(402).json({
@@ -417,6 +489,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
             profile: quota.profileId,
           });
         }
+        estimatedCost = quota.estimatedCost;
       }
 
       let safeGeometryHash: string;
@@ -452,6 +525,21 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         });
       }
 
+      if (userId && estimatedCost > 0) {
+        const holdRes = database.holdUserCredits(userId, estimatedCost, dbJobId, "HPC Escrow Hold: CAM Generation", {
+          profile: camProfile.id,
+        });
+        if (!holdRes.success) {
+          database.updateJobStatus(dbJobId, "FAILED");
+          return res.status(402).json({
+            error: "Payment Required: Escrow Hold Failed",
+            message: holdRes.reason,
+            balance: holdRes.newBalance,
+            required: estimatedCost,
+          });
+        }
+      }
+
       fs.mkdirSync(resultDir, { recursive: true });
 
       // Convert to js path because TS files are transpiled to dist/ in production,
@@ -462,9 +550,17 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       const onCamStatus = (evt: { status: string; error?: string | undefined }) => {
         if (evt.status === "completed") {
           database.updateJobStatus(dbJobId, "SUCCESS");
+          if (userId) {
+            database.settleUserEscrow(userId, dbJobId, estimatedCost, "CAM Generation", {
+              profile: camProfile.id,
+            });
+          }
           jobQueue.off(`status:cam-${dbJobId}`, onCamStatus);
         } else if (evt.status === "failed") {
           database.updateJobStatus(dbJobId, "FAILED");
+          if (userId) {
+            database.releaseUserEscrow(userId, dbJobId, evt.error || "CAM generation failed");
+          }
           jobQueue.off(`status:cam-${dbJobId}`, onCamStatus);
         }
       };

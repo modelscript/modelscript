@@ -43,6 +43,7 @@ export interface FlatteningState {
   varPrefixCount?: number | undefined;
   overconstrainedConnections?: any;
   overconstrainedEquationIds?: Set<number> | undefined;
+  pendingFinalParamNames?: Set<string> | undefined;
 }
 
 export function getFlatteningState(dae: DAEBuilder, flattener?: any): FlatteningState {
@@ -310,6 +311,12 @@ export function getFlatteningState(dae: DAEBuilder, flattener?: any): Flattening
     },
     set overconstrainedEquationIds(val: Set<number> | undefined) {
       d.overconstrainedEquationIds = val;
+    },
+    get pendingFinalParamNames(): Set<string> | undefined {
+      return d.pendingFinalParamNames;
+    },
+    set pendingFinalParamNames(val: Set<string> | undefined) {
+      d.pendingFinalParamNames = val;
     },
   };
   d.flatteningState = state;

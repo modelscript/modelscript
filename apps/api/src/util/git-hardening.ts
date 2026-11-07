@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { execFileSync, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import type { IncomingMessage } from "node:http";
+import path from "node:path";
 import { Transform, type Readable } from "node:stream";
 import zlib from "node:zlib";
 
@@ -109,12 +111,29 @@ export function applyHardenedRepoConfig(
   repoPath: string,
   maxInputBytes: number = getReceivePackLimits().maxBytes,
 ): void {
-  const entries: Array<readonly [string, string]> = [
-    ...HARDENED_REPO_CONFIG,
-    ["receive.maxInputSize", String(maxInputBytes)],
-  ];
+  const markerPath = path.join(repoPath, ".msx-hardened-v1");
+  const configPath = path.join(repoPath, "config");
+  const expectedStamp = String(maxInputBytes);
+  try {
+    if (fs.existsSync(markerPath) && fs.existsSync(configPath)) {
+      const stamp = fs.readFileSync(markerPath, "utf-8").trim();
+      const cfg = fs.readFileSync(configPath, "utf-8");
+      if (stamp === expectedStamp && cfg.includes("hooksPath = /dev/null") && cfg.includes("fsckObjects = true")) {
+        return;
+      }
+    }
+  } catch {
+    // Fall through to full git config enforcement
+  }
+
+  const entries: Array<readonly [string, string]> = [...HARDENED_REPO_CONFIG, ["receive.maxInputSize", expectedStamp]];
   for (const [key, value] of entries) {
     execFileSync("git", ["-C", repoPath, "config", key, value], { env: gitSubprocessEnv(), stdio: "ignore" });
+  }
+  try {
+    fs.writeFileSync(markerPath, expectedStamp, "utf-8");
+  } catch {
+    // Non-fatal if repo directory is read-only
   }
 }
 

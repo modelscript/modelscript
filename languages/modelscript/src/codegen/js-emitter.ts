@@ -132,8 +132,10 @@ export class JsEmitter {
       case "VariableDeclaration": {
         const name = node.childForFieldName?.("name")?.text || "";
         const valNode = node.childForFieldName?.("value");
+        const isConst = node.child(0)?.text === "const" || node.text?.trimStart().startsWith("const ") === true;
+        const kw = isConst ? "const" : "let";
         if (valNode) {
-          return `let ${name} = ${this.emit(valNode)};`;
+          return `${kw} ${name} = ${this.emit(valNode)};`;
         }
         return `let ${name};`;
       }
@@ -143,6 +145,13 @@ export class JsEmitter {
         const op = node.childForFieldName?.("operator")?.text || "=";
         const valNode = node.childForFieldName?.("value");
         return `${this.emit(targetNode)} ${op} ${this.emit(valNode)};`;
+      }
+
+      case "ForUpdate": {
+        const targetNode = node.childForFieldName?.("target");
+        const op = node.childForFieldName?.("operator")?.text || "=";
+        const valNode = node.childForFieldName?.("value");
+        return `${this.emit(targetNode)} ${op} ${this.emit(valNode)}`;
       }
 
       case "ReturnStatement": {
@@ -177,7 +186,7 @@ export class JsEmitter {
         const bodyNode = node.childForFieldName?.("body");
         const initStr = initNode ? this.emit(initNode).replace(/;$/, "") : "";
         const condStr = condNode ? this.emit(condNode) : "";
-        const updateStr = updateNode ? this.emit(updateNode) : "";
+        const updateStr = updateNode ? this.emit(updateNode).replace(/;$/, "") : "";
         return `for (${initStr}; ${condStr}; ${updateStr}) ${this.emit(bodyNode)}`;
       }
 

@@ -187,4 +187,35 @@ test("Phase 5: WebAssembly Emitter & Linear Memory IR", async (t) => {
     // Result: 3 * 10000 + 306 * 10 + 102 = 30000 + 3060 + 102 = 33162
     assert.equal(wasmResult, 33162);
   });
+
+  await t.test(
+    "executes ForStatement with update step, short-circuit &&/||, and multiple FLWOR queries without local collision",
+    async () => {
+      const code = `
+      function loopAndShortCircuit(n: i32, denom: i32): i32 {
+        let sum: i32 = 0;
+        for (let i: i32 = 1; i <= n; i += 1) {
+          sum = sum + i;
+        }
+        // Short-circuit && prevents division by zero when denom == 0
+        if (denom != 0 && (100 / denom) > 10) {
+          sum += 1000;
+        }
+        // Short-circuit || prevents division by zero on RHS when first condition is true
+        if (denom == 0 || (100 / denom) > 0) {
+          sum += 100;
+        }
+        let arr1 = [1, 2, 3];
+        let arr2 = [10, 20];
+        let q1 = for x in arr1 return x * 2;
+        let q2 = for y in arr2 return y + 5;
+        return sum + q1[2] + q2[1];
+      }
+    `;
+
+      // sum(1..5) = 15, + 100 (from || short-circuit) + q1[2] (6) + q2[1] (25) = 146
+      const res = await compiler.executeWasm(code, "loopAndShortCircuit", [5, 0]);
+      assert.equal(res, 146);
+    },
+  );
 });

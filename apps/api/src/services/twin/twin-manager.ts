@@ -641,6 +641,7 @@ export class TwinManager {
     timestamp: number,
     channels: number[],
     db: LibraryDatabase,
+    skipDbUpdate: boolean = false,
   ): Promise<{
     timestamp: number;
     driftEvent: ReturnType<CusumDriftDetector["update"]>;
@@ -685,7 +686,7 @@ export class TwinManager {
           console.error(`Failed auto-adaptation for twin #${twinId}:`, err);
         }
       }
-    } else {
+    } else if (!skipDbUpdate) {
       db.updateTwinState(twinId, {
         lastTelemetryAt: nowIso,
       });

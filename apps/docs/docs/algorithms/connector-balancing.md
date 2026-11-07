@@ -1,3 +1,8 @@
+---
+title: "Acausal Connector Balancing & Stream Mixing"
+description: "Implementation: ConnectionSetResolver & IntUnionFind in languages/modelica/src/connections.ts"
+---
+
 # Acausal Connector Balancing & Stream Mixing
 
 **Implementation**: `ConnectionSetResolver` & `IntUnionFind` in [`languages/modelica/src/connections.ts`](https://github.com/modelscript/modelscript/tree/main/languages/modelica/src/connections.ts)

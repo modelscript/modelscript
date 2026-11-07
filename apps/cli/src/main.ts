@@ -167,7 +167,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       ["inspect <files..>", "info <files..>", "summary <files..>"],
-      "Inspect and summarize engineering models across any of the 44 supported languages",
+      "Inspect and summarize engineering models across any of the 68 supported languages",
       () => import("./commands/inspect.js"),
       "Inspect",
       ["info", "summary"],
@@ -579,7 +579,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "stdlib [action] [pack]",
-      "Manage, list, and synchronize polyglot standard libraries across 44 languages",
+      "Manage, list, and synchronize polyglot standard libraries across 68 languages",
       () => import("./commands/stdlib.js"),
       "Stdlib",
     ),

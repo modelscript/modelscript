@@ -964,11 +964,35 @@ export function adminRouter(
             (typeof contentWarning === "string" && contentWarning.trim()) || resolutionNotes || report.reason,
           );
         } else if ((action === "freeze_user" || action === "suspend_user") && targetUserId) {
+          const targetUser = database.getUserById(targetUserId);
+          const callerIsAdmin = req.user?.accountType === "admin" || req.user?.role === "admin";
+          if (
+            targetUser &&
+            (targetUser.account_type === "admin" || targetUser.account_type === "moderator") &&
+            !callerIsAdmin
+          ) {
+            res.status(403).json({
+              error: "Moderators cannot freeze or suspend administrator or moderator accounts.",
+            });
+            return;
+          }
           database.moderateUserAccount(targetUserId, {
             status: action === "suspend_user" ? "suspended" : "frozen",
             revokeSessions: true,
           });
         } else if (action === "restore_user" && targetUserId) {
+          const targetUser = database.getUserById(targetUserId);
+          const callerIsAdmin = req.user?.accountType === "admin" || req.user?.role === "admin";
+          if (
+            targetUser &&
+            (targetUser.account_type === "admin" || targetUser.account_type === "moderator") &&
+            !callerIsAdmin
+          ) {
+            res.status(403).json({
+              error: "Moderators cannot restore administrator or moderator accounts.",
+            });
+            return;
+          }
           database.moderateUserAccount(targetUserId, {
             status: "active",
             revokeSessions: false,

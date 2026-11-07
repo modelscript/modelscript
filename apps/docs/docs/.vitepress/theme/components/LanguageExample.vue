@@ -2,7 +2,6 @@
 <script setup lang="ts">
 import { useData } from "vitepress";
 import { computed, ref, watch } from "vue";
-import EXAMPLE_DATA from "../data/language-examples.generated.json";
 import { useAnsatzOrigin } from "../util/ansatz";
 import ModelScriptViewer from "./ModelScriptViewer.vue";
 import MsIcon from "./MsIcon.vue";
@@ -13,7 +12,7 @@ const props = defineProps<{
 
 const { ansatzOrigin } = useAnsatzOrigin();
 
-const { page, isDark } = useData();
+const { page, frontmatter, isDark } = useData();
 
 interface LanguageExampleItem {
   slug: string;
@@ -40,7 +39,9 @@ const currentSlug = computed<string>(() => {
 
 const example = computed<LanguageExampleItem | undefined>(() => {
   if (!currentSlug.value) return undefined;
-  return (EXAMPLE_DATA as LanguageExampleItem[]).find((item) => item.slug === currentSlug.value);
+  const injected = (frontmatter.value as { _example?: LanguageExampleItem })?._example;
+  if (injected && injected.slug === currentSlug.value) return injected;
+  return undefined;
 });
 
 type ViewMode = "split" | "code" | "diagram" | "live";
@@ -107,6 +108,45 @@ function resetViewport() {
   zoom.value = 1;
   panX.value = 0;
   panY.value = 0;
+}
+
+function onWheel(e: WheelEvent) {
+  const delta = -e.deltaY * 0.0012;
+  zoom.value = Math.min(2.5, Math.max(0.5, Number((zoom.value + delta).toFixed(2))));
+}
+
+const TOKEN_RE =
+  /(\/\/.*$|#.*$|--.*$|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(model|package|block|connector|record|function|equation|algorithm|parameter|constant|input|output|flow|stream|discrete|extends|import|within|connect|der|initial|when|then|elsewhen|else|if|for|loop|in|while|return|end|part|attribute|port|item|action|state|transition|requirement|constraint|satisfy|verify|calc|def|module|endmodule|electrical|ground|branch|subckt|ends|ac|dc|tran)\b|\b(Real|Integer|Boolean|String|StateSelect|Voltage|Current|Temperature|Pressure|Mass|Length|Time|Velocity|Force|Torque|Frequency|Resistance|Capacitance|Inductance)\b|(:=|=|\+|-|\*|\/|\^|==|<>|<=|>=|<|>)/gm;
+
+function escapeHtml(raw: string): string {
+  return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function highlightLine(line: string): string {
+  if (!line) return " ";
+  let out = "";
+  let lastIndex = 0;
+  TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TOKEN_RE.exec(line)) !== null) {
+    if (match.index > lastIndex) {
+      out += escapeHtml(line.slice(lastIndex, match.index));
+    }
+    const [full, comment, str, num, kw, typeTok, op] = match;
+    const escaped = escapeHtml(full);
+    if (comment !== undefined) out += `<span class="tok-comment">${escaped}</span>`;
+    else if (str !== undefined) out += `<span class="tok-string">${escaped}</span>`;
+    else if (num !== undefined) out += `<span class="tok-number">${escaped}</span>`;
+    else if (kw !== undefined) out += `<span class="tok-keyword">${escaped}</span>`;
+    else if (typeTok !== undefined) out += `<span class="tok-type">${escaped}</span>`;
+    else if (op !== undefined) out += `<span class="tok-op">${escaped}</span>`;
+    else out += escaped;
+    lastIndex = TOKEN_RE.lastIndex;
+  }
+  if (lastIndex < line.length) {
+    out += escapeHtml(line.slice(lastIndex));
+  }
+  return out;
 }
 
 function onPointerDown(e: PointerEvent) {
@@ -269,7 +309,7 @@ function onPointerUp(e: PointerEvent) {
             v-for="(line, idx) in codeLines"
             :key="idx"
             class="code-line"
-          ><span class="line-num">{{ idx + 1 }}</span><span class="line-text">{{ line || " " }}</span>
+          ><span class="line-num">{{ idx + 1 }}</span><span class="line-text" v-html="highlightLine(line)" />
 </span></code></pre>
         </div>
       </div>
@@ -306,6 +346,8 @@ function onPointerUp(e: PointerEvent) {
           @pointerup="onPointerUp"
           @pointercancel="onPointerUp"
           @lostpointercapture="onPointerUp"
+          @wheel.prevent="onWheel"
+          @dblclick="resetViewport"
           @dragstart.prevent
         >
           <div
@@ -313,7 +355,7 @@ function onPointerUp(e: PointerEvent) {
             :style="{ transform: canvasTransform }"
             v-html="activeSvg"
           />
-          <span class="diagram-pan-hint">Drag to pan · Click % to reset</span>
+          <span class="diagram-pan-hint">Drag to pan · Scroll to zoom · Double-click to reset</span>
         </div>
       </div>
     </div>
@@ -572,6 +614,53 @@ function onPointerUp(e: PointerEvent) {
   display: table-cell;
   white-space: pre;
   color: var(--vp-c-text-1);
+}
+
+.line-text :deep(.tok-comment) {
+  color: #64748b;
+  font-style: italic;
+}
+
+.line-text :deep(.tok-string) {
+  color: #059669;
+}
+
+.line-text :deep(.tok-number) {
+  color: #d97706;
+}
+
+.line-text :deep(.tok-keyword) {
+  color: #0284c7;
+  font-weight: 600;
+}
+
+.line-text :deep(.tok-type) {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.line-text :deep(.tok-op) {
+  color: var(--vp-c-text-2);
+}
+
+:global(.dark) .line-text :deep(.tok-comment) {
+  color: #64748b;
+}
+
+:global(.dark) .line-text :deep(.tok-string) {
+  color: #34d399;
+}
+
+:global(.dark) .line-text :deep(.tok-number) {
+  color: #fbbf24;
+}
+
+:global(.dark) .line-text :deep(.tok-keyword) {
+  color: #38bdf8;
+}
+
+:global(.dark) .line-text :deep(.tok-type) {
+  color: #c084fc;
 }
 
 .diagram-zoom-controls {

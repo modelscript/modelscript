@@ -114,3 +114,22 @@ console.log("Axial concentration profile:", sim.finalSpatialProfiles.C);
 const dae = lowerGpromsToDae(doc);
 const modelicaCode = gpromsToModelica(doc);
 ```
+
+---
+
+## Scripts
+
+| Command                | Description                                                           |
+| ---------------------- | --------------------------------------------------------------------- |
+| `npm run build`        | Build WASM parser (`node build.js`) and compile TypeScript to `dist/` |
+| `npm run build:parser` | Force-rebuild `parser.wasm` and generated bindings                    |
+| `npm test`             | Run gPROMS parser, linter, MOL PDE-DAE solver, and DAE lowering tests |
+| `npm run lint`         | Run ESLint across `src/` and `tests/`                                 |
+| `npm run typecheck`    | Run `tsc --noEmit` type verification                                  |
+| `npm run clean`        | Remove `dist/`, `src-gen/`, and `.wasm` build artifacts               |
+
+---
+
+## License
+
+`AGPL-3.0-or-later`

@@ -5,7 +5,7 @@
 
 `@modelscript/ee` contains the proprietary enterprise control-plane, air-gapped compliance appliance, and commercial licensing modules for ModelScript, licensed under `LicenseRef-ModelScript-Enterprise` (see [LICENSE](./LICENSE)).
 
-All 44 engineering language compilers, WebAssembly GLR parsers, the `DAEBuilder` simulation arena, the Nelson-Oppen semantic theory coordinator, and the Community Edition server/CLI/IDE outside `ee/` remain 100% open source under **AGPL-3.0-or-later**.
+All 68 engineering language compilers, WebAssembly GLR parsers, the `DAEBuilder` simulation arena, the Nelson-Oppen semantic theory coordinator, and the Community Edition server/CLI/IDE outside `ee/` remain 100% open source under **AGPL-3.0-or-later**.
 
 ---
 

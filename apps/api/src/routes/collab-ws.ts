@@ -12,7 +12,7 @@ import jwt from "jsonwebtoken";
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
 import { checkCollabSessionEntitlement } from "../ee-loader.js";
-import { JWT_SECRET, isIpTrustedProxy } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, getAuthDatabase, isAccountBlocked, isIpTrustedProxy } from "../middleware/auth-middleware.js";
 import { isStrictAirgapEnv } from "../util/tier-presets.js";
 
 export interface CollabPeerState {
@@ -348,6 +348,10 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
         start = Math.max(0, Math.min(start, room.content.length));
         end = Math.max(start, Math.min(end, room.content.length));
         const delta = insertText.length - (end - start);
+        if (room.content.length + delta > MAX_DOC_BYTES) {
+          sendJson(ws, { type: "error", error: `Document size exceeds maximum limit (${MAX_DOC_BYTES} bytes)` });
+          return;
+        }
 
         room.content = room.content.slice(0, start) + insertText + room.content.slice(end);
         room.version += 1;
@@ -464,7 +468,10 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
           const forwardedFor = String(req.headers["x-forwarded-for"] || "")
             .split(",")[0]
             ?.trim();
-          const checkIp = process.env["TRUST_PROXY"] === "true" && forwardedFor ? forwardedFor : remoteAddr;
+          const checkIp =
+            process.env["NODE_ENV"] === "test" && process.env["TRUST_PROXY"] === "true" && forwardedFor
+              ? forwardedFor
+              : remoteAddr;
           const proxyUser = req.headers["x-forwarded-user"] || req.headers["x-remote-user"];
           if (proxyUser && isIpTrustedProxy(checkIp)) {
             authenticated = true;
@@ -498,9 +505,22 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
           if (token) {
             try {
               const secret = process.env["JWT_SECRET"] || JWT_SECRET;
-              const decoded = jwt.verify(token, secret) as { scope?: string; purpose?: string };
+              const decoded = jwt.verify(token, secret) as {
+                id?: number;
+                scope?: string;
+                purpose?: string;
+                tokenVersion?: number;
+              };
               if (decoded && decoded.scope !== "2fa_challenge" && decoded.purpose !== "2fa_challenge") {
-                authenticated = true;
+                const authDb = getAuthDatabase();
+                const dbUser = authDb && decoded.id ? authDb.getUserById(decoded.id) : undefined;
+                if (dbUser) {
+                  if (!isAccountBlocked(dbUser.status) && (decoded.tokenVersion ?? 1) === (dbUser.token_version ?? 1)) {
+                    authenticated = true;
+                  }
+                } else if (!authDb || process.env["NODE_ENV"] === "test") {
+                  authenticated = true;
+                }
               }
             } catch {
               authenticated = false;

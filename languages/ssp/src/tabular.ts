@@ -31,28 +31,43 @@ function findXmlElement(root: XmlElement | null, predicate: (el: XmlElement) => 
   return null;
 }
 
+function escapeXmlAttr(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 /**
  * Extracts SSP Components (`<ssd:Component>`) into a tabular sheet.
  */
 export function extractSspComponentRows(xmlContent: string): TabularRow[] {
   const sys = parseSsd(xmlContent);
-  return sys.components.map((comp) => ({
-    id: comp.name,
-    cells: {
-      name: comp.name,
-      type: comp.type ?? "application/x-fmu-sharedlibrary",
-      source: comp.source,
-      inputs: comp.connectors
-        .filter((c) => c.kind === "input")
-        .map((c) => c.name)
-        .join(", "),
-      outputs: comp.connectors
-        .filter((c) => c.kind === "output")
-        .map((c) => c.name)
-        .join(", "),
-      connectorCount: comp.connectors.length,
-    },
-  }));
+  const rows: TabularRow[] = [];
+  const collectComponents = (s: ReturnType<typeof parseSsd>, prefix = "") => {
+    for (const comp of s.components) {
+      const compId = prefix ? `${prefix}.${comp.name}` : comp.name;
+      rows.push({
+        id: compId,
+        cells: {
+          name: compId,
+          type: comp.type ?? "application/x-fmu-sharedlibrary",
+          source: comp.source,
+          inputs: comp.connectors
+            .filter((c) => c.kind === "input")
+            .map((c) => c.name)
+            .join(", "),
+          outputs: comp.connectors
+            .filter((c) => c.kind === "output")
+            .map((c) => c.name)
+            .join(", "),
+          connectorCount: comp.connectors.length,
+        },
+      });
+    }
+    for (const sub of s.systems ?? s.elements?.systems ?? []) {
+      collectComponents(sub, prefix ? `${prefix}.${sub.name}` : sub.name);
+    }
+  };
+  collectComponents(sys);
+  return rows;
 }
 
 /**
@@ -60,16 +75,28 @@ export function extractSspComponentRows(xmlContent: string): TabularRow[] {
  */
 export function extractSspConnectionRows(xmlContent: string): TabularRow[] {
   const sys = parseSsd(xmlContent);
-  return sys.connections.map((conn, idx) => ({
-    id: `conn-${idx + 1}`,
-    cells: {
-      id: `conn-${idx + 1}`,
-      startElement: conn.startElement || "(System)",
-      startConnector: conn.startConnector,
-      endElement: conn.endElement || "(System)",
-      endConnector: conn.endConnector,
-    },
-  }));
+  const rows: TabularRow[] = [];
+  let idx = 0;
+  const collectConnections = (s: ReturnType<typeof parseSsd>) => {
+    for (const conn of s.connections) {
+      idx++;
+      rows.push({
+        id: `conn-${idx}`,
+        cells: {
+          id: `conn-${idx}`,
+          startElement: conn.startElement || "(System)",
+          startConnector: conn.startConnector,
+          endElement: conn.endElement || "(System)",
+          endConnector: conn.endConnector,
+        },
+      });
+    }
+    for (const sub of s.systems ?? s.elements?.systems ?? []) {
+      collectConnections(sub);
+    }
+  };
+  collectConnections(sys);
+  return rows;
 }
 
 /**
@@ -78,22 +105,29 @@ export function extractSspConnectionRows(xmlContent: string): TabularRow[] {
 export function extractSspParameterRows(xmlContent: string): TabularRow[] {
   const sys = parseSsd(xmlContent);
   const rows: TabularRow[] = [];
-  for (const binding of sys.parameterBindings) {
-    const scope = binding.prefix || "(System)";
-    for (const param of binding.values) {
-      const id = binding.prefix ? `${binding.prefix}.${param.name}` : param.name;
-      rows.push({
-        id,
-        cells: {
-          scope,
-          name: param.name,
-          type: param.type,
-          value: String(param.value),
-          unit: param.unit ?? "",
-        },
-      });
+  const collectParams = (s: ReturnType<typeof parseSsd>, sysPrefix = "") => {
+    for (const binding of s.parameterBindings) {
+      const rawPrefix = binding.prefix ? (sysPrefix ? `${sysPrefix}.${binding.prefix}` : binding.prefix) : sysPrefix;
+      const scope = rawPrefix || "(System)";
+      for (const param of binding.values) {
+        const id = rawPrefix ? `${rawPrefix}.${param.name}` : param.name;
+        rows.push({
+          id,
+          cells: {
+            scope,
+            name: param.name,
+            type: param.type,
+            value: String(param.value),
+            unit: param.unit ?? "",
+          },
+        });
+      }
     }
-  }
+    for (const sub of s.systems ?? s.elements?.systems ?? []) {
+      collectParams(sub, sysPrefix ? `${sysPrefix}.${sub.name}` : sub.name);
+    }
+  };
+  collectParams(sys);
   return rows;
 }
 
@@ -117,10 +151,15 @@ export function updateSspTabularCell(
     };
   }
 
+  const escapedVal = escapeXmlAttr(newValue);
+
   if (sheetId === "components" && (columnId === "source" || columnId === "type")) {
+    const shortCompName = rowId.includes(".") ? rowId.split(".").pop()! : rowId;
     const compEl = findXmlElement(
       doc.root,
-      (el) => sspMatchName(el.name, "Component") && el.attributes.some((a) => a.name === "name" && a.value === rowId),
+      (el) =>
+        sspMatchName(el.name, "Component") &&
+        el.attributes.some((a) => a.name === "name" && (a.value === rowId || a.value === shortCompName)),
     );
     if (compEl) {
       const attr = compEl.attributes.find((a) => a.name === columnId);
@@ -128,9 +167,9 @@ export function updateSspTabularCell(
         const edit = {
           startOffset: attr.valueStart,
           endOffset: attr.valueEnd,
-          newText: newValue,
+          newText: escapedVal,
         };
-        const newText = xmlContent.slice(0, attr.valueStart) + newValue + xmlContent.slice(attr.valueEnd);
+        const newText = xmlContent.slice(0, attr.valueStart) + escapedVal + xmlContent.slice(attr.valueEnd);
         return {
           success: true,
           newText,
@@ -141,12 +180,31 @@ export function updateSspTabularCell(
   }
 
   if (sheetId === "parameters" && columnId === "value") {
-    const paramName = rowId.includes(".") ? rowId.split(".").slice(1).join(".") : rowId;
-    const paramEl = findXmlElement(
-      doc.root,
-      (el) =>
-        sspMatchName(el.name, "Parameter") && el.attributes.some((a) => a.name === "name" && a.value === paramName),
-    );
+    const hasScope = rowId.includes(".");
+    const scopePrefix = hasScope ? rowId.split(".")[0]! : "";
+    const paramName = hasScope ? rowId.split(".").slice(1).join(".") : rowId;
+    const scopedBindEl = scopePrefix
+      ? findXmlElement(
+          doc.root,
+          (el) =>
+            sspMatchName(el.name, "ParameterBinding") &&
+            el.attributes.some((a) => a.name === "prefix" && a.value.replace(/\.$/, "") === scopePrefix),
+        )
+      : null;
+    const searchRoot = scopedBindEl ?? doc.root;
+    const paramEl =
+      findXmlElement(
+        searchRoot,
+        (el) =>
+          sspMatchName(el.name, "Parameter") &&
+          el.attributes.some((a) => a.name === "name" && (a.value === paramName || a.value === rowId)),
+      ) ??
+      findXmlElement(
+        doc.root,
+        (el) =>
+          sspMatchName(el.name, "Parameter") &&
+          el.attributes.some((a) => a.name === "name" && (a.value === paramName || a.value === rowId)),
+      );
     if (paramEl) {
       const typeEl = findXmlElement(paramEl, (el) =>
         ["real", "integer", "boolean", "string", "enumeration"].includes(
@@ -159,9 +217,9 @@ export function updateSspTabularCell(
           const edit = {
             startOffset: attr.valueStart,
             endOffset: attr.valueEnd,
-            newText: newValue,
+            newText: escapedVal,
           };
-          const newText = xmlContent.slice(0, attr.valueStart) + newValue + xmlContent.slice(attr.valueEnd);
+          const newText = xmlContent.slice(0, attr.valueStart) + escapedVal + xmlContent.slice(attr.valueEnd);
           return {
             success: true,
             newText,

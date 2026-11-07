@@ -364,6 +364,21 @@ getErrorString();
           // Persist the CSV result outside tmpDir so tmpDir can be cleaned up in finally
           const resultDir = path.resolve(os.tmpdir(), "modelscript-simulate-results");
           fs.mkdirSync(resultDir, { recursive: true });
+          try {
+            const existingFiles = fs.readdirSync(resultDir).filter((f) => f.endsWith("_res.csv"));
+            if (existingFiles.length > 200) {
+              const cutoffMs = Date.now() - 60 * 60 * 1000;
+              for (const file of existingFiles) {
+                const fp = path.join(resultDir, file);
+                try {
+                  const st = fs.statSync(fp);
+                  if (st.mtimeMs < cutoffMs) {
+                    fs.rmSync(fp, { force: true });
+                  }
+                } catch {}
+              }
+            }
+          } catch {}
           const safeJobFileName = `${path.basename(jobId).replace(/[^a-zA-Z0-9_.-]/g, "_")}_res.csv`;
           const persistedCsvPath = path.resolve(resultDir, safeJobFileName);
           const relPersisted = path.relative(resultDir, persistedCsvPath);

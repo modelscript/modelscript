@@ -22,6 +22,7 @@ import { evaluateCondition } from "./annotation-evaluator.js";
 import { evaluateMacroExpression, inferModelicaDomainColor } from "./data.js";
 import {
   Arrow,
+  EllipseClosure,
   FillPattern,
   LinePattern,
   Smooth,
@@ -498,7 +499,43 @@ export function renderBitmap(svg: Svg | G, graphicItem: IBitmap): Image {
   return shape;
 }
 
-export function renderEllipse(svg: Svg | G, graphicItem: IEllipse): Ellipse {
+export function renderEllipse(svg: Svg | G, graphicItem: IEllipse): Ellipse | Path {
+  const startAngle = graphicItem.startAngle ?? 0;
+  const endAngle = graphicItem.endAngle ?? 360;
+  const deltaAngle = endAngle - startAngle;
+  if (Math.abs(deltaAngle) < 360 && Math.abs(deltaAngle) > 1e-6 && graphicItem.extent) {
+    const minX = Math.min(graphicItem.extent[0]?.[0] ?? 0, graphicItem.extent[1]?.[0] ?? 0);
+    const maxX = Math.max(graphicItem.extent[0]?.[0] ?? 0, graphicItem.extent[1]?.[0] ?? 0);
+    const minY = Math.min(graphicItem.extent[0]?.[1] ?? 0, graphicItem.extent[1]?.[1] ?? 0);
+    const maxY = Math.max(graphicItem.extent[0]?.[1] ?? 0, graphicItem.extent[1]?.[1] ?? 0);
+    const rx = (maxX - minX) / 2;
+    const ry = (maxY - minY) / 2;
+    const cx = (minX + maxX) / 2;
+    const cy = -(minY + maxY) / 2;
+    const radStart = (startAngle * Math.PI) / 180;
+    const radEnd = (endAngle * Math.PI) / 180;
+    const xStart = cx + rx * Math.cos(radStart);
+    const yStart = cy - ry * Math.sin(radStart);
+    const xEnd = cx + rx * Math.cos(radEnd);
+    const yEnd = cy - ry * Math.sin(radEnd);
+    const largeArc = Math.abs(deltaAngle) > 180 ? 1 : 0;
+    const sweep = deltaAngle >= 0 ? 0 : 1;
+    const closure = graphicItem.closure ?? EllipseClosure.AUTOMATIC;
+    let d: string;
+    if (closure === EllipseClosure.RADIAL || closure === EllipseClosure.AUTOMATIC) {
+      d = `M ${cx} ${cy} L ${xStart} ${yStart} A ${rx} ${ry} 0 ${largeArc} ${sweep} ${xEnd} ${yEnd} Z`;
+    } else if (closure === EllipseClosure.CHORD) {
+      d = `M ${xStart} ${yStart} A ${rx} ${ry} 0 ${largeArc} ${sweep} ${xEnd} ${yEnd} Z`;
+    } else {
+      d = `M ${xStart} ${yStart} A ${rx} ${ry} 0 ${largeArc} ${sweep} ${xEnd} ${yEnd}`;
+    }
+    const shape = svg.path(d);
+    applyFilledShape(shape, graphicItem);
+    applyOrigin(shape, graphicItem.origin);
+    applyRotation(shape, graphicItem.rotation);
+    applyVisibility(shape, graphicItem);
+    return shape;
+  }
   const shape = svg.ellipse();
   applyExtent(shape, graphicItem.extent);
   applyFilledShape(shape, graphicItem);

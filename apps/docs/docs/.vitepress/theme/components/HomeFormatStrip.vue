@@ -130,19 +130,19 @@ const rowB = LANGUAGES.slice(half);
   border: 1px solid transparent;
 }
 .chip-tier--stable {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.28);
+  color: var(--ms-tier-stable);
+  background: var(--ms-tier-stable-bg);
+  border-color: var(--ms-tier-stable-border);
 }
 .chip-tier--beta {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.28);
+  color: var(--ms-tier-beta);
+  background: var(--ms-tier-beta-bg);
+  border-color: var(--ms-tier-beta-border);
 }
 .chip-tier--preview {
-  color: #a855f7;
-  background: rgba(168, 85, 247, 0.12);
-  border-color: rgba(168, 85, 247, 0.28);
+  color: var(--ms-tier-preview);
+  background: var(--ms-tier-preview-bg);
+  border-color: var(--ms-tier-preview-border);
 }
 
 @keyframes scroll {
@@ -161,5 +161,10 @@ const rowB = LANGUAGES.slice(half);
     width: auto;
     justify-content: center;
   }
+
+  .chip[aria-hidden="true"] {
+    display: none;
+  }
 }
 </style>
+

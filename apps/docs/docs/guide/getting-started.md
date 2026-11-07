@@ -1,12 +1,18 @@
+---
+title: Getting Started
+description: End-to-end tutorial walking through building, verifying, binding to 3D CAD, simulating, exporting an FMI 3.0 FMU, and auditing a computable digital thread in six steps.
+---
+
 # Getting Started
 
-This tutorial walks you through building a complete **computable digital thread** in ModelScript across five steps:
+This tutorial walks you through building a complete **computable digital thread** in ModelScript across six steps:
 
 1. Authoring and linting a **Modelica** physical dynamics model (`BouncingBall.mo`)
 2. Linking **SysML v2** safety requirements (`BouncingBallReq.sysml`) and running **formal verification** (`msx verify`)
 3. Binding physical state trajectories to **3D CAD geometry** (`msx csg`)
 4. Running **time-domain simulation**, rendering **SVG schematics**, and exporting an **FMI 3.0 Co-Simulation FMU** (`msx simulate`, `msx render`, `msx fmu`)
 5. Closing the loop with an **AI Agent** via `@modelscript/mcp`
+6. Auditing **Multi-Domain Digital Thread Verification & Traceability** (`drone_specs.sysml` + `DroneSimulation.mo`)
 
 ---
 
@@ -159,9 +165,63 @@ Suppose experimental drop-test telemetry shows a lower rebound height than `e = 
 
 ---
 
+## Step 6: Multi-Domain Digital Thread Verification
+
+To see how ModelScript links system requirements (`drone_specs.sysml`) and continuous flight physics (`DroneSimulation.mo`) across a multi-file workspace, create `drone_specs.sysml`:
+
+```sysml
+package DroneRequirements {
+  requirement def <'REQ-ALT-01'> AltitudeHoldReq {
+    doc /* The quadrotor controller shall achieve the 10 m target altitude with peak altitude below 10.5 m. */
+    attribute maxAltitude : Real = 10.5;
+    attribute minThrustMargin : Real = 1.25;
+  }
+
+  part def QuadrotorPlant {
+    attribute mass : Real = 1.45;
+    attribute peakAltitude : Real = 10.12;
+    satisfy AltitudeHoldReq by self;
+  }
+}
+```
+
+And create the coupled vertical flight dynamics model `DroneSimulation.mo`:
+
+```modelica
+model DroneSimulation "Vertical climb dynamics linked to SysML v2 REQ-ALT-01"
+  parameter Real mass = 1.45 "Quadrotor mass [kg]";
+  parameter Real kp = 18.0 "Proportional altitude gain [N/m]";
+  parameter Real kd = 9.5 "Derivative damping gain [N.s/m]";
+  parameter Real zTarget = 10.0 "Commanded hover altitude [m]";
+  Real z(start = 0.0, fixed = true) "Altitude [m]";
+  Real vz(start = 0.0, fixed = true) "Vertical velocity [m/s]";
+  Real thrust "Total rotor thrust [N]";
+equation
+  der(z) = vz;
+  thrust = mass * 9.80665 + kp * (zTarget - z) - kd * vz;
+  mass * der(vz) = thrust - mass * 9.80665;
+end DroneSimulation;
+```
+
+Verify the coupled requirement contracts, trace the cross-language digital thread, and export a Design History File (DHF) compliance report:
+
+```bash
+# Formally verify SysML v2 contracts alongside Modelica continuous simulation
+msx verify DroneSimulation drone_specs.sysml DroneSimulation.mo --contracts --simulation
+
+# Inspect the multi-domain digital thread alignment graph and verify twin parity
+msx polyglot thread DroneSimulation.mo
+msx polyglot check-twins drone_specs.sysml DroneSimulation.mo
+
+# Export a regulatory Design History File (DHF) compliance status summary
+msx dhf status drone_specs.sysml DroneSimulation.mo
+```
+
+---
+
 ## Next Steps
 
-- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 44 supported engineering languages and cross-domain projections.
+- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 68 supported engineering languages and cross-domain projections.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Automate closed-loop synthesis, TGG reconciliation, and RTM auditing with AI agents.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with `msx lint`, `msx verify --format sarif`, `msx pr-diff`, and `msx dhf export`.
 - **[Triple Graph Grammar (TGG) Engine](../architecture/tgg.md)** — Learn how bidirectional synchronization keeps SysML v2 and Modelica aligned.

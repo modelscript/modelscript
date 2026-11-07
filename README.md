@@ -12,7 +12,7 @@
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
 [![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
-ModelScript is a Web-native, polyglot compiler & engineering intelligence platform that unifies **66 open standards and industrial simulation formats** — spanning systems engineering (SysML v2, Modelica, SSP, ReqIF, NIST OSCAL, OWL 2), power & electronics (PSCAD, PSS/E, OpenDSS, SPICE, Verilog-A, IBIS, Touchstone), fluid/process & nuclear (OLGA, PipelineStudio, Aspen Plus, gPROMS, ECLIPSE, EPANET, SWMM, RELAP5, EnergyPlus), multibody/automotive/robotics (ADAMS, SIMPACK, GENSYS, GT-SUITE, SIMA, URDF, OpenDRIVE, OpenSCENARIO, AUTOSAR, PLCopen, AutomationML), aerospace & controls (Simulink, EASY5, JSBSim, ROCETS, CCSDS), 3D CAD/CAE & metrology (STEP, ISO 23952 QIF, OpenSCAD, CalculiX FEA, SU2 CFD), chemistry & systems/synthetic biology (SBML, Antimony, Cantera, SMILES/SDF, NMTRAN, SBOL3, BioNetGen, SED-ML, PDB/mmCIF, GenBank/FASTA, PHREEQC, Fortran, C99), and radiology, radiation oncology & computer-assisted surgery (OpenSim, DICOM-RT, CellML, FEBio/SOFA, NIfTI/NRRD, TOPAS/GATE, 3MF Medical, OpenIGTLink/PLUS) — into a continuous digital thread for end-to-end design, simulation, formal verification, and compliance auditing.
+ModelScript is a Web-native, polyglot compiler & engineering intelligence platform that unifies **68 open standards and industrial simulation formats** — spanning systems engineering (SysML v2, Modelica, SSP, ReqIF, NIST OSCAL, OWL 2), power & electronics (PSCAD, PSS/E, CIM / CGMES, OpenDSS, SPICE, Verilog-A, IBIS, Touchstone), fluid/process & nuclear (OLGA, PipelineStudio, Aspen Plus, gPROMS, ECLIPSE, EPANET, SWMM, RELAP5, EnergyPlus), multibody/automotive/robotics (ADAMS, SIMPACK, GENSYS, GT-SUITE, SIMA, URDF, OpenDRIVE, OpenSCENARIO, AUTOSAR, PLCopen, AutomationML), aerospace & controls (Simulink, EASY5, JSBSim, ROCETS, CCSDS), 3D CAD/CAE & metrology (STEP, ISO 23952 QIF, OpenSCAD, OpenUSD, CalculiX FEA, SU2 CFD), chemistry & systems/synthetic biology (SBML, Antimony, Cantera, SMILES/SDF, NMTRAN, SBOL3, BioNetGen, SED-ML, PDB/mmCIF, GenBank/FASTA, PHREEQC, Fortran, C99), and radiology, radiation oncology & computer-assisted surgery (OpenSim, DICOM-RT, CellML, FEBio/SOFA, NIfTI/NRRD, TOPAS/GATE, 3MF Medical, OpenIGTLink/PLUS) — into a continuous digital thread for end-to-end design, simulation, formal verification, and compliance auditing.
 
 ---
 
@@ -50,7 +50,7 @@ ModelScript features a declarative, AOT-compiled **Triple Graph Grammar (TGG)** 
 
 ### 2. Semantic Theory Coordinator (Nelson-Oppen Multi-Solver)
 
-Cross-domain verification is orchestrated by a generalized **Nelson-Oppen Semantic Theory Coordinator** (`@modelscript/runtime/formal/theory_coordinator`), exchanging equality facts, tight numeric intervals, and conflict clauses across **12 domain theory oracles** with CDCL(T) case splitting:
+Cross-domain verification is orchestrated by a generalized **Nelson-Oppen Semantic Theory Coordinator** (`@modelscript/runtime/formal/theory_coordinator`), exchanging equality facts, tight numeric intervals, and conflict clauses across **13 domain theory oracles** with CDCL(T) case splitting:
 
 - **Ontology Domain (`OntologyTheoryOracle`)**: Tableau Description Logic (DL) reasoner, OWL2 bundle closure, concept subsumption, and scoped disjointness.
 - **Constraint Domain (`ConstraintTheoryOracle`)**: Non-linear interval contraction via HC4 contractor, DPLL(T) arithmetic solver, and variable domain bounding.
@@ -64,6 +64,7 @@ Cross-domain verification is orchestrated by a generalized **Nelson-Oppen Semant
 - **Entailment Domain (`EntailmentOracle`)**: V-Model requirements decomposition completeness proving ($\bigwedge R_{\text{child},i} \models R_{\text{parent}}$) with signed proof manifest generation.
 - **Flow Algebra Domain (`FlowAlgebraOracle`)**: SysML v2 / KerML conjugated port involution (`~Port`), Kirchhoff conservative flow balancing, and 1D–3D CFD boundary flux coupling.
 - **Tolerance Stack & UQ Domains (`ToleranceStackOracle`, `UqOracle`)**: STEP AP242 GD&T 1D/3D tolerance chain evaluation (Worst-Case, RSS, Six-Sigma $C_{pk}$) and stochastic Uncertainty Quantification via analytical CDFs and Monte Carlo sampling.
+- **Radiology & Surgical CAS Domain (`RadiologyCasTheoryOracle`)**: QUANTEC organ-at-risk (OAR) radiotherapy DVH/BED/EQD2 dose constraints, Hadrontherapy Bragg peak range verification, $SE(3)$ surgical navigation transform orthogonality, Fitzpatrick Target Registration Error ($\text{TRE}$), and 2-manifold patient-specific cutting guide safety checks.
 
 ### 3. Data-Oriented Linear Memory Simulation (DAE Arena)
 
@@ -75,15 +76,15 @@ Inspired by Rust's Salsa, compilation, name resolution, and specialized class in
 
 ---
 
-## Supported Languages & Domain Capabilities (66 Languages)
+## Supported Languages & Domain Capabilities (68 Languages)
 
-ModelScript provides first-class support for **66 engineering languages and simulation formats** under `languages/`, organized across 8 domain clusters and powered by native WebAssembly parsers, linear-memory CST arenas, static pre-flight linters, and direct `DAEBuilder` lowering.
+ModelScript provides first-class support for **68 engineering languages and simulation formats** under `languages/`, organized across 8 domain clusters and powered by native WebAssembly parsers, linear-memory CST arenas, static pre-flight linters, and direct `DAEBuilder` lowering.
 
 > **Maturity Tiers** (enforced in `package.json#modelscript.tier` via `npm run lint:manifests`):
 >
 > - **`Stable` (14 languages)** — Production-ready with complete WASM GLR parser, static linter, DAE/solver lowering, and verified against standard industry benchmarks, standard library snapshots, or comprehensive unit test suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, Manchester Benchmark / EN 14363, NIST AP242).
 > - **`Beta` (26 languages)** — Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder`/solver lowering, and $\ge 5$ unit/integration test suites.
-> - **`Preview` (26 languages)** — Specialized dialect support with native WASM parser, core AST/DAE lowering, and baseline verification suites.
+> - **`Preview` (28 languages)** — Specialized dialect support with native WASM parser, core AST/DAE lowering, and baseline verification suites.
 
 ### 1. Native & Core Systems Engineering (8)
 
@@ -150,7 +151,7 @@ ModelScript provides first-class support for **66 engineering languages and simu
 | **PLCopen IEC 61131-3**<br>[`languages/plcopen/`](./languages/plcopen/)    | `.st`, `.iec`, `.plcxml`        |  `Beta`   | IEC 61131-3 Structured Text (`.st`) and PLCopen TC6 XML (`.plcxml`) industrial control parsing, deterministic scan-cycle state machine lowering to synchronous clocked DAE equations, and `Modelica_Synchronous` export.            |
 | **AutomationML**<br>[`languages/automationml/`](./languages/automationml/) | `.aml`                          |  `Beta`   | IEC 62714 AutomationML (CAEX 2.15/3.0) mechatronic plant topology parsing, virtual commissioning connector validation, co-simulation orchestration bridge, and PLCopen/Modelica projection.                                         |
 
-### 6. 3D CAD, Digital Metrology & Continuum Physics — FEA / CFD / QIF (5)
+### 6. 3D CAD, Digital Metrology & Continuum Physics — FEA / CFD / QIF (6)
 
 | Language & Directory                                           | Extensions                      | Maturity  | Domain & Core Capabilities                                                                                                                                                                                                             |
 | :------------------------------------------------------------- | :------------------------------ | :-------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -221,12 +222,12 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 | [`@modelscript/dsl`](./packages/dsl/)                     | Grammar DSL syntax combinators, WASM GLR parser compiler (`buildParser`), TGG rewriting compiler, CPA engine, term-rewriting         |
 | [`@modelscript/runtime`](./packages/runtime/)             | Linear-memory DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, Nelson-Oppen theory coordinator     |
 | [`@modelscript/simulate`](./packages/simulate/)           | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, 3D FEA/LBM CFD, surrogate ROMs, Monte Carlo      |
-| [`@modelscript/lsp`](./packages/lsp/)                     | Polyglot Language Server Protocol engine across all 66 languages, incremental Salsa workspace index, background worker pool          |
+| [`@modelscript/lsp`](./packages/lsp/)                     | Polyglot Language Server Protocol engine across all 68 languages, incremental Salsa workspace index, background worker pool          |
 | [`@modelscript/diagram`](./packages/diagram/)             | Polyglot diagram builder, Sugiyama/TSM auto-layout, Manhattan A\* port router, perceptual dark-mode SVG rendering, visual diffs      |
 | [`@modelscript/exchange`](./packages/exchange/)           | FMI 2.0/3.0 FMU export/import, SSP 1.0 toolkit, `CoSimMaster` orchestrator, AASX/DDP/OKH lenses, MDF4/MCAP binary telemetry          |
 | [`@modelscript/cad`](./packages/cad/)                     | MCAD & ECAD engine — CSG primitives, OpenCascade/Manifold B-Rep, STEP AP242 I/O, dynamic clearance, GD&T stack-up, Gerber/PCB DRC    |
-| [`@modelscript/mcp`](./packages/mcp/)                     | Model Context Protocol (MCP) server exposing 48 compilation, simulation, ontology, TGG, RTM, medical, and domain tools to AI agents  |
-| [`@modelscript/ide-client`](./packages/ide/)              | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 18 custom editors, 20+ panels   |
+| [`@modelscript/mcp`](./packages/mcp/)                     | Model Context Protocol (MCP) server exposing 60 compilation, simulation, ontology, TGG, RTM, medical, and domain tools to AI agents  |
+| [`@modelscript/ide-client`](./packages/ide/)              | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 24 custom editors, 20+ panels   |
 | [`@modelscript/embed`](./packages/embed/)                 | Embeddable `<modelscript-viewer>` Web Component, iframe postMessage RPC client, and compressed permalink URL codec                   |
 | [`@modelscript/design-tokens`](./packages/design-tokens/) | Shared CSS design tokens (`--ms-*`) and primitive `.ms-btn` / `.ms-chip` styles for the docs site, web app, and IDE webviews         |
 | [`@modelscript/react`](./packages/react/)                 | React SDK & engineering UI widgets (`ModelScriptProvider`, `BlackboxInspector`, `StepResponseTestbench`, WebWorker/WASM hooks)       |
@@ -236,7 +237,7 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 | Package                                   | Responsibility                                                                                                                                      |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)         | `modelscript` (`msx`) unified command-line toolchain — 92+ commands across compilation, simulation, verification, medical/bio, and domains          |
+| [`@modelscript/cli`](./apps/cli/)         | `modelscript` (`msx`) unified command-line toolchain — 105 commands across compilation, simulation, verification, medical/bio, and domains          |
 | [`@modelscript/api`](./apps/api/)         | Ansatz & ModelScript backend — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub, SysML v2 REST, Slurm HPC, and MCP SSE                            |
 | [`@modelscript/ide`](./apps/ide/)         | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling                                |
 | [`@modelscript/web`](./apps/web/)         | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, scholarly citations, Git vault, Cloud HPC, & `/playground` |

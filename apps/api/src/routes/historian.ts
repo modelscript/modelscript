@@ -4,6 +4,7 @@ import type { CosimMqttClient } from "@modelscript/exchange/cosim";
 import { HistorianReplayer } from "@modelscript/exchange/cosim";
 import express from "express";
 import type { Pool } from "pg";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { getCosimSessionForHistorian, listCosimSessionsForHistorian } from "./cosim.js";
 
@@ -30,6 +31,7 @@ const activeReplayers = new Map<string, HistorianReplayer>();
 export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient | null): express.Router {
   const router = express.Router();
   router.use(defaultApiLimiter);
+  router.use(optionalAuth);
 
   const requireHistorianAuthInProd: express.RequestHandler = (req, res, next) => {
     if (process.env["NODE_ENV"] === "production") {

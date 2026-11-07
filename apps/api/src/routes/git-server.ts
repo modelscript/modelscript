@@ -236,18 +236,23 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
   }
 
   function checkRepoReadAccess(req: Request, res: Response, namespace: string, project: string): boolean {
-    const ownerUser = database.getUserByUsername(namespace);
-    if (!ownerUser) return true;
     const cleanNsLower = namespace.trim().toLowerCase();
     const cleanProjLower = project
       .trim()
       .replace(/\.git$/i, "")
       .toLowerCase();
-    const matchedRepo = database.getUserRepos(ownerUser.id).find((r) => {
-      const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
-      const rFull = `${r.namespace || ""}/${r.project || ""}`.replace(/\.git$/i, "").toLowerCase();
-      return rProj === cleanProjLower || rFull === `${cleanNsLower}/${cleanProjLower}`;
-    });
+    const ownerUser = database.getUserByUsername(namespace);
+    const org = database.getOrganizationBySlug(cleanNsLower);
+    let matchedRepo = ownerUser
+      ? database.getUserRepos(ownerUser.id).find((r) => {
+          const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
+          const rFull = `${r.namespace || ""}/${r.project || ""}`.replace(/\.git$/i, "").toLowerCase();
+          return rProj === cleanProjLower || rFull === `${cleanNsLower}/${cleanProjLower}`;
+        })
+      : undefined;
+    if (!matchedRepo) {
+      matchedRepo = database.getLinkedRepoById(`${cleanNsLower}/${cleanProjLower}`);
+    }
     const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
     if (vis !== "private" && vis !== "internal") {
       return true;
@@ -259,8 +264,19 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       return false;
     }
     const isAdmin = user.account_type === "admin" || (user as { role?: string | undefined }).role === "admin";
-    if (vis === "private" && user.id !== ownerUser.id && !isAdmin) {
+    if (isAdmin) {
+      return true;
+    }
+    const isOwner =
+      (ownerUser !== undefined && user.id === ownerUser.id) ||
+      (matchedRepo !== undefined && user.id === matchedRepo.user_id);
+    const isOrgMember = org != null && Boolean(database.getOrganizationMemberRole(org.id, user.id));
+    if (vis === "private" && !isOwner && !isOrgMember) {
       res.status(403).send("Forbidden: Repository is private");
+      return false;
+    }
+    if (vis === "internal" && user.account_type === "community_federated" && !isOwner && !isOrgMember) {
+      res.status(403).send("Forbidden: Internal repository is restricted to organization and instance members");
       return false;
     }
     return true;
@@ -387,11 +403,25 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     res.write(pktLine(`# service=${service}\n`));
     res.write(PKT_FLUSH);
 
-    const gitProc = spawn("git", [service.slice(4), "--stateless-rpc", "--advertise-refs", repoPath]);
+    const gitProc = spawn("git", [service.slice(4), "--stateless-rpc", "--advertise-refs", repoPath], {
+      env: gitSubprocessEnv(),
+    });
+    const cancelRefsTimer = killAfter(gitProc, 30_000);
+    gitProc.on("close", () => cancelRefsTimer());
+    res.on("close", () => {
+      if (gitProc.exitCode === null) {
+        gitProc.kill("SIGKILL");
+      }
+    });
 
     gitProc.stdout.pipe(res);
     gitProc.stderr.on("data", (data) => {
       console.error(`[git-server error] ${data.toString()}`);
+    });
+    gitProc.on("error", (err) => {
+      cancelRefsTimer();
+      console.error("[git-server] info/refs failed:", err);
+      if (!res.headersSent) res.status(500).send("Git info/refs error");
     });
   });
 

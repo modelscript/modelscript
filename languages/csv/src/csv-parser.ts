@@ -41,6 +41,8 @@ export interface CsvData {
   time: number[];
   /** Variable data: column name → values[]. */
   data: Map<string, number[]>;
+  /** Raw string column data: column name → string values[]. */
+  stringData?: Map<string, string[]> | undefined;
   /** Extracted physical units keyed by column name (e.g., `"omega" -> "rad/s"`). */
   units: Map<string, string>;
   /** Inferred or explicitly declared column scalar types (`Real`, `Integer`, `Boolean`, `String`). */
@@ -210,6 +212,7 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
   // Parse data rows
   const time: number[] = [];
   const dataColumns = new Map<string, number[]>();
+  const stringColumns = new Map<string, string[]>();
   const rawCellTrackers = new Map<
     string,
     { allBool: boolean; allInt: boolean; hasNumeric: boolean; hasNonEmpty: boolean }
@@ -218,6 +221,7 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
     const h = headers[i] ?? "";
     if (i !== timeColIdx && h) {
       dataColumns.set(h, []);
+      stringColumns.set(h, []);
       rawCellTrackers.set(h, { allBool: true, allInt: true, hasNumeric: false, hasNonEmpty: false });
     }
   }
@@ -240,10 +244,12 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
 
     let hasNaN = false;
     const rowValues: number[] = [];
+    const rowStrings: string[] = [];
     for (let i = 0; i < headers.length; i++) {
       if (i === timeColIdx) continue;
       const h = headers[i] ?? "";
       const rawCell = (fields[i] ?? "").trim();
+      rowStrings.push(rawCell);
       const tracker = rawCellTrackers.get(h);
       const lowerCell = rawCell.toLowerCase();
 
@@ -285,6 +291,8 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
       const h = headers[i] ?? "";
       const col = dataColumns.get(h);
       if (col) col.push(rowValues[vi] ?? 0);
+      const sCol = stringColumns.get(h);
+      if (sCol) sCol.push(rowStrings[vi] ?? "");
       vi++;
     }
   }
@@ -325,6 +333,7 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
     columns,
     time,
     data: dataColumns,
+    stringData: stringColumns,
     units,
     columnTypes,
     headers: parsedHeaders,
@@ -501,6 +510,14 @@ function findTimeColumn(headers: string[]): string | null {
   return null;
 }
 
+function sanitizeModelicaIdentifier(raw: string, fallback: string): string {
+  const base = parseCsvHeaderAnnotation(raw).name.trim();
+  let ident = base.replace(/[^a-zA-Z0-9_]/g, "_").replace(/^_+$/, "");
+  if (!ident) ident = fallback;
+  if (/^[0-9]/.test(ident)) ident = `_${ident}`;
+  return ident;
+}
+
 /**
  * CSV Polyglot Adapter
  *
@@ -509,28 +526,44 @@ function findTimeColumn(headers: string[]): string | null {
  * directly into Modelica models as if it were code.
  */
 export function parseCsvToModelica(csvText: string, modelName: string): string {
+  const safePkgName = sanitizeModelicaIdentifier(modelName, "CsvDataPackage");
   const lines = splitCsvLines(csvText).filter((l) => l.trim().length > 0 && !l.trim().startsWith("#"));
   if (lines.length < 2) {
-    return `package ${modelName}\nend ${modelName};`;
+    return `package ${safePkgName}\nend ${safePkgName};`;
   }
 
   // Detect delimiter from first line (comma, semicolon, tab) using quote-aware helper
   const headerLine = lines[0] as string;
   const delimiter = detectDelimiter(headerLine);
-  const headers = parseCsvRow(headerLine, delimiter).map((h) => h.trim().replace(/[^a-zA-Z0-9_]/g, "_"));
+  const usedNames = new Set<string>(["numRows", "numCols", "values"]);
+  const headers = parseCsvRow(headerLine, delimiter).map((h, idx) => {
+    let candidate = sanitizeModelicaIdentifier(h, `col${idx}`);
+    if (usedNames.has(candidate)) {
+      let suffix = 2;
+      while (usedNames.has(`${candidate}_${suffix}`)) suffix++;
+      candidate = `${candidate}_${suffix}`;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  });
   const numCols = headers.length;
 
   const data: number[][] = [];
   for (let i = 1; i < lines.length; i++) {
     const parts = parseCsvRow(lines[i] as string, delimiter);
-    const row = parts.map((p) => parseFloat(p.trim()));
+    const row = parts.map((p) => {
+      const t = p.trim();
+      if (t.toLowerCase() === "true") return 1;
+      if (t.toLowerCase() === "false") return 0;
+      return parseFloat(t);
+    });
     if (row.length === numCols && !row.some(isNaN)) {
       data.push(row);
     }
   }
 
   const numRows = data.length;
-  let mo = `package ${modelName}\n`;
+  let mo = `package ${safePkgName}\n`;
   mo += `  // Auto-generated from CSV data\n`;
   mo += `  constant Integer numRows = ${numRows};\n`;
   mo += `  constant Integer numCols = ${numCols};\n\n`;
@@ -549,7 +582,7 @@ export function parseCsvToModelica(csvText: string, modelName: string): string {
     mo += `  constant Real ${colName}[${numRows}] = {${colData.join(", ")}};\n`;
   }
 
-  mo += `end ${modelName};\n`;
+  mo += `end ${safePkgName};\n`;
   return mo;
 }
 
@@ -836,8 +869,10 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     }
   }
 
-  // Determine which columns are numeric (at least one data row has a finite numeric value, or column is time/t)
+  // Determine which columns are numeric (predominantly numeric cells, explicit : Real / : Integer, or time/t)
   const numericCols = new Array<boolean>(numCols).fill(false);
+  const numCounts = new Array<number>(numCols).fill(0);
+  const strCounts = new Array<number>(numCols).fill(0);
   let timeColIdx = -1;
   for (let c = 0; c < numCols; c++) {
     const ph = parsedHeaders[c];
@@ -856,9 +891,18 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     for (let c = 0; c < Math.min(numCols, row.cells.length); c++) {
       const ph = parsedHeaders[c];
       if (ph?.declaredType === "Boolean" || ph?.declaredType === "String") continue;
-      if (isStrictFiniteNumber(row.cells[c]?.text ?? "")) {
-        numericCols[c] = true;
+      const cellText = row.cells[c]?.text ?? "";
+      if (!cellText) continue;
+      if (isStrictFiniteNumber(cellText)) {
+        numCounts[c] = (numCounts[c] ?? 0) + 1;
+      } else if (cellText.toLowerCase() !== "true" && cellText.toLowerCase() !== "false") {
+        strCounts[c] = (strCounts[c] ?? 0) + 1;
       }
+    }
+  }
+  for (let c = 0; c < numCols; c++) {
+    if (!numericCols[c] && (numCounts[c] ?? 0) > 0 && (numCounts[c] ?? 0) >= (strCounts[c] ?? 0)) {
+      numericCols[c] = true;
     }
   }
 

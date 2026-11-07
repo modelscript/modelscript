@@ -67,6 +67,24 @@ ModelScript polyglot diagramming and visual schematic engine — AntV X6 interac
 
 ---
 
+## Programmatic Usage
+
+```typescript
+import { adaptColorForDarkMode, computeOrthogonalRoute, computeSolderDots } from "@modelscript/diagram";
+import { PolyglotDiagramBuilder } from "@modelscript/diagram/builder";
+
+// 1. Route an obstacle-avoiding orthogonal Manhattan A* wire between two ports
+const route = computeOrthogonalRoute({ x: 100, y: 120 }, { x: 340, y: 260 }, [
+  { x: 180, y: 100, width: 80, height: 120 },
+]);
+
+// 2. Synthesize T-junction solder dots and adapt schematic colors for dark mode
+const dots = computeSolderDots([{ id: "e1", points: route }]);
+const darkStroke = adaptColorForDarkMode("#0000ff");
+```
+
+---
+
 ## Scripts
 
 ```bash

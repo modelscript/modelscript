@@ -1,3 +1,8 @@
+---
+title: "Tarjan Block Lower Triangular (BLT) Transformation"
+description: "Implementation: BltEngine in packages/runtime/src/wasm/structural/blt.ts"
+---
+
 # Tarjan Block Lower Triangular (BLT) Transformation
 
 **Implementation**: `BltEngine` in [`packages/runtime/src/wasm/structural/blt.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/wasm/structural/blt.ts)

@@ -81,6 +81,19 @@
   --ms-status-info-bg: color-mix(in srgb, #0891b2 12%, transparent);
   --ms-status-info-border: color-mix(in srgb, #0891b2 32%, transparent);
 
+  /* ── Unified Maturity Tier Badges (Stable = Emerald, Beta = Sky/Cyan, Preview = Amber) ── */
+  --ms-tier-stable: #047857;
+  --ms-tier-stable-bg: color-mix(in srgb, #059669 12%, transparent);
+  --ms-tier-stable-border: color-mix(in srgb, #059669 32%, transparent);
+
+  --ms-tier-beta: #0369a1;
+  --ms-tier-beta-bg: color-mix(in srgb, #0891b2 12%, transparent);
+  --ms-tier-beta-border: color-mix(in srgb, #0891b2 32%, transparent);
+
+  --ms-tier-preview: #b45309;
+  --ms-tier-preview-bg: color-mix(in srgb, #d97706 12%, transparent);
+  --ms-tier-preview-border: color-mix(in srgb, #d97706 32%, transparent);
+
   /* ── 8 Canonical Polyglot Domain Clusters (Light: Deep Contrast) ── */
   --domain-core: #0e7490;
   --domain-core-bg: color-mix(in srgb, #0e7490 12%, transparent);
@@ -195,6 +208,19 @@
   --ms-status-info-fg: #38bdf8;
   --ms-status-info-bg: color-mix(in srgb, #38bdf8 15%, transparent);
   --ms-status-info-border: color-mix(in srgb, #38bdf8 38%, transparent);
+
+  /* ── Unified Maturity Tier Badges (Dark: Luminous) ── */
+  --ms-tier-stable: #34d399;
+  --ms-tier-stable-bg: color-mix(in srgb, #34d399 14%, transparent);
+  --ms-tier-stable-border: color-mix(in srgb, #34d399 34%, transparent);
+
+  --ms-tier-beta: #38bdf8;
+  --ms-tier-beta-bg: color-mix(in srgb, #38bdf8 14%, transparent);
+  --ms-tier-beta-border: color-mix(in srgb, #38bdf8 34%, transparent);
+
+  --ms-tier-preview: #fbbf24;
+  --ms-tier-preview-bg: color-mix(in srgb, #fbbf24 14%, transparent);
+  --ms-tier-preview-border: color-mix(in srgb, #fbbf24 34%, transparent);
 
   /* ── 8 Canonical Polyglot Domain Clusters (Dark: Luminous) ── */
   --domain-core: #22d3ee;

@@ -40,6 +40,7 @@ export function serializeLpsXml(model: LpsModel): string {
       `roughness="${p.roughness}"`,
       `maop="${(p.maop / 1e5).toFixed(2)}bar"`,
     ];
+    if (p.wallThickness != null) attrs.push(`wallThickness="${(p.wallThickness * 1000).toFixed(1)}mm"`);
     if (p.heatTransferCoefficient != null) attrs.push(`u="${p.heatTransferCoefficient}"`);
     if (p.ambientTemperature != null) attrs.push(`t_amb="${p.ambientTemperature}"`);
     if (p.draPpm != null) attrs.push(`dra="${p.draPpm}"`);
@@ -51,10 +52,11 @@ export function serializeLpsXml(model: LpsModel): string {
   if (model.compressors.length > 0) {
     lines.push(`  <Compressors>`);
     for (const c of model.compressors) {
+      const spStr = c.controlMode === "DISCHARGE_PRESSURE" ? `${(c.setpoint / 1e5).toFixed(2)}bar` : `${c.setpoint}`;
       lines.push(
         `    <Compressor name="${c.name}" from="${c.fromNode}" to="${c.toNode}" type="${c.type}" ` +
           `power="${c.maxPower}" maxRatio="${c.maxPressureRatio}" efficiency="${c.polytropicEfficiency}" ` +
-          `mode="${c.controlMode}" setpoint="${(c.setpoint / 1e5).toFixed(2)}bar" status="${c.status}" />`,
+          `mode="${c.controlMode}" setpoint="${spStr}" status="${c.status}" />`,
       );
     }
     lines.push(`  </Compressors>`);
@@ -133,16 +135,18 @@ export function serializeLpsKeyDeck(model: LpsModel): string {
   }
 
   for (const p of model.pipes) {
-    lines.push(
+    let line =
       `PIPE ${p.name} FROM ${p.fromNode} TO ${p.toNode} LENGTH ${p.length} ` +
-        `DIAMETER ${p.diameter} ROUGHNESS ${p.roughness} MAOP ${(p.maop / 1e5).toFixed(2)}bar`,
-    );
+      `DIAMETER ${p.diameter} ROUGHNESS ${p.roughness} MAOP ${(p.maop / 1e5).toFixed(2)}bar`;
+    if (p.wallThickness != null) line += ` THICKNESS ${p.wallThickness}`;
+    lines.push(line);
   }
 
   for (const c of model.compressors) {
+    const spStr = c.controlMode === "DISCHARGE_PRESSURE" ? `${(c.setpoint / 1e5).toFixed(2)}bar` : `${c.setpoint}`;
     lines.push(
       `COMPRESSOR ${c.name} FROM ${c.fromNode} TO ${c.toNode} POWER ${c.maxPower} ` +
-        `RATIO ${c.maxPressureRatio} EFF ${c.polytropicEfficiency} SETPOINT ${(c.setpoint / 1e5).toFixed(2)}bar`,
+        `RATIO ${c.maxPressureRatio} EFF ${c.polytropicEfficiency} MODE ${c.controlMode} SETPOINT ${spStr}`,
     );
   }
 

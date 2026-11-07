@@ -587,7 +587,9 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
         for (const enumEl of specifiedValues.children) {
           const enumId = getAttr(enumEl, "IDENTIFIER") || `ENUM-${enumValues.length + 1}`;
           const enumName = getAttr(enumEl, "LONG-NAME") || enumId;
-          const keyStr = getAttr(enumEl, "KEY");
+          const propsEl = getChild(enumEl, "PROPERTIES");
+          const embValEl = getChild(propsEl, "EMBEDDED-VALUE") ?? getChild(enumEl, "EMBEDDED-VALUE");
+          const keyStr = getAttr(enumEl, "KEY") ?? (embValEl ? getAttr(embValEl, "KEY") : undefined);
           enumValues.push({
             identifier: enumId,
             longName: enumName,
@@ -906,8 +908,9 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
   }
 
   // 6. Specifications & Hierarchies
+  let hierCounter = 1;
   function parseHierarchy(hEl: XmlElement): ReqIfSpecHierarchy {
-    const id = getAttr(hEl, "IDENTIFIER") || `HIER-${Math.random().toString(36).slice(2, 8)}`;
+    const id = getAttr(hEl, "IDENTIFIER") || `HIER-${hierCounter++}`;
     const objectRef =
       getChildRefText(hEl, "OBJECT", "SPEC-OBJECT-REF") || getAttr(hEl, "OBJECT-REF") || getAttr(hEl, "OBJECT") || "";
     const span = createSpan(hEl.start, hEl.end, lineStarts);
@@ -993,6 +996,7 @@ export function serializeReqIf(doc: ReqIfDocument): string {
   if (doc.header.creationTime) parts.push(`      <CREATION-TIME>${doc.header.creationTime}</CREATION-TIME>`);
   if (doc.header.repositoryId) parts.push(`      <REPOSITORY-ID>${doc.header.repositoryId}</REPOSITORY-ID>`);
   if (doc.header.reqIfToolId) parts.push(`      <REQ-IF-TOOL-ID>${doc.header.reqIfToolId}</REQ-IF-TOOL-ID>`);
+  if (doc.header.sourceToolId) parts.push(`      <SOURCE-TOOL-ID>${doc.header.sourceToolId}</SOURCE-TOOL-ID>`);
   if (doc.header.comment) parts.push(`      <COMMENT>${escapeXml(doc.header.comment)}</COMMENT>`);
   parts.push("    </REQ-IF-HEADER>");
   parts.push("  </THE-HEADER>");
@@ -1004,15 +1008,27 @@ export function serializeReqIf(doc: ReqIfDocument): string {
   parts.push("      <DATATYPES>");
   for (const dt of doc.dataTypes.values()) {
     const tagName = `DATATYPE-DEFINITION-${dt.kind}`;
+    const minAttr = dt.min !== undefined ? ` MIN="${dt.min}"` : "";
+    const maxAttr = dt.max !== undefined ? ` MAX="${dt.max}"` : "";
     parts.push(
-      `        <${tagName} IDENTIFIER="${dt.identifier}" LONG-NAME="${escapeXml(dt.longName || dt.identifier)}">`,
+      `        <${tagName} IDENTIFIER="${dt.identifier}" LONG-NAME="${escapeXml(dt.longName || dt.identifier)}"${minAttr}${maxAttr}>`,
     );
     if (dt.enumValues && dt.enumValues.length > 0) {
       parts.push("          <SPECIFIED-VALUES>");
       for (const ev of dt.enumValues) {
-        parts.push(
-          `            <ENUM-VALUE IDENTIFIER="${ev.identifier}" LONG-NAME="${escapeXml(ev.longName || ev.identifier)}"${ev.key !== undefined ? ` KEY="${ev.key}"` : ""} />`,
-        );
+        if (ev.key !== undefined) {
+          parts.push(
+            `            <ENUM-VALUE IDENTIFIER="${ev.identifier}" LONG-NAME="${escapeXml(ev.longName || ev.identifier)}" KEY="${ev.key}">`,
+          );
+          parts.push("              <PROPERTIES>");
+          parts.push(`                <EMBEDDED-VALUE KEY="${ev.key}" OTHER-CONTENT="" />`);
+          parts.push("              </PROPERTIES>");
+          parts.push("            </ENUM-VALUE>");
+        } else {
+          parts.push(
+            `            <ENUM-VALUE IDENTIFIER="${ev.identifier}" LONG-NAME="${escapeXml(ev.longName || ev.identifier)}" />`,
+          );
+        }
       }
       parts.push("          </SPECIFIED-VALUES>");
     }

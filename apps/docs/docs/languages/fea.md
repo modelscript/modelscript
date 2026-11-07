@@ -1,3 +1,8 @@
+---
+title: "FEA (CalculiX, Abaqus & NASTRAN Compatible)"
+description: "@modelscript/fea (languages/fea) provides native parsing, parametric template materialization, 3D CAD boundary condition synthesis, structural theory slicing, and cross-domain TGG synchronization f..."
+---
+
 # FEA (CalculiX, Abaqus & NASTRAN Compatible)
 
 `@modelscript/fea` (`languages/fea`) provides native parsing, parametric template materialization, 3D CAD boundary condition synthesis, structural theory slicing, and cross-domain TGG synchronization for Finite Element Analysis input decks.

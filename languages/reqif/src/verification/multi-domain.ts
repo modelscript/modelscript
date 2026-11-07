@@ -18,6 +18,7 @@ import {
   type MultiDomainVerificationReport,
   type RequirementContractSpec,
 } from "@modelscript/runtime";
+import { extractFormalContract } from "../parser/reqif-parser.js";
 import type { ReqIfDocument } from "../types.js";
 
 /**
@@ -51,14 +52,15 @@ export function verifyReqIfMultiDomain(doc: ReqIfDocument, decks: MultiDomainDec
   const requirements: RequirementContractSpec[] = [];
 
   for (const obj of doc.specObjects.values()) {
-    if (obj.contract) {
-      const normalizedLimit = normalizeContractValue(obj.contract.limitValue, obj.contract.unit);
+    const resolvedContract = obj.contract ?? (obj.text ? extractFormalContract(obj.text) : undefined);
+    if (resolvedContract) {
+      const normalizedLimit = normalizeContractValue(resolvedContract.limitValue, resolvedContract.unit);
       requirements.push({
         id: obj.identifier,
-        variable: obj.contract.variable,
-        operator: obj.contract.comparator === "!=" ? "<=" : obj.contract.comparator,
+        variable: resolvedContract.variable,
+        operator: resolvedContract.comparator === "!=" ? "<=" : resolvedContract.comparator,
         limitValue: normalizedLimit,
-        unit: obj.contract.unit,
+        unit: resolvedContract.unit,
         description: obj.longName || obj.text,
       });
     } else if (obj.text) {

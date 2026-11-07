@@ -1,3 +1,8 @@
+---
+title: "Scientific Computing, Linear Algebra, Surrogates & Digital Twins"
+description: "Implementation:"
+---
+
 # Scientific Computing, Linear Algebra, Surrogates & Digital Twins
 
 **Implementation**:

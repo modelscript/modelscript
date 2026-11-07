@@ -82,18 +82,33 @@ export class Aga8Eos {
    * Computes molar mass of a given gas composition (kg/mol).
    */
   static getMolarMass(comp: GasComposition): number {
-    let mm = 0;
-    mm += (comp.methane ?? 0) * MOLAR_MASSES.methane;
-    mm += (comp.ethane ?? 0) * MOLAR_MASSES.ethane;
-    mm += (comp.propane ?? 0) * MOLAR_MASSES.propane;
-    mm += (comp.nButane ?? 0) * MOLAR_MASSES.nButane;
-    mm += (comp.iButane ?? 0) * MOLAR_MASSES.iButane;
-    mm += (comp.pentanes ?? 0) * MOLAR_MASSES.pentanes;
-    mm += (comp.hexanePlus ?? 0) * MOLAR_MASSES.hexanePlus;
-    mm += (comp.nitrogen ?? 0) * MOLAR_MASSES.nitrogen;
-    mm += (comp.carbonDioxide ?? 0) * MOLAR_MASSES.carbonDioxide;
-    mm += (comp.hydrogen ?? 0) * MOLAR_MASSES.hydrogen;
-    mm += (comp.waterVapor ?? 0) * MOLAR_MASSES.waterVapor;
+    const xCh4 = comp.methane ?? 0;
+    const xC2 = comp.ethane ?? 0;
+    const xC3 = comp.propane ?? 0;
+    const xNC4 = comp.nButane ?? 0;
+    const xIC4 = comp.iButane ?? 0;
+    const xC5 = comp.pentanes ?? 0;
+    const xC6 = comp.hexanePlus ?? 0;
+    const xN2 = comp.nitrogen ?? 0;
+    const xCO2 = comp.carbonDioxide ?? 0;
+    const xH2 = comp.hydrogen ?? 0;
+    const xH2O = comp.waterVapor ?? 0;
+    const totalFrac = xCh4 + xC2 + xC3 + xNC4 + xIC4 + xC5 + xC6 + xN2 + xCO2 + xH2 + xH2O;
+    if (totalFrac <= 0) return 0.018;
+
+    const mm =
+      (xCh4 * MOLAR_MASSES.methane +
+        xC2 * MOLAR_MASSES.ethane +
+        xC3 * MOLAR_MASSES.propane +
+        xNC4 * MOLAR_MASSES.nButane +
+        xIC4 * MOLAR_MASSES.iButane +
+        xC5 * MOLAR_MASSES.pentanes +
+        xC6 * MOLAR_MASSES.hexanePlus +
+        xN2 * MOLAR_MASSES.nitrogen +
+        xCO2 * MOLAR_MASSES.carbonDioxide +
+        xH2 * MOLAR_MASSES.hydrogen +
+        xH2O * MOLAR_MASSES.waterVapor) /
+      totalFrac;
     return mm > 0 ? mm : 0.018; // default ~18 g/mol
   }
 

@@ -66,7 +66,7 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `packages/lsp/`           | Multi-language Language Server Protocol server, language services, multi-file workspace indexing, background worker pool                                                    |
 | `packages/diagram/`       | Polyglot diagram builder, auto-layout, diagram protocol, color inversion                                                                                                    |
 | `packages/exchange/`      | FMI 2.0/3.0 FMU export/import, SSP container toolkit, Co-Simulation master orchestrator                                                                                     |
-| `packages/cad/`           | CAD and ECAD engine — CSG primitives, OpenCascade operations, STEP serialization/deserialization, Gerber parser                                                             |
+| `packages/cad/`           | CAD and ECAD engine — CSG primitives, OpenCascade operations, STEP serialization/deserialization, Gerber generator                                                          |
 | `packages/mcp/`           | Model Context Protocol server exposing ModelScript compilation, simulation, and analysis tools to AI agents                                                                 |
 | `packages/ide/`           | VS Code Web Extension client (`@modelscript/ide-client`), custom editors, DAP simulation debugger, and specialized engineering webview panels                               |
 | `apps/cli/`               | `modelscript` (`msx`) command-line interface — flatten, simulate, optimize, lint, render, fmu, csg, surrogate, mc                                                           |
@@ -75,16 +75,16 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
 | `ee/`                     | Enterprise Edition (`@modelscript/ee`) — Ed25519 offline license verifier, NERC CIP / FERC CEII / FDA 21 CFR Part 11 compliance, SSO/SAML, RBAC, Slurm HPC, Digital Twin    |
 
-### Polyglot Languages (`languages/` — 66 Languages)
+### Polyglot Languages (`languages/` — 68 Languages)
 
-ModelScript is a polyglot compiler supporting **66 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"stable"` [14], `"beta"` [26], or `"preview"` [26]), validated by `npm run lint:manifests`:
+ModelScript is a polyglot compiler supporting **68 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"stable"` [14], `"beta"` [26], or `"preview"` [28]), validated by `npm run lint:manifests`:
 
 - **Native & Core Systems Engineering (8):** `modelscript` (`Stable`), `modelica` (`Stable`), `sysml2` (`Stable`), `ssp` (`Stable`), `reqif` (`Stable`), `oscal` (`Beta`), `owl2` (`Stable`), `csv` (`Stable`)
-- **Electrical Power Grids, RF & Electronics (7):** `pscad` (`Stable`), `psse` (`Preview`), `opendss` (`Preview`), `spice` (`Stable`), `verilog-a` (`Beta`), `ibis` (`Preview`), `touchstone` (`Preview`)
+- **Electrical Power Grids, RF & Electronics (8):** `pscad` (`Stable`), `psse` (`Preview`), `cgmes` (`Preview`), `opendss` (`Preview`), `spice` (`Stable`), `verilog-a` (`Beta`), `ibis` (`Preview`), `touchstone` (`Preview`)
 - **Fluid, Process, Subsurface, Civil Water & Nuclear (8):** `olga` (`Stable`), `lps` (`Stable`), `aspen` (`Preview`), `eclipse` (`Preview`), `epanet` (`Beta`), `swmm` (`Preview`), `relap5` (`Preview`), `energyplus` (`Beta`)
 - **Multibody, Automotive, Robotics, Marine & Rail (9):** `adams` (`Beta`), `simpack` (`Beta`), `gensys` (`Stable`), `gtsuite` (`Beta`), `sima` (`Preview`), `urdf` (`Beta`), `opendrive` (`Beta`), `openscenario` (`Preview`), `autosar` (`Beta`)
 - **Aerospace, Flight Dynamics, Astrodynamics & Controls (7):** `simulink` (`Beta`), `easy5` (`Beta`), `jsbsim` (`Preview`), `rocets` (`Beta`), `ccsds` (`Beta`), `plcopen` (`Beta`), `automationml` (`Beta`)
-- **3D CAD, Digital Metrology & Continuum Physics (5):** `step` (`Stable`), `qif` (`Beta`), `scad` (`Stable`), `fea` (`Preview`), `cfd` (`Preview`)
+- **3D CAD, Digital Metrology & Continuum Physics (6):** `step` (`Stable`), `qif` (`Beta`), `scad` (`Stable`), `usd` (`Preview`), `fea` (`Preview`), `cfd` (`Preview`)
 - **Chemistry, Systems/Synthetic Biology & Scientific Code (14):** `sbml` (`Preview`), `antimony` (`Preview`), `cantera` (`Preview`), `smiles` (`Preview`), `nmtran` (`Preview`), `sbol` (`Preview`), `bngl` (`Preview`), `sedml` (`Preview`), `pdb` (`Preview`), `genbank` (`Preview`), `gproms` (`Preview`), `phreeqc` (`Preview`), `fortran` (`Preview`), `c` (`Beta`)
 - **Radiology, Radiation Oncology & Computer-Assisted Surgery (8):** `opensim` (`Beta`), `dicom-rt` (`Beta`), `cellml` (`Beta`), `febio` (`Beta`), `nifti` (`Beta`), `topas` (`Beta`), `three-mf` (`Beta`), `igtl` (`Beta`)
 

@@ -273,7 +273,14 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
       const sym = baseVal as SymbolEntry;
       const dims = db.query<number[] | null>("resolvedArrayDimensions", sym.id);
       if (dims && dims.length > 0 && dims[0]! > 0) {
-        baseVal = Array.from({ length: dims[0]! }, (_, i) => i + 1);
+        const buildShapePlaceholder = (d: number[], idx: number): unknown[] => {
+          const len = d[idx]!;
+          if (idx + 1 < d.length && d[idx + 1]! > 0) {
+            return Array.from({ length: len }, () => buildShapePlaceholder(d, idx + 1));
+          }
+          return Array.from({ length: len }, () => undefined);
+        };
+        baseVal = buildShapePlaceholder(dims, 0);
       }
     }
     if (Array.isArray(baseVal)) {
@@ -1185,8 +1192,12 @@ function findTopLevelOperator(text: string, ops: string[]): number {
       ) {
         continue;
       }
-      // Don't match unary minus/plus after another operator
-      if ((ch === "-" || ch === "+") && i > 0 && "+-*/^:<>=,".includes(text[i - 1]!.trim() || text[i - 1]!)) continue;
+      // Don't match unary minus/plus after another operator (ignoring whitespace)
+      if ((ch === "-" || ch === "+") && i > 0) {
+        let prevIdx = i - 1;
+        while (prevIdx >= 0 && /\s/.test(text[prevIdx]!)) prevIdx--;
+        if (prevIdx < 0 || "+-*/^:<>=,({[".includes(text[prevIdx]!)) continue;
+      }
       lastIdx = i;
     }
   }

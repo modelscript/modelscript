@@ -1,3 +1,8 @@
+---
+title: "ASAM OpenSCENARIO Autonomous Driving (.xosc, .osc)"
+description: "@modelscript/openscenario (languages/openscenario) provides zero-regex XML and domain DSL parsing, dynamic scenario orchestration, Time-To-Collision (TTC) monitoring, Mobileye Responsibility-Sensit..."
+---
+
 # ASAM OpenSCENARIO Autonomous Driving (`.xosc`, `.osc`)
 
 `@modelscript/openscenario` (`languages/openscenario`) provides zero-regex XML and domain DSL parsing, dynamic scenario orchestration, Time-To-Collision (TTC) monitoring, Mobileye Responsibility-Sensitive Safety (RSS) margin verification, linear DAE lowering, and Modelica 3.x projection for **ASAM OpenSCENARIO 1.x & 2.0** autonomous vehicle validation scenarios.

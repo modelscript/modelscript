@@ -3,7 +3,7 @@
 
 # @modelscript/cli
 
-Unified command-line interface (`modelscript`, alias `msx`) for ModelScript. Provides **89 commands** across compilation, DAE flattening, numerical simulation, optimal control, formal verification, enterprise digital thread coexistence, 3D CAD/CAE extraction, package management, and domain-specific engineering solvers across all **44 supported languages and simulation formats**.
+Unified command-line interface (`modelscript`, alias `msx`) for ModelScript. Provides **105 commands** across compilation, DAE flattening, numerical simulation, optimal control, formal verification, enterprise digital thread coexistence, 3D CAD/CAE extraction, package management, and domain-specific engineering solvers across all **68 supported languages and simulation formats**.
 
 ---
 
@@ -23,16 +23,15 @@ npx msx --daemon <command>
 
 ---
 
-## Command Reference (89 Commands)
+## Command Reference (105 Commands)
 
 ### 1. Core Modeling, Flattening, Simulation & Optimization
 
 | Command                             | Description                                                                                    |
 | :---------------------------------- | :--------------------------------------------------------------------------------------------- |
+| `msx inspect <files...>`            | Inspect and summarize engineering models across any of the 68 supported languages (`info`)     |
 | `msx compile <name> <paths...>`     | Flatten a Modelica or ModelScript model into a flat DAE arena (alias: `msx flatten`)           |
 | `msx simulate <name> <paths...>`    | Numerically simulate a model and output CSV or JSON trajectories                               |
-| `msx simulate-cloud <name> <paths>` | Offload large-scale simulation or parameter sweeps to the ModelScript Cloud HPC cluster        |
-| `msx sim-c-codegen <name> <paths>`  | Generate standalone, zero-dependency ANSI C99 simulation code from a flattened DAE arena       |
 | `msx instantiate <name> <paths...>` | Instantiate and query the hierarchical AST structure of a Modelica model                       |
 | `msx fmu <name> <paths...>`         | Export a model as a standalone FMI 2.0/3.0 FMU archive in C99, WASM, or JS (`export-fmu`)      |
 | `msx import-fmu <fmu>`              | Import an external FMU archive and synthesize a strongly typed Modelica wrapper (`fmu-import`) |
@@ -43,7 +42,13 @@ npx msx --daemon <command>
 | `msx surrogate <name> [paths...]`   | Train or import an AI surrogate Reduced Order Model (ROM) and emit ONNX, C99, or Modelica code |
 | `msx csg <name> <paths...>`         | Evaluate Constructive Solid Geometry (CSG) topologies to STEP B-Rep or 3D meshes               |
 
-### 2. Domain-Specific Engineering Solvers & Toolkits (35 Domain Commands)
+### 2. Domain-Specific Engineering Solvers & Toolkits (49 Domain Commands)
+
+#### Universal Domain Dispatcher
+
+| Command                               | Description                                                                                 |
+| :------------------------------------ | :------------------------------------------------------------------------------------------ |
+| `msx domain <lang> <action> [files…]` | Invoke domain-specific engineering actions and solvers for any registered language (`tool`) |
 
 #### Power Systems, RF & Electronics
 
@@ -51,6 +56,7 @@ npx msx --daemon <command>
 | :----------------------------------- | :----------------------------------------------------------------------------------------------------- |
 | `msx pscad <action> [files...]`      | Inspect, lint (`M6001`–`M6017`), simulate EMT, verify IEEE 2800-2022, and export PSCAD (`.pscx`)       |
 | `msx psse <action> [files...]`       | Inspect, lint (`P1001`–`P4001`), solve AC power flow, and render SLDs for Siemens PTI PSS/E (`.raw`)   |
+| `msx cgmes <action> [files...]`      | Inspect, lint (`C1001`–`C1010`), convert, and solve ENTSO-E CIM / CGMES European grid models (`.xml`)  |
 | `msx opendss <action> [files...]`    | Parse, lint (`M8401`–`M8408`), solve unbalanced multi-phase power flow, and project OpenDSS (`.dss`)   |
 | `msx spice <action> [files...]`      | Parse, lint (`M7101`–`M7106`), lower MNA equations, and project Berkeley/LTspice netlists (`.cir`)     |
 | `msx verilog-a <action> [files...]`  | Parse, lint (`M7601`–`M7607`), lower analog behavioral modules, and project Verilog-A (`.va`/`.vams`)  |
@@ -62,6 +68,7 @@ npx msx --daemon <command>
 | Command                              | Description                                                                                             |
 | :----------------------------------- | :------------------------------------------------------------------------------------------------------ |
 | `msx olga <action> [files...]`       | Parse, lint (`M7001`–`M7013`), simulate 1D multiphase drift-flux, tune, and verify OLGA (`.opi`)        |
+| `msx frac <action> [files...]`       | Real-time hydraulic completions, slurry hydraulics, perforation erosion, and screen-out analytics       |
 | `msx lps <action> [files...]`        | Solve steady-state hydraulics and dynamic gas/liquid Euler surge transients for PipelineStudio (`.lps`) |
 | `msx aspen <action> [files...]`      | Parse flowsheets, run Rachford-Rice VLE flash, lint (`M8101`–`M8115`), and project Aspen Plus (`.inp`)  |
 | `msx eclipse <action> [files...]`    | Parse black-oil reservoir decks (`.data`), lint (`M8701`–`M8710`), and solve Darcy/Peaceman depletion   |
@@ -84,20 +91,36 @@ npx msx --daemon <command>
 | `msx openscenario <action> [files...]` | Parse ASAM OpenSCENARIO (`.xosc`/`.osc`), lint (`M8501`–`M8510`), and verify TTC / IEEE 2846 RSS safety     |
 | `msx autosar <action> [files...]`      | Parse AUTOSAR `.arxml`, validate SWC ports, runnable WCET & PDU bit-packing (`M7401`–`M7410`), and export   |
 
-#### Aerospace, Flight Dynamics, Continuum CAE, Biology & Scientific Code
+#### Aerospace, Flight Dynamics, Continuum CAE, Metrology, Compliance, Biology & Scientific Code
 
-| Command                            | Description                                                                                             |
-| :--------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| `msx simulink <action> [files...]` | Parse MATLAB Simulink `.slx`/`.mdl`, lint control loops (`M7201`–`M7210`), and project to Modelica      |
-| `msx easy5 <action> [files...]`    | Parse Boeing/MSC EASY5 (`.ez5`), extract state-space Jacobians ($A,B,C,D$), and analyze Bode response   |
-| `msx jsbsim <action> [files...]`   | Parse JSBSim 6-DOF flight dynamics XML, lint (`M8901`–`M8910`), simulate trajectories, and project      |
-| `msx rocets <action> [files...]`   | Parse NASA ROCETS decks (`.roc`), balance turbomachinery power cycles, and simulate propulsion          |
-| `msx ccsds <action> [files...]`    | Parse CCSDS OEM/OPM/OMM & XTCE telemetry, propagate 6-DOF $J_2$ orbits, and lint (`M8201`–`M8208`)      |
-| `msx plcopen <action> [files...]`  | Parse IEC 61131-3 `.st` / `.plcxml`, lint scan-cycle logic (`M7801`–`M7806`), and lower clocked DAEs    |
-| `msx fea <action> [files...]`      | Parse CalculiX/Nastran `.inp`/`.bdf`/`.fea`, lint mesh/BCs (`M7401`–`M7408`), and run 3D Tet4/Tet10 FEA |
-| `msx cfd <action> [files...]`      | Parse SU2/OpenFOAM `.cfg`/`.su2`/`.foam`, lint CFL/$y^+$ (`M7301`–`M7308`), and run aerodynamic solvers |
-| `msx sbml <action> [files...]`     | Parse Systems Biology Markup Language (`.sbml`), lint stoichiometry (`M8801`–`M8810`), and solve ODEs   |
-| `msx c <action> [files...]`        | Parse ISO C99 control code (`.c`/`.h`), build SSA CFGs, lint safety rules, and lower to DAE arena       |
+| Command                            | Description                                                                                               |
+| :--------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| `msx simulink <action> [files...]` | Parse MATLAB Simulink `.slx`/`.mdl`, lint control loops (`M7201`–`M7210`), and project to Modelica        |
+| `msx easy5 <action> [files...]`    | Parse Boeing/MSC EASY5 (`.ez5`), extract state-space Jacobians ($A,B,C,D$), and analyze Bode response     |
+| `msx jsbsim <action> [files...]`   | Parse JSBSim 6-DOF flight dynamics XML, lint (`M8901`–`M8910`), simulate trajectories, and project        |
+| `msx rocets <action> [files...]`   | Parse NASA ROCETS decks (`.roc`), balance turbomachinery power cycles, and simulate propulsion            |
+| `msx ccsds <action> [files...]`    | Parse CCSDS OEM/OPM/OMM & XTCE telemetry, propagate 6-DOF $J_2$ orbits, and lint (`M8201`–`M8208`)        |
+| `msx plcopen <action> [files...]`  | Parse IEC 61131-3 `.st` / `.plcxml`, lint scan-cycle logic (`M7801`–`M7806`), and lower clocked DAEs      |
+| `msx aml <action> [files...]`      | Parse IEC 62714 AutomationML / CAEX (`.aml`), lint (`M8301`–`M8307`), run virtual commissioning, & lower  |
+| `msx qif <action> [files...]`      | Parse ISO 23952 QIF (`.qif`), lint ASME Y14.5 GD&T (`M8101`–`M8108`), compute SPC ($C_p, C_{pk}$), & sync |
+| `msx oscal <action> [files...]`    | Parse NIST OSCAL 1.1.x, resolve SP 800-53/82 CPS baselines, lint (`M8201`–`M8208`), and audit compliance  |
+| `msx fea <action> [files...]`      | Parse CalculiX/Nastran `.inp`/`.bdf`/`.fea`, lint mesh/BCs (`M7401`–`M7408`), and run 3D Tet4/Tet10 FEA   |
+| `msx cfd <action> [files...]`      | Parse SU2/OpenFOAM `.cfg`/`.su2`/`.foam`, lint CFL/$y^+$ (`M7301`–`M7308`), and run aerodynamic solvers   |
+| `msx sbml <action> [files...]`     | Parse Systems Biology Markup Language (`.sbml`), lint stoichiometry (`M8801`–`M8810`), and solve ODEs     |
+| `msx c <action> [files...]`        | Parse ISO C99 control code (`.c`/`.h`), build SSA CFGs, lint safety rules, and lower to DAE arena         |
+
+#### Radiology, Radiation Oncology & Computer-Assisted Surgery
+
+| Command                            | Description                                                                                                       |
+| :--------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `msx opensim <action> [files...]`  | Inspect, lint (`M9101`–`M9110`), simulate Hill-type muscle dynamics, and project OpenSim models (`.osim`)         |
+| `msx dicom-rt <action> [files...]` | Inspect, verify QUANTEC OAR constraints & MLC kinematics (`M9201`–`M9210`), and compute DVH/BED/EQD2 (`.rtplan`)  |
+| `msx cellml <action> [files...]`   | Inspect, validate SI dimensional units (`M9301`–`M9310`), integrate electrophysiology ODEs, & project (`.cellml`) |
+| `msx febio <action> [files...]`    | Inspect, validate hyperelastic/biphasic tissue mechanics & SOFA scenes (`M9401`–`M9410`), and solve (`.feb`)      |
+| `msx nifti <action> [files...]`    | Inspect, validate `qform`/`sform` RAS transforms (`M9501`–`M9510`), extract iso-surfaces, and project (`.nii`)    |
+| `msx topas <action> [files...]`    | Inspect, validate TOPAS/GATE hadrontherapy beamlines (`M9601`–`M9610`), and solve Bortfeld Bragg peaks (`.topas`) |
+| `msx three-mf <action> [files...]` | Inspect, verify 2-manifold topology & osteotomy guides (`M9701`–`M9710`), and project 3MF Medical (`.3mf`)        |
+| `msx igtl <action> [files...]`     | Inspect, validate $SE(3)$ transforms (`M9801`–`M9810`), and solve stylus pivot calibration & TRE (`.igtl`)        |
 
 ### 3. Formal Verification & Automated Testing
 
@@ -142,7 +165,7 @@ npx msx --daemon <command>
 | `msx daemon <action>`                | Manage the background compiler daemon for instant compilation                         |
 | `msx build [entry]`                  | Compile generated parser AssemblyScript into WASM and native platform binaries        |
 | `msx generate [target] [entries...]` | Generate parser tables or a full VS Code extension from DSL language specifications   |
-| `msx parse <file>`                   | Parse a file using its language DSL parser (supports any of the 44 languages)         |
+| `msx parse <file>`                   | Parse a file using its language DSL parser (supports any of the 68 languages)         |
 | `msx language <action> [target]`     | Manage registered language DSLs (`list`, `register`, `unregister`; alias: `msx lang`) |
 | `msx lsp`                            | Start the ModelScript polyglot Language Server over stdio for editor integration      |
 | `msx playground`                     | Launch the interactive dual-editor DSL grammar workbench                              |
@@ -156,10 +179,13 @@ npx msx --daemon <command>
 | `msx init [path]`                | Initialize a `package.json` manifest for a ModelScript, Modelica, or SysML project     |
 | `msx login` / `msx logout`       | Authenticate with or log out from the ModelScript Registry                             |
 | `msx token <action>`             | Create, list, and revoke scoped personal/CI authentication tokens                      |
+| `msx keys <action>`              | Manage cryptographic signing keys and signed account identity (alias: `msx key`)       |
+| `msx sign <file>`                | Cryptographically sign a post or verify a W3C Data Integrity proof                     |
 | `msx whoami`                     | Display information about the currently authenticated registry user                    |
 | `msx install [package]`          | Install a package from the ModelScript Registry into the local workspace               |
 | `msx publish <path>`             | Publish a library directory or model file to the ModelScript Registry                  |
 | `msx pack [path]`                | Create an offline distribution `.zip` archive from a package                           |
+| `msx stdlib [action] [pack]`     | Manage, list, and synchronize polyglot standard libraries across 68 languages          |
 | `msx unpublish [path]`           | Remove a published library version from the ModelScript Registry                       |
 | `msx hub <command>`              | Manage, configure, and inspect federated ModelScript hub nodes                         |
 | `msx db <action>`                | Database schema migration, health verification, and pre-flight snapshot management     |
@@ -191,3 +217,16 @@ npx msx pscad verify-ieee2800 packages/examples/pscad-microgrid/Microgrid_IBR.ps
 # 5. Render a model diagram to SVG
 npx msx render DroneSimulation packages/examples/drone-reachability/modelica/DroneSimulation.mo > diagram.svg
 ```
+
+---
+
+## Scripts
+
+| Command             | Description                                                  |
+| :------------------ | :----------------------------------------------------------- |
+| `npm run build`     | Compile TypeScript and copy vendor assets to `dist/`         |
+| `npm run clean`     | Remove `dist/` build artifacts                               |
+| `npm run lint`      | Run ESLint across `src/` and `tests/`                        |
+| `npm test`          | Run CLI unit and end-to-end integration test suites          |
+| `npm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)                |
+| `npm run watch`     | Compile TypeScript in incremental watch mode (`tsc --watch`) |

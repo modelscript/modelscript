@@ -29,7 +29,7 @@ ModelScript Standards & Interoperability Engine — Functional Mock-up Interface
 
 ### 3. Master Co-Simulation Orchestrator (`@modelscript/exchange/cosim`)
 
-- **Master Algorithms (`src/cosim/orchestrator.ts`, `src/cosim/coupling.js`)**:
+- **Master Algorithms (`src/cosim/orchestrator.ts`, `src/cosim/coupling.ts`)**:
   - Supports **Jacobi** (parallel) and **Gauss-Seidel** (serial) communication schedules across heterogeneous FMU and continuum physics participants.
   - **Adaptive Macro Step-Size Control**: Richardson extrapolation and local truncation error estimation with FMI rollback (`fmi2GetFMUstate` / `fmi2SetFMUstate`).
   - **Fluid-Structure Interaction (FSI) Relaxation**: Aitken $\Delta^2$ dynamic under-relaxation and IQN-ILS stabilization for strongly coupled algebraic loops.
@@ -66,6 +66,34 @@ ModelScript Standards & Interoperability Engine — Functional Mock-up Interface
 | `@modelscript/exchange/lens`     | Multi-standard projection lens engine (DIN SPEC 3105 `okh`, AAS, OSLC)                                                  |
 | `@modelscript/exchange/variants` | Variant management and parameter override resolution                                                                    |
 | `@modelscript/exchange/hpc`      | Cloud HPC batch job manifest and distributed trajectory bundler                                                         |
+
+---
+
+## Programmatic Usage
+
+```typescript
+import { CouplingGraph, parseFmuModelDescription } from "@modelscript/exchange";
+
+// 1. Parse scalar variables from an FMI 2.0 / 3.0 modelDescription.xml
+const desc = parseFmuModelDescription(`
+  <fmiModelDescription fmiVersion="2.0" modelName="Plant">
+    <ModelVariables>
+      <ScalarVariable name="u" causality="input"><Real start="0.0"/></ScalarVariable>
+      <ScalarVariable name="y" causality="output"><Real/></ScalarVariable>
+    </ModelVariables>
+  </fmiModelDescription>
+`);
+console.log(desc.modelName, desc.variables.length);
+
+// 2. Construct a multi-FMU co-simulation coupling graph
+const graph = new CouplingGraph();
+graph.addLink({
+  fromParticipant: "Controller",
+  fromPort: "u_cmd",
+  toParticipant: "Plant",
+  toPort: "u",
+});
+```
 
 ---
 

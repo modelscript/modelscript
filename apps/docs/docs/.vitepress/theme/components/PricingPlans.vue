@@ -21,7 +21,7 @@ interface Plan {
   comingSoon?: boolean;
 }
 
-const MAIL = "enterprise@modelscript.org";
+const MAIL = "sales@modelscript.org";
 const mail = (subject: string) => `mailto:${MAIL}?subject=${encodeURIComponent(subject)}`;
 
 const interval = ref<Interval>("annual");
@@ -58,7 +58,7 @@ const selfServe: Plan[] = [
       "Priority simulation queue",
       "GPU surrogate-model training",
     ],
-    cta: { label: "Upgrade to Pro", href: "https://ansatz.social/settings/billing#subscription-tiers" },
+    cta: { label: "Request Early Access", href: mail("[Pro Early Access] ModelScript Cloud Compute") },
     comingSoon: true,
   },
   {
@@ -76,7 +76,7 @@ const selfServe: Plan[] = [
       "Role-based access control",
       "MPI cluster access",
     ],
-    cta: { label: "Upgrade to Team", href: "https://ansatz.social/settings/billing#subscription-tiers" },
+    cta: { label: "Request Early Access", href: mail("[Team Early Access] ModelScript Team Evaluation") },
     comingSoon: true,
   },
 ];
@@ -99,7 +99,7 @@ const contract: Plan[] = [
       "48-hour response on blocking issues",
       "Private channel with the compiler team",
     ],
-    cta: { label: "Request a pilot", href: mail("[Commercial SDK Inquiry] ModelScript Evaluation") },
+    cta: { label: "Request a Pilot", href: mail("[Commercial SDK Inquiry] ModelScript Evaluation") },
     comingSoon: true,
   },
   {
@@ -120,7 +120,7 @@ const contract: Plan[] = [
       "24-hour mission-critical support",
       "Internal use only. Redistribution in a product needs the Commercial SDK.",
     ],
-    cta: { label: "Talk to us", href: mail("[Enterprise Appliance Inquiry] Evaluation") },
+    cta: { label: "Schedule Architecture Review", href: mail("[Enterprise Appliance Inquiry] Evaluation") },
     comingSoon: true,
   },
 ];
@@ -194,10 +194,10 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
 <template>
   <div class="pricing">
     <div class="disclaimer" role="note">
-      <strong>Paid plans are in development.</strong> Pro, Team, Commercial SDK and Enterprise Appliance are not yet
-      available for purchase. The features and prices below are planned and may change before launch. Community is
-      available today. To ask about early access, email
-      <a href="mailto:founders@modelscript.org?subject=%5BEarly%20Access%5D%20ModelScript%20paid%20plans">founders@modelscript.org</a>.
+      <strong>Early Access &amp; Enterprise Pilots.</strong> Community is free and available today. Pro and Team cloud
+      compute tiers are in early access, and Commercial SDK / Enterprise Appliance evaluations are open for pilot
+      partnerships. Questions? Email
+      <a href="mailto:sales@modelscript.org?subject=%5BEarly%20Access%5D%20ModelScript%20paid%20plans">sales@modelscript.org</a>.
     </div>
 
     <div class="pricing-toggle" role="group" aria-label="Billing interval">
@@ -214,7 +214,7 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
     <p class="group-lead">Self-serve plans. Start free and upgrade when you need more compute or collaboration.</p>
     <div class="grid">
       <section v-for="p in selfServe" :key="p.id" class="card" :class="{ soon: p.comingSoon }" :aria-labelledby="`plan-${p.id}`">
-        <span v-if="p.comingSoon" class="badge">Coming soon</span>
+        <span v-if="p.comingSoon" class="badge">Early Access</span>
         <h3 :id="`plan-${p.id}`" class="name">{{ p.name }}</h3>
         <p class="audience">{{ p.audience }}</p>
         <p class="price">
@@ -225,8 +225,7 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
         <ul>
           <li v-for="f in p.features" :key="f">{{ f }}</li>
         </ul>
-        <a v-if="!p.comingSoon" class="cta" :href="p.cta.href" :target="isExternal(p.cta.href) ? '_blank' : undefined" :rel="isExternal(p.cta.href) ? 'noopener' : undefined">{{ p.cta.label }}</a>
-        <span v-else class="cta disabled" role="link" aria-disabled="true">Coming soon</span>
+        <a class="cta" :class="{ 'cta-primary': !p.comingSoon }" :href="p.cta.href" :target="isExternal(p.cta.href) ? '_blank' : undefined" :rel="isExternal(p.cta.href) ? 'noopener' : undefined">{{ p.cta.label }}</a>
       </section>
     </div>
 
@@ -234,7 +233,7 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
     <p class="group-lead">Annual contracts for two different needs. The Commercial SDK is for vendors who <strong>ship</strong> ModelScript inside a product. The Enterprise Appliance is for organizations that <strong>run</strong> it internally. They are separate licenses. If you need both, contact us about a combined agreement.</p>
     <div class="grid two">
       <section v-for="p in contract" :key="p.id" class="card" :class="{ soon: p.comingSoon }" :aria-labelledby="`plan-${p.id}`">
-        <span v-if="p.comingSoon" class="badge">Coming soon</span>
+        <span v-if="p.comingSoon" class="badge badge-pilot">Pilot Available</span>
         <h3 :id="`plan-${p.id}`" class="name">{{ p.name }}</h3>
         <p class="audience">{{ p.audience }}</p>
         <p class="price">
@@ -245,8 +244,7 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
         <ul>
           <li v-for="f in p.features" :key="f">{{ f }}</li>
         </ul>
-        <a v-if="!p.comingSoon" class="cta" :href="p.cta.href">{{ p.cta.label }}</a>
-        <span v-else class="cta disabled" role="link" aria-disabled="true">Coming soon</span>
+        <a class="cta" :href="p.cta.href">{{ p.cta.label }}</a>
       </section>
     </div>
 
@@ -339,36 +337,32 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
   border-radius: 12px;
   padding: 24px;
   background: var(--vp-c-bg-soft);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--ms-border-strong);
 }
 .card.soon {
-  opacity: 0.6;
-  filter: grayscale(1);
-  background: var(--vp-c-bg-alt);
+  background: var(--vp-c-bg-soft);
 }
 .disclaimer {
-  border: 1px solid var(--vp-c-warning-1, #b58900);
-  background: var(--vp-c-warning-soft, rgba(181, 137, 0, 0.1));
-  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 40%, transparent);
+  background: var(--vp-c-brand-soft);
+  border-radius: 10px;
   padding: 12px 16px;
   font-size: 14px;
   line-height: 1.5;
   margin: 8px 0 16px;
 }
-.cta.disabled {
-  cursor: not-allowed;
-  color: var(--vp-c-text-3);
-  background: var(--vp-c-bg-soft);
-  border-style: dashed;
-}
-.cta.disabled:hover {
-  border-color: var(--vp-c-border);
-}
 .badge {
   position: absolute;
   top: -12px;
   left: 24px;
-  background: var(--vp-c-text-2);
-  color: var(--vp-c-bg);
+  z-index: 1;
+  background-color: var(--vp-c-bg-soft);
+  background: color-mix(in srgb, var(--vp-c-brand-1) 12%, var(--vp-c-bg-soft));
+  color: var(--vp-c-brand-1);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 45%, transparent);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -376,6 +370,12 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
   padding: 2px 10px;
   border-radius: 999px;
   max-width: calc(100% - 48px);
+}
+.badge.badge-pilot {
+  background-color: var(--vp-c-bg-soft);
+  background: color-mix(in srgb, var(--ms-tier-beta, #38bdf8) 12%, var(--vp-c-bg-soft));
+  color: var(--ms-tier-beta, #38bdf8);
+  border-color: var(--ms-tier-beta-border, rgba(56, 189, 248, 0.45));
 }
 .name {
   margin: 0;

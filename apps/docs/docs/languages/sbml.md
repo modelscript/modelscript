@@ -1,3 +1,8 @@
+---
+title: "SBML Systems Biology & Biochemical Kinetics (.sbml, .xml)"
+description: "@modelscript/sbml (languages/sbml) provides zero-regex streaming XML parsing, biochemical reaction network kinetics solving, 4th-order Runge-Kutta ODE simulation, linear DAE lowering, and Modelica..."
+---
+
 # SBML Systems Biology & Biochemical Kinetics (`.sbml`, `.xml`)
 
 `@modelscript/sbml` (`languages/sbml`) provides zero-regex streaming XML parsing, biochemical reaction network kinetics solving, 4th-order Runge-Kutta ODE simulation, linear DAE lowering, and Modelica 3.x projection for **Systems Biology Markup Language (SBML Level 2 & 3 Core)** cellular, metabolic, and signaling network models.

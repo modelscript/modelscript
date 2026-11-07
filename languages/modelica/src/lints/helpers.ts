@@ -1382,24 +1382,54 @@ export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: any): 
       }
     }
     if (insideSizeOrNdims || isCalleeOrNamedArg) continue;
+    let isComprehensionLoopVar = false;
+    if ($.for_index != 0) {
+      for (const fi of db.ast.getDescendants(exprNode, $.for_index)) {
+        for (const fiId of db.ast.getDescendants(fi, $.identifier)) {
+          if (db.ast.textEqualsNode(ident, fiId)) {
+            isComprehensionLoopVar = true;
+            break;
+          }
+        }
+        if (isComprehensionLoopVar) break;
+      }
+    }
+    if (isComprehensionLoopVar) continue;
 
     const decl = findDeclInClass(db, enclosingClass, ident, $);
     if (decl != 0 && db.ast.getType(decl) == $.declaration) {
       for (const comp of db.ast.getAncestors(decl, 0)) {
         if (comp == enclosingClass) break;
         if (db.ast.getType(comp) == $.component_clause) {
-          let varb: u8 = VARIABILITY_CONTINUOUS;
+          let varb: u8 = VARIABILITY_CONSTANT;
+          let hasExplicitPrefix = false;
           for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
             if (db.ast.textEquals(pfx, "constant")) {
               varb = VARIABILITY_CONSTANT;
+              hasExplicitPrefix = true;
               break;
             }
             if (db.ast.textEquals(pfx, "parameter")) {
               varb = VARIABILITY_PARAMETER;
+              hasExplicitPrefix = true;
               break;
             }
             if (db.ast.textEquals(pfx, "discrete")) {
               varb = VARIABILITY_DISCRETE;
+              hasExplicitPrefix = true;
+              break;
+            }
+          }
+          if (!hasExplicitPrefix) {
+            for (const ts of db.ast.getDescendants(comp, $.type_specifier)) {
+              if (
+                db.ast.textEquals(ts, "Real") ||
+                db.ast.textEquals(ts, "Integer") ||
+                db.ast.textEquals(ts, "Boolean") ||
+                db.ast.textEquals(ts, "String")
+              ) {
+                varb = VARIABILITY_CONTINUOUS;
+              }
               break;
             }
           }

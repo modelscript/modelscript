@@ -113,8 +113,10 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
   // Check components
   for (const comp of circuit.components) {
     const isCurrentSource = comp.kind === "I";
-    for (const node of comp.nodes) {
-      addNodeConn(node, comp, isCurrentSource);
+    if (comp.kind !== "K") {
+      for (const node of comp.nodes) {
+        addNodeConn(node, comp, isCurrentSource);
+      }
     }
 
     // M7105: Invalid passive value (R, L, C <= 0)

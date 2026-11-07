@@ -285,7 +285,7 @@ export const owl2Language = language({
     FullIRI: () => /<[^>]*>/,
     AbbreviatedIRI: ($) => choice(seq($["IDENT"]!, ":", $["IDENT"]!), seq(":", $["IDENT"]!)),
     IRI: ($) => choice($["FullIRI"]!, $["AbbreviatedIRI"]!),
-    StringLiteral: () => /"[^"]*"/,
+    StringLiteral: () => /"[^"]*"(?:\^\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*))?(?:@[a-zA-Z-]+)?/,
 
     Ontology: ($) =>
       seq(
@@ -299,13 +299,14 @@ export const owl2Language = language({
 
     ImportDeclaration: ($) => seq("Import", "(", field("iri", $["IRI"]!), ")"),
 
-    // All 27 OWL 2 Functional-Style Syntax axiom productions
+    // OWL 2 Functional-Style Syntax axiom productions
     _Axiom: ($) =>
       choice(
         $["Declaration"]!,
         $["SubClassOfAxiom"]!,
         $["EquivalentClassesAxiom"]!,
         $["DisjointClassesAxiom"]!,
+        $["DisjointUnionAxiom"]!,
         $["SubObjectPropertyOfAxiom"]!,
         $["SubDataPropertyOfAxiom"]!,
         $["InverseObjectPropertiesAxiom"]!,
@@ -361,6 +362,7 @@ export const owl2Language = language({
         $["ObjectExactCardinality"]!,
         $["DataSomeValuesFrom"]!,
         $["DataAllValuesFrom"]!,
+        $["DataHasValue"]!,
         $["DataMinCardinality"]!,
         $["DataMaxCardinality"]!,
         $["DataExactCardinality"]!,
@@ -406,6 +408,8 @@ export const owl2Language = language({
 
     DataSomeValuesFrom: ($) => seq("DataSomeValuesFrom", "(", $["IRI"]!, $["DataRange"]!, ")"),
     DataAllValuesFrom: ($) => seq("DataAllValuesFrom", "(", $["IRI"]!, $["DataRange"]!, ")"),
+    DataHasValue: ($) =>
+      seq("DataHasValue", "(", field("property", $["IRI"]!), field("value", $["StringLiteral"]!), ")"),
     DataMinCardinality: ($) =>
       seq(
         "DataMinCardinality",
@@ -434,7 +438,15 @@ export const owl2Language = language({
         ")",
       ),
 
-    DataRange: ($) => choice($["IRI"]!),
+    FacetRestriction: ($) => seq(field("facet", $["IRI"]!), field("value", $["StringLiteral"]!)),
+    DatatypeRestriction: ($) =>
+      seq("DatatypeRestriction", "(", field("datatype", $["IRI"]!), repeat($["FacetRestriction"]!), ")"),
+    DataIntersectionOf: ($) => seq("DataIntersectionOf", "(", repeat($["DataRange"]!), ")"),
+    DataUnionOf: ($) => seq("DataUnionOf", "(", repeat($["DataRange"]!), ")"),
+    DataOneOf: ($) => seq("DataOneOf", "(", repeat($["StringLiteral"]!), ")"),
+
+    DataRange: ($) =>
+      choice($["IRI"]!, $["DatatypeRestriction"]!, $["DataIntersectionOf"]!, $["DataUnionOf"]!, $["DataOneOf"]!),
 
     // TBox, RBox, and ABox axiom grammar rules
     SubClassOfAxiom: ($) =>
@@ -451,8 +463,19 @@ export const owl2Language = language({
 
     DisjointClassesAxiom: ($) => seq("DisjointClasses", "(", repeat(field("classExpr", $["_ClassExpression"]!)), ")"),
 
+    DisjointUnionAxiom: ($) =>
+      seq("DisjointUnion", "(", field("class", $["IRI"]!), repeat(field("disjointClass", $["_ClassExpression"]!)), ")"),
+
+    ObjectPropertyChain: ($) => seq("ObjectPropertyChain", "(", repeat(field("property", $["IRI"]!)), ")"),
+
     SubObjectPropertyOfAxiom: ($) =>
-      seq("SubObjectPropertyOf", "(", field("subProperty", $["IRI"]!), field("superProperty", $["IRI"]!), ")"),
+      seq(
+        "SubObjectPropertyOf",
+        "(",
+        field("subProperty", choice($["IRI"]!, $["ObjectPropertyChain"]!)),
+        field("superProperty", $["IRI"]!),
+        ")",
+      ),
 
     SubDataPropertyOfAxiom: ($) =>
       seq("SubDataPropertyOf", "(", field("subProperty", $["IRI"]!), field("superProperty", $["IRI"]!), ")"),

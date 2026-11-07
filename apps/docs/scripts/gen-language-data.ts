@@ -146,6 +146,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
         "opendss",
         "pscad",
         "psse",
+        "cgmes",
         "olga",
         "lps",
         "sbml",
@@ -173,6 +174,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
       if (a.startsWith("to-") || a.startsWith("export-")) {
         const target = a.replace(/^(to-|export-)/, "");
         if (target === "modelica") projections.push("Modelica");
+        else if (target === "psse") projections.push("PSS/E");
         else if (target === "sysml" || target === "sysml2") projections.push("SysML v2");
         else if (target === "simpack") projections.push("SIMPACK");
         else if (target === "adams") projections.push("MSC Adams");

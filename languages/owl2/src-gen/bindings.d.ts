@@ -1265,73 +1265,81 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  OntologyDocument = 61,
-  PrefixDeclaration = 62,
-  PrefixName = 63,
-  AbbreviatedIRI = 64,
-  IRI = 65,
-  Ontology = 66,
-  ImportDeclaration = 67,
-  Axiom = 68,
-  _Axiom = 68,
-  Declaration = 69,
-  Entity = 70,
-  _Entity = 70,
-  ClassEntity = 71,
-  ObjectPropertyEntity = 72,
-  DataPropertyEntity = 73,
-  NamedIndividualEntity = 74,
-  ClassExpression = 75,
-  _ClassExpression = 75,
-  ObjectIntersectionOf = 76,
-  ObjectUnionOf = 77,
-  ObjectComplementOf = 78,
-  ObjectSomeValuesFrom = 79,
-  ObjectAllValuesFrom = 80,
-  ObjectHasSelf = 81,
-  ObjectHasValue = 82,
-  ObjectOneOf = 83,
-  ObjectMinCardinality = 84,
-  ObjectMaxCardinality = 85,
-  ObjectExactCardinality = 86,
-  DataSomeValuesFrom = 87,
-  DataAllValuesFrom = 88,
-  DataMinCardinality = 89,
-  DataMaxCardinality = 90,
-  DataExactCardinality = 91,
-  DataRange = 92,
-  SubClassOfAxiom = 93,
-  EquivalentClassesAxiom = 94,
-  DisjointClassesAxiom = 95,
-  SubObjectPropertyOfAxiom = 96,
-  SubDataPropertyOfAxiom = 97,
-  InverseObjectPropertiesAxiom = 98,
-  DisjointObjectPropertiesAxiom = 99,
-  ObjectPropertyDomainAxiom = 100,
-  ObjectPropertyRangeAxiom = 101,
-  DataPropertyDomainAxiom = 102,
-  DataPropertyRangeAxiom = 103,
-  FunctionalObjectPropertyAxiom = 104,
-  InverseFunctionalObjectPropertyAxiom = 105,
-  ReflexiveObjectPropertyAxiom = 106,
-  IrreflexiveObjectPropertyAxiom = 107,
-  SymmetricObjectPropertyAxiom = 108,
-  AsymmetricObjectPropertyAxiom = 109,
-  TransitiveObjectPropertyAxiom = 110,
-  FunctionalDataPropertyAxiom = 111,
-  ObjectPropertyAssertionAxiom = 112,
-  DataPropertyAssertionAxiom = 113,
-  NegativeObjectPropertyAssertionAxiom = 114,
-  NegativeDataPropertyAssertionAxiom = 115,
-  ClassAssertionAxiom = 116,
-  SameIndividualAxiom = 117,
-  DifferentIndividualsAxiom = 118,
-  START = 119,
-  _START = 119,
-  IDENT = 122,
-  INTEGER = 123,
-  FullIRI = 125,
-  StringLiteral = 128,
+  OntologyDocument = 68,
+  PrefixDeclaration = 69,
+  PrefixName = 70,
+  AbbreviatedIRI = 71,
+  IRI = 72,
+  Ontology = 73,
+  ImportDeclaration = 74,
+  Axiom = 75,
+  _Axiom = 75,
+  Declaration = 76,
+  Entity = 77,
+  _Entity = 77,
+  ClassEntity = 78,
+  ObjectPropertyEntity = 79,
+  DataPropertyEntity = 80,
+  NamedIndividualEntity = 81,
+  ClassExpression = 82,
+  _ClassExpression = 82,
+  ObjectIntersectionOf = 83,
+  ObjectUnionOf = 84,
+  ObjectComplementOf = 85,
+  ObjectSomeValuesFrom = 86,
+  ObjectAllValuesFrom = 87,
+  ObjectHasSelf = 88,
+  ObjectHasValue = 89,
+  ObjectOneOf = 90,
+  ObjectMinCardinality = 91,
+  ObjectMaxCardinality = 92,
+  ObjectExactCardinality = 93,
+  DataSomeValuesFrom = 94,
+  DataAllValuesFrom = 95,
+  DataHasValue = 96,
+  DataMinCardinality = 97,
+  DataMaxCardinality = 98,
+  DataExactCardinality = 99,
+  FacetRestriction = 100,
+  DatatypeRestriction = 101,
+  DataIntersectionOf = 102,
+  DataUnionOf = 103,
+  DataOneOf = 104,
+  DataRange = 105,
+  SubClassOfAxiom = 106,
+  EquivalentClassesAxiom = 107,
+  DisjointClassesAxiom = 108,
+  DisjointUnionAxiom = 109,
+  ObjectPropertyChain = 110,
+  SubObjectPropertyOfAxiom = 111,
+  SubDataPropertyOfAxiom = 112,
+  InverseObjectPropertiesAxiom = 113,
+  DisjointObjectPropertiesAxiom = 114,
+  ObjectPropertyDomainAxiom = 115,
+  ObjectPropertyRangeAxiom = 116,
+  DataPropertyDomainAxiom = 117,
+  DataPropertyRangeAxiom = 118,
+  FunctionalObjectPropertyAxiom = 119,
+  InverseFunctionalObjectPropertyAxiom = 120,
+  ReflexiveObjectPropertyAxiom = 121,
+  IrreflexiveObjectPropertyAxiom = 122,
+  SymmetricObjectPropertyAxiom = 123,
+  AsymmetricObjectPropertyAxiom = 124,
+  TransitiveObjectPropertyAxiom = 125,
+  FunctionalDataPropertyAxiom = 126,
+  ObjectPropertyAssertionAxiom = 127,
+  DataPropertyAssertionAxiom = 128,
+  NegativeObjectPropertyAssertionAxiom = 129,
+  NegativeDataPropertyAssertionAxiom = 130,
+  ClassAssertionAxiom = 131,
+  SameIndividualAxiom = 132,
+  DifferentIndividualsAxiom = 133,
+  START = 134,
+  _START = 134,
+  IDENT = 137,
+  INTEGER = 138,
+  FullIRI = 140,
+  StringLiteral = 143,
   EOF = 1023,
 }
 
@@ -1354,28 +1362,36 @@ export declare enum FieldId {
   cardinality = 8,
   Filler = 9,
   filler = 9,
-  Range = 10,
-  range = 10,
-  SubClass = 11,
-  subClass = 11,
-  SuperClass = 12,
-  superClass = 12,
-  ClassExpr = 13,
-  classExpr = 13,
-  SubProperty = 14,
-  subProperty = 14,
-  SuperProperty = 15,
-  superProperty = 15,
-  InverseProperty = 16,
-  inverseProperty = 16,
-  Domain = 17,
-  domain = 17,
-  Subject = 18,
-  subject = 18,
-  ObjectNode = 19,
-  object = 19,
-  Value = 20,
-  value = 20,
+  Value = 10,
+  value = 10,
+  Range = 11,
+  range = 11,
+  Facet = 12,
+  facet = 12,
+  Datatype = 13,
+  datatype = 13,
+  SubClass = 14,
+  subClass = 14,
+  SuperClass = 15,
+  superClass = 15,
+  ClassExpr = 16,
+  classExpr = 16,
+  Class = 17,
+  class = 17,
+  DisjointClass = 18,
+  disjointClass = 18,
+  SubProperty = 19,
+  subProperty = 19,
+  SuperProperty = 20,
+  superProperty = 20,
+  InverseProperty = 21,
+  inverseProperty = 21,
+  Domain = 22,
+  domain = 22,
+  Subject = 23,
+  subject = 23,
+  ObjectNode = 24,
+  object = 24,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1483,6 +1499,10 @@ export interface DataAllValuesFromNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataAllValuesFrom;
 }
 export declare function isDataAllValuesFrom(node: SyntaxNode | null | undefined): node is DataAllValuesFromNode;
+export interface DataHasValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataHasValue;
+}
+export declare function isDataHasValue(node: SyntaxNode | null | undefined): node is DataHasValueNode;
 export interface DataMinCardinalityNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataMinCardinality;
 }
@@ -1495,6 +1515,26 @@ export interface DataExactCardinalityNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataExactCardinality;
 }
 export declare function isDataExactCardinality(node: SyntaxNode | null | undefined): node is DataExactCardinalityNode;
+export interface FacetRestrictionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FacetRestriction;
+}
+export declare function isFacetRestriction(node: SyntaxNode | null | undefined): node is FacetRestrictionNode;
+export interface DatatypeRestrictionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DatatypeRestriction;
+}
+export declare function isDatatypeRestriction(node: SyntaxNode | null | undefined): node is DatatypeRestrictionNode;
+export interface DataIntersectionOfNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataIntersectionOf;
+}
+export declare function isDataIntersectionOf(node: SyntaxNode | null | undefined): node is DataIntersectionOfNode;
+export interface DataUnionOfNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataUnionOf;
+}
+export declare function isDataUnionOf(node: SyntaxNode | null | undefined): node is DataUnionOfNode;
+export interface DataOneOfNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataOneOf;
+}
+export declare function isDataOneOf(node: SyntaxNode | null | undefined): node is DataOneOfNode;
 export interface DataRangeNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataRange;
 }
@@ -1511,6 +1551,14 @@ export interface DisjointClassesAxiomNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DisjointClassesAxiom;
 }
 export declare function isDisjointClassesAxiom(node: SyntaxNode | null | undefined): node is DisjointClassesAxiomNode;
+export interface DisjointUnionAxiomNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DisjointUnionAxiom;
+}
+export declare function isDisjointUnionAxiom(node: SyntaxNode | null | undefined): node is DisjointUnionAxiomNode;
+export interface ObjectPropertyChainNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ObjectPropertyChain;
+}
+export declare function isObjectPropertyChain(node: SyntaxNode | null | undefined): node is ObjectPropertyChainNode;
 export interface SubObjectPropertyOfAxiomNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SubObjectPropertyOfAxiom;
 }
@@ -1795,6 +1843,15 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DataAllValuesFromNode;
   };
+  export const DataHasValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DataHasValueNode;
+    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const DataMinCardinality: {
     readonly typeId: number;
     readonly type: string;
@@ -1828,6 +1885,37 @@ export declare namespace Cst {
     range(node: SyntaxNode | null | undefined): SyntaxNode | null;
     rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const FacetRestriction: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FacetRestrictionNode;
+    facet(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    facetList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DatatypeRestriction: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DatatypeRestrictionNode;
+    datatype(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    datatypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DataIntersectionOf: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DataIntersectionOfNode;
+  };
+  export const DataUnionOf: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DataUnionOfNode;
+  };
+  export const DataOneOf: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DataOneOfNode;
+  };
   export const DataRange: {
     readonly typeId: number;
     readonly type: string;
@@ -1855,6 +1943,22 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is DisjointClassesAxiomNode;
     classExpr(node: SyntaxNode | null | undefined): SyntaxNode | null;
     classExprList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DisjointUnionAxiom: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DisjointUnionAxiomNode;
+    class(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    disjointClass(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    disjointClassList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ObjectPropertyChain: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ObjectPropertyChainNode;
+    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const SubObjectPropertyOfAxiom: {
     readonly typeId: number;

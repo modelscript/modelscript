@@ -22,7 +22,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 307
+    "ruleCount": 217
   },
   {
     "slug": "sysml2",
@@ -52,7 +52,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 48
+    "ruleCount": 45
   },
   {
     "slug": "reqif",
@@ -567,7 +567,7 @@
         "SysML v2"
       ]
     },
-    "ruleCount": 15
+    "ruleCount": 10
   },
   {
     "slug": "simulink",
@@ -840,6 +840,36 @@
     "ruleCount": 13
   },
   {
+    "slug": "cgmes",
+    "name": "CIM / CGMES",
+    "sidebar": "CIM / CGMES",
+    "ext": ".xml, .rdf",
+    "role": "ENTSO-E IEC 61970 transmission grid exchange & topology",
+    "group": "power",
+    "pkgName": "@modelscript/cgmes",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx cgmes",
+    "actions": [
+      "inspect",
+      "lint",
+      "to-psse",
+      "to-modelica",
+      "solve"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": true,
+      "projections": [
+        "PSS/E",
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
     "slug": "opendss",
     "name": "OpenDSS",
     "sidebar": "OpenDSS Distribution",
@@ -869,7 +899,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 8
   },
   {
     "slug": "olga",

@@ -1,3 +1,8 @@
+---
+title: NMTRAN / NONMEM-Compatible Pharmacometrics & PK/PD (.ctl, .mod)
+description: Native WebAssembly GLR parsing, ADVAN1-ADVAN13 compartmental PK/PD solving, multi-dose exposure calculation (AUC, Cmax, Tmax, t1/2), DAEBuilder lowering, and SBML / Modelica projections for NMTRAN control streams.
+---
+
 # NMTRAN / NONMEM-Compatible Pharmacometrics & PK/PD (`.ctl`, `.mod`)
 
 `@modelscript/nmtran` (`languages/nmtran`) provides native WebAssembly GLR parsing, `ADVAN1`–`ADVAN13` compartmental pharmacokinetic/pharmacodynamic (PK/PD) solving, multi-dose (`AMT`, `RATE`, `II`, `ADDL`) exposure calculation ($\text{AUC}$, $C_{\max}$, $T_{\max}$, $t_{1/2}$), `DAEBuilder` lowering, and SBML / Modelica projections for **NMTRAN / NONMEM-compatible** clinical trial and population pharmacometrics control streams.
@@ -17,13 +22,22 @@
 
 ### 1. Standard PREDPP Compartmental Library (`ADVAN`) & General ODEs (`$DES`)
 
-- Parses `$SUBROUTINES` (`ADVAN1` 1-compartment IV bolus, `ADVAN2` 1-compartment oral first-order absorption, `ADVAN3`/`ADVAN4` 2-compartment, `ADVAN11`/`ADVAN12` 3-compartment, and `ADVAN6`/`ADVAN13` general non-linear differential equations `$DES` with `DADT(i)`).
-- Evaluates typical parameter transformations in `$PK` (e.g., `CL = THETA(1) * EXP(ETA(1))`, `V = THETA(2)`) and proportional/additive residual error models in `$ERROR`.
+`@modelscript/nmtran` parses `$SUBROUTINES` declarations (`ADVAN` + `TRANS` parameterizations) and general differential equations (`$DES`):
 
-### 2. Multi-Dose Regimen Simulation & Exposure Metrics
+| Subroutine            | Compartments                  | Route & Kinetics                                            | Governing System                                                                                                   |
+| :-------------------- | :---------------------------- | :---------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
+| `ADVAN1`              | 1 (Central)                   | IV Bolus / Infusion (`TRANS1`: $K$, `TRANS2`: $CL, V$)      | $\frac{dA_1}{dt} = R_{\text{inf}}(t) - \frac{CL}{V} A_1$                                                           |
+| `ADVAN2`              | 2 (Depot + Central)           | Extravascular 1st-Order Absorption ($K_a, CL, V$)           | $\frac{dA_1}{dt} = -K_a A_1, \quad \frac{dA_2}{dt} = K_a A_1 - \frac{CL}{V} A_2$                                   |
+| `ADVAN3` / `ADVAN4`   | 2–3 (Central + Peripheral)    | Two-compartment IV / Oral ($CL, V_1, Q, V_2, K_a$)          | Coupled central-peripheral distribution exchange $Q(A_1/V_1 - A_2/V_2)$                                            |
+| `ADVAN11` / `ADVAN12` | 3–4 (Central + 2 Peripherals) | Three-compartment IV / Oral ($CL, V_1, Q_2, V_2, Q_3, V_3$) | Deep-tissue distribution kinetics                                                                                  |
+| `ADVAN6` / `ADVAN13`  | $N$ User-Defined              | General Non-Linear ODEs (`$DES` with `DADT(i)`)             | Target-Mediated Drug Disposition (TMDD), Michaelis-Menten clearance $V_{\max} C / (K_m + C)$, indirect response PD |
 
-- Simulates intravenous bolus, zero-order infusion, and extravascular oral dosing regimens (`II` inter-dose interval, `ADDL` additional doses) and automatically computes clinical exposure metrics:
-  $$\text{AUC}_{0\to t} = \int_0^t C_p(\tau)\,d\tau, \qquad t_{1/2} = \frac{\ln 2}{k_e}, \qquad C_{\max}, \quad T_{\max}$$
+### 2. Population Mixed-Effects (`$THETA`, `$OMEGA`, `$SIGMA`) & Exposure Metrics
+
+- Evaluates non-linear mixed-effects (NLME) individual parameter relationships in `$PK` and residual error structures in `$ERROR`:
+  $$\theta_{i,k} = \theta_{\text{pop},k} \cdot \exp(\eta_{i,k}), \qquad \boldsymbol{\eta}_i \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Omega}), \qquad Y_{ij} = F_{ij}(1 + \varepsilon_{1,ij}) + \varepsilon_{2,ij}, \qquad \boldsymbol{\varepsilon}_{ij} \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$$
+- Simulates single-dose and steady-state multi-dose regimens (`AMT`, zero-order infusion `RATE`, inter-dose interval `II`, additional doses `ADDL`) and computes non-compartmental clinical exposure metrics via trapezoidal integration:
+  $$\text{AUC}_{0\to t} = \int_0^t C_p(\tau)\,d\tau, \qquad t_{1/2,\beta} = \frac{\ln 2}{\lambda_z}, \qquad C_{\max} = \max_{t} C_p(t), \qquad T_{\max} = \arg\max_{t} C_p(t)$$
 
 ### 3. DAE Lowering & Modelica / SBML Projection
 
@@ -40,11 +54,37 @@
 ## CLI Usage
 
 ```bash
-# Validate THETA bounds, OMEGA/SIGMA variance positivity, and ADVAN parametrization
+# Validate THETA bounds (lower <= init <= upper), OMEGA/SIGMA variance positivity, and ADVAN parametrization
 msx lint TwoCompOralPK.ctl
 
 # Parse and inspect NMTRAN control stream blocks
 msx parse TwoCompOralPK.ctl
+
+# Simulate PK/PD concentration-time profiles and exposure metrics (AUC, Cmax, Tmax, t1/2)
+msx domain nmtran inspect TwoCompOralPK.ctl
+```
+
+---
+
+## Programmatic TypeScript SDK
+
+```typescript
+import {
+  parseNmtranModel,
+  simulateNmtranPkPd,
+  lowerNmtranToDae,
+  nmtranToModelica,
+  nmtranToSbml,
+} from "@modelscript/nmtran";
+import { DAEBuilder } from "@modelscript/runtime";
+
+const model = parseNmtranModel(ctlSource);
+const result = simulateNmtranPkPd(model, { endTimeHours: 72, dtHours: 0.25 });
+
+const builder = new DAEBuilder();
+lowerNmtranToDae(model, builder);
+const modelicaCode = nmtranToModelica(model);
+const sbmlXml = nmtranToSbml(model);
 ```
 
 ---

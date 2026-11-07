@@ -7,12 +7,16 @@ export type ModelScriptType =
   | { kind: "i32" }
   | { kind: "u32" }
   | { kind: "i64" }
+  | { kind: "u64" }
+  | { kind: "usize" }
   | { kind: "f32" }
   | { kind: "f64" }
   | { kind: "bool" }
   | { kind: "string" }
+  | { kind: "void" }
   | { kind: "struct"; name: string }
   | { kind: "array"; element: ModelScriptType }
+  | { kind: "ptr"; element: ModelScriptType }
   | { kind: "unknown" };
 
 /**
@@ -44,15 +48,20 @@ export function getTypeSizeAndAlign(type: ModelScriptType): { size: number; alig
   switch (type.kind) {
     case "i32":
     case "u32":
+    case "usize":
     case "f32":
       return { size: 4, align: 4 };
     case "i64":
+    case "u64":
     case "f64":
       return { size: 8, align: 8 };
     case "bool":
       return { size: 1, align: 1 };
+    case "void":
+      return { size: 0, align: 1 };
     case "string":
     case "array":
+    case "ptr":
       return { size: 4, align: 4 }; // Pointer in 32-bit WASM linear memory
     case "struct":
       return { size: 4, align: 4 }; // Reference pointer
@@ -70,10 +79,13 @@ export function parseTypeName(typeStr: string): ModelScriptType {
   if (trimmed === "i32") return { kind: "i32" };
   if (trimmed === "u32") return { kind: "u32" };
   if (trimmed === "i64") return { kind: "i64" };
+  if (trimmed === "u64") return { kind: "u64" };
+  if (trimmed === "usize") return { kind: "usize" };
   if (trimmed === "f32") return { kind: "f32" };
   if (trimmed === "f64") return { kind: "f64" };
   if (trimmed === "bool") return { kind: "bool" };
   if (trimmed === "string") return { kind: "string" };
+  if (trimmed === "void") return { kind: "void" };
 
   if (trimmed.startsWith("Array<") && trimmed.endsWith(">")) {
     const inner = trimmed.slice(6, -1);
@@ -82,6 +94,10 @@ export function parseTypeName(typeStr: string): ModelScriptType {
   if (trimmed.startsWith("Slice<") && trimmed.endsWith(">")) {
     const inner = trimmed.slice(6, -1);
     return { kind: "array", element: parseTypeName(inner) };
+  }
+  if (trimmed.startsWith("ptr<") && trimmed.endsWith(">")) {
+    const inner = trimmed.slice(4, -1);
+    return { kind: "ptr", element: parseTypeName(inner) };
   }
 
   return { kind: "struct", name: trimmed };
@@ -314,6 +330,7 @@ export class ModelScriptQueryEngine {
             .map(([k, v]) => {
               if (v.kind === "struct") return `${k}:struct:${v.name}`;
               if (v.kind === "array") return `${k}:array:${v.element.kind}`;
+              if (v.kind === "ptr") return `${k}:ptr:${v.element.kind}`;
               return `${k}:${v.kind}`;
             })
             .join(",")
@@ -383,10 +400,14 @@ export class ModelScriptQueryEngine {
             result = { kind: "f64" };
           } else if (lType.kind === "f32" || rType.kind === "f32") {
             result = { kind: "f32" };
+          } else if (lType.kind === "u64" || rType.kind === "u64") {
+            result = { kind: "u64" };
           } else if (lType.kind === "i64" || rType.kind === "i64") {
             result = { kind: "i64" };
           } else if (lType.kind === "u32" || rType.kind === "u32") {
             result = { kind: "u32" };
+          } else if (lType.kind === "usize" || rType.kind === "usize") {
+            result = { kind: "usize" };
           } else if (lType.kind !== "unknown") {
             result = lType;
           } else {
@@ -442,6 +463,17 @@ export class ModelScriptQueryEngine {
             if (varNode?.text && collNode) {
               const collType = this.inferExpressionType(collNode, flworScope);
               flworScope.set(varNode.text, collType.kind === "array" ? collType.element : { kind: "f64" });
+            }
+          } else if (c.type === "LetClause") {
+            const lcChildren = Array.from({ length: c.childCount || 0 }, (_, i) => c.child(i)).filter(
+              (lc): lc is ModelScriptCstNode => lc !== null,
+            );
+            const varNode = c.childForFieldName?.("variable") ?? lcChildren.find((lc) => lc.type === "IDENTIFIER");
+            const eqIdx = lcChildren.findIndex((lc) => lc.type === ":=" || lc.type === "=");
+            const valNode = c.childForFieldName?.("value") ?? (eqIdx >= 0 ? lcChildren[eqIdx + 1] : undefined);
+            if (varNode?.text && valNode) {
+              const valType = this.inferExpressionType(valNode, flworScope);
+              flworScope.set(varNode.text, valType);
             }
           }
         }

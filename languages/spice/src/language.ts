@@ -9,6 +9,7 @@
  */
 
 import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
+import { spiceNetlistGrammar } from "./grammar/spice-grammar.js";
 import { lintSpiceCircuit } from "./lints/rules.js";
 import { parseSpice } from "./parser/spice-parser.js";
 import { spiceToNetlistGraph } from "./projections/ecad.js";
@@ -20,17 +21,17 @@ import { solveTran } from "./solvers/tran.js";
 export const spiceLanguage = language({
   name: "spice",
   fileExtensions: [".cir", ".sp", ".net", ".lib"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".cir", ".sp", ".net", ".lib"],
     icons: {
       light: "./assets/spice/icon-light.png",
       dark: "./assets/spice/icon-dark.png",
     },
+    folding: ["SubcktDef"],
+    outline: ["SubcktDef", "Component", "Directive"],
   },
-  rules: {
-    Root: () => "spice",
-  },
+  rules: spiceNetlistGrammar.rules,
 
   actions: [
     {

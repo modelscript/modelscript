@@ -50,13 +50,24 @@ const selectedFilter = ref<string>(
 const capabilityFilter = ref<"all" | "simulate" | "dae" | "projections">("all");
 const tierFilter = ref<"all" | "stable" | "beta" | "preview">("all");
 
-const filterOptions = computed(() => {
+const groupOptions = computed(() => {
   if (props.industry || props.group) return [];
   return [
     { id: "all", label: `All (${allLanguages.length})` },
     ...PLATFORM_GROUPS.map((g) => ({ id: `group:${g.id}`, label: g.label })),
-    ...INDUSTRIES.map((i) => ({ id: `industry:${i.slug}`, label: i.name })),
   ];
+});
+
+const industryOptions = computed(() => {
+  if (props.industry || props.group) return [];
+  return INDUSTRIES.map((i) => ({ id: `industry:${i.slug}`, label: i.name }));
+});
+
+const selectedIndustryFilter = computed({
+  get: () => (selectedFilter.value.startsWith("industry:") ? selectedFilter.value : ""),
+  set: (val: string) => {
+    selectedFilter.value = val || "all";
+  },
 });
 
 function matchesScope(lang: LanguageManifest): boolean {
@@ -122,9 +133,9 @@ const filteredLanguages = computed(() => {
 
       <div class="filter-row">
         <!-- Scope Filter Tabs (if not locked by props) -->
-        <div v-if="filterOptions.length" class="chip-group" role="group" aria-label="Scope filter">
+        <div v-if="groupOptions.length" class="chip-group" role="group" aria-label="Domain cluster filter">
           <button
-            v-for="opt in filterOptions"
+            v-for="opt in groupOptions"
             :key="opt.id"
             type="button"
             class="chip"
@@ -133,6 +144,18 @@ const filteredLanguages = computed(() => {
           >
             {{ opt.label }}
           </button>
+          <select
+            v-if="industryOptions.length"
+            v-model="selectedIndustryFilter"
+            class="industry-select"
+            :class="{ active: selectedFilter.startsWith('industry:') }"
+            aria-label="Filter by industry"
+          >
+            <option value="">Filter by Industry (12)…</option>
+            <option v-for="ind in industryOptions" :key="ind.id" :value="ind.id">
+              {{ ind.label }}
+            </option>
+          </select>
         </div>
 
         <!-- Maturity Tier Toggles -->
@@ -228,12 +251,14 @@ const filteredLanguages = computed(() => {
           <tr v-for="lang in filteredLanguages" :key="lang.slug">
             <!-- Language -->
             <td class="td-lang">
-              <a :href="`/languages/${lang.slug}`" class="lang-link">
-                <span class="lang-name">{{ lang.name }}</span>
-                <span class="lang-ext">{{ lang.ext }}</span>
-                <span class="lang-tier" :class="`tier-${lang.tier}`">{{ lang.tier }}</span>
-              </a>
-              <span v-if="!compact" class="lang-role">{{ lang.role }}</span>
+              <div class="td-lang-inner">
+                <a :href="`/languages/${lang.slug}`" class="lang-link">
+                  <span class="lang-name">{{ lang.name }}</span>
+                  <span class="lang-ext">{{ lang.ext }}</span>
+                  <span class="lang-tier" :class="`tier-${lang.tier}`">{{ lang.tier }}</span>
+                </a>
+                <span v-if="!compact" class="lang-role">{{ lang.role }}</span>
+              </div>
             </td>
 
             <!-- Package -->
@@ -377,6 +402,7 @@ const filteredLanguages = computed(() => {
 .chip-group {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
@@ -398,6 +424,32 @@ const filteredLanguages = computed(() => {
 }
 
 .chip.active {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+.industry-select {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--vp-c-border);
+  background: var(--vp-c-bg-elv);
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.industry-select:hover,
+.industry-select:focus {
+  color: var(--vp-c-text-1);
+  border-color: var(--vp-c-brand-1);
+}
+
+.industry-select.active {
   background: var(--vp-c-brand-soft);
   color: var(--vp-c-brand-1);
   border-color: var(--vp-c-brand-1);
@@ -446,9 +498,16 @@ const filteredLanguages = computed(() => {
 
 .cap-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
   margin: 0;
+}
+
+.cap-table thead {
+  position: sticky;
+  top: var(--vp-nav-height, 64px);
+  z-index: 2;
 }
 
 .cap-table th,
@@ -460,6 +519,8 @@ const filteredLanguages = computed(() => {
 }
 
 .cap-table th {
+  position: sticky;
+  top: 0;
   background: var(--vp-c-bg-soft);
   font-size: 11px;
   font-weight: 600;
@@ -467,6 +528,24 @@ const filteredLanguages = computed(() => {
   letter-spacing: 0.05em;
   color: var(--vp-c-text-2);
   white-space: nowrap;
+  z-index: 2;
+}
+
+.cap-table th:first-child,
+.cap-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--vp-c-bg-elv);
+}
+
+.cap-table th:first-child {
+  z-index: 3;
+  background: var(--vp-c-bg-soft);
+}
+
+.cap-table tbody tr:hover td:first-child {
+  background: var(--vp-c-bg-soft);
 }
 
 .cap-table tbody tr:last-child td {
@@ -486,7 +565,7 @@ const filteredLanguages = computed(() => {
 }
 
 .th-lang {
-  min-width: 170px;
+  min-width: 190px;
 }
 
 .th-pkg {
@@ -508,7 +587,7 @@ const filteredLanguages = computed(() => {
   min-width: 130px;
 }
 
-.td-lang {
+.td-lang-inner {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -549,36 +628,25 @@ const filteredLanguages = computed(() => {
   letter-spacing: 0.04em;
   padding: 1px 5px;
   border-radius: 4px;
+  border: 1px solid transparent;
 }
 
 .tier-stable {
-  background: rgba(34, 197, 94, 0.14);
-  color: #15803d;
-}
-
-.dark .tier-stable {
-  background: rgba(34, 197, 94, 0.2);
-  color: #4ade80;
+  background: var(--ms-tier-stable-bg);
+  color: var(--ms-tier-stable);
+  border-color: var(--ms-tier-stable-border);
 }
 
 .tier-beta {
-  background: rgba(59, 130, 246, 0.14);
-  color: #1d4ed8;
-}
-
-.dark .tier-beta {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
+  background: var(--ms-tier-beta-bg);
+  color: var(--ms-tier-beta);
+  border-color: var(--ms-tier-beta-border);
 }
 
 .tier-preview {
-  background: rgba(245, 158, 11, 0.14);
-  color: #b45309;
-}
-
-.dark .tier-preview {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
+  background: var(--ms-tier-preview-bg);
+  color: var(--ms-tier-preview);
+  border-color: var(--ms-tier-preview-border);
 }
 
 .lang-role {

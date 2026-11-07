@@ -1,3 +1,8 @@
+---
+title: "SIMPACK-Compatible Multibody Dynamics (.spck, .sim, .mbs)"
+description: "ModelScript integrates native support for SIMPACK-compatible high-frequency vibration, kinematic, and spatial multibody dynamics (MBD) simulation models."
+---
+
 # SIMPACK-Compatible Multibody Dynamics (`.spck`, `.sim`, `.mbs`)
 
 ModelScript integrates native support for **SIMPACK-compatible** high-frequency vibration, kinematic, and spatial multibody dynamics (MBD) simulation models.

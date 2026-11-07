@@ -1,3 +1,8 @@
+---
+title: "Cellier-Elmqvist Algebraic Loop Tearing"
+description: "Implementation: TornBlock in packages/runtime/src/wasm/structural/tearing.ts"
+---
+
 # Cellier-Elmqvist Algebraic Loop Tearing
 
 **Implementation**: `TornBlock` in [`packages/runtime/src/wasm/structural/tearing.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/wasm/structural/tearing.ts)

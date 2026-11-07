@@ -226,18 +226,59 @@ export class LocalProcessDriver implements HpcDriver {
       "S3_SECRET_KEY",
       "TURNSTILE_SECRET_KEY",
       "GITLAB_TOKEN",
+      "GITHUB_TOKEN",
       "OPENAI_API_KEY",
       "GEMINI_API_KEY",
+      "SLURM_JWT_TOKEN",
+      "OIDC_CLIENT_SECRET",
+      "SMTP_PASSWORD",
+      "AUDIT_HMAC_SECRET",
+      "TOTP_ENCRYPTION_KEY",
+      "CLOUDFLARE_TUNNEL_TOKEN",
+    ]);
+    const SENSITIVE_KEY_PATTERN = /_(SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|ENCRYPTION_KEY)$/i;
+    const BLOCKED_USER_ENV_KEYS = new Set([
+      "LD_PRELOAD",
+      "LD_LIBRARY_PATH",
+      "LD_AUDIT",
+      "DYLD_INSERT_LIBRARIES",
+      "DYLD_LIBRARY_PATH",
+      "BASH_ENV",
+      "ENV",
+      "PROMPT_COMMAND",
+      "NODE_OPTIONS",
+      "PYTHONPATH",
+      "PYTHONSTARTUP",
+      "PERL5OPT",
+      "RUBYOPT",
+      "PATH",
+      "HOME",
+      "SHELL",
+      "IFS",
     ]);
     const sanitizedEnv: NodeJS.ProcessEnv = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !SENSITIVE_SECRETS.has(k)),
+      Object.entries(process.env).filter(([k]) => !SENSITIVE_SECRETS.has(k) && !SENSITIVE_KEY_PATTERN.test(k)),
     );
+    const safeUserEnv: Record<string, string> = {};
+    if (spec.env && typeof spec.env === "object") {
+      for (const [k, v] of Object.entries(spec.env)) {
+        const upperKey = k.trim().toUpperCase();
+        if (
+          /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) &&
+          !BLOCKED_USER_ENV_KEYS.has(upperKey) &&
+          !SENSITIVE_SECRETS.has(upperKey) &&
+          typeof v === "string"
+        ) {
+          safeUserEnv[k] = v;
+        }
+      }
+    }
 
     const child = spawn(execCmd, execArgs, {
       cwd: spec.workingDir,
       env: {
         ...sanitizedEnv,
-        ...spec.env,
+        ...safeUserEnv,
         OMP_NUM_THREADS: String(spec.resources.cpusPerTask ?? 4),
       },
       stdio: ["ignore", "pipe", "pipe"],

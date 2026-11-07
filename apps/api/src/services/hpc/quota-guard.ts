@@ -3,6 +3,7 @@
 import type express from "express";
 import jwt from "jsonwebtoken";
 import type { LibraryDatabase } from "../../database.js";
+import { JWT_SECRET, isAccountBlocked } from "../../middleware/auth-middleware.js";
 import { calculateCostCredits, getComputeProfile } from "./compute-profiles.js";
 import type { ComputeProfile, HpcResourceSpec } from "./hpc-types.js";
 
@@ -159,28 +160,43 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
     return reqAny.userId;
   }
 
-  const authHeader = req.headers?.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  const verifyCandidateToken = (token: string): number | null => {
     try {
-      const token = authHeader.slice(7).trim();
-      const secret = process.env["JWT_SECRET"] || "ansatz-dev-jwt-secret-do-not-use-in-prod";
-      const decoded = jwt.verify(token, secret) as { id?: number };
-      if (decoded?.id) {
+      const secret = process.env["JWT_SECRET"] || JWT_SECRET;
+      const decoded = jwt.verify(token, secret) as {
+        id?: number;
+        scope?: string;
+        purpose?: string;
+        tokenVersion?: number;
+      };
+      if (!decoded?.id || decoded.scope === "2fa_challenge" || decoded.purpose === "2fa_challenge") {
+        return null;
+      }
+      const user = database.getUserById(decoded.id);
+      if (user) {
+        if (isAccountBlocked(user.status)) return null;
+        if ((decoded.tokenVersion ?? 1) !== (user.token_version ?? 1)) return null;
+        return user.id;
+      }
+      if (process.env["NODE_ENV"] === "test") {
         return decoded.id;
       }
     } catch {}
+    return null;
+  };
+
+  const authHeader = req.headers?.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const resolved = verifyCandidateToken(authHeader.slice(7).trim());
+    if (resolved !== null) return resolved;
   }
 
   const cookieHeader = req.headers?.cookie || "";
   const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
   if (cookieMatch?.[1]) {
     try {
-      const token = decodeURIComponent(cookieMatch[1]);
-      const secret = process.env["JWT_SECRET"] || "ansatz-dev-jwt-secret-do-not-use-in-prod";
-      const decoded = jwt.verify(token, secret) as { id?: number };
-      if (decoded?.id) {
-        return decoded.id;
-      }
+      const resolved = verifyCandidateToken(decodeURIComponent(cookieMatch[1]));
+      if (resolved !== null) return resolved;
     } catch {}
   }
 

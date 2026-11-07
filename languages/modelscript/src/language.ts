@@ -30,7 +30,7 @@ export const modelscriptLanguage = language({
   name: "modelscript",
   displayName: "ModelScript",
   fileExtensions: [".modelscript", ".msx"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".modelscript", ".msx"],
     icons: {
@@ -81,7 +81,11 @@ export const modelscriptLanguage = language({
   },
 
   // Resolve LR ambiguity between block statements `{}` and object literals `{}`
-  conflicts: ($) => [[$["BlockStatement"]!, $["ObjectLiteral"]!, $["Statement"]!, $["ObjectField"]!, $["IDENTIFIER"]!]],
+  conflicts: ($) => [
+    [$["BlockStatement"]!, $["ObjectLiteral"]!, $["Statement"]!, $["ObjectField"]!, $["IDENTIFIER"]!],
+    [$["ForUpdate"]!, $["PrimaryExpression"]!],
+    [$["ForUpdate"]!, $["Expression"]!],
+  ],
 
   extras: () => [/\s+/],
 
@@ -201,6 +205,13 @@ export const modelscriptLanguage = language({
         ";",
       ),
 
+    ForUpdate: ($) =>
+      seq(
+        field("target", choice($["IDENTIFIER"]!, $["PostfixExpression"]!)),
+        field("operator", choice("=", "+=", "-=", "*=", "/=")),
+        field("value", $["Expression"]!),
+      ),
+
     ReturnStatement: ($) => seq("return", optional(field("value", $["Expression"]!)), ";"),
 
     IfStatement: ($) =>
@@ -222,10 +233,18 @@ export const modelscriptLanguage = language({
       seq(
         "for",
         "(",
-        field("init", choice($["VariableDeclaration"]!, $["ExpressionStatement"]!, $["_EmptyStatement"]!)),
+        field(
+          "init",
+          choice(
+            $["VariableDeclaration"]!,
+            $["AssignmentStatement"]!,
+            $["ExpressionStatement"]!,
+            $["_EmptyStatement"]!,
+          ),
+        ),
         field("condition", optional($["Expression"]!)),
         ";",
-        field("update", optional($["Expression"]!)),
+        field("update", optional(choice($["ForUpdate"]!, $["Expression"]!))),
         ")",
         field("body", $["Statement"]!),
       ),
@@ -378,6 +397,9 @@ export const modelscriptLanguage = language({
         i32: "Integer",
         u32: "Integer",
         i64: "Integer",
+        u64: "Integer",
+        usize: "Integer",
+        f32: "Real",
         f64: "Real",
         bool: "Boolean",
         string: "String",
@@ -385,6 +407,10 @@ export const modelscriptLanguage = language({
       sysml2: {
         i32: "KerML::Integer",
         u32: "KerML::Integer",
+        i64: "KerML::Integer",
+        u64: "KerML::Integer",
+        usize: "KerML::Integer",
+        f32: "ISQ::Real",
         f64: "ISQ::Real",
         bool: "KerML::Boolean",
         string: "KerML::String",

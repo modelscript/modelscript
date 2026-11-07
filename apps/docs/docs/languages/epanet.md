@@ -1,3 +1,8 @@
+---
+title: "EPANET Water Distribution Networks (.inp)"
+description: "@modelscript/epanet (languages/epanet) provides native parsing, hydraulic simulation, DAE lowering, and formal verification for US EPA EPANET pressurized drinking water distribution networks and mu..."
+---
+
 # EPANET Water Distribution Networks (`.inp`)
 
 `@modelscript/epanet` (`languages/epanet`) provides native parsing, hydraulic simulation, DAE lowering, and formal verification for **US EPA EPANET** pressurized drinking water distribution networks and municipal water infrastructure.

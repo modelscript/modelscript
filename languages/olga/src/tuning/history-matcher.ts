@@ -130,6 +130,23 @@ function cloneModel(model: OlgaModel): OlgaModel {
   return JSON.parse(JSON.stringify(model));
 }
 
+function interpolateAtTime(simTimes: number[], simValues: number[], targetTime: number): number {
+  if (simValues.length === 0) return 0.0;
+  if (simTimes.length === 0 || targetTime <= simTimes[0]!) return simValues[0]!;
+  const lastIdx = Math.min(simTimes.length, simValues.length) - 1;
+  if (targetTime >= simTimes[lastIdx]!) return simValues[lastIdx]!;
+  for (let i = 0; i < lastIdx; i++) {
+    const t0 = simTimes[i]!;
+    const t1 = simTimes[i + 1]!;
+    if (targetTime >= t0 && targetTime <= t1) {
+      const dt = t1 - t0;
+      const alpha = dt > 1e-9 ? (targetTime - t0) / dt : 0.0;
+      return simValues[i]! + alpha * (simValues[i + 1]! - simValues[i]!);
+    }
+  }
+  return simValues[lastIdx]!;
+}
+
 /**
  * Autonomous Parameter Tuning & History Matching Engine.
  */
@@ -239,9 +256,9 @@ export function calibrateOlgaModel(
     // Compare inlet and arrival pressure trajectories
     if (observations.inletPressurePa && observations.inletPressurePa.length > 0) {
       for (let k = 0; k < observations.times.length; k++) {
+        const obsTime = observations.times[k]!;
         const obsP = observations.inletPressurePa[k]!;
-        const simIdx = Math.min(sim.trends.inletPressure.length - 1, Math.floor(k));
-        const simP = sim.trends.inletPressure[simIdx]!;
+        const simP = interpolateAtTime(sim.times, sim.trends.inletPressure, obsTime);
         sse += wP * Math.pow((simP - obsP) / 1e5, 2); // Error in bar^2
         count++;
       }
@@ -249,9 +266,9 @@ export function calibrateOlgaModel(
 
     if (observations.arrivalPressurePa && observations.arrivalPressurePa.length > 0) {
       for (let k = 0; k < observations.times.length; k++) {
+        const obsTime = observations.times[k]!;
         const obsP = observations.arrivalPressurePa[k]!;
-        const simIdx = Math.min(sim.trends.arrivalPressure.length - 1, Math.floor(k));
-        const simP = sim.trends.arrivalPressure[simIdx]!;
+        const simP = interpolateAtTime(sim.times, sim.trends.arrivalPressure, obsTime);
         sse += wP * Math.pow((simP - obsP) / 1e5, 2);
         count++;
       }
@@ -260,9 +277,9 @@ export function calibrateOlgaModel(
     // Compare temperature
     if (observations.arrivalTemperatureK && observations.arrivalTemperatureK.length > 0) {
       for (let k = 0; k < observations.times.length; k++) {
+        const obsTime = observations.times[k]!;
         const obsT = observations.arrivalTemperatureK[k]!;
-        const simIdx = Math.min(sim.trends.arrivalTemperature.length - 1, Math.floor(k));
-        const simT = sim.trends.arrivalTemperature[simIdx]!;
+        const simT = interpolateAtTime(sim.times, sim.trends.arrivalTemperature, obsTime);
         sse += wT * Math.pow((simT - obsT) / 5.0, 2); // Normalized by 5 K
         count++;
       }
@@ -271,9 +288,9 @@ export function calibrateOlgaModel(
     // Compare liquid rate
     if (observations.arrivalLiquidRateKgS && observations.arrivalLiquidRateKgS.length > 0) {
       for (let k = 0; k < observations.times.length; k++) {
+        const obsTime = observations.times[k]!;
         const obsQ = observations.arrivalLiquidRateKgS[k]!;
-        const simIdx = Math.min(sim.trends.arrivalLiquidMassRate.length - 1, Math.floor(k));
-        const simQ = sim.trends.arrivalLiquidMassRate[simIdx]!;
+        const simQ = interpolateAtTime(sim.times, sim.trends.arrivalLiquidMassRate, obsTime);
         sse += wQ * Math.pow((simQ - obsQ) / 5.0, 2);
         count++;
       }
@@ -423,8 +440,9 @@ export function calibrateOlgaModel(
     let sumSqTot = 0.0;
     const meanObs = observations.inletPressurePa.reduce((a, b) => a + b, 0) / observations.inletPressurePa.length;
     for (let k = 0; k < observations.inletPressurePa.length; k++) {
+      const obsTime = observations.times[k]!;
       const obs = observations.inletPressurePa[k]!;
-      const simP = finalEval.simResult.trends.inletPressure[k] ?? obs;
+      const simP = interpolateAtTime(finalEval.simResult.times, finalEval.simResult.trends.inletPressure, obsTime);
       sumSqErr += Math.pow(simP - obs, 2);
       sumSqTot += Math.pow(obs - meanObs, 2);
     }
@@ -440,8 +458,9 @@ export function calibrateOlgaModel(
     const meanObs =
       observations.arrivalTemperatureK.reduce((a, b) => a + b, 0) / observations.arrivalTemperatureK.length;
     for (let k = 0; k < observations.arrivalTemperatureK.length; k++) {
+      const obsTime = observations.times[k]!;
       const obs = observations.arrivalTemperatureK[k]!;
-      const simT = finalEval.simResult.trends.arrivalTemperature[k] ?? obs;
+      const simT = interpolateAtTime(finalEval.simResult.times, finalEval.simResult.trends.arrivalTemperature, obsTime);
       sumSqErr += Math.pow(simT - obs, 2);
       sumSqTot += Math.pow(obs - meanObs, 2);
     }

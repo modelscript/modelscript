@@ -27,7 +27,7 @@ export const reqifLanguage = language({
   name: "reqif",
   displayName: "OMG ReqIF 1.2",
   fileExtensions: [".reqif", ".reqifz"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".reqif", ".reqifz"],
     icons: {

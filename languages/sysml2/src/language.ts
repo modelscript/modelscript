@@ -5297,9 +5297,10 @@ export const sysml2Language = language({
           repeat($["_usage_modifier"]!),
           optional(seq("action", optional($["_UsageDeclaration"]!))),
           "assign",
-          field("assignedValue", $["OwnedExpression"]!),
-          "=:",
-          field("targetFeature", $["OwnedExpression"]!),
+          choice(
+            seq(field("targetFeature", $["OwnedExpression"]!), ":=", field("assignedValue", $["OwnedExpression"]!)),
+            seq(field("assignedValue", $["OwnedExpression"]!), "=:", field("targetFeature", $["OwnedExpression"]!)),
+          ),
           $["_ActionBody"]!,
         ),
         symbol: usageAttrs("action"),

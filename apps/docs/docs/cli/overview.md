@@ -1,3 +1,8 @@
+---
+title: CLI Overview
+description: Overview of the modelscript (msx) command-line interface, global options, environment variables, persistent compiler daemon, and 92+ engineering commands.
+---
+
 # CLI Overview
 
 The `@modelscript/cli` package provides two identical binary executables: `modelscript` and its shorthand alias `msx`. The command-line interface serves as the primary headless automation driver for compiling, simulating, verifying, linting, rendering, and orchestrating polyglot engineering systems across local workspaces, CI/CD pipelines, and cloud HPC clusters.
@@ -56,7 +61,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **41 commands** (plus ergonomic aliases) organized into six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **92+ commands** (plus ergonomic aliases) organized across **68 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -94,22 +99,48 @@ The `msx` CLI registers **41 commands** (plus ergonomic aliases) organized into 
 | [`decompose`](./commands.md#decompose)               | —       | Perform assume-guarantee contract decomposition and structural subsystem partitioning.                       |
 | [`generate-tests`](./commands.md#generate-tests)     | —       | Synthesize MC/DC-complete unit test vectors and stimulus harnesses from formal model constraints.            |
 
-### 4. Polyglot Digital Thread, Co-Simulation & Standards Interop
+### 4. Polyglot Digital Thread, Co-Simulation & Domain Solvers
 
-| Command                                  | Aliases      | Summary                                                                                                               |
-| :--------------------------------------- | :----------- | :-------------------------------------------------------------------------------------------------------------------- |
-| [`render`](./commands.md#render)         | —            | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.        |
-| [`fmu`](./commands.md#fmu)               | `export-fmu` | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                    |
-| [`import-fmu`](./commands.md#import-fmu) | `fmu-import` | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                        |
-| [`cosim`](./commands.md#cosim)           | —            | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.       |
-| [`pscad`](./commands.md#pscad)           | —            | Lint, render SLDs, diff, simulate EMT transients, verify IEEE 2800 ride-through, and export `.pscx`/`.pswx` projects. |
-| [`polyglot`](./commands.md#polyglot)     | —            | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift.           |
-| [`align`](./commands.md#align)           | —            | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.            |
-| [`sysml`](./commands.md#sysml)           | —            | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.         |
-| [`oslc`](./commands.md#oslc)             | —            | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.              |
-| [`reqif`](./commands.md#reqif)           | —            | Import and export OMG ReqIF 1.2 (`.reqif` / `.reqifz`) requirements exchange archives.                                |
-| [`ddp`](./commands.md#ddp)               | —            | Inspect, pack, and convert ISO/PAS 81346 Digital Data Packages (`.ddp`) and Asset Administration Shells (`.aasx`).    |
-| [`dhf`](./commands.md#dhf)               | —            | Generate, audit, and inspect FDA 21 CFR Part 820 / ISO 13485 Design History File (DHF) compliance dossiers.           |
+| Command                                  | Aliases                | Summary                                                                                                                         |
+| :--------------------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| [`render`](./commands.md#render)         | —                      | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.                  |
+| [`fmu`](./commands.md#fmu)               | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
+| [`import-fmu`](./commands.md#import-fmu) | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
+| [`cosim`](./commands.md#cosim)           | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
+| [`polyglot`](./commands.md#polyglot)     | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 68 languages. |
+| [`align`](./commands.md#align)           | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
+| [`sysml`](./commands.md#sysml)           | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
+| [`oslc`](./commands.md#oslc)             | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
+| [`reqif`](./commands.md#reqif)           | —                      | Import and export OMG ReqIF 1.2 (`.reqif` / `.reqifz`) requirements exchange archives.                                          |
+| [`ddp`](./commands.md#ddp)               | —                      | Inspect, pack, and convert ISO/PAS 81346 Digital Data Packages (`.ddp`) and Asset Administration Shells (`.aasx`).              |
+| [`dhf`](./commands.md#dhf)               | —                      | Generate, audit, and inspect FDA 21 CFR Part 820 / ISO 13485 Design History File (DHF) compliance dossiers.                     |
+| [`pscad`](./commands.md#pscad)           | —                      | Lint, render SLDs, diff, simulate EMT transients, verify IEEE 2800 ride-through, and export `.pscx`/`.pswx` projects.           |
+| [`psse`](./commands.md#psse)             | —                      | Inspect, lint, solve AC power flow ($\mathbf{Y}_{\text{bus}}$), and project Siemens PSS/E (`.raw`) transmission grid cases.     |
+| [`cgmes`](./commands.md#cgmes)           | —                      | Inspect, lint (`C1001`–`C1010`), solve AC/DC OPF, and convert ENTSO-E CIM / CGMES (`.xml`, `.rdf`) grid profiles.               |
+| [`spice`](./commands.md#spice)           | —                      | Simulate DC operating point, transient, and AC frequency sweeps on SPICE (`.cir`, `.sp`, `.net`) netlists.                      |
+| [`olga`](./commands.md#olga)             | —                      | Simulate 1D drift-flux multiphase flow, severe slugging, PVT flash, and verify flow assurance on OLGA (`.opi`, `.key`) decks.   |
+| [`lps`](./commands.md#lps)               | —                      | Simulate transient gas/liquid networks, line pack, and hydrogen blends in PipelineStudio (`.lps`, `.tgx`, `.tlx`) models.       |
+| [`simulink`](./commands.md#simulink)     | —                      | Inspect, lint, lower to DAE, and project MATLAB Simulink (`.slx`, `.mdl`) control block diagrams to Modelica.                   |
+| [`autosar`](./commands.md#autosar)       | —                      | Inspect, lint, simulate the discrete Virtual RTE scheduler, and project AUTOSAR (`.arxml`) architectures.                       |
+| [`urdf`](./commands.md#urdf)             | —                      | Validate kinematic trees, evaluate Featherstone RNEA inverse dynamics, and project ROS URDF/Xacro (`.urdf`, `.xacro`) robots.   |
+| [`simpack`](./commands.md#simpack)       | —                      | Analyze Grübler spatial mobility, lint markers/joints, and simulate SIMPACK (`.spck`, `.sim`) multibody systems.                |
+| [`gensys`](./commands.md#gensys)         | —                      | Verify EN 14363 derailment safety ($Y/Q \le 0.80$), FASTSIM contact, and simulate GENSYS (`.calc`) rail vehicles.               |
+| [`adams`](./commands.md#adams)           | —                      | Analyze spatial mobility, lint markers, and project MSC Adams (`.adm`, `.cmd`) multibody mechanisms.                            |
+| [`easy5`](./commands.md#easy5)           | —                      | Inspect, lint, linearize, and project EASY5 (`.ez5`, `.ezm`) aerospace and fluid-thermal schematics.                            |
+| [`gtsuite`](./commands.md#gtsuite)       | —                      | Inspect, lint compressor surge/CFL bounds, and simulate GT-SUITE (`.gtm`, `.gtd`) engine and powertrain models.                 |
+| [`sima`](./commands.md#sima)             | —                      | Verify DNV-OS-E301 mooring tension safety factors and vessel offsets on SIMA (`.sima`, `.inp`) offshore models.                 |
+| [`rocets`](./commands.md#rocets)         | —                      | Balance turbopump flows, check chamber mixture ratios, and simulate NASA ROCETS (`.roc`, `.deck`) propulsion decks.             |
+| [`qif`](./commands.md#qif)               | —                      | Validate ASME Y14.5 GD&T rules, compute SPC capability ($C_p, C_{pk}$, TUR), and reconcile STEP AP242 with ISO 23952 `.qif`.    |
+| [`oscal`](./commands.md#oscal)           | —                      | Resolve control baselines, audit NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL security models.             |
+| [`aml`](./commands.md#aml)               | `automationml`, `caex` | Validate IEC 62714 CAEX hierarchies, run closed-loop Virtual PLC commissioning, and project `.aml` workcells.                   |
+| [`opensim`](./commands.md#opensim)       | —                      | Validate musculoskeletal kinematics & Hill-type muscles (`M9101`–`M9110`), simulate activation, and project `.osim` models.     |
+| [`dicom-rt`](./commands.md#dicom-rt)     | —                      | Verify QUANTEC OAR dose limits & MLC kinematics (`M9201`–`M9210`), compute DVH/BED/$\text{EQD}_2$, and project `.rtplan`.       |
+| [`cellml`](./commands.md#cellml)         | —                      | Validate SI dimensional consistency (`M9301`–`M9310`), integrate electrophysiology ODEs, and project `.cellml` models.          |
+| [`febio`](./commands.md#febio)           | `sofa`                 | Validate hyperelastic/biphasic tissue mechanics (`M9401`–`M9410`), solve strain energy, and project `.feb`/`.scn` scenes.       |
+| [`nifti`](./commands.md#nifti)           | `nrrd`                 | Validate `qform`/`sform` RAS affine transforms (`M9501`–`M9510`), extract iso-surface meshes, and project `.nii`/`.nrrd`.       |
+| [`topas`](./commands.md#topas)           | `gate`                 | Validate hadrontherapy beamlines (`M9601`–`M9610`), compute analytical Bragg peak depth-dose curves, and project `.topas`.      |
+| [`three-mf`](./commands.md#three-mf)     | `3mf`                  | Verify 2-manifold watertightness, wall thickness & osteotomy guides (`M9701`–`M9710`), and project `.3mf` surgical guides.      |
+| [`igtl`](./commands.md#igtl)             | `openigtlink`          | Validate $SE(3)$ transforms (`M9801`–`M9810`), solve stylus pivot calibration & TRE, and project `.igtl`/`.plus.xml`.           |
 
 ### 5. Language Workbench, Daemon & IDE Tooling
 
@@ -139,6 +170,8 @@ The `msx` CLI registers **41 commands** (plus ergonomic aliases) organized into 
 | [`hub`](./commands.md#hub-db-archive)               | `ansatz`, `node` | Initialize or check the health status of a self-hosted Ansatz / ModelScript node.                              |
 | [`db`](./commands.md#hub-db-archive)                | —                | Inspect, migrate, and cryptographically verify the Hub SQLite/PostgreSQL database schema and audit chains.     |
 | [`archive`](./commands.md#hub-db-archive)           | —                | Request, monitor, and download cold-storage compliance archives from the Hub.                                  |
+| [`keys`](./commands.md#keys)                        | `key`            | Manage Ed25519 cryptographic signing keys (`list`, `generate`, `register`, `revoke`, `policy`).                |
+| [`sign`](./commands.md#sign)                        | —                | Cryptographically sign Markdown posts and artifacts or verify W3C Data Integrity (`eddsa-jcs-2022`) proofs.    |
 
 ## Return Codes & CI/CD Integration
 

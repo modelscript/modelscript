@@ -381,9 +381,15 @@ export function parseOntoSpm(text: string, uri?: string): OntoSpmProcedure {
       cursor = closeIdx + 1;
     }
   } else {
-    // OWL2 Functional Syntax assertions: ClassAssertion(spm:Phase :Phase1) etc.
+    // OWL2 Functional Syntax assertions: ClassAssertion, ObjectPropertyAssertion, DataPropertyAssertion
     const lines = text.split(/\r?\n/);
     let offset = 0;
+    const phaseById = new Map<string, OntoSpmPhase>();
+    const instById = new Map<string, OntoSpmInstrument>();
+    const structById = new Map<string, OntoSpmAnatomicalStructure>();
+    const chkById = new Map<string, OntoSpmSafetyCheckpoint>();
+    const stepById = new Map<string, OntoSpmStep>();
+
     for (const line of lines) {
       const lineRange = makeRange(text, offset, offset + line.length);
       const t = line.trim();
@@ -395,34 +401,180 @@ export function parseOntoSpm(text: string, uri?: string): OntoSpmProcedure {
         const parts = inner.split(/\s+/);
         const cls = parts[0] ?? "";
         const ind = (parts[1] ?? "").replace(/^:/, "");
-        if (cls.endsWith("SurgicalProcedure") && ind) {
+        const localCls = cls.replace(/^spm:/, "");
+        if (localCls === "SurgicalProcedure" && ind) {
           procId = ind;
           procName = ind;
-        } else if (cls.endsWith("Phase") && ind) {
-          const cat: OntoSpmPhase["phaseCategory"] = cls.includes("Closure")
-            ? "Closure"
-            : cls.includes("Hemostasis")
-              ? "Hemostasis"
-              : cls.includes("Preparation")
-                ? "Preparation"
-                : "Dissection";
-          phases.push({ id: ind, name: ind, phaseCategory: cat, nextPhaseIds: [], range: lineRange });
-        } else if (cls.endsWith("Instrument") && ind) {
-          instruments.push({
+        } else if (localCls.endsWith("Phase") && ind) {
+          const catRaw = localCls.slice(0, -"Phase".length);
+          const cat: OntoSpmPhase["phaseCategory"] =
+            catRaw === "Preparation" ||
+            catRaw === "Exposure" ||
+            catRaw === "Dissection" ||
+            catRaw === "Resection" ||
+            catRaw === "Reconstruction" ||
+            catRaw === "Hemostasis" ||
+            catRaw === "Closure"
+              ? catRaw
+              : "Dissection";
+          const phase: OntoSpmPhase = { id: ind, name: ind, phaseCategory: cat, nextPhaseIds: [], range: lineRange };
+          phases.push(phase);
+          phaseById.set(ind, phase);
+        } else if (
+          (localCls.endsWith("Instrument") ||
+            localCls === "Scalpel" ||
+            localCls === "Grasper" ||
+            localCls === "Dissector" ||
+            localCls === "ClipApplier" ||
+            localCls === "Scissors" ||
+            localCls === "MonopolarHook" ||
+            localCls === "BipolarForceps" ||
+            localCls === "UltrasonicShears" ||
+            localCls === "SuctionIrrigator" ||
+            localCls === "NeedleDriver" ||
+            localCls === "Stapler" ||
+            localCls === "Endoscope") &&
+          ind
+        ) {
+          const cat = (
+            localCls === "Instrument" || localCls === "SurgicalInstrument" ? "Grasper" : localCls
+          ) as SurgicalInstrumentCategory;
+          const defaultEnergy: OntoSpmInstrument["energyModality"] =
+            cat === "MonopolarHook"
+              ? "Monopolar"
+              : cat === "BipolarForceps"
+                ? "Bipolar"
+                : cat === "UltrasonicShears"
+                  ? "Ultrasonic"
+                  : cat === "Endoscope"
+                    ? "Optical"
+                    : "Mechanical";
+          const inst: OntoSpmInstrument = {
             id: ind,
             name: ind,
-            category: "Grasper",
-            energyModality: "Mechanical",
+            category: cat,
+            energyModality: defaultEnergy,
             range: lineRange,
-          });
-        } else if (cls.endsWith("Structure") && ind) {
-          structures.push({
+          };
+          instruments.push(inst);
+          instById.set(ind, inst);
+        } else if (
+          (localCls.endsWith("Structure") ||
+            localCls === "Organ" ||
+            localCls === "Artery" ||
+            localCls === "Vein" ||
+            localCls === "Nerve" ||
+            localCls === "BileDuct" ||
+            localCls === "ConnectiveTissue" ||
+            localCls === "Tumor" ||
+            localCls === "Bone") &&
+          ind
+        ) {
+          const tissueType = (
+            localCls === "Structure" || localCls === "AnatomicalStructure" ? "Organ" : localCls
+          ) as OntoSpmAnatomicalStructure["tissueType"];
+          const struct: OntoSpmAnatomicalStructure = {
             id: ind,
             name: ind,
-            tissueType: "Organ",
-            isCriticalNeuroVascular: false,
+            tissueType,
+            isCriticalNeuroVascular: tissueType === "Nerve" || tissueType === "Artery" || tissueType === "BileDuct",
             range: lineRange,
-          });
+          };
+          structures.push(struct);
+          structById.set(ind, struct);
+        } else if ((localCls === "SafetyCheckpoint" || localCls === "Checkpoint") && ind) {
+          const chk: OntoSpmSafetyCheckpoint = {
+            id: ind,
+            name: ind,
+            phaseId: "",
+            stepOrder: 0,
+            verified: true,
+            targetStructures: [],
+            range: lineRange,
+          };
+          checkpoints.push(chk);
+          chkById.set(ind, chk);
+        } else if ((localCls.endsWith("Action") || localCls === "SurgicalStep" || localCls === "Step") && ind) {
+          const actRaw = localCls.endsWith("Action") ? localCls.slice(0, -"Action".length) : "Dissection";
+          const step: OntoSpmStep = {
+            id: ind,
+            name: ind,
+            phaseId: phases[phases.length - 1]?.id ?? "Phase_1",
+            order: steps.length + 1,
+            action: (actRaw || "Dissection") as SurgicalActionVerb,
+            instrumentId: "",
+            targetStructureId: "",
+            durationSec: 30,
+            range: lineRange,
+          };
+          steps.push(step);
+          stepById.set(ind, step);
+        }
+      } else if (t.startsWith("ObjectPropertyAssertion(")) {
+        const inner = t.slice("ObjectPropertyAssertion(".length, t.endsWith(")") ? -1 : undefined).trim();
+        const parts = inner.split(/\s+/);
+        const prop = (parts[0] ?? "").replace(/^spm:/, "");
+        const subj = (parts[1] ?? "").replace(/^:/, "");
+        const obj = (parts[2] ?? "").replace(/^:/, "");
+        if (prop === "precedesPhase") {
+          const p = phaseById.get(subj);
+          if (p && obj && !p.nextPhaseIds.includes(obj)) p.nextPhaseIds.push(obj);
+        } else if (prop === "belongsToPhase") {
+          const s = stepById.get(subj);
+          if (s && obj) s.phaseId = obj;
+          const c = chkById.get(subj);
+          if (c && obj) c.phaseId = obj;
+        } else if (prop === "usesInstrument") {
+          const s = stepById.get(subj);
+          if (s && obj) s.instrumentId = obj;
+        } else if (prop === "actsOnStructure") {
+          const s = stepById.get(subj);
+          if (s && obj) s.targetStructureId = obj;
+        } else if (prop === "requiresCheckpoint") {
+          const s = stepById.get(subj);
+          if (s && obj) s.requiredCheckpointId = obj;
+        } else if (prop === "verifiesStructure") {
+          const c = chkById.get(subj);
+          if (c && obj && !c.targetStructures.includes(obj)) c.targetStructures.push(obj);
+        }
+      } else if (t.startsWith("DataPropertyAssertion(")) {
+        const inner = t.slice("DataPropertyAssertion(".length, t.endsWith(")") ? -1 : undefined).trim();
+        const firstSpace = inner.indexOf(" ");
+        if (firstSpace !== -1) {
+          const prop = inner.slice(0, firstSpace).trim().replace(/^spm:/, "");
+          const rest = inner.slice(firstSpace + 1).trim();
+          const secondSpace = rest.indexOf(" ");
+          if (secondSpace !== -1) {
+            const subj = rest.slice(0, secondSpace).trim().replace(/^:/, "");
+            const rawVal = rest.slice(secondSpace + 1).trim();
+            const qStart = rawVal.indexOf('"');
+            const qEnd = rawVal.lastIndexOf('"');
+            const valStr = qStart !== -1 && qEnd > qStart ? rawVal.slice(qStart + 1, qEnd) : rawVal;
+            if (prop === "hasEnergyModality") {
+              const inst = instById.get(subj);
+              if (inst) inst.energyModality = valStr as OntoSpmInstrument["energyModality"];
+            } else if (prop === "isCriticalNeuroVascular") {
+              const st = structById.get(subj);
+              if (st) st.isCriticalNeuroVascular = valStr === "true";
+            } else if (prop === "isVerified") {
+              const chk = chkById.get(subj);
+              if (chk) chk.verified = valStr === "true";
+            } else if (prop === "hasStepOrder") {
+              const chk = chkById.get(subj);
+              if (chk) chk.stepOrder = Number(valStr);
+              const step = stepById.get(subj);
+              if (step) step.order = Number(valStr);
+            } else if (prop === "hasDurationSec") {
+              const step = stepById.get(subj);
+              if (step) step.durationSec = Number(valStr);
+            } else if (prop === "hasProximityMm") {
+              const step = stepById.get(subj);
+              if (step) step.proximityToCriticalMm = Number(valStr);
+            } else if (prop === "hasAutonomyLevel") {
+              const step = stepById.get(subj);
+              if (step) step.autonomyLevel = Number(valStr) as 0 | 1 | 2 | 3 | 4 | 5;
+            }
+          }
         }
       }
       offset += line.length + 1;
@@ -675,6 +827,53 @@ export function analyzeSurgicalWorkflow(proc: OntoSpmProcedure): SurgicalWorkflo
   const totalExpectedDurationSec = proc.steps.reduce((acc, s) => acc + Math.max(0, s.durationSec), 0);
   const verifiedCheckpointCount = proc.checkpoints.filter((c) => c.verified).length;
   const maxAutonomyLevel = proc.steps.reduce((max, s) => Math.max(max, s.autonomyLevel ?? 0), 0);
+
+  // Compute longest-duration path across phase transition graph (with cycle protection)
+  const phaseDuration = new Map<string, number>();
+  for (const p of proc.phases) phaseDuration.set(p.id, 0);
+  for (const s of proc.steps) {
+    phaseDuration.set(s.phaseId, (phaseDuration.get(s.phaseId) ?? 0) + Math.max(0, s.durationSec));
+  }
+  const phaseMap = new Map<string, OntoSpmPhase>();
+  for (const p of proc.phases) phaseMap.set(p.id, p);
+
+  let criticalPathPhases: string[] = [];
+  if (proc.phases.length > 0) {
+    const memo = new Map<string, { cost: number; path: string[] }>();
+    const visiting = new Set<string>();
+    const longestFrom = (pid: string): { cost: number; path: string[] } => {
+      if (memo.has(pid)) return memo.get(pid)!;
+      const own = phaseDuration.get(pid) ?? 0;
+      const phase = phaseMap.get(pid);
+      if (!phase || visiting.has(pid) || phase.nextPhaseIds.length === 0) {
+        return { cost: own, path: [pid] };
+      }
+      visiting.add(pid);
+      let bestSub: { cost: number; path: string[] } = { cost: -1, path: [] };
+      for (const nxt of phase.nextPhaseIds) {
+        if (!phaseMap.has(nxt) || visiting.has(nxt)) continue;
+        const sub = longestFrom(nxt);
+        if (sub.cost > bestSub.cost) {
+          bestSub = sub;
+        }
+      }
+      visiting.delete(pid);
+      const res =
+        bestSub.cost >= 0 ? { cost: own + bestSub.cost, path: [pid, ...bestSub.path] } : { cost: own, path: [pid] };
+      memo.set(pid, res);
+      return res;
+    };
+
+    let bestOverall: { cost: number; path: string[] } = { cost: -1, path: [] };
+    for (const p of proc.phases) {
+      const candidate = longestFrom(p.id);
+      if (candidate.cost > bestOverall.cost) {
+        bestOverall = candidate;
+      }
+    }
+    criticalPathPhases = bestOverall.path.length > 0 ? bestOverall.path : proc.phases.map((p) => p.id);
+  }
+
   return {
     procedureId: proc.id,
     totalExpectedDurationSec,
@@ -682,7 +881,7 @@ export function analyzeSurgicalWorkflow(proc: OntoSpmProcedure): SurgicalWorkflo
     stepCount: proc.steps.length,
     verifiedCheckpointCount,
     maxAutonomyLevel,
-    criticalPathPhases: proc.phases.map((p) => p.id),
+    criticalPathPhases,
   };
 }
 
@@ -691,6 +890,7 @@ export function ontoSpmToOwl2Functional(proc: OntoSpmProcedure): string {
     `Prefix(:=<${proc.ontologyIri}#>)`,
     `Prefix(spm:=<http://ontospm.org/core#>)`,
     `Prefix(owl:=<http://www.w3.org/2002/07/owl#>)`,
+    `Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)`,
     ``,
     `Ontology(<${proc.ontologyIri}>`,
     `  Declaration(NamedIndividual(:${proc.id}))`,
@@ -708,22 +908,52 @@ export function ontoSpmToOwl2Functional(proc: OntoSpmProcedure): string {
   for (const inst of proc.instruments) {
     lines.push(`  Declaration(NamedIndividual(:${inst.id}))`);
     lines.push(`  ClassAssertion(spm:${inst.category} :${inst.id})`);
+    lines.push(`  DataPropertyAssertion(spm:hasEnergyModality :${inst.id} "${inst.energyModality}")`);
   }
 
   for (const struct of proc.structures) {
     lines.push(`  Declaration(NamedIndividual(:${struct.id}))`);
     lines.push(`  ClassAssertion(spm:${struct.tissueType} :${struct.id})`);
+    lines.push(
+      `  DataPropertyAssertion(spm:isCriticalNeuroVascular :${struct.id} "${struct.isCriticalNeuroVascular}")`,
+    );
+  }
+
+  for (const chk of proc.checkpoints) {
+    lines.push(`  Declaration(NamedIndividual(:${chk.id}))`);
+    lines.push(`  ClassAssertion(spm:SafetyCheckpoint :${chk.id})`);
+    if (chk.phaseId) {
+      lines.push(`  ObjectPropertyAssertion(spm:belongsToPhase :${chk.id} :${chk.phaseId})`);
+    }
+    lines.push(`  DataPropertyAssertion(spm:hasStepOrder :${chk.id} "${chk.stepOrder}"^^xsd:integer)`);
+    lines.push(`  DataPropertyAssertion(spm:isVerified :${chk.id} "${chk.verified}"^^xsd:boolean)`);
+    for (const t of chk.targetStructures) {
+      lines.push(`  ObjectPropertyAssertion(spm:verifiesStructure :${chk.id} :${t})`);
+    }
   }
 
   for (const step of proc.steps) {
     lines.push(`  Declaration(NamedIndividual(:${step.id}))`);
     lines.push(`  ClassAssertion(spm:${step.action}Action :${step.id})`);
     lines.push(`  ObjectPropertyAssertion(spm:belongsToPhase :${step.id} :${step.phaseId})`);
+    lines.push(`  DataPropertyAssertion(spm:hasStepOrder :${step.id} "${step.order}"^^xsd:integer)`);
+    lines.push(`  DataPropertyAssertion(spm:hasDurationSec :${step.id} "${step.durationSec}"^^xsd:decimal)`);
     if (step.instrumentId) {
       lines.push(`  ObjectPropertyAssertion(spm:usesInstrument :${step.id} :${step.instrumentId})`);
     }
     if (step.targetStructureId) {
       lines.push(`  ObjectPropertyAssertion(spm:actsOnStructure :${step.id} :${step.targetStructureId})`);
+    }
+    if (step.proximityToCriticalMm !== undefined) {
+      lines.push(
+        `  DataPropertyAssertion(spm:hasProximityMm :${step.id} "${step.proximityToCriticalMm}"^^xsd:decimal)`,
+      );
+    }
+    if (step.requiredCheckpointId) {
+      lines.push(`  ObjectPropertyAssertion(spm:requiresCheckpoint :${step.id} :${step.requiredCheckpointId})`);
+    }
+    if (step.autonomyLevel !== undefined) {
+      lines.push(`  DataPropertyAssertion(spm:hasAutonomyLevel :${step.id} "${step.autonomyLevel}"^^xsd:integer)`);
     }
   }
 

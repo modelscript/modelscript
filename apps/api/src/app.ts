@@ -429,7 +429,17 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     express.json({
       limit: "50mb",
       verify: (req: express.Request, _res, buf) => {
-        req.rawBody = buf;
+        const url = req.originalUrl || req.url || "";
+        if (
+          url.includes("/webhooks") ||
+          req.headers["x-hub-signature-256"] !== undefined ||
+          req.headers["x-gitlab-token"] !== undefined ||
+          req.headers["x-gitlab-event-token"] !== undefined ||
+          req.headers["x-webhook-secret"] !== undefined ||
+          req.headers["stripe-signature"] !== undefined
+        ) {
+          req.rawBody = buf;
+        }
       },
     }),
   );
@@ -729,10 +739,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/", federationRouter(database, federationWorker));
 
   // Mount the library routers
-  app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));
-  app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
+  app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));
+  app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1", optionalAuth, simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
 

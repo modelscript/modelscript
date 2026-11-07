@@ -9,8 +9,12 @@ import { LibraryDatabase } from "../database.js";
 const _filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
 
+import { getAuthDatabase } from "../middleware/auth-middleware.js";
+
 let _database: LibraryDatabase | null = null;
 function getDatabase(): LibraryDatabase {
+  const shared = getAuthDatabase();
+  if (shared) return shared;
   if (!_database) {
     _database = new LibraryDatabase();
   }
@@ -45,6 +49,7 @@ async function processQueue(): Promise<void> {
 }
 
 const MAX_THUMBNAIL_QUEUE = 100;
+const SAFE_ARTIFACT_ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 
 export function generateThumbnail(artifactId: number | string, anchor?: string): Promise<string | null> {
   if (process.env["NODE_ENV"] === "test") {
@@ -53,16 +58,17 @@ export function generateThumbnail(artifactId: number | string, anchor?: string):
   const isValid =
     typeof artifactId === "number"
       ? Number.isFinite(artifactId) && artifactId > 0
-      : typeof artifactId === "string" && artifactId.trim().length > 0;
+      : typeof artifactId === "string" && SAFE_ARTIFACT_ID_REGEX.test(artifactId.trim());
   if (!isValid) {
     return Promise.resolve(null);
   }
+  const cleanId = typeof artifactId === "string" ? artifactId.trim() : artifactId;
   if (queue.length >= MAX_THUMBNAIL_QUEUE) {
-    console.warn(`[Thumbnail Worker] Queue full (${MAX_THUMBNAIL_QUEUE}), dropping thumbnail task for ${artifactId}`);
+    console.warn(`[Thumbnail Worker] Queue full (${MAX_THUMBNAIL_QUEUE}), dropping thumbnail task for ${cleanId}`);
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {
-    queue.push({ artifactId, anchor, resolve });
+    queue.push({ artifactId: cleanId, anchor, resolve });
     processQueue().catch(console.error);
   });
 }

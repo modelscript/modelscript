@@ -112,11 +112,42 @@ export const KNOWN_DIMENSIONS: Record<string, DimensionVector> = {
   Ω: ELECTRIC_RESISTANCE,
   Hz: FREQUENCY,
 
-  // Common unit powers
+  // Common unit powers and SI prefixed units
   "m²": AREA,
   m2: AREA,
   "m³": VOLUME,
   m3: VOLUME,
+  km: LENGTH,
+  cm: LENGTH,
+  mm: LENGTH,
+  um: LENGTH,
+  nm: LENGTH,
+  mg: MASS,
+  t: MASS,
+  ms: TIME,
+  us: TIME,
+  ns: TIME,
+  min: TIME,
+  h: TIME,
+  mA: CURRENT,
+  kA: CURRENT,
+  mV: VOLTAGE,
+  kV: VOLTAGE,
+  mW: POWER,
+  kW: POWER,
+  MW: POWER,
+  GW: POWER,
+  kJ: ENERGY,
+  MJ: ENERGY,
+  kN: FORCE,
+  MN: FORCE,
+  kPa: PRESSURE,
+  MPa: PRESSURE,
+  GPa: PRESSURE,
+  bar: PRESSURE,
+  kHz: FREQUENCY,
+  MHz: FREQUENCY,
+  GHz: FREQUENCY,
 };
 
 /** Checks whether two dimension vectors have identical exponents. */
@@ -661,14 +692,23 @@ export function inferUnitDimension(
 
     case "UnitExponentExpression": {
       const base = node.childForFieldName ? node.childForFieldName("base") : node.children?.[0];
+      const expNodes = node.childrenForFieldName ? node.childrenForFieldName("exponent") : [];
       const expNode = node.childForFieldName ? node.childForFieldName("exponent") : node.children?.[2];
 
       const baseRes = inferUnitDimension(db, base, scopeId);
       if (baseRes.error) return baseRes;
       const baseDim = baseRes.dimension || DIMENSIONLESS;
 
-      const expText = expNode?.text?.trim() || "1";
-      const expVal = parseInt(expText, 10);
+      let expText =
+        expNodes.length > 0 ? expNodes.map((c) => c.text?.trim() || "").join("") : expNode?.text?.trim() || "";
+      if (!expText || expText === "-") {
+        const fullText = node.text?.trim() || "";
+        const caretIdx = fullText.indexOf("^");
+        const starStarIdx = fullText.indexOf("**");
+        if (caretIdx !== -1) expText = fullText.slice(caretIdx + 1).trim();
+        else if (starStarIdx !== -1) expText = fullText.slice(starStarIdx + 2).trim();
+      }
+      const expVal = parseInt(expText || "1", 10);
       if (!isNaN(expVal)) {
         return { dimension: multiplyDimension(baseDim, expVal) };
       }

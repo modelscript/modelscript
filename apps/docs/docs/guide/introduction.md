@@ -1,3 +1,8 @@
+---
+title: Introduction
+description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 68 engineering languages.
+---
+
 # Introduction
 
 Welcome to **ModelScript**, the open-core **computable digital thread** platform and polyglot engineering compiler designed for multi-domain physical modeling, formal verification, and AI-assisted systems engineering.
@@ -6,12 +11,12 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **66 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **68 engineering languages and file formats** spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
-- **Power Grids, Electronics & Embedded Control** (`PSCAD EMT`, `Siemens PSS/E`, `OpenDSS`, `SPICE`, `Verilog-A`, `IBIS`, `Touchstone`, `PLCopen IEC 61131-3`, `AutomationML`, `AUTOSAR ARXML`, `ANSI C`, `Fortran`)
-- **3D CAD Geometry, Metrology, Multibody & Robotics** (`STEP AP214/AP242`, `ISO 23952 QIF`, `OpenSCAD CSG`, `ROS URDF / Xacro`, `SIMPACK`, `MSC Adams`, `GENSYS`, `OpenSim`, `ASAM OpenDRIVE / OpenSCENARIO`)
+- **Power Grids, Electronics & Embedded Control** (`PSCAD EMT`, `Siemens PSS/E`, `CIM / CGMES`, `OpenDSS`, `SPICE`, `Verilog-A`, `IBIS`, `Touchstone`, `PLCopen IEC 61131-3`, `AutomationML`, `AUTOSAR ARXML`, `ANSI C`, `Fortran`)
+- **3D CAD Geometry, Metrology, Multibody & Robotics** (`STEP AP214/AP242`, `OpenUSD`, `ISO 23952 QIF`, `OpenSCAD CSG`, `ROS URDF / Xacro`, `SIMPACK`, `MSC Adams`, `GENSYS`, `OpenSim`, `ASAM OpenDRIVE / OpenSCENARIO`)
 - **Continuum CAE, Process, Chemistry, Thermal & Fluid Networks** (`CalculiX / Abaqus FEA`, `SU2 / OpenFOAM CFD`, `OLGA`, `PipelineStudio`, `ECLIPSE`, `Aspen Plus`, `gPROMS`, `Cantera`, `PHREEQC`, `SMILES / SDF`, `RELAP5-3D`, `EnergyPlus`, `EPANET`, `EPA SWMM`)
 - **Systems/Synthetic Biology, Radiology & Computer-Assisted Surgery** (`SBML`, `Antimony`, `BioNetGen`, `SBOL3`, `SED-ML`, `NONMEM NMTRAN`, `PDB / mmCIF`, `GenBank / FASTA`, `CellML`, `FEBio / SOFA`, `DICOM-RT`, `TOPAS / GATE`, `NIfTI / NRRD`, `3MF Medical`, `OpenIGTLink / PLUS`)
 
@@ -36,7 +41,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **1,018 static lint rules** across **65+ languages** evaluated on every keystroke and CI push  |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,035 static lint rules** across **68 languages** evaluated on every keystroke and CI push   |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -45,7 +50,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 66 Languages (Stable, Beta & Preview Tiers)
+### 1. Code-First Engineering Across 68 Languages (Stable, Beta & Preview Tiers)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -81,7 +86,7 @@ A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces
 
 ### 6. AI-Native Closed-Loop Engineering (`@modelscript/mcp`)
 
-Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **31 deterministic compiler, simulation, CAD, TGG, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
+Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **60 deterministic compiler, simulation, CAD, TGG, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
 
 ---
 

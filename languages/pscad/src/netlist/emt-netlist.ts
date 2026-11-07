@@ -648,7 +648,14 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
 
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
         buses.get(bus2)?.connectedBranchIds.push(qCmpId);
-      } else if (defn.includes("tline") || defn.includes("cable") || defn.includes("line")) {
+      } else if (
+        defn.includes("tline") ||
+        defn.includes("cable") ||
+        lowerClean === "line" ||
+        defn.endsWith(":line") ||
+        lowerClean.endsWith("_line") ||
+        lowerClean.startsWith("line_")
+      ) {
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_From`, qCmpId);

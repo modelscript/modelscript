@@ -109,10 +109,9 @@ function collect(dir: string, value: unknown, out: Map<string, RuleMeta>, depth 
     const code = formatCode(dir, value["code"], value["stdCode"]);
     if (!code) return;
     const rule = value["rule"] as string;
-    const key = `${code}:${rule}`;
-    if (!out.has(key)) {
+    if (!out.has(code)) {
       const severity = typeof value["severity"] === "string" ? value["severity"] : "error";
-      out.set(key, { code, rule, severity, message: renderMessage(value["message"]) });
+      out.set(code, { code, rule, severity, message: renderMessage(value["message"]) });
     }
     return;
   }

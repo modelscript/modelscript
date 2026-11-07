@@ -304,6 +304,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           superKind === "DataAllValuesFrom" ||
           superKind === "ObjectHasSelf" ||
           superKind === "ObjectHasValue" ||
+          superKind === "DataHasValue" ||
           superKind === "ObjectOneOf" ||
           superKind === "ObjectMinCardinality" ||
           superKind === "ObjectMaxCardinality" ||
@@ -360,6 +361,30 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
         .filter(Boolean);
       if (iris.length >= 2) {
         out.push({ type: "DisjointClasses", classIris: iris, sourceLang: "owl2" });
+      }
+      return;
+    }
+
+    case "DisjointUnionAxiom": {
+      const exprs = getMeaningfulExpressions(node, ctx);
+      if (exprs.length >= 2) {
+        const targetIri = normalizeClassExprToIri(exprs[0]!, ctx, out);
+        const partIris = exprs
+          .slice(1)
+          .map((c) => normalizeClassExprToIri(c, ctx, out))
+          .filter(Boolean);
+        if (targetIri && partIris.length >= 1) {
+          if (partIris.length >= 2) {
+            out.push({ type: "DisjointClasses", classIris: partIris, sourceLang: "owl2" });
+          }
+          out.push({
+            type: "DisjunctiveClass",
+            superClassIri: targetIri,
+            classIris: partIris,
+            sourceLang: "owl2",
+            ...({ unionEquiv: true } as Record<string, unknown>),
+          });
+        }
       }
       return;
     }
@@ -635,13 +660,14 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
       const children = getMeaningfulExpressions(node, ctx);
       if (children.length >= 2) {
         const propIri = normalizeIri(getNodeText(children[0]!, ctx), ctx);
-        const rangeIri = normalizeIri(getNodeText(children[1]!, ctx), ctx);
+        const { datatypeIri, facets } = extractDataRangeSpec(children[1]!, ctx);
         out.push({
           type: "DataPropertyRange",
           propertyIri: propIri,
-          rangeIri,
+          rangeIri: datatypeIri,
           sourceLang: "owl2",
-        });
+          ...(facets.length > 0 ? { facets } : {}),
+        } as unknown as OWL2Axiom);
       }
       return;
     }
@@ -650,6 +676,60 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
   for (const child of getNodeChildren(node)) {
     walkForAxioms(child, ctx, out);
   }
+}
+
+interface LoweredFacetRestriction {
+  facet: "minInclusive" | "maxInclusive" | "minExclusive" | "maxExclusive";
+  value: number;
+}
+
+function normalizeFacetName(rawFacet: string): LoweredFacetRestriction["facet"] | null {
+  const lower = rawFacet.toLowerCase();
+  if (lower.endsWith("mininclusive")) return "minInclusive";
+  if (lower.endsWith("maxinclusive")) return "maxInclusive";
+  if (lower.endsWith("minexclusive")) return "minExclusive";
+  if (lower.endsWith("maxexclusive")) return "maxExclusive";
+  return null;
+}
+
+function extractDataRangeSpec(
+  node: GenericSyntaxNode,
+  ctx: LoweringContext,
+): { datatypeIri: string; facets: LoweredFacetRestriction[] } {
+  const unwrapped =
+    cleanNodeType(node) === "DataRange" && getNodeChildren(node).length === 1 ? getNodeChildren(node)[0]! : node;
+  const kind = cleanNodeType(unwrapped);
+  if (kind === "DatatypeRestriction") {
+    const children = getNodeChildren(unwrapped);
+    const iriNode = children.find((c) => ["IRI", "FullIRI", "AbbreviatedIRI"].includes(cleanNodeType(c)));
+    const datatypeIri = iriNode ? normalizeIri(getNodeText(iriNode, ctx), ctx) : "xsd:double";
+    const facets: LoweredFacetRestriction[] = [];
+    for (const child of children) {
+      if (cleanNodeType(child) === "FacetRestriction") {
+        const fc = getNodeChildren(child);
+        const fIriNode = fc.find((c) => ["IRI", "FullIRI", "AbbreviatedIRI"].includes(cleanNodeType(c)));
+        const fStrNode = fc.find((c) => cleanNodeType(c) === "StringLiteral");
+        if (fIriNode && fStrNode) {
+          const facet = normalizeFacetName(normalizeIri(getNodeText(fIriNode, ctx), ctx));
+          const numVal = Number(cleanString(getNodeText(fStrNode, ctx)));
+          if (facet && !Number.isNaN(numVal)) {
+            facets.push({ facet, value: numVal });
+          }
+        }
+      }
+    }
+    return { datatypeIri, facets };
+  }
+  if (kind === "DataIntersectionOf") {
+    const subSpecs = getNodeChildren(unwrapped)
+      .filter((c) => !AXIOM_KEYWORDS.has(cleanNodeType(c)) && cleanNodeType(c) !== "DataIntersectionOf")
+      .map((c) => extractDataRangeSpec(c, ctx));
+    return {
+      datatypeIri: subSpecs[0]?.datatypeIri ?? "xsd:double",
+      facets: subSpecs.flatMap((s) => s.facets),
+    };
+  }
+  return { datatypeIri: normalizeIri(getNodeText(node, ctx), ctx), facets: [] };
 }
 
 /**
@@ -808,15 +888,17 @@ function lowerComplexClassRestriction(
     case "DataSomeValuesFrom": {
       if (operands.length >= 2) {
         const propIri = normalizeIri(getNodeText(operands[0]!, ctx), ctx);
-        const dataRange = normalizeIri(getNodeText(operands[1]!, ctx), ctx);
-        if (propIri && dataRange) {
+        const { datatypeIri, facets } = extractDataRangeSpec(operands[1]!, ctx);
+        if (propIri && datatypeIri) {
           out.push({
             type: "DataSomeValuesFrom",
             subClassIri: targetClassIri || undefined,
             propertyIri: propIri,
-            dataRange,
+            dataRange: datatypeIri,
+            datatypeIri,
+            ...(facets.length > 0 ? { facets } : {}),
             sourceLang: "owl2",
-          });
+          } as unknown as OWL2Axiom);
         }
       }
       break;
@@ -826,21 +908,33 @@ function lowerComplexClassRestriction(
     case "DataAllValuesFrom": {
       if (operands.length >= 2) {
         const propIri = normalizeIri(getNodeText(operands[0]!, ctx), ctx);
-        const targetIri =
-          kind === "ObjectAllValuesFrom"
-            ? normalizeClassExprToIri(operands[1]!, ctx, out)
-            : normalizeIri(getNodeText(operands[1]!, ctx), ctx);
-        if (propIri && targetIri) {
-          if (declAxiom && kind === "ObjectAllValuesFrom") {
-            declAxiom["allValuesFrom"] = { propertyIri: propIri, targetClassIri: targetIri };
+        if (kind === "DataAllValuesFrom") {
+          const { datatypeIri, facets } = extractDataRangeSpec(operands[1]!, ctx);
+          if (propIri && datatypeIri) {
+            out.push({
+              type: facets.length > 0 ? "DataAllValuesFrom" : "UniversalRestriction",
+              propertyIri: propIri,
+              targetClassIri: datatypeIri,
+              datatypeIri,
+              ...(facets.length > 0 ? { facets } : {}),
+              classIri: targetClassIri,
+              sourceLang: "owl2",
+            } as unknown as OWL2Axiom);
           }
-          out.push({
-            type: "UniversalRestriction",
-            propertyIri: propIri,
-            targetClassIri: targetIri,
-            classIri: targetClassIri,
-            sourceLang: "owl2",
-          });
+        } else {
+          const targetIri = normalizeClassExprToIri(operands[1]!, ctx, out);
+          if (propIri && targetIri) {
+            if (declAxiom) {
+              declAxiom["allValuesFrom"] = { propertyIri: propIri, targetClassIri: targetIri };
+            }
+            out.push({
+              type: "UniversalRestriction",
+              propertyIri: propIri,
+              targetClassIri: targetIri,
+              classIri: targetClassIri,
+              sourceLang: "owl2",
+            });
+          }
         }
       }
       break;
@@ -875,6 +969,23 @@ function lowerComplexClassRestriction(
       break;
     }
 
+    case "DataHasValue": {
+      const innerIris = getIris(exprNode, ctx);
+      const propIri = innerIris[0] ?? (operands[0] ? normalizeIri(getNodeText(operands[0], ctx), ctx) : "");
+      const strNode = getNodeChildren(exprNode).find((c) => cleanNodeType(c) === "StringLiteral");
+      const val = strNode ? cleanString(getNodeText(strNode, ctx)) : "";
+      if (propIri) {
+        out.push({
+          type: "DataHasValue" as unknown as OWL2Axiom["type"],
+          classIri: targetClassIri,
+          propertyIri: propIri,
+          value: val,
+          sourceLang: "owl2",
+        } as unknown as OWL2Axiom);
+      }
+      break;
+    }
+
     case "ObjectOneOf": {
       const innerIris = getIris(exprNode, ctx);
       if (innerIris.length >= 1) {
@@ -894,6 +1005,7 @@ function lowerComplexClassRestriction(
     case "DataMinCardinality":
     case "DataMaxCardinality":
     case "DataExactCardinality": {
+      const isDataCard = kind.startsWith("Data");
       const cardType =
         kind === "ObjectMinCardinality" || kind === "DataMinCardinality"
           ? "min"
@@ -906,9 +1018,9 @@ function lowerComplexClassRestriction(
         ? normalizeIri(getNodeText(nonIntOps[0], ctx), ctx)
         : (getIris(exprNode, ctx)[0] ?? "");
       const fillerIri = nonIntOps[1]
-        ? kind.startsWith("Object")
+        ? !isDataCard
           ? normalizeClassExprToIri(nonIntOps[1], ctx, out)
-          : normalizeIri(getNodeText(nonIntOps[1], ctx), ctx)
+          : extractDataRangeSpec(nonIntOps[1], ctx).datatypeIri
         : undefined;
       if (propIri) {
         out.push({
@@ -918,18 +1030,20 @@ function lowerComplexClassRestriction(
           cardinalityType: cardType,
           count,
           fillerClassIri: fillerIri,
+          ...(isDataCard ? { isDataCardinality: true, fillerDatatypeIri: fillerIri ?? "rdfs:Literal" } : {}),
           sourceLang: "owl2",
-        });
+        } as unknown as OWL2Axiom);
       }
       break;
     }
   }
 }
 
-/** Strips surrounding double quotes from an OWL 2 `StringLiteral` token. */
+/** Strips surrounding double quotes (and optional `^^datatype` / `@lang` suffix) from an OWL 2 `StringLiteral` token. */
 function cleanString(raw: string): string {
-  if (raw.startsWith('"') && raw.endsWith('"')) {
-    return raw.slice(1, -1);
+  const m = raw.match(/^"([^"\\]*(?:\\.[^"\\]*)*)"/);
+  if (m) {
+    return m[1]!;
   }
   return raw;
 }

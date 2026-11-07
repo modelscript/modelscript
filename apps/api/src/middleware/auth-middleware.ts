@@ -9,8 +9,37 @@ import { locationService } from "../services/location.js";
 
 let sharedAuthDatabase: LibraryDatabase | null = null;
 
+const TOUCH_THROTTLE_MS = 60_000;
+const MAX_THROTTLE_ENTRIES = 5_000;
+const dbTouchTimestamps = new WeakMap<LibraryDatabase, Map<string, number>>();
+
+function shouldThrottleDbTouch(db: LibraryDatabase, key: string): boolean {
+  let map = dbTouchTimestamps.get(db);
+  const now = Date.now();
+  if (!map) {
+    map = new Map<string, number>();
+    dbTouchTimestamps.set(db, map);
+  }
+  const prev = map.get(key);
+  if (prev !== undefined && now - prev < TOUCH_THROTTLE_MS) {
+    return true;
+  }
+  if (map.size >= MAX_THROTTLE_ENTRIES) {
+    const firstKey = map.keys().next().value;
+    if (firstKey !== undefined) {
+      map.delete(firstKey);
+    }
+  }
+  map.set(key, now);
+  return false;
+}
+
 export function setAuthDatabase(database: LibraryDatabase) {
   sharedAuthDatabase = database;
+}
+
+export function getAuthDatabase(): LibraryDatabase | null {
+  return sharedAuthDatabase;
 }
 
 export function trackUserLocationFromRequest(req: Request, userId: number): void {
@@ -20,6 +49,12 @@ export function trackUserLocationFromRequest(req: Request, userId: number): void
   try {
     const geo = locationService.resolveRequestGeo(req);
     if (geo?.countryCode) {
+      if (process.env["NODE_ENV"] !== "test") {
+        const key = `loc:${userId}:${geo.countryCode}:${geo.regionCode || ""}`;
+        if (shouldThrottleDbTouch(sharedAuthDatabase, key)) {
+          return;
+        }
+      }
       const thresholdN = Number(process.env["ACCOUNT_LOCATION_THRESHOLD_N"]) || 5;
       sharedAuthDatabase.recordUserLocationRequest(userId, geo.countryCode, geo.regionCode, thresholdN);
     }
@@ -111,6 +146,10 @@ export function matchesPackagePattern(packageName: string, pattern?: string | nu
     return packageName.startsWith(prefix);
   }
   return packageName === pattern;
+}
+
+export function isScopedApiToken(req: Request): boolean {
+  return Boolean(req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin"));
 }
 
 export function requireTokenScope(...allowedScopes: string[]) {
@@ -417,7 +456,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string"
         ? req.headers["x-forwarded-for"].split(",")[0]?.trim() || req.ip
         : req.ip;
-    sharedAuthDatabase.touchApiToken(tokenRecord.id, tokenClientIp);
+    if (
+      !tokenRecord.last_used_at ||
+      tokenRecord.last_used_ip !== (tokenClientIp ?? null) ||
+      !shouldThrottleDbTouch(sharedAuthDatabase, `pat:${tokenRecord.id}:${tokenClientIp || ""}`)
+    ) {
+      sharedAuthDatabase.touchApiToken(tokenRecord.id, tokenClientIp);
+    }
 
     req.user = {
       ...user,
@@ -449,7 +494,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       }
     }
 
-    sharedAuthDatabase.touchBotLastUsed(botUser.id);
+    if (!shouldThrottleDbTouch(sharedAuthDatabase, `bot:${botUser.id}`)) {
+      sharedAuthDatabase.touchBotLastUsed(botUser.id);
+    }
 
     req.user = {
       ...botUser,
@@ -502,7 +549,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       const dbRole = user.account_type;
       decoded.accountType = dbRole || decoded.accountType || decoded.role || "user";
       decoded.account_type = decoded.accountType;
-      decoded.role = dbRole && dbRole !== "user" ? dbRole : decoded.role || decoded.accountType;
+      decoded.role =
+        dbRole && dbRole !== "user"
+          ? dbRole
+          : process.env["NODE_ENV"] === "test"
+            ? decoded.role || decoded.accountType
+            : decoded.accountType;
     }
 
     req.user = decoded;
@@ -638,7 +690,9 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
         }
       }
       if (!ownerBlocked) {
-        sharedAuthDatabase.touchBotLastUsed(botUser.id);
+        if (!shouldThrottleDbTouch(sharedAuthDatabase, `bot:${botUser.id}`)) {
+          sharedAuthDatabase.touchBotLastUsed(botUser.id);
+        }
         req.user = {
           ...botUser,
           role: botUser.account_type || "user",

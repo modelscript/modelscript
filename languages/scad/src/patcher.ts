@@ -115,10 +115,18 @@ export class ScadPatcher {
     if (!argListNode) return null;
 
     let currentArgIdx = 0;
+    const argNodes: ScadCstNode[] = [];
     for (let i = 0; i < argListNode.childCount; i++) {
       const arg = argListNode.child(i);
-      if (!arg || arg.type !== "Argument") continue;
+      if (arg && arg.type === "Argument") argNodes.push(arg);
+    }
 
+    if (targetMethod === "rotate" && argIndex === 0 && argNodes.length > 1) {
+      const formattedVec = `[${Number(newVec[0].toFixed(4))}, ${Number(newVec[1].toFixed(4))}, ${Number(newVec[2].toFixed(4))}]`;
+      return this.patchNode(source, argListNode, formattedVec);
+    }
+
+    for (const arg of argNodes) {
       if (currentArgIdx === argIndex) {
         const formattedVec = `[${Number(newVec[0].toFixed(4))}, ${Number(newVec[1].toFixed(4))}, ${Number(newVec[2].toFixed(4))}]`;
         return this.patchNode(source, arg, formattedVec);
@@ -187,6 +195,19 @@ export class ScadPatcher {
     const { startOffset, endOffset } = primitiveRange;
     const oldValue = source.slice(startOffset, endOffset);
     const formattedVec = `[${Number(vec[0].toFixed(4))}, ${Number(vec[1].toFixed(4))}, ${Number(vec[2].toFixed(4))}]`;
+    const existingPrefixRegex = new RegExp(`^(\\s*${transformMethod}\\s*\\()([^)]*)(\\))`);
+    const existingMatch = oldValue.match(existingPrefixRegex);
+    if (existingMatch) {
+      const newStr = oldValue.replace(existingPrefixRegex, `$1${formattedVec}$3`);
+      const updatedSource = source.slice(0, startOffset) + newStr + source.slice(endOffset);
+      return {
+        updatedSource,
+        replacedRange: { startOffset, endOffset },
+        oldValue,
+        newValue: newStr,
+      };
+    }
+
     const trailingSlice = source.slice(endOffset, endOffset + 16).trimStart();
     const isFluentContext = preferFluent || trailingSlice.startsWith(".");
 

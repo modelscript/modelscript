@@ -1,3 +1,8 @@
+---
+title: "Architecture Overview"
+description: "ModelScript is built on a data-oriented, WebAssembly-first compiler architecture. Rather than allocating deep hierarchies of garbage-collected JavaScript AST wrapper objects, every stage of the com..."
+---
+
 # Architecture Overview
 
 ModelScript is built on a **data-oriented, WebAssembly-first compiler architecture**. Rather than allocating deep hierarchies of garbage-collected JavaScript AST wrapper objects, every stage of the compiler—from GLR parsing to DAE flattening, sparse linear algebra, and formal verification—operates on contiguous **Struct-of-Arrays (SoA)** arenas in WebAssembly linear memory.

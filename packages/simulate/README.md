@@ -59,7 +59,7 @@ Operates directly on `@modelscript/runtime` linear-memory `DAEBuilder` arenas (`
 
 - **Monte Carlo & Sobol Sensitivity (`src/uq/monte-carlo.ts`, `src/uq/doe.ts`)**: Latin Hypercube Sampling (LHS), Sobol quasi-random sequences, Saltelli first-order ($S_i$) and total-effect ($S_{Ti}$) variance-based sensitivity indices, and ensemble quantile envelopes.
 - **Operational Digital Twin Estimators (`src/twin/`, `src/calibration/`)**:
-  - **Moving Horizon Estimator (`ArenaMHE`, `src/twin/arena-mhe.ts`)**: Constrained sliding-window state and parameter trajectory estimation over live telemetry buffers (`telemetry-buffer.js`).
+  - **Moving Horizon Estimator (`ArenaMHE`, `src/twin/arena-mhe.ts`)**: Constrained sliding-window state and parameter trajectory estimation over live telemetry buffers (`src/twin/telemetry-buffer.ts`).
   - **Unscented Kalman Filter (`UnscentedKalmanFilter`, `src/calibration/unscented_kalman_filter.ts`) & Virtual Sensor Fusion (`virtual_sensor_fusion.ts`)**: Nonlinear sigma-point state and unmeasured virtual sensor estimation.
   - **Bayesian MCMC Calibration (`BayesianCalibrator`, `src/calibration/bayesian_calibrator.ts`)**: Affine-invariant ensemble / Metropolis-Hastings posterior parameter inference.
   - **Drift Detection & RUL Prognostics (`src/twin/drift-detector.ts`, `src/twin/prognostics.ts`)**: Page-Hinkley / CUSUM parameter drift alarms and Remaining Useful Life (RUL) degradation horizon forecasting.
@@ -76,9 +76,36 @@ Operates directly on `@modelscript/runtime` linear-memory `DAEBuilder` arenas (`
 | `@modelscript/simulate/webgpu`    | `WebGPUSimulationRunner` and batched WGSL compute shaders                                                         |
 | `@modelscript/simulate/meshing`   | STEP B-Rep mesher, prism boundary layer extruder, and mesh quality analyzer                                       |
 | `@modelscript/simulate/optimizer` | L-BFGS-B, Nelder-Mead, CMA-ES, NSGA-II multi-objective optimizer, and parameter sweepers                          |
+| `@modelscript/simulate/opf`       | AC/DC Optimal Power Flow (OPF) and security-constrained dispatch solver                                           |
 | `@modelscript/simulate/uq`        | Monte Carlo runner, Sobol indices, and Design of Experiments (DoE)                                                |
 | `@modelscript/simulate/twin`      | `ArenaMHE`, drift detector, RUL prognostics, and streaming telemetry ring buffers                                 |
 | `@modelscript/simulate/jit`       | WebAssembly and JS JIT equation evaluator compilers                                                               |
+
+---
+
+## Programmatic Usage
+
+```typescript
+import { DAEBuilder, ExprOp, VarCausality, VarType, VarVariability } from "@modelscript/runtime";
+import { simulateArena } from "@modelscript/simulate";
+
+// 1. Construct a first-order ODE dx/dt = -x with x(0) = 1.0 in the DAE arena
+const dae = new DAEBuilder();
+const xId = dae.addVariable("x", VarType.Real, VarVariability.Continuous, VarCausality.Local, 1.0);
+const xRef = dae.addVarRef(xId);
+const derX = dae.addDer(xRef);
+const negX = dae.addUnary(ExprOp.Neg, xRef);
+dae.addEquation(derX, negX);
+
+// 2. Numerically integrate from t = 0 to t = 5s using Dormand-Prince 5(4)
+const result = simulateArena(dae, {
+  tStart: 0,
+  tEnd: 5.0,
+  dt: 0.05,
+  method: "dopri5",
+});
+console.log("Final state x(5):", result.series.x?.at(-1));
+```
 
 ---
 

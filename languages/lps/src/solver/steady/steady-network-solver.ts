@@ -11,6 +11,7 @@ import { PipelineGraph } from "../../graph/pipeline-graph.js";
 import type { LpsModel, LpsSteadyResult, NodeState, PipeState } from "../../types.js";
 import { Aga8Eos } from "../eos/aga8-detailed.js";
 import { Gerg2008Eos } from "../eos/gerg2008.js";
+import { LiquidProperties } from "../eos/liquid-properties.js";
 import { CompressorMapEngine } from "../machinery/compressor-map.js";
 import { PumpCurveEngine } from "../machinery/pump-curve.js";
 
@@ -305,7 +306,37 @@ export class SteadyNetworkSolver {
       hydrogen: 0.0,
     };
 
+    const isLiquid = model.type === "TLNET";
+    const defaultLiquidProduct = model.batches?.products[0] ?? {
+      id: "DEFAULT_CRUDE",
+      name: "Light Sweet Crude",
+      densityAtRef: 840.0,
+      viscosityAtRef: 4.5e-3,
+      bulkModulus: 1.4e9,
+      vaporPressure: 35e3,
+    };
     const useGerg = model.simulationControls?.equationOfState === "GERG2008";
+
+    const evaluateFluidState = (pPa: number, tK: number): { massDensity: number; muJtKPa: number; cpJkgK: number } => {
+      if (isLiquid) {
+        const rhoLiq = Math.max(100.0, LiquidProperties.getDensity(defaultLiquidProduct, pPa, tK));
+        return { massDensity: rhoLiq, muJtKPa: -4.0e-7, cpJkgK: 2000.0 };
+      }
+      if (useGerg) {
+        const g = Gerg2008Eos.evaluate(pPa, tK, comp);
+        return {
+          massDensity: Math.max(0.5, g.massDensity),
+          muJtKPa: g.jouleThomsonCoeffKBar / 1e5,
+          cpJkgK: g.isobaricHeatCapacityJouleMolK / Math.max(1e-4, g.molarMassKgMol),
+        };
+      }
+      const a = Aga8Eos.evaluate(pPa, tK, comp);
+      return {
+        massDensity: Math.max(0.5, a.massDensity),
+        muJtKPa: a.jouleThomsonCoeff / 1e5,
+        cpJkgK: 2200.0,
+      };
+    };
 
     // Build list of free (unknown-pressure) nodes
     const freeNodeNames: string[] = [];
@@ -359,7 +390,7 @@ export class SteadyNetworkSolver {
     let converged = false;
 
     const minPressurePa = 1.01325e5;
-    const mu = 1.1e-5;
+    const mu = isLiquid ? Math.max(1e-4, defaultLiquidProduct.viscosityAtRef) : 1.1e-5;
 
     for (let iter = 0; iter < maxIter; iter++) {
       actualIterations = iter + 1;
@@ -383,8 +414,8 @@ export class SteadyNetworkSolver {
         const tempK = pipe.ambientTemperature ?? 288.15;
 
         const pRef = Math.max(minPressurePa, 0.5 * (pFrom + pTo));
-        const eos = useGerg ? Gerg2008Eos.evaluate(pRef, tempK, comp) : Aga8Eos.evaluate(pRef, tempK, comp);
-        const rho = Math.max(0.5, eos.massDensity);
+        const eos = evaluateFluidState(pRef, tempK);
+        const rho = eos.massDensity;
         const area = Math.PI * (pipe.diameter / 2) ** 2;
 
         const prevFlow = Math.max(0.05, Math.abs(pipeStates[pipe.name]?.massFlow ?? 20.0));
@@ -445,10 +476,10 @@ export class SteadyNetworkSolver {
         const pIn = Math.max(minPressurePa, pFrom);
         const pOut = Math.max(minPressurePa, pTo);
         const pAvg = (2 / 3) * (pIn + pOut - (pIn * pOut) / Math.max(1, pIn + pOut));
-        const eosAvg = useGerg ? Gerg2008Eos.evaluate(pAvg, tempK, comp) : Aga8Eos.evaluate(pAvg, tempK, comp);
+        const eosAvg = evaluateFluidState(pAvg, tempK);
         const pipeVolume = area * pipe.length;
         const linePackKg = pipeVolume * eosAvg.massDensity;
-        const stdDensity = comp.standardDensity ?? 0.78;
+        const stdDensity = isLiquid ? defaultLiquidProduct.densityAtRef : (comp.standardDensity ?? 0.78);
         const linePackSm3 = linePackKg / stdDensity;
 
         pipeStates[pipe.name] = {
@@ -533,8 +564,8 @@ export class SteadyNetworkSolver {
       const pOut = Math.max(minPressurePa, nodeStates[pipe.toNode]?.pressure ?? basePressure);
       const tempK = pipe.ambientTemperature ?? 288.15;
       const pRef = 0.5 * (pIn + pOut);
-      const eos = useGerg ? Gerg2008Eos.evaluate(pRef, tempK, comp) : Aga8Eos.evaluate(pRef, tempK, comp);
-      const rho = Math.max(0.5, eos.massDensity);
+      const eos = evaluateFluidState(pRef, tempK);
+      const rho = eos.massDensity;
       const area = Math.PI * (pipe.diameter / 2) ** 2;
 
       const prevFlow = Math.max(0.05, Math.abs(pipeStates[pipe.name]?.massFlow ?? 20.0));
@@ -562,10 +593,10 @@ export class SteadyNetworkSolver {
       const frictionLoss = resistance * absFlow * absFlow;
 
       const pAvg = (2 / 3) * (pIn + pOut - (pIn * pOut) / Math.max(1, pIn + pOut));
-      const eosAvg = useGerg ? Gerg2008Eos.evaluate(pAvg, tempK, comp) : Aga8Eos.evaluate(pAvg, tempK, comp);
+      const eosAvg = evaluateFluidState(pAvg, tempK);
       const pipeVolume = area * pipe.length;
       const linePackKg = pipeVolume * eosAvg.massDensity;
-      const stdDensity = comp.standardDensity ?? 0.78;
+      const stdDensity = isLiquid ? defaultLiquidProduct.densityAtRef : (comp.standardDensity ?? 0.78);
       const linePackSm3 = linePackKg / stdDensity;
 
       pipeStates[pipe.name] = {
@@ -583,6 +614,23 @@ export class SteadyNetworkSolver {
       const toNs = nodeStates[pipe.toNode];
       if (fromNs) fromNs.netFlow += massFlow;
       if (toNs) toNs.netFlow -= massFlow;
+
+      // Update downstream node temperature using Sukhov's exponential decay + Joule-Thomson cooling
+      const uHeat = pipe.heatTransferCoefficient ?? 2.0;
+      const upstreamNs = massFlow >= 0 ? fromNs : toNs;
+      const downstreamNs = massFlow >= 0 ? toNs : fromNs;
+      const downstreamNodeDef = graph.nodes.get(massFlow >= 0 ? pipe.toNode : pipe.fromNode);
+      if (upstreamNs && downstreamNs && downstreamNodeDef?.temperature == null && absFlow > 1e-3) {
+        const thermalRelaxation = Math.exp(
+          -(Math.PI * pipe.diameter * uHeat * pipe.length) / Math.max(1.0, absFlow * eosAvg.cpJkgK),
+        );
+        const dpPositive = Math.max(0.0, Math.abs(pIn - pOut));
+        const jtCooling = eosAvg.muJtKPa * dpPositive;
+        downstreamNs.temperature = Math.max(
+          200.0,
+          tempK + (upstreamNs.temperature - tempK) * thermalRelaxation - jtCooling,
+        );
+      }
 
       totalLinePackKg += linePackKg;
       totalLinePackSm3 += linePackSm3;

@@ -1,13 +1,13 @@
 ---
 title: AI Agents & MCP Workflows
-description: Connect Claude Code, Cursor, Windsurf, and custom LLM agents to ModelScript's 52 deterministic compiler, simulation, CAD, TGG, and formal verification MCP tools.
+description: Connect Claude Code, Cursor, Windsurf, and custom LLM agents to ModelScript's 60 deterministic compiler, simulation, CAD, TGG, and formal verification MCP tools.
 ---
 
 # AI Agents & MCP Workflows
 
 Large language models excel at generating structure and exploring design spaces, but when asked to write differential equations, power-grid topologies, or safety-critical requirements in free text, they frequently hallucinate mismatched units, structurally singular DAEs, or violated physical conservation laws.
 
-ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **52 polyglot compilation, simulation, CAD, TGG, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
+ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **60 polyglot compilation, simulation, CAD, TGG, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
 
 ---
 
@@ -37,7 +37,7 @@ Or add it directly from your terminal via the VS Code CLI:
 code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
 ```
 
-Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 52 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
+Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 60 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
 
 ### Claude Code (`stdio`)
 
@@ -93,12 +93,12 @@ When prompting an LLM outside of MCP (or seeding system prompts for custom agent
 ```mermaid
 sequenceDiagram
     participant Agent as AI Agent (Claude / Cursor)
-    participant MCP as @modelscript/mcp (52 Tools)
+    participant MCP as @modelscript/mcp (60 Tools)
     participant Core as WASM GLR + Salsa + DAE Arena
     participant Verify as 13 Theory Oracles & Solvers
 
     Agent->>MCP: 1. modelica_lint / sysml2_check_constraints
-    MCP->>Core: Parse CST & evaluate 794 static lint rules
+    MCP->>Core: Parse CST & evaluate 1,035 static lint rules
     Core-->>Agent: Structured diagnostics (line, col, rule, fix)
     Agent->>MCP: 2. modelscript_closed_loop_synthesize
     MCP->>Verify: Flatten DAE -> Integrate -> Check STL robustness
@@ -113,7 +113,7 @@ sequenceDiagram
 
 Rather than writing a Modelica controller in one shot and hoping it stabilizes the plant, instruct the agent to call **`modelscript_closed_loop_synthesize`**. This single tool orchestrates a five-stage compiler/solver loop:
 
-1. **GLR Parse & Semantic Lint** (`modelica_lint` across 307 Modelica rules)
+1. **GLR Parse & Semantic Lint** (`modelica_lint` across 306 Modelica rules)
 2. **Arena DAE Flattening & Pantelides Index Reduction** (`modelica_flatten`)
 3. **Time-Domain Integration** (`modelica_simulate` via SUNDIALS CVODE/IDA or Radau IIA)
 4. **Signal Temporal Logic (STL) Verification** (`sysml2_falsify_requirements`)
@@ -211,18 +211,18 @@ Beyond 1D system dynamics, `@modelscript/mcp` provides five cross-domain certifi
 
 Use these prompt templates with Claude Code or Cursor when working in a ModelScript workspace:
 
-> ** Synthesis & Verification Prompt:**
+> **Synthesis & Verification Prompt:**
 > _"Create a Modelica model `DC_BuckConverter.mo` and a companion `BuckConverterReq.sysml` specifying a $12\text{ V} \to 5\text{ V}$ step-down converter with output voltage ripple $\le 50\text{ mV}$ and settling time $\le 4\text{ ms}$. Run `modelica_lint`, simulate with `modelica_simulate`, and iterate using `modelscript_closed_loop_synthesize` until `sysml2_verify` proves both requirements SAFE."_
 
-> ** Legacy Migration Prompt:**
+> **Legacy Migration Prompt:**
 > _"Import `legacy/PitchActuator.slx` into `models/PitchActuator.mo` using `polyglot_migrate_and_verify_b2b`, run `modelica_lint` to resolve any diagnostic warnings, and verify that the step response matches the Simulink reference trajectory within $10^{-4}$ relative error."_
 
-> ** Grid Compliance Prompt:**
+> **Grid Compliance Prompt:**
 > _"Run `pscad_lint` and `pscad_verify_ieee2800` on `grid/WindFarm_300MW.pscx`. If Low-Voltage Ride-Through (LVRT) reactive current response time $T_{\text{resp}}$ exceeds $30\text{ ms}$, adjust the inverter inner current loop gains and re-run `pscad_verify_ieee2800` until all IEEE Std 2800-2022 clauses pass."\_
 
 ---
 
 ## Next Steps
 
-- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 52 core MCP tools, IDE copilot tiers, and autonomous social bots.
+- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 60 core MCP tools, IDE copilot tiers, and autonomous social bots.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Automate headless linting, SARIF verification, visual PR diffs, and DHF compliance dossiers on every commit.

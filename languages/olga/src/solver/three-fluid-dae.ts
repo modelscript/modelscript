@@ -485,7 +485,7 @@ export function simulateThreeFluidDAE(
         const fWall = Math.max(0.012, Math.min(0.06, 0.316 / Math.pow(Math.max(100.0, reFilm), 0.25)));
         const tauW = 0.5 * fWall * rhoFilm * c.velocityFilm * c.velocityFilm;
         const dpFric = ((tauW * 4.0) / dPipe) * dxi;
-        const dpGrav = Math.max(0.0, rhoMix * gGrav * sinTheta * dxi);
+        const dpGrav = rhoMix * gGrav * sinTheta * dxi;
 
         // Check if any inline choke/valve sits inside cell [x_i - dx/2, x_i + dx/2]
         let dpValve = 0.0;

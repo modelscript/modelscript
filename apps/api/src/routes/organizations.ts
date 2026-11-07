@@ -3,7 +3,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase, OrgRole } from "../database.js";
-import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 function isValidSlug(slug: string): boolean {
@@ -23,6 +23,7 @@ function normalizeOrgRole(raw: unknown): OrgRole | null {
 export function organizationsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
   router.use(defaultApiLimiter);
+  const requireOrgWriteScope = requireTokenScope("org:write", "account:write");
 
   /**
    * GET /api/v1/organizations/my
@@ -39,7 +40,7 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    *
    * Create a new organization and assign the creator as 'owner'.
    */
-  router.post("/", requireAuth, (req: Request, res: Response): void => {
+  router.post("/", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
     const slug = String(req.body?.slug ?? "")
       .trim()
       .toLowerCase();
@@ -184,8 +185,8 @@ export function organizationsRouter(database: LibraryDatabase): Router {
     }
   };
 
-  router.patch("/:slug", requireAuth, handleUpdateOrg);
-  router.put("/:slug", requireAuth, handleUpdateOrg);
+  router.patch("/:slug", requireAuth, requireOrgWriteScope, handleUpdateOrg);
+  router.put("/:slug", requireAuth, requireOrgWriteScope, handleUpdateOrg);
 
   /**
    * GET /api/v1/organizations/:slug/members
@@ -279,7 +280,7 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    * Add or update an organization member's role.
    * Requires caller to be an 'owner' or 'maintainer' in the organization.
    */
-  router.post("/:slug/members", requireAuth, (req: Request, res: Response): void => {
+  router.post("/:slug/members", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
     handleUpsertMemberRole(req, res);
   });
 
@@ -289,10 +290,10 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    *
    * Update an existing member's role by username or userId.
    */
-  router.patch("/:slug/members/:userOrId", requireAuth, (req: Request, res: Response): void => {
+  router.patch("/:slug/members/:userOrId", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
     handleUpsertMemberRole(req, res, String(req.params["userOrId"] ?? ""));
   });
-  router.put("/:slug/members/:userOrId", requireAuth, (req: Request, res: Response): void => {
+  router.put("/:slug/members/:userOrId", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
     handleUpsertMemberRole(req, res, String(req.params["userOrId"] ?? ""));
   });
 
@@ -302,7 +303,7 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    * Remove a member from the organization.
    * Requires caller to be an 'owner' in the organization.
    */
-  router.delete("/:slug/members/:userId", requireAuth, (req: Request, res: Response): void => {
+  router.delete("/:slug/members/:userId", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
     const slug = String(req.params["slug"] ?? "")
       .trim()
       .toLowerCase();

@@ -59,6 +59,7 @@ export function threadRouter(
 ): Router {
   const router = Router();
   router.use(defaultApiLimiter);
+  router.use(optionalAuth);
   let hypergraph: DigitalThreadHypergraph;
   let db: Database | undefined;
   let options: ThreadRouterOptions | undefined;

@@ -17,6 +17,76 @@ export interface CgmesDiagnostic {
   mRID?: string | undefined;
 }
 
+export const CgmesErrorCode = {
+  MISSING_MRID: {
+    code: "C1001",
+    rule: "missing-mrid",
+    severity: "error" as const,
+    message: "TopologicalNode has empty or missing mRID.",
+  },
+  ORPHAN_TERMINAL: {
+    code: "C1002",
+    rule: "orphan-terminal",
+    severity: "error" as const,
+    message: (terminal: string, conductingEquipment: string) =>
+      `Terminal '${terminal}' references non-existent ConductingEquipment '${conductingEquipment}'.`,
+  },
+  DANGLING_NODE: {
+    code: "C1003",
+    rule: "dangling-node",
+    severity: "warning" as const,
+    message: (node: string) => `TopologicalNode '${node}' has no connected equipment terminals.`,
+  },
+  INVALID_VOLTAGE_LEVEL: {
+    code: "C1004",
+    rule: "invalid-voltage-level",
+    severity: "error" as const,
+    message: (voltageLevel: string, baseVoltageKv: string) =>
+      `VoltageLevel '${voltageLevel}' has non-positive base voltage (${baseVoltageKv} kV).`,
+  },
+  TRANSFORMER_END_MISMATCH: {
+    code: "C1005",
+    rule: "transformer-end-mismatch",
+    severity: "error" as const,
+    message: (transformer: string, ends: string) =>
+      `PowerTransformer '${transformer}' must have 2 or 3 ends, but found ${ends}.`,
+  },
+  GENERATOR_LIMIT_INVERSION: {
+    code: "C1006",
+    rule: "generator-limit-inversion",
+    severity: "error" as const,
+    message: (generator: string, minP: string, maxP: string) =>
+      `SynchronousMachine '${generator}' minP (${minP} MW) exceeds maxP (${maxP} MW).`,
+  },
+  ZERO_IMPEDANCE_LINE: {
+    code: "C1007",
+    rule: "zero-impedance-line",
+    severity: "warning" as const,
+    message: (line: string, r: string, x: string) =>
+      `ACLineSegment '${line}' has zero or negative impedance (r=${r}, x=${x}).`,
+  },
+  NEGATIVE_LOAD: {
+    code: "C1008",
+    rule: "negative-load",
+    severity: "info" as const,
+    message: (load: string, pMw: string) =>
+      `EnergyConsumer '${load}' has negative active power (${pMw} MW), behaving as net generation.`,
+  },
+  ISOLATED_SUBSTATION: {
+    code: "C1009",
+    rule: "isolated-substation",
+    severity: "warning" as const,
+    message: (substation: string) => `Substation '${substation}' is isolated from the transmission network.`,
+  },
+  UNBALANCED_PROFILE_DATA: {
+    code: "C1010",
+    rule: "unbalanced-profile-data",
+    severity: "error" as const,
+    message: (svId: string, topologicalNodeId: string) =>
+      `State variable SvVoltage '${svId}' references non-existent TopologicalNode '${topologicalNodeId}'.`,
+  },
+} as const;
+
 export function lintCgmesModel(model: CgmesModel): CgmesDiagnostic[] {
   const diagnostics: CgmesDiagnostic[] = [];
   const topo = processTopology(model);

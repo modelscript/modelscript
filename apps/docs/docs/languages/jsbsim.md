@@ -1,3 +1,8 @@
+---
+title: "JSBSim Aerospace 6-DOF Flight Dynamics (.xml)"
+description: "@modelscript/jsbsim (languages/jsbsim) provides zero-regex XML parsing, non-linear 6-DOF rigid-body flight dynamics integration, cruise trim stabilization, linear DAE lowering, and Modelica 3.x pro..."
+---
+
 # JSBSim Aerospace 6-DOF Flight Dynamics (`.xml`)
 
 `@modelscript/jsbsim` (`languages/jsbsim`) provides zero-regex XML parsing, non-linear 6-DOF rigid-body flight dynamics integration, cruise trim stabilization, linear DAE lowering, and Modelica 3.x projection for **JSBSim Flight Dynamics Model (FDM)** fixed-wing and rotorcraft aircraft configurations.

@@ -14,14 +14,14 @@ Start free, and move up when you need more compute, collaboration, or a commerci
 
 ## Which plan do I need?
 
-| If you are...                                                          | Choose                                          |
-| :--------------------------------------------------------------------- | :---------------------------------------------- |
-| Learning, doing research, or building open-source models               | **Community**                                   |
-| An engineer who needs cloud compute for large models                   | **Pro**                                         |
-| A team that shares compute, private packages, and access control       | **Team**                                        |
-| Shipping a closed-source product that includes ModelScript             | **Commercial SDK**                              |
-| Running ModelScript internally with SSO, air-gapped or regulated needs | **Enterprise Appliance**                        |
-| Not sure                                                               | [Contact us](mailto:enterprise@modelscript.org) |
+| If you are...                                                          | Choose                                     |
+| :--------------------------------------------------------------------- | :----------------------------------------- |
+| Learning, doing research, or building open-source models               | **Community**                              |
+| An engineer who needs cloud compute for large models                   | **Pro**                                    |
+| A team that shares compute, private packages, and access control       | **Team**                                   |
+| Shipping a closed-source product that includes ModelScript             | **Commercial SDK**                         |
+| Running ModelScript internally with SSO, air-gapped or regulated needs | **Enterprise Appliance**                   |
+| Not sure                                                               | [Contact us](mailto:sales@modelscript.org) |
 
 ---
 
@@ -54,7 +54,7 @@ If your product embeds the optional 3D CAD/STEP geometry engine (`@modelscript/c
 
 ### How is the Commercial SDK priced?
 
-It is priced per product per year. If you ship several distinct products, or have a large user base, [contact us](mailto:enterprise@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) for a quote.
+It is priced per product per year. If you ship several distinct products, or have a large user base, [contact us](mailto:sales@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) for a quote.
 
 ### How is the Enterprise Appliance priced?
 
@@ -70,7 +70,7 @@ Not to get Enterprise Edition features. The `ee/` code is under a separate licen
 
 ### What if I'm a vendor and I also want Enterprise features?
 
-The Commercial SDK and the Enterprise Appliance are separate licenses. The Enterprise license is for internal use. If you want Enterprise features in a product you ship, [contact us](mailto:enterprise@modelscript.org?subject=%5BCombined%20License%5D%20ModelScript) about a combined agreement.
+The Commercial SDK and the Enterprise Appliance are separate licenses. The Enterprise license is for internal use. If you want Enterprise features in a product you ship, [contact us](mailto:sales@modelscript.org?subject=%5BCombined%20License%5D%20ModelScript) about a combined agreement.
 
 ### Can I use Pro or Team for commercial work?
 
@@ -88,7 +88,7 @@ Credits pay for cloud HPC and GPU jobs. Pro includes 200 credits per month and T
 
 ### Do you offer academic, startup, or nonprofit discounts?
 
-Academic research can use Community at no cost. For startups and nonprofits who need paid features, [get in touch](mailto:founders@modelscript.org?subject=%5BDiscount%20Request%5D%20ModelScript) and we'll work something out.
+Academic research can use Community at no cost. For startups and nonprofits who need paid features, [get in touch](mailto:sales@modelscript.org?subject=%5BDiscount%20Request%5D%20ModelScript) and we'll work something out.
 
 ### How does the Enterprise Appliance work without internet access?
 
@@ -100,7 +100,7 @@ No product can do that on its own. The appliance provides the technical controls
 
 ### Can we try the Commercial SDK or Enterprise Appliance first?
 
-**Yes.** We offer 30-day evaluation agreements with direct technical support. [Contact us](mailto:enterprise@modelscript.org?subject=%5BEvaluation%20Request%5D%20ModelScript%2030-Day%20Evaluation) to start.
+**Yes.** We offer 30-day evaluation agreements with direct technical support. [Contact us](mailto:sales@modelscript.org?subject=%5BEvaluation%20Request%5D%20ModelScript%2030-Day%20Evaluation) to start.
 
 ### What is the refund policy?
 

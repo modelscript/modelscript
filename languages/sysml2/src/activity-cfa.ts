@@ -553,11 +553,17 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
             }
           }
           if (nt.includes("assign")) {
-            const tgt = n.childForFieldName?.("target")?.text || n.childForFieldName?.("name")?.text;
-            const expr = n.childForFieldName?.("value")?.text || n.childForFieldName?.("expression")?.text;
+            const tgt =
+              n.childForFieldName?.("targetFeature")?.text ||
+              n.childForFieldName?.("target")?.text ||
+              n.childForFieldName?.("name")?.text;
+            const expr =
+              n.childForFieldName?.("assignedValue")?.text ||
+              n.childForFieldName?.("value")?.text ||
+              n.childForFieldName?.("expression")?.text;
             if (tgt && expr && !assignments.some((a) => a.target === tgt)) {
               assignments.push({
-                target: tgt,
+                target: tgt.trim(),
                 expr: expr.trim(),
                 startOffset: n.startIndex ?? child.startOffset,
                 endOffset: n.endIndex ?? child.endOffset,

@@ -1,3 +1,8 @@
+---
+title: "Graph Rewriting, Pattern Matching & Metaprogramming"
+description: "Implementation: packages/dsl/src/codegen/rewriting/ and packages/dsl/src/codegen/runtime/"
+---
+
 # Graph Rewriting, Pattern Matching & Metaprogramming
 
 **Implementation**: [`packages/dsl/src/codegen/rewriting/`](https://github.com/modelscript/modelscript/tree/main/packages/dsl/src/codegen/rewriting/) and [`packages/dsl/src/codegen/runtime/`](https://github.com/modelscript/modelscript/tree/main/packages/dsl/src/codegen/runtime/)

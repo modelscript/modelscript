@@ -63,22 +63,26 @@ function scheduleClose(): void {
   }, 150);
 }
 
-function onButtonEnter(): void {
+function onButtonEnter(e: PointerEvent): void {
+  if (e.pointerType !== "mouse") return;
   isHovered.value = true;
   scheduleOpen();
 }
 
-function onButtonLeave(): void {
+function onButtonLeave(e: PointerEvent): void {
+  if (e.pointerType !== "mouse") return;
   isHovered.value = false;
   scheduleClose();
 }
 
-function onTooltipEnter(): void {
+function onTooltipEnter(e: PointerEvent): void {
+  if (e.pointerType !== "mouse") return;
   isHovered.value = true;
   openCard();
 }
 
-function onTooltipLeave(): void {
+function onTooltipLeave(e: PointerEvent): void {
+  if (e.pointerType !== "mouse") return;
   isHovered.value = false;
   scheduleClose();
 }
@@ -134,7 +138,7 @@ onBeforeUnmount(() => {
       <div class="ansatz-screen-row">
         <span class="ansatz-screen-title">
           <span class="ansatz-screen-pip" aria-hidden="true" />
-          <span>Explore on Ansatz</span>
+          <span>Explore Ansatz Hub</span>
         </span>
         <span class="ansatz-screen-arrow" aria-hidden="true">↗</span>
       </div>
@@ -148,8 +152,8 @@ onBeforeUnmount(() => {
   <div
     v-else
     class="ansatz-nav-wrapper"
-    @mouseenter="onButtonEnter"
-    @mouseleave="onButtonLeave"
+    @pointerenter="onButtonEnter"
+    @pointerleave="onButtonLeave"
     @focusin="onFocusIn"
     @focusout="onFocusOut"
   >
@@ -162,7 +166,7 @@ onBeforeUnmount(() => {
       aria-describedby="ansatz-nav-tooltip"
     >
       <span class="ansatz-pip" aria-hidden="true" />
-      <span class="ansatz-label">Explore on Ansatz</span>
+      <span class="ansatz-label">Explore Ansatz Hub</span>
       <svg
         class="ansatz-external"
         viewBox="0 0 24 24"
@@ -186,8 +190,8 @@ onBeforeUnmount(() => {
         id="ansatz-nav-tooltip"
         class="ansatz-tooltip"
         role="tooltip"
-        @mouseenter="onTooltipEnter"
-        @mouseleave="onTooltipLeave"
+        @pointerenter="onTooltipEnter"
+        @pointerleave="onTooltipLeave"
       >
         <div class="ansatz-tooltip-arrow" aria-hidden="true" />
 

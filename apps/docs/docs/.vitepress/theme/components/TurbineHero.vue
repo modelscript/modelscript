@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { useData } from "vitepress";
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import type { IconName } from "../data/icons";
 import MsIcon from "./MsIcon.vue";
-import { CALLOUTS } from "./turbine/callouts";
+import { CALLOUTS, type CalloutSpec } from "./turbine/callouts";
 import type { TurbineScene, ViewMode } from "./turbine/scene";
 
 const { isDark } = useData();
@@ -21,6 +21,14 @@ const paused = ref(false);
 const ready = ref(false);
 const fallback = ref(false);
 const scene = shallowRef<TurbineScene | null>(null);
+
+const sectionCutPct = ref<number>(48);
+const isManualScrub = ref<boolean>(false);
+const activeCalloutKey = ref<string | null>(null);
+
+const activeCallout = computed<CalloutSpec | null>(
+  () => CALLOUTS.find((c) => c.key === activeCalloutKey.value) ?? null,
+);
 
 const MODES: ReadonlyArray<{ id: ViewMode; label: string; icon: IconName; hint: string }> = [
   { id: "section", label: "Section", icon: "split", hint: "Animated section plane: solid ahead, wireframe behind" },
@@ -49,6 +57,26 @@ function webglAvailable(): boolean {
   } catch {
     return false;
   }
+}
+
+function onScrubInput(e: Event): void {
+  const val = Number((e.target as HTMLInputElement).value);
+  sectionCutPct.value = val;
+  isManualScrub.value = true;
+  scene.value?.setManualSectionCut(val / 100);
+}
+
+function resetAutoSweep(): void {
+  isManualScrub.value = false;
+  scene.value?.setManualSectionCut(null);
+}
+
+function selectCallout(c: CalloutSpec): void {
+  if (activeCalloutKey.value === c.key) {
+    activeCalloutKey.value = null;
+    return;
+  }
+  activeCalloutKey.value = c.key;
 }
 
 onMounted(async () => {
@@ -161,7 +189,13 @@ onBeforeUnmount(() => {
   scene.value = null;
 });
 
-watch(mode, (m) => scene.value?.setMode(m));
+watch(mode, (m) => {
+  if (m !== "section") {
+    isManualScrub.value = false;
+    scene.value?.setManualSectionCut(null);
+  }
+  scene.value?.setMode(m);
+});
 watch(paused, (p) => scene.value?.setPaused(p));
 watch(isDark, () => nextTick(() => scene.value?.setDark(isDark.value)));
 
@@ -185,7 +219,13 @@ function onRadioKey(e: KeyboardEvent, index: number) {
       role="img"
       aria-label="Interactive cutaway of a two-spool turbofan engine. A section plane sweeps along the engine: solid geometry ahead of the plane, a wireframe digital twin behind it revealing the fan, compressors, annular combustor and turbines."
     >
-      <canvas ref="canvas" class="turbine-canvas" />
+      <img
+        class="turbine-fallback"
+        :class="{ 'is-hidden': ready && !fallback }"
+        src="/ms-logo.png"
+        alt="ModelScript Turbofan Digital Twin"
+      />
+      <canvas ref="canvas" class="turbine-canvas" :class="{ 'is-ready': ready && !fallback }" />
       <svg class="turbine-leaders" aria-hidden="true">
         <g v-for="(c, i) in CALLOUTS" :key="c.key">
           <line
@@ -205,21 +245,42 @@ function onRadioKey(e: KeyboardEvent, index: number) {
           />
         </g>
       </svg>
-      <div
+      <button
         v-for="(c, i) in CALLOUTS"
         :key="c.key"
+        type="button"
         class="turbine-callout"
-        aria-hidden="true"
+        :class="{ 'is-active': activeCalloutKey === c.key }"
+        :aria-pressed="activeCalloutKey === c.key"
+        :title="`Inspect ${c.title} governing equations`"
         :ref="
           (el) => {
             if (el) labelEls[i] = el as HTMLElement;
           }
         "
+        @click.stop="selectCallout(c)"
       >
         <span class="turbine-callout-title">{{ c.title }}</span>
         <span class="turbine-callout-detail">{{ c.detail }}</span>
-      </div>
-      <img v-if="fallback" class="turbine-fallback" src="/ms-logo.png" alt="" />
+      </button>
+
+      <!-- Interactive Callout Domain & Physics Inspector Card -->
+      <transition name="callout-pop">
+        <div v-if="activeCallout" class="turbine-inspector" role="dialog" :aria-label="`${activeCallout.title} physics`">
+          <div class="ti-head">
+            <div>
+              <span class="ti-kicker">{{ activeCallout.domain }}</span>
+              <h4 class="ti-title">{{ activeCallout.title }} · {{ activeCallout.detail }}</h4>
+            </div>
+            <button type="button" class="ti-close" aria-label="Close inspector" @click="activeCalloutKey = null">
+              ×
+            </button>
+          </div>
+          <code class="ti-eq">{{ activeCallout.equation }}</code>
+          <p class="ti-summary">{{ activeCallout.summary }}</p>
+          <a :href="activeCallout.link" class="ti-link">{{ activeCallout.linkLabel }}</a>
+        </div>
+      </transition>
     </div>
 
     <div v-if="!fallback" class="turbine-toolbar" role="toolbar" aria-label="Engine model view">
@@ -240,6 +301,29 @@ function onRadioKey(e: KeyboardEvent, index: number) {
           <span>{{ m.label }}</span>
         </button>
       </div>
+      <template v-if="mode === 'section'">
+        <span class="turbine-divider" aria-hidden="true" />
+        <label class="turbine-scrubber" title="Drag to scrub the axial section plane along the engine">
+          <span class="scrubber-label">Cut</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            :value="sectionCutPct"
+            aria-label="Section cutaway axial position"
+            @input="onScrubInput"
+          />
+          <button
+            v-if="isManualScrub"
+            type="button"
+            class="scrubber-auto-btn"
+            title="Resume automatic section plane sweep"
+            @click="resetAutoSweep"
+          >
+            Auto
+          </button>
+        </label>
+      </template>
       <span class="turbine-divider" aria-hidden="true" />
       <button
         type="button"
@@ -263,17 +347,7 @@ function onRadioKey(e: KeyboardEvent, index: number) {
   min-height: 320px;
   display: flex;
   flex-direction: column;
-  opacity: 0;
-  transform: translateY(6px);
-  transition:
-    opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.turbine.is-ready,
-.turbine.is-fallback {
   opacity: 1;
-  transform: none;
 }
 
 .turbine-stage {
@@ -294,15 +368,29 @@ function onRadioKey(e: KeyboardEvent, index: number) {
   width: 100%;
   height: 100%;
   display: block;
+  opacity: 0;
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.turbine-canvas.is-ready {
+  opacity: 1;
 }
 
 .turbine-fallback {
   position: absolute;
   inset: 0;
   margin: auto;
-  max-height: 70%;
-  max-width: 80%;
+  max-height: 62%;
+  max-width: 72%;
   object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 16px 36px rgba(6, 182, 212, 0.32));
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+
+.turbine-fallback.is-hidden {
+  opacity: 0;
 }
 
 /* ── Callouts ─────────────────────────────────────────── */
@@ -336,10 +424,27 @@ function onRadioKey(e: KeyboardEvent, index: number) {
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  padding: 3px 0;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--vp-c-bg) 72%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   white-space: nowrap;
+  cursor: pointer;
   pointer-events: none;
   will-change: transform, opacity;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.turbine-callout:hover,
+.turbine-callout.is-active {
+  border-color: color-mix(in srgb, var(--vp-c-brand-1) 55%, transparent);
+  background: color-mix(in srgb, var(--vp-c-bg-elv) 92%, transparent);
+  box-shadow: 0 4px 14px -4px rgba(6, 182, 212, 0.32);
 }
 
 .turbine-callout-title {
@@ -356,6 +461,113 @@ function onRadioKey(e: KeyboardEvent, index: number) {
   color: var(--vp-c-text-2);
 }
 
+/* ── Inspector Popover Card ───────────────────────────── */
+
+.turbine-inspector {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 24px));
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 42%, var(--vp-c-divider));
+  background: color-mix(in srgb, var(--vp-c-bg-elv) 94%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 16px 36px -12px rgba(2, 6, 23, 0.45);
+  z-index: 4;
+  cursor: default;
+}
+
+.ti-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ti-kicker {
+  display: block;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-brand-1);
+}
+
+.ti-title {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+.ti-close {
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ti-close:hover {
+  color: var(--vp-c-text-1);
+  border-color: var(--vp-c-brand-1);
+}
+
+.ti-eq {
+  display: block;
+  padding: 5px 8px;
+  margin: 6px 0;
+  border-radius: 6px;
+  background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-divider);
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: var(--vp-c-text-1);
+  overflow-x: auto;
+}
+
+.ti-summary {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--vp-c-text-2);
+}
+
+.ti-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.ti-link:hover {
+  text-decoration: underline;
+}
+
+.callout-pop-enter-active,
+.callout-pop-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.callout-pop-enter-from,
+.callout-pop-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(6px);
+}
+
 @media (max-width: 640px) {
   .turbine-leaders,
   .turbine-callout {
@@ -370,9 +582,11 @@ function onRadioKey(e: KeyboardEvent, index: number) {
   align-self: center;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 4px;
   margin-top: 8px;
-  padding: 3px;
+  padding: 3px 6px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 10px;
   background: color-mix(in srgb, var(--vp-c-bg) 78%, transparent);
@@ -384,6 +598,44 @@ function onRadioKey(e: KeyboardEvent, index: number) {
 .turbine-seg {
   display: inline-flex;
   gap: 2px;
+}
+
+.turbine-scrubber {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--vp-c-text-2);
+}
+
+.scrubber-label {
+  font-family: var(--vp-font-family-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.turbine-scrubber input[type="range"] {
+  width: 72px;
+  height: 4px;
+  accent-color: var(--vp-c-brand-1);
+  cursor: pointer;
+}
+
+.scrubber-auto-btn {
+  padding: 1px 6px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 40%, transparent);
+  background: var(--ms-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .turbine-seg-btn,
@@ -445,15 +697,13 @@ function onRadioKey(e: KeyboardEvent, index: number) {
   background: var(--vp-c-divider);
 }
 
-@media (max-width: 420px) {
+@media (max-width: 520px) {
   .turbine-seg-btn span {
     display: none;
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .turbine {
-    transform: none;
+  .turbine-scrubber input[type="range"] {
+    width: 54px;
   }
 }
 </style>
+

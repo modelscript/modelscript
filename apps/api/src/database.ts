@@ -434,6 +434,8 @@ export class LibraryDatabase {
     brokenAtId?: number | undefined;
     secretUsed?: string | undefined;
   } | null = null;
+  #instanceSettingsMapCache: Map<string, string> | null = null;
+  #userTopicsDerivedAt = new Map<number, number>();
   #pendingBackupReplications = new Set<Promise<void>>();
   readonly referrals: ReferralRepository;
   readonly users: UserRepository;
@@ -483,6 +485,10 @@ export class LibraryDatabase {
     this.#db.pragma("busy_timeout = 5000");
     this.#db.function("_msx_invalidate_audit_cache", () => {
       this.#auditChainCache = null;
+      return 0;
+    });
+    this.#db.function("_msx_invalidate_settings_cache", () => {
+      this.#instanceSettingsMapCache = null;
       return 0;
     });
 
@@ -537,6 +543,7 @@ export class LibraryDatabase {
   resetDevData() {
     this.analyticsBuffer?.clear();
     this.#auditChainCache = null;
+    this.#instanceSettingsMapCache = null;
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     const rows = this.#db
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
@@ -624,6 +631,21 @@ export class LibraryDatabase {
         AFTER DELETE ON audit_logs
         BEGIN
           SELECT _msx_invalidate_audit_cache();
+        END;
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_settings_insert_trg
+        AFTER INSERT ON instance_settings
+        BEGIN
+          SELECT _msx_invalidate_settings_cache();
+        END;
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_settings_update_trg
+        AFTER UPDATE ON instance_settings
+        BEGIN
+          SELECT _msx_invalidate_settings_cache();
+        END;
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_settings_delete_trg
+        AFTER DELETE ON instance_settings
+        BEGIN
+          SELECT _msx_invalidate_settings_cache();
         END;
       `);
     } catch {}
@@ -1051,6 +1073,13 @@ export class LibraryDatabase {
           updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_user_account_locations_country ON user_account_locations(confirmed_country_code);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_post ON bookmarks(post_id);
+        CREATE INDEX IF NOT EXISTS idx_jobs_user_status ON jobs(user_id, status);
+        CREATE INDEX IF NOT EXISTS idx_job_steps_job ON job_steps(job_id);
+        CREATE INDEX IF NOT EXISTS idx_content_reports_post ON content_reports(post_id);
+        CREATE INDEX IF NOT EXISTS idx_content_reports_target_user ON content_reports(target_user_id);
+        CREATE INDEX IF NOT EXISTS idx_users_lower_username ON users(LOWER(username));
+        CREATE INDEX IF NOT EXISTS idx_users_lower_email ON users(LOWER(email));
       `);
     } catch {}
   }
@@ -1227,6 +1256,18 @@ export class LibraryDatabase {
   }
 
   deriveUserTopics(userId: number): void {
+    if (!userId || userId <= 0) return;
+    const now = Date.now();
+    const lastDerived = this.#userTopicsDerivedAt.get(userId) ?? 0;
+    if (now - lastDerived < 5 * 60 * 1000) {
+      return;
+    }
+    if (this.#userTopicsDerivedAt.size >= 5_000) {
+      const oldestKey = this.#userTopicsDerivedAt.keys().next().value;
+      if (oldestKey !== undefined) this.#userTopicsDerivedAt.delete(oldestKey);
+    }
+    this.#userTopicsDerivedAt.set(userId, now);
+
     // Derive topics from liked, bookmarked, and authored/reposted posts (if not explicitly inactive)
     this.#db
       .prepare(
@@ -1578,52 +1619,61 @@ export class LibraryDatabase {
     userId: number,
     bonusCredits = 50.0,
   ): { success: boolean; creditsGranted: number; user?: UserRow | undefined } {
-    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
-    if (!user) {
-      return { success: false, creditsGranted: 0 };
-    }
-
-    if (user.email_verified === 1) {
-      return { success: true, creditsGranted: 0, user };
-    }
-
-    const existingGrant = this.#db
-      .prepare(`SELECT id FROM credit_transactions WHERE user_id = ? AND type = 'initial_grant'`)
-      .get(userId);
-
-    let creditsToGrant = 0;
-    let newBalance = user.credit_balance || 0;
-
-    if (!existingGrant && bonusCredits > 0) {
-      creditsToGrant = bonusCredits;
-      newBalance += creditsToGrant;
-    }
-
-    this.#db
-      .prepare(
-        `UPDATE users
-         SET email_verified = 1,
-             status = CASE WHEN status IN ('suspended', 'banned', 'frozen', 'suspended_dispute', 'deleted') THEN status ELSE 'active' END,
-             credit_balance = ?
-         WHERE id = ?`,
-      )
-      .run(newBalance, userId);
-
-    if (creditsToGrant > 0) {
-      try {
-        this.#db
-          .prepare(
-            `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
-             VALUES (?, NULL, ?, ?, 'initial_grant', 'Free tier activation compute credits')`,
-          )
-          .run(userId, creditsToGrant, newBalance);
-      } catch {
-        // ignore
+    const tx = this.#db.transaction(() => {
+      const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
+      if (!user) {
+        return { success: false, creditsGranted: 0 };
       }
-    }
 
-    const updatedUser = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
-    return { success: true, creditsGranted: creditsToGrant, user: updatedUser };
+      if (user.email_verified === 1) {
+        return { success: true, creditsGranted: 0, user };
+      }
+
+      const existingGrant = this.#db
+        .prepare(`SELECT id FROM credit_transactions WHERE user_id = ? AND type = 'initial_grant'`)
+        .get(userId);
+
+      let creditsToGrant = 0;
+      let newBalance = user.credit_balance || 0;
+
+      if (!existingGrant && bonusCredits > 0) {
+        creditsToGrant = bonusCredits;
+        newBalance += creditsToGrant;
+      }
+
+      const updateRes = this.#db
+        .prepare(
+          `UPDATE users
+           SET email_verified = 1,
+               status = CASE WHEN status IN ('suspended', 'banned', 'frozen', 'suspended_dispute', 'deleted') THEN status ELSE 'active' END,
+               credit_balance = ?
+           WHERE id = ? AND COALESCE(email_verified, 0) = 0`,
+        )
+        .run(newBalance, userId);
+
+      if (updateRes.changes === 0) {
+        const current = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
+        return { success: true, creditsGranted: 0, user: current };
+      }
+
+      if (creditsToGrant > 0) {
+        try {
+          this.#db
+            .prepare(
+              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
+               VALUES (?, NULL, ?, ?, 'initial_grant', 'Free tier activation compute credits')`,
+            )
+            .run(userId, creditsToGrant, newBalance);
+        } catch {
+          // ignore
+        }
+      }
+
+      const updatedUser = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
+      return { success: true, creditsGranted: creditsToGrant, user: updatedUser };
+    });
+
+    return tx();
   }
 
   setUserEmailVerified(userId: number, verified: boolean): void {
@@ -2327,7 +2377,15 @@ export class LibraryDatabase {
   }
 
   setUserAccountType(userId: number, accountType: string): void {
-    this.#db.prepare(`UPDATE users SET account_type = ? WHERE id = ?`).run(accountType, userId);
+    if (accountType === "user") {
+      this.#db
+        .prepare(
+          `UPDATE users SET account_type = ?, token_version = CASE WHEN COALESCE(account_type, 'user') != 'user' THEN COALESCE(token_version, 1) + 1 ELSE COALESCE(token_version, 1) END WHERE id = ?`,
+        )
+        .run(accountType, userId);
+    } else {
+      this.#db.prepare(`UPDATE users SET account_type = ? WHERE id = ?`).run(accountType, userId);
+    }
   }
 
   hasAdminUser(): boolean {
@@ -3920,13 +3978,37 @@ export class LibraryDatabase {
     }
     if (depth < 2) {
       if (p.repost_of_id && p.repost_of_id !== p.id) {
-        p.repost_post = this.getPost(p.repost_of_id, currentUserId, depth + 1);
+        const rp = this.getPost(p.repost_of_id, currentUserId, depth + 1);
+        if (rp && this.#isPostVisibleToUser(rp, currentUserId)) {
+          p.repost_post = rp;
+        }
       }
       if (p.quote_post_id && p.quote_post_id !== p.id) {
-        p.quote_post = this.getPost(p.quote_post_id, currentUserId, depth + 1);
+        const qp = this.getPost(p.quote_post_id, currentUserId, depth + 1);
+        if (qp && this.#isPostVisibleToUser(qp, currentUserId)) {
+          p.quote_post = qp;
+        }
       }
     }
     return p as PostRow;
+  }
+
+  #isPostVisibleToUser(post: PostRow, currentUserId?: number): boolean {
+    const vis = post.visibility || "public";
+    if (vis === "public" || vis === "unlisted") return true;
+    if (!currentUserId || currentUserId <= 0) return false;
+    if (post.author_id === currentUserId) return true;
+    const viewer = this.getUserById(currentUserId);
+    if (viewer?.account_type === "admin") return true;
+    if (vis === "followers") {
+      return this.isFollowing(currentUserId, post.author_id);
+    }
+    if (vis === "direct") {
+      if (!viewer?.username) return false;
+      const escaped = viewer.username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(?:^|\\s)@${escaped}\\b`, "i").test(post.content || "");
+    }
+    return false;
   }
 
   getPost(id: number | string, currentUserId?: number, depth: number = 0): PostRow | null {
@@ -3998,6 +4080,8 @@ export class LibraryDatabase {
 
   getQuotes(postId: number | string, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
+    const modFilter = this.buildMuteBlockFilter(currentUserId);
+    const visFilter = this.buildVisibilityFilter(currentUserId, "thread");
     const posts = this.#db
       .prepare(
         `
@@ -4016,11 +4100,13 @@ export class LibraryDatabase {
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.quote_post_id = ?
+        ${visFilter.sql}
+        ${modFilter.sql}
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, postId, limit) as (Omit<PostRow, "metadata"> & {
+      .all(uid, uid, uid, postId, ...visFilter.params, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
     return posts.map((p) => this.hydratePost(p, currentUserId)!);
@@ -4028,6 +4114,8 @@ export class LibraryDatabase {
 
   getReposts(postId: number | string, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
+    const modFilter = this.buildMuteBlockFilter(currentUserId);
+    const visFilter = this.buildVisibilityFilter(currentUserId, "thread");
     const posts = this.#db
       .prepare(
         `
@@ -4046,11 +4134,13 @@ export class LibraryDatabase {
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.repost_of_id = ?
+        ${visFilter.sql}
+        ${modFilter.sql}
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, postId, limit) as (Omit<PostRow, "metadata"> & {
+      .all(uid, uid, uid, postId, ...visFilter.params, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
     return posts.map((p) => this.hydratePost(p, currentUserId)!);
@@ -4068,7 +4158,7 @@ export class LibraryDatabase {
       if (!p || !p.reply_to_id) break;
 
       const parentPost = this.getPost(p.reply_to_id, currentUserId);
-      if (parentPost) {
+      if (parentPost && this.#isPostVisibleToUser(parentPost, currentUserId)) {
         parents.unshift(parentPost); // Add to beginning (oldest first)
         currentId = p.reply_to_id;
       } else {
@@ -4884,8 +4974,8 @@ export class LibraryDatabase {
             )
           ))
         )
-        AND p.author_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
-        AND p.author_id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
+        AND p.author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND p.author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
       ORDER BY b.created_at DESC
       LIMIT ?
     `,
@@ -6978,8 +7068,15 @@ export class LibraryDatabase {
       this.#db.prepare(`UPDATE users SET account_type = ? WHERE id = ?`).run(options.role, userId);
     }
 
+    const isRoleDemotion =
+      Boolean(options.role) &&
+      options.role !== user.account_type &&
+      Boolean(user.account_type && user.account_type !== "user");
     const shouldRevoke =
-      Boolean(options.revokeSessions) || options.status === "suspended" || options.status === "frozen";
+      Boolean(options.revokeSessions) ||
+      options.status === "suspended" ||
+      options.status === "frozen" ||
+      isRoleDemotion;
     if (shouldRevoke) {
       this.#db.prepare(`UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`).run(userId);
     }
@@ -7186,15 +7283,15 @@ export class LibraryDatabase {
         ].join("|"),
       ];
 
+      const hasCustomSecret = auditSecret !== "msx-audit-chain-v1";
       const matchesHash = candidatePayloads.some((payload) => {
         const hmac = crypto.createHmac("sha256", auditSecret).update(payload).digest("hex");
         if (hmac === row.entry_hash) return true;
-        if (auditSecret !== "msx-audit-chain-v1") {
-          const defaultHmac = crypto.createHmac("sha256", "msx-audit-chain-v1").update(payload).digest("hex");
-          if (defaultHmac === row.entry_hash) return true;
+        if (!hasCustomSecret) {
+          const sha = crypto.createHash("sha256").update(payload).digest("hex");
+          return sha === row.entry_hash;
         }
-        const sha = crypto.createHash("sha256").update(payload).digest("hex");
-        return sha === row.entry_hash;
+        return false;
       });
 
       const legacyPayload: string = [
@@ -7206,7 +7303,8 @@ export class LibraryDatabase {
         String(row.ip_address ?? ""),
         row.details ?? "",
       ].join("|");
-      const matchesLegacy = crypto.createHash("sha256").update(legacyPayload).digest("hex") === row.entry_hash;
+      const matchesLegacy =
+        !hasCustomSecret && crypto.createHash("sha256").update(legacyPayload).digest("hex") === row.entry_hash;
 
       if (!matchesHash && !matchesLegacy) {
         const brokenResult = {
@@ -7311,6 +7409,16 @@ export class LibraryDatabase {
 
   // ── Instance Settings, Invites & System Diagnostics ──────────────
 
+  #getInstanceSettingsMap(): Map<string, string> {
+    if (this.#instanceSettingsMapCache) {
+      return this.#instanceSettingsMapCache;
+    }
+    const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
+    const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    this.#instanceSettingsMapCache = map;
+    return map;
+  }
+
   getInstanceSettings(): {
     instanceName: string;
     instanceBadge: string;
@@ -7352,6 +7460,7 @@ export class LibraryDatabase {
     onboardingWizardEnabled: boolean;
     ingressMode: "direct" | "cloudflare";
     cloudflareTunnelConfigured: boolean;
+    cloudflareTunnelTokenMasked: string;
     authorizedFetchEnabled: boolean;
     federatedTimelinePublic: boolean;
     domainBlocksPublic: boolean;
@@ -7369,8 +7478,7 @@ export class LibraryDatabase {
     gitlabUrl: string;
     lockedByEnv: string[];
   } {
-    const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
-    const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    const map = this.#getInstanceSettingsMap();
 
     const lockedByEnv: string[] = [];
     if (process.env["MSX_INSTANCE_NAME"]) lockedByEnv.push("instanceName");
@@ -7703,6 +7811,7 @@ export class LibraryDatabase {
       onboardingWizardEnabled,
       ingressMode,
       cloudflareTunnelConfigured,
+      cloudflareTunnelTokenMasked: maskSecretPreview(envTunnelToken || storedTunnelToken),
       authorizedFetchEnabled,
       federatedTimelinePublic,
       domainBlocksPublic,
@@ -7817,11 +7926,15 @@ export class LibraryDatabase {
       normalizedPatch["ingress_mode"] = modeVal;
     }
 
-    const rawTunnelTokenPatch = normalizedPatch["tunnelToken"] ?? normalizedPatch["cloudflare_tunnel_token"];
+    const rawTunnelTokenPatch =
+      normalizedPatch["tunnelToken"] ??
+      normalizedPatch["cloudflareTunnelToken"] ??
+      normalizedPatch["cloudflare_tunnel_token"];
     if (rawTunnelTokenPatch !== undefined) {
       const tokenVal = String(rawTunnelTokenPatch).trim();
       normalizedPatch["cloudflare_tunnel_token"] = tokenVal;
       delete normalizedPatch["tunnelToken"];
+      delete normalizedPatch["cloudflareTunnelToken"];
     }
 
     // Synchronize maintenanceMode boolean and maintenanceLevel enum seamlessly
@@ -8441,7 +8554,7 @@ export class LibraryDatabase {
       `MODELSCRIPT_REGISTRATION_MODE=${s.registrationMode}`,
       `MSX_FEDERATION_MODE=${s.federationMode}`,
       `MSX_INGRESS_MODE=${s.ingressMode}`,
-      `CLOUDFLARE_TUNNEL_TOKEN=${tunnelTokenVal}`,
+      `CLOUDFLARE_TUNNEL_TOKEN=${tunnelTokenVal ? "<REDACTED_CLOUDFLARE_TUNNEL_TOKEN>" : ""}`,
       `JWT_SECRET=${process.env["JWT_SECRET"] ? "<REDACTED_CUSTOM_JWT_SECRET>" : crypto.randomBytes(32).toString("hex")}`,
       `SMTP_HOST=${process.env["SMTP_HOST"] || "smtp.example.org"}`,
       `SMTP_PORT=${process.env["SMTP_PORT"] || "587"}`,
@@ -8476,7 +8589,7 @@ export class LibraryDatabase {
       `      MSX_INGRESS_MODE: "${s.ingressMode}"`,
     ];
     if (tunnelTokenVal) {
-      dockerComposeLines.push(`      CLOUDFLARE_TUNNEL_TOKEN: "${escapeEnvValue(tunnelTokenVal)}"`);
+      dockerComposeLines.push(`      CLOUDFLARE_TUNNEL_TOKEN: "<REDACTED_CLOUDFLARE_TUNNEL_TOKEN>"`);
     }
     if (s.githubClientId) {
       dockerComposeLines.push(`      GITHUB_CLIENT_ID: "${escapeEnvValue(s.githubClientId)}"`);
@@ -8824,7 +8937,7 @@ export class LibraryDatabase {
         users: countTable("SELECT COUNT(*) as c FROM users"),
         posts: countTable("SELECT COUNT(*) as c FROM posts"),
         packages: countTable("SELECT COUNT(*) as c FROM packages"),
-        repositories: countTable("SELECT COUNT(*) as c FROM git_repos"),
+        repositories: countTable("SELECT COUNT(*) as c FROM linked_repos"),
         jobs: countTable("SELECT COUNT(*) as c FROM jobs"),
         auditLogs: countTable("SELECT COUNT(*) as c FROM audit_logs"),
         pendingReports: countTable("SELECT COUNT(*) as c FROM content_reports WHERE status = 'pending'"),
@@ -11357,40 +11470,104 @@ export class LibraryDatabase {
       diagram_hash: string | null;
     }[];
 
-    const getExtends = this.#db.prepare(`SELECT base_class FROM extends WHERE class_id = ?`);
-    const getComponents = this.#db.prepare(
-      `SELECT id, component_name, type_name, description, causality, variability
-       FROM components WHERE class_id = ? ORDER BY component_name`,
-    );
-    const getModifiers = this.#db.prepare(`SELECT modifier_name, modifier_value FROM modifiers WHERE component_id = ?`);
+    if (classRows.length === 0) {
+      return [];
+    }
 
-    return classRows.map((cls) => {
-      const extendsRows = getExtends.all(cls.id) as { base_class: string }[];
-      const componentRows = getComponents.all(cls.id) as ComponentRow[];
+    const extendsRows = this.#db
+      .prepare(
+        `SELECT e.class_id, e.base_class
+         FROM extends e
+         JOIN classes c ON c.id = e.class_id
+         WHERE c.library_name = ? AND c.library_version = ?
+         ORDER BY e.id`,
+      )
+      .all(libraryName, libraryVersion) as { class_id: number; base_class: string }[];
 
-      const components = componentRows.map((comp) => {
-        const modifiers = getModifiers.all(comp.id) as { modifier_name: string; modifier_value: string | null }[];
-        return {
-          name: comp.component_name,
-          typeName: comp.type_name,
-          description: comp.description,
-          causality: comp.causality,
-          variability: comp.variability,
-          modifiers: modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
-        };
-      });
+    const componentRows = this.#db
+      .prepare(
+        `SELECT comp.id, comp.class_id, comp.component_name, comp.type_name, comp.description, comp.causality, comp.variability
+         FROM components comp
+         JOIN classes c ON c.id = comp.class_id
+         WHERE c.library_name = ? AND c.library_version = ?
+         ORDER BY comp.component_name`,
+      )
+      .all(libraryName, libraryVersion) as (ComponentRow & { class_id: number })[];
 
-      return {
-        className: cls.class_name,
-        classKind: cls.class_kind,
-        description: cls.description,
-        documentation: cls.documentation,
-        iconHash: cls.icon_hash ?? null,
-        diagramHash: cls.diagram_hash ?? null,
-        extends: extendsRows.map((r) => r.base_class),
-        components,
+    const modifierRows = this.#db
+      .prepare(
+        `SELECT m.component_id, m.modifier_name, m.modifier_value
+         FROM modifiers m
+         JOIN components comp ON comp.id = m.component_id
+         JOIN classes c ON c.id = comp.class_id
+         WHERE c.library_name = ? AND c.library_version = ?
+         ORDER BY m.id`,
+      )
+      .all(libraryName, libraryVersion) as {
+      component_id: number;
+      modifier_name: string;
+      modifier_value: string | null;
+    }[];
+
+    const extendsByClassId = new Map<number, string[]>();
+    for (const row of extendsRows) {
+      const list = extendsByClassId.get(row.class_id);
+      if (list) {
+        list.push(row.base_class);
+      } else {
+        extendsByClassId.set(row.class_id, [row.base_class]);
+      }
+    }
+
+    const modifiersByComponentId = new Map<number, { name: string; value: string | null }[]>();
+    for (const row of modifierRows) {
+      const list = modifiersByComponentId.get(row.component_id);
+      const entry = { name: row.modifier_name, value: row.modifier_value };
+      if (list) {
+        list.push(entry);
+      } else {
+        modifiersByComponentId.set(row.component_id, [entry]);
+      }
+    }
+
+    const componentsByClassId = new Map<
+      number,
+      {
+        name: string;
+        typeName: string;
+        description: string | null;
+        causality: string | null;
+        variability: string | null;
+        modifiers: { name: string; value: string | null }[];
+      }[]
+    >();
+    for (const comp of componentRows) {
+      const list = componentsByClassId.get(comp.class_id);
+      const entry = {
+        name: comp.component_name,
+        typeName: comp.type_name,
+        description: comp.description,
+        causality: comp.causality,
+        variability: comp.variability,
+        modifiers: modifiersByComponentId.get(comp.id) ?? [],
       };
-    });
+      if (list) {
+        list.push(entry);
+      } else {
+        componentsByClassId.set(comp.class_id, [entry]);
+      }
+    }
+
+    return classRows.map((cls) => ({
+      className: cls.class_name,
+      classKind: cls.class_kind,
+      description: cls.description,
+      documentation: cls.documentation,
+      iconHash: cls.icon_hash ?? null,
+      diagramHash: cls.diagram_hash ?? null,
+      extends: extendsByClassId.get(cls.id) ?? [],
+      components: componentsByClassId.get(cls.id) ?? [],
+    }));
   }
 
   /**
@@ -12959,6 +13136,9 @@ export class LibraryDatabase {
     description: string = "Credit Grant",
     metadata?: Record<string, unknown>,
   ): number {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new RangeError("Credit grant amount must be a positive finite number");
+    }
     const grantTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
         | { credit_balance?: number | undefined }
@@ -13134,6 +13314,9 @@ export class LibraryDatabase {
     description: string = "HPC Compute Final Settlement",
     metadata?: Record<string, unknown>,
   ): { success: boolean; settledAmount: number; refundedAmount: number; newBalance: number } {
+    if (!Number.isFinite(actualCost) || actualCost < 0) {
+      throw new RangeError("Escrow settlement actualCost must be a non-negative finite number");
+    }
     const settleTx = this.#db.transaction(() => {
       const hold = this.#db
         .prepare(
@@ -13356,6 +13539,9 @@ export class LibraryDatabase {
     description: string = "Organization Shared Wallet Top-Up",
     metadata?: Record<string, unknown>,
   ): number {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new RangeError("Credit grant amount must be a positive finite number");
+    }
     const grantTx = this.#db.transaction(() => {
       const org = this.#db
         .prepare(`SELECT id, credit_balance, created_by FROM organizations WHERE id = ?`)

@@ -1,3 +1,8 @@
+---
+title: "Simulation Solvers & Numerical Integrators"
+description: "ModelScript embeds a multi-tier suite of numerical solvers in @modelscript/simulate to support both desktop simulations and massive batched cloud/WebGPU parameter sweeps."
+---
+
 # Simulation Solvers & Numerical Integrators
 
 ModelScript embeds a multi-tier suite of numerical solvers in `@modelscript/simulate` to support both desktop simulations and massive batched cloud/WebGPU parameter sweeps.

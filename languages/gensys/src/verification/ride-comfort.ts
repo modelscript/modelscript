@@ -100,7 +100,7 @@ export function getIso2631WeightingFactor(frequencyHz: number, filter: "Wk" | "W
 
   const hb = ((omega * omega) / Math.sqrt(w1_4 + w_4)) * ((w2 * w2) / Math.sqrt(w2_4 + w_4));
 
-  if (filter === "Wk" || filter === "Wb") {
+  if (filter === "Wk") {
     // Vertical filter Wk:
     // Transition: f3 = 12.5 Hz, f4 = 12.5 Hz, Q4 = 0.63
     const w3 = 2 * Math.PI * 12.5;
@@ -111,17 +111,39 @@ export function getIso2631WeightingFactor(frequencyHz: number, filter: "Wk" | "W
     const denV = Math.sqrt(Math.pow(w4 * w4 - omega * omega, 2) + Math.pow((omega * w4) / q4, 2));
     const hv = (numV * (w4 * w4)) / denV;
 
-    // Upward step: f5 = 2.37 Hz, Q5 = 0.91; f6 = 3.3 Hz, Q6 = 0.91
+    // Upward step: f5 = 2.37 Hz, Q5 = 0.91; f6 = 3.35 Hz, Q6 = 0.91
     const w5 = 2 * Math.PI * 2.37;
     const q5 = 0.91;
-    const w6 = 2 * Math.PI * 3.3;
+    const w6 = 2 * Math.PI * 3.35;
     const q6 = 0.91;
 
     const numS = Math.sqrt(Math.pow(w5 * w5 - omega * omega, 2) + Math.pow((omega * w5) / q5, 2));
     const denS = Math.sqrt(Math.pow(w6 * w6 - omega * omega, 2) + Math.pow((omega * w6) / q6, 2));
-    const hs = numS / denS;
+    const hs = (numS / denS) * Math.pow(w6 / w5, 2);
 
-    return hb * hv * hs;
+    return hb * hv * hs * 0.5;
+  } else if (filter === "Wb") {
+    // Railway vertical comfort filter Wb (EN 12299 / ISO 2631-4):
+    // Transition: f3 = 16.0 Hz, f4 = 16.0 Hz, Q4 = 0.55
+    const w3 = 2 * Math.PI * 16.0;
+    const w4 = 2 * Math.PI * 16.0;
+    const q4 = 0.55;
+
+    const numV = Math.sqrt(omega * omega + w3 * w3) / w3;
+    const denV = Math.sqrt(Math.pow(w4 * w4 - omega * omega, 2) + Math.pow((omega * w4) / q4, 2));
+    const hv = (numV * (w4 * w4)) / denV;
+
+    // Upward step: f5 = 2.5 Hz, Q5 = 0.9; f6 = 4.0 Hz, Q6 = 0.95
+    const w5 = 2 * Math.PI * 2.5;
+    const q5 = 0.9;
+    const w6 = 2 * Math.PI * 4.0;
+    const q6 = 0.95;
+
+    const numS = Math.sqrt(Math.pow(w5 * w5 - omega * omega, 2) + Math.pow((omega * w5) / q5, 2));
+    const denS = Math.sqrt(Math.pow(w6 * w6 - omega * omega, 2) + Math.pow((omega * w6) / q6, 2));
+    const hs = (numS / denS) * Math.pow(w6 / w5, 2);
+
+    return hb * hv * hs * 0.4;
   } else {
     // Horizontal / Lateral filter Wd:
     // Transition: f3 = 2.0 Hz, f4 = 2.0 Hz, Q4 = 0.63

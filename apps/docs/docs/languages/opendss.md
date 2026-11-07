@@ -1,3 +1,8 @@
+---
+title: "OpenDSS Distribution Grids & DERs (.dss)"
+description: "@modelscript/opendss (languages/opendss) provides zero-regex parsing, unbalanced multi-phase power flow solving, distributed energy resource (DER) hosting capacity analysis, linear DAE lowering, an..."
+---
+
 # OpenDSS Distribution Grids & DERs (`.dss`)
 
 `@modelscript/opendss` (`languages/opendss`) provides zero-regex parsing, unbalanced multi-phase power flow solving, distributed energy resource (DER) hosting capacity analysis, linear DAE lowering, and Modelica 3.x projection for **EPRI OpenDSS** radial and meshed electrical distribution networks.

@@ -163,7 +163,7 @@ export class Gerg2008Eos {
         const dExp = (term.d - c * p * Math.pow(delta, p)) / delta;
         ar_d += val * dExp;
 
-        const ddExp = Math.pow(dExp, 2) - term.d / (delta * delta) - c * Math.pow(p, 2) * Math.pow(delta, p - 2);
+        const ddExp = Math.pow(dExp, 2) - term.d / (delta * delta) - c * p * (p - 1) * Math.pow(delta, p - 2);
         ar_dd += val * ddExp;
 
         ar_t += (term.t / tau) * val;
@@ -237,9 +237,13 @@ export class Gerg2008Eos {
     const muJtKPa = (tK * volExp - 1.0) / Math.max(1.0, massDensityKgM3 * (cp / mm));
     const jouleThomsonCoeffKBar = muJtKPa * 1.0e5;
 
-    // Molar Enthalpy & Entropy
-    const enthalpyJouleMol = R_GAS * tK * (1.0 + tau * ar_t + delta * ar_d);
-    const entropyJouleMolK = R_GAS * (tau * ar_t - ar - Math.log(delta));
+    // Ideal-gas Helmholtz energy derivatives referenced at T0 = 298.15 K
+    const tau_a0_t = (cp0_R - 1.0) * (1.0 - 298.15 / tK);
+    const a0 = tau_a0_t - (cp0_R - 1.0) * Math.log(tK / 298.15);
+
+    // Molar Enthalpy & Entropy (ideal + residual)
+    const enthalpyJouleMol = R_GAS * tK * (1.0 + tau_a0_t + tau * ar_t + delta * ar_d);
+    const entropyJouleMolK = R_GAS * (tau_a0_t + tau * ar_t - a0 - ar - Math.log(delta));
 
     return {
       zFactor,

@@ -486,9 +486,13 @@ export function socialRouter(
     }
 
     try {
+      const customMetaArtifactIds = Array.isArray(metadata["artifactIds"])
+        ? (metadata["artifactIds"] as (number | string)[])
+        : [];
       const candidateArtifactIds = [
         ...(artifact_view_id !== undefined && artifact_view_id !== null ? [artifact_view_id] : []),
         ...(notebookMeta?.artifactIds ?? []),
+        ...customMetaArtifactIds,
       ];
       for (const aid of candidateArtifactIds) {
         if (!canAttachArtifactView(aid, authorId, req)) {
@@ -1227,6 +1231,10 @@ export function socialRouter(
     const post = database.getPost(postId, req.user?.id);
     if (!post) {
       res.status(404).json({ error: "Post not found" });
+      return;
+    }
+    if (!canViewPost(post, req)) {
+      res.status(403).json({ error: "Forbidden: You do not have permission to view this post's revisions" });
       return;
     }
 
@@ -1993,6 +2001,10 @@ export function socialRouter(
       res.status(400).json({ error: "dataUrl or image string is required" });
       return;
     }
+    if (rawData.length > 3 * 1024 * 1024) {
+      res.status(413).json({ error: "Thumbnail payload exceeds maximum allowed size (2 MB)" });
+      return;
+    }
 
     try {
       if (!req.user && process.env["NODE_ENV"] === "production") {
@@ -2007,7 +2019,8 @@ export function socialRouter(
       }
 
       const ownerId = artifact.creator_id ?? artifact.author_id;
-      if (req.user && ownerId && ownerId !== req.user.id && req.user.role !== "admin") {
+      const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+      if (req.user && ownerId && ownerId !== req.user.id && !isAdmin) {
         res.status(403).json({ error: "Forbidden: Not the owner of this artifact view" });
         return;
       }
@@ -2033,6 +2046,10 @@ export function socialRouter(
       const ext = allowedExts.has(rawExt) ? rawExt : "webp";
       const base64Data = matches ? matches[2]! : rawData.replace(/^data:.*?;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
+      if (buffer.length > 2 * 1024 * 1024) {
+        res.status(413).json({ error: "Decoded thumbnail exceeds maximum allowed size (2 MB)" });
+        return;
+      }
 
       const outDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../public/thumbnails");
       if (!fs.existsSync(outDir)) {
@@ -2617,6 +2634,17 @@ export function socialRouter(
       return;
     }
 
+    const draftCandidateIds = [
+      ...(resolvedArtifactId !== undefined ? [resolvedArtifactId] : []),
+      ...(Array.isArray(artifactIds) ? artifactIds.map((id) => (typeof id === "number" ? id : String(id).trim())) : []),
+    ];
+    for (const aid of draftCandidateIds) {
+      if (!canAttachArtifactView(aid, userId, req)) {
+        res.status(403).json({ error: "Forbidden: Cannot draft from another user's private artifact view" });
+        return;
+      }
+    }
+
     const mappedTone: ComposerDraftTone =
       tone === "concise"
         ? "concise"
@@ -2673,6 +2701,11 @@ export function socialRouter(
           : String(rawPolishArtId).trim()
         : undefined;
 
+    if (resolvedArtifactId !== undefined && !canAttachArtifactView(resolvedArtifactId, userId, req)) {
+      res.status(403).json({ error: "Forbidden: Cannot polish using another user's private artifact view" });
+      return;
+    }
+
     const validMode: ComposerPolishMode =
       mode === "concise" || mode === "expand" || mode === "hashtags" || mode === "polish" ? mode : "polish";
 
@@ -2705,10 +2738,23 @@ export function socialRouter(
     }
 
     try {
+      const post = database.getPost(postId, userId);
+      if (!post) {
+        res.status(404).json({ error: "Post not found" });
+        return;
+      }
+      if (!canViewPost(post, req)) {
+        res.status(403).json({ error: "Forbidden: You do not have permission to vote on this post" });
+        return;
+      }
+      if (database.isUserBlocked(post.author_id, userId) || database.isUserBlocked(userId, post.author_id)) {
+        res.status(403).json({ error: "Cannot interact with this post due to block settings" });
+        return;
+      }
+
       const poll = database.votePostPoll(postId, choices, userId);
 
       // If this poll belongs to a remote actor, federate the vote as a Create(Note) reply with `name`
-      const post = database.getPost(postId, userId);
       const voterFed = database.getUserFederationInfo(userId);
       const authorFed = post ? database.getUserFederationInfo(post.author_id) : undefined;
       if (
