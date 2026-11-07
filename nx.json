@@ -59,13 +59,6 @@
       "{workspaceRoot}/nx.json",
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/eslint.config.ts",
-      "{workspaceRoot}/.github/workflows/**",
-      "{workspaceRoot}/scripts/test-coordinator.js",
-      "{workspaceRoot}/scripts/test-runner.js",
-      "{workspaceRoot}/scripts/asc-cache.js",
-      "{workspaceRoot}/scripts/node-test-ctrf-reporter.cjs",
-      "{workspaceRoot}/scripts/consolidate-test-reports.ts",
-      "{workspaceRoot}/scripts/consolidate-coverage.ts",
       "{workspaceRoot}/scripts/build-language-parser.js",
       "{workspaceRoot}/scripts/build-language-wasm.js"
     ]

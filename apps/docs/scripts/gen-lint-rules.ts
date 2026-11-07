@@ -199,7 +199,12 @@ function renderMarkdown(langs: GeneratedLanguage[]): string {
     out.push(
       "::: info Not yet listed",
       `These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: ${missing
-        .map((m) => (LANGUAGES.some((l) => l.slug === m.slug) ? `[${m.name}](../languages/${m.slug}.md)` : m.name))
+        .map((m) =>
+          LANGUAGES.some((l) => l.slug === m.slug) &&
+          fs.existsSync(path.resolve(repoRoot, "apps/docs/docs/languages", `${m.slug}.md`))
+            ? `[${m.name}](../languages/${m.slug}.md)`
+            : m.name,
+        )
         .join(", ")}. See each language guide for details.`,
       ":::",
       "",
@@ -207,7 +212,8 @@ function renderMarkdown(langs: GeneratedLanguage[]): string {
   }
   for (const l of langs) {
     const info = LANGUAGES.find((x) => x.slug === l.slug);
-    const page = info ? ` · [Language guide](../languages/${l.slug}.md)` : "";
+    const docFile = path.resolve(repoRoot, "apps/docs/docs/languages", `${l.slug}.md`);
+    const page = info && fs.existsSync(docFile) ? ` · [Language guide](../languages/${l.slug}.md)` : "";
     out.push(`## ${l.name} {#${l.slug}}`, "");
     out.push(
       `${info?.role ? `${info.role}. ` : ""}**${l.rules.length} rules** · \`${l.packageName}\` · Source: ${l.sources.map((s) => `\`${s}\``).join(", ")}${page}`,

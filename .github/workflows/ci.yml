@@ -187,9 +187,9 @@ jobs:
           else
             AFFECTED=$(npx nx show projects --affected --base="$BASE_REF" --head=HEAD --projects=@modelscript/modelica,@modelscript/dsl,@modelscript/runtime,@modelscript/simulate || true)
             MO_CHANGED=$(git diff --name-only "$BASE_REF" HEAD | grep -E '(^languages/modelica/testsuite/|\.mo$)' || true)
-            CI_CHANGED=$(git diff --name-only "$BASE_REF" HEAD | grep -E '(^\.github/workflows/|languages/modelica/tests/testsuite-runner\.ts)' || true)
-            if [ -n "$AFFECTED" ] || [ -n "$MO_CHANGED" ] || [ -n "$CI_CHANGED" ]; then
-              echo "Compiler projects, .mo tests, or CI workflow affected: $AFFECTED $MO_CHANGED $CI_CHANGED"
+            RUNNER_CHANGED=$(git diff --name-only "$BASE_REF" HEAD | grep -E 'languages/modelica/tests/testsuite-runner\.ts' || true)
+            if [ -n "$AFFECTED" ] || [ -n "$MO_CHANGED" ] || [ -n "$RUNNER_CHANGED" ]; then
+              echo "Compiler projects, .mo tests, or testsuite runner affected: $AFFECTED $MO_CHANGED $RUNNER_CHANGED"
               echo "run_suite=true" >> "$GITHUB_OUTPUT"
             else
               echo "No Modelica compiler packages or testsuite files affected. Skipping testsuite."

@@ -323,9 +323,7 @@ export function runCoordinator(argv = process.argv.slice(2)) {
               .map((f) => f.trim())
               .filter(Boolean);
             const infraChanged = files.some((f) =>
-              /^(?:\.github\/workflows\/|scripts\/test-coordinator|scripts\/test-runner|scripts\/asc-cache|scripts\/node-test-ctrf|nx\.json|package\.json)/.test(
-                f,
-              ),
+              /^(?:scripts\/test-coordinator|scripts\/test-runner|scripts\/asc-cache|scripts\/node-test-ctrf)/.test(f),
             );
             if (infraChanged) {
               console.log(
