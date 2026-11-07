@@ -52,12 +52,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "pako": "^2.1.0"
+    "pako": "^3.0.3"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "@types/pako": "^2.0.3",
-    "typescript": "^5.9.3"
+    "@types/pako": "^3.0.0",
+    "typescript": "^7.0.2"
   },
   "modelscript": {
     "tier": "stable",
