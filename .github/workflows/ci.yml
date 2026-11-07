@@ -187,8 +187,9 @@ jobs:
           else
             AFFECTED=$(npx nx show projects --affected --base="$BASE_REF" --head=HEAD --projects=@modelscript/modelica,@modelscript/dsl,@modelscript/runtime,@modelscript/simulate || true)
             MO_CHANGED=$(git diff --name-only "$BASE_REF" HEAD | grep -E '(^languages/modelica/testsuite/|\.mo$)' || true)
-            if [ -n "$AFFECTED" ] || [ -n "$MO_CHANGED" ]; then
-              echo "Compiler projects or .mo tests affected: $AFFECTED $MO_CHANGED"
+            CI_CHANGED=$(git diff --name-only "$BASE_REF" HEAD | grep -E '(^\.github/workflows/|languages/modelica/tests/testsuite-runner\.ts)' || true)
+            if [ -n "$AFFECTED" ] || [ -n "$MO_CHANGED" ] || [ -n "$CI_CHANGED" ]; then
+              echo "Compiler projects, .mo tests, or CI workflow affected: $AFFECTED $MO_CHANGED $CI_CHANGED"
               echo "run_suite=true" >> "$GITHUB_OUTPUT"
             else
               echo "No Modelica compiler packages or testsuite files affected. Skipping testsuite."
@@ -269,6 +270,7 @@ jobs:
           pattern: ctrf-*
           merge-multiple: false
       - name: Generate Consolidated Hierarchical Test Summary
+        id: consolidate_tests
         if: always()
         run: |
           node --experimental-strip-types scripts/consolidate-test-reports.ts \
@@ -287,7 +289,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Publish Test Report & PR Insights
-        if: always() && github.actor != 'nektos/act' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && steps.consolidate_tests.outputs.total_tests != '0' && steps.consolidate_tests.outputs.total_tests != '' && github.actor != 'nektos/act' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: ctrf-io/github-test-reporter@v1
         with:
           report-path: "ctrf-artifacts/ctrf-consolidated.json"

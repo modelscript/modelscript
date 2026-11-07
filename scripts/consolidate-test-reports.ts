@@ -512,9 +512,13 @@ export function consolidateReports(opts: CliOptions): {
   const statusBadge = overall.hasFailure ? "🔴 **FAILED**" : "🟢 **PASSED**";
 
   let md = `# 🧪 ModelScript Test Suite Summary\n\n`;
-  md += `| Overall Status | Total Tests | Passed | Failed | Skipped / XFail | Flaky | Duration |\n`;
-  md += `|:--------------:|:-----------:|:------:|:------:|:---------------:|:-----:|:--------:|\n`;
-  md += `| ${statusBadge} | **${totalTests.toLocaleString()}** | **${totalPassed.toLocaleString()}** | **${totalFailed}** | **${totalSkipped.toLocaleString()}** | **${totalFlaky}** | **${formatDuration(totalDurationMs)}** |\n\n`;
+  if (overall.total === 0) {
+    md += `> ℹ️ **No tests executed** — diff-aware execution determined that no testable packages or compiler components were affected by this change.\n\n`;
+  } else {
+    md += `| Overall Status | Total Tests | Passed | Failed | Skipped / XFail | Flaky | Duration |\n`;
+    md += `|:--------------:|:-----------:|:------:|:------:|:---------------:|:-----:|:--------:|\n`;
+    md += `| ${statusBadge} | **${totalTests.toLocaleString()}** | **${totalPassed.toLocaleString()}** | **${totalFailed}** | **${totalSkipped.toLocaleString()}** | **${totalFlaky}** | **${formatDuration(totalDurationMs)}** |\n\n`;
+  }
 
   // Tier 1 Section
   const t1 = tiers.unit;
@@ -924,7 +928,7 @@ function generateHtmlDashboard(
       </tr>
     </thead>
     <tbody>
-      ${testRowsHtml}
+      ${testRowsHtml || '<tr><td colspan="3" style="text-align:center; padding: 28px; color: #8b949e;">ℹ️ No tests were executed in this build (diff-aware execution determined no testable packages were affected).</td></tr>'}
     </tbody>
   </table>
 
@@ -959,6 +963,16 @@ function main(): void {
       console.log(`[consolidate-test-reports] Appended test summary to $GITHUB_STEP_SUMMARY`);
     } catch (err) {
       console.error("[consolidate-test-reports] Failed to write to GITHUB_STEP_SUMMARY:", err);
+    }
+  }
+
+  // Export step outputs if running in GitHub Actions
+  if (process.env["GITHUB_OUTPUT"]) {
+    try {
+      fs.appendFileSync(process.env["GITHUB_OUTPUT"], `total_tests=${overall.total}\n`, "utf-8");
+      fs.appendFileSync(process.env["GITHUB_OUTPUT"], `has_failure=${overall.hasFailure}\n`, "utf-8");
+    } catch (err) {
+      console.error("[consolidate-test-reports] Failed to write to GITHUB_OUTPUT:", err);
     }
   }
 

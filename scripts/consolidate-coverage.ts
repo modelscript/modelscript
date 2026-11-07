@@ -306,7 +306,41 @@ export function main() {
 
   if (lcovFiles.length === 0) {
     if (!options.silent) {
-      console.log(`[consolidate-coverage] No LCOV files found in ${options.searchDir}.`);
+      console.log(
+        `[consolidate-coverage] No LCOV files found in ${options.searchDir}. Writing placeholder coverage artifacts.`,
+      );
+    }
+
+    const outputLcovPath = options.outputLcov || path.join(repoRoot, "coverage", "lcov-consolidated.info");
+    fs.mkdirSync(path.dirname(outputLcovPath), { recursive: true });
+    fs.writeFileSync(outputLcovPath, "", "utf-8");
+
+    const summaryJson = {
+      summary: {
+        lines: { total: 0, hit: 0, percentage: 100 },
+        branches: { total: 0, hit: 0, percentage: 100 },
+        functions: { total: 0, hit: 0, percentage: 100 },
+      },
+      packages: [],
+    };
+    const outputJsonPath = options.outputJson || path.join(repoRoot, "coverage", "coverage-summary.json");
+    fs.mkdirSync(path.dirname(outputJsonPath), { recursive: true });
+    fs.writeFileSync(outputJsonPath, JSON.stringify(summaryJson, null, 2), "utf-8");
+
+    if (options.githubStepSummary && process.env["GITHUB_STEP_SUMMARY"]) {
+      try {
+        fs.appendFileSync(
+          process.env["GITHUB_STEP_SUMMARY"],
+          "\n## 📊 Test Code Coverage Summary\n\n> ℹ️ **No coverage data recorded** — no test targets were executed in this build.\n",
+          "utf-8",
+        );
+      } catch {}
+    }
+
+    if (process.env["GITHUB_OUTPUT"]) {
+      try {
+        fs.appendFileSync(process.env["GITHUB_OUTPUT"], `total_lines=0\nline_coverage=100\n`, "utf-8");
+      } catch {}
     }
     return;
   }

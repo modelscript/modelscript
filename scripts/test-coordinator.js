@@ -278,6 +278,12 @@ export function runCoordinator(argv = process.argv.slice(2)) {
       const showFilterArgs = passThroughArgs.filter(
         (a) => a.startsWith("--base=") || a.startsWith("--head=") || a.startsWith("--exclude="),
       );
+      if (!showFilterArgs.some((a) => a.startsWith("--base=")) && process.env.NX_BASE) {
+        showFilterArgs.push(`--base=${process.env.NX_BASE}`);
+      }
+      if (!showFilterArgs.some((a) => a.startsWith("--head=")) && process.env.NX_HEAD) {
+        showFilterArgs.push(`--head=${process.env.NX_HEAD}`);
+      }
       const showArgs = [
         nxBin,
         "show",
@@ -299,6 +305,36 @@ export function runCoordinator(argv = process.argv.slice(2)) {
           .filter(Boolean);
       } else if (mode === "run-many") {
         discoveredProjects = Array.from(projectDirMap.keys());
+      }
+
+      // Safeguard: If CI workflows, test coordinator, or core test scripts changed,
+      // ensure all test projects are executed across shards.
+      const baseSha = process.env.NX_BASE || showFilterArgs.find((a) => a.startsWith("--base="))?.split("=")[1];
+      if (mode === "affected" && baseSha) {
+        try {
+          const diffCheck = spawnSync("git", ["diff", "--name-only", baseSha, "HEAD"], {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            timeout: 10000,
+          });
+          if (diffCheck.status === 0 && diffCheck.stdout) {
+            const files = diffCheck.stdout
+              .split("\n")
+              .map((f) => f.trim())
+              .filter(Boolean);
+            const infraChanged = files.some((f) =>
+              /^(?:\.github\/workflows\/|scripts\/test-coordinator|scripts\/test-runner|scripts\/asc-cache|scripts\/node-test-ctrf|nx\.json|package\.json)/.test(
+                f,
+              ),
+            );
+            if (infraChanged) {
+              console.log(
+                "[test-coordinator] ⚡ CI workflow or test infrastructure changed: targeting all test projects.",
+              );
+              discoveredProjects = Array.from(projectDirMap.keys());
+            }
+          }
+        } catch {}
       }
     }
   } catch {
