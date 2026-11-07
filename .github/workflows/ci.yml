@@ -506,7 +506,7 @@ jobs:
       - name: Rebuild Unified Site & Docs with PDF Manual
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx build @modelscript/docs
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: steps.check-affected.outputs.run_docker == 'true'
       - name: Log in to GHCR
         if: steps.check-affected.outputs.run_docker == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
