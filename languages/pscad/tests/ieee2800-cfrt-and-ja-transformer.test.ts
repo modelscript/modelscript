@@ -517,3 +517,24 @@ test("IEEE 2800 Clause 7.2.2.3.4: Negative-Sequence Reactive Current Injection D
   assert.strictEqual(failK2Check.status, "FAIL");
   assert.strictEqual(failReport.overallStatus, "FAIL");
 });
+
+test("PSCAD GridFormingInverter <Component>/<Parameter> snippet parses and verifies IEEE 2800-2022", () => {
+  const snippet = `<Component id="IBR_1" name="GridFormingInverter" type="VSC">
+  <Parameters>
+    <Parameter name="S_base" value="100.0" unit="MVA" />
+    <Parameter name="V_nom" value="34.5" unit="kV" />
+    <Parameter name="Kp_v" value="2.5" />
+    <Parameter name="Ki_v" value="40.0" />
+  </Parameters>
+</Component>`;
+  const project = parsePscx(snippet);
+  assert.strictEqual(project.rootModule.components.length, 1);
+  const comp = project.rootModule.components[0]!;
+  assert.strictEqual(comp.id, "IBR_1");
+  assert.strictEqual(comp.instanceName, "GridFormingInverter");
+  assert.strictEqual(comp.parameters["S_base"], 100);
+  assert.strictEqual(comp.parameters["V_nom"], 34.5);
+  assert.strictEqual(comp.parameters["Kp_v"], 2.5);
+  assert.strictEqual(comp.parameters["Ki_v"], 40);
+});
+

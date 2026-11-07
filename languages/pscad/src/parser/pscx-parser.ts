@@ -523,7 +523,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
 
         function collectCmpChildren(c: XmlElement) {
           const cTag = c.name.toLowerCase();
-          if (cTag === "param") {
+          if (cTag === "param" || cTag === "parameter") {
             const pNameAttr = attrObj(c, "name");
             const pName = pNameAttr?.value;
             const pVal = attr(c, "value") ?? c.text.trim();

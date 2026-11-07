@@ -94,6 +94,21 @@ function discoverLanguageWasmTargets(): {
           extensions: LANGUAGE_EXTENSIONS_MAP[lang] ?? [`.${lang}`],
           wasm: wasmFileName,
         });
+
+        const distBindings = path.join(languagesRoot, lang, "dist", "src-gen", "bindings.js");
+        const srcGenBindings = path.join(languagesRoot, lang, "src-gen", "bindings.js");
+        const bindingsPath = fs.existsSync(distBindings)
+          ? `../../languages/${lang}/dist/src-gen/bindings.js`
+          : fs.existsSync(srcGenBindings)
+            ? `../../languages/${lang}/src-gen/bindings.js`
+            : null;
+        if (bindingsPath) {
+          targets.push({
+            src: bindingsPath,
+            dest: "lsp/server/dist",
+            rename: `${lang}.bindings.js`,
+          });
+        }
       }
     }
   }
@@ -140,9 +155,12 @@ function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
             }
           }
         }
-        if (reqPath.startsWith("/lsp/server/dist/") && reqPath.endsWith(".wasm")) {
+        if (
+          reqPath.startsWith("/lsp/server/dist/") &&
+          (reqPath.endsWith(".wasm") || reqPath.endsWith(".js") || reqPath.endsWith(".json"))
+        ) {
           res.statusCode = 404;
-          res.end("WASM binary not found");
+          res.end("Asset not found");
           return;
         }
         next();
@@ -281,7 +299,9 @@ function unifiedDocsPlugin(): Plugin {
           if (
             norm.startsWith(docsSourceDir.replace(/\\/g, "/")) &&
             !norm.includes("/.vitepress/dist/") &&
-            !norm.includes("/.vitepress/cache/")
+            !norm.includes("/.vitepress/cache/") &&
+            !norm.includes("/.vitepress/.temp/") &&
+            !norm.includes("/.temp/")
           ) {
             triggerDocsBuild(false);
           }

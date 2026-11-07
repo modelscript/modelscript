@@ -96,6 +96,34 @@ export function lintFeaModel(model: FeaModelData): FeaDiagnostic[] {
         column: 1,
       });
     }
+
+    if (mat.alpha !== undefined && mat.alpha < 0) {
+      diagnostics.push({
+        code: FeaErrorCode.NON_POSITIVE_THERMAL_EXPANSION.code,
+        rule: FeaErrorCode.NON_POSITIVE_THERMAL_EXPANSION.rule,
+        severity: FeaErrorCode.NON_POSITIVE_THERMAL_EXPANSION.severity,
+        message: FeaErrorCode.NON_POSITIVE_THERMAL_EXPANSION.message(matName, mat.alpha),
+        line: matLine,
+        column: 1,
+      });
+    }
+  }
+
+  // M7410: Zero or negative shell section thickness
+  if (model.sectionThickness) {
+    for (const [secName, thickness] of model.sectionThickness.entries()) {
+      if (thickness <= 0) {
+        const secLine = model.sectionLines?.get(secName) ?? 1;
+        diagnostics.push({
+          code: FeaErrorCode.ZERO_THICKNESS_SHELL.code,
+          rule: FeaErrorCode.ZERO_THICKNESS_SHELL.rule,
+          severity: FeaErrorCode.ZERO_THICKNESS_SHELL.severity,
+          message: FeaErrorCode.ZERO_THICKNESS_SHELL.message(secName),
+          line: secLine,
+          column: 1,
+        });
+      }
+    }
   }
 
   // M7405: Missing material definition or section assignment
@@ -130,7 +158,7 @@ export function lintFeaModel(model: FeaModelData): FeaDiagnostic[] {
     }
   }
 
-  // Check boundary constraints for rigid body motion
+  // Check boundary constraints for rigid body motion (M7406) & singular stiffness matrix (M7411)
   const totalFixed = model.fixedNodes.size + (model.fixedDofs?.size ?? 0);
   if (model.elements.size > 0 && totalFixed < 3) {
     const boundLine = model.boundaryLines && model.boundaryLines.length > 0 ? model.boundaryLines[0]! : 1;
@@ -143,12 +171,29 @@ export function lintFeaModel(model: FeaModelData): FeaDiagnostic[] {
       column: 1,
     });
   }
+  if (
+    model.elements.size > 0 &&
+    model.nodalLoads.size > 0 &&
+    totalFixed === 0 &&
+    (model.displacements?.size ?? 0) === 0
+  ) {
+    diagnostics.push({
+      code: FeaErrorCode.SINGULAR_STIFFNESS_MATRIX.code,
+      rule: FeaErrorCode.SINGULAR_STIFFNESS_MATRIX.rule,
+      severity: FeaErrorCode.SINGULAR_STIFFNESS_MATRIX.severity,
+      message: FeaErrorCode.SINGULAR_STIFFNESS_MATRIX.message(),
+      line: 1,
+      column: 1,
+    });
+  }
 
-  // Check elements for degenerate nodes
+  // Check elements for degenerate nodes (M7408) and inverted Jacobian determinant (M7409)
+  let reportedDegenerate = false;
   for (const [elemId, elem] of model.elements.entries()) {
+    const elemLine = model.elementLines?.get(elemId) ?? 1;
     const uniqueNodes = new Set(elem.nodes);
-    if (uniqueNodes.size < elem.nodes.length) {
-      const elemLine = model.elementLines?.get(elemId) ?? 1;
+    if (uniqueNodes.size < elem.nodes.length && !reportedDegenerate) {
+      reportedDegenerate = true;
       diagnostics.push({
         code: FeaErrorCode.DEGENERATE_ELEMENT_NODES.code,
         rule: FeaErrorCode.DEGENERATE_ELEMENT_NODES.rule,
@@ -157,7 +202,58 @@ export function lintFeaModel(model: FeaModelData): FeaDiagnostic[] {
         line: elemLine,
         column: 1,
       });
-      break; // Only report once to avoid diagnostic flood
+    }
+
+    // M7409: Inverted Jacobian determinant or coincident vertex coordinates
+    let isInverted = false;
+    if (elem.nodes.length >= 2) {
+      const n1 = model.nodes.get(elem.nodes[0]!);
+      const n2 = model.nodes.get(elem.nodes[1]!);
+      if (n1 && n2 && n1.x === n2.x && n1.y === n2.y && n1.z === n2.z && elem.nodes[0] !== elem.nodes[1]) {
+        isInverted = true;
+      }
+    }
+    if (!isInverted && elem.nodes.length >= 4) {
+      const n1 = model.nodes.get(elem.nodes[0]!);
+      const n2 = model.nodes.get(elem.nodes[1]!);
+      const n3 = model.nodes.get(elem.nodes[2]!);
+      const n4 = model.nodes.get(elem.nodes[3]!);
+      if (n1 && n2 && n3 && n4) {
+        const ax = n2.x - n1.x;
+        const ay = n2.y - n1.y;
+        const az = n2.z - n1.z;
+        const bx = n3.x - n1.x;
+        const by = n3.y - n1.y;
+        const bz = n3.z - n1.z;
+        const cx = n4.x - n1.x;
+        const cy = n4.y - n1.y;
+        const cz = n4.z - n1.z;
+        const det3D = ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+        if (det3D < -1e-12) {
+          isInverted = true;
+        }
+      }
+    } else if (!isInverted && elem.nodes.length === 3) {
+      const n1 = model.nodes.get(elem.nodes[0]!);
+      const n2 = model.nodes.get(elem.nodes[1]!);
+      const n3 = model.nodes.get(elem.nodes[2]!);
+      if (n1 && n2 && n3 && n1.z === 0 && n2.z === 0 && n3.z === 0) {
+        const area2D = (n2.x - n1.x) * (n3.y - n1.y) - (n2.y - n1.y) * (n3.x - n1.x);
+        if (area2D <= 0) {
+          isInverted = true;
+        }
+      }
+    }
+
+    if (isInverted) {
+      diagnostics.push({
+        code: FeaErrorCode.INVERTED_JACOBIAN_ELEMENT.code,
+        rule: FeaErrorCode.INVERTED_JACOBIAN_ELEMENT.rule,
+        severity: FeaErrorCode.INVERTED_JACOBIAN_ELEMENT.severity,
+        message: FeaErrorCode.INVERTED_JACOBIAN_ELEMENT.message(elemId),
+        line: elemLine,
+        column: 1,
+      });
     }
   }
 

@@ -76,6 +76,19 @@ function projectSystemComponents(system: SimulinkSystem, lines: string[], indent
         lines.push(`${indent}Modelica.Blocks.Continuous.TransferFunction ${id}(b=${bStr}, a=${aStr});`);
         break;
       }
+      case "DiscreteFilter": {
+        const numStr = String(block.parameters.get("Numerator") ?? "1");
+        const denStr = String(block.parameters.get("Denominator") ?? "[1 1]");
+        const st = block.parameters.get("SampleTime") ?? 0.001;
+        const num = parseVectorString(numStr);
+        const den = parseVectorString(denStr);
+        const bStr = num.length > 0 ? `{${num.join(", ")}}` : "{1.0}";
+        const aStr = den.length > 0 ? `{${den.join(", ")}}` : "{1.0, 1.0}";
+        lines.push(
+          `${indent}Modelica.Blocks.Discrete.TransferFunction ${id}(b=${bStr}, a=${aStr}, samplePeriod=${st});`,
+        );
+        break;
+      }
       case "UnitDelay": {
         const ic = block.parameters.get("InitialCondition") ?? 0.0;
         const st = block.parameters.get("SampleTime") ?? 0.01;

@@ -97,6 +97,38 @@ Unassigned Material Mesh
     assert.ok(m7405.range.start.line > 0, "M7405 should report element line number > 0");
   });
 
+  test("emits diagnostics for inverted Jacobian element, zero shell thickness, singular stiffness matrix, and negative thermal expansion (M7409, M7410, M7411, M7412)", () => {
+    const flawedDeck = `*HEADING
+Inverted Element & Shell Section Checks
+*NODE
+1, 0.0, 0.0, 0.0
+2, 0.0, 1.0, 0.0
+3, 1.0, 0.0, 0.0
+4, 0.0, 0.0, 1.0
+*ELEMENT, TYPE=C3D4, ELSET=SOLIDS
+1, 1, 2, 3, 4
+*SHELL SECTION, ELSET=SHELLS, MATERIAL=BAD_THERM
+0.0
+*MATERIAL, NAME=BAD_THERM
+*ELASTIC
+2.1e11, 0.3
+*EXPANSION
+-1.2e-5
+*STEP
+*STATIC
+*CLOAD
+4, 3, -500.0
+*END STEP
+`;
+    const diags = validateFea(flawedDeck, "inverted.inp");
+    const codes = diags.map((d) => d.code);
+
+    assert.ok(codes.includes("M7409"), `Expected M7409 for inverted Jacobian element, got: ${codes.join(", ")}`);
+    assert.ok(codes.includes("M7410"), `Expected M7410 for zero shell thickness, got: ${codes.join(", ")}`);
+    assert.ok(codes.includes("M7411"), `Expected M7411 for singular stiffness matrix, got: ${codes.join(", ")}`);
+    assert.ok(codes.includes("M7412"), `Expected M7412 for negative thermal expansion, got: ${codes.join(", ")}`);
+  });
+
   test("extracts document symbols hierarchy for materials, element sets, and mesh counts", () => {
     const symbols = getFeaDocumentSymbols(VALID_INP_DECK, "beam.inp");
     assert.ok(symbols.length > 0, "Symbols array should not be empty");

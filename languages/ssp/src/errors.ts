@@ -106,4 +106,35 @@ export const SspErrorCode = {
     severity: "error" as const,
     message: (cyclePath: string) => `Algebraic feedthrough loop detected across connected components: ${cyclePath}.`,
   },
+  SSV_DUPLICATE_PARAMETER: {
+    code: 7015,
+    stdCode: "S7015",
+    rule: "SSV_DUPLICATE_PARAMETER",
+    severity: "error" as const,
+    message: (paramName: string) => `Duplicate parameter override '${paramName}' in SSV parameter set.`,
+  },
+  SSV_UNRESOLVED_PARAMETER_TYPE: {
+    code: 7016,
+    stdCode: "S7016",
+    rule: "SSV_UNRESOLVED_PARAMETER_TYPE",
+    severity: "error" as const,
+    message: (paramName: string) =>
+      `Parameter '${paramName}' lacks a valid SSV type element (Real, Integer, Boolean, String).`,
+  },
+  SSV_INVALID_NUMERIC_VALUE: {
+    code: 7017,
+    stdCode: "S7017",
+    rule: "SSV_INVALID_NUMERIC_VALUE",
+    severity: "error" as const,
+    message: (paramName: string, val: string) =>
+      `Parameter '${paramName}' value '${val}' cannot be parsed as a valid IEEE 754 number.`,
+  },
+  SSV_PARAMETER_DIMENSION_MISMATCH: {
+    code: 7018,
+    stdCode: "S7018",
+    rule: "SSV_PARAMETER_DIMENSION_MISMATCH",
+    severity: "error" as const,
+    message: (paramName: string, dims: string) =>
+      `Array parameter '${paramName}' dimensions [${dims}] do not match target FMU scalar definition.`,
+  },
 } as const;

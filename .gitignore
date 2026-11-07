@@ -101,6 +101,7 @@ apps/api/apps/
 apps/ide/vscode-web/
 **/.vitepress/cache/
 **/.vitepress/dist/
+**/.vitepress/.temp/
 
 # COIN-OR build artifacts
 Couenne/

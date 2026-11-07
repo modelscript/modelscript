@@ -2,7 +2,7 @@
 
 import React from "react";
 
-export type SketchIconVariant = "blueprint" | "outline" | "badge" | "triangle";
+export type SketchIconVariant = "blueprint" | "outline" | "badge" | "triangle" | "pen";
 
 export interface AnsatzSketchIconProps {
   /** Icon size in pixels (width and height). Defaults to 24. */
@@ -40,6 +40,44 @@ export const AnsatzSketchIcon: React.FC<AnsatzSketchIconProps> = ({
   const bgGradId = `bp-bg-${resolvedId}`;
   const glowGradId = `bp-glow-${resolvedId}`;
   const sparkGradId = `bp-spark-${resolvedId}`;
+
+  if (variant === "pen") {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={
+          className
+            ? `ansatz-sketch-icon ansatz-sketch-pen ${className}`
+            : "ansatz-sketch-icon ansatz-sketch-pen"
+        }
+        style={{
+          flexShrink: 0,
+          display: "inline-block",
+          verticalAlign: "middle",
+          ...style,
+        }}
+        aria-hidden={ariaLabel ? undefined : "true"}
+        aria-label={ariaLabel}
+        role={ariaLabel ? "img" : undefined}
+      >
+        {/* Precision pen body and nib */}
+        <path
+          d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+          stroke={color}
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill={secondaryColor ? secondaryColor : "none"}
+        />
+        {/* Pen grip collar */}
+        <path d="m15 5 4 4" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
 
   if (variant === "triangle") {
     return (
@@ -307,7 +345,11 @@ export const DraftingTriangleIcon: React.FC<AnsatzSketchIconProps> = (props) => 
   <AnsatzSketchIcon color={props.color ?? "currentColor"} size={props.size ?? 16} {...props} variant="triangle" />
 );
 
-export const MorselIcon = DraftingTriangleIcon;
+export const PenIcon: React.FC<AnsatzSketchIconProps> = (props) => (
+  <AnsatzSketchIcon color={props.color ?? "currentColor"} size={props.size ?? 16} {...props} variant="pen" />
+);
+
+export const MorselIcon = PenIcon;
 export const AnsatzMorselIcon = AnsatzSketchIcon;
 export { AnsatzSketchIcon as SketchIcon };
 export default AnsatzSketchIcon;

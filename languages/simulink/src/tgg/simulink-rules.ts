@@ -7,7 +7,15 @@
  * MATLAB/Simulink block diagram ASTs to standard Modelica 3.x blocks and SysML v2 part definitions.
  */
 
-import { tggComplement, tggDefaultVal, tggEq, tggReconcile, tggRule, type PolyglotConfig } from "@modelscript/dsl";
+import {
+  tggComplement,
+  tggDefaultVal,
+  tggEq,
+  tggReconcile,
+  tggReconcilePhysics,
+  tggRule,
+  type PolyglotConfig,
+} from "@modelscript/dsl";
 
 export const simulinkTggRules = [
   // 1. Gain Block <-> Modelica.Blocks.Math.Gain
@@ -198,9 +206,9 @@ export const simulinkTggRules = [
         target: v("dstConn"),
       }),
     where: (v) => [
-      tggEq(v("srcConn"), v("srcConn")),
-      tggEq(v("dstConn"), v("dstConn")),
-      tggComplement(["id", "range", "branches"]),
+      tggEq(v("src"), v("srcConn")),
+      tggEq(v("dst"), v("dstConn")),
+      tggComplement(["id", "range", "branches", "srcPort", "dstPort"]),
     ],
   }),
 
@@ -212,6 +220,63 @@ export const simulinkTggRules = [
     source: ($, v) => $.Block({ name: v("name"), type: v("blockType") }),
     target: ($, v) => $.PartDefinition({ name: v("name"), declaredType: v("blockType") }),
     where: (v) => [tggEq(v("name"), v("name")), tggDefaultVal(v("isAbstract"), false)],
+  }),
+
+  // 12. Discrete Filter <-> Modelica.Blocks.Discrete.TransferFunction
+  tggRule({
+    name: "SimulinkDiscreteFilterToDiscreteTransferFunction",
+    sourceLang: "simulink",
+    targetLang: "modelica",
+    source: ($, v) =>
+      $.Block({
+        type: "DiscreteFilter",
+        name: v("name"),
+        Numerator: v("num"),
+        Denominator: v("den"),
+        SampleTime: v("st"),
+      }),
+    target: ($, v) =>
+      $.ComponentDeclaration({
+        name: v("name"),
+        typeSpecifier: "Modelica.Blocks.Discrete.TransferFunction",
+        b: v("num"),
+        a: v("den"),
+        samplePeriod: v("st"),
+      }),
+    where: (v) => [
+      tggEq(v("name"), v("name")),
+      tggEq(v("num"), v("b")),
+      tggEq(v("den"), v("a")),
+      tggEq(v("st"), v("st")),
+      tggReconcile(v("num"), v("b"), "target-wins"),
+      tggReconcile(v("den"), v("a"), "target-wins"),
+      tggReconcile(v("st"), v("st"), "target-wins"),
+      tggReconcilePhysics(v("st"), v("st"), { min: 1e-6, max: 10.0 }),
+      tggComplement(["id", "range", "ports"]),
+    ],
+  }),
+
+  // 13. Hierarchical SubSystem <-> Modelica Sub-Block Usage (with Stateflow/Mask shadow complement)
+  tggRule({
+    name: "SimulinkSubSystemToModelicaBlock",
+    sourceLang: "simulink",
+    targetLang: "modelica",
+    source: ($, v) =>
+      $.Block({
+        type: "SubSystem",
+        name: v("name"),
+        subModelType: v("subType"),
+      }),
+    target: ($, v) =>
+      $.ComponentDeclaration({
+        name: v("name"),
+        typeSpecifier: v("subType"),
+      }),
+    where: (v) => [
+      tggEq(v("name"), v("name")),
+      tggEq(v("subType"), v("subType")),
+      tggComplement(["id", "range", "ports", "maskType", "stateflowChartXml", "position"]),
+    ],
   }),
 ];
 

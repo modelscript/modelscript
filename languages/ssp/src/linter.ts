@@ -224,6 +224,18 @@ const RULE_TO_ERROR_ENTRY: Record<string, { code: number; stdCode: string }> = (
     code: SspErrorCode.CYCLIC_CONNECTION.code,
     stdCode: SspErrorCode.CYCLIC_CONNECTION.stdCode,
   };
+  table["SSV_MISSING_PARAMETER_TYPE"] = {
+    code: SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.code,
+    stdCode: SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.stdCode,
+  };
+  table["SSV_INVALID_REAL_VALUE"] = {
+    code: SspErrorCode.SSV_INVALID_NUMERIC_VALUE.code,
+    stdCode: SspErrorCode.SSV_INVALID_NUMERIC_VALUE.stdCode,
+  };
+  table["SSV_INVALID_INTEGER_VALUE"] = {
+    code: SspErrorCode.SSV_INVALID_NUMERIC_VALUE.code,
+    stdCode: SspErrorCode.SSV_INVALID_NUMERIC_VALUE.stdCode,
+  };
   return table;
 })();
 
@@ -860,8 +872,11 @@ function lintSsvElement(
     const safeEnd = Math.max(safeStart + 1, endOffset);
     const startPos = locator.offsetToPos(safeStart);
     const endPos = locator.offsetToPos(safeEnd);
+    const stdMatch = RULE_TO_ERROR_ENTRY[code];
     diagnostics.push({
       code,
+      standardCode: stdMatch?.stdCode,
+      numericCode: stdMatch?.code,
       severity,
       message,
       startOffset: safeStart,
@@ -894,9 +909,9 @@ function lintSsvElement(
       emit(
         nameStart,
         nameEnd,
-        "SSV_DUPLICATE_PARAMETER",
-        "error",
-        `Duplicate SSV parameter '${paramName}' in parameter set.`,
+        SspErrorCode.SSV_DUPLICATE_PARAMETER.rule,
+        SspErrorCode.SSV_DUPLICATE_PARAMETER.severity,
+        SspErrorCode.SSV_DUPLICATE_PARAMETER.message(paramName),
       );
     } else {
       seenParams.add(paramName);
@@ -906,14 +921,56 @@ function lintSsvElement(
     const foundTypeTag = childElements(pTag).find((c) => SSV_TYPE_LOCAL_NAMES.has(localName(c.name))) ?? null;
 
     if (!foundTypeTag) {
-      emit(
-        nameStart,
-        nameEnd,
-        "SSV_MISSING_PARAMETER_TYPE",
-        "error",
-        `SSV parameter '${paramName || "<unnamed>"}' is missing a type element (<ssv:Real>, <ssv:Integer>, <ssv:Boolean>, <ssv:String>, or <ssv:Enumeration>).`,
-      );
+      if (childElements(pTag).length > 0) {
+        emit(
+          nameStart,
+          nameEnd,
+          SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.rule,
+          SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.severity,
+          SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.message(paramName || "<unnamed>"),
+        );
+      } else {
+        emit(
+          nameStart,
+          nameEnd,
+          "SSV_MISSING_PARAMETER_TYPE",
+          SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.severity,
+          SspErrorCode.SSV_UNRESOLVED_PARAMETER_TYPE.message(paramName || "<unnamed>"),
+        );
+      }
       continue;
+    }
+
+    // S7018: SSV_PARAMETER_DIMENSION_MISMATCH when dimensions are declared on a scalar parameter
+    const dimsAttr =
+      locateAttrOnElement(xml, foundTypeTag, "dimensions") ?? locateAttrOnElement(xml, pTag, "dimensions");
+    const dimChildren = [
+      ...childElements(foundTypeTag, "Dimensions"),
+      ...childElements(foundTypeTag, "Dimension"),
+      ...childElements(pTag, "Dimensions"),
+      ...childElements(pTag, "Dimension"),
+    ];
+    if (dimsAttr && dimsAttr.value.trim()) {
+      emit(
+        dimsAttr.valueStart,
+        dimsAttr.valueEnd,
+        SspErrorCode.SSV_PARAMETER_DIMENSION_MISMATCH.rule,
+        SspErrorCode.SSV_PARAMETER_DIMENSION_MISMATCH.severity,
+        SspErrorCode.SSV_PARAMETER_DIMENSION_MISMATCH.message(paramName, dimsAttr.value.trim()),
+      );
+    } else if (dimChildren.length > 0) {
+      const dimNode = dimChildren[0]!;
+      const nestedDims = dimNode.children.length > 0 ? dimNode.children : [dimNode];
+      const dimSpec = nestedDims
+        .map((d) => getAttrValue(d, "start") ?? getAttrValue(d, "size") ?? getAttrValue(d, "dimension") ?? "?")
+        .join(", ");
+      emit(
+        dimNode.start,
+        tagNameEndOffset(dimNode),
+        SspErrorCode.SSV_PARAMETER_DIMENSION_MISMATCH.rule,
+        SspErrorCode.SSV_PARAMETER_DIMENSION_MISMATCH.severity,
+        SspErrorCode.SSV_PARAMETER_DIMENSION_MISMATCH.message(paramName, dimSpec),
+      );
     }
 
     const valAttr = locateAttrOnElement(xml, foundTypeTag, "value");
@@ -939,6 +996,13 @@ function lintSsvElement(
           "error",
           `Invalid Real value '${valAttr.value}' for SSV parameter '${paramName}'.`,
         );
+        emit(
+          valAttr.valueStart,
+          valAttr.valueEnd,
+          SspErrorCode.SSV_INVALID_NUMERIC_VALUE.rule,
+          SspErrorCode.SSV_INVALID_NUMERIC_VALUE.severity,
+          SspErrorCode.SSV_INVALID_NUMERIC_VALUE.message(paramName, valAttr.value),
+        );
       }
     } else if (typeLocal === "Integer") {
       if (!rawVal || !/^[+-]?\d+$/.test(rawVal)) {
@@ -949,6 +1013,15 @@ function lintSsvElement(
           "error",
           `Invalid Integer value '${valAttr.value}' for SSV parameter '${paramName}'.`,
         );
+        if (!rawVal || Number.isNaN(Number(rawVal)) || !Number.isFinite(Number(rawVal))) {
+          emit(
+            valAttr.valueStart,
+            valAttr.valueEnd,
+            SspErrorCode.SSV_INVALID_NUMERIC_VALUE.rule,
+            SspErrorCode.SSV_INVALID_NUMERIC_VALUE.severity,
+            SspErrorCode.SSV_INVALID_NUMERIC_VALUE.message(paramName, valAttr.value),
+          );
+        }
       }
     } else if (typeLocal === "Boolean") {
       if (rawVal !== "true" && rawVal !== "false" && rawVal !== "1" && rawVal !== "0") {

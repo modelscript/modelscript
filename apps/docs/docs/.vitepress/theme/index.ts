@@ -54,6 +54,14 @@ export default {
       defineAsyncComponent(() => import("./components/HomeIndustries.vue")),
     );
     app.component(
+      "HomeWorkflowPairs",
+      defineAsyncComponent(() => import("./components/HomeWorkflowPairs.vue")),
+    );
+    app.component(
+      "HomeSemanticCoordinator",
+      defineAsyncComponent(() => import("./components/HomeSemanticCoordinator.vue")),
+    );
+    app.component(
       "HomeThread",
       defineAsyncComponent(() => import("./components/HomeThread.vue")),
     );

@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { IconName } from "../data/icons";
+import { LANGUAGE_COUNT } from "../data/languages";
 import mcpData from "../data/mcp-tools.generated.json";
 import { type Tone, toneStyle } from "../data/tones";
 import { useAnsatzOrigin } from "../util/ansatz";
@@ -50,7 +51,7 @@ const surfaces = computed<Surface[]>(() => [
     icon: "code",
     tone: ["cyan", "amber"],
     title: "VS Code extension",
-    body: "Language server for 66 formats on Visual Studio Marketplace & Open VSX Registry.",
+    body: `Language server for ${LANGUAGE_COUNT} formats on Visual Studio Marketplace & Open VSX Registry.`,
     cta: "Download extension",
     link: "#vscode",
   },

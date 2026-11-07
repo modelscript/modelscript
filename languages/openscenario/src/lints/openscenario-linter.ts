@@ -62,6 +62,20 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
         });
       }
     }
+
+    // M8511: Unreachable waypoint coordinate in Init
+    const initWaypoints = act.waypoints ?? (act.targetPosition?.world ? [act.targetPosition.world] : []);
+    for (const wp of initWaypoints) {
+      if (isWaypointOutOfBounds(wp)) {
+        diagnostics.push({
+          code: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.code,
+          rule: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.rule,
+          severity: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.severity,
+          message: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.message(wp.x, wp.y, wp.z),
+          range: act.range,
+        });
+      }
+    }
   }
 
   // Check stories, acts, maneuvers, events
@@ -94,6 +108,8 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
 
         for (const m of mg.maneuvers) {
           for (const ev of m.events) {
+            const longitudinalCountsByActor = new Map<string, number>();
+
             // Check actions in event
             for (const a of ev.actions) {
               if (a.entityRef && !doc.entities.has(a.entityRef)) {
@@ -131,6 +147,35 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
                       a.speedDynamics.rate,
                       maxDecel,
                     ),
+                    range: a.range,
+                  });
+                }
+              }
+
+              // M8511: Unreachable waypoint coordinate
+              const actionWaypoints = a.waypoints ?? (a.targetPosition?.world ? [a.targetPosition.world] : []);
+              for (const wp of actionWaypoints) {
+                if (isWaypointOutOfBounds(wp)) {
+                  diagnostics.push({
+                    code: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.code,
+                    rule: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.rule,
+                    severity: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.severity,
+                    message: OpenScenarioErrorCode.UNREACHABLE_WAYPOINT.message(wp.x, wp.y, wp.z),
+                    range: a.range,
+                  });
+                }
+              }
+
+              // M8513: Conflicting longitudinal actions targeting same actor concurrently
+              if ((a.kind === "speed" || a.kind === "longitudinalDistance") && a.entityRef) {
+                const prev = longitudinalCountsByActor.get(a.entityRef) ?? 0;
+                longitudinalCountsByActor.set(a.entityRef, prev + 1);
+                if (prev === 1) {
+                  diagnostics.push({
+                    code: OpenScenarioErrorCode.CONFLICTING_LONGITUDINAL_ACTIONS.code,
+                    rule: OpenScenarioErrorCode.CONFLICTING_LONGITUDINAL_ACTIONS.rule,
+                    severity: OpenScenarioErrorCode.CONFLICTING_LONGITUDINAL_ACTIONS.severity,
+                    message: OpenScenarioErrorCode.CONFLICTING_LONGITUDINAL_ACTIONS.message(a.entityRef),
                     range: a.range,
                   });
                 }
@@ -179,6 +224,20 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
                   message: OpenScenarioErrorCode.UNSATISFIABLE_TRIGGER.message(
                     c.name,
                     `simulation time cannot be less than ${c.value} s`,
+                  ),
+                  range: c.range,
+                });
+              }
+
+              // M8512: Negative time-to-collision threshold
+              if (c.kind === "timeToCollision" && Number(c.value) < 0) {
+                diagnostics.push({
+                  code: OpenScenarioErrorCode.NEGATIVE_TIME_TO_COLLISION.code,
+                  rule: OpenScenarioErrorCode.NEGATIVE_TIME_TO_COLLISION.rule,
+                  severity: OpenScenarioErrorCode.NEGATIVE_TIME_TO_COLLISION.severity,
+                  message: OpenScenarioErrorCode.NEGATIVE_TIME_TO_COLLISION.message(
+                    c.entityRef ?? c.targetEntityRef ?? "unknown",
+                    Number(c.value),
                   ),
                   range: c.range,
                 });
@@ -266,6 +325,17 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
   }
 
   return diagnostics;
+}
+
+function isWaypointOutOfBounds(wp: { x: number; y: number; z: number }): boolean {
+  return (
+    !Number.isFinite(wp.x) ||
+    !Number.isFinite(wp.y) ||
+    !Number.isFinite(wp.z) ||
+    Math.abs(wp.x) > 100000 ||
+    Math.abs(wp.y) > 100000 ||
+    Math.abs(wp.z) > 10000
+  );
 }
 
 function computeInitialDistance(a: ScenarioObject, b: ScenarioObject): number | null {

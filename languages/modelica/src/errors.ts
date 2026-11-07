@@ -1544,6 +1544,67 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (connText: string) => `Connection '${connText}' in 'break' modifier does not exist in base class.`,
   },
+  STREAM_MISSING_INSTREAM: {
+    code: 4124,
+    rule: "stream-missing-instream",
+    severity: "error",
+    message: (varName: string) =>
+      `Stream variable '${varName}' accessed in connector equation without required inStream() operator.`,
+  },
+  STREAM_MIXED_WITH_FLOW: {
+    code: 4125,
+    rule: "stream-mixed-with-flow",
+    severity: "error",
+    message: (varName: string) =>
+      `Variable '${varName}' cannot have both 'stream' and 'flow' prefixes.`,
+  },
+  INNER_OUTER_CAUSALITY_MISMATCH: {
+    code: 4126,
+    rule: "inner-outer-causality-mismatch",
+    severity: "error",
+    message: (outerName: string, innerName: string) =>
+      `Outer component '${outerName}' causality conflicts with inner declaration '${innerName}'.`,
+  },
+  DEPRECATED_CARDINALITY_OPERATOR: {
+    code: 5046,
+    rule: "deprecated-cardinality-operator",
+    severity: "warning",
+    message: () => `Operator 'cardinality()' is deprecated in Modelica 3.x; use conditional components instead.`,
+  },
+  CONTINUOUS_VARIABLE_IN_WHEN: {
+    code: 5045,
+    rule: "continuous-variable-in-when",
+    severity: "error",
+    message: (varName: string) =>
+      `Direct assignment to continuous state '${varName}' inside when-clause is illegal; use reinit().`,
+  },
+  CLOCK_TRANSITION_PRIORITY_INVALID: {
+    code: 6050,
+    rule: "transition-priority-invalid",
+    severity: "error",
+    message: (priorityText: string) =>
+      `Transition priority '${priorityText}' must be a positive integer (>= 1) and unique among transitions exiting the same state.`,
+  },
+  FIRST_TICK_INVALID_ARGUMENT: {
+    code: 6051,
+    rule: "first-tick-invalid-argument",
+    severity: "error",
+    message: (argText: string) =>
+      `Operator 'firstTick(${argText})' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.`,
+  },
+  INTERVAL_INVALID_ARGUMENT: {
+    code: 6052,
+    rule: "interval-invalid-argument",
+    severity: "error",
+    message: (argText: string) =>
+      `Operator 'interval(${argText})' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.`,
+  },
+  UNUSED_PROTECTED_PARAMETER: {
+    code: 4123,
+    rule: "unused-protected-parameter",
+    severity: "warning",
+    message: (paramName: string) => `Protected parameter '${paramName}' is declared but never referenced.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

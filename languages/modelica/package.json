@@ -168,7 +168,6 @@
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
-    "@svgdotjs/svg.js": "^3.2.5",
     "vscode-languageserver": "^9.0.1"
   },
   "modelscript": {

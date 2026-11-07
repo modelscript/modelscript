@@ -92,9 +92,36 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
         range: line.range,
       });
     }
+
+    // M8412: Non-positive-definite line impedance matrix
+    const lc = line.lineCode ? deck.lineCodes.get(line.lineCode) : undefined;
+    const hasNonPositiveSeqR =
+      (line.r1 !== undefined && line.r1 <= 0) ||
+      (line.r0 !== undefined && line.r0 <= 0) ||
+      (lc !== undefined && (lc.r1 <= 0 || (lc.r0 !== undefined && lc.r0 <= 0)));
+    let hasNonPositiveRMatrix = false;
+    if (line.rmatrix && line.rmatrix.length > 0) {
+      for (let rIdx = 0; rIdx < line.rmatrix.length; rIdx++) {
+        const row = line.rmatrix[rIdx]!;
+        const diagVal = row[Math.min(rIdx, row.length - 1)];
+        if (diagVal !== undefined && diagVal <= 0) {
+          hasNonPositiveRMatrix = true;
+          break;
+        }
+      }
+    }
+    if (hasNonPositiveSeqR || hasNonPositiveRMatrix) {
+      diags.push({
+        code: OpenDssErrorCode.NON_POSITIVE_DEFINITE_ZMATRIX.code,
+        rule: OpenDssErrorCode.NON_POSITIVE_DEFINITE_ZMATRIX.rule,
+        severity: OpenDssErrorCode.NON_POSITIVE_DEFINITE_ZMATRIX.severity,
+        message: OpenDssErrorCode.NON_POSITIVE_DEFINITE_ZMATRIX.message(line.name),
+        range: line.range,
+      });
+    }
   }
 
-  // 3. Check Transformer definitions (M8402 & M8403)
+  // 3. Check Transformer definitions (M8409 & M8410)
   for (const [, xfmr] of deck.transformers) {
     if (xfmr.xhl !== undefined && xfmr.xhl <= 0) {
       diags.push({
@@ -190,6 +217,79 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
         severity: OpenDssErrorCode.REVERSE_POWER_HOSTING_RISK.severity,
         message: OpenDssErrorCode.REVERSE_POWER_HOSTING_RISK.message(xfmr.name, totalDerKw, kvaRating),
         range: xfmr.range,
+      });
+    }
+  }
+
+  // 7. M8411: Isolated island with no slack bus or grid-forming inverter
+  if (deck.circuit && knownBuses.size > 1) {
+    const adj = new Map<string, Set<string>>();
+    for (const b of knownBuses) adj.set(b, new Set());
+    for (const [, line] of deck.lines) {
+      adj.get(line.bus1)?.add(line.bus2);
+      adj.get(line.bus2)?.add(line.bus1);
+    }
+    for (const [, xfmr] of deck.transformers) {
+      const b0 = xfmr.buses[0];
+      if (!b0) continue;
+      for (let i = 1; i < xfmr.buses.length; i++) {
+        const bi = xfmr.buses[i];
+        if (!bi) continue;
+        adj.get(b0)?.add(bi);
+        adj.get(bi)?.add(b0);
+      }
+    }
+    const visited = new Set<string>();
+    const queue: string[] = [deck.circuit.bus1];
+    visited.add(deck.circuit.bus1);
+    for (const [, st] of deck.storages) {
+      if (knownBuses.has(st.bus1) && !visited.has(st.bus1)) {
+        visited.add(st.bus1);
+        queue.push(st.bus1);
+      }
+    }
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const neighbors = adj.get(curr);
+      if (!neighbors) continue;
+      for (const nb of neighbors) {
+        if (!visited.has(nb)) {
+          visited.add(nb);
+          queue.push(nb);
+        }
+      }
+    }
+    if (visited.size < knownBuses.size) {
+      let islandRange: DssRange = { startLine: 1, startCol: 1, endLine: 1, endCol: 1 };
+      for (const [, line] of deck.lines) {
+        if (!visited.has(line.bus1) || !visited.has(line.bus2)) {
+          islandRange = line.range;
+          break;
+        }
+      }
+      diags.push({
+        code: OpenDssErrorCode.ISOLATED_ISLAND_NO_SLACK.code,
+        rule: OpenDssErrorCode.ISOLATED_ISLAND_NO_SLACK.rule,
+        severity: OpenDssErrorCode.ISOLATED_ISLAND_NO_SLACK.severity,
+        message: OpenDssErrorCode.ISOLATED_ISLAND_NO_SLACK.message(),
+        range: islandRange,
+      });
+    }
+  }
+
+  // 8. M8413: Capacitor bank kVAR rating exceeds feeder minimum load
+  let totalLoadKvar = 0;
+  for (const [, load] of deck.loads) {
+    totalLoadKvar += load.kvar;
+  }
+  for (const [, cap] of deck.capacitors) {
+    if (cap.kvar > totalLoadKvar) {
+      diags.push({
+        code: OpenDssErrorCode.CAPACITOR_OVERVOLTAGE_RISK.code,
+        rule: OpenDssErrorCode.CAPACITOR_OVERVOLTAGE_RISK.rule,
+        severity: OpenDssErrorCode.CAPACITOR_OVERVOLTAGE_RISK.severity,
+        message: OpenDssErrorCode.CAPACITOR_OVERVOLTAGE_RISK.message(cap.name, cap.kvar, totalLoadKvar),
+        range: cap.range,
       });
     }
   }

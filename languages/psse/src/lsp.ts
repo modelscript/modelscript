@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { lowerPsseToDae } from "./dae/psse-to-dae.js";
+import { PsseErrorCode } from "./errors.js";
 import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
 import { DYR_MODEL_SCHEMAS, isLikelyDyrContent, parseDyr } from "./parser/dyr-parser.js";
@@ -129,6 +130,15 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
             code: "P5001",
             source: "modelscript-psse",
             message: `Dynamic model '${rec.model}' at Bus ${rec.ibus} specifies ${rec.con.length} CON parameters, expected ${schema.params.length}.`,
+          });
+        }
+        if (rec.category === "generator" && (rec.namedParams["H"] ?? 1) <= 0) {
+          diags.push({
+            range: spanToRange(rec.span, lines),
+            severity: 1,
+            code: PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.code,
+            source: "modelscript-psse",
+            message: PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.message(rec.ibus),
           });
         }
         if (rec.category === "generator" && (rec.namedParams["H"] ?? 1) < 0) {

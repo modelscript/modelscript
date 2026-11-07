@@ -17,7 +17,7 @@ import React from "react";
 import { getKindBadgeStyle } from "../ClassTree";
 import type { Translations } from "./util/i18n";
 import { getClassIcon, globalClassIconCache, type DiagramNode } from "./util/lsp-bridge";
-import { invertSvgColors } from "./util/x6";
+import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
 
 interface ComponentListProps {
   components: DiagramNode[] | null;
@@ -25,6 +25,7 @@ interface ComponentListProps {
   selectedName?: string | null | undefined;
   language?: string | null | undefined;
   translations?: Translations | undefined;
+  uri?: string | undefined;
 }
 
 interface ComponentIconProps {
@@ -33,6 +34,7 @@ interface ComponentIconProps {
   kind?: string | undefined;
   size?: number | undefined;
   darkMode?: boolean | undefined;
+  uri?: string | undefined;
 }
 
 export function getSemanticKindIcon(kind: string | undefined, size = 16): React.ReactElement {
@@ -79,7 +81,7 @@ export function getSemanticKindIcon(kind: string | undefined, size = 16): React.
 }
 
 export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
-  const { iconSvg: propSvg, className, kind, size = 18, darkMode } = props;
+  const { iconSvg: propSvg, className, kind, size = 18, darkMode, uri } = props;
   const cleanClassName = className?.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
 
   const [svg, setSvg] = React.useState<string | null>(
@@ -101,7 +103,7 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
       return;
     }
     let cancelled = false;
-    getClassIcon(cleanClassName)
+    getClassIcon(cleanClassName, uri)
       .then((result) => {
         if (!cancelled) {
           setSvg(result);
@@ -115,7 +117,7 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
     return () => {
       cancelled = true;
     };
-  }, [propSvg, cleanClassName]);
+  }, [propSvg, cleanClassName, uri]);
 
   const effectiveSvg = propSvg || svg;
 
@@ -124,9 +126,8 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
   }
 
   const displaySvg = invertSvgColors(effectiveSvg, !!darkMode);
-  const rawSizedSvg = displaySvg
-    .replace(/width=(["']).*?\1/, 'width="100%"')
-    .replace(/height=(["']).*?\1/, 'height="100%"');
+  const rawSizedSvg = normalizeSvgForIcon(displaySvg);
+
   const sizedSvg = DOMPurify.sanitize(rawSizedSvg, {
     USE_PROFILES: { svg: true, svgFilters: true },
   });
@@ -134,7 +135,17 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
   return (
     <div
       className="modelica-icon"
-      style={{ width: size, height: size, flexShrink: 0 }}
+      style={{
+        width: size,
+        height: size,
+        minWidth: size,
+        minHeight: size,
+        maxWidth: size,
+        maxHeight: size,
+        flexShrink: 0,
+        overflow: "hidden",
+        position: "relative",
+      }}
       dangerouslySetInnerHTML={{ __html: sizedSvg }}
     />
   );
@@ -196,6 +207,7 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
                 className={rawClassName || component.properties?.className}
                 kind={rawKind}
                 darkMode={isDark}
+                uri={props.uri}
               />
             </NavList.LeadingVisual>
             <div

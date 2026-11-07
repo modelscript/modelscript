@@ -17,9 +17,11 @@ import {
   findDeclInClass,
   findInnerClassInClass,
   findUnresolvedComponentIdent,
+  getContinuousStateInWhenNode,
   getEnclosingClass,
   getExpressionVariability,
   getMemberKindInClass,
+  getUnusedProtectedParameterNode,
   hasExtendsCycleInScope,
   hasMatchingConnectEquation,
   hasTypePrefix,
@@ -126,6 +128,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(rootId, "shiftSample") ||
         db.ast.textEquals(rootId, "backSample") ||
         db.ast.textEquals(rootId, "previous") ||
+        db.ast.textEquals(rootId, "firstTick") ||
         db.ast.textEquals(rootId, "hold") ||
         db.ast.textEquals(rootId, "interval") ||
         db.ast.textEquals(rootId, "noClock") ||
@@ -2129,6 +2132,38 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           }
           return;
         }
+      }
+    },
+  },
+
+  /**
+   * M4123: Protected parameter is declared in a concrete model/block with equations but never referenced.
+   */
+  unusedProtectedParameter: {
+    nodes: ["component_clause"],
+    severity: "warning",
+    code: 4123,
+    message: (target) => `Protected parameter '${target.text}' is declared but never referenced.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      const paramId = getUnusedProtectedParameterNode(db, node, $);
+      if (paramId != 0) {
+        db.diagnostic(paramId);
+      }
+    },
+  },
+
+  /**
+   * M5045: Continuous state variable assigned directly inside a `when` equation instead of `reinit()` (MLS §8.3.5).
+   */
+  continuousVariableInWhen: {
+    nodes: ["simple_equation"],
+    severity: "error",
+    code: 5045,
+    message: (target) => `Direct assignment to continuous state '${target.text}' inside when-clause is illegal; use reinit().`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      const stateId = getContinuousStateInWhenNode(db, node, $);
+      if (stateId != 0) {
+        db.diagnostic(stateId);
       }
     },
   },

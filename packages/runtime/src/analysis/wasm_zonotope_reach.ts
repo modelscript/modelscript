@@ -26,6 +26,8 @@ export interface LinearSafetyRequirement {
   limitValue: number;
 }
 
+export type BoundRequirement = LinearSafetyRequirement;
+
 export interface ZonotopeReachabilityOptions {
   A: number[][];
   B?: number[][] | undefined;

@@ -761,12 +761,22 @@ export class WorkspaceManager {
         if (n) return n;
       } catch {}
     }
+    const resId = entry.resourceId;
+    const normUri = resId ? resId.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///") : "";
+    const oneSlashUri = resId ? resId.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/") : "";
     let tree =
-      this.documentManager?.getDocumentTree?.(entry.resourceId) ??
-      (this.unifiedWorkspace as any)?.getDocumentTree?.(entry.resourceId);
+      this.documentManager?.getDocumentTree?.(resId) ??
+      (normUri ? this.documentManager?.getDocumentTree?.(normUri) : null) ??
+      (oneSlashUri ? this.documentManager?.getDocumentTree?.(oneSlashUri) : null) ??
+      (this.unifiedWorkspace as any)?.getDocumentTree?.(resId) ??
+      (normUri ? (this.unifiedWorkspace as any)?.getDocumentTree?.(normUri) : null) ??
+      (oneSlashUri ? (this.unifiedWorkspace as any)?.getDocumentTree?.(oneSlashUri) : null);
     const existingRoot = tree?.rootNode ?? (tree as any)?.tree?.rootNode;
     if (!existingRoot) {
-      const text = this.getSourceText(entry.resourceId);
+      const text =
+        this.getSourceText(resId) ??
+        (normUri ? this.getSourceText(normUri) : null) ??
+        (oneSlashUri ? this.getSourceText(oneSlashUri) : null);
       if (text) {
         const parser =
           (globalThis as any).modelicaParser ??

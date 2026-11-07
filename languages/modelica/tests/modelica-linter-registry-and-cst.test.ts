@@ -344,5 +344,161 @@ end P;
         `Expected M6021 in ${JSON.stringify(diags)}`,
       );
     });
+
+    it("warns on unused protected parameter in a concrete model with equations (M4123)", () => {
+      const diags = getCstDiagnostics(`
+model M
+  Real x;
+protected
+  parameter Real unusedParam = 42.0;
+equation
+  x = 1.0;
+end M;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.UNUSED_PROTECTED_PARAMETER.code),
+        `Expected M4123 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects stream variable accessed on equation RHS without inStream() or actualStream() (M4124)", () => {
+      const diags = getCstDiagnostics(`
+package P
+  connector FluidPort
+    flow Real m_flow;
+    stream Real h_outflow;
+  end FluidPort;
+
+  model Comp
+    FluidPort port;
+    Real h_internal;
+  equation
+    h_internal = port.h_outflow;
+  end Comp;
+end P;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.STREAM_MISSING_INSTREAM.code),
+        `Expected M4124 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects variable declared with both stream and flow prefixes (M4125)", () => {
+      const diags = getCstDiagnostics(`
+package P
+  type FlowReal = flow Real;
+  connector BadStreamConnector
+    stream FlowReal h;
+  end BadStreamConnector;
+end P;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.STREAM_MIXED_WITH_FLOW.code),
+        `Expected M4125 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects inner/outer component causality mismatch between input and output (M4126)", () => {
+      const diags = getCstDiagnostics(`
+model System
+  inner output Real busSignal;
+  model Sub
+    outer input Real busSignal;
+  end Sub;
+  Sub sub;
+equation
+  busSignal = 1.0;
+end System;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.INNER_OUTER_CAUSALITY_MISMATCH.code),
+        `Expected M4126 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects continuous state variable assigned directly inside when-equation instead of reinit() (M5045)", () => {
+      const diags = getCstDiagnostics(`
+model Bouncing
+  Real x(start = 1.0);
+equation
+  der(x) = -1.0;
+  when x <= 0.0 then
+    x = 1.0;
+  end when;
+end Bouncing;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.CONTINUOUS_VARIABLE_IN_WHEN.code),
+        `Expected M5045 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("warns on deprecated cardinality() operator usage (M5046)", () => {
+      const diags = getCstDiagnostics(`
+model M
+  connector C
+    Real v;
+    flow Real i;
+  end C;
+  C c;
+  Real x;
+equation
+  if cardinality(c) == 0 then
+    x = 0.0;
+  else
+    x = 1.0;
+  end if;
+end M;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.DEPRECATED_CARDINALITY_OPERATOR.code),
+        `Expected M5046 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects invalid or non-positive transition priority in state machine (M6050)", () => {
+      const diags = getCstDiagnostics(`
+model StateMachinePrio
+  Real s1;
+  Real s2;
+equation
+  initialState(s1);
+  transition(s1, s2, true, priority = 0);
+end StateMachinePrio;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.CLOCK_TRANSITION_PRIORITY_INVALID.code),
+        `Expected M6050 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects firstTick() applied to continuous time or parameter expression (M6051)", () => {
+      const diags = getCstDiagnostics(`
+model M
+  Boolean b;
+equation
+  b = firstTick(time);
+end M;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.FIRST_TICK_INVALID_ARGUMENT.code),
+        `Expected M6051 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects interval() applied to continuous time or parameter expression (M6052)", () => {
+      const diags = getCstDiagnostics(`
+model M
+  parameter Real p = 0.1;
+  Real dt;
+equation
+  dt = interval(p);
+end M;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.INTERVAL_INVALID_ARGUMENT.code),
+        `Expected M6052 in ${JSON.stringify(diags)}`,
+      );
+    });
   });
 });

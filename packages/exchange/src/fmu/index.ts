@@ -6,6 +6,7 @@ export * from "./binary-introspect.js";
 export * from "./compile-wasm.js";
 export * from "./fmi-ls-bus.js";
 export * from "./fmi.js";
+export * from "./fmi3-tgg.js";
 export * from "./fmi3.js";
 export * from "./fmu-as-codegen.js";
 export * from "./fmu-codegen.js";

@@ -208,6 +208,10 @@ export function parseUrdf(content: string, defaultName = "robot"): UrdfRobot {
       robot.links.set(name, link);
     } else if (tag === "joint") {
       const name = getAttr(child, "name") ?? `joint_${robot.joints.size + 1}`;
+      if (robot.joints.has(name)) {
+        if (!robot.duplicateJointNames) robot.duplicateJointNames = [];
+        robot.duplicateJointNames.push(name);
+      }
       const joint = parseJoint(child, name, range);
       robot.joints.set(name, joint);
     } else if (tag === "material") {
@@ -239,8 +243,14 @@ function parseLink(el: XmlElement, name: string, range: SourceRange): UrdfLink {
       const massEl = child.children.find((c) => c.name.toLowerCase() === "mass");
       const inertiaEl = child.children.find((c) => c.name.toLowerCase() === "inertia");
 
-      const massVal = Number.parseFloat(massEl ? (getAttr(massEl, "value") ?? "1.0") : "1.0");
-      const mass = Number.isNaN(massVal) ? 1.0 : massVal;
+      const rawMassAttr = massEl ? getAttr(massEl, "value") : undefined;
+      const mass =
+        rawMassAttr !== undefined
+          ? rawMassAttr.trim() === ""
+            ? Number.NaN
+            : Number(rawMassAttr)
+          : 1.0;
+      const fallbackMass = Number.isNaN(mass) ? 1.0 : mass;
 
       const getInertiaComp = (attr: string, def: number): number => {
         if (!inertiaEl) return def;
@@ -251,12 +261,12 @@ function parseLink(el: XmlElement, name: string, range: SourceRange): UrdfLink {
       inertial = {
         origin: parseOrigin(originEl),
         mass,
-        ixx: getInertiaComp("ixx", mass * 0.1),
+        ixx: getInertiaComp("ixx", fallbackMass * 0.1),
         ixy: getInertiaComp("ixy", 0.0),
         ixz: getInertiaComp("ixz", 0.0),
-        iyy: getInertiaComp("iyy", mass * 0.1),
+        iyy: getInertiaComp("iyy", fallbackMass * 0.1),
         iyz: getInertiaComp("iyz", 0.0),
-        izz: getInertiaComp("izz", mass * 0.1),
+        izz: getInertiaComp("izz", fallbackMass * 0.1),
       };
     } else if (tag === "visual") {
       const vName = getAttr(child, "name");
@@ -313,6 +323,7 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
   const axisEl = el.children.find((c) => c.name.toLowerCase() === "axis");
   const limitEl = el.children.find((c) => c.name.toLowerCase() === "limit");
   const dynamicsEl = el.children.find((c) => c.name.toLowerCase() === "dynamics");
+  const mimicEl = el.children.find((c) => c.name.toLowerCase() === "mimic");
 
   const parentLink = (parentEl ? getAttr(parentEl, "link") : undefined) ?? "";
   const childLink = (childEl ? getAttr(childEl, "link") : undefined) ?? "";
@@ -345,6 +356,20 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
     };
   }
 
+  let mimic: { joint: string; multiplier?: number | undefined; offset?: number | undefined } | undefined;
+  if (mimicEl) {
+    const targetJoint = getAttr(mimicEl, "joint");
+    if (targetJoint) {
+      const multStr = getAttr(mimicEl, "multiplier");
+      const offStr = getAttr(mimicEl, "offset");
+      mimic = {
+        joint: targetJoint,
+        multiplier: multStr ? Number.parseFloat(multStr) : undefined,
+        offset: offStr ? Number.parseFloat(offStr) : undefined,
+      };
+    }
+  }
+
   return {
     name,
     type,
@@ -354,6 +379,7 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
     axis,
     limits,
     dynamics,
+    mimic,
     range,
   };
 }

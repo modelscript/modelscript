@@ -938,24 +938,23 @@ export class ValidationService {
    * Used by `DiagramService` (`getDiagramData`, `applyEdits`) and Tier 2 short debounce so diagram
    * operations and outline trees see up-to-date AST and class instances in ~1–2ms.
    */
-  public async syncDocumentForDiagram(uri: string): Promise<boolean> {
+  public async syncDocumentForDiagram(uri: string, explicitText?: string): Promise<boolean> {
     const effectiveUri = uri.startsWith("modelscript-lib://global")
       ? "file://" + uri.substring("modelscript-lib://global".length)
       : uri;
     const doc = this.documentManager.documents.get(uri) ?? this.documentManager.documents.get(effectiveUri);
-    if (!doc) return false;
-
-    const text = doc.getText();
+    const text = explicitText ?? doc?.getText();
+    if (!text) return false;
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     const langId =
       plugin?.id ??
-      (doc.languageId ||
+      (doc?.languageId ||
         (uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim") ? "modelica" : "sysml2"));
     const isModelica = langId === "modelica";
 
     let cached = this.documentManager.documentTrees.get(uri) ?? this.documentManager.documentTrees.get(effectiveUri);
     if (!cached?.tree || cached.text !== text) {
-      await this.parserService.ensureLanguageParserLoaded(doc.languageId || uri);
+      await this.parserService.ensureLanguageParserLoaded(doc?.languageId || uri);
       const parser =
         plugin?.parser ??
         this.parserService.getParserForUri(uri) ??

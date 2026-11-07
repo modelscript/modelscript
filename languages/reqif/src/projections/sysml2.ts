@@ -7,19 +7,24 @@
  * requirement definitions, usages, and satisfactions.
  */
 
-import type { ReqIfDocument, ReqIfSpecObject } from "../types.js";
+import type { ContractPolicy, ReqIfDocument, ReqIfSpecObject } from "../types.js";
 
 function sanitizeIdent(name: string): string {
   const cleaned = name.replace(/[^a-zA-Z0-9_]/g, "_");
   return /^[0-9]/.test(cleaned) ? `REQ_${cleaned}` : cleaned;
 }
 
+export interface Sysml2ProjectionOptions {
+  contractPolicy?: ContractPolicy | undefined;
+}
+
 /**
  * Translates a ReqIF specification document into standard SysML v2 text.
  */
-export function reqifToSysml2(doc: ReqIfDocument): string {
+export function reqifToSysml2(doc: ReqIfDocument, options?: Sysml2ProjectionOptions): string {
   const lines: string[] = [];
   const pkgName = sanitizeIdent(doc.header.title || "RequirementsPackage");
+  const policy = options?.contractPolicy ?? "permissive";
 
   lines.push(`package ${pkgName} {`);
   lines.push(`  doc /* ${doc.header.title} (ReqIF v${doc.header.reqIfVersion}) */`);
@@ -32,11 +37,18 @@ export function reqifToSysml2(doc: ReqIfDocument): string {
 
     lines.push(`  requirement def ${defName} {`);
     lines.push(`    doc /* ${obj.text.replace(/\*\//g, "* /")} */`);
+    lines.push(`    attribute reqId : String = "${obj.identifier}";`);
     if (obj.asilLevel) {
       lines.push(`    attribute asilLevel : String = "${obj.asilLevel}";`);
     }
 
-    if (obj.contract) {
+    const shouldEmitConstraint =
+      obj.contract &&
+      (policy === "permissive" ||
+        (policy === "ears" && obj.contract.tier !== "heuristic-prose") ||
+        (policy === "strict" && obj.contract.tier === "explicit"));
+
+    if (shouldEmitConstraint && obj.contract) {
       const c = obj.contract;
       lines.push(`    attribute ${sanitizeIdent(c.variable)} : Scalar;`);
       lines.push(`    require constraint { ${sanitizeIdent(c.variable)} ${c.comparator} ${c.limitValue} }`);

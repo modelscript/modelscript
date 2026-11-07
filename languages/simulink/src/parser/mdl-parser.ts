@@ -45,6 +45,8 @@ function mapBlockType(rawType: string): SimulinkBlockType {
       return "Product";
     case "transferfcn":
       return "TransferFcn";
+    case "discretefilter":
+      return "DiscreteFilter";
     case "statespace":
       return "StateSpace";
     case "subsystem":

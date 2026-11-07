@@ -107,8 +107,41 @@ function lintSystem(system: SimulinkSystem, diagnostics: SimulinkDiagnostic[]): 
   const outgoingConnections = new Map<string, string[]>();
 
   for (const line of system.lines) {
+    const lineRange = line.range ?? DEFAULT_RANGE;
+    if (line.srcBlock && !blockMap.has(line.srcBlock)) {
+      diagnostics.push({
+        code: "M7204",
+        severity: "error",
+        message: `Line references non-existent source block '${line.srcBlock}'.`,
+        range: lineRange,
+      });
+    } else if (line.srcBlock && line.srcPort <= 0) {
+      diagnostics.push({
+        code: "M7204",
+        severity: "error",
+        message: `Block '${line.srcBlock}' has invalid port index ${line.srcPort}. Port numbers must be positive integers (1, 2, ...).`,
+        range: lineRange,
+      });
+    }
+
     const srcKey = `${line.srcBlock}#${line.srcPort}`;
     if (line.dstBlock) {
+      if (!blockMap.has(line.dstBlock)) {
+        diagnostics.push({
+          code: "M7204",
+          severity: "error",
+          message: `Line references non-existent destination block '${line.dstBlock}'.`,
+          range: lineRange,
+        });
+      } else if ((line.dstPort ?? 1) <= 0) {
+        diagnostics.push({
+          code: "M7204",
+          severity: "error",
+          message: `Block '${line.dstBlock}' has invalid port index ${line.dstPort ?? 0}. Port numbers must be positive integers (1, 2, ...).`,
+          range: lineRange,
+        });
+      }
+
       const dstKey = `${line.dstBlock}#${line.dstPort ?? 1}`;
       const inList = incomingConnections.get(dstKey) ?? [];
       inList.push(srcKey);

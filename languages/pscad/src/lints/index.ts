@@ -357,7 +357,21 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
               endColumn,
             });
           }
-          if ((lowerName === "mva" || lowerName === "rated_mva") && val <= 0) {
+          if (
+            (lowerName === "mva" ||
+              lowerName === "rated_mva" ||
+              lowerName === "v_nom" ||
+              lowerName === "vbase" ||
+              lowerName === "p_rated" ||
+              lowerName === "p_mw") &&
+            val <= 0
+          ) {
+            const reason =
+              lowerName === "v_nom" || lowerName === "vbase"
+                ? "nominal voltage must be positive"
+                : lowerName === "p_rated" || lowerName === "p_mw"
+                  ? "rated active power must be positive"
+                  : "MVA rating must be positive";
             diagnostics.push({
               code: PscadErrorCode.INVALID_PARAMETER.code,
               rule: PscadErrorCode.INVALID_PARAMETER.rule,
@@ -366,7 +380,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
                 cmp.instanceName || cmp.id,
                 paramName,
                 val,
-                "MVA rating must be positive",
+                reason,
               ),
               componentId: cmp.id,
               line,

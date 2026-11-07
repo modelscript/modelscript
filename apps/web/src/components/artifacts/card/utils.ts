@@ -15,7 +15,10 @@ export function resolvePlaceholder(vt?: string): PlaceholderType {
     v === "step" ||
     v === "stp" ||
     v === "3d-model" ||
-    v === "qif"
+    v === "qif" ||
+    v === "urdf" ||
+    v === "sdf" ||
+    v === "xacro"
   ) {
     return "cad";
   }
@@ -85,12 +88,18 @@ export function resolveThumbnailUrls(viewConfig: any): {
   } else if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/uploads/")) {
     resolvedThumbnailUrl = `/api/v1/storage${resolvedThumbnailUrl}`;
   }
+  if (resolvedThumbnailUrl && resolvedThumbnailUrl.endsWith(".urdf.thumb.svg")) {
+    resolvedThumbnailUrl = `${resolvedThumbnailUrl}?v=3d2`;
+  }
 
   let resolvedThumbnailUrlLight = viewConfig?.thumbnailUrlLight;
   if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/thumbnails/")) {
     resolvedThumbnailUrlLight = `/api${resolvedThumbnailUrlLight}`;
   } else if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/uploads/")) {
     resolvedThumbnailUrlLight = `/api/v1/storage${resolvedThumbnailUrlLight}`;
+  }
+  if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.endsWith(".urdf.thumb.svg")) {
+    resolvedThumbnailUrlLight = `${resolvedThumbnailUrlLight}?v=3d2`;
   }
 
   let resolvedThumbnailUrlDark = viewConfig?.thumbnailUrlDark;
@@ -99,20 +108,27 @@ export function resolveThumbnailUrls(viewConfig: any): {
   } else if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.startsWith("/uploads/")) {
     resolvedThumbnailUrlDark = `/api/v1/storage${resolvedThumbnailUrlDark}`;
   }
+  if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.endsWith(".urdf.thumb.svg")) {
+    resolvedThumbnailUrlDark = `${resolvedThumbnailUrlDark}?v=3d2`;
+  }
 
-  // If a pre-generated vector SVG is available in viewConfig and the thumbnail is either missing
-  // or a stale auto-captured raster snapshot (/thumbnails/artifact_), prioritize the pristine vector SVG.
+  // If a pre-generated vector SVG is available in viewConfig and the thumbnail is either missing,
+  // a stale auto-captured raster snapshot (/thumbnails/artifact_), or a 3D URDF isometric scene,
+  // prioritize the pristine vector SVG.
   const hasInlineSvg = typeof viewConfig?.svg === "string" && viewConfig.svg.trim().startsWith("<svg");
+  const isUrdf3dSvg =
+    hasInlineSvg &&
+    (viewConfig.svg.includes('data-urdf-3d="true"') || viewConfig.svg.includes("3D FK Pose"));
   const isStaleRaster = !resolvedThumbnailUrl || resolvedThumbnailUrl.includes("/thumbnails/artifact_");
-  if (hasInlineSvg && isStaleRaster) {
+  if (hasInlineSvg && (isStaleRaster || isUrdf3dSvg)) {
     const dataUri = `data:image/svg+xml;utf8,${encodeURIComponent(viewConfig.svg.trim())}`;
     resolvedThumbnailUrl = dataUri;
     resolvedThumbnailUrlLight =
-      resolvedThumbnailUrlLight && !resolvedThumbnailUrlLight.includes("/thumbnails/artifact_")
+      !isUrdf3dSvg && resolvedThumbnailUrlLight && !resolvedThumbnailUrlLight.includes("/thumbnails/artifact_")
         ? resolvedThumbnailUrlLight
         : dataUri;
     resolvedThumbnailUrlDark =
-      resolvedThumbnailUrlDark && !resolvedThumbnailUrlDark.includes("/thumbnails/artifact_")
+      !isUrdf3dSvg && resolvedThumbnailUrlDark && !resolvedThumbnailUrlDark.includes("/thumbnails/artifact_")
         ? resolvedThumbnailUrlDark
         : dataUri;
   }

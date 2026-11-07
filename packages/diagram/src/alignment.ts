@@ -451,20 +451,40 @@ export function showAlignmentToolbar(
       toolbar.style.opacity = "0";
       toolbar.style.display = "none";
       toolbar.classList?.remove?.("visible");
+      toolbar.removeAttribute?.("data-active-node-id");
+      toolbar.removeAttribute?.("data-mode-key");
+      const activeInput = toolbar.querySelector?.(".align-param-input");
+      if (activeInput) activeInput.remove?.();
     }
     return;
   }
 
-  // Do not clobber an active inline parameter input inside the toolbar
+  const single = nodes.length === 1 ? nodes[0]! : null;
+  const previousNodeId = toolbar.getAttribute?.("data-active-node-id");
+  const isDifferentNode = single ? previousNodeId !== single.id : Boolean(previousNodeId);
+
+  if (isDifferentNode) {
+    const existingInput = toolbar.querySelector?.(".align-param-input");
+    if (existingInput) existingInput.remove?.();
+    toolbar.removeAttribute?.("data-mode-key");
+  }
+
+  if (single) {
+    toolbar.setAttribute?.("data-active-node-id", single.id);
+  } else {
+    toolbar.removeAttribute?.("data-active-node-id");
+  }
+
+  // Do not clobber an active inline parameter input inside the toolbar for the current node
   const hasActiveInput = Boolean(toolbar.querySelector?.(".align-param-input"));
   if (!hasActiveInput) {
     const onAction = (t: AlignmentType) => toolbarCallbacks.get(toolbar)?.(t);
     if (nodes.length === 1) {
-      const single = nodes[0]!;
-      const paramStr = single.primaryParam?.name ? `${single.primaryParam.name}=${single.primaryParam.value}` : "";
-      const modeKey = `single:${single.name ?? single.id}:${paramStr}`;
+      const singleNode = nodes[0]!;
+      const paramStr = singleNode.primaryParam?.name ? `${singleNode.primaryParam.name}=${singleNode.primaryParam.value}` : "";
+      const modeKey = `single:${singleNode.name ?? singleNode.id}:${paramStr}`;
       if (toolbar.getAttribute?.("data-mode-key") !== modeKey) {
-        populateSingleNodeToolbar(toolbar, single, onAction);
+        populateSingleNodeToolbar(toolbar, singleNode, onAction);
         toolbar.setAttribute?.("data-mode-key", modeKey);
       }
       if (toolbar.dataset) toolbar.dataset["mode"] = modeKey;
@@ -506,5 +526,284 @@ export function showAlignmentToolbar(
   toolbar.style.display = "flex";
   toolbar.style.opacity = "1";
   toolbar.classList?.add?.("visible");
+}
+
+export interface SmartGuideLine {
+  axis: "x" | "y";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  kind: "port" | "center";
+}
+
+export interface SmartAlignmentResult {
+  snapDx: number;
+  snapDy: number;
+  guideX: SmartGuideLine | null;
+  guideY: SmartGuideLine | null;
+}
+
+/**
+ * Computes magnetic alignment snap offsets (`snapDx`, `snapDy`) and smart guide line descriptors
+ * for a dragged node against:
+ * 1. Connected peer ports (highest priority — snaps into a 0-bend straight wire)
+ * 2. Component centerlines of nearby peer nodes (horizontal and vertical center alignment)
+ */
+export function computeSmartAlignmentGuides(
+  draggedNode: AlignableNode,
+  connectedPorts: { myPt: { x: number; y: number }; peerPt: { x: number; y: number } }[],
+  peerNodes: AlignableNode[],
+  snapThreshold = 4,
+): SmartAlignmentResult {
+  let snapDx = 0;
+  let snapDy = 0;
+  let rawGuideX: { x: number; baseY1: number; y2: number; kind: "port" | "center" } | null = null;
+  let rawGuideY: { y: number; baseX1: number; x2: number; kind: "port" | "center" } | null = null;
+
+  // Tier 1: Connected peer ports (eliminates wire jogs)
+  for (const pair of connectedPorts) {
+    const diffX = pair.peerPt.x - pair.myPt.x;
+    if (Math.abs(diffX) <= snapThreshold && (rawGuideX === null || Math.abs(diffX) < Math.abs(snapDx))) {
+      snapDx = diffX;
+      rawGuideX = { x: pair.peerPt.x, baseY1: pair.myPt.y, y2: pair.peerPt.y, kind: "port" };
+    }
+    const diffY = pair.peerPt.y - pair.myPt.y;
+    if (Math.abs(diffY) <= snapThreshold && (rawGuideY === null || Math.abs(diffY) < Math.abs(snapDy))) {
+      snapDy = diffY;
+      rawGuideY = { y: pair.peerPt.y, baseX1: pair.myPt.x, x2: pair.peerPt.x, kind: "port" };
+    }
+  }
+
+  // Tier 2: Component centerlines (when no port guide is active on that axis)
+  const myCenterX = draggedNode.x + draggedNode.width / 2;
+  const myCenterY = draggedNode.y + draggedNode.height / 2;
+
+  for (const peer of peerNodes) {
+    if (peer.id === draggedNode.id) continue;
+    const peerCenterX = peer.x + peer.width / 2;
+    const peerCenterY = peer.y + peer.height / 2;
+
+    if (rawGuideX === null || rawGuideX.kind === "center") {
+      const diffX = peerCenterX - myCenterX;
+      if (Math.abs(diffX) <= snapThreshold && (rawGuideX === null || Math.abs(diffX) < Math.abs(snapDx))) {
+        snapDx = diffX;
+        rawGuideX = { x: peerCenterX, baseY1: myCenterY, y2: peerCenterY, kind: "center" };
+      }
+    }
+
+    if (rawGuideY === null || rawGuideY.kind === "center") {
+      const diffY = peerCenterY - myCenterY;
+      if (Math.abs(diffY) <= snapThreshold && (rawGuideY === null || Math.abs(diffY) < Math.abs(snapDy))) {
+        snapDy = diffY;
+        rawGuideY = { y: peerCenterY, baseX1: myCenterX, x2: peerCenterX, kind: "center" };
+      }
+    }
+  }
+
+  const guideX: SmartGuideLine | null = rawGuideX
+    ? {
+        axis: "x",
+        x1: rawGuideX.x,
+        y1: rawGuideX.baseY1 + snapDy,
+        x2: rawGuideX.x,
+        y2: rawGuideX.y2,
+        kind: rawGuideX.kind,
+      }
+    : null;
+
+  const guideY: SmartGuideLine | null = rawGuideY
+    ? {
+        axis: "y",
+        x1: rawGuideY.baseX1 + snapDx,
+        y1: rawGuideY.y,
+        x2: rawGuideY.x2,
+        y2: rawGuideY.y,
+        kind: rawGuideY.kind,
+      }
+    : null;
+
+  return { snapDx, snapDy, guideX, guideY };
+}
+
+/**
+ * Generates screen-space SVG markup for active smart alignment guides:
+ * - 1px coral/magenta (`#f43f5e`) hairline (`stroke-dasharray="4 3"`, `shape-rendering="crispEdges"`)
+ * - Precision `×` anchor target ticks at both aligned endpoints
+ */
+export function renderSmartGuidesSvgMarkup(
+  guideX: SmartGuideLine | null,
+  guideY: SmartGuideLine | null,
+  scale: { sx: number; sy: number },
+  translate: { tx: number; ty: number },
+): string {
+  const parts: string[] = [];
+  const color = "#f43f5e";
+  const tickR = 3.5;
+  const overhang = 6;
+
+  const renderCrossTick = (cx: number, cy: number): string => {
+    const xA = (cx - tickR).toFixed(1);
+    const xB = (cx + tickR).toFixed(1);
+    const yA = (cy - tickR).toFixed(1);
+    const yB = (cy + tickR).toFixed(1);
+    return `<path class="smart-guide-tick" d="M ${xA} ${yA} L ${xB} ${yB} M ${xA} ${yB} L ${xB} ${yA}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" fill="none"/>`;
+  };
+
+  if (guideX) {
+    const sx = Math.round(guideX.x1 * scale.sx + translate.tx) + 0.5;
+    const sy1 = guideX.y1 * scale.sy + translate.ty;
+    const sy2 = guideX.y2 * scale.sy + translate.ty;
+    const minY = Math.min(sy1, sy2) - overhang;
+    const maxY = Math.max(sy1, sy2) + overhang;
+    parts.push(
+      `<line class="smart-guide-line smart-guide-x" data-kind="${guideX.kind}" x1="${sx}" y1="${minY.toFixed(1)}" x2="${sx}" y2="${maxY.toFixed(1)}" stroke="${color}" stroke-width="1" stroke-dasharray="4 3" shape-rendering="crispEdges"/>`,
+    );
+    parts.push(renderCrossTick(sx, sy1));
+    parts.push(renderCrossTick(sx, sy2));
+  }
+
+  if (guideY) {
+    const sy = Math.round(guideY.y1 * scale.sy + translate.ty) + 0.5;
+    const sx1 = guideY.x1 * scale.sx + translate.tx;
+    const sx2 = guideY.x2 * scale.sx + translate.tx;
+    const minX = Math.min(sx1, sx2) - overhang;
+    const maxX = Math.max(sx1, sx2) + overhang;
+    parts.push(
+      `<line class="smart-guide-line smart-guide-y" data-kind="${guideY.kind}" x1="${minX.toFixed(1)}" y1="${sy}" x2="${maxX.toFixed(1)}" y2="${sy}" stroke="${color}" stroke-width="1" stroke-dasharray="4 3" shape-rendering="crispEdges"/>`,
+    );
+    parts.push(renderCrossTick(sx1, sy));
+    parts.push(renderCrossTick(sx2, sy));
+  }
+
+  return parts.join("");
+}
+
+export interface VisualFlipNodeLike {
+  id?: string | undefined;
+  getSize?: (() => { width?: number; height?: number }) | undefined;
+  getData?: (() => Record<string, unknown> | undefined) | undefined;
+  setData?: ((data: Record<string, unknown>) => void) | undefined;
+  getPorts?: (() => { id: string; group?: string; args?: { x?: number; y?: number; angle?: number } }[]) | undefined;
+  container?: Element | null | undefined;
+}
+
+export interface VisualFlipGraphLike {
+  findViewByCell?: ((cell: any) => { container?: Element | null | undefined } | null | undefined) | undefined;
+}
+
+/**
+ * Applies visual SVG mirroring to node graphics and updates port DOM positions.
+ * - Scales the component graphics by (-1, 1) for flipX and (1, -1) for flipY
+ * - Unflips text elements so labels (component name, parameter values) remain readable forward
+ * - Computes mirrored port coordinates based on base (unflipped) positions and updates transform
+ */
+export function applyNodeFlipVisuals(
+  node: VisualFlipNodeLike,
+  targetGraph?: VisualFlipGraphLike | null,
+  flipX: boolean = false,
+  flipY: boolean = false,
+): void {
+  const s = typeof node.getSize === "function" ? node.getSize() : { width: 40, height: 40 };
+  const width = s?.width || 40;
+  const height = s?.height || 40;
+  const sx = flipX ? -1 : 1;
+  const sy = flipY ? -1 : 1;
+  const tx = flipX ? width : 0;
+  const ty = flipY ? height : 0;
+
+  const view =
+    targetGraph && typeof targetGraph.findViewByCell === "function"
+      ? (targetGraph.findViewByCell(node) as any)
+      : null;
+  const container = (view?.container || node.container) as SVGElement | HTMLElement | undefined;
+  if (!container) return;
+
+  // 1. Flip the node body / icon graphics
+  // Look for SVG element inside container (Modelica diagrams) or direct graphics children
+  const svgEl = container.querySelector?.("svg");
+  let bodyEl: Element | null = null;
+  if (svgEl) {
+    // In Modelica diagram nodes, svgEl.children[0] is the transparent background <rect>
+    // and svgEl.children[1] is the component graphics <g>
+    bodyEl = svgEl.children[1] || svgEl;
+  } else {
+    const children = Array.from(container.children || []);
+    bodyEl =
+      children.find((c) => !c.classList?.contains("x6-port") && !c.classList?.contains("x6-widget-selection")) || null;
+  }
+
+  if (bodyEl && bodyEl !== container) {
+    if (flipX || flipY) {
+      bodyEl.setAttribute("transform", `translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
+    } else {
+      bodyEl.removeAttribute("transform");
+    }
+
+    // Unflip text elements so labels (component name, parameter values) remain readable forward
+    const textElements = Array.from(bodyEl.querySelectorAll("text"));
+    for (const textEl of textElements) {
+      if (flipX || flipY) {
+        const textX = Number(textEl.getAttribute("x") ?? 0);
+        const textY = Number(textEl.getAttribute("y") ?? 0);
+        textEl.setAttribute(
+          "transform",
+          `translate(${textX} ${textY}) scale(${sx} ${sy}) translate(${-textX} ${-textY})`,
+        );
+      } else {
+        textEl.removeAttribute("transform");
+      }
+    }
+  }
+
+  // 2. Flip the ports in DOM
+  const curData = (typeof node.getData === "function" ? node.getData() : {}) || {};
+  let basePorts = curData["basePorts"] as
+    | { id: string; group?: string; args?: { x?: number; y?: number; angle?: number } }[]
+    | undefined;
+
+  if (!basePorts) {
+    const rawPorts = typeof node.getPorts === "function" ? node.getPorts() : [];
+    basePorts = rawPorts.map((p: any) => {
+      let bx = p.args?.x ?? 0;
+      let by = p.args?.y ?? 0;
+      let ba = p.args?.angle ?? 0;
+      // If the node was already flipped when basePorts is first captured, un-mirror it to find base
+      if (curData["flipX"]) {
+        bx = width - bx;
+        ba = (180 - ba + 360) % 360;
+      }
+      if (curData["flipY"]) {
+        by = height - by;
+        ba = (360 - ba) % 360;
+      }
+      return {
+        id: p.id,
+        group: p.group,
+        args: { x: bx, y: by, angle: ba },
+      };
+    });
+    curData["basePorts"] = basePorts;
+    node.setData?.(curData);
+  }
+
+  for (const baseP of basePorts) {
+    let posX = baseP.args?.x ?? 0;
+    let posY = baseP.args?.y ?? 0;
+    let portAngle = baseP.args?.angle ?? 0;
+    if (flipX) {
+      posX = width - posX;
+      portAngle = (180 - portAngle + 360) % 360;
+    }
+    if (flipY) {
+      posY = height - posY;
+      portAngle = (360 - portAngle) % 360;
+    }
+
+    const portEl = container.querySelector?.(`[data-port="${baseP.id}"]`) as SVGElement | null;
+    if (portEl) {
+      portEl.setAttribute("transform", `translate(${posX}, ${posY}) rotate(${portAngle})`);
+    }
+  }
 }
 

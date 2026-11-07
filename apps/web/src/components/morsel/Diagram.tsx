@@ -3,15 +3,18 @@
 import {
   disposeDiagram,
   dropComponentGhost,
+  flipSelectedNodes,
   getGraph,
   initGraph,
   isEphemeralDiagramNode,
   isMinimapVisible,
   renderDiagram,
+  rotateSelectedNodes,
   setDiagramGrid,
   setDiagramOptions,
   setDiagramSnap,
   toggleMinimap,
+  updateParameterText,
   type DiagramGridMode,
 } from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
@@ -27,6 +30,8 @@ export interface DiagramEditorHandle {
   zoomToFit: () => void;
   getZoom: () => number;
   rotateSelected: (deltaDegrees?: number) => void;
+  flipSelected?: (axis?: "x" | "y") => void;
+  updateParameterText?: (nodeId: string, paramName: string, oldValue: string, newValue: string) => void;
   toggleMinimap: () => boolean;
   isMinimapOpen: () => boolean;
   setGridMode: (mode: DiagramGridMode) => void;
@@ -189,8 +194,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const g = getGraph(container) ?? (container ? initGraph(props.theme === "vs-dark", container) : null);
       if (g && container) {
         try {
-          const cw = container.clientWidth > 0 ? container.clientWidth : 800;
-          const ch = container.clientHeight > 0 ? container.clientHeight : 600;
+          const parent = container.parentElement;
+          const parentW = parent?.clientWidth ?? 0;
+          const parentH = parent?.clientHeight ?? 0;
+          const cw = parentW > 0 ? parentW : (container.clientWidth > 0 ? container.clientWidth : 800);
+          const ch = parentH > 0 ? parentH : (container.clientHeight > 0 ? container.clientHeight : 600);
+          if (typeof (g as any).resize === "function" && cw > 0 && ch > 0) {
+            (g as any).resize(cw, ch);
+          }
           if (propsRef.current.diagramData?.coordinateSystem) {
             const cs = propsRef.current.diagramData.coordinateSystem;
             const expandedRect = {
@@ -205,6 +216,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width: cw, height: ch } });
           } else {
             g.zoomToFit({ maxScale: 1, padding: 20 });
+            (g as any).centerContent?.();
           }
           if (typeof (g as any).zoom === "function") {
             propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
@@ -220,72 +232,104 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       }
     },
     zoomIn: (factor = 0.15) => {
-      const g = getGraph(containerRef.current) as any;
+      const container = containerRef.current;
+      const g = (getGraph(container) ?? getGraph()) as any;
       if (g && typeof g.zoom === "function") {
         const current = g.zoom();
-        const next = Math.min(3.0, Math.round((current + factor) * 100) / 100);
-        g.zoomTo(next);
+        const next = Math.min(10.0, Math.round((current + factor) * 100) / 100);
+        if (typeof g.zoomTo === "function") {
+          g.zoomTo(next);
+        } else {
+          g.zoom(next, { absolute: true });
+        }
         propsRef.current.onZoomChange?.(next);
         return next;
       }
       return 1;
     },
     zoomOut: (factor = 0.15) => {
-      const g = getGraph(containerRef.current) as any;
+      const container = containerRef.current;
+      const g = (getGraph(container) ?? getGraph()) as any;
       if (g && typeof g.zoom === "function") {
         const current = g.zoom();
-        const next = Math.max(0.2, Math.round((current - factor) * 100) / 100);
-        g.zoomTo(next);
+        const next = Math.max(0.1, Math.round((current - factor) * 100) / 100);
+        if (typeof g.zoomTo === "function") {
+          g.zoomTo(next);
+        } else {
+          g.zoom(next, { absolute: true });
+        }
         propsRef.current.onZoomChange?.(next);
         return next;
       }
       return 1;
     },
     zoomTo: (scale: number) => {
-      const g = getGraph(containerRef.current) as any;
-      if (g && typeof g.zoomTo === "function") {
-        const clamped = Math.max(0.2, Math.min(3.0, scale));
-        g.zoomTo(clamped);
+      const container = containerRef.current;
+      const g = (getGraph(container) ?? getGraph()) as any;
+      if (g && (typeof g.zoomTo === "function" || typeof g.zoom === "function")) {
+        const clamped = Math.max(0.1, Math.min(10.0, scale));
+        if (typeof g.zoomTo === "function") {
+          g.zoomTo(clamped);
+        } else {
+          g.zoom(clamped, { absolute: true });
+        }
         propsRef.current.onZoomChange?.(clamped);
       }
     },
     zoomToFit: () => {
       const container = containerRef.current;
-      const g = getGraph(container) as any;
+      const g = (getGraph(container) ?? getGraph()) as any;
       if (g && typeof g.zoomToFit === "function") {
-        g.zoomToFit({ maxScale: 1, padding: 24 });
+        const parent = container?.parentElement;
+        const parentW = parent?.clientWidth ?? 0;
+        const parentH = parent?.clientHeight ?? 0;
+        const cw = parentW > 0 ? parentW : (container?.clientWidth && container.clientWidth > 0 ? container.clientWidth : 800);
+        const ch = parentH > 0 ? parentH : (container?.clientHeight && container.clientHeight > 0 ? container.clientHeight : 600);
+        if (typeof g.resize === "function" && cw > 0 && ch > 0) {
+          g.resize(cw, ch);
+        }
+        if (propsRef.current.diagramData?.coordinateSystem) {
+          const cs = propsRef.current.diagramData.coordinateSystem;
+          const expandedRect = {
+            x: cs.x - cs.width * 0.125,
+            y: cs.y - cs.height * 0.125,
+            width: cs.width * 1.25,
+            height: cs.height * 1.25,
+          };
+          if (typeof g.zoomToRect === "function") {
+            g.zoomToRect(expandedRect, { viewportArea: { x: 0, y: 0, width: cw, height: ch } });
+          } else {
+            g.zoomToFit({ maxScale: 1, padding: 24 });
+            g.centerContent?.();
+          }
+        } else {
+          g.zoomToFit({ maxScale: 1, padding: 24 });
+          g.centerContent?.();
+        }
         if (typeof g.zoom === "function") {
           propsRef.current.onZoomChange?.(Math.round(g.zoom() * 100) / 100);
         }
       }
     },
     getZoom: () => {
-      const g = getGraph(containerRef.current) as any;
+      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
       if (g && typeof g.zoom === "function") {
         return Math.round(g.zoom() * 100) / 100;
       }
       return 1;
     },
     rotateSelected: (deltaDegrees = 90) => {
-      const g = getGraph(containerRef.current) as any;
+      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
       if (!g) return;
-      const selected = g.getSelectedCells?.()?.filter((c: any) => c.isNode?.() && !isEphemeralDiagramNode(c.id)) || [];
-      if (selected.length === 0) return;
-      const moveItems: any[] = [];
-      g.batchUpdate?.("rotate", () => {
-        for (const node of selected) {
-          const cur = node.getAngle?.() || 0;
-          const next = (((cur + deltaDegrees) % 360) + 360) % 360;
-          node.rotate?.(next, { absolute: true });
-          const p = node.getPosition();
-          const s = node.getSize();
-          const name = node.getData?.()?.["name"] || node.id;
-          moveItems.push({ name, x: p.x, y: p.y, width: s.width, height: s.height, rotation: next });
-        }
-      });
-      if (moveItems.length > 0 && propsRef.current.onMove) {
-        propsRef.current.onMove(moveItems);
-      }
+      rotateSelectedNodes(deltaDegrees, g);
+    },
+    flipSelected: (axis: "x" | "y" = "x") => {
+      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
+      if (!g) return;
+      flipSelectedNodes(axis, g);
+    },
+    updateParameterText: (nodeId: string, paramName: string, oldValue: string, newValue: string) => {
+      updateParameterText(nodeId, paramName, oldValue, newValue, containerRef.current);
     },
     toggleMinimap: () => {
       return toggleMinimap(containerRef.current);
@@ -294,10 +338,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       return isMinimapVisible(containerRef.current);
     },
     setGridMode: (mode: DiagramGridMode) => {
-      setDiagramGrid(mode, getGraph(containerRef.current) as any);
+      setDiagramGrid(mode, (getGraph(containerRef.current) ?? getGraph()) as any);
     },
     setSnapToGrid: (enabled: boolean) => {
-      setDiagramSnap(enabled, getGraph(containerRef.current) as any);
+      setDiagramSnap(enabled, (getGraph(containerRef.current) ?? getGraph()) as any);
     },
   }));
 
@@ -308,6 +352,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    const target = container.parentElement ?? container;
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const ro =
@@ -324,6 +370,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               const zoomable = g as unknown as {
                 isDisposed?: () => boolean;
                 zoomToRect?: (rect: unknown, options?: unknown) => void;
+                zoomToFit?: (options?: unknown) => void;
+                centerContent?: () => void;
               };
               if (g && (typeof zoomable.isDisposed === "function" ? !zoomable.isDisposed() : true)) {
                 g.resize(Math.round(width), Math.round(height));
@@ -336,13 +384,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                     height: cs.height * 1.25,
                   };
                   zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width, height } });
+                } else if (typeof zoomable.zoomToFit === "function") {
+                  zoomable.zoomToFit({ maxScale: 1, padding: 24 });
+                  zoomable.centerContent?.();
                 }
               }
             }, 60);
           })
         : null;
 
-    ro?.observe(container);
+    ro?.observe(target);
 
     return () => {
       if (resizeTimer) clearTimeout(resizeTimer);
@@ -424,7 +475,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
       <div
         ref={containerRef}
-        style={{ width: "100%", height: "100%", outline: "none" }}
+        style={{ width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", outline: "none" }}
         tabIndex={0}
         onDragOver={(e) => {
           e.preventDefault();

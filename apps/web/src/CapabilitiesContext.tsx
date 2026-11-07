@@ -71,18 +71,25 @@ export const CapabilitiesProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [loading, setLoading] = useState(true);
 
   const refreshCapabilities = useCallback(async () => {
-    try {
-      const { data } = await api.get<CapabilitiesResponse>("/instance/capabilities");
-      if (data) {
-        if (data.tier) setTier(data.tier);
-        if (data.edition) setEdition(data.edition);
-        if (typeof data.airgapEnforced === "boolean") setAirgapEnforced(data.airgapEnforced);
-        if (data.capabilities) setCapabilities((prev) => ({ ...prev, ...data.capabilities }));
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { data } = await api.get<CapabilitiesResponse>("/instance/capabilities");
+        if (data) {
+          if (data.tier) setTier(data.tier);
+          if (data.edition) setEdition(data.edition);
+          if (typeof data.airgapEnforced === "boolean") setAirgapEnforced(data.airgapEnforced);
+          if (data.capabilities) setCapabilities((prev) => ({ ...prev, ...data.capabilities }));
+        }
+        break;
+      } catch (err: any) {
+        if (attempt < 2 && (err?.response?.status === 502 || err?.response?.status === 503 || !err?.response)) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        // Fallback silently to defaults if endpoint unreachable
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      // Fallback silently to defaults if endpoint unreachable
-    } finally {
-      setLoading(false);
     }
   }, []);
 

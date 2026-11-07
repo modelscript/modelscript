@@ -214,4 +214,85 @@ describe("@modelscript/reqif linter", () => {
     assert.ok(m7010, "Should detect M7010 malformed comparator '=<'");
     assert.ok(m7010.message.includes("=<"));
   });
+
+  it("detects unknown SpecRelationType (M7011), empty safety SpecObject description (M7012), and excessive SpecHierarchy nesting (M7013)", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">
+  <THE-HEADER>
+    <REQ-IF-HEADER IDENTIFIER="H1"><TITLE>Test</TITLE></REQ-IF-HEADER>
+  </THE-HEADER>
+  <CORE-CONTENT>
+    <REQ-IF-CONTENT>
+      <SPEC-OBJECTS>
+        <SPEC-OBJECT IDENTIFIER="REQ-EMPTY-DESC" LONG-NAME="Brake Safety" ASIL="ASIL-D" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L1" LONG-NAME="L1" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L2" LONG-NAME="L2" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L3" LONG-NAME="L3" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L4" LONG-NAME="L4" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L5" LONG-NAME="L5" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L6" LONG-NAME="L6" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L7" LONG-NAME="L7" />
+        <SPEC-OBJECT IDENTIFIER="REQ-L8" LONG-NAME="L8" />
+      </SPEC-OBJECTS>
+      <SPEC-RELATIONS>
+        <SPEC-RELATION IDENTIFIER="REL-UNKNOWN-TYPE" LONG-NAME="satisfies">
+          <TYPE><SPEC-RELATION-TYPE-REF>SRT-MISSING</SPEC-RELATION-TYPE-REF></TYPE>
+          <SOURCE><SPEC-OBJECT-REF>REQ-L1</SPEC-OBJECT-REF></SOURCE>
+          <TARGET><SPEC-OBJECT-REF>REQ-L2</SPEC-OBJECT-REF></TARGET>
+        </SPEC-RELATION>
+      </SPEC-RELATIONS>
+      <SPECIFICATIONS>
+        <SPECIFICATION IDENTIFIER="SPEC-DEEP">
+          <CHILDREN>
+            <SPEC-HIERARCHY IDENTIFIER="H1" OBJECT-REF="REQ-L1">
+              <CHILDREN>
+                <SPEC-HIERARCHY IDENTIFIER="H2" OBJECT-REF="REQ-L2">
+                  <CHILDREN>
+                    <SPEC-HIERARCHY IDENTIFIER="H3" OBJECT-REF="REQ-L3">
+                      <CHILDREN>
+                        <SPEC-HIERARCHY IDENTIFIER="H4" OBJECT-REF="REQ-L4">
+                          <CHILDREN>
+                            <SPEC-HIERARCHY IDENTIFIER="H5" OBJECT-REF="REQ-L5">
+                              <CHILDREN>
+                                <SPEC-HIERARCHY IDENTIFIER="H6" OBJECT-REF="REQ-L6">
+                                  <CHILDREN>
+                                    <SPEC-HIERARCHY IDENTIFIER="H7" OBJECT-REF="REQ-L7">
+                                      <CHILDREN>
+                                        <SPEC-HIERARCHY IDENTIFIER="H8" OBJECT-REF="REQ-L8" />
+                                      </CHILDREN>
+                                    </SPEC-HIERARCHY>
+                                  </CHILDREN>
+                                </SPEC-HIERARCHY>
+                              </CHILDREN>
+                            </SPEC-HIERARCHY>
+                          </CHILDREN>
+                        </SPEC-HIERARCHY>
+                      </CHILDREN>
+                    </SPEC-HIERARCHY>
+                  </CHILDREN>
+                </SPEC-HIERARCHY>
+              </CHILDREN>
+            </SPEC-HIERARCHY>
+          </CHILDREN>
+        </SPECIFICATION>
+      </SPECIFICATIONS>
+    </REQ-IF-CONTENT>
+  </CORE-CONTENT>
+</REQ-IF>`;
+
+    const doc = parseReqIf(xml);
+    const diags = lintReqIf(doc);
+
+    const m7011 = diags.find((d) => d.code === ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.code);
+    assert.ok(m7011, "Should detect M7011 unknown SpecRelationType");
+    assert.ok(m7011.message.includes("SRT-MISSING"));
+
+    const m7012 = diags.find((d) => d.code === ReqIfErrorCode.SPEC_OBJECT_EMPTY_DESCRIPTION.code);
+    assert.ok(m7012, "Should detect M7012 safety-critical SpecObject with empty text description");
+    assert.ok(m7012.message.includes("REQ-EMPTY-DESC"));
+
+    const m7013 = diags.find((d) => d.code === ReqIfErrorCode.SPEC_HIERARCHY_LEVEL_EXCESSIVE.code);
+    assert.ok(m7013, "Should detect M7013 SpecHierarchy nesting level > 7");
+    assert.ok(m7013.message.includes("(8)"));
+  });
 });

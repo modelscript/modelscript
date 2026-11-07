@@ -62,7 +62,10 @@ export interface SimpackForceElement {
   rotationalStiffness?: Vector3D | undefined;
   rotationalDamping?: Vector3D | undefined;
   nonlinearStiffness?: Vector3D | undefined;
+  railProfile?: string | undefined;
+  wheelProfile?: string | undefined;
 }
+
 
 export interface SimpackModel {
   name: string;

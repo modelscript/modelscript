@@ -548,4 +548,32 @@ spring k_prim bogie ws1 1200000 1000000 1500000 15000 12000 20000
     assert.ok(dae.lookupVariable("ws1.fy_creep") >= 0);
     assert.equal(dae.varCount, dae.eqCount, `Expected square DAE (varCount=${dae.varCount}, eqCount=${dae.eqCount})`);
   });
+
+  it("should emit G1007–G1010 for gauge mismatch, hunting conicity risk, discontinuous track cant, and zero axle load", () => {
+    const deck = `
+body bogie 2600 1500 2200 2600 0 0 0.6
+track Mainline 1.435
+track_point 0.0 0.0 0.0
+track_point 0.5 0.15 0.0
+wheelset ws1 1800 1.520 0.46 0.55 S1002
+axle_load ws1 0.0
+`;
+    const model = parseGensysDeck(deck, "RailDiagnosticsCheck");
+    const diags = lintGensysModel(model);
+
+    const g1007 = diags.find((d) => d.code === "G1007");
+    assert.ok(g1007, "Expected G1007 GAUGE_MISMATCH");
+    assert.ok(g1007.message.includes("1.52") && g1007.message.includes("1.435"));
+
+    const g1008 = diags.find((d) => d.code === "G1008");
+    assert.ok(g1008, "Expected G1008 HUNTING_CONICITY_RISK");
+    assert.ok(g1008.message.includes("0.55"));
+
+    const g1009 = diags.find((d) => d.code === "G1009");
+    assert.ok(g1009, "Expected G1009 DISCONTINUOUS_TRACK_CANT");
+
+    const g1010 = diags.find((d) => d.code === "G1010");
+    assert.ok(g1010, "Expected G1010 ZERO_AXLE_LOAD");
+  });
 });
+

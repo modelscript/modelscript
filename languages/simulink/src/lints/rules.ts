@@ -229,6 +229,13 @@ function lintSystem(system: SimulinkSystem, diagnostics: SimulinkDiagnostic[]): 
         message: `Line references non-existent source block '${line.srcBlock}'.`,
         range: line.range ?? DEFAULT_RANGE,
       });
+    } else if (line.srcBlock && line.srcPort <= 0) {
+      diagnostics.push({
+        code: "M7204",
+        severity: "error",
+        message: SimulinkErrorCode.PORT_INDEX_OUT_OF_BOUNDS.message(line.srcBlock, line.srcPort),
+        range: line.range ?? DEFAULT_RANGE,
+      });
     }
 
     if (line.dstBlock && !system.blocks.has(line.dstBlock)) {
@@ -236,6 +243,16 @@ function lintSystem(system: SimulinkSystem, diagnostics: SimulinkDiagnostic[]): 
         code: "M7204",
         severity: "error",
         message: `Line references non-existent destination block '${line.dstBlock}'.`,
+        range: line.range ?? DEFAULT_RANGE,
+      });
+    } else if (line.dstBlock && (line.dstPort ?? 1) <= 0) {
+      diagnostics.push({
+        code: "M7204",
+        severity: "error",
+        message: SimulinkErrorCode.PORT_INDEX_OUT_OF_BOUNDS.message(
+          line.dstBlock,
+          line.dstPort ?? 0,
+        ),
         range: line.range ?? DEFAULT_RANGE,
       });
     }

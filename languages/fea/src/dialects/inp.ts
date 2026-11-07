@@ -268,7 +268,7 @@ export class InpDialect implements FeaDialect {
       } else if (currentSection === "SHELL SECTION") {
         if (tokens.length >= 1 && currentOptions["ELSET"]) {
           const t = parseFloat(tokens[0]!);
-          if (!isNaN(t) && t > 0) {
+          if (!isNaN(t)) {
             data.sectionThickness!.set(currentOptions["ELSET"].toUpperCase(), t);
           }
         }
@@ -287,6 +287,13 @@ export class InpDialect implements FeaDialect {
       } else if (currentSection === "DENSITY" && activeMaterial) {
         if (tokens.length >= 1) {
           activeMaterial.rho = parseFloat(tokens[0]!);
+        }
+      } else if (currentSection === "EXPANSION" && activeMaterial) {
+        if (tokens.length >= 1) {
+          const alphaVal = parseFloat(tokens[0]!);
+          if (!isNaN(alphaVal)) {
+            activeMaterial.alpha = alphaVal;
+          }
         }
       } else if (currentSection === "PLASTIC" && activeMaterial) {
         if (tokens.length >= 1 && activeMaterial.yieldStrength === undefined) {

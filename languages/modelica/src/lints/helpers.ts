@@ -2142,7 +2142,13 @@ export function findComponentClauseForIdent(db: CodeGraph, classNode: u32, ident
   for (const comp of db.ast.getDescendants(classNode, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, classNode, $)) continue;
     for (const decl of db.ast.getDescendants(comp, $.declaration)) {
-      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      let nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode == 0) {
+        for (const id of db.ast.getDescendants(decl, $.identifier)) {
+          nameNode = id;
+          break;
+        }
+      }
       if (nameNode != 0 && db.ast.textEqualsNode(nameNode, identNode)) {
         return comp;
       }
@@ -3958,3 +3964,354 @@ export function isImpureCalledInEquationSection(db: CodeGraph, callNode: u32, $:
   if (calledCls == 0) return false;
   return isClassKind(db, calledCls, "impure");
 }
+
+/**
+ * Checks if a simple_equation accesses a stream variable on its RHS without an enclosing inStream() or actualStream() operator.
+ * Returns the RHS stream variable AST node if invalid, or 0 otherwise.
+ */
+export function getStreamMissingInStreamNode(db: CodeGraph, eqNode: u32, $: any): u32 {
+  let lhs = db.ast.getFirstChild(eqNode);
+  if (lhs == 0) return 0;
+  let rhs: u32 = 0;
+  let sib = db.ast.getNextSibling(lhs);
+  while (sib != 0) {
+    if (!db.ast.textEquals(sib, "=")) {
+      rhs = sib;
+      break;
+    }
+    sib = db.ast.getNextSibling(sib);
+  }
+  if (lhs == 0 || rhs == 0) return 0;
+
+  // Ensure LHS is a single local scalar variable (not a dotted connector member assignment)
+  let lhsIdCount: u32 = 0;
+  for (const _id of db.ast.getDescendants(lhs, $.identifier)) {
+    lhsIdCount++;
+  }
+  if (lhsIdCount != 1) return 0;
+
+  // Skip if RHS contains any function call (such as inStream, actualStream, smooth, etc.)
+  for (const _fc of db.ast.getDescendants(rhs, $.function_call)) return 0;
+  for (const _fca of db.ast.getDescendants(rhs, $.function_call_args)) return 0;
+
+  let encClass: u32 = 0;
+  for (const cls of db.ast.getAncestors(eqNode)) {
+    if (db.ast.getType(cls) == $.class_definition) {
+      encClass = cls;
+      break;
+    }
+  }
+  if (encClass == 0) return 0;
+
+  for (const cr of db.ast.getDescendants(rhs, $.component_reference)) {
+    if (isStreamVariable(db, encClass, cr, $)) {
+      return cr;
+    }
+  }
+  if (isStreamVariable(db, encClass, rhs, $)) {
+    return rhs;
+  }
+  return 0;
+}
+
+/**
+ * Checks if a component_clause mixes 'stream' and 'flow' prefixes directly or via a short class base_prefix.
+ */
+export function isStreamMixedWithFlow(db: CodeGraph, compClause: u32, $: any): boolean {
+  const isStream = hasTypePrefix(db, compClause, "stream", $);
+  const isFlow = hasTypePrefix(db, compClause, "flow", $);
+  if (!isStream && !isFlow) return false;
+  if (isStream && isFlow) return true;
+
+  let typeSpec: u32 = 0;
+  for (const ts of db.ast.getDescendants(compClause, $.type_specifier)) {
+    typeSpec = ts;
+    break;
+  }
+  if (typeSpec == 0) return false;
+  const targetCls = findClassByName(db, typeSpec, $);
+  if (targetCls == 0) return false;
+
+  if ($.base_prefix != 0) {
+    for (const bp of db.ast.getDescendants(targetCls, $.base_prefix)) {
+      if (isStream && db.ast.textEquals(bp, "flow")) return true;
+      if (isFlow && db.ast.textEquals(bp, "stream")) return true;
+    }
+  }
+  if ($.short_class_specifier != 0) {
+    for (const scs of db.ast.getDescendants(targetCls, $.short_class_specifier)) {
+      let ch = db.ast.getFirstChild(scs);
+      while (ch != 0) {
+        if (isStream && db.ast.textEquals(ch, "flow")) return true;
+        if (isFlow && db.ast.textEquals(ch, "stream")) return true;
+        ch = db.ast.getNextSibling(ch);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if an outer component_clause has conflicting input/output causality with a matching inner declaration.
+ * Returns the inner identifier node if a conflict is found, or 0 otherwise.
+ */
+export function getInnerOuterCausalityConflictNode(db: CodeGraph, compClause: u32, $: any): u32 {
+  const outerIsInput = hasTypePrefix(db, compClause, "input", $);
+  const outerIsOutput = hasTypePrefix(db, compClause, "output", $);
+  if (!outerIsInput && !outerIsOutput) return 0;
+  if (!hasElementOrTypePrefix(db, compClause, "outer", $)) return 0;
+
+  let outerId: u32 = 0;
+  for (const decl of db.ast.getDescendants(compClause, $.declaration)) {
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      outerId = id;
+      break;
+    }
+    if (outerId != 0) break;
+  }
+  if (outerId == 0) return 0;
+
+  const root = db.ast.getRootNode();
+  if (root == 0) return 0;
+  for (const otherComp of db.ast.getDescendants(root, $.component_clause)) {
+    if (otherComp == compClause) continue;
+    if (!hasElementOrTypePrefix(db, otherComp, "inner", $)) continue;
+    const innerIsInput = hasTypePrefix(db, otherComp, "input", $);
+    const innerIsOutput = hasTypePrefix(db, otherComp, "output", $);
+    if ((outerIsInput && innerIsOutput) || (outerIsOutput && innerIsInput)) {
+      for (const decl of db.ast.getDescendants(otherComp, $.declaration)) {
+        for (const id of db.ast.getDescendants(decl, $.identifier)) {
+          if (db.ast.textEqualsNode(id, outerId)) {
+            return id;
+          }
+          break;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * Checks if a protected parameter in a concrete, self-contained model with equations is never referenced.
+ * Returns the parameter's identifier node if unused, or 0 otherwise.
+ */
+export function getUnusedProtectedParameterNode(db: CodeGraph, compClause: u32, $: any): u32 {
+  if (!hasTypePrefix(db, compClause, "parameter", $)) return 0;
+  if (!isElementProtected(db, compClause, $)) return 0;
+  if (isOldFrontendActive(db, $)) return 0;
+
+  let encClass: u32 = 0;
+  for (const cls of db.ast.getAncestors(compClause)) {
+    if (db.ast.getType(cls) == $.class_definition) {
+      encClass = cls;
+      break;
+    }
+  }
+  if (encClass == 0) return 0;
+  if (isClassKind(db, encClass, "partial")) return 0;
+  if (!isClassKind(db, encClass, "model") && !isClassKind(db, encClass, "block")) return 0;
+
+  // Ensure the class has no extends_clause and has at least one equation
+  for (const _ext of db.ast.getDescendants(encClass, $.extends_clause)) {
+    return 0;
+  }
+  let hasEquation = false;
+  for (const _eq of db.ast.getDescendants(encClass, $.simple_equation)) {
+    hasEquation = true;
+    break;
+  }
+  if (!hasEquation) return 0;
+
+  let paramId: u32 = 0;
+  for (const decl of db.ast.getDescendants(compClause, $.declaration)) {
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      paramId = id;
+      break;
+    }
+    if (paramId != 0) break;
+  }
+  if (paramId == 0) return 0;
+
+  let refCount: u32 = 0;
+  for (const id of db.ast.getDescendants(encClass, $.identifier)) {
+    if (db.ast.textEqualsNode(id, paramId)) {
+      refCount++;
+      if (refCount > 1) return 0;
+    }
+  }
+  return refCount == 1 ? paramId : 0;
+}
+
+/**
+ * Checks if a simple_equation inside a when_equation directly assigns to a continuous-time state variable
+ * (a variable differentiated via der(x) in the enclosing class) instead of using reinit(x, expr).
+ */
+export function getContinuousStateInWhenNode(db: CodeGraph, eqNode: u32, $: any): u32 {
+  let inWhen = false;
+  for (const anc of db.ast.getAncestors(eqNode)) {
+    if (db.ast.getType(anc) == $.when_equation) {
+      inWhen = true;
+      break;
+    }
+  }
+  if (!inWhen) return 0;
+
+  let lhs = db.ast.getChildByFieldId(eqNode, "lhs");
+  if (lhs == 0) lhs = db.ast.getFirstChild(eqNode);
+  if (lhs == 0) return 0;
+
+  // Ignore function call equations such as reinit(x, ...), assert(...), terminate(...)
+  if (db.ast.getType(lhs) == $.function_call || getCallCalleeNode(db, lhs, $) != 0) return 0;
+  for (const _fc of db.ast.getDescendants(lhs, $.function_call)) return 0;
+  for (const p of db.ast.getDescendants(lhs, $.primary)) {
+    if (getCallCalleeNode(db, p, $) != 0) return 0;
+  }
+
+  let lhsIdCount: u32 = 0;
+  let lhsId: u32 = 0;
+  for (const id of db.ast.getDescendants(lhs, $.identifier)) {
+    lhsIdCount++;
+    if (lhsId == 0) lhsId = id;
+  }
+  if (lhsIdCount != 1 || lhsId == 0) return 0;
+
+  let encClass: u32 = 0;
+  for (const cls of db.ast.getAncestors(eqNode)) {
+    if (db.ast.getType(cls) == $.class_definition) {
+      encClass = cls;
+      break;
+    }
+  }
+  if (encClass == 0) return 0;
+
+  // Check if lhsId is differentiated via der(lhsId) anywhere in encClass (either on LHS or RHS)
+  if ($.lhs_primary != 0) {
+    for (const lp of db.ast.getDescendants(encClass, $.lhs_primary)) {
+      if (db.ast.startsWith(lp, "der(")) {
+        for (const id of db.ast.getDescendants(lp, $.identifier)) {
+          if (db.ast.textEqualsNode(id, lhsId)) {
+            return lhsId;
+          }
+          break;
+        }
+      }
+    }
+  }
+  for (const p of db.ast.getDescendants(encClass, $.primary)) {
+    if (db.ast.startsWith(p, "der(")) {
+      for (const id of db.ast.getDescendants(p, $.identifier)) {
+        if (db.ast.textEqualsNode(id, lhsId)) {
+          return lhsId;
+        }
+        break;
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * Checks if a transition(...) call has an invalid priority (<= 0) or duplicate priority from the same source state.
+ */
+export function getInvalidTransitionPriorityNode(db: CodeGraph, callNode: u32, $: any): u32 {
+  const name = getCallCalleeNode(db, callNode, $);
+  if (name == 0 || !db.ast.textEquals(name, "transition")) return 0;
+
+  // Check named arguments: priority = <expr>
+  if ($.named_argument != 0) {
+    for (const na of db.ast.getDescendants(callNode, $.named_argument)) {
+      let firstId: u32 = 0;
+      for (const id of db.ast.getDescendants(na, $.identifier)) {
+        firstId = id;
+        break;
+      }
+      if (firstId != 0 && db.ast.textEquals(firstId, "priority")) {
+        let valNode: u32 = 0;
+        let ch = db.ast.getFirstChild(na);
+        while (ch != 0) {
+          valNode = ch;
+          ch = db.ast.getNextSibling(ch);
+        }
+        if (valNode != 0 && (db.ast.textEquals(valNode, "0") || db.ast.startsWith(valNode, "-"))) {
+          return valNode;
+        }
+      }
+    }
+  }
+
+  // Check positional arguments (4th or 7th positional argument is priority)
+  let argIdx: u32 = 0;
+  let fromArg: u32 = 0;
+  let prioArg: u32 = 0;
+  for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
+    let directCall: u32 = 0;
+    for (const anc of db.ast.getAncestors(arg, 0, callNode)) {
+      if (anc != arg) {
+        const t = db.ast.getType(anc);
+        if (t == $.function_call || (t == $.primary && getCallCalleeNode(db, anc, $) != 0)) {
+          directCall = anc;
+          break;
+        }
+      }
+    }
+    if (directCall != callNode) continue;
+    argIdx++;
+    if (argIdx == 1) fromArg = arg;
+    if (argIdx == 4 || argIdx == 7) {
+      if (db.ast.textEquals(arg, "0") || db.ast.startsWith(arg, "-")) {
+        return arg;
+      }
+      prioArg = arg;
+    }
+  }
+
+  // Check for duplicate priority exiting the same 'from' state in the same equation_section
+  if (fromArg != 0 && prioArg != 0 && $.equation_section != 0) {
+    for (const anc of db.ast.getAncestors(callNode, 0)) {
+      if (db.ast.getType(anc) == $.equation_section) {
+        for (const fc of db.ast.getDescendants(anc, $.function_call)) {
+          if (fc == callNode) continue;
+          const fn = getCallCalleeNode(db, fc, $);
+          if (fn == 0 || !db.ast.textEquals(fn, "transition")) continue;
+          let idx2: u32 = 0;
+          let from2: u32 = 0;
+          let prio2: u32 = 0;
+          for (const a2 of db.ast.getDescendants(fc, $.function_argument)) {
+            idx2++;
+            if (idx2 == 1) from2 = a2;
+            if (idx2 == 4 || idx2 == 7) prio2 = a2;
+          }
+          if (from2 != 0 && prio2 != 0 && db.ast.textEqualsNode(fromArg, from2) && db.ast.textEqualsNode(prioArg, prio2)) {
+            return prioArg;
+          }
+        }
+        break;
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * Checks if firstTick() or interval() is applied to continuous 'time', a numeric literal, or a parameter/constant variable.
+ */
+export function getNonClockedOperatorArgNode(db: CodeGraph, callNode: u32, $: any): u32 {
+  let firstArg: u32 = 0;
+  for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
+    firstArg = arg;
+    break;
+  }
+  if (firstArg == 0) return 0;
+  if (isPreviousOnNonClocked(db, callNode, $)) return firstArg;
+  for (const _num of db.ast.getDescendants(firstArg, $.unsigned_number)) {
+    let hasId = false;
+    for (const _id of db.ast.getDescendants(firstArg, $.identifier)) {
+      hasId = true;
+      break;
+    }
+    if (!hasId) return firstArg;
+  }
+  return 0;
+}
+

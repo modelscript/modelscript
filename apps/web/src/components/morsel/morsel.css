@@ -102,6 +102,7 @@
   justify-content: center;
   flex-shrink: 0;
   line-height: 0;
+  overflow: hidden !important;
 }
 
 .modelica-icon svg,
@@ -109,7 +110,7 @@
   width: 100% !important;
   height: 100% !important;
   display: block;
-  overflow: visible !important;
+  overflow: hidden !important;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -217,3 +218,68 @@ svg[class*="Spinner"] {
     transform: scale(1);
   }
 }
+
+.morsel-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, color 0.12s ease;
+  user-select: none;
+}
+
+.morsel-menu-item:hover,
+.morsel-menu-item:focus-visible {
+  background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
+}
+
+.morsel-toolbar-btn {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 3px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ms-text-2, var(--color-fg-muted));
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.morsel-toolbar-btn:hover,
+.morsel-toolbar-btn:focus-visible {
+  background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
+  color: var(--ms-text-1, var(--color-fg-default)) !important;
+}
+
+.morsel-toolbar-btn-text {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ms-text-1, var(--color-fg-default));
+  cursor: pointer;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.12s ease;
+}
+
+.morsel-toolbar-btn-text:hover,
+.morsel-toolbar-btn-text:focus-visible {
+  background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
+}
+

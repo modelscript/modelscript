@@ -194,6 +194,13 @@ export const SysML2ErrorCode = {
     message: (lower: string, upper: string) =>
       `Invalid multiplicity bounds: lower bound (${lower}) cannot be greater than upper bound (${upper}).`,
   },
+  MULTIPLICITY_LOWER_GT_UPPER: {
+    code: 3004,
+    rule: "multiplicity-lower-gt-upper",
+    severity: "error" as DiagnosticSeverity,
+    message: (lower: string, upper: string) =>
+      `Invalid multiplicity bounds: lower bound (${lower}) cannot be greater than upper bound (${upper}).`,
+  },
   TARGET_NOT_REQUIREMENT: {
     code: 3005,
     rule: "target-not-requirement",
@@ -206,11 +213,31 @@ export const SysML2ErrorCode = {
     severity: "error" as DiagnosticSeverity,
     message: (target: string) => `Target '${target}' is not a Requirement`,
   },
+  SATISFY_TARGET_NOT_REQUIREMENT: {
+    code: 3005,
+    rule: "satisfy-target-not-requirement",
+    severity: "error" as DiagnosticSeverity,
+    message: (target: string) => `Target '${target}' is not a Requirement`,
+  },
   VERIFY_TARGET_NOT_A_REQUIREMENT: {
     code: 3006,
     rule: "verify-target-not-a-requirement",
     severity: "error" as DiagnosticSeverity,
     message: (target: string) => `Verify target '${target}' is not a Requirement`,
+  },
+  PORT_CONJUGATION_MISMATCH: {
+    code: 3008,
+    rule: "port-conjugation-mismatch",
+    severity: "error" as DiagnosticSeverity,
+    message: (sourceName: string, targetName: string, portType: string) =>
+      `Port conjugation mismatch between '${sourceName}' and '${targetName}' of port type '${portType}'.`,
+  },
+  BINDING_CONNECTOR_TYPE_MISMATCH: {
+    code: 3009,
+    rule: "binding-connector-type-mismatch",
+    severity: "error" as DiagnosticSeverity,
+    message: (sourceName: string, sourceType: string, targetName: string, targetType: string) =>
+      `Binding connector type mismatch between '${sourceName}' (${sourceType}) and '${targetName}' (${targetType}).`,
   },
 
   // ── 4xxx: Structural & Metamodel Semantics ──────────────────────────────
@@ -286,6 +313,19 @@ export const SysML2ErrorCode = {
     severity: "warning" as DiagnosticSeverity,
     message: (name: string, pkgName: string) =>
       `Requirement '${name}' is not verified by any verification case in package '${pkgName}'`,
+  },
+  CALC_RETURN_MISSING: {
+    code: 4012,
+    rule: "calc-return-missing",
+    severity: "warning" as DiagnosticSeverity,
+    message: (name: string) => `Calculation '${name}' has a body without a return parameter or result expression.`,
+  },
+  EXPOSE_TARGET_INVALID: {
+    code: 4013,
+    rule: "expose-target-invalid",
+    severity: "error" as DiagnosticSeverity,
+    message: (target: string, viewName: string) =>
+      `Exposed target '${target}' in view '${viewName}' could not be resolved.`,
   },
 
   // ── 5xxx: Behavior, State Machines & Formal Verification ────────────────
@@ -407,6 +447,48 @@ export const SysML2ErrorCode = {
     rule: "activity-safety-violation",
     severity: "error" as DiagnosticSeverity,
     message: (detail: string) => detail,
+  },
+  UNSATISFIED_CRITICAL_REQUIREMENT: {
+    code: 4017,
+    rule: "unsatisfied-critical-requirement",
+    severity: "warning" as DiagnosticSeverity,
+    message: (reqName: string) =>
+      `Critical requirement '${reqName}' has no incoming satisfy or verify relationship.`,
+  },
+  CIRCULAR_PORT_DELEGATION: {
+    code: 4018,
+    rule: "circular-port-delegation",
+    severity: "error" as DiagnosticSeverity,
+    message: (portName: string) =>
+      `Port '${portName}' delegation connection chain contains a cyclic dependency.`,
+  },
+  INCOMPATIBLE_FLOW_DIMENSIONS: {
+    code: 4019,
+    rule: "incompatible-flow-dimensions",
+    severity: "error" as DiagnosticSeverity,
+    message: (sourceFlow: string, targetFlow: string) =>
+      `Flow connection links incompatible physical dimensions ('${sourceFlow}' to '${targetFlow}').`,
+  },
+  DEAD_STATE_TRANSITION: {
+    code: 5017,
+    rule: "dead-state-transition",
+    severity: "warning" as DiagnosticSeverity,
+    message: (transName: string) =>
+      `State transition '${transName}' guard condition is tautologically false.`,
+  },
+  NON_DETERMINISTIC_TRANSITIONS: {
+    code: 5018,
+    rule: "non-deterministic-transitions",
+    severity: "warning" as DiagnosticSeverity,
+    message: (stateName: string) =>
+      `State '${stateName}' has overlapping, unprioritized outgoing transition guards.`,
+  },
+  STATE_TRANSITION_UNREACHABLE: {
+    code: 5019,
+    rule: "state-transition-unreachable",
+    severity: "warning" as DiagnosticSeverity,
+    message: (transName: string, stateName: string) =>
+      `State transition '${transName}' originates from unreachable state '${stateName}'.`,
   },
 } as const;
 

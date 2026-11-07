@@ -24,6 +24,7 @@ export interface ComputeSolderDotsOptions {
   cellSize?: number | undefined;
   tolerance?: number | undefined;
   portPoints?: { x: number; y: number }[] | undefined;
+  componentBoxes?: { x: number; y: number; width: number; height: number }[] | undefined;
 }
 
 /**
@@ -272,6 +273,23 @@ function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderD
       if (isAtPort) continue;
     }
 
+    // Exclude clusters located strictly inside component bounding boxes
+    if (opts.componentBoxes && opts.componentBoxes.length > 0) {
+      let insideBox = false;
+      for (const box of opts.componentBoxes) {
+        if (
+          C.x > box.x + 1 &&
+          C.x < box.x + box.width - 1 &&
+          C.y > box.y + 1 &&
+          C.y < box.y + box.height - 1
+        ) {
+          insideBox = true;
+          break;
+        }
+      }
+      if (insideBox) continue;
+    }
+
     const cgx = Math.floor(C.x / cellSize);
     const cgy = Math.floor(C.y / cellSize);
 
@@ -427,11 +445,16 @@ export interface WireCrossing {
 export function computeWireCrossings(
   edges: EdgePath[],
   solderDots: SolderDot[],
-  options: { portPoints?: { x: number; y: number }[]; tolerance?: number } = {},
+  options: {
+    portPoints?: { x: number; y: number }[];
+    tolerance?: number;
+    componentBoxes?: { x: number; y: number; width: number; height: number }[];
+  } = {},
 ): WireCrossing[] {
   const tolerance = options.tolerance ?? 4.0;
   const tolSq = tolerance * tolerance;
   const portPoints = options.portPoints ?? [];
+  const componentBoxes = options.componentBoxes ?? [];
 
   interface OrthoSeg {
     edgeId: string;
@@ -512,6 +535,23 @@ export function computeWireCrossings(
         }
       }
       if (atPort) continue;
+
+      // Exclude if inside any component box
+      if (componentBoxes.length > 0) {
+        let insideBox = false;
+        for (const box of componentBoxes) {
+          if (
+            cx > box.x + 1 &&
+            cx < box.x + box.width - 1 &&
+            cy > box.y + 1 &&
+            cy < box.y + box.height - 1
+          ) {
+            insideBox = true;
+            break;
+          }
+        }
+        if (insideBox) continue;
+      }
 
       const key = `${Math.round(cx)}:${Math.round(cy)}`;
       if (seenCrossingKeys.has(key)) continue;

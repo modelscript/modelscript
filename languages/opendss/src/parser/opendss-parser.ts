@@ -111,6 +111,31 @@ export function parseArrayValues(raw: string): string[] {
 }
 
 /**
+ * Parse a matrix from an OpenDSS string: e.g. "0.1 | 0.05 0.1"
+ */
+export function parseMatrixValues(raw: string): number[][] {
+  let s = raw.trim();
+  if ((s.startsWith("[") && s.endsWith("]")) || (s.startsWith("(") && s.endsWith(")"))) {
+    s = s.slice(1, -1).trim();
+  }
+  const rows: number[][] = [];
+  let rowStart = 0;
+  for (let i = 0; i <= s.length; i++) {
+    if (i === s.length || s[i] === "|") {
+      const rowStr = s.slice(rowStart, i).trim();
+      if (rowStr.length > 0) {
+        const nums = parseArrayValues(rowStr)
+          .map((v) => parseFloat(v))
+          .filter((v) => !Number.isNaN(v));
+        if (nums.length > 0) rows.push(nums);
+      }
+      rowStart = i + 1;
+    }
+  }
+  return rows;
+}
+
+/**
  * Zero-regex parser for EPRI OpenDSS distribution circuit files (.dss).
  */
 export function parseOpenDss(content: string, filename?: string): DssDeck {
@@ -254,6 +279,10 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const r0 = r0Raw !== undefined ? parseFloat(r0Raw) : undefined;
         const x0 = x0Raw !== undefined ? parseFloat(x0Raw) : undefined;
         const c0 = c0Raw !== undefined ? parseFloat(c0Raw) : undefined;
+        const rmatrixRaw = props.get("rmatrix");
+        const xmatrixRaw = props.get("xmatrix");
+        const rmatrix = rmatrixRaw !== undefined ? parseMatrixValues(rmatrixRaw) : undefined;
+        const xmatrix = xmatrixRaw !== undefined ? parseMatrixValues(xmatrixRaw) : undefined;
 
         linesMap.set(elemName, {
           name: elemName,
@@ -271,6 +300,8 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           r0,
           x0,
           c0,
+          rmatrix,
+          xmatrix,
           range,
         });
       } else if (elemClass === "transformer") {

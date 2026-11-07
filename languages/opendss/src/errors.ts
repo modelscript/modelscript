@@ -12,32 +12,18 @@ export const OpenDssErrorCode = {
       `${elemType} '${elemName}' references undefined bus node '${busName}'.`,
   },
   PHASE_COUNT_MISMATCH: {
-    code: 8402,
+    code: 8409,
     rule: "phase-count-mismatch",
     severity: "error" as const,
     message: (elemName: string, elemPhases: number, busName: string, busPhases: number) =>
       `Element '${elemName}' (${elemPhases} phases) connected to bus '${busName}' with different phase count (${busPhases}).`,
   },
-  TRANSFORMER_IMPEDANCE_ZERO: {
-    code: 8402,
-    rule: "transformer-impedance-zero",
-    severity: "error" as const,
-    message: (xfmrName: string, xhl: number) =>
-      `Transformer '${xfmrName}' specifies non-positive leakage reactance (xhl=${xhl}); must be > 0.`,
-  },
   TRANSFORMER_VOLTAGE_MISMATCH: {
-    code: 8403,
+    code: 8410,
     rule: "transformer-voltage-mismatch",
     severity: "warning" as const,
     message: (xfmrName: string, winding: number, kv: number, busKv: number) =>
       `Transformer '${xfmrName}' winding ${winding} rated voltage (${kv.toFixed(2)} kV) differs from nominal bus voltage (${busKv.toFixed(2)} kV).`,
-  },
-  LOAD_PF_OUT_OF_RANGE: {
-    code: 8403,
-    rule: "load-pf-out-of-range",
-    severity: "warning" as const,
-    message: (loadName: string, pf: number) =>
-      `Load '${loadName}' specifies power factor (${pf}) outside valid range (0 < |pf| <= 1.0).`,
   },
   REVERSE_POWER_HOSTING_RISK: {
     code: 8404,
@@ -70,5 +56,38 @@ export const OpenDssErrorCode = {
     rule: "missing-line-code",
     severity: "error" as const,
     message: (lineName: string, codeName: string) => `Line '${lineName}' references undefined LineCode '${codeName}'.`,
+  },
+  TRANSFORMER_IMPEDANCE_ZERO: {
+    code: 8402,
+    rule: "transformer-impedance-zero",
+    severity: "error" as const,
+    message: (xfmrName: string, xhl: number) =>
+      `Transformer '${xfmrName}' specifies non-positive leakage reactance (xhl=${xhl}); must be > 0.`,
+  },
+  LOAD_PF_OUT_OF_RANGE: {
+    code: 8403,
+    rule: "load-pf-out-of-range",
+    severity: "warning" as const,
+    message: (loadName: string, pf: number) =>
+      `Load '${loadName}' specifies power factor (${pf}) outside valid range (0 < |pf| <= 1.0).`,
+  },
+  ISOLATED_ISLAND_NO_SLACK: {
+    code: 8411,
+    rule: "isolated-island-no-slack",
+    severity: "error" as const,
+    message: () => "Distribution subnetwork island has no reference slack bus or grid-forming inverter.",
+  },
+  NON_POSITIVE_DEFINITE_ZMATRIX: {
+    code: 8412,
+    rule: "non-positive-definite-zmatrix",
+    severity: "error" as const,
+    message: (lineName: string) => `Line '${lineName}' impedance matrix is not positive-definite.`,
+  },
+  CAPACITOR_OVERVOLTAGE_RISK: {
+    code: 8413,
+    rule: "capacitor-overvoltage-risk",
+    severity: "warning" as const,
+    message: (capName: string, kvar: number, loadKvar: number) =>
+      `Capacitor bank '${capName}' kVAR rating (${kvar}) exceeds feeder minimum load (${loadKvar}), risking overvoltage.`,
   },
 } as const;

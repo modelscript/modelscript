@@ -1029,6 +1029,7 @@ function normalizeComponent(raw: Record<string, unknown>, locator: SourceLocator
       : undefined;
 
   const ctrlImplsRaw = asArray(raw["control-implementations"] ?? raw["controlImplementations"]);
+  const respRolesRaw = asArray(raw["responsible-roles"] ?? raw["responsibleRoles"]);
 
   return {
     uuid,
@@ -1038,6 +1039,13 @@ function normalizeComponent(raw: Record<string, unknown>, locator: SourceLocator
     status,
     props: normalizeProps(raw["props"]),
     protocols,
+    responsibleRoles:
+      respRolesRaw.length > 0
+        ? respRolesRaw.map((rr) => ({
+            roleId: asString(rr["role-id"] ?? rr["roleId"]),
+            partyUuids: asStringArray(rr["party-uuids"] ?? rr["partyUuids"]),
+          }))
+        : undefined,
     controlImplementations:
       ctrlImplsRaw.length > 0
         ? ctrlImplsRaw.map((ci) => ({
@@ -1141,12 +1149,34 @@ function normalizeObjectToOscal(rootObj: Record<string, unknown>, locator: Sourc
 
   const uuid = asString(body["uuid"]);
   const metaRaw = (body["metadata"] as Record<string, unknown> | undefined) ?? {};
+  const rolesRaw = asArray(metaRaw["roles"]);
+  const partiesRaw = asArray(metaRaw["parties"]);
+  const respPartiesRaw = asArray(metaRaw["responsible-parties"] ?? metaRaw["responsibleParties"]);
   const metadata: OscalMetadata = {
     title: asString(metaRaw["title"], "Untitled OSCAL Document"),
     version: asString(metaRaw["version"], "1.0.0"),
     oscalVersion: asOptionalString(metaRaw["oscal-version"] ?? metaRaw["oscalVersion"]) ?? "1.1.2",
     lastModified: asOptionalString(metaRaw["last-modified"] ?? metaRaw["lastModified"]),
     published: asOptionalString(metaRaw["published"]),
+    roles:
+      rolesRaw.length > 0
+        ? rolesRaw.map((r) => ({ id: asString(r["id"]), title: asString(r["title"]) }))
+        : undefined,
+    parties:
+      partiesRaw.length > 0
+        ? partiesRaw.map((p) => ({
+            uuid: asString(p["uuid"]),
+            type: asString(p["type"], "organization"),
+            name: asString(p["name"]),
+          }))
+        : undefined,
+    responsibleParties:
+      respPartiesRaw.length > 0
+        ? respPartiesRaw.map((rp) => ({
+            roleId: asString(rp["role-id"] ?? rp["roleId"]),
+            partyUuids: asStringArray(rp["party-uuids"] ?? rp["partyUuids"]),
+          }))
+        : undefined,
     props: normalizeProps(metaRaw["props"]),
     range: locator.findValueRange(asString(metaRaw["title"], "metadata")),
   };
@@ -1281,6 +1311,13 @@ function normalizeObjectToOscal(rootObj: Record<string, unknown>, locator: Sourc
     | Record<string, unknown>
     | undefined;
   if (sysCharRaw && typeof sysCharRaw === "object") {
+    const authBoundRaw = sysCharRaw["authorization-boundary"] ?? sysCharRaw["authorizationBoundary"];
+    const authBound =
+      typeof authBoundRaw === "string"
+        ? authBoundRaw
+        : authBoundRaw && typeof authBoundRaw === "object"
+          ? asString((authBoundRaw as Record<string, unknown>)["description"], "authorization-boundary")
+          : undefined;
     doc.systemCharacteristics = {
       systemIds: asStringArray(sysCharRaw["system-ids"] ?? sysCharRaw["systemIds"]),
       systemName: asString(sysCharRaw["system-name"] ?? sysCharRaw["systemName"], "Unnamed System"),
@@ -1289,9 +1326,7 @@ function normalizeObjectToOscal(rootObj: Record<string, unknown>, locator: Sourc
         sysCharRaw["security-sensitivity-level"] ?? sysCharRaw["securitySensitivityLevel"],
       ) as "low" | "moderate" | "high" | undefined,
       status: asOptionalString(sysCharRaw["status"]),
-      authorizationBoundary: asOptionalString(
-        sysCharRaw["authorization-boundary"] ?? sysCharRaw["authorizationBoundary"],
-      ),
+      authorizationBoundary: authBound,
     };
   }
 

@@ -97,6 +97,27 @@ export const PsseErrorCode = {
     message: (ckt: string, fromBus: number, toBus: number, ratio: number) =>
       `Transformer '${ckt}' between bus ${fromBus} and ${toBus} has off-nominal tap ratio ${ratio} outside typical limits [0.7, 1.3].`,
   },
+  SUBSTATION_VOLTAGE_VIOLATION_NERC: {
+    code: "P2005",
+    rule: "substation-voltage-violation-nerc",
+    severity: "warning" as const,
+    message: (busId: number, vm: number) =>
+      `Bus ${busId} voltage magnitude (${vm.toFixed(3)} pu) violates NERC standard transmission bounds [0.90, 1.10 pu].`,
+  },
+  ZERO_INERTIA_DYNAMIC_BUS: {
+    code: "P3004",
+    rule: "zero-inertia-dynamic-bus",
+    severity: "error" as const,
+    message: (busId: number) =>
+      `Synchronous machine dynamic record at bus ${busId} specifies zero inertia constant (H <= 0).`,
+  },
+  BRANCH_THERMAL_RATING_ZERO: {
+    code: "P4004",
+    rule: "branch-thermal-rating-zero",
+    severity: "warning" as const,
+    message: (ckt: string, fromBus: number, toBus: number) =>
+      `Transmission branch '${ckt}' between bus ${fromBus} and ${toBus} has zero MVA thermal rating.`,
+  },
 } as const;
 
 export type PsseErrorCodeKey = keyof typeof PsseErrorCode;

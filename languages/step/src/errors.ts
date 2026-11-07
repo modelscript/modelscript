@@ -54,6 +54,48 @@ export const StepErrorCode = {
     message: (schema: string) =>
       `Application Protocol schema '${schema}' may not support complete PMI or B-Rep extraction.`,
   },
+  NON_MANIFOLD_EDGE: {
+    code: 1009,
+    rule: "non-manifold-edge",
+    severity: "error" as const,
+    message: (edgeId: number | string) =>
+      `Edge '#${edgeId}' is shared by more than two faces without a manifold partition.`,
+  },
+  OPEN_SOLID_SHELL: {
+    code: 1010,
+    rule: "open-solid-shell",
+    severity: "error" as const,
+    message: (shellId: number | string) =>
+      `Manifold solid Brep shell '#${shellId}' is open (not watertight).`,
+  },
+  DEGENERATE_FACE_NORMAL: {
+    code: 1011,
+    rule: "degenerate-face-normal",
+    severity: "error" as const,
+    message: (surfaceId: number | string) =>
+      `Face surface '#${surfaceId}' normal vector has zero magnitude.`,
+  },
+  VERTEX_TOLERANCE_GAP: {
+    code: 1012,
+    rule: "vertex-tolerance-gap",
+    severity: "warning" as const,
+    message: (v1: number | string, v2: number | string, gap: number) =>
+      `Distance between vertices '#${v1}' and '#${v2}' (${gap}m) exceeds AP242 tolerance.`,
+  },
+  SELF_INTERSECTING_WIRE: {
+    code: 1013,
+    rule: "self-intersecting-wire",
+    severity: "error" as const,
+    message: (wireId: number | string) =>
+      `Face boundary loop wire '#${wireId}' intersects itself.`,
+  },
+  UNREFERENCED_PRESENTATION_ITEM: {
+    code: 1014,
+    rule: "unreferenced-presentation-item",
+    severity: "warning" as const,
+    message: (styleId: number | string) =>
+      `Geometric presentation style assignment '#${styleId}' references unlinked item.`,
+  },
 } as const;
 
 export type StepErrorCodeKey = keyof typeof StepErrorCode;

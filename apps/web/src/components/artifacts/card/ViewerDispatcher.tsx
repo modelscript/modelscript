@@ -107,6 +107,9 @@ export function getViewerExpectedHeight(
       return "420px";
     case "ssp":
     case "ssd":
+    case "urdf":
+    case "sdf":
+    case "xacro":
       return "520px";
     case "sysml":
     case "sysml2":
@@ -495,6 +498,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="URDF Robotics Mechanism"
             placeholderType="cad"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <UrdfViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />

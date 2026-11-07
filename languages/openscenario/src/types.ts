@@ -82,13 +82,14 @@ export interface SpeedActionDynamics {
 
 export interface ScenarioAction {
   name?: string | undefined;
-  kind: "teleport" | "speed" | "laneChange" | "routing";
+  kind: "teleport" | "speed" | "longitudinalDistance" | "laneChange" | "routing";
   entityRef: string;
   targetSpeed?: number | undefined; // m/s
   speedDynamics?: SpeedActionDynamics | undefined;
   targetLane?: number | undefined;
   dynamicsDuration?: number | undefined; // seconds for lane change dynamics
   targetPosition?: ScenarioPosition | undefined;
+  waypoints?: ScenarioWorldPosition[] | undefined;
   range?: OpenScenarioRange | undefined;
 }
 

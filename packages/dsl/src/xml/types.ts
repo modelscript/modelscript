@@ -32,11 +32,18 @@ export interface XmlElement {
   parent: XmlElement | null;
 }
 
+export interface XmlSyntaxError {
+  start: number;
+  end: number;
+  code?: string;
+  message?: string;
+}
+
 export interface XmlDocument {
   source: string;
   root: XmlElement | null;
   /** Syntax-error ranges; empty when the document is well formed. */
-  errors: { start: number; end: number }[];
+  errors: XmlSyntaxError[];
 }
 
 export interface Splice {

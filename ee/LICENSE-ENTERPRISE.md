@@ -1,6 +1,6 @@
 # ModelScript Enterprise License (`LicenseRef-ModelScript-Enterprise`)
 
-Copyright (c) 2026 Mohamad Omar Nachawati / ModelScript. All rights reserved.
+Copyright © 2025-2026 Mohamad Omar Nachawati. All rights reserved.
 
 This software directory (`ee/`, `@modelscript/ee`) and all files bearing the SPDX identifier `LicenseRef-ModelScript-Enterprise` constitute the **ModelScript Enterprise Edition ("Enterprise Software")**.
 

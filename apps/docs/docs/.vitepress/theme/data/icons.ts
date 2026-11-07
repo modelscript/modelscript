@@ -8,22 +8,23 @@
  */
 export const ICONS = {
   plane:
-    '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
-  car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+    '<path d="M21 3 14.5 9.5 20 18l-2 1.5-6.5-6.5-4 4 .5 3.5L6.5 22l-2-3.5L1 16.5 2.5 15l3.5.5 4-4L3.5 5 5 3l8.5 5.5L20 2c.6-.4 1.4.4 1 1Z"/>',
+  car: '<path d="M3 14.5V12a2 2 0 0 1 1.2-1.84L6 9.4l2.1-2.52A2 2 0 0 1 9.64 6h5.72a2 2 0 0 1 1.54.72L19 9.4l1.8.76A2 2 0 0 1 22 12v2.5a1.5 1.5 0 0 1-1.5 1.5H19"/><path d="M5 16H3.5A1.5 1.5 0 0 1 2 14.5"/><path d="M9 16h6"/><circle cx="7" cy="16" r="2"/><circle cx="17" cy="16" r="2"/>',
   train:
-    '<path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="m9 15-1-1"/><path d="m15 15 1-1"/><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="m8 19-2 3"/><path d="m16 19 2 3"/>',
-  anchor: '<path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/>',
-  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+    '<path d="M9 3h6l-3 3-3-3Z"/><path d="M6 6h12a3 3 0 0 1 3 3v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a3 3 0 0 1 3-3Z"/><path d="M3 12h18"/><path d="M7.5 15.5h.01"/><path d="M16.5 15.5h.01"/><path d="m7 19-2 3"/><path d="m17 19 2 3"/><path d="M4 21h16"/>',
+  anchor:
+    '<circle cx="12" cy="4.5" r="2.5"/><path d="M12 7v14"/><path d="M8.5 10.5h7"/><path d="M5 14H3a9 9 0 0 0 18 0h-2"/><path d="m3 14 2.5-2"/><path d="m21 14-2.5-2"/>',
+  zap: '<path d="M13 2 4.5 13.5h6L9.5 22 19.5 10.5h-6L13 2Z"/><path d="M2 7h3"/><path d="M19 7h3"/><path d="M2 17h3"/><path d="M19 17h3"/>',
   flame:
-    '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
-  atom: '<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>',
+    '<path d="M12 2.5c1.5 3.2 4.5 5.3 6 8.2a6.8 6.8 0 0 1-12 6.3C4.8 14.5 5.4 11 7.5 8.8c.5 1.5 1.5 2.2 2.2 2.2-.4-2.8.4-5.8 2.3-8.5Z"/><path d="M12 20.5a3 3 0 0 0 3-3c0-1.6-1.2-2.8-3-4.3-1.8 1.5-3 2.7-3 4.3a3 3 0 0 0 3 3Z"/><path d="M4 21.5h16"/>',
+  atom: '<circle cx="12" cy="12" r="1.75"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(30 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(-30 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(90 12 12)"/>',
   building:
-    '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
-  cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
-  bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+    '<path d="M6 21V4a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 18 4v17"/><path d="M2 21V11a1 1 0 0 1 1-1h3"/><path d="M22 21V9a1 1 0 0 0-1-1h-3"/><path d="M1.5 21h21"/><path d="M9.5 6.5h5"/><path d="M9.5 10h5"/><path d="M9.5 13.5h5"/><path d="M10 21v-4h4v4"/>',
+  cpu: '<rect width="14" height="14" x="5" y="5" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M9 2v3"/><path d="M12 2v3"/><path d="M15 2v3"/><path d="M9 19v3"/><path d="M12 19v3"/><path d="M15 19v3"/><path d="M2 9h3"/><path d="M2 12h3"/><path d="M2 15h3"/><path d="M19 9h3"/><path d="M19 12h3"/><path d="M19 15h3"/>',
+  bot: '<path d="M4 21h16"/><path d="M7 21v-3a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><circle cx="9" cy="13" r="2"/><circle cx="14" cy="6" r="2"/><path d="m10.4 11.4 2.4-3.8"/><path d="m15.9 6.6 3.1 1.9"/><path d="M19 8.5 21.5 7"/><path d="M19 8.5 20.5 11"/>',
   flask:
-    '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>',
-  dna: '<path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="m20 9 .891.891"/><path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/><path d="m7 18 2.891 2.891"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>',
+    '<path d="M9.5 2.5v6.2a2 2 0 0 1-.24.95L4.5 18.8A2 2 0 0 0 6.28 21.5h11.44a2 2 0 0 0 1.78-2.7l-4.76-9.15a2 2 0 0 1-.24-.95V2.5"/><path d="M8 2.5h8"/><path d="M6.3 15.5h11.4"/><circle cx="10" cy="18.2" r="0.8"/><circle cx="14" cy="17.8" r="0.9"/><circle cx="12.5" cy="12.5" r="0.7"/>',
+  dna: '<path d="M6 3c0 4.5 12 4.5 12 9s-12 4.5-12 9"/><path d="M18 3c0 4.5-12 4.5-12 9s12 4.5 12 9"/><path d="M7.5 5.5h9"/><path d="M8.5 8.5h7"/><path d="M8.5 15.5h7"/><path d="M7.5 18.5h9"/>',
   layers:
     '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
   box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
@@ -89,88 +90,91 @@ export interface DuotoneIconSpec {
  */
 export const ICON_DUOTONE: Partial<Record<IconName, DuotoneIconSpec>> = {
   plane: {
-    fill: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l3 2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
-    primary:
-      '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l3 2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
-    secondary: '<path d="M9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2"/>',
-    secondaryColor: "#818cf8",
+    fill: '<path d="M21 3 14.5 9.5 20 18l-2 1.5-6.5-6.5-4 4L3.5 5 5 3l8.5 5.5L20 2c.6-.4 1.4.4 1 1Z"/>',
+    primary: '<path d="M21 3 14.5 9.5 20 18l-2 1.5-6.5-6.5-4 4L3.5 5 5 3l8.5 5.5L20 2c.6-.4 1.4.4 1 1Z"/>',
+    secondary: '<path d="M7.5 17l.5 3.5L6.5 22l-2-3.5L1 16.5 2.5 15l3.5.5"/><path d="M13.5 10.5 17 7"/>',
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   car: {
-    fill: '<path d="M5 7h7l2.5 3H19a2 2 0 0 1 2 2v4H2v-4l1.6-3.2A2 2 0 0 1 5 7Z"/>',
+    fill: '<path d="M6 9.4 8.1 6.88A2 2 0 0 1 9.64 6h5.72a2 2 0 0 1 1.54.72L19 9.4l1.8.76A2 2 0 0 1 22 12v3.5H2V12c0-.8.5-1.5 1.2-1.84L6 9.4Z"/>',
     primary:
-      '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><path d="M9 17h6"/>',
-    secondary: '<circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M5.5 11.5h8"/>',
-    secondaryColor: "#22d3ee",
+      '<path d="M3 14.5V12a2 2 0 0 1 1.2-1.84L6 9.4l2.1-2.52A2 2 0 0 1 9.64 6h5.72a2 2 0 0 1 1.54.72L19 9.4l1.8.76A2 2 0 0 1 22 12v2.5a1.5 1.5 0 0 1-1.5 1.5H19"/><path d="M5 16H3.5A1.5 1.5 0 0 1 2 14.5"/><path d="M9 16h6"/>',
+    secondary: '<circle cx="7" cy="16" r="2.2"/><circle cx="17" cy="16" r="2.2"/><path d="M6.5 10h11"/>',
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   train: {
-    fill: '<path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/>',
-    primary:
-      '<path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="m8 19-2 3"/><path d="m16 19 2 3"/>',
-    secondary: '<path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="m9 15-1-1"/><path d="m15 15 1-1"/>',
-    secondaryColor: "#38bdf8",
+    fill: '<rect x="4" y="6" width="16" height="13" rx="3.5"/>',
+    primary: '<path d="M6 6h12a3 3 0 0 1 3 3v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a3 3 0 0 1 3-3Z"/><path d="M3 12h18"/>',
+    secondary:
+      '<path d="M9 3h6l-3 3-3-3Z"/><circle cx="8" cy="15.5" r="1"/><circle cx="16" cy="15.5" r="1"/><path d="m7 19-2 3"/><path d="m17 19 2 3"/><path d="M4 21h16"/>',
+    secondaryColor: "var(--hue-amber, #d97706)",
   },
   anchor: {
-    fill: '<circle cx="12" cy="5" r="3"/>',
-    primary: '<path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/>',
-    secondary: '<circle cx="12" cy="5" r="3"/><path d="M9 11h6"/>',
-    secondaryColor: "#60a5fa",
+    fill: '<circle cx="12" cy="4.5" r="2.5"/><path d="M5 14a7 7 0 0 0 14 0Z"/>',
+    primary:
+      '<path d="M12 7v14"/><path d="M5 14H3a9 9 0 0 0 18 0h-2"/><path d="m3 14 2.5-2"/><path d="m21 14-2.5-2"/>',
+    secondary: '<circle cx="12" cy="4.5" r="2.5"/><path d="M8.5 10.5h7"/>',
+    secondaryColor: "var(--hue-cyan, #0891b2)",
   },
   zap: {
-    fill: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
-    primary:
-      '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
-    secondary: '<path d="M3.5 8.5A9 9 0 0 1 8.5 3.5"/><path d="M20.5 15.5A9 9 0 0 1 15.5 20.5"/>',
-    secondaryColor: "#22d3ee",
+    fill: '<path d="M13 2 4.5 13.5h6L9.5 22 19.5 10.5h-6L13 2Z"/>',
+    primary: '<path d="M13 2 4.5 13.5h6L9.5 22 19.5 10.5h-6L13 2Z"/>',
+    secondary:
+      '<path d="M2 7h3.5"/><circle cx="2" cy="7" r="1"/><path d="M18.5 7H22"/><circle cx="22" cy="7" r="1"/><path d="M2 17h3.5"/><circle cx="2" cy="17" r="1"/><path d="M18.5 17H22"/><circle cx="22" cy="17" r="1"/>',
+    secondaryColor: "var(--hue-amber, #d97706)",
   },
   flame: {
-    fill: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+    fill: '<path d="M12 2.5c1.5 3.2 4.5 5.3 6 8.2a6.8 6.8 0 0 1-12 6.3C4.8 14.5 5.4 11 7.5 8.8c.5 1.5 1.5 2.2 2.2 2.2-.4-2.8.4-5.8 2.3-8.5Z"/>',
     primary:
-      '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
-    secondary: '<path d="M12 21a3.2 3.2 0 0 0 3.2-3.2c0-1.5-.9-2.6-2.1-3.6-.5 1-1.4 1.6-2.2 1.6-.9 0-2.1 1.2-2.1 2a3.2 3.2 0 0 0 3.2 3.2z"/>',
-    secondaryColor: "#facc15",
+      '<path d="M12 2.5c1.5 3.2 4.5 5.3 6 8.2a6.8 6.8 0 0 1-12 6.3C4.8 14.5 5.4 11 7.5 8.8c.5 1.5 1.5 2.2 2.2 2.2-.4-2.8.4-5.8 2.3-8.5Z"/>',
+    secondary:
+      '<path d="M12 19.5a2.8 2.8 0 0 0 2.8-2.8c0-1.5-1.1-2.6-2.8-4-1.7 1.4-2.8 2.5-2.8 4A2.8 2.8 0 0 0 12 19.5Z"/><path d="M5 21.5h14"/>',
+    secondaryColor: "var(--hue-amber, #d97706)",
   },
   atom: {
-    fill: '<circle cx="12" cy="12" r="4"/>',
+    fill: '<circle cx="12" cy="12" r="4.5"/>',
     primary:
-      '<path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/>',
+      '<ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(30 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)"/>',
     secondary:
-      '<circle cx="12" cy="12" r="1.5"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>',
-    secondaryColor: "#22d3ee",
+      '<circle cx="12" cy="12" r="1.8"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(90 12 12)"/>',
+    secondaryColor: "var(--hue-teal, #0d9488)",
   },
   building: {
-    fill: '<rect x="6" y="2" width="12" height="20" rx="2"/>',
+    fill: '<rect x="6" y="2.5" width="12" height="18.5" rx="1.5"/>',
     primary:
-      '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>',
-    secondary: '<path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
-    secondaryColor: "#2dd4bf",
+      '<path d="M6 21V4a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 18 4v17"/><path d="M2 21V11a1 1 0 0 1 1-1h3"/><path d="M22 21V9a1 1 0 0 0-1-1h-3"/><path d="M1.5 21h21"/>',
+    secondary:
+      '<path d="M9.5 6.5h5"/><path d="M9.5 10h5"/><path d="M9.5 13.5h5"/><path d="M10 21v-4h4v4"/>',
+    secondaryColor: "var(--hue-cyan, #0891b2)",
   },
   cpu: {
-    fill: '<rect width="16" height="16" x="4" y="4" rx="2"/>',
+    fill: '<rect width="14" height="14" x="5" y="5" rx="2"/>',
     primary:
-      '<rect width="16" height="16" x="4" y="4" rx="2"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+      '<rect width="14" height="14" x="5" y="5" rx="2"/><path d="M9 2v3"/><path d="M12 2v3"/><path d="M15 2v3"/><path d="M9 19v3"/><path d="M12 19v3"/><path d="M15 19v3"/><path d="M2 9h3"/><path d="M2 12h3"/><path d="M2 15h3"/><path d="M19 9h3"/><path d="M19 12h3"/><path d="M19 15h3"/>',
     secondary: '<rect width="6" height="6" x="9" y="9" rx="1"/>',
-    secondaryColor: "#a78bfa",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   bot: {
-    fill: '<rect width="16" height="12" x="4" y="8" rx="2"/>',
-    primary: '<rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/>',
-    secondary: '<path d="M12 8V4H8"/><path d="M15 13v2"/><path d="M9 13v2"/>',
-    secondaryColor: "#22d3ee",
+    fill: '<path d="M7 21v-3a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3Z"/><circle cx="9" cy="13" r="2"/><circle cx="14" cy="6" r="2"/>',
+    primary:
+      '<path d="M4 21h16"/><path d="M7 21v-3a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><path d="m10.4 11.4 2.4-3.8"/><path d="m15.9 6.6 3.1 1.9"/>',
+    secondary:
+      '<circle cx="9" cy="13" r="2"/><circle cx="14" cy="6" r="2"/><path d="M19 8.5 21.5 7"/><path d="M19 8.5 20.5 11"/>',
+    secondaryColor: "var(--hue-rose, #e11d48)",
   },
   flask: {
-    fill: '<path d="M7 16h10l2.6 4.55a1 1 0 0 1-.9 1.45H5.62a1 1 0 0 1-.9-1.45L7 16Z"/>',
+    fill: '<path d="M6.3 15.5h11.4l1.8 3.3A2 2 0 0 1 17.72 21.5H6.28A2 2 0 0 1 4.5 18.8l1.8-3.3Z"/>',
     primary:
-      '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/>',
-    secondary: '<path d="M7 16h10"/><circle cx="10.5" cy="19" r="0.75"/><circle cx="14" cy="18.5" r="0.75"/>',
-    secondaryColor: "#2dd4bf",
+      '<path d="M9.5 2.5v6.2a2 2 0 0 1-.24.95L4.5 18.8A2 2 0 0 0 6.28 21.5h11.44a2 2 0 0 0 1.78-2.7l-4.76-9.15a2 2 0 0 1-.24-.95V2.5"/><path d="M8 2.5h8"/>',
+    secondary:
+      '<path d="M6.3 15.5h11.4"/><circle cx="10" cy="18.2" r="0.85"/><circle cx="14" cy="17.8" r="0.85"/><circle cx="12.5" cy="12.5" r="0.75"/>',
+    secondaryColor: "var(--hue-violet, #7c3aed)",
   },
   dna: {
-    fill: '<circle cx="12" cy="12" r="5"/>',
-    primary:
-      '<path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/>',
-    secondary:
-      '<path d="m10 16 1.5 1.5"/><path d="m14 8-1.5-1.5"/><path d="m16.5 10.5 1 1"/><path d="m17 6-2.891-2.891"/><path d="m20 9 .891.891"/><path d="M3.109 14.109 4 15"/><path d="m6.5 12.5 1 1"/><path d="m7 18 2.891 2.891"/>',
-    secondaryColor: "#818cf8",
+    fill: '<ellipse cx="12" cy="7.5" rx="5.5" ry="4"/><ellipse cx="12" cy="16.5" rx="5.5" ry="4"/>',
+    primary: '<path d="M6 3c0 4.5 12 4.5 12 9s-12 4.5-12 9"/><path d="M18 3c0 4.5-12 4.5-12 9s12 4.5 12 9"/>',
+    secondary: '<path d="M7.5 5.5h9"/><path d="M8.5 8.5h7"/><path d="M8.5 15.5h7"/><path d="M7.5 18.5h9"/>',
+    secondaryColor: "var(--hue-teal, #0d9488)",
   },
   layers: {
     fill: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>',
@@ -178,117 +182,117 @@ export const ICON_DUOTONE: Partial<Record<IconName, DuotoneIconSpec>> = {
       '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>',
     secondary:
       '<path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   box: {
     fill: '<path d="m12 3 8.7 5-8.7 5-8.7-5 8.7-5Z"/>',
     primary:
       '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>',
     secondary: '<path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   cube: {
     fill: '<path d="m12 3 9 5-9 5-9-5 9-5z"/>',
     primary: '<path d="m21 16-9 5-9-5V8l9-5 9 5z"/>',
     secondary: '<path d="m3 8 9 5 9-5"/><path d="M12 13v8"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   database: {
     fill: '<ellipse cx="12" cy="5" rx="9" ry="3"/>',
     primary: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/>',
     secondary: '<path d="M3 12A9 3 0 0 0 21 12"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   search: {
     fill: '<circle cx="11" cy="11" r="8"/>',
     primary: '<circle cx="11" cy="11" r="8"/>',
     secondary: '<path d="m21 21-4.3-4.3"/><path d="M8.5 8.5a3.5 3.5 0 0 1 5 0"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   shield: {
     fill: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
     primary:
       '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
     secondary: '<path d="m9 12 2 2 4-4"/>',
-    secondaryColor: "#34d399",
+    secondaryColor: "var(--hue-emerald, #059669)",
   },
   activity: {
     fill: '<rect x="2" y="4" width="20" height="16" rx="3"/>',
     primary:
       '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
     secondary: '<circle cx="9" cy="2.5" r="1.5"/><circle cx="15" cy="21.5" r="1.5"/>',
-    secondaryColor: "#34d399",
+    secondaryColor: "var(--hue-emerald, #059669)",
   },
   workflow: {
     fill: '<rect width="8" height="8" x="3" y="3" rx="2"/><rect width="8" height="8" x="13" y="13" rx="2"/>',
     primary: '<rect width="8" height="8" x="3" y="3" rx="2"/><rect width="8" height="8" x="13" y="13" rx="2"/>',
     secondary: '<path d="M7 11v4a2 2 0 0 0 2 2h4"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   target: {
     fill: '<circle cx="12" cy="12" r="10"/>',
     primary: '<circle cx="12" cy="12" r="10"/>',
     secondary: '<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
-    secondaryColor: "#fbbf24",
+    secondaryColor: "var(--hue-amber, #d97706)",
   },
   download: {
     fill: '<rect x="3" y="14" width="18" height="7" rx="2"/>',
     primary: '<path d="M12 15V3"/><path d="m7 10 5 5 5-5"/>',
     secondary: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
-    secondaryColor: "#34d399",
+    secondaryColor: "var(--hue-emerald, #059669)",
   },
   upload: {
     fill: '<rect x="3" y="14" width="18" height="7" rx="2"/>',
     primary: '<path d="M12 3v12"/><path d="m17 8-5-5-5 5"/>',
     secondary: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   code: {
     fill: '<rect x="3" y="5" width="18" height="14" rx="3"/>',
     primary: '<path d="m8 6-6 6 6 6"/>',
     secondary: '<path d="m16 18 6-6-6-6"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   terminal: {
     fill: '<rect x="2" y="4" width="20" height="16" rx="3"/>',
     primary: '<path d="m4 17 6-6-6-6"/>',
     secondary: '<path d="M12 19h8"/>',
-    secondaryColor: "#34d399",
+    secondaryColor: "var(--hue-emerald, #059669)",
   },
   sparkles: {
     fill: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
     primary:
       '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
     secondary: '<path d="M19 3v4"/><path d="M21 5h-4"/><circle cx="5" cy="19" r="1.25"/>',
-    secondaryColor: "#a78bfa",
+    secondaryColor: "var(--hue-violet, #7c3aed)",
   },
   globe: {
     fill: '<circle cx="12" cy="12" r="10"/>',
     primary: '<circle cx="12" cy="12" r="10"/>',
     secondary: '<path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   gauge: {
     fill: '<path d="M3.34 19a10 10 0 1 1 17.32 0Z"/>',
     primary: '<path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
     secondary: '<path d="m12 14 4-4"/><circle cx="12" cy="14" r="1.5"/>',
-    secondaryColor: "#34d399",
+    secondaryColor: "var(--hue-emerald, #059669)",
   },
   link: {
     fill: '<circle cx="12" cy="12" r="5"/>',
     primary: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>',
     secondary: '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-    secondaryColor: "#818cf8",
+    secondaryColor: "var(--hue-indigo, #4f46e5)",
   },
   vscode: {
     primary:
       '<path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352z"/>',
     secondary: '<path d="M18.004 17.448L10.826 12l7.178-5.448v10.896z"/>',
-    secondaryColor: "#38bdf8",
+    secondaryColor: "var(--hue-cyan, #0891b2)",
   },
   openvsx: {
     primary: '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>',
     secondary: '<path d="M10.5 7.5v9M6 10.5v6M15 12v4.5"/>',
-    secondaryColor: "#f59e0b",
+    secondaryColor: "var(--hue-amber, #d97706)",
   },
 };

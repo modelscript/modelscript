@@ -13,7 +13,7 @@ const LanguageExample = defineAsyncComponent(() => import("./components/Language
 
 const { Layout } = DefaultTheme;
 const route = useRoute();
-const ansatzOrigin = useAnsatzOrigin();
+const { ansatzOrigin } = useAnsatzOrigin();
 const isLanguageDetailPage = computed(
   () => route.path.startsWith("/languages/") && !route.path.startsWith("/languages/overview"),
 );

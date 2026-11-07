@@ -232,6 +232,25 @@ async function main() {
       `Expected narrow 'untyped' range for SSV_MISSING_PARAMETER_TYPE, got: ${JSON.stringify(missingType)}`,
     );
   }
+
+  const ssvExtended = `<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet version="1.0" name="ExtendedBrokenParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="unknownTypeParam"><ssv:CustomMatrix value="1" /></ssv:Parameter>
+    <ssv:Parameter name="badNumParam"><ssv:Real value="NaN_val" /></ssv:Parameter>
+    <ssv:Parameter name="dimParam"><ssv:Real value="1.0" dimensions="3, 3" /></ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>`;
+  const extSsvDiags = lintSsv(ssvExtended);
+  if (!extSsvDiags.some((d) => d.code === "SSV_UNRESOLVED_PARAMETER_TYPE" && d.standardCode === "S7016")) {
+    throw new Error(`Expected S7016 SSV_UNRESOLVED_PARAMETER_TYPE, got: ${JSON.stringify(extSsvDiags)}`);
+  }
+  if (!extSsvDiags.some((d) => d.code === "SSV_INVALID_NUMERIC_VALUE" && d.standardCode === "S7017")) {
+    throw new Error(`Expected S7017 SSV_INVALID_NUMERIC_VALUE, got: ${JSON.stringify(extSsvDiags)}`);
+  }
+  if (!extSsvDiags.some((d) => d.code === "SSV_PARAMETER_DIMENSION_MISMATCH" && d.standardCode === "S7018")) {
+    throw new Error(`Expected S7018 SSV_PARAMETER_DIMENSION_MISMATCH, got: ${JSON.stringify(extSsvDiags)}`);
+  }
   console.log("✓ SSP & SSV semantic linter & narrow XML attribute range tests passed");
 
   // 6. Test Native SSP 2D Diagram Builder & Bidirectional XML Writeback

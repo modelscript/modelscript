@@ -25,13 +25,12 @@ import type { CadComponent } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";
 import { CosimPanel, type HistorianSession } from "../CosimPanel";
-import type { DiagramEditorHandle } from "../Diagram";
+import DiagramEditor, { type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
 import type { MobileTab } from "./MorselMobileTabBar";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
 import { MorselView } from "./types";
 
-const DiagramEditor = React.lazy(() => import("../Diagram"));
 const CadViewerPanel = React.lazy(() => import("../cad-viewer").then((m) => ({ default: m.CadViewer })));
 const SimulationResults = React.lazy(() =>
   import("../SimulationResults").then((m) => ({ default: m.SimulationResults })),
@@ -275,7 +274,7 @@ export interface MorselVisualizerPaneProps {
   cadComponents: CadComponent[];
   animationMode: "stopped" | "playing" | "paused" | "live";
   animationControllerRef: React.RefObject<AnimationController | null>;
-  diagramEditorRef: React.RefObject<DiagramEditorHandle | null>;
+  diagramEditorRef?: React.RefObject<DiagramEditorHandle | null> | undefined;
   diagramData: any;
   selectedTreeClassName: string | null;
   selectedComponent: string | null;
@@ -405,6 +404,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
   const [showPalette, setShowPalette] = useState(false);
+  const internalDiagramRef = useRef<DiagramEditorHandle>(null);
+  const effectiveDiagramRef = diagramEditorRef ?? internalDiagramRef;
   const [currentZoom, setCurrentZoom] = useState(1);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
   const zoomMenuRef = useRef<HTMLDivElement>(null);
@@ -431,13 +432,13 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const gridMenuRef = useRef<HTMLDivElement>(null);
 
   const toggleMinimapView = () => {
-    const next = diagramEditorRef?.current?.toggleMinimap() ?? !isMinimapActive;
+    const next = effectiveDiagramRef?.current?.toggleMinimap() ?? !isMinimapActive;
     setIsMinimapActive(next);
   };
 
   const handleGridModeChange = (mode: "doubleMesh" | "dot" | "mesh" | "none") => {
     setGridMode(mode);
-    diagramEditorRef?.current?.setGridMode(mode);
+    effectiveDiagramRef?.current?.setGridMode(mode);
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem("modelscript.diagram.gridMode", mode);
     }
@@ -446,18 +447,33 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const handleSnapToggle = () => {
     const next = !isSnapActive;
     setIsSnapActive(next);
-    diagramEditorRef?.current?.setSnapToGrid(next);
+    effectiveDiagramRef?.current?.setSnapToGrid(next);
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem("modelscript.diagram.snapToGrid", String(next));
     }
   };
 
   useEffect(() => {
-    if (!isDiagramLoading && diagramEditorRef?.current) {
-      diagramEditorRef.current.setGridMode(gridMode);
-      diagramEditorRef.current.setSnapToGrid(isSnapActive);
+    if (!isDiagramLoading && effectiveDiagramRef?.current) {
+      effectiveDiagramRef.current.setGridMode(gridMode);
+      effectiveDiagramRef.current.setSnapToGrid(isSnapActive);
     }
   }, [isDiagramLoading, gridMode, isSnapActive]);
+
+  const hasCenteredOnLoadRef = useRef(false);
+  useEffect(() => {
+    hasCenteredOnLoadRef.current = false;
+  }, [dialect, selectedTreeClassName]);
+
+  useEffect(() => {
+    if (loadingProgress !== undefined && loadingProgress >= 100 && !hasCenteredOnLoadRef.current) {
+      hasCenteredOnLoadRef.current = true;
+      const timer = setTimeout(() => {
+        effectiveDiagramRef?.current?.zoomToFit();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [loadingProgress, effectiveDiagramRef]);
 
   const handleUndo = () => {
     if (isSpatialEditPending) isSpatialEditPending.current = false;
@@ -1374,7 +1390,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       >
                         <button
                           type="button"
-                          onClick={() => diagramEditorRef?.current?.zoomOut()}
+                          className="morsel-toolbar-btn"
+                          onClick={() => effectiveDiagramRef?.current?.zoomOut()}
                           aria-label="Zoom Out"
                           title="Zoom Out (Ctrl+-)"
                           style={{
@@ -1387,6 +1404,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             justifyContent: "center",
                             color: "var(--ms-text-2, var(--color-fg-muted))",
                             cursor: "pointer",
+                            transition: "background-color 0.12s ease, color 0.12s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                            e.currentTarget.style.color = "var(--ms-text-1, var(--color-fg-default))";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "var(--ms-text-2, var(--color-fg-muted))";
                           }}
                         >
                           <svg
@@ -1408,6 +1435,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         <div style={{ position: "relative" }}>
                           <button
                             type="button"
+                            className="morsel-toolbar-btn-text"
                             onClick={() => setShowZoomMenu((v) => !v)}
                             aria-label={`Zoom level: ${Math.round(currentZoom * 100)}%`}
                             title="Zoom presets / Reset to 100% (Ctrl+0)"
@@ -1427,6 +1455,14 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                               gap: 3,
                               textAlign: "center",
                               fontVariantNumeric: "tabular-nums",
+                              transition: "background-color 0.12s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
                             }}
                           >
                             <span>{Math.round(currentZoom * 100)}%</span>
@@ -1473,8 +1509,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                   <button
                                     key={preset.scale}
                                     type="button"
+                                    className="morsel-menu-item"
                                     onClick={() => {
-                                      diagramEditorRef?.current?.zoomTo(preset.scale);
+                                      effectiveDiagramRef?.current?.zoomTo(preset.scale);
                                       setShowZoomMenu(false);
                                     }}
                                     style={{
@@ -1492,6 +1529,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                       borderRadius: 4,
                                       cursor: "pointer",
                                       textAlign: "left",
+                                      width: "100%",
+                                      transition: "background-color 0.12s ease",
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor =
+                                        colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "transparent";
                                     }}
                                   >
                                     <span>{preset.label}</span>
@@ -1509,8 +1555,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                               />
                               <button
                                 type="button"
+                                className="morsel-menu-item"
                                 onClick={() => {
-                                  diagramEditorRef?.current?.zoomToFit();
+                                  effectiveDiagramRef?.current?.zoomToFit();
                                   setShowZoomMenu(false);
                                 }}
                                 style={{
@@ -1525,6 +1572,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                   borderRadius: 4,
                                   cursor: "pointer",
                                   textAlign: "left",
+                                  width: "100%",
+                                  transition: "background-color 0.12s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor =
+                                    colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = "transparent";
                                 }}
                               >
                                 Zoom to Fit (Shift+1)
@@ -1535,7 +1591,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => diagramEditorRef?.current?.zoomIn()}
+                          className="morsel-toolbar-btn"
+                          onClick={() => effectiveDiagramRef?.current?.zoomIn()}
                           aria-label="Zoom In"
                           title="Zoom In (Ctrl+=)"
                           style={{
@@ -1548,6 +1605,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             justifyContent: "center",
                             color: "var(--ms-text-2, var(--color-fg-muted))",
                             cursor: "pointer",
+                            transition: "background-color 0.12s ease, color 0.12s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                            e.currentTarget.style.color = "var(--ms-text-1, var(--color-fg-default))";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "var(--ms-text-2, var(--color-fg-muted))";
                           }}
                         >
                           <svg
@@ -1569,7 +1636,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => diagramEditorRef?.current?.zoomToFit()}
+                          className="morsel-toolbar-btn"
+                          onClick={() => effectiveDiagramRef?.current?.zoomToFit()}
                           aria-label="Zoom to Fit"
                           title="Zoom to Fit (Shift+1)"
                           style={{
@@ -1582,6 +1650,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             justifyContent: "center",
                             color: "var(--ms-text-2, var(--color-fg-muted))",
                             cursor: "pointer",
+                            transition: "background-color 0.12s ease, color 0.12s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                            e.currentTarget.style.color = "var(--ms-text-1, var(--color-fg-default))";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "var(--ms-text-2, var(--color-fg-muted))";
                           }}
                         >
                           <svg
@@ -1621,7 +1699,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       >
                         <button
                           type="button"
-                          onClick={() => diagramEditorRef?.current?.rotateSelected(90)}
+                          className="morsel-toolbar-btn"
+                          onClick={() => effectiveDiagramRef?.current?.rotateSelected(90)}
                           aria-label="Rotate 90° Clockwise"
                           title="Rotate 90° Clockwise (R / Shift+R)"
                           style={{
@@ -1634,6 +1713,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             justifyContent: "center",
                             color: "var(--ms-text-2, var(--color-fg-muted))",
                             cursor: "pointer",
+                            transition: "background-color 0.12s ease, color 0.12s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                            e.currentTarget.style.color = "var(--ms-text-1, var(--color-fg-default))";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "var(--ms-text-2, var(--color-fg-muted))";
                           }}
                         >
                           <svg
@@ -1769,6 +1858,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                 <button
                                   key={item.mode}
                                   type="button"
+                                  className="morsel-menu-item"
                                   onClick={() => {
                                     handleGridModeChange(item.mode);
                                     setShowGridMenu(false);
@@ -1789,6 +1879,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                     borderRadius: 4,
                                     cursor: "pointer",
                                     textAlign: "left",
+                                    width: "100%",
+                                    transition: "background-color 0.12s ease",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = "transparent";
                                   }}
                                 >
                                   <span>{item.label}</span>
@@ -1805,6 +1904,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                               />
                               <button
                                 type="button"
+                                className="morsel-menu-item"
                                 onClick={() => {
                                   handleSnapToggle();
                                 }}
@@ -1823,6 +1923,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                   borderRadius: 4,
                                   cursor: "pointer",
                                   textAlign: "left",
+                                  width: "100%",
+                                  transition: "background-color 0.12s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor =
+                                    colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = "transparent";
                                 }}
                               >
                                 <span>Snap to Grid</span>
@@ -1987,7 +2096,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             >
               <Suspense fallback={null}>
                 <DiagramEditor
-                  ref={diagramEditorRef}
+                  ref={effectiveDiagramRef}
                   diagramData={diagramData}
                   diagramClassName={selectedTreeClassName}
                   selectedName={selectedComponent}

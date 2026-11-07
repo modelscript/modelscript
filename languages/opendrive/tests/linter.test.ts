@@ -175,4 +175,108 @@ describe("OpenDRIVE Pre-Flight Diagnostic Linters (M7801–M7808)", () => {
     const diags = lintOpenDrive(doc);
     assert.strictEqual(diags.length, 0);
   });
+
+  it("M7802: detects unlinked lane boundary referencing non-existent successor lane", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <OpenDRIVE>
+      <header revMajor="1" revMinor="6"/>
+      <road id="1" length="100.0" junction="-1">
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+        <lanes>
+          <laneSection s="0">
+            <center><lane id="0" type="none"/></center>
+            <right>
+              <lane id="-1" type="driving">
+                <link><successor id="-99"/></link>
+                <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+              </lane>
+            </right>
+          </laneSection>
+          <laneSection s="50">
+            <center><lane id="0" type="none"/></center>
+            <right>
+              <lane id="-1" type="driving">
+                <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+              </lane>
+            </right>
+          </laneSection>
+        </lanes>
+      </road>
+    </OpenDRIVE>`;
+
+    const doc = parseOpenDrive(xml);
+    const diags = lintOpenDrive(doc);
+    assert(diags.some((d) => d.code === OpenDriveErrorCode.UNLINKED_LANE_BOUNDARY.code));
+  });
+
+  it("M7809: detects discontinuous lane link across adjacent sections", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <OpenDRIVE>
+      <header revMajor="1" revMinor="6"/>
+      <road id="1" length="100.0" junction="-1">
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+        <lanes>
+          <laneSection s="0">
+            <center><lane id="0" type="none"/></center>
+            <right>
+              <lane id="-1" type="driving">
+                <link><successor id="-1"/></link>
+                <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+              </lane>
+            </right>
+          </laneSection>
+          <laneSection s="50">
+            <center><lane id="0" type="none"/></center>
+            <right>
+              <lane id="-1" type="driving">
+                <link><predecessor id="-2"/></link>
+                <width sOffset="0" a="3.5" b="0" c="0" d="0"/>
+              </lane>
+            </right>
+          </laneSection>
+        </lanes>
+      </road>
+    </OpenDRIVE>`;
+
+    const doc = parseOpenDrive(xml);
+    const diags = lintOpenDrive(doc);
+    assert(diags.some((d) => d.code === OpenDriveErrorCode.DISCONTINUOUS_LANE_LINK.code));
+  });
+
+  it("M7810: detects spiral clothoid singularity (zero length with non-zero curvature delta)", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <OpenDRIVE>
+      <header revMajor="1" revMinor="6"/>
+      <road id="7" length="10.0" junction="-1">
+        <planView>
+          <geometry s="0" x="0" y="0" hdg="0" length="0.0">
+            <spiral curvStart="0.0" curvEnd="0.05"/>
+          </geometry>
+        </planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center></laneSection></lanes>
+      </road>
+    </OpenDRIVE>`;
+
+    const doc = parseOpenDrive(xml);
+    const diags = lintOpenDrive(doc);
+    assert(diags.some((d) => d.code === OpenDriveErrorCode.SPIRAL_CLOTHOID_SINGULARITY.code));
+  });
+
+  it("M7811: detects non-positive speed limit record", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <OpenDRIVE>
+      <header revMajor="1" revMinor="6"/>
+      <road id="3" length="100.0" junction="-1">
+        <type s="0" type="motorway">
+          <speed max="-15" unit="m/s"/>
+        </type>
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="100"><line/></geometry></planView>
+        <lanes><laneSection s="0"><center><lane id="0" type="none"/></center></laneSection></lanes>
+      </road>
+    </OpenDRIVE>`;
+
+    const doc = parseOpenDrive(xml);
+    const diags = lintOpenDrive(doc);
+    assert(diags.some((d) => d.code === OpenDriveErrorCode.INVALID_SPEED_LIMIT.code));
+  });
 });

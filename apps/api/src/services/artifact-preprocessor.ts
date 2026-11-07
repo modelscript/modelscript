@@ -708,9 +708,9 @@ export async function pregenerateServerSvgThumbnail(
       }
 
       case "urdf": {
-        const { parseUrdf, renderUrdfSvg } = await import("@modelscript/urdf");
+        const { parseUrdf, renderUrdfIsometric3DSvg } = await import("@modelscript/urdf");
         const robot = parseUrdf(content);
-        result.svg = renderUrdfSvg(robot);
+        result.svg = renderUrdfIsometric3DSvg(robot);
         result.metadata = {
           linkCount: robot.links.size,
           jointCount: robot.joints.size,

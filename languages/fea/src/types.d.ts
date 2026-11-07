@@ -1,0 +1,99 @@
+export interface BoundaryActionPayload {
+    kind: "fix" | "force" | "displacement" | "pressure" | "moment" | "inlet";
+    targetId: number | string;
+    dofs?: number[] | undefined;
+    magnitude?: number | undefined;
+    vector?: [number, number, number] | undefined;
+}
+export interface FeaNode {
+    id: number;
+    x: number;
+    y: number;
+    z: number;
+}
+export interface FeaElement {
+    id: number;
+    type: string;
+    nodes: number[];
+    elset?: string | undefined;
+    family?: "solid" | "shell" | "beam" | "truss" | "other" | undefined;
+}
+export interface FeaMaterial {
+    name: string;
+    E?: number | undefined;
+    nu?: number | undefined;
+    rho?: number | undefined;
+    yieldStrength?: number | undefined;
+    alpha?: number | undefined;
+}
+export interface CaeDiagnostic {
+    severity: "error" | "warning" | "info";
+    message: string;
+    line?: number | undefined;
+    column?: number | undefined;
+    expression?: string | undefined;
+}
+export interface FeaStep {
+    name?: string | undefined;
+    analysisType: "STATIC" | "FREQUENCY" | "BUCKLE" | "DYNAMIC" | "HEAT TRANSFER" | "COUPLED TEMP-DISPLACEMENT" | string;
+    nlgeom?: boolean | undefined;
+    line?: number | undefined;
+}
+export interface FeaBoundaryEntry {
+    target: string | number;
+    dofs: number[];
+    value?: number | undefined;
+    line?: number | undefined;
+}
+export interface FeaCloadEntry {
+    target: string | number;
+    dof: number;
+    magnitude: number;
+    line?: number | undefined;
+}
+export interface FeaDloadEntry {
+    target: string | number;
+    type: string;
+    magnitude: number;
+    line?: number | undefined;
+}
+export interface FeaModelData {
+    heading?: string | undefined;
+    dialect: string;
+    nodes: Map<number, FeaNode>;
+    elements: Map<number, FeaElement>;
+    nodeSets: Map<string, Set<number>>;
+    elementSets: Map<string, Set<number>>;
+    materials: Map<string, FeaMaterial>;
+    fixedNodes: Set<number>;
+    fixedDofs?: Map<number, Set<number>> | undefined;
+    nodalLoads: Map<number, [number, number, number]>;
+    displacements?: Map<number, [number, number, number]> | undefined;
+    prescribedDisplacements?: Map<number, Map<number, number>> | undefined;
+    elsetMaterials?: Map<string, string> | undefined;
+    sectionThickness?: Map<string, number> | undefined;
+    beamAreas?: Map<string, number> | undefined;
+    steps?: FeaStep[] | undefined;
+    boundaries?: FeaBoundaryEntry[] | undefined;
+    cloads?: FeaCloadEntry[] | undefined;
+    dloads?: FeaDloadEntry[] | undefined;
+    nodeLines?: Map<number, number> | undefined;
+    elementLines?: Map<number, number> | undefined;
+    materialLines?: Map<string, number> | undefined;
+    sectionLines?: Map<string, number> | undefined;
+    boundaryLines?: number[] | undefined;
+}
+export type ParameterLookup = (name: string) => number | string | undefined;
+export interface MaterializeOptions {
+    evaluator?: ParameterLookup | Record<string, number | string> | undefined;
+    formatNumber?: ((val: number) => string) | undefined;
+    diagnostics?: CaeDiagnostic[] | undefined;
+}
+export interface FeaDialect {
+    readonly id: string;
+    readonly name: string;
+    readonly extensions: string[];
+    parse(content: string): FeaModelData;
+    materialize(templateText: string, options?: MaterializeOptions): string;
+}
+//# sourceMappingURL=types.d.ts.map

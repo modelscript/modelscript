@@ -107,8 +107,47 @@ export default defineConfig({
     esbuild: {
       target: ["es2020", "safari15"],
     },
+    plugins: [
+      {
+        name: "browser-node-builtins-shim",
+        enforce: "pre",
+        resolveId(source, _importer, options) {
+          if (options?.ssr) return null;
+          const nodeBuiltins = new Set([
+            "path",
+            "node:path",
+            "url",
+            "node:url",
+            "fs",
+            "node:fs",
+            "node:fs/promises",
+            "child_process",
+            "node:child_process",
+            "os",
+            "node:os",
+            "crypto",
+            "node:crypto",
+            "http",
+            "node:http",
+            "module",
+            "node:module",
+            "worker_threads",
+            "node:worker_threads",
+            "tty",
+            "node:tty",
+          ]);
+          if (nodeBuiltins.has(source)) {
+            return path.resolve(__dirname, "./theme/util/node-shims.ts");
+          }
+          return null;
+        },
+      },
+    ],
     resolve: {
       dedupe: ["three"],
+      alias: {
+        "@modelscript/dsl/xml": path.resolve(__dirname, "./theme/util/xml-browser.ts"),
+      },
     },
     optimizeDeps: {
       include: [
@@ -445,7 +484,7 @@ export default defineConfig({
     footer: {
       message:
         'Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License. • <a href="/pricing">Pricing</a> • <a href="/trademark">Trademark Policy</a>',
-      copyright: "Copyright © 2026-present ModelScript Contributors.",
+      copyright: "Copyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors.",
     },
   },
 });

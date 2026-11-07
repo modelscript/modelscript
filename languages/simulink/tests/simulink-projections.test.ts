@@ -2,10 +2,37 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseMdl } from "../src/parser/index.js";
+import { parseMdl, parseSlx } from "../src/parser/index.js";
 import { simulinkToModelica } from "../src/projections/index.js";
 
 describe("Simulink Modelica.Blocks Projections (@modelscript/simulink)", () => {
+  it("should project SLX DiscreteFilter block diagram to Modelica.Blocks.Discrete.TransferFunction", () => {
+    const slxXml = `<System Name="SuspensionControl">
+  <Block BlockType="Inport" Name="DamperError"/>
+  <Block BlockType="DiscreteFilter" Name="LeadLag">
+    <P Name="Numerator">[0.1, -0.09]</P>
+    <P Name="Denominator">[1.0, -0.95]</P>
+    <P Name="SampleTime">0.001</P>
+  </Block>
+  <Block BlockType="Outport" Name="ActuatorCmd"/>
+  <Line><P Name="Src">DamperError#out:1</P><P Name="Dst">LeadLag#in:1</P></Line>
+  <Line><P Name="Src">LeadLag#out:1</P><P Name="Dst">ActuatorCmd#in:1</P></Line>
+</System>`;
+    const model = parseSlx(slxXml);
+    const mo = simulinkToModelica(model);
+    assert.ok(mo.includes("model SuspensionControl"));
+    assert.ok(mo.includes("Modelica.Blocks.Interfaces.RealInput DamperError;"));
+    assert.ok(
+      mo.includes(
+        "Modelica.Blocks.Discrete.TransferFunction LeadLag(b={0.1, -0.09}, a={1, -0.95}, samplePeriod=0.001);",
+      ),
+    );
+    assert.ok(mo.includes("Modelica.Blocks.Interfaces.RealOutput ActuatorCmd;"));
+    assert.ok(mo.includes("connect(DamperError.y, LeadLag.u);"));
+    assert.ok(mo.includes("connect(LeadLag.y, ActuatorCmd.inPort);"));
+    assert.ok(mo.includes("end SuspensionControl;"));
+  });
+
   it("should project Simulink blocks and connections to standard Modelica 3.x", () => {
     const mdl = `Model {
   Name "PIDController"

@@ -848,6 +848,177 @@ export function checkConnectionTypeCompatibility(db: QueryDB, self: SymbolEntry)
 }
 
 /**
+ * Statically validates port conjugation compatibility on ConnectionUsage endpoints (Code S3008).
+ * Detects peer connections between two conjugated ports (~P to ~P) or two unconjugated peer ports
+ * of a directed PortDefinition (containing `in` or `out` features) without conjugation (~).
+ */
+export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): LintResult | null {
+  const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+  if (refs.length < 2) return null;
+
+  const getEndpointName = (ref: SymbolEntry) => {
+    const chainChildren = db.childrenOf(ref.id).filter((c) => c.name && c.name !== "<anonymous>");
+    if (chainChildren.length > 0) {
+      return chainChildren.map((c) => c.name).join(".");
+    }
+    if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
+      return ref.name.trim();
+    }
+    return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+  };
+
+  const getPortTypingInfo = (entry: SymbolEntry): { baseType: string | null; isConjugated: boolean } => {
+    const children = db.childrenOf(entry.id);
+    const conjChild = children.find((c) => c.ruleName === "ConjugatedPortTyping");
+    if (conjChild) {
+      const raw = (conjChild.name || db.cstText(conjChild.startOffset, conjChild.endOffset, conjChild) || "")
+        .replace(/^~\s*/, "")
+        .trim();
+      return { baseType: raw ? normalizeTypeName(raw) : null, isConjugated: true };
+    }
+    const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
+    const tildeMatch = /:\s*~\s*([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
+    if (tildeMatch?.[1]) {
+      return { baseType: normalizeTypeName(tildeMatch[1]), isConjugated: true };
+    }
+    if (entry.inherits?.some((inh) => inh.trim().startsWith("~"))) {
+      const raw = entry.inherits.find((inh) => inh.trim().startsWith("~"))!.replace(/^~\s*/, "").trim();
+      return { baseType: raw ? normalizeTypeName(raw) : null, isConjugated: true };
+    }
+    const typeChild = children.find((c) => c.ruleName === "OwnedFeatureTyping");
+    if (typeChild?.name) {
+      const raw = typeChild.name.trim();
+      if (raw.startsWith("~")) {
+        return { baseType: normalizeTypeName(raw.replace(/^~\s*/, "")), isConjugated: true };
+      }
+      return { baseType: normalizeTypeName(raw), isConjugated: false };
+    }
+    if (entry.metadata?.["typeSpecifier"]) {
+      const raw = String(entry.metadata["typeSpecifier"]).trim();
+      return {
+        baseType: normalizeTypeName(raw.replace(/^~\s*/, "")),
+        isConjugated: raw.startsWith("~"),
+      };
+    }
+    return { baseType: null, isConjugated: false };
+  };
+
+  const isDirectedPortDefinition = (typeName: string): boolean => {
+    const portDefs = db.byName(typeName).filter((d) => d.ruleName === "PortDefinition");
+    for (const pd of portDefs) {
+      for (const member of db.childrenOf(pd.id)) {
+        const dir = member.metadata?.["direction"];
+        if (dir === "in" || dir === "out") return true;
+        const memberText = (db.cstText(member.startOffset, member.endOffset, member) || "").trim();
+        if (/^(?:in|out)\b/.test(memberText)) return true;
+      }
+    }
+    return false;
+  };
+
+  for (let r = 0; r < refs.length - 1; r++) {
+    const sourceName = getEndpointName(refs[r]!);
+    const targetName = getEndpointName(refs[r + 1]!);
+    const sourceEntry = resolvePathInScope(db, self.parentId, sourceName);
+    const targetEntry = resolvePathInScope(db, self.parentId, targetName);
+    if (!sourceEntry || !targetEntry) continue;
+
+    const srcInfo = getPortTypingInfo(sourceEntry);
+    const tgtInfo = getPortTypingInfo(targetEntry);
+    if (!srcInfo.baseType || !tgtInfo.baseType || srcInfo.baseType !== tgtInfo.baseType) continue;
+
+    const isPeerConnection = sourceName.includes(".") === targetName.includes(".");
+    const srcDir = sourceEntry.metadata?.["direction"];
+    const tgtDir = targetEntry.metadata?.["direction"];
+    const sameExplicitDirection =
+      isPeerConnection &&
+      ((srcDir === "in" && tgtDir === "in") || (srcDir === "out" && tgtDir === "out"));
+
+    if (
+      (srcInfo.isConjugated && tgtInfo.isConjugated) ||
+      sameExplicitDirection ||
+      (isPeerConnection && srcInfo.isConjugated === tgtInfo.isConjugated && isDirectedPortDefinition(srcInfo.baseType))
+    ) {
+      return error(SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.message(sourceName, targetName, srcInfo.baseType), {
+        code: SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.code,
+        field: "declaredName",
+        startOffset: self.startOffset,
+        endOffset: self.endOffset,
+      });
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Statically validates that a BindingConnectorAsUsage (`bind a = b`) connects features
+ * with mutually compatible types (Code S3009).
+ */
+export function checkBindingConnectorTypeMismatch(db: QueryDB, self: SymbolEntry): LintResult | null {
+  const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
+  const getEndpointName = (ref: SymbolEntry) => {
+    const chainChildren = db.childrenOf(ref.id).filter((c) => c.name && c.name !== "<anonymous>");
+    if (chainChildren.length > 0) {
+      return chainChildren.map((c) => c.name).join(".");
+    }
+    if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
+      return ref.name.trim();
+    }
+    return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+  };
+
+  const getFeatureType = (entry: SymbolEntry): string | null => {
+    const typeChild = db.childrenOf(entry.id).find((c) => c.ruleName === "OwnedFeatureTyping");
+    if (typeChild?.name) return normalizeTypeName(typeChild.name);
+    if (entry.metadata?.["typeSpecifier"]) return normalizeTypeName(String(entry.metadata["typeSpecifier"]));
+    const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
+    const m = /:\s*([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
+    if (m?.[1]) return normalizeTypeName(m[1]);
+    return null;
+  };
+
+  let pairs: [string, string][] = [];
+  if (refs.length >= 2) {
+    for (let r = 0; r < refs.length - 1; r++) {
+      pairs.push([getEndpointName(refs[r]!), getEndpointName(refs[r + 1]!)]);
+    }
+  } else {
+    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
+    const m = /\bbind\s+([A-Za-z_][A-Za-z0-9_.]*)\s*=\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(text);
+    if (m?.[1] && m?.[2]) {
+      pairs.push([m[1].trim(), m[2].trim()]);
+    }
+  }
+
+  for (const [sourceName, targetName] of pairs) {
+    const sourceEntry = resolvePathInScope(db, self.parentId, sourceName);
+    const targetEntry = resolvePathInScope(db, self.parentId, targetName);
+    if (sourceEntry && targetEntry) {
+      const sourceType = getFeatureType(sourceEntry);
+      const targetType = getFeatureType(targetEntry);
+      if (sourceType && targetType && sourceType !== targetType) {
+        const compat1 = isTypeAssignable(db, sourceType, targetType);
+        const compat2 = isTypeAssignable(db, targetType, sourceType);
+        if (!compat1 && !compat2) {
+          return error(
+            SysML2ErrorCode.BINDING_CONNECTOR_TYPE_MISMATCH.message(sourceName, sourceType, targetName, targetType),
+            {
+              code: SysML2ErrorCode.BINDING_CONNECTOR_TYPE_MISMATCH.code,
+              field: "declaredName",
+              startOffset: self.startOffset,
+              endOffset: self.endOffset,
+            },
+          );
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Statically validates that type references (: Type) and specialization references (:> Super)
  * resolve in scope or the standard library (Code S2002).
  */
@@ -962,6 +1133,24 @@ export class SysML2TypeChecker {
     const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
     if (!entry) return null;
     return checkConnectionTypeCompatibility(this.db, entry);
+  }
+
+  /**
+   * Validates that connected port endpoints have compatible conjugation (`S3008`).
+   */
+  checkPortConjugationMismatch(entryOrId: SymbolEntry | number): LintResult | null {
+    const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
+    if (!entry) return null;
+    return checkPortConjugationMismatch(this.db, entry);
+  }
+
+  /**
+   * Validates that binding connector endpoints have mutually compatible types (`S3009`).
+   */
+  checkBindingConnectorTypeMismatch(entryOrId: SymbolEntry | number): LintResult | null {
+    const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
+    if (!entry) return null;
+    return checkBindingConnectorTypeMismatch(this.db, entry);
   }
 
   /**

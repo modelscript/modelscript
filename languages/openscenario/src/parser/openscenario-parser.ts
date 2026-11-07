@@ -422,6 +422,16 @@ function parsePrivateAction(
         range: makeRange(source, paElem),
       };
     }
+
+    const distAction = findChild(longElem, "LongitudinalDistanceAction");
+    if (distAction) {
+      return {
+        name: actionName,
+        kind: "longitudinalDistance",
+        entityRef,
+        range: makeRange(source, paElem),
+      };
+    }
   }
 
   // LateralAction -> LaneChangeAction
@@ -450,6 +460,33 @@ function parsePrivateAction(
         range: makeRange(source, paElem),
       };
     }
+  }
+
+  // RoutingAction -> FollowTrajectoryAction / AssignRouteAction / AcquirePositionAction
+  const routingElem = findChild(paElem, "RoutingAction");
+  if (routingElem) {
+    const waypoints: ScenarioWorldPosition[] = [];
+    function collectWorldPositions(el: XmlElement): void {
+      if (el.name.toLowerCase() === "worldposition") {
+        waypoints.push({
+          x: getNumAttr(el, "x", 0),
+          y: getNumAttr(el, "y", 0),
+          z: getNumAttr(el, "z", 0),
+        });
+      }
+      for (const child of el.children) {
+        collectWorldPositions(child);
+      }
+    }
+    collectWorldPositions(routingElem);
+    return {
+      name: actionName,
+      kind: "routing",
+      entityRef,
+      waypoints,
+      targetPosition: waypoints[0] ? { kind: "world", world: waypoints[0] } : undefined,
+      range: makeRange(source, paElem),
+    };
   }
 
   return undefined;

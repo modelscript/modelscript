@@ -15,6 +15,7 @@ import { defaultContainerToolkit } from "@modelscript/runtime";
 import type {
   AsilLevel,
   ContractComparator,
+  ContractPolicy,
   ReqIfAttributeDefinition,
   ReqIfAttributeValue,
   ReqIfContract,
@@ -431,8 +432,25 @@ function parseStructuredEarsOrCompoundContract(normalized: string): ReqIfContrac
  * - "While battery_soc >= 20 %, when throttle >= 80 %, the powertrain shall maintain torque >= 240 N*m within 50 ms"
  * - "If speed >= 100 km/h and fault == 0, then brake_force >= 5000 N"
  */
-export function extractFormalContract(text: string): ReqIfContract | undefined {
+export interface ExtractContractOptions {
+  policy?: ContractPolicy | undefined;
+}
+
+/**
+ * Extracts formal numeric or compound EARS contract bounds from requirement text or attributes.
+ * Examples:
+ * - "Speed must be <= 120 km/h"
+ * - "@contract: 2*x + y <= 100 && x >= 10"
+ * - "While battery_soc >= 20 %, when throttle >= 80 %, the powertrain shall maintain torque >= 240 N*m within 50 ms"
+ * - "If speed >= 100 km/h and fault == 0, then brake_force >= 5000 N"
+ */
+export function extractFormalContract(
+  text: string,
+  options?: ExtractContractOptions | ContractPolicy,
+): ReqIfContract | undefined {
   if (!text) return undefined;
+  const policy: ContractPolicy = typeof options === "string" ? options : options?.policy ?? "permissive";
+
   const normalized = text
     .replace(/<\/?[a-zA-Z][^<>]*>/g, " ")
     .replace(/&lt;/g, "<")
@@ -444,23 +462,57 @@ export function extractFormalContract(text: string): ReqIfContract | undefined {
   const explicitExpr = explicitMatch?.[1]?.trim().replace(/\.$/, "").trim();
 
   if (!explicitExpr) {
+    if (policy === "strict") {
+      return undefined;
+    }
     const earsOrCompound = parseStructuredEarsOrCompoundContract(normalized);
     if (earsOrCompound) {
-      return earsOrCompound;
+      return {
+        ...earsOrCompound,
+        tier: "ears",
+      };
+    }
+    if (policy === "ears") {
+      return undefined;
     }
   }
 
   const targetText = normalizeVerbalComparators(explicitExpr ?? normalized);
   const pattern =
-    /([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_*/%^]*)?/i;
+    /([a-zA-Z_][a-zA-Z0-9_.\s/]*?)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_*/%^]*)?/i;
   const match = pattern.exec(targetText);
-  if (!match) return undefined;
+  if (!match) {
+    if (explicitExpr) {
+      return {
+        variable: "contract",
+        comparator: "<=",
+        limitValue: 0,
+        expression: explicitExpr,
+        tier: "explicit",
+      };
+    }
+    return undefined;
+  }
 
   let rawPrefix = (match[1] ?? "").trim();
-  rawPrefix = rawPrefix.replace(PROSE_STOP_WORDS, " ").trim();
+  rawPrefix = rawPrefix
+    .replace(/\b(?:from|at|under|over|during|for)\s+[-+]?\d+(?:\.\d+)?\s*[a-zA-Z/%^0-9*._-]+/gi, " ")
+    .replace(PROSE_STOP_WORDS, " ")
+    .trim();
   const tokens = rawPrefix.split(/\s+/).filter(Boolean);
   const varName = tokens[tokens.length - 1];
-  if (!varName) return undefined;
+  if (!varName) {
+    if (explicitExpr) {
+      return {
+        variable: "contract",
+        comparator: "<=",
+        limitValue: 0,
+        expression: explicitExpr,
+        tier: "explicit",
+      };
+    }
+    return undefined;
+  }
 
   const comp = (match[2] ?? "==") as ContractComparator;
   const num = parseFloat(match[3] ?? "");
@@ -469,7 +521,18 @@ export function extractFormalContract(text: string): ReqIfContract | undefined {
     unit = undefined;
   }
 
-  if (isNaN(num)) return undefined;
+  if (isNaN(num)) {
+    if (explicitExpr) {
+      return {
+        variable: varName,
+        comparator: comp,
+        limitValue: 0,
+        expression: explicitExpr,
+        tier: "explicit",
+      };
+    }
+    return undefined;
+  }
 
   return {
     variable: varName,
@@ -478,9 +541,10 @@ export function extractFormalContract(text: string): ReqIfContract | undefined {
     unit: unit || undefined,
     expression:
       explicitExpr ??
-      (/(?:&&|\|\||=>|->|\bimplies\b|\band\b|\bor\b|[+\-*/])/.test(normalized)
+      (/(?:&&|\|\||=>|->|\bimplies\b|\band\b|\bor\b|[+*-])/.test(normalized)
         ? normalized
         : `${varName} ${comp} ${num}`),
+    tier: explicitExpr ? "explicit" : "heuristic-prose",
   };
 }
 
@@ -496,17 +560,21 @@ export function extractAsilLevel(text: string): AsilLevel | undefined {
   return undefined;
 }
 
+export interface ParseReqIfOptions {
+  contractPolicy?: ContractPolicy | undefined;
+}
+
 /**
  * Parses a ReqIF XML document into a strongly-typed ReqIfDocument.
  */
-export function parseReqIf(xmlContent: string): ReqIfDocument {
+export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): ReqIfDocument {
   const doc = parseXml(xmlContent);
   if (!doc.root) {
     throw new Error("ReqIF XML document has no root element");
   }
 
   const root = doc.root;
-  if (!matchTag(root, "REQ-IF")) {
+  if (!matchTag(root, "REQ-IF") && !matchTag(root, "SPEC-OBJECTS") && !matchTag(root, "SPEC-OBJECT")) {
     throw new Error(`Expected <REQ-IF> root element, found <${root.name}>`);
   }
 
@@ -685,8 +753,15 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
   // 4. Spec Objects (Requirements)
   const specObjects = new Map<string, ReqIfSpecObject>();
   const specObjectsContainer = getChild(coreContent, "SPEC-OBJECTS");
-  if (specObjectsContainer) {
-    for (const soEl of specObjectsContainer.children) {
+  const specObjectElements = specObjectsContainer
+    ? specObjectsContainer.children
+    : matchTag(coreContent, "SPEC-OBJECTS")
+      ? coreContent.children
+      : matchTag(coreContent, "SPEC-OBJECT")
+        ? [coreContent]
+        : [];
+  if (specObjectElements.length > 0) {
+    for (const soEl of specObjectElements) {
       if (!matchTag(soEl, "SPEC-OBJECT")) continue;
 
       const id = getAttr(soEl, "IDENTIFIER") || `REQ-${specObjects.size + 1}`;
@@ -756,6 +831,13 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
             } else if (lower === "false" || lower === "0") {
               parsedValue = false;
             }
+          } else if (typeof parsedValue === "string") {
+            parsedValue = parsedValue
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">")
+              .replace(/&quot;/g, '"')
+              .replace(/&apos;/g, "'")
+              .replace(/&amp;/g, "&");
           }
 
           const attrSpan = createSpan(valEl.start, valEl.end, lineStarts);
@@ -767,10 +849,11 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
             if (ad?.longName) attrName = ad.longName;
           }
 
-          const attrKey = defRef || attrName || `ReqIF.Text`;
+          const attrKey =
+            defRef || attrName || (kind === "ENUMERATION" ? `ReqIF.Enum.${attributes.size + 1}` : `ReqIF.Text`);
           attributes.set(attrKey, {
             definitionRef: defRef,
-            name: attrName || "ReqIF.Text",
+            name: attrName || (kind === "ENUMERATION" ? attrKey : "ReqIF.Text"),
             kind,
             value: parsedValue,
             span: attrSpan,
@@ -779,13 +862,14 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
           // Check if this attribute represents the requirement text
           const lowerName = (attrName || defRef).toLowerCase();
           if (
-            lowerName.includes("text") ||
-            lowerName.includes("description") ||
-            lowerName.includes("summary") ||
-            lowerName === "reqif.text" ||
-            lowerName === "requirement text" ||
-            !attrName ||
-            !requirementText
+            (kind === "STRING" || kind === "XHTML") &&
+            (lowerName.includes("text") ||
+              lowerName.includes("description") ||
+              lowerName.includes("summary") ||
+              lowerName === "reqif.text" ||
+              lowerName === "requirement text" ||
+              !attrName ||
+              !requirementText)
           ) {
             if (typeof parsedValue === "string" && parsedValue.trim().length > 0) {
               requirementText = parsedValue.trim();
@@ -796,18 +880,23 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
 
       if (!requirementText) {
         for (const attr of attributes.values()) {
-          if (typeof attr.value === "string" && attr.value.trim().length > 0) {
+          if (
+            (attr.kind === "STRING" || attr.kind === "XHTML") &&
+            typeof attr.value === "string" &&
+            attr.value.trim().length > 0
+          ) {
             requirementText = attr.value.trim();
             break;
           }
         }
       }
 
+      const hasExplicitText = requirementText.trim().length > 0;
       if (!requirementText) {
         requirementText = longName || id;
       }
 
-      const contract = extractFormalContract(requirementText);
+      const contract = extractFormalContract(requirementText, { policy: options?.contractPolicy });
 
       // Extract ASIL level from explicit attribute, VALUES, or requirement text/title
       let asil = extractAsilLevel(`${longName || ""} ${requirementText}`);
@@ -818,7 +907,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
       }
       for (const attr of attributes.values()) {
         const keyLower = `${attr.definitionRef} ${attr.name}`.toLowerCase();
-        if (keyLower.includes("asil") || keyLower.includes("safety")) {
+        if (keyLower.includes("asil") || keyLower.includes("safety") || attr.kind === "ENUMERATION") {
           const parsedAsil = extractAsilLevel(String(attr.value));
           if (parsedAsil) asil = parsedAsil;
         }
@@ -854,6 +943,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
         typeRef,
         attributes,
         text: requirementText,
+        hasExplicitText,
         span,
         contract,
         asilLevel: asil,

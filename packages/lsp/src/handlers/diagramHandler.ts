@@ -23,6 +23,7 @@ export function registerDiagramHandlers(context: LspContext) {
       className?: string | undefined;
       diagramType?: string | undefined;
       sidecarContent?: string | undefined;
+      documentText?: string | undefined;
     }) => {
       return await context.diagramService.handleGetDiagramData(params);
     },
@@ -49,8 +50,12 @@ export function registerDiagramHandlers(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getDiagramData",
-    async (params: { uri: string; className?: string | undefined; diagramType?: string | undefined }) =>
-      await context.diagramService.handleGetDiagramData(params),
+    async (params: {
+      uri: string;
+      className?: string | undefined;
+      diagramType?: string | undefined;
+      documentText?: string | undefined;
+    }) => await context.diagramService.handleGetDiagramData(params),
   );
 
   context.connection.onRequest(

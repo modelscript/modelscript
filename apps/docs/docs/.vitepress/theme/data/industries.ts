@@ -10,6 +10,7 @@
  */
 
 import type { IconName } from "./icons";
+import type { Tone } from "./tones";
 
 export type IndustryGroupId = "transportation" | "energy" | "industry";
 
@@ -35,6 +36,8 @@ export interface Industry {
   icon: IconName;
   /** Accent hue for the industry (CSS color). */
   accent: string;
+  /** Light/dark adaptive two-tone palette for schematics and icon tiles. */
+  tone: Tone;
   /** Short line shown in the mega menu. */
   tagline: string;
   /** Hero headline on the industry page. */
@@ -52,10 +55,25 @@ export interface Industry {
   cli: string[];
 }
 
-export const INDUSTRY_GROUPS: { id: IndustryGroupId; label: string }[] = [
-  { id: "transportation", label: "Transportation" },
-  { id: "energy", label: "Energy & Infrastructure" },
-  { id: "industry", label: "Electronics, Industry & Science" },
+export const INDUSTRY_GROUPS: { id: IndustryGroupId; code: string; label: string; summary: string }[] = [
+  {
+    id: "transportation",
+    code: "01",
+    label: "Transportation & Mobility",
+    summary: "Flight dynamics, software-defined vehicles, rail homologation & offshore marine operations",
+  },
+  {
+    id: "energy",
+    code: "02",
+    label: "Energy & Critical Infrastructure",
+    summary: "Grid EMT compliance, multiphase flow assurance, reactor thermal-hydraulics & civil water networks",
+  },
+  {
+    id: "industry",
+    code: "03",
+    label: "Electronics, Process & Life Sciences",
+    summary: "SPICE/RF signal integrity, virtual PLC commissioning, chemical flowsheets & clinical CAS",
+  },
 ];
 
 export const INDUSTRIES: Industry[] = [
@@ -66,6 +84,7 @@ export const INDUSTRIES: Industry[] = [
     group: "transportation",
     icon: "plane",
     accent: "#38bdf8",
+    tone: ["cyan", "indigo"],
     tagline: "Flight dynamics, propulsion & mission telemetry",
     headline: "From requirements to flight dynamics in a single, verifiable thread",
     summary:
@@ -131,6 +150,7 @@ export const INDUSTRIES: Industry[] = [
     group: "transportation",
     icon: "car",
     accent: "#a78bfa",
+    tone: ["violet", "cyan"],
     tagline: "AUTOSAR, powertrain & autonomous-driving scenarios",
     headline: "Software-defined vehicles need a software-defined toolchain",
     summary:
@@ -204,6 +224,7 @@ export const INDUSTRIES: Industry[] = [
     group: "transportation",
     icon: "train",
     accent: "#f59e0b",
+    tone: ["amber", "cyan"],
     tagline: "Vehicle dynamics, track geometry & EN 14363",
     headline: "Railway vehicle dynamics and homologation, open and reproducible",
     summary:
@@ -251,6 +272,7 @@ export const INDUSTRIES: Industry[] = [
     group: "transportation",
     icon: "anchor",
     accent: "#2dd4bf",
+    tone: ["teal", "cyan"],
     tagline: "Marine operations, risers & mooring",
     headline: "Offshore dynamics with design-code checks built in",
     summary:
@@ -293,6 +315,7 @@ export const INDUSTRIES: Industry[] = [
     group: "energy",
     icon: "zap",
     accent: "#facc15",
+    tone: ["amber", "emerald"],
     tagline: "EMT, power flow & grid-code compliance",
     headline: "Grid-code compliance, from PSCAD to IEEE 2800 in one pipeline",
     summary:
@@ -353,6 +376,7 @@ export const INDUSTRIES: Industry[] = [
     group: "energy",
     icon: "flame",
     accent: "#fb923c",
+    tone: ["amber", "rose"],
     tagline: "Flow assurance, pipelines & reservoirs",
     headline: "Flow assurance from reservoir to export pipeline",
     summary:
@@ -397,6 +421,7 @@ export const INDUSTRIES: Industry[] = [
     group: "energy",
     icon: "atom",
     accent: "#4ade80",
+    tone: ["emerald", "teal"],
     tagline: "Reactor thermal-hydraulics & point kinetics",
     headline: "Reactor thermal-hydraulics you can read, diff, and verify",
     summary:
@@ -434,6 +459,7 @@ export const INDUSTRIES: Industry[] = [
     group: "energy",
     icon: "building",
     accent: "#60a5fa",
+    tone: ["indigo", "teal"],
     tagline: "Building energy, water & stormwater networks",
     headline: "Model the built environment, from HVAC to stormwater",
     summary:
@@ -474,6 +500,7 @@ export const INDUSTRIES: Industry[] = [
     group: "industry",
     icon: "cpu",
     accent: "#22d3ee",
+    tone: ["cyan", "violet"],
     tagline: "SPICE, compact models, IBIS & S-parameters",
     headline: "Analog, RF, and signal integrity in one open toolchain",
     summary:
@@ -518,6 +545,7 @@ export const INDUSTRIES: Industry[] = [
     group: "industry",
     icon: "bot",
     accent: "#f472b6",
+    tone: ["rose", "indigo"],
     tagline: "URDF kinematics, AutomationML, PLCs & mechanisms",
     headline: "From robot description to verified plant & controller",
     summary:
@@ -564,6 +592,7 @@ export const INDUSTRIES: Industry[] = [
     group: "industry",
     icon: "flask",
     accent: "#c084fc",
+    tone: ["violet", "teal"],
     tagline: "Flowsheets, kinetics, geochemistry & molecular graphs",
     headline: "Open, scriptable chemical & process simulation",
     summary:
@@ -610,6 +639,7 @@ export const INDUSTRIES: Industry[] = [
     group: "industry",
     icon: "dna",
     accent: "#34d399",
+    tone: ["emerald", "indigo"],
     tagline: "Systems biology, pharmacometrics, radiotherapy & surgical CAS",
     headline: "From molecular pathways to radiotherapy and surgical navigation",
     summary:

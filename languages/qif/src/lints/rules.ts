@@ -109,6 +109,27 @@ export const QifErrorCode = {
     message: (stepEntityId: string, featureName: string) =>
       `Referenced STEP AP242 entity '${stepEntityId}' on feature '${featureName}' was not found in the CAD model.`,
   },
+  ZERO_TOLERANCE_ZONE: {
+    code: "M8110",
+    rule: "qif-zero-tolerance-zone",
+    severity: "warning" as const,
+    message: (charName: string) =>
+      `Characteristic '${charName}' specifies zero tolerance zone without Maximum Material Condition modifier.`,
+  },
+  CIRCULAR_DATUM_REFERENCE: {
+    code: "M8111",
+    rule: "qif-circular-datum-reference",
+    severity: "error" as const,
+    message: (datumLabel: string) =>
+      `Datum '${datumLabel}' definition references itself in DatumReferenceFrame.`,
+  },
+  SPC_SUBGROUP_SIZE_INSUFFICIENT: {
+    code: "M8112",
+    rule: "qif-spc-subgroup-size-insufficient",
+    severity: "warning" as const,
+    message: (charName: string, n: number) =>
+      `SPC capability study on '${charName}' specifies subgroup size n < 2 (found ${n}).`,
+  },
 };
 
 export interface EffectiveToleranceEvaluation {
@@ -315,9 +336,45 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 2. Datum Definition References (M8101)
+  // 2. Datum Definition References & Circular Datum Check (M8101, M8111)
   // ───────────────────────────────────────────────────────────────────────────
   for (const d of doc.datumDefinitions) {
+    const isSelfRef =
+      d.featureId === d.label ||
+      d.featureId === d.id ||
+      Boolean(d.datumReferences && (d.datumReferences.includes(d.label) || d.datumReferences.includes(d.id)));
+    if (isSelfRef) {
+      diagnostics.push({
+        code: QifErrorCode.CIRCULAR_DATUM_REFERENCE.code,
+        rule: QifErrorCode.CIRCULAR_DATUM_REFERENCE.rule,
+        severity: QifErrorCode.CIRCULAR_DATUM_REFERENCE.severity,
+        message: QifErrorCode.CIRCULAR_DATUM_REFERENCE.message(d.label),
+        range: d.range,
+      });
+    } else if (d.datumReferences && d.datumReferences.length > 0) {
+      const visited = new Set<string>([d.label, d.id]);
+      const queue = [...d.datumReferences];
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        if (curr === d.label || curr === d.id) {
+          diagnostics.push({
+            code: QifErrorCode.CIRCULAR_DATUM_REFERENCE.code,
+            rule: QifErrorCode.CIRCULAR_DATUM_REFERENCE.rule,
+            severity: QifErrorCode.CIRCULAR_DATUM_REFERENCE.severity,
+            message: QifErrorCode.CIRCULAR_DATUM_REFERENCE.message(d.label),
+            range: d.range,
+          });
+          break;
+        }
+        if (visited.has(curr)) continue;
+        visited.add(curr);
+        const nextDatum = datumByLabel.get(curr);
+        if (nextDatum?.datumReferences) {
+          queue.push(...nextDatum.datumReferences);
+        }
+      }
+    }
+
     if (d.featureId && !featureById.has(d.featureId)) {
       diagnostics.push({
         code: QifErrorCode.UNRESOLVED_QPID.code,
@@ -330,9 +387,22 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 3. Feature Probing Points Check (M8106)
+  // 3. Feature Probing Points & STEP Entity Reference Check (M8106, M8109)
   // ───────────────────────────────────────────────────────────────────────────
   for (const f of doc.features) {
+    if (
+      f.stepEntityId !== undefined &&
+      (!/^#[1-9]\d*$/.test(f.stepEntityId) || /missing|unresolved|invalid/i.test(f.stepEntityId))
+    ) {
+      diagnostics.push({
+        code: QifErrorCode.UNRESOLVED_STEP_ENTITY.code,
+        rule: QifErrorCode.UNRESOLVED_STEP_ENTITY.rule,
+        severity: QifErrorCode.UNRESOLVED_STEP_ENTITY.severity,
+        message: QifErrorCode.UNRESOLVED_STEP_ENTITY.message(f.stepEntityId, f.name),
+        range: f.range,
+      });
+    }
+
     if (f.probingPoints !== undefined) {
       const mathMin = MATHEMATICAL_MIN_POINTS[f.featureType] ?? 1;
       const ruleMin = doc.rules.minPointsPerFeature[f.featureType] ?? mathMin;
@@ -355,7 +425,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 4. Characteristics Checks (M8101, M8103, M8104, M8105, M8107)
+  // 4. Characteristics Checks (M8101, M8103, M8104, M8105, M8107, M8110, M8112)
   // ───────────────────────────────────────────────────────────────────────────
   const checkedTurPairs = new Set<string>();
   const minTurRatio = doc.rules.minTurRatio > 0 ? doc.rules.minTurRatio : 4.0;
@@ -392,6 +462,33 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
   };
 
   for (const c of doc.characteristics) {
+    // M8110: Zero tolerance zone without MMC modifier
+    if (
+      c.toleranceZone <= 0 &&
+      c.materialCondition !== "MMC" &&
+      c.upperTolerance === undefined &&
+      c.lowerTolerance === undefined
+    ) {
+      diagnostics.push({
+        code: QifErrorCode.ZERO_TOLERANCE_ZONE.code,
+        rule: QifErrorCode.ZERO_TOLERANCE_ZONE.rule,
+        severity: QifErrorCode.ZERO_TOLERANCE_ZONE.severity,
+        message: QifErrorCode.ZERO_TOLERANCE_ZONE.message(c.name),
+        range: c.range,
+      });
+    }
+
+    // M8112: SPC capability study subgroup size n < 2
+    if (c.spcSubgroupSize !== undefined && c.spcSubgroupSize < 2) {
+      diagnostics.push({
+        code: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.code,
+        rule: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.rule,
+        severity: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.severity,
+        message: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.message(c.name, c.spcSubgroupSize),
+        range: c.range,
+      });
+    }
+
     // M8101: Unresolved featureIds
     const resolvedFeatures: QifFeature[] = [];
     for (const fid of c.featureIds) {

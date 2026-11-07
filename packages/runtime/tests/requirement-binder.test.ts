@@ -9,6 +9,7 @@ import {
   assertRequirementsToTheoryCoordinator,
   bindRequirementsToModelica,
   extractModelicaTwinAnnotations,
+  getSysmlWasmParser,
   parseSysmlRequirements,
 } from "../src/formal/requirement_binder.js";
 import { SemanticTheoryCoordinator } from "../src/formal/theory_coordinator.js";
@@ -170,5 +171,41 @@ end DroneSimulation;
     assertRequirementsToTheoryCoordinator(coordinator, reqs);
     // TheoryCoordinator successfully ingested requirements
     assert.ok(coordinator);
+  });
+
+  it("7. parseSysmlRequirements traverses WASM GLR CST for conjoined constraints, subject bindings, and arithmetic expressions", () => {
+    const complexSysml = `package ActuatorArchitecture {
+      part def ClevisBracket {
+        attribute mass : Real = 0.88;
+        attribute von_mises_stress : Real = 216.4;
+        attribute tip_deflection : Real = 0.29;
+      }
+      requirement def <'REQ-ACT-01'> REQ_ACTUATOR_01 {
+        subject bracket : ClevisBracket;
+        attribute max_mass : Real = 1.0 + 0.25;
+        attribute max_von_mises : Real = 140.0 * 2.0;
+        attribute max_deflection : Real = 0.45;
+        require constraint {
+          bracket.mass <= max_mass and
+          bracket.von_mises_stress <= max_von_mises and
+          bracket.tip_deflection <= max_deflection
+        }
+      }
+    }`;
+
+    const reqs = parseSysmlRequirements(complexSysml);
+    assert.strictEqual(reqs.length, 3);
+    assert.strictEqual(reqs[0]!.id, "REQ_ACTUATOR_01");
+    assert.strictEqual(reqs[0]!.shortId, "REQ-ACT-01");
+    assert.strictEqual(reqs[0]!.packageName, "ActuatorArchitecture");
+    assert.strictEqual(reqs[0]!.subjectName, "ClevisBracket");
+    assert.strictEqual(reqs[0]!.subjectVarName, "bracket");
+
+    assert.strictEqual(reqs[0]!.targetAttribute, "mass");
+    assert.strictEqual(reqs[0]!.limitValue, 1.25);
+    assert.strictEqual(reqs[1]!.targetAttribute, "von_mises_stress");
+    assert.strictEqual(reqs[1]!.limitValue, 280.0);
+    assert.strictEqual(reqs[2]!.targetAttribute, "tip_deflection");
+    assert.strictEqual(reqs[2]!.limitValue, 0.45);
   });
 });

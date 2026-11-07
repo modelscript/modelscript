@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { IconName } from "../data/icons";
 import languagesData from "../data/languages.generated.json";
 import MsIcon from "./MsIcon.vue";
@@ -38,7 +38,7 @@ const steps: ThreadStep[] = [
     id: "analyze",
     icon: "search",
     title: "Analyze",
-    body: `${totalLintRules} lint rules across ${lintedLanguageCount} languages catch unresolved references, type and unit mismatches, and unbalanced equations as you type.`,
+    body: `${totalLintRules.toLocaleString("en-US")} lint rules across ${lintedLanguageCount} languages catch unresolved references, type and unit mismatches, and unbalanced equations as you type.`,
     lines: [
       { kind: "comment", text: "# Lint an entire polyglot workspace for CI" },
       { kind: "cmd", text: "msx lint ./models ./requirements --format json" },
@@ -96,6 +96,7 @@ const steps: ThreadStep[] = [
 
 const active = ref(0);
 const interacted = ref(false);
+const paused = ref(false);
 const copied = ref(false);
 const tabRefs = ref<HTMLButtonElement[]>([]);
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -124,64 +125,6 @@ function onStepKey(e: KeyboardEvent, i: number): void {
   tabRefs.value[next]?.focus();
 }
 
-// Interactive Parameter Trade-Study state
-const payloadMass = ref(2.4);
-const thermalCond = ref(5.2);
-const pitchDamping = ref(0.68);
-
-const peakCellTemp = computed(() =>
-  Number(
-    (
-      38.5 +
-      (payloadMass.value * 9.4) / Math.pow(thermalCond.value, 0.58) +
-      Math.abs(pitchDamping.value - 0.7) * 4.2
-    ).toFixed(1),
-  ),
-);
-
-const flightEndurance = computed(() =>
-  Number(
-    Math.max(
-      12.0,
-      44.0 -
-        payloadMass.value * 5.2 -
-        Math.abs(pitchDamping.value - 0.72) * 6.5 +
-        (thermalCond.value - 5.0) * 0.4,
-    ).toFixed(1),
-  ),
-);
-
-const structuralFoS = computed(() =>
-  Number((2.35 - payloadMass.value * 0.21 + Math.min(pitchDamping.value, 0.85) * 0.18).toFixed(2)),
-);
-
-const reqThmPass = computed(() => peakCellTemp.value <= 65.0);
-const reqEndPass = computed(() => flightEndurance.value >= 28.0);
-const reqStrPass = computed(() => structuralFoS.value >= 1.5);
-const allReqsPass = computed(() => reqThmPass.value && reqEndPass.value && reqStrPass.value);
-
-const trajectoryPath = computed(() => {
-  const pts: string[] = [];
-  const zeta = pitchDamping.value;
-  const wn = 4.6 - payloadMass.value * 0.35;
-  const wd = wn * Math.sqrt(Math.max(0.05, 1 - zeta * zeta));
-  for (let k = 0; k <= 40; k++) {
-    const t = (k / 40) * 3.2;
-    const env = Math.exp(-zeta * wn * t);
-    const resp = 1 - env * (Math.cos(wd * t) + (zeta / Math.sqrt(Math.max(0.05, 1 - zeta * zeta))) * Math.sin(wd * t));
-    const x = (k / 40) * 260;
-    const y = Math.max(6, Math.min(58, 52 - resp * 34));
-    pts.push(`${k === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`);
-  }
-  return pts.join(" ");
-});
-
-function resetTradeStudy(): void {
-  payloadMass.value = 2.4;
-  thermalCond.value = 5.2;
-  pitchDamping.value = 0.68;
-}
-
 async function copyInstall(): Promise<void> {
   try {
     await navigator.clipboard.writeText("npm install -g @modelscript/cli");
@@ -195,7 +138,7 @@ async function copyInstall(): Promise<void> {
 onMounted(() => {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   timer = setInterval(() => {
-    if (!interacted.value) active.value = (active.value + 1) % steps.length;
+    if (!interacted.value && !paused.value) active.value = (active.value + 1) % steps.length;
   }, 5500);
 });
 onBeforeUnmount(() => timer && clearInterval(timer));
@@ -213,7 +156,13 @@ onBeforeUnmount(() => timer && clearInterval(timer));
         </p>
       </header>
 
-      <div class="thread-layout">
+      <div
+        class="thread-layout"
+        @mouseenter="paused = true"
+        @mouseleave="paused = false"
+        @focusin="paused = true"
+        @focusout="paused = false"
+      >
         <ol class="thread-steps" role="tablist" aria-label="Workflow steps">
           <li v-for="(s, i) in steps" :key="s.id" role="presentation">
             <button
@@ -269,76 +218,6 @@ onBeforeUnmount(() => timer && clearInterval(timer));
             <div class="term-artifacts">
               <span class="art-label">{{ s.artifactLabel ?? "Outputs" }}</span>
               <span v-for="a in s.artifacts" :key="a" class="art">{{ a }}</span>
-            </div>
-          </div>
-
-          <!-- Interactive Parameter Trade-Study Sandbox -->
-          <div class="trade-study-card" role="region" aria-label="Interactive parameter trade-study">
-            <div class="trade-study-head">
-              <div class="trade-title-group">
-                <span class="trade-pill">Interactive Trade-Study</span>
-                <span class="trade-subtitle">Multidomain UAV Powertrain &amp; Pitch Loop</span>
-              </div>
-              <div class="trade-head-actions">
-                <span class="trade-verdict" :class="allReqsPass ? 'verdict-pass' : 'verdict-fail'">
-                  {{ allReqsPass ? "3/3 Contracts Verified" : "Contract Violation" }}
-                </span>
-                <button type="button" class="trade-reset-btn" @click="resetTradeStudy">Reset</button>
-              </div>
-            </div>
-
-            <div class="trade-sliders">
-              <label class="trade-slider-row">
-                <span class="slider-meta">
-                  <span class="slider-name">Payload Mass <code>m</code></span>
-                  <span class="slider-val">{{ payloadMass.toFixed(1) }} kg</span>
-                </span>
-                <input v-model.number="payloadMass" type="range" min="1.0" max="5.0" step="0.1" />
-              </label>
-
-              <label class="trade-slider-row">
-                <span class="slider-meta">
-                  <span class="slider-name">Thermal Conductance <code>G_th</code></span>
-                  <span class="slider-val">{{ thermalCond.toFixed(1) }} W/K</span>
-                </span>
-                <input v-model.number="thermalCond" type="range" min="2.0" max="10.0" step="0.2" />
-              </label>
-
-              <label class="trade-slider-row">
-                <span class="slider-meta">
-                  <span class="slider-name">Pitch Damping <code>&zeta;</code></span>
-                  <span class="slider-val">{{ pitchDamping.toFixed(2) }}</span>
-                </span>
-                <input v-model.number="pitchDamping" type="range" min="0.2" max="1.2" step="0.02" />
-              </label>
-            </div>
-
-            <div class="trade-results">
-              <div class="trade-chart" aria-hidden="true">
-                <svg viewBox="0 0 260 64" preserveAspectRatio="none">
-                  <line x1="0" y1="18" x2="260" y2="18" stroke="rgba(148,163,184,0.22)" stroke-dasharray="3 3" />
-                  <path :d="trajectoryPath" fill="none" stroke="var(--vp-c-brand-1)" stroke-width="2.2" />
-                </svg>
-                <span class="chart-caption">Pitch step response &theta;(t)</span>
-              </div>
-
-              <div class="trade-reqs">
-                <div class="req-chip" :class="reqThmPass ? 'is-pass' : 'is-fail'">
-                  <span class="req-id">REQ-THM-04</span>
-                  <span class="req-metric">{{ peakCellTemp }} &deg;C <small>(&le;65)</small></span>
-                  <span class="req-status">{{ reqThmPass ? "PASS" : "FAIL" }}</span>
-                </div>
-                <div class="req-chip" :class="reqEndPass ? 'is-pass' : 'is-fail'">
-                  <span class="req-id">REQ-END-02</span>
-                  <span class="req-metric">{{ flightEndurance }} min <small>(&ge;28)</small></span>
-                  <span class="req-status">{{ reqEndPass ? "PASS" : "FAIL" }}</span>
-                </div>
-                <div class="req-chip" :class="reqStrPass ? 'is-pass' : 'is-fail'">
-                  <span class="req-id">REQ-STR-09</span>
-                  <span class="req-metric">{{ structuralFoS }}x <small>(&ge;1.5)</small></span>
-                  <span class="req-status">{{ reqStrPass ? "PASS" : "FAIL" }}</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -596,225 +475,8 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   border: 1px solid rgba(34, 211, 238, 0.22);
 }
 
-.trade-study-card {
-  padding: 16px 18px;
-  border-radius: 16px;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  display: grid;
-  gap: 14px;
-}
-
-.trade-study-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.trade-title-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.trade-pill {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
-}
-
-.trade-subtitle {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--vp-c-text-1);
-}
-
-.trade-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.trade-verdict {
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.verdict-pass {
-  color: var(--ms-tier-stable, #10b981);
-  background: var(--ms-tier-stable-bg, rgba(16, 185, 129, 0.12));
-  border: 1px solid var(--ms-tier-stable-border, rgba(16, 185, 129, 0.3));
-}
-
-.verdict-fail {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.trade-reset-btn {
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--vp-c-text-2);
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-  cursor: pointer;
-}
-
-.trade-reset-btn:hover {
-  color: var(--vp-c-text-1);
-  border-color: var(--vp-c-brand-1);
-}
-
-.trade-sliders {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.trade-slider-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-}
-
-.slider-meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px;
-  font-size: 11px;
-}
-
-.slider-name {
-  color: var(--vp-c-text-2);
-  font-weight: 500;
-}
-
-.slider-name code {
-  font-size: 10.5px;
-  padding: 0 3px;
-  background: transparent;
-  color: var(--vp-c-text-1);
-}
-
-.slider-val {
-  font-family: var(--vp-font-family-mono);
-  font-weight: 700;
-  color: var(--vp-c-text-1);
-}
-
-.trade-slider-row input[type="range"] {
-  width: 100%;
-  accent-color: var(--vp-c-brand-1);
-  cursor: pointer;
-}
-
-.trade-results {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
-  gap: 12px;
-  align-items: center;
-}
-
-.trade-chart {
-  position: relative;
-  padding: 8px 10px 4px;
-  border-radius: 10px;
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-}
-
-.trade-chart svg {
-  width: 100%;
-  height: 52px;
-  display: block;
-}
-
-.chart-caption {
-  display: block;
-  font-size: 10px;
-  color: var(--vp-c-text-3);
-  text-align: right;
-}
-
-.trade-reqs {
-  display: grid;
-  gap: 6px;
-}
-
-.req-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 10px;
-  border-radius: 8px;
-  font-size: 11.5px;
-  background: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-}
-
-.req-id {
-  font-family: var(--vp-font-family-mono);
-  font-weight: 600;
-  color: var(--vp-c-text-2);
-}
-
-.req-metric {
-  font-family: var(--vp-font-family-mono);
-  font-weight: 600;
-  color: var(--vp-c-text-1);
-}
-
-.req-metric small {
-  color: var(--vp-c-text-3);
-  font-weight: 400;
-}
-
-.req-status {
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.req-chip.is-pass .req-status {
-  color: var(--ms-tier-stable, #10b981);
-  background: var(--ms-tier-stable-bg, rgba(16, 185, 129, 0.12));
-}
-
-.req-chip.is-fail {
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.req-chip.is-fail .req-status {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.14);
-}
-
 @media (max-width: 960px) {
   .thread-layout {
-    grid-template-columns: 1fr;
-  }
-  .trade-sliders,
-  .trade-results {
     grid-template-columns: 1fr;
   }
 }

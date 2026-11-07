@@ -63,6 +63,7 @@ export interface OscalMetadata {
   published?: string | undefined;
   roles?: { id: string; title: string }[] | undefined;
   parties?: { uuid: string; type: string; name: string }[] | undefined;
+  responsibleParties?: { roleId: string; partyUuids: string[] }[] | undefined;
   props?: OscalProperty[] | undefined;
   range?: OscalSourceRange | undefined;
 }
@@ -222,6 +223,7 @@ export interface OscalComponent {
   status?: "operational" | "under-development" | "disposition" | "other" | undefined;
   props?: OscalProperty[] | undefined;
   protocols?: OscalProtocol[] | undefined;
+  responsibleRoles?: { roleId: string; partyUuids?: string[] | undefined }[] | undefined;
   controlImplementations?: OscalComponentControlImplementation[] | undefined;
   range?: OscalSourceRange | undefined;
 }

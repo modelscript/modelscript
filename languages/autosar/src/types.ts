@@ -13,6 +13,7 @@ export interface AutosarDataElement {
   shortName: string;
   typeRef: string;
   initValue?: number | string | undefined;
+  swDataDefProps?: { swAddrMethodRef?: string | undefined } | undefined;
   range?: SourceRange | undefined;
 }
 
@@ -40,6 +41,7 @@ export interface AutosarPortPrototype {
   shortName: string;
   direction: AutosarPortDirection;
   interfaceRef: string;
+  interfaceTrefKind?: AutosarPortDirection | undefined;
   range?: SourceRange | undefined;
 }
 
@@ -150,12 +152,20 @@ export interface AutosarPackage {
   range?: SourceRange | undefined;
 }
 
+export interface AutosarDataTypeMap {
+  shortName?: string | undefined;
+  applicationDataTypeRef: string;
+  implementationDataTypeRef: string;
+  range?: SourceRange | undefined;
+}
+
 export interface AutosarModel {
   packages: Map<string, AutosarPackage>;
   components: Map<string, AutosarSwComponent>;
   interfaces: Map<string, AutosarPortInterface>;
   pdus: Map<string, AutosarPdu>;
   frames: Map<string, AutosarCanFrame>;
+  dataTypeMappings?: AutosarDataTypeMap[] | undefined;
 }
 
 export interface AutosarQuickFix {

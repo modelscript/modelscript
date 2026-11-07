@@ -88,4 +88,25 @@ export const CanteraErrorCode = {
     severity: "warning" as DiagnosticSeverity,
     message: (speciesName: string) => `Species '${speciesName}' is missing a 'thermo' polynomial definition.`,
   },
+  ACTIVATION_ENERGY_OUT_OF_BOUNDS: {
+    code: 9211,
+    rule: "activation-energy-out-of-bounds",
+    severity: "warning" as DiagnosticSeverity,
+    message: (eq: string, ea: number) =>
+      `Reaction '${eq}' specifies an unusually large negative activation energy (${ea} J/mol).`,
+  },
+  TRANSPORT_COLLISION_DIAMETER_NEGATIVE: {
+    code: 9212,
+    rule: "transport-collision-diameter-negative",
+    severity: "error" as DiagnosticSeverity,
+    message: (species: string, d: number) =>
+      `Transport collision diameter for species '${species}' must be positive (found ${d} Å).`,
+  },
+  UNREFERENCED_ELEMENT_DECLARATION: {
+    code: 9213,
+    rule: "unreferenced-element-declaration",
+    severity: "info" as DiagnosticSeverity,
+    message: (elem: string) =>
+      `Element '${elem}' declared in mechanism but not present in any species composition.`,
+  },
 } as const;

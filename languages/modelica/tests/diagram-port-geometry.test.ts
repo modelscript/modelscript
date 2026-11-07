@@ -600,6 +600,29 @@ describe("Diagram Port Centering and Ground Alignment Geometry", () => {
     assert(!hasDotNear(-70, 30), "Should not place solder dot on port ground.p (-70, 30)");
   });
 
+  it("should preserve fully qualified compositeName in node properties for accurate icon resolution", async () => {
+    const mockModel: any = {
+      name: "CircuitTest",
+      components: [
+        {
+          name: "R1",
+          classInstance: {
+            name: "Resistor",
+            compositeName: "Modelica.Electrical.Analog.Basic.Resistor",
+            annotation: () => null,
+          },
+          annotation: (name: string) =>
+            name === "Placement"
+              ? { transformation: { origin: [0, 0], extent: [[-10, -10], [10, 10]] } }
+              : null,
+        },
+      ],
+    };
+    const data = await buildDiagramData(mockModel);
+    const r1 = data.nodes.find((n) => n.id === "R1");
+    assert.strictEqual(r1?.properties?.className, "Modelica.Electrical.Analog.Basic.Resistor");
+  });
+
   it("should hide conditional heatPort and Line(visible=useHeatPort) by default and show them when useHeatPort=true", async () => {
     const { createWasmParser } = await import("@modelscript/modelica/parser");
     const { AnnotationEvaluator } = await import("../src/diagram/annotation-evaluator.js");

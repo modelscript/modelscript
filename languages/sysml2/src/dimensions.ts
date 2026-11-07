@@ -228,8 +228,12 @@ export function resolveTypeDimension(
 
   if (typeof typeNameOrEntry === "string") {
     rawName = typeNameOrEntry.includes("::") ? typeNameOrEntry.split("::").pop()! : typeNameOrEntry;
+    if (rawName === "Duration" || rawName === "DurationValue") return TIME;
     if (KNOWN_DIMENSIONS[rawName]) {
       return KNOWN_DIMENSIONS[rawName]!;
+    }
+    if (rawName.endsWith("Value") && KNOWN_DIMENSIONS[rawName.slice(0, -5)]) {
+      return KNOWN_DIMENSIONS[rawName.slice(0, -5)]!;
     }
     const candidates = db.byName(rawName);
     if (candidates && candidates.length > 0) {
@@ -238,8 +242,12 @@ export function resolveTypeDimension(
   } else {
     entry = typeNameOrEntry;
     rawName = entry.name;
+    if (rawName === "Duration" || rawName === "DurationValue") return TIME;
     if (KNOWN_DIMENSIONS[rawName]) {
       return KNOWN_DIMENSIONS[rawName]!;
+    }
+    if (rawName.endsWith("Value") && KNOWN_DIMENSIONS[rawName.slice(0, -5)]) {
+      return KNOWN_DIMENSIONS[rawName.slice(0, -5)]!;
     }
   }
 

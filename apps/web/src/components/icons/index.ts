@@ -5,6 +5,7 @@ export {
   AnsatzSketchIcon,
   DraftingTriangleIcon,
   MorselIcon,
+  PenIcon,
   SketchIcon,
 } from "./AnsatzSketchIcon";
 export type { AnsatzSketchIconProps, SketchIconVariant } from "./AnsatzSketchIcon";

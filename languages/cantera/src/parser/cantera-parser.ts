@@ -1065,11 +1065,25 @@ function parseYamlCanteraDocument(source: string, sourceFile?: string | undefine
       };
     }
 
+    let transport: CanteraSpecies["transport"] | undefined;
+    const transRec = asRecord(sRec["transport"]);
+    if (transRec) {
+      const rawDiam = transRec["diameter"] ?? transRec["collision-diameter"] ?? transRec["sigma"];
+      transport = {
+        model: transRec["model"] !== undefined ? asString(transRec["model"]) : undefined,
+        geometry: transRec["geometry"] !== undefined ? asString(transRec["geometry"]) : undefined,
+        diameter: rawDiam !== undefined ? asNumber(rawDiam, 0) : undefined,
+        wellDepth: transRec["well-depth"] !== undefined ? asNumber(transRec["well-depth"], 0) : undefined,
+        range: extractNodeRange(transRec, lineStarts),
+      };
+    }
+
     speciesMap.set(name, {
       name,
       composition,
       charge,
       thermo,
+      transport,
       note: sRec["note"] !== undefined ? asString(sRec["note"]) : undefined,
       range: extractNodeRange(sRec, lineStarts),
     });

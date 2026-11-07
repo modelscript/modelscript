@@ -190,6 +190,46 @@ test("Aspen Linter: detects circular flowsheet without tear stream (M8102)", () 
   assert.match(m8102.message, /Circular flowsheet loop detected/);
 });
 
+test("Aspen Linter: detects mixer mass imbalance, heat exchanger temperature cross, and compressor sub-unity pressure ratio (M8116, M8117, M8118)", () => {
+  const deckText = `FLOWSHEET
+    BLOCK MIX1 IN=S1 S2 OUT=S3
+    BLOCK HX1 IN=S3 OUT=S4
+    BLOCK CMP1 IN=S4 OUT=S5
+
+STREAM S1
+    SUBSTREAM MIXED TEMP=25.0 PRES=2.0 MASS-FLOW=100.0
+
+STREAM S2
+    SUBSTREAM MIXED TEMP=25.0 PRES=2.0 MASS-FLOW=50.0
+
+STREAM S3
+    SUBSTREAM MIXED TEMP=80.0 PRES=2.0 MASS-FLOW=120.0
+
+STREAM S4
+    SUBSTREAM MIXED TEMP=120.0 PRES=2.0 MASS-FLOW=120.0
+
+STREAM S5
+    SUBSTREAM MIXED TEMP=150.0 PRES=1.2 MASS-FLOW=120.0
+
+BLOCK MIX1 MIXER
+
+BLOCK HX1 HEATX
+
+BLOCK CMP1 COMPR
+    PARAM PRATIO=0.6
+`;
+  const deck = parseAspen(deckText);
+  const diags = lintAspen(deck);
+
+  const m8116 = diags.find((d) => d.code === "M8116");
+  const m8117 = diags.find((d) => d.code === "M8117");
+  const m8118 = diags.find((d) => d.code === "M8118");
+
+  assert.ok(m8116, "Expected M8116 for mixer mass balance deficit");
+  assert.ok(m8117, "Expected M8117 for heat exchanger temperature cross");
+  assert.ok(m8118, "Expected M8118 for compressor pressure ratio sub-unity");
+});
+
 test("Aspen Flash Solver: solves Rachford-Rice VLE for Methanol-Water mixture", () => {
   const result = solveFlashRachfordRice({
     temperature: 75.0, // Celsius

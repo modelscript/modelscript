@@ -154,4 +154,46 @@ describe("PLCopen Pre-Flight Linter Rules", () => {
     const d = diags.find((x) => x.code === "M7705")!;
     assert(d.message.includes("Type mismatch in assignment to 'Flag': expected 'BOOL', got 'number'."));
   });
+
+  it("emits M7710 on invalid task interval", () => {
+    const xml = `
+      <project>
+        <types><pous/></types>
+        <instances>
+          <configurations>
+            <configuration name="Config1">
+              <resource name="Res1">
+                <task name="FastTask" priority="1" interval="T#0ms"/>
+              </resource>
+            </configuration>
+          </configurations>
+        </instances>
+      </project>
+    `;
+    const project = parsePlcopen(xml);
+    const diags = lintPlcProject(project);
+    assert(diags.some((d) => d.code === "M7710"));
+  });
+
+  it("emits M7711 on RETAIN variable without PLC configuration, M7712 on division by zero, and M7713 on unresolved FB call", () => {
+    const st = `
+      PROGRAM SafetyChecks
+        VAR RETAIN
+          CycleCounter : INT := 0;
+        END_VAR
+        VAR
+          Ratio : REAL := 0.0;
+          CustomDrive : UnknownDriveFB;
+        END_VAR
+
+        Ratio := 100.0 / 0;
+        CustomDrive(Enable := TRUE);
+      END_PROGRAM
+    `;
+    const project = parsePlcopen(st);
+    const diags = lintPlcProject(project);
+    assert(diags.some((d) => d.code === "M7711"));
+    assert(diags.some((d) => d.code === "M7712"));
+    assert(diags.some((d) => d.code === "M7713"));
+  });
 });

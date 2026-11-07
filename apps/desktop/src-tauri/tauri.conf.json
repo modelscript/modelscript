@@ -36,7 +36,7 @@
     "active": true,
     "targets": ["msi", "nsis", "appimage", "deb", "dmg", "app"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "copyright": "Copyright (c) 2026 Mohamad Omar Nachawati. All rights reserved.",
+    "copyright": "Copyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors. All rights reserved.",
     "category": "DeveloperTool",
     "shortDescription": "ModelScript Multi-Domain Modeling & Simulation Studio",
     "longDescription": "Local-first engineering simulation and modeling studio for Modelica, SysML v2, STEP CAD, PSCAD, PSS/E, SIMPACK, and FMI co-simulation. Air-gap ready with FERC CEII and NERC CIP compliance.",

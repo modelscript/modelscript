@@ -318,4 +318,174 @@ describe("AUTOSAR Pre-Flight Automotive Linter (M7401–M7410)", () => {
     assert.ok(diags.some((d) => d.code === "M7408"));
     assert.ok(diags.some((d) => d.message.includes("Cyclic data dependency detected between runnables")));
   });
+
+  it("M7411: should report timing event with non-positive period", () => {
+    const arxml = `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Sys</SHORT-NAME>
+      <ELEMENTS>
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>InvalidTimerSWC</SHORT-NAME>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>IB_Timer</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_Step</SHORT-NAME>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <TIMING-EVENT>
+                  <SHORT-NAME>TE_Zero</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_Step</START-ON-EVENT-REF>
+                  <PERIOD>-0.005</PERIOD>
+                </TIMING-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+    const model = parseArxml(arxml);
+    const diags = lintAutosarModel(model);
+    assert.ok(diags.some((d) => d.code === "M7411"));
+    assert.ok(diags.some((d) => d.message.includes("defines non-positive period (-0.005 s)")));
+  });
+
+  it("M7412: should detect invalid data type mapping in DATA-TYPE-MAPPING-SET", () => {
+    const arxml = `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>DataTypes</SHORT-NAME>
+      <ELEMENTS>
+        <DATA-TYPE-MAPPING-SET>
+          <SHORT-NAME>VehicleTypeMappings</SHORT-NAME>
+          <DATA-TYPE-MAPS>
+            <DATA-TYPE-MAP>
+              <APPLICATION-DATA-TYPE-REF>/DataTypes/AppVehicleSpeed</APPLICATION-DATA-TYPE-REF>
+            </DATA-TYPE-MAP>
+          </DATA-TYPE-MAPS>
+        </DATA-TYPE-MAPPING-SET>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+    const model = parseArxml(arxml);
+    const diags = lintAutosarModel(model);
+    assert.ok(diags.some((d) => d.code === "M7412"));
+    assert.ok(diags.some((d) => d.message.includes("Invalid data type mapping for 'AppVehicleSpeed'")));
+  });
+
+  it("M7413: should detect circular composition dependencies", () => {
+    const arxml = `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Sys</SHORT-NAME>
+      <ELEMENTS>
+        <COMPOSITION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>CompA</SHORT-NAME>
+          <COMPONENTS>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>SubB</SHORT-NAME>
+              <TYPE-TREF>/Sys/CompB</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+          </COMPONENTS>
+        </COMPOSITION-SW-COMPONENT-TYPE>
+        <COMPOSITION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>CompB</SHORT-NAME>
+          <COMPONENTS>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>SubA</SHORT-NAME>
+              <TYPE-TREF>/Sys/CompA</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+          </COMPONENTS>
+        </COMPOSITION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+    const model = parseArxml(arxml);
+    const diags = lintAutosarModel(model);
+    assert.ok(diags.some((d) => d.code === "M7413"));
+    assert.ok(diags.some((d) => d.message.includes("CompA -> CompB -> CompA")));
+  });
+
+  it("M7414: should warn when variable data prototype SW-DATA-DEF-PROPS lacks SW-ADDR-METHOD-REF", () => {
+    const arxml = `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>IfPkg</SHORT-NAME>
+      <ELEMENTS>
+        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>TorqueIf</SHORT-NAME>
+          <DATA-ELEMENTS>
+            <VARIABLE-DATA-PROTOTYPE>
+              <SHORT-NAME>RequestedTorque</SHORT-NAME>
+              <SW-DATA-DEF-PROPS>
+                <SW-DATA-DEF-PROPS-VARIANTS>
+                  <SW-DATA-DEF-PROPS-CONDITIONAL />
+                </SW-DATA-DEF-PROPS-VARIANTS>
+              </SW-DATA-DEF-PROPS>
+              <TYPE-TREF>/DataTypes/Float32</TYPE-TREF>
+            </VARIABLE-DATA-PROTOTYPE>
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+    const model = parseArxml(arxml);
+    const diags = lintAutosarModel(model);
+    assert.ok(diags.some((d) => d.code === "M7414"));
+    assert.ok(diags.some((d) => d.message.includes("Variable data prototype 'RequestedTorque' lacks a declared SwAddrMethod")));
+  });
+
+  it("M7415: should report incompatible port interface direction violations", () => {
+    const arxml = `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Sys</SHORT-NAME>
+      <ELEMENTS>
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>BadPortSWC</SHORT-NAME>
+          <PORTS>
+            <P-PORT-PROTOTYPE>
+              <SHORT-NAME>WrongPPort</SHORT-NAME>
+              <REQUIRED-INTERFACE-TREF>/Sys/SensorIf</REQUIRED-INTERFACE-TREF>
+            </P-PORT-PROTOTYPE>
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>BadPort_IB</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_Main</SHORT-NAME>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <INIT-EVENT>
+                  <SHORT-NAME>IE_Main</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_Main</START-ON-EVENT-REF>
+                </INIT-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+    const model = parseArxml(arxml);
+    const diags = lintAutosarModel(model);
+    assert.ok(diags.some((d) => d.code === "M7415"));
+    assert.ok(diags.some((d) => d.message.includes("Port 'WrongPPort' interface direction violation")));
+  });
 });

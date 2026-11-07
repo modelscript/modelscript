@@ -79,6 +79,27 @@ export const SPICE_ERROR_CODES = {
     severity: "warning" as const,
     message: (dirName: string) => `Malformed or unsupported directive '${dirName}'.`,
   },
+  ZERO_RESISTOR_SHORT: {
+    code: 7111,
+    rule: "spice-zero-resistor-short",
+    severity: "warning" as const,
+    message: (compName: string) =>
+      `Resistor '${compName}' specifies zero resistance; forms ideal short-circuit.`,
+  },
+  INDUCTOR_CUTSET: {
+    code: 7112,
+    rule: "spice-inductor-cutset",
+    severity: "error" as const,
+    message: (compName: string) =>
+      `Inductor '${compName}' forms an inductive cutset with ungrounded nodes.`,
+  },
+  UNCONNECTED_PIN: {
+    code: 7113,
+    rule: "spice-unconnected-pin",
+    severity: "warning" as const,
+    message: (compName: string, pin: string) =>
+      `Subcircuit instance '${compName}' port '${pin}' is left unconnected.`,
+  },
 };
 
 export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
@@ -119,7 +140,7 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
       }
     }
 
-    // M7105: Invalid passive value (R, L, C <= 0)
+    // M7105: Invalid passive value (R, L, C <= 0) & M7111: Zero resistor short
     if ((comp.kind === "R" || comp.kind === "L" || comp.kind === "C") && comp.value !== undefined) {
       if (comp.value <= 0) {
         diagnostics.push({
@@ -130,9 +151,18 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
           span: comp.span,
         });
       }
+      if (comp.kind === "R" && comp.value === 0) {
+        diagnostics.push({
+          code: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.code,
+          rule: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.rule,
+          severity: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.severity,
+          message: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.message(comp.name),
+          span: comp.span,
+        });
+      }
     }
 
-    // M7104 & M7109: Subcircuit resolution and pin count
+    // M7104, M7109 & M7113: Subcircuit resolution, pin count, and unconnected pins
     if (comp.kind === "X" && comp.subcktName) {
       const subName = comp.subcktName.toUpperCase();
       const sub = circuit.subcircuits.get(subName);
@@ -159,6 +189,29 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
             span: comp.span,
           });
         }
+        const pinCount = Math.min(comp.nodes.length, sub.ports.length);
+        for (let i = 0; i < pinCount; i++) {
+          const nodeUpper = (comp.nodes[i] ?? "").toUpperCase();
+          const portName = sub.ports[i] ?? nodeUpper;
+          const isExplicitNc =
+            nodeUpper === "NC" ||
+            nodeUpper === "OPEN" ||
+            nodeUpper === "UNCONNECTED" ||
+            nodeUpper.startsWith("NC_");
+          const isSinglePinNode =
+            nodeUpper !== "0" &&
+            nodeUpper !== "GND" &&
+            (nodeConnections.get(nodeUpper)?.length ?? 0) === 1;
+          if (isExplicitNc || isSinglePinNode) {
+            diagnostics.push({
+              code: SPICE_ERROR_CODES.UNCONNECTED_PIN.code,
+              rule: SPICE_ERROR_CODES.UNCONNECTED_PIN.rule,
+              severity: SPICE_ERROR_CODES.UNCONNECTED_PIN.severity,
+              message: SPICE_ERROR_CODES.UNCONNECTED_PIN.message(comp.name, portName),
+              span: comp.span,
+            });
+          }
+        }
       }
     }
 
@@ -177,7 +230,8 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
     }
   }
 
-  // M7101: Floating nodes & M7103: Current cutsets
+  // M7101: Floating nodes, M7103: Current cutsets & M7112: Inductor cutsets
+  const reportedInductorCutsets = new Set<string>();
   for (const [node, conns] of nodeConnections) {
     if (node === "0" || node === "GND") continue;
 
@@ -214,6 +268,23 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
         message: SPICE_ERROR_CODES.CURRENT_CUTSET.message(node),
         span: firstConn?.comp.span,
       });
+    }
+
+    // M7112: All connections at an ungrounded node are inductors
+    const allInductors = conns.length >= 2 && conns.every((c) => c.comp.kind === "L");
+    if (allInductors) {
+      for (const c of conns) {
+        if (!reportedInductorCutsets.has(c.comp.name)) {
+          reportedInductorCutsets.add(c.comp.name);
+          diagnostics.push({
+            code: SPICE_ERROR_CODES.INDUCTOR_CUTSET.code,
+            rule: SPICE_ERROR_CODES.INDUCTOR_CUTSET.rule,
+            severity: SPICE_ERROR_CODES.INDUCTOR_CUTSET.severity,
+            message: SPICE_ERROR_CODES.INDUCTOR_CUTSET.message(c.comp.name),
+            span: c.comp.span,
+          });
+        }
+      }
     }
   }
 

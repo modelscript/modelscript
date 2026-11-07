@@ -884,4 +884,184 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
     const importDiags = allDiags.filter((d) => d.code === 2005);
     assert.strictEqual(importDiags.length, 1, "import ScalarValues::BogusScalar must trigger S2005");
   });
+
+  it("detects port conjugation mismatch (S3008), binding connector type mismatch (S3009), circular port delegation (S4018), and incompatible flow dimensions (S4019)", async () => {
+    const { parser } = await createWasmParser(sysmlWasm);
+    const ws = createSysML2WorkspaceIndex();
+
+    const code = `
+      package ConnectorAndFlowLints {
+        port def DirectedSignalPort {
+          out item sig : ScalarValues::Real;
+        }
+
+        part def Network {
+          port p1 : DirectedSignalPort;
+          port p2 : DirectedSignalPort;
+          port p3 : ~DirectedSignalPort;
+
+          connection badConjConn connect p1 to p2;
+          connection goodConjConn connect p1 to p3;
+
+          connection cycConn1 connect p1 to p3;
+          connection cycConn2 connect p3 to p1;
+
+          attribute speed : ScalarValues::Real;
+          attribute label : ScalarValues::String;
+          binding badBind bind speed = label;
+
+          port lenPort : ISQ::LengthValue;
+          port timePort : ISQ::DurationValue;
+          flow badFlow from lenPort to timePort;
+        }
+      }
+    `;
+
+    const uri = "file:///workspace/ConnectorAndFlowLints.sysml";
+    ws.register(uri, () => {
+      const tree = parser.parse(code);
+      return tree ? (tree.rootNode as any) : null;
+    });
+
+    const unified = await ws.toUnifiedAsync();
+    const qe = createSysML2QueryEngine(unified, parser.parse(code));
+    const db = qe.toQueryDB();
+
+    // S3008: PORT_CONJUGATION_MISMATCH
+    const badConjConn = db.byName("badConjConn")[0]!;
+    assert.ok(badConjConn);
+    const conjDiag = qe.fetch("lint__portConjugationMismatch", badConjConn.id);
+    assert.ok(conjDiag, "badConjConn must emit S3008");
+    assert.strictEqual((conjDiag as any).code, SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.code);
+
+    const goodConjConn = db.byName("goodConjConn")[0]!;
+    assert.strictEqual(qe.fetch("lint__portConjugationMismatch", goodConjConn.id), null);
+
+    // S4018: CIRCULAR_PORT_DELEGATION
+    const cycConn1 = db.byName("cycConn1")[0]!;
+    const cycDiag = qe.fetch("lint__circularPortDelegation", cycConn1.id);
+    assert.ok(cycDiag, "cycConn1 must emit S4018");
+    assert.strictEqual((cycDiag as any).code, SysML2ErrorCode.CIRCULAR_PORT_DELEGATION.code);
+
+    // S3009: BINDING_CONNECTOR_TYPE_MISMATCH
+    const badBind = db.byName("badBind")[0]!;
+    const bindDiag = qe.fetch("lint__bindingConnectorTypeMismatch", badBind.id);
+    assert.ok(bindDiag, "badBind must emit S3009");
+    assert.strictEqual((bindDiag as any).code, SysML2ErrorCode.BINDING_CONNECTOR_TYPE_MISMATCH.code);
+
+    // S4019: INCOMPATIBLE_FLOW_DIMENSIONS
+    const badFlow = db.byName("badFlow")[0]!;
+    const flowDiag = qe.fetch("lint__incompatibleFlowDimensions", badFlow.id);
+    assert.ok(flowDiag, "badFlow must emit S4019");
+    assert.strictEqual((flowDiag as any).code, SysML2ErrorCode.INCOMPATIBLE_FLOW_DIMENSIONS.code);
+  });
+
+  it("detects calculation missing return (S4012), invalid view expose target (S4013), and unsatisfied critical requirement (S4017)", async () => {
+    const { parser } = await createWasmParser(sysmlWasm);
+    const ws = createSysML2WorkspaceIndex();
+
+    const code = `
+      package StructuralMetamodelLints {
+        calc def BadCalc {
+          in x : ScalarValues::Real;
+          attribute temp : ScalarValues::Real;
+        }
+
+        calc def GoodCalc {
+          in x : ScalarValues::Real;
+          return y : ScalarValues::Real;
+          x * 2
+        }
+
+        view def BadView {
+          filter NonExistentExposedElement;
+        }
+
+        requirement def CriticalBrakeRequirement {
+          doc /* safety critical braking requirement */
+        }
+      }
+    `;
+
+    const uri = "file:///workspace/StructuralMetamodelLints.sysml";
+    ws.register(uri, () => {
+      const tree = parser.parse(code);
+      return tree ? (tree.rootNode as any) : null;
+    });
+
+    const unified = await ws.toUnifiedAsync();
+    const qe = createSysML2QueryEngine(unified, parser.parse(code));
+    const db = qe.toQueryDB();
+
+    // S4012: CALC_RETURN_MISSING
+    const badCalc = db.byName("BadCalc")[0]!;
+    const calcDiag = qe.fetch("lint__calcReturnMissing", badCalc.id);
+    assert.ok(calcDiag, "BadCalc must emit S4012");
+    assert.strictEqual((calcDiag as any).code, SysML2ErrorCode.CALC_RETURN_MISSING.code);
+
+    const goodCalc = db.byName("GoodCalc")[0]!;
+    assert.strictEqual(qe.fetch("lint__calcReturnMissing", goodCalc.id), null);
+
+    // S4013: EXPOSE_TARGET_INVALID
+    const badView = db.byName("BadView")[0]!;
+    const viewDiag = qe.fetch("lint__exposeTargetInvalid", badView.id);
+    assert.ok(viewDiag, "BadView must emit S4013");
+    assert.strictEqual((viewDiag as any).code, SysML2ErrorCode.EXPOSE_TARGET_INVALID.code);
+
+    // S4017: UNSATISFIED_CRITICAL_REQUIREMENT
+    const critReq = db.byName("CriticalBrakeRequirement")[0]!;
+    const critDiag = qe.fetch("lint__unsatisfiedCriticalRequirement", critReq.id);
+    assert.ok(critDiag, "CriticalBrakeRequirement must emit S4017");
+    assert.strictEqual((critDiag as any).code, SysML2ErrorCode.UNSATISFIED_CRITICAL_REQUIREMENT.code);
+  });
+
+  it("detects dead state transitions (S5017), non-deterministic transition guards (S5018), and unreachable state transitions (S5019)", async () => {
+    const { parser } = await createWasmParser(sysmlWasm);
+    const ws = createSysML2WorkspaceIndex();
+
+    const code = `
+      package StateMachineExtendedLints {
+        state def FaultyStateMachine {
+          state init;
+          state running;
+          state fallback;
+          state isolatedState;
+
+          transition t1 first init if x > 5 then running;
+          transition t2 first init if x > 0 then fallback;
+          transition tDead first running if false then init;
+          transition tUnreach first isolatedState then running;
+        }
+      }
+    `;
+
+    const uri = "file:///workspace/StateMachineExtendedLints.sysml";
+    ws.register(uri, () => {
+      const tree = parser.parse(code);
+      return tree ? (tree.rootNode as any) : null;
+    });
+
+    const unified = await ws.toUnifiedAsync();
+    const qe = createSysML2QueryEngine(unified, parser.parse(code));
+    const db = qe.toQueryDB();
+
+    const sm = db.byName("FaultyStateMachine")[0]!;
+    assert.ok(sm);
+
+    // S5018: NON_DETERMINISTIC_TRANSITIONS
+    const nonDetDiag = qe.fetch("lint__nonDeterministicTransitions", sm.id);
+    assert.ok(nonDetDiag, "FaultyStateMachine must emit S5018");
+    assert.strictEqual((nonDetDiag as any).code, SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.code);
+
+    const transitions = db.childrenOf(sm.id).filter((c) => c.ruleName === "TransitionUsage");
+    const tDead = transitions.find((t) => t.name === "tDead") ?? transitions[2]!;
+    const deadDiag = qe.fetch("lint__deadStateTransition", tDead.id);
+    assert.ok(deadDiag, "tDead must emit S5017");
+    assert.strictEqual((deadDiag as any).code, SysML2ErrorCode.DEAD_STATE_TRANSITION.code);
+
+    const tUnreach = transitions.find((t) => t.name === "tUnreach") ?? transitions[3]!;
+    const unreachDiag = qe.fetch("lint__stateTransitionUnreachable", tUnreach.id);
+    assert.ok(unreachDiag, "tUnreach must emit S5019");
+    assert.strictEqual((unreachDiag as any).code, SysML2ErrorCode.STATE_TRANSITION_UNREACHABLE.code);
+  });
 });

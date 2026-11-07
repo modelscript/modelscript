@@ -106,7 +106,10 @@ export function sideToNormal(side: PortSide): PortNormal {
 }
 
 export interface RouterPortConfig {
+  id?: string | undefined;
   args?: { x?: number | undefined; y?: number | undefined } | undefined;
+  position?: { args?: { x?: number | undefined; y?: number | undefined } | undefined } | undefined;
+  group?: string | undefined;
   side?: string | undefined;
   x?: number | undefined;
   y?: number | undefined;
@@ -123,8 +126,10 @@ export interface RouterNodeLike {
   getSize?: (() => { width?: number | undefined; height?: number | undefined } | null | undefined) | undefined;
   getBBox?: (() => Partial<RectLike> | null | undefined) | undefined;
   getAngle?: (() => number | undefined) | undefined;
-  getPortProp?: ((portId: string, prop?: string) => RouterPortConfig | null | undefined) | undefined;
+  getData?: (() => Record<string, unknown> | null | undefined) | undefined;
+  getPortProp?: ((portId: string, prop?: string) => any) | undefined;
   getPort?: ((portId: string) => RouterPortConfig | null | undefined) | undefined;
+  getPorts?: (() => RouterPortConfig[] | null | undefined) | undefined;
 }
 
 export interface RouterEdgeLike {
@@ -158,10 +163,13 @@ export interface RouterEdgeViewLike {
 }
 
 /**
- * Extracts the axis-aligned bounding box of an X6 node or node-like object, if available.
+ * Extracts the axis-aligned bounding box of an X6 node or node-like object, if available,
+ * correctly computing the rotated bounds when the node has a non-zero rotation angle.
  */
 export function getNodeBBox(node: RouterNodeLike | null | undefined): RectLike | null {
   if (!node) return null;
+  const angle = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
+
   if (typeof node.getPosition === "function" && typeof node.getSize === "function") {
     const pos = node.getPosition();
     const size = node.getSize();
@@ -175,7 +183,22 @@ export function getNodeBBox(node: RouterNodeLike | null | undefined): RectLike |
       size.width > 0 &&
       size.height > 0
     ) {
-      return { x: pos.x, y: pos.y, width: size.width, height: size.height };
+      if (!angle) {
+        return { x: pos.x, y: pos.y, width: size.width, height: size.height };
+      }
+      const rad = (angle * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      const rotW = Math.round((size.width * cos + size.height * sin) * 100) / 100;
+      const rotH = Math.round((size.width * sin + size.height * cos) * 100) / 100;
+      const cx = pos.x + size.width / 2;
+      const cy = pos.y + size.height / 2;
+      return {
+        x: Math.round((cx - rotW / 2) * 100) / 100,
+        y: Math.round((cy - rotH / 2) * 100) / 100,
+        width: rotW,
+        height: rotH,
+      };
     }
   }
   if (typeof node.getBBox === "function") {
@@ -200,13 +223,29 @@ export function getNodeBBox(node: RouterNodeLike | null | undefined): RectLike |
     node.width > 0 &&
     node.height > 0
   ) {
-    return { x: node.x, y: node.y, width: node.width, height: node.height };
+    if (!angle) {
+      return { x: node.x, y: node.y, width: node.width, height: node.height };
+    }
+    const rad = (angle * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(rad));
+    const sin = Math.abs(Math.sin(rad));
+    const rotW = Math.round((node.width * cos + node.height * sin) * 100) / 100;
+    const rotH = Math.round((node.width * sin + node.height * cos) * 100) / 100;
+    const cx = node.x + node.width / 2;
+    const cy = node.y + node.height / 2;
+    return {
+      x: Math.round((cx - rotW / 2) * 100) / 100,
+      y: Math.round((cy - rotH / 2) * 100) / 100,
+      width: rotW,
+      height: rotH,
+    };
   }
   return null;
 }
 
 /**
- * Resolves the world-space coordinates of a port on a node, accounting for node position and rotation.
+ * Resolves the world-space coordinates of a port on a node, accounting for node position,
+ * rotation, and horizontal/vertical flip state.
  */
 export function resolveNodePortWorldPoint(
   node: RouterNodeLike | null | undefined,
@@ -214,27 +253,71 @@ export function resolveNodePortWorldPoint(
   fallbackPoint?: PointLike | null,
 ): PointLike | null {
   if (node && portId) {
-    const bbox = getNodeBBox(node);
     const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
     const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
-    const args =
+    const portList = typeof node.getPorts === "function" ? node.getPorts() : null;
+    const matchedPort = portList?.find?.((p: any) => p && (p.id === portId || p.name === portId));
+
+    let args =
       portProp?.args ??
       portObj?.args ??
+      (matchedPort as any)?.args ??
+      (portProp as any)?.position?.args ??
+      (portObj as any)?.position?.args ??
+      (matchedPort as any)?.position?.args ??
       (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
-    if (bbox && args && typeof args.x === "number" && typeof args.y === "number") {
-      const cx = bbox.width / 2;
-      const cy = bbox.height / 2;
-      const dx = args.x - cx;
-      const dy = args.y - cy;
+
+    const pos = typeof node.getPosition === "function" ? node.getPosition() : null;
+    const size = typeof node.getSize === "function" ? node.getSize() : null;
+    const nodeX = pos?.x ?? node.x ?? 0;
+    const nodeY = pos?.y ?? node.y ?? 0;
+    const unrotW = size?.width && size.width > 0 ? size.width : (node.width ?? 0);
+    const unrotH = size?.height && size.height > 0 ? size.height : (node.height ?? 0);
+
+    if (!args && unrotW > 0 && unrotH > 0) {
+      const groupName =
+        portProp?.group ??
+        portObj?.group ??
+        (matchedPort as any)?.group ??
+        (portProp as any)?.side ??
+        (portObj as any)?.side ??
+        (matchedPort as any)?.side ??
+        (portProp as any)?.position?.name ??
+        (portObj as any)?.position?.name ??
+        (matchedPort as any)?.position?.name;
+      if (groupName === "left" || groupName === "in") {
+        args = { x: 0, y: unrotH / 2 };
+      } else if (groupName === "right" || groupName === "out") {
+        args = { x: unrotW, y: unrotH / 2 };
+      } else if (groupName === "top") {
+        args = { x: unrotW / 2, y: 0 };
+      } else if (groupName === "bottom") {
+        args = { x: unrotW / 2, y: unrotH };
+      }
+    }
+
+    if (unrotW > 0 && unrotH > 0 && args && typeof args.x === "number" && typeof args.y === "number") {
+      const cx = nodeX + unrotW / 2;
+      const cy = nodeY + unrotH / 2;
+      let dx = args.x - unrotW / 2;
+      let dy = args.y - unrotH / 2;
+
+      const data = typeof (node as any).getData === "function" ? (node as any).getData() : (node as any).data;
+      const flipX = Boolean(data?.["flipX"]);
+      const flipY = Boolean(data?.["flipY"]);
+      if (flipX) dx = -dx;
+      if (flipY) dy = -dy;
+
       const angleDeg = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
       const rad = (angleDeg * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
       const rx = dx * cos - dy * sin;
       const ry = dx * sin + dy * cos;
+
       return {
-        x: Math.round((bbox.x + cx + rx) * 100) / 100,
-        y: Math.round((bbox.y + cy + ry) * 100) / 100,
+        x: Math.round((cx + rx) * 100) / 100,
+        y: Math.round((cy + ry) * 100) / 100,
       };
     }
   }
@@ -258,8 +341,8 @@ export function inferPortNormalFromBox(portPt: PointLike, box: RectLike): PortNo
 }
 
 /**
- * Computes the outward cardinal normal vector for a node's port, accounting for node rotation
- * and local port coordinates or world-space port position.
+ * Computes the outward cardinal normal vector for a node's port, accounting for node rotation,
+ * flip state, and local port coordinates or world-space port position.
  */
 export function getPortOutwardNormal(
   node: RouterNodeLike | null | undefined,
@@ -268,34 +351,76 @@ export function getPortOutwardNormal(
 ): PortNormal | null {
   if (!node) return null;
   const bbox = getNodeBBox(node);
-  if (portId) {
-    const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
-    const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
-    const explicitSide = portProp?.side ?? portObj?.side;
-    if (explicitSide === "top" || explicitSide === "bottom" || explicitSide === "left" || explicitSide === "right") {
-      return sideToNormal(explicitSide);
-    }
-    const args =
-      portProp?.args ??
-      portObj?.args ??
-      (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
-    if (bbox && args && typeof args.x === "number" && typeof args.y === "number") {
-      const halfW = Math.max(1, bbox.width / 2);
-      const halfH = Math.max(1, bbox.height / 2);
-      const localNx = (args.x - bbox.width / 2) / halfW;
-      const localNy = (args.y - bbox.height / 2) / halfH;
-      const angleDeg = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
+  const data = typeof (node as any).getData === "function" ? (node as any).getData() : (node as any).data;
+  const flipX = Boolean(data?.["flipX"]);
+  const flipY = Boolean(data?.["flipY"]);
+  const angleDeg = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
+
+  const rotateNormal = (nx: number, ny: number): PortNormal => {
+    let curNx = flipX ? -nx : nx;
+    let curNy = flipY ? -ny : ny;
+    if (angleDeg) {
       const rad = (angleDeg * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
-      const rx = localNx * cos - localNy * sin;
-      const ry = localNx * sin + localNy * cos;
-      if (Math.abs(rx) >= Math.abs(ry)) {
-        return rx >= 0 ? sideToNormal("right") : sideToNormal("left");
-      }
-      return ry >= 0 ? sideToNormal("bottom") : sideToNormal("top");
+      const rx = curNx * cos - curNy * sin;
+      const ry = curNx * sin + curNy * cos;
+      curNx = rx;
+      curNy = ry;
+    }
+    if (Math.abs(curNx) >= Math.abs(curNy)) {
+      return curNx >= 0 ? sideToNormal("right") : sideToNormal("left");
+    }
+    return curNy >= 0 ? sideToNormal("bottom") : sideToNormal("top");
+  };
+
+  if (portId) {
+    const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
+    const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
+    const portList = typeof node.getPorts === "function" ? node.getPorts() : null;
+    const matchedPort = portList?.find?.((p: any) => p && (p.id === portId || p.name === portId));
+
+    const explicitSide =
+      portProp?.side ??
+      portObj?.side ??
+      (matchedPort as any)?.side ??
+      (portProp as any)?.group ??
+      (portObj as any)?.group ??
+      (matchedPort as any)?.group;
+
+    if (explicitSide === "top" || explicitSide === "bottom" || explicitSide === "left" || explicitSide === "right") {
+      const baseNx = explicitSide === "right" ? 1 : explicitSide === "left" ? -1 : 0;
+      const baseNy = explicitSide === "bottom" ? 1 : explicitSide === "top" ? -1 : 0;
+      return rotateNormal(baseNx, baseNy);
+    }
+    if (explicitSide === "in") {
+      return rotateNormal(-1, 0);
+    }
+    if (explicitSide === "out") {
+      return rotateNormal(1, 0);
+    }
+
+    const args =
+      portProp?.args ??
+      portObj?.args ??
+      (matchedPort as any)?.args ??
+      (portProp as any)?.position?.args ??
+      (portObj as any)?.position?.args ??
+      (matchedPort as any)?.position?.args ??
+      (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
+
+    if (bbox && args && typeof args.x === "number" && typeof args.y === "number") {
+      const size = typeof node.getSize === "function" ? node.getSize() : null;
+      const unrotW = size?.width && size.width > 0 ? size.width : bbox.width;
+      const unrotH = size?.height && size.height > 0 ? size.height : bbox.height;
+      const halfW = Math.max(1, unrotW / 2);
+      const halfH = Math.max(1, unrotH / 2);
+      const localNx = (args.x - unrotW / 2) / halfW;
+      const localNy = (args.y - unrotH / 2) / halfH;
+      return rotateNormal(localNx, localNy);
     }
   }
+
   if (bbox && portWorldPoint) {
     return inferPortNormalFromBox(portWorldPoint, bbox);
   }
@@ -351,8 +476,11 @@ function doesPolylineViolatePortOrBox(
   tgtNormal: PortNormal | null,
   srcBox: RectLike | null,
   tgtBox: RectLike | null,
+  options?: { allowTangential?: boolean; boxInset?: number },
 ): boolean {
   const pts: PointLike[] = [srcPt, ...vertices, tgtPt];
+  const allowTangential = options?.allowTangential ?? false;
+  const boxInset = options?.boxInset ?? 2;
 
   // 1. Check for diagonal segments or 180-degree reversals
   for (let i = 0; i < pts.length - 1; i++) {
@@ -371,7 +499,11 @@ function doesPolylineViolatePortOrBox(
       if (Math.abs(dx) + Math.abs(dy) > 0.5) {
         const dot = dx * srcNormal.nx + dy * srcNormal.ny;
         const perp = srcNormal.nx !== 0 ? Math.abs(dy) : Math.abs(dx);
-        if (dot <= 0 || perp > Math.abs(dot) + 0.5) {
+        if (allowTangential) {
+          if (dot < -0.5) {
+            return true;
+          }
+        } else if (dot <= 0 || perp > Math.abs(dot) + 0.5) {
           return true;
         }
         break;
@@ -387,7 +519,11 @@ function doesPolylineViolatePortOrBox(
       if (Math.abs(dx) + Math.abs(dy) > 0.5) {
         const dot = dx * tgtNormal.nx + dy * tgtNormal.ny;
         const perp = tgtNormal.nx !== 0 ? Math.abs(dy) : Math.abs(dx);
-        if (dot <= 0 || perp > Math.abs(dot) + 0.5) {
+        if (allowTangential) {
+          if (dot < -0.5) {
+            return true;
+          }
+        } else if (dot <= 0 || perp > Math.abs(dot) + 0.5) {
           return true;
         }
         break;
@@ -396,8 +532,8 @@ function doesPolylineViolatePortOrBox(
   }
 
   // 4. Check component body self-impalement
-  const shrunkSrc = srcBox ? shrinkRect(srcBox, 2) : null;
-  const shrunkTgt = tgtBox ? shrinkRect(tgtBox, 2) : null;
+  const shrunkSrc = srcBox ? shrinkRect(srcBox, boxInset) : null;
+  const shrunkTgt = tgtBox ? shrinkRect(tgtBox, boxInset) : null;
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i]!;
     const b = pts[i + 1]!;
@@ -918,10 +1054,66 @@ export function translateConnectedEdgeStubs(
       const offAxis = Math.abs(srcPt.x - tgtPt.x) > 0.5 && Math.abs(srcPt.y - tgtPt.y) > 0.5;
       const violatesPortOrBox =
         (srcNormal || tgtNormal || srcBox || tgtBox) &&
-        doesPolylineViolatePortOrBox(srcPt, tgtPt, [], srcNormal, tgtNormal, srcBox, tgtBox);
+        doesPolylineViolatePortOrBox(srcPt, tgtPt, [], srcNormal, tgtNormal, srcBox, tgtBox, {
+          allowTangential: true,
+          boxInset: 3,
+        });
       if (offAxis || violatesPortOrBox) {
-        let injected: PointLike[];
-        if (srcNormal || tgtNormal || srcBox || tgtBox) {
+        let injected: PointLike[] | null = null;
+
+        // 0a. If outward port normals are perpendicular, try a clean 1-bend L-corner first
+        if (srcNormal && tgtNormal) {
+          const perpNormals =
+            (srcNormal.nx !== 0 && tgtNormal.ny !== 0) || (srcNormal.ny !== 0 && tgtNormal.nx !== 0);
+          if (perpNormals) {
+            const lCorner: PointLike[] =
+              srcNormal.nx !== 0 ? [{ x: tgtPt.x, y: srcPt.y }] : [{ x: srcPt.x, y: tgtPt.y }];
+            if (
+              !doesPolylineViolatePortOrBox(srcPt, tgtPt, lCorner, srcNormal, tgtNormal, srcBox, tgtBox, {
+                allowTangential: false,
+                boxInset: 3,
+              })
+            ) {
+              injected = lCorner;
+            }
+          }
+        }
+
+        // 0b. Try a minimal-disturbance 2-bend symmetric Z-dogleg along the prior wire axis
+        if (!injected) {
+          const prevSrcX = isSource ? srcPt.x - dx : srcPt.x;
+          const prevSrcY = isSource ? srcPt.y - dy : srcPt.y;
+          const prevTgtX = isTarget ? tgtPt.x - dx : tgtPt.x;
+          const prevTgtY = isTarget ? tgtPt.y - dy : tgtPt.y;
+          const wasVertical = Math.abs(prevSrcX - prevTgtX) <= Math.abs(prevSrcY - prevTgtY);
+          const zCandidate: PointLike[] = wasVertical
+            ? [
+                { x: srcPt.x, y: Math.round((srcPt.y + tgtPt.y) / 2) },
+                { x: tgtPt.x, y: Math.round((srcPt.y + tgtPt.y) / 2) },
+              ]
+            : [
+                { x: Math.round((srcPt.x + tgtPt.x) / 2), y: srcPt.y },
+                { x: Math.round((srcPt.x + tgtPt.x) / 2), y: tgtPt.y },
+              ];
+          if (
+            !srcNormal &&
+            !tgtNormal &&
+            !srcBox &&
+            !tgtBox
+          ) {
+            injected = zCandidate;
+          } else if (
+            !doesPolylineViolatePortOrBox(srcPt, tgtPt, zCandidate, srcNormal, tgtNormal, srcBox, tgtBox, {
+              allowTangential: true,
+              boxInset: 3,
+            })
+          ) {
+            injected = zCandidate;
+          }
+        }
+
+        // 0c. Fallback to obstacle-avoiding orthogonal route if simple L/Z bends impale a box or exit backward
+        if (!injected) {
           injected = computeOrthogonalRoute(srcPt, tgtPt, getOtherObstacles(), {
             sourceSide: srcNormal?.side,
             targetSide: tgtNormal?.side,
@@ -929,26 +1121,8 @@ export function translateConnectedEdgeStubs(
             targetBox: tgtBox ?? undefined,
             stubLength: minStub,
           });
-        } else {
-          const prevSrcX = isSource ? srcPt.x - dx : srcPt.x;
-          const prevSrcY = isSource ? srcPt.y - dy : srcPt.y;
-          const prevTgtX = isTarget ? tgtPt.x - dx : tgtPt.x;
-          const prevTgtY = isTarget ? tgtPt.y - dy : tgtPt.y;
-          const wasVertical = Math.abs(prevSrcX - prevTgtX) <= Math.abs(prevSrcY - prevTgtY);
-          if (wasVertical) {
-            const midY = Math.round((srcPt.y + tgtPt.y) / 2);
-            injected = [
-              { x: srcPt.x, y: midY },
-              { x: tgtPt.x, y: midY },
-            ];
-          } else {
-            const midX = Math.round((srcPt.x + tgtPt.x) / 2);
-            injected = [
-              { x: midX, y: srcPt.y },
-              { x: midX, y: tgtPt.y },
-            ];
-          }
         }
+
         if (typeof edge.setVertices === "function") {
           edge.setVertices(injected, { ignoreSnap: true });
         }
@@ -1081,12 +1255,18 @@ export function translateConnectedEdgeStubs(
         modified = true;
       }
 
-      // Trunk Pushing: when a port with a known outward normal moves past its perpendicular trunk,
+      // Trunk Pushing: when a port with a known outward normal moves along its normal past a perpendicular trunk,
       // push the trunk segment ahead of the port by `minStub` (and slide coincident net trunks).
       if (isSource && srcNormal && srcPt && newVertices.length >= 2) {
         const v0 = newVertices[0]!;
         const v1 = newVertices[1]!;
-        if (srcNormal.ny !== 0 && Math.abs(v0.y - v1.y) <= 1.5) {
+        if (
+          srcNormal.ny !== 0 &&
+          dy * srcNormal.ny > 0 &&
+          Math.abs(v0.x - srcPt.x) <= 1.5 &&
+          Math.abs(v0.y - v1.y) <= 1.5 &&
+          Math.abs(v1.x - v0.x) > 1.5
+        ) {
           const signedStub = (v0.y - srcPt.y) * srcNormal.ny;
           if (signedStub < minStub) {
             const oldTrunkY = v0.y;
@@ -1104,7 +1284,13 @@ export function translateConnectedEdgeStubs(
               pushCoincidentNetTrunks(g, edge, "y", oldTrunkY, newTrunkY);
             }
           }
-        } else if (srcNormal.nx !== 0 && Math.abs(v0.x - v1.x) <= 1.5) {
+        } else if (
+          srcNormal.nx !== 0 &&
+          dx * srcNormal.nx > 0 &&
+          Math.abs(v0.y - srcPt.y) <= 1.5 &&
+          Math.abs(v0.x - v1.x) <= 1.5 &&
+          Math.abs(v1.y - v0.y) > 1.5
+        ) {
           const signedStub = (v0.x - srcPt.x) * srcNormal.nx;
           if (signedStub < minStub) {
             const oldTrunkX = v0.x;
@@ -1129,7 +1315,13 @@ export function translateConnectedEdgeStubs(
         const lastIdx = newVertices.length - 1;
         const vLast = newVertices[lastIdx]!;
         const vPrev = newVertices[lastIdx - 1]!;
-        if (tgtNormal.ny !== 0 && Math.abs(vLast.y - vPrev.y) <= 1.5) {
+        if (
+          tgtNormal.ny !== 0 &&
+          dy * tgtNormal.ny > 0 &&
+          Math.abs(vLast.x - tgtPt.x) <= 1.5 &&
+          Math.abs(vLast.y - vPrev.y) <= 1.5 &&
+          Math.abs(vLast.x - vPrev.x) > 1.5
+        ) {
           const signedStub = (vLast.y - tgtPt.y) * tgtNormal.ny;
           if (signedStub < minStub) {
             const oldTrunkY = vLast.y;
@@ -1147,7 +1339,13 @@ export function translateConnectedEdgeStubs(
               pushCoincidentNetTrunks(g, edge, "y", oldTrunkY, newTrunkY);
             }
           }
-        } else if (tgtNormal.nx !== 0 && Math.abs(vLast.x - vPrev.x) <= 1.5) {
+        } else if (
+          tgtNormal.nx !== 0 &&
+          dx * tgtNormal.nx > 0 &&
+          Math.abs(vLast.y - tgtPt.y) <= 1.5 &&
+          Math.abs(vLast.x - vPrev.x) <= 1.5 &&
+          Math.abs(vLast.y - vPrev.y) > 1.5
+        ) {
           const signedStub = (vLast.x - tgtPt.x) * tgtNormal.nx;
           if (signedStub < minStub) {
             const oldTrunkX = vLast.x;
@@ -1169,14 +1367,52 @@ export function translateConnectedEdgeStubs(
       }
     }
 
-    // Self-Impalement & Port-Normal Violation Auto-Reroute:
-    // When node/port geometry is available and the translated route still exits backward through a port
+    // Collinear Straight-Line Collapse:
+    // When two connected ports align horizontally or vertically and all intermediate vertices lie
+    // along that same axis without impaling any component body, collapse the jog into a 0-bend wire.
+    if (srcPt && tgtPt && (newVertices.length >= 2 || (newVertices.length === 1 && Boolean(srcNormal || tgtNormal)))) {
+      const alignedH =
+        Math.abs(srcPt.y - tgtPt.y) <= 0.5 && newVertices.every((v) => Math.abs(v.y - srcPt.y) <= 1.5);
+      const alignedV =
+        Math.abs(srcPt.x - tgtPt.x) <= 0.5 && newVertices.every((v) => Math.abs(v.x - srcPt.x) <= 1.5);
+
+      let canCollapse = false;
+      if (newVertices.length >= 2) {
+        canCollapse = alignedH || alignedV;
+      } else if (newVertices.length === 1) {
+        // For a 1-vertex L-bend, only collapse when the ports align along the axis of the attached leg.
+        // If the moving port crosses the perpendicular leg's coordinate, the attached stub simply
+        // crosses through 0 length and reverses direction without collapsing the L-bend.
+        const v0 = newVertices[0]!;
+        const attachedIsHorizontal = isSource
+          ? Math.abs(srcPt.y - v0.y) <= 1.5
+          : Math.abs(tgtPt.y - v0.y) <= 1.5;
+        canCollapse = (alignedH && attachedIsHorizontal) || (alignedV && !attachedIsHorizontal);
+      }
+
+      if (
+        canCollapse &&
+        !doesPolylineViolatePortOrBox(srcPt, tgtPt, [], srcNormal, tgtNormal, srcBox, tgtBox, {
+          allowTangential: true,
+          boxInset: 3,
+        })
+      ) {
+        newVertices = [];
+        modified = true;
+      }
+    }
+
+    // Self-Impalement & Backward Port-Normal Violation Auto-Reroute:
+    // When node/port geometry is available and the translated route exits strictly backward through a port
     // or crosses its own source/target component bounding box, compute a clean port-aware orthogonal route.
     if (
       srcPt &&
       tgtPt &&
       (srcNormal || tgtNormal || srcBox || tgtBox) &&
-      doesPolylineViolatePortOrBox(srcPt, tgtPt, newVertices, srcNormal, tgtNormal, srcBox, tgtBox)
+      doesPolylineViolatePortOrBox(srcPt, tgtPt, newVertices, srcNormal, tgtNormal, srcBox, tgtBox, {
+        allowTangential: true,
+        boxInset: 3,
+      })
     ) {
       newVertices = computeOrthogonalRoute(srcPt, tgtPt, getOtherObstacles(), {
         sourceSide: srcNormal?.side,

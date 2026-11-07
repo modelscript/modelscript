@@ -39,7 +39,9 @@ export interface WheelsetDefinition {
   wheelRadius: number; // nominal rolling radius [m]
   conicity: number; // equivalent conicity lambda
   profile?: string | undefined; // profile file name or profile type (e.g. S1002)
+  axleLoad?: number | undefined; // nominal vertical axle load [kN]
 }
+
 
 export interface TrackIrregularityPoint {
   distance: number; // longitudinal distance [m]

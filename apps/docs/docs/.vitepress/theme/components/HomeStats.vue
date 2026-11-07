@@ -37,7 +37,7 @@ const stats = computed<StatItem[]>(() => [
     link: "/industries/",
   },
   {
-    value: `${totalLintRules}`,
+    value: totalLintRules.toLocaleString("en-US"),
     label: "Compiler lint rules",
     description: "Pre-flight diagnostics for syntax, types, units, and DAE balance.",
     icon: "shield",
@@ -67,8 +67,8 @@ const stats = computed<StatItem[]>(() => [
       <div class="stats-licensing">
         <span class="licensing-badge">Open Core · AGPL-3.0</span>
         <span class="licensing-text">
-          Free for open-source, academic, and internal browser/CLI workflows — with
-          <a href="/pricing">Commercial OEM &amp; Air-Gapped Enterprise Licenses</a> available.
+          Free and open source under AGPL-3.0 — with
+          <a href="/pricing">Commercial OEM SDK &amp; Enterprise Appliance Licenses</a> available.
         </span>
       </div>
     </div>

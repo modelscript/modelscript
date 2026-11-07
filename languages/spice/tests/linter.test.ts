@@ -127,4 +127,32 @@ X1 node1 node2 FILTER
     assert.ok(pinDiag, "Expected M7109 pin count mismatch diagnostic");
     assert.ok(pinDiag.message.includes("connects 2 pins but definition 'FILTER' expects 3 ports"));
   });
+
+  it("M7111, M7112, M7113: should detect zero-ohm resistor shorts, inductor cutsets, and unconnected subcircuit pins", () => {
+    const netlist = `* Extended SPICE lint rules
+.SUBCKT AMP in out gnd
+  R_SUB in out 10k
+.ENDS AMP
+
+V1 in 0 5
+R_SHORT in n_short 0
+R_LOAD n_short 0 1k
+L1 in n_ind 1m
+L2 n_ind 0 1m
+X1 in open_out 0 AMP
+.END`;
+    const circuit = parseSpice(netlist);
+    const diags = lintSpiceCircuit(circuit);
+
+    const m7111 = diags.find((d) => d.code === 7111);
+    assert.ok(m7111, "Expected M7111 for zero-ohm resistor short");
+    assert.ok(m7111.message.includes("'R_SHORT'"));
+
+    const m7112 = diags.find((d) => d.code === 7112);
+    assert.ok(m7112, "Expected M7112 for inductive cutset at node n_ind");
+
+    const m7113 = diags.find((d) => d.code === 7113);
+    assert.ok(m7113, "Expected M7113 for unconnected subcircuit pin");
+    assert.ok(m7113.message.includes("'X1'"));
+  });
 });

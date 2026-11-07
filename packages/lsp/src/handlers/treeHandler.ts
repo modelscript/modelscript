@@ -247,7 +247,7 @@ export function registerTreeHandlers(context: LspContext) {
       return existingCached || null;
     }
 
-    if (cleanName.startsWith("Modelica.") || cleanName === "Modelica") {
+    if (cleanName.startsWith("Modelica.") || cleanName === "Modelica" || iconCache.size === 0) {
       await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? uri);
       const afterMsl = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
       if (afterMsl !== undefined) {
@@ -311,6 +311,15 @@ export function registerTreeHandlers(context: LspContext) {
         iconCache.set(className, null);
         iconCache.set(cleanName, null);
         return null;
+      }
+
+      if (cls.compositeName) {
+        const fqnCached = getCachedClassIcon(cls.compositeName);
+        if (fqnCached) {
+          iconCache.set(className, fqnCached);
+          iconCache.set(cleanName, fqnCached);
+          return fqnCached;
+        }
       }
 
       const svg = getIconSvg(cls, 20, false);

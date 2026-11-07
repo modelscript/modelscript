@@ -25,11 +25,20 @@ export interface Nasa7Polynomial {
   range?: CanteraRange | undefined;
 }
 
+export interface CanteraTransport {
+  model?: string | undefined;
+  geometry?: string | undefined;
+  diameter?: number | undefined;
+  wellDepth?: number | undefined;
+  range?: CanteraRange | undefined;
+}
+
 export interface CanteraSpecies {
   name: string;
   composition: Record<string, number>; // e.g. { H: 2, O: 1 }
   charge?: number | undefined; // explicit net electrical charge (or composition.E * -1)
   thermo?: Nasa7Polynomial | undefined;
+  transport?: CanteraTransport | undefined;
   note?: string | undefined;
   range?: CanteraRange | undefined;
 }

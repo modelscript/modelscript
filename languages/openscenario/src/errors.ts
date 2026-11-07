@@ -87,4 +87,25 @@ export const OpenScenarioErrorCode = {
     message: (condName: string, delay: number) =>
       `Trigger condition '${condName}' specifies negative activation delay '${delay}' s.`,
   },
+  UNREACHABLE_WAYPOINT: {
+    code: 8511,
+    rule: "unreachable-waypoint",
+    severity: "error" as DiagnosticSeverity,
+    message: (x: number, y: number, z: number) =>
+      `Trajectory waypoint coordinate [${x}, ${y}, ${z}] is outside terrain or road network bounds.`,
+  },
+  NEGATIVE_TIME_TO_COLLISION: {
+    code: 8512,
+    rule: "negative-time-to-collision",
+    severity: "error" as DiagnosticSeverity,
+    message: (actor: string, ttc: number) =>
+      `Time-to-collision trigger on actor '${actor}' specifies negative target threshold '${ttc}' s.`,
+  },
+  CONFLICTING_LONGITUDINAL_ACTIONS: {
+    code: 8513,
+    rule: "conflicting-longitudinal-actions",
+    severity: "error" as DiagnosticSeverity,
+    message: (actor: string) =>
+      `Actor '${actor}' is targeted by concurrent conflicting speed and distance actions.`,
+  },
 } as const;

@@ -119,6 +119,26 @@ test("OpenDSS Linter: detects reverse power hosting capacity risk (M8404)", () =
   assert(hostingDiag !== undefined, "Expected M8404 for DER > transformer rating");
 });
 
+test("OpenDSS Linter: detects isolated island, non-positive-definite Z-matrix, and capacitor overvoltage (M8411, M8412, M8413)", () => {
+  const dss = `
+New Circuit.GridTest basekv=12.47 pu=1.00 phases=3 bus1=SourceBus
+New Line.LineMain Bus1=SourceBus Bus2=BusA Length=1.0 units=km r1=0.1 x1=0.3
+New Line.LineIsland Bus1=Island1 Bus2=Island2 Length=1.0 units=km r1=-0.05 x1=0.2
+New Load.SmallLoad Bus1=BusA Phases=3 kV=12.47 kW=100 kvar=50
+New Capacitor.BigCap Bus1=BusA Phases=3 kvar=600 kV=12.47
+`;
+  const deck = parseOpenDss(dss);
+  const diags = lintOpenDss(deck);
+
+  const m8411 = diags.find((d) => d.code === 8411);
+  const m8412 = diags.find((d) => d.code === 8412);
+  const m8413 = diags.find((d) => d.code === 8413);
+
+  assert(m8411 !== undefined, "Expected M8411 for isolated island without slack bus");
+  assert(m8412 !== undefined, "Expected M8412 for non-positive-definite line impedance");
+  assert(m8413 !== undefined, "Expected M8413 for capacitor kVAR exceeding feeder load");
+});
+
 test("OpenDSS Power Flow: solves distribution power flow and bus voltages", () => {
   const deck = parseOpenDss(SAMPLE_IEEE_4BUS);
   const result = solveDistributionPowerFlow(deck);

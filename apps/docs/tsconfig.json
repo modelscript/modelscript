@@ -8,5 +8,5 @@
     "incremental": false,
     "strict": true
   },
-  "include": ["docs/**/*", "docs/.vitepress/**/*", "scripts/**/*"]
+  "include": ["docs/**/*", "docs/.vitepress/**/*", "scripts/**/*", "tests/**/*"]
 }

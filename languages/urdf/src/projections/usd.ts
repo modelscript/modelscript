@@ -18,16 +18,11 @@
 
 import { createUsdzArchive, sanitizeUsdIdentifier } from "@modelscript/cad";
 import { computeForwardKinematics } from "../kinematics/featherstone.js";
-import type { UrdfJoint, UrdfLink, UrdfRobot, Vector3D } from "../types.js";
+import type { UrdfJoint, UrdfLink, UrdfRobot, UrdfTrajectoryData, Vector3D } from "../types.js";
 
 // ── Public Types & Interfaces ────────────────────────────────────────────────
 
-export interface UrdfTrajectoryData {
-  /** Array of simulation time points [seconds]. */
-  times: number[];
-  /** Map of jointName -> array of coordinate values q(t) at each time point. */
-  jointPositions: Map<string, number[]> | Record<string, number[]>;
-}
+export type { UrdfTrajectoryData };
 
 export interface UrdfUsdOptions {
   /** Root prim name for the USD stage. Defaults to sanitized robot name. */
@@ -366,8 +361,9 @@ export function urdfToUsd(robot: UrdfRobot, options?: UrdfUsdOptions): string {
 
   if (options?.trajectory && options.trajectory.times.length > 0) {
     const traj = options.trajectory;
+    const rawJoints = traj.jointPositions ?? traj.joints ?? {};
     const jointPosMap =
-      traj.jointPositions instanceof Map ? traj.jointPositions : new Map(Object.entries(traj.jointPositions));
+      rawJoints instanceof Map ? rawJoints : new Map(Object.entries(rawJoints));
 
     for (let tIdx = 0; tIdx < traj.times.length; tIdx++) {
       const timeVal = traj.times[tIdx]!;

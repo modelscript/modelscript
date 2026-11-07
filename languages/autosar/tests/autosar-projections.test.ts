@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compileTGGRules } from "@modelscript/dsl";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseArxml } from "../src/parser/index.js";
 import { autosarToModelica, autosarToSysml } from "../src/projections/index.js";
+import { autosarPolyglotConfig, autosarTggRules } from "../src/tgg/autosar-rules.js";
+import { projectAutosarViaTgg, synchronizeSysmlToAutosar } from "../src/tgg/autosar-sync.js";
 
 const SAMPLE_ARXML = `<?xml version="1.0" encoding="UTF-8"?>
 <AUTOSAR>
@@ -88,5 +91,81 @@ describe("AUTOSAR Projections (@modelscript/autosar)", () => {
     assert.ok(sysml.includes("part def SteeringComposition {"));
     assert.ok(sysml.includes("part Sensor : SteeringSensor;"));
     assert.ok(sysml.includes("connect Sensor.SteerAngleOut to Actuator.SteerAngleIn;"));
+  });
+
+  it("should project AUTOSAR SWC ports and runnables to SysML v2 part def with action", () => {
+    const arxml = `<APPLICATION-SW-COMPONENT-TYPE>
+  <SHORT-NAME>SteeringController</SHORT-NAME>
+  <PORTS>
+    <R-PORT-PROTOTYPE><SHORT-NAME>WheelAngleReq</SHORT-NAME></R-PORT-PROTOTYPE>
+    <P-PORT-PROTOTYPE><SHORT-NAME>MotorTorqueCmd</SHORT-NAME></P-PORT-PROTOTYPE>
+  </PORTS>
+  <INTERNAL-BEHAVIORS>
+    <SWC-INTERNAL-BEHAVIOR>
+      <SHORT-NAME>Steering_IB</SHORT-NAME>
+      <RUNNABLES>
+        <RUNNABLE-ENTITY><SHORT-NAME>RE_ComputeTorque</SHORT-NAME></RUNNABLE-ENTITY>
+      </RUNNABLES>
+    </SWC-INTERNAL-BEHAVIOR>
+  </INTERNAL-BEHAVIORS>
+</APPLICATION-SW-COMPONENT-TYPE>`;
+    const model = parseArxml(arxml);
+    const sysml = autosarToSysml(model);
+    assert.ok(sysml.includes("package AutosarArchitecture {"));
+    assert.ok(sysml.includes("part def SteeringController {"));
+    assert.ok(sysml.includes("in port WheelAngleReq;"));
+    assert.ok(sysml.includes("out port MotorTorqueCmd;"));
+    assert.ok(sysml.includes("action RE_ComputeTorque;"));
+  });
+
+  it("should compile declarative AUTOSAR TGG rules and round-trip SysML v2 edits back into ARXML", () => {
+    assert.equal(autosarTggRules.length, 6);
+    const compiled = compileTGGRules(autosarPolyglotConfig);
+    assert.equal(compiled.ruleCount, 6);
+    assert.ok(compiled.sourceCode.includes("tgg_forward_AutosarSwcToSysmlPartDef"));
+    assert.ok(compiled.sourceCode.includes("tgg_backward_AutosarRunnableToSysmlAction"));
+    assert.ok(compiled.sourceCode.includes("tgg_forward_AutosarClientServerPortToConjugatedPort"));
+
+    const origArxml = `<APPLICATION-SW-COMPONENT-TYPE>
+  <SHORT-NAME>SteeringController</SHORT-NAME>
+  <PORTS>
+    <R-PORT-PROTOTYPE>
+      <SHORT-NAME>WheelAngleReq</SHORT-NAME>
+      <REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Interfaces/IF_WheelAngle</REQUIRED-INTERFACE-TREF>
+    </R-PORT-PROTOTYPE>
+    <P-PORT-PROTOTYPE><SHORT-NAME>MotorTorqueCmd</SHORT-NAME></P-PORT-PROTOTYPE>
+  </PORTS>
+  <INTERNAL-BEHAVIORS>
+    <SWC-INTERNAL-BEHAVIOR>
+      <SHORT-NAME>Steering_IB</SHORT-NAME>
+      <RUNNABLES>
+        <RUNNABLE-ENTITY>
+          <SHORT-NAME>RE_ComputeTorque</SHORT-NAME>
+          <SYMBOL>Steering_ComputeTorque_5ms</SYMBOL>
+        </RUNNABLE-ENTITY>
+      </RUNNABLES>
+    </SWC-INTERNAL-BEHAVIOR>
+  </INTERNAL-BEHAVIORS>
+</APPLICATION-SW-COMPONENT-TYPE>`;
+
+    const { sysmlText } = projectAutosarViaTgg(origArxml);
+    const modifiedSysml = sysmlText
+      .replace(
+        "in port WheelAngleReq;",
+        "/* port comment */ in port WheelAngleReq;\n    in port YawRateIn;\n    in port DiagClient : ~UdsDiagnosticService;",
+      )
+      .replace("action RE_ComputeTorque;", "action RE_ComputeTorque_5ms;");
+
+    const syncRes = synchronizeSysmlToAutosar(origArxml, modifiedSysml);
+    assert.ok(syncRes.updatedText.includes("<SHORT-NAME>Steering_IB</SHORT-NAME>"), "Must preserve IB shortName via shadow complement");
+    assert.ok(syncRes.updatedText.includes("/Interfaces/IF_WheelAngle"));
+    assert.ok(syncRes.updatedText.includes("<SYMBOL>Steering_ComputeTorque_5ms</SYMBOL>"));
+    assert.ok(syncRes.updatedText.includes("<SHORT-NAME>YawRateIn</SHORT-NAME>"));
+    assert.ok(
+      syncRes.updatedText.includes(
+        '<REQUIRED-INTERFACE-TREF DEST="CLIENT-SERVER-INTERFACE">/Interfaces/UdsDiagnosticService</REQUIRED-INTERFACE-TREF>',
+      ),
+    );
+    assert.ok(syncRes.updatedText.includes("<SHORT-NAME>RE_ComputeTorque_5ms</SHORT-NAME>"));
   });
 });

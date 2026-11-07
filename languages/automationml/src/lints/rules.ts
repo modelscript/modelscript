@@ -73,6 +73,41 @@ export const AmlErrorCode = {
     message: (elementName: string, reason: string) =>
       `Invalid 6-DOF Frame transformation on InternalElement '${elementName}': ${reason}.`,
   },
+  DANGLING_INTERNAL_LINK: {
+    code: "M8308",
+    rule: "aml-dangling-internal-link",
+    severity: "error" as const,
+    message: (linkName: string, partnerRef: string) =>
+      `InternalLink '${linkName}' partner reference '${partnerRef}' does not exist.`,
+  },
+  INTERFACE_CLASS_INCOMPATIBLE: {
+    code: "M8309",
+    rule: "aml-interface-class-incompatible",
+    severity: "error" as const,
+    message: (ifA: string, ifB: string) =>
+      `InterfaceClass '${ifA}' is incompatible with connected partner InterfaceClass '${ifB}'.`,
+  },
+  MISSING_MANDATORY_ATTRIBUTE: {
+    code: "M8310",
+    rule: "aml-missing-mandatory-attribute",
+    severity: "error" as const,
+    message: (elementName: string, attrName: string) =>
+      `InternalElement '${elementName}' is missing mandatory attribute '${attrName}' from SystemUnitClass.`,
+  },
+  DUPLICATE_CAEX_ID: {
+    code: "M8311",
+    rule: "aml-duplicate-caex-id",
+    severity: "error" as const,
+    message: (id: string, elementName: string) =>
+      `Duplicate CAEX ID '${id}' declared on '${elementName}'.`,
+  },
+  EMPTY_SYSTEM_UNIT_FAMILY: {
+    code: "M8312",
+    rule: "aml-empty-system-unit-family",
+    severity: "warning" as const,
+    message: (libName: string) =>
+      `SystemUnitClassLib '${libName}' contains empty SystemUnitFamily with no child elements.`,
+  },
 };
 
 const STANDARD_AML_PREFIXES = [
@@ -248,7 +283,71 @@ export function lintAutomationML(doc: AmlDocument, options?: AmlLintOptions): Am
   checkClassHierarchy(uniqueRoles, roleMap);
   checkClassHierarchy(uniqueIfcs, ifcMap);
 
-  // 3. Collect all InternalElements across all InstanceHierarchies
+  // M8312: Empty SystemUnitClassLib / SystemUnitFamily check
+  for (const lib of doc.systemUnitClassLibs) {
+    const hasEmptyFamily =
+      lib.classes.length === 0 ||
+      lib.classes.some(
+        (c) =>
+          !c.refBaseClassPath &&
+          c.supportedRoleClassPaths.length === 0 &&
+          c.attributes.length === 0 &&
+          c.interfaces.length === 0 &&
+          c.internalElements.length === 0 &&
+          c.children.length === 0,
+      );
+    if (hasEmptyFamily) {
+      diagnostics.push({
+        code: AmlErrorCode.EMPTY_SYSTEM_UNIT_FAMILY.code,
+        rule: AmlErrorCode.EMPTY_SYSTEM_UNIT_FAMILY.rule,
+        severity: AmlErrorCode.EMPTY_SYSTEM_UNIT_FAMILY.severity,
+        message: AmlErrorCode.EMPTY_SYSTEM_UNIT_FAMILY.message(lib.name),
+        range: lib.range,
+      });
+    }
+  }
+
+  // M8308: Check SystemUnitClass internalLinks for dangling partner references
+  for (const cls of uniqueSucs) {
+    if (cls.internalLinks.length === 0) continue;
+    const validPartnerRefs = new Set<string>();
+    for (const iface of cls.interfaces) {
+      validPartnerRefs.add(iface.id);
+      validPartnerRefs.add(iface.name);
+      validPartnerRefs.add(`${cls.name}:${iface.name}`);
+      if (cls.id) validPartnerRefs.add(`${cls.id}:${iface.name}`);
+    }
+    for (const childEl of cls.internalElements) {
+      for (const iface of childEl.interfaces) {
+        validPartnerRefs.add(iface.id);
+        validPartnerRefs.add(`${childEl.id}:${iface.name}`);
+        validPartnerRefs.add(`${childEl.name}:${iface.name}`);
+        validPartnerRefs.add(`${childEl.id}:${iface.id}`);
+      }
+    }
+    for (const link of cls.internalLinks) {
+      if (!validPartnerRefs.has(link.refPartnerSideA)) {
+        diagnostics.push({
+          code: AmlErrorCode.DANGLING_INTERNAL_LINK.code,
+          rule: AmlErrorCode.DANGLING_INTERNAL_LINK.rule,
+          severity: AmlErrorCode.DANGLING_INTERNAL_LINK.severity,
+          message: AmlErrorCode.DANGLING_INTERNAL_LINK.message(link.name, link.refPartnerSideA),
+          range: link.range,
+        });
+      }
+      if (!validPartnerRefs.has(link.refPartnerSideB)) {
+        diagnostics.push({
+          code: AmlErrorCode.DANGLING_INTERNAL_LINK.code,
+          rule: AmlErrorCode.DANGLING_INTERNAL_LINK.rule,
+          severity: AmlErrorCode.DANGLING_INTERNAL_LINK.severity,
+          message: AmlErrorCode.DANGLING_INTERNAL_LINK.message(link.name, link.refPartnerSideB),
+          range: link.range,
+        });
+      }
+    }
+  }
+
+  // 3. Collect all InternalElements across all InstanceHierarchies (and check M8311 duplicate CAEX ID)
   const elementsById = new Map<string, AmlInternalElement>();
   const elementsByName = new Map<string, AmlInternalElement>();
   const interfacesByGlobalId = new Map<string, { element: AmlInternalElement; iface: AmlExternalInterface }>();
@@ -256,7 +355,17 @@ export function lintAutomationML(doc: AmlDocument, options?: AmlLintOptions): Am
 
   const collectElements = (el: AmlInternalElement): void => {
     allElements.push(el);
-    elementsById.set(el.id, el);
+    if (el.id && elementsById.has(el.id)) {
+      diagnostics.push({
+        code: AmlErrorCode.DUPLICATE_CAEX_ID.code,
+        rule: AmlErrorCode.DUPLICATE_CAEX_ID.rule,
+        severity: AmlErrorCode.DUPLICATE_CAEX_ID.severity,
+        message: AmlErrorCode.DUPLICATE_CAEX_ID.message(el.id, el.name),
+        range: el.range,
+      });
+    } else {
+      elementsById.set(el.id, el);
+    }
     elementsByName.set(el.name, el);
     for (const iface of el.interfaces) {
       interfacesByGlobalId.set(iface.id, { element: el, iface });
@@ -333,12 +442,29 @@ export function lintAutomationML(doc: AmlDocument, options?: AmlLintOptions): Am
 
     // Gather element's own + inherited interfaces and attributes
     const baseSuc = el.refBaseSystemUnitPath ? sucMap.get(el.refBaseSystemUnitPath) : undefined;
+    const ownAttrNames = new Set<string>(el.attributes.map((a) => a.name));
+
+    // M8310: Missing mandatory attribute from SystemUnitClass (declared on SUC without value/defaultValue)
+    if (baseSuc) {
+      for (const sucAttr of baseSuc.attributes) {
+        if (sucAttr.value === undefined && sucAttr.defaultValue === undefined && !ownAttrNames.has(sucAttr.name)) {
+          diagnostics.push({
+            code: AmlErrorCode.MISSING_MANDATORY_ATTRIBUTE.code,
+            rule: AmlErrorCode.MISSING_MANDATORY_ATTRIBUTE.rule,
+            severity: AmlErrorCode.MISSING_MANDATORY_ATTRIBUTE.severity,
+            message: AmlErrorCode.MISSING_MANDATORY_ATTRIBUTE.message(el.name, sucAttr.name),
+            range: el.range,
+          });
+        }
+      }
+    }
+
     const presentIfNames = new Set<string>([
       ...el.interfaces.map((i) => i.name),
       ...(baseSuc ? baseSuc.interfaces.map((i) => i.name) : []),
     ]);
     const presentAttrNames = new Set<string>([
-      ...el.attributes.map((a) => a.name),
+      ...ownAttrNames,
       ...(baseSuc ? baseSuc.attributes.map((a) => a.name) : []),
     ]);
 
@@ -433,7 +559,7 @@ export function lintAutomationML(doc: AmlDocument, options?: AmlLintOptions): Am
       }
     }
 
-    // M8303 & M8304: InternalLinks validation
+    // M8303, M8304, M8308, M8309: InternalLinks validation
     for (const link of el.internalLinks) {
       const resolvePartner = (
         ref: string,
@@ -456,25 +582,45 @@ export function lintAutomationML(doc: AmlDocument, options?: AmlLintOptions): Am
       const sideB = resolvePartner(link.refPartnerSideB);
 
       if (!sideA) {
+        const err = !link.refPartnerSideA.includes(":")
+          ? AmlErrorCode.DANGLING_INTERNAL_LINK
+          : AmlErrorCode.INVALID_INTERNAL_LINK;
         diagnostics.push({
-          code: AmlErrorCode.INVALID_INTERNAL_LINK.code,
-          rule: AmlErrorCode.INVALID_INTERNAL_LINK.rule,
-          severity: AmlErrorCode.INVALID_INTERNAL_LINK.severity,
-          message: AmlErrorCode.INVALID_INTERNAL_LINK.message(link.name, link.refPartnerSideA),
+          code: err.code,
+          rule: err.rule,
+          severity: err.severity,
+          message: err.message(link.name, link.refPartnerSideA),
           range: link.range,
         });
       }
       if (!sideB) {
+        const err = !link.refPartnerSideB.includes(":")
+          ? AmlErrorCode.DANGLING_INTERNAL_LINK
+          : AmlErrorCode.INVALID_INTERNAL_LINK;
         diagnostics.push({
-          code: AmlErrorCode.INVALID_INTERNAL_LINK.code,
-          rule: AmlErrorCode.INVALID_INTERNAL_LINK.rule,
-          severity: AmlErrorCode.INVALID_INTERNAL_LINK.severity,
-          message: AmlErrorCode.INVALID_INTERNAL_LINK.message(link.name, link.refPartnerSideB),
+          code: err.code,
+          rule: err.rule,
+          severity: err.severity,
+          message: err.message(link.name, link.refPartnerSideB),
           range: link.range,
         });
       }
 
       if (sideA && sideB) {
+        // M8309: Incompatible InterfaceClass between connected ports
+        if (sideA.iface.category !== sideB.iface.category) {
+          diagnostics.push({
+            code: AmlErrorCode.INTERFACE_CLASS_INCOMPATIBLE.code,
+            rule: AmlErrorCode.INTERFACE_CLASS_INCOMPATIBLE.rule,
+            severity: AmlErrorCode.INTERFACE_CLASS_INCOMPATIBLE.severity,
+            message: AmlErrorCode.INTERFACE_CLASS_INCOMPATIBLE.message(
+              sideA.iface.refBaseClassPath || sideA.iface.category,
+              sideB.iface.refBaseClassPath || sideB.iface.category,
+            ),
+            range: link.range,
+          });
+        }
+
         const dirA = sideA.iface.direction;
         const dirB = sideB.iface.direction;
 

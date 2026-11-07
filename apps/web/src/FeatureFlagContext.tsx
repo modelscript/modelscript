@@ -182,22 +182,29 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
   const [isLoading, setIsLoading] = useState(false);
 
   const refreshFlags = useCallback(async () => {
-    try {
-      const res = await api.get("/flags");
-      if (res.data && typeof res.data === "object") {
-        setFlags((prev) => ({ ...prev, ...res.data }));
-        try {
-          if (typeof localStorage !== "undefined") {
-            localStorage.setItem(FLAGS_CACHE_KEY, JSON.stringify(res.data));
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await api.get("/flags");
+        if (res.data && typeof res.data === "object") {
+          setFlags((prev) => ({ ...prev, ...res.data }));
+          try {
+            if (typeof localStorage !== "undefined") {
+              localStorage.setItem(FLAGS_CACHE_KEY, JSON.stringify(res.data));
+            }
+          } catch {
+            // Ignore storage quota error
           }
-        } catch {
-          // Ignore storage quota error
         }
+        break;
+      } catch (err: any) {
+        if (attempt < 2 && (err?.response?.status === 502 || err?.response?.status === 503 || !err?.response)) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        // In case of network error, fallback to defaults
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      // In case of network error, fallback to defaults
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 

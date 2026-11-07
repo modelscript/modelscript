@@ -303,6 +303,115 @@ export function lintAspen(deck: AspenDeck): AspenDiagnostic[] {
         }
       }
     }
+
+    const fsEntry = deck.flowsheet.find((f) => f.blockId === bId);
+
+    // M8116: Mixer mass balance deficit
+    if (block.type === "MIXER") {
+      let hasDeficit = false;
+      if (block.params["INLET_FLOW"] != null && block.params["OUTLET_FLOW"] != null) {
+        if (Math.abs(Number(block.params["INLET_FLOW"]) - Number(block.params["OUTLET_FLOW"])) > 1e-3) {
+          hasDeficit = true;
+        }
+      } else if (fsEntry && fsEntry.inlets.length > 0 && fsEntry.outlets.length > 0) {
+        const inStreams = fsEntry.inlets.map((s) => deck.streams.get(s)).filter((s) => s !== undefined);
+        const outStreams = fsEntry.outlets.map((s) => deck.streams.get(s)).filter((s) => s !== undefined);
+        if (inStreams.length === fsEntry.inlets.length && outStreams.length === fsEntry.outlets.length) {
+          const allHaveMass =
+            inStreams.every((s) => s.massFlow != null) && outStreams.every((s) => s.massFlow != null);
+          const allHaveMole =
+            inStreams.every((s) => s.moleFlow != null) && outStreams.every((s) => s.moleFlow != null);
+          if (allHaveMass) {
+            const inMass = inStreams.reduce((acc, s) => acc + (s.massFlow ?? 0), 0);
+            const outMass = outStreams.reduce((acc, s) => acc + (s.massFlow ?? 0), 0);
+            if (Math.abs(inMass - outMass) > 1e-3) hasDeficit = true;
+          } else if (allHaveMole) {
+            const inMole = inStreams.reduce((acc, s) => acc + (s.moleFlow ?? 0), 0);
+            const outMole = outStreams.reduce((acc, s) => acc + (s.moleFlow ?? 0), 0);
+            if (Math.abs(inMole - outMole) > 1e-3) hasDeficit = true;
+          }
+        }
+      }
+      if (hasDeficit) {
+        diagnostics.push({
+          code: AspenErrorCode.MIXER_MASS_BALANCE_DEFICIT.code,
+          rule: AspenErrorCode.MIXER_MASS_BALANCE_DEFICIT.rule,
+          severity: AspenErrorCode.MIXER_MASS_BALANCE_DEFICIT.severity,
+          message: AspenErrorCode.MIXER_MASS_BALANCE_DEFICIT.message(bId),
+          loc: block.loc,
+        });
+      }
+    }
+
+    // M8117: Heat exchanger temperature cross
+    if (block.type === "HEATX" || block.type === "HEATER") {
+      let hasTempCross = false;
+      if (block.params["T_COLD_OUT"] != null && block.params["T_HOT_IN"] != null) {
+        if (Number(block.params["T_COLD_OUT"]) > Number(block.params["T_HOT_IN"])) {
+          hasTempCross = true;
+        }
+      } else if (fsEntry && fsEntry.inlets.length > 0 && fsEntry.outlets.length > 0) {
+        const inTemps = fsEntry.inlets
+          .map((s) => deck.streams.get(s)?.temperature)
+          .filter((t): t is number => t != null);
+        const outTemps = fsEntry.outlets
+          .map((s) => deck.streams.get(s)?.temperature)
+          .filter((t): t is number => t != null);
+        if (inTemps.length > 0 && outTemps.length > 0) {
+          const maxInTemp = Math.max(...inTemps);
+          const maxOutTemp = Math.max(...outTemps);
+          if (maxOutTemp > maxInTemp) {
+            hasTempCross = true;
+          }
+        } else if (block.type === "HEATX" && inTemps.length > 0 && block.params["TEMP"] != null) {
+          if (Number(block.params["TEMP"]) > Math.max(...inTemps)) {
+            hasTempCross = true;
+          }
+        }
+      }
+      if (hasTempCross) {
+        diagnostics.push({
+          code: AspenErrorCode.HEAT_EXCHANGER_TEMPERATURE_CROSS.code,
+          rule: AspenErrorCode.HEAT_EXCHANGER_TEMPERATURE_CROSS.rule,
+          severity: AspenErrorCode.HEAT_EXCHANGER_TEMPERATURE_CROSS.severity,
+          message: AspenErrorCode.HEAT_EXCHANGER_TEMPERATURE_CROSS.message(bId),
+          loc: block.loc,
+        });
+      }
+    }
+
+    // M8118: Compressor pressure ratio sub-unity
+    if (block.type === "COMPR") {
+      let isSubUnity = false;
+      if (block.params["PRATIO"] != null && Number(block.params["PRATIO"]) < 1.0) {
+        isSubUnity = true;
+      } else if (fsEntry) {
+        const inPressures = fsEntry.inlets
+          .map((s) => deck.streams.get(s)?.pressure)
+          .filter((p): p is number => p != null);
+        const outPressures = fsEntry.outlets
+          .map((s) => deck.streams.get(s)?.pressure)
+          .filter((p): p is number => p != null);
+        if (block.params["PRES"] != null && inPressures.length > 0) {
+          if (Number(block.params["PRES"]) < Math.max(...inPressures)) {
+            isSubUnity = true;
+          }
+        } else if (inPressures.length > 0 && outPressures.length > 0) {
+          if (Math.min(...outPressures) < Math.max(...inPressures)) {
+            isSubUnity = true;
+          }
+        }
+      }
+      if (isSubUnity) {
+        diagnostics.push({
+          code: AspenErrorCode.COMPRESSOR_PRESSURE_RATIO_SUBUNITY.code,
+          rule: AspenErrorCode.COMPRESSOR_PRESSURE_RATIO_SUBUNITY.rule,
+          severity: AspenErrorCode.COMPRESSOR_PRESSURE_RATIO_SUBUNITY.severity,
+          message: AspenErrorCode.COMPRESSOR_PRESSURE_RATIO_SUBUNITY.message(bId),
+          loc: block.loc,
+        });
+      }
+    }
   }
 
   return diagnostics;

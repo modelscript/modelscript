@@ -893,13 +893,20 @@ export function lintScadCst(
       if (!stmt) continue;
 
       if (stmt.type === "IncludeStatement" || stmt.type === "UseStatement") {
-        if (!workspaceIndex) continue;
         const raw = stmt.text.trim();
-        const match = raw.match(/^(?:include|use)\s*<([^>]+)>/);
-        const targetPath = match?.[1]?.trim();
-        if (!targetPath) continue;
-        const depInfo = workspaceIndex.resolveDependencyInfo(targetPath, currentUri);
-        if (!depInfo) continue;
+        const match = raw.match(/^(?:include|use)\s*<([^>]*)>/);
+        const targetPath = match?.[1]?.trim() ?? "";
+        const depInfo =
+          workspaceIndex && targetPath ? workspaceIndex.resolveDependencyInfo(targetPath, currentUri) : undefined;
+        if (!depInfo) {
+          emit(
+            stmt,
+            ScadErrorCode.UNRESOLVED_USE_INCLUDE.rule,
+            ScadErrorCode.UNRESOLVED_USE_INCLUDE.severity,
+            ScadErrorCode.UNRESOLVED_USE_INCLUDE.message(targetPath),
+          );
+          continue;
+        }
 
         const isInclude = stmt.type === "IncludeStatement";
         if (depInfo.sourceText) {
@@ -1054,6 +1061,26 @@ export function lintScadCst(
     }
   };
 
+  const checkFacetArguments = (
+    parsedArgs: { positional: ParsedArg[]; named: Map<string, ParsedArg>; all: ParsedArg[] },
+    scope: LintScope,
+  ) => {
+    for (const facetParam of ["$fn", "$fa", "$fs"] as const) {
+      const arg = parsedArgs.named.get(facetParam);
+      if (arg) {
+        const val = tryEvalExpr(arg.valueNode, scope);
+        if (typeof val === "number" && (!Number.isFinite(val) || val <= 0)) {
+          emit(
+            arg.valueNode,
+            ScadErrorCode.INVALID_FACET_PARAMETER.rule,
+            ScadErrorCode.INVALID_FACET_PARAMETER.severity,
+            ScadErrorCode.INVALID_FACET_PARAMETER.message(facetParam, val),
+          );
+        }
+      }
+    }
+  };
+
   const checkPrimarySolid = (solidNode: ScadCstNode | null | undefined, scope: LintScope) => {
     if (!solidNode) return;
     const inner = solidNode.type === "PrimarySolid" ? solidNode.child(0) : solidNode;
@@ -1065,6 +1092,7 @@ export function lintScadCst(
     for (const arg of parsedArgs.all) {
       checkExpression(arg.valueNode, scope);
     }
+    checkFacetArguments(parsedArgs, scope);
 
     if (type === "CubePrimitive") {
       const sizeArg = parsedArgs.positional[0] ?? parsedArgs.named.get("size");
@@ -1082,6 +1110,15 @@ export function lintScadCst(
       const rArg = parsedArgs.named.get("r") ?? parsedArgs.positional[1];
       if (rArg) {
         checkPositiveDimension(rArg.valueNode, scope, "cylinder", "r");
+        const rVal = tryEvalExpr(rArg.valueNode, scope);
+        if (typeof rVal === "number" && (!Number.isFinite(rVal) || rVal <= 0)) {
+          emit(
+            rArg.valueNode,
+            ScadErrorCode.NON_POSITIVE_RADIUS.rule,
+            ScadErrorCode.NON_POSITIVE_RADIUS.severity,
+            ScadErrorCode.NON_POSITIVE_RADIUS.message("r", "cylinder", rVal),
+          );
+        }
       }
       const r1Arg = parsedArgs.named.get("r1");
       if (r1Arg) {
@@ -1092,6 +1129,12 @@ export function lintScadCst(
             "SCAD_INVALID_DIMENSION",
             "error",
             `Invalid negative radius (${val}) in 'cylinder' parameter 'r1': must be >= 0.`,
+          );
+          emit(
+            r1Arg.valueNode,
+            ScadErrorCode.NON_POSITIVE_RADIUS.rule,
+            ScadErrorCode.NON_POSITIVE_RADIUS.severity,
+            ScadErrorCode.NON_POSITIVE_RADIUS.message("r1", "cylinder", val),
           );
         }
       }
@@ -1104,6 +1147,12 @@ export function lintScadCst(
             "SCAD_INVALID_DIMENSION",
             "error",
             `Invalid negative radius (${val}) in 'cylinder' parameter 'r2': must be >= 0.`,
+          );
+          emit(
+            r2Arg.valueNode,
+            ScadErrorCode.NON_POSITIVE_RADIUS.rule,
+            ScadErrorCode.NON_POSITIVE_RADIUS.severity,
+            ScadErrorCode.NON_POSITIVE_RADIUS.message("r2", "cylinder", val),
           );
         }
       }
@@ -1118,6 +1167,15 @@ export function lintScadCst(
       const rArg = parsedArgs.named.get("r") ?? parsedArgs.positional[0];
       if (rArg) {
         checkPositiveDimension(rArg.valueNode, scope, "sphere", "r");
+        const rVal = tryEvalExpr(rArg.valueNode, scope);
+        if (typeof rVal === "number" && (!Number.isFinite(rVal) || rVal <= 0)) {
+          emit(
+            rArg.valueNode,
+            ScadErrorCode.NON_POSITIVE_RADIUS.rule,
+            ScadErrorCode.NON_POSITIVE_RADIUS.severity,
+            ScadErrorCode.NON_POSITIVE_RADIUS.message("r", "sphere", rVal),
+          );
+        }
       }
       const dArg = parsedArgs.named.get("d");
       if (dArg) {
@@ -1130,10 +1188,55 @@ export function lintScadCst(
       const rArg = parsedArgs.named.get("r") ?? parsedArgs.positional[0];
       if (rArg) {
         checkPositiveDimension(rArg.valueNode, scope, "circle", "r");
+        const rVal = tryEvalExpr(rArg.valueNode, scope);
+        if (typeof rVal === "number" && (!Number.isFinite(rVal) || rVal <= 0)) {
+          emit(
+            rArg.valueNode,
+            ScadErrorCode.NON_POSITIVE_RADIUS.rule,
+            ScadErrorCode.NON_POSITIVE_RADIUS.severity,
+            ScadErrorCode.NON_POSITIVE_RADIUS.message("r", "circle", rVal),
+          );
+        }
       }
       const dArg = parsedArgs.named.get("d");
       if (dArg) {
         checkPositiveDimension(dArg.valueNode, scope, "circle", "d");
+      }
+      return;
+    }
+
+    if (type === "PolygonPrimitive") {
+      const ptsArg = parsedArgs.positional[0] ?? parsedArgs.named.get("points");
+      if (ptsArg) {
+        const ptsVal = tryEvalExpr(ptsArg.valueNode, scope);
+        if (Array.isArray(ptsVal)) {
+          const coords: [number, number][] = [];
+          for (const pt of ptsVal) {
+            if (Array.isArray(pt) && pt.length >= 2 && typeof pt[0] === "number" && typeof pt[1] === "number") {
+              coords.push([pt[0], pt[1]]);
+            }
+          }
+          let isDegenerate = coords.length < 3;
+          if (!isDegenerate) {
+            let signedArea2 = 0;
+            for (let i = 0; i < coords.length; i++) {
+              const p1 = coords[i]!;
+              const p2 = coords[(i + 1) % coords.length]!;
+              signedArea2 += p1[0] * p2[1] - p2[0] * p1[1];
+            }
+            if (Math.abs(signedArea2) < 1e-9) {
+              isDegenerate = true;
+            }
+          }
+          if (isDegenerate) {
+            emit(
+              ptsArg.valueNode,
+              ScadErrorCode.COLLINEAR_POLYGON_VERTICES.rule,
+              ScadErrorCode.COLLINEAR_POLYGON_VERTICES.severity,
+              ScadErrorCode.COLLINEAR_POLYGON_VERTICES.message("polygon"),
+            );
+          }
+        }
       }
       return;
     }
@@ -1159,6 +1262,77 @@ export function lintScadCst(
     }
   };
 
+  const classifyStatementDimension = (
+    rawStmt: ScadCstNode | null | undefined,
+  ): { dim: "2d" | "3d"; name: string; node: ScadCstNode } | null => {
+    if (!rawStmt) return null;
+    const stmt =
+      rawStmt.type === "Statement" || rawStmt.type === "OperatorChildStatement" ? rawStmt.child(0) : rawStmt;
+    if (!stmt) return null;
+
+    if (stmt.type === "PrefixSolid") {
+      const opNode =
+        findChildByType(stmt, "TransformOp") ??
+        findChildByType(stmt, "LinearExtrudeOp") ??
+        findChildByType(stmt, "BooleanOp") ??
+        findChildByType(stmt, "TagPortOp") ??
+        findChildByType(stmt, "ModuleInstantiation");
+      if (opNode?.type === "LinearExtrudeOp") {
+        const name = opNode.text.trim().startsWith("rotate_extrude") ? "rotate_extrude" : "linear_extrude";
+        return { dim: "3d", name, node: stmt };
+      }
+      if (opNode?.type === "ModuleInstantiation") {
+        const modName = findChildByType(opNode, "IDENTIFIER")?.text.trim() ?? "";
+        if (modName === "projection") return { dim: "2d", name: "projection", node: stmt };
+        if (modName === "linear_extrude" || modName === "rotate_extrude") {
+          return { dim: "3d", name: modName, node: stmt };
+        }
+      }
+      const childStmt =
+        findChildByType(stmt, "OperatorChildStatement") ??
+        findChildByType(stmt, "Statement") ??
+        findChildByType(stmt, "BlockStatement");
+      return classifyStatementDimension(childStmt);
+    }
+
+    if (stmt.type === "ChainedSolidStatement" || stmt.type === "ChainedSolid") {
+      const chainedNode = stmt.type === "ChainedSolidStatement" ? findChildByType(stmt, "ChainedSolid") : stmt;
+      const primaryNode = findChildByType(chainedNode, "PrimarySolid");
+      const inner = primaryNode?.child(0);
+      if (!inner) return null;
+      switch (inner.type) {
+        case "CirclePrimitive":
+          return { dim: "2d", name: "circle", node: inner };
+        case "SquarePrimitive":
+          return { dim: "2d", name: "square", node: inner };
+        case "PolygonPrimitive":
+          return { dim: "2d", name: "polygon", node: inner };
+        case "CubePrimitive":
+          return { dim: "3d", name: "cube", node: inner };
+        case "CylinderPrimitive":
+          return { dim: "3d", name: "cylinder", node: inner };
+        case "SpherePrimitive":
+          return { dim: "3d", name: "sphere", node: inner };
+        case "PolyhedronPrimitive":
+          return { dim: "3d", name: "polyhedron", node: inner };
+        case "ModuleInstantiation": {
+          const modName = findChildByType(inner, "IDENTIFIER")?.text.trim() ?? "";
+          if (modName === "text" || modName === "projection") {
+            return { dim: "2d", name: modName, node: inner };
+          }
+          if (modName === "torus" || modName === "surface") {
+            return { dim: "3d", name: modName, node: inner };
+          }
+          return null;
+        }
+        default:
+          return null;
+      }
+    }
+
+    return null;
+  };
+
   const checkStatement = (rawStmt: ScadCstNode | null | undefined, scope: LintScope) => {
     if (!rawStmt) return;
     const stmt = rawStmt.type === "Statement" || rawStmt.type === "OperatorChildStatement" ? rawStmt.child(0) : rawStmt;
@@ -1174,8 +1348,22 @@ export function lintScadCst(
       const exprNode = findChildByType(stmt, "Expression");
       if (exprNode) {
         checkExpression(exprNode, scope);
+        const val = tryEvalExpr(exprNode, scope);
         if (nameNode) {
-          scope.vars.set(nameNode.text.trim(), { value: tryEvalExpr(exprNode, scope), node: nameNode });
+          const name = nameNode.text.trim();
+          scope.vars.set(name, { value: val, node: nameNode });
+          if (
+            (name === "$fn" || name === "$fa" || name === "$fs") &&
+            typeof val === "number" &&
+            (!Number.isFinite(val) || val <= 0)
+          ) {
+            emit(
+              exprNode,
+              ScadErrorCode.INVALID_FACET_PARAMETER.rule,
+              ScadErrorCode.INVALID_FACET_PARAMETER.severity,
+              ScadErrorCode.INVALID_FACET_PARAMETER.message(name, val),
+            );
+          }
         }
       }
       return;
@@ -1272,6 +1460,7 @@ export function lintScadCst(
           for (const arg of parsedArgs.all) {
             checkExpression(arg.valueNode, scope);
           }
+          checkFacetArguments(parsedArgs, scope);
           if (opNode.type === "LinearExtrudeOp" && opNode.text.trim().startsWith("linear_extrude")) {
             const heightArg = parsedArgs.positional[0] ?? parsedArgs.named.get("height");
             if (heightArg) {
@@ -1284,6 +1473,31 @@ export function lintScadCst(
         findChildByType(stmt, "OperatorChildStatement") ??
         findChildByType(stmt, "Statement") ??
         findChildByType(stmt, "BlockStatement");
+      if (opNode?.type === "BooleanOp" && childStmt) {
+        const blockNode =
+          childStmt.type === "BlockStatement"
+            ? childStmt
+            : findChildByType(childStmt, "BlockStatement");
+        if (blockNode) {
+          let first2d: { dim: "2d" | "3d"; name: string; node: ScadCstNode } | undefined;
+          let first3d: { dim: "2d" | "3d"; name: string; node: ScadCstNode } | undefined;
+          for (let i = 0; i < blockNode.childCount; i++) {
+            const c = blockNode.child(i);
+            if (!c || c.type !== "Statement") continue;
+            const info = classifyStatementDimension(c);
+            if (info?.dim === "2d" && !first2d) first2d = info;
+            if (info?.dim === "3d" && !first3d) first3d = info;
+          }
+          if (first2d && first3d) {
+            emit(
+              first2d.node,
+              ScadErrorCode.MIXED_2D_3D_BOOLEAN.rule,
+              ScadErrorCode.MIXED_2D_3D_BOOLEAN.severity,
+              ScadErrorCode.MIXED_2D_3D_BOOLEAN.message(first2d.name, first3d.name),
+            );
+          }
+        }
+      }
       if (childStmt) checkStatement(childStmt, scope);
       return;
     }
@@ -1312,6 +1526,7 @@ export function lintScadCst(
         for (const arg of parsedArgs.all) {
           checkExpression(arg.valueNode, scope);
         }
+        checkFacetArguments(parsedArgs, scope);
         if (methodName === "fillet") {
           const rArg = parsedArgs.positional[0] ?? parsedArgs.named.get("r");
           if (rArg) checkPositiveDimension(rArg.valueNode, scope, "fillet", "r");

@@ -63,4 +63,43 @@ export const ScadErrorCode = {
     severity: "warning" as const,
     message: (name: string) => `Variable '${name}' is assigned multiple times in the same scope.`,
   },
+  MIXED_2D_3D_BOOLEAN: {
+    code: 1009,
+    stdCode: "K1009",
+    rule: "SCAD_MIXED_2D_3D_BOOLEAN",
+    severity: "error" as const,
+    message: (shape2d: string, solid3d: string) =>
+      `Cannot combine 2D geometry '${shape2d}' with 3D solid '${solid3d}' in CSG boolean without linear extrusion.`,
+  },
+  INVALID_FACET_PARAMETER: {
+    code: 1010,
+    stdCode: "K1010",
+    rule: "SCAD_INVALID_FACET_PARAMETER",
+    severity: "error" as const,
+    message: (param: string, val: number) =>
+      `Mesh resolution parameter '${param}' must be strictly positive (found ${val}).`,
+  },
+  COLLINEAR_POLYGON_VERTICES: {
+    code: 1011,
+    stdCode: "K1011",
+    rule: "SCAD_COLLINEAR_POLYGON_VERTICES",
+    severity: "warning" as const,
+    message: (name: string) =>
+      `Polygon '${name}' contains degenerate collinear or zero-area vertex loop.`,
+  },
+  UNRESOLVED_USE_INCLUDE: {
+    code: 1012,
+    stdCode: "K1012",
+    rule: "SCAD_UNRESOLVED_USE_INCLUDE",
+    severity: "error" as const,
+    message: (path: string) => `Included OpenSCAD library file '${path}' cannot be resolved.`,
+  },
+  NON_POSITIVE_RADIUS: {
+    code: 1013,
+    stdCode: "K1013",
+    rule: "SCAD_NON_POSITIVE_RADIUS",
+    severity: "error" as const,
+    message: (param: string, primitive: string, val: number) =>
+      `Radius '${param}' in '${primitive}' must be strictly positive (found ${val}).`,
+  },
 } as const;

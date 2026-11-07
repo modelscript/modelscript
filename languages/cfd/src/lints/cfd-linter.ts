@@ -161,5 +161,106 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
     }
   }
 
+  // M7309: Inverted cell volume check
+  const minVolRaw = model.directives.get("MIN_CELL_VOLUME") ?? model.directives.get("minCellVolume");
+  const invCellRaw = model.directives.get("INVERTED_CELL_ID") ?? model.directives.get("invertedCellId");
+  if (minVolRaw !== undefined || invCellRaw !== undefined) {
+    const minVol = minVolRaw !== undefined ? parseFloat(minVolRaw) : -1;
+    const cellId = invCellRaw !== undefined ? parseInt(invCellRaw, 10) || 1 : 1;
+    if ((!isNaN(minVol) && minVol <= 0) || invCellRaw !== undefined) {
+      diagnostics.push({
+        code: CfdErrorCode.INVERTED_CELL_VOLUME.code,
+        rule: CfdErrorCode.INVERTED_CELL_VOLUME.rule,
+        severity: CfdErrorCode.INVERTED_CELL_VOLUME.severity,
+        message: CfdErrorCode.INVERTED_CELL_VOLUME.message(cellId),
+        line: getLine("MIN_CELL_VOLUME", "INVERTED_CELL_ID", "minCellVolume"),
+        column: 1,
+      });
+    }
+  }
+
+  // M7310: Non-conformal periodic interface check
+  const periodicRaw = model.directives.get("MARKER_PERIODIC");
+  if (periodicRaw) {
+    const inner = periodicRaw.replace(/^\s*\(|\)\s*$/g, "");
+    const parts = inner
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const patchA = parts[0] ?? "periodic_1";
+    const patchB = parts[1] ?? "periodic_2";
+    const nonConformalFlag =
+      model.directives.get("PERIODIC_CONFORMAL")?.toUpperCase() === "NO" ||
+      model.directives.get("NON_CONFORMAL_PERIODIC")?.toUpperCase() === "YES";
+    if (nonConformalFlag || parts.length < 8) {
+      diagnostics.push({
+        code: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.code,
+        rule: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.rule,
+        severity: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.severity,
+        message: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.message(patchA, patchB),
+        line: getLine("MARKER_PERIODIC"),
+        column: 1,
+      });
+    }
+  } else {
+    const cyclicMarkers = Array.from(model.markers.values()).filter((m) => m.type === "CYCLIC");
+    if (cyclicMarkers.length === 1) {
+      diagnostics.push({
+        code: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.code,
+        rule: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.rule,
+        severity: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.severity,
+        message: CfdErrorCode.NON_CONFORMAL_PERIODIC_INTERFACE.message(cyclicMarkers[0]!.name, "unpaired_cyclic"),
+        line: getLine("boundaryField"),
+        column: 1,
+      });
+    }
+  }
+
+  // M7311: Boundary layer wall y+ limit check
+  const yplusRaw =
+    model.directives.get("WALL_YPLUS") ?? model.directives.get("MAX_YPLUS") ?? model.directives.get("YPLUS");
+  if (yplusRaw !== undefined) {
+    const yplus = parseFloat(yplusRaw);
+    if (!isNaN(yplus) && yplus > 5.0) {
+      const wallPatch = model.wallMarkers[0] ?? "wall";
+      diagnostics.push({
+        code: CfdErrorCode.WALL_YPLUS_ASPECT_RATIO.code,
+        rule: CfdErrorCode.WALL_YPLUS_ASPECT_RATIO.rule,
+        severity: CfdErrorCode.WALL_YPLUS_ASPECT_RATIO.severity,
+        message: CfdErrorCode.WALL_YPLUS_ASPECT_RATIO.message(wallPatch, yplus),
+        line: getLine("WALL_YPLUS", "MAX_YPLUS", "YPLUS"),
+        column: 1,
+      });
+    }
+  }
+
+  // M7312: Net mass flux divergence check
+  const inMassRaw = model.directives.get("INLET_MASS_FLOW");
+  const outMassRaw = model.directives.get("OUTLET_MASS_FLOW");
+  const massImbalanceRaw = model.directives.get("MASS_FLUX_IMBALANCE");
+  let hasMassDivergence = false;
+  if (inMassRaw !== undefined && outMassRaw !== undefined) {
+    const inFlow = parseFloat(inMassRaw);
+    const outFlow = parseFloat(outMassRaw);
+    if (!isNaN(inFlow) && !isNaN(outFlow) && Math.abs(inFlow - outFlow) > 1e-3) {
+      hasMassDivergence = true;
+    }
+  } else if (massImbalanceRaw !== undefined) {
+    const imb = parseFloat(massImbalanceRaw);
+    if (!isNaN(imb) && Math.abs(imb) > 1e-3) {
+      hasMassDivergence = true;
+    }
+  }
+  if (hasMassDivergence) {
+    diagnostics.push({
+      code: CfdErrorCode.MASS_FLUX_DIVERGENCE.code,
+      rule: CfdErrorCode.MASS_FLUX_DIVERGENCE.rule,
+      severity: CfdErrorCode.MASS_FLUX_DIVERGENCE.severity,
+      message: CfdErrorCode.MASS_FLUX_DIVERGENCE.message(),
+      line: getLine("INLET_MASS_FLOW", "OUTLET_MASS_FLOW", "MASS_FLUX_IMBALANCE"),
+      column: 1,
+    });
+  }
+
   return diagnostics;
 }

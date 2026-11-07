@@ -48,3 +48,13 @@ export function appendChildSplice(parent: XmlElement, childXml: string, source: 
   while (at > parent.openEnd && (source[at - 1] === " " || source[at - 1] === "\t")) at--;
   return { start: at, end: at, text: `${indent}${childXml}${eol}` };
 }
+
+/** Replaces the inner text content of a non-self-closing XML element. */
+export function setElementTextSplice(el: XmlElement, newText: string): Splice {
+  const encoded = newText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return {
+    start: el.openEnd,
+    end: el.closeStart,
+    text: encoded,
+  };
+}

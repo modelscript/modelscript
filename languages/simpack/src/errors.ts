@@ -43,6 +43,31 @@ export const SimpackErrorCode = {
     message: (jointId: string, param: string, val: number) =>
       `Joint '${jointId}' Baumgarte stabilization parameter '${param}' is non-positive or divergent (${val}).`,
   },
+  UNPAIRED_WHEEL_RAIL: {
+    code: "K7007",
+    rule: "unpaired-wheel-rail",
+    severity: "error" as const,
+    message: (elemId: string) => `Wheel contact element '${elemId}' lacks associated rail profile geometry.`,
+  },
+  NEGATIVE_BUSHING_STIFFNESS: {
+    code: "K7008",
+    rule: "negative-bushing-stiffness",
+    severity: "error" as const,
+    message: (elemId: string, val: number) =>
+      `Bushing force element '${elemId}' specifies non-positive stiffness (${val} N/m).`,
+  },
+  UNCONNECTED_SUBSYSTEM_MARKER: {
+    code: "K7009",
+    rule: "unconnected-subsystem-marker",
+    severity: "warning" as const,
+    message: (markerId: string) => `Subsystem marker '${markerId}' has no connecting joint or constraint.`,
+  },
+  DEGENERATE_INERTIA_TENSOR: {
+    code: "K7010",
+    rule: "degenerate-inertia-tensor",
+    severity: "error" as const,
+    message: (id: string) => `Body '${id}' principal inertia tensor is not positive-definite.`,
+  },
 } as const;
 
 export type SimpackErrorCodeKey = keyof typeof SimpackErrorCode;

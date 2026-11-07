@@ -63,9 +63,20 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
   const unmappedSourceAttributes: string[] = [];
   const leakedAttributes: string[] = [];
 
+  const usesExplicitVarFactory = typeof rule.source === "function" && rule.source.length >= 2;
+
   for (const attr of knownSourceAttrs) {
     let isMapped = false;
     const srcVar = srcBindings[attr];
+
+    // 0. Constant literal discriminator in source pattern (e.g., `type: "Gain"`, `causality: "parameter"`)
+    if (
+      usesExplicitVarFactory &&
+      attr in srcBindings &&
+      (typeof srcVar !== "string" || !srcVar.startsWith("__var_"))
+    ) {
+      isMapped = true;
+    }
 
     // 1. Direct mapping in target bindings
     if (attr in tgtBindings) {

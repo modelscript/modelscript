@@ -6,7 +6,7 @@
       "tsComments": 0
     },
     "apps/cli": {
-      "explicitAny": 0,
+      "explicitAny": 4,
       "tsComments": 0
     },
     "apps/desktop": {
@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 755,
+      "explicitAny": 762,
       "tsComments": 0
     },
     "ee": {
@@ -50,7 +50,7 @@
       "tsComments": 0
     },
     "languages/autosar": {
-      "explicitAny": 0,
+      "explicitAny": 5,
       "tsComments": 0
     },
     "languages/bngl": {
@@ -150,7 +150,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3243,
+      "explicitAny": 3264,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -206,7 +206,7 @@
       "tsComments": 0
     },
     "languages/pscad": {
-      "explicitAny": 0,
+      "explicitAny": 5,
       "tsComments": 0
     },
     "languages/psse": {
@@ -222,7 +222,7 @@
       "tsComments": 0
     },
     "languages/reqif": {
-      "explicitAny": 0,
+      "explicitAny": 2,
       "tsComments": 0
     },
     "languages/rocets": {
@@ -254,7 +254,7 @@
       "tsComments": 0
     },
     "languages/simulink": {
-      "explicitAny": 0,
+      "explicitAny": 8,
       "tsComments": 0
     },
     "languages/smiles": {
@@ -294,7 +294,7 @@
       "tsComments": 0
     },
     "languages/urdf": {
-      "explicitAny": 0,
+      "explicitAny": 11,
       "tsComments": 0
     },
     "languages/usd": {
@@ -314,7 +314,7 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 0,
+      "explicitAny": 38,
       "tsComments": 0
     },
     "packages/dsl": {
@@ -334,7 +334,7 @@
       "tsComments": 0
     },
     "packages/exchange": {
-      "explicitAny": 0,
+      "explicitAny": 3,
       "tsComments": 0
     },
     "packages/ide": {
@@ -342,7 +342,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 2082,
+      "explicitAny": 2085,
       "tsComments": 0
     },
     "packages/mcp": {
@@ -354,7 +354,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 739,
+      "explicitAny": 769,
       "tsComments": 0
     },
     "packages/simulate": {

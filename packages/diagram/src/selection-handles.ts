@@ -144,10 +144,11 @@ export function getEdgeToolConfig(
   style?: ResolvedEdgeSelectionStyle,
 ): unknown[] {
   const curZoom = typeof graph.zoom === "function" ? graph.zoom() : 1;
-  // Scale handles to maintain a crisp, refined size on screen (~3px radius, 6px diameter)
-  const vertexRadius = Math.max(1.2, Math.min(3, 3.5 / (curZoom || 1)));
-  const segW = Math.max(4, Math.min(10, 10 / (curZoom || 1)));
-  const segH = Math.max(1.2, Math.min(2.5, 3 / (curZoom || 1)));
+  // Scale handles dynamically to maintain a crisp, refined size on screen (~3px radius, 6px diameter)
+  // across both close-in zoom and wide-view diagram zoom levels.
+  const vertexRadius = Math.max(0.3, Math.min(3.5, 3.5 / (curZoom || 1)));
+  const segW = Math.max(1.5, Math.min(10, 8 / (curZoom || 1)));
+  const segH = Math.max(0.6, Math.min(3, 2.5 / (curZoom || 1)));
 
   const tools: unknown[] = [
     {
@@ -161,7 +162,21 @@ export function getEdgeToolConfig(
         },
         snapRadius: 10,
         removeRedundancies: true,
-        stopPropagation: false,
+        stopPropagation: true,
+        processHandle: (handle: { delegateEvents?: (events: Record<string, unknown>) => void; emit?: (evt: string, args: unknown) => void }) => {
+          if (handle && typeof handle.delegateEvents === "function") {
+            handle.delegateEvents({
+              mousedown: "onMouseDown",
+              touchstart: "onMouseDown",
+              dblclick: "onDoubleClick",
+              contextmenu: (e: MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handle.emit?.("remove", { e, handle });
+              },
+            });
+          }
+        },
       },
     },
   ];
@@ -184,10 +199,153 @@ export function getEdgeToolConfig(
         },
         snapRadius: 10,
         removeRedundancies: true,
-        stopPropagation: false,
+        stopPropagation: true,
       },
     });
   }
 
   return tools;
 }
+
+/**
+ * Patches the AntV X6 Vertices edge tool to prevent interaction crashes and runaway handle proliferation:
+ * 1. Checks if a click is close to an existing vertex (<= 8px) and reuses that handle instead of inserting duplicates.
+ * 2. Safely verifies that the newly inserted handle exists before delegating mouse events.
+ * 3. Guarantees that any exception in vertex insertion or handle delegation gracefully terminates
+ *    the 'add-vertex' batch so the graph interaction never freezes.
+ * 4. Adds contextmenu handling to vertex handles for one-click deletion.
+ */
+export function ensurePatchedVerticesTool(x6Instance?: unknown): void {
+  const x6Mod =
+    x6Instance ||
+    (typeof globalThis !== "undefined" ? (globalThis as Record<string, unknown>)["x6"] : undefined) ||
+    (typeof window !== "undefined" ? (window as unknown as Record<string, unknown>)["x6"] : undefined);
+  if (!x6Mod || typeof x6Mod !== "object") return;
+
+  const anyX6 = x6Mod as {
+    Registry?: { EdgeTool?: { presets?: { vertices?: unknown }; registry?: { get?(name: string): unknown } } };
+    edgeToolPresets?: { vertices?: unknown };
+  };
+
+  const VerticesClass = (anyX6.Registry?.EdgeTool?.presets?.vertices ||
+    anyX6.Registry?.EdgeTool?.registry?.get?.("vertices") ||
+    anyX6.edgeToolPresets?.vertices) as
+    | {
+        prototype: {
+          onPathMouseDown?(evt: unknown): void;
+          allowAddVertex?(evt: unknown): boolean;
+        };
+        defaults?: {
+          createHandle?(options: unknown): unknown;
+        };
+        __modelscript_patched?: boolean;
+      }
+    | undefined;
+
+interface VerticesToolContext {
+  cellView: {
+    cell?: {
+      getVertices?(): Array<{ x: number; y: number }>;
+      startBatch?(name: string, options?: Record<string, unknown>): void;
+      insertVertex?(vertex: { x: number; y: number }, index: number, options?: Record<string, unknown>): void;
+      stopBatch?(name: string, options?: Record<string, unknown>): void;
+    };
+    getVertexIndex?(x: number, y: number): number;
+  };
+  cid?: string;
+  graph?: {
+    snapToGrid?(x: number, y: number): { toJSON?(): { x: number; y: number } };
+  };
+  handles?: Array<{ onMouseDown?(evt: unknown): void } | undefined>;
+  allowAddVertex?(evt: unknown): boolean;
+  normalizeEvent?(evt: unknown): { clientX: number; clientY: number };
+  snapVertex?(vertex: { x: number; y: number }, index: number): void;
+  render?(): void;
+  eventData?(evt: unknown, data: Record<string, unknown>): void;
+}
+
+  if (!VerticesClass || VerticesClass.__modelscript_patched) return;
+
+  VerticesClass.prototype.onPathMouseDown = function (this: VerticesToolContext, evt: unknown) {
+    const edgeView = this.cellView;
+    if (typeof this.allowAddVertex === "function" && !this.allowAddVertex(evt)) return;
+    const evtObj = evt as { stopPropagation?: () => void; preventDefault?: () => void } | null;
+    if (evtObj && typeof evtObj.stopPropagation === "function") evtObj.stopPropagation();
+    if (evtObj && typeof evtObj.preventDefault === "function") evtObj.preventDefault();
+    const e = typeof this.normalizeEvent === "function" ? this.normalizeEvent(evt) : (evt as { clientX: number; clientY: number });
+    const vertex = this.graph?.snapToGrid?.(e.clientX, e.clientY)?.toJSON?.() || { x: e.clientX, y: e.clientY };
+
+    // Prevent duplicate vertex proliferation if clicking near an existing vertex (<= 8px)
+    const existingVertices = edgeView.cell?.getVertices?.() || [];
+    let nearbyIndex = -1;
+    for (let i = 0; i < existingVertices.length; i++) {
+      const v = existingVertices[i];
+      if (v && Math.hypot(v.x - vertex.x, v.y - vertex.y) <= 8) {
+        nearbyIndex = i;
+        break;
+      }
+    }
+
+    if (nearbyIndex >= 0) {
+      const existingHandle = this.handles?.[nearbyIndex];
+      if (existingHandle && typeof existingHandle.onMouseDown === "function") {
+        existingHandle.onMouseDown(e);
+        return;
+      }
+    }
+
+    try {
+      edgeView.cell?.startBatch?.("add-vertex", { ui: true, toolId: this.cid });
+      const index = typeof edgeView.getVertexIndex === "function" ? edgeView.getVertexIndex(vertex.x, vertex.y) : 0;
+      if (typeof this.snapVertex === "function") {
+        this.snapVertex(vertex, index);
+      }
+      edgeView.cell?.insertVertex?.(vertex, index, { ui: true, toolId: this.cid });
+      if (typeof this.render === "function") {
+        this.render();
+      }
+      const handle = this.handles?.[index] ?? this.handles?.[this.handles.length - 1];
+      if (typeof this.eventData === "function") {
+        this.eventData(e, { vertexAdded: true });
+      }
+      if (handle && typeof handle.onMouseDown === "function") {
+        handle.onMouseDown(e);
+      } else {
+        edgeView.cell?.stopBatch?.("add-vertex", { ui: true, toolId: this.cid });
+      }
+    } catch {
+      try {
+        edgeView.cell?.stopBatch?.("add-vertex", { ui: true, toolId: this.cid });
+      } catch {}
+    }
+  };
+
+  const origCreateHandle = VerticesClass.defaults?.createHandle;
+  if (typeof origCreateHandle === "function") {
+    VerticesClass.defaults = VerticesClass.defaults || {};
+    VerticesClass.defaults.createHandle = function (options: unknown) {
+      const handle = origCreateHandle(options) as {
+        delegateEvents?(events: Record<string, unknown>): void;
+        emit?(name: string, args: unknown): void;
+      } | null;
+      if (handle && typeof handle.delegateEvents === "function") {
+        handle.delegateEvents({
+          mousedown: "onMouseDown",
+          touchstart: "onMouseDown",
+          dblclick: "onDoubleClick",
+          contextmenu: (e: MouseEvent) => {
+            if (e) {
+              if (typeof e.preventDefault === "function") e.preventDefault();
+              if (typeof e.stopPropagation === "function") e.stopPropagation();
+            }
+            handle.emit?.("remove", { e, handle });
+          },
+        });
+      }
+      return handle;
+    };
+  }
+
+  VerticesClass.__modelscript_patched = true;
+}
+

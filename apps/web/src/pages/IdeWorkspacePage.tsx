@@ -9,7 +9,6 @@ import { getArtifactView, getPopularRepos, getPost, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
-import { MorselIcon } from "../components/icons/AnsatzSketchIcon";
 import { VsCodeIcon } from "../components/icons/VsCodeIcon";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -975,96 +974,7 @@ export const IdeWorkspacePage: React.FC = () => {
       </Box>
 
       <ActionTilesGrid>
-        {/* Tile 1: Ansatz Morsel */}
-        <ActionTile
-          role="button"
-          tabIndex={0}
-          onClick={() => navigate("/morsel")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              navigate("/morsel");
-            }
-          }}
-          style={{ cursor: "pointer" }}
-          aria-label="Launch Ansatz Morsel"
-          data-testid="studio-morsel-tile"
-        >
-          <Box display="flex" flexDirection="column" gap={1.5}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
-              <div
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: "linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(16, 185, 129, 0.15))",
-                  border: "1px solid rgba(6, 182, 212, 0.4)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-accent-cyan, #06b6d4)",
-                }}
-              >
-                <MorselIcon size={20} color="currentColor" />
-              </div>
-              <Box display="flex" alignItems="center" gap={1.5}>
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    fontFamily: "var(--font-mono, monospace)",
-                    padding: "2px 7px",
-                    borderRadius: "6px",
-                    background: "rgba(6, 182, 212, 0.14)",
-                    color: "var(--color-accent-cyan, #06b6d4)",
-                    border: "1px solid rgba(6, 182, 212, 0.3)",
-                  }}
-                >
-                  Instant · Wasm
-                </span>
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    color: "var(--color-accent-cyan, #06b6d4)",
-                  }}
-                >
-                  ↗
-                </span>
-              </Box>
-            </Box>
-
-            <Heading as="h3" style={{ fontSize: "16px", fontWeight: 700, margin: "8px 0 2px" }}>
-              Ansatz Morsel
-            </Heading>
-
-            <Text style={{ fontSize: "13px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
-              Launch the lightweight in-browser scratchpad with instant WebAssembly simulation, live 2D plotting, 3D
-              visualization, and schematic rendering.
-            </Text>
-          </Box>
-
-          <Box mt={3} display="flex" alignItems="center" justifyContent="space-between">
-            <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-              Instant start · No setup required
-            </Text>
-            <Text
-              style={{
-                fontSize: "12px",
-                fontWeight: 600,
-                color: "var(--color-accent-cyan, #06b6d4)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <span>Open Morsel</span>
-              <span>↗</span>
-            </Text>
-          </Box>
-        </ActionTile>
-
-        {/* Tile 2: New Blank Workspace */}
+        {/* Tile 1: New Blank Workspace */}
         <ActionTile
           role="button"
           tabIndex={0}

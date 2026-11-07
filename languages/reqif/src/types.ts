@@ -77,6 +77,8 @@ export interface ReqIfAttributeValue {
 export type AsilLevel = "QM" | "ASIL-A" | "ASIL-B" | "ASIL-C" | "ASIL-D";
 export type RequirementStatus = "Draft" | "Review" | "Approved" | "Verified" | "Violated";
 export type ContractComparator = "<=" | "<" | ">=" | ">" | "==" | "!=";
+export type ContractPolicy = "strict" | "ears" | "permissive";
+export type ContractSourceTier = "explicit" | "ears" | "attribute" | "heuristic-prose";
 
 export interface ReqIfContract {
   variable: string;
@@ -84,6 +86,7 @@ export interface ReqIfContract {
   limitValue: number;
   unit?: string | undefined;
   expression?: string | undefined;
+  tier?: ContractSourceTier | undefined;
 }
 
 export interface ReqIfSpecObject {
@@ -93,6 +96,7 @@ export interface ReqIfSpecObject {
   typeRef?: string | undefined;
   attributes: Map<string, ReqIfAttributeValue>;
   text: string;
+  hasExplicitText?: boolean | undefined;
   span?: SourceSpan | undefined;
   contract?: ReqIfContract | undefined;
   asilLevel?: AsilLevel | undefined;

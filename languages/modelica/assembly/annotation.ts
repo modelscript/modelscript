@@ -93,6 +93,7 @@ const MAX_GRAPHICS: i32 = 2048;
 const MAX_POINTS: i32 = 32768;
 const SVG_BUFFER_CAP: u32 = 1048576; // 1 MB
 const TEXT_POOL_CAP: u32 = 65536; // 64K u16 code units (128 KB)
+const ICON_NAME_CAP: u32 = 256; // 256 u16 code units for %name macro replacement
 
 @unmanaged
 class GraphicSlot {
@@ -135,6 +136,7 @@ class GraphicSlot {
   closure: u8;
   textStyleMask: u8;
   hasEndAngle: u8;
+  _pad: u32;
 }
 
 let g_graphicsBuf: usize = 0;
@@ -143,8 +145,11 @@ let g_pointsYBuf: usize = 0;
 let g_digitBuf: usize = 0;
 let g_textPoolBuf: usize = 0;
 let g_textPoolLen: u32 = 0;
+let g_iconNameBuf: usize = 0;
+let g_iconNameLen: u32 = 0;
 let g_svgBuffer: usize = 0;
 let g_svgLen: u32 = 0;
+let g_svgRenderSeq: u32 = 0;
 
 // Scratch registers for point/extent/color parsing (zero heap allocations)
 let g_tmpX1: f64 = 0.0;
@@ -246,6 +251,7 @@ function ensureAnnotationArena(): void {
     g_pointsYBuf = atomicChunkAlloc((MAX_POINTS as u32) * sizeof<f64>());
     g_digitBuf = atomicChunkAlloc(32);
     g_textPoolBuf = atomicChunkAlloc(TEXT_POOL_CAP * sizeof<u16>());
+    g_iconNameBuf = atomicChunkAlloc(ICON_NAME_CAP * sizeof<u16>());
   }
 }
 
@@ -293,6 +299,11 @@ function setPoolChar(charIdx: u32, ch: u16): void {
 }
 
 @inline
+function getIconNameChar(charIdx: u32): u16 {
+  return load<u16>(g_iconNameBuf + (charIdx as usize) * sizeof<u16>());
+}
+
+@inline
 function writeByte(b: u8): void {
   if (g_svgLen < SVG_BUFFER_CAP - 1) {
     store<u8>(g_svgBuffer + (g_svgLen++), b);
@@ -306,27 +317,31 @@ function writeString(str: string): void {
   }
 }
 
+@inline
+function writeXmlEscapedChar(ch: u16): void {
+  if (ch == 38) {
+    writeString("&amp;");
+  } else if (ch == 60) {
+    writeString("&lt;");
+  } else if (ch == 62) {
+    writeString("&gt;");
+  } else if (ch == 34) {
+    writeString("&quot;");
+  } else if (ch < 128) {
+    writeByte(ch as u8);
+  } else if (ch < 0x800) {
+    writeByte((0xc0 | (ch >> 6)) as u8);
+    writeByte((0x80 | (ch & 0x3f)) as u8);
+  } else {
+    writeByte((0xe0 | (ch >> 12)) as u8);
+    writeByte((0x80 | ((ch >> 6) & 0x3f)) as u8);
+    writeByte((0x80 | (ch & 0x3f)) as u8);
+  }
+}
+
 function writeXmlEscapedPoolText(poolOff: u32, poolLen: u32): void {
   for (let i: u32 = 0; i < poolLen; ++i) {
-    let ch = getPoolChar(poolOff + i);
-    if (ch == 38) {
-      writeString("&amp;");
-    } else if (ch == 60) {
-      writeString("&lt;");
-    } else if (ch == 62) {
-      writeString("&gt;");
-    } else if (ch == 34) {
-      writeString("&quot;");
-    } else if (ch < 128) {
-      writeByte(ch as u8);
-    } else if (ch < 0x800) {
-      writeByte((0xc0 | (ch >> 6)) as u8);
-      writeByte((0x80 | (ch & 0x3f)) as u8);
-    } else {
-      writeByte((0xe0 | (ch >> 12)) as u8);
-      writeByte((0x80 | ((ch >> 6) & 0x3f)) as u8);
-      writeByte((0x80 | (ch & 0x3f)) as u8);
-    }
+    writeXmlEscapedChar(getPoolChar(poolOff + i));
   }
 }
 
@@ -831,12 +846,64 @@ function visitArrayElements(loc: u64, mode: i32, slotIdx: i32): void {
   }
 }
 
+function visitMatrixRowLists(loc: u64, mode: i32, slotIdx: i32): void {
+  if (locIsNull(loc) || g_bailOut) return;
+  let ch = locFirstChild(loc);
+  while (!locIsNull(ch) && !g_bailOut) {
+    if (locLen(ch) > 0) {
+      let t = locType(ch);
+      if (t == SyntaxType.EXPRESSION_LIST) {
+        if (mode == ARRAY_MODE_EXTENT_POINTS) {
+          if (g_extPtIdx == 0) {
+            if (parsePointPairIntoScratch(ch)) {
+              g_extX1 = g_tmpX1;
+              g_extY1 = g_tmpY1;
+              g_extPtIdx = 1;
+            }
+          } else if (g_extPtIdx == 1) {
+            if (parsePointPairIntoScratch(ch)) {
+              g_extX2 = g_tmpX1;
+              g_extY2 = g_tmpY1;
+              g_extPtIdx = 2;
+            }
+          } else {
+            g_bailOut = true;
+          }
+        } else if (mode == ARRAY_MODE_POINT_LIST) {
+          if (parsePointPairIntoScratch(ch)) {
+            if (g_totalPoints < MAX_POINTS) {
+              setPointX(g_totalPoints, g_tmpX1);
+              setPointY(g_totalPoints, g_tmpY1);
+              g_totalPoints++;
+              getSlot(slotIdx).pointsCount++;
+            } else {
+              g_bailOut = true;
+            }
+          }
+        }
+      } else {
+        visitMatrixRowLists(ch, mode, slotIdx);
+      }
+    }
+    ch = locNextSibling(ch);
+  }
+}
+
 function parsePointPairIntoScratch(loc: u64): bool {
   if (locIsNull(loc)) {
     g_bailOut = true;
     return false;
   }
-  let arrArgs = locType(loc) == SyntaxType.ARRAY_ARGUMENTS ? loc : locFindDescendant(loc, SyntaxType.ARRAY_ARGUMENTS);
+  let arrArgs: u64 = 0;
+  let t = locType(loc);
+  if (t == SyntaxType.ARRAY_ARGUMENTS || t == SyntaxType.EXPRESSION_LIST) {
+    arrArgs = loc;
+  } else {
+    arrArgs = locFindDescendant(loc, SyntaxType.ARRAY_ARGUMENTS);
+    if (locIsNull(arrArgs)) {
+      arrArgs = locFindDescendant(loc, SyntaxType.EXPRESSION_LIST);
+    }
+  }
   if (locIsNull(arrArgs)) {
     g_bailOut = true;
     return false;
@@ -856,12 +923,15 @@ function parseExtentToScratch(loc: u64): bool {
     return false;
   }
   let arrArgs = locType(loc) == SyntaxType.ARRAY_ARGUMENTS ? loc : locFindDescendant(loc, SyntaxType.ARRAY_ARGUMENTS);
-  if (locIsNull(arrArgs)) {
+  g_extPtIdx = 0;
+  if (!locIsNull(arrArgs)) {
+    visitArrayElements(arrArgs, ARRAY_MODE_EXTENT_POINTS, 0);
+  } else if (!locIsNull(locFindDescendant(loc, SyntaxType.EXPRESSION_LIST))) {
+    visitMatrixRowLists(loc, ARRAY_MODE_EXTENT_POINTS, 0);
+  } else {
     g_bailOut = true;
     return false;
   }
-  g_extPtIdx = 0;
-  visitArrayElements(arrArgs, ARRAY_MODE_EXTENT_POINTS, 0);
   if (g_extPtIdx != 2 || g_bailOut) {
     g_bailOut = true;
     return false;
@@ -879,10 +949,11 @@ function parsePoints(loc: u64, slotIdx: i32): void {
   slot.pointsCount = 0;
 
   let arrArgs = locType(loc) == SyntaxType.ARRAY_ARGUMENTS ? loc : locFindDescendant(loc, SyntaxType.ARRAY_ARGUMENTS);
-  if (locIsNull(arrArgs)) {
-    return;
+  if (!locIsNull(arrArgs)) {
+    visitArrayElements(arrArgs, ARRAY_MODE_POINT_LIST, slotIdx);
+  } else if (!locIsNull(locFindDescendant(loc, SyntaxType.EXPRESSION_LIST))) {
+    visitMatrixRowLists(loc, ARRAY_MODE_POINT_LIST, slotIdx);
   }
-  visitArrayElements(arrArgs, ARRAY_MODE_POINT_LIST, slotIdx);
 }
 
 function parseColor(loc: u64): i32 {
@@ -891,6 +962,9 @@ function parseColor(loc: u64): i32 {
     return -1;
   }
   let arrArgs = locType(loc) == SyntaxType.ARRAY_ARGUMENTS ? loc : locFindDescendant(loc, SyntaxType.ARRAY_ARGUMENTS);
+  if (locIsNull(arrArgs)) {
+    arrArgs = locType(loc) == SyntaxType.EXPRESSION_LIST ? loc : locFindDescendant(loc, SyntaxType.EXPRESSION_LIST);
+  }
   if (locIsNull(arrArgs)) {
     g_bailOut = true;
     return -1;
@@ -1173,7 +1247,7 @@ function processPositionalGraphicArg(funcArg: u64, slotIdx: i32): void {
     }
   }
 
-  // 3. String literal (`textString` for Text, `fileName` for Bitmap)
+  // 3. String literal (`textString` for Text, `fileName` for Bitmap) or positional RGB `color`/`lineColor`
   let strLit = locType(argVal) == SyntaxType.STRING_LITERAL ? argVal : locFindDescendant(argVal, SyntaxType.STRING_LITERAL);
   if (!locIsNull(strLit) && g_posArgIdx == 2) {
     if (kind == GRAPHIC_TEXT && parseStringLiteralToPool(argVal)) {
@@ -1189,6 +1263,13 @@ function processPositionalGraphicArg(funcArg: u64, slotIdx: i32): void {
       g_posArgIdx = 3;
       return;
     }
+  } else if (
+    g_posArgIdx == 2 &&
+    (kind == GRAPHIC_LINE || kind == GRAPHIC_POLYGON || kind == GRAPHIC_RECTANGLE || kind == GRAPHIC_ELLIPSE)
+  ) {
+    slot.strokeColor = parseColor(argVal);
+    g_posArgIdx = 3;
+    return;
   }
 
   g_bailOut = true;
@@ -1352,7 +1433,6 @@ function visitClassModArgs(loc: u64, mode: i32): void {
                 visitClassModArgs(csMod, MOD_MODE_COORDSYS_PROPS);
               }
             } else if (locMatches(nameLoc, "graphics")) {
-              g_graphicCount = g_layerGraphicStart;
               let arrArgs = locFindDescendant(ch, SyntaxType.ARRAY_ARGUMENTS);
               if (!locIsNull(arrArgs)) {
                 visitArrayElements(arrArgs, ARRAY_MODE_GRAPHIC_ITEMS, 0);
@@ -1366,6 +1446,12 @@ function visitClassModArgs(loc: u64, mode: i32): void {
             if (locMatches(nameLoc, "extent")) {
               let extVal = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
               if (!locIsNull(extVal) && parseExtentToScratch(extVal)) {
+                if (
+                  g_layerGraphicStart > 0 &&
+                  (g_extX1 != g_coordX1 || g_extY1 != g_coordY1 || g_extX2 != g_coordX2 || g_extY2 != g_coordY2)
+                ) {
+                  g_bailOut = true;
+                }
                 g_coordX1 = g_extX1;
                 g_coordY1 = g_extY1;
                 g_coordX2 = g_extX2;
@@ -1778,14 +1864,93 @@ export function annotation_scanConnectLine(eqNodePtr: u32, startOffset: u32): i3
 
 // ── In-WASM SVG Serializer ──────────────────────────────────────────────────
 
-function poolTextHasPercentMacro(poolOff: u32, poolLen: u32): bool {
-  for (let i: u32 = 0; i < poolLen; ++i) {
-    if (getPoolChar(poolOff + i) == 37) return true; // '%'
+@inline
+function isPoolPercentNameAt(poolOff: u32, poolLen: u32, i: u32): bool {
+  if (i + 5 > poolLen) return false;
+  if (
+    getPoolChar(poolOff + i + 1) != 110 || // 'n'
+    getPoolChar(poolOff + i + 2) != 97 ||  // 'a'
+    getPoolChar(poolOff + i + 3) != 109 || // 'm'
+    getPoolChar(poolOff + i + 4) != 101    // 'e'
+  ) {
+    return false;
+  }
+  if (i + 5 < poolLen) {
+    let nextCh = getPoolChar(poolOff + i + 5) as i32;
+    if (isIdentStart(nextCh) || (nextCh >= 48 && nextCh <= 57)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function poolTextHasUnsupportedMacro(poolOff: u32, poolLen: u32): bool {
+  let i: u32 = 0;
+  while (i < poolLen) {
+    if (getPoolChar(poolOff + i) == 37) {
+      // '%%' escaped literal percent
+      if (i + 1 < poolLen && getPoolChar(poolOff + i + 1) == 37) {
+        i += 2;
+        continue;
+      }
+      // '%name' word-boundary macro
+      if (isPoolPercentNameAt(poolOff, poolLen, i)) {
+        i += 5;
+        continue;
+      }
+      return true;
+    }
+    i++;
   }
   return false;
 }
 
-function writeSlotFillAttr(slot: GraphicSlot, idx: i32): void {
+function computeExpandedPoolTextLen(poolOff: u32, poolLen: u32): u32 {
+  let outLen: u32 = 0;
+  let i: u32 = 0;
+  while (i < poolLen) {
+    if (getPoolChar(poolOff + i) == 37) {
+      if (i + 1 < poolLen && getPoolChar(poolOff + i + 1) == 37) {
+        outLen += 1;
+        i += 2;
+        continue;
+      }
+      if (isPoolPercentNameAt(poolOff, poolLen, i)) {
+        outLen += g_iconNameLen;
+        i += 5;
+        continue;
+      }
+    }
+    outLen += 1;
+    i++;
+  }
+  return outLen;
+}
+
+function writeXmlEscapedPoolTextWithMacros(poolOff: u32, poolLen: u32): void {
+  let i: u32 = 0;
+  while (i < poolLen) {
+    let ch = getPoolChar(poolOff + i);
+    if (ch == 37) {
+      if (i + 1 < poolLen && getPoolChar(poolOff + i + 1) == 37) {
+        writeByte(37);
+        i += 2;
+        continue;
+      }
+      if (isPoolPercentNameAt(poolOff, poolLen, i)) {
+        for (let k: u32 = 0; k < g_iconNameLen; ++k) {
+          writeXmlEscapedChar(getIconNameChar(k));
+        }
+        i += 5;
+        continue;
+      }
+    }
+    writeXmlEscapedChar(ch);
+    i++;
+  }
+}
+
+function writeSlotFillAttr(slot: GraphicSlot, idx: i32, seq: i32): void {
   let fp = slot.fillPattern;
   let fillColorPacked = slot.fillColor >= 0 ? slot.fillColor : slot.strokeColor;
   writeString('" fill="');
@@ -1793,15 +1958,58 @@ function writeSlotFillAttr(slot: GraphicSlot, idx: i32): void {
     writeColorRgb(fillColorPacked, "rgb(0,0,0)");
   } else if (fp == FILL_HORIZ_CYLINDER || fp == FILL_VERT_CYLINDER || fp == FILL_SPHERE) {
     writeString("url(#ms-grad-");
+    writeInt(seq);
+    writeString("-");
     writeInt(idx);
     writeString(")");
   } else if (fp >= FILL_HORIZONTAL && fp <= FILL_CROSSDIAG) {
     writeString("url(#ms-pat-");
+    writeInt(seq);
+    writeString("-");
     writeInt(idx);
     writeString(")");
   } else {
     writeString("none");
   }
+}
+
+function writeArrowMarkerDef(
+  idPrefix: string,
+  seq: i32,
+  idx: i32,
+  arrowKind: u8,
+  arrowSize: f64,
+  colorPacked: i32,
+  thickness: f64,
+): void {
+  writeString('<marker id="');
+  writeString(idPrefix);
+  writeInt(seq);
+  writeString("-");
+  writeInt(idx);
+  writeString('" markerWidth="');
+  writeFloat(arrowSize, 2);
+  writeString('" markerHeight="');
+  writeFloat(arrowSize, 2);
+  writeString('" refX="10" refY="5" viewBox="0 0 10 10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">');
+  if (arrowKind == ARROW_OPEN) {
+    writeString('<path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="');
+    writeColorRgb(colorPacked, "rgb(0,0,0)");
+    writeString('" stroke-width="');
+    writeFloat(thickness, 2);
+    writeString('"/>');
+  } else if (arrowKind == ARROW_HALF) {
+    writeString('<path d="M 0 0 L 10 5" fill="none" stroke="');
+    writeColorRgb(colorPacked, "rgb(0,0,0)");
+    writeString('" stroke-width="');
+    writeFloat(thickness, 2);
+    writeString('"/>');
+  } else {
+    writeString('<path d="M 0 0 L 10 5 L 0 10 z" fill="');
+    writeColorRgb(colorPacked, "rgb(0,0,0)");
+    writeString('"/>');
+  }
+  writeString("</marker>");
 }
 
 function renderCurrentIconSvg(size: f32): u32 {
@@ -1812,15 +2020,19 @@ function renderCurrentIconSvg(size: f32): u32 {
   for (let i = 0; i < count; ++i) {
     let slot = getSlot(i);
     if (slot.kind == GRAPHIC_BITMAP) return 0;
-    if (slot.kind == GRAPHIC_TEXT && poolTextHasPercentMacro(slot.poolTextOffset, slot.poolTextLen)) {
+    if (slot.kind == GRAPHIC_TEXT && poolTextHasUnsupportedMacro(slot.poolTextOffset, slot.poolTextLen)) {
       return 0;
     }
     if (slot.fillPattern >= FILL_HORIZONTAL && slot.fillPattern <= FILL_SPHERE) {
       needsDefs = true;
     }
+    if (slot.kind == GRAPHIC_LINE && (slot.arrowStart != ARROW_NONE || slot.arrowEnd != ARROW_NONE)) {
+      needsDefs = true;
+    }
   }
 
   ensureSvgBuffer();
+  let seq = ++g_svgRenderSeq as i32;
 
   // Convert coordinate system extent via convertPoint: [x, -y]
   let cx1 = g_coordX1;
@@ -1859,6 +2071,8 @@ function renderCurrentIconSvg(size: f32): u32 {
       if (fp == FILL_HORIZ_CYLINDER || fp == FILL_VERT_CYLINDER) {
         let midCol = brightenPackedColor(fillCol, 0.35);
         writeString('<linearGradient id="ms-grad-');
+        writeInt(seq);
+        writeString("-");
         writeInt(i);
         if (fp == FILL_HORIZ_CYLINDER) {
           writeString('" x1="0%" y1="0%" x2="0%" y2="100%">');
@@ -1879,6 +2093,8 @@ function renderCurrentIconSvg(size: f32): u32 {
       } else if (fp == FILL_SPHERE) {
         let hiCol = brightenPackedColor(fillCol, 0.55);
         writeString('<radialGradient id="ms-grad-');
+        writeInt(seq);
+        writeString("-");
         writeInt(i);
         writeString('" cx="50%" cy="50%" r="50%" fx="35%" fy="35%"><stop offset="0%" stop-color="');
         writeColorRgb(hiCol, "rgb(255,255,255)");
@@ -1889,6 +2105,8 @@ function renderCurrentIconSvg(size: f32): u32 {
         writeString('"/></radialGradient>');
       } else if (fp >= FILL_HORIZONTAL && fp <= FILL_CROSSDIAG) {
         writeString('<pattern id="ms-pat-');
+        writeInt(seq);
+        writeString("-");
         writeInt(i);
         writeString('" width="8" height="8" patternUnits="userSpaceOnUse">');
         if (slot.fillColor >= 0) {
@@ -1906,6 +2124,17 @@ function renderCurrentIconSvg(size: f32): u32 {
         writeString('" stroke="');
         writeColorRgb(lineCol, "rgb(0,0,0)");
         writeString('" stroke-width="1" fill="none"/></pattern>');
+      }
+      if (slot.kind == GRAPHIC_LINE) {
+        let aSize = slot.arrowSize > 0.0 ? slot.arrowSize : 3.0;
+        if (aSize > 0.0) {
+          if (slot.arrowStart != ARROW_NONE) {
+            writeArrowMarkerDef("ms-mks-", seq, i, slot.arrowStart, aSize, lineCol, slot.thickness);
+          }
+          if (slot.arrowEnd != ARROW_NONE) {
+            writeArrowMarkerDef("ms-mke-", seq, i, slot.arrowEnd, aSize, lineCol, slot.thickness);
+          }
+        }
       }
     }
     writeString("</defs>");
@@ -2017,7 +2246,7 @@ function renderCurrentIconSvg(size: f32): u32 {
         writeFloat(rx, 2);
         writeString(" Z");
       }
-      writeSlotFillAttr(slot, i);
+      writeSlotFillAttr(slot, i, seq);
       writeString('" stroke="');
       if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
       else writeString("none");
@@ -2033,6 +2262,7 @@ function renderCurrentIconSvg(size: f32): u32 {
     } else if (kind == GRAPHIC_LINE) {
       let offset = slot.pointsOffset;
       let ptCount = slot.pointsCount;
+      let aSize = slot.arrowSize > 0.0 ? slot.arrowSize : 3.0;
       if (ptCount == 2) {
         writeString('<line x1="');
         writeFloat(getPointX(offset), 2);
@@ -2051,6 +2281,22 @@ function renderCurrentIconSvg(size: f32): u32 {
           if (dashArray != "none") {
             writeString('" stroke-dasharray="');
             writeString(dashArray);
+          }
+        }
+        if (aSize > 0.0) {
+          if (slot.arrowStart != ARROW_NONE) {
+            writeString('" marker-start="url(#ms-mks-');
+            writeInt(seq);
+            writeString("-");
+            writeInt(i);
+            writeString(")");
+          }
+          if (slot.arrowEnd != ARROW_NONE) {
+            writeString('" marker-end="url(#ms-mke-');
+            writeInt(seq);
+            writeString("-");
+            writeInt(i);
+            writeString(")");
           }
         }
         writeString('"/>');
@@ -2101,6 +2347,22 @@ function renderCurrentIconSvg(size: f32): u32 {
             writeString(dashArray);
           }
         }
+        if (aSize > 0.0) {
+          if (slot.arrowStart != ARROW_NONE) {
+            writeString('" marker-start="url(#ms-mks-');
+            writeInt(seq);
+            writeString("-");
+            writeInt(i);
+            writeString(")");
+          }
+          if (slot.arrowEnd != ARROW_NONE) {
+            writeString('" marker-end="url(#ms-mke-');
+            writeInt(seq);
+            writeString("-");
+            writeInt(i);
+            writeString(")");
+          }
+        }
         writeString('"/>');
       }
     } else if (kind == GRAPHIC_POLYGON) {
@@ -2142,7 +2404,7 @@ function renderCurrentIconSvg(size: f32): u32 {
             writeFloat(-getPointY(offset + p), 2);
           }
         }
-        writeSlotFillAttr(slot, i);
+        writeSlotFillAttr(slot, i, seq);
         writeString('" stroke="');
         if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
         else writeString("none");
@@ -2208,7 +2470,7 @@ function renderCurrentIconSvg(size: f32): u32 {
         ) {
           writeString(" Z");
         }
-        writeSlotFillAttr(slot, i);
+        writeSlotFillAttr(slot, i, seq);
         writeString('" stroke="');
         if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
         else writeString("none");
@@ -2230,7 +2492,7 @@ function renderCurrentIconSvg(size: f32): u32 {
         writeFloat(rx, 2);
         writeString('" ry="');
         writeFloat(ry, 2);
-        writeSlotFillAttr(slot, i);
+        writeSlotFillAttr(slot, i, seq);
         writeString('" stroke="');
         if (hasStroke) writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
         else writeString("none");
@@ -2263,7 +2525,11 @@ function renderCurrentIconSvg(size: f32): u32 {
         anchor = "end";
       }
       let ty = by + bh * 0.5;
-      let fSize = slot.fontSize > 0.0 ? slot.fontSize : Math.max(8.0, bh * 0.7);
+      let expandedLen = computeExpandedPoolTextLen(slot.poolTextOffset, slot.poolTextLen);
+      let charCount = Math.max(expandedLen as f64, 1.0);
+      let maxByWidth = bw > 0.0 ? bw / (charCount * 0.6) : 12.0;
+      let maxByHeight = bh > 0.0 ? bh : 12.0;
+      let fSize = slot.fontSize > 0.0 ? slot.fontSize : Math.max(Math.min(maxByWidth, maxByHeight) * 0.9, 4.0);
 
       writeString('<text x="');
       writeFloat(tx, 2);
@@ -2271,12 +2537,27 @@ function renderCurrentIconSvg(size: f32): u32 {
       writeFloat(ty, 2);
       writeString('" text-anchor="');
       writeString(anchor);
-      writeString('" dominant-baseline="central" font-family="sans-serif" font-size="');
+      writeString('" dominant-baseline="central" font-family="');
+      if (slot.fontNamePoolLen > 0) {
+        writeXmlEscapedPoolText(slot.fontNamePoolOffset, slot.fontNamePoolLen);
+      } else {
+        writeString("sans-serif");
+      }
+      writeString('" font-size="');
       writeFloat(fSize, 2);
+      if ((slot.textStyleMask & TEXT_STYLE_ITALIC) != 0) {
+        writeString('" font-style="italic');
+      }
+      if ((slot.textStyleMask & TEXT_STYLE_BOLD) != 0) {
+        writeString('" font-weight="bold');
+      }
+      if ((slot.textStyleMask & TEXT_STYLE_UNDERLINE) != 0) {
+        writeString('" text-decoration="underline');
+      }
       writeString('" fill="');
       writeColorRgb(slot.strokeColor, "rgb(0,0,0)");
       writeString('">');
-      writeXmlEscapedPoolText(slot.poolTextOffset, slot.poolTextLen);
+      writeXmlEscapedPoolTextWithMacros(slot.poolTextOffset, slot.poolTextLen);
       writeString("</text>");
     }
 
@@ -2307,6 +2588,31 @@ export function annotation_getSvgBufferPtr(): usize {
 
 export function annotation_getTextPoolPtr(): usize {
   return g_textPoolBuf;
+}
+
+export function annotation_getGraphicsBufferPtr(): usize {
+  return g_graphicsBuf;
+}
+
+export function annotation_getGraphicSlotStride(): u32 {
+  return offsetof<GraphicSlot>();
+}
+
+export function annotation_getPointsXBufferPtr(): usize {
+  return g_pointsXBuf;
+}
+
+export function annotation_getPointsYBufferPtr(): usize {
+  return g_pointsYBuf;
+}
+
+export function annotation_getIconNameBufferPtr(): usize {
+  ensureAnnotationArena();
+  return g_iconNameBuf;
+}
+
+export function annotation_setIconNameLen(len: u32): void {
+  g_iconNameLen = len <= ICON_NAME_CAP ? len : ICON_NAME_CAP;
 }
 
 export function annotation_hasIcon(): u8 {

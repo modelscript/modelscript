@@ -321,6 +321,30 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
       paneContent.includes("50%") && paneContent.includes("100%") && paneContent.includes("200%"),
       "MorselVisualizerPane zoom preset dropdown must include 50%, 100%, and 200% presets",
     );
+    assert.ok(
+      paneContent.includes('import DiagramEditor, { type DiagramEditorHandle } from "../Diagram"'),
+      "MorselVisualizerPane must import DiagramEditor directly so React ref forwarding is preserved",
+    );
+    assert.ok(
+      paneContent.includes("effectiveDiagramRef?.current?.zoomTo") &&
+        paneContent.includes("effectiveDiagramRef?.current?.zoomIn") &&
+        paneContent.includes("effectiveDiagramRef?.current?.zoomOut") &&
+        paneContent.includes("effectiveDiagramRef?.current?.zoomToFit"),
+      "MorselVisualizerPane zoom buttons and dropdown presets must invoke effectiveDiagramRef zoom methods",
+    );
+    assert.ok(
+      paneContent.includes("morsel-menu-item") &&
+        paneContent.includes("morsel-toolbar-btn") &&
+        paneContent.includes("rgba(255, 255, 255, 0.08)") &&
+        paneContent.includes("rgba(0, 0, 0, 0.06)"),
+      "MorselVisualizerPane zoom controls and dropdown menu must include hover background styling",
+    );
+    const cssPath = path.resolve(import.meta.dirname, "../src/components/morsel/morsel.css");
+    const cssContent = fs.readFileSync(cssPath, "utf-8");
+    assert.ok(
+      cssContent.includes(".morsel-menu-item:hover") && cssContent.includes(".morsel-toolbar-btn:hover"),
+      "morsel.css must include hover background styles for menu items and toolbar buttons",
+    );
   });
 
   it("verifies Undo / Redo visual history buttons and canvas keyboard shortcut wiring", () => {

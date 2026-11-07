@@ -42,6 +42,32 @@ export const GensysErrorCode = {
     message: (profileName: string) =>
       `Wheel-rail contact profile '${profileName}' curve has discontinuous slope or is unclosed.`,
   },
+  GAUGE_MISMATCH: {
+    code: "G1007",
+    rule: "gauge-mismatch",
+    severity: "error" as const,
+    message: (bogieGauge: number, trackGauge: number) =>
+      `Wheelset nominal axle gauge (${bogieGauge} m) differs from track rail gauge (${trackGauge} m).`,
+  },
+  HUNTING_CONICITY_RISK: {
+    code: "G1008",
+    rule: "hunting-conicity-risk",
+    severity: "warning" as const,
+    message: (conicity: number) =>
+      `Wheel-rail equivalent conicity (${conicity}) exceeds stability limit, risking bogie hunting.`,
+  },
+  DISCONTINUOUS_TRACK_CANT: {
+    code: "G1009",
+    rule: "discontinuous-track-cant",
+    severity: "error" as const,
+    message: () => `Track cant superelevation transition specifies discontinuous curvature gradient.`,
+  },
+  ZERO_AXLE_LOAD: {
+    code: "G1010",
+    rule: "zero-axle-load",
+    severity: "error" as const,
+    message: (load: number) => `Wheelset axle nominal vertical load must be strictly positive (${load} kN).`,
+  },
 } as const;
 
 export type GensysErrorCodeKey = keyof typeof GensysErrorCode;

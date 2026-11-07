@@ -12,13 +12,17 @@ import {
   findClassByName,
   findComponentClauseForIdent,
   findFlowMismatchInConnectors,
+  getCallCalleeNode,
   getFlowVariableCount,
+  getInnerOuterCausalityConflictNode,
+  getStreamMissingInStreamNode,
   hasTypePrefix,
   isClassKind,
   isConnectorCompatible,
   isDescendantOfInnerClass,
   isExpandableConnector,
   isMissingInnerInDocument,
+  isStreamMixedWithFlow,
   resolveDottedComponentClass,
 } from "./helpers.js";
 
@@ -327,6 +331,96 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
           }
         }
         db.diagnostic(nameNode != 0 ? nameNode : node);
+      }
+    },
+  },
+
+  /**
+   * M4124: Stream variable accessed in equation RHS without `inStream()` or `actualStream()` (MLS §15.2).
+   */
+  streamMissingInstream: {
+    nodes: ["simple_equation"],
+    severity: "error",
+    code: 4124,
+    message: (target) =>
+      `Stream variable '${target.text}' accessed in connector equation without required inStream() operator.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      const streamRef = getStreamMissingInStreamNode(db, node, $);
+      if (streamRef != 0) {
+        db.diagnostic(streamRef);
+      }
+    },
+  },
+
+  /**
+   * M4125: Variable cannot have both `stream` and `flow` prefixes (MLS §4.4.2.2, §15.1).
+   */
+  streamMixedWithFlow: {
+    nodes: ["component_clause"],
+    severity: "error",
+    code: 4125,
+    message: (target) => `Variable '${target.text}' cannot have both 'stream' and 'flow' prefixes.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      if (isStreamMixedWithFlow(db, node, $)) {
+        let nameNode: u32 = 0;
+        if ($.declaration != 0) {
+          for (const decl of db.ast.getDescendants(node, $.declaration)) {
+            nameNode = db.ast.getChildByFieldId(decl, "name");
+            if (nameNode == 0) {
+              for (const id of db.ast.getDescendants(decl, $.identifier)) {
+                nameNode = id;
+                break;
+              }
+            }
+            if (nameNode != 0) break;
+          }
+        }
+        db.diagnostic(nameNode != 0 ? nameNode : node);
+      }
+    },
+  },
+
+  /**
+   * M4126: `outer` component causality conflicts with matching `inner` declaration (MLS §5.4).
+   */
+  innerOuterCausalityMismatch: {
+    nodes: ["component_clause"],
+    severity: "error",
+    code: 4126,
+    message: (target, innerNode) =>
+      `Outer component '${target.text}' causality conflicts with inner declaration '${innerNode ? innerNode.text : target.text}'.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      const innerId = getInnerOuterCausalityConflictNode(db, node, $);
+      if (innerId != 0) {
+        let outerId: u32 = 0;
+        for (const decl of db.ast.getDescendants(node, $.declaration)) {
+          for (const id of db.ast.getDescendants(decl, $.identifier)) {
+            outerId = id;
+            break;
+          }
+          if (outerId != 0) break;
+        }
+        db.diagnostic(outerId != 0 ? outerId : node, innerId);
+      }
+    },
+  },
+
+  /**
+   * M5046: `cardinality()` operator is deprecated in Modelica 3.x (MLS §3.7.2.3).
+   */
+  deprecatedCardinalityOperator: {
+    nodes: ["function_call", "primary"],
+    severity: "warning",
+    code: 5046,
+    message: () => `Operator 'cardinality()' is deprecated in Modelica 3.x; use conditional components instead.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      if (db.ast.getType(node) == $.primary) {
+        const fc = db.ast.getFirstChild(node);
+        if (fc != 0 && db.ast.getType(fc) == $.function_call) return;
+      }
+      const name = getCallCalleeNode(db, node, $);
+      if (name != 0 && db.ast.textEquals(name, "cardinality")) {
+        db.diagnostic(node);
       }
     },
   },

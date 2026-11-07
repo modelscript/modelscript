@@ -90,6 +90,12 @@ export interface UrdfJointDynamics {
   friction?: number | undefined;
 }
 
+export interface UrdfJointMimic {
+  joint: string;
+  multiplier?: number | undefined;
+  offset?: number | undefined;
+}
+
 export interface UrdfJoint {
   name: string;
   type: UrdfJointType;
@@ -99,6 +105,7 @@ export interface UrdfJoint {
   axis: Vector3D;
   limits?: UrdfJointLimits | undefined;
   dynamics?: UrdfJointDynamics | undefined;
+  mimic?: UrdfJointMimic | undefined;
   range?: SourceRange | undefined;
 }
 
@@ -107,7 +114,9 @@ export interface UrdfRobot {
   links: Map<string, UrdfLink>;
   joints: Map<string, UrdfJoint>;
   materials: Map<string, UrdfMaterial>;
+  duplicateJointNames?: string[] | undefined;
 }
+
 
 export interface UrdfDiagnostic {
   code: string;
@@ -132,3 +141,109 @@ export interface RneaResult {
 export interface AbaResult {
   jointAccelerations: Map<string, number>;
 }
+
+// ── Digital Twin & Trajectory Types ──────────────────────────────────────────
+
+export interface UrdfTrajectoryData {
+  /** Array of simulation time points [seconds]. */
+  times: number[];
+  /** Map of jointName -> array of coordinate values q(t) at each time point. */
+  jointPositions?: Map<string, number[]> | Record<string, number[]> | undefined;
+  /** Optional alias for jointPositions used by some external trajectory payloads. */
+  joints?: Map<string, number[]> | Record<string, number[]> | undefined;
+}
+
+export interface DigitalTwinProgramStep {
+  id: string | number;
+  machine?: string | undefined;
+  label: string;
+  description?: string | undefined;
+  parallelMachine?: string | undefined;
+  parallelLabel?: string | undefined;
+  startTime: number;
+  endTime: number;
+  color?: string | undefined;
+  targetCoordinates?: [number, number, number] | undefined;
+  status?: "pending" | "active" | "completed" | undefined;
+}
+
+export interface DigitalTwinEnvironmentAsset {
+  id: string;
+  name: string;
+  type:
+    | "mesh"
+    | "box"
+    | "cylinder"
+    | "table"
+    | "vial_rack"
+    | "workstation_cabinet"
+    | "reactor_mixer"
+    | "wash_cup";
+  url?: string | undefined;
+  position: [number, number, number];
+  rotation?: [number, number, number] | undefined;
+  dimensions?: [number, number, number] | undefined;
+  color?: string | undefined;
+  opacity?: number | undefined;
+  isCollisionHull?: boolean | undefined;
+}
+
+export interface DigitalTwinToolpathTrace {
+  linkName: string;
+  label?: string | undefined;
+  points: [number, number, number][];
+  color?: string | undefined;
+}
+
+export interface UrdfVisualPose3D {
+  id: string;
+  linkName: string;
+  visualName?: string | undefined;
+  isCollision: boolean;
+  geometry: UrdfGeometry;
+  position: [number, number, number];
+  rotation: [number, number, number, number, number, number, number, number, number];
+  color?: string | undefined;
+  opacity?: number | undefined;
+  materialName?: string | undefined;
+}
+
+export interface DigitalTwinClearanceResult {
+  minDistanceMm: number;
+  nearestLinkName: string;
+  nearestObstacleName: string;
+  fromPoint: [number, number, number];
+  toPoint: [number, number, number];
+}
+
+export interface DigitalTwinLiveTelemetry {
+  jointVelocitiesRadPerSec: Map<string, number>;
+  maxJointSpeedDegPerSec: number;
+  rmsJointSpeedDegPerSec: number;
+  gripperOpeningMm: number;
+  gripperStateLabel: "Open" | "Closed" | "Gripping";
+  hasGripper?: boolean | undefined;
+  tcpSpeedMmPerSec?: number | undefined;
+  clearance: DigitalTwinClearanceResult;
+}
+
+export interface UrdfDigitalTwinConfig {
+  code?: string | undefined;
+  url?: string | undefined;
+  title?: string | undefined;
+  modelName?: string | undefined;
+  robotName?: string | undefined;
+  trajectory?: UrdfTrajectoryData | undefined;
+  programSteps?: DigitalTwinProgramStep[] | undefined;
+  environment?: DigitalTwinEnvironmentAsset[] | undefined;
+  toolpaths?: DigitalTwinToolpathTrace[] | undefined;
+  telemetryChannels?: Array<{
+    name: string;
+    unit: string;
+    nominal: number;
+    variableKey?: string | undefined;
+  }> | undefined;
+  standalone?: boolean | undefined;
+  [key: string]: unknown;
+}
+

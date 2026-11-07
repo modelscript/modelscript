@@ -114,6 +114,12 @@ body {
 }
 
 /* ───────────────────────── Highlighted 'Ansatz' Pill CTA in Top Navbar ───────────────────────── */
+.VPNavBarMenu .ansatz-nav-wrapper {
+  display: flex !important;
+  align-items: center !important;
+  height: var(--vp-nav-height) !important;
+}
+
 .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"],
 .VPNavBarMenu .ansatz-nav-pill {
   display: inline-flex !important;
@@ -261,15 +267,32 @@ body {
   transform: translate(1px, -1px);
 }
 
-/* ───────────────────────── Top Navbar Search Bar ───────────────────────── */
+/* ───────────────────────── Top Navbar Search Bar & Responsive Collapse ───────────────────────── */
+.VPNavBar .content,
+.VPNavBar .content-body {
+  min-width: 0;
+}
+
+.VPNavBarSearch {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+@media (max-width: 380px) {
+  .ms-nav-beta-badge {
+    display: none !important;
+  }
+}
+
 @media (min-width: 768px) {
   .DocSearch-Button {
-    width: 220px !important;
+    width: clamp(150px, 14vw, 220px) !important;
     justify-content: space-between !important;
     border: 1px solid var(--ms-border) !important;
     background-color: var(--vp-c-bg-alt) !important;
     border-radius: var(--ms-radius-md, 8px) !important;
     padding: 0 10px 0 12px !important;
+    height: 36px !important;
     cursor: pointer;
     transition:
       border-color 0.2s ease,
@@ -300,10 +323,91 @@ body {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1150px) {
+/* On sidebar pages, keep Appearance + SocialLinks inside the '...' extra menu
+   until 1380px so the 272px sidebar column never pushes the navbar off-screen. */
+@media (min-width: 1280px) and (max-width: 1379px) {
+  .VPNavBar.has-sidebar .VPNavBarAppearance,
+  .VPNavBar.has-sidebar .VPNavBarSocialLinks,
+  .VPNavBar.has-sidebar .menu + .appearance::before,
+  .VPNavBar.has-sidebar .appearance + .social-links::before {
+    display: none !important;
+  }
+
+  .VPNavBar.has-sidebar .VPNavBarExtra {
+    display: block !important;
+  }
+}
+
+/* Stage 1 compacting (<= 1220px, or <= 1379px with sidebar): tighten search & nav spacing */
+@media (min-width: 768px) and (max-width: 1220px) {
+  .VPNavBarSearch {
+    padding-left: 16px !important;
+  }
+
   .DocSearch-Button {
-    width: 148px !important;
+    width: 140px !important;
+    padding: 0 8px 0 10px !important;
+  }
+
+  .VPNavBarMenu .VPNavBarMenuLink,
+  .VPNavBarMenu .mega-trigger {
     padding: 0 8px !important;
+    font-size: 13px !important;
+  }
+
+  .VPNavBarMenu .ansatz-nav-pill {
+    margin-left: 6px !important;
+    padding: 0 11px !important;
+    font-size: 12.5px !important;
+  }
+}
+
+@media (min-width: 960px) and (max-width: 1379px) {
+  .VPNavBar.has-sidebar .VPNavBarSearch {
+    padding-left: 16px !important;
+  }
+
+  .VPNavBar.has-sidebar .DocSearch-Button {
+    width: 136px !important;
+    padding: 0 8px 0 10px !important;
+  }
+
+  .VPNavBar.has-sidebar .VPNavBarMenu .VPNavBarMenuLink,
+  .VPNavBar.has-sidebar .VPNavBarMenu .mega-trigger {
+    padding: 0 8px !important;
+    font-size: 13px !important;
+  }
+
+  .VPNavBar.has-sidebar .VPNavBarMenu .ansatz-nav-pill {
+    margin-left: 6px !important;
+    padding: 0 11px !important;
+    font-size: 12.5px !important;
+  }
+}
+
+/* Stage 2 compacting (<= 1040px, or <= 1160px with sidebar):
+   hide 'Ctrl K' keycaps and shorten 'Explore Ansatz Network' -> 'Ansatz Network' */
+@media (min-width: 768px) and (max-width: 1040px) {
+  .VPNavBar:not(.has-sidebar) .wrapper {
+    padding: 0 20px !important;
+  }
+
+  .VPNavBarSearch {
+    padding-left: 12px !important;
+  }
+
+  .DocSearch-Button {
+    width: auto !important;
+    height: 34px !important;
+    padding: 0 10px !important;
+  }
+
+  .DocSearch-Button .DocSearch-Button-Placeholder {
+    padding-right: 0 !important;
+  }
+
+  .DocSearch-Button .DocSearch-Button-Keys {
+    display: none !important;
   }
 
   .VPNavBarMenu .VPNavBarMenuLink,
@@ -317,11 +421,95 @@ body {
     padding: 0 10px !important;
     font-size: 12px !important;
   }
+
+  .VPNavBarMenu .ansatz-nav-pill .ansatz-label-prefix {
+    display: none !important;
+  }
+
+  .VPNavBarExtra {
+    margin-right: -8px !important;
+  }
 }
 
-@media (min-width: 1151px) {
+@media (min-width: 960px) and (max-width: 1160px) {
+  .VPNavBar.has-sidebar .VPNavBarSearch {
+    padding-left: 12px !important;
+  }
+
+  .VPNavBar.has-sidebar .DocSearch-Button {
+    width: auto !important;
+    height: 34px !important;
+    padding: 0 10px !important;
+  }
+
+  .VPNavBar.has-sidebar .DocSearch-Button .DocSearch-Button-Placeholder {
+    padding-right: 0 !important;
+  }
+
+  .VPNavBar.has-sidebar .DocSearch-Button .DocSearch-Button-Keys {
+    display: none !important;
+  }
+
+  .VPNavBar.has-sidebar .VPNavBarMenu .VPNavBarMenuLink,
+  .VPNavBar.has-sidebar .VPNavBarMenu .mega-trigger {
+    padding: 0 7px !important;
+    font-size: 13px !important;
+  }
+
+  .VPNavBar.has-sidebar .VPNavBarMenu .ansatz-nav-pill {
+    margin-left: 4px !important;
+    padding: 0 10px !important;
+    font-size: 12px !important;
+  }
+
+  .VPNavBar.has-sidebar .VPNavBarMenu .ansatz-nav-pill .ansatz-label-prefix {
+    display: none !important;
+  }
+}
+
+/* Stage 3 compacting (768px - 860px, or 960px - 1020px with sidebar):
+   collapse search button to compact icon button and hide Beta badge on narrow tablets */
+@media (min-width: 768px) and (max-width: 860px) {
+  .ms-nav-beta-badge {
+    display: none !important;
+  }
+
+  .VPNavBarSearch {
+    padding-left: 8px !important;
+  }
+
   .DocSearch-Button {
-    width: 240px !important;
+    width: 36px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  .DocSearch-Button .DocSearch-Button-Placeholder {
+    display: none !important;
+  }
+
+  .DocSearch-Button .DocSearch-Search-Icon {
+    margin-right: 0 !important;
+    top: 0 !important;
+  }
+}
+
+@media (min-width: 960px) and (max-width: 1020px) {
+  .VPNavBar.has-sidebar .DocSearch-Button {
+    width: 36px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  .VPNavBar.has-sidebar .DocSearch-Button .DocSearch-Button-Placeholder {
+    display: none !important;
+  }
+
+  .VPNavBar.has-sidebar .DocSearch-Button .DocSearch-Search-Icon {
+    margin-right: 0 !important;
+    top: 0 !important;
   }
 }
 

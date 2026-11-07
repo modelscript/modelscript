@@ -7,13 +7,17 @@ import * as antvLayout from "@antv/layout";
 import * as x6 from "@antv/x6";
 
 import {
+  applyNodeFlipVisuals,
   computeNodeAlignment,
   computeNodeNudge,
+  computeSmartAlignmentGuides,
   ensureAlignmentToolbar,
+  renderSmartGuidesSvgMarkup,
   showAlignmentToolbar,
   type AlignableNode,
   type AlignmentType,
   type ArrowKeyDirection,
+  type SmartGuideLine,
 } from "./alignment.js";
 import { adaptColorForDarkMode, adaptX6Markup } from "./color-inversion.js";
 import { hideContextMenu, showContextMenu } from "./context-menu.js";
@@ -51,6 +55,7 @@ import {
 import type { CoordinateSystem, ReactiveAnimationBinding } from "./protocol.js";
 import {
   alignNodeSelectionBox,
+  ensurePatchedVerticesTool,
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
   syncAllNodeSelectionBoxes,
@@ -504,7 +509,14 @@ interface ContainerDiagramInstance {
   selectedNodeId: string | null;
   cleanupListeners?: (() => void) | undefined;
   metadata?: Record<string, unknown> | undefined;
+  rotateSelectedNodes?: ((deltaDegrees: number) => void) | undefined;
+  flipSelectedNodes?: ((axis: "x" | "y") => void) | undefined;
+  syncAlignmentToolbar?: (() => void) | undefined;
 }
+
+let activeRotateSelectedNodes: ((deltaDegrees: number, targetGraph?: Graph) => void) | null = null;
+let activeFlipSelectedNodes: ((axis: "x" | "y", targetGraph?: Graph) => void) | null = null;
+let activeSyncAlignmentToolbar: (() => void) | null = null;
 
 const containerInstances = new Map<HTMLElement, ContainerDiagramInstance>();
 
@@ -594,19 +606,25 @@ let activeDiagramMetadata: Record<string, unknown> | undefined;
 
 export { translateConnectedEdgeStubs };
 
+export { applyNodeFlipVisuals } from "./alignment.js";
+
 /**
  * Automatically re-routes an edge with clean, obstacle-avoiding Manhattan A* paths
  * that respect port outward normals and avoid component self-impalement.
  */
-export function rerouteEdgeOrthogonal(edge: Edge | null | undefined, g: Graph): void {
-  if (!edge || !edge.isEdge()) return;
+export function rerouteEdgeOrthogonal(
+  edge: Edge | null | undefined,
+  g: Graph,
+  options?: { skipEnqueue?: boolean },
+): { source: string; target: string; points: { x: number; y: number }[] } | null {
+  if (!edge || !edge.isEdge()) return null;
   const source = edge.getSource();
   const target = edge.getTarget();
   const sourceCell = edge.getSourceCell?.() ?? (source?.cell ? g.getCellById?.(source.cell) : null);
   const targetCell = edge.getTargetCell?.() ?? (target?.cell ? g.getCellById?.(target.cell) : null);
   const sourcePoint = resolveNodePortWorldPoint(sourceCell, source?.port, edge.getSourcePoint());
   const targetPoint = resolveNodePortWorldPoint(targetCell, target?.port, edge.getTargetPoint());
-  if (!sourcePoint || !targetPoint) return;
+  if (!sourcePoint || !targetPoint) return null;
 
   const sourceSide = getPortOutwardNormal(sourceCell, source?.port, sourcePoint)?.side;
   const targetSide = getPortOutwardNormal(targetCell, target?.port, targetPoint)?.side;
@@ -640,19 +658,23 @@ export function rerouteEdgeOrthogonal(edge: Edge | null | undefined, g: Graph): 
   const srcStr = source?.port ? `${source.cell}.${source.port}` : String(source?.cell ?? "");
   const tgtStr = target?.port ? `${target.cell}.${target.port}` : String(target?.cell ?? "");
 
-  enqueueDiagramAction(
-    {
-      type: "moveEdge",
-      edges: [
-        {
-          source: srcStr,
-          target: tgtStr,
-          points,
-        },
-      ],
-    },
-    g,
-  );
+  const result = {
+    source: srcStr,
+    target: tgtStr,
+    points,
+  };
+
+  if (!options?.skipEnqueue) {
+    enqueueDiagramAction(
+      {
+        type: "moveEdge",
+        edges: [result],
+      },
+      g,
+    );
+  }
+
+  return result;
 }
 
 /** Get connected edge metadata for a node (for move/resize updates) */
@@ -695,10 +717,14 @@ function getConnectedEdges(
 }
 
 /**
+export { ensurePatchedVerticesTool };
+
+/**
  * Initializes (or reconfigures) the AntV X6 graph canvas, plugins, interaction handlers,
  * orthogonal edge routers, and keyboard shortcuts.
  */
 export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph | null {
+  ensurePatchedVerticesTool(x6);
   ensureDiagramStyles();
   let container = targetContainer ?? currentOptions?.container;
   if (!container && typeof document !== "undefined") {
@@ -751,8 +777,13 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     return graph;
   }
 
-  const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
-  const containerH = container.clientHeight > 0 ? container.clientHeight : 600;
+  const parent = container.parentElement;
+  const parentW = parent?.clientWidth ?? 0;
+  const parentH = parent?.clientHeight ?? 0;
+  const clientW = container.clientWidth > 0 ? container.clientWidth : 0;
+  const clientH = container.clientHeight > 0 ? container.clientHeight : 0;
+  const containerW = parentW > 0 ? parentW : (clientW > 0 ? clientW : 800);
+  const containerH = parentH > 0 ? parentH : (clientH > 0 ? clientH : 600);
 
   const initialEdgeStyle = resolveEdgeSelectionStyle(currentOptions?.language, currentOptions?.edgeSelectionStyle);
   container.setAttribute("data-edge-selection", initialEdgeStyle);
@@ -974,6 +1005,15 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const val = String(firstParam.value || firstParam.defaultValue || "");
       return { label: `${firstParam.name}=${val}`, paramName: firstParam.name, paramValue: val };
     }
+    const data = (typeof node.getData === "function" ? node.getData() : {}) || {};
+    const propParams = (data["properties"]?.["parameters"] ?? data["parameters"]) as
+      | { name?: string; value?: string; defaultValue?: string }[]
+      | undefined;
+    const firstPropParam = propParams?.find?.((p) => p.name && (p.value || p.defaultValue));
+    if (firstPropParam?.name) {
+      const val = String(firstPropParam.value || firstPropParam.defaultValue || "");
+      return { label: `${firstPropParam.name}=${val}`, paramName: firstPropParam.name, paramValue: val };
+    }
     return undefined;
   };
 
@@ -990,8 +1030,22 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const curAngle = node.getAngle?.() || 0;
         const newAngle = (((curAngle + deltaDegrees) % 360) + 360) % 360;
         node.rotate?.(newAngle, { absolute: true });
+      }
+
+      const touchedEdges = new Set<Edge>();
+      for (const node of selectedNodes) {
+        for (const edge of targetGraph.getConnectedEdges(node)) {
+          touchedEdges.add(edge);
+        }
+      }
+      for (const edge of touchedEdges) {
+        rerouteEdgeOrthogonal(edge, targetGraph, { skipEnqueue: true });
+      }
+
+      for (const node of selectedNodes) {
         const p = node.getPosition();
         const s = node.getSize();
+        const newAngle = node.getAngle?.() || 0;
         const edges = getConnectedEdges(targetGraph, node);
         const data = node.getData?.() || {};
         const name = (data["name"] as string) || node.id;
@@ -1034,11 +1088,25 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const nextFlipX = axis === "x" ? !curFlipX : curFlipX;
         const nextFlipY = axis === "y" ? !curFlipY : curFlipY;
         node.setData?.({ ...curData, flipX: nextFlipX, flipY: nextFlipY });
+        applyNodeFlipVisuals(node, targetGraph, nextFlipX, nextFlipY);
+      }
 
+      const touchedEdges = new Set<Edge>();
+      for (const node of selectedNodes) {
+        for (const edge of targetGraph.getConnectedEdges(node)) {
+          touchedEdges.add(edge);
+        }
+      }
+      for (const edge of touchedEdges) {
+        rerouteEdgeOrthogonal(edge, targetGraph, { skipEnqueue: true });
+      }
+
+      for (const node of selectedNodes) {
         const p = node.getPosition();
         const s = node.getSize();
         const curAngle = node.getAngle?.() || 0;
         const edges = getConnectedEdges(targetGraph, node);
+        const curData = node.getData?.() || {};
         const name = (curData["name"] as string) || node.id;
         moveItems.push({
           name,
@@ -1047,18 +1115,24 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           width: s.width,
           height: s.height,
           rotation: curAngle,
-          flipX: nextFlipX,
-          flipY: nextFlipY,
+          flipX: Boolean(curData["flipX"]),
+          flipY: Boolean(curData["flipY"]),
           edges,
         });
       }
     });
+
+    syncAllNodeSelectionBoxes(targetGraph, selectionImpl?.container);
+    syncAlignmentToolbar();
 
     if (moveItems.length > 0) {
       enqueueDiagramAction({ type: "move", items: moveItems }, targetGraph);
       scheduleUpdateSolderDots(targetGraph);
     }
   };
+
+  activeRotateSelectedNodes = rotateSelectedNodes;
+  activeFlipSelectedNodes = flipSelectedNodes;
 
   // ── Node Duplicate Helper (Ctrl+D / Floating Toolbar) ──
   const duplicateSelectedNodes = (targetGraph: Graph = g) => {
@@ -1161,6 +1235,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       if (committed) return;
       committed = true;
       const newVal = input.value.trim();
+      input.remove();
+      alignmentToolbar?.removeAttribute("data-mode-key");
       if (applyChange && newVal && newVal !== paramInfo.paramValue) {
         updateParameterText(node.id, paramInfo.paramName, paramInfo.paramValue, newVal);
         const nodeName = (node.getData?.()?.["name"] as string) || node.id;
@@ -1344,23 +1420,29 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   });
 
   const syncAlignmentToolbar = () => {
+    const selectedNodes = g
+      .getSelectedCells()
+      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
+
     if (
       typeof document !== "undefined" &&
       document.activeElement &&
       alignmentToolbar?.contains(document.activeElement) &&
       document.activeElement.tagName === "INPUT"
     ) {
-      return;
+      const activeNodeId = alignmentToolbar.getAttribute?.("data-active-node-id");
+      const isEditingCurrentSingle = selectedNodes.length === 1 && selectedNodes[0]?.id === activeNodeId;
+      if (isEditingCurrentSingle) {
+        return;
+      }
+      (document.activeElement as HTMLElement).blur();
     }
-    const selectedNodes = g
-      .getSelectedCells()
-      .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
     if (selectedNodes.length >= 1) {
       const nodesToAlign: AlignableNode[] = selectedNodes.map((n: Node) => {
         const pos = n.getPosition();
         const sz = n.getSize();
         const data = n.getData?.() || {};
-        const name = String(data["name"] ?? data.properties?.name ?? n.id);
+        const name = String(data["name"] ?? data["properties"]?.["name"] ?? n.id);
         const extractedParam = selectedNodes.length === 1 ? extractNodePrimaryParam(g, n) : undefined;
         const primaryParam = extractedParam
           ? { name: extractedParam.paramName, value: extractedParam.paramValue }
@@ -1880,6 +1962,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         width: number;
         height: number;
         rotation: number;
+        flipX?: boolean | undefined;
+        flipY?: boolean | undefined;
         edges?: { source: string; target: string; points: { x: number; y: number }[] }[] | undefined;
         connectedOnly?: boolean | undefined;
       }[] = [];
@@ -1890,7 +1974,19 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const s = n.getSize();
           const r = n.getAngle();
           const edges = getConnectedEdges(g, n);
-          items.push({ name: n.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges });
+          const curData = n.getData?.() || {};
+          const name = (curData["name"] as string) || n.id;
+          items.push({
+            name,
+            x: p.x,
+            y: p.y,
+            width: s.width,
+            height: s.height,
+            rotation: r,
+            ...(typeof curData["flipX"] === "boolean" ? { flipX: curData["flipX"] } : {}),
+            ...(typeof curData["flipY"] === "boolean" ? { flipY: curData["flipY"] } : {}),
+            edges,
+          });
         }
       });
 
@@ -1914,13 +2010,17 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const p = n.getPosition();
           const s = n.getSize();
           const r = n.getAngle();
+          const curData = n.getData?.() || {};
+          const name = (curData["name"] as string) || n.id;
           items.push({
-            name: n.id,
+            name,
             x: p.x,
             y: p.y,
             width: s.width,
             height: s.height,
             rotation: r,
+            ...(typeof curData["flipX"] === "boolean" ? { flipX: curData["flipX"] } : {}),
+            ...(typeof curData["flipY"] === "boolean" ? { flipY: curData["flipY"] } : {}),
             connectedOnly: true,
           });
         }
@@ -1943,14 +2043,35 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     const s = node.getSize();
     const r = node.getAngle();
     syncAlignmentToolbar();
+
+    const connectedEdges = g.getConnectedEdges(node);
+    for (const edge of connectedEdges) {
+      rerouteEdgeOrthogonal(edge, g, { skipEnqueue: true });
+    }
+
     const edges = getConnectedEdges(g, node);
+    const curData = node.getData?.() || {};
+    const name = (curData["name"] as string) || node.id;
     enqueueDiagramAction(
       {
         type: "move",
-        items: [{ name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges }],
+        items: [
+          {
+            name,
+            x: p.x,
+            y: p.y,
+            width: s.width,
+            height: s.height,
+            rotation: r,
+            ...(typeof curData["flipX"] === "boolean" ? { flipX: curData["flipX"] } : {}),
+            ...(typeof curData["flipY"] === "boolean" ? { flipY: curData["flipY"] } : {}),
+            edges,
+          },
+        ],
       },
       g,
     );
+    scheduleUpdateSolderDots(g);
   });
 
   // We don't shrink/fit parents during drag to preserve Dagre layout spacings.
@@ -2194,26 +2315,41 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   let edgeUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   g.on(
     "edge:change:vertices",
-    ({ edge, options }: { edge: Edge; options?: { ignoreSnap?: boolean | undefined } | undefined }) => {
+    ({
+      edge,
+      options,
+    }: {
+      edge: Edge;
+      options?:
+        | { ignoreSnap?: boolean | undefined; ui?: boolean | undefined; toolId?: string | undefined }
+        | undefined;
+    }) => {
       if (isRenderingDiagram || options?.ignoreSnap) return;
 
-      const vertices = edge.getVertices() || [];
-      const sourcePoint = edge.getSourcePoint();
-      const targetPoint = edge.getTargetPoint();
-      if (vertices.length > 0 && sourcePoint && targetPoint) {
-        const fullPolyline = [sourcePoint, ...vertices, targetPoint];
-        const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
-        const newVertices = healOrthogonalVertices(sourcePoint, targetPoint, regularized.slice(1, -1));
+      const isUserInteracting = Boolean(options?.ui || options?.toolId);
 
-        const changed =
-          newVertices.length !== vertices.length ||
-          newVertices.some(
-            (nv: PointLike, idx: number) =>
-              Math.abs(nv.x - (vertices[idx]?.x ?? 0)) > 0.5 || Math.abs(nv.y - (vertices[idx]?.y ?? 0)) > 0.5,
-          );
+      // Do NOT mutate vertices synchronously while the user is actively interacting with the vertex tool.
+      // Doing so prunes newly added collinear vertices before X6 can create their handles, causing
+      // handle.onMouseDown undefined TypeError and freezing the diagram.
+      if (!isUserInteracting) {
+        const vertices = edge.getVertices() || [];
+        const sourcePoint = edge.getSourcePoint();
+        const targetPoint = edge.getTargetPoint();
+        if (vertices.length > 0 && sourcePoint && targetPoint) {
+          const fullPolyline = [sourcePoint, ...vertices, targetPoint];
+          const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
+          const newVertices = healOrthogonalVertices(sourcePoint, targetPoint, regularized.slice(1, -1));
 
-        if (changed) {
-          edge.setVertices(newVertices, { ignoreSnap: true });
+          const changed =
+            newVertices.length !== vertices.length ||
+            newVertices.some(
+              (nv: PointLike, idx: number) =>
+                Math.abs(nv.x - (vertices[idx]?.x ?? 0)) > 0.5 || Math.abs(nv.y - (vertices[idx]?.y ?? 0)) > 0.5,
+            );
+
+          if (changed) {
+            edge.setVertices(newVertices, { ignoreSnap: true });
+          }
         }
       }
 
@@ -2227,12 +2363,32 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const curVertices = edge.getVertices() || [];
           const srcPt = edge.getSourcePoint();
           const tgtPt = edge.getTargetPoint();
-          const roundedSrc = { x: Math.round(srcPt.x), y: Math.round(-srcPt.y) };
-          const roundedTgt = { x: Math.round(tgtPt.x), y: Math.round(-tgtPt.y) };
+
+          if (curVertices.length > 0 && srcPt && tgtPt) {
+            const fullPolyline = [srcPt, ...curVertices, tgtPt];
+            const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
+            const healed = healOrthogonalVertices(srcPt, tgtPt, regularized.slice(1, -1));
+            const changed =
+              healed.length !== curVertices.length ||
+              healed.some(
+                (nv: PointLike, idx: number) =>
+                  Math.abs(nv.x - (curVertices[idx]?.x ?? 0)) > 0.5 ||
+                  Math.abs(nv.y - (curVertices[idx]?.y ?? 0)) > 0.5,
+              );
+            if (changed) {
+              edge.setVertices(healed, { ignoreSnap: true });
+            }
+          }
+
+          const finalVertices = edge.getVertices() || [];
+          const finalSrcPt = edge.getSourcePoint();
+          const finalTgtPt = edge.getTargetPoint();
+          const roundedSrc = { x: Math.round(finalSrcPt.x), y: Math.round(-finalSrcPt.y) };
+          const roundedTgt = { x: Math.round(finalTgtPt.x), y: Math.round(-finalTgtPt.y) };
           const roundedVerts = healOrthogonalVertices(
             roundedSrc,
             roundedTgt,
-            curVertices.map((p: PointLike) => ({
+            finalVertices.map((p: PointLike) => ({
               x: Math.round(p.x),
               y: Math.round(-p.y),
             })),
@@ -2269,46 +2425,83 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   let isSnappingPortAlignment = false;
   let isAltPressed = false;
+  let smartGuidesOverlayEl: SVGSVGElement | null = null;
+  let activeDragSession: {
+    nodeId: string;
+    startX: number;
+    startY: number;
+    edgeVertices: Map<string, PointLike[]>;
+  } | null = null;
+
+  const ensureSmartGuidesOverlay = (): SVGSVGElement | null => {
+    if (typeof document === "undefined" || !container) return null;
+    if (smartGuidesOverlayEl && container.contains(smartGuidesOverlayEl)) {
+      return smartGuidesOverlayEl;
+    }
+    const existing = container.querySelector("#modelscript-smart-guides-overlay") as SVGSVGElement | null;
+    if (existing) {
+      smartGuidesOverlayEl = existing;
+      return existing;
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.id = "modelscript-smart-guides-overlay";
+    svg.setAttribute("class", "modelscript-smart-guides-overlay");
+    svg.style.position = "absolute";
+    svg.style.inset = "0";
+    svg.style.width = "100%";
+    svg.style.height = "100%";
+    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "950";
+    svg.style.overflow = "visible";
+    container.appendChild(svg);
+    smartGuidesOverlayEl = svg;
+    return svg;
+  };
 
   const clearAlignmentGuides = () => {
+    if (smartGuidesOverlayEl) {
+      smartGuidesOverlayEl.innerHTML = "";
+    }
     const gx = g.getCellById?.("__alignment_guide_x__");
     if (gx) g.removeCell?.(gx);
     const gy = g.getCellById?.("__alignment_guide_y__");
     if (gy) g.removeCell?.(gy);
   };
 
-  const renderAlignmentGuide = (
-    id: "__alignment_guide_x__" | "__alignment_guide_y__",
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
+  const renderSmartAlignmentGuidesOverlay = (
+    guideX: SmartGuideLine | null,
+    guideY: SmartGuideLine | null,
   ) => {
-    const existing = g.getCellById?.(id);
-    if (existing) g.removeCell?.(existing);
-    const minX = Math.min(x1, x2);
-    const minY = Math.min(y1, y2);
-    const w = Math.max(1, Math.abs(x2 - x1));
-    const h = Math.max(1, Math.abs(y2 - y1));
-    g.addNode?.({
-      id,
-      shape: "rect",
-      x: minX,
-      y: minY,
-      width: w,
-      height: h,
-      zIndex: 999,
-      attrs: {
-        body: {
-          fill: "none",
-          stroke: "#00b4d8",
-          strokeWidth: 1,
-          strokeDasharray: "3 3",
-          pointerEvents: "none",
-        },
-      },
-    });
+    if (!guideX && !guideY) {
+      clearAlignmentGuides();
+      return;
+    }
+    const svg = ensureSmartGuidesOverlay();
+    if (!svg) return;
+    const sc = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
+    const tr = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
+    svg.innerHTML = renderSmartGuidesSvgMarkup(guideX, guideY, sc, tr);
   };
+
+  g.on("node:mousedown", ({ node }: { node?: Node | null | undefined }) => {
+    if (!node || !node.isNode() || isEphemeralDiagramNode(node.id)) return;
+    const pos = node.getPosition();
+    const edgeVertices = new Map<string, PointLike[]>();
+    const connected = g.getConnectedEdges?.(node) || [];
+    for (const edge of connected) {
+      const verts = edge.getVertices?.() || [];
+      edgeVertices.set(
+        edge.id,
+        verts.map((v: PointLike) => ({ x: v.x, y: v.y })),
+      );
+    }
+    activeDragSession = {
+      nodeId: node.id,
+      startX: pos.x,
+      startY: pos.y,
+      edgeVertices,
+    };
+  });
 
   // Synchronize topological solder dots across graph lifecycle and interactive edits
   g.on(
@@ -2326,35 +2519,58 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         if (!isEphemeralDiagramNode(cell.id)) {
           let snapDx = 0;
           let snapDy = 0;
-          let guideX: { x: number; y1: number; y2: number } | null = null;
-          let guideY: { y: number; x1: number; x2: number } | null = null;
+          let guideX: SmartGuideLine | null = null;
+          let guideY: SmartGuideLine | null = null;
           const snapThreshold = 4;
 
-          const connected = g.getConnectedEdges?.(cell) || [];
-          for (const edge of connected) {
-            const src = edge.getSource?.();
-            const tgt = edge.getTarget?.();
-            const isSrc = src?.cell === cell.id;
-            const myPortId = isSrc ? src?.port : tgt?.port;
-            const peerCellId = isSrc ? tgt?.cell : src?.cell;
-            const peerPortId = isSrc ? tgt?.port : src?.port;
-            const peerNode = peerCellId ? g.getCellById?.(peerCellId) : null;
-            if (!myPortId || !peerNode || !peerPortId) continue;
+          if (!isAltPressed) {
+            const connectedPorts: { myPt: { x: number; y: number }; peerPt: { x: number; y: number } }[] = [];
+            const connected = g.getConnectedEdges?.(cell) || [];
+            for (const edge of connected) {
+              const src = edge.getSource?.();
+              const tgt = edge.getTarget?.();
+              const isSrc = src?.cell === cell.id;
+              const myPortId = isSrc ? src?.port : tgt?.port;
+              const peerCellId = isSrc ? tgt?.cell : src?.cell;
+              const peerPortId = isSrc ? tgt?.port : src?.port;
+              const peerNode = peerCellId ? g.getCellById?.(peerCellId) : null;
+              if (!myPortId || !peerNode || !peerPortId) continue;
 
-            const myPt = resolveNodePortWorldPoint(cell, myPortId);
-            const peerPt = resolveNodePortWorldPoint(peerNode, peerPortId);
-            if (!myPt || !peerPt) continue;
+              const myPt = resolveNodePortWorldPoint(cell, myPortId);
+              const peerPt = resolveNodePortWorldPoint(peerNode, peerPortId);
+              if (!myPt || !peerPt) continue;
+              connectedPorts.push({ myPt, peerPt });
+            }
 
-            const diffX = peerPt.x - myPt.x;
-            if (Math.abs(diffX) <= snapThreshold && (guideX === null || Math.abs(diffX) < Math.abs(snapDx))) {
-              snapDx = diffX;
-              guideX = { x: peerPt.x, y1: myPt.y, y2: peerPt.y };
+            const mySize = cell.getSize?.() || { width: 20, height: 20 };
+            const draggedAlignable: AlignableNode = {
+              id: cell.id,
+              x: current.x,
+              y: current.y,
+              width: mySize.width,
+              height: mySize.height,
+            };
+
+            const peerNodes: AlignableNode[] = [];
+            for (const n of g.getNodes?.() || []) {
+              if (!n || n.id === cell.id || isEphemeralDiagramNode(n.id)) continue;
+              const p = n.getPosition?.();
+              const s = n.getSize?.();
+              if (p && s && s.width > 0 && s.height > 0) {
+                peerNodes.push({ id: n.id, x: p.x, y: p.y, width: s.width, height: s.height });
+              }
             }
-            const diffY = peerPt.y - myPt.y;
-            if (Math.abs(diffY) <= snapThreshold && (guideY === null || Math.abs(diffY) < Math.abs(snapDy))) {
-              snapDy = diffY;
-              guideY = { y: peerPt.y, x1: myPt.x, x2: peerPt.x };
-            }
+
+            const alignRes = computeSmartAlignmentGuides(
+              draggedAlignable,
+              connectedPorts,
+              peerNodes,
+              snapThreshold,
+            );
+            snapDx = alignRes.snapDx;
+            snapDy = alignRes.snapDy;
+            guideX = alignRes.guideX;
+            guideY = alignRes.guideY;
           }
 
           if (Math.abs(snapDx) > 0.01 || Math.abs(snapDy) > 0.01) {
@@ -2363,32 +2579,45 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
             isSnappingPortAlignment = false;
           }
 
-          if (guideX) {
-            renderAlignmentGuide("__alignment_guide_x__", guideX.x, guideX.y1, guideX.x, guideX.y2);
-          } else {
-            const gx = g.getCellById?.("__alignment_guide_x__");
-            if (gx) g.removeCell?.(gx);
-          }
-          if (guideY) {
-            renderAlignmentGuide("__alignment_guide_y__", guideY.x1, guideY.y, guideY.x2, guideY.y);
-          } else {
-            const gy = g.getCellById?.("__alignment_guide_y__");
-            if (gy) g.removeCell?.(gy);
-          }
+          renderSmartAlignmentGuidesOverlay(guideX, guideY);
 
-          const effectiveDx = current.x + snapDx - previous.x;
-          const effectiveDy = current.y + snapDy - previous.y;
-          translateConnectedEdgeStubs(g, cell, effectiveDx, effectiveDy, { forceReroute: isAltPressed });
+          if (activeDragSession && activeDragSession.nodeId === cell.id) {
+            const connected = g.getConnectedEdges?.(cell) || [];
+            for (const edge of connected) {
+              const initVerts = activeDragSession.edgeVertices.get(edge.id);
+              if (initVerts) {
+                edge.setVertices?.(
+                  initVerts.map((v: PointLike) => ({ x: v.x, y: v.y })),
+                  { ignoreSnap: true },
+                );
+              }
+            }
+            const totalDx = current.x + snapDx - activeDragSession.startX;
+            const totalDy = current.y + snapDy - activeDragSession.startY;
+            translateConnectedEdgeStubs(g, cell, totalDx, totalDy, { forceReroute: isAltPressed });
+          } else {
+            const effectiveDx = current.x + snapDx - previous.x;
+            const effectiveDy = current.y + snapDy - previous.y;
+            translateConnectedEdgeStubs(g, cell, effectiveDx, effectiveDy, { forceReroute: isAltPressed });
+          }
         }
       }
       scheduleUpdateSolderDots(g);
     },
   );
   g.on("node:moved", () => {
+    activeDragSession = null;
     clearAlignmentGuides();
     scheduleUpdateSolderDots(g);
   });
-  g.on("node:mouseup", () => clearAlignmentGuides());
+  g.on("node:mouseup", () => {
+    activeDragSession = null;
+    clearAlignmentGuides();
+  });
+  g.on("blank:mouseup", () => {
+    activeDragSession = null;
+    clearAlignmentGuides();
+  });
   g.on("node:resized", () => scheduleUpdateSolderDots(g));
   g.on("edge:change:vertices", () => scheduleUpdateSolderDots(g));
   g.on("edge:change:source", () => scheduleUpdateSolderDots(g));
@@ -2490,6 +2719,13 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
             rerouteEdgeOrthogonal(edge, g);
           },
         },
+        {
+          label: "Clear Bends / Vertices",
+          action: () => {
+            edge.setVertices([]);
+            rerouteEdgeOrthogonal(edge, g);
+          },
+        },
         { type: "separator" },
         {
           label: "Delete Connection",
@@ -2562,6 +2798,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   g.on("blank:click", () => {
     hideContextMenu(container);
+    try {
+      const edges = typeof g.getEdges === "function" ? g.getEdges() : [];
+      for (const e of edges) {
+        if (!g.isSelected?.(e)) {
+          e.removeTools?.();
+        }
+      }
+    } catch {}
   });
 
   const onAltKeyDown = (e: KeyboardEvent) => {
@@ -3171,11 +3415,16 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     if (opts?.onSelect) opts.onSelect(null);
   });
 
+  activeSyncAlignmentToolbar = syncAlignmentToolbar;
+
   // Register container-scoped instance with listener cleanup
   containerInstances.set(container, {
     graph: g,
     options: currentOptions && currentOptions.container === container ? currentOptions : { container, isDark },
     selectedNodeId: null,
+    rotateSelectedNodes,
+    flipSelectedNodes,
+    syncAlignmentToolbar,
     cleanupListeners: () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("keydown", onWindowEscape);
@@ -4435,7 +4684,10 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       for (const nodeData of nodes) {
         const cell = g.getCellById(nodeData.id);
         if (!cell || !cell.isNode()) {
-          g.addNode(nodeData);
+          const added = g.addNode(nodeData);
+          if (nodeData.data?.["flipX"] || nodeData.data?.["flipY"]) {
+            applyNodeFlipVisuals(added, g, Boolean(nodeData.data["flipX"]), Boolean(nodeData.data["flipY"]));
+          }
           continue;
         }
 
@@ -4460,11 +4712,22 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         // Update data (properties)
         if (nodeData.data) {
           cell.setData(nodeData.data, { overwrite: true });
+          if (nodeData.data["flipX"] !== undefined || nodeData.data["flipY"] !== undefined) {
+            applyNodeFlipVisuals(cell, g, Boolean(nodeData.data["flipX"]), Boolean(nodeData.data["flipY"]));
+          }
         }
 
         // Update markup and attrs (e.g. parameter ratings, breaker open/closed color, labels)
         if (nodeData.markup && JSON.stringify(cell.getMarkup?.()) !== JSON.stringify(nodeData.markup)) {
           cell.setMarkup(nodeData.markup);
+          const view = g.findViewByCell(cell);
+          if (view && typeof (view as any).render === "function") {
+            try {
+              (view as any).render();
+            } catch {
+              // fallback if headless or view render fails
+            }
+          }
         }
         if (nodeData.attrs && JSON.stringify(cell.getAttrs?.()) !== JSON.stringify(nodeData.attrs)) {
           cell.setAttrs(nodeData.attrs);
@@ -4592,6 +4855,15 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   // 2. Load the flat graph
   g.fromJSON({ nodes, edges });
 
+  for (const nodeData of nodes) {
+    if (nodeData.data?.["flipX"] || nodeData.data?.["flipY"]) {
+      const cell = g.getCellById(nodeData.id);
+      if (cell && cell.isNode()) {
+        applyNodeFlipVisuals(cell, g, Boolean(nodeData.data["flipX"]), Boolean(nodeData.data["flipY"]));
+      }
+    }
+  }
+
   // If a drop placeholder was active and the new component has NOT yet arrived in data.nodes,
   // keep the placeholder visible until the real component arrives.
   // If the new component IS present, it is already rendered in g.fromJSON — do not cover it up!
@@ -4615,8 +4887,13 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
 
   // Only fit view on first render or when switching modules — preserve zoom/pan on subsequent updates
   if (isFirstRender || moduleChanged) {
-    const containerW = g.container.clientWidth > 0 ? g.container.clientWidth : 800;
-    const containerH = g.container.clientHeight > 0 ? g.container.clientHeight : 600;
+    const parent = g.container?.parentElement;
+    const parentW = parent?.clientWidth ?? 0;
+    const parentH = parent?.clientHeight ?? 0;
+    const clientW = g.container.clientWidth > 0 ? g.container.clientWidth : 0;
+    const clientH = g.container.clientHeight > 0 ? g.container.clientHeight : 0;
+    const containerW = parentW > 0 ? parentW : (clientW > 0 ? clientW : 800);
+    const containerH = parentH > 0 ? parentH : (clientH > 0 ? clientH : 600);
     g.resize(containerW, containerH);
     const viewportArea = { x: 0, y: 0, width: containerW, height: containerH };
 
@@ -4639,11 +4916,14 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
 
     // In webviews, container dimensions can be 0 or small during initial mount.
     // Ensure the diagram is properly sized and centered once the layout completes.
-    setTimeout(() => {
+    const checkAndRecenter = () => {
       try {
         if (g && (typeof g.isDisposed === "function" ? !g.isDisposed() : true)) {
-          const cw = g.container?.clientWidth ?? 0;
-          const ch = g.container?.clientHeight ?? 0;
+          const p = g.container?.parentElement;
+          const pw = p?.clientWidth ?? 0;
+          const ph = p?.clientHeight ?? 0;
+          const cw = pw > 0 ? pw : (g.container?.clientWidth ?? 0);
+          const ch = ph > 0 ? ph : (g.container?.clientHeight ?? 0);
           if (cw > 0 && ch > 0) {
             g.resize(cw, ch);
           }
@@ -4664,7 +4944,9 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       } catch {
         // ignore
       }
-    }, 60);
+    };
+    setTimeout(checkAndRecenter, 60);
+    setTimeout(checkAndRecenter, 300);
   } else if (prevZoom !== null && prevTrans !== null) {
     try {
       g.zoom(prevZoom, { absolute: true });
@@ -4697,6 +4979,11 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   updateSolderDots(g);
   scheduleUpdateSolderDots(g);
   scheduleViewportCulling(g);
+  const inst = (g.container && containerInstances.get(g.container)) || null;
+  inst?.syncAlignmentToolbar?.();
+  if (!inst) {
+    activeSyncAlignmentToolbar?.();
+  }
   const hud = (g.container as HTMLElement | undefined)?.querySelector?.(
     "#modelscript-minimap-hud",
   ) as HTMLElement | null;
@@ -5085,16 +5372,18 @@ export function updateSolderDots(g: Graph) {
   const portPoints: { x: number; y: number }[] = [];
 
   for (const edge of edges) {
-    const source = edge.getSourcePoint();
-    const target = edge.getTargetPoint();
+    const src = edge.getSource();
+    const tgt = edge.getTarget();
+    const sourceCell = edge.getSourceCell?.() ?? (src?.cell ? g.getCellById?.(src.cell) : null);
+    const targetCell = edge.getTargetCell?.() ?? (tgt?.cell ? g.getCellById?.(tgt.cell) : null);
+    const source = resolveNodePortWorldPoint(sourceCell, src?.port, edge.getSourcePoint());
+    const target = resolveNodePortWorldPoint(targetCell, tgt?.port, edge.getTargetPoint());
     if (!source || !target) continue;
 
     // Collect port positions so solder dots are never placed on component pins
-    const src = edge.getSource();
     if (src?.port) {
       portPoints.push(source);
     }
-    const tgt = edge.getTarget();
     if (tgt?.port) {
       portPoints.push(target);
     }
@@ -5114,31 +5403,19 @@ export function updateSolderDots(g: Graph) {
     allPaths.push({ id: edge.id, points, color, sourceKey, targetKey });
   }
 
-  // Also collect port coordinates from all component nodes in graph
+  // Also collect port coordinates and bounding boxes from all component nodes in graph
+  const componentBoxes: RectLike[] = [];
   for (const node of g.getNodes()) {
     if (isEphemeralDiagramNode(node.id)) continue;
+    const bbox = getNodeBBox(node);
+    if (bbox) {
+      componentBoxes.push(bbox);
+    }
     const ports = node.getPorts?.() || [];
-    const nodePos = node.getPosition();
-    const nodeSize = node.getSize();
-    const angleDeg = node.getAngle?.() ?? 0;
-    const rad = (angleDeg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const cx = (nodeSize?.width ?? 0) / 2;
-    const cy = (nodeSize?.height ?? 0) / 2;
     for (const p of ports) {
-      const pos = node.getPortProp?.(p.id, "args");
-      if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
-        if (!angleDeg) {
-          portPoints.push({ x: nodePos.x + pos.x, y: nodePos.y + pos.y });
-        } else {
-          const dx = pos.x - cx;
-          const dy = pos.y - cy;
-          portPoints.push({
-            x: nodePos.x + cx + dx * cos - dy * sin,
-            y: nodePos.y + cy + dx * sin + dy * cos,
-          });
-        }
+      const pt = resolveNodePortWorldPoint(node, p.id);
+      if (pt) {
+        portPoints.push(pt);
       }
     }
   }
@@ -5151,8 +5428,8 @@ export function updateSolderDots(g: Graph) {
   const userCrossingPref = (meta?.["wireCrossingStyle"] as WireCrossingStyle | undefined) ?? opts?.wireCrossingStyle;
   const crossingStyle = resolveWireCrossingStyle(lang, userCrossingPref);
 
-  const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints });
-  const crossings = crossingStyle === "none" ? [] : computeWireCrossings(allPaths, dots, { portPoints });
+  const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints, componentBoxes });
+  const crossings = crossingStyle === "none" ? [] : computeWireCrossings(allPaths, dots, { portPoints, componentBoxes });
   const existingDotIds = new Set<string>(existingDots.map((n: Node) => n.id));
   const newDotIds = new Set<string>();
   const existingCrossingIds = new Set<string>(existingCrossings.map((n: Node) => n.id));
@@ -5287,12 +5564,24 @@ export function disposeDiagram(targetContainer?: HTMLElement | null) {
  * The function walks all `<text>` elements inside the node's SVG and replaces
  * text content that matches the old parameter value pattern with the new one.
  */
-export function updateParameterText(nodeId: string, paramName: string, oldValue: string, newValue: string): void {
-  if (!graph) return;
-  const cell = graph.getCellById(nodeId);
+export function updateParameterText(
+  nodeId: string,
+  paramName: string,
+  oldValue: string,
+  newValue: string,
+  targetGraphOrContainer?: Graph | HTMLElement | null,
+): void {
+  const g =
+    (targetGraphOrContainer && typeof (targetGraphOrContainer as any).getCellById === "function"
+      ? (targetGraphOrContainer as Graph)
+      : targetGraphOrContainer && containerInstances.has(targetGraphOrContainer as HTMLElement)
+        ? containerInstances.get(targetGraphOrContainer as HTMLElement)!.graph
+        : getGraph(targetGraphOrContainer as HTMLElement)) ?? graph;
+  if (!g) return;
+  const cell = g.getCellById(nodeId);
   if (!cell || !cell.isNode()) return;
 
-  const view = graph.findViewByCell(cell);
+  const view = g.findViewByCell(cell);
   if (!view) return;
 
   const svgEl = view.container;
@@ -5303,10 +5592,14 @@ export function updateParameterText(nodeId: string, paramName: string, oldValue:
     const content = textEl.textContent ?? "";
     if (!content) continue;
 
-    // Match patterns like "L=1" or "R=100" by parameter name prefix first
-    if (paramName && content.startsWith(`${paramName}=`)) {
-      textEl.textContent = `${paramName}=${newValue}`;
-      continue;
+    // Match patterns like "L=1", "R=100", or "R = 100" by parameter name prefix first
+    const eqIdx = content.indexOf("=");
+    if (eqIdx !== -1) {
+      const left = content.slice(0, eqIdx).trim();
+      if (left === paramName || left.endsWith(`.${paramName}`)) {
+        textEl.textContent = `${paramName}=${newValue}`;
+        continue;
+      }
     }
 
     // Match patterns like "R=100", "100 Ω", or just "100"
@@ -5314,6 +5607,60 @@ export function updateParameterText(nodeId: string, paramName: string, oldValue:
     if (oldValue && content.includes(oldValue)) {
       textEl.textContent = content.replace(oldValue, newValue);
     }
+  }
+
+  // Update cell's markup data structure so future getMarkup() is consistent
+  const currentMarkup = cell.getMarkup?.();
+  if (currentMarkup) {
+    const patchMarkupText = (item: any) => {
+      if (!item || typeof item !== "object") return;
+      if (item.tagName === "text") {
+        const c = typeof item.children === "string" ? item.children : item.textContent;
+        if (typeof c === "string") {
+          const eq = c.indexOf("=");
+          if (eq !== -1) {
+            const left = c.slice(0, eq).trim();
+            if (left === paramName || left.endsWith(`.${paramName}`)) {
+              if (typeof item.children === "string") item.children = `${paramName}=${newValue}`;
+              if (item.textContent) item.textContent = `${paramName}=${newValue}`;
+            }
+          } else if (oldValue && c.includes(oldValue)) {
+            if (typeof item.children === "string") item.children = c.replace(oldValue, newValue);
+            if (item.textContent) item.textContent = c.replace(oldValue, newValue);
+          }
+        }
+      }
+      if (Array.isArray(item.children)) {
+        for (const ch of item.children) {
+          patchMarkupText(ch);
+        }
+      }
+    };
+    patchMarkupText(currentMarkup);
+  }
+
+  // Update propertyCache and cell data properties if present
+  const cached = propertyCache.get(nodeId) as any;
+  if (cached?.parameters && Array.isArray(cached.parameters)) {
+    const p = cached.parameters.find((item: any) => item && (item.name === paramName || item.name === `${paramName}`));
+    if (p) {
+      p.value = newValue;
+    }
+  }
+  const curData = cell.getData?.();
+  const curProps = curData?.["properties"] as Record<string, any> | undefined;
+  if (curProps?.["parameters"] && Array.isArray(curProps["parameters"])) {
+    const p = curProps["parameters"].find((item: any) => item && (item.name === paramName || item.name === `${paramName}`));
+    if (p) {
+      p.value = newValue;
+    }
+  }
+
+  // Synchronize alignment toolbar if this node is currently selected
+  const inst = (g.container && containerInstances.get(g.container)) || null;
+  inst?.syncAlignmentToolbar?.();
+  if (!inst) {
+    activeSyncAlignmentToolbar?.();
   }
 }
 
@@ -5610,3 +5957,41 @@ export {
   type EdgeSelectionStyle,
   type ResolvedEdgeSelectionStyle,
 } from "./selection-handles.js";
+
+/**
+ * Rotates the currently selected nodes on the target graph (or active graph)
+ * by `deltaDegrees`, re-routing all connected edges and updating solder dots.
+ */
+export function rotateSelectedNodes(deltaDegrees = 90, targetGraph?: Graph | null): void {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return;
+  if (g.container && containerInstances.has(g.container)) {
+    const inst = containerInstances.get(g.container);
+    if (inst?.rotateSelectedNodes) {
+      inst.rotateSelectedNodes(deltaDegrees);
+      return;
+    }
+  }
+  if (activeRotateSelectedNodes) {
+    activeRotateSelectedNodes(deltaDegrees, g);
+  }
+}
+
+/**
+ * Flips the currently selected nodes on the target graph (or active graph)
+ * along `axis` ('x' for horizontal, 'y' for vertical mirror), re-routing all connected edges and updating solder dots.
+ */
+export function flipSelectedNodes(axis: "x" | "y" = "x", targetGraph?: Graph | null): void {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return;
+  if (g.container && containerInstances.has(g.container)) {
+    const inst = containerInstances.get(g.container);
+    if (inst?.flipSelectedNodes) {
+      inst.flipSelectedNodes(axis);
+      return;
+    }
+  }
+  if (activeFlipSelectedNodes) {
+    activeFlipSelectedNodes(axis, g);
+  }
+}

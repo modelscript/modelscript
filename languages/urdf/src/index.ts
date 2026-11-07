@@ -13,5 +13,7 @@ export * from "./lints/index.js";
 export * from "./lsp.js";
 export * from "./parser/index.js";
 export * from "./projections/index.js";
+export * from "./tgg/urdf-rules.js";
+export * from "./tgg/urdf-sync.js";
 export * from "./types.js";
 export * from "./workspace-index.js";

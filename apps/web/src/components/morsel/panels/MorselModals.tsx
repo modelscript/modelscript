@@ -260,25 +260,14 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             backdropFilter: "blur(12px)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
             <img
-              src={colorMode === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
-              alt="ModelScript"
-              width={38}
-              height={38}
-              style={{ borderRadius: "8px", display: "block" }}
+              src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
+              alt="Morsel"
+              height={36}
+              style={{ height: "36px", width: "auto", display: "block" }}
+              data-testid="morsel-brand-icon"
             />
-            <span
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-                color: colorMode === "dark" ? "#f0f6fc" : "#1f2328",
-                fontFamily: "var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)",
-              }}
-            >
-              ModelScript
-            </span>
           </div>
           <div
             style={{

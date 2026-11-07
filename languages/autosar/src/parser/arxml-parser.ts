@@ -88,10 +88,17 @@ function parseDataElements(container: XmlElement, lineStarts: number[]): Autosar
     const typeRef = getChildText(el, "TYPE-TREF") || "";
     const initValStr = getChildText(el, "INIT-VALUE") ?? getChildText(el, "VALUE");
     const num = initValStr !== undefined ? Number(initValStr) : undefined;
+    const swDataDefPropsElem = findFirstDescendant(el, "SW-DATA-DEF-PROPS");
+    let swDataDefProps: { swAddrMethodRef?: string | undefined } | undefined;
+    if (swDataDefPropsElem) {
+      const addrRef = findFirstDescendant(swDataDefPropsElem, "SW-ADDR-METHOD-REF")?.text.trim();
+      swDataDefProps = { swAddrMethodRef: addrRef || undefined };
+    }
     results.push({
       shortName,
       typeRef,
       initValue: num !== undefined && !Number.isNaN(num) ? num : initValStr,
+      swDataDefProps,
       range: elementRange(el, lineStarts),
     });
   }
@@ -128,16 +135,24 @@ function parsePorts(container: XmlElement, lineStarts: number[]): Map<string, Au
           : child.name === "R-PORT-PROTOTYPE"
             ? "required"
             : "provided-required";
-      const ifRef =
-        getChildText(child, "PROVIDED-INTERFACE-TREF") ??
-        getChildText(child, "REQUIRED-INTERFACE-TREF") ??
-        getChildText(child, "PROVIDED-REQUIRED-INTERFACE-TREF") ??
-        "";
+      const providedTref = getChildText(child, "PROVIDED-INTERFACE-TREF");
+      const requiredTref = getChildText(child, "REQUIRED-INTERFACE-TREF");
+      const prTref = getChildText(child, "PROVIDED-REQUIRED-INTERFACE-TREF");
+      const ifRef = providedTref ?? requiredTref ?? prTref ?? "";
+      const interfaceTrefKind =
+        providedTref !== undefined
+          ? "provided"
+          : requiredTref !== undefined
+            ? "required"
+            : prTref !== undefined
+              ? "provided-required"
+              : undefined;
 
       ports.set(shortName, {
         shortName,
         direction,
         interfaceRef: ifRef,
+        interfaceTrefKind,
         range: elementRange(child, lineStarts),
       });
     }
@@ -471,6 +486,20 @@ function parseArPackage(elem: XmlElement, lineStarts: number[], model: AutosarMo
         const frame = parseCanFrame(child, lineStarts);
         elements.set(frame.shortName, frame);
         model.frames.set(frame.shortName, frame);
+      } else if (child.name === "DATA-TYPE-MAPPING-SET") {
+        const setShortName = parseShortName(child);
+        const mapsContainer = child.children.find((c) => c.name === "DATA-TYPE-MAPS") ?? child;
+        for (const mapElem of findChildren(mapsContainer, "DATA-TYPE-MAP")) {
+          const appRef = getChildText(mapElem, "APPLICATION-DATA-TYPE-REF") ?? "";
+          const implRef = getChildText(mapElem, "IMPLEMENTATION-DATA-TYPE-REF") ?? "";
+          if (!model.dataTypeMappings) model.dataTypeMappings = [];
+          model.dataTypeMappings.push({
+            shortName: getChildText(mapElem, "SHORT-NAME") ?? setShortName,
+            applicationDataTypeRef: appRef,
+            implementationDataTypeRef: implRef,
+            range: elementRange(mapElem, lineStarts),
+          });
+        }
       }
     }
   }
@@ -516,6 +545,19 @@ export function parseArxml(source: string): AutosarModel {
       const pkg = parseArPackage(pElem, lineStarts, model);
       model.packages.set(pkg.shortName, pkg);
     }
+  } else if (root.name === "AR-PACKAGE") {
+    const pkg = parseArPackage(root, lineStarts, model);
+    model.packages.set(pkg.shortName, pkg);
+  } else if (
+    root.name === "APPLICATION-SW-COMPONENT-TYPE" ||
+    root.name === "SENSOR-ACTUATOR-SW-COMPONENT-TYPE" ||
+    root.name === "COMPLEX-DEVICE-DRIVER-SW-COMPONENT-TYPE" ||
+    root.name === "COMPOSITION-SW-COMPONENT-TYPE" ||
+    root.name === "SERVICE-SW-COMPONENT-TYPE" ||
+    root.name === "ECU-ABSTRACTION-SW-COMPONENT-TYPE"
+  ) {
+    const swc = parseSwComponent(root, lineStarts);
+    model.components.set(swc.shortName, swc);
   }
 
   return model;

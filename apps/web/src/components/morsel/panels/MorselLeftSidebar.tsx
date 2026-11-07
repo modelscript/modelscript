@@ -376,6 +376,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   selectedName={selectedComponent}
                   language={language}
                   translations={translations}
+                  uri={documentUri}
                 />
               ) : (
                 <VariablesTree

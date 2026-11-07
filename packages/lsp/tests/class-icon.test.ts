@@ -365,5 +365,48 @@ test("test-wasm-icon-kernel", async () => {
   assert.deepStrictEqual(wasmLine.arrow, ["None", "Filled"]);
   assert.strictEqual(wasmLine.arrowSize, 4);
 
+  // 5. Test matrix syntax [x1, y1; x2, y2], multiple Icon clauses, positional color, %name macro, arrows, and text styles in WASM
+  const advancedWasmSource = `model AdvancedWasmIcon
+    annotation(Icon(coordinateSystem(extent=[-100, -100; 100, 100]), graphics={
+      Rectangle(extent=[-60, -40; 60, 40], lineColor=[0, 128, 255], fillColor=[240, 248, 255], fillPattern=FillPattern.Solid),
+      Line(true, [-80, 0; 0, 20; 80, 0], [255, 0, 0], arrow={Arrow.Open, Arrow.Filled}, arrowSize=5)
+    }));
+    annotation(Icon(graphics={
+      Text(extent=[-100, 50; 100, 90], textString="Model: %name (100%%)", fontName="monospace", textStyle={TextStyle.Bold, TextStyle.Italic, TextStyle.Underline}, textColor=[10, 20, 30])
+    }));
+  end AdvancedWasmIcon;`;
+  const advTree = parser.parse(advancedWasmSource);
+  const advClassNode = findClassDef(advTree.rootNode);
+  assert(advClassNode, "AdvancedWasmIcon class_definition CST node must be found");
+
+  const wasmAdvIcon = evaluateIconWasm(advClassNode);
+  assert(wasmAdvIcon, "evaluateIconWasm must evaluate matrix syntax and multiple Icon clauses in WASM");
+  assert.strictEqual(wasmAdvIcon.graphics?.length, 3, "Multiple Icon clauses must concatenate all 3 graphics items");
+  assert.deepStrictEqual(wasmAdvIcon.graphics[0].extent, [
+    [-60, -40],
+    [60, 40],
+  ]);
+  assert.deepStrictEqual(wasmAdvIcon.graphics[0].lineColor, [0, 128, 255]);
+  assert.deepStrictEqual(wasmAdvIcon.graphics[1].points, [
+    [-80, 0],
+    [0, 20],
+    [80, 0],
+  ]);
+  assert.deepStrictEqual(wasmAdvIcon.graphics[1].color, [255, 0, 0]);
+  assert.deepStrictEqual(wasmAdvIcon.graphics[2].style, ["Bold", "Italic", "Underline"]);
+  assert.strictEqual(wasmAdvIcon.graphics[2].fontName, "monospace");
+
+  const advSvg = renderIconSvgWasm(advClassNode, 20, "AdvancedWasmIcon");
+  assert(advSvg && advSvg.startsWith("<svg"), "renderIconSvgWasm must serialize AdvancedWasmIcon in WASM");
+  assert(advSvg.includes("Model: AdvancedWasmIcon (100%)"), "WASM SVG must expand %name and %% macros");
+  assert(advSvg.includes("<marker id=\"ms-mks-"), "WASM SVG must emit start arrow marker definition");
+  assert(advSvg.includes("<marker id=\"ms-mke-"), "WASM SVG must emit end arrow marker definition");
+  assert(advSvg.includes('marker-start="url(#ms-mks-'), "WASM SVG polyline must reference start arrow marker");
+  assert(advSvg.includes('marker-end="url(#ms-mke-'), "WASM SVG polyline must reference end arrow marker");
+  assert(advSvg.includes('font-family="monospace"'), "WASM SVG text must include custom font-family");
+  assert(advSvg.includes('font-weight="bold"'), "WASM SVG text must include bold weight");
+  assert(advSvg.includes('font-style="italic"'), "WASM SVG text must include italic style");
+  assert(advSvg.includes('text-decoration="underline"'), "WASM SVG text must include underline decoration");
+
   console.log("test-wasm-icon-kernel passed successfully!");
 });

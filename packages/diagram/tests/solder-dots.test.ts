@@ -478,4 +478,88 @@ test("Topological Solder Dot Junction Engine", async (t) => {
       false,
     );
   });
+
+  await t.test("should exclude solder dots and wire crossings strictly inside componentBoxes", () => {
+    // Two wires that cross right at (130, 120), which is inside a component body (100, 100, 60, 40)
+    const edges = [
+      {
+        id: "e1",
+        points: [
+          { x: 90, y: 120 },
+          { x: 170, y: 120 },
+        ],
+        sourceKey: "net1",
+        targetKey: "net1",
+      },
+      {
+        id: "e2",
+        points: [
+          { x: 130, y: 90 },
+          { x: 130, y: 120 },
+        ],
+        sourceKey: "net1",
+        targetKey: "net1",
+      },
+    ];
+
+    const compBox = { x: 100, y: 100, width: 60, height: 40 };
+
+    // Without componentBoxes, a T-junction solder dot would be computed at (130, 120)
+    const dotsWithoutBox = computeSolderDots(edges);
+    assert.strictEqual(dotsWithoutBox.length, 1);
+    assert.strictEqual(dotsWithoutBox[0].x, 130);
+    assert.strictEqual(dotsWithoutBox[0].y, 120);
+
+    // With componentBoxes, the solder dot inside the component body must be suppressed
+    const dotsWithBox = computeSolderDots(edges, { componentBoxes: [compBox] });
+    assert.strictEqual(dotsWithBox.length, 0, "Solder dots inside component bodies must be suppressed");
+
+    // Also verify crossing suppression inside componentBoxes
+    const crossingEdges = [
+      {
+        id: "eh",
+        points: [
+          { x: 90, y: 120 },
+          { x: 170, y: 120 },
+        ],
+      },
+      {
+        id: "ev",
+        points: [
+          { x: 130, y: 90 },
+          { x: 130, y: 150 },
+        ],
+      },
+    ];
+    const crossingsWithBox = computeWireCrossings(crossingEdges, [], { componentBoxes: [compBox] });
+    assert.strictEqual(crossingsWithBox.length, 0, "Wire crossings inside component bodies must be suppressed");
+  });
+
+  await t.test("should exclude solder dots on rotated component ports", () => {
+    // Port p rotated 180 deg to (160, 120)
+    const rotatedPortPoint = { x: 160, y: 120 };
+    const edges = [
+      {
+        id: "e1",
+        points: [
+          { x: 160, y: 120 },
+          { x: 220, y: 120 },
+        ],
+        sourceKey: "netA",
+        targetKey: "netA",
+      },
+      {
+        id: "e2",
+        points: [
+          { x: 160, y: 80 },
+          { x: 160, y: 120 },
+        ],
+        sourceKey: "netA",
+        targetKey: "netA",
+      },
+    ];
+
+    const dots = computeSolderDots(edges, { portPoints: [rotatedPortPoint] });
+    assert.strictEqual(dots.length, 0, "Must not place solder dot on rotated component port");
+  });
 });

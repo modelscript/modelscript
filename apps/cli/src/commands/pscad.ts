@@ -354,8 +354,16 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
 
         // Target POI bus: first connected FMU bus or primary bus
         const targetPoiBus = netlist.fmuInstances[0]?.busConnection || Array.from(netlist.buses.keys())[0]!;
-        const durationSec = 0.25; // 250 ms study duration
-        const stepSec = 20e-6; // 20 us
+        const stepStr = (args["step"] as string) ?? "20us";
+        let stepSec = 20e-6;
+        if (stepStr.endsWith("us")) {
+          stepSec = parseFloat(stepStr) * 1e-6;
+        } else if (stepStr.endsWith("ms")) {
+          stepSec = parseFloat(stepStr) * 1e-3;
+        } else if (!Number.isNaN(parseFloat(stepStr))) {
+          stepSec = parseFloat(stepStr);
+        }
+        const durationSec = typeof args["tstop"] === "number" && args["tstop"] > 0 ? args["tstop"] : 0.25;
         const vNomKv = netlist.buses.get(targetPoiBus)?.baseKv ?? 230;
 
         const baseCircuit = netlistToEmtCircuit(netlist);

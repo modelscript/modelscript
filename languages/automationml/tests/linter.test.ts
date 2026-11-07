@@ -166,4 +166,35 @@ describe("AutomationML Semantic Linter (M8301–M8307)", () => {
     assert.strictEqual(m8307.length, 2);
     assert.strictEqual(m8307[0]?.rule, "aml-invalid-frame-transform");
   });
+
+  it("detects M8308 (aml-dangling-internal-link), M8309 (aml-interface-class-incompatible), M8310 (aml-missing-mandatory-attribute), M8311 (aml-duplicate-caex-id), and M8312 (aml-empty-system-unit-family)", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="ExtendedChecks.aml" SchemaVersion="2.15">
+  <SystemUnitClassLib Name="EmptyFamilyLib" />
+  <SystemUnitClassLib Name="ValidUnitLib">
+    <SystemUnitClass Name="MotorUnit" RefBaseClassPath="AutomationMLBaseSystemUnitClassLib/BaseUnit">
+      <Attribute Name="ratedVoltage" AttributeDataType="xs:double" />
+      <InternalLink Name="DanglingSucLink" RefPartnerSideA="missing-a" RefPartnerSideB="missing-b" />
+    </SystemUnitClass>
+  </SystemUnitClassLib>
+  <InstanceHierarchy Name="Cell">
+    <InternalElement Name="DriveA" ID="dup-id-1" RefBaseSystemUnitPath="ValidUnitLib/MotorUnit">
+      <ExternalInterface Name="sigOut" ID="sig-out-1" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" />
+      <InternalLink Name="IncompatLink" RefPartnerSideA="dup-id-1:sigOut" RefPartnerSideB="ord-el:orderIn" />
+    </InternalElement>
+    <InternalElement Name="DriveB" ID="dup-id-1">
+    </InternalElement>
+    <InternalElement Name="OrderReceiver" ID="ord-el">
+      <ExternalInterface Name="orderIn" ID="ord-in-1" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/Order" Direction="In" />
+    </InternalElement>
+  </InstanceHierarchy>
+</CAEXFile>`;
+    const doc = parseAutomationML(xml);
+    const diags = lintAutomationML(doc);
+    assert(diags.some((d) => d.code === "M8308" && d.rule === "aml-dangling-internal-link"));
+    assert(diags.some((d) => d.code === "M8309" && d.rule === "aml-interface-class-incompatible"));
+    assert(diags.some((d) => d.code === "M8310" && d.rule === "aml-missing-mandatory-attribute"));
+    assert(diags.some((d) => d.code === "M8311" && d.rule === "aml-duplicate-caex-id"));
+    assert(diags.some((d) => d.code === "M8312" && d.rule === "aml-empty-system-unit-family"));
+  });
 });

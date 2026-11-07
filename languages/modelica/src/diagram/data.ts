@@ -67,7 +67,7 @@ import type {
   X6Markup,
 } from "@modelscript/diagram/protocol";
 import { computeSolderDots, solderDotToDiagramNode, type EdgePath } from "@modelscript/diagram/solder-dots";
-import { AnnotationEvaluator, evaluateIconWasm } from "./annotation-evaluator.js";
+import { AnnotationEvaluator, evaluateIconWasm, renderInheritedIconSvgWasm } from "./annotation-evaluator.js";
 
 // ── Build diagram data from a class instance ──
 
@@ -279,6 +279,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
                 db,
                 entry: childClassEntry,
                 name: childClassEntry.name,
+                compositeName:
+                  (child.metadata as any)?.typeSpecifier ||
+                  (childClassEntry.metadata as any)?.typeSpecifier ||
+                  childClassEntry.name,
                 classKind: (childClassEntry.metadata as any)?.classKind ?? (childClassEntry as any).classKind,
                 annotation: () => null,
                 components: [],
@@ -695,13 +699,26 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     // Lightweight property metadata — expensive fields (parameters, docInfo,
     // docRevisions, iconSvg) are deferred to buildComponentProperties() and
     // loaded on-demand when the user clicks a node.
+    const resolvedClassName =
+      componentClassInstance?.compositeName ||
+      (component as any).declaration?.metadata?.typeSpecifier ||
+      (component as any).typeName ||
+      (component as any).typeSpecifier ||
+      componentClassInstance?.name ||
+      "Unknown";
+
     const properties: ComponentPropertyData = {
       classKind: componentClassInstance?.classKind ?? "unknown",
-      className: componentClassInstance?.name ?? (component as any).typeName ?? "Unknown",
+      className: resolvedClassName,
       name: component.name ?? "",
       description: component.description ?? (isUnresolved ? "Unresolved component type" : ""),
       parameters: [],
     };
+    if ((componentClassInstance as any)?.entry?.metadata?.iconSvg) {
+      properties.iconSvg = (componentClassInstance as any).entry.metadata.iconSvg;
+    } else if ((componentClassInstance as any)?.iconSvg) {
+      properties.iconSvg = (componentClassInstance as any).iconSvg;
+    }
 
     nodes.push({
       id: component.name,
@@ -842,17 +859,24 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   const resolveWorldPortPoint = (node: DiagramNode, px: number, py: number): { x: number; y: number } => {
     const nx = node.x ?? 0;
     const ny = node.y ?? 0;
+    const width = node.width ?? 0;
+    const height = node.height ?? 0;
+    const flipX = Boolean(node.data?.["flipX"] || (node as any).flipX);
+    const flipY = Boolean(node.data?.["flipY"] || (node as any).flipY);
+    const lx = flipX ? width - px : px;
+    const ly = flipY ? height - py : py;
+
     const angleDeg = node.angle ?? 0;
     if (!angleDeg) {
-      return { x: nx + px, y: ny + py };
+      return { x: nx + lx, y: ny + ly };
     }
-    const cx = (node.width ?? 0) / 2;
-    const cy = (node.height ?? 0) / 2;
+    const cx = width / 2;
+    const cy = height / 2;
     const rad = (angleDeg * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    const dx = px - cx;
-    const dy = py - cy;
+    const dx = lx - cx;
+    const dy = ly - cy;
     return {
       x: nx + cx + dx * cos - dy * sin,
       y: ny + cy + dx * sin + dy * cos,
@@ -928,10 +952,30 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     }
   }
   if (validEdgePaths.length > 0) {
+    const componentBoxes = nodes
+      .filter((n) => !n.id.startsWith("solder_dot_") && !n.id.startsWith("wire_crossing_"))
+      .map((n) => {
+        const angle = n.angle ?? 0;
+        const w = n.width ?? 0;
+        const h = n.height ?? 0;
+        if (!angle) {
+          return { x: n.x ?? 0, y: n.y ?? 0, width: w, height: h };
+        }
+        const rad = (Math.abs(angle) * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(rad));
+        const sin = Math.abs(Math.sin(rad));
+        const rotW = w * cos + h * sin;
+        const rotH = w * sin + h * cos;
+        const cx = (n.x ?? 0) + w / 2;
+        const cy = (n.y ?? 0) + h / 2;
+        return { x: cx - rotW / 2, y: cy - rotH / 2, width: rotW, height: rotH };
+      });
+
     const precomputedDots = computeSolderDots(validEdgePaths, {
       cellSize: 40,
       tolerance: 3.0,
       portPoints: knownPortPoints,
+      componentBoxes,
     });
     for (const dot of precomputedDots) {
       nodes.push(solderDotToDiagramNode(dot, 3));
@@ -1153,6 +1197,44 @@ function isClassIconStatic(ci: ModelicaClassInstance | null | undefined, visited
   return ownStatic;
 }
 
+function cloneMarkupForTextTransform(node: X6Markup, isRootNode = true): X6Markup {
+  if (!node || typeof node !== "object") return node;
+  if (node.tagName === "text") {
+    return {
+      ...node,
+      attrs: node.attrs ? { ...node.attrs } : undefined,
+    };
+  }
+  if (!Array.isArray(node.children) || node.children.length === 0) {
+    if (isRootNode) {
+      return {
+        ...node,
+        attrs: node.attrs ? { ...node.attrs } : undefined,
+        children: node.children ? [...node.children] : undefined,
+      };
+    }
+    return node;
+  }
+  let childCloned = false;
+  const nextChildren = new Array<X6Markup>(node.children.length);
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i]!;
+    const clonedChild = cloneMarkupForTextTransform(child, false);
+    if (clonedChild !== child) {
+      childCloned = true;
+    }
+    nextChildren[i] = clonedChild;
+  }
+  if (childCloned || isRootNode) {
+    return {
+      ...node,
+      attrs: isRootNode && node.attrs ? { ...node.attrs } : node.attrs,
+      children: nextChildren,
+    };
+  }
+  return node;
+}
+
 export function renderIconX6(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
@@ -1181,8 +1263,8 @@ export function renderIconX6(
       if (cached.defs && cached.defs.length > 0) {
         localDefs.push(...cached.defs);
       }
-      // Return a clone when caller may mutate the markup (e.g., flip/rotate text)
-      const res = clone ? structuredClone(cached.svg) : cached.svg;
+      // Return a targeted copy-on-write clone when caller may mutate root attrs or flip/rotate <text>
+      const res = clone ? cloneMarkupForTextTransform(cached.svg, true) : cached.svg;
       if (isRoot && localDefs.length > 0 && res.children) {
         if (clone) {
           res.children.unshift({ tagName: "defs", children: localDefs });
@@ -1210,7 +1292,7 @@ export function renderIconX6(
     if (extendsClassInstance["classInstance"] && svg.children) {
       const baseCls = extendsClassInstance["classInstance"];
       const baseComp = isTopLevel && isClassIconStatic(baseCls) ? undefined : effectiveComponent;
-      svg.children.push(renderIconX6(baseCls, baseComp, ports, localDefs));
+      svg.children.push(renderIconX6(baseCls, baseComp, ports, localDefs, false));
       renderedBaseIcon = true;
     } else if (
       extendsClassInstance.name &&
@@ -2466,6 +2548,42 @@ function bakeVectorEffect(markup: X6Markup, scale: number): void {
   }
 }
 
+function collectInheritedCstNodesBottomUp(
+  cls: ModelicaClassInstance | null | undefined,
+  visiting = new Set<unknown>(),
+): unknown[] | null {
+  if (!cls || typeof cls !== "object") return null;
+  if (visiting.has(cls)) return null;
+  visiting.add(cls);
+
+  const nodes: unknown[] = [];
+  for (const ext of cls.extendsClassInstances ?? []) {
+    const base = ext?.["classInstance"];
+    if (!base) {
+      visiting.delete(cls);
+      return null;
+    }
+    const baseNodes = collectInheritedCstNodesBottomUp(base, visiting);
+    if (!baseNodes) {
+      visiting.delete(cls);
+      return null;
+    }
+    nodes.push(...baseNodes);
+  }
+
+  visiting.delete(cls);
+  const ciNode = cls as
+    | { cstNode?: { tree?: unknown; ptr?: number }; abstractSyntaxNode?: { tree?: unknown; ptr?: number } }
+    | null
+    | undefined;
+  const cstNode = ciNode?.cstNode ?? ciNode?.abstractSyntaxNode;
+  if (!cstNode || !cstNode.tree || typeof cstNode.ptr !== "number" || cstNode.ptr <= 0) {
+    return null;
+  }
+  nodes.push(cstNode);
+  return nodes;
+}
+
 export function getClassIconSvg(
   cls: ModelicaClassInstance,
   size = 16,
@@ -2486,9 +2604,23 @@ export function getClassIconSvg(
     return standaloneIconSvgCache.get(identityKey);
   }
 
+  if (!includePorts && !componentInstance) {
+    const cstNodes = collectInheritedCstNodesBottomUp(cls);
+    if (cstNodes && cstNodes.length > 0) {
+      const wasmSvg = renderInheritedIconSvgWasm(cstNodes, size, cls.name ?? clsObj.entry?.name);
+      if (wasmSvg) {
+        if (identityKey) {
+          standaloneIconSvgCache.set(identityKey, wasmSvg);
+        }
+        return wasmSvg;
+      }
+    }
+  }
+
   try {
-    const markup = renderIconX6(cls, componentInstance, includePorts);
-    if (!markup || !hasGraphicElements(markup)) return undefined;
+    const rawMarkup = renderIconX6(cls, componentInstance, includePorts, undefined, false);
+    if (!rawMarkup || !hasGraphicElements(rawMarkup)) return undefined;
+    const markup = structuredClone(rawMarkup);
 
     // Patch root SVG for standalone icon use: add xmlns, fixed size, viewBox
     if (markup.attrs) {
@@ -3146,7 +3278,7 @@ export function buildComponentProperties(
 
   return {
     classKind: componentClassInstance["classKind"],
-    className: componentClassInstance.name ?? "",
+    className: (componentClassInstance["compositeName"] as string | undefined) || componentClassInstance.name || "",
     name: component.name ?? "",
     description: component["description"] ?? "",
     parameters,

@@ -20,6 +20,7 @@
     "gen:og": "tsx scripts/gen-og.ts",
     "lint": "eslint docs scripts --no-warn-ignored",
     "preview": "vitepress preview docs",
+    "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -27,6 +28,7 @@
     "@types/three": "^0.184.0",
     "markdown-it-mathjax3": "^4.3.2",
     "mermaid": "^11.16.1",
+    "monaco-editor": "^0.55.1",
     "three": "^0.184.0",
     "vitepress": "^1.1.4"
   },

@@ -72,6 +72,24 @@ export const PlcErrorCode = {
     message: (taskName: string, interval: string) =>
       `Task '${taskName}' specifies invalid or non-positive periodic interval '${interval}'.`,
   },
+  RETAIN_WITHOUT_NON_VOLATILE_STORAGE: {
+    code: "M7711",
+    severity: "warning" as const,
+    message: (varName: string, pouName: string) =>
+      `Variable '${varName}' in '${pouName}' declared RETAIN but PLC configuration lacks non-volatile memory backup.`,
+  },
+  DIVISION_BY_ZERO_IN_EXPRESSION: {
+    code: "M7712",
+    severity: "error" as const,
+    message: (pouName: string) =>
+      `Constant expression in POU '${pouName}' evaluates to division by zero.`,
+  },
+  UNRESOLVED_FUNCTION_BLOCK: {
+    code: "M7713",
+    severity: "error" as const,
+    message: (fbName: string, pouName: string) =>
+      `Function block instance '${fbName}' in '${pouName}' does not resolve to a declared FunctionBlock.`,
+  },
 };
 
 const STANDARD_FUNCTION_BLOCKS = new Set([
@@ -182,8 +200,21 @@ export function lintPlcProject(project: PlcProject): PlcDiagnostic[] {
     }
   }
 
-  // 3. POU Body Checks
+  // 3. POU Variable & Body Checks (M7711, M7701, M7703, M7705, M7706, M7707, M7709, M7712, M7713)
   for (const pou of project.pous) {
+    if (project.configurations.length === 0) {
+      for (const v of pou.variables) {
+        if (v.isRetain) {
+          diagnostics.push({
+            code: PlcErrorCode.RETAIN_WITHOUT_NON_VOLATILE_STORAGE.code,
+            severity: PlcErrorCode.RETAIN_WITHOUT_NON_VOLATILE_STORAGE.severity,
+            message: PlcErrorCode.RETAIN_WITHOUT_NON_VOLATILE_STORAGE.message(v.name, pou.name),
+            range: v.range,
+          });
+        }
+      }
+    }
+
     if (pou.body.kind === "ST" && pou.body.st) {
       lintPouStatements(pou, pou.body.st.statements, pouMap, diagnostics);
     }
@@ -319,9 +350,21 @@ function checkStatementSequence(
         });
       }
 
-      // 2. Timer preset check (M7706)
+      // 2. Timer preset check (M7706) & Unresolved FunctionBlock check (M7713)
       const calleeVar = localVars.get(stmt.callee.toLowerCase());
       const resolvedType = (calleeVar?.dataType ?? stmt.callee).toLowerCase();
+      if (
+        stmt.callee.toLowerCase() !== pou.name.toLowerCase() &&
+        !STANDARD_FUNCTION_BLOCKS.has(resolvedType) &&
+        !pouMap.has(resolvedType)
+      ) {
+        diagnostics.push({
+          code: PlcErrorCode.UNRESOLVED_FUNCTION_BLOCK.code,
+          severity: PlcErrorCode.UNRESOLVED_FUNCTION_BLOCK.severity,
+          message: PlcErrorCode.UNRESOLVED_FUNCTION_BLOCK.message(stmt.callee, pou.name),
+          range: stmt.range,
+        });
+      }
       if (
         resolvedType === "ton" ||
         resolvedType === "tof" ||
@@ -382,6 +425,21 @@ function checkExpressionReads(
       }
     }
   } else if (expr.kind === "binary") {
+    if (
+      (expr.op === "/" || expr.op === "MOD") &&
+      ((expr.right.kind === "literal" && expr.right.literalType === "number" && Number(expr.right.value) === 0) ||
+        (expr.right.kind === "unary" &&
+          (expr.right.op === "-" || expr.right.op === "+") &&
+          expr.right.argument.kind === "literal" &&
+          Number(expr.right.argument.value) === 0))
+    ) {
+      diagnostics.push({
+        code: PlcErrorCode.DIVISION_BY_ZERO_IN_EXPRESSION.code,
+        severity: PlcErrorCode.DIVISION_BY_ZERO_IN_EXPRESSION.severity,
+        message: PlcErrorCode.DIVISION_BY_ZERO_IN_EXPRESSION.message(pouName),
+        range: expr.range,
+      });
+    }
     checkExpressionReads(expr.left, assignedVars, localVars, pouName, diagnostics);
     checkExpressionReads(expr.right, assignedVars, localVars, pouName, diagnostics);
   } else if (expr.kind === "unary") {

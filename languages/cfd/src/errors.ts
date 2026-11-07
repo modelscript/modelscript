@@ -70,6 +70,41 @@ export const CfdErrorCode = {
     severity: "warning" as const,
     message: (ratio: number) => `Turbulent eddy viscosity ratio '${ratio}' is non-physical.`,
   },
+  INVERTED_CELL_VOLUME: {
+    code: 7309,
+    numericCode: 1009,
+    stdCode: "C1009",
+    rule: "inverted-cell-volume",
+    severity: "error" as const,
+    message: (cellId: number) =>
+      `Grid cell '${cellId}' has negative or zero control volume (inverted mesh cell).`,
+  },
+  NON_CONFORMAL_PERIODIC_INTERFACE: {
+    code: 7310,
+    numericCode: 1010,
+    stdCode: "C1010",
+    rule: "non-conformal-periodic-interface",
+    severity: "error" as const,
+    message: (patchA: string, patchB: string) =>
+      `Periodic boundary interfaces '${patchA}' and '${patchB}' have non-conformal nodal spacing.`,
+  },
+  WALL_YPLUS_ASPECT_RATIO: {
+    code: 7311,
+    numericCode: 1011,
+    stdCode: "C1011",
+    rule: "wall-yplus-aspect-ratio",
+    severity: "warning" as const,
+    message: (patch: string, yplus: number) =>
+      `Boundary layer wall y+ (${yplus}) on '${patch}' exceeds recommended limit for resolving viscous sublayer.`,
+  },
+  MASS_FLUX_DIVERGENCE: {
+    code: 7312,
+    numericCode: 1012,
+    stdCode: "C1012",
+    rule: "mass-flux-divergence",
+    severity: "error" as const,
+    message: () => `Net mass flux balance across domain boundaries violates conservation of mass.`,
+  },
 } as const;
 
 export type CfdErrorCodeKey = keyof typeof CfdErrorCode;

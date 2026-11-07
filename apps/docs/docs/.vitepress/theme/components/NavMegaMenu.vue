@@ -418,24 +418,33 @@ function onScreenLink(): void {
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 11px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background:
-    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 68%),
-    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.15), transparent 68%),
-    color-mix(in srgb, var(--accent) 10%, var(--vp-c-bg-soft));
-  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 9%, var(--vp-c-bg-soft));
+  background-image:
+    radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 66%),
+    linear-gradient(color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    10px 10px,
+    10px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--vp-c-divider));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 6px 16px -8px color-mix(in srgb, var(--accent) 50%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 6px 14px -8px color-mix(in srgb, var(--accent) 45%, transparent);
   transition:
     transform 0.2s ease,
-    border-color 0.2s ease;
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .mega-item:hover .mega-item-icon {
   transform: scale(1.06) translateY(-1px);
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 8px 18px -8px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .mega-item-text {

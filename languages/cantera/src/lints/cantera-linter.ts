@@ -47,7 +47,13 @@ export function lintCantera(doc: CanteraDocument): DiagnosticItem[] {
   const diagnostics: DiagnosticItem[] = [];
   const mech = doc.mechanism;
 
-  // 1. Validate phase species references (M9203)
+  // 1. Validate phase species references (M9203) and unreferenced element declarations (M9213)
+  const usedElements = new Set<string>();
+  for (const sp of mech.species.values()) {
+    for (const [el, count] of Object.entries(sp.composition)) {
+      if (count > 0) usedElements.add(el.toUpperCase());
+    }
+  }
   for (const phase of mech.phases.values()) {
     for (const spName of phase.species) {
       if (!mech.species.has(spName)) {
@@ -60,10 +66,33 @@ export function lintCantera(doc: CanteraDocument): DiagnosticItem[] {
         });
       }
     }
+    if (mech.species.size > 0) {
+      for (const elem of phase.elements) {
+        if (!usedElements.has(elem.toUpperCase())) {
+          diagnostics.push({
+            code: CanteraErrorCode.UNREFERENCED_ELEMENT_DECLARATION.code,
+            rule: CanteraErrorCode.UNREFERENCED_ELEMENT_DECLARATION.rule,
+            severity: CanteraErrorCode.UNREFERENCED_ELEMENT_DECLARATION.severity,
+            message: CanteraErrorCode.UNREFERENCED_ELEMENT_DECLARATION.message(elem),
+            range: phase.range,
+          });
+        }
+      }
+    }
   }
 
-  // 2. Validate species thermo definitions (M9210, M9205, M9204)
+  // 2. Validate species thermo & transport definitions (M9210, M9205, M9204, M9212)
   for (const sp of mech.species.values()) {
+    if (sp.transport?.diameter !== undefined && sp.transport.diameter <= 0) {
+      diagnostics.push({
+        code: CanteraErrorCode.TRANSPORT_COLLISION_DIAMETER_NEGATIVE.code,
+        rule: CanteraErrorCode.TRANSPORT_COLLISION_DIAMETER_NEGATIVE.rule,
+        severity: CanteraErrorCode.TRANSPORT_COLLISION_DIAMETER_NEGATIVE.severity,
+        message: CanteraErrorCode.TRANSPORT_COLLISION_DIAMETER_NEGATIVE.message(sp.name, sp.transport.diameter),
+        range: sp.transport.range ?? sp.range,
+      });
+    }
+
     if (!sp.thermo || sp.thermo.lowCoeffs.length < 7 || sp.thermo.highCoeffs.length < 7) {
       diagnostics.push({
         code: CanteraErrorCode.MISSING_SPECIES_THERMO.code,
@@ -126,7 +155,7 @@ export function lintCantera(doc: CanteraDocument): DiagnosticItem[] {
     }
   }
 
-  // 3. Validate reactions (M9201, M9202, M9203, M9206, M9207, M9208, M9209)
+  // 3. Validate reactions (M9201, M9202, M9203, M9206, M9207, M9208, M9209, M9211)
   const seenSignatures = new Map<string, CanteraReaction>();
 
   for (const rxn of mech.reactions) {
@@ -164,6 +193,17 @@ export function lintCantera(doc: CanteraDocument): DiagnosticItem[] {
         severity: CanteraErrorCode.NEGATIVE_PRE_EXPONENTIAL_FACTOR.severity,
         message: CanteraErrorCode.NEGATIVE_PRE_EXPONENTIAL_FACTOR.message(rxn.equation, rxn.lowRateConstant.A),
         range: rxn.lowRateConstant.range ?? rxn.range,
+      });
+    }
+
+    // M9211: Unusually large negative activation energy Ea < -50000 J/mol
+    if (rxn.rateConstant.Ea < -50000) {
+      diagnostics.push({
+        code: CanteraErrorCode.ACTIVATION_ENERGY_OUT_OF_BOUNDS.code,
+        rule: CanteraErrorCode.ACTIVATION_ENERGY_OUT_OF_BOUNDS.rule,
+        severity: CanteraErrorCode.ACTIVATION_ENERGY_OUT_OF_BOUNDS.severity,
+        message: CanteraErrorCode.ACTIVATION_ENERGY_OUT_OF_BOUNDS.message(rxn.equation, rxn.rateConstant.Ea),
+        range: rxn.rateConstant.range ?? rxn.range,
       });
     }
 

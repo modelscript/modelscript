@@ -1491,9 +1491,17 @@ interface WasmAnnotationExports {
   annotation_renderAccumulatedIconSvg?: (size: number) => number;
   annotation_getSvgBufferPtr?: () => number;
   annotation_getTextPoolPtr?: () => number;
+  annotation_getGraphicsBufferPtr?: () => number;
+  annotation_getGraphicSlotStride?: () => number;
+  annotation_getPointsXBufferPtr?: () => number;
+  annotation_getPointsYBufferPtr?: () => number;
+  annotation_getIconNameBufferPtr?: () => number;
+  annotation_setIconNameLen?: (len: number) => void;
   getInputBuffer?: () => number;
   lsp_getInputBuffer?: () => number;
 }
+
+const utf8Decoder = new TextDecoder();
 
 function ensureWasmAnnotationBuffer(ast: unknown): {
   exports: WasmAnnotationExports;
@@ -1597,6 +1605,7 @@ export interface WasmGraphicItem {
   fontSize?: number;
   fontName?: string;
   textStyle?: string[];
+  style?: string[];
   horizontalAlignment?: string;
   fileName?: string;
   imageSource?: string;
@@ -1611,6 +1620,174 @@ function readWasmGraphicSlot(
   i: number,
   wasmMemory?: { buffer: ArrayBuffer },
 ): WasmGraphicItem | undefined {
+  const graphicsPtr = wasmMemory ? (exports.annotation_getGraphicsBufferPtr?.() ?? 0) : 0;
+  if (wasmMemory && graphicsPtr > 0) {
+    const slotStride = exports.annotation_getGraphicSlotStride?.() ?? 176;
+    const dv = new DataView(wasmMemory.buffer, graphicsPtr + i * slotStride, slotStride);
+    const kind = dv.getUint8(160);
+    if (kind < 1 || kind > 6) return undefined;
+
+    const x1 = dv.getFloat64(0, true);
+    const y1 = dv.getFloat64(8, true);
+    const x2 = dv.getFloat64(16, true);
+    const y2 = dv.getFloat64(24, true);
+    const ox = dv.getFloat64(32, true);
+    const oy = dv.getFloat64(40, true);
+    const rot = dv.getFloat64(48, true);
+    const thickness = dv.getFloat64(56, true);
+    const stroke = dv.getInt32(104, true);
+    const fill = dv.getInt32(108, true);
+    const fillPat = WASM_FILL_PATTERNS[dv.getUint8(161)] ?? "None";
+    const linePat = WASM_LINE_PATTERNS[dv.getUint8(162)] ?? "Solid";
+    const smoothIdx = dv.getUint8(163);
+    const visible = dv.getUint8(164) !== 0;
+
+    let item: WasmGraphicItem;
+    if (kind === 1) {
+      item = {
+        "@type": "Rectangle",
+        extent: [
+          [x1, y1],
+          [x2, y2],
+        ],
+        lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+        fillPattern: fillPat,
+        pattern: linePat,
+        lineThickness: thickness,
+        radius: dv.getFloat64(64, true),
+      };
+      const borderPatIdx = dv.getUint8(168);
+      if (borderPatIdx !== 0) item.borderPattern = WASM_BORDER_PATTERNS[borderPatIdx] ?? "None";
+      if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+    } else if (kind === 2) {
+      item = {
+        "@type": "Ellipse",
+        extent: [
+          [x1, y1],
+          [x2, y2],
+        ],
+        lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+        fillPattern: fillPat,
+        pattern: linePat,
+        lineThickness: thickness,
+      };
+      const startAng = dv.getFloat64(88, true);
+      const endAng = dv.getFloat64(96, true);
+      const hasEndAng = dv.getUint8(171) !== 0;
+      const closureIdx = dv.getUint8(169);
+      if (startAng !== 0) item.startAngle = startAng;
+      if (hasEndAng || endAng !== 360) item.endAngle = endAng;
+      if (closureIdx !== 0) item.closure = WASM_CLOSURES[closureIdx] ?? "None";
+      if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+    } else if (kind === 3 || kind === 4) {
+      const ptOff = dv.getInt32(112, true);
+      const ptCount = dv.getInt32(116, true);
+      const points: [number, number][] = new Array(ptCount);
+      const pxPtr = exports.annotation_getPointsXBufferPtr?.() ?? 0;
+      const pyPtr = exports.annotation_getPointsYBufferPtr?.() ?? 0;
+      if (pxPtr > 0 && pyPtr > 0 && ptCount > 0) {
+        const pxArr = new Float64Array(wasmMemory.buffer, pxPtr + ptOff * 8, ptCount);
+        const pyArr = new Float64Array(wasmMemory.buffer, pyPtr + ptOff * 8, ptCount);
+        for (let p = 0; p < ptCount; p++) {
+          points[p] = [pxArr[p]!, pyArr[p]!];
+        }
+      } else {
+        for (let p = 0; p < ptCount; p++) {
+          points[p] = [exports.annotation_getPointX(ptOff + p), exports.annotation_getPointY(ptOff + p)];
+        }
+      }
+      if (kind === 3) {
+        item = {
+          "@type": "Line",
+          points,
+          color: unpackWasmColor(stroke >= 0 ? stroke : 0),
+          thickness,
+          pattern: linePat,
+          smooth: WASM_SMOOTH_MODES[smoothIdx] ?? "None",
+        };
+        const arrowStart = dv.getUint8(166);
+        const arrowEnd = dv.getUint8(167);
+        if (arrowStart !== 0 || arrowEnd !== 0) {
+          item.arrow = [WASM_ARROWS[arrowStart] ?? "None", WASM_ARROWS[arrowEnd] ?? "None"];
+        }
+        const arrowSize = dv.getFloat64(80, true);
+        if (arrowSize !== 0) {
+          item.arrowSize = arrowSize;
+        }
+      } else {
+        item = {
+          "@type": "Polygon",
+          points,
+          lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+          fillPattern: fillPat,
+          pattern: linePat,
+          lineThickness: thickness,
+          smooth: WASM_SMOOTH_MODES[smoothIdx] ?? "None",
+        };
+        if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+      }
+    } else if (kind === 5) {
+      const poolOff = dv.getUint32(128, true);
+      const poolLen = dv.getUint32(132, true);
+      const textVal = readPoolString(exports, wasmMemory, poolOff, poolLen);
+      const rgb = unpackWasmColor(stroke >= 0 ? stroke : 0);
+      item = {
+        "@type": "Text",
+        extent: [
+          [x1, y1],
+          [x2, y2],
+        ],
+        lineColor: rgb,
+        textColor: rgb,
+        fillPattern: fillPat,
+        pattern: linePat,
+        lineThickness: thickness,
+        textString: textVal,
+        string: textVal,
+        fontSize: dv.getFloat64(72, true),
+        horizontalAlignment: WASM_TEXT_ALIGNMENTS[dv.getUint8(165)] ?? "Center",
+      };
+      const fnOff = dv.getUint32(136, true);
+      const fnLen = dv.getUint32(140, true);
+      if (fnLen > 0) {
+        item.fontName = readPoolString(exports, wasmMemory, fnOff, fnLen);
+      }
+      const styleMask = dv.getUint8(170);
+      if (styleMask !== 0) {
+        const styles: string[] = [];
+        if ((styleMask & 1) !== 0) styles.push("Bold");
+        if ((styleMask & 2) !== 0) styles.push("Italic");
+        if ((styleMask & 4) !== 0) styles.push("Underline");
+        item.textStyle = styles;
+        item.style = styles;
+      }
+      if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+    } else {
+      item = {
+        "@type": "Bitmap",
+        extent: [
+          [x1, y1],
+          [x2, y2],
+        ],
+      };
+      const fileOff = dv.getUint32(144, true);
+      const fileLen = dv.getUint32(148, true);
+      if (fileLen > 0) {
+        item.fileName = readPoolString(exports, wasmMemory, fileOff, fileLen);
+      }
+      const imgOff = dv.getUint32(152, true);
+      const imgLen = dv.getUint32(156, true);
+      if (imgLen > 0) {
+        item.imageSource = readPoolString(exports, wasmMemory, imgOff, imgLen);
+      }
+    }
+
+    if (!visible) item.visible = false;
+    if (ox !== 0 || oy !== 0) item.origin = [ox, oy];
+    if (rot !== 0) item.rotation = rot;
+    return item;
+  }
+
   const kind: number = exports.annotation_getGraphicKind(i);
   const stroke: number = exports.annotation_getGraphicStroke(i);
   const fill: number = exports.annotation_getGraphicFill(i);
@@ -2184,11 +2361,39 @@ export function evaluateConnectLineWasm(ast: unknown): unknown {
   return setWasmAstCache(astNode.tree, astNode.ptr, 3, readWasmGraphicSlot(exports, ctx.src, 0, ctx.wasmMemory));
 }
 
+function setWasmIconName(
+  exports: WasmAnnotationExports,
+  wasmMemory: { buffer: ArrayBuffer } | undefined,
+  iconName?: string,
+): void {
+  if (
+    typeof exports.annotation_setIconNameLen !== "function" ||
+    typeof exports.annotation_getIconNameBufferPtr !== "function"
+  ) {
+    return;
+  }
+  if (!iconName || !wasmMemory) {
+    exports.annotation_setIconNameLen(0);
+    return;
+  }
+  const ptr = exports.annotation_getIconNameBufferPtr();
+  if (ptr <= 0) {
+    exports.annotation_setIconNameLen(0);
+    return;
+  }
+  const len = Math.min(iconName.length, 256);
+  const u16 = new Uint16Array(wasmMemory.buffer, ptr, len);
+  for (let i = 0; i < len; i++) {
+    u16[i] = iconName.charCodeAt(i);
+  }
+  exports.annotation_setIconNameLen(len);
+}
+
 /**
  * Renders a standalone class Icon directly to a UTF-8 SVG string inside WebAssembly linear memory.
  * Returns `undefined` if the class has no standalone Icon or requires TypeScript fallback (e.g. Text macros).
  */
-export function renderIconSvgWasm(ast: unknown, size = 16): string | undefined {
+export function renderIconSvgWasm(ast: unknown, size = 16, iconName?: string): string | undefined {
   const astNode = ast as
     | {
         ptr?: number;
@@ -2200,23 +2405,23 @@ export function renderIconSvgWasm(ast: unknown, size = 16): string | undefined {
   if (!astNode || typeof astNode.ptr !== "number") return undefined;
   const ctx = ensureWasmAnnotationBuffer(astNode);
   if (!ctx) return undefined;
-  const { exports } = ctx;
+  const { exports, wasmMemory } = ctx;
   if (!exports.annotation_renderIconSvg || !exports.annotation_getSvgBufferPtr) return undefined;
+  setWasmIconName(exports, wasmMemory, iconName);
   const svgLen: number = exports.annotation_renderIconSvg(astNode.ptr, astNode.startIndex ?? 0, size);
   if (svgLen <= 0) return undefined;
   const svgPtr: number = exports.annotation_getSvgBufferPtr();
-  const wasmMem = astNode.tree?.facade?.wasmMemory;
-  if (!wasmMem || svgPtr <= 0) return undefined;
-  const bytes = new Uint8Array(wasmMem.buffer, svgPtr, svgLen);
-  return new TextDecoder().decode(bytes);
+  if (!wasmMemory || svgPtr <= 0) return undefined;
+  const bytes = new Uint8Array(wasmMemory.buffer, svgPtr, svgLen);
+  return utf8Decoder.decode(bytes);
 }
 
 /**
  * Renders a multi-layer inherited class Icon directly to a UTF-8 SVG string inside WebAssembly linear memory.
  */
-export function renderInheritedIconSvgWasm(asts: unknown[], size = 16): string | undefined {
+export function renderInheritedIconSvgWasm(asts: unknown[], size = 16, iconName?: string): string | undefined {
   if (!asts || asts.length === 0) return undefined;
-  if (asts.length === 1) return renderIconSvgWasm(asts[0], size);
+  if (asts.length === 1) return renderIconSvgWasm(asts[0], size, iconName);
 
   let activeExports: WasmAnnotationExports | undefined;
   let activeMem: { buffer: ArrayBuffer } | undefined;
@@ -2249,12 +2454,13 @@ export function renderInheritedIconSvgWasm(asts: unknown[], size = 16): string |
   }
 
   if (!activeExports || !activeMem) return undefined;
+  setWasmIconName(activeExports, activeMem, iconName);
   const svgLen: number = activeExports.annotation_renderAccumulatedIconSvg!(size);
   if (svgLen <= 0) return undefined;
   const svgPtr: number = activeExports.annotation_getSvgBufferPtr!();
   if (svgPtr <= 0) return undefined;
   const bytes = new Uint8Array(activeMem.buffer, svgPtr, svgLen);
-  return new TextDecoder().decode(bytes);
+  return utf8Decoder.decode(bytes);
 }
 
 export interface DynamicBindingItem {
@@ -2407,7 +2613,25 @@ export class AnnotationEvaluator {
             if (!mergedResult) {
               mergedResult = parsed;
             } else if (typeof parsed === "object" && typeof mergedResult === "object") {
+              const prevGraphics = Array.isArray(mergedResult["graphics"]) ? mergedResult["graphics"] : null;
+              const nextGraphics = Array.isArray(parsed["graphics"]) ? parsed["graphics"] : null;
+              const prevCoordSys =
+                mergedResult["coordinateSystem"] && typeof mergedResult["coordinateSystem"] === "object"
+                  ? (mergedResult["coordinateSystem"] as Record<string, unknown>)
+                  : null;
+              const nextCoordSys =
+                parsed["coordinateSystem"] && typeof parsed["coordinateSystem"] === "object"
+                  ? (parsed["coordinateSystem"] as Record<string, unknown>)
+                  : null;
               Object.assign(mergedResult, parsed);
+              if (prevGraphics && nextGraphics) {
+                mergedResult["graphics"] = [...prevGraphics, ...nextGraphics];
+              } else if (prevGraphics && !nextGraphics) {
+                mergedResult["graphics"] = prevGraphics;
+              }
+              if (prevCoordSys && nextCoordSys) {
+                mergedResult["coordinateSystem"] = { ...prevCoordSys, ...nextCoordSys };
+              }
             }
           }
         }

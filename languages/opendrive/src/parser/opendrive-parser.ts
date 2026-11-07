@@ -386,6 +386,39 @@ function parseRoadElement(source: string, rElem: XmlElement): OpenDriveRoad {
     }
   }
 
+  // Speed Limits (<road><type><speed max="..."/></type> and <lane><speed max="..."/>)
+  const speedLimits: { max: number; unit?: string | undefined; range: OpenDriveRange }[] = [];
+  for (const typeElem of findChildren(rElem, "type")) {
+    for (const spElem of findChildren(typeElem, "speed")) {
+      if (getAttr(spElem, "max") !== undefined) {
+        speedLimits.push({
+          max: getNumAttr(spElem, "max", 0),
+          unit: getAttr(spElem, "unit"),
+          range: makeRange(source, spElem),
+        });
+      }
+    }
+  }
+  if (lanesElem) {
+    for (const lsElem of findChildren(lanesElem, "laneSection")) {
+      for (const sideName of ["left", "center", "right"]) {
+        const sideElem = findChild(lsElem, sideName);
+        if (!sideElem) continue;
+        for (const lElem of findChildren(sideElem, "lane")) {
+          for (const spElem of findChildren(lElem, "speed")) {
+            if (getAttr(spElem, "max") !== undefined) {
+              speedLimits.push({
+                max: getNumAttr(spElem, "max", 0),
+                unit: getAttr(spElem, "unit"),
+                range: makeRange(source, spElem),
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
   return {
     id,
     name,
@@ -397,6 +430,7 @@ function parseRoadElement(source: string, rElem: XmlElement): OpenDriveRoad {
     lateralProfile,
     lanes,
     signals,
+    speedLimits: speedLimits.length > 0 ? speedLimits : undefined,
     range: makeRange(source, rElem),
   };
 }

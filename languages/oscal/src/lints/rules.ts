@@ -81,6 +81,41 @@ export const OscalErrorCode = {
     message: (findingTitle: string, severity: string, controlId: string) =>
       `Open '${severity}' finding '${findingTitle}' on control '${controlId}' lacks a linked remediation entry in POA&M.`,
   },
+  MISSING_ASSESSMENT_OBJECTIVE: {
+    code: "M8209",
+    rule: "oscal-missing-assessment-objective",
+    severity: "warning" as const,
+    message: (statementId: string) =>
+      `Control implementation statement '${statementId}' lacks an assessment objective link.`,
+  },
+  UNMAPPED_AUTHORIZATION_BOUNDARY: {
+    code: "M8210",
+    rule: "oscal-unmapped-authorization-boundary",
+    severity: "error" as const,
+    message: (componentId: string) =>
+      `Component '${componentId}' within authorization boundary lacks declared responsible roles.`,
+  },
+  DEPRECATED_CRYPTOGRAPHIC_HASH: {
+    code: "M8211",
+    rule: "oscal-deprecated-cryptographic-hash",
+    severity: "error" as const,
+    message: (algorithm: string) =>
+      `Cryptographic verification algorithm '${algorithm}' in asset baseline is deprecated (use SHA-256 or SHA-3).`,
+  },
+  UNRESOLVED_PARTY_UUID: {
+    code: "M8212",
+    rule: "oscal-unresolved-party-uuid",
+    severity: "error" as const,
+    message: (partyUuid: string) =>
+      `Responsible party references unknown party UUID '${partyUuid}'.`,
+  },
+  EXPIRED_POAM_MILESTONE: {
+    code: "M8213",
+    rule: "oscal-expired-poam-milestone",
+    severity: "warning" as const,
+    message: (itemId: string, date: string) =>
+      `POA&M item '${itemId}' milestone date '${date}' is in the past without completion flag.`,
+  },
 };
 
 export interface OscalLintOptions {
@@ -566,8 +601,8 @@ export function lintOscalDocument(doc: OscalDocument, options?: OscalLintOptions
   // ───────────────────────────────────────────────────────────────────────────
   // 8. M8208: Unmitigated High / Critical Finding without Linked POA&M
   // ───────────────────────────────────────────────────────────────────────────
+  const allPoamItems = [...(doc.poamItems ?? []), ...(options?.poamItems ?? [])];
   if (doc.findings && doc.findings.length > 0) {
-    const allPoamItems = [...(doc.poamItems ?? []), ...(options?.poamItems ?? [])];
     for (const finding of doc.findings) {
       if ((finding.severity === "high" || finding.severity === "critical") && finding.status === "open") {
         const hasPoam = allPoamItems.some(
@@ -587,6 +622,120 @@ export function lintOscalDocument(doc: OscalDocument, options?: OscalLintOptions
             ),
             range: finding.range ?? defaultRange,
           });
+        }
+      }
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 9. M8209: Control implementation statement lacking assessment objective link
+  // ───────────────────────────────────────────────────────────────────────────
+  for (const ir of doc.controlImplementation?.implementedRequirements ?? []) {
+    for (const st of ir.statements ?? []) {
+      const hasDesc = Boolean(st.description && st.description.trim().length > 0);
+      const hasByComp = Boolean(st.byComponents && st.byComponents.length > 0);
+      if (!hasDesc && !hasByComp) {
+        diagnostics.push({
+          code: OscalErrorCode.MISSING_ASSESSMENT_OBJECTIVE.code,
+          rule: OscalErrorCode.MISSING_ASSESSMENT_OBJECTIVE.rule,
+          severity: OscalErrorCode.MISSING_ASSESSMENT_OBJECTIVE.severity,
+          message: OscalErrorCode.MISSING_ASSESSMENT_OBJECTIVE.message(st.statementId),
+          range: st.range ?? ir.range ?? defaultRange,
+        });
+      }
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 10. M8210: Component within authorization boundary lacking responsible roles
+  // ───────────────────────────────────────────────────────────────────────────
+  if (doc.kind === "system-security-plan" && doc.systemCharacteristics?.authorizationBoundary) {
+    for (const comp of doc.systemImplementation?.components ?? []) {
+      const hasRespRoles = Boolean(comp.responsibleRoles && comp.responsibleRoles.length > 0);
+      const hasRoleProp = Boolean(comp.props?.some((p) => p.name === "responsible-role" || p.name === "role-id"));
+      if (!hasRespRoles && !hasRoleProp) {
+        diagnostics.push({
+          code: OscalErrorCode.UNMAPPED_AUTHORIZATION_BOUNDARY.code,
+          rule: OscalErrorCode.UNMAPPED_AUTHORIZATION_BOUNDARY.rule,
+          severity: OscalErrorCode.UNMAPPED_AUTHORIZATION_BOUNDARY.severity,
+          message: OscalErrorCode.UNMAPPED_AUTHORIZATION_BOUNDARY.message(comp.title || comp.uuid),
+          range: comp.range ?? defaultRange,
+        });
+      }
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 11. M8211: Deprecated cryptographic verification hash algorithm
+  // ───────────────────────────────────────────────────────────────────────────
+  const DEPRECATED_HASHES = new Set(["MD5", "SHA-1", "SHA1", "DES", "3DES", "RC4"]);
+  const HASH_PROP_NAMES = new Set(["hash-algorithm", "algorithm", "crypto-hash", "checksum-algorithm"]);
+  const checkPropsForDeprecatedHash = (
+    props: { name: string; value: string; range?: OscalSourceRange | undefined }[] | undefined,
+    fallback: OscalSourceRange,
+  ) => {
+    if (!props) return;
+    for (const prop of props) {
+      if (HASH_PROP_NAMES.has(prop.name.toLowerCase()) && DEPRECATED_HASHES.has(prop.value.trim().toUpperCase())) {
+        diagnostics.push({
+          code: OscalErrorCode.DEPRECATED_CRYPTOGRAPHIC_HASH.code,
+          rule: OscalErrorCode.DEPRECATED_CRYPTOGRAPHIC_HASH.rule,
+          severity: OscalErrorCode.DEPRECATED_CRYPTOGRAPHIC_HASH.severity,
+          message: OscalErrorCode.DEPRECATED_CRYPTOGRAPHIC_HASH.message(prop.value.trim()),
+          range: prop.range ?? fallback,
+        });
+      }
+    }
+  };
+  checkPropsForDeprecatedHash(doc.metadata.props, doc.metadata.range ?? defaultRange);
+  for (const comp of allComponents) {
+    checkPropsForDeprecatedHash(comp.props, comp.range ?? defaultRange);
+  }
+  for (const item of doc.systemImplementation?.inventoryItems ?? []) {
+    checkPropsForDeprecatedHash(item.props, item.range ?? defaultRange);
+  }
+  for (const ir of doc.controlImplementation?.implementedRequirements ?? []) {
+    checkPropsForDeprecatedHash(ir.props, ir.range ?? defaultRange);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 12. M8212: Responsible party references unknown party UUID
+  // ───────────────────────────────────────────────────────────────────────────
+  const declaredPartyUuids = new Set((doc.metadata.parties ?? []).map((p) => p.uuid.toLowerCase()));
+  if (doc.metadata.responsibleParties) {
+    for (const rp of doc.metadata.responsibleParties) {
+      for (const pUuid of rp.partyUuids) {
+        if (!declaredPartyUuids.has(pUuid.toLowerCase())) {
+          diagnostics.push({
+            code: OscalErrorCode.UNRESOLVED_PARTY_UUID.code,
+            rule: OscalErrorCode.UNRESOLVED_PARTY_UUID.rule,
+            severity: OscalErrorCode.UNRESOLVED_PARTY_UUID.severity,
+            message: OscalErrorCode.UNRESOLVED_PARTY_UUID.message(pUuid),
+            range: doc.metadata.range ?? defaultRange,
+          });
+        }
+      }
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 13. M8213: Expired POA&M milestone date without completion flag
+  // ───────────────────────────────────────────────────────────────────────────
+  const nowMs = Date.now();
+  for (const poam of allPoamItems) {
+    if (poam.status !== "closed" && poam.milestones) {
+      for (const ms of poam.milestones) {
+        if (ms.dueDate) {
+          const dueMs = Date.parse(ms.dueDate);
+          if (!Number.isNaN(dueMs) && dueMs < nowMs) {
+            diagnostics.push({
+              code: OscalErrorCode.EXPIRED_POAM_MILESTONE.code,
+              rule: OscalErrorCode.EXPIRED_POAM_MILESTONE.rule,
+              severity: OscalErrorCode.EXPIRED_POAM_MILESTONE.severity,
+              message: OscalErrorCode.EXPIRED_POAM_MILESTONE.message(poam.title || poam.uuid, ms.dueDate),
+              range: poam.range ?? defaultRange,
+            });
+          }
         }
       }
     }

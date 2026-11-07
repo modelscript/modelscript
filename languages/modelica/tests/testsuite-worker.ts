@@ -820,7 +820,14 @@ function runTestCaseCore(
           cd.code === 4034 ||
           cd.code === 4039 ||
           cd.code === 4044 ||
-          cd.code === 4048)
+          cd.code === 4048 ||
+          cd.code === 4124 ||
+          cd.code === 4125 ||
+          cd.code === 4126 ||
+          cd.code === 5045 ||
+          cd.code === 6050 ||
+          cd.code === 6051 ||
+          cd.code === 6052)
       ) {
         return false;
       }

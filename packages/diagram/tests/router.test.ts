@@ -11,10 +11,12 @@ import {
   computeSmoothBezierPath,
   computeStemLines,
   findInternalChannelRoute,
+  getNodeBBox,
   getPortOutwardNormal,
   healOrthogonalVertices,
   portOrthogonalRouter,
   regularizeOrthogonalPolyline,
+  resolveNodePortWorldPoint,
   routeOrthogonalGridAStar,
   segmentIntersectsRect,
   simplifyCollinearPoints,
@@ -767,5 +769,231 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
       const inObstacle = wx >= 8 && wx <= 12 && wy >= 5 && wy <= 15;
       assert.strictEqual(inObstacle, false, `Waypoint (${wx}, ${wy}) collided with obstacle`);
     }
+  });
+
+  it("should transform port outward normals and world coordinates under 90, 180, 270 degree rotation and flipping", () => {
+    // Mock an RLC component (e.g. Inductor) at (100, 100) with size 60x40
+    let nodeAngle = 0;
+    let nodeData: Record<string, unknown> = {};
+    const mockNode: any = {
+      id: "L1",
+      getPosition: () => ({ x: 100, y: 100 }),
+      getSize: () => ({ width: 60, height: 40 }),
+      getAngle: () => nodeAngle,
+      getData: () => nodeData,
+      getPorts: () => [{ id: "p" }, { id: "n" }],
+      getPortProp: (portId: string, prop: string) => {
+        if (prop === "args") {
+          return portId === "p" ? { x: 0, y: 20 } : { x: 60, y: 20 };
+        }
+        if (prop === "group") {
+          return portId === "p" ? "left" : "right";
+        }
+        return undefined;
+      },
+    };
+
+    // 0 degrees: p is at left (100, 120), normal points left; n is at right (160, 120), normal points right
+    nodeAngle = 0;
+    const p0 = resolveNodePortWorldPoint(mockNode, "p");
+    const n0 = resolveNodePortWorldPoint(mockNode, "n");
+    assert.deepStrictEqual(p0, { x: 100, y: 120 });
+    assert.deepStrictEqual(n0, { x: 160, y: 120 });
+    assert.strictEqual(getPortOutwardNormal(mockNode, "p", p0)?.side, "left");
+    assert.strictEqual(getPortOutwardNormal(mockNode, "n", n0)?.side, "right");
+
+    // 180 degrees: p moves to (160, 120) and points right; n moves to (100, 120) and points left
+    nodeAngle = 180;
+    const p180 = resolveNodePortWorldPoint(mockNode, "p");
+    const n180 = resolveNodePortWorldPoint(mockNode, "n");
+    assert.deepStrictEqual(p180, { x: 160, y: 120 });
+    assert.deepStrictEqual(n180, { x: 100, y: 120 });
+    assert.strictEqual(getPortOutwardNormal(mockNode, "p", p180)?.side, "right");
+    assert.strictEqual(getPortOutwardNormal(mockNode, "n", n180)?.side, "left");
+
+    // 90 degrees: p rotates clockwise by 90 deg relative to center (130, 120) -> (130, 90) or (130, 150)
+    // dx = 0 - 30 = -30, dy = 20 - 20 = 0. Rotated 90 deg: dx' = 0, dy' = -30 * sin(90) = -30 (or +30 in screen coords)
+    // Let's verify standard clockwise screen-space rotation:
+    nodeAngle = 90;
+    const p90 = resolveNodePortWorldPoint(mockNode, "p");
+    assert.strictEqual(p90?.x, 130);
+    assert.strictEqual(p90?.y, 90);
+    assert.strictEqual(getPortOutwardNormal(mockNode, "p", p90)?.side, "top");
+
+    // 270 degrees
+    nodeAngle = 270;
+    const p270 = resolveNodePortWorldPoint(mockNode, "p");
+    assert.strictEqual(p270?.x, 130);
+    assert.strictEqual(p270?.y, 150);
+    assert.strictEqual(getPortOutwardNormal(mockNode, "p", p270)?.side, "bottom");
+
+    // Horizontal Flip: flipX = true at 0 deg
+    nodeAngle = 0;
+    nodeData = { flipX: true };
+    const pFlipX = resolveNodePortWorldPoint(mockNode, "p");
+    const nFlipX = resolveNodePortWorldPoint(mockNode, "n");
+    assert.deepStrictEqual(pFlipX, { x: 160, y: 120 });
+    assert.deepStrictEqual(nFlipX, { x: 100, y: 120 });
+    assert.strictEqual(getPortOutwardNormal(mockNode, "p", pFlipX)?.side, "right");
+    assert.strictEqual(getPortOutwardNormal(mockNode, "n", nFlipX)?.side, "left");
+  });
+
+  it("should route orthogonal edge around rotated component without impalement or cutting through the body", () => {
+    // Component at (100, 100) with size 60x40, rotated 180 degrees
+    const mockNode: any = {
+      id: "L1",
+      getPosition: () => ({ x: 100, y: 100 }),
+      getSize: () => ({ width: 60, height: 40 }),
+      getAngle: () => 180,
+      getData: () => ({}),
+      getPorts: () => [{ id: "p" }],
+      getPortProp: () => ({ x: 0, y: 20 }),
+    };
+
+    const sourcePoint = { x: 50, y: 120 }; // External node to the left
+    const targetPoint = resolveNodePortWorldPoint(mockNode, "p")!; // Rotated port at (160, 120)
+    assert.deepStrictEqual(targetPoint, { x: 160, y: 120 });
+
+    const targetSide = getPortOutwardNormal(mockNode, "p", targetPoint)?.side;
+    assert.strictEqual(targetSide, "right", "Port p normal at 180 deg must point right (outward)");
+
+    const compBox = getNodeBBox(mockNode)!;
+    const obstacles: RectLike[] = [compBox];
+
+    const route = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
+      sourceSide: "left",
+      targetSide,
+      targetBox: compBox,
+    });
+
+    const fullPath = [sourcePoint, ...route, targetPoint];
+
+    // Verify the route does not penetrate the component body (100 <= x <= 160, 100 <= y <= 140)
+    for (let i = 0; i < fullPath.length - 1; i++) {
+      const a = fullPath[i]!;
+      const b = fullPath[i + 1]!;
+
+      // Midpoints of horizontal segments crossing through the center of the component must not exist
+      if (Math.abs(a.y - b.y) < 1e-6 && Math.abs(a.y - 120) < 1e-6) {
+        const minX = Math.min(a.x, b.x);
+        const maxX = Math.max(a.x, b.x);
+        const cutsThroughBody = minX < 130 && maxX > 130;
+        assert.strictEqual(cutsThroughBody, false, "Wire must not cut straight through the component center");
+      }
+    }
+  });
+
+  it("collapses L-wires into straight 0-bend wires when L aligns with top-facing ports Vb.p and C.p without disturbing C-R", () => {
+    let lY = -20; // L.p=(-10,-10), L.n=(10,-10) aligned with Vb.p=(-70,-10) and C.p=(20,-10)
+    let vbToLVerts: PointLike[] = [{ x: -70, y: -40 }];
+    let lToCVerts: PointLike[] = [{ x: 20, y: -40 }];
+    let cToRVerts: PointLike[] = [
+      { x: 20, y: -10 },
+      { x: 60, y: -10 },
+    ];
+
+    const nodeVb = {
+      id: "Vb",
+      isNode: () => true,
+      getPosition: () => ({ x: -80, y: -10 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (p: string) => (p === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+    const nodeL = {
+      id: "L",
+      isNode: () => true,
+      getPosition: () => ({ x: -10, y: lY }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => 0,
+      getPortProp: (p: string) => (p === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+    const nodeC = {
+      id: "C",
+      isNode: () => true,
+      getPosition: () => ({ x: 10, y: -10 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (p: string) => (p === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+    const nodeR = {
+      id: "R",
+      isNode: () => true,
+      getPosition: () => ({ x: 50, y: -10 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (p: string) => (p === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+
+    const edgeVbToL = {
+      id: "e_vb_l",
+      isEdge: () => true,
+      getSourceCellId: () => "Vb",
+      getTargetCellId: () => "L",
+      getSourcePortId: () => "p",
+      getTargetPortId: () => "p",
+      getSourcePoint: () => ({ x: -70, y: -10 }),
+      getTargetPoint: () => ({ x: -10, y: lY + 10 }),
+      getVertices: () => vbToLVerts,
+      setVertices: (v: PointLike[]) => {
+        vbToLVerts = v;
+      },
+    };
+    const edgeLToC = {
+      id: "e_l_c",
+      isEdge: () => true,
+      getSourceCellId: () => "L",
+      getTargetCellId: () => "C",
+      getSourcePortId: () => "n",
+      getTargetPortId: () => "p",
+      getSourcePoint: () => ({ x: 10, y: lY + 10 }),
+      getTargetPoint: () => ({ x: 20, y: -10 }),
+      getVertices: () => lToCVerts,
+      setVertices: (v: PointLike[]) => {
+        lToCVerts = v;
+      },
+    };
+    const edgeCToR = {
+      id: "e_c_r",
+      isEdge: () => true,
+      getSourceCellId: () => "C",
+      getTargetCellId: () => "R",
+      getSourcePortId: () => "p",
+      getTargetPortId: () => "p",
+      getSourcePoint: () => ({ x: 20, y: -10 }),
+      getTargetPoint: () => ({ x: 60, y: -10 }),
+      getVertices: () => cToRVerts,
+      setVertices: (v: PointLike[]) => {
+        cToRVerts = v;
+      },
+    };
+
+    const nodesMap: Record<string, any> = { Vb: nodeVb, L: nodeL, C: nodeC, R: nodeR };
+    const mockGraph = {
+      getConnectedEdges: () => [edgeVbToL, edgeLToC],
+      getEdges: () => [edgeVbToL, edgeLToC, edgeCToR],
+      getCellById: (id: string) => nodesMap[id],
+      getNodes: () => [nodeVb, nodeL, nodeC, nodeR],
+    };
+
+    // Step 1: Drag L down by dy=+30 from y=-50 to y=-20 so L.p and L.n align horizontally with Vb.p and C.p at y=-10
+    translateConnectedEdgeStubs(mockGraph as any, nodeL as any, 0, 30);
+
+    assert.deepStrictEqual(vbToLVerts, [], "Vb.p -> L.p must collapse into a 0-bend straight horizontal wire");
+    assert.deepStrictEqual(lToCVerts, [], "L.n -> C.p must collapse into a 0-bend straight horizontal wire");
+    assert.deepStrictEqual(
+      cToRVerts,
+      [
+        { x: 20, y: -10 },
+        { x: 60, y: -10 },
+      ],
+      "Unconnected C -> R wire must not be disturbed when dragging L",
+    );
+
+    // Step 2: Drag L back up by dy=-30 to y=-50; perpendicular port normals reconstruct clean 1-bend L-corners
+    lY = -50;
+    translateConnectedEdgeStubs(mockGraph as any, nodeL as any, 0, -30);
+    assert.deepStrictEqual(vbToLVerts, [{ x: -70, y: -40 }]);
+    assert.deepStrictEqual(lToCVerts, [{ x: 20, y: -40 }]);
   });
 });

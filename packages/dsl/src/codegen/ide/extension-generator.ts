@@ -2341,7 +2341,7 @@ export function bundleExtension(
   });
   files.push({
     path: "LICENSE.md",
-    content: `GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright (C) 2026 ModelScript Contributors\n`,
+    content: `GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors\n`,
   });
 
   return files;
@@ -2420,7 +2420,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
   fs.writeFileSync(
     path.join(outDir, "LICENSE.md"),
-    "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright (C) 2026 ModelScript Contributors\n",
+    "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors\n",
     "utf-8",
   );
   fs.writeFileSync(path.join(outDir, "README.md"), `# ${pkg["displayName"]}\n\n${pkg["description"]}\n`, "utf-8");

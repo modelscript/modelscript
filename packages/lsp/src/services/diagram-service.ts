@@ -101,6 +101,7 @@ export class DiagramService {
     className?: string | undefined;
     diagramType?: string | undefined;
     sidecarContent?: string | undefined;
+    documentText?: string | undefined;
   }): Promise<any> {
     // Do NOT flush validation here — it blocks the event loop and starves the
     // text editor of diagnostic updates. Instead, build the diagram from the
@@ -189,19 +190,20 @@ export class DiagramService {
     // If so, run the fast diagram sync immediately to produce up-to-date CST/index/QueryEngine data without waiting on full lints.
     if (this.validationService) {
       const doc = this.documentManager.documents.get(params.uri) ?? this.documentManager.documents.get(effectiveUri);
+      const textToCheck = params.documentText ?? doc?.getText();
       const lastIndexed =
         this.validationService.lastIndexedText.get(params.uri) ??
         this.validationService.lastIndexedText.get(effectiveUri);
-      const isTextStale = doc && (lastIndexed === undefined || doc.getText() !== lastIndexed);
+      const isTextStale = textToCheck !== undefined && (lastIndexed === undefined || textToCheck !== lastIndexed);
       const hasInstances =
         (this.workspaceManager.documentInstances.get(params.uri)?.length ?? 0) > 0 ||
         (this.workspaceManager.documentInstances.get(effectiveUri)?.length ?? 0) > 0;
 
       if (isTextStale || !hasInstances) {
         if (typeof this.validationService.syncDocumentForDiagram === "function") {
-          await this.validationService.syncDocumentForDiagram(params.uri);
+          await this.validationService.syncDocumentForDiagram(params.uri, params.documentText);
           if (effectiveUri !== params.uri) {
-            await this.validationService.syncDocumentForDiagram(effectiveUri);
+            await this.validationService.syncDocumentForDiagram(effectiveUri, params.documentText);
           }
         } else {
           await this.validationService.flushValidation(params.uri);
@@ -215,7 +217,7 @@ export class DiagramService {
     const lastIndexedMap = this.validationService?.lastIndexedText ?? (globalThis as any).lastIndexedText;
     const dependenciesReady =
       this.validationService?.dependenciesReady ?? (globalThis as any).dependenciesReady ?? true;
-    const indexedText = lastIndexedMap?.get(effectiveUri);
+    const indexedText = (params.documentText !== undefined ? params.documentText : lastIndexedMap?.get(effectiveUri));
     const version =
       indexedText != null
         ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${dependenciesReady}`
@@ -225,8 +227,14 @@ export class DiagramService {
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
     const cached = this.diagramCache.get(cacheKey) ?? (globalThis as any).diagramCache?.get(cacheKey);
     if (cached && cached.version === version) {
-      this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
-      return cached.data;
+      const text = indexedText ?? "";
+      const likelyHasComponents = /\b(model|block|class)\b[\s\S]*?\b(?:annotation\s*\(\s*Placement|[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*[\(;])/i.test(text);
+      if (!(likelyHasComponents && (!cached.data?.nodes || cached.data.nodes.length === 0))) {
+        this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
+        return cached.data;
+      }
+      this.diagramCache.delete(cacheKey);
+      (globalThis as any).diagramCache?.delete(cacheKey);
     }
 
     if (!dependenciesReady) {
@@ -252,7 +260,7 @@ export class DiagramService {
       // Dependencies are ready but class instance not yet available (re-validation in progress).
       // Return last cached data to avoid blanking the diagram during the brief window
       // between dependencies loading and re-validation completing.
-      if (cached) {
+      if (cached && cached.data?.nodes && cached.data.nodes.length > 0) {
         this.connection.console.info(`[diagram-perf] class not resolved, returning stale cache for ${params.uri}`);
         return cached.data;
       }
@@ -273,8 +281,11 @@ export class DiagramService {
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
       );
 
-      // Cache the result
-      this.diagramCache.set(cacheKey, { version, data: result });
+      // Cache the result (do not cache empty nodes if class actually had component declarations)
+      const hasDeclaredComponents = Array.isArray(classInstance.components) && classInstance.components.length > 0;
+      if (result && (!hasDeclaredComponents || (result.nodes && result.nodes.length > 0))) {
+        this.diagramCache.set(cacheKey, { version, data: result });
+      }
 
       return result;
     } catch (e: any) {

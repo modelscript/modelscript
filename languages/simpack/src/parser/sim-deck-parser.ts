@@ -199,8 +199,26 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
             }
           : {}),
       });
+    } else if ((cmd === "contact" || cmd === "$contact" || cmd === "wheel_rail" || cmd === "$wheel_rail") && tokens.length >= 4) {
+      const id = tokens[1] ?? `contact_${model.forces.size + 1}`;
+      const markerA = tokens[2] ?? "";
+      const markerB = tokens[3] ?? "";
+      const railProfile = tokens[4];
+      const wheelProfile = tokens[5];
+      model.forces.set(id, {
+        id,
+        name: id,
+        type: "contact",
+        markerA,
+        markerB,
+        stiffness: { x: 0, y: 0, z: 0 },
+        damping: { x: 0, y: 0, z: 0 },
+        ...(railProfile !== undefined ? { railProfile } : {}),
+        ...(wheelProfile !== undefined ? { wheelProfile } : {}),
+      });
     }
   }
 
   return model;
 }
+

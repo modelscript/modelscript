@@ -129,4 +129,33 @@ describe("QIF 3.0 Semantic Linter (NIST QIF Rules & ASME Y14.5 M8101–M8108)", 
     assert(m8108.some((d) => d.message.includes("ACT_BAD_FAIL")));
     assert(!m8108.some((d) => d.message.includes("ACT_BONUS_PASS")));
   });
+
+  it("emits M8109–M8112 for unresolved STEP entity, zero tolerance zone without MMC, circular datum reference, and insufficient SPC subgroup size", () => {
+    const dsl = `
+      QIF 3.0.0
+      FEATURE F1 Cylinder "Bore1" size=10.0 points=6 step=#0
+      DATUM A id=D1 feature=F1 datums=[A]
+      CHARACTERISTIC C_ZERO Position "ZeroPosRFS" zone=0.0 material=RFS features=[F1]
+      CHARACTERISTIC C_SPC Position "SpcPos" zone=0.05 material=MMC features=[F1] subgroupSize=1
+    `;
+    const doc = parseQif(dsl);
+    const diags = lintQifDocument(doc);
+
+    const m8109 = diags.find((d) => d.code === "M8109");
+    assert(m8109 !== undefined, "Expected M8109 UNRESOLVED_STEP_ENTITY");
+    assert(m8109.message.includes("#0"));
+
+    const m8110 = diags.find((d) => d.code === "M8110");
+    assert(m8110 !== undefined, "Expected M8110 ZERO_TOLERANCE_ZONE");
+    assert(m8110.message.includes("ZeroPosRFS"));
+
+    const m8111 = diags.find((d) => d.code === "M8111");
+    assert(m8111 !== undefined, "Expected M8111 CIRCULAR_DATUM_REFERENCE");
+    assert(m8111.message.includes("'A'"));
+
+    const m8112 = diags.find((d) => d.code === "M8112");
+    assert(m8112 !== undefined, "Expected M8112 SPC_SUBGROUP_SIZE_INSUFFICIENT");
+    assert(m8112.message.includes("SpcPos"));
+  });
 });
+

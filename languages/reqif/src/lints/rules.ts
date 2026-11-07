@@ -75,6 +75,27 @@ export const ReqIfErrorCode = {
     severity: "error" as const,
     message: (reqId: string, comp: string) => `Requirement '${reqId}' specifies invalid contract comparator '${comp}'.`,
   },
+  SPEC_RELATION_TYPE_UNKNOWN: {
+    code: 7011,
+    rule: "spec-relation-type-unknown",
+    severity: "error" as const,
+    message: (relId: string, typeId: string) =>
+      `SpecRelation '${relId}' references unknown SpecRelationType '${typeId}'.`,
+  },
+  SPEC_OBJECT_EMPTY_DESCRIPTION: {
+    code: 7012,
+    rule: "spec-object-empty-description",
+    severity: "warning" as const,
+    message: (reqId: string) =>
+      `Safety-critical SpecObject '${reqId}' has empty text description.`,
+  },
+  SPEC_HIERARCHY_LEVEL_EXCESSIVE: {
+    code: 7013,
+    rule: "spec-hierarchy-level-excessive",
+    severity: "warning" as const,
+    message: (level: number) =>
+      `SpecHierarchy nesting level (${level}) exceeds recommended maximum (7).`,
+  },
 };
 
 export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
@@ -226,13 +247,37 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
         },
       });
     }
+
+    // M7012: Safety-critical SpecObject has empty text description
+    if (obj.asilLevel && obj.asilLevel !== "QM" && (!obj.text.trim() || obj.hasExplicitText === false)) {
+      diagnostics.push({
+        code: ReqIfErrorCode.SPEC_OBJECT_EMPTY_DESCRIPTION.code,
+        rule: ReqIfErrorCode.SPEC_OBJECT_EMPTY_DESCRIPTION.rule,
+        severity: ReqIfErrorCode.SPEC_OBJECT_EMPTY_DESCRIPTION.severity,
+        message: ReqIfErrorCode.SPEC_OBJECT_EMPTY_DESCRIPTION.message(obj.identifier),
+        span: obj.span,
+      });
+    }
   }
 
-  // M7001: Dangling Relations
+  // M7001 & M7011: Dangling Relations & Unknown SpecRelationType
   const outgoingRelations = new Set<string>();
   const incomingRelations = new Set<string>();
 
   for (const rel of doc.specRelations) {
+    if (rel.typeRef) {
+      const relType = doc.specTypes.get(rel.typeRef);
+      if (!relType || relType.kind !== "SPEC-RELATION-TYPE") {
+        diagnostics.push({
+          code: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.code,
+          rule: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.rule,
+          severity: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.severity,
+          message: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.message(rel.identifier, rel.typeRef),
+          span: rel.span,
+        });
+      }
+    }
+
     if (rel.sourceId && !doc.specObjects.has(rel.sourceId)) {
       diagnostics.push({
         code: ReqIfErrorCode.DANGLING_RELATION.code,
@@ -258,7 +303,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
     }
   }
 
-  // M7003 & M7008: Circular Hierarchy & Empty Specification
+  // M7003, M7008 & M7013: Circular Hierarchy, Empty Specification & Excessive Hierarchy Depth
   for (const spec of doc.specifications) {
     if (spec.children.length === 0) {
       diagnostics.push({
@@ -288,6 +333,17 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
           span: h.span,
         });
         return;
+      }
+
+      const level = path.length + 1;
+      if (level > 7) {
+        diagnostics.push({
+          code: ReqIfErrorCode.SPEC_HIERARCHY_LEVEL_EXCESSIVE.code,
+          rule: ReqIfErrorCode.SPEC_HIERARCHY_LEVEL_EXCESSIVE.rule,
+          severity: ReqIfErrorCode.SPEC_HIERARCHY_LEVEL_EXCESSIVE.severity,
+          message: ReqIfErrorCode.SPEC_HIERARCHY_LEVEL_EXCESSIVE.message(level),
+          span: h.span,
+        });
       }
 
       if (visited.has(objId)) return;

@@ -156,5 +156,69 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
       "SspViewer must explicitly import parseSsdClientModel to bind it in local scope",
     );
   });
+
+  it("supports animated digital twin formulation cell posts with program steps and 3D toolpath traces in UrdfViewer", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const urdfViewerSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/UrdfViewer.tsx"),
+      "utf8",
+    );
+
+    assert.ok(
+      urdfViewerSrc.includes("interpolateJointTrajectory"),
+      "UrdfViewer must import and use interpolateJointTrajectory for smooth time-sampled forward kinematics",
+    );
+    assert.ok(
+      urdfViewerSrc.includes("StepsSidebar") && urdfViewerSrc.includes("Program Steps"),
+      "UrdfViewer must render a Program Steps sidebar for recipe execution sequence",
+    );
+    assert.ok(
+      urdfViewerSrc.includes("TimelineScrubber") && urdfViewerSrc.includes("playbackSpeed"),
+      "UrdfViewer must render an interactive timeline scrubber with speed multiplier and play/pause controls",
+    );
+    assert.ok(
+      urdfViewerSrc.includes("TelemetryOverlay") && urdfViewerSrc.includes("TCP:"),
+      "UrdfViewer must render live telemetry HUD with TCP coordinates and cycle progress",
+    );
+
+    const viewportSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/MultibodyViewport3D.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      viewportSrc.includes("toolpathCurve") && viewportSrc.includes("CatmullRomCurve3"),
+      "MultibodyViewport3D must construct a 3D CatmullRom spline ribbon for toolpath tracing",
+    );
+    assert.ok(
+      viewportSrc.includes("environment") && viewportSrc.toLowerCase().includes("workstation"),
+      "MultibodyViewport3D must support environment fixtures such as tables and collision hulls",
+    );
+    assert.ok(
+      urdfViewerSrc.includes("LIVE STATE") &&
+        urdfViewerSrc.includes("Clearance") &&
+        urdfViewerSrc.includes("twinControlMode") &&
+        urdfViewerSrc.includes("OpenUSD (.usda)"),
+      "UrdfViewer must render LIVE STATE metric tiles (UR speed, Gripper, Clearance), Program/Manual mode switcher, and OpenUSD projection",
+    );
+
+    const cadMeshesSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/UrdfRobotCadMeshes.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      cadMeshesSrc.includes("ur3e_base") &&
+        cadMeshesSrc.includes("ur3e_shoulder") &&
+        cadMeshesSrc.includes("ur3e_upper_arm") &&
+        cadMeshesSrc.includes("robotiq_gripper") &&
+        cadMeshesSrc.includes("cnc_gantry_carriage") &&
+        cadMeshesSrc.includes("workstation_cabinet") &&
+        cadMeshesSrc.includes("reactor_mixer") &&
+        cadMeshesSrc.includes("vial_rack"),
+      "UrdfRobotCadMeshes must provide detailed procedural 3D CAD sub-assemblies for UR3e cobot, Robotiq gripper, CNC gantry, and workstation fixtures",
+    );
+  });
 });
+
+
 

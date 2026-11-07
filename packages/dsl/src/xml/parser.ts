@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParserSync, type SyntaxNode } from "./src-gen/bindings.js";
-import type { XmlAttribute, XmlDocument, XmlElement } from "./types.js";
+import type { XmlAttribute, XmlDocument, XmlElement, XmlSyntaxError } from "./types.js";
 
 export function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (_, e: string) => {
@@ -170,7 +170,7 @@ function convert(n: SyntaxNode, source: string, parent: XmlElement | null): XmlE
  * balanced tag stack, and constant O(depth) memory.
  */
 export function parseXmlSync(source: string): XmlDocument {
-  const errors: { start: number; end: number }[] = [];
+  const errors: XmlSyntaxError[] = [];
   let root: XmlElement | null = null;
   const stack: XmlElement[] = [];
 
@@ -184,7 +184,12 @@ export function parseXmlSync(source: string): XmlDocument {
     if (source.startsWith("<!--", idx)) {
       const endIdx = source.indexOf("-->", idx + 4);
       if (endIdx === -1) {
-        errors.push({ start: idx, end: len });
+        errors.push({
+          start: idx,
+          end: len,
+          code: "XML-1001",
+          message: "Unclosed XML comment '<!--'; expected '-->'.",
+        });
         break;
       }
       idx = endIdx + 3;
@@ -194,7 +199,12 @@ export function parseXmlSync(source: string): XmlDocument {
     if (source.startsWith("<![CDATA[", idx)) {
       const endIdx = source.indexOf("]]>", idx + 9);
       if (endIdx === -1) {
-        errors.push({ start: idx, end: len });
+        errors.push({
+          start: idx,
+          end: len,
+          code: "XML-1001",
+          message: "Unclosed XML CDATA section; expected ']]>'.",
+        });
         break;
       }
       const cdataText = source.slice(idx + 9, endIdx);
@@ -212,7 +222,12 @@ export function parseXmlSync(source: string): XmlDocument {
     if (source.startsWith("<?", idx)) {
       const endIdx = source.indexOf("?>", idx + 2);
       if (endIdx === -1) {
-        errors.push({ start: idx, end: len });
+        errors.push({
+          start: idx,
+          end: len,
+          code: "XML-1001",
+          message: "Unclosed XML processing instruction; expected '?>'.",
+        });
         break;
       }
       idx = endIdx + 2;
@@ -222,7 +237,12 @@ export function parseXmlSync(source: string): XmlDocument {
     if (source.startsWith("<!DOCTYPE", idx) || source.startsWith("<!doctype", idx)) {
       const endIdx = source.indexOf(">", idx + 9);
       if (endIdx === -1) {
-        errors.push({ start: idx, end: len });
+        errors.push({
+          start: idx,
+          end: len,
+          code: "XML-1001",
+          message: "Unclosed XML DOCTYPE declaration; expected '>'.",
+        });
         break;
       }
       idx = endIdx + 1;
@@ -231,13 +251,43 @@ export function parseXmlSync(source: string): XmlDocument {
 
     if (source.startsWith("</", idx)) {
       const endTagIdx = source.indexOf(">", idx + 2);
-      if (endTagIdx === -1) {
-        errors.push({ start: idx, end: len });
+      const nextLtIdx = source.indexOf("<", idx + 2);
+      if (endTagIdx === -1 || (nextLtIdx !== -1 && nextLtIdx < endTagIdx)) {
+        errors.push({
+          start: idx,
+          end: nextLtIdx !== -1 ? nextLtIdx : len,
+          code: "XML-1001",
+          message: "Unclosed XML closing tag; expected '>'.",
+        });
+        if (nextLtIdx !== -1) {
+          idx = nextLtIdx;
+          continue;
+        }
         break;
       }
-      const closeMatch = /^<\/([A-Za-z_:][A-Za-z0-9_.:-]*)/.exec(source.slice(idx, endTagIdx + 1));
-      if (closeMatch) {
-        const closeName = closeMatch[1]!.toLowerCase();
+      const rawClose = source.slice(idx, endTagIdx + 1);
+      const closeMatch = /^<\/([A-Za-z_:][A-Za-z0-9_.:-]*)\s*>$/.exec(rawClose);
+      if (!closeMatch) {
+        errors.push({
+          start: idx,
+          end: endTagIdx + 1,
+          code: "XML-1001",
+          message: `Malformed XML closing tag '${rawClose}'.`,
+        });
+      } else {
+        const exactCloseName = closeMatch[1]!;
+        const closeName = exactCloseName.toLowerCase();
+        const top = stack[stack.length - 1];
+        if (!top || top.name !== exactCloseName) {
+          errors.push({
+            start: idx,
+            end: endTagIdx + 1,
+            code: "XML-1002",
+            message: top
+              ? `Mismatched closing tag '</${exactCloseName}>'; expected '</${top.name}>'.`
+              : `Unexpected closing tag '</${exactCloseName}>'.`,
+          });
+        }
         let matchIdx = -1;
         for (let i = stack.length - 1; i >= 0; i--) {
           if (stack[i]!.name.toLowerCase() === closeName) {
@@ -263,15 +313,87 @@ export function parseXmlSync(source: string): XmlDocument {
     }
 
     if (source[idx] === "<") {
-      const endTagIdx = source.indexOf(">", idx + 1);
+      // Scan tag while respecting attribute quotes and detecting unclosed `<` or unclosed quotes
+      let scan = idx + 1;
+      let inQuote: string | null = null;
+      let quoteStart = idx;
+      let endTagIdx = -1;
+      let abortedOnLt = false;
+
+      while (scan < len) {
+        const ch = source[scan]!;
+        if (inQuote) {
+          if (ch === inQuote) {
+            inQuote = null;
+          } else if (ch === "\n") {
+            errors.push({
+              start: quoteStart,
+              end: quoteStart + 2,
+              code: "XML-1004",
+              message: "Unclosed quote in XML attribute value.",
+            });
+            inQuote = null;
+          }
+          scan++;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          inQuote = ch;
+          quoteStart = scan;
+          scan++;
+          continue;
+        }
+        if (ch === "<") {
+          errors.push({
+            start: idx,
+            end: scan,
+            code: "XML-1001",
+            message: "Unclosed XML tag '<'; expected '>' before next '<'.",
+          });
+          abortedOnLt = true;
+          break;
+        }
+        if (ch === ">") {
+          endTagIdx = scan;
+          break;
+        }
+        scan++;
+      }
+
+      if (abortedOnLt) {
+        idx = scan;
+        continue;
+      }
+
       if (endTagIdx === -1) {
-        errors.push({ start: idx, end: len });
+        if (inQuote) {
+          errors.push({
+            start: quoteStart,
+            end: Math.min(len, quoteStart + 2),
+            code: "XML-1004",
+            message: "Unclosed quote in XML attribute value.",
+          });
+        } else {
+          errors.push({
+            start: idx,
+            end: len,
+            code: "XML-1001",
+            message: "Unclosed XML tag at end of document; expected '>'.",
+          });
+        }
         break;
       }
+
       const tagContent = source.slice(idx, endTagIdx + 1);
       const selfClosing = tagContent.endsWith("/>");
       const nameMatch = /^<([A-Za-z_:][A-Za-z0-9_.:-]*)/.exec(tagContent);
       if (!nameMatch) {
+        errors.push({
+          start: idx,
+          end: endTagIdx + 1,
+          code: "XML-1001",
+          message: `Malformed XML tag '${tagContent}'.`,
+        });
         idx = endTagIdx + 1;
         continue;
       }
@@ -296,6 +418,19 @@ export function parseXmlSync(source: string): XmlDocument {
         });
       }
 
+      const attrSlice = tagContent.slice(nameMatch[0].length, selfClosing ? -2 : -1);
+      const leftoverAttr = attrSlice
+        .replace(/[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*(?:"[^"]*"|'[^']*')/g, "")
+        .trim();
+      if (leftoverAttr.length > 0) {
+        errors.push({
+          start: idx,
+          end: endTagIdx + 1,
+          code: "XML-1004",
+          message: `Malformed attribute '${leftoverAttr}' in '<${tagName}>'; expected key="value".`,
+        });
+      }
+
       const el: XmlElement = {
         name: tagName,
         start,
@@ -311,7 +446,16 @@ export function parseXmlSync(source: string): XmlDocument {
       };
 
       if (stack.length > 0) {
-        stack[stack.length - 1]!.children.push(el);
+        const parentEl = stack[stack.length - 1]!;
+        if (parentEl.text.length > 0 && parentEl.children.length === 0) {
+          errors.push({
+            start: parentEl.openEnd,
+            end: idx,
+            code: "XML-1005",
+            message: `Unexpected text '${parentEl.text.slice(0, 24)}' inside container element '<${parentEl.name}>'; expected child XML element.`,
+          });
+        }
+        parentEl.children.push(el);
       }
 
       idx = endTagIdx + 1;
@@ -328,14 +472,50 @@ export function parseXmlSync(source: string): XmlDocument {
     const endText = nextAngle === -1 ? len : nextAngle;
     const textChunk = source.slice(idx, endText);
     const trimmed = textChunk.trim();
-    if (trimmed && stack.length > 0) {
-      stack[stack.length - 1]!.text += decodeEntities(trimmed);
+    if (textChunk.includes(">")) {
+      const gtOffset = idx + textChunk.indexOf(">");
+      errors.push({
+        start: gtOffset,
+        end: gtOffset + 1,
+        code: "XML-1001",
+        message: "Unexpected '>' outside XML tag.",
+      });
+    } else if (trimmed) {
+      if (stack.length === 0) {
+        const firstNonWs = idx + textChunk.search(/\S/);
+        const tokenLen = trimmed.split(/\s+/)[0]?.length ?? 1;
+        errors.push({
+          start: firstNonWs,
+          end: firstNonWs + tokenLen,
+          code: "XML-1005",
+          message: `Unexpected text '${trimmed.slice(0, 24)}' outside root XML element.`,
+        });
+      } else {
+        const parentEl = stack[stack.length - 1]!;
+        if (parentEl.children.length > 0) {
+          const firstNonWs = idx + textChunk.search(/\S/);
+          const tokenLen = trimmed.split(/\s+/)[0]?.length ?? 1;
+          errors.push({
+            start: firstNonWs,
+            end: firstNonWs + tokenLen,
+            code: "XML-1005",
+            message: `Unexpected text '${trimmed.slice(0, 24)}' inside container element '<${parentEl.name}>'; expected child XML element.`,
+          });
+        }
+        parentEl.text += decodeEntities(trimmed);
+      }
     }
     idx = endText;
   }
 
   while (stack.length > 0) {
     const el = stack.pop()!;
+    errors.push({
+      start: el.start,
+      end: el.start + el.name.length + 2,
+      code: "XML-1003",
+      message: `Unclosed XML element '<${el.name}>'.`,
+    });
     el.end = len;
     if (stack.length === 0 && !root) {
       root = el;

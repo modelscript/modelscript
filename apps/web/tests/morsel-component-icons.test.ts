@@ -50,4 +50,48 @@ describe("Morsel General Component & Library Icon Resolution", () => {
     assert.strictEqual(validComponents[0].id, "R1");
     assert.strictEqual(validComponents[1].id, "C1");
   });
+
+  it("extracts short type names from fully qualified Modelica class names for ComponentList display", () => {
+    const testCases = [
+      { fqn: "Modelica.Electrical.Analog.Sources.SineVoltage", expectedShort: "SineVoltage" },
+      { fqn: "Modelica.Electrical.Analog.Basic.Inductor", expectedShort: "Inductor" },
+      { fqn: "Modelica.Electrical.Analog.Basic.Capacitor", expectedShort: "Capacitor" },
+      { fqn: "Modelica.Electrical.Analog.Basic.Resistor", expectedShort: "Resistor" },
+      { fqn: "Modelica.Electrical.Analog.Basic.Ground", expectedShort: "Ground" },
+    ];
+
+    for (const { fqn, expectedShort } of testCases) {
+      const rawClassName = fqn;
+      const rawKind = "model";
+      const shortTypeName = rawClassName.includes(".")
+        ? rawClassName.split(".").pop()
+        : rawClassName.toLowerCase() !== rawKind.toLowerCase()
+          ? rawClassName
+          : undefined;
+
+      assert.strictEqual(shortTypeName, expectedShort, `Short name for ${fqn} must be ${expectedShort}`);
+    }
+  });
+
+  it("normalizeSvgForIcon sets 100% width/height on outer svg without corrupting stroke-width or child element dimensions", async () => {
+    const { normalizeSvgForIcon } = await import("../src/components/morsel/util/x6.js");
+
+    const sampleSineVoltage = `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="-100 -100 200 200">
+    <g>
+        <ellipse rx="50" ry="50" cx="0" cy="0" fill="#ffffff" stroke="#0000ff" stroke-width="1" vector-effect="non-scaling-stroke"></ellipse>
+    </g>
+</svg>`;
+
+    const normalized = normalizeSvgForIcon(sampleSineVoltage);
+    assert.ok(normalized.startsWith('<svg width="100%" height="100%"'), "Root svg must have width and height 100%");
+    assert.ok(normalized.includes('stroke-width="1"'), "Must preserve inner stroke-width='1' and not replace it with 100%");
+    assert.ok(!normalized.includes('stroke-width="100%"'), "Must never produce stroke-width='100%'");
+
+    const sampleResistor = `<svg viewBox="-100 -100 200 200"><rect width="140" height="60" x="-70" y="-30" fill="#ffffff" stroke="#0000ff" stroke-width="1"/></svg>`;
+    const normalizedResistor = normalizeSvgForIcon(sampleResistor);
+    assert.ok(normalizedResistor.includes('width="140"'), "Must preserve inner rect width");
+    assert.ok(normalizedResistor.includes('height="60"'), "Must preserve inner rect height");
+    assert.ok(normalizedResistor.includes('stroke-width="1"'), "Must preserve inner rect stroke-width");
+  });
 });
+

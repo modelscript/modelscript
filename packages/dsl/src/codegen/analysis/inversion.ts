@@ -149,6 +149,19 @@ export function invertExpression(
     };
   }
 
+  // 2b-div. Reciprocal division: C / x <-> C / y
+  const commDivMatch = trimmed.match(/^([\d.]+)\s*\/\s*([a-zA-Z_]\w*)$/);
+  if (commDivMatch) {
+    const [, constVal, sourceVar] = commDivMatch;
+    return {
+      isInvertible: true,
+      kind: "nonlinear",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr: `${constVal} / ${targetVarName}`,
+    };
+  }
+
   // 2c. Two-variable symbolic binary expression: v1 (+|-|*|/) v2
   const symBinMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*([+\-*/])\s*([a-zA-Z_]\w*)$/);
   if (symBinMatch) {

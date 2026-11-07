@@ -65,12 +65,13 @@ const SAMPLE_MDL = `Model {
 
 describe("Simulink Bidirectional TGG Round-Trip Synchronization (@modelscript/simulink)", () => {
   it("should compile all declarative Simulink TGG rules via compileTGGRules()", () => {
-    assert.strictEqual(simulinkTggRules.length, 11, "Should declare 11 TGG transformation rules");
+    assert.strictEqual(simulinkTggRules.length, 13, "Should declare 13 TGG transformation rules");
     const compiled = compileTGGRules(simulinkPolyglotConfig);
-    assert.strictEqual(compiled.ruleCount, 11);
+    assert.strictEqual(compiled.ruleCount, 13);
     assert.ok(compiled.sourceCode.includes("tgg_forward_SimulinkGainToModelicaGain"));
     assert.ok(compiled.sourceCode.includes("tgg_backward_SimulinkGainToModelicaGain"));
-    assert.ok(compiled.sourceCode.includes("tgg_forward_SimulinkIntegratorToModelicaIntegrator"));
+    assert.ok(compiled.sourceCode.includes("tgg_forward_SimulinkDiscreteFilterToDiscreteTransferFunction"));
+    assert.ok(compiled.sourceCode.includes("tgg_backward_SimulinkDiscreteFilterToDiscreteTransferFunction"));
     assert.ok(compiled.sourceCode.includes("tgg_forward_dispatch"));
     assert.ok(compiled.sourceCode.includes("tgg_backward_dispatch"));
   });
@@ -181,5 +182,49 @@ end FeedbackLoop;`;
 
     const hasNewLine = reloaded.rootSystem.lines.some((l) => l.srcBlock === "Integrator1" && l.dstBlock === "PostGain");
     assert.ok(hasNewLine, "New connection Integrator1 -> PostGain should be added to Simulink lines");
+  });
+
+  it("should round-trip SLX XML DiscreteFilter and Gain blocks via declarative TGG rules", () => {
+    const slxXml = `<System Name="SuspensionControl">
+  <!-- Simulink Filter Comment -->
+  <Block BlockType="Gain" Name="SpringStiffness" SID="12">
+    <P Name="Gain">4500.0</P>
+  </Block>
+  <Block BlockType="DiscreteFilter" Name="DamperFilter" SID="18">
+    <P Name="Numerator">[0.05, 0.05]</P>
+    <P Name="Denominator">[1.0, -0.9]</P>
+    <P Name="SampleTime">0.001</P>
+  </Block>
+  <Line>
+    <P Name="Src">12#out:1</P>
+    <P Name="Dst">18#in:1</P>
+  </Line>
+</System>`;
+
+    const modifiedMo = `model SuspensionControl
+  /* Multi-line declaration with inline comment */
+  Modelica.Blocks.Math.Gain SpringStiffness(
+    k = 5200.0 // tuned spring stiffness
+  );
+  Modelica.Blocks.Discrete.TransferFunction DamperFilter(
+    b = {0.1, 0.1},
+    a = {1.0, -0.85},
+    samplePeriod = 0.002
+  );
+
+equation
+  connect(
+    SpringStiffness.y,
+    DamperFilter.u
+  );
+end SuspensionControl;`;
+
+    const result = synchronizeModelicaToSimulink(slxXml, modifiedMo);
+    assert.ok(result.updatedText.includes("<!-- Simulink Filter Comment -->"));
+    assert.ok(result.updatedText.includes(`<P Name="Gain">5200.0</P>`));
+    assert.ok(result.updatedText.includes(`<P Name="Numerator">[0.1, 0.1]</P>`));
+    assert.ok(result.updatedText.includes(`<P Name="Denominator">[1.0, -0.85]</P>`));
+    assert.ok(result.updatedText.includes(`<P Name="SampleTime">0.002</P>`));
+    assert.ok(result.updatedText.includes(`<P Name="Src">12#out:1</P>`));
   });
 });

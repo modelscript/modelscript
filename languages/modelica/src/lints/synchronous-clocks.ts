@@ -10,6 +10,8 @@
 import type { CodeGraph, CompilerLint, u32 } from "@modelscript/dsl";
 import {
   getCallCalleeNode,
+  getInvalidTransitionPriorityNode,
+  getNonClockedOperatorArgNode,
   hasMixedClockDomains,
   hasNonPositiveSampleFactor,
   isDescendantOfInnerClass,
@@ -223,6 +225,75 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
       // Check if an impure function is invoked directly inside an equation_section outside any when_equation
       if (isImpureCalledInEquationSection(db, node, $)) {
         db.diagnostic(node);
+      }
+    },
+  },
+
+  /**
+   * M6050: State machine `transition()` priority must be a positive integer (>= 1) and unique per source state (MLS §17.3.2).
+   */
+  transitionPriorityInvalid: {
+    nodes: ["function_call", "primary"],
+    severity: "error",
+    code: 6050,
+    message: (target) =>
+      `Transition priority '${target.text}' must be a positive integer (>= 1) and unique among transitions exiting the same state.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      if (db.ast.getType(node) == $.primary) {
+        const fc = db.ast.getFirstChild(node);
+        if (fc != 0 && db.ast.getType(fc) == $.function_call) return;
+      }
+      const badPrio = getInvalidTransitionPriorityNode(db, node, $);
+      if (badPrio != 0) {
+        db.diagnostic(badPrio);
+      }
+    },
+  },
+
+  /**
+   * M6051: `firstTick()` called on continuous-time `time` or non-clocked constant/parameter (MLS §16.4.2).
+   */
+  firstTickInvalidArgument: {
+    nodes: ["function_call", "primary"],
+    severity: "error",
+    code: 6051,
+    message: (target) =>
+      `Operator 'firstTick(${target.text})' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      if (db.ast.getType(node) == $.primary) {
+        const fc = db.ast.getFirstChild(node);
+        if (fc != 0 && db.ast.getType(fc) == $.function_call) return;
+      }
+      const name = getCallCalleeNode(db, node, $);
+      if (name != 0 && db.ast.textEquals(name, "firstTick")) {
+        const badArg = getNonClockedOperatorArgNode(db, node, $);
+        if (badArg != 0) {
+          db.diagnostic(badArg);
+        }
+      }
+    },
+  },
+
+  /**
+   * M6052: `interval()` called on continuous-time `time` or non-clocked constant/parameter (MLS §16.9).
+   */
+  intervalInvalidArgument: {
+    nodes: ["function_call", "primary"],
+    severity: "error",
+    code: 6052,
+    message: (target) =>
+      `Operator 'interval(${target.text})' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      if (db.ast.getType(node) == $.primary) {
+        const fc = db.ast.getFirstChild(node);
+        if (fc != 0 && db.ast.getType(fc) == $.function_call) return;
+      }
+      const name = getCallCalleeNode(db, node, $);
+      if (name != 0 && db.ast.textEquals(name, "interval")) {
+        const badArg = getNonClockedOperatorArgNode(db, node, $);
+        if (badArg != 0) {
+          db.diagnostic(badArg);
+        }
       }
     },
   },

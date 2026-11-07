@@ -371,7 +371,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       sendDidChange.cancel();
       const value = editorRef.current?.getValue();
       if (value !== undefined) {
-        didChange(uriRef.current, value);
+        await didChange(uriRef.current, value);
       }
     },
     revealComponent: (name: string) => {

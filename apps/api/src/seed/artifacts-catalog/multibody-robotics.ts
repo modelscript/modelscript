@@ -264,6 +264,9 @@ END
   <material name="titanium_matte">
     <color rgba="0.22 0.26 0.32 1.0" />
   </material>
+  <material name="pearl_white">
+    <color rgba="0.91 0.94 0.97 1.0" />
+  </material>
   <material name="accent_cyan">
     <color rgba="0.06 0.72 0.84 1.0" />
   </material>
@@ -276,9 +279,13 @@ END
     </inertial>
     <visual>
       <origin xyz="0 0 0.05" rpy="0 0 0" />
-      <geometry><cylinder radius="0.085" length="0.10" /></geometry>
+      <geometry><cylinder radius="0.075" length="0.10" /></geometry>
       <material name="titanium_matte" />
     </visual>
+    <collision>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <geometry><cylinder radius="0.08" length="0.10" /></geometry>
+    </collision>
   </link>
 
   <link name="shoulder_link">
@@ -287,6 +294,20 @@ END
       <mass value="3.45" />
       <inertia ixx="0.024" ixy="0" ixz="0" iyy="0.022" iyz="0" izz="0.015" />
     </inertial>
+    <visual>
+      <origin xyz="0 0 0.11" rpy="0 0 0" />
+      <geometry><cylinder radius="0.062" length="0.20" /></geometry>
+      <material name="pearl_white" />
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.21" rpy="0 0 0" />
+      <geometry><cylinder radius="0.064" length="0.018" /></geometry>
+      <material name="accent_cyan" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.11" rpy="0 0 0" />
+      <geometry><cylinder radius="0.068" length="0.22" /></geometry>
+    </collision>
   </link>
 
   <link name="upper_arm_link">
@@ -295,6 +316,15 @@ END
       <mass value="3.10" />
       <inertia ixx="0.032" ixy="0" ixz="0" iyy="0.031" iyz="0" izz="0.009" />
     </inertial>
+    <visual>
+      <origin xyz="0 0 0.18" rpy="0 0 0" />
+      <geometry><cylinder radius="0.052" length="0.34" /></geometry>
+      <material name="pearl_white" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.18" rpy="0 0 0" />
+      <geometry><cylinder radius="0.058" length="0.35" /></geometry>
+    </collision>
   </link>
 
   <link name="elbow_link">
@@ -303,6 +333,15 @@ END
       <mass value="2.40" />
       <inertia ixx="0.014" ixy="0" ixz="0" iyy="0.014" iyz="0" izz="0.007" />
     </inertial>
+    <visual>
+      <origin xyz="0.04 0 0.09" rpy="0 0 0" />
+      <geometry><cylinder radius="0.048" length="0.18" /></geometry>
+      <material name="titanium_matte" />
+    </visual>
+    <collision>
+      <origin xyz="0.04 0 0.09" rpy="0 0 0" />
+      <geometry><cylinder radius="0.054" length="0.18" /></geometry>
+    </collision>
   </link>
 
   <link name="forearm_link">
@@ -311,6 +350,15 @@ END
       <mass value="2.05" />
       <inertia ixx="0.019" ixy="0" ixz="0" iyy="0.018" iyz="0" izz="0.005" />
     </inertial>
+    <visual>
+      <origin xyz="-0.04 0 0.16" rpy="0 0 0" />
+      <geometry><cylinder radius="0.044" length="0.30" /></geometry>
+      <material name="pearl_white" />
+    </visual>
+    <collision>
+      <origin xyz="-0.04 0 0.16" rpy="0 0 0" />
+      <geometry><cylinder radius="0.05" length="0.30" /></geometry>
+    </collision>
   </link>
 
   <link name="wrist_pitch_link">
@@ -319,6 +367,15 @@ END
       <mass value="1.25" />
       <inertia ixx="0.0045" ixy="0" ixz="0" iyy="0.0042" iyz="0" izz="0.0032" />
     </inertial>
+    <visual>
+      <origin xyz="0 0 0.06" rpy="0 0 0" />
+      <geometry><cylinder radius="0.038" length="0.12" /></geometry>
+      <material name="accent_cyan" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.06" rpy="0 0 0" />
+      <geometry><cylinder radius="0.042" length="0.12" /></geometry>
+    </collision>
   </link>
 
   <link name="wrist_flange_link">
@@ -327,6 +384,15 @@ END
       <mass value="0.68" />
       <inertia ixx="0.0018" ixy="0" ixz="0" iyy="0.0018" iyz="0" izz="0.0022" />
     </inertial>
+    <visual>
+      <origin xyz="0 0 0.04" rpy="0 0 0" />
+      <geometry><cylinder radius="0.035" length="0.08" /></geometry>
+      <material name="titanium_matte" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.04" rpy="0 0 0" />
+      <geometry><cylinder radius="0.038" length="0.08" /></geometry>
+    </collision>
   </link>
 
   <link name="ee_gripper_body">
@@ -335,6 +401,15 @@ END
       <mass value="0.82" />
       <inertia ixx="0.0024" ixy="0" ixz="0" iyy="0.0021" iyz="0" izz="0.0019" />
     </inertial>
+    <visual name="robotiq_gripper">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://robotiq_description/meshes/visual/hande.dae" /></geometry>
+      <material name="titanium_matte" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <geometry><box size="0.06 0.09 0.10" /></geometry>
+    </collision>
   </link>
 
   <joint name="j1_shoulder_pan" type="revolute">
@@ -667,4 +742,544 @@ END
       },
     ],
   },
+
+  // 31. URDF Digital Twin Cell (Formulation Robotics Workstation)
+  {
+    id: "seed-post-urdf-digital-twin-cell",
+    language: "urdf",
+    viewType: "urdf",
+    title: "Self-Driving Lab Formulation Cell Digital Twin — UR3e Cobot & Automated Dispenser",
+    filename: "Formulation_Cell_UR3e_Twin.urdf",
+    authorUsername: "kenji_takahashi",
+    createdHoursAgo: 24,
+    signed: true,
+    postContent:
+      "Rebuilt our self-driving laboratory formulation cell as an interactive browser digital twin straight from the engineers' CAD assemblies and ROS 2 URDF kinematics. Every link carries dual representations: decimated visual meshes for 60 FPS rendering and analytical bounding cylinders/boxes for real-time minimum clearance math. Inverse kinematics and RRT-Connect schedule the Universal Robots UR3e cobot (with Robotiq Hand-E parallel gripper) and the 3-axis CNC liquid dispenser gantry in parallel across a 372.1 s automated synthesis cycle.",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<robot name="Formulator_UR3e_And_CNC_DigitalTwin">
+  <material name="ur_silver">
+    <color rgba="0.88 0.91 0.94 1.0" />
+  </material>
+  <material name="ur_sky_blue">
+    <color rgba="0.23 0.59 0.83 1.0" />
+  </material>
+  <material name="anodized_dark">
+    <color rgba="0.12 0.14 0.17 1.0" />
+  </material>
+  <material name="aluminum_extrusion">
+    <color rgba="0.76 0.80 0.85 1.0" />
+  </material>
+  <material name="cnc_magenta">
+    <color rgba="0.85 0.27 0.94 1.0" />
+  </material>
+
+  <!-- Workstation Optical Breadboard Reference Root -->
+  <link name="cell_base_link">
+    <inertial>
+      <origin xyz="0 0 -0.02" rpy="0 0 0" />
+      <mass value="45.0" />
+      <inertia ixx="2.40" ixy="0" ixz="0" iyy="4.80" iyz="0" izz="6.50" />
+    </inertial>
+    <visual>
+      <origin xyz="0.08 0.06 0.006" rpy="0 0 0" />
+      <geometry><cylinder radius="0.075" length="0.012" /></geometry>
+      <material name="aluminum_extrusion" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.02" rpy="0 0 0" />
+      <geometry><box size="1.15 0.75 0.04" /></geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== MACHINE 1: UNIVERSAL ROBOTS UR3e 6-DOF COBOT ==================== -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <mass value="2.0" />
+      <inertia ixx="0.003" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.005" />
+    </inertial>
+    <visual name="ur3e_base">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://ur_description/meshes/ur3e/visual/base.dae" /></geometry>
+      <material name="ur_silver" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <geometry><cylinder radius="0.064" length="0.10" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="ur3e_mount_joint" type="fixed">
+    <parent link="cell_base_link" />
+    <child link="base_link" />
+    <origin xyz="0.08 0.06 0.01" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <link name="shoulder_link">
+    <inertial>
+      <origin xyz="0 0 0.06" rpy="0 0 0" />
+      <mass value="2.0" />
+      <inertia ixx="0.008" ixy="0" ixz="0" iyy="0.008" iyz="0" izz="0.0056" />
+    </inertial>
+    <visual name="ur3e_shoulder">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://ur_description/meshes/ur3e/visual/shoulder.dae" /></geometry>
+      <material name="ur_sky_blue" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <geometry><cylinder radius="0.058" length="0.12" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="shoulder_pan_joint" type="revolute">
+    <parent link="base_link" />
+    <child link="shoulder_link" />
+    <origin xyz="0 0 0.095" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-6.283" upper="6.283" effort="56.0" velocity="3.14" />
+    <dynamics damping="0.12" friction="0.05" />
+  </joint>
+
+  <link name="upper_arm_link">
+    <inertial>
+      <origin xyz="0 0 0.12" rpy="0 0 0" />
+      <mass value="3.42" />
+      <inertia ixx="0.021" ixy="0" ixz="0" iyy="0.021" iyz="0" izz="0.009" />
+    </inertial>
+    <visual name="ur3e_upper_arm">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><cylinder radius="0.042" length="0.24355" /></geometry>
+      <material name="ur_silver" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.12" rpy="0 0 0" />
+      <geometry><cylinder radius="0.046" length="0.244" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="shoulder_lift_joint" type="revolute">
+    <parent link="shoulder_link" />
+    <child link="upper_arm_link" />
+    <origin xyz="0 0.085 0.055" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-3.14" upper="3.14" effort="56.0" velocity="3.14" />
+    <dynamics damping="0.12" friction="0.05" />
+  </joint>
+
+  <link name="forearm_link">
+    <inertial>
+      <origin xyz="0 0 0.106" rpy="0 0 0" />
+      <mass value="1.26" />
+      <inertia ixx="0.0065" ixy="0" ixz="0" iyy="0.0065" iyz="0" izz="0.003" />
+    </inertial>
+    <visual name="ur3e_forearm">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><cylinder radius="0.034" length="0.2132" /></geometry>
+      <material name="ur_silver" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.106" rpy="0 0 0" />
+      <geometry><cylinder radius="0.038" length="0.213" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="elbow_joint" type="revolute">
+    <parent link="upper_arm_link" />
+    <child link="forearm_link" />
+    <origin xyz="0 -0.065 0.24355" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-3.14" upper="3.14" effort="28.0" velocity="3.14" />
+    <dynamics damping="0.08" friction="0.04" />
+  </joint>
+
+  <link name="wrist_1_link">
+    <inertial>
+      <origin xyz="0 0 0.03" rpy="0 0 0" />
+      <mass value="0.80" />
+      <inertia ixx="0.0016" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.0012" />
+    </inertial>
+    <visual name="ur3e_wrist">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://ur_description/meshes/ur3e/visual/wrist1.dae" /></geometry>
+      <material name="ur_sky_blue" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.03" rpy="0 0 0" />
+      <geometry><sphere radius="0.038" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_1_joint" type="revolute">
+    <parent link="forearm_link" />
+    <child link="wrist_1_link" />
+    <origin xyz="0 0 0.2132" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-6.283" upper="6.283" effort="12.0" velocity="6.28" />
+  </joint>
+
+  <link name="wrist_2_link">
+    <inertial>
+      <origin xyz="0 0 0.03" rpy="0 0 0" />
+      <mass value="0.80" />
+      <inertia ixx="0.0016" ixy="0" ixz="0" iyy="0.0016" iyz="0" izz="0.0012" />
+    </inertial>
+    <visual name="ur3e_wrist">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://ur_description/meshes/ur3e/visual/wrist2.dae" /></geometry>
+      <material name="ur_sky_blue" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.03" rpy="0 0 0" />
+      <geometry><sphere radius="0.038" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_2_joint" type="revolute">
+    <parent link="wrist_1_link" />
+    <child link="wrist_2_link" />
+    <origin xyz="0 0.055 0.045" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-6.283" upper="6.283" effort="12.0" velocity="6.28" />
+  </joint>
+
+  <link name="wrist_3_link">
+    <inertial>
+      <origin xyz="0 0 0.02" rpy="0 0 0" />
+      <mass value="0.35" />
+      <inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0006" />
+    </inertial>
+    <visual name="ur3e_flange">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://ur_description/meshes/ur3e/visual/wrist3.dae" /></geometry>
+      <material name="ur_silver" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.025" rpy="0 0 0" />
+      <geometry><cylinder radius="0.033" length="0.05" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="wrist_3_joint" type="revolute">
+    <parent link="wrist_2_link" />
+    <child link="wrist_3_link" />
+    <origin xyz="0 0 0.055" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-6.283" upper="6.283" effort="12.0" velocity="6.28" />
+  </joint>
+
+  <link name="tool0_gripper">
+    <inertial>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <mass value="0.65" />
+      <inertia ixx="0.0012" ixy="0" ixz="0" iyy="0.0012" iyz="0" izz="0.0009" />
+    </inertial>
+    <visual name="robotiq_gripper">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://robotiq_description/meshes/visual/hande.dae" /></geometry>
+      <material name="anodized_dark" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.055" rpy="0 0 0" />
+      <geometry><box size="0.065 0.085 0.11" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="gripper_finger_joint" type="prismatic">
+    <parent link="wrist_3_link" />
+    <child link="tool0_gripper" />
+    <origin xyz="0 0 0.045" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="0.0" upper="0.055" effort="180.0" velocity="0.15" />
+  </joint>
+
+  <!-- ==================== MACHINE 2: 3-AXIS CNC LIQUID DISPENSER GANTRY ==================== -->
+  <link name="cnc_column_link">
+    <inertial>
+      <origin xyz="0 0 0.18" rpy="0 0 0" />
+      <mass value="6.5" />
+      <inertia ixx="0.12" ixy="0" ixz="0" iyy="0.12" iyz="0" izz="0.04" />
+    </inertial>
+    <!-- Rear vertical T-slot extrusion column -->
+    <visual>
+      <origin xyz="-0.38 0.20 0.17" rpy="0 0 0" />
+      <geometry><box size="0.032 0.032 0.34" /></geometry>
+      <material name="aluminum_extrusion" />
+    </visual>
+    <!-- Front vertical T-slot extrusion column -->
+    <visual>
+      <origin xyz="-0.38 -0.22 0.12" rpy="0 0 0" />
+      <geometry><box size="0.032 0.032 0.24" /></geometry>
+      <material name="aluminum_extrusion" />
+    </visual>
+    <!-- Front horizontal fixture clamp rail -->
+    <visual>
+      <origin xyz="-0.12 -0.22 0.08" rpy="0 0 0" />
+      <geometry><box size="0.52 0.026 0.026" /></geometry>
+      <material name="aluminum_extrusion" />
+    </visual>
+    <collision>
+      <origin xyz="-0.38 0.0 0.17" rpy="0 0 0" />
+      <geometry><box size="0.05 0.45 0.34" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="cnc_frame_mount_joint" type="fixed">
+    <parent link="cell_base_link" />
+    <child link="cnc_column_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <link name="cnc_bridge_x_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1.8" />
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.01" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><box size="0.38 0.028 0.032" /></geometry>
+      <material name="aluminum_extrusion" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><box size="0.38 0.035 0.035" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="cnc_y_axis_joint" type="prismatic">
+    <parent link="cnc_column_link" />
+    <child link="cnc_bridge_x_link" />
+    <origin xyz="-0.19 0.06 0.29" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.22" upper="0.18" effort="120.0" velocity="0.50" />
+  </joint>
+
+  <link name="pipette_nozzle_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.75" />
+      <inertia ixx="0.003" ixy="0" ixz="0" iyy="0.003" iyz="0" izz="0.002" />
+    </inertial>
+    <visual name="cnc_gantry_carriage">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://sdl_cell/meshes/cnc_carriage.dae" /></geometry>
+      <material name="cnc_magenta" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.02" rpy="0 0 0" />
+      <geometry><box size="0.07 0.06 0.14" /></geometry>
+    </collision>
+  </link>
+
+  <joint name="cnc_x_axis_joint" type="prismatic">
+    <parent link="cnc_bridge_x_link" />
+    <child link="pipette_nozzle_link" />
+    <origin xyz="0 0 -0.02" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.16" upper="0.18" effort="95.0" velocity="0.50" />
+  </joint>
+</robot>
+`,
+    extraViewConfig: {
+      modelName: "Self-Driving Lab Formulator — Digital Twin",
+      robotName: "Formulator_UR3e_And_CNC_DigitalTwin",
+      programSteps: [
+        {
+          id: 170,
+          machine: "UR3e",
+          label: "Lid handle move",
+          description: "RRT-Connect 6-DOF collision-free approach to reactor cap",
+          parallelMachine: "CNC",
+          parallelLabel: "Home XY gantry",
+          startTime: 0.0,
+          endTime: 16.8,
+          color: "#3b82f6",
+        },
+        {
+          id: 171,
+          machine: "UR3e",
+          label: "Lid handle in",
+          description: "Vertical Cartesian descent onto reactor lid T-handle",
+          parallelMachine: "CNC",
+          parallelLabel: "Aspirate reagent A",
+          startTime: 16.8,
+          endTime: 28.0,
+          color: "#3b82f6",
+        },
+        {
+          id: 172,
+          machine: "UR3e",
+          label: "Engage",
+          description: "Align Robotiq Hand-E jaws with vessel locking lugs",
+          startTime: 28.0,
+          endTime: 36.5,
+          color: "#3b82f6",
+        },
+        {
+          id: 173,
+          machine: "UR3e",
+          label: "Grip handle",
+          description: "Actuate parallel jaws to 34 mm clamping preload (65 N)",
+          startTime: 36.5,
+          endTime: 44.0,
+          color: "#22c55e",
+        },
+        {
+          id: 174,
+          machine: "UR3e",
+          label: "Clear lid",
+          description: "Vertical extraction of heated reactor lid assembly",
+          parallelMachine: "CNC",
+          parallelLabel: "Pre-stage dispense head",
+          startTime: 44.0,
+          endTime: 58.0,
+          color: "#3b82f6",
+        },
+        {
+          id: 175,
+          machine: "UR3e",
+          label: "Release lid",
+          description: "Place reactor cap onto sterile parking nest",
+          startTime: 58.0,
+          endTime: 68.0,
+          color: "#22c55e",
+        },
+        {
+          id: 176,
+          machine: "UR3e",
+          label: "Lift off",
+          description: "Retract UR3e manipulator to high-clearance standby posture",
+          parallelMachine: "CNC",
+          parallelLabel: "Traverse to reactor port",
+          startTime: 68.0,
+          endTime: 82.0,
+          color: "#3b82f6",
+        },
+        {
+          id: 177,
+          machine: "CNC",
+          label: "Aliquot dispense",
+          description: "Dual-needle 500 µL precision dosing into open reactor well",
+          parallelMachine: "UR3e",
+          parallelLabel: "Ready lift",
+          startTime: 82.0,
+          endTime: 132.0,
+          color: "#ef4444",
+        },
+        {
+          id: 178,
+          machine: "UR3e",
+          label: "Ready",
+          description: "Re-engage reactor lid from parking nest and reseal chamber",
+          parallelMachine: "CNC",
+          parallelLabel: "Purge & rinse needle",
+          startTime: 132.0,
+          endTime: 168.0,
+          color: "#3b82f6",
+        },
+        {
+          id: 179,
+          machine: "UR3e",
+          label: "Mixing",
+          description: "The stirrer mixes the formulation at 600 rpm & 85 °C",
+          parallelMachine: "CNC",
+          parallelLabel: "Lid handle",
+          startTime: 168.0,
+          endTime: 342.0,
+          color: "#3b82f6",
+        },
+        {
+          id: 180,
+          machine: "UR3e",
+          label: "Lid handle move",
+          description: "Return UR3e cobot and CNC gantry to cycle home pose",
+          startTime: 342.0,
+          endTime: 372.1,
+          color: "#22c55e",
+        },
+      ],
+      environment: [
+        {
+          id: "workstation_cabinet",
+          name: "Optical Breadboard & Framing Cabinet",
+          type: "workstation_cabinet",
+          position: [0.0, 0.0, -0.39],
+          dimensions: [1.16, 0.76, 0.78],
+          color: "#475569",
+        },
+        {
+          id: "reactor_mixer",
+          name: "Heated Stirrer & Reactor Station",
+          type: "reactor_mixer",
+          position: [0.27, -0.05, 0.13],
+          dimensions: [0.23, 0.23, 0.25],
+          color: "#e2e8f0",
+        },
+        {
+          id: "vial_rack_left",
+          name: "PTFE Reagent Rack A",
+          type: "vial_rack",
+          position: [-0.22, -0.05, 0.04],
+          dimensions: [0.20, 0.25, 0.08],
+          color: "#f8fafc",
+        },
+        {
+          id: "vial_rack_right",
+          name: "PTFE Reagent Rack B",
+          type: "vial_rack",
+          position: [-0.01, -0.05, 0.04],
+          dimensions: [0.18, 0.25, 0.08],
+          color: "#f8fafc",
+        },
+        {
+          id: "wash_cup",
+          name: "Solvent Rinse Vessel",
+          type: "wash_cup",
+          position: [0.33, -0.25, 0.042],
+          dimensions: [0.072, 0.072, 0.084],
+          color: "#eab308",
+        },
+      ],
+      trajectory: {
+        times: [0.0, 16.8, 28.0, 36.5, 44.0, 58.0, 68.0, 82.0, 132.0, 168.0, 250.0, 342.0, 372.1],
+        jointPositions: {
+          shoulder_pan_joint: [0.2, -0.52, -0.52, -0.52, -0.52, -0.15, 0.38, 0.55, 0.38, -0.52, -0.52, -0.35, 0.2],
+          shoulder_lift_joint: [0.15, 0.42, 0.54, 0.56, 0.56, 0.28, 0.48, 0.18, 0.46, 0.48, 0.48, 0.25, 0.15],
+          elbow_joint: [0.85, 1.12, 1.28, 1.30, 1.30, 0.92, 1.18, 0.75, 1.15, 1.18, 1.18, 0.95, 0.85],
+          wrist_1_joint: [1.45, 1.15, 0.95, 0.92, 0.92, 1.35, 1.05, 1.48, 1.08, 1.12, 1.12, 1.35, 1.45],
+          wrist_2_joint: [1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 1.57],
+          wrist_3_joint: [0.0, 0.35, 0.35, 0.35, 0.35, 0.0, -0.25, -0.25, 0.15, 0.35, 0.35, 0.10, 0.0],
+          gripper_finger_joint: [0.0, 0.0, 0.015, 0.042, 0.048, 0.048, 0.005, 0.0, 0.045, 0.048, 0.048, 0.01, 0.0],
+          cnc_y_axis_joint: [0.08, 0.0, -0.12, -0.12, -0.05, 0.04, 0.08, -0.06, -0.16, 0.06, 0.08, 0.08, 0.08],
+          cnc_x_axis_joint: [-0.10, -0.04, -0.04, -0.04, 0.06, 0.12, 0.16, 0.16, -0.12, -0.08, -0.10, -0.10, -0.10],
+        },
+      },
+    },
+    likedBy: ["omar", "elena_vance", "lukas_weber", "claire_dubois", "alex_rivera"],
+    repostedBy: ["omar", "elena_vance"],
+    bookmarkedBy: ["omar", "claire_dubois"],
+    comments: [
+      {
+        authorUsername: "omar",
+        createdHoursAgo: 22,
+        content:
+          "Having both the detailed visual CAD assemblies and fast analytical collision hulls in the same URDF is huge—caught the CNC gantry X-axis travel limit before bolting the extrusion frame!",
+        likedBy: ["kenji_takahashi", "elena_vance"],
+        replies: [
+          {
+            authorUsername: "kenji_takahashi",
+            createdHoursAgo: 20,
+            content:
+              "Exactly! And scheduling the CNC aliquot dispense in parallel with the UR3e lid park step cut total formulation cycle time by 28% while keeping minimum obstacle clearance above 52 mm.",
+            likedBy: ["omar", "elena_vance"],
+          },
+        ],
+      },
+    ],
+  },
 ];
+
+

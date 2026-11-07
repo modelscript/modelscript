@@ -6,8 +6,8 @@ titleTemplate: false
 
 hero:
   name: "ModelScript"
-  text: "One open toolchain for every engineering model"
-  tagline: "Import 65+ simulation, CAE, chemistry, bio, and clinical formats, link them to requirements, then simulate, verify, and export — in your browser, the CLI, VS Code, or air-gapped enterprise appliances."
+  text: "One web-native compiler for every engineering model"
+  tagline: "Build a computable digital thread across 67 engineering formats. Link requirements and architecture to multi-physics models and 3D CAD — powering simulation, formal verification, and optimization."
   image:
     src: /ms-logo.png
     alt: ModelScript 3D turbine engine
@@ -20,12 +20,9 @@ hero:
       link: /morsel
       target: _self
     - theme: alt
-      text: Studio
+      text: Launch ModelScript Studio
       link: /studio
       target: _self
-    - theme: alt
-      text: Explore Industries
-      link: /industries
 ---
 
 <HomeStats />
@@ -33,6 +30,10 @@ hero:
 <HomeFormatStrip />
 
 <HomeIndustries />
+
+<HomeWorkflowPairs />
+
+<HomeSemanticCoordinator />
 
 <HomeThread />
 

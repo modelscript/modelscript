@@ -25,6 +25,7 @@ export interface LinkKinematicsNode {
   originPos: Vector3D;
   originRpy: Vector3D;
   comOffset: Vector3D;
+  mimic?: { joint: string; multiplier?: number | undefined; offset?: number | undefined } | undefined;
 }
 
 /**
@@ -81,6 +82,7 @@ export function buildKinematicTree(robot: UrdfRobot): LinkKinematicsNode[] {
       originPos: joint?.origin ? joint.origin.xyz : { x: 0, y: 0, z: 0 },
       originRpy: joint?.origin?.rpy ? joint.origin.rpy : { x: 0, y: 0, z: 0 },
       comOffset: link?.inertial?.origin?.xyz ? link.inertial.origin.xyz : { x: 0, y: 0, z: 0 },
+      mimic: joint?.mimic,
     });
 
     // Enqueue children
@@ -98,9 +100,9 @@ function cross3(a: [number, number, number], b: [number, number, number]): [numb
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }
 
-type RotMatrix9 = [number, number, number, number, number, number, number, number, number];
+export type RotMatrix9 = [number, number, number, number, number, number, number, number, number];
 
-function rotationMatrixFromAxisAngle(axis: Vector3D, angleRad: number): RotMatrix9 {
+export function rotationMatrixFromAxisAngle(axis: Vector3D, angleRad: number): RotMatrix9 {
   const norm = Math.hypot(axis.x, axis.y, axis.z);
   if (norm < 1e-12 || Math.abs(angleRad) < 1e-12) {
     return [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -128,7 +130,7 @@ function rotationMatrixFromAxisAngle(axis: Vector3D, angleRad: number): RotMatri
   ];
 }
 
-function rotationMatrixFromRpy(rpy: Vector3D): RotMatrix9 {
+export function rotationMatrixFromRpy(rpy: Vector3D): RotMatrix9 {
   if (Math.abs(rpy.x) < 1e-12 && Math.abs(rpy.y) < 1e-12 && Math.abs(rpy.z) < 1e-12) {
     return [1, 0, 0, 0, 1, 0, 0, 0, 1];
   }
@@ -152,7 +154,7 @@ function rotationMatrixFromRpy(rpy: Vector3D): RotMatrix9 {
   ];
 }
 
-function multiplyRot9(A: RotMatrix9, B: RotMatrix9): RotMatrix9 {
+export function multiplyRot9(A: RotMatrix9, B: RotMatrix9): RotMatrix9 {
   return [
     A[0] * B[0] + A[1] * B[3] + A[2] * B[6],
     A[0] * B[1] + A[1] * B[4] + A[2] * B[7],
@@ -166,7 +168,7 @@ function multiplyRot9(A: RotMatrix9, B: RotMatrix9): RotMatrix9 {
   ];
 }
 
-function multRotVec(R: RotMatrix9, v: [number, number, number]): [number, number, number] {
+export function multRotVec(R: RotMatrix9, v: [number, number, number]): [number, number, number] {
   return [
     R[0] * v[0] + R[1] * v[1] + R[2] * v[2],
     R[3] * v[0] + R[4] * v[1] + R[5] * v[2],
@@ -357,26 +359,45 @@ export function computeForwardKinematics(
   const poses = new Map<string, LinkPose>();
 
   for (const node of tree) {
-    const qVal = node.jointName ? (qMap.get(node.jointName) ?? 0) : 0;
-    const relXform = computeJointSpatialTransform(node, qVal);
+    let qVal = node.jointName ? (qMap.get(node.jointName) ?? 0) : 0;
+    if (node.mimic && (!node.jointName || !qMap.has(node.jointName))) {
+      const parentQ = qMap.get(node.mimic.joint) ?? 0;
+      qVal = parentQ * (node.mimic.multiplier ?? 1) + (node.mimic.offset ?? 0);
+    }
+
+    const R_rpy = rotationMatrixFromRpy(node.originRpy ?? { x: 0, y: 0, z: 0 });
+    let relR: RotMatrix9 = R_rpy;
+    let relPos: [number, number, number] = [node.originPos.x, node.originPos.y, node.originPos.z];
+
+    if (node.jointType === "revolute" || node.jointType === "continuous") {
+      const R_joint = rotationMatrixFromAxisAngle(node.axis, qVal);
+      relR = multiplyRot9(R_rpy, R_joint);
+    } else if (node.jointType === "prismatic") {
+      const deltaParent = multRotVec(R_rpy, [qVal * node.axis.x, qVal * node.axis.y, qVal * node.axis.z]);
+      relPos = [
+        node.originPos.x + deltaParent[0],
+        node.originPos.y + deltaParent[1],
+        node.originPos.z + deltaParent[2],
+      ];
+    }
 
     if (!node.parentName || !poses.has(node.parentName)) {
       poses.set(node.name, {
         name: node.name,
         parentName: null,
         jointName: null,
-        position: [relXform.r[0], relXform.r[1], relXform.r[2]],
-        rotation: relXform.R,
+        position: [relPos[0], relPos[1], relPos[2]],
+        rotation: relR,
       });
     } else {
       const parentPose = poses.get(node.parentName)!;
-      const rRot = multRotVec(parentPose.rotation, relXform.r);
+      const rRot = multRotVec(parentPose.rotation, relPos);
       const worldPos: [number, number, number] = [
         parentPose.position[0] + rRot[0],
         parentPose.position[1] + rRot[1],
         parentPose.position[2] + rRot[2],
       ];
-      const worldRot = multiplyRot9(parentPose.rotation, relXform.R);
+      const worldRot = multiplyRot9(parentPose.rotation, relR);
       poses.set(node.name, {
         name: node.name,
         parentName: node.parentName,

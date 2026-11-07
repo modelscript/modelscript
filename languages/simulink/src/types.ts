@@ -23,6 +23,7 @@ export type SimulinkBlockType =
   | "Sum"
   | "Product"
   | "TransferFcn"
+  | "DiscreteFilter"
   | "StateSpace"
   | "SubSystem"
   | "BusCreator"

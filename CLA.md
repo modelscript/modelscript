@@ -11,7 +11,7 @@ Because ModelScript operates under an **Open-Core + Commercial Dual-License** mo
 ## 1. Definitions
 
 - **"Maintainer"** means Mohamad Omar Nachawati, and any designated legal entity, foundation, or successor appointed by Mohamad Omar Nachawati to administer the Project.
-- **"Project"** means the software, compilation, documentation, and collective work known as ModelScript, copyright © 2021–2026 Mohamad Omar Nachawati.
+- **"Project"** means the software, compilation, documentation, and collective work known as ModelScript, copyright © 2025-2026 Mohamad Omar Nachawati.
 - **"You" (or "Your")** means the individual copyright owner or legal entity authorized by the copyright owner that is making this Agreement with the Maintainer.
 - **"Contribution"** means any original work of authorship, including any modifications or additions to an existing work, that is intentionally submitted by You to the Project for inclusion in, or documentation of, any of the repositories managed by the Maintainer.
 
@@ -51,4 +51,4 @@ You can signify Your agreement to this CLA in either of two ways:
 
 ---
 
-Copyright © 2021–2026 Mohamad Omar Nachawati. All rights reserved.
+Copyright © 2025-2026 Mohamad Omar Nachawati. All rights reserved.

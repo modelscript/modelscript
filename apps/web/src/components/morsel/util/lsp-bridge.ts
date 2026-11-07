@@ -221,8 +221,9 @@ export async function getDiagramData(
   className?: string,
   diagramType?: string,
   sidecarContent?: string,
+  documentText?: string,
 ): Promise<DiagramData | null> {
-  return (await lsp()).sendRequest(DiagramMethods.getData, { uri, className, diagramType, sidecarContent });
+  return (await lsp()).sendRequest(DiagramMethods.getData, { uri, className, diagramType, sidecarContent, documentText });
 }
 
 export async function getComponentProperties(

@@ -22,7 +22,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 217
+    "ruleCount": 226
   },
   {
     "slug": "sysml2",
@@ -52,7 +52,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 45
+    "ruleCount": 55
   },
   {
     "slug": "reqif",
@@ -83,7 +83,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 13
   },
   {
     "slug": "oscal",
@@ -115,7 +115,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 13
   },
   {
     "slug": "ssp",
@@ -139,7 +139,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 14
+    "ruleCount": 18
   },
   {
     "slug": "owl2",
@@ -187,7 +187,7 @@
         "CSG"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 14
   },
   {
     "slug": "qif",
@@ -221,7 +221,7 @@
         "STEP"
       ]
     },
-    "ruleCount": 9
+    "ruleCount": 12
   },
   {
     "slug": "scad",
@@ -245,7 +245,7 @@
         "STEP"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 13
   },
   {
     "slug": "cfd",
@@ -276,7 +276,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 12
   },
   {
     "slug": "fea",
@@ -307,7 +307,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 12
   },
   {
     "slug": "usd",
@@ -323,12 +323,12 @@
     "actions": [],
     "capabilities": {
       "parse": true,
-      "lint": false,
+      "lint": true,
       "dae": true,
       "simulate": false,
       "projections": []
     },
-    "ruleCount": 0
+    "ruleCount": 7
   },
   {
     "slug": "csv",
@@ -352,7 +352,7 @@
         "DAE"
       ]
     },
-    "ruleCount": 0
+    "ruleCount": 7
   },
   {
     "slug": "c",
@@ -567,7 +567,7 @@
         "SysML v2"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 15
   },
   {
     "slug": "simulink",
@@ -663,7 +663,7 @@
         "GENSYS"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 11
   },
   {
     "slug": "openscenario",
@@ -693,7 +693,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 13
   },
   {
     "slug": "gensys",
@@ -727,7 +727,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 6
+    "ruleCount": 10
   },
   {
     "slug": "simpack",
@@ -761,7 +761,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 6
+    "ruleCount": 10
   },
   {
     "slug": "pscad",
@@ -837,7 +837,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 13
+    "ruleCount": 16
   },
   {
     "slug": "cgmes",
@@ -899,7 +899,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 13
   },
   {
     "slug": "olga",
@@ -1104,7 +1104,7 @@
         "ECAD"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 13
   },
   {
     "slug": "verilog-a",
@@ -1231,7 +1231,7 @@
         "MSC Adams"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 14
   },
   {
     "slug": "plcopen",
@@ -1262,7 +1262,7 @@
         "SysML v2"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 13
   },
   {
     "slug": "automationml",
@@ -1296,7 +1296,7 @@
         "URDF"
       ]
     },
-    "ruleCount": 7
+    "ruleCount": 12
   },
   {
     "slug": "adams",
@@ -1449,7 +1449,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 15
+    "ruleCount": 18
   },
   {
     "slug": "gproms",
@@ -1497,7 +1497,7 @@
         "DAE"
       ]
     },
-    "ruleCount": 10
+    "ruleCount": 13
   },
   {
     "slug": "phreeqc",

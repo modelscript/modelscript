@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
   alignNodeSelectionBox,
+  ensurePatchedVerticesTool,
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
   syncAllNodeSelectionBoxes,
@@ -223,4 +224,201 @@ describe("Diagram Selection Handles and Box Rotation", () => {
       "Segment handles must be present in HUD mode",
     );
   });
+
+  it("configures stopPropagation and processHandle on edge tools to prevent tool destruction and allow contextmenu removal", () => {
+    const mockGraph = { zoom: () => 1.0 } as unknown as GraphLike;
+    const tools = getEdgeToolConfig({} as any, mockGraph, false, "halo") as {
+      name: string;
+      args: {
+        stopPropagation?: boolean;
+        processHandle?: (handle: unknown) => void;
+      };
+    }[];
+
+    const vertTool = tools.find((t) => t.name === "vertices");
+    assert.ok(vertTool);
+    assert.strictEqual(vertTool.args.stopPropagation, true);
+    assert.strictEqual(typeof vertTool.args.processHandle, "function");
+
+    // Test processHandle delegates contextmenu to emit remove
+    let delegatedEvents: Record<string, unknown> | null = null;
+    let emittedEvent: string | null = null;
+    const mockHandle = {
+      delegateEvents: (events: Record<string, unknown>) => {
+        delegatedEvents = events;
+      },
+      emit: (evt: string) => {
+        emittedEvent = evt;
+      },
+    };
+
+    vertTool.args.processHandle!(mockHandle);
+    assert.ok(delegatedEvents);
+    assert.strictEqual(typeof (delegatedEvents as any).contextmenu, "function");
+
+    // Trigger contextmenu
+    let prevented = false;
+    let stopped = false;
+    const fakeEvent = {
+      preventDefault: () => {
+        prevented = true;
+      },
+      stopPropagation: () => {
+        stopped = true;
+      },
+    } as unknown as MouseEvent;
+
+    (delegatedEvents as any).contextmenu(fakeEvent);
+    assert.strictEqual(prevented, true);
+    assert.strictEqual(stopped, true);
+    assert.strictEqual(emittedEvent, "remove");
+
+    const segTool = tools.find((t) => t.name === "segments");
+    assert.ok(segTool);
+    assert.strictEqual(segTool.args.stopPropagation, true);
+  });
+
+  it("clamps dynamically scaled vertex radius within bounds across extreme zoom levels", () => {
+    // Very zoomed in (e.g. 10x): radius should clamp to lower bound 0.35
+    const mockGraphZoom10 = { zoom: () => 10.0 } as unknown as GraphLike;
+    const toolsZoom10 = getEdgeToolConfig({} as any, mockGraphZoom10, false) as {
+      name: string;
+      args: { attrs: { r: number } };
+    }[];
+    const r10 = toolsZoom10.find((t) => t.name === "vertices")!.args.attrs.r;
+    assert.ok(r10 >= 0.3 && r10 <= 0.4, `Expected clamped lower bound ~0.35, got ${r10}`);
+
+    // Very zoomed out (e.g. 0.1x): radius should clamp to upper bound 3.5
+    const mockGraphZoom01 = { zoom: () => 0.1 } as unknown as GraphLike;
+    const toolsZoom01 = getEdgeToolConfig({} as any, mockGraphZoom01, false) as {
+      name: string;
+      args: { attrs: { r: number } };
+    }[];
+    const r01 = toolsZoom01.find((t) => t.name === "vertices")!.args.attrs.r;
+    assert.strictEqual(r01, 3.5, `Expected clamped upper bound 3.5, got ${r01}`);
+  });
+
+  it("ensurePatchedVerticesTool patches Vertices onPathMouseDown to reuse nearby handles and avoid duplicate vertices", () => {
+    let insertedVertexCount = 0;
+    let existingHandleMouseDownCalled = false;
+
+    class MockVertices {
+      cid = "tool-1";
+      handles: any[] = [
+        {
+          onMouseDown: () => {
+            existingHandleMouseDownCalled = true;
+          },
+        },
+      ];
+      cellView = {
+        cell: {
+          getVertices: () => [{ x: 100, y: 100 }],
+          startBatch: () => {},
+          insertVertex: () => {
+            insertedVertexCount++;
+          },
+          stopBatch: () => {},
+        },
+        getVertexIndex: () => 0,
+      };
+      graph = {
+        snapToGrid: (x: number, y: number) => ({
+          toJSON: () => ({ x, y }),
+        }),
+      };
+      allowAddVertex() {
+        return true;
+      }
+      normalizeEvent(e: any) {
+        return e;
+      }
+      snapVertex() {}
+      render() {}
+      eventData() {}
+    }
+
+    const mockX6 = {
+      Registry: {
+        EdgeTool: {
+          presets: {
+            vertices: MockVertices,
+          },
+        },
+      },
+    };
+
+    ensurePatchedVerticesTool(mockX6);
+
+    const instance = new MockVertices() as any;
+    // Click at (102, 102), which is within 8px of existing vertex (100, 100)
+    instance.onPathMouseDown({ clientX: 102, clientY: 102, stopPropagation: () => {}, preventDefault: () => {} });
+
+    // Should NOT insert a new vertex; should reuse existing handle
+    assert.strictEqual(insertedVertexCount, 0, "Must not insert a duplicate vertex when clicking near existing vertex");
+    assert.strictEqual(existingHandleMouseDownCalled, true, "Must delegate to existing handle onMouseDown");
+  });
+
+  it("ensurePatchedVerticesTool safely aborts batch when handle cannot be created and never throws TypeError onMouseDown", () => {
+    let stoppedBatchName: string | null = null;
+    let startedBatchName: string | null = null;
+
+    class MockVerticesWithPrunedVertex {
+      cid = "tool-2";
+      // Suppose handles array is empty (e.g. collinear pruning or reset during change)
+      handles: any[] = [];
+      cellView = {
+        cell: {
+          getVertices: () => [],
+          startBatch: (name: string) => {
+            startedBatchName = name;
+          },
+          insertVertex: () => {},
+          stopBatch: (name: string) => {
+            stoppedBatchName = name;
+          },
+        },
+        getVertexIndex: () => 0,
+      };
+      graph = {
+        snapToGrid: (x: number, y: number) => ({
+          toJSON: () => ({ x, y }),
+        }),
+      };
+      allowAddVertex() {
+        return true;
+      }
+      normalizeEvent(e: any) {
+        return e;
+      }
+      snapVertex() {}
+      render() {
+        // handles remain empty
+        this.handles = [];
+      }
+      eventData() {}
+    }
+
+    const mockX6 = {
+      Registry: {
+        EdgeTool: {
+          presets: {
+            vertices: MockVerticesWithPrunedVertex,
+          },
+        },
+      },
+    };
+
+    ensurePatchedVerticesTool(mockX6);
+
+    const instance = new MockVerticesWithPrunedVertex() as any;
+    // This previously threw: Uncaught TypeError: Cannot read properties of undefined (reading 'onMouseDown')
+    assert.doesNotThrow(() => {
+      instance.onPathMouseDown({ clientX: 200, clientY: 200, stopPropagation: () => {}, preventDefault: () => {} });
+    });
+
+    assert.strictEqual(startedBatchName, "add-vertex");
+    assert.strictEqual(stoppedBatchName, "add-vertex", "Must stop batch to prevent freezing diagram canvas");
+  });
 });
+

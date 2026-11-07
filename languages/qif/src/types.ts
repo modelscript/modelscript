@@ -59,6 +59,7 @@ export interface QifDatumDefinition {
   qpId?: string | undefined;
   label: string;
   featureId?: string | undefined;
+  datumReferences?: string[] | undefined;
   range: QifSourceRange;
 }
 
@@ -107,8 +108,10 @@ export interface QifCharacteristic {
   compositeLowerTier?: QifCompositeLowerTier | undefined;
   featureIds: string[];
   deviceId?: string | undefined;
+  spcSubgroupSize?: number | undefined;
   range: QifSourceRange;
 }
+
 
 export type QifDeviceType = "CMM" | "LaserScanner" | "OpticalGauge" | "Caliper";
 

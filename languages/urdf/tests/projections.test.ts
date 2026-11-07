@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compileTGGRules } from "@modelscript/dsl";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseUrdf } from "../src/parser/index.js";
@@ -11,6 +12,8 @@ import {
   urdfToUsd,
   urdfToUsdz,
 } from "../src/projections/index.js";
+import { urdfPolyglotConfig, urdfTggRules } from "../src/tgg/urdf-rules.js";
+import { projectUrdfViaTgg, synchronizeModelicaToUrdf } from "../src/tgg/urdf-sync.js";
 
 const ROBOT_XML = `<?xml version="1.0"?>
 <robot name="scara">
@@ -101,5 +104,56 @@ describe("URDF Projections (@modelscript/urdf)", () => {
     const dataOffset = 30 + fileNameLen + extraLen;
 
     assert.equal(dataOffset % 64, 0, "USDZ payload MUST be aligned to a 64-byte boundary");
+  });
+
+  it("should compile declarative URDF TGG rules and round-trip Modelica MultiBody edits back into URDF XML", () => {
+    assert.equal(urdfTggRules.length, 7);
+    const compiled = compileTGGRules(urdfPolyglotConfig);
+    assert.equal(compiled.ruleCount, 7);
+    assert.ok(compiled.sourceCode.includes("tgg_forward_UrdfLinkToMultiBodyBody"));
+    assert.ok(compiled.sourceCode.includes("tgg_backward_UrdfRevoluteJointToModelicaRevolute"));
+    assert.ok(compiled.sourceCode.includes("tgg_forward_UrdfOriginToFixedTranslation"));
+
+    const origUrdf = `<robot name="Arm_6DOF">
+  <!-- Base Link -->
+  <link name="base_link">
+    <inertial><mass value="4.0"/><inertia ixx="0.4" ixy="0" ixz="0" iyy="0.4" iyz="0" izz="0.4"/></inertial>
+  </link>
+  <link name="shoulder_link">
+    <inertial>
+      <mass value="3.45"/>
+      <inertia ixx="0.021" ixy="0.005" ixz="0"
+               iyy="0.018" iyz="0" izz="0.012"/>
+    </inertial>
+  </link>
+  <joint name="shoulder_pan" type="revolute">
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <origin xyz="0 0 0.25" rpy="0 0 1.57"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="150" velocity="3.15"/>
+  </joint>
+</robot>`;
+
+    const { modelicaText } = projectUrdfViaTgg(origUrdf, { compactSnippet: true });
+    assert.ok(modelicaText.includes("Parts.Body shoulder_link(m = 3.45, I_11 = 0.021, I_22 = 0.018, I_33 = 0.012);"));
+    assert.ok(modelicaText.includes("Parts.FixedTranslation shoulder_pan_trans(r = {0, 0, 0.25});"));
+
+    const modifiedMo = modelicaText
+      .replace("m = 3.45, I_11 = 0.021", "I_11 = 0.035, m = 5.25")
+      .replace("r = {0, 0, 0.25}", "r = {0.1, 0.2, 0.5}")
+      .replace("n = {0, 0, 1}", "n = {0, 1, 0}");
+
+    const syncRes = synchronizeModelicaToUrdf(origUrdf, modifiedMo);
+    assert.ok(syncRes.updatedText.includes("<!-- Base Link -->"));
+    assert.ok(syncRes.updatedText.includes('<mass value="5.25"/>'));
+    assert.ok(syncRes.updatedText.includes('ixx="0.035"'));
+    assert.ok(syncRes.updatedText.includes('ixy="0.005"'));
+    assert.ok(syncRes.updatedText.includes('<origin xyz="0.1 0.2 0.5" rpy="0 0 1.57"/>'));
+    assert.ok(syncRes.updatedText.includes('<axis xyz="0 1 0"/>'));
+    assert.ok(
+      syncRes.updatedText.includes('<limit lower="-3.14" upper="3.14" effort="150" velocity="3.15"/>'),
+      "Shadow complement must preserve joint limits",
+    );
   });
 });

@@ -26,7 +26,7 @@ import { getKindBadgeStyle } from "../ClassTree";
 import { getSemanticKindIcon } from "./ComponentList";
 import { startPlacement } from "./placement";
 import { getClassIcon, getLibraryTree, globalClassIconCache, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
-import { invertSvgColors } from "./util/x6";
+import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
 
 // ────────────────────────────────────────────────────────────────────
 // Props
@@ -167,14 +167,26 @@ function ClassIcon({
   }
 
   const inverted = invertSvgColors(svg, isDark);
-  const rawSizedSvg = inverted
-    .replace(/width=(["']).*?\1/, 'width="100%"')
-    .replace(/height=(["']).*?\1/, 'height="100%"');
+  const rawSizedSvg = normalizeSvgForIcon(inverted);
   const displaySvg = DOMPurify.sanitize(rawSizedSvg, {
     USE_PROFILES: { svg: true, svgFilters: true },
   });
   return (
-    <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: displaySvg }} />
+    <div
+      className="modelica-icon"
+      style={{
+        width: 20,
+        height: 20,
+        minWidth: 20,
+        minHeight: 20,
+        maxWidth: 20,
+        maxHeight: 20,
+        flexShrink: 0,
+        overflow: "hidden",
+        position: "relative",
+      }}
+      dangerouslySetInnerHTML={{ __html: displaySvg }}
+    />
   );
 }
 

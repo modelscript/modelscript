@@ -60,6 +60,24 @@ export const OpenDriveErrorCode = {
     message: (roadId: string, s: number) =>
       `Lane section in road '${roadId}' at s=${s} is missing mandatory center lane (ID 0).`,
   },
+  DISCONTINUOUS_LANE_LINK: {
+    code: "M7809",
+    severity: "error" as const,
+    message: (laneId: number, secA: number, secB: number) =>
+      `Lane '${laneId}' in road section ${secA} has discontinuous successor link in section ${secB}.`,
+  },
+  SPIRAL_CLOTHOID_SINGULARITY: {
+    code: "M7810",
+    severity: "error" as const,
+    message: (roadId: string) =>
+      `Transition spiral in road '${roadId}' specifies zero length with non-zero curvature delta.`,
+  },
+  INVALID_SPEED_LIMIT: {
+    code: "M7811",
+    severity: "error" as const,
+    message: (roadId: string, speed: number) =>
+      `Speed limit record in road '${roadId}' specifies non-positive maximum velocity (${speed} m/s).`,
+  },
 };
 
 export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
@@ -87,15 +105,24 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
       const g = road.planView[i];
       if (!g) continue;
 
-      // Clothoid curvature rate check
+      // Clothoid curvature rate & singularity check (M7803, M7810)
       if (g.type === "spiral") {
         if (g.length <= 1e-6) {
-          diagnostics.push({
-            code: OpenDriveErrorCode.CLOTHOID_CURVATURE_DIVERGENCE.code,
-            severity: OpenDriveErrorCode.CLOTHOID_CURVATURE_DIVERGENCE.severity,
-            message: OpenDriveErrorCode.CLOTHOID_CURVATURE_DIVERGENCE.message(road.id, g.s, 0.0),
-            range: g.range,
-          });
+          if (Math.abs(g.curvEnd - g.curvStart) > 1e-9) {
+            diagnostics.push({
+              code: OpenDriveErrorCode.SPIRAL_CLOTHOID_SINGULARITY.code,
+              severity: OpenDriveErrorCode.SPIRAL_CLOTHOID_SINGULARITY.severity,
+              message: OpenDriveErrorCode.SPIRAL_CLOTHOID_SINGULARITY.message(road.id),
+              range: g.range,
+            });
+          } else {
+            diagnostics.push({
+              code: OpenDriveErrorCode.CLOTHOID_CURVATURE_DIVERGENCE.code,
+              severity: OpenDriveErrorCode.CLOTHOID_CURVATURE_DIVERGENCE.severity,
+              message: OpenDriveErrorCode.CLOTHOID_CURVATURE_DIVERGENCE.message(road.id, g.s, 0.0),
+              range: g.range,
+            });
+          }
         } else {
           const kDot = Math.abs(g.curvEnd - g.curvStart) / g.length;
           if (kDot > 10.0) {
@@ -146,7 +173,21 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
       }
     }
 
-    // 4. Lane Sections, Center Lane & Width Checks (M7808, M7806, M7802)
+    // 3b. Speed Limit Check (M7811)
+    if (road.speedLimits) {
+      for (const sl of road.speedLimits) {
+        if (sl.max <= 0) {
+          diagnostics.push({
+            code: OpenDriveErrorCode.INVALID_SPEED_LIMIT.code,
+            severity: OpenDriveErrorCode.INVALID_SPEED_LIMIT.severity,
+            message: OpenDriveErrorCode.INVALID_SPEED_LIMIT.message(road.id, sl.max),
+            range: sl.range,
+          });
+        }
+      }
+    }
+
+    // 4. Lane Sections, Center Lane & Width Checks (M7808, M7806, M7802, M7809)
     const sections = road.lanes.laneSections;
     for (let si = 0; si < sections.length; si++) {
       const sec = sections[si];
@@ -180,19 +221,19 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
         }
       }
 
-      // Lane linking check across adjacent sections
+      // Lane linking check across adjacent sections (M7802, M7809)
       if (si < sections.length - 1) {
         const nextSec = sections[si + 1];
         if (!nextSec) continue;
-        const nextLaneIds = new Set([
-          nextSec.centerLane.id,
-          ...nextSec.leftLanes.map((l) => l.id),
-          ...nextSec.rightLanes.map((l) => l.id),
-        ]);
+        const nextLanesById = new Map<number, (typeof allLanes)[number]>();
+        if (nextSec.centerLane) nextLanesById.set(nextSec.centerLane.id, nextSec.centerLane);
+        for (const l of nextSec.leftLanes) nextLanesById.set(l.id, l);
+        for (const l of nextSec.rightLanes) nextLanesById.set(l.id, l);
 
         for (const lane of allLanes) {
           if (lane.link?.successor !== undefined) {
-            if (!nextLaneIds.has(lane.link.successor)) {
+            const targetLane = nextLanesById.get(lane.link.successor);
+            if (!targetLane) {
               diagnostics.push({
                 code: OpenDriveErrorCode.UNLINKED_LANE_BOUNDARY.code,
                 severity: OpenDriveErrorCode.UNLINKED_LANE_BOUNDARY.severity,
@@ -202,6 +243,16 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
                   "successor",
                   lane.link.successor,
                 ),
+                range: lane.range,
+              });
+            } else if (
+              (targetLane.link?.predecessor !== undefined && targetLane.link.predecessor !== lane.id) ||
+              Math.sign(lane.id) !== Math.sign(lane.link.successor)
+            ) {
+              diagnostics.push({
+                code: OpenDriveErrorCode.DISCONTINUOUS_LANE_LINK.code,
+                severity: OpenDriveErrorCode.DISCONTINUOUS_LANE_LINK.severity,
+                message: OpenDriveErrorCode.DISCONTINUOUS_LANE_LINK.message(lane.id, si, si + 1),
                 range: lane.range,
               });
             }

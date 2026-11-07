@@ -9609,7 +9609,7 @@ export class LibraryDatabase {
   getArtifactViewByTitle(title: string): ArtifactViewRow | undefined {
     return this.#db
       .prepare(
-        `SELECT CAST(id AS TEXT) as id, view_type, title, thumbnail_url, view_config FROM artifact_views WHERE title = ? LIMIT 1`,
+        `SELECT CAST(id AS TEXT) as id, view_type, title, thumbnail_url, view_config FROM artifact_views WHERE title = ? ORDER BY id DESC LIMIT 1`,
       )
       .get(title) as ArtifactViewRow | undefined;
   }

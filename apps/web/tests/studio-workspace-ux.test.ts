@@ -43,22 +43,10 @@ describe("Studio Landing Page UI/UX & Git Target Resolution", () => {
     );
   });
 
-  it("renders 'Ansatz Morsel' as a prominent clickable card tile pointing to /morsel", () => {
+  it("omits the redundant Ansatz Morsel tile to keep Studio focused on multi-file workspaces", () => {
     assert.ok(
-      content.includes("Ansatz Morsel") || content.includes("Ansatz Sketch"),
-      "IdeWorkspacePage must render Ansatz Morsel tile",
-    );
-    assert.ok(
-      content.includes('data-testid="studio-morsel-tile"') || content.includes('data-testid="studio-sketch-tile"'),
-      "IdeWorkspacePage must provide data-testid for Morsel tile",
-    );
-    assert.ok(
-      content.includes('navigate("/morsel")') || content.includes('navigate("/sketch")'),
-      "Ansatz Morsel tile must navigate to /morsel",
-    );
-    assert.ok(
-      content.includes("MorselIcon") || content.includes("AnsatzSketchIcon"),
-      "Ansatz Morsel tile must render MorselIcon or AnsatzSketchIcon",
+      !content.includes('data-testid="studio-morsel-tile"') && !content.includes('data-testid="studio-sketch-tile"'),
+      "IdeWorkspacePage must not duplicate Morsel as a workspace tile",
     );
   });
 

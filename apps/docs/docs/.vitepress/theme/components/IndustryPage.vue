@@ -456,9 +456,8 @@ const related = computed(() => {
   font-size: 14px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
   background:
-    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 68%),
-    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.15), transparent 68%),
-    color-mix(in srgb, var(--accent) 12%, var(--vp-c-bg-soft));
+    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 68%),
+    color-mix(in srgb, var(--accent) 10%, var(--vp-c-bg-soft));
   border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
@@ -703,14 +702,19 @@ const related = computed(() => {
   height: 44px;
   border-radius: 12px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background:
-    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 68%),
-    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.15), transparent 68%),
-    color-mix(in srgb, var(--accent) 12%, var(--vp-c-bg-soft));
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--vp-c-bg-soft));
+  background-image:
+    radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 66%),
+    linear-gradient(color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    11px 11px,
+    11px 11px;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 8px 18px -8px color-mix(in srgb, var(--accent) 50%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 18px -8px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .related-arrow {

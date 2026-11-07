@@ -23,6 +23,19 @@ import {
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
 import { DigitalThreadHypergraph, type BlastRadiusResult } from "./thread_hypergraph.js";
 import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
+import {
+  evaluateRuleDescriptor,
+  extractComplementFields,
+  instantiateNodePattern,
+  matchNodePattern,
+  solveWhereConstraints,
+  type EvaluatedTGGRule,
+  type GraphSyncChange,
+  type GraphSyncResult,
+  type PatternMatchResult,
+} from "./tgg-pattern-interpreter.js";
+
+export type { EvaluatedTGGRule, GraphSyncChange, GraphSyncResult, PatternMatchResult };
 
 /**
  * Generic, schema-agnostic node model for polyglot cross-language graph transformation.
@@ -975,8 +988,8 @@ export class PolyglotTransformer {
     varBindings: Record<string, any> = {},
   ): CoordinatorSatResult {
     const vResolver = (name: string) => {
-      if (varBindings && name in varBindings) {
-        return varBindings[name];
+      if (varBindings && varBindings[name] !== undefined && varBindings[name] !== null) {
+        return String(varBindings[name]);
       }
       return `__var_${name}`;
     };
@@ -1070,6 +1083,265 @@ export class PolyglotTransformer {
       throw new Error(`No polyglot emitter registered for target language '${targetLanguage}'`);
     }
     return emitter(node, this);
+  }
+
+  private nextInterpreterSlot = 1000;
+
+  /**
+   * Evaluates registered declarative TGG rules in the forward direction (`source -> target`)
+   * against `sourceNode`, automatically storing shadow complements (`tggComplement`)
+   * and asserting `where` constraints into the `SemanticTheoryCoordinator`.
+   */
+  evaluateRuleForward(
+    sourceNode: PolyglotNode,
+    targetLang?: string,
+    threadId?: string,
+  ): { targetNode: PolyglotNode; matchedRule: EvaluatedTGGRule; env: Record<string, any> } | null {
+    const candidates: PatternMatchResult[] = [];
+    for (const r of this.rules) {
+      if (targetLang && r.targetLang && r.targetLang.toLowerCase() !== targetLang.toLowerCase()) {
+        continue;
+      }
+      const desc = evaluateRuleDescriptor(r);
+      const m = matchNodePattern(sourceNode, desc.sourcePattern, desc, this);
+      if (m) candidates.push(m);
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.specificity - a.specificity);
+    const best = candidates[0]!;
+
+    solveWhereConstraints(best.rule.constraints, best.env, "forward", this.typeMaps);
+    const targetNode = instantiateNodePattern(best.rule.targetPattern, best.env, sourceNode.name);
+
+    const resolvedThreadId = threadId ?? `${sourceNode.kind || "node"}:${sourceNode.name}`;
+    const srcDom = best.rule.rule.sourceLang || "source";
+    const tgtDom = best.rule.rule.targetLang || targetLang || "target";
+
+    this.registerThread(resolvedThreadId, {
+      [srcDom]: sourceNode,
+      [tgtDom]: targetNode,
+    });
+
+    // Automatically store shadow complement fields declared via tggComplement([...]) plus full source snapshot
+    const complementFields = extractComplementFields(best.rule.constraints);
+    const complementData: Record<string, any> = {
+      __sourceSnapshot: { ...sourceNode, ...((sourceNode["properties"] as Record<string, any> | undefined) || {}) },
+      __matchedEnv: { ...best.env },
+      __ruleName: best.rule.rule.name,
+    };
+    for (const f of complementFields) {
+      const val = sourceNode[f] ?? (sourceNode["properties"] as Record<string, any> | undefined)?.[f];
+      if (val !== undefined) {
+        complementData[f] = val;
+      }
+    }
+    this.storeComplement(resolvedThreadId, complementData);
+    this.syncThreadRule(this.nextInterpreterSlot++, best.rule.rule, best.env);
+
+    return { targetNode, matchedRule: best.rule, env: best.env };
+  }
+
+  /**
+   * Evaluates registered declarative TGG rules in the backward direction (`target -> source`)
+   * against `targetNode`, restoring shadow complements (`tggComplement`) and reconciling
+   * concurrent edits according to `tggReconcile` / `tggReconcilePhysics` or `options.strategy`.
+   */
+  evaluateRuleBackward(
+    targetNode: PolyglotNode,
+    sourceLang?: string,
+    options?: {
+      strategy?: "source-wins" | "target-wins" | "physics-simplex";
+      threadId?: string;
+      fallbackThreadId?: string;
+    },
+  ): {
+    sourceNode: PolyglotNode;
+    matchedRule: EvaluatedTGGRule;
+    env: Record<string, any>;
+    changes: GraphSyncChange[];
+    complement: Record<string, any>;
+  } | null {
+    const candidates: PatternMatchResult[] = [];
+    for (const r of this.rules) {
+      if (sourceLang && r.sourceLang && r.sourceLang.toLowerCase() !== sourceLang.toLowerCase()) {
+        continue;
+      }
+      const desc = evaluateRuleDescriptor(r);
+      const m = matchNodePattern(targetNode, desc.targetPattern, desc, this);
+      if (m) candidates.push(m);
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.specificity - a.specificity);
+    const best = candidates[0]!;
+
+    solveWhereConstraints(best.rule.constraints, best.env, "backward", this.typeMaps);
+
+    // Locate shadow complement by primary threadId, node name, or positional fallbackThreadId
+    const candidateKeys = [
+      options?.threadId,
+      `${best.rule.sourcePattern.nodeType}:${targetNode.name}`,
+      targetNode.name,
+      options?.fallbackThreadId,
+    ].filter((k): k is string => Boolean(k));
+
+    let complement: Record<string, any> | undefined;
+    for (const k of candidateKeys) {
+      complement = this.getComplement(k);
+      if (complement) break;
+    }
+
+    const prevSnapshot: Record<string, any> = complement?.["__sourceSnapshot"] || {};
+    const prevEnv: Record<string, any> = complement?.["__matchedEnv"] || {};
+    const changes: GraphSyncChange[] = [];
+
+    // Reconcile conflicts when previous source bindings differ from backward-propagated target bindings
+    for (const c of best.rule.constraints) {
+      if (c.kind === "reconcile" || c.kind === "reconcilePhysics") {
+        const [rawSrc, rawTgt, thirdArg] = c.args;
+        const srcVar = typeof rawSrc === "string" && rawSrc.startsWith("__var_") ? rawSrc.slice(6) : String(rawSrc);
+        const tgtVar = typeof rawTgt === "string" && rawTgt.startsWith("__var_") ? rawTgt.slice(6) : String(rawTgt);
+        const oldVal = prevEnv[srcVar];
+        const newVal = best.env[srcVar] ?? best.env[tgtVar];
+
+        if (oldVal !== undefined && newVal !== undefined && String(oldVal) !== String(newVal)) {
+          const conflictId = `${targetNode.name}.${srcVar}`;
+          this.recordConflict(conflictId, oldVal, newVal, best.rule.rule.name);
+
+          const ruleStrategy =
+            c.kind === "reconcilePhysics"
+              ? "physics-simplex"
+              : typeof thirdArg === "string"
+                ? thirdArg
+                : "target-wins";
+          const effectiveStrategy = options?.strategy ?? ruleStrategy;
+
+          if (effectiveStrategy === "physics-simplex" && c.kind === "reconcilePhysics" && typeof thirdArg === "object") {
+            const bounds = thirdArg as { min: number; max: number };
+            this.resolveConflictPhysics(conflictId, bounds.min, bounds.max);
+          } else if (effectiveStrategy === "source-wins") {
+            this.resolveConflict(conflictId, "source");
+          } else {
+            this.resolveConflict(conflictId, "target");
+          }
+
+          const resolvedItem = this.getConflicts().find((item) => item.id === conflictId);
+          const reconciledVal = resolvedItem?.resolved !== undefined ? resolvedItem.resolved : newVal;
+          best.env[srcVar] = reconciledVal;
+          best.env[tgtVar] = reconciledVal;
+
+          changes.push({
+            elementId: targetNode.name,
+            ruleName: best.rule.rule.name,
+            property: srcVar,
+            sourceOldVal: oldVal,
+            targetNewVal: newVal,
+            reconciledVal,
+            strategy: effectiveStrategy,
+          });
+        }
+      }
+    }
+
+    const complementFields = extractComplementFields(best.rule.constraints);
+    const restoredComplement: Record<string, any> = { ...prevSnapshot };
+    if (complement) {
+      for (const f of complementFields) {
+        if (complement[f] !== undefined) {
+          restoredComplement[f] = complement[f];
+        }
+      }
+    }
+
+    const sourceNode = instantiateNodePattern(
+      best.rule.sourcePattern,
+      best.env,
+      targetNode.name,
+      restoredComplement,
+    );
+    this.syncThreadRule(this.nextInterpreterSlot++, best.rule.rule, best.env);
+
+    return { sourceNode, matchedRule: best.rule, env: best.env, changes, complement: restoredComplement };
+  }
+
+  /**
+   * Projects a hierarchical `PolyglotNode` graph from `sourceLang` to `targetLang`
+   * by evaluating declarative `tggRule` patterns across the root node and its children.
+   */
+  projectGraph(sourceGraph: PolyglotNode, _sourceLang: string, targetLang: string): PolyglotNode {
+    const rootEval = this.evaluateRuleForward(sourceGraph, targetLang, `root:${sourceGraph.name}`);
+    const projectedRoot: PolyglotNode = rootEval
+      ? { ...rootEval.targetNode }
+      : { ...sourceGraph, properties: { ...((sourceGraph["properties"] as Record<string, any> | undefined) || {}) } };
+
+    if (Array.isArray(sourceGraph["children"])) {
+      projectedRoot["children"] = (sourceGraph["children"] as PolyglotNode[]).map((child, idx) => {
+        const res = this.evaluateRuleForward(child, targetLang, `child:${child.kind || "node"}:${child.name || idx}`);
+        const outChild = res ? res.targetNode : { ...child };
+        // Also index by positional slot for rename resilience
+        const comp = this.getComplement(`child:${child.kind || "node"}:${child.name || idx}`);
+        if (comp) {
+          this.storeComplement(`pos:${idx}`, comp);
+        }
+        return outChild;
+      });
+    }
+
+    return projectedRoot;
+  }
+
+  /**
+   * Synchronizes a modified target `PolyglotNode` graph back into the source domain
+   * using declarative `tggRule` backward evaluation, shadow complements, and conflict resolution.
+   */
+  synchronizeGraph(
+    originalSource: PolyglotNode,
+    modifiedTarget: PolyglotNode,
+    sourceLang: string,
+    targetLang: string,
+    strategy?: "source-wins" | "target-wins" | "physics-simplex",
+  ): GraphSyncResult {
+    // Ensure forward projection has populated shadow complements
+    this.projectGraph(originalSource, sourceLang, targetLang);
+
+    const allChanges: GraphSyncChange[] = [];
+    const rootBack = this.evaluateRuleBackward(modifiedTarget, sourceLang, {
+      ...(strategy ? { strategy } : {}),
+      threadId: `root:${originalSource.name}`,
+      fallbackThreadId: `root:${originalSource.name}`,
+    });
+
+    const reconciledRoot: PolyglotNode = rootBack
+      ? { ...originalSource, ...rootBack.sourceNode }
+      : { ...originalSource };
+    if (rootBack) {
+      allChanges.push(...rootBack.changes);
+    }
+
+    if (Array.isArray(modifiedTarget["children"])) {
+      const targetChildren = modifiedTarget["children"] as PolyglotNode[];
+      const reconciledChildren: PolyglotNode[] = [];
+      for (let idx = 0; idx < targetChildren.length; idx++) {
+        const tgtChild = targetChildren[idx]!;
+        const backRes = this.evaluateRuleBackward(tgtChild, sourceLang, {
+          ...(strategy ? { strategy } : {}),
+          threadId: `child:${tgtChild.kind || "node"}:${tgtChild.name}`,
+          fallbackThreadId: `pos:${idx}`,
+        });
+        if (backRes) {
+          reconciledChildren.push(backRes.sourceNode);
+          allChanges.push(...backRes.changes);
+        } else {
+          reconciledChildren.push({ ...tgtChild });
+        }
+      }
+      reconciledRoot["children"] = reconciledChildren;
+    }
+
+    return {
+      reconciledSource: reconciledRoot,
+      changes: allChanges,
+      conflicts: this.getConflicts(),
+    };
   }
 
   /**

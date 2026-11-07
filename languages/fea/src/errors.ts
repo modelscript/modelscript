@@ -74,6 +74,40 @@ export const FeaErrorCode = {
     message: (mat: string, val: number) =>
       `Mass density '${val}' for material '${mat}' must be strictly positive for dynamic analysis.`,
   },
+  INVERTED_JACOBIAN_ELEMENT: {
+    code: 7409,
+    numericCode: 1009,
+    stdCode: "F1009",
+    rule: "inverted-jacobian-element",
+    severity: "error" as const,
+    message: (elemId: number) =>
+      `Element '${elemId}' has negative or zero Jacobian determinant (inverted element).`,
+  },
+  ZERO_THICKNESS_SHELL: {
+    code: 7410,
+    numericCode: 1010,
+    stdCode: "F1010",
+    rule: "zero-thickness-shell",
+    severity: "error" as const,
+    message: (section: string) => `Shell section '${section}' specifies non-positive shell thickness.`,
+  },
+  SINGULAR_STIFFNESS_MATRIX: {
+    code: 7411,
+    numericCode: 1011,
+    stdCode: "F1011",
+    rule: "singular-stiffness-matrix",
+    severity: "error" as const,
+    message: () => `Global structural stiffness matrix has zero diagonal or unconstrained mechanism modes.`,
+  },
+  NON_POSITIVE_THERMAL_EXPANSION: {
+    code: 7412,
+    numericCode: 1012,
+    stdCode: "F1012",
+    rule: "negative-thermal-expansion",
+    severity: "warning" as const,
+    message: (mat: string, val: number) =>
+      `Thermal expansion coefficient alpha for '${mat}' is negative (${val} 1/K).`,
+  },
 } as const;
 
 export type FeaErrorCodeKey = keyof typeof FeaErrorCode;

@@ -426,6 +426,38 @@ MARKER m1 b_chassis l_base 0.0 0.0
     assert.equal(k7006.length, 2);
   });
 
+  it("should emit K7007–K7010 for unpaired wheel-rail contact, negative bushing stiffness, unconnected markers, and degenerate inertia", () => {
+    const xml = `
+<simpack_model name="LintDiagnosticsCheck">
+  <body id="b_bad_inertia" mass="50.0" ixx="-10.0" iyy="20.0" izz="20.0" />
+  <marker id="m0" body="$inertial" x="0" y="0" z="0" />
+  <marker id="m1" body="b_bad_inertia" x="0" y="0" z="0" />
+  <marker id="m_orphan" body="b_bad_inertia" x="1.0" y="0" z="0" />
+  <bushing id="bush_neg" from="m0" to="m1" kx="-1000" ky="5000" kz="5000" />
+  <contact id="wr_unpaired" from="m0" to="m1" wheel_profile="S1002" />
+</simpack_model>
+`;
+    const model = parseSpckXml(xml, "LintDiagnosticsCheck");
+    const diags = lintSimpackModel(model);
+
+    const k7007 = diags.find((d) => d.code === "K7007");
+    assert.ok(k7007, "Should emit K7007 for unpaired wheel-rail contact");
+    assert.ok(k7007.message.includes("wr_unpaired"));
+
+    const k7008 = diags.find((d) => d.code === "K7008");
+    assert.ok(k7008, "Should emit K7008 for negative bushing stiffness");
+    assert.ok(k7008.message.includes("bush_neg"));
+
+    const k7009 = diags.find((d) => d.code === "K7009");
+    assert.ok(k7009, "Should emit K7009 for unconnected subsystem marker");
+    assert.ok(k7009.message.includes("m_orphan"));
+
+    const k7010 = diags.find((d) => d.code === "K7010");
+    assert.ok(k7010, "Should emit K7010 for degenerate inertia tensor");
+    assert.ok(k7010.message.includes("b_bad_inertia"));
+  });
+
+
   it("should lower 3D marker lever arms, rotational joint constraints, and 6-DOF rotational/nonlinear bushings into DAE arena", async () => {
     const { lowerSimpackToDae, getSimpackJointConstraintSpec } = await import("../src/dae/simpack-to-dae.js");
 

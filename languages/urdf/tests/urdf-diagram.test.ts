@@ -2,7 +2,12 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildUrdfDiagram, renderUrdfSvg, urdfToKinematicSystem } from "../src/diagram/index.js";
+import {
+  buildUrdfDiagram,
+  renderUrdfIsometric3DSvg,
+  renderUrdfSvg,
+  urdfToKinematicSystem,
+} from "../src/diagram/index.js";
 import type { UrdfRobot } from "../src/types.js";
 
 const sampleUrdfRobot: UrdfRobot = {
@@ -88,3 +93,13 @@ test("URDF SVG: Generates standalone vector SVG schematic", () => {
   assert.ok(svg.includes("↻") || svg.includes("revolute"));
   assert.ok(svg.endsWith("</svg>\n"));
 });
+
+test("URDF 3D Isometric SVG: Generates depth-sorted 3D shaded scene thumbnail", () => {
+  const svg3d = renderUrdfIsometric3DSvg(sampleUrdfRobot);
+  assert.ok(svg3d.startsWith("<svg"));
+  assert.ok(svg3d.includes('viewBox="0 0 800 450"'));
+  assert.ok(svg3d.includes("TwoLinkManipulator"));
+  assert.ok(svg3d.includes("<polygon points="));
+  assert.ok(svg3d.includes("3 Links • 2 DOF • 3D FK Pose"));
+});
+

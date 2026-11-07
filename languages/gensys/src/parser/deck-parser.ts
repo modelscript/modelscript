@@ -269,7 +269,58 @@ export function parseGensysDeck(source: string, name: string = "GensysModel"): G
         dt,
       };
     }
+
+    // track <name> <nominalGauge> OR track <nominalGauge>
+    else if ((cmd === "track" || cmd === "$track") && tokens.length >= 2) {
+      const hasName = tokens.length >= 3 && Number.isNaN(Number.parseFloat(tokens[1]!));
+      const tName = hasName ? tokens[1]! : (model.track?.name ?? "Mainline");
+      const nominalGauge = evaluateMathExpr(hasName ? tokens[2] : tokens[1], scope, 1.435);
+      model.track = {
+        name: tName,
+        nominalGauge,
+        points: model.track?.points ?? [],
+      };
+    }
+
+    // track_point <distance> <cant> [curvature] OR 7-column track irregularity point
+    else if ((cmd === "track_point" || cmd === "cant_point") && tokens.length >= 3) {
+      if (!model.track) {
+        model.track = { name: "Mainline", nominalGauge: 1.435, points: [] };
+      }
+      if (tokens.length >= 7) {
+        model.track.points.push({
+          distance: evaluateMathExpr(tokens[1], scope, 0),
+          alignmentLeft: evaluateMathExpr(tokens[2], scope, 0),
+          alignmentRight: evaluateMathExpr(tokens[3], scope, 0),
+          verticalLeft: evaluateMathExpr(tokens[4], scope, 0),
+          verticalRight: evaluateMathExpr(tokens[5], scope, 0),
+          cant: evaluateMathExpr(tokens[6], scope, 0),
+          curvature: evaluateMathExpr(tokens[7], scope, 0),
+        });
+      } else {
+        model.track.points.push({
+          distance: evaluateMathExpr(tokens[1], scope, 0),
+          alignmentLeft: 0,
+          alignmentRight: 0,
+          verticalLeft: 0,
+          verticalRight: 0,
+          cant: evaluateMathExpr(tokens[2], scope, 0),
+          curvature: evaluateMathExpr(tokens[3], scope, 0),
+        });
+      }
+    }
+
+    // axle_load <wheelsetName> <load_kN>
+    else if ((cmd === "axle_load" || cmd === "$axle_load") && tokens.length >= 3) {
+      const wsName = tokens[1]!;
+      const load = evaluateMathExpr(tokens[2], scope, 0);
+      const ws = model.wheelsets.get(wsName);
+      if (ws) {
+        ws.axleLoad = load;
+      }
+    }
   }
 
   return model;
 }
+

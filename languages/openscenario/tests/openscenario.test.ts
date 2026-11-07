@@ -548,3 +548,97 @@ test("OpenSCENARIO Parser & Solver: resolves $Parameter references, interpolates
   assert.equal(sim.hasCollision, false, "Passing a vehicle in an adjacent lane should not trigger a false collision");
   assert.ok(Math.abs((sim.finalStates["Ego"]?.y ?? 0) - 7.0) < 0.05, "Ego lateral y should reach lane 2 (7.0 m)");
 });
+
+test("OpenSCENARIO Linter: detects M8502, M8507, M8511, M8512, and M8513", () => {
+  const flawedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="" description="" author=""/>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="50.0" maxAcceleration="4.0" maxDeceleration="8.0"/>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Lead">
+      <Vehicle name="Lead" vehicleCategory="car"/>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Story name="S1">
+      <Act name="A1">
+        <ManeuverGroup maximumExecutionCount="1" name="MG1">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Ego"/>
+          </Actors>
+          <Maneuver name="M1">
+            <Event name="Ev1" priority="overwrite" maximumExecutionCount="1">
+              <Action name="ExtremeBrake">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="linear" value="15.0" dynamicsDimension="rate"/>
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="0.0"/>
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <Action name="ConflictingDist">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <LongitudinalDistanceAction entityRef="Lead" distance="10.0"/>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <Action name="OutOfBoundsRoute">
+                <PrivateAction>
+                  <RoutingAction>
+                    <AcquirePositionAction>
+                      <Position>
+                        <WorldPosition x="250000.0" y="0.0" z="0.0"/>
+                      </Position>
+                    </AcquirePositionAction>
+                  </RoutingAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="ImpossibleSimTime" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <SimulationTimeCondition value="0.0" rule="lessThan"/>
+                    </ByValueCondition>
+                  </Condition>
+                  <Condition name="NegTtc" delay="0.0" conditionEdge="rising">
+                    <ByEntityCondition>
+                      <TriggeringEntities triggeringEntitiesRule="any">
+                        <EntityRef entityRef="Ego"/>
+                      </TriggeringEntities>
+                      <EntityCondition>
+                        <TimeToCollisionCondition value="-1.5" rule="lessThan" freespace="true" alongRoute="true">
+                          <TimeToCollisionConditionTarget>
+                            <EntityRef entityRef="Lead"/>
+                          </TimeToCollisionConditionTarget>
+                        </TimeToCollisionCondition>
+                      </EntityCondition>
+                    </ByEntityCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>`;
+
+  const doc = parseOpenScenario(flawedXml);
+  const diags = lintOpenScenario(doc);
+
+  assert.ok(diags.some((d) => d.code === 8502), "Expected M8502 unsatisfiable trigger");
+  assert.ok(diags.some((d) => d.code === 8507), "Expected M8507 excessive deceleration");
+  assert.ok(diags.some((d) => d.code === 8511), "Expected M8511 unreachable waypoint");
+  assert.ok(diags.some((d) => d.code === 8512), "Expected M8512 negative time to collision");
+  assert.ok(diags.some((d) => d.code === 8513), "Expected M8513 conflicting longitudinal actions");
+});

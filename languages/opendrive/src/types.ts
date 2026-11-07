@@ -190,6 +190,12 @@ export interface OpenDriveSignal {
   range: OpenDriveRange;
 }
 
+export interface OpenDriveSpeedLimit {
+  max: number;
+  unit?: string | undefined;
+  range: OpenDriveRange;
+}
+
 export interface OpenDriveRoad {
   id: string;
   name?: string | undefined;
@@ -201,6 +207,7 @@ export interface OpenDriveRoad {
   lateralProfile: OpenDriveSuperelevationRecord[];
   lanes: OpenDriveLanes;
   signals: OpenDriveSignal[];
+  speedLimits?: OpenDriveSpeedLimit[] | undefined;
   range: OpenDriveRange;
 }
 

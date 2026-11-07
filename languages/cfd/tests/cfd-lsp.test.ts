@@ -67,6 +67,31 @@ describe("@modelscript/cfd LSP Services & DAE Lowering", () => {
     assert.ok(m7305 && m7305.range.start.line > 0, `Expected M7305 line > 0, got ${m7305?.range.start.line}`);
   });
 
+  test("emits diagnostics for inverted cell volume, non-conformal periodic interface, wall y+ limit, and mass flux divergence (M7309, M7310, M7311, M7312)", () => {
+    const advancedInvalidDeck = `% Extended CFD Linter Rules Test
+SOLVER= RANS
+MATH_PROBLEM= DIRECT
+MACH_NUMBER= 0.5
+REYNOLDS_NUMBER= 1.0e6
+MARKER_INLET= ( inlet, 288.15, 101325.0, 1.0, 0.0, 0.0 )
+MARKER_OUTLET= ( outlet, 101325.0 )
+MARKER_HEATFLUX= ( airfoil_wall, 0.0 )
+MIN_CELL_VOLUME= -1.5e-8
+INVERTED_CELL_ID= 42
+MARKER_PERIODIC= ( per_left, per_right )
+WALL_YPLUS= 85.0
+INLET_MASS_FLOW= 12.5
+OUTLET_MASS_FLOW= 9.8
+`;
+    const diags = validateCfd(advancedInvalidDeck, "mesh_checks.cfg");
+    const codes = diags.map((d) => d.code);
+
+    assert.ok(codes.includes("M7309"), `Expected M7309 for inverted cell volume, got: ${codes.join(", ")}`);
+    assert.ok(codes.includes("M7310"), `Expected M7310 for non-conformal periodic interface, got: ${codes.join(", ")}`);
+    assert.ok(codes.includes("M7311"), `Expected M7311 for wall y+ limit violation, got: ${codes.join(", ")}`);
+    assert.ok(codes.includes("M7312"), `Expected M7312 for net mass flux divergence, got: ${codes.join(", ")}`);
+  });
+
   test("extracts document symbols hierarchy for domain, markers, and parameters", () => {
     const symbols = getCfdDocumentSymbols(VALID_SU2_DECK, "oneraM6.cfg");
     assert.ok(symbols.length > 0, "Symbols array should not be empty");

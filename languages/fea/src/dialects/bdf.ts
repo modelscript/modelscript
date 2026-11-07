@@ -244,7 +244,7 @@ export class BdfDialect implements FeaDialect {
         const mid = tokens[2]?.trim();
         const t = parseNastranFloat(tokens[3]!);
         if (mid) data.elsetMaterials!.set(pidKey, mid);
-        if (!isNaN(t) && t > 0) data.sectionThickness!.set(pidKey, t);
+        if (!isNaN(t)) data.sectionThickness!.set(pidKey, t);
         data.sectionLines!.set(pidKey, lineNum);
         const pidSet = data.elementSets.get(pidKey);
         if (pidSet) {
@@ -270,11 +270,13 @@ export class BdfDialect implements FeaDialect {
         const E = parseNastranFloat(tokens[2]!);
         const nu = tokens.length >= 5 ? parseNastranFloat(tokens[4]!) : undefined;
         const rho = tokens.length >= 6 ? parseNastranFloat(tokens[5]!) : undefined;
+        const alpha = tokens.length >= 7 ? parseNastranFloat(tokens[6]!) : undefined;
         data.materials.set(mid, {
           name: mid,
           E: isNaN(E) ? undefined : E,
           nu: nu !== undefined && !isNaN(nu) ? nu : undefined,
           rho: rho !== undefined && !isNaN(rho) ? rho : undefined,
+          alpha: alpha !== undefined && !isNaN(alpha) ? alpha : undefined,
         });
         data.materialLines!.set(mid, lineNum);
       } else if (card === "SPC1" && tokens.length >= 4) {

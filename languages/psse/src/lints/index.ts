@@ -27,11 +27,29 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     });
   }
 
-  // 1. Check for Slack / Swing bus presence (P2002)
+  // 1. Check for Slack / Swing bus presence (P2002, P2003) and bus voltage bounds (P2004, P2005)
   let swingBusCount = 0;
   for (const b of c.buses.values()) {
     if (b.ide === 3) {
       swingBusCount++;
+    }
+    if (b.ide !== 4) {
+      if (b.vm < 0.8 || b.vm > 1.2) {
+        addDiag(
+          PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.severity,
+          PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.code,
+          PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.message(b.i, b.vm),
+          b.span,
+        );
+      }
+      if (b.vm < 0.9 || b.vm > 1.1) {
+        addDiag(
+          PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.severity,
+          PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.code,
+          PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.message(b.i, b.vm),
+          b.span,
+        );
+      }
     }
   }
   if (swingBusCount === 0 && c.buses.size > 0) {
@@ -42,8 +60,16 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       c.header.span,
     );
   }
+  if (swingBusCount > 1 && c.areas.length <= 1) {
+    addDiag(
+      PsseErrorCode.MULTIPLE_SLACK_BUSES.severity,
+      PsseErrorCode.MULTIPLE_SLACK_BUSES.code,
+      PsseErrorCode.MULTIPLE_SLACK_BUSES.message(swingBusCount),
+      c.header.span,
+    );
+  }
 
-  // 2. Validate Generator limits (P3001, P3002, P3003)
+  // 2. Validate Generator limits (P1002, P3001, P3002, P3003)
   const genKeys = new Set<string>();
   for (const g of c.generators) {
     const key = `${g.i}:${g.id}`;
@@ -62,6 +88,15 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.BUS_NOT_FOUND.severity,
         PsseErrorCode.BUS_NOT_FOUND.code,
         PsseErrorCode.BUS_NOT_FOUND.message("Generator", g.id, "", g.i),
+        g.span,
+      );
+    }
+
+    if (g.stat === 1 && g.pg < 0) {
+      addDiag(
+        PsseErrorCode.GENERATOR_NEGATIVE_POWER.severity,
+        PsseErrorCode.GENERATOR_NEGATIVE_POWER.code,
+        PsseErrorCode.GENERATOR_NEGATIVE_POWER.message(g.id, g.i, g.pg),
         g.span,
       );
     }
@@ -124,7 +159,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     connectedBranches.set(b, 0);
   }
 
-  // 6. Validate Branches (P1001, P1003, P4001, P4002)
+  // 6. Validate Branches (P1001, P1003, P4001, P4002, P4004)
   const branchKeys = new Set<string>();
   for (const br of c.branches) {
     const key = `${Math.min(br.i, br.j)}:${Math.max(br.i, br.j)}:${br.ckt}`;
@@ -178,6 +213,15 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.BRANCH_INVALID_REACTANCE.severity,
         PsseErrorCode.BRANCH_INVALID_REACTANCE.code,
         PsseErrorCode.BRANCH_INVALID_REACTANCE.message(br.ckt, br.i, br.j, br.x),
+        br.span,
+      );
+    }
+
+    if (br.st === 1 && br.rateA <= 0) {
+      addDiag(
+        PsseErrorCode.BRANCH_THERMAL_RATING_ZERO.severity,
+        PsseErrorCode.BRANCH_THERMAL_RATING_ZERO.code,
+        PsseErrorCode.BRANCH_THERMAL_RATING_ZERO.message(br.ckt, br.i, br.j),
         br.span,
       );
     }
@@ -237,6 +281,20 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.ISOLATED_BUS.message(bus.i, bus.name),
         bus.span,
       );
+    }
+  }
+
+  // 9. Dynamic model inertia check (P3004)
+  if (c.dyr) {
+    for (const rec of c.dyr.records) {
+      if (rec.category === "generator" && rec.namedParams["H"] !== undefined && rec.namedParams["H"] <= 0) {
+        addDiag(
+          PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.severity,
+          PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.code,
+          PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.message(rec.ibus),
+          rec.span,
+        );
+      }
     }
   }
 

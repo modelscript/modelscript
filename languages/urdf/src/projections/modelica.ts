@@ -6,17 +6,18 @@
 
 import type { UrdfRobot } from "../types.js";
 
-function sanitizeIdentifier(str: string): string {
+function sanitizeIdentifier(str?: string | null): string {
+  const safeStr = typeof str === "string" && str ? str : "Robot";
   let res = "";
-  for (let i = 0; i < str.length; i++) {
-    const ch = str.charCodeAt(i);
+  for (let i = 0; i < safeStr.length; i++) {
+    const ch = safeStr.charCodeAt(i);
     if (
       (ch >= 65 && ch <= 90) || // A-Z
       (ch >= 97 && ch <= 122) || // a-z
       (ch >= 48 && ch <= 57) || // 0-9
       ch === 95 // _
     ) {
-      res += str[i];
+      res += safeStr[i];
     } else {
       res += "_";
     }
@@ -56,9 +57,16 @@ export function urdfToModelica(robot: UrdfRobot): string {
   }
   lines.push("");
 
-  // 3. Kinematic Joints
+  // 3. Kinematic Joints & Origin Translations
   for (const joint of robot.joints.values()) {
     const jName = sanitizeIdentifier(joint.name);
+    if (joint.origin && (joint.origin.xyz.x !== 0 || joint.origin.xyz.y !== 0 || joint.origin.xyz.z !== 0)) {
+      const ox = joint.origin.xyz.x;
+      const oy = joint.origin.xyz.y;
+      const oz = joint.origin.xyz.z;
+      lines.push(`  Parts.FixedTranslation ${jName}_trans(r = {${ox}, ${oy}, ${oz}})`);
+      lines.push(`    annotation(Placement(transformation(extent = {{-10, -10}, {10, 10}})));`);
+    }
     const ax = joint.axis.x;
     const ay = joint.axis.y;
     const az = joint.axis.z;

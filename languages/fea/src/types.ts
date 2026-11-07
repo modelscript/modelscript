@@ -29,6 +29,7 @@ export interface FeaMaterial {
   nu?: number | undefined;
   rho?: number | undefined;
   yieldStrength?: number | undefined;
+  alpha?: number | undefined;
 }
 
 export interface CaeDiagnostic {

@@ -103,6 +103,12 @@ const SidebarContainer = styled.header`
     }
   }
 
+  .post-split-morsel-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .profile-details {
     @media (max-width: 1280px) {
       display: none;
@@ -823,6 +829,7 @@ const SplitPostButtonAction = styled.button`
   font-weight: 650;
   line-height: 1;
   letter-spacing: -0.01em;
+  white-space: nowrap;
   cursor: pointer;
   user-select: none;
   transition:
@@ -868,6 +875,7 @@ const SplitMorselButtonLink = styled(Link)`
   font-weight: 650;
   line-height: 1;
   letter-spacing: -0.01em;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   user-select: none;
@@ -932,6 +940,7 @@ const GuestMorselButtonLink = styled(Link)`
   font-weight: 650;
   line-height: 1;
   letter-spacing: -0.01em;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   user-select: none;
@@ -1307,11 +1316,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                 to="/morsel"
                 onClick={handleMorselClick}
                 className="post-split-btn post-split-btn-morsel"
-                aria-label="New morsel"
+                aria-label="Morsel"
                 title="Ansatz Morsel"
                 data-testid="sidebar-morsel-button"
               >
-                <MorselIcon size={16} color="currentColor" className="post-split-icon" />
+                <MorselIcon size={16} color="currentColor" className="post-split-icon post-split-morsel-icon" />
                 <span className="post-text">Morsel</span>
               </SplitMorselButtonLink>
             </SplitPostButtonContainer>
@@ -1322,7 +1331,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
               to="/morsel"
               onClick={handleMorselClick}
               className="post-split-btn-morsel"
-              aria-label="Ansatz Morsel"
+              aria-label="Morsel"
               title="Ansatz Morsel"
               data-testid="sidebar-guest-morsel-button"
             >

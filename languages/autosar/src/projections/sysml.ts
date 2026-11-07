@@ -17,6 +17,12 @@ function projectAtomicToSysml(swc: AutosarSwComponent): string {
     lines.push(`    ${dir} port ${pName};`);
   }
 
+  if (swc.internalBehavior) {
+    for (const runnable of swc.internalBehavior.runnables.values()) {
+      lines.push(`    action ${sanitize(runnable.shortName)};`);
+    }
+  }
+
   lines.push(`  }`);
   return lines.join("\n");
 }

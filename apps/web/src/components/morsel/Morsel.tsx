@@ -426,6 +426,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 : prev.properties,
           };
         });
+        diagramEditorRef.current?.updateParameterText?.(action.name, paramKey, action.oldValue ?? "", paramVal);
       } else if (action.type === "updateName") {
         setSelectedComponentProperties((prev: any) =>
           prev && prev.name === action.oldName ? { ...prev, name: action.newName } : prev,
@@ -469,14 +470,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                   if (codeEditorRef.current) {
                     await codeEditorRef.current.sync();
                   } else {
-                    didChange(documentUriRef.current, updatedCode);
+                    await didChange(documentUriRef.current, updatedCode);
                   }
                   onCodeChangeRef.current?.(updatedCode);
                 } else {
                   const baseText = lastLoadedContentRef.current || content;
                   const updatedCode = applyLspTextEditsToString(baseText, response.edits);
                   setLastLoadedContent(updatedCode);
-                  didChange(documentUriRef.current, updatedCode);
+                  await didChange(documentUriRef.current, updatedCode);
                   onCodeChangeRef.current?.(updatedCode);
                 }
                 if (response.renderHint === "none") {
@@ -745,10 +746,12 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       setAvailableLanguages(uiLanguages);
 
-      // Defer hiding the loading screen until the browser is idle
       const hideLoading = () => {
         setLoadingProgress(100);
         setLoadingMessage("Ready");
+        setTimeout(() => {
+          diagramEditorRef.current?.zoomToFit();
+        }, 80);
       };
       if ("requestIdleCallback" in window) {
         requestIdleCallback(hideLoading, { timeout: 500 });
@@ -867,12 +870,13 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [content]);
 
   useEffect(() => {
-    if (view === View.DIAGRAM || isSplit(view)) {
-      setTimeout(() => {
-        diagramEditorRef.current?.fitContent();
+    if ((view === View.DIAGRAM || isSplit(view)) && (loadingProgress === undefined || loadingProgress >= 100)) {
+      const timer = setTimeout(() => {
+        diagramEditorRef.current?.zoomToFit();
       }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [view, treeVisible]);
+  }, [view, treeVisible, loadingProgress]);
 
   const handleSelectDialect = useCallback(
     (newDialectId: string) => {
@@ -1029,11 +1033,19 @@ export default function MorselEditor(props: MorselEditorProps) {
       setIsDiagramLoading(true);
     }
 
-    getDiagramData(documentUri, selectedTreeClassName || undefined, diagramType, sidecarContent)
+    const currentCode = editorRef.current?.getValue() ?? lastLoadedContentRef.current ?? content;
+    getDiagramData(documentUri, selectedTreeClassName || undefined, diagramType, sidecarContent, currentCode)
       .then((data) => {
         if (cancelled) return;
         setDiagramData(data);
-        if (!data || (!data.isLoading && (!data.nodes || data.nodes.length === 0))) {
+        if (data?.isLoading) {
+          setIsDiagramLoading(true);
+          setTimeout(() => {
+            if (!cancelled) {
+              setContextVersion((v) => v + 1);
+            }
+          }, 600);
+        } else if (!data || (!data.isLoading && (!data.nodes || data.nodes.length === 0))) {
           setIsDiagramLoading(false);
         }
       })

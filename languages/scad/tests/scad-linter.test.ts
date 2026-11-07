@@ -129,4 +129,41 @@ ratio = 100 / (5 - 5);
     assert.ok(divZero, "Expected division by zero error");
     assert.strictEqual(src.slice(divZero.startOffset, divZero.endOffset), "(5 - 5)");
   });
+
+  it("K1009–K1013: detects mixed 2D/3D booleans, invalid facet parameters, collinear polygons, unresolved includes, and non-positive radii", () => {
+    const src = `include <missing_library.scad>
+$fn = 0;
+polygon(points = [[0, 0], [1, 1], [2, 2]]);
+union() {
+  circle(r = 5);
+  cube([10, 10, 10]);
+}
+sphere(r = -2, $fa = -5);
+`;
+    const diags = lint(src);
+
+    const k1009 = diags.find((d) => d.code === "SCAD_MIXED_2D_3D_BOOLEAN");
+    assert.ok(k1009, "Expected K1009 SCAD_MIXED_2D_3D_BOOLEAN");
+    assert.strictEqual(k1009.standardCode, "K1009");
+    assert.ok(k1009.message.includes("circle") && k1009.message.includes("cube"));
+
+    const k1010 = diags.filter((d) => d.code === "SCAD_INVALID_FACET_PARAMETER");
+    assert.strictEqual(k1010.length, 2, "Expected K1010 on both $fn = 0 and $fa = -5");
+    assert.strictEqual(k1010[0]!.standardCode, "K1010");
+
+    const k1011 = diags.find((d) => d.code === "SCAD_COLLINEAR_POLYGON_VERTICES");
+    assert.ok(k1011, "Expected K1011 SCAD_COLLINEAR_POLYGON_VERTICES");
+    assert.strictEqual(k1011.standardCode, "K1011");
+
+    const k1012 = diags.find((d) => d.code === "SCAD_UNRESOLVED_USE_INCLUDE");
+    assert.ok(k1012, "Expected K1012 SCAD_UNRESOLVED_USE_INCLUDE");
+    assert.strictEqual(k1012.standardCode, "K1012");
+    assert.ok(k1012.message.includes("missing_library.scad"));
+
+    const k1013 = diags.find((d) => d.code === "SCAD_NON_POSITIVE_RADIUS");
+    assert.ok(k1013, "Expected K1013 SCAD_NON_POSITIVE_RADIUS");
+    assert.strictEqual(k1013.standardCode, "K1013");
+    assert.ok(k1013.message.includes("sphere"));
+  });
 });
+

@@ -234,7 +234,9 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         break;
       }
       case "equal": {
-        const [varA, varB] = args as [string, string];
+        const [rawA, rawB] = args;
+        const varA = typeof rawA === "string" ? rawA : String(rawA ?? "");
+        const varB = typeof rawB === "string" ? rawB : String(rawB ?? "");
         const negA = varA.startsWith("-");
         const negB = varB.startsWith("-");
         const cleanA = negA ? varA.slice(1) : varA;

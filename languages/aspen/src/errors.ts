@@ -107,4 +107,25 @@ export const AspenErrorCode = {
     severity: "error" as const,
     message: (blockName: string, rr: number) => `Column '${blockName}' reflux ratio (${rr}) must be non-negative.`,
   },
+  MIXER_MASS_BALANCE_DEFICIT: {
+    code: "M8116",
+    rule: "mixer-mass-balance-deficit",
+    severity: "error" as const,
+    message: (blockName: string) =>
+      `Mixer '${blockName}' total inlet mass flow does not equal outlet mass flow.`,
+  },
+  HEAT_EXCHANGER_TEMPERATURE_CROSS: {
+    code: "M8117",
+    rule: "heat-exchanger-temperature-cross",
+    severity: "warning" as const,
+    message: (blockName: string) =>
+      `Heat exchanger '${blockName}' has temperature cross: cold stream outlet exceeds hot stream inlet.`,
+  },
+  COMPRESSOR_PRESSURE_RATIO_SUBUNITY: {
+    code: "M8118",
+    rule: "compressor-pressure-ratio-subunity",
+    severity: "error" as const,
+    message: (blockName: string) =>
+      `Compressor '${blockName}' specifies outlet pressure below inlet pressure.`,
+  },
 } as const;

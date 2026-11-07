@@ -26,7 +26,7 @@ const props = withDefaults(
 );
 
 const { isDark } = useData();
-const ansatzOrigin = useAnsatzOrigin();
+const { ansatzOrigin } = useAnsatzOrigin();
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const loaded = ref(false);
 

@@ -272,8 +272,9 @@ export function ensureDiagramStyles(): void {
     .x6-edge-tool-vertex circle,
     circle.x6-edge-tool-vertex {
       cursor: grab !important;
-      transition: fill 0.15s ease, r 0.15s ease;
+      transition: fill 0.15s ease;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+      vector-effect: non-scaling-stroke !important;
     }
 
     .x6-edge-tool-vertex circle:hover,
@@ -287,6 +288,7 @@ export function ensureDiagramStyles(): void {
       cursor: move !important;
       transition: opacity 0.15s ease, fill 0.15s ease;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+      vector-effect: non-scaling-stroke !important;
     }
 
     .x6-edge-tool-segment rect:hover,
@@ -302,8 +304,8 @@ export function ensureDiagramStyles(): void {
     }
     [data-edge-selection="minimalist"] .x6-edge-tool-vertex circle,
     [data-edge-selection="minimalist"] circle.x6-edge-tool-vertex {
-      r: 3px !important;
       stroke-width: 1.5px !important;
+      vector-effect: non-scaling-stroke !important;
     }
     [data-edge-selection="minimalist"] .x6-edge-tool-segment,
     [data-edge-selection="minimalist"] rect.x6-edge-tool-segment {

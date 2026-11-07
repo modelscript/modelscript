@@ -12,5 +12,7 @@ export * from "./lsp.js";
 export * from "./parser/index.js";
 export * from "./projections/index.js";
 export * from "./rte/index.js";
+export * from "./tgg/autosar-rules.js";
+export * from "./tgg/autosar-sync.js";
 export * from "./types.js";
 export * from "./workspace-index.js";

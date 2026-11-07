@@ -153,6 +153,39 @@ TITLE 2
   assert.ok(p3002, "Expected P3002 for inverted active power limits");
 });
 
+test("PSS/E Linter: Detects negative generator power, multiple slack buses, voltage violations, zero branch rating, and zero inertia (P1002, P2003, P2004, P2005, P3004, P4004)", () => {
+  const caseText = `0, 100.00, 33, 0, 0, 60.00
+MULTI-RULE LINT TEST
+TITLE 2
+1, 'SLACK 1', 138.0, 3, 1, 1, 1, 1.00, 0.0
+2, 'SLACK 2', 138.0, 3, 1, 1, 1, 0.75, 0.0
+0 / END OF BUS DATA
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', -25.0, 10.0, 100.0, -100.0, 1.0, 0, 100.0, 0, 1, 0, 0, 1, 1, 100.0, 200.0, -50.0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.01, 0.05, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 1, 1, 0.0
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+0 / END OF AREA DATA
+0 / END OF TWO-TERMINAL DC DATA
+0 / END OF VSC DC DATA
+0 / END OF SWITCHED SHUNT DATA
+`;
+  const dyrText = `1 'GENROU' 1 6.00 0.05 0.50 0.06 0.00 0.25 1.80 1.70 0.60 0.80 0.20 0.12 0.10 0.40 /\n`;
+  const parsed = parseRaw(caseText);
+  parsed.dyr = parseDyr(dyrText);
+  const diags = lintPsse(parsed);
+  const codes = new Set(diags.map((d) => d.code));
+
+  assert.ok(codes.has("P1002"), "Expected P1002 for negative generator active power");
+  assert.ok(codes.has("P2003"), "Expected P2003 for multiple slack buses in single-area network");
+  assert.ok(codes.has("P2004"), "Expected P2004 for bus voltage outside [0.80, 1.20]");
+  assert.ok(codes.has("P2005"), "Expected P2005 for NERC substation voltage violation outside [0.90, 1.10]");
+  assert.ok(codes.has("P3004"), "Expected P3004 for zero inertia constant H in dynamic model");
+  assert.ok(codes.has("P4004"), "Expected P4004 for zero branch MVA thermal rating");
+});
+
 test("PSS/E Netlist: Constructs Ybus matrix and power injection vectors", () => {
   const parsed = parseRaw(IEEE_14_RAW);
   const netlist = extractPowerFlowNetlist(parsed);

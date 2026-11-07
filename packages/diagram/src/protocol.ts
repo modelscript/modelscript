@@ -535,6 +535,8 @@ export interface DiagramGetDataParams {
   diagramType?: string | undefined;
   /** Optional sidecar file content passed by the client (e.g. from IDE's virtual filesystem / workspace) */
   sidecarContent?: string | undefined;
+  /** Optional document text passed by client to bypass any didChange indexing race condition */
+  documentText?: string | undefined;
 }
 
 // applyEdits

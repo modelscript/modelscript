@@ -428,7 +428,10 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
   },
 };
 
-export const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string; output?: string }> = {
+export const ReqIfToSysmlCommand: CommandModule<
+  {},
+  { file: string; out?: string; output?: string; "contract-policy"?: "strict" | "ears" | "permissive"; strict?: boolean }
+> = {
   command: "to-sysml <file>",
   aliases: ["to-sysml2 <file>", "to-sysml2"],
   describe: "Translate ReqIF requirements and satisfaction relations into SysML v2 definitions",
@@ -443,7 +446,25 @@ export const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string
         alias: ["o", "output"],
         description: "Output .sysml file path",
         type: "string",
-      }) as unknown as Argv<{ file: string; out?: string; output?: string }>,
+      })
+      .option("contract-policy", {
+        description:
+          "Policy for extracting formal contracts into 'require constraint' ('strict' = only explicit @contract tags, 'ears' = explicit + EARS templates, 'permissive' = all including prose heuristics)",
+        choices: ["strict", "ears", "permissive"],
+        default: "permissive",
+      })
+      .option("strict", {
+        description:
+          "Strict mode: keep legacy ALM prose as doc comments only, requiring explicit @contract for constraints",
+        type: "boolean",
+        default: false,
+      }) as unknown as Argv<{
+      file: string;
+      out?: string;
+      output?: string;
+      "contract-policy"?: "strict" | "ears" | "permissive";
+      strict?: boolean;
+    }>,
   handler: async (args) => {
     const { parseReqIf, reqifToSysml2 } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -451,9 +472,10 @@ export const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string
       console.error(`Error: file not found: ${filePath}`);
       process.exit(1);
     }
+    const policy = args.strict ? "strict" : (args["contract-policy"] ?? "permissive");
     const xml = fs.readFileSync(filePath, "utf-8");
-    const doc = parseReqIf(xml);
-    const sysml = reqifToSysml2(doc);
+    const doc = parseReqIf(xml, { contractPolicy: policy });
+    const sysml = reqifToSysml2(doc, { contractPolicy: policy });
     const outPath = args.out ?? args.output;
     if (outPath) {
       fs.writeFileSync(path.resolve(process.cwd(), outPath), sysml, "utf-8");

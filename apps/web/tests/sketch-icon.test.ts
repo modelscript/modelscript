@@ -6,7 +6,13 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AnsatzSketchIcon, DraftingTriangleIcon, SketchIcon } from "../src/components/icons/AnsatzSketchIcon";
+import {
+  AnsatzSketchIcon,
+  DraftingTriangleIcon,
+  MorselIcon,
+  PenIcon,
+  SketchIcon,
+} from "../src/components/icons/AnsatzSketchIcon";
 
 describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
   it("verifies public/ansatz-sketch.svg contains authentic blueprint drafting geometry", () => {
@@ -92,6 +98,27 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       }),
     );
     assert.ok(helperHtml.includes('d="M3 21h18L3 3v18z"'), "DraftingTriangleIcon helper must render triangle geometry");
+  });
+
+  it("renders AnsatzSketchIcon React component with pen mode and exports PenIcon / MorselIcon", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AnsatzSketchIcon, {
+        size: 16,
+        variant: "pen",
+      }),
+    );
+
+    assert.ok(html.includes('width="16"'), "Should apply size 16");
+    assert.ok(html.includes('viewBox="0 0 24 24"'), "Pen variant should have 24x24 viewBox");
+    assert.ok(html.includes("ansatz-sketch-pen"), "Should include ansatz-sketch-pen CSS class");
+
+    const helperHtml = renderToStaticMarkup(
+      React.createElement(PenIcon, {
+        size: 18,
+      }),
+    );
+    assert.ok(helperHtml.includes("ansatz-sketch-pen"), "PenIcon helper must render pen geometry");
+    assert.strictEqual(MorselIcon, PenIcon, "MorselIcon must be an alias for PenIcon");
   });
 
   it("exports SketchIcon as an alias for AnsatzSketchIcon", () => {

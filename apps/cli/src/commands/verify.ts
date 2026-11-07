@@ -18,7 +18,7 @@ import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
@@ -55,6 +55,7 @@ interface VerifyArgs {
   export?: string | undefined;
   exportDir?: string | undefined;
   updateHypergraph?: boolean | undefined;
+  coordinator?: boolean | undefined;
   flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
 }
 
@@ -207,6 +208,12 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         description: "synchronize verification verdicts directly into digital thread hypergraph",
         type: "boolean",
         default: false,
+      })
+      .option("coordinator", {
+        description:
+          "execute 4-language SemanticTheoryCoordinator & DigitalThreadHypergraph verification across SysML v2, Modelica, OpenSCAD/URDF, and FEA/CFD/STEP",
+        type: "boolean",
+        default: false,
       }) as unknown as Argv<VerifyArgs>;
   },
 
@@ -221,6 +228,10 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       target &&
       (target.endsWith(".sysml") ||
         target.endsWith(".mo") ||
+        target.endsWith(".scad") ||
+        target.endsWith(".inp") ||
+        target.endsWith(".cfd") ||
+        target.endsWith(".urdf") ||
         target.endsWith(".step") ||
         target.endsWith(".stp") ||
         target.includes("/") ||
@@ -230,13 +241,137 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       target = undefined;
     }
 
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+
+    const hasPolyglotCaeFiles = paths.some((p) =>
+      /\.(scad|inp|cfd|urdf|step|stp)$/i.test(p),
+    );
+    if (args.coordinator || hasPolyglotCaeFiles) {
+      const enginePath = path.resolve(
+        __dirname,
+        "../../../docs/docs/.vitepress/theme/util/semantic-coordinator-engine.js",
+      );
+      const coordinatorModule: any = await import(pathToFileURL(enginePath).href);
+      const {
+        COORDINATOR_SCENARIOS,
+        evaluatePolyglotDigitalThreadFromFiles,
+      } = coordinatorModule;
+
+      const loadedFiles: { fileName: string; content: string }[] = [];
+      for (const p of paths) {
+        const resolvedPath = path.resolve(process.cwd(), p);
+        if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()) {
+          for (const entry of fs.readdirSync(resolvedPath)) {
+            const childPath = path.join(resolvedPath, entry);
+            if (fs.statSync(childPath).isFile()) {
+              loadedFiles.push({
+                fileName: entry,
+                content: fs.readFileSync(childPath, "utf-8"),
+              });
+            }
+          }
+        } else if (fs.existsSync(resolvedPath)) {
+          loadedFiles.push({
+            fileName: path.basename(resolvedPath),
+            content: fs.readFileSync(resolvedPath, "utf-8"),
+          });
+        } else {
+          // Resolve against built-in digital-thread scenario panes when bare filenames are passed
+          const base = path.basename(p).toLowerCase();
+          for (const scen of COORDINATOR_SCENARIOS) {
+            const pane = scen.panes.find((pn: any) => pn.fileName.toLowerCase() === base);
+            if (pane) {
+              loadedFiles.push({
+                fileName: pane.fileName,
+                content: pane.defaultCode,
+              });
+              break;
+            }
+          }
+        }
+      }
+
+      const explicitScenario =
+        target && COORDINATOR_SCENARIOS.some((s: any) => s.id === target)
+          ? target
+          : undefined;
+      const res = evaluatePolyglotDigitalThreadFromFiles(
+        loadedFiles,
+        explicitScenario,
+      );
+
+      if (args.format === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              scenarioId: res.scenarioId,
+              scenarioTitle: res.scenarioTitle,
+              status: res.status,
+              isSat: res.isSat,
+              elapsedMs: res.elapsedMs,
+              iterations: res.iterations,
+              summaryText: res.summaryText,
+              hypergraphNodes: res.hypergraphNodes,
+              variableLinks: res.variableLinks,
+              portBindings: res.parsedMetadata.portBindings,
+              directiveLinks: res.parsedMetadata.directiveLinks,
+              evaluatedEquations: res.parsedMetadata.evaluatedEquations,
+              sharedEqualities: res.sharedEqualities,
+              conflicts: res.conflicts,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(`\n=== ModelScript Polyglot SemanticTheoryCoordinator ===`);
+        console.log(`Scenario : ${res.scenarioTitle} (${res.scenarioId})`);
+        console.log(`Verdict  : [${res.status}] ${res.summaryText}`);
+        console.log(
+          `Hypergraph: ${res.hypergraphNodes.map((n: any) => `${n.fileName} (${n.oracleName}: ${n.status})`).join(" | ")}`,
+        );
+        if (res.parsedMetadata.portBindings.length > 0) {
+          console.log(`\n--- CAD <-> CAE Boundary Port Bindings (${res.parsedMetadata.portBindings.length}) ---`);
+          for (const pb of res.parsedMetadata.portBindings) {
+            console.log(
+              `  [${pb.isBound ? "BOUND" : "UNBOUND"}] tag_port("${pb.portName}", "${pb.cadPortType}") in ${pb.cadFileName}:${pb.cadLine} <-> ${pb.caePatchSpec} in ${pb.caeFileName}:${pb.caeLine}`,
+            );
+          }
+        }
+        console.log(`\n--- Symbolically Evaluated Domain Equations (${res.parsedMetadata.evaluatedEquations.length}) ---`);
+        for (const eq of res.parsedMetadata.evaluatedEquations) {
+          console.log(
+            `  [${eq.language}] ${eq.fileName}: ${eq.lhs} = ${eq.rhsExpression} => ${eq.evaluatedValue} ${eq.unit}`,
+          );
+        }
+        console.log(`\n--- Cross-Domain FQN Variable Links (${res.variableLinks.length}) ---`);
+        for (const vl of res.variableLinks) {
+          console.log(
+            `  [${vl.status}] ${vl.canonicalFqn} = ${vl.valueFormatted} (bound: ${vl.boundsFormatted}) via ${vl.oracleName} — ${vl.marginText}`,
+          );
+        }
+        if (res.conflicts.length > 0) {
+          console.log(`\n--- Formal Conflict Clauses (${res.conflicts.length}) ---`);
+          for (const c of res.conflicts) {
+            console.log(`  [${c.theoryName}] ${c.explanation}`);
+            console.log(`    Culprit FQNs: ${c.culpritEntities.join(", ")}`);
+          }
+        }
+        console.log("");
+      }
+
+      if (!res.isSat) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+
     // Load Modelica Parser
     const { parser: modelicaParser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", modelicaParser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
     const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
     const sysmlResult = await createWasmParser(wasmPath);
     const sysmlParser = sysmlResult.parser;

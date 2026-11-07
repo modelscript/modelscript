@@ -449,6 +449,10 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     };
     if (qpId) datumDef.qpId = qpId.trim();
     if (featureId) datumDef.featureId = featureId.trim();
+    const datumRefs = parseCstDatumRefs(el, getAttr(el, "datumReferences") ?? getAttr(el, "datums"));
+    if (datumRefs.length > 0) {
+      datumDef.datumReferences = datumRefs.map((r) => r.datumLabel);
+    }
     doc.datumDefinitions.push(datumDef);
   }
 
@@ -623,6 +627,12 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       getChildText(el, "MeasurementDeviceId") ??
       getChildText(el, "DeviceId");
 
+    const subgroupStr =
+      getAttr(el, "spcSubgroupSize") ??
+      getAttr(el, "subgroupSize") ??
+      getChildText(el, "SPCSubgroupSize") ??
+      getChildText(el, "SubgroupSize");
+
     const characteristic: QifCharacteristic = {
       id,
       qpId,
@@ -652,6 +662,9 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     }
     if (deviceId) {
       characteristic.deviceId = deviceId.trim();
+    }
+    if (subgroupStr !== undefined && subgroupStr.trim() !== "" && !Number.isNaN(Number(subgroupStr))) {
+      characteristic.spcSubgroupSize = Number(subgroupStr);
     }
 
     doc.characteristics.push(characteristic);
@@ -880,6 +893,10 @@ function parseQifDsl(text: string, lineOffsets: number[], fullRange: QifSourceRa
       if (qpId) datum.qpId = qpId;
       const featRef = kv.get("featureId") ?? kv.get("feature");
       if (featRef) datum.featureId = featRef;
+      const datumRefsStr = kv.get("datumReferences") ?? kv.get("datums");
+      if (datumRefsStr) {
+        datum.datumReferences = parseListString(datumRefsStr);
+      }
       doc.datumDefinitions.push(datum);
     } else if (keyword === "FEATURE") {
       const posId = tokens[1] && !tokens[1].includes("=") ? stripQuotes(tokens[1]) : undefined;
@@ -983,6 +1000,10 @@ function parseQifDsl(text: string, lineOffsets: number[], fullRange: QifSourceRa
       const devId = kv.get("deviceId") ?? kv.get("device");
       if (devId) {
         characteristic.deviceId = devId;
+      }
+      const subgroupStr = kv.get("spcSubgroupSize") ?? kv.get("subgroupSize") ?? kv.get("subgroup");
+      if (subgroupStr !== undefined && !Number.isNaN(Number(subgroupStr))) {
+        characteristic.spcSubgroupSize = Number(subgroupStr);
       }
 
       const compZoneRaw = kv.get("compositeZone") ?? kv.get("lowerZone");

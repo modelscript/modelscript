@@ -165,4 +165,71 @@ describe("OSCAL Constraint & CPS Compliance Linter (M8201–M8208)", () => {
     const diags = lintOscalDocument(doc);
     assert(diags.some((d) => d.code === "M8208" && d.message.includes("'Unauthenticated Modbus Write Access'")));
   });
+
+  it("detects M8209, M8210, M8211, M8212, and M8213", () => {
+    const sspDoc = parseOscal(
+      JSON.stringify({
+        "system-security-plan": {
+          uuid: "11111111-2222-4333-8444-555555555555",
+          metadata: {
+            title: "Extended Compliance SSP",
+            version: "1.0",
+            parties: [{ uuid: "aaaaaaaa-2222-4333-8444-555555555555", type: "organization", name: "OpsTeam" }],
+            "responsible-parties": [
+              { "role-id": "system-owner", "party-uuids": ["bbbbbbbb-2222-4333-8444-555555555555"] },
+            ],
+            props: [{ name: "hash-algorithm", value: "SHA-1" }],
+          },
+          "system-characteristics": {
+            "system-name": "SubstationGateway",
+            "authorization-boundary": { description: "Substation ESP boundary" },
+          },
+          "system-implementation": {
+            components: [
+              {
+                uuid: "22222222-2222-4333-8444-555555555555",
+                title: "UnassignedGateway",
+                type: "software",
+              },
+            ],
+          },
+          "control-implementation": {
+            "implemented-requirements": [
+              {
+                uuid: "33333333-2222-4333-8444-555555555555",
+                "control-id": "ac-3",
+                statements: [
+                  {
+                    "statement-id": "ac-3_smt.a",
+                    uuid: "44444444-2222-4333-8444-555555555555",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const diags = lintOscalDocument(sspDoc, {
+      poamItems: [
+        {
+          uuid: "55555555-2222-4333-8444-555555555555",
+          title: "POAM-01",
+          status: "in-progress",
+          milestones: [
+            {
+              uuid: "66666666-2222-4333-8444-555555555555",
+              title: "Patch Firmware",
+              dueDate: "2020-01-15T00:00:00Z",
+            },
+          ],
+        },
+      ],
+    });
+    assert(diags.some((d) => d.code === "M8209" && d.message.includes("'ac-3_smt.a'")));
+    assert(diags.some((d) => d.code === "M8210" && d.message.includes("'UnassignedGateway'")));
+    assert(diags.some((d) => d.code === "M8211" && d.message.includes("'SHA-1'")));
+    assert(diags.some((d) => d.code === "M8212" && d.message.includes("'bbbbbbbb-2222-4333-8444-555555555555'")));
+    assert(diags.some((d) => d.code === "M8213" && d.message.includes("'2020-01-15T00:00:00Z'")));
+  });
 });

@@ -16,6 +16,7 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
 <template>
   <section class="ms-section home-cta">
     <div class="ms-container">
+      <div class="cta-divider" aria-hidden="true"></div>
       <div class="pillars">
         <div v-for="p in pillars" :key="p.title" class="pillar">
           <span class="pillar-icon"><MsIcon :name="p.icon" :size="22" :duotone="true" /></span>
@@ -55,8 +56,22 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
 
 <style scoped>
 .home-cta {
-  padding-top: 72px;
+  position: relative;
+  padding-top: 0;
   padding-bottom: 0;
+}
+
+.cta-divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--vp-c-divider) 15%,
+    var(--vp-c-divider) 85%,
+    transparent 100%
+  );
+  margin-bottom: 56px;
 }
 
 .pillars {
@@ -110,6 +125,9 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
 }
 
 @media (max-width: 768px) {
+  .cta-divider {
+    margin-bottom: 40px;
+  }
   .pillars {
     grid-template-columns: 1fr;
   }

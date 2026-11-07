@@ -292,62 +292,90 @@ export async function seedPolyglotSocialData(
       }
     }
 
-    const existingArtifact = db.getArtifactViewByTitle(spec.title);
+    const legacyTitles =
+      spec.id === "seed-post-urdf-digital-twin-cell"
+        ? [
+            "Self-Driving Lab Formulation Cell Digital Twin — UR3e Cobot & Automated Dispenser",
+            "Autonomous Formulation Cell Digital Twin (UR5e + CNC Gantry)",
+          ]
+        : [];
+    const existingArtifact =
+      db.getArtifactViewByTitle(spec.title) ??
+      legacyTitles.map((t) => db.getArtifactViewByTitle(t)).find((a) => a !== undefined);
+
     if (existingArtifact && !options?.force) {
-      if (spec.extraViewConfig && existingArtifact.view_config) {
-        try {
-          const parsedVc = JSON.parse(existingArtifact.view_config) as Record<string, unknown>;
-          let changed = false;
-          for (const [k, v] of Object.entries(spec.extraViewConfig)) {
-            if (parsedVc[k] === undefined) {
-              parsedVc[k] = v;
-              changed = true;
-            }
-          }
-          if (changed) {
-            db.updateArtifactViewConfig(existingArtifact.id, JSON.stringify(parsedVc));
-          }
-        } catch {}
-      }
+      const artifactsToSync = [
+        existingArtifact,
+        ...legacyTitles
+          .map((t) => db.getArtifactViewByTitle(t))
+          .filter((a): a is NonNullable<typeof a> => a !== undefined && a.id !== existingArtifact.id),
+      ];
+
       if (spec.extraViewConfig?.["stepCode"] && typeof spec.extraViewConfig["stepFilename"] === "string") {
         const stepPath = path.join(uploadDir, spec.extraViewConfig["stepFilename"] as string);
         if (!fs.existsSync(stepPath)) {
           fs.writeFileSync(stepPath, spec.extraViewConfig["stepCode"] as string, "utf8");
         }
       }
+
       const isStaleRasterThumb =
         typeof existingArtifact.thumbnail_url === "string" &&
         existingArtifact.thumbnail_url.startsWith("/thumbnails/artifact_");
-      if (!existingArtifact.thumbnail_url || isStaleRasterThumb) {
+      const forceUrdf3dThumbRefresh = spec.viewType === "urdf";
+
+      let pre: Awaited<ReturnType<typeof pregenerateServerSvgThumbnail>> | null = null;
+      if (!existingArtifact.thumbnail_url || isStaleRasterThumb || forceUrdf3dThumbRefresh) {
         try {
           const filePath = path.join(uploadDir, spec.filename);
-          if (!fs.existsSync(filePath)) {
+          if (!fs.existsSync(filePath) || forceUrdf3dThumbRefresh) {
             fs.writeFileSync(filePath, spec.code, "utf8");
           }
-          const pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);
-          if (pre.thumbnailUrl) {
-            db.updateArtifactThumbnail(existingArtifact.id, pre.thumbnailUrl, pre.thumbnailUrl);
-            if (existingArtifact.view_config) {
-              try {
-                const parsedVc = JSON.parse(existingArtifact.view_config) as Record<string, unknown>;
-                if (pre.svg) {
-                  parsedVc["svg"] = pre.svg;
-                }
-                parsedVc["thumbnailUrl"] = pre.thumbnailUrl;
-                parsedVc["thumbnailUrlLight"] = pre.thumbnailUrl;
-                parsedVc["thumbnailUrlDark"] = pre.thumbnailUrl;
-                db.updateArtifactViewConfig(existingArtifact.id, JSON.stringify(parsedVc));
-              } catch {}
+          pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);
+        } catch {}
+      }
+
+      for (const art of artifactsToSync) {
+        try {
+          const parsedVc = art.view_config
+            ? (JSON.parse(art.view_config) as Record<string, unknown>)
+            : ({} as Record<string, unknown>);
+          let changed = art.title !== spec.title;
+          if (spec.code && parsedVc["code"] !== spec.code) {
+            parsedVc["code"] = spec.code;
+            changed = true;
+            const filePath = path.join(uploadDir, spec.filename);
+            fs.writeFileSync(filePath, spec.code, "utf8");
+          }
+          if (spec.extraViewConfig) {
+            for (const [k, v] of Object.entries(spec.extraViewConfig)) {
+              if (JSON.stringify(parsedVc[k]) !== JSON.stringify(v)) {
+                parsedVc[k] = v;
+                changed = true;
+              }
             }
           }
-          if (isStaleRasterThumb && typeof existingArtifact.thumbnail_url === "string") {
-            try {
-              const staleBasename = path.basename(existingArtifact.thumbnail_url);
-              const stalePath = path.join(process.cwd(), "public", "thumbnails", staleBasename);
-              if (fs.existsSync(stalePath)) {
-                fs.unlinkSync(stalePath);
-              }
-            } catch {}
+          if (pre?.thumbnailUrl) {
+            db.updateArtifactThumbnail(art.id, pre.thumbnailUrl, pre.thumbnailUrl);
+            if (pre.svg) {
+              parsedVc["svg"] = pre.svg;
+            }
+            parsedVc["thumbnailUrl"] = pre.thumbnailUrl;
+            parsedVc["thumbnailUrlLight"] = pre.thumbnailUrl;
+            parsedVc["thumbnailUrlDark"] = pre.thumbnailUrl;
+            changed = true;
+          }
+          if (changed) {
+            db.updateArtifactViewConfig(art.id, JSON.stringify(parsedVc), spec.title);
+          }
+        } catch {}
+      }
+
+      if (isStaleRasterThumb && typeof existingArtifact.thumbnail_url === "string") {
+        try {
+          const staleBasename = path.basename(existingArtifact.thumbnail_url);
+          const stalePath = path.join(process.cwd(), "public", "thumbnails", staleBasename);
+          if (fs.existsSync(stalePath)) {
+            fs.unlinkSync(stalePath);
           }
         } catch {}
       }

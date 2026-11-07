@@ -106,9 +106,10 @@ export function parseSpckXml(xmlContent: string, defaultName: string = "SimpackM
         baumgarteAlpha: alphaRaw !== undefined ? parseNum(alphaRaw, 0) : undefined,
         baumgarteBeta: betaRaw !== undefined ? parseNum(betaRaw, 0) : undefined,
       });
-    } else if (tag === "force" || tag === "spring" || tag === "bushing") {
+    } else if (tag === "force" || tag === "spring" || tag === "bushing" || tag === "contact" || tag === "wheel_rail") {
       const id = getAttr(el, "id") ?? `force_${model.forces.size + 1}`;
       const name = getAttr(el, "name") ?? id;
+      const explicitType = getAttr(el, "type")?.toLowerCase();
       const markerA = getAttr(el, "from") ?? getAttr(el, "marker_a") ?? "";
       const markerB = getAttr(el, "to") ?? getAttr(el, "marker_b") ?? "";
       const kx = parseNum(getAttr(el, "kx"), 0);
@@ -126,13 +127,17 @@ export function parseSpckXml(xmlContent: string, defaultName: string = "SimpackM
       const k3x = parseNum(getAttr(el, "k3x"), 0);
       const k3y = parseNum(getAttr(el, "k3y"), 0);
       const k3z = parseNum(getAttr(el, "k3z"), 0);
+      const railProfile = getAttr(el, "rail_profile") ?? getAttr(el, "railProfile");
+      const wheelProfile = getAttr(el, "wheel_profile") ?? getAttr(el, "wheelProfile");
       const hasRot = krx !== 0 || kry !== 0 || krz !== 0 || crx !== 0 || cry !== 0 || crz !== 0;
       const hasNonlin = k3x !== 0 || k3y !== 0 || k3z !== 0;
+      const isContact =
+        tag === "contact" || tag === "wheel_rail" || explicitType === "contact" || explicitType === "wheel_rail";
 
       model.forces.set(id, {
         id,
         name,
-        type: tag === "bushing" || hasRot ? "bushing" : "spring_damper",
+        type: isContact ? "contact" : tag === "bushing" || explicitType === "bushing" || hasRot ? "bushing" : "spring_damper",
         markerA,
         markerB,
         stiffness: { x: kx, y: ky, z: kz },
@@ -144,6 +149,8 @@ export function parseSpckXml(xmlContent: string, defaultName: string = "SimpackM
             }
           : {}),
         ...(hasNonlin ? { nonlinearStiffness: { x: k3x, y: k3y, z: k3z } } : {}),
+        ...(railProfile !== undefined ? { railProfile } : {}),
+        ...(wheelProfile !== undefined ? { wheelProfile } : {}),
       });
     }
 

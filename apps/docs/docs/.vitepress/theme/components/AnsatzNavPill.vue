@@ -138,13 +138,11 @@ onBeforeUnmount(() => {
       <div class="ansatz-screen-row">
         <span class="ansatz-screen-title">
           <span class="ansatz-screen-pip" aria-hidden="true" />
-          <span>Explore Ansatz Hub</span>
+          <span>Explore Ansatz Network</span>
         </span>
         <span class="ansatz-screen-arrow" aria-hidden="true">↗</span>
       </div>
-      <p class="ansatz-screen-desc">
-        Federated engineering network &amp; package registry
-      </p>
+      <p class="ansatz-screen-desc">Federated engineering network &amp; package registry</p>
     </a>
   </div>
 
@@ -166,7 +164,9 @@ onBeforeUnmount(() => {
       aria-describedby="ansatz-nav-tooltip"
     >
       <span class="ansatz-pip" aria-hidden="true" />
-      <span class="ansatz-label">Explore Ansatz Hub</span>
+      <span class="ansatz-label"
+        ><span class="ansatz-label-prefix">Explore </span>Ansatz<span class="ansatz-label-suffix"> Network</span></span
+      >
       <svg
         class="ansatz-external"
         viewBox="0 0 24 24"
@@ -200,9 +200,7 @@ onBeforeUnmount(() => {
           <span class="ansatz-tooltip-host">{{ hostLabel }}</span>
         </div>
 
-        <p class="ansatz-tooltip-desc">
-          Federated engineering network and package registry powered by ModelScript.
-        </p>
+        <p class="ansatz-tooltip-desc">Federated engineering network and package registry powered by ModelScript.</p>
       </div>
     </Transition>
   </div>
@@ -212,9 +210,9 @@ onBeforeUnmount(() => {
 /* ── Wrapper ── */
 .ansatz-nav-wrapper {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  align-self: center;
+  height: var(--vp-nav-height);
 }
 
 /* ── Mobile Screen Link ── */
