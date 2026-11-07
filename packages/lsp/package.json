@@ -182,15 +182,15 @@
     "@modelscript/touchstone": "*",
     "@modelscript/urdf": "*",
     "@modelscript/verilog-a": "*",
-    "sql.js": "^1.14.2",
-    "vscode-languageserver": "^9.0.1",
+    "sql.js": "^1.15.2",
+    "vscode-languageserver": "^11.0.0",
     "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
     "@types/sql.js": "^1.4.11",
     "rimraf": "^6.1.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "modelscript": {
     "tier": "stable",
