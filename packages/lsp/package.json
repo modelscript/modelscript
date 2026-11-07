@@ -187,9 +187,9 @@
     "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^26.6.6",
     "@types/sql.js": "^1.4.11",
-    "rimraf": "^6.1.0",
+    "rimraf": "^6.1.4",
     "typescript": "^5.9.3"
   },
   "modelscript": {

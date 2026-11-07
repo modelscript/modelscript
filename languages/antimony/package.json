@@ -58,7 +58,7 @@
     "@modelscript/runtime": "*"
   },
   "devDependencies": {
-    "rimraf": "^6.1.0",
+    "rimraf": "^6.1.4",
     "typescript": "^5.9.3"
   },
   "modelscript": {
