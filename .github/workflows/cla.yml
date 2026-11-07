@@ -29,7 +29,7 @@ jobs:
 
           # 1. Core maintainer / bot accounts with standing CLA on file
           case "${PR_AUTHOR}" in
-            omarnachawati|modelscript-bot|dependabot\[bot\]|github-actions\[bot\])
+            nachawati|omarnachawati|modelscript-bot|dependabot\[bot\]|github-actions\[bot\])
               echo "✓ Standing CLA verified for core maintainer/automation account (${PR_AUTHOR})."
               exit 0
               ;;
@@ -49,7 +49,9 @@ jobs:
           fi
 
           echo "::error::Contributor License Agreement (CLA) signature missing for @${PR_AUTHOR}."
-          echo "Please read CLA.md and either:"
-          echo "  1. Sign off your commits with 'git commit --amend -s', OR"
-          echo "  2. Add 'I have read the CLA Document and I hereby sign the CLA' to your Pull Request description."
+          echo "ModelScript is an open-core project authored and maintained by Mohamad Omar Nachawati."
+          echo "Under our dual-license model (AGPL-3.0-or-later + Commercial), contributors retain copyright of their individual contributions while granting sublicensing rights to the Maintainer."
+          echo "Please review CLA.md and either:"
+          echo "  1. Sign off your commits using 'git commit --amend -s', OR"
+          echo "  2. Comment 'I have read the CLA Document and I hereby sign the CLA' on your Pull Request."
           exit 1

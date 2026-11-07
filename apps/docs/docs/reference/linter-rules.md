@@ -28,73 +28,73 @@ The **CLI** column below shows which command reports each language's rules.
 
 ## Rule index
 
-| Language                                             | Package                     | Rules | CLI                     |
-| :--------------------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [Modelica](#modelica)                                | `@modelscript/modelica`     |   307 | `msx lint`              |
-| [SysML v2 / KerML](#sysml2)                          | `@modelscript/sysml2`       |    48 | `msx lint`              |
-| [ReqIF](#reqif)                                      | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
-| [NIST OSCAL](#oscal)                                 | `@modelscript/oscal`        |     8 | Language server / API   |
-| [SSP](#ssp)                                          | `@modelscript/ssp`          |    14 | `msx lint`              |
-| [OWL2](#owl2)                                        | `@modelscript/owl2`         |    24 | `msx lint`              |
-| [STEP (ISO 10303)](#step)                            | `@modelscript/step`         |     8 | `msx lint`              |
-| [QIF (ISO 23952)](#qif)                              | `@modelscript/qif`          |     9 | Language server / API   |
-| [OpenSCAD](#scad)                                    | `@modelscript/scad`         |     8 | `msx lint`              |
-| [CFD (SU2 / OpenFOAM-Compatible)](#cfd)              | `@modelscript/cfd`          |     8 | `msx lint`              |
-| [FEA (CalculiX / Abaqus / NASTRAN-Compatible)](#fea) | `@modelscript/fea`          |     8 | `msx lint`              |
-| [C](#c)                                              | `@modelscript/c`            |    10 | `msx lint`              |
-| [Fortran](#fortran)                                  | `@modelscript/fortran`      |    15 | `msx lint`              |
-| [JSBSim](#jsbsim)                                    | `@modelscript/jsbsim`       |    10 | `msx jsbsim lint`       |
-| [NASA ROCETS](#rocets)                               | `@modelscript/rocets`       |    14 | `msx lint`              |
-| [CCSDS](#ccsds)                                      | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
-| [EASY5](#easy5)                                      | `@modelscript/easy5`        |    12 | `msx lint`              |
-| [AUTOSAR](#autosar)                                  | `@modelscript/autosar`      |    15 | `msx autosar lint`      |
-| [MATLAB Simulink](#simulink)                         | `@modelscript/simulink`     |    10 | `msx simulink lint`     |
-| [GT-SUITE](#gtsuite)                                 | `@modelscript/gtsuite`      |    15 | `msx lint`              |
-| [ASAM OpenDRIVE](#opendrive)                         | `@modelscript/opendrive`    |     8 | `msx opendrive lint`    |
-| [ASAM OpenSCENARIO](#openscenario)                   | `@modelscript/openscenario` |    10 | `msx openscenario lint` |
-| [GENSYS](#gensys)                                    | `@modelscript/gensys`       |     6 | `msx gensys lint`       |
-| [SIMPACK](#simpack)                                  | `@modelscript/simpack`      |     6 | `msx simpack lint`      |
-| [PSCAD / EMTDC](#pscad)                              | `@modelscript/pscad`        |    17 | `msx lint`              |
-| [PSS/E](#psse)                                       | `@modelscript/psse`         |    13 | `msx psse lint`         |
-| [OpenDSS](#opendss)                                  | `@modelscript/opendss`      |    10 | `msx opendss lint`      |
-| [OLGA](#olga)                                        | `@modelscript/olga`         |    13 | `msx olga lint`         |
-| [PipelineStudio](#lps)                               | `@modelscript/lps`          |    12 | `msx lint`              |
-| [ECLIPSE](#eclipse)                                  | `@modelscript/eclipse`      |    10 | `msx eclipse lint`      |
-| [RELAP5-3D](#relap5)                                 | `@modelscript/relap5`       |    10 | `msx relap5 lint`       |
-| [SIMA / SIMO / RIFLEX](#sima)                        | `@modelscript/sima`         |    15 | `msx lint`              |
-| [SPICE](#spice)                                      | `@modelscript/spice`        |    10 | `msx lint`              |
-| [Verilog-A / AMS](#verilog-a)                        | `@modelscript/verilog-a`    |    10 | `msx verilog-a lint`    |
-| [IBIS](#ibis)                                        | `@modelscript/ibis`         |     9 | `msx ibis lint`         |
-| [Touchstone](#touchstone)                            | `@modelscript/touchstone`   |    10 | `msx touchstone lint`   |
-| [URDF / Xacro](#urdf)                                | `@modelscript/urdf`         |     8 | `msx lint`              |
-| [PLCopen / IEC 61131-3](#plcopen)                    | `@modelscript/plcopen`      |    10 | `msx plcopen lint`      |
-| [AutomationML (IEC 62714)](#automationml)            | `@modelscript/automationml` |     7 | Language server / API   |
-| [MSC Adams](#adams)                                  | `@modelscript/adams`        |     9 | `msx adams lint`        |
-| [EnergyPlus](#energyplus)                            | `@modelscript/energyplus`   |     8 | `msx energyplus lint`   |
-| [EPANET](#epanet)                                    | `@modelscript/epanet`       |     8 | `msx epanet lint`       |
-| [EPA SWMM](#swmm)                                    | `@modelscript/swmm`         |    13 | `msx swmm lint`         |
-| [Aspen Plus / HYSYS](#aspen)                         | `@modelscript/aspen`        |    15 | `msx aspen lint`        |
-| [gPROMS / PML](#gproms)                              | `@modelscript/gproms`       |    10 | Language server / API   |
-| [Cantera](#cantera)                                  | `@modelscript/cantera`      |    10 | Language server / API   |
-| [PHREEQC](#phreeqc)                                  | `@modelscript/phreeqc`      |    10 | Language server / API   |
-| [SMILES / SDF](#smiles)                              | `@modelscript/smiles`       |    10 | Language server / API   |
-| [SBML](#sbml)                                        | `@modelscript/sbml`         |    10 | `msx sbml lint`         |
-| [Antimony](#antimony)                                | `@modelscript/antimony`     |    10 | Language server / API   |
-| [BioNetGen (BNGL)](#bngl)                            | `@modelscript/bngl`         |    10 | Language server / API   |
-| [SBOL3](#sbol)                                       | `@modelscript/sbol`         |    10 | Language server / API   |
-| [SED-ML](#sedml)                                     | `@modelscript/sedml`        |    10 | Language server / API   |
-| [NMTRAN (NONMEM-Compatible)](#nmtran)                | `@modelscript/nmtran`       |    10 | Language server / API   |
-| [PDB / mmCIF](#pdb)                                  | `@modelscript/pdb`          |    10 | Language server / API   |
-| [GenBank / FASTA](#genbank)                          | `@modelscript/genbank`      |    10 | Language server / API   |
-| [CellML](#cellml)                                    | `@modelscript/cellml`       |    10 | Language server / API   |
-| [OpenSim](#opensim)                                  | `@modelscript/opensim`      |    10 | Language server / API   |
-| [FEBio / SOFA](#febio)                               | `@modelscript/febio`        |    10 | Language server / API   |
-| [DICOM-RT](#dicom-rt)                                | `@modelscript/dicom-rt`     |    10 | Language server / API   |
-| [TOPAS / GATE](#topas)                               | `@modelscript/topas`        |    10 | Language server / API   |
-| [NIfTI / NRRD](#nifti)                               | `@modelscript/nifti`        |    10 | Language server / API   |
-| [3MF Medical](#three-mf)                             | `@modelscript/three-mf`     |    10 | Language server / API   |
-| [OpenIGTLink / PLUS](#igtl)                          | `@modelscript/igtl`         |    10 | Language server / API   |
-| [modelscript](#modelscript)                          | `@modelscript/modelscript`  |    10 | Language server / API   |
+| Language                                  | Package                     | Rules | CLI                     |
+| :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
+| [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
+| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
+| [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
+| [NIST OSCAL](#oscal)                      | `@modelscript/oscal`        |     8 | Language server / API   |
+| [SSP](#ssp)                               | `@modelscript/ssp`          |    14 | `msx lint`              |
+| [OWL2](#owl2)                             | `@modelscript/owl2`         |    24 | `msx lint`              |
+| [STEP (ISO 10303)](#step)                 | `@modelscript/step`         |     8 | `msx lint`              |
+| [QIF (ISO 23952)](#qif)                   | `@modelscript/qif`          |     9 | Language server / API   |
+| [OpenSCAD](#scad)                         | `@modelscript/scad`         |     8 | `msx lint`              |
+| [CFD (SU2 / OpenFOAM)](#cfd)              | `@modelscript/cfd`          |     8 | `msx lint`              |
+| [FEA (CalculiX / Abaqus / NASTRAN)](#fea) | `@modelscript/fea`          |     8 | `msx lint`              |
+| [C](#c)                                   | `@modelscript/c`            |    10 | `msx lint`              |
+| [Fortran](#fortran)                       | `@modelscript/fortran`      |    15 | `msx lint`              |
+| [JSBSim](#jsbsim)                         | `@modelscript/jsbsim`       |    10 | `msx jsbsim lint`       |
+| [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
+| [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
+| [EASY5](#easy5)                           | `@modelscript/easy5`        |    12 | `msx lint`              |
+| [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |    15 | `msx autosar lint`      |
+| [MATLAB Simulink](#simulink)              | `@modelscript/simulink`     |    10 | `msx simulink lint`     |
+| [GT-SUITE](#gtsuite)                      | `@modelscript/gtsuite`      |    15 | `msx lint`              |
+| [ASAM OpenDRIVE](#opendrive)              | `@modelscript/opendrive`    |     8 | `msx opendrive lint`    |
+| [ASAM OpenSCENARIO](#openscenario)        | `@modelscript/openscenario` |    10 | `msx openscenario lint` |
+| [GENSYS](#gensys)                         | `@modelscript/gensys`       |     6 | `msx gensys lint`       |
+| [SIMPACK](#simpack)                       | `@modelscript/simpack`      |     6 | `msx simpack lint`      |
+| [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    17 | `msx lint`              |
+| [PSS/E](#psse)                            | `@modelscript/psse`         |    13 | `msx psse lint`         |
+| [OpenDSS](#opendss)                       | `@modelscript/opendss`      |    10 | `msx opendss lint`      |
+| [OLGA](#olga)                             | `@modelscript/olga`         |    13 | `msx olga lint`         |
+| [PipelineStudio](#lps)                    | `@modelscript/lps`          |    12 | `msx lint`              |
+| [ECLIPSE](#eclipse)                       | `@modelscript/eclipse`      |    10 | `msx eclipse lint`      |
+| [RELAP5-3D](#relap5)                      | `@modelscript/relap5`       |    10 | `msx relap5 lint`       |
+| [SIMA / SIMO / RIFLEX](#sima)             | `@modelscript/sima`         |    15 | `msx lint`              |
+| [SPICE](#spice)                           | `@modelscript/spice`        |    10 | `msx lint`              |
+| [Verilog-A / AMS](#verilog-a)             | `@modelscript/verilog-a`    |    10 | `msx verilog-a lint`    |
+| [IBIS](#ibis)                             | `@modelscript/ibis`         |     9 | `msx ibis lint`         |
+| [Touchstone](#touchstone)                 | `@modelscript/touchstone`   |    10 | `msx touchstone lint`   |
+| [URDF / Xacro](#urdf)                     | `@modelscript/urdf`         |     8 | `msx lint`              |
+| [PLCopen / IEC 61131-3](#plcopen)         | `@modelscript/plcopen`      |    10 | `msx plcopen lint`      |
+| [AutomationML (IEC 62714)](#automationml) | `@modelscript/automationml` |     7 | Language server / API   |
+| [MSC Adams](#adams)                       | `@modelscript/adams`        |     9 | `msx adams lint`        |
+| [EnergyPlus](#energyplus)                 | `@modelscript/energyplus`   |     8 | `msx energyplus lint`   |
+| [EPANET](#epanet)                         | `@modelscript/epanet`       |     8 | `msx epanet lint`       |
+| [EPA SWMM](#swmm)                         | `@modelscript/swmm`         |    13 | `msx swmm lint`         |
+| [Aspen Plus / HYSYS](#aspen)              | `@modelscript/aspen`        |    15 | `msx aspen lint`        |
+| [gPROMS / PML](#gproms)                   | `@modelscript/gproms`       |    10 | Language server / API   |
+| [Cantera](#cantera)                       | `@modelscript/cantera`      |    10 | Language server / API   |
+| [PHREEQC](#phreeqc)                       | `@modelscript/phreeqc`      |    10 | Language server / API   |
+| [SMILES / SDF](#smiles)                   | `@modelscript/smiles`       |    10 | Language server / API   |
+| [SBML](#sbml)                             | `@modelscript/sbml`         |    10 | `msx sbml lint`         |
+| [Antimony](#antimony)                     | `@modelscript/antimony`     |    10 | Language server / API   |
+| [BioNetGen (BNGL)](#bngl)                 | `@modelscript/bngl`         |    10 | Language server / API   |
+| [SBOL3](#sbol)                            | `@modelscript/sbol`         |    10 | Language server / API   |
+| [SED-ML](#sedml)                          | `@modelscript/sedml`        |    10 | Language server / API   |
+| [NMTRAN (NONMEM)](#nmtran)                | `@modelscript/nmtran`       |    10 | Language server / API   |
+| [PDB / mmCIF](#pdb)                       | `@modelscript/pdb`          |    10 | Language server / API   |
+| [GenBank / FASTA](#genbank)               | `@modelscript/genbank`      |    10 | Language server / API   |
+| [CellML](#cellml)                         | `@modelscript/cellml`       |    10 | Language server / API   |
+| [OpenSim](#opensim)                       | `@modelscript/opensim`      |    10 | Language server / API   |
+| [FEBio / SOFA](#febio)                    | `@modelscript/febio`        |    10 | Language server / API   |
+| [DICOM-RT](#dicom-rt)                     | `@modelscript/dicom-rt`     |    10 | Language server / API   |
+| [TOPAS / GATE](#topas)                    | `@modelscript/topas`        |    10 | Language server / API   |
+| [NIfTI / NRRD](#nifti)                    | `@modelscript/nifti`        |    10 | Language server / API   |
+| [3MF Medical](#three-mf)                  | `@modelscript/three-mf`     |    10 | Language server / API   |
+| [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
+| [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
 
 ::: info Not yet listed
 These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: cgmes, [OpenUSD](../languages/usd.md). See each language guide for details.
@@ -648,7 +648,7 @@ Parametric constructive solid geometry. **8 rules** · `@modelscript/scad` · So
 | <span id="scad-k1007"></span>`K1007` | `SCAD_UNKNOWN_PARAMETER`     | <Badge type="danger" text="error" />    | Unknown parameter '<code>&lt;param&gt;</code>' in call to '<code>&lt;callable&gt;</code>'.                                          |
 | <span id="scad-k1008"></span>`K1008` | `SCAD_DUPLICATE_DECLARATION` | <Badge type="warning" text="warning" /> | Variable '<code>&lt;name&gt;</code>' is assigned multiple times in the same scope.                                                  |
 
-## CFD (SU2 / OpenFOAM-Compatible) {#cfd}
+## CFD (SU2 / OpenFOAM) {#cfd}
 
 Computational fluid dynamics meshes. **8 rules** · `@modelscript/cfd` · Source: `languages/cfd/src/errors.ts` · [Language guide](../languages/cfd.md)
 
@@ -663,7 +663,7 @@ Computational fluid dynamics meshes. **8 rules** · `@modelscript/cfd` · Source
 | <span id="cfd-c1007"></span>`C1007` | `negative-surface-area`      | <Badge type="danger" text="error" />    | Aerodynamic reference area '<code>&lt;area&gt;</code>' must be strictly positive.                                          |
 | <span id="cfd-c1008"></span>`C1008` | `turbulent-viscosity-ratio`  | <Badge type="warning" text="warning" /> | Turbulent eddy viscosity ratio '<code>&lt;ratio&gt;</code>' is non-physical.                                               |
 
-## FEA (CalculiX / Abaqus / NASTRAN-Compatible) {#fea}
+## FEA (CalculiX / Abaqus / NASTRAN) {#fea}
 
 Finite-element structural analysis. **8 rules** · `@modelscript/fea` · Source: `languages/fea/src/errors.ts` · [Language guide](../languages/fea.md)
 
@@ -1418,7 +1418,7 @@ COMBINE reproducible simulation experiment protocols. **10 rules** · `@modelscr
 | <span id="sedml-m9159"></span>`M9159` | `empty-sedml-experiment`                 | <Badge type="warning" text="warning" /> | SED-ML document defines an empty experiment with no simulations or tasks.                                                                                                   |
 | <span id="sedml-m9160"></span>`M9160` | `duplicate-sedml-id`                     | <Badge type="danger" text="error" />    | SED-ML identifier '<code>&lt;id&gt;</code>' on '<code>&lt;elementKind&gt;</code>' is declared multiple times within the document.                                           |
 
-## NMTRAN (NONMEM-Compatible) {#nmtran}
+## NMTRAN (NONMEM) {#nmtran}
 
 Clinical PK/PD compartmental dosing & exposure. **10 rules** · `@modelscript/nmtran` · Source: `languages/nmtran/src/errors.ts` · [Language guide](../languages/nmtran.md)
 

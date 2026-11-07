@@ -8410,11 +8410,11 @@ CANONICAL URL: https://modelscript.org/languages/cfd
 
 ## Supported Extensions & Dialects
 
-| Extension      | Dialect                                        | Description                                                                                                               |
-| :------------- | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
-| `.cfg`, `.su2` | SU2-Compatible Configuration                   | Stanford University Unstructured (`SU2_CFD`)-compatible key-value & marker configuration                                |
-| `.cfgt`        | Parametric CFD Template                        | SU2- or OpenFOAM-compatible template supporting <code v-pre>{{ expr }}</code> parameter expressions                     |
-| `.cfd`         | OpenFOAM-Compatible / Native CFD               | OpenFOAM dictionary syntax (`FoamFile`, `dimensions`, `internalField`, `boundaryField`) and SU2 directives               |
+| Extension      | Dialect                          | Description                                                                                                |
+| :------------- | :------------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| `.cfg`, `.su2` | SU2-Compatible Configuration     | Stanford University Unstructured (`SU2_CFD`)-compatible key-value & marker configuration                   |
+| `.cfgt`        | Parametric CFD Template          | SU2- or OpenFOAM-compatible template supporting <code v-pre>{{ expr }}</code> parameter expressions        |
+| `.cfd`         | OpenFOAM-Compatible / Native CFD | OpenFOAM dictionary syntax (`FoamFile`, `dimensions`, `internalField`, `boundaryField`) and SU2 directives |
 
 ---
 
@@ -8620,14 +8620,14 @@ Returning `{ mass, maxVonMisesPa, yieldStrengthPa, safetyFactor, isSafe }` direc
 msx fea <action> [files...] [options]
 ```
 
-| Action            | Description                                                                                                     | Key Options         |
-| :---------------- | :-------------------------------------------------------------------------------------------------------------- | :------------------ |
+| Action            | Description                                                                                                       | Key Options         |
+| :---------------- | :---------------------------------------------------------------------------------------------------------------- | :------------------ |
 | **`lint`**        | Validates CalculiX-, Abaqus-, and NASTRAN-compatible syntax, element topologies, material cards, and constraints. | —                   |
-| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.               | —                   |
-| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.                          | —                   |
-| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.                     | `--out=<file.mo>`   |
-| **`to-dae`**      | Lowers structural mass and stiffness matrices into ModelScript linear-memory DAE arena.                         | `--out=<file.json>` |
-| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.              | —                   |
+| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.                 | —                   |
+| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.                            | —                   |
+| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.                       | `--out=<file.mo>`   |
+| **`to-dae`**      | Lowers structural mass and stiffness matrices into ModelScript linear-memory DAE arena.                           | `--out=<file.json>` |
+| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.                | —                   |
 
 ### Examples
 
@@ -13403,10 +13403,10 @@ CANONICAL URL: https://modelscript.org/languages/nmtran
 
 ## Supported Extensions & Standards
 
-| Extension | Format                                      | Description                                                                                                                                           |
-| :-------- | :------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.ctl`    | NMTRAN Control Stream                       | NONMEM-compatible control file (`$PROBLEM`, `$INPUT`, `$DATA`, `$SUBROUTINES`, `$PK`, `$DES`, `$ERROR`, `$THETA`, `$OMEGA`, `$SIGMA`, `$ESTIMATION`) |
-| `.mod`    | PsN / NONMEM Model                          | PsN- and Pirana-compatible pharmacometric model file                                                                                                  |
+| Extension | Format                | Description                                                                                                                                          |
+| :-------- | :-------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.ctl`    | NMTRAN Control Stream | NONMEM-compatible control file (`$PROBLEM`, `$INPUT`, `$DATA`, `$SUBROUTINES`, `$PK`, `$DES`, `$ERROR`, `$THETA`, `$OMEGA`, `$SIGMA`, `$ESTIMATION`) |
+| `.mod`    | PsN / NONMEM Model    | PsN- and Pirana-compatible pharmacometric model file                                                                                                 |
 
 ---
 
@@ -14671,8 +14671,8 @@ The **CLI** column below shows which command reports each language's rules.
 | [STEP (ISO 10303)](#step)                 | `@modelscript/step`         |     8 | `msx lint`              |
 | [QIF (ISO 23952)](#qif)                   | `@modelscript/qif`          |     9 | Language server / API   |
 | [OpenSCAD](#scad)                         | `@modelscript/scad`         |     8 | `msx lint`              |
-| [CFD (SU2 / OpenFOAM-Compatible)](#cfd)              | `@modelscript/cfd`          |     8 | `msx lint`              |
-| [FEA (CalculiX / Abaqus / NASTRAN-Compatible)](#fea) | `@modelscript/fea`          |     8 | `msx lint`              |
+| [CFD (SU2 / OpenFOAM)](#cfd)              | `@modelscript/cfd`          |     8 | `msx lint`              |
+| [FEA (CalculiX / Abaqus / NASTRAN)](#fea) | `@modelscript/fea`          |     8 | `msx lint`              |
 | [C](#c)                                   | `@modelscript/c`            |    10 | `msx lint`              |
 | [Fortran](#fortran)                       | `@modelscript/fortran`      |    15 | `msx lint`              |
 | [JSBSim](#jsbsim)                         | `@modelscript/jsbsim`       |    10 | `msx jsbsim lint`       |
@@ -14715,7 +14715,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [BioNetGen (BNGL)](#bngl)                 | `@modelscript/bngl`         |    10 | Language server / API   |
 | [SBOL3](#sbol)                            | `@modelscript/sbol`         |    10 | Language server / API   |
 | [SED-ML](#sedml)                          | `@modelscript/sedml`        |    10 | Language server / API   |
-| [NMTRAN (NONMEM-Compatible)](#nmtran)                | `@modelscript/nmtran`       |    10 | Language server / API   |
+| [NMTRAN (NONMEM)](#nmtran)                | `@modelscript/nmtran`       |    10 | Language server / API   |
 | [PDB / mmCIF](#pdb)                       | `@modelscript/pdb`          |    10 | Language server / API   |
 | [GenBank / FASTA](#genbank)               | `@modelscript/genbank`      |    10 | Language server / API   |
 | [CellML](#cellml)                         | `@modelscript/cellml`       |    10 | Language server / API   |
@@ -15280,7 +15280,7 @@ Parametric constructive solid geometry. **8 rules** · `@modelscript/scad` · So
 | <span id="scad-k1007"></span>`K1007` | `SCAD_UNKNOWN_PARAMETER`     | [error]    | Unknown parameter '<code>&lt;param&gt;</code>' in call to '<code>&lt;callable&gt;</code>'.                                          |
 | <span id="scad-k1008"></span>`K1008` | `SCAD_DUPLICATE_DECLARATION` | [warning] | Variable '<code>&lt;name&gt;</code>' is assigned multiple times in the same scope.                                                  |
 
-## CFD (SU2 / OpenFOAM-Compatible) {#cfd}
+## CFD (SU2 / OpenFOAM) {#cfd}
 
 Computational fluid dynamics meshes. **8 rules** · `@modelscript/cfd` · Source: `languages/cfd/src/errors.ts` · [Language guide](../languages/cfd.md)
 
@@ -15295,7 +15295,7 @@ Computational fluid dynamics meshes. **8 rules** · `@modelscript/cfd` · Source
 | <span id="cfd-c1007"></span>`C1007` | `negative-surface-area`      | [error]    | Aerodynamic reference area '<code>&lt;area&gt;</code>' must be strictly positive.                                          |
 | <span id="cfd-c1008"></span>`C1008` | `turbulent-viscosity-ratio`  | [warning] | Turbulent eddy viscosity ratio '<code>&lt;ratio&gt;</code>' is non-physical.                                               |
 
-## FEA (CalculiX / Abaqus / NASTRAN-Compatible) {#fea}
+## FEA (CalculiX / Abaqus / NASTRAN) {#fea}
 
 Finite-element structural analysis. **8 rules** · `@modelscript/fea` · Source: `languages/fea/src/errors.ts` · [Language guide](../languages/fea.md)
 
@@ -16050,7 +16050,7 @@ COMBINE reproducible simulation experiment protocols. **10 rules** · `@modelscr
 | <span id="sedml-m9159"></span>`M9159` | `empty-sedml-experiment`                 | [warning] | SED-ML document defines an empty experiment with no simulations or tasks.                                                                                                   |
 | <span id="sedml-m9160"></span>`M9160` | `duplicate-sedml-id`                     | [error]    | SED-ML identifier '<code>&lt;id&gt;</code>' on '<code>&lt;elementKind&gt;</code>' is declared multiple times within the document.                                           |
 
-## NMTRAN (NONMEM-Compatible) {#nmtran}
+## NMTRAN (NONMEM) {#nmtran}
 
 Clinical PK/PD compartmental dosing & exposure. **10 rules** · `@modelscript/nmtran` · Source: `languages/nmtran/src/errors.ts` · [Language guide](../languages/nmtran.md)
 
@@ -16385,7 +16385,7 @@ ModelScript bridges descriptive MBSE specifications and semantic knowledge graph
 | Standard                         | Extensions / Media Types                                                  | CLI Command / API                                                                | Description                                                                                                                                                                         |
 | :------------------------------- | :------------------------------------------------------------------------ | :------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **OMG SysML v2 / KerML**         | `.sysml`, `.kerml`, `application/json`                                    | `msx sysml <export\|import\|sync>` & REST `/api/v1/sysml2`                       | Textual SysML v2 notation and full **OMG Systems Modeling API and Services v2.0** REST compliance (`projects`, `commits`, `branches`, `tags`, `elements`, `relationships`).         |
-| **OMG ReqIF 1.2**                | `.reqif`, `.reqifz`                                                       | `msx reqif <import\|export>`                                                     | Bidirectional mapping between DOORS/Polarion-compatible ReqIF `SPEC-OBJECT` / `SPEC-RELATION` hierarchies and SysML v2 `requirement def` / `satisfy` blocks. |
+| **OMG ReqIF 1.2**                | `.reqif`, `.reqifz`                                                       | `msx reqif <import\|export>`                                                     | Bidirectional mapping between DOORS/Polarion-compatible ReqIF `SPEC-OBJECT` / `SPEC-RELATION` hierarchies and SysML v2 `requirement def` / `satisfy` blocks.                        |
 | **OASIS OSLC 3.0 & TRS 3.0**     | `.ttl`, `.jsonld`, `.rdf`                                                 | `msx oslc <export\|serve>`                                                       | Exposes requirements (`oslc_rm:Requirement`) and architecture resources (`oslc_am:Resource`) with Tracked Resource Set (TRS 3.0) incremental change logs and delegated UI previews. |
 | **W3C OWL 2 / RDF / SPARQL 1.1** | `.owl` (Functional Syntax), `.ttl` (Turtle), `.nt` (N-Triples), `.jsonld` | `/api/v1/libraries/rdf`, `/api/v1/libraries/sparql`, MCP `query_ontology_sparql` | Extracts ontological axioms, executes OWL 2 RL forward-chaining reasoning, and answers SPARQL 1.1 queries over workspace models.                                                    |
 
@@ -16420,7 +16420,7 @@ npx msx ddp to-aasx PumpStation.ddp -o PumpStation.aasx
 | **3D B-Rep CAD**               | **ISO 10303-21 STEP** (AP203 / AP214 / AP242)                  | `.stp`, `.step`                          | Native GLR parser for `DATA` entity graphs (`ADVANCED_FACE`, `B_SPLINE_SURFACE_WITH_KNOTS`, `MANIFOLD_SOLID_BREP`, `PRODUCT_DEFINITION`) and OpenCASCADE B-Rep export.    |
 | **Parametric CSG & Meshes**    | **OpenSCAD**, **STL**, **OBJ**, **glTF 2.0 / GLB**             | `.scad`, `.stl`, `.obj`, `.gltf`, `.glb` | Evaluates `.scad` scripts and Modelica `Visualizers` (`msx csg`) into watertight boundary-representation solids and triangulated 3D web assets.                           |
 | **ECAD / PCB Manufacturing**   | **Gerber RS-274X / X2**, **Excellon**, **IPC-2581**, **ODB++** | `.gbr`, `.gtl`, `.gbl`, `.drl`           | Parses aperture definitions (`%ADD...*%`), copper traces, solder mask layers, and NC drill coordinates for 3D PCB stackup rendering and thermal-electrical co-simulation. |
-| **CFD (Fluid Dynamics)**       | **SU2- & OpenFOAM-Compatible**, **CGNS / VTK**                | `.cfg`, `.su2`, `.vtk`                   | Parses and validates SU2 solver configurations (`SOLVER=RANS`, boundary markers, CFL schedules) and unstructured finite-volume meshes (`NDIME=`, `NELEM=`, `NPOIN=`).     |
+| **CFD (Fluid Dynamics)**       | **SU2- & OpenFOAM-Compatible**, **CGNS / VTK**                 | `.cfg`, `.su2`, `.vtk`                   | Parses and validates SU2 solver configurations (`SOLVER=RANS`, boundary markers, CFL schedules) and unstructured finite-volume meshes (`NDIME=`, `NELEM=`, `NPOIN=`).     |
 | **FEA (Structural / Thermal)** | **CalculiX- & Abaqus-Compatible**, **NASTRAN-Compatible BDF**  | `.inp`, `.bdf`, `.frd`                   | Parses `*NODE`, `*ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*STEP`, and `*BOUNDARY` decks for thermo-mechanical ROM extraction and stress verification.                         |
 
 ---
@@ -16815,17 +16815,17 @@ ModelScript provides first-class polyglot compilation, static safety verificatio
 
 ## 1. Domain Package Matrix
 
-| Package                         | Clinical Domain                                                         | File Extensions                                | Diagnostic Range | Primary Projections                                              |
-| :------------------------------ | :---------------------------------------------------------------------- | :--------------------------------------------- | :--------------- | :--------------------------------------------------------------- |
-| `@modelscript/opensim`          | Musculoskeletal Biomechanics & Surgical Rehabilitation                  | `.osim`                                        | `M9101`–`M9110`  | Modelica 3.x (`.mo`), ROS/Gazebo URDF (`.urdf`), DAE Arena       |
-| `@modelscript/dicom-rt`         | Clinical Radiotherapy (RTSTRUCT, RTPLAN, RTDOSE)                        | `.rtplan`, `.rtstruct`, `.rtdose`, `.dicom-rt` | `M9201`–`M9210`  | OpenSCAD 3D CSG (`.scad`), SysML v2 (`.sysml`), DAE Arena        |
-| `@modelscript/cellml`           | Physiological & Electrophysiology Modeling (CellML 1.0/1.1/2.0)         | `.cellml`                                      | `M9301`–`M9310`  | Modelica 3.x (`.mo`), SBML Level 3 (`.sbml`), DAE Arena          |
+| Package                         | Clinical Domain                                                         | File Extensions                                | Diagnostic Range | Primary Projections                                             |
+| :------------------------------ | :---------------------------------------------------------------------- | :--------------------------------------------- | :--------------- | :-------------------------------------------------------------- |
+| `@modelscript/opensim`          | Musculoskeletal Biomechanics & Surgical Rehabilitation                  | `.osim`                                        | `M9101`–`M9110`  | Modelica 3.x (`.mo`), ROS/Gazebo URDF (`.urdf`), DAE Arena      |
+| `@modelscript/dicom-rt`         | Clinical Radiotherapy (RTSTRUCT, RTPLAN, RTDOSE)                        | `.rtplan`, `.rtstruct`, `.rtdose`, `.dicom-rt` | `M9201`–`M9210`  | OpenSCAD 3D CSG (`.scad`), SysML v2 (`.sysml`), DAE Arena       |
+| `@modelscript/cellml`           | Physiological & Electrophysiology Modeling (CellML 1.0/1.1/2.0)         | `.cellml`                                      | `M9301`–`M9310`  | Modelica 3.x (`.mo`), SBML Level 3 (`.sbml`), DAE Arena         |
 | `@modelscript/febio`            | Soft-Tissue Hyperelastic/Biphasic FEA & SOFA Surgical Scenes            | `.feb`, `.scn`                                 | `M9401`–`M9410`  | CalculiX- / Abaqus-Compatible (`.inp`), Modelica 3.x, DAE Arena |
-| `@modelscript/nifti`            | Volumetric Medical Imaging & Segmentation (NIfTI-1/2 & NRRD)            | `.nii`, `.nrrd`, `.nhdr`                       | `M9501`–`M9510`  | OpenSCAD (`.scad`), ISO 10303-21 STEP (`.stp`), DAE Arena  |
-| `@modelscript/topas`            | Monte Carlo Proton/Hadrontherapy & Radiotherapy Physics                 | `.topas`, `.mac`                               | `M9601`–`M9610`  | OpenSCAD (`.scad`), Modelica 3.x (`.mo`), DAE Arena        |
-| `@modelscript/three-mf`         | Patient-Specific Surgical Guides & 3D-Printed Implants (ISO/ASTM 52915) | `.3mf`                                         | `M9701`–`M9710`  | ISO 10303-21 STEP (`.stp`), OpenSCAD (`.scad`), DAE Arena  |
-| `@modelscript/igtl`             | OpenIGTLink & PLUS Toolkit Surgical Navigation & Tracking               | `.igtl`, `.plus.xml`                           | `M9801`–`M9810`  | ROS URDF (`.urdf`), Modelica 3.x (`.mo`), DAE Arena        |
-| `@modelscript/owl2` (`ontospm`) | OntoSPM / LapOntoSPM Surgical Process & Safety Ontology                 | `.ofn`, `.owl`, `.ontospm`                     | `M9901`–`M9910`  | SysML v2 (`.sysml`), OWL 2 Functional Syntax (`.ofn`)      |
+| `@modelscript/nifti`            | Volumetric Medical Imaging & Segmentation (NIfTI-1/2 & NRRD)            | `.nii`, `.nrrd`, `.nhdr`                       | `M9501`–`M9510`  | OpenSCAD (`.scad`), ISO 10303-21 STEP (`.stp`), DAE Arena       |
+| `@modelscript/topas`            | Monte Carlo Proton/Hadrontherapy & Radiotherapy Physics                 | `.topas`, `.mac`                               | `M9601`–`M9610`  | OpenSCAD (`.scad`), Modelica 3.x (`.mo`), DAE Arena             |
+| `@modelscript/three-mf`         | Patient-Specific Surgical Guides & 3D-Printed Implants (ISO/ASTM 52915) | `.3mf`                                         | `M9701`–`M9710`  | ISO 10303-21 STEP (`.stp`), OpenSCAD (`.scad`), DAE Arena       |
+| `@modelscript/igtl`             | OpenIGTLink & PLUS Toolkit Surgical Navigation & Tracking               | `.igtl`, `.plus.xml`                           | `M9801`–`M9810`  | ROS URDF (`.urdf`), Modelica 3.x (`.mo`), DAE Arena             |
+| `@modelscript/owl2` (`ontospm`) | OntoSPM / LapOntoSPM Surgical Process & Safety Ontology                 | `.ofn`, `.owl`, `.ontospm`                     | `M9901`–`M9910`  | SysML v2 (`.sysml`), OWL 2 Functional Syntax (`.ofn`)           |
 
 ```mermaid
 flowchart LR

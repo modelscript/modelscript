@@ -80,12 +80,12 @@ export const stepLanguage = language({
     const endOffset = entry?.endOffset;
     if (startOffset != null && endOffset != null && endOffset > startOffset) {
       const declText = fullText.substring(startOffset, endOffset);
-      // E.g. #10 = PRODUCT('DroneBody', ...)
-      const strMatch = declText.match(/'([^'\\]*(?:\\.[^'\\]*)*)'/);
+      // E.g. #10 = PRODUCT('DroneBody', ...) with ISO 10303-21 '' quote escaping
+      const strMatch = declText.match(/'((?:[^']|'')*)'/);
       if (strMatch && strMatch.index !== undefined) {
         const valStartOffset = startOffset + strMatch.index + 1;
         const valEndOffset = valStartOffset + strMatch[1]!.length;
-        const cleanVal = newValue.replace(/^'|'$/g, "");
+        const cleanVal = newValue.replace(/^'|'$/g, "").replace(/'/g, "''");
         return { startOffset: valStartOffset, endOffset: valEndOffset, newText: cleanVal };
       }
     }
@@ -109,7 +109,7 @@ export const stepLanguage = language({
           success: true,
           uri: targetUri,
           meshCount: meshes.length,
-          meshes: meshes.slice(0, 5),
+          meshes,
         };
       },
       ui: {

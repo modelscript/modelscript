@@ -366,11 +366,22 @@ class StepBrepResolver {
       const ctrlRefs = parseRefList(cArgs[2]);
       if (ctrlRefs.length >= 2) {
         const ctrlPts = ctrlRefs.map((ref) => this.getPoint(ref));
+        const mults = parseNumberList(cArgs[6]);
+        const knotsRaw = parseNumberList(cArgs[7]);
+        const hasExplicitKnots = mults.length > 0 && knotsRaw.length === mults.length;
+        const knots = hasExplicitKnots ? expandKnots(knotsRaw, mults, ctrlPts.length, degree) : undefined;
+        const p = Math.min(degree, ctrlPts.length - 1);
+        const uMin = knots ? knots[p]! : 0;
+        const uMax = knots ? knots[ctrlPts.length]! : 1;
         const steps = Math.max(4, Math.min(this.segments, ctrlPts.length * 4));
         const pts: Vec3[] = [];
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
-          pts.push(evaluateBsplineCurve(ctrlPts, degree, t));
+          if (knots && uMax > uMin) {
+            pts.push(deBoorCurve(ctrlPts, p, knots, uMin + t * (uMax - uMin)));
+          } else {
+            pts.push(evaluateBsplineCurve(ctrlPts, degree, t));
+          }
         }
         return pts;
       }
@@ -510,6 +521,34 @@ function expandKnots(knotValues: number[], multiplicities: number[], nCtrl: numb
   return knots;
 }
 
+/**
+ * Computes seam-aware angular span [u0, u1] on a circle from sampled angles in [-pi, pi].
+ * Detects the largest unoccupied angular gap so arcs crossing the +/-pi branch cut are handled properly.
+ */
+function computeCircularSpan(angles: number[]): [number, number] {
+  if (angles.length < 2) return [0, 2 * Math.PI];
+  const sorted = [...angles].sort((a, b) => a - b);
+  let maxGap = -1;
+  let gapEndIdx = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const a = sorted[i]!;
+    const b = i + 1 < sorted.length ? sorted[i + 1]! : sorted[0]! + 2 * Math.PI;
+    const gap = b - a;
+    if (gap > maxGap) {
+      maxGap = gap;
+      gapEndIdx = (i + 1) % sorted.length;
+    }
+  }
+  // If largest gap is > 27 degrees (0.15 * pi) and span is non-degenerate, use the occupied arc complement
+  const occupiedSpan = 2 * Math.PI - maxGap;
+  if (maxGap > 0.15 * Math.PI && occupiedSpan > 1e-3) {
+    const u0 = sorted[gapEndIdx]!;
+    const u1 = u0 + occupiedSpan;
+    return [u0, u1];
+  }
+  return [0, 2 * Math.PI];
+}
+
 // ── 2D Polygon Ear-Clipping with Hole Bridging ──────────────────────────────
 
 interface Pt2D {
@@ -563,13 +602,18 @@ function triangulatePlanarFaceWithHoles(
     outer2D = [...outer2D].reverse();
   }
 
-  // Bridge each inner hole into outer2D (sorted by rightmost u coordinate)
+  // Bridge each inner hole into outer2D (sorted by rightmost u coordinate descending)
   const holes2D = innerLoops
     .filter((h) => h.length >= 3)
     .map((h) => {
       const h2 = project(h);
       // Ensure hole is CW in (u, v)
       return signedArea2D(h2) > 0 ? [...h2].reverse() : h2;
+    })
+    .sort((a, b) => {
+      const maxUa = Math.max(...a.map((p) => p.u));
+      const maxUb = Math.max(...b.map((p) => p.u));
+      return maxUb - maxUa;
     });
 
   for (const hole of holes2D) {
@@ -626,7 +670,7 @@ function triangulatePlanarFaceWithHoles(
       let hasInside = false;
       for (let j = 0; j < m; j++) {
         const idx = avail[j]!;
-        if (idx === iPrev || idx === iCurr || idx === iNext) continue;
+        if (idx === iPrev || idx === iNext || idx === iCurr) continue;
         const p = outer2D[idx]!;
         if (
           Math.hypot(p.u - a.u, p.v - a.v) < 1e-7 ||
@@ -744,17 +788,8 @@ function tessellateSurfacePatch(
       vMax = radius * 2;
     }
 
-    // Determine angular span
-    let u0 = 0;
-    let u1 = 2 * Math.PI;
-    if (angles.length >= 2) {
-      const minA = Math.min(...angles);
-      const maxA = Math.max(...angles);
-      if (maxA - minA > 1e-3 && maxA - minA < 1.85 * Math.PI) {
-        u0 = minA;
-        u1 = maxA;
-      }
-    }
+    // Determine seam-aware angular span
+    const [u0, u1] = computeCircularSpan(angles);
 
     const uSteps = Math.max(8, resolver.segments);
     const vSteps = Math.max(2, Math.floor(resolver.segments / 4));
@@ -788,16 +823,23 @@ function tessellateSurfacePatch(
 
     let vMin = Infinity;
     let vMax = -Infinity;
+    const angles: number[] = [];
     for (const pt of allLoopPts) {
       const rel = sub3(pt, frame.origin);
       const v = dot3(rel, frame.zAxis);
       if (v < vMin) vMin = v;
       if (v > vMax) vMax = v;
+      const rx = dot3(rel, frame.xAxis);
+      const ry = dot3(rel, frame.yAxis);
+      if (Math.hypot(rx, ry) > 1e-6) {
+        angles.push(Math.atan2(ry, rx));
+      }
     }
     if (!Number.isFinite(vMin) || Math.abs(vMax - vMin) < 1e-6) {
       vMin = 0;
       vMax = Math.max(1, baseRadius);
     }
+    const [u0, u1] = computeCircularSpan(angles);
 
     const uSteps = Math.max(8, resolver.segments);
     const vSteps = Math.max(2, Math.floor(resolver.segments / 4));
@@ -809,7 +851,7 @@ function tessellateSurfacePatch(
       uSteps,
       vSteps,
       (s, t) => {
-        const u = s * 2 * Math.PI;
+        const u = u0 + s * (u1 - u0);
         const v = vMin + t * (vMax - vMin);
         const r = Math.max(0, baseRadius + v * tanAlpha);
         const radial = add3(scale3(frame.xAxis, Math.cos(u)), scale3(frame.yAxis, Math.sin(u)));
@@ -828,19 +870,27 @@ function tessellateSurfacePatch(
 
     let vMin = -Math.PI / 2;
     let vMax = Math.PI / 2;
+    const angles: number[] = [];
     if (allLoopPts.length >= 2) {
       let minZ = Infinity;
       let maxZ = -Infinity;
       for (const pt of allLoopPts) {
-        const z = dot3(sub3(pt, frame.origin), frame.zAxis);
+        const rel = sub3(pt, frame.origin);
+        const z = dot3(rel, frame.zAxis);
         if (z < minZ) minZ = z;
         if (z > maxZ) maxZ = z;
+        const rx = dot3(rel, frame.xAxis);
+        const ry = dot3(rel, frame.yAxis);
+        if (Math.hypot(rx, ry) > 1e-6) {
+          angles.push(Math.atan2(ry, rx));
+        }
       }
       if (maxZ - minZ > 1e-4 && (minZ > -radius * 0.99 || maxZ < radius * 0.99)) {
         vMin = Math.asin(Math.max(-1, Math.min(1, minZ / radius)));
         vMax = Math.asin(Math.max(-1, Math.min(1, maxZ / radius)));
       }
     }
+    const [u0, u1] = computeCircularSpan(angles);
 
     const uSteps = Math.max(8, resolver.segments);
     const vSteps = Math.max(6, Math.floor(resolver.segments / 2));
@@ -852,7 +902,7 @@ function tessellateSurfacePatch(
       uSteps,
       vSteps,
       (s, t) => {
-        const u = s * 2 * Math.PI;
+        const u = u0 + s * (u1 - u0);
         const v = vMin + t * (vMax - vMin);
         const dir = add3(
           add3(scale3(frame.xAxis, Math.cos(v) * Math.cos(u)), scale3(frame.yAxis, Math.cos(v) * Math.sin(u))),
@@ -872,6 +922,24 @@ function tessellateSurfacePatch(
     const majorR = Math.max(1e-6, Number(sArgs[2] ?? 5));
     const minorR = Math.max(1e-6, Number(sArgs[3] ?? 1));
 
+    const uAngles: number[] = [];
+    const vAngles: number[] = [];
+    for (const pt of allLoopPts) {
+      const rel = sub3(pt, frame.origin);
+      const rx = dot3(rel, frame.xAxis);
+      const ry = dot3(rel, frame.yAxis);
+      const rz = dot3(rel, frame.zAxis);
+      const rHoriz = Math.hypot(rx, ry);
+      if (rHoriz > 1e-6) {
+        uAngles.push(Math.atan2(ry, rx));
+      }
+      if (Math.hypot(rHoriz - majorR, rz) > 1e-6) {
+        vAngles.push(Math.atan2(rz, rHoriz - majorR));
+      }
+    }
+    const [u0, u1] = computeCircularSpan(uAngles);
+    const [v0, v1] = computeCircularSpan(vAngles);
+
     const uSteps = Math.max(8, resolver.segments);
     const vSteps = Math.max(8, Math.floor(resolver.segments / 2));
     return buildUvGridPatch(
@@ -882,8 +950,8 @@ function tessellateSurfacePatch(
       uSteps,
       vSteps,
       (s, t) => {
-        const u = s * 2 * Math.PI;
-        const v = t * 2 * Math.PI;
+        const u = u0 + s * (u1 - u0);
+        const v = v0 + t * (v1 - v0);
         const radial = add3(scale3(frame.xAxis, Math.cos(u)), scale3(frame.yAxis, Math.sin(u)));
         const rEff = majorR + minorR * Math.cos(v);
         const pos = add3(frame.origin, add3(scale3(radial, rEff), scale3(frame.zAxis, minorR * Math.sin(v))));

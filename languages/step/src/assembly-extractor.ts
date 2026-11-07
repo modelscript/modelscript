@@ -44,7 +44,12 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     let inString = false;
     for (let i = 0; i < argsStr.length; i++) {
       const char = argsStr[i];
-      if (char === "'" && argsStr[i - 1] !== "\\") {
+      if (char === "'") {
+        if (inString && argsStr[i + 1] === "'") {
+          current += "''";
+          i++;
+          continue;
+        }
         inString = !inString;
         current += char;
       } else if (!inString && char === "(") {
@@ -114,9 +119,9 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     const ent = resolveEntity(ref);
     if (!ent || ent.type !== "AXIS2_PLACEMENT_3D") return null;
     const args = parseArgs(ent.args);
-    if (args.length < 4) return null;
+    if (args.length < 2) return null;
 
-    // args: [name, location, axis, ref_direction]
+    // args: [name, location, axis?, ref_direction?]
     const location = getVector(args[1] ?? "") || [0, 0, 0];
     const axis = getVector(args[2] ?? "") || [0, 0, 1];
     const refDirection = getVector(args[3] ?? "") || [1, 0, 0];
@@ -124,17 +129,25 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     return { location, axis, refDirection };
   };
 
-  // Detect STEP length unit conversion factor (default 1.0 = metres; .MILLI. .METRE. = 1e-3)
-  const isMillimetre = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(text);
-  const lengthScale = isMillimetre ? 1e-3 : 1.0;
+  // Detect STEP length unit conversion factor (default 1.0 = metres; .MILLI. = 1e-3, .CENTI. = 1e-2, INCH = 0.0254, FOOT = 0.3048)
+  let lengthScale = 1.0;
+  if (/SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(text)) {
+    lengthScale = 1e-3;
+  } else if (/SI_UNIT\s*\(\s*\.CENTI\.\s*,\s*\.METRE\.\s*\)/i.test(text)) {
+    lengthScale = 1e-2;
+  } else if (/CONVERSION_BASED_UNIT\s*\(\s*'INCH'/i.test(text)) {
+    lengthScale = 0.0254;
+  } else if (/CONVERSION_BASED_UNIT\s*\(\s*'FOOT'/i.test(text)) {
+    lengthScale = 0.3048;
+  }
 
   // Find products
   for (const [id, ent] of entities.entries()) {
     if (ent.type === "PRODUCT") {
       const args = parseArgs(ent.args);
-      const nameMatch = args[0]?.match(/'([^']*)'/);
+      const nameMatch = args[0]?.match(/'((?:[^']|'')*)'/);
       if (nameMatch) {
-        parts.set(id, { id, name: nameMatch[1]! });
+        parts.set(id, { id, name: nameMatch[1]!.replace(/''/g, "'") });
       }
     }
   }
@@ -170,6 +183,31 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   }
   const resolvePartId = (ref: string): string => prodDefToProduct.get(ref) ?? formationToProduct.get(ref) ?? ref;
 
+  // Helper to build orthonormal basis [x, y, z] from placement
+  const buildOrthonormalBasis = (
+    p: StepPlacement,
+  ): [[number, number, number], [number, number, number], [number, number, number]] => {
+    const norm = (v: [number, number, number]): [number, number, number] => {
+      const len = Math.hypot(v[0], v[1], v[2]);
+      return len > 1e-12 ? [v[0] / len, v[1] / len, v[2] / len] : [0, 0, 1];
+    };
+    const cross = (a: [number, number, number], b: [number, number, number]): [number, number, number] => [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0],
+    ];
+    const z = norm(p.axis);
+    const dotRZ = p.refDirection[0] * z[0] + p.refDirection[1] * z[1] + p.refDirection[2] * z[2];
+    const xRaw: [number, number, number] = [
+      p.refDirection[0] - dotRZ * z[0],
+      p.refDirection[1] - dotRZ * z[1],
+      p.refDirection[2] - dotRZ * z[2],
+    ];
+    const x: [number, number, number] = Math.hypot(xRaw[0], xRaw[1], xRaw[2]) > 1e-9 ? norm(xRaw) : [1, 0, 0];
+    const y = norm(cross(z, x));
+    return [x, y, z];
+  };
+
   // Collect placements from ITEM_DEFINED_TRANSFORMATION and AXIS2_PLACEMENT_3D
   const transformationPlacements: StepPlacement[] = [];
   const idtById = new Map<string, StepPlacement>();
@@ -181,11 +219,24 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
         const p2 = getPlacement(args[3] ?? "");
         let placement: StepPlacement | null = null;
         if (p1 && p2) {
+          // Rigid body transformation T(x) = R2 * R1^T * (x - t1) + t2 => translation t = t2 - R * t1
+          const [x1, y1, z1] = buildOrthonormalBasis(p1);
+          const [x2, y2, z2] = buildOrthonormalBasis(p2);
+          // Coordinates of t1 in frame 1: c = R1^T * t1
+          const cx = x1[0] * p1.location[0] + x1[1] * p1.location[1] + x1[2] * p1.location[2];
+          const cy = y1[0] * p1.location[0] + y1[1] * p1.location[1] + y1[2] * p1.location[2];
+          const cz = z1[0] * p1.location[0] + z1[1] * p1.location[1] + z1[2] * p1.location[2];
+          // R2 * c
+          const rotT1: [number, number, number] = [
+            x2[0] * cx + y2[0] * cy + z2[0] * cz,
+            x2[1] * cx + y2[1] * cy + z2[1] * cz,
+            x2[2] * cx + y2[2] * cy + z2[2] * cz,
+          ];
           placement = {
             location: [
-              (p2.location[0] - p1.location[0]) * lengthScale,
-              (p2.location[1] - p1.location[1]) * lengthScale,
-              (p2.location[2] - p1.location[2]) * lengthScale,
+              (p2.location[0] - rotT1[0]) * lengthScale,
+              (p2.location[1] - rotT1[1]) * lengthScale,
+              (p2.location[2] - rotT1[2]) * lengthScale,
             ],
             axis: p2.axis,
             refDirection: p2.refDirection,

@@ -1,0 +1,22 @@
+# ModelScript Code Owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global default owner
+* @nachawati
+
+# CI/CD Workflows, Security Policies, and Configuration
+/.github/ @nachawati
+/SECURITY.md @nachawati
+/docker-compose*.yml @nachawati
+/Dockerfile* @nachawati
+
+# Enterprise Edition & Licensing
+/ee/ @nachawati
+
+# Core Compiler, DSL, and Runtime Architecture
+/packages/dsl/ @nachawati
+/packages/runtime/ @nachawati
+/languages/ @nachawati
+
+# Applications & Documentation
+/apps/ @nachawati
