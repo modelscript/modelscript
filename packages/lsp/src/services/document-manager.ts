@@ -2,6 +2,7 @@
 
 import { TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { PositionIndex } from "../lsp-bridge.js";
 import type { Tree as CstTree } from "../utils/cst-facade.js";
 
 /**
@@ -56,10 +57,15 @@ export class DocumentManager {
    * @param uri - The document URI to look up.
    * @returns The line index instance, or `null` if unavailable.
    */
-  public getLineIndexForDoc(uri: string): any | null {
+  public getLineIndexForDoc(uri: string): PositionIndex | null {
     const doc = this.documents.get(uri);
-    const tree = this.getDocumentTree(uri);
-    if (!doc || !tree) return null;
+    if (doc) {
+      return new PositionIndex(doc.getText());
+    }
+    const treeEntry = this.documentTrees.get(uri) ?? this.lazyLibTrees.get(uri);
+    if (treeEntry?.text) {
+      return new PositionIndex(treeEntry.text);
+    }
     return null;
   }
 }

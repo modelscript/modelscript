@@ -51,12 +51,84 @@ const ModelicaClassType = new GraphQLObjectType({
   },
 });
 
+type GraphQLContext = Record<PropertyKey, unknown> & {
+  database: LibraryDatabase;
+  name: string;
+  version: string;
+  getAllClassesMemo: () => ReturnType<LibraryDatabase["getAllClasses"]>;
+};
+
+const librarySchema = new GraphQLSchema({
+  query: new GraphQLObjectType({
+    name: "Query",
+    fields: {
+      classes: {
+        type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ModelicaClassType))),
+        args: {
+          kind: { type: GraphQLString },
+          q: { type: GraphQLString },
+        },
+        resolve: (_root, args: { kind?: string | undefined; q?: string | undefined }, context: GraphQLContext) => {
+          let results = context.getAllClassesMemo();
+
+          if (args.kind) {
+            results = results.filter((c) => c.classKind === args.kind);
+          }
+          if (args.q) {
+            const q = args.q.toLowerCase();
+            results = results.filter((c) => c.className.toLowerCase().includes(q));
+          }
+
+          return results;
+        },
+      },
+      class: {
+        type: ModelicaClassType,
+        args: {
+          name: { type: new GraphQLNonNull(GraphQLString) },
+        },
+        resolve: (_root, args: { name: string }, context: GraphQLContext) => {
+          const cls = context.database.getClass(context.name, context.version, args.name);
+          if (!cls) return null;
+          return {
+            className: args.name,
+            classKind: cls.classKind,
+            description: cls.description,
+            extends: cls.extends,
+            components: cls.components.map((c) => ({
+              name: c.component_name,
+              typeName: c.type_name,
+              description: c.description,
+              causality: c.causality,
+              variability: c.variability,
+              modifiers: c.modifiers.map((m) => ({
+                name: m.modifier_name,
+                value: m.modifier_value,
+              })),
+            })),
+          };
+        },
+      },
+    },
+  }),
+});
+
 /**
  * Creates the Express router exposing `/api/v1/libraries/:name/:version/graphql` for querying
  * indexed Modelica package classes, inheritance hierarchies, and component declarations.
  */
+interface RequestWithGqlContext extends Request {
+  __gqlContext?: GraphQLContext;
+}
+
 export function graphqlRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+  const handler = createHandler<GraphQLContext>({
+    schema: librarySchema,
+    context: (req) =>
+      ((req as unknown as { raw?: RequestWithGqlContext }).raw ?? (req as unknown as RequestWithGqlContext))
+        .__gqlContext as GraphQLContext,
+  });
 
   /**
    * POST/GET /api/v1/libraries/:name/:version/graphql
@@ -165,69 +237,18 @@ export function graphqlRouter(database: LibraryDatabase): Router {
     }
 
     let cachedAllClasses: ReturnType<typeof database.getAllClasses> | null = null;
-    const getAllClassesMemo = () => {
-      if (!cachedAllClasses) {
-        cachedAllClasses = database.getAllClasses(name, version);
-      }
-      return cachedAllClasses;
+    (req as RequestWithGqlContext).__gqlContext = {
+      database,
+      name,
+      version,
+      getAllClassesMemo: () => {
+        if (!cachedAllClasses) {
+          cachedAllClasses = database.getAllClasses(name, version);
+        }
+        return cachedAllClasses;
+      },
     };
 
-    const schema = new GraphQLSchema({
-      query: new GraphQLObjectType({
-        name: "Query",
-        fields: {
-          classes: {
-            type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ModelicaClassType))),
-            args: {
-              kind: { type: GraphQLString },
-              q: { type: GraphQLString },
-            },
-            resolve: (_root, args: { kind?: string | undefined; q?: string | undefined }) => {
-              let results = getAllClassesMemo();
-
-              if (args.kind) {
-                results = results.filter((c) => c.classKind === args.kind);
-              }
-              if (args.q) {
-                const q = args.q.toLowerCase();
-                results = results.filter((c) => c.className.toLowerCase().includes(q));
-              }
-
-              return results;
-            },
-          },
-          class: {
-            type: ModelicaClassType,
-            args: {
-              name: { type: new GraphQLNonNull(GraphQLString) },
-            },
-            resolve: (_root, args: { name: string }) => {
-              const cls = database.getClass(name, version, args.name);
-              if (!cls) return null;
-              return {
-                className: args.name,
-                classKind: cls.classKind,
-                description: cls.description,
-                extends: cls.extends,
-                components: cls.components.map((c) => ({
-                  name: c.component_name,
-                  typeName: c.type_name,
-                  description: c.description,
-                  causality: c.causality,
-                  variability: c.variability,
-                  modifiers: c.modifiers.map((m) => ({
-                    name: m.modifier_name,
-                    value: m.modifier_value,
-                  })),
-                })),
-              };
-            },
-          },
-        },
-      }),
-    });
-
-    const handler = createHandler({ schema });
     handler(req, res, next);
   });
 

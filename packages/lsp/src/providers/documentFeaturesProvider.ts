@@ -73,11 +73,11 @@ export function registerDocumentFeaturesProvider(
         return Boolean(plugin?.parser);
       };
 
-      // Wait up to 5 seconds for the relevant parser to be ready if currently initializing
+      // Wait up to 500ms for the relevant parser to be ready if currently initializing
       if (!isTargetParserReady()) {
         const start = Date.now();
-        while (!isTargetParserReady() && Date.now() - start < 5000) {
-          await new Promise((r) => setTimeout(r, 50));
+        while (!isTargetParserReady() && Date.now() - start < 500) {
+          await new Promise((r) => setTimeout(r, 25));
         }
       }
 
@@ -112,7 +112,10 @@ export function registerDocumentFeaturesProvider(
               toQueryDB: () => ({ index: unified }),
               index: unified,
             };
-            bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri);
+            bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri, {
+              documentLSPBridges,
+              documents: { get: (u: string) => getDoc(u) },
+            });
             if (realEngine) {
               documentLSPBridges.set(params.textDocument.uri, bridge);
             }
@@ -131,7 +134,10 @@ export function registerDocumentFeaturesProvider(
         const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.toUnifiedPartial();
         const engine = plugin?.queryEngine ?? validationService?.workspaceManager?.globalModelicaQueryEngine;
         if (text && unifiedIndex && engine) {
-          bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), params.textDocument.uri);
+          bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), params.textDocument.uri, {
+            documentLSPBridges,
+            documents: { get: (u: string) => getDoc(u) },
+          });
           documentLSPBridges.set(params.textDocument.uri, bridge);
         }
       }

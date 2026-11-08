@@ -13,11 +13,9 @@ process.env["FEATURE_FLAG_TEST_STRICT"] = "true";
 
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
-import { setAuthDatabase } from "../src/middleware/auth-middleware.js";
+import { JWT_SECRET, setAuthDatabase } from "../src/middleware/auth-middleware.js";
 import { checkComputeSandboxing } from "../src/util/compute-sandboxing.js";
 import { seedInitialAdmin } from "../src/util/seed-admin.js";
-
-const JWT_SECRET = process.env["JWT_SECRET"] || "ansatz-dev-jwt-secret-do-not-use-in-prod";
 
 test("Decentralized Fediverse Authentication & Sandboxing Suite", async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fediverse-auth-test-"));

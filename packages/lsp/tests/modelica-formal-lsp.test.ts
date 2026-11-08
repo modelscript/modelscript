@@ -191,6 +191,64 @@ end FormalControl;
     assert.strictEqual(unprovenLens.command.arguments[1], "unprovenSqrt");
   });
 
+  await t.test("should generate CodeLens using CST parse tree when documentManager has cached tree", () => {
+    let codeLensHandler: any = null;
+    const codeLensConnection: any = {
+      onRequest: (method: string, handler: any) => {
+        if (method === "textDocument/codeLens") {
+          codeLensHandler = handler;
+        }
+      },
+    };
+
+    const mockCstTree = {
+      rootNode: {
+        type: "stored_definition",
+        children: [
+          {
+            type: "class_definition",
+            children: [
+              { type: "class_prefixes", text: "function", startPosition: { row: 14, column: 2 } },
+              { type: "identifier", text: "safeFilter", startPosition: { row: 14, column: 11 } },
+            ],
+          },
+          {
+            type: "class_definition",
+            children: [
+              { type: "class_prefixes", text: "function", startPosition: { row: 21, column: 2 } },
+              { type: "identifier", text: "dangerousDivision", startPosition: { row: 21, column: 11 } },
+            ],
+          },
+        ],
+      },
+    };
+
+    const mockContext: any = {
+      connection: codeLensConnection,
+      documents: { get: (uri: string) => (uri === modelicaUri ? doc : undefined) },
+      documentManager: {
+        getDocumentTree: (uri: string) => (uri === modelicaUri ? mockCstTree : null),
+        documentTrees: new Map([[modelicaUri, mockCstTree]]),
+      },
+      workspaceManager: mockWorkspaceManager,
+      validationService,
+      settings: {
+        features: { channel: "preview" },
+        codeLens: { verification: "all" },
+      },
+    };
+
+    registerCodeLensProvider(mockContext);
+    assert.ok(codeLensHandler, "CodeLens handler must be registered");
+
+    const lenses = codeLensHandler({ textDocument: { uri: modelicaUri } });
+    assert.ok(lenses.length >= 2, `Expected at least 2 lenses via CST, got ${lenses.length}`);
+    const safeLens = lenses.find((l: any) => l.command?.arguments?.[1] === "safeFilter");
+    assert.ok(safeLens, "Must resolve safeFilter via CST");
+    assert.strictEqual(safeLens.range.start.line, 14);
+    assert.strictEqual(safeLens.range.start.character, 11);
+  });
+
   await t.test("should display formal interval invariants on variable hover", () => {
     let hoverHandler: any = null;
     const hoverConnection: any = {

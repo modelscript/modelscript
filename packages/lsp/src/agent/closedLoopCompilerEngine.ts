@@ -22,6 +22,10 @@ import {
   type ExtractedConstraint,
   type SMTRequirementCheckResult,
 } from "@modelscript/sysml2";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+
+let cachedSysml2Parser: any = null;
+let cachedModelicaParser: any = null;
 
 export type ClosedLoopLanguage = "sysml2" | "sysml" | "modelica";
 
@@ -81,8 +85,11 @@ export interface VerifyCandidateOptions {
  */
 export async function getWasmParserForLanguage(lang: ClosedLoopLanguage): Promise<any | null> {
   const norm = lang.toLowerCase();
+  const plugin = globalLanguageRegistry.getPluginById(norm === "sysml" ? "sysml2" : norm);
+  if (plugin?.parser) return plugin.parser;
+
   if (norm === "sysml2" || norm === "sysml") {
-    if ((globalThis as any).sysml2Parser) return (globalThis as any).sysml2Parser;
+    if (cachedSysml2Parser) return cachedSysml2Parser;
     try {
       const { createRequire } = await import("node:module");
       const req = createRequire(import.meta.url);
@@ -103,14 +110,14 @@ export async function getWasmParserForLanguage(lang: ClosedLoopLanguage): Promis
       if (wasmPath) {
         const { createWasmParser } = await import("@modelscript/dsl/bindings");
         const { parser } = await createWasmParser(wasmPath);
-        (globalThis as any).sysml2Parser = parser;
+        cachedSysml2Parser = parser;
         return parser;
       }
     } catch {
       // ignore
     }
   } else if (norm === "modelica") {
-    if ((globalThis as any).modelicaParser) return (globalThis as any).modelicaParser;
+    if (cachedModelicaParser) return cachedModelicaParser;
     try {
       const { createRequire } = await import("node:module");
       const req = createRequire(import.meta.url);
@@ -131,7 +138,7 @@ export async function getWasmParserForLanguage(lang: ClosedLoopLanguage): Promis
       if (wasmPath) {
         const { createWasmParser } = await import("@modelscript/dsl/bindings");
         const { parser } = await createWasmParser(wasmPath);
-        (globalThis as any).modelicaParser = parser;
+        cachedModelicaParser = parser;
         return parser;
       }
     } catch {

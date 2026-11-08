@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { FmuStorage, type CosimMqttClient, type HistorianRecorder } from "@modelscript/exchange/cosim";
+import type { CosimMqttClient, HistorianRecorder } from "@modelscript/exchange/cosim";
+import { FmuStorage } from "@modelscript/exchange/fmu";
 import express, { type Request } from "express";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,7 +10,7 @@ import type { Pool } from "pg";
 
 const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-import { getStdlibsByPack, type StdlibPackId } from "@modelscript/exchange";
+import { getStdlibsByPack, type StdlibPackId } from "@modelscript/exchange/catalog";
 import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
 import {
@@ -20,6 +21,7 @@ import {
 } from "./ee-loader.js";
 import { JobQueue } from "./jobs.js";
 import { optionalAuth, setAuthDatabase } from "./middleware/auth-middleware.js";
+import { responseCompressionMiddleware } from "./middleware/compression.js";
 import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
 import { defaultApiLimiter } from "./middleware/rate-limiter.js";
 import { allMigrations } from "./migrations/index.js";
@@ -470,6 +472,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   if (process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "production") {
     app.set("trust proxy", 1);
   }
+
+  // HTTP response compression (gzip / deflate for JSON, HTML, SVG, text >= 1KB)
+  app.use(responseCompressionMiddleware);
 
   // Rate Limiting (OWASP, DoS & Brute-force defense)
   app.use(defaultApiLimiter);

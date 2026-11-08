@@ -17,6 +17,13 @@ SELECT create_hypertable('telemetry', 'time', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_telemetry_participant_var
   ON telemetry (participant_id, variable_name, time DESC);
 
+-- High-performance composite indexes for session and time-range filtering
+CREATE INDEX IF NOT EXISTS idx_telemetry_session_time
+  ON telemetry (session_id, time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_telemetry_session_part_var_time
+  ON telemetry (session_id, participant_id, variable_name, time DESC);
+
 -- Session metadata
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
@@ -28,6 +35,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   state       TEXT NOT NULL DEFAULT 'created',
   metadata    JSONB
 );
+
+-- Fast session lookups by hardware instance serial number, start time, and metadata GIN index
+CREATE INDEX IF NOT EXISTS idx_sessions_metadata_serial
+  ON sessions ((metadata->>'serialNumber'));
+
+CREATE INDEX IF NOT EXISTS idx_sessions_metadata_gin
+  ON sessions USING gin (metadata);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_start_time
+  ON sessions (start_time DESC);
 
 -- Participant registry (persists beyond MQTT connection)
 CREATE TABLE IF NOT EXISTS participants (
@@ -60,10 +77,34 @@ CREATE TABLE IF NOT EXISTS fmu_metadata (
 -- (only if retention policy doesn't already exist)
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM timescaledb_information.jobs
-    WHERE proc_name = 'policy_retention' AND hypertable_name = 'telemetry'
-  ) THEN
-    PERFORM add_retention_policy('telemetry', INTERVAL '30 days');
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM timescaledb_information.jobs
+      WHERE proc_name = 'policy_retention' AND hypertable_name = 'telemetry'
+    ) THEN
+      PERFORM add_retention_policy('telemetry', INTERVAL '30 days');
+    END IF;
   END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+-- Columnar chunk compression policy for TimescaleDB (if extension is loaded)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+    BEGIN
+      ALTER TABLE telemetry SET (
+        timescaledb.compress,
+        timescaledb.compress_segmentby = 'session_id, participant_id',
+        timescaledb.compress_orderby = 'time DESC'
+      );
+      PERFORM add_compression_policy('telemetry', INTERVAL '1 day', if_not_exists => TRUE);
+    EXCEPTION WHEN OTHERS THEN
+      -- In case compression is already enabled or policy already exists
+      NULL;
+    END;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
 END $$;

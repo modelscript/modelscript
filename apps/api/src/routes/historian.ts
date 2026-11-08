@@ -97,16 +97,13 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
         metadata: unknown;
       };
 
-      const countResult = await pool.query(`SELECT COUNT(*) as count FROM telemetry WHERE session_id = $1`, [
-        sessionId,
-      ]);
-      const sampleCount = parseInt(String((countResult.rows[0] as { count: string }).count), 10);
-
-      const participantResult = await pool.query(
-        `SELECT COUNT(DISTINCT participant_id) as count FROM telemetry WHERE session_id = $1`,
+      const countResult = await pool.query(
+        `SELECT COUNT(*) as count, COUNT(DISTINCT participant_id) as participant_count FROM telemetry WHERE session_id = $1`,
         [sessionId],
       );
-      const participantCount = parseInt(String((participantResult.rows[0] as { count: string }).count), 10);
+      const countsRow = countResult.rows[0] as { count: string; participant_count: string } | undefined;
+      const sampleCount = parseInt(String(countsRow?.count ?? 0), 10);
+      const participantCount = parseInt(String(countsRow?.participant_count ?? 0), 10);
 
       res.json({
         sessionId: row.id,

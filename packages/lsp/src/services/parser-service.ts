@@ -4,6 +4,7 @@
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { getStdlibsForLanguage } from "@modelscript/exchange/catalog";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener";
 import {
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
@@ -14,7 +15,6 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { computeTreeEdit } from "../utils/ast-utils.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/cst-facade.js";
-import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
 import { BrowserFileSystem } from "../vfs/browser-file-system.js";
 import {
@@ -710,9 +710,7 @@ export class ParserService {
         }
         if (targetId === undefined) return null;
         const queryDB = engine.toQueryDB();
-        const flattenerClass = (globalThis as any).ArenaQueryFlattener;
-        if (!flattenerClass) return null;
-        const flattener = new flattenerClass(queryDB, options);
+        const flattener = new ArenaQueryFlattener(queryDB, options);
         return flattener.flatten(targetId, null, options);
       },
     };
@@ -1375,18 +1373,21 @@ export class ParserService {
     }
   }
 
+  private projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
+  private projectTreeChangedPending: boolean = false;
+
   sendProjectTreeChanged() {
-    if ((globalThis as any).projectTreeChangedTimer) {
+    if (this.projectTreeChangedTimer) {
       // Inside cooldown — mark pending so we fire once when the timer expires.
-      (globalThis as any).projectTreeChangedPending = true;
+      this.projectTreeChangedPending = true;
       return;
     }
     // Fire immediately (leading edge)
     this.connection.sendNotification("modelscript/projectTreeChanged");
-    (globalThis as any).projectTreeChangedTimer = setTimeout(() => {
-      (globalThis as any).projectTreeChangedTimer = null;
-      if ((globalThis as any).projectTreeChangedPending) {
-        (globalThis as any).projectTreeChangedPending = false;
+    this.projectTreeChangedTimer = setTimeout(() => {
+      this.projectTreeChangedTimer = null;
+      if (this.projectTreeChangedPending) {
+        this.projectTreeChangedPending = false;
         this.connection.sendNotification("modelscript/projectTreeChanged");
       }
     }, 1000);
@@ -1416,92 +1417,6 @@ export class ParserService {
   }
 
   resolveModelicaClassInstance(uri: string, className?: string): any {
-    const instances = this.workspaceManager.documentInstances.get(uri);
-
-    if (instances && instances.length > 0) {
-      if (className) {
-        const found = instances.find((i) => i.name === className || i.compositeName === className);
-        if (found) return found;
-      }
-      return instances[0];
-    }
-
-    // Library class: get from polyglot index directly
-    const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-    const isSysmlUri = uri.endsWith(".sysml") || uri.endsWith(".sysml2") || uri.endsWith(".kerml");
-    let engine = isSysmlUri
-      ? this.workspaceManager.globalSysML2QueryEngine
-      : this.workspaceManager.globalModelicaQueryEngine;
-    if (!engine) {
-      if (isSysmlUri) {
-        const sysmlFactory =
-          (globalThis as any).createSysML2QueryEngine ?? (globalThis as any).create_sysml2_query_engine;
-        if (typeof sysmlFactory === "function") {
-          engine = sysmlFactory(unifiedIndex) as any;
-          this.workspaceManager.globalSysML2QueryEngine = engine;
-        }
-      } else {
-        const createModelicaQE =
-          (globalThis as any).createModelicaQueryEngine ?? (globalThis as any).create_modelica_query_engine;
-        if (createModelicaQE) {
-          engine = createModelicaQE(
-            unifiedIndex,
-            this.getSharedCstTreeWrapper(),
-            this.getOrCreateLoaderContext().cacheStore,
-            100_000,
-          ) as any;
-          this.workspaceManager.globalModelicaQueryEngine = engine;
-        }
-        if (this.sharedContext) {
-          if (typeof this.sharedContext.setQueryEngine === "function") {
-            this.sharedContext.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine!);
-          } else {
-            this.sharedContext.queryEngine = this.workspaceManager.globalModelicaQueryEngine;
-          }
-          if (typeof this.sharedContext.setWorkspaceIndex === "function") {
-            this.sharedContext.setWorkspaceIndex(this.workspaceManager.getWorkspaceIndex("modelica"));
-          } else {
-            this.sharedContext.workspaceIndex = this.workspaceManager.getWorkspaceIndex("modelica");
-          }
-        }
-      }
-    }
-    const db = engine!.toQueryDB();
-    const ClassInst = (globalThis as any).ModelicaClassInstance;
-
-    if (className) {
-      const parts = className.split(".");
-      const entries = unifiedIndex.byName.get(parts[parts.length - 1]!);
-      const entryId = entries?.find((id) => {
-        const e = unifiedIndex.symbols.get(id);
-        return e && getCompositeName(e, unifiedIndex) === className;
-      });
-      if (entryId !== undefined && ClassInst) {
-        return new ClassInst(entryId, db);
-      }
-    }
-
-    // Fallback to first class in file.
-    // Normalize URIs to handle scheme variations (file:// vs file:///)
-    // and modelscript-lib://global prefix differences.
-    const normalizeUri = (u: string) => {
-      if (u.startsWith("modelscript-lib://global")) u = "file://" + u.substring("modelscript-lib://global".length);
-      return u.replace(/^file:\/\/\//, "file://");
-    };
-    const normalizedParamsUri = normalizeUri(uri);
-    const expectedSuffix = normalizedParamsUri.replace(/^file:\/\//, "");
-    for (const [id, entry] of unifiedIndex.symbols) {
-      if (
-        entry.kind === "Class" &&
-        entry.parentId === null &&
-        entry.resourceId &&
-        (normalizeUri(entry.resourceId) === normalizedParamsUri ||
-          normalizeUri(entry.resourceId).endsWith(expectedSuffix))
-      ) {
-        if (ClassInst) return new ClassInst(id, db);
-      }
-    }
-
-    return null;
+    return this.workspaceManager.resolveModelicaClassInstance(uri, className);
   }
 }

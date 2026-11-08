@@ -7,6 +7,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { registerCodeLensProvider } from "../src/providers/codeLensProvider.js";
 import { ValidationService } from "../src/services/validation-service.js";
 import { WorkspaceManager } from "../src/services/workspace-manager.js";
+import { seedTestWorkspaceThreads } from "./fixtures/demo-threads.js";
 
 const expect = (val: any) => ({
   toBe: (expected: any) => assert.strictEqual(val, expected),
@@ -130,7 +131,7 @@ END-ISO-10303-21;
     const mockContext: any = {
       connection: mockConnection,
       documents: { get: (uri: string) => docMap.get(uri) },
-      workspaceManager: new WorkspaceManager(undefined, { seedDemoThreads: true }),
+      workspaceManager: new WorkspaceManager(undefined, { threadSeeder: seedTestWorkspaceThreads }),
       validationService: {
         modelicaProofResultsByUri: new Map(),
         modelicaDaeVerificationResultsByUri: new Map(),
@@ -219,7 +220,7 @@ END-ISO-10303-21;
       sendNotification: () => {},
     };
 
-    const wm = new WorkspaceManager(undefined, { seedDemoThreads: true });
+    const wm = new WorkspaceManager(undefined, { threadSeeder: seedTestWorkspaceThreads });
     const mockDocManager: any = {
       documents: new Map(),
       documentTrees: new Map(),

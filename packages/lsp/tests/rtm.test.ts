@@ -244,4 +244,46 @@ end VehicleModels;`;
     assert.strictEqual(removeEdits[0].newText, "");
     assert.strictEqual(removeEdits[0].range.start.line, 8);
   });
+
+  test("CstLinkSynthesizer works with parsed CST node trees", () => {
+    const mockTree = {
+      rootNode: {
+        type: "source_file",
+        children: [
+          {
+            type: "class_definition",
+            startIndex: 0,
+            endIndex: 75,
+            children: [
+              { type: "IDENT", text: "DroneMotor", startIndex: 6, endIndex: 16 },
+              { type: "end", text: "end", startIndex: 60, endIndex: 63 },
+            ],
+          },
+        ],
+      },
+    };
+    const code = "model DroneMotor\n  parameter Real power = 200;\nend DroneMotor;\n";
+    const edits = CstLinkSynthesizer.synthesizeModelicaTraceLink(code, "DroneMotor", "ThrustReq", "satisfy", mockTree);
+    assert.ok(edits && edits.length === 1);
+    assert.match(edits[0].newText, /annotation\(__modelscript\(satisfies="ThrustReq"\)\);/);
+
+    const mockAnnotTree = {
+      rootNode: {
+        type: "source_file",
+        children: [
+          {
+            type: "annotation",
+            startIndex: 30,
+            endIndex: 82,
+            text: 'annotation(__modelscript(satisfies="ThrustReq"));',
+          },
+        ],
+      },
+    };
+    const codeWithAnnot =
+      'model DroneMotor\n  parameter Real power = 200;\n  annotation(__modelscript(satisfies="ThrustReq"));\nend DroneMotor;\n';
+    const removeEdits = CstLinkSynthesizer.removeModelicaTraceLink(codeWithAnnot, "ThrustReq", mockAnnotTree);
+    assert.ok(removeEdits && removeEdits.length === 1);
+    assert.strictEqual(removeEdits[0].newText, "");
+  });
 });

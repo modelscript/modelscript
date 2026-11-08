@@ -11,8 +11,6 @@
  * This provides high-performance simulation directly in the browser or
  * Node.js without relying on an external C compiler.
  */
-
-import asc from "assemblyscript/dist/asc.js";
 import type { FmiModelDescription, FmiScalarVariable } from "../../fmu/model-description.js";
 import type { FmuStorage, StoredFmu } from "../../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
@@ -139,7 +137,20 @@ export class FmuWasmParticipant implements CoSimParticipant {
       }
 
       // Compile to WebAssembly
-      const compiled = await asc.compileString(asSource, {
+      const ascModule = (await import("assemblyscript/dist/asc.js")) as {
+        default?: {
+          compileString: (
+            source: string,
+            options?: Record<string, unknown>,
+          ) => Promise<{ error?: Error; binary?: Uint8Array }> | { error?: Error; binary?: Uint8Array };
+        };
+        compileString?: (
+          source: string,
+          options?: Record<string, unknown>,
+        ) => Promise<{ error?: Error; binary?: Uint8Array }> | { error?: Error; binary?: Uint8Array };
+      };
+      const asc = ascModule.default ?? ascModule;
+      const compiled = await asc.compileString!(asSource, {
         optimizeLevel: 3,
         shrinkLevel: 0,
         runtime: "stub",
@@ -158,7 +169,7 @@ export class FmuWasmParticipant implements CoSimParticipant {
       },
     };
 
-    const wasmModule = await WebAssembly.instantiate(binary, { env });
+    const wasmModule = await WebAssembly.instantiate(binary as BufferSource, { env });
     const instance = ("instance" in wasmModule ? wasmModule.instance : wasmModule) as WebAssembly.Instance;
     const rawExports = instance.exports as Record<string, unknown>;
 

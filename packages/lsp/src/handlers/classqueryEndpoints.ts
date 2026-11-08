@@ -3,6 +3,7 @@
 import type { Context } from "@modelscript/modelica";
 import { computeComponentInsert } from "@modelscript/modelica/diagram";
 import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
+import { printArenaDAE } from "@modelscript/runtime/dae-printer";
 import { LspContext } from "../lsp-context.js";
 import { isClassInstance } from "../utils/ast-utils.js";
 import {
@@ -48,15 +49,14 @@ export function registerClassQueryEndpoints(context: LspContext) {
             }
           }
 
-          const kind = String(instance.classKind ?? instance.kind ?? "").toLowerCase();
-          const modelicaKind = (globalThis as any).ModelicaClassKind;
+          const rawKind = String(instance.classKind ?? instance.kind ?? "").toLowerCase();
           const isSimulatable =
-            kind === "model" ||
-            kind === "block" ||
-            kind === "class" ||
-            instance.classKind === modelicaKind?.MODEL ||
-            instance.classKind === modelicaKind?.BLOCK ||
-            instance.classKind === modelicaKind?.CLASS;
+            rawKind === "model" ||
+            rawKind === "block" ||
+            rawKind === "class" ||
+            instance.classKind === 0 ||
+            instance.classKind === 1 ||
+            instance.classKind === 2;
           if (!isSimulatable) continue;
 
           // Check for experiment annotation
@@ -249,7 +249,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
 
           let text: string | undefined;
-          const sharedFs = (globalThis as any).sharedFs ?? context.state?.sharedContext?.fs;
+          const sharedFs =
+            (context.workspaceManager as any)?.fs ??
+            context.state?.sharedContext?.fs ??
+            context.parserService?.sharedContext?.fs ??
+            (globalThis as any).sharedFs;
           if (sharedFs) {
             let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
             if (uri.startsWith("modelica:")) {
@@ -442,7 +446,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
         }
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
-        return { text: (globalThis as any).printArenaDAE ? (globalThis as any).printArenaDAE(arena) : String(arena) };
+        return { text: printArenaDAE(arena) };
       } catch (e) {
         return { text: null, error: e instanceof Error ? (e.stack ?? e.message) : String(e) };
       }
@@ -654,7 +658,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return { exists: false };
       const fsPath = getVirtualFsPath(target);
-      const fs = (globalThis as any).sharedFs ?? context.state?.sharedContext?.fs;
+      const fs =
+        (context.workspaceManager as any)?.fs ??
+        context.state?.sharedContext?.fs ??
+        context.parserService?.sharedContext?.fs ??
+        (globalThis as any).sharedFs;
       if (!fs) return { exists: false };
       if (typeof fs.exists === "function" && fs.exists(fsPath)) {
         const stat = typeof fs.stat === "function" ? fs.stat(fsPath) : null;
@@ -679,7 +687,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return [];
       const fsPath = getVirtualFsPath(target);
-      const fs = (globalThis as any).sharedFs ?? context.state?.sharedContext?.fs;
+      const fs =
+        (context.workspaceManager as any)?.fs ??
+        context.state?.sharedContext?.fs ??
+        context.parserService?.sharedContext?.fs ??
+        (globalThis as any).sharedFs;
       if (!fs || typeof fs.readdir !== "function") return [];
       try {
         const entries = fs.readdir(fsPath);

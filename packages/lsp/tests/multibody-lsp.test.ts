@@ -18,6 +18,7 @@ const sampleSpckXml = `
   <marker id="m_ground" body="$inertial" x="0" y="0" z="0" />
   <marker id="m_wheel_center" body="b_wheel" x="0" y="0" z="0.3" />
   <marker id="m_chassis_mount" body="b_chassis" x="0" y="0" z="0.6" />
+  <joint id="j_ground" type="prismatic" from="m_ground" to="m_wheel_center" />
   <joint id="j_susp" type="prismatic" from="m_wheel_center" to="m_chassis_mount" />
   <spring id="s_strut" from="m_wheel_center" to="m_chassis_mount" kz="45000" cz="2800" />
 </simpack_model>

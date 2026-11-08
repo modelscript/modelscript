@@ -107,3 +107,26 @@ export function nodeRange(node: SyntaxNode): {
     end: { line: node.endPosition.row, character: node.endPosition.column },
   };
 }
+
+/**
+ * Recursively find all CST nodes matching the specified type name.
+ */
+export function findCstNodesByType(root: any, typeName: string): any[] {
+  const results: any[] = [];
+  const target = (typeName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  function walk(node: any) {
+    if (!node) return;
+    if ((node.type || "").toLowerCase().replace(/[^a-z0-9]/g, "") === target) {
+      results.push(node);
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(root);
+  return results;
+}

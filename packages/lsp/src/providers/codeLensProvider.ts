@@ -6,6 +6,101 @@ import { ScadEvaluator } from "@modelscript/scad";
 import { CodeLens, Range } from "vscode-languageserver";
 import { type LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import { findCstNodesByType } from "../utils/ast-utils.js";
+
+function resolveDigitalTwinLens(
+  context: LspContext,
+  uri: string,
+  param: string,
+  val: string,
+  twinTarget: string,
+  range: Range,
+): CodeLens {
+  const numVal = parseFloat(val);
+  const threadEntries = context.workspaceManager?.getThreadsForUri?.(uri) ?? [];
+  let alignedPeers: any[] = [];
+  if (threadEntries.length > 0 && context.workspaceManager?.findAlignedElementsBySlot) {
+    alignedPeers = context.workspaceManager.findAlignedElementsBySlot(threadEntries[0]!.slot) ?? [];
+  }
+
+  // 1. Structural Mass Parity / Drift check against FEA & SysML
+  if (param === "m" || param.toLowerCase() === "mass") {
+    const feaPeer = alignedPeers.find(
+      (p: any) =>
+        p.domain?.toLowerCase() === "fea" &&
+        (p.properties?.["mass"] !== undefined || p.meta?.properties?.["mass"] !== undefined),
+    );
+    const sysmlPeer = alignedPeers.find(
+      (p: any) =>
+        p.domain?.toLowerCase() === "sysml2" &&
+        (p.properties?.["mass"] !== undefined || p.meta?.properties?.["mass"] !== undefined),
+    );
+    const expectedMass =
+      feaPeer?.properties?.["mass"] ??
+      feaPeer?.meta?.properties?.["mass"] ??
+      sysmlPeer?.properties?.["mass"] ??
+      sysmlPeer?.meta?.properties?.["mass"];
+
+    if (expectedMass !== undefined && !Number.isNaN(numVal)) {
+      const isParity = Math.abs(numVal - expectedMass) < 0.01;
+      const feaName = feaPeer?.name ?? feaPeer?.meta?.name ?? "FEA";
+      const rawSysmlName = sysmlPeer?.name ?? sysmlPeer?.meta?.name ?? "SysML";
+      const sysmlName = rawSysmlName.replace(/^part\s+def\s+/, "");
+      const title = isParity
+        ? `🔗 Digital Thread Parity: ${param} = ${numVal.toFixed(2)} kg [Aligned with FEA ${feaName} & SysML ${sysmlName}]`
+        : `⚠ Digital Thread Drift: ${param} = ${val} kg (FEA Structural Mass: ${Number(expectedMass).toFixed(2)} kg) | Reconcile`;
+      return {
+        range,
+        command: {
+          title,
+          command: "modelscript.syncDigitalThreadParams",
+          arguments: [uri],
+        },
+      };
+    }
+  }
+
+  // 2. Aerodynamic Drag Coefficient twin against CFD
+  if (param === "Cd" || param.toLowerCase() === "aerodragcoeff") {
+    const cfdPeer = alignedPeers.find((p: any) => p.domain?.toLowerCase() === "cfd");
+    if (cfdPeer) {
+      const cfdName = cfdPeer.name ?? cfdPeer.meta?.name ?? "CFD";
+      return {
+        range,
+        command: {
+          title: `🔗 Aerodynamic Twin: ${param} = ${val} [Aligned with CFD ${cfdName} RANS Polar]`,
+          command: "modelscript.syncDigitalThreadParams",
+          arguments: [uri],
+        },
+      };
+    }
+  }
+
+  // 3. Frontal Area twin against CAD
+  if (param === "A" || param.toLowerCase() === "frontalarea") {
+    const cadPeer = alignedPeers.find((p: any) => p.domain?.toLowerCase() === "cad");
+    if (cadPeer) {
+      return {
+        range,
+        command: {
+          title: `🔗 Frontal Area Twin: ${param} = ${val} m² [Aligned with OpenSCAD CAD Projection]`,
+          command: "modelscript.syncDigitalThreadParams",
+          arguments: [uri],
+        },
+      };
+    }
+  }
+
+  // 4. Fallback: Generic Digital Twin link
+  return {
+    range,
+    command: {
+      title: `🔗 Digital Twin: ${param} = ${val} [Linked to ${twinTarget}]`,
+      command: "modelscript.syncDigitalThreadParams",
+      arguments: [uri],
+    },
+  };
+}
 
 export function registerCodeLensProvider(context: LspContext) {
   context.connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
@@ -79,7 +174,229 @@ export function registerCodeLensProvider(context: LspContext) {
         return true;
       };
 
-      if (text) {
+      let usedCst = false;
+      const treeEntry =
+        (context.documentManager as any)?.getDocumentTree?.(uri) ??
+        (context.documentManager as any)?.documentTrees?.get?.(uri);
+      const rootNode = treeEntry?.tree?.rootNode ?? treeEntry?.rootNode;
+
+      if (rootNode) {
+        const classNodes = findCstNodesByType(rootNode, "class_definition");
+        if (classNodes.length > 0) {
+          usedCst = true;
+          for (const classNode of classNodes) {
+            const idNode = findCstNodesByType(classNode, "identifier")[0];
+            if (!idNode) continue;
+            const name = idNode.text?.trim() || "";
+            if (!name) continue;
+
+            const lineIdx = idNode.startPosition?.row ?? 0;
+            const col = idNode.startPosition?.column ?? 0;
+            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
+
+            const prefixesNode = findCstNodesByType(classNode, "class_prefixes")[0];
+            let rawKind = "class";
+            if (prefixesNode?.text) {
+              const words = prefixesNode.text.trim().split(/\s+/);
+              rawKind = words[words.length - 1] || "class";
+            } else {
+              const firstWord = classNode.text?.trim()?.split(/\s+/)[0];
+              if (firstWord) rawKind = firstWord;
+            }
+
+            if (
+              showSimulate &&
+              (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process")
+            ) {
+              const hasThreadLinks =
+                (showPolyglotLinks || showVerification) &&
+                Boolean(context.workspaceManager?.getThreadsForUri?.(uri)?.length);
+              if (showVerification && hasThreadLinks) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
+                    command: "modelscript.runReachabilityFlowpipe",
+                    arguments: [uri],
+                  },
+                });
+              }
+              const title = hasThreadLinks
+                ? "▶ Simulate Model (RK4 / CVODE DAE)"
+                : rawKind === "study"
+                  ? "▶ Run Study"
+                  : `▶ Simulate ${rawKind}`;
+              lenses.push({
+                range,
+                command: {
+                  title,
+                  command: rawKind === "study" ? "modelscript.openSimulationView" : "modelscript.action.simulate",
+                  arguments: [uri, name],
+                },
+              });
+              if (showPolyglotLinks && hasThreadLinks) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "🌐 Digital Thread Explorer",
+                    command: "modelscript.openThreadExplorer",
+                    arguments: [uri],
+                  },
+                });
+              }
+              if (showDiagram) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "⊞ Open Interactive Diagram",
+                    command: "modelscript.openDiagram",
+                    arguments: [uri],
+                  },
+                });
+              }
+            }
+
+            // Formal proof badge for this model/class/function on this exact declaration line
+            const proof = proofMap?.get(name);
+            if (shouldEmitModelicaProof(proof)) {
+              emittedProofClasses.add(name);
+              let proofTitle = "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
+              if (proof.definiteBugs.length > 0) {
+                proofTitle = `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`;
+              } else if (proof.potentialBugs.length > 0) {
+                const oobCount = proof.potentialBugs.filter((b: any) => b.category === "array_out_of_bounds").length;
+                if (oobCount > 0) {
+                  proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s) (array out of bounds)`;
+                } else {
+                  proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s)`;
+                }
+              }
+
+              lenses.push({
+                range,
+                command: {
+                  title: proofTitle,
+                  command: "modelscript.showProofDetails",
+                  arguments: [uri, name, proof.formattedMatrix],
+                },
+              });
+            }
+
+            // DAE BLT verification badge for this model/class on this exact declaration line
+            const daeProof = daeMap?.get(name);
+            if (shouldEmitDaeProof(daeProof)) {
+              emittedDaeClasses.add(name);
+              let daeTitle =
+                daeProof.verdict?.kind === "proven"
+                  ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
+                  : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
+              if (daeProof.issues.length > 0) {
+                const definite = daeProof.issues.find((i: any) => i.severity === "definite");
+                if (definite) {
+                  daeTitle = `✗ DAE Defect: ${definite.message}`;
+                } else {
+                  daeTitle = `⚠ DAE Invariant: ${daeProof.issues[0].message}`;
+                }
+              }
+
+              lenses.push({
+                range,
+                command: {
+                  title: daeTitle,
+                  command: "modelscript.showDaeVerificationDetails",
+                  arguments: [uri, name, daeProof],
+                },
+              });
+            }
+
+            // For loop formal verification lens (positioned above the loop)
+            const forNodes = [
+              ...findCstNodesByType(classNode, "for_statement"),
+              ...findCstNodesByType(classNode, "for_equation"),
+            ];
+            for (const forNode of forNodes) {
+              if (shouldEmitModelicaProof(proof)) {
+                const forLine = forNode.startPosition?.row ?? 0;
+                const forCol = forNode.startPosition?.column ?? 0;
+                const loopRange = Range.create(forLine, forCol, forLine, forCol + 3);
+
+                const loopBug =
+                  proof.definiteBugs.find((b: any) => b.category === "array_out_of_bounds") ??
+                  proof.potentialBugs.find((b: any) => b.category === "array_out_of_bounds") ??
+                  proof.definiteBugs[0] ??
+                  proof.potentialBugs[0];
+
+                let loopTitle: string;
+                if (loopBug) {
+                  if (loopBug.category === "array_out_of_bounds") {
+                    const w = loopBug.witnessValues;
+                    const detail = w?.index && w?.arrayLength ? ` [${w.index} vs declared size ${w.arrayLength}]` : "";
+                    loopTitle = `⚠ Formal Proof: Array index out of bounds${detail}`;
+                  } else {
+                    loopTitle = `⚠ Formal Proof: ${loopBug.description}`;
+                  }
+                } else if (proof.isCertifiedSafe) {
+                  loopTitle = "✓ Loop Formally Verified (Safe Bounds)";
+                } else {
+                  loopTitle = "✓ Loop Invariants Verified";
+                }
+
+                lenses.push({
+                  range: loopRange,
+                  command: {
+                    title: loopTitle,
+                    command: "modelscript.showProofDetails",
+                    arguments: [uri, name, proof.formattedMatrix],
+                  },
+                });
+              }
+            }
+
+            // Twin / Digital Thread Parameter inspection
+            if (showPolyglotLinks) {
+              const compClauses = findCstNodesByType(classNode, "component_clause");
+              for (const comp of compClauses) {
+                const compText = comp.text || "";
+                if (!/\bparameter\b/.test(compText) || !/\bReal\b/.test(compText)) continue;
+                const compDecls = findCstNodesByType(comp, "component_declaration");
+                for (const cd of compDecls) {
+                  const compIdNode = findCstNodesByType(cd, "identifier")[0];
+                  if (!compIdNode) continue;
+                  const param = compIdNode.text?.trim();
+                  if (!param) continue;
+
+                  let val: string | undefined;
+                  const modNode = findCstNodesByType(cd, "modification")[0];
+                  if (modNode?.text) {
+                    const valMatch = /=\s*([0-9.eE+-]+)/.exec(modNode.text);
+                    if (valMatch) val = valMatch[1];
+                  }
+                  if (!val) {
+                    const valMatch = /=\s*([0-9.eE+-]+)/.exec(cd.text || "");
+                    if (valMatch) val = valMatch[1];
+                  }
+                  if (!val) continue;
+
+                  let twinTarget: string | undefined;
+                  const twinMatch = /(?:twin|counterpart)\s*=\s*"([^"]+)"/i.exec(cd.text || compText);
+                  if (twinMatch) {
+                    twinTarget = twinMatch[1];
+                  }
+                  if (!twinTarget) continue;
+
+                  const paramLine = compIdNode.startPosition?.row ?? 0;
+                  const paramCol = compIdNode.startPosition?.column ?? 0;
+                  const pRange = Range.create(paramLine, paramCol, paramLine, paramCol + param.length);
+
+                  lenses.push(resolveDigitalTwinLens(context, uri, param, val, twinTarget, pRange));
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (!usedCst && text) {
         const lines = text.split(/\r?\n/);
         let currentClassName: string | undefined = undefined;
 
@@ -99,46 +416,39 @@ export function registerCodeLensProvider(context: LspContext) {
               showSimulate &&
               (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process")
             ) {
-              const isDroneDemo =
-                features.demos &&
-                (name === "DroneSimulation" || uri.includes("DroneSimulation") || uri.includes("drone-reachability"));
-              if (isDroneDemo) {
-                if (showVerification) {
-                  lenses.push({
-                    range,
-                    command: {
-                      title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
-                      command: "modelscript.openDroneReachabilityDemo",
-                      arguments: [uri],
-                    },
-                  });
-                }
+              const hasThreadLinks =
+                (showPolyglotLinks || showVerification) &&
+                Boolean(context.workspaceManager?.getThreadsForUri?.(uri)?.length);
+              if (showVerification && hasThreadLinks) {
                 lenses.push({
                   range,
                   command: {
-                    title: "▶ Simulate Model (RK4 / CVODE DAE)",
-                    command: "modelscript.openSimulationView",
-                    arguments: [uri, name],
+                    title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
+                    command: "modelscript.runReachabilityFlowpipe",
+                    arguments: [uri],
                   },
                 });
-                if (showPolyglotLinks) {
-                  lenses.push({
-                    range,
-                    command: {
-                      title: "🌐 Digital Thread Explorer",
-                      command: "modelscript.openThreadExplorer",
-                      arguments: [uri],
-                    },
-                  });
-                }
-              } else {
-                const title = rawKind === "study" ? "▶ Run Study" : `▶ Simulate ${rawKind}`;
+              }
+              const title = hasThreadLinks
+                ? "▶ Simulate Model (RK4 / CVODE DAE)"
+                : rawKind === "study"
+                  ? "▶ Run Study"
+                  : `▶ Simulate ${rawKind}`;
+              lenses.push({
+                range,
+                command: {
+                  title,
+                  command: rawKind === "study" ? "modelscript.openSimulationView" : "modelscript.action.simulate",
+                  arguments: [uri, name],
+                },
+              });
+              if (showPolyglotLinks && hasThreadLinks) {
                 lenses.push({
                   range,
                   command: {
-                    title,
-                    command: rawKind === "study" ? "modelscript.openSimulationView" : "modelscript.action.simulate",
-                    arguments: [uri, name],
+                    title: "🌐 Digital Thread Explorer",
+                    command: "modelscript.openThreadExplorer",
+                    arguments: [uri],
                   },
                 });
               }
@@ -274,54 +584,7 @@ export function registerCodeLensProvider(context: LspContext) {
             }
 
             if (twinTarget) {
-              const isDroneContext =
-                features.demos &&
-                (currentClassName === "DroneSimulation" ||
-                  uri.includes("DroneSimulation") ||
-                  uri.includes("drone-reachability") ||
-                  twinTarget.includes("drone_"));
-              if (isDroneContext && param === "m") {
-                const numVal = parseFloat(val);
-                const isParity = Math.abs(numVal - 1.2) < 0.01;
-                const title = isParity
-                  ? `🔗 Digital Thread Parity: m = ${numVal.toFixed(2)} kg [Aligned with FEA drone_chassis.inp & SysML DroneAssembly]`
-                  : `⚠ Digital Thread Drift: m = ${val} kg (FEA Structural Mass: 1.20 kg) | Reconcile`;
-                lenses.push({
-                  range,
-                  command: {
-                    title,
-                    command: "modelscript.syncDigitalThreadParams",
-                    arguments: [uri],
-                  },
-                });
-              } else if (isDroneContext && param === "Cd") {
-                lenses.push({
-                  range,
-                  command: {
-                    title: `🔗 Aerodynamic Twin: Cd = ${val} [Aligned with CFD drone_aero.cfg RANS Polar]`,
-                    command: "modelscript.syncDigitalThreadParams",
-                    arguments: [uri],
-                  },
-                });
-              } else if (isDroneContext && param === "A") {
-                lenses.push({
-                  range,
-                  command: {
-                    title: `🔗 Frontal Area Twin: A = ${val} m² [Aligned with OpenSCAD CAD Projection]`,
-                    command: "modelscript.syncDigitalThreadParams",
-                    arguments: [uri],
-                  },
-                });
-              } else {
-                lenses.push({
-                  range,
-                  command: {
-                    title: `🔗 Digital Twin: ${param} = ${val} [Linked to ${twinTarget}]`,
-                    command: "modelscript.syncDigitalThreadParams",
-                    arguments: [uri],
-                  },
-                });
-              }
+              lenses.push(resolveDigitalTwinLens(context, uri, param, val, twinTarget, range));
             }
           }
         }
@@ -444,10 +707,7 @@ export function registerCodeLensProvider(context: LspContext) {
                 : [];
             const matchingThread =
               threadEntries.find((e: any) => e.meta?.name?.includes(name)) ??
-              (features.demos &&
-              (name === "DroneAssembly" || uri.includes("drone_specs") || uri.includes("drone-reachability"))
-                ? threadEntries[0]
-                : undefined);
+              (threadEntries.length === 1 ? threadEntries[0] : undefined);
 
             if (matchingThread && showPolyglotLinks && context.workspaceManager?.findAlignedElementsBySlot) {
               const aligned = context.workspaceManager.findAlignedElementsBySlot(matchingThread.slot);
@@ -534,51 +794,37 @@ export function registerCodeLensProvider(context: LspContext) {
             }
           }
 
-          // Requirement Def: FlightCeilingRequirement or standard
+          // Requirement Def
           const reqMatch = /^\s*(?:abstract\s+)?requirement\s+def\s+([A-Za-z0-9_]+)/.exec(line);
           if (reqMatch && showVerification) {
             const name = reqMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
-            if (
-              features.demos &&
-              (name === "FlightCeilingRequirement" || uri.includes("drone_specs") || uri.includes("drone-reachability"))
-            ) {
-              lenses.push({
-                range,
-                command: {
-                  title: "▶ Estimate Requirement Reachability (linearized zonotope, non-rigorous)",
-                  command: "modelscript.openDroneReachabilityDemo",
-                  arguments: [uri],
-                },
-              });
-              lenses.push({
-                range,
-                command: {
-                  title: "▶ Verify Flowpipes (CORA / WASM Zonotopes)",
-                  command: "modelscript.runReachabilityFlowpipe",
-                  arguments: [uri],
-                },
-              });
-              lenses.push({
-                range,
-                command: {
-                  title: `🛡️ Verify Formal Requirement Contract: ${name}`,
-                  command: "modelscript.runReachabilityFlowpipe",
-                  arguments: [uri],
-                },
-              });
-            } else {
-              lenses.push({
-                range,
-                command: {
-                  title: `🛡️ Verify Formal Requirement Contract: ${name}`,
-                  command: "modelscript.runReachabilityFlowpipe",
-                  arguments: [uri],
-                },
-              });
-            }
+            lenses.push({
+              range,
+              command: {
+                title: "▶ Estimate Requirement Reachability (linearized zonotope, non-rigorous)",
+                command: "modelscript.runReachabilityFlowpipe",
+                arguments: [uri],
+              },
+            });
+            lenses.push({
+              range,
+              command: {
+                title: "▶ Verify Flowpipes (CORA / WASM Zonotopes)",
+                command: "modelscript.runReachabilityFlowpipe",
+                arguments: [uri],
+              },
+            });
+            lenses.push({
+              range,
+              command: {
+                title: `🛡️ Verify Formal Requirement Contract: ${name}`,
+                command: "modelscript.runReachabilityFlowpipe",
+                arguments: [uri],
+              },
+            });
           }
 
           // Verification Def
@@ -592,9 +838,7 @@ export function registerCodeLensProvider(context: LspContext) {
               range,
               command: {
                 title: "▶ Run Continuous Reachability Verification (Nelson-Oppen / Salsa)",
-                command: features.demos
-                  ? "modelscript.openDroneReachabilityDemo"
-                  : "modelscript.runReachabilityFlowpipe",
+                command: "modelscript.runReachabilityFlowpipe",
                 arguments: [uri],
               },
             });
@@ -653,12 +897,17 @@ export function registerCodeLensProvider(context: LspContext) {
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
         if (showCadMetrics) {
-          let metricsTitle: string | undefined = features.demos
-            ? "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg"
-            : undefined;
+          let metricsTitle: string | undefined;
+          const threadEntries = context.workspaceManager?.getThreadsForUri?.(uri) ?? [];
+          const threadMeta = threadEntries.find((e: any) => e.domain === "cad")?.meta ?? threadEntries[0]?.meta;
+          const frontalArea = threadMeta?.properties?.["frontalArea"];
+          const mass = threadMeta?.properties?.["mass"];
+          if (frontalArea !== undefined && mass !== undefined) {
+            metricsTitle = `📐 Frontal Area: A = ${Number(frontalArea).toFixed(3)} m² | Estimated Mass: ${Number(mass).toFixed(2)} kg`;
+          }
           const treeEntry = (context as any).documentManager?.documentTrees?.get(uri);
           const rootNode = treeEntry?.tree?.rootNode;
-          if (rootNode && !text.includes("rotor_stream")) {
+          if (rootNode) {
             try {
               const evaluator = new ScadEvaluator();
               const solid = evaluator.evaluate(rootNode);
@@ -766,26 +1015,35 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        const isDroneFea =
-          features.demos &&
-          (uri.includes("drone_chassis") || text.includes("Drone Chassis") || text.includes("ECHASSIS"));
+        const threadEntries =
+          showVerification || showPolyglotLinks || showCadMetrics
+            ? (context.workspaceManager?.getThreadsForUri?.(uri) ?? [])
+            : [];
+        const feaThread = threadEntries.find((e: any) => e.domain === "fea") ?? threadEntries[0];
+        const feaProps = feaThread?.meta?.properties;
 
-        if (isDroneFea) {
-          if (showVerification) {
+        if (feaProps) {
+          const maxStress = feaProps["maxStress"];
+          const yieldStrength = feaProps["yieldStrength"];
+          const mass = feaProps["mass"];
+          if (showVerification && maxStress !== undefined && yieldStrength !== undefined) {
+            const numMaxStress = Number(maxStress);
+            const numYieldStrength = Number(yieldStrength);
+            const sf = numYieldStrength / numMaxStress;
             lenses.push({
               range: headerRange,
               command: {
-                title: "🔬 FEA Structural Invariant: σ_max = 172.4 MPa ≤ 180.0 MPa (Safety Factor: 1.04)",
+                title: `🔬 FEA Structural Invariant: σ_max = ${numMaxStress.toFixed(1)} MPa ≤ ${numYieldStrength.toFixed(1)} MPa (Safety Factor: ${sf.toFixed(2)})`,
                 command: "modelscript.openThreadExplorer",
                 arguments: [uri],
               },
             });
           }
-          if (showPolyglotLinks) {
+          if (showPolyglotLinks && mass !== undefined) {
             lenses.push({
               range: headerRange,
               command: {
-                title: "⚖️ Calibrated Mass: m = 1.20 kg (Transferred to Modelica & SysML)",
+                title: `⚖️ Calibrated Mass: m = ${Number(mass).toFixed(2)} kg (Transferred to Modelica & SysML)`,
                 command: "modelscript.syncDigitalThreadParams",
                 arguments: [uri],
               },
@@ -812,7 +1070,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           if (showCadMetrics && /^\*SOLID SECTION/i.test(line)) {
             const matMatch = /MATERIAL\s*=\s*([^,\s]+)/i.exec(line);
-            const matLabel = isDroneFea ? "Carbon/Epoxy Quasi-Isotropic" : (matMatch?.[1] ?? "Solid Section");
+            const matLabel = matMatch?.[1] ? matMatch[1].replace(/_/g, " ") : "Solid Section";
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({
               range,
@@ -826,8 +1084,7 @@ export function registerCodeLensProvider(context: LspContext) {
         }
 
         if (showCadMetrics) {
-          const meshSummary =
-            !isDroneFea && (nodeCount > 0 || elemCount > 0) ? ` (${nodeCount} Nodes, ${elemCount} Elements)` : "";
+          const meshSummary = nodeCount > 0 || elemCount > 0 ? ` (${nodeCount} Nodes, ${elemCount} Elements)` : "";
           lenses.push({
             range: headerRange,
             command: {
@@ -856,23 +1113,39 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        const isDroneCfd = features.demos && (uri.includes("drone_aero") || text.includes("rotor_stream"));
-        if (isDroneCfd) {
+        const threadEntries =
+          showCadMetrics || showPolyglotLinks ? (context.workspaceManager?.getThreadsForUri?.(uri) ?? []) : [];
+        const cfdThread = threadEntries.find((e: any) => e.domain === "cfd") ?? threadEntries[0];
+        const cfdProps = cfdThread?.meta?.properties;
+
+        const aeroDragCoeff = cfdProps?.["aeroDragCoeff"];
+        const frontalArea = cfdProps?.["frontalArea"];
+
+        if (aeroDragCoeff !== undefined && frontalArea !== undefined) {
           if (showCadMetrics) {
             lenses.push({
               range: headerRange,
               command: {
-                title: "🌪️ CFD Aerodynamics: Cd = 0.80, A_ref = 0.030 m² | Cruise Airspeed = 10.0 m/s",
+                title: `🌪️ CFD Aerodynamics: Cd = ${Number(aeroDragCoeff).toFixed(2)}, A_ref = ${Number(frontalArea).toFixed(3)} m² | Cruise Airspeed = 10.0 m/s`,
                 command: "modelscript.openThreadExplorer",
                 arguments: [uri],
               },
             });
           }
           if (showPolyglotLinks) {
+            let moName = "Modelica";
+            if (cfdThread && context.workspaceManager?.findAlignedElementsBySlot) {
+              const aligned = context.workspaceManager.findAlignedElementsBySlot(cfdThread.slot) ?? [];
+              const moPeer = aligned.find((p: any) => p.domain?.toLowerCase() === "modelica");
+              const peerName = moPeer?.name;
+              if (peerName) {
+                moName = peerName.replace(/^model\s+/, "");
+              }
+            }
             lenses.push({
               range: headerRange,
               command: {
-                title: "🔗 Transfer Aerodynamic Drag to Modelica DroneSimulation.Cd",
+                title: `🔗 Transfer Aerodynamic Drag to Modelica ${moName}.Cd`,
                 command: "modelscript.syncDigitalThreadParams",
                 arguments: [uri],
               },
@@ -906,12 +1179,12 @@ export function registerCodeLensProvider(context: LspContext) {
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
           const line = lines[lineIdx]!;
-          if (showPolyglotLinks && isDroneCfd && /^\s*REF_AREA\s*=/i.test(line)) {
+          if (showPolyglotLinks && frontalArea !== undefined && /^\s*REF_AREA\s*=/i.test(line)) {
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({
               range,
               command: {
-                title: "📐 Parity Check: Ref Area matches OpenSCAD Frontal Area (0.030 m²)",
+                title: `📐 Parity Check: Ref Area matches OpenSCAD Frontal Area (${Number(frontalArea).toFixed(3)} m²)`,
                 command: "modelscript.openThreadExplorer",
                 arguments: [uri],
               },
@@ -926,12 +1199,18 @@ export function registerCodeLensProvider(context: LspContext) {
     if (/\.(step|stp|p21)($|\?|#)/i.test(uri)) {
       const headerRange = Range.create(0, 0, 0, 0);
       const text = currentText;
-      const isDroneStep = features.demos && (uri.includes("drone") || text.includes("ModelScript B-Rep Solid"));
       if (showCadMetrics) {
         const entityCount = (text.match(/#\d+\s*=/g) || []).length;
-        const stepTitle = isDroneStep
-          ? "📐 3D B-Rep Solid Geometry: 1,083 Nodes, 3,240 Elements"
-          : `📐 3D B-Rep Solid Geometry (${entityCount} STEP Entities)`;
+        const threadEntries = context.workspaceManager?.getThreadsForUri?.(uri) ?? [];
+        const threadProps = threadEntries[0]?.meta?.properties;
+        const nodes = threadProps?.["nodes"];
+        const elements = threadProps?.["elements"];
+        let stepTitle: string;
+        if (nodes !== undefined && elements !== undefined) {
+          stepTitle = `📐 3D B-Rep Solid Geometry: ${Number(nodes).toLocaleString()} Nodes, ${Number(elements).toLocaleString()} Elements`;
+        } else {
+          stepTitle = `📐 3D B-Rep Solid Geometry (${entityCount} STEP Entities)`;
+        }
         lenses.push({
           range: headerRange,
           command: {

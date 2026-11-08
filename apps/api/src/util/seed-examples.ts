@@ -219,7 +219,7 @@ export async function seedExamplePackages(
   }
 }
 
-import { getStdlibsByPack, type StdlibEntry, type StdlibPackId } from "@modelscript/exchange";
+import { getStdlibsByPack, type StdlibEntry, type StdlibPackId } from "@modelscript/exchange/catalog";
 
 export async function seedPrepackagedLibraries(
   storage: LibraryStorage,

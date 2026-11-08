@@ -30,6 +30,7 @@ export interface ThreadDiagnostic {
 export interface AlignedDomainElement {
   domain: string;
   name: string;
+  uri?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
   properties?: Record<string, any> | undefined;

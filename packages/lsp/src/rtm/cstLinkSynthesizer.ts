@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { findCstNodesByType } from "../utils/ast-utils.js";
+
 export interface TextPosition {
   line: number;
   character: number;
@@ -210,6 +212,7 @@ export class CstLinkSynthesizer {
     sourceName: string,
     targetName: string,
     linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
+    tree?: any,
   ): WorkspaceTextEdit[] | null {
     if (linkKind === "connect") {
       let lastBraceIndex = -1;
@@ -236,6 +239,44 @@ export class CstLinkSynthesizer {
             newText: `\nconnect ${sourceName} to ${targetName};\n`,
           },
         ];
+      }
+    }
+
+    if (tree) {
+      const root = tree.rootNode ?? tree;
+      const declNodes = findCstNodesByType(root, "definition_element")
+        .concat(findCstNodesByType(root, "usage_element"))
+        .concat(findCstNodesByType(root, "part_def"))
+        .concat(findCstNodesByType(root, "part_usage"))
+        .concat(findCstNodesByType(root, "item_def"))
+        .concat(findCstNodesByType(root, "item_usage"));
+      for (const node of declNodes) {
+        const idNode = node.children?.find(
+          (c: any) => c.type === "IDENT" || c.type === "identifier" || c.type === "name",
+        );
+        const name = idNode ? (idNode.text ?? documentText.slice(idNode.startIndex, idNode.endIndex)) : "";
+        if (name === sourceName) {
+          const bodyNode = node.children?.find((c: any) => c.type === "body" || (c.text ?? "").startsWith("{"));
+          const keyword =
+            linkKind === "satisfy"
+              ? "satisfy"
+              : linkKind === "verify"
+                ? "verify"
+                : linkKind === "mitigate"
+                  ? "mitigate"
+                  : linkKind === "refine"
+                    ? "refine"
+                    : "allocate";
+          if (bodyNode) {
+            const pos = this.offsetToPosition(documentText, bodyNode.startIndex + 1);
+            return [
+              {
+                range: { start: pos, end: pos },
+                newText: `\n  ${keyword} ${targetName};`,
+              },
+            ];
+          }
+        }
       }
     }
 
@@ -317,6 +358,7 @@ export class CstLinkSynthesizer {
     linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
     declarationRange?: [number, number],
     sourceName?: string,
+    tree?: any,
   ): WorkspaceTextEdit[] | null {
     if (declarationRange && declarationRange[1] > declarationRange[0]) {
       const startPos = this.offsetToPosition(documentText, declarationRange[0]);
@@ -327,6 +369,35 @@ export class CstLinkSynthesizer {
           newText: "",
         },
       ];
+    }
+
+    if (tree) {
+      const root = tree.rootNode ?? tree;
+      const stmtNodes = findCstNodesByType(root, "satisfy_statement")
+        .concat(findCstNodesByType(root, "verify_statement"))
+        .concat(findCstNodesByType(root, "allocate_statement"))
+        .concat(findCstNodesByType(root, "connection_statement"));
+      for (const node of stmtNodes) {
+        const text = node.text ?? documentText.slice(node.startIndex, node.endIndex);
+        if (text.includes(targetName) && (!sourceName || text.includes(sourceName))) {
+          let endIdx = node.endIndex;
+          while (endIdx < documentText.length && (documentText[endIdx] === " " || documentText[endIdx] === "\t")) {
+            endIdx++;
+          }
+          if (endIdx < documentText.length && documentText[endIdx] === ";") {
+            endIdx++;
+          }
+          const fullRange = expandLineRange(documentText, node.startIndex, endIdx);
+          const startPos = this.offsetToPosition(documentText, fullRange.start);
+          const endPos = this.offsetToPosition(documentText, fullRange.end);
+          return [
+            {
+              range: { start: startPos, end: endPos },
+              newText: "",
+            },
+          ];
+        }
+      }
     }
 
     const escapedTarget = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -392,7 +463,34 @@ export class CstLinkSynthesizer {
     sourceClassName: string,
     targetReqName: string,
     linkKind: "satisfy" | "verify" | "allocate" = "satisfy",
+    tree?: any,
   ): WorkspaceTextEdit[] | null {
+    if (tree) {
+      const root = tree.rootNode ?? tree;
+      const classDefs = findCstNodesByType(root, "class_definition").concat(
+        findCstNodesByType(root, "stored_definition"),
+      );
+      for (const node of classDefs) {
+        const idNode = node.children?.find((c: any) => c.type === "IDENT" || c.type === "identifier");
+        const name = idNode ? (idNode.text ?? documentText.slice(idNode.startIndex, idNode.endIndex)) : "";
+        if (name === sourceClassName) {
+          const endNode = node.children?.find(
+            (c: any) => (c.text ?? documentText.slice(c.startIndex, c.endIndex)) === "end",
+          );
+          const insertOffset = endNode ? endNode.startIndex : node.endIndex;
+          const attrName = linkKind === "satisfy" ? "satisfies" : linkKind === "verify" ? "verifies" : "allocates";
+          const annotationSnippet = `  annotation(__modelscript(${attrName}="${targetReqName}"));\n`;
+          const pos = this.offsetToPosition(documentText, insertOffset);
+          return [
+            {
+              range: { start: pos, end: pos },
+              newText: annotationSnippet,
+            },
+          ];
+        }
+      }
+    }
+
     const escapedClass = sourceClassName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     // 1. Locate the class/model definition in code
@@ -423,7 +521,33 @@ export class CstLinkSynthesizer {
   /**
    * Removes a traceability annotation from a Modelica model.
    */
-  static removeModelicaTraceLink(documentText: string, targetReqName: string): WorkspaceTextEdit[] | null {
+  static removeModelicaTraceLink(documentText: string, targetReqName: string, tree?: any): WorkspaceTextEdit[] | null {
+    if (tree) {
+      const root = tree.rootNode ?? tree;
+      const annotNodes = findCstNodesByType(root, "annotation");
+      for (const node of annotNodes) {
+        const text = node.text ?? documentText.slice(node.startIndex, node.endIndex);
+        if (text.includes("__modelscript") && text.includes(`"${targetReqName}"`)) {
+          let endIdx = node.endIndex;
+          while (endIdx < documentText.length && (documentText[endIdx] === " " || documentText[endIdx] === "\t")) {
+            endIdx++;
+          }
+          if (endIdx < documentText.length && documentText[endIdx] === ";") {
+            endIdx++;
+          }
+          const fullRange = expandLineRange(documentText, node.startIndex, endIdx);
+          const startPos = this.offsetToPosition(documentText, fullRange.start);
+          const endPos = this.offsetToPosition(documentText, fullRange.end);
+          return [
+            {
+              range: { start: startPos, end: endPos },
+              newText: "",
+            },
+          ];
+        }
+      }
+    }
+
     // Scan for `annotation` outside comments and strings
     const annotKeywordRegex = /\bannotation\s*\(/g;
     let match: RegExpExecArray | null;

@@ -45,7 +45,7 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
         .map((d) => d.name),
     );
 
-    assert.equal(ALL_44_LANGUAGE_SEED_POSTS.length, 47);
+    assert.equal(ALL_44_LANGUAGE_SEED_POSTS.length, 48);
 
     const catalogLanguages = ALL_44_LANGUAGE_SEED_POSTS.map((p) => (p.language ?? p.languageId ?? "").trim());
     for (const lang of catalogLanguages) {
@@ -64,13 +64,13 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
     }
   });
 
-  it("seeds 20 personas, 47 language artifacts + 1 fork, comments, likes, and is idempotent", async () => {
+  it("seeds 20 personas, 48 language artifacts + 1 fork, comments, likes, and is idempotent", async () => {
     const uploadDir = path.join(tmpDir, "uploads");
     const summary1 = await seedPolyglotSocialData(db, { uploadDir, includeDisabledLanguages: true });
 
     assert.equal(summary1.usersSeeded, SEED_PERSONAS.length);
-    assert.equal(summary1.artifactsCreated, 48); // 47 languages + 1 forked Modelica post
-    assert.equal(summary1.postsCreated, 48);
+    assert.equal(summary1.artifactsCreated, 49); // 48 languages + 1 forked Modelica post
+    assert.equal(summary1.postsCreated, 49);
     assert.ok(summary1.commentsCreated >= 100, `Expected >= 100 comments+replies, got ${summary1.commentsCreated}`);
 
     const codeOnlyViewTypes = new Set([
@@ -114,7 +114,7 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
     const cleanDb = new LibraryDatabase(cleanDbPath);
     try {
       const summary = await seedPolyglotSocialData(cleanDb, { uploadDir: path.join(tmpDir, "clean_uploads") });
-      assert.equal(summary.artifactsCreated, 47); // 46 languages + 1 forked Modelica post (modelscript excluded)
+      assert.equal(summary.artifactsCreated, 48); // 47 languages + 1 forked Modelica post (modelscript excluded)
       const msxArtifact = cleanDb.getArtifactViewByTitle("Tilt-Rotor Transition Corridor Controller");
       assert.equal(msxArtifact, undefined, "ModelScript artifact should not be seeded when flag is disabled");
     } finally {

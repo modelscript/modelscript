@@ -19,6 +19,12 @@ import { findNonlinearTermsInCst } from "./lints/homotopy-synthesis.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 import type { OperatorOverload, OperatorOverloadParam } from "./types.js";
 
+interface CstNodeLike {
+  type?: string;
+  text?: string;
+  children?: CstNodeLike[];
+}
+
 /**
  * Computes a fast 53-bit non-cryptographic hash (`cyrb53`) for string memoization keys.
  *
@@ -1140,6 +1146,24 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
     (sym as any)._isEncapsulated = true;
     return true;
   }
+  const cst = db.cstNode(sym.id) as (CstNodeLike & { text?: string }) | null;
+  if (cst && cst.children) {
+    for (const ch of cst.children) {
+      if (ch.type === "encapsulated" || ch.type === '"encapsulated"' || ch.text === "encapsulated") {
+        (sym as { _isEncapsulated?: boolean })._isEncapsulated = true;
+        return true;
+      }
+      if (ch.type === "class_prefixes" && ch.children) {
+        for (const pch of ch.children) {
+          if (pch.type === "encapsulated" || pch.type === '"encapsulated"' || pch.text === "encapsulated") {
+            (sym as { _isEncapsulated?: boolean })._isEncapsulated = true;
+            return true;
+          }
+        }
+      }
+      if (ch.type === "class_specifier") break;
+    }
+  }
   const queryDbWithCst = db as { cstText?: (s: number, e: number, sym?: unknown) => string | null };
   if (sym.startOffset != null && sym.endOffset != null && typeof queryDbWithCst.cstText === "function") {
     const header = queryDbWithCst.cstText(sym.startOffset, Math.min(sym.endOffset, sym.startOffset + 120), sym);
@@ -1147,16 +1171,6 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
       const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(header);
       (sym as { _isEncapsulated?: boolean })._isEncapsulated = res;
       return res;
-    }
-  }
-  const cst = db.cstNode(sym.id) as any;
-  if (cst && cst.children) {
-    for (const ch of cst.children) {
-      if (ch.type === "encapsulated" || ch.type === '"encapsulated"' || ch.text === "encapsulated") {
-        (sym as any)._isEncapsulated = true;
-        return true;
-      }
-      if (ch.type === "class_prefixes" || ch.type === "class_specifier") break;
     }
   }
   const text = cst ? (cst.text ?? "").slice(0, 120) : "";
@@ -1276,6 +1290,30 @@ export function resolveSimpleNameHelper(
       } else {
         cstText = (db.cstNode(unspecializedId) as { text?: string } | null)?.text;
       }
+      const cstNode = db.cstNode(unspecializedId) as CstNodeLike | null;
+      const enumListNode =
+        cstNode?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList") ??
+        cstNode?.children
+          ?.find((c) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier")
+          ?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList");
+      if (enumListNode && enumListNode.children) {
+        for (const c of enumListNode.children) {
+          if (c.type === "enumeration_literal" || c.type === "EnumerationLiteral") {
+            const idNode = c.children?.find((ch) => ch.type === "identifier" || ch.type === "Identifier") ?? c;
+            const litName = idNode?.text?.trim()?.replace(/^'|'$/g, "");
+            if (litName === name) {
+              return {
+                ...unspecializedSym,
+                id: -1 as SymbolId,
+                parentId: unspecializedId,
+                kind: "EnumerationLiteral" as SymbolEntry["kind"],
+                name,
+              };
+            }
+          }
+        }
+      }
+
       const enumMatch =
         typeof cstText === "string" && cstText.includes("enumeration")
           ? cstText.match(/enumeration\s*\(([^)]+)\)/)
@@ -2079,6 +2117,19 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
         (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) ||
         /\benumeration\s*\(/.test(cstText);
       if (isEnum) {
+        const cstNode = db.cstNode(curCls.id) as CstNodeLike | null;
+        const enumListNode =
+          cstNode?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList") ??
+          cstNode?.children
+            ?.find((c) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier")
+            ?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList");
+        if (enumListNode && enumListNode.children) {
+          const lits = enumListNode.children.filter(
+            (c) => c.type === "enumeration_literal" || c.type === "EnumerationLiteral",
+          );
+          if (lits.length > 0) return lits.length;
+        }
+
         const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
         if (enumMatch) {
           const lits = enumMatch[1]!

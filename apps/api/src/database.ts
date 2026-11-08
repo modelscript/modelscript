@@ -423,8 +423,13 @@ export interface RawContentFilterRow {
 export class LibraryDatabase {
   readonly #db: Database.Database;
   readonly #dbPath: string;
-  readonly #openalexDb: Database.Database;
+  #openalexDb: Database.Database | null = null;
   readonly #openalexDbPath: string;
+  readonly #auditDb: Database.Database | null = null;
+  readonly #auditDbPath: string | null = null;
+  readonly #analyticsDb: Database.Database | null = null;
+  readonly #analyticsDbPath: string | null = null;
+  readonly #isMultiDb: boolean = false;
   readonly #runner: SqliteMigrationRunner;
   #auditChainCache: {
     valid: boolean;
@@ -437,12 +442,42 @@ export class LibraryDatabase {
   #instanceSettingsMapCache: Map<string, string> | null = null;
   #userTopicsDerivedAt = new Map<number, number>();
   #pendingBackupReplications = new Set<Promise<void>>();
+  #libraryDiscoveryBaseCache: {
+    expiresAt: number;
+    data: {
+      packagesByName: Map<
+        string,
+        { id: number; name: string; description: string | null; license: string | null; modified_at: string }
+      >;
+      versionsByPackageId: Map<number, { id: number; version: string; manifest: string; published_at: string }[]>;
+      versionByPkgAndVer: Map<string, { id: number; version: string; manifest: string; published_at: string }>;
+      releasesByKey: Map<
+        string,
+        {
+          published_at: string;
+          published_by: number | null;
+          is_deprecated: number;
+          deprecation_reason: string | null;
+          is_yanked: number;
+          publisher_username: string | null;
+        }
+      >;
+      downloadsByName: Map<string, { totalDownloads: number; downloads30d: number; downloads7d: number }>;
+      classSummaryByKey: Map<string, { classCount: number; hasSysml: boolean }>;
+      artifactsByVersionId: Map<number, { type: string; count: number }[]>;
+      dependentsCountByName: Map<string, number>;
+    };
+  } | null = null;
   readonly referrals: ReferralRepository;
   readonly users: UserRepository;
   readonly packages: PackageRepository;
   readonly billing: BillingRepository;
   readonly analyticsBuffer: AnalyticsBuffer;
   #webPushService: WebPushService | null = null;
+
+  invalidateLibraryDiscoveryCache(): void {
+    this.#libraryDiscoveryBaseCache = null;
+  }
 
   get webPushService(): WebPushService {
     if (!this.#webPushService) {
@@ -468,12 +503,19 @@ export class LibraryDatabase {
     if (!fs.existsSync(openalexParentDir)) {
       fs.mkdirSync(openalexParentDir, { recursive: true });
     }
+    if (!fs.existsSync(openalexDbPath)) {
+      try {
+        fs.closeSync(fs.openSync(openalexDbPath, "a"));
+      } catch {}
+    }
 
     const isLowMem = os.totalmem() <= 2.5 * 1024 * 1024 * 1024;
-    const dbMmapSize = isLowMem ? 33554432 : 268435456; // 32MB on low-memory host, else 256MB
-    const dbCacheSize = isLowMem ? -16000 : -64000; // 16MB on low-memory host, else 64MB
-    const openalexMmapSize = isLowMem ? 33554432 : 536870912; // 32MB on low-memory host, else 512MB
-    const openalexCacheSize = isLowMem ? -16000 : -64000;
+    const envMmapSize = process.env["SQLITE_MMAP_SIZE_MB"]
+      ? Number(process.env["SQLITE_MMAP_SIZE_MB"]) * 1024 * 1024
+      : undefined;
+    const envCacheSize = process.env["SQLITE_CACHE_SIZE_KB"] ? -Number(process.env["SQLITE_CACHE_SIZE_KB"]) : undefined;
+    const dbMmapSize = envMmapSize ?? (isLowMem ? 33554432 : 134217728); // 128MB default (was 256MB)
+    const dbCacheSize = envCacheSize ?? (isLowMem ? -16000 : -32000); // 32MB default (was 64MB)
 
     this.#db = new Database(dbPath);
     this.#db.pragma("journal_mode = WAL");
@@ -492,15 +534,129 @@ export class LibraryDatabase {
       return 0;
     });
 
-    this.#openalexDb = new Database(openalexDbPath);
-    this.#openalexDb.pragma("journal_mode = WAL");
-    this.#openalexDb.pragma("synchronous = NORMAL");
-    this.#openalexDb.pragma("temp_store = MEMORY");
-    this.#openalexDb.pragma(`mmap_size = ${openalexMmapSize}`);
-    this.#openalexDb.pragma(`cache_size = ${openalexCacheSize}`);
-    this.#openalexDb.pragma("busy_timeout = 5000");
+    const isMultiDb = process.env["MSX_MULTI_DB"] !== "false";
+    this.#isMultiDb = isMultiDb;
 
-    this.#runner = new SqliteMigrationRunner(this.#db, dbPath);
+    const auditDbPath = process.env["AUDIT_DB_PATH"] || path.join(parentDir, "audit.db");
+    this.#auditDbPath = isMultiDb ? auditDbPath : null;
+
+    const analyticsDbPath = process.env["ANALYTICS_DB_PATH"] || path.join(parentDir, "analytics.db");
+    this.#analyticsDbPath = isMultiDb ? analyticsDbPath : null;
+
+    if (isMultiDb) {
+      const auditParentDir = path.dirname(auditDbPath);
+      if (!fs.existsSync(auditParentDir)) {
+        fs.mkdirSync(auditParentDir, { recursive: true });
+      }
+      this.#auditDb = new Database(auditDbPath);
+      this.#auditDb.pragma("journal_mode = WAL");
+      this.#auditDb.pragma("synchronous = NORMAL");
+      this.#auditDb.pragma("temp_store = MEMORY");
+      this.#auditDb.pragma(`mmap_size = ${dbMmapSize}`);
+      this.#auditDb.pragma(`cache_size = ${dbCacheSize}`);
+      this.#auditDb.pragma("busy_timeout = 5000");
+      this.#auditDb.function("_msx_invalidate_audit_cache", () => {
+        this.#auditChainCache = null;
+        return 0;
+      });
+      this.#auditDb.exec(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          actor_id      INTEGER,
+          action        TEXT NOT NULL,
+          resource_type TEXT NOT NULL,
+          resource_id   TEXT,
+          ip_address    TEXT,
+          details       TEXT,
+          prev_hash     TEXT,
+          entry_hash    TEXT,
+          created_at    TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_audit_update_trg
+        AFTER UPDATE ON audit_logs
+        BEGIN
+          SELECT _msx_invalidate_audit_cache();
+        END;
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_audit_delete_trg
+        AFTER DELETE ON audit_logs
+        BEGIN
+          SELECT _msx_invalidate_audit_cache();
+        END;
+      `);
+
+      const analyticsParentDir = path.dirname(analyticsDbPath);
+      if (!fs.existsSync(analyticsParentDir)) {
+        fs.mkdirSync(analyticsParentDir, { recursive: true });
+      }
+      this.#analyticsDb = new Database(analyticsDbPath);
+      this.#analyticsDb.pragma("journal_mode = WAL");
+      this.#analyticsDb.pragma("synchronous = NORMAL");
+      this.#analyticsDb.pragma("temp_store = MEMORY");
+      this.#analyticsDb.pragma(`mmap_size = ${dbMmapSize}`);
+      this.#analyticsDb.pragma(`cache_size = ${dbCacheSize}`);
+      this.#analyticsDb.pragma("busy_timeout = 5000");
+      this.#analyticsDb.exec(`
+        CREATE TABLE IF NOT EXISTS page_views_daily (
+          view_date       TEXT NOT NULL,
+          surface         TEXT NOT NULL DEFAULT 'web',
+          path            TEXT NOT NULL,
+          views_count     INTEGER NOT NULL DEFAULT 0,
+          unique_visitors INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (view_date, surface, path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_page_views_daily_date ON page_views_daily(view_date, surface);
+        CREATE INDEX IF NOT EXISTS idx_page_views_daily_path ON page_views_daily(path);
+
+        CREATE TABLE IF NOT EXISTS page_location_stats_daily (
+          view_date    TEXT NOT NULL,
+          surface      TEXT NOT NULL DEFAULT 'web',
+          country_code TEXT NOT NULL,
+          region_code  TEXT NOT NULL DEFAULT '',
+          views_count  INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (view_date, surface, country_code, region_code)
+        );
+        CREATE INDEX IF NOT EXISTS idx_page_loc_daily_date ON page_location_stats_daily(view_date, surface);
+
+        CREATE TABLE IF NOT EXISTS package_downloads_daily (
+          library_name    TEXT NOT NULL,
+          library_version TEXT NOT NULL,
+          download_date   TEXT NOT NULL,
+          downloads_count INTEGER DEFAULT 0,
+          PRIMARY KEY (library_name, library_version, download_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pkg_dl_lookup ON package_downloads_daily(library_name, download_date);
+
+        CREATE TABLE IF NOT EXISTS post_location_stats (
+          post_id      TEXT NOT NULL,
+          country_code TEXT NOT NULL,
+          region_code  TEXT,
+          view_count   INTEGER DEFAULT 1
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_post_location_stats ON post_location_stats(post_id, country_code, COALESCE(region_code, ''));
+      `);
+
+      const origClose = this.#db.close.bind(this.#db);
+      this.#db.close = () => {
+        try {
+          this.#auditDb?.close();
+        } catch {}
+        try {
+          this.#analyticsDb?.close();
+        } catch {}
+        try {
+          this.#openalexDb?.close();
+        } catch {}
+        return origClose();
+      };
+    }
+
+    this.#runner = new SqliteMigrationRunner(this.#db, dbPath, {
+      onBeforeMigration: () => this.#dropMultiDbAttachedViews(),
+      onAfterMigration: () => this.#setupMultiDbAttached(),
+    });
     this.#runner.runPendingSync(allMigrations);
     this.#initialize();
 
@@ -524,12 +680,215 @@ export class LibraryDatabase {
     return this.#dbPath;
   }
 
-  get openalexDb(): Database.Database {
+  #getOpenAlexDb(): Database.Database {
+    if (!this.#openalexDb) {
+      const isLowMem = os.totalmem() <= 2.5 * 1024 * 1024 * 1024;
+      const envMmapSize = process.env["SQLITE_MMAP_SIZE_MB"]
+        ? Number(process.env["SQLITE_MMAP_SIZE_MB"]) * 1024 * 1024
+        : undefined;
+      const envCacheSize = process.env["SQLITE_CACHE_SIZE_KB"]
+        ? -Number(process.env["SQLITE_CACHE_SIZE_KB"])
+        : undefined;
+      const openalexMmapSize = envMmapSize ?? (isLowMem ? 33554432 : 134217728);
+      const openalexCacheSize = envCacheSize ?? (isLowMem ? -16000 : -32000);
+
+      const db = new Database(this.#openalexDbPath);
+      db.pragma("journal_mode = WAL");
+      db.pragma("synchronous = NORMAL");
+      db.pragma("temp_store = MEMORY");
+      db.pragma(`mmap_size = ${openalexMmapSize}`);
+      db.pragma(`cache_size = ${openalexCacheSize}`);
+      db.pragma("busy_timeout = 5000");
+
+      try {
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS scholarly_works (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            urn TEXT NOT NULL UNIQUE,
+            openalex_id TEXT,
+            doi TEXT,
+            arxiv_id TEXT,
+            pmid TEXT,
+            isbn TEXT,
+            ansatz_entity_type TEXT,
+            ansatz_entity_id TEXT,
+            title TEXT NOT NULL,
+            subtitle TEXT,
+            abstract TEXT,
+            work_type TEXT NOT NULL DEFAULT 'article',
+            publication_year INTEGER,
+            publication_date TEXT,
+            venue_name TEXT,
+            venue_issn TEXT,
+            publisher TEXT,
+            volume TEXT,
+            issue TEXT,
+            pages TEXT,
+            language TEXT DEFAULT 'en',
+            license TEXT,
+            is_oa INTEGER NOT NULL DEFAULT 0,
+            oa_status TEXT,
+            oa_url TEXT,
+            local_pdf_url TEXT,
+            local_artifact_id INTEGER,
+            external_locations_json TEXT NOT NULL DEFAULT '[]',
+            authors_json TEXT NOT NULL DEFAULT '[]',
+            concepts_json TEXT NOT NULL DEFAULT '[]',
+            cited_by_count INTEGER NOT NULL DEFAULT 0,
+            references_count INTEGER NOT NULL DEFAULT 0,
+            counts_by_year_json TEXT NOT NULL DEFAULT '[]',
+            referenced_urns_json TEXT NOT NULL DEFAULT '[]',
+            related_urns_json TEXT NOT NULL DEFAULT '[]',
+            citation_key TEXT NOT NULL,
+            canonical_url TEXT,
+            fwci REAL,
+            partition_url TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_scholarly_works_openalex ON scholarly_works(openalex_id);
+          CREATE INDEX IF NOT EXISTS idx_scholarly_works_doi ON scholarly_works(doi);
+          CREATE INDEX IF NOT EXISTS idx_scholarly_works_arxiv ON scholarly_works(arxiv_id);
+          CREATE INDEX IF NOT EXISTS idx_scholarly_works_cite_key ON scholarly_works(citation_key);
+          CREATE INDEX IF NOT EXISTS idx_scholarly_works_year ON scholarly_works(publication_year);
+          CREATE INDEX IF NOT EXISTS idx_scholarly_works_partition ON scholarly_works(partition_url);
+
+          CREATE VIRTUAL TABLE IF NOT EXISTS scholarly_works_fts USING fts5(
+            urn UNINDEXED,
+            title,
+            subtitle,
+            abstract,
+            authors_json,
+            concepts_json,
+            venue_name,
+            citation_key,
+            doi,
+            content='scholarly_works',
+            content_rowid='id',
+            tokenize='porter unicode61'
+          );
+
+          CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_ai AFTER INSERT ON scholarly_works BEGIN
+            INSERT INTO scholarly_works_fts(rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+            VALUES (
+              new.id,
+              new.urn,
+              COALESCE(new.title, ''),
+              COALESCE(new.subtitle, ''),
+              COALESCE(new.abstract, ''),
+              COALESCE(new.authors_json, ''),
+              COALESCE(new.concepts_json, ''),
+              COALESCE(new.venue_name, ''),
+              COALESCE(new.citation_key, ''),
+              COALESCE(new.doi, '')
+            );
+          END;
+
+          CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_ad AFTER DELETE ON scholarly_works BEGIN
+            INSERT INTO scholarly_works_fts(scholarly_works_fts, rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+            VALUES (
+              'delete',
+              old.id,
+              old.urn,
+              COALESCE(old.title, ''),
+              COALESCE(old.subtitle, ''),
+              COALESCE(old.abstract, ''),
+              COALESCE(old.authors_json, ''),
+              COALESCE(old.concepts_json, ''),
+              COALESCE(old.venue_name, ''),
+              COALESCE(old.citation_key, ''),
+              COALESCE(old.doi, '')
+            );
+          END;
+
+          CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_au AFTER UPDATE ON scholarly_works BEGIN
+            INSERT INTO scholarly_works_fts(scholarly_works_fts, rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+            VALUES (
+              'delete',
+              old.id,
+              old.urn,
+              COALESCE(old.title, ''),
+              COALESCE(old.subtitle, ''),
+              COALESCE(old.abstract, ''),
+              COALESCE(old.authors_json, ''),
+              COALESCE(old.concepts_json, ''),
+              COALESCE(old.venue_name, ''),
+              COALESCE(old.citation_key, ''),
+              COALESCE(old.doi, '')
+            );
+            INSERT INTO scholarly_works_fts(rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+            VALUES (
+              new.id,
+              new.urn,
+              COALESCE(new.title, ''),
+              COALESCE(new.subtitle, ''),
+              COALESCE(new.abstract, ''),
+              COALESCE(new.authors_json, ''),
+              COALESCE(new.concepts_json, ''),
+              COALESCE(new.venue_name, ''),
+              COALESCE(new.citation_key, ''),
+              COALESCE(new.doi, '')
+            );
+          END;
+
+          CREATE TABLE IF NOT EXISTS openalex_s3_partitions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL DEFAULT 'works',
+            s3_url TEXT NOT NULL UNIQUE,
+            https_url TEXT NOT NULL,
+            updated_date TEXT,
+            part_name TEXT NOT NULL,
+            content_length INTEGER NOT NULL DEFAULT 0,
+            record_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'unloaded',
+            imported_count INTEGER NOT NULL DEFAULT 0,
+            scanned_count INTEGER NOT NULL DEFAULT 0,
+            skipped_count INTEGER NOT NULL DEFAULT 0,
+            filter_config_json TEXT NOT NULL DEFAULT '{}',
+            last_loaded_at TEXT,
+            last_duration_ms INTEGER,
+            error_message TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_openalex_partitions_status ON openalex_s3_partitions(status);
+          CREATE INDEX IF NOT EXISTS idx_openalex_partitions_date ON openalex_s3_partitions(updated_date);
+        `);
+      } catch {}
+
+      this.#openalexDb = db;
+    }
     return this.#openalexDb;
+  }
+
+  get openalexDb(): Database.Database {
+    return this.#getOpenAlexDb();
   }
 
   get openalexDbPath(): string {
     return this.#openalexDbPath;
+  }
+
+  get auditDb(): Database.Database | null {
+    return this.#auditDb;
+  }
+
+  get auditDbPath(): string | null {
+    return this.#auditDbPath;
+  }
+
+  get analyticsDb(): Database.Database | null {
+    return this.#analyticsDb;
+  }
+
+  get analyticsDbPath(): string | null {
+    return this.#analyticsDbPath;
+  }
+
+  get isMultiDb(): boolean {
+    return this.#isMultiDb;
   }
 
   get dbDir(): string {
@@ -540,10 +899,25 @@ export class LibraryDatabase {
     return this.#runner;
   }
 
+  #dropMultiDbAttachedViews(): void {
+    if (!this.#isMultiDb) return;
+    try {
+      this.#db.exec(`
+        DROP VIEW IF EXISTS temp.audit_logs;
+        DROP VIEW IF EXISTS temp.page_views_daily;
+        DROP VIEW IF EXISTS temp.page_location_stats_daily;
+        DROP VIEW IF EXISTS temp.package_downloads_daily;
+        DROP VIEW IF EXISTS temp.post_location_stats;
+      `);
+    } catch {}
+  }
+
   resetDevData() {
     this.analyticsBuffer?.clear();
     this.#auditChainCache = null;
     this.#instanceSettingsMapCache = null;
+    this.#libraryDiscoveryBaseCache = null;
+    this.#dropMultiDbAttachedViews();
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     const rows = this.#db
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
@@ -551,25 +925,143 @@ export class LibraryDatabase {
     this.#db.transaction(() => {
       for (const { name } of rows) {
         const safeName = name.replace(/"/g, '""');
-        this.#db.exec(`DROP TABLE IF EXISTS "${safeName}";`);
+        this.#db.exec(`DROP TABLE IF EXISTS main."${safeName}";`);
       }
     })();
-    try {
-      this.#openalexDb.exec(`
-        DROP TRIGGER IF EXISTS trg_scholarly_works_fts_ai;
-        DROP TRIGGER IF EXISTS trg_scholarly_works_fts_ad;
-        DROP TRIGGER IF EXISTS trg_scholarly_works_fts_au;
-        DROP TABLE IF EXISTS scholarly_works_fts;
-        DROP TABLE IF EXISTS scholarly_works;
-        DROP TABLE IF EXISTS openalex_s3_partitions;
-      `);
-    } catch {}
+    if (this.#openalexDb && this.#openalexDb.open) {
+      try {
+        this.#openalexDb.exec(`
+          DROP TRIGGER IF EXISTS trg_scholarly_works_fts_ai;
+          DROP TRIGGER IF EXISTS trg_scholarly_works_fts_ad;
+          DROP TRIGGER IF EXISTS trg_scholarly_works_fts_au;
+          DROP TABLE IF EXISTS scholarly_works_fts;
+          DROP TABLE IF EXISTS scholarly_works;
+          DROP TABLE IF EXISTS openalex_s3_partitions;
+        `);
+      } catch {}
+    }
+    if (this.#auditDb) {
+      try {
+        this.#auditDb.exec(`DELETE FROM audit_logs;`);
+      } catch {}
+    }
+    if (this.#analyticsDb) {
+      try {
+        this.#analyticsDb.exec(`
+          DELETE FROM page_views_daily;
+          DELETE FROM page_location_stats_daily;
+          DELETE FROM package_downloads_daily;
+          DELETE FROM post_location_stats;
+        `);
+      } catch {}
+    }
     this.#runner.runPendingSync(allMigrations, { silent: true });
     this.#initialize();
     this.#db.exec("PRAGMA foreign_keys = ON;");
   }
 
+  #setupMultiDbAttached(): void {
+    if (!this.#isMultiDb || !this.#auditDbPath || !this.#analyticsDbPath) return;
+
+    const attached = this.#db.pragma("database_list") as { seq: number; name: string; file: string }[];
+    if (!attached.some((d) => d.name === "audit")) {
+      this.#db.prepare(`ATTACH DATABASE ? AS audit`).run(this.#auditDbPath);
+    }
+    if (!attached.some((d) => d.name === "analytics")) {
+      this.#db.prepare(`ATTACH DATABASE ? AS analytics`).run(this.#analyticsDbPath);
+    }
+
+    try {
+      const hasMainAudit = this.#db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_logs'")
+        .get();
+      if (hasMainAudit) {
+        this.#db.exec("INSERT OR IGNORE INTO audit.audit_logs SELECT * FROM main.audit_logs;");
+      }
+    } catch {}
+
+    try {
+      const hasMainPv = this.#db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='page_views_daily'")
+        .get();
+      if (hasMainPv) {
+        this.#db.exec("INSERT OR IGNORE INTO analytics.page_views_daily SELECT * FROM main.page_views_daily;");
+        this.#db.exec(
+          "INSERT OR IGNORE INTO analytics.page_location_stats_daily SELECT * FROM main.page_location_stats_daily;",
+        );
+        this.#db.exec(
+          "INSERT OR IGNORE INTO analytics.package_downloads_daily SELECT * FROM main.package_downloads_daily;",
+        );
+        this.#db.exec("INSERT OR IGNORE INTO analytics.post_location_stats SELECT * FROM main.post_location_stats;");
+      }
+    } catch {}
+
+    this.#db.exec(`
+      CREATE TEMP VIEW IF NOT EXISTS audit_logs AS SELECT * FROM audit.audit_logs;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_audit_logs_ins INSTEAD OF INSERT ON audit_logs BEGIN
+        INSERT INTO audit.audit_logs (id, actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash, created_at)
+        VALUES (new.id, new.actor_id, new.action, new.resource_type, new.resource_id, new.ip_address, new.details, new.prev_hash, new.entry_hash, COALESCE(new.created_at, datetime('now')));
+      END;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_audit_logs_upd INSTEAD OF UPDATE ON audit_logs BEGIN
+        UPDATE audit.audit_logs
+        SET actor_id = new.actor_id, action = new.action, resource_type = new.resource_type, resource_id = new.resource_id,
+            ip_address = new.ip_address, details = new.details, prev_hash = new.prev_hash, entry_hash = new.entry_hash, created_at = new.created_at
+        WHERE id = old.id;
+        SELECT _msx_invalidate_audit_cache();
+      END;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_audit_logs_del INSTEAD OF DELETE ON audit_logs BEGIN
+        DELETE FROM audit.audit_logs WHERE id = old.id;
+        SELECT _msx_invalidate_audit_cache();
+      END;
+
+      CREATE TEMP VIEW IF NOT EXISTS page_views_daily AS SELECT * FROM analytics.page_views_daily;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_page_views_ins INSTEAD OF INSERT ON page_views_daily BEGIN
+        INSERT INTO analytics.page_views_daily (view_date, surface, path, views_count, unique_visitors)
+        VALUES (new.view_date, new.surface, new.path, new.views_count, new.unique_visitors)
+        ON CONFLICT(view_date, surface, path) DO UPDATE SET
+          views_count = page_views_daily.views_count + excluded.views_count,
+          unique_visitors = page_views_daily.unique_visitors + excluded.unique_visitors;
+      END;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_page_views_del INSTEAD OF DELETE ON page_views_daily BEGIN
+        DELETE FROM analytics.page_views_daily WHERE view_date = old.view_date AND surface = old.surface AND path = old.path;
+      END;
+
+      CREATE TEMP VIEW IF NOT EXISTS page_location_stats_daily AS SELECT * FROM analytics.page_location_stats_daily;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_page_loc_ins INSTEAD OF INSERT ON page_location_stats_daily BEGIN
+        INSERT INTO analytics.page_location_stats_daily (view_date, surface, country_code, region_code, views_count)
+        VALUES (new.view_date, new.surface, new.country_code, new.region_code, new.views_count)
+        ON CONFLICT(view_date, surface, country_code, region_code) DO UPDATE SET
+          views_count = page_location_stats_daily.views_count + excluded.views_count;
+      END;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_page_loc_del INSTEAD OF DELETE ON page_location_stats_daily BEGIN
+        DELETE FROM analytics.page_location_stats_daily WHERE view_date = old.view_date AND surface = old.surface AND country_code = old.country_code AND region_code = old.region_code;
+      END;
+
+      CREATE TEMP VIEW IF NOT EXISTS package_downloads_daily AS SELECT * FROM analytics.package_downloads_daily;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_pkg_dl_ins INSTEAD OF INSERT ON package_downloads_daily BEGIN
+        INSERT INTO analytics.package_downloads_daily (library_name, library_version, download_date, downloads_count)
+        VALUES (new.library_name, new.library_version, new.download_date, new.downloads_count)
+        ON CONFLICT(library_name, library_version, download_date) DO UPDATE SET
+          downloads_count = package_downloads_daily.downloads_count + excluded.downloads_count;
+      END;
+
+      CREATE TEMP VIEW IF NOT EXISTS post_location_stats AS SELECT * FROM analytics.post_location_stats;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_post_loc_ins INSTEAD OF INSERT ON post_location_stats BEGIN
+        INSERT INTO analytics.post_location_stats (post_id, country_code, region_code, view_count)
+        VALUES (new.post_id, new.country_code, new.region_code, new.view_count)
+        ON CONFLICT(post_id, country_code, COALESCE(region_code, '')) DO UPDATE SET
+          view_count = post_location_stats.view_count + excluded.view_count;
+      END;
+      CREATE TEMP TRIGGER IF NOT EXISTS trg_post_loc_del INSTEAD OF DELETE ON post_location_stats BEGIN
+        DELETE FROM analytics.post_location_stats WHERE post_id = old.post_id;
+      END;
+    `);
+  }
+
   #initialize(): void {
+    try {
+      this.#setupMultiDbAttached();
+    } catch {}
     try {
       const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
       const usersWithoutActorUrl = this.#db.prepare(`SELECT id, username FROM users WHERE actor_url IS NULL`).all() as {
@@ -621,7 +1113,43 @@ export class LibraryDatabase {
     } catch {}
 
     try {
-      this.#db.exec(`
+      this.#db.exec(
+        `
+        CREATE TABLE IF NOT EXISTS post_mentions (
+          post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          PRIMARY KEY (post_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_post_mentions_user ON post_mentions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_post_mentions_post ON post_mentions(post_id);
+        CREATE INDEX IF NOT EXISTS idx_posts_author_created ON posts(author_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_posts_reply_created ON posts(reply_to_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_posts_repost_created ON posts(repost_of_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_posts_visibility_created ON posts(visibility, created_at DESC);
+
+        CREATE TRIGGER IF NOT EXISTS trg_likes_insert AFTER INSERT ON likes BEGIN
+          UPDATE posts SET like_count = like_count + 1 WHERE id = new.post_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_likes_delete AFTER DELETE ON likes BEGIN
+          UPDATE posts SET like_count = MAX(0, like_count - 1) WHERE id = old.post_id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_posts_reply_insert AFTER INSERT ON posts WHEN new.reply_to_id IS NOT NULL BEGIN
+          UPDATE posts SET reply_count = reply_count + 1 WHERE id = new.reply_to_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_posts_reply_delete AFTER DELETE ON posts WHEN old.reply_to_id IS NOT NULL BEGIN
+          UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = old.reply_to_id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_posts_repost_insert AFTER INSERT ON posts WHEN new.repost_of_id IS NOT NULL BEGIN
+          UPDATE posts SET repost_count = repost_count + 1 WHERE id = new.repost_of_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_posts_repost_delete AFTER DELETE ON posts WHEN old.repost_of_id IS NOT NULL BEGIN
+          UPDATE posts SET repost_count = MAX(0, repost_count - 1) WHERE id = old.repost_of_id;
+        END;
+        ` +
+          (!this.#isMultiDb
+            ? `
         CREATE TEMP TRIGGER IF NOT EXISTS _msx_audit_update_trg
         AFTER UPDATE ON audit_logs
         BEGIN
@@ -632,6 +1160,9 @@ export class LibraryDatabase {
         BEGIN
           SELECT _msx_invalidate_audit_cache();
         END;
+        `
+            : "") +
+          `
         CREATE TEMP TRIGGER IF NOT EXISTS _msx_settings_insert_trg
         AFTER INSERT ON instance_settings
         BEGIN
@@ -647,6 +1178,16 @@ export class LibraryDatabase {
         BEGIN
           SELECT _msx_invalidate_settings_cache();
         END;
+      `,
+      );
+    } catch {}
+
+    try {
+      // Reconcile and backfill like_count, reply_count, repost_count if unpopulated
+      this.#db.exec(`
+        UPDATE posts SET like_count = (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) WHERE like_count = 0 AND EXISTS (SELECT 1 FROM likes WHERE likes.post_id = posts.id);
+        UPDATE posts SET reply_count = (SELECT COUNT(*) FROM posts p2 WHERE p2.reply_to_id = posts.id) WHERE reply_count = 0 AND EXISTS (SELECT 1 FROM posts p2 WHERE p2.reply_to_id = posts.id);
+        UPDATE posts SET repost_count = (SELECT COUNT(*) FROM posts p3 WHERE p3.repost_of_id = posts.id) WHERE repost_count = 0 AND EXISTS (SELECT 1 FROM posts p3 WHERE p3.repost_of_id = posts.id);
       `);
     } catch {}
 
@@ -818,164 +1359,7 @@ export class LibraryDatabase {
         .run();
     } catch {}
 
-    // Initialize Dedicated OpenAlex Database (openalex.db) with FTS5 & S3 Partition Manager
-    try {
-      this.#openalexDb.exec(`
-        CREATE TABLE IF NOT EXISTS scholarly_works (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          urn TEXT NOT NULL UNIQUE,
-          openalex_id TEXT,
-          doi TEXT,
-          arxiv_id TEXT,
-          pmid TEXT,
-          isbn TEXT,
-          ansatz_entity_type TEXT,
-          ansatz_entity_id TEXT,
-          title TEXT NOT NULL,
-          subtitle TEXT,
-          abstract TEXT,
-          work_type TEXT NOT NULL DEFAULT 'article',
-          publication_year INTEGER,
-          publication_date TEXT,
-          venue_name TEXT,
-          venue_issn TEXT,
-          publisher TEXT,
-          volume TEXT,
-          issue TEXT,
-          pages TEXT,
-          language TEXT DEFAULT 'en',
-          license TEXT,
-          is_oa INTEGER NOT NULL DEFAULT 0,
-          oa_status TEXT,
-          oa_url TEXT,
-          local_pdf_url TEXT,
-          local_artifact_id INTEGER,
-          external_locations_json TEXT NOT NULL DEFAULT '[]',
-          authors_json TEXT NOT NULL DEFAULT '[]',
-          concepts_json TEXT NOT NULL DEFAULT '[]',
-          cited_by_count INTEGER NOT NULL DEFAULT 0,
-          references_count INTEGER NOT NULL DEFAULT 0,
-          counts_by_year_json TEXT NOT NULL DEFAULT '[]',
-          referenced_urns_json TEXT NOT NULL DEFAULT '[]',
-          related_urns_json TEXT NOT NULL DEFAULT '[]',
-          citation_key TEXT NOT NULL,
-          canonical_url TEXT,
-          fwci REAL,
-          partition_url TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_scholarly_works_openalex ON scholarly_works(openalex_id);
-        CREATE INDEX IF NOT EXISTS idx_scholarly_works_doi ON scholarly_works(doi);
-        CREATE INDEX IF NOT EXISTS idx_scholarly_works_arxiv ON scholarly_works(arxiv_id);
-        CREATE INDEX IF NOT EXISTS idx_scholarly_works_cite_key ON scholarly_works(citation_key);
-        CREATE INDEX IF NOT EXISTS idx_scholarly_works_year ON scholarly_works(publication_year);
-        CREATE INDEX IF NOT EXISTS idx_scholarly_works_partition ON scholarly_works(partition_url);
-
-        CREATE VIRTUAL TABLE IF NOT EXISTS scholarly_works_fts USING fts5(
-          urn UNINDEXED,
-          title,
-          subtitle,
-          abstract,
-          authors_json,
-          concepts_json,
-          venue_name,
-          citation_key,
-          doi,
-          content='scholarly_works',
-          content_rowid='id',
-          tokenize='porter unicode61'
-        );
-
-        CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_ai AFTER INSERT ON scholarly_works BEGIN
-          INSERT INTO scholarly_works_fts(rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
-          VALUES (
-            new.id,
-            new.urn,
-            COALESCE(new.title, ''),
-            COALESCE(new.subtitle, ''),
-            COALESCE(new.abstract, ''),
-            COALESCE(new.authors_json, ''),
-            COALESCE(new.concepts_json, ''),
-            COALESCE(new.venue_name, ''),
-            COALESCE(new.citation_key, ''),
-            COALESCE(new.doi, '')
-          );
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_ad AFTER DELETE ON scholarly_works BEGIN
-          INSERT INTO scholarly_works_fts(scholarly_works_fts, rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
-          VALUES (
-            'delete',
-            old.id,
-            old.urn,
-            COALESCE(old.title, ''),
-            COALESCE(old.subtitle, ''),
-            COALESCE(old.abstract, ''),
-            COALESCE(old.authors_json, ''),
-            COALESCE(old.concepts_json, ''),
-            COALESCE(old.venue_name, ''),
-            COALESCE(old.citation_key, ''),
-            COALESCE(old.doi, '')
-          );
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_au AFTER UPDATE ON scholarly_works BEGIN
-          INSERT INTO scholarly_works_fts(scholarly_works_fts, rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
-          VALUES (
-            'delete',
-            old.id,
-            old.urn,
-            COALESCE(old.title, ''),
-            COALESCE(old.subtitle, ''),
-            COALESCE(old.abstract, ''),
-            COALESCE(old.authors_json, ''),
-            COALESCE(old.concepts_json, ''),
-            COALESCE(old.venue_name, ''),
-            COALESCE(old.citation_key, ''),
-            COALESCE(old.doi, '')
-          );
-          INSERT INTO scholarly_works_fts(rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
-          VALUES (
-            new.id,
-            new.urn,
-            COALESCE(new.title, ''),
-            COALESCE(new.subtitle, ''),
-            COALESCE(new.abstract, ''),
-            COALESCE(new.authors_json, ''),
-            COALESCE(new.concepts_json, ''),
-            COALESCE(new.venue_name, ''),
-            COALESCE(new.citation_key, ''),
-            COALESCE(new.doi, '')
-          );
-        END;
-
-        CREATE TABLE IF NOT EXISTS openalex_s3_partitions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          entity_type TEXT NOT NULL DEFAULT 'works',
-          s3_url TEXT NOT NULL UNIQUE,
-          https_url TEXT NOT NULL,
-          updated_date TEXT,
-          part_name TEXT NOT NULL,
-          content_length INTEGER NOT NULL DEFAULT 0,
-          record_count INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'unloaded',
-          imported_count INTEGER NOT NULL DEFAULT 0,
-          scanned_count INTEGER NOT NULL DEFAULT 0,
-          skipped_count INTEGER NOT NULL DEFAULT 0,
-          filter_config_json TEXT NOT NULL DEFAULT '{}',
-          last_loaded_at TEXT,
-          last_duration_ms INTEGER,
-          error_message TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_openalex_partitions_status ON openalex_s3_partitions(status);
-        CREATE INDEX IF NOT EXISTS idx_openalex_partitions_date ON openalex_s3_partitions(updated_date);
-      `);
-    } catch {}
+    // Dedicated OpenAlex Database (openalex.db) is initialized lazily via this.openalexDb
 
     // Initialize user-scoped Reference Collections & Post Citations in primary DB (modelscript.db)
     try {
@@ -1093,7 +1477,7 @@ export class LibraryDatabase {
       this.#db.prepare(`DELETE FROM post_citations WHERE post_id = ?`).run(postId);
       if (urns.length === 0) return;
 
-      const findWorkStmt = this.#openalexDb.prepare(`
+      const findWorkStmt = this.openalexDb.prepare(`
         SELECT id, urn FROM scholarly_works
         WHERE urn = ? COLLATE NOCASE
            OR (doi IS NOT NULL AND 'urn:doi:' || LOWER(doi) = LOWER(?))
@@ -1126,7 +1510,7 @@ export class LibraryDatabase {
     if (normUrn.startsWith("urn:ansatz:")) {
       return work;
     }
-    this.#openalexDb
+    this.openalexDb
       .prepare(
         `
       INSERT INTO scholarly_works (
@@ -1225,7 +1609,7 @@ export class LibraryDatabase {
         work.partitionUrl ?? null,
       );
 
-    const row = this.#openalexDb.prepare(`SELECT id FROM scholarly_works WHERE urn = ?`).get(normUrn) as
+    const row = this.openalexDb.prepare(`SELECT id FROM scholarly_works WHERE urn = ?`).get(normUrn) as
       | { id: number }
       | undefined;
     return {
@@ -1255,11 +1639,11 @@ export class LibraryDatabase {
       .run(userId, cleanConcept, isActive ? 1 : 0);
   }
 
-  deriveUserTopics(userId: number): void {
+  deriveUserTopics(userId: number, force: boolean = false): void {
     if (!userId || userId <= 0) return;
     const now = Date.now();
     const lastDerived = this.#userTopicsDerivedAt.get(userId) ?? 0;
-    if (now - lastDerived < 5 * 60 * 1000) {
+    if (!force && now - lastDerived < 5 * 60 * 1000) {
       return;
     }
     if (this.#userTopicsDerivedAt.size >= 5_000) {
@@ -3434,6 +3818,29 @@ export class LibraryDatabase {
       } catch {
         // Non-fatal
       }
+      try {
+        const mentionRegex = /(?:^|\s)@([a-zA-Z0-9_.-]+)/g;
+        let match: RegExpExecArray | null;
+        const mentionedUsernames = new Set<string>();
+        while ((match = mentionRegex.exec(content)) !== null) {
+          const raw = match[1]?.split("@")[0]?.trim();
+          if (raw) mentionedUsernames.add(raw.toLowerCase());
+        }
+        if (mentionedUsernames.size > 0) {
+          const insertMention = this.#db.prepare(
+            `INSERT OR IGNORE INTO post_mentions (post_id, user_id) VALUES (?, ?)`,
+          );
+          const findUser = this.#db.prepare(`SELECT id FROM users WHERE LOWER(username) = ?`);
+          for (const uName of mentionedUsernames) {
+            const u = findUser.get(uName) as { id: number } | undefined;
+            if (u) {
+              insertMention.run(postId, u.id);
+            }
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
     }
 
     return { id: postId as unknown as number, id_str: String(postId), visibility: effectiveVisibility };
@@ -3520,19 +3927,12 @@ export class LibraryDatabase {
       return;
     }
 
-    const tx = this.#db.transaction(() => {
+    const analyticsTarget = this.#analyticsDb ?? this.#db;
+    const analyticsTx = analyticsTarget.transaction(() => {
       const postExistsStmt = this.#db.prepare(`SELECT 1 FROM posts WHERE id = ?`);
 
-      if (batch.postViews.length > 0) {
-        const stmt = this.#db.prepare(`UPDATE posts SET view_count = view_count + ? WHERE id = ?`);
-        for (const [postId, delta] of batch.postViews) {
-          if (!postExistsStmt.get(postId)) continue;
-          stmt.run(delta, postId);
-        }
-      }
-
       if (batch.postLocationViews.length > 0) {
-        const stmt = this.#db.prepare(`
+        const stmt = analyticsTarget.prepare(`
           INSERT INTO post_location_stats (post_id, country_code, region_code, view_count)
           VALUES (?, ?, ?, ?)
           ON CONFLICT(post_id, country_code, COALESCE(region_code, ''))
@@ -3545,7 +3945,7 @@ export class LibraryDatabase {
       }
 
       if (batch.pageViews.length > 0) {
-        const stmt = this.#db.prepare(`
+        const stmt = analyticsTarget.prepare(`
           INSERT INTO page_views_daily (view_date, surface, path, views_count, unique_visitors)
           VALUES (?, ?, ?, ?, ?)
           ON CONFLICT(view_date, surface, path) DO UPDATE SET
@@ -3558,7 +3958,7 @@ export class LibraryDatabase {
       }
 
       if (batch.pageLocationViews.length > 0) {
-        const stmt = this.#db.prepare(`
+        const stmt = analyticsTarget.prepare(`
           INSERT INTO page_location_stats_daily (view_date, surface, country_code, region_code, views_count)
           VALUES (?, ?, ?, ?, ?)
           ON CONFLICT(view_date, surface, country_code, region_code) DO UPDATE SET
@@ -3570,7 +3970,7 @@ export class LibraryDatabase {
       }
 
       if (batch.packageDownloads.length > 0) {
-        const stmt = this.#db.prepare(`
+        const stmt = analyticsTarget.prepare(`
           INSERT INTO package_downloads_daily (library_name, library_version, download_date, downloads_count)
           VALUES (?, ?, ?, ?)
           ON CONFLICT(library_name, library_version, download_date)
@@ -3582,7 +3982,19 @@ export class LibraryDatabase {
       }
     });
 
-    tx();
+    analyticsTx();
+
+    if (batch.postViews.length > 0) {
+      const mainTx = this.#db.transaction(() => {
+        const postExistsStmt = this.#db.prepare(`SELECT 1 FROM posts WHERE id = ?`);
+        const stmt = this.#db.prepare(`UPDATE posts SET view_count = view_count + ? WHERE id = ?`);
+        for (const [postId, delta] of batch.postViews) {
+          if (!postExistsStmt.get(postId)) continue;
+          stmt.run(delta, postId);
+        }
+      });
+      mainTx();
+    }
   }
 
   incrementPostView(postId: number | string, countryCode?: string, regionCode?: string) {
@@ -3597,7 +4009,8 @@ export class LibraryDatabase {
     if (/^[A-Z]{2}$/.test(normCountry)) {
       const normRegion =
         regionCode && /^[A-Za-z0-9]{1,6}$/.test(regionCode.trim()) ? regionCode.trim().toUpperCase() : null;
-      this.#db
+      const analyticsTarget = this.#analyticsDb ?? this.#db;
+      analyticsTarget
         .prepare(
           `
         INSERT INTO post_location_stats (post_id, country_code, region_code, view_count)
@@ -3613,7 +4026,8 @@ export class LibraryDatabase {
     if (this.analyticsBuffer?.hasPostPending(postId)) {
       this.analyticsBuffer.flushSync();
     }
-    return this.#db
+    const targetDb = this.#analyticsDb ?? this.#db;
+    return targetDb
       .prepare(
         `
       SELECT country_code as country, SUM(view_count) as views 
@@ -3630,7 +4044,8 @@ export class LibraryDatabase {
     if (this.analyticsBuffer?.hasPostPending(postId)) {
       this.analyticsBuffer.flushSync();
     }
-    return this.#db
+    const targetDb = this.#analyticsDb ?? this.#db;
+    return targetDb
       .prepare(
         `
       SELECT country_code as country, region_code as region, SUM(view_count) as views 
@@ -3675,8 +4090,9 @@ export class LibraryDatabase {
     }
 
     const uniqueInc = params.isUniqueVisitor ? 1 : 0;
+    const analyticsTarget = this.#analyticsDb ?? this.#db;
 
-    this.#db
+    analyticsTarget
       .prepare(
         `
         INSERT INTO page_views_daily (view_date, surface, path, views_count, unique_visitors)
@@ -3694,7 +4110,7 @@ export class LibraryDatabase {
         params.regionCode && /^[A-Za-z0-9]{1,6}$/.test(params.regionCode.trim())
           ? params.regionCode.trim().toUpperCase()
           : "";
-      this.#db
+      analyticsTarget
         .prepare(
           `
           INSERT INTO page_location_stats_daily (view_date, surface, country_code, region_code, views_count)
@@ -3726,8 +4142,9 @@ export class LibraryDatabase {
     const safeDays = Math.min(365, Math.max(1, Math.floor(days)));
     const cutoff = new Date(Date.now() - (safeDays - 1) * 86_400_000).toISOString().slice(0, 10);
     const hasSurface = surface === "web" || surface === "docs";
+    const targetDb = this.#analyticsDb ?? this.#db;
 
-    const totalsRow = this.#db
+    const totalsRow = targetDb
       .prepare(
         `
         SELECT
@@ -3746,7 +4163,7 @@ export class LibraryDatabase {
       docsViews: number;
     };
 
-    const dailyRows = this.#db
+    const dailyRows = targetDb
       .prepare(
         `
         SELECT
@@ -3769,7 +4186,7 @@ export class LibraryDatabase {
       docsViews: number;
     }[];
 
-    const topPages = this.#db
+    const topPages = targetDb
       .prepare(
         `
         SELECT
@@ -3791,7 +4208,7 @@ export class LibraryDatabase {
       uniqueVisitors: number;
     }[];
 
-    const locationStats = this.#db
+    const locationStats = targetDb
       .prepare(
         `
         SELECT country_code AS country, SUM(views_count) AS views
@@ -3803,7 +4220,7 @@ export class LibraryDatabase {
       )
       .all(...(hasSurface ? [cutoff, surface] : [cutoff])) as { country: string; views: number }[];
 
-    const regionStats = this.#db
+    const regionStats = targetDb
       .prepare(
         `
         SELECT country_code AS country, region_code AS region, SUM(views_count) AS views
@@ -3818,7 +4235,7 @@ export class LibraryDatabase {
     const postViewsRow = this.#db.prepare(`SELECT COALESCE(SUM(view_count), 0) AS total FROM posts`).get() as {
       total: number;
     };
-    const pkgDlRow = this.#db
+    const pkgDlRow = targetDb
       .prepare(
         `SELECT COALESCE(SUM(downloads_count), 0) AS total FROM package_downloads_daily WHERE download_date >= ?`,
       )
@@ -3847,8 +4264,9 @@ export class LibraryDatabase {
     const cutoffDate =
       safeDays === 0 ? "9999-12-31" : new Date(Date.now() - safeDays * 86_400_000).toISOString().slice(0, 10);
 
-    const r1 = this.#db.prepare(`DELETE FROM page_views_daily WHERE view_date < ?`).run(cutoffDate);
-    const r2 = this.#db.prepare(`DELETE FROM page_location_stats_daily WHERE view_date < ?`).run(cutoffDate);
+    const targetDb = this.#analyticsDb ?? this.#db;
+    const r1 = targetDb.prepare(`DELETE FROM page_views_daily WHERE view_date < ?`).run(cutoffDate);
+    const r2 = targetDb.prepare(`DELETE FROM page_location_stats_daily WHERE view_date < ?`).run(cutoffDate);
     return {
       deletedDailyRows: r1.changes,
       deletedLocationRows: r2.changes,
@@ -4026,9 +4444,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id) as bookmark_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
@@ -4057,9 +4475,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -4092,9 +4510,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -4126,9 +4544,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -4279,22 +4697,26 @@ export class LibraryDatabase {
         COALESCE(p.visibility, 'public') IN ('public', 'unlisted')
         OR p.author_id = ?
         OR (COALESCE(p.visibility, 'public') = 'followers' AND p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?))
-        OR (COALESCE(p.visibility, 'public') = 'direct' AND EXISTS (
-          SELECT 1 FROM users uv WHERE uv.id = ? AND (
-            ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
-            LIKE '% @' || LOWER(uv.username) || ' %'
-            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
-            LIKE '% @' || LOWER(uv.username) || '.%'
-            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
-            LIKE '% @' || LOWER(uv.username) || '!%'
-            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
-            LIKE '% @' || LOWER(uv.username) || '?%'
-            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
-            LIKE '% @' || LOWER(uv.username) || ':%'
+        OR (COALESCE(p.visibility, 'public') = 'direct' AND (
+          p.author_id = ?
+          OR EXISTS (SELECT 1 FROM post_mentions pm WHERE pm.post_id = p.id AND pm.user_id = ?)
+          OR EXISTS (
+            SELECT 1 FROM users uv WHERE uv.id = ? AND (
+              ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+              LIKE '% @' || LOWER(uv.username) || ' %'
+              OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+              LIKE '% @' || LOWER(uv.username) || '.%'
+              OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+              LIKE '% @' || LOWER(uv.username) || '!%'
+              OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+              LIKE '% @' || LOWER(uv.username) || '?%'
+              OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+              LIKE '% @' || LOWER(uv.username) || ':%'
+            )
           )
         ))
       )`,
-      params: [currentUserId, currentUserId, currentUserId],
+      params: [currentUserId, currentUserId, currentUserId, currentUserId, currentUserId],
     };
   }
 
@@ -4336,9 +4758,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=(SELECT uid FROM viewer)) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as bookmarked,
@@ -4378,9 +4800,9 @@ export class LibraryDatabase {
             (
               (SELECT COUNT(*) FROM likes l JOIN follows f ON l.user_id = f.following_id WHERE l.post_id = p.id AND f.follower_id = (SELECT uid FROM viewer)) * 8
             ) +
-            ((SELECT COUNT(*) FROM likes WHERE post_id = p.id) * 3) +
-            ((SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) * 5) +
-            ((SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 6) +
+            (COALESCE(p.like_count, 0) * 3) +
+            (COALESCE(p.reply_count, 0) * 5) +
+            (COALESCE(p.repost_count, 0) * 6) +
             ((SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id) * 7) +
             MIN(10.0, COALESCE(p.view_count, 0) * 0.1) +
             (CASE WHEN p.artifact_view_id IS NOT NULL THEN 12 ELSE 0 END) -
@@ -4492,9 +4914,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked,
@@ -4603,18 +5025,18 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=(SELECT uid FROM viewer)) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as bookmarked,
         (
           MIN(50, COALESCE(p.view_count, 0)) * 1 +
           COALESCE(p.view_count, 0) * 0.1 +
-          (SELECT COUNT(*) FROM likes WHERE post_id = p.id) * 10 +
-          (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) * 15 +
-          (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 20 +
+          COALESCE(p.like_count, 0) * 10 +
+          COALESCE(p.reply_count, 0) * 15 +
+          COALESCE(p.repost_count, 0) * 20 +
           (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id) * 25 +
           (CASE WHEN p.artifact_view_id IS NOT NULL THEN 15 ELSE 0 END) +
           (
@@ -4691,9 +5113,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -4745,9 +5167,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -4817,7 +5239,7 @@ export class LibraryDatabase {
       } else {
         this.#db.prepare(`INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
         try {
-          this.deriveUserTopics(userId);
+          this.deriveUserTopics(userId, true);
         } catch {}
         const post = this.#db
           .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
@@ -4839,7 +5261,7 @@ export class LibraryDatabase {
       if (!existing) {
         this.#db.prepare(`INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
         try {
-          this.deriveUserTopics(userId);
+          this.deriveUserTopics(userId, true);
         } catch {}
         const post = this.#db
           .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
@@ -4892,7 +5314,7 @@ export class LibraryDatabase {
       } else {
         this.#db.prepare(`INSERT OR IGNORE INTO bookmarks (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
         try {
-          this.deriveUserTopics(userId);
+          this.deriveUserTopics(userId, true);
         } catch {}
         const post = this.#db
           .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
@@ -4925,7 +5347,7 @@ export class LibraryDatabase {
       } else {
         this.createPost(userId, null, undefined, undefined, undefined, postId);
         try {
-          this.deriveUserTopics(userId);
+          this.deriveUserTopics(userId, true);
         } catch {}
         const post = this.#db
           .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
@@ -4953,9 +5375,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         1 as bookmarked
@@ -7154,9 +7576,10 @@ export class LibraryDatabase {
     details?: Record<string, unknown> | string | undefined;
   }): void {
     const detailsStr = typeof data.details === "object" ? JSON.stringify(data.details) : (data.details ?? null);
+    const auditTarget = this.#auditDb ?? this.#db;
     try {
-      const insertAuditTx = this.#db.transaction(() => {
-        const prevRow = this.#db
+      const insertAuditTx = auditTarget.transaction(() => {
+        const prevRow = auditTarget
           .prepare(`SELECT entry_hash FROM audit_logs WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1`)
           .get() as { entry_hash: string } | undefined;
         const prevHash = prevRow?.entry_hash || "GENESIS";
@@ -7177,7 +7600,7 @@ export class LibraryDatabase {
         const auditSecret = process.env["AUDIT_HMAC_SECRET"]?.trim() || "msx-audit-chain-v1";
         const entryHash = crypto.createHmac("sha256", auditSecret).update(canonicalPayload).digest("hex");
 
-        this.#db
+        auditTarget
           .prepare(
             `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -7230,7 +7653,8 @@ export class LibraryDatabase {
       return { ...cached };
     }
 
-    const rows = this.#db
+    const auditTarget = this.#auditDb ?? this.#db;
+    const rows = auditTarget
       .prepare(
         `SELECT id, actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash
          FROM audit_logs
@@ -7287,6 +7711,10 @@ export class LibraryDatabase {
       const matchesHash = candidatePayloads.some((payload) => {
         const hmac = crypto.createHmac("sha256", auditSecret).update(payload).digest("hex");
         if (hmac === row.entry_hash) return true;
+        if (hasCustomSecret) {
+          const defaultHmac = crypto.createHmac("sha256", "msx-audit-chain-v1").update(payload).digest("hex");
+          if (defaultHmac === row.entry_hash) return true;
+        }
         if (!hasCustomSecret) {
           const sha = crypto.createHash("sha256").update(payload).digest("hex");
           return sha === row.entry_hash;
@@ -7366,7 +7794,8 @@ export class LibraryDatabase {
   purgeExpiredLogs(retentionDays: number = 30): { deletedCount: number; redactedCount: number } {
     const cutoffMs = retentionDays <= 0 ? Date.now() + 60_000 : Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     const cutoffDate = new Date(cutoffMs).toISOString().replace("T", " ").slice(0, 19);
-    const expiredRows = this.#db
+    const auditTarget = this.#auditDb ?? this.#db;
+    const expiredRows = auditTarget
       .prepare(
         `SELECT id, ip_address FROM audit_logs
          WHERE created_at <= ? AND ip_address IS NOT NULL AND ip_address != '' AND ip_address NOT LIKE 'REDACTED:%'`,
@@ -7374,8 +7803,8 @@ export class LibraryDatabase {
       .all(cutoffDate) as { id: number; ip_address: string }[];
 
     let redactedCount = 0;
-    const updateStmt = this.#db.prepare(`UPDATE audit_logs SET ip_address = ? WHERE id = ?`);
-    const tx = this.#db.transaction(() => {
+    const updateStmt = auditTarget.prepare(`UPDATE audit_logs SET ip_address = ? WHERE id = ?`);
+    const tx = auditTarget.transaction(() => {
       for (const row of expiredRows) {
         const token = LibraryDatabase.#hashAuditIpToken(row.ip_address);
         updateStmt.run(`REDACTED:${token}`, row.id);
@@ -9688,9 +10117,9 @@ export class LibraryDatabase {
       posts = this.#db
         .prepare(
           `SELECT CAST(p.id AS TEXT) as id, p.content, p.created_at,
-             (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-             (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-             (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count
+             COALESCE(p.like_count, 0) as like_count,
+             COALESCE(p.reply_count, 0) as reply_count,
+             COALESCE(p.repost_count, 0) as repost_count
            FROM posts p WHERE p.author_id = ? ORDER BY p.id DESC`,
         )
         .all(userId) as UserArchiveData["posts"];
@@ -10519,9 +10948,9 @@ export class LibraryDatabase {
         CAST(p.quote_post_id AS TEXT) as quote_post_id,
         CAST(p.repost_of_id AS TEXT) as repost_of_id,
         u.username, u.display_name, u.avatar_url, u.account_type, COALESCE(u.signing_verified, 0) as signing_verified,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
-        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
-        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        COALESCE(p.like_count, 0) as like_count,
+        COALESCE(p.reply_count, 0) as reply_count,
+        COALESCE(p.repost_count, 0) as repost_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -11651,6 +12080,7 @@ export class LibraryDatabase {
         this.#db.prepare(`DELETE FROM packages WHERE id = ?`).run(pkg.id);
       }
     }
+    this.invalidateLibraryDiscoveryCache();
   }
 
   /**
@@ -11679,6 +12109,7 @@ export class LibraryDatabase {
       release.signature ?? null,
       release.publishedBy ?? null,
     );
+    this.invalidateLibraryDiscoveryCache();
   }
 
   /**
@@ -11715,6 +12146,9 @@ export class LibraryDatabase {
          WHERE library_name = ? AND library_version = ?`,
       )
       .run(isDeprecated, reason, libraryName, libraryVersion);
+    if (info.changes > 0) {
+      this.invalidateLibraryDiscoveryCache();
+    }
     return info.changes > 0;
   }
 
@@ -11729,6 +12163,9 @@ export class LibraryDatabase {
          WHERE library_name = ? AND library_version = ?`,
       )
       .run(reason, libraryName, libraryVersion);
+    if (info.changes > 0) {
+      this.invalidateLibraryDiscoveryCache();
+    }
     return info.changes > 0;
   }
 
@@ -11743,6 +12180,9 @@ export class LibraryDatabase {
          WHERE library_name = ? AND library_version = ?`,
       )
       .run(libraryName, libraryVersion);
+    if (info.changes > 0) {
+      this.invalidateLibraryDiscoveryCache();
+    }
     return info.changes > 0;
   }
 
@@ -11899,7 +12339,8 @@ export class LibraryDatabase {
       return;
     }
     const date = dateStr ?? new Date().toISOString().slice(0, 10);
-    this.#db
+    const targetDb = this.#analyticsDb ?? this.#db;
+    targetDb
       .prepare(
         `INSERT INTO package_downloads_daily (library_name, library_version, download_date, downloads_count)
          VALUES (?, ?, ?, 1)
@@ -11922,12 +12363,13 @@ export class LibraryDatabase {
   } {
     this.analyticsBuffer?.flushSync();
     const startDate = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
+    const targetDb = this.#analyticsDb ?? this.#db;
 
-    const totalRow = this.#db
+    const totalRow = targetDb
       .prepare(`SELECT COALESCE(SUM(downloads_count), 0) as total FROM package_downloads_daily WHERE library_name = ?`)
       .get(libraryName) as { total: number };
 
-    const dailyRows = this.#db
+    const dailyRows = targetDb
       .prepare(
         `SELECT download_date as date, SUM(downloads_count) as downloads
          FROM package_downloads_daily
@@ -11937,7 +12379,7 @@ export class LibraryDatabase {
       )
       .all(libraryName, startDate) as { date: string; downloads: number }[];
 
-    const versionRows = this.#db
+    const versionRows = targetDb
       .prepare(
         `SELECT library_version as version, SUM(downloads_count) as downloads
          FROM package_downloads_daily
@@ -12239,6 +12681,7 @@ export class LibraryDatabase {
       return { id: existing.id, created: false };
     }
     const result = this.#db.prepare(`INSERT INTO packages (name) VALUES (?)`).run(name);
+    this.invalidateLibraryDiscoveryCache();
     return { id: Number(result.lastInsertRowid), created: true };
   }
 
@@ -12315,6 +12758,7 @@ export class LibraryDatabase {
         meta.repository_url ?? null,
         packageId,
       );
+    this.invalidateLibraryDiscoveryCache();
   }
 
   /**
@@ -12348,6 +12792,7 @@ export class LibraryDatabase {
         modelscriptMeta,
         publishedBy,
       );
+    this.invalidateLibraryDiscoveryCache();
     return Number(result.lastInsertRowid);
   }
 
@@ -12356,6 +12801,7 @@ export class LibraryDatabase {
    */
   updatePackageVersionManifest(versionId: number, manifest: string): void {
     this.#db.prepare(`UPDATE package_versions SET manifest = ? WHERE id = ?`).run(manifest, versionId);
+    this.invalidateLibraryDiscoveryCache();
   }
 
   /**
@@ -12628,201 +13074,222 @@ export class LibraryDatabase {
       this.deriveUserTopics(currentUserId);
     }
 
-    const pkgRows = this.#db.prepare(`SELECT id, name, description, license, modified_at FROM packages`).all() as {
-      id: number;
-      name: string;
-      description: string | null;
-      license: string | null;
-      modified_at: string;
-    }[];
+    const now = Date.now();
+    if (!this.#libraryDiscoveryBaseCache || this.#libraryDiscoveryBaseCache.expiresAt <= now) {
+      const pkgRows = this.#db.prepare(`SELECT id, name, description, license, modified_at FROM packages`).all() as {
+        id: number;
+        name: string;
+        description: string | null;
+        license: string | null;
+        modified_at: string;
+      }[];
 
-    const packagesByName = new Map<
-      string,
-      { id: number; name: string; description: string | null; license: string | null; modified_at: string }
-    >();
-    const canonicalNameByLower = new Map<string, string>();
-    for (const row of pkgRows) {
-      packagesByName.set(row.name, row);
-      canonicalNameByLower.set(row.name.toLowerCase(), row.name);
-    }
-
-    const versionRows = this.#db
-      .prepare(
-        `SELECT id, package_id, version, manifest, published_at FROM package_versions ORDER BY published_at DESC`,
-      )
-      .all() as {
-      id: number;
-      package_id: number;
-      version: string;
-      manifest: string;
-      published_at: string;
-    }[];
-
-    const versionsByPackageId = new Map<
-      number,
-      { id: number; version: string; manifest: string; published_at: string }[]
-    >();
-    const versionByPkgAndVer = new Map<
-      string,
-      { id: number; version: string; manifest: string; published_at: string }
-    >();
-
-    for (const v of versionRows) {
-      let list = versionsByPackageId.get(v.package_id);
-      if (!list) {
-        list = [];
-        versionsByPackageId.set(v.package_id, list);
+      const packagesByName = new Map<
+        string,
+        { id: number; name: string; description: string | null; license: string | null; modified_at: string }
+      >();
+      const canonicalNameByLower = new Map<string, string>();
+      for (const row of pkgRows) {
+        packagesByName.set(row.name, row);
+        canonicalNameByLower.set(row.name.toLowerCase(), row.name);
       }
-      list.push(v);
-      versionByPkgAndVer.set(`${v.package_id}@${v.version}`, v);
-    }
 
-    const latestTagRows = this.#db.prepare(`SELECT package_id, version FROM dist_tags WHERE tag = 'latest'`).all() as {
-      package_id: number;
-      version: string;
-    }[];
-    const latestTagByPackageId = new Map<number, string>();
-    for (const dt of latestTagRows) {
-      latestTagByPackageId.set(dt.package_id, dt.version);
-    }
+      const versionRows = this.#db
+        .prepare(
+          `SELECT id, package_id, version, manifest, published_at FROM package_versions ORDER BY published_at DESC`,
+        )
+        .all() as {
+        id: number;
+        package_id: number;
+        version: string;
+        manifest: string;
+        published_at: string;
+      }[];
 
-    // Compute reverse dependency counts in O(N) over latest manifests
-    const dependentsCountByName = new Map<string, number>();
-    for (const pkg of pkgRows) {
-      const latestVerStr = latestTagByPackageId.get(pkg.id) ?? versionsByPackageId.get(pkg.id)?.[0]?.version;
-      const latestVerRow = latestVerStr ? versionByPkgAndVer.get(`${pkg.id}@${latestVerStr}`) : undefined;
-      if (!latestVerRow?.manifest) continue;
-      try {
-        const parsed = JSON.parse(latestVerRow.manifest) as Record<string, unknown>;
-        const msx =
-          parsed["modelscript"] && typeof parsed["modelscript"] === "object"
-            ? (parsed["modelscript"] as Record<string, unknown>)
-            : undefined;
-        const depsObj = {
-          ...(parsed["dependencies"] && typeof parsed["dependencies"] === "object"
-            ? (parsed["dependencies"] as Record<string, unknown>)
-            : {}),
-          ...(msx?.["dependencies"] && typeof msx["dependencies"] === "object"
-            ? (msx["dependencies"] as Record<string, unknown>)
-            : {}),
-        };
-        const seenDeps = new Set<string>();
-        for (const rawDep of Object.keys(depsObj)) {
-          const depLower = rawDep.toLowerCase();
-          if (depLower === pkg.name.toLowerCase() || seenDeps.has(depLower)) continue;
-          seenDeps.add(depLower);
-          const targetName = canonicalNameByLower.get(depLower) ?? rawDep;
-          dependentsCountByName.set(targetName, (dependentsCountByName.get(targetName) ?? 0) + 1);
+      const versionsByPackageId = new Map<
+        number,
+        { id: number; version: string; manifest: string; published_at: string }[]
+      >();
+      const versionByPkgAndVer = new Map<
+        string,
+        { id: number; version: string; manifest: string; published_at: string }
+      >();
+
+      for (const v of versionRows) {
+        let list = versionsByPackageId.get(v.package_id);
+        if (!list) {
+          list = [];
+          versionsByPackageId.set(v.package_id, list);
         }
-      } catch {
-        // ignore invalid manifest JSON
+        list.push(v);
+        versionByPkgAndVer.set(`${v.package_id}@${v.version}`, v);
       }
-    }
 
-    const releaseRows = this.#db
-      .prepare(
-        `SELECT lr.library_name, lr.library_version, lr.published_at, lr.published_by,
+      const latestTagRows = this.#db
+        .prepare(`SELECT package_id, version FROM dist_tags WHERE tag = 'latest'`)
+        .all() as {
+        package_id: number;
+        version: string;
+      }[];
+      const latestTagByPackageId = new Map<number, string>();
+      for (const dt of latestTagRows) {
+        latestTagByPackageId.set(dt.package_id, dt.version);
+      }
+
+      // Compute reverse dependency counts in O(N) over latest manifests
+      const dependentsCountByName = new Map<string, number>();
+      for (const pkg of pkgRows) {
+        const latestVerStr = latestTagByPackageId.get(pkg.id) ?? versionsByPackageId.get(pkg.id)?.[0]?.version;
+        const latestVerRow = latestVerStr ? versionByPkgAndVer.get(`${pkg.id}@${latestVerStr}`) : undefined;
+        if (!latestVerRow?.manifest) continue;
+        try {
+          const parsed = JSON.parse(latestVerRow.manifest) as Record<string, unknown>;
+          const msx =
+            parsed["modelscript"] && typeof parsed["modelscript"] === "object"
+              ? (parsed["modelscript"] as Record<string, unknown>)
+              : undefined;
+          const depsObj = {
+            ...(parsed["dependencies"] && typeof parsed["dependencies"] === "object"
+              ? (parsed["dependencies"] as Record<string, unknown>)
+              : {}),
+            ...(msx?.["dependencies"] && typeof msx["dependencies"] === "object"
+              ? (msx["dependencies"] as Record<string, unknown>)
+              : {}),
+          };
+          const seenDeps = new Set<string>();
+          for (const rawDep of Object.keys(depsObj)) {
+            const depLower = rawDep.toLowerCase();
+            if (depLower === pkg.name.toLowerCase() || seenDeps.has(depLower)) continue;
+            seenDeps.add(depLower);
+            const targetName = canonicalNameByLower.get(depLower) ?? rawDep;
+            dependentsCountByName.set(targetName, (dependentsCountByName.get(targetName) ?? 0) + 1);
+          }
+        } catch {
+          // ignore invalid manifest JSON
+        }
+      }
+
+      const releaseRows = this.#db
+        .prepare(
+          `SELECT lr.library_name, lr.library_version, lr.published_at, lr.published_by,
                 lr.is_deprecated, lr.deprecation_reason, lr.is_yanked,
                 u.username AS publisher_username
          FROM library_releases lr
          LEFT JOIN users u ON u.id = lr.published_by`,
-      )
-      .all() as {
-      library_name: string;
-      library_version: string;
-      published_at: string;
-      published_by: number | null;
-      is_deprecated: number;
-      deprecation_reason: string | null;
-      is_yanked: number;
-      publisher_username: string | null;
-    }[];
-
-    const releasesByKey = new Map<
-      string,
-      {
+        )
+        .all() as {
+        library_name: string;
+        library_version: string;
         published_at: string;
         published_by: number | null;
         is_deprecated: number;
         deprecation_reason: string | null;
         is_yanked: number;
         publisher_username: string | null;
-      }
-    >();
-    for (const r of releaseRows) {
-      releasesByKey.set(`${r.library_name}@${r.library_version}`, r);
-    }
+      }[];
 
-    const start30d = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
-    const start7d = new Date(Date.now() - 7 * 86400 * 1000).toISOString().slice(0, 10);
-    const downloadRows = this.#db
-      .prepare(
-        `SELECT
+      const releasesByKey = new Map<
+        string,
+        {
+          published_at: string;
+          published_by: number | null;
+          is_deprecated: number;
+          deprecation_reason: string | null;
+          is_yanked: number;
+          publisher_username: string | null;
+        }
+      >();
+      for (const r of releaseRows) {
+        releasesByKey.set(`${r.library_name}@${r.library_version}`, r);
+      }
+
+      const start30d = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
+      const start7d = new Date(Date.now() - 7 * 86400 * 1000).toISOString().slice(0, 10);
+      const downloadRows = this.#db
+        .prepare(
+          `SELECT
            library_name,
            COALESCE(SUM(downloads_count), 0) AS total_downloads,
            COALESCE(SUM(CASE WHEN download_date >= ? THEN downloads_count ELSE 0 END), 0) AS downloads_30d,
            COALESCE(SUM(CASE WHEN download_date >= ? THEN downloads_count ELSE 0 END), 0) AS downloads_7d
          FROM package_downloads_daily
          GROUP BY library_name`,
-      )
-      .all(start30d, start7d) as {
-      library_name: string;
-      total_downloads: number;
-      downloads_30d: number;
-      downloads_7d: number;
-    }[];
+        )
+        .all(start30d, start7d) as {
+        library_name: string;
+        total_downloads: number;
+        downloads_30d: number;
+        downloads_7d: number;
+      }[];
 
-    const downloadsByName = new Map<string, { totalDownloads: number; downloads30d: number; downloads7d: number }>();
-    for (const d of downloadRows) {
-      downloadsByName.set(d.library_name, {
-        totalDownloads: d.total_downloads,
-        downloads30d: d.downloads_30d,
-        downloads7d: d.downloads_7d,
-      });
-    }
+      const downloadsByName = new Map<string, { totalDownloads: number; downloads30d: number; downloads7d: number }>();
+      for (const d of downloadRows) {
+        downloadsByName.set(d.library_name, {
+          totalDownloads: d.total_downloads,
+          downloads30d: d.downloads_30d,
+          downloads7d: d.downloads_7d,
+        });
+      }
 
-    const classSummaryRows = this.#db
-      .prepare(
-        `SELECT
+      const classSummaryRows = this.#db
+        .prepare(
+          `SELECT
            library_name,
            library_version,
            COUNT(*) AS class_count,
            MAX(CASE WHEN LOWER(class_kind) LIKE '%sysml%' THEN 1 ELSE 0 END) AS has_sysml
          FROM classes
          GROUP BY library_name, library_version`,
-      )
-      .all() as {
-      library_name: string;
-      library_version: string;
-      class_count: number;
-      has_sysml: number;
-    }[];
+        )
+        .all() as {
+        library_name: string;
+        library_version: string;
+        class_count: number;
+        has_sysml: number;
+      }[];
 
-    const classSummaryByKey = new Map<string, { classCount: number; hasSysml: boolean }>();
-    for (const c of classSummaryRows) {
-      classSummaryByKey.set(`${c.library_name}@${c.library_version}`, {
-        classCount: c.class_count,
-        hasSysml: c.has_sysml === 1,
-      });
-    }
+      const classSummaryByKey = new Map<string, { classCount: number; hasSysml: boolean }>();
+      for (const c of classSummaryRows) {
+        classSummaryByKey.set(`${c.library_name}@${c.library_version}`, {
+          classCount: c.class_count,
+          hasSysml: c.has_sysml === 1,
+        });
+      }
 
-    const artifactRows = this.#db
-      .prepare(
-        `SELECT version_id, LOWER(type) AS type, COUNT(*) AS cnt
+      const artifactRows = this.#db
+        .prepare(
+          `SELECT version_id, LOWER(type) AS type, COUNT(*) AS cnt
          FROM artifacts
          GROUP BY version_id, LOWER(type)`,
-      )
-      .all() as { version_id: number; type: string; cnt: number }[];
+        )
+        .all() as { version_id: number; type: string; cnt: number }[];
 
-    const artifactsByVersionId = new Map<number, { type: string; count: number }[]>();
-    for (const a of artifactRows) {
-      let list = artifactsByVersionId.get(a.version_id);
-      if (!list) {
-        list = [];
-        artifactsByVersionId.set(a.version_id, list);
+      const artifactsByVersionId = new Map<number, { type: string; count: number }[]>();
+      for (const a of artifactRows) {
+        let list = artifactsByVersionId.get(a.version_id);
+        if (!list) {
+          list = [];
+          artifactsByVersionId.set(a.version_id, list);
+        }
+        list.push({ type: a.type, count: a.cnt });
       }
-      list.push({ type: a.type, count: a.cnt });
+
+      this.#libraryDiscoveryBaseCache = {
+        expiresAt: now + 30000,
+        data: {
+          packagesByName,
+          versionsByPackageId,
+          versionByPkgAndVer,
+          releasesByKey,
+          downloadsByName,
+          classSummaryByKey,
+          artifactsByVersionId,
+          dependentsCountByName,
+        },
+      };
     }
+
+    const base = this.#libraryDiscoveryBaseCache!.data;
 
     let viewerPersona: string | null = null;
     const activeTopics = new Set<string>();
@@ -12845,14 +13312,14 @@ export class LibraryDatabase {
     }
 
     return {
-      packagesByName,
-      versionsByPackageId,
-      versionByPkgAndVer,
-      releasesByKey,
-      downloadsByName,
-      classSummaryByKey,
-      artifactsByVersionId,
-      dependentsCountByName,
+      packagesByName: base.packagesByName,
+      versionsByPackageId: base.versionsByPackageId,
+      versionByPkgAndVer: base.versionByPkgAndVer,
+      releasesByKey: base.releasesByKey,
+      downloadsByName: base.downloadsByName,
+      classSummaryByKey: base.classSummaryByKey,
+      artifactsByVersionId: base.artifactsByVersionId,
+      dependentsCountByName: base.dependentsCountByName,
       viewerPersona,
       activeTopics,
       dismissedTopics,
@@ -12896,6 +13363,7 @@ export class LibraryDatabase {
       }
     })();
 
+    this.invalidateLibraryDiscoveryCache();
     return true;
   }
 
@@ -13741,7 +14209,39 @@ export class LibraryDatabase {
     }
 
     // Checkpoint WAL and perform online consistent snapshot using parameterized VACUUM INTO
-    this.#db.prepare("VACUUM INTO ?").run(backupPath);
+    const hadTempViews = this.#isMultiDb;
+    if (hadTempViews) {
+      this.#dropMultiDbAttachedViews();
+    }
+    try {
+      this.#db.prepare("VACUUM INTO ?").run(backupPath);
+    } finally {
+      if (hadTempViews) {
+        try {
+          this.#setupMultiDbAttached();
+        } catch {}
+      }
+    }
+
+    if (this.#auditDb) {
+      try {
+        const auditFileName = fileName.replace("modelscript-backup-", "audit-backup-");
+        const auditBackupPath = path.resolve(backupDir, auditFileName);
+        this.#auditDb.prepare("VACUUM INTO ?").run(auditBackupPath);
+        const auditSha = crypto.createHash("sha256").update(fs.readFileSync(auditBackupPath)).digest("hex");
+        fs.writeFileSync(`${auditBackupPath}.sha256`, auditSha, "utf8");
+      } catch {}
+    }
+
+    if (this.#analyticsDb) {
+      try {
+        const analyticsFileName = fileName.replace("modelscript-backup-", "analytics-backup-");
+        const analyticsBackupPath = path.resolve(backupDir, analyticsFileName);
+        this.#analyticsDb.prepare("VACUUM INTO ?").run(analyticsBackupPath);
+        const analyticsSha = crypto.createHash("sha256").update(fs.readFileSync(analyticsBackupPath)).digest("hex");
+        fs.writeFileSync(`${analyticsBackupPath}.sha256`, analyticsSha, "utf8");
+      } catch {}
+    }
 
     const stats = fs.statSync(backupPath);
     const sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
@@ -17546,7 +18046,15 @@ export class LibraryDatabase {
       this.analyticsBuffer.flushSync();
     }
     try {
-      this.#openalexDb.close();
+      if (this.#openalexDb && this.#openalexDb.open) {
+        this.#openalexDb.close();
+      }
+    } catch {}
+    try {
+      this.#auditDb?.close();
+    } catch {}
+    try {
+      this.#analyticsDb?.close();
     } catch {}
     this.#db.close();
   }

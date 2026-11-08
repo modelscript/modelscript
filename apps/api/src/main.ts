@@ -35,7 +35,21 @@ if (isTimescaleEnabled && timescaleUrl) {
   // Lazy-load pg to avoid hard dependency when TimescaleDB is unavailable
   try {
     const { Pool } = await import("pg");
-    dbPool = new Pool({ connectionString: timescaleUrl, max: 10 });
+    const poolMax = Number(process.env["TIMESCALE_POOL_MAX"] || 20);
+    const idleTimeoutMillis = Number(process.env["TIMESCALE_IDLE_TIMEOUT_MS"] || 30000);
+    const connectionTimeoutMillis = Number(process.env["TIMESCALE_CONN_TIMEOUT_MS"] || 5000);
+    const statementTimeout = Number(process.env["TIMESCALE_STATEMENT_TIMEOUT_MS"] || 15000);
+
+    dbPool = new Pool({
+      connectionString: timescaleUrl,
+      max: poolMax,
+      idleTimeoutMillis,
+      connectionTimeoutMillis,
+      statement_timeout: statementTimeout,
+    });
+    dbPool.on("error", (err) => {
+      console.error("[PostgreSQL/TimescaleDB Pool Error]", err instanceof Error ? err.message : err);
+    });
     // Test the connection
     await dbPool.query("SELECT 1");
     console.log("TimescaleDB connected.");

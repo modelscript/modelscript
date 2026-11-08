@@ -60,6 +60,12 @@ export const fqnCacheState = {
   cache: new Map<string, number>(),
 };
 
+/** Clears the global FQN resolution cache. */
+export function clearFqnCache(): void {
+  fqnCacheState.index = null;
+  fqnCacheState.cache.clear();
+}
+
 export function iconFromEntry(entry: any): string | undefined {
   if (entry?.language === "pscad") {
     return entry.metadata?.classPrefixes === "package" ? "package" : "circuit-board";

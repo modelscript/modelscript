@@ -1226,9 +1226,35 @@ export class WasmQueryEngine {
     }
 
     // Build equation-to-variable incidence lists (excluding der(x) state occurrences)
+    const stripDerCalls = (s: string): string => {
+      let result = "";
+      let i = 0;
+      while (i < s.length) {
+        if (s.startsWith("der", i) && (i === 0 || !/[A-Za-z0-9_]/.test(s[i - 1]!))) {
+          let j = i + 3;
+          while (j < s.length && /\s/.test(s[j]!)) j++;
+          if (j < s.length && s[j] === "(") {
+            let depth = 1;
+            j++;
+            while (j < s.length && depth > 0) {
+              if (s[j] === "(") depth++;
+              else if (s[j] === ")") depth--;
+              j++;
+            }
+            result += " ";
+            i = j;
+            continue;
+          }
+        }
+        result += s[i];
+        i++;
+      }
+      return result;
+    };
+
     const eqVars: number[][] = [];
     for (const eqText of equations) {
-      const strippedDer = eqText.replace(/\bder\s*\([^)]*\)/g, " ");
+      const strippedDer = stripDerCalls(eqText);
       const idents = strippedDer.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) ?? [];
       const inc = new Set<number>();
       for (const id of idents) {

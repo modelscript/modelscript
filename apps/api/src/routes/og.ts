@@ -109,6 +109,7 @@ export function ogRouter(database: LibraryDatabase): Router {
     const versions = pkg ? database.getPackageVersions(pkg.id) : [];
     const latestVersion = versions.length > 0 ? versions[versions.length - 1] : undefined;
     const classCount = latestVersion ? database.getClassCount(fullPkgName, latestVersion.version) : 0;
+    const downloadStats = database.getPackageStats(fullPkgName);
 
     const svg = renderPackageOgSvg(
       {
@@ -117,7 +118,7 @@ export function ogRouter(database: LibraryDatabase): Router {
         description: pkg?.description,
         license: pkg?.license || "AGPL-3.0-or-later",
         class_count: classCount,
-        downloads_count: 142,
+        downloads_count: downloadStats.totalDownloads,
       },
       host,
       brandName,

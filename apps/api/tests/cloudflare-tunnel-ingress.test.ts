@@ -173,13 +173,13 @@ test("Cloudflare Tunnel & Ingress Verification", async (t) => {
     assert.ok(!JSON.stringify(recentLogs[0]).includes("cf-secret-tunnel-token-999"));
     assert.ok(JSON.stringify(recentLogs[0]).includes("[REDACTED]"));
 
-    // Export env snippet must include MSX_INGRESS_MODE and CLOUDFLARE_TUNNEL_TOKEN
+    // Export env snippet must include MSX_INGRESS_MODE and redacted CLOUDFLARE_TUNNEL_TOKEN
     const exportRes = await request(app)
       .get("/api/v1/admin/settings/export-env")
       .set("Authorization", `Bearer ${adminToken}`);
     assert.equal(exportRes.status, 200);
     assert.match(exportRes.body.envText, /MSX_INGRESS_MODE=cloudflare/);
-    assert.match(exportRes.body.envText, /CLOUDFLARE_TUNNEL_TOKEN=cf-secret-tunnel-token-999/);
+    assert.match(exportRes.body.envText, /CLOUDFLARE_TUNNEL_TOKEN=<REDACTED_CLOUDFLARE_TUNNEL_TOKEN>/);
   });
 
   await t.test("GET /api/v1/instance/branding and /api/v1/instance/banner return buildVersion", async () => {

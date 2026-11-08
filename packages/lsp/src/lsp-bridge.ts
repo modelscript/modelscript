@@ -278,11 +278,22 @@ export class PositionIndex {
  * This class translates between the internal representation
  * and the JSON-RPC protocol used by LSP clients.
  */
+export interface LSPBridgeEnv {
+  documentLSPBridges?: Map<string, LSPBridge>;
+  documents?: { get(uri: string): { getText(): string } | undefined };
+  sharedFs?: {
+    readFile?(uri: string): string | undefined;
+    read?(path: string): string | undefined;
+  };
+}
+
 export class LSPBridge {
   /** Line/character position converter for the bound document. */
   private positions: PositionIndex;
   /** Canonical URI of the bound document. */
   private documentUri: string;
+  /** Injected environment dependencies for cross-document and VFS resolution. */
+  private env?: LSPBridgeEnv;
 
   /**
    * Creates a new `LSPBridge` for a document.
@@ -295,19 +306,32 @@ export class LSPBridge {
     arg3?: any,
     arg4?: any,
     arg5?: any,
+    arg6?: any,
   ) {
     if (arg5 !== undefined) {
-      // (index, engine, resolver, positions, documentUri)
+      // (index, engine, resolver, positions, documentUri, env?)
       this.positions = arg4;
       this.documentUri = arg5;
+      this.env = arg6;
     } else if (arg4 !== undefined) {
-      // (index, engine, positions, documentUri)
+      // (index, engine, positions, documentUri, env?)
       this.positions = arg3;
       this.documentUri = arg4;
+      this.env = typeof arg5 === "object" && !("lineStarts" in arg5) ? arg5 : undefined;
     } else {
       this.positions = arg3 ?? ({} as any);
       this.documentUri = "";
     }
+  }
+
+  /** Injects or overrides the environment dependencies for this bridge. */
+  public setEnv(env: LSPBridgeEnv): void {
+    this.env = env;
+  }
+
+  /** Returns the injected environment dependencies, if configured. */
+  public getEnv(): LSPBridgeEnv | undefined {
+    return this.env;
   }
 
   /** Returns the underlying Salsa `QueryEngine` instance. */
@@ -867,13 +891,17 @@ export class LSPBridge {
     let text: string | undefined = sourceText ?? this.positions.getSourceText();
 
     if (target.resourceId && target.resourceId !== this.documentUri) {
-      const otherBridge = (globalThis as any).documentLSPBridges?.get(target.resourceId);
+      const otherBridge =
+        this.env?.documentLSPBridges?.get(target.resourceId) ??
+        (globalThis as any).documentLSPBridges?.get(target.resourceId);
       if (otherBridge?.positions) {
         targetPositions = otherBridge.positions;
         text = targetPositions.getSourceText();
       } else {
         const otherDocText =
+          this.env?.documents?.get(target.resourceId)?.getText?.() ??
           (globalThis as any).documents?.get(target.resourceId)?.getText?.() ??
+          this.env?.sharedFs?.readFile?.(target.resourceId) ??
           (globalThis as any).sharedFs?.readFile?.(target.resourceId);
         if (typeof otherDocText === "string") {
           targetPositions = new PositionIndex(otherDocText);
@@ -1489,17 +1517,18 @@ export class LSPBridge {
     }
 
     if (uri) {
-      const otherBridge = (globalThis as any).documentLSPBridges?.get(uri);
+      const otherBridge = this.env?.documentLSPBridges?.get(uri) ?? (globalThis as any).documentLSPBridges?.get(uri);
       const otherBridgeText = otherBridge?.positions?.getSourceText?.();
       if (typeof otherBridgeText === "string" && otherBridgeText.length > 0) {
         return otherBridgeText;
       }
-      const openDocText = (globalThis as any).documents?.get(uri)?.getText?.();
+      const openDocText =
+        this.env?.documents?.get(uri)?.getText?.() ?? (globalThis as any).documents?.get(uri)?.getText?.();
       if (typeof openDocText === "string" && openDocText.length > 0) {
         return openDocText;
       }
       const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
-      const sharedFs = (globalThis as any).sharedFs;
+      const sharedFs = this.env?.sharedFs ?? (globalThis as any).sharedFs;
       const sharedText =
         sharedFs?.readFile?.(uri) ??
         sharedFs?.read?.(fsPath) ??

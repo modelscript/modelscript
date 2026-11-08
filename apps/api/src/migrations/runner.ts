@@ -14,13 +14,20 @@ import type {
   RecreateTableOptions,
 } from "./types.js";
 
+export interface SqliteMigrationRunnerHooks {
+  onBeforeMigration?: () => void;
+  onAfterMigration?: () => void;
+}
+
 export class SqliteMigrationRunner {
   readonly #db: Database.Database;
   readonly #dbPath: string | undefined;
+  readonly #hooks: SqliteMigrationRunnerHooks | undefined;
 
-  constructor(db: Database.Database, dbPath?: string) {
+  constructor(db: Database.Database, dbPath?: string, hooks?: SqliteMigrationRunnerHooks) {
     this.#db = db;
     this.#dbPath = dbPath;
+    this.#hooks = hooks;
     this.#ensureLedgerTable();
   }
 
@@ -268,34 +275,42 @@ export class SqliteMigrationRunner {
       VALUES (?, ?, ?)
     `);
 
-    let actuallyAppliedCount = 0;
-    for (const migration of pending) {
-      const startTime = Date.now();
-      const checksum = crypto.createHash("sha256").update(`${migration.name}:${migration.up.toString()}`).digest("hex");
-      let applied = false;
+    this.#hooks?.onBeforeMigration?.();
+    try {
+      let actuallyAppliedCount = 0;
+      for (const migration of pending) {
+        const startTime = Date.now();
+        const checksum = crypto
+          .createHash("sha256")
+          .update(`${migration.name}:${migration.up.toString()}`)
+          .digest("hex");
+        let applied = false;
 
-      const tx = this.#db.transaction(() => {
-        // Concurrency guard: check if another process applied this migration in the interim
-        const already = checkStmt.get(migration.name);
-        if (already) {
-          return;
-        }
-        migration.up(context);
-        const duration = Date.now() - startTime;
-        recordStmt.run(migration.name, checksum, duration);
-        applied = true;
-      });
-      tx.immediate();
-      if (applied) {
-        actuallyAppliedCount++;
-        if (!options?.silent) {
-          console.log(`[MigrationRunner] Applied migration: ${migration.name} (${Date.now() - startTime}ms)`);
+        const tx = this.#db.transaction(() => {
+          // Concurrency guard: check if another process applied this migration in the interim
+          const already = checkStmt.get(migration.name);
+          if (already) {
+            return;
+          }
+          migration.up(context);
+          const duration = Date.now() - startTime;
+          recordStmt.run(migration.name, checksum, duration);
+          applied = true;
+        });
+        tx.immediate();
+        if (applied) {
+          actuallyAppliedCount++;
+          if (!options?.silent) {
+            console.log(`[MigrationRunner] Applied migration: ${migration.name} (${Date.now() - startTime}ms)`);
+          }
         }
       }
-    }
 
-    this.verifyIntegrity();
-    return { appliedCount: actuallyAppliedCount, backupPath };
+      this.verifyIntegrity();
+      return { appliedCount: actuallyAppliedCount, backupPath };
+    } finally {
+      this.#hooks?.onAfterMigration?.();
+    }
   }
 
   rollbackLastSync(
@@ -321,18 +336,23 @@ export class SqliteMigrationRunner {
     const context = this.#createContext();
     const deleteStmt = this.#db.prepare(`DELETE FROM _modelscript_migrations WHERE name = ?`);
 
-    const tx = this.#db.transaction(() => {
-      migration.down!(context);
-      deleteStmt.run(lastApplied.name);
-    });
-    tx.immediate();
+    this.#hooks?.onBeforeMigration?.();
+    try {
+      const tx = this.#db.transaction(() => {
+        migration.down!(context);
+        deleteStmt.run(lastApplied.name);
+      });
+      tx.immediate();
 
-    if (!options?.silent) {
-      console.log(`[MigrationRunner] Rolled back migration: ${lastApplied.name}`);
+      if (!options?.silent) {
+        console.log(`[MigrationRunner] Rolled back migration: ${lastApplied.name}`);
+      }
+
+      this.verifyIntegrity();
+      return { rolledBack: lastApplied.name };
+    } finally {
+      this.#hooks?.onAfterMigration?.();
     }
-
-    this.verifyIntegrity();
-    return { rolledBack: lastApplied.name };
   }
 
   async rollbackLast(
@@ -422,5 +442,144 @@ export class SqliteMigrationRunner {
     }
 
     return { foreignKeysOk, integrityOk };
+  }
+}
+
+export interface PostgresClientLike {
+  query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
+  connect?(): Promise<{
+    query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
+    release(): void;
+  }>;
+}
+
+export class PostgresMigrationRunner {
+  readonly #pool: PostgresClientLike;
+
+  constructor(pool: PostgresClientLike) {
+    this.#pool = pool;
+  }
+
+  async ensureLedgerTable(): Promise<void> {
+    await this.#pool.query(`
+      CREATE TABLE IF NOT EXISTS _modelscript_migrations (
+        id           SERIAL PRIMARY KEY,
+        name         TEXT NOT NULL UNIQUE,
+        checksum     TEXT NOT NULL,
+        applied_at   TIMESTAMPTZ DEFAULT NOW(),
+        execution_ms INTEGER NOT NULL
+      );
+    `);
+  }
+
+  async getAppliedMigrations(): Promise<MigrationRecord[]> {
+    await this.ensureLedgerTable();
+    const res = await this.#pool.query(
+      `SELECT id, name, checksum, applied_at, execution_ms FROM _modelscript_migrations ORDER BY id ASC`,
+    );
+    return (res.rows as Record<string, unknown>[]).map((r) => ({
+      id: Number(r["id"]),
+      name: String(r["name"]),
+      checksum: String(r["checksum"]),
+      applied_at: r["applied_at"] instanceof Date ? (r["applied_at"] as Date).toISOString() : String(r["applied_at"]),
+      execution_ms: Number(r["execution_ms"]),
+    }));
+  }
+
+  async getStatus(migrations: Migration[]): Promise<MigrationStatus> {
+    const applied = await this.getAppliedMigrations();
+    const appliedNames = new Set(applied.map((a) => a.name));
+    const pending = migrations.filter((m) => !appliedNames.has(m.name));
+    let checksumMatch = true;
+
+    for (const app of applied) {
+      const def = migrations.find((m) => m.name === app.name);
+      if (def) {
+        const sum = crypto
+          .createHash("sha256")
+          .update(def.name + (def.id || ""))
+          .digest("hex");
+        if (app.checksum && app.checksum !== sum) {
+          app.checksumMatch = false;
+          checksumMatch = false;
+        } else {
+          app.checksumMatch = true;
+        }
+      }
+    }
+
+    return {
+      applied,
+      pending,
+      currentVersion: applied.length > 0 ? applied[applied.length - 1]!.name : null,
+      targetVersion: migrations.length > 0 ? migrations[migrations.length - 1]!.name : null,
+      pendingCount: pending.length,
+      checksumMatch,
+    };
+  }
+
+  async runPending(
+    migrations: Migration[],
+    options?: { dryRun?: boolean; silent?: boolean },
+  ): Promise<{ appliedCount: number }> {
+    await this.ensureLedgerTable();
+    const status = await this.getStatus(migrations);
+    if (options?.dryRun || status.pending.length === 0) {
+      return { appliedCount: status.pending.length };
+    }
+
+    let appliedCount = 0;
+    for (const migration of status.pending) {
+      const client = typeof this.#pool.connect === "function" ? await this.#pool.connect() : this.#pool;
+      try {
+        await client.query("BEGIN");
+        const start = Date.now();
+        const ctx: MigrationContext = {
+          dialect: "postgres",
+          execute: async (sql: string, params?: unknown[]) => {
+            if (params && params.length > 0) {
+              await client.query(sql, params);
+            } else {
+              await client.query(sql);
+            }
+          },
+          query: async <T = unknown>(sql: string, params?: unknown[]): Promise<T[]> => {
+            const res = params && params.length > 0 ? await client.query(sql, params) : await client.query(sql);
+            return res.rows as T[];
+          },
+          recreateTable: (_opts: RecreateTableOptions) => {
+            throw new Error("recreateTable is not supported on PostgreSQL; use standard ALTER TABLE");
+          },
+          archiveTable: (_opts: string | ArchiveTableOptions): ArchiveTableResult => {
+            throw new Error("archiveTable is not implemented for PostgreSQL");
+          },
+        };
+
+        await migration.up(ctx);
+        const duration = Date.now() - start;
+        const checksum = crypto
+          .createHash("sha256")
+          .update(migration.name + (migration.id || ""))
+          .digest("hex");
+        await client.query(`INSERT INTO _modelscript_migrations (name, checksum, execution_ms) VALUES ($1, $2, $3)`, [
+          migration.name,
+          checksum,
+          duration,
+        ]);
+        await client.query("COMMIT");
+        appliedCount++;
+        if (!options?.silent) {
+          console.log(`[PostgresMigrationRunner] Applied migration: ${migration.name} (${duration}ms)`);
+        }
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        if ("release" in client && typeof (client as { release?: () => void }).release === "function") {
+          (client as { release: () => void }).release();
+        }
+      }
+    }
+    return { appliedCount };
   }
 }

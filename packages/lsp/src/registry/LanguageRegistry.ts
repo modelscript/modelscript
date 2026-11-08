@@ -198,6 +198,12 @@ export class LanguageRegistry {
   private extCandidates = new Map<string, LanguagePlugin[]>();
   private maturityTier: "stable" | "beta" | "experimental" = "experimental";
   private enabledOverrides = new Map<string, boolean>();
+  private documentsStore?: { get(uri: string): { getText(): string } | undefined };
+
+  /** Sets the documents store for content sniffing on ambiguous file extensions. */
+  setDocumentsStore(store: { get(uri: string): { getText(): string } | undefined }): void {
+    this.documentsStore = store;
+  }
 
   /**
    * Configures active language maturity tier and per-language enable/disable overrides.
@@ -486,7 +492,7 @@ export class LanguageRegistry {
     ]);
 
     if (!text && sniffExtensions.has(ext)) {
-      const openDoc = (globalThis as any).documents?.get?.(uri);
+      const openDoc = this.documentsStore?.get?.(uri) ?? (globalThis as any).documents?.get?.(uri);
       if (openDoc && typeof openDoc.getText === "function") {
         text = openDoc.getText();
       }

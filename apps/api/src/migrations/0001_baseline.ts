@@ -358,6 +358,32 @@ export const baselineMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_posts_repost ON posts(repost_of_id);
       CREATE INDEX IF NOT EXISTS idx_posts_quote ON posts(quote_post_id);
       CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_posts_author_created ON posts(author_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_posts_reply_created ON posts(reply_to_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_posts_repost_created ON posts(repost_of_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_posts_visibility_created ON posts(visibility, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS post_mentions (
+        post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY (post_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_post_mentions_user ON post_mentions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_post_mentions_post ON post_mentions(post_id);
+
+      CREATE TRIGGER IF NOT EXISTS trg_posts_reply_insert AFTER INSERT ON posts WHEN new.reply_to_id IS NOT NULL BEGIN
+        UPDATE posts SET reply_count = reply_count + 1 WHERE id = new.reply_to_id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_posts_reply_delete AFTER DELETE ON posts WHEN old.reply_to_id IS NOT NULL BEGIN
+        UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = old.reply_to_id;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_posts_repost_insert AFTER INSERT ON posts WHEN new.repost_of_id IS NOT NULL BEGIN
+        UPDATE posts SET repost_count = repost_count + 1 WHERE id = new.repost_of_id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_posts_repost_delete AFTER DELETE ON posts WHEN old.repost_of_id IS NOT NULL BEGIN
+        UPDATE posts SET repost_count = MAX(0, repost_count - 1) WHERE id = old.repost_of_id;
+      END;
 
       CREATE TABLE IF NOT EXISTS post_syndications (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -379,6 +405,13 @@ export const baselineMigration: Migration = {
       );
       CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id);
       CREATE INDEX IF NOT EXISTS idx_likes_user ON likes(user_id);
+
+      CREATE TRIGGER IF NOT EXISTS trg_likes_insert AFTER INSERT ON likes BEGIN
+        UPDATE posts SET like_count = like_count + 1 WHERE id = new.post_id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_likes_delete AFTER DELETE ON likes BEGIN
+        UPDATE posts SET like_count = MAX(0, like_count - 1) WHERE id = old.post_id;
+      END;
 
       CREATE TABLE IF NOT EXISTS bookmarks (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,

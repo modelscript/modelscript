@@ -159,6 +159,125 @@ function getPolyglotHost(ctx: ServerContext): PolyglotHostLike | undefined {
 }
 
 /**
+ * Recursively collects all CST descendant nodes satisfying `predicate`.
+ */
+function findDescendants(
+  n: ParsedCstNode | null | undefined,
+  predicate: (node: ParsedCstNode) => boolean,
+  out: ParsedCstNode[] = [],
+): ParsedCstNode[] {
+  if (!n) return out;
+  if (predicate(n)) out.push(n);
+  for (const child of n.children || []) findDescendants(child, predicate, out);
+  return out;
+}
+
+/**
+ * Extracts the first top-level class definition name from Modelica code using the CST WASM parser.
+ */
+function extractFirstClassNameFromCst(context: Context | null | undefined, code: string): string | undefined {
+  if (!context || !code || !code.trim()) return undefined;
+  try {
+    const tree = context.parse(".mo", code);
+    const root = tree.rootNode as unknown as ParsedCstNode;
+    const classNode = root?.children?.find((c) => c.type === "class_definition");
+    if (!classNode) return undefined;
+    const spec =
+      classNode.childForFieldName?.("class_specifier") ??
+      classNode.children?.find(
+        (c) => c.type === "class_specifier" || c.type === "long_class_specifier" || c.type === "short_class_specifier",
+      );
+    const idNode =
+      spec?.childForFieldName?.("name") ?? spec?.children?.find((c) => c.type === "IDENT" || c.type === "identifier");
+    if (idNode?.text) return idNode.text.trim();
+  } catch {}
+  return undefined;
+}
+
+/**
+ * Extracts structural metrics (states from der(), parameters, variables, equations)
+ * from Modelica code by traversing the CST WASM parse tree.
+ */
+function extractModelicaMetricsFromCst(
+  context: Context | null | undefined,
+  code: string,
+): {
+  stateCount: number;
+  parameterCount: number;
+  totalVars: number;
+  algebraicCount: number;
+  equationCount: number;
+} | null {
+  if (!context || !code || !code.trim()) return null;
+  try {
+    const tree = context.parse(".mo", code);
+    const root = tree.rootNode as unknown as ParsedCstNode;
+    let derCalls = 0;
+    let paramDecls = 0;
+    let varDecls = 0;
+    let eqCount = 0;
+
+    const walk = (node: ParsedCstNode | null | undefined): void => {
+      if (!node) return;
+      if (node.type === "call_expression") {
+        const fn = node.children?.[0]?.text;
+        if (fn === "der") derCalls++;
+      } else if (node.type === "component_declaration") {
+        const pfx = node.children?.find((c) => c.type === "declaration_prefixes" || c.type === "type_prefix");
+        if (pfx?.text && (pfx.text.includes("parameter") || pfx.text.includes("constant"))) {
+          paramDecls++;
+        } else {
+          varDecls++;
+        }
+      } else if (node.type === "equation_section") {
+        for (const child of node.children || []) {
+          if (child.type && (child.type.includes("equation") || child.type === "connect_equation")) {
+            eqCount++;
+          }
+        }
+      }
+      for (const child of node.children || []) walk(child);
+    };
+    walk(root);
+
+    const stateCount = Math.max(1, derCalls);
+    const totalVars = Math.max(stateCount, varDecls, eqCount > 0 ? eqCount : 1);
+    const algebraicCount = Math.max(0, totalVars - stateCount);
+    const equationCount = eqCount > 0 ? eqCount : totalVars;
+    return { stateCount, parameterCount: paramDecls, totalVars, algebraicCount, equationCount };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts equation strings from a flattened Modelica class using CST WASM parsing.
+ */
+function extractEquationsFromCst(context: Context | null | undefined, flatText: string): string[] {
+  if (!context || !flatText || !flatText.trim()) return [];
+  const equations: string[] = [];
+  try {
+    const tree = context.parse(".mo", flatText);
+    const root = tree.rootNode as unknown as ParsedCstNode;
+    const walk = (node: ParsedCstNode | null | undefined): void => {
+      if (!node) return;
+      if (node.type === "equation_section") {
+        for (const child of node.children || []) {
+          const t = child.text?.trim();
+          if (t && child.type !== "equation" && t !== "equation" && !child.type.includes("comment")) {
+            equations.push(t);
+          }
+        }
+        return;
+      }
+      for (const child of node.children || []) walk(child);
+    };
+    walk(root);
+  } catch {}
+  return equations;
+}
+
+/**
  * Registers all ModelScript, Modelica, SysML v2, Ontology/OWL2, Digital Thread (TGG/RTM),
  * Closed-Loop Synthesis, and PSCAD EMT MCP tools on the provided MCP server instance.
  *
@@ -226,20 +345,6 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         for (const child of children) walk(child);
       };
       walk(tree.rootNode as unknown as ParsedCstNode);
-
-      /**
-       * Recursively collects all CST descendant nodes satisfying `predicate`.
-       */
-      function findDescendants(
-        n: ParsedCstNode | null | undefined,
-        predicate: (node: ParsedCstNode) => boolean,
-        out: ParsedCstNode[] = [],
-      ): ParsedCstNode[] {
-        if (!n) return out;
-        if (predicate(n)) out.push(n);
-        for (const child of n.children || []) findDescendants(child, predicate, out);
-        return out;
-      }
 
       const classNodes = findDescendants(
         tree.rootNode as unknown as ParsedCstNode,
@@ -373,7 +478,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             await tempCtx.addLibrary(tempPath);
             const resolvedTarget =
               targetClass ||
-              activeSource.match(/\b(?:model|block|class|connector)\s+([A-Za-z0-9_]+)/)?.[1] ||
+              extractFirstClassNameFromCst(tempCtx, activeSource) ||
+              tempCtx.classes[0]?.name ||
               targetClass;
             if (!flatText) {
               flatText = tempCtx.flatten(resolvedTarget);
@@ -407,25 +513,16 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
-      // Compute Arena DAE structural metrics from flattened Arena DAE + BLT or source
+      // Compute Arena DAE structural metrics from flattened Arena DAE + BLT or CST inspection
       const srcToInspect = flatText ?? activeSource ?? "";
-      const derMatches = srcToInspect.match(/\bder\s*\(/g) ?? [];
-      const paramMatches = srcToInspect.match(/\bparameter\s+(?:Real|Integer|Boolean)\b/g) ?? [];
-      const realMatches = srcToInspect.match(/(?:^|\n)\s*Real\s+[A-Za-z_]/g) ?? [];
-      const eqSection = srcToInspect.split(/\bequation\b/)[1]?.split(/\b(?:algorithm|end)\b/)[0] ?? "";
-      const eqCountFromSrc = eqSection
-        .split(";")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0 && !s.startsWith("annotation")).length;
+      const evalContext = ctx.current ?? new Context(new NodeFileSystem());
+      const cstMetrics = extractModelicaMetricsFromCst(evalContext, srcToInspect);
 
-      let stateCount = Math.max(
-        1,
-        new Set(derMatches).size > 0 ? derMatches.length : Math.min(2, realMatches.length || 2),
-      );
-      let parameterCount = paramMatches.length;
-      let totalVars = Math.max(stateCount, realMatches.length || (eqCountFromSrc > 0 ? eqCountFromSrc : 18));
-      let algebraicCount = Math.max(0, totalVars - stateCount);
-      let equationCount = eqCountFromSrc > 0 ? eqCountFromSrc : totalVars;
+      let stateCount = cstMetrics?.stateCount ?? 1;
+      let parameterCount = cstMetrics?.parameterCount ?? 0;
+      let totalVars = cstMetrics?.totalVars ?? 18;
+      let algebraicCount = cstMetrics?.algebraicCount ?? Math.max(0, totalVars - stateCount);
+      let equationCount = cstMetrics?.equationCount ?? totalVars;
       let bltBlocks = `${Math.max(1, Math.min(6, algebraicCount || 6))}×${Math.max(1, Math.min(6, algebraicCount || 6))} torn`;
 
       if (arenaResult && arenaResult.varCount > 0) {
@@ -452,7 +549,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           const bltVarCount = blt.blocks.reduce((acc, b) => acc + b.vars.length, 0);
           if (unknownCnt > 0 || bltVarCount > 0) {
             totalVars = unknownCnt > 0 ? unknownCnt : bltVarCount;
-            stateCount = Math.min(totalVars, Math.max(1, derVarCnt > 0 ? derVarCnt : derMatches.length));
+            stateCount = Math.min(totalVars, Math.max(1, derVarCnt > 0 ? derVarCnt : (cstMetrics?.stateCount ?? 1)));
             algebraicCount = Math.max(0, totalVars - stateCount);
           }
           if (arenaResult.eqCount > 0) {
@@ -989,13 +1086,16 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         // Flatten may fail for some classes — still return what we can
       }
 
-      const equationTexts: string[] = [];
-      // Extract equation lines from flattened output
-      const eqMatch = flatText.match(/equation\n([\s\S]*?)(?:\nend |$)/);
-      if (eqMatch?.[1]) {
-        for (const line of eqMatch[1].split("\n")) {
-          const trimmed = line.trim();
-          if (trimmed && trimmed !== "equation") equationTexts.push(trimmed);
+      // Extract equation lines from flattened output using CST WASM parser
+      const equationTexts = extractEquationsFromCst(ctx.current, flatText);
+      if (equationTexts.length === 0 && flatText) {
+        // Fallback for mock or partial flattened text
+        const eqMatch = flatText.match(/equation\n([\s\S]*?)(?:\nend |$)/);
+        if (eqMatch?.[1]) {
+          for (const line of eqMatch[1].split("\n")) {
+            const trimmed = line.trim();
+            if (trimmed && trimmed !== "equation") equationTexts.push(trimmed);
+          }
         }
       }
 
@@ -1913,7 +2013,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             fs.writeFileSync(tempFilePath, certifiedCode, "utf-8");
             try {
               await tempCtx.addLibrary(tempFilePath);
-              const mName = targetClass ?? certifiedCode.match(/\b(?:model|block|class)\s+([A-Za-z0-9_]+)/)?.[1];
+              const mName =
+                targetClass ??
+                extractFirstClassNameFromCst(tempCtx, certifiedCode) ??
+                tempCtx.classes[0]?.name ??
+                targetClass;
               if (mName) {
                 const arena = tempCtx.flattenArena(mName);
                 if (arena && arena.varCount > 0) {
@@ -1994,7 +2098,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             fs.writeFileSync(simFilePath, certifiedCode, "utf-8");
             try {
               await simCtx.addLibrary(simFilePath);
-              const mName = targetClass ?? certifiedCode.match(/\b(?:model|block|class)\s+([A-Za-z0-9_]+)/)?.[1];
+              const mName =
+                targetClass ??
+                extractFirstClassNameFromCst(simCtx, certifiedCode) ??
+                simCtx.classes[0]?.name ??
+                targetClass;
               if (mName) {
                 const simArena = simCtx.flattenArena(mName);
                 if (simArena && simArena.varCount > 0 && simArena.eqCount > 0) {

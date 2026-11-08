@@ -8,6 +8,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { registerWorkspaceFeaturesProvider } from "../src/providers/workspaceFeaturesProvider.js";
 import { ValidationService } from "../src/services/validation-service.js";
 import { WorkspaceManager } from "../src/services/workspace-manager.js";
+import { seedTestWorkspaceThreads } from "./fixtures/demo-threads.js";
 
 const expect = (val: any) => ({
   toBe: (expected: any) => assert.strictEqual(val, expected),
@@ -20,7 +21,7 @@ const expect = (val: any) => ({
 
 describe("LSP Live Digital Thread Diagnostics & QuickFix Actions", () => {
   it("should have canonical hypergraph and default threads in WorkspaceManager", () => {
-    const wm = new WorkspaceManager(undefined, { seedDemoThreads: true });
+    const wm = new WorkspaceManager(undefined, { threadSeeder: seedTestWorkspaceThreads });
     expect(wm.hypergraph).toBeDefined();
     expect(wm.hypergraph.getThreadCount()).toBeGreaterThan(0);
 

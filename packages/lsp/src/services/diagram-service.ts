@@ -14,18 +14,23 @@ import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
-/**
- * Retrieves the globally registered Modelica diagram operations module.
- */
-function getModelicaDiagramOps(): any {
-  return (globalThis as any).modelicaDiagramOps ?? {};
+export interface DiagramServiceOptions {
+  modelicaDiagramOps?: any;
+  sysml2DiagramOps?: any;
 }
 
 /**
- * Retrieves the globally registered SysML v2 diagram operations module.
+ * Retrieves the registered Modelica diagram operations module.
  */
-function getSysML2DiagramOps(): any {
-  return (globalThis as any).sysml2DiagramOps ?? {};
+function getModelicaDiagramOps(service?: DiagramService): any {
+  return service?.modelicaDiagramOps ?? (globalThis as any).modelicaDiagramOps ?? {};
+}
+
+/**
+ * Retrieves the registered SysML v2 diagram operations module.
+ */
+function getSysML2DiagramOps(service?: DiagramService): any {
+  return service?.sysml2DiagramOps ?? (globalThis as any).sysml2DiagramOps ?? {};
 }
 
 /**
@@ -59,6 +64,10 @@ export class DiagramService {
   public validationService?: any;
   /** Optional reference to the parser service for retrieving active WASM parsers. */
   public parserService?: any;
+  /** Injected Modelica diagram operations module. */
+  public modelicaDiagramOps?: any;
+  /** Injected SysML v2 diagram operations module. */
+  public sysml2DiagramOps?: any;
 
   /**
    * Clears both the local and global diagram payload caches.
@@ -76,6 +85,7 @@ export class DiagramService {
    * @param workspaceManager - Workspace manager providing symbol resolution and class instantiation.
    * @param validationService - Optional validation service reference.
    * @param parserService - Optional parser service reference.
+   * @param options - Optional diagram operations injection options.
    */
   constructor(
     private connection: Connection,
@@ -83,9 +93,12 @@ export class DiagramService {
     private workspaceManager: WorkspaceManager,
     validationService?: any,
     parserService?: any,
+    options?: DiagramServiceOptions,
   ) {
     this.validationService = validationService;
     this.parserService = parserService;
+    this.modelicaDiagramOps = options?.modelicaDiagramOps;
+    this.sysml2DiagramOps = options?.sysml2DiagramOps;
     (globalThis as any).clearDiagramCache = () => this.clearCache();
   }
 
@@ -166,7 +179,7 @@ export class DiagramService {
     if (!params.uri.endsWith(".mo")) {
       if (params.sidecarContent) {
         try {
-          const sysmlOps = getSysML2DiagramOps();
+          const sysmlOps = getSysML2DiagramOps(this);
           const parsed = sysmlOps.parseLayout
             ? sysmlOps.parseLayout(params.sidecarContent)
             : JSON.parse(params.sidecarContent);
@@ -217,7 +230,7 @@ export class DiagramService {
     const lastIndexedMap = this.validationService?.lastIndexedText ?? (globalThis as any).lastIndexedText;
     const dependenciesReady =
       this.validationService?.dependenciesReady ?? (globalThis as any).dependenciesReady ?? true;
-    const indexedText = (params.documentText !== undefined ? params.documentText : lastIndexedMap?.get(effectiveUri));
+    const indexedText = params.documentText !== undefined ? params.documentText : lastIndexedMap?.get(effectiveUri);
     const version =
       indexedText != null
         ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${dependenciesReady}`
@@ -228,7 +241,10 @@ export class DiagramService {
     const cached = this.diagramCache.get(cacheKey) ?? (globalThis as any).diagramCache?.get(cacheKey);
     if (cached && cached.version === version) {
       const text = indexedText ?? "";
-      const likelyHasComponents = /\b(model|block|class)\b[\s\S]*?\b(?:annotation\s*\(\s*Placement|[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*[\(;])/i.test(text);
+      const likelyHasComponents =
+        /\b(model|block|class)\b[\s\S]*?\b(?:annotation\s*\(\s*Placement|[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*[(;])/i.test(
+          text,
+        );
       if (!(likelyHasComponents && (!cached.data?.nodes || cached.data.nodes.length === 0))) {
         this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
         return cached.data;
@@ -271,7 +287,7 @@ export class DiagramService {
 
     try {
       const tBuild0 = performance.now();
-      const ops = getModelicaDiagramOps();
+      const ops = getModelicaDiagramOps(this);
       const result = ops.buildDiagramData ? await ops.buildDiagramData(classInstance) : null;
       const tBuild = performance.now() - tBuild0;
       if (result) {
@@ -350,7 +366,7 @@ export class DiagramService {
         },
       });
 
-      const sysmlOps = getSysML2DiagramOps();
+      const sysmlOps = getSysML2DiagramOps(this);
       const sysml2Backend = new SysML2DiagramBackend({
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         getLayout: (uri) => {
@@ -482,6 +498,8 @@ export class DiagramService {
           if (this.parserService?.isParserReady("sysml2")) {
             return this.parserService.getParser("sysml2");
           }
+          const p = globalLanguageRegistry.getPluginById("sysml2")?.parser;
+          if (p) return p;
           return (globalThis as any).sysml2ParserReady && (globalThis as any).sysml2Parser
             ? (globalThis as any).sysml2Parser
             : null;

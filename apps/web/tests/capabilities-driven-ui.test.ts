@@ -483,10 +483,11 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       const { PackageVersionsTab } = await import("../src/pages/package/tabs/PackageVersionsTab.js");
       const { PackageDependenciesTab } = await import("../src/pages/package/tabs/PackageDependenciesTab.js");
 
-      // 1. Default flags must be disabled
+      // 1. Production launch baseline: artifacts and compare tabs are enabled by default,
+      //    while digital_thread_explorer and package_advanced_exports remain gated
       assert.equal(DEFAULT_FRONTEND_FLAGS.digital_thread_explorer, false);
-      assert.equal(DEFAULT_FRONTEND_FLAGS.package_artifacts_tab, false);
-      assert.equal(DEFAULT_FRONTEND_FLAGS.package_version_compare, false);
+      assert.equal(DEFAULT_FRONTEND_FLAGS.package_artifacts_tab, true);
+      assert.equal(DEFAULT_FRONTEND_FLAGS.package_version_compare, true);
       assert.equal(DEFAULT_FRONTEND_FLAGS.package_advanced_exports, false);
 
       // 2. PackageDetailPage must gate digital-thread, artifacts, and compare tabs
@@ -543,18 +544,21 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       );
       assert.ok(versionsDefaultHtml.includes("v4.1.0"), "Must render v-prefixed version badge");
       assert.ok(versionsDefaultHtml.includes(".zip"), "Must render direct .zip download per version");
-      assert.ok(!versionsDefaultHtml.includes("Compare"), "Compare button must be hidden by default");
+      assert.ok(
+        versionsDefaultHtml.includes("Compare"),
+        "Compare button must appear by default for launch when multiple versions exist",
+      );
 
-      const versionsCompareEnabledHtml = renderToStaticMarkup(
+      const versionsCompareDisabledHtml = renderToStaticMarkup(
         React.createElement(
           FeatureFlagContext.Provider,
           {
             value: {
-              flags: { ...DEFAULT_FRONTEND_FLAGS, package_version_compare: true },
+              flags: { ...DEFAULT_FRONTEND_FLAGS, package_version_compare: false },
               overrides: {},
               isLoading: false,
               refreshFlags: async () => {},
-              isEnabled: (k: string) => k === "package_version_compare",
+              isEnabled: (k: string) => k !== "package_version_compare" && (DEFAULT_FRONTEND_FLAGS[k] ?? false),
               setFlagOverride: () => {},
               resetAllOverrides: () => {},
             },
@@ -572,8 +576,8 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
         ),
       );
       assert.ok(
-        versionsCompareEnabledHtml.includes("Compare"),
-        "Compare button must appear when package_version_compare is enabled and multiple versions exist",
+        !versionsCompareDisabledHtml.includes("Compare"),
+        "Compare button must be hidden when package_version_compare is disabled",
       );
 
       // 5. PackageDependenciesTab: zero-dependency card and populated dependency rows

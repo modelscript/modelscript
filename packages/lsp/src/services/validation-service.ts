@@ -1124,7 +1124,11 @@ export class ValidationService {
       else context.workspaceIndex = wsIndex;
     }
 
-    const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), uri);
+    const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), uri, {
+      documentLSPBridges: this.documentLSPBridges,
+      documents: this.documentManager.documents,
+      sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
+    });
     this.documentLSPBridges.set(uri, bridge as any);
 
     this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
@@ -1226,7 +1230,11 @@ export class ValidationService {
               } else if (typeof (plugin.workspaceIndex as any).addFile === "function") {
                 (plugin.workspaceIndex as any).addFile(uri, text);
               }
-            } catch {}
+            } catch (indexErr: any) {
+              this.connection.console.warn(
+                `[validate] Failed to index ${uri} in plugin workspace: ${indexErr?.message ?? indexErr}`,
+              );
+            }
           }
           this.lastSemanticDiagnostics.set(uri, diags);
           this.connection.sendDiagnostics({ uri, diagnostics: diags });
@@ -1252,86 +1260,74 @@ export class ValidationService {
       return;
     }
 
-    // Handle CFD configuration files (.cfg, .cfgt, .su2, .cfd, .foam)
-    const isCfd = textDocument.languageId === "cfd" || /\.(cfg|cfgt|su2|cfd|foam)($|\?|#)/i.test(uri);
-    if (isCfd && (!plugin || plugin.id === "cfd")) {
+    // Fallback for isolated unit tests or plugins without registered customHandlers.validate
+    const isCfd = textDocument.languageId === "cfd" || /\.(foam|openfoam|flunt|cas|msh)$/i.test(uri);
+    if (isCfd) {
       await this.validateCfdDocument(textDocument, plugin);
       return;
     }
 
-    // Handle FEA input deck files (.inp, .inpt, .bdf, .fea)
-    const isFea = textDocument.languageId === "fea" || /\.(inp|inpt|bdf|fea)($|\?|#)/i.test(uri);
-    if (isFea && (!plugin || plugin.id === "fea")) {
+    const isFea = textDocument.languageId === "fea" || /\.(inp|bdf|dat|fem)$/i.test(uri);
+    if (isFea) {
       await this.validateFeaDocument(textDocument, plugin);
       return;
     }
 
-    // Handle OpenSCAD files (.scad)
-    const isScad = textDocument.languageId === "scad" || /\.scad($|\?|#)/i.test(uri);
+    const isScad = textDocument.languageId === "scad" || /\.scad$/i.test(uri);
     if (isScad) {
       await this.validateScadDocument(textDocument, plugin);
       return;
     }
 
-    // Handle PSCAD files (.pscx, .pslx, .pswx, .psmx)
-    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(uri);
+    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|psl)$/i.test(uri);
     if (isPscad) {
       await this.validatePscadDocument(textDocument, plugin);
       return;
     }
 
-    // Handle EASY5 model files (.ez5, .ezm, .ezd, .eas)
-    const isEasy5 = textDocument.languageId === "easy5" || /\.(ez5|ezm|ezd|eas)($|\?|#)/i.test(uri);
+    const isEasy5 = textDocument.languageId === "easy5" || /\.(ez5|ez5f|ez5c)$/i.test(uri);
     if (isEasy5) {
       await this.validateEasy5Document(textDocument, plugin);
       return;
     }
 
-    // Handle NASA ROCETS liquid propulsion deck files (.roc, .deck)
-    const isRocets = textDocument.languageId === "rocets" || /\.(roc|deck)($|\?|#)/i.test(uri);
+    const isRocets = textDocument.languageId === "rocets" || /\.(roc|rkt)$/i.test(uri);
     if (isRocets) {
       await this.validateRocetsDocument(textDocument, plugin);
       return;
     }
 
-    // Handle Fortran files (.f, .for, .f90, .f95, .f03, .f08)
-    const isFortran = textDocument.languageId === "fortran" || /\.(f|for|f90|f95|f03|f08)($|\?|#)/i.test(uri);
+    const isFortran = textDocument.languageId === "fortran" || /\.(f90|f95|f03|f08|f77|for)$/i.test(uri);
     if (isFortran) {
       await this.validateFortranDocument(textDocument, plugin);
       return;
     }
 
-    // Handle C files (.c, .h)
-    const isC = textDocument.languageId === "c" || /\.(c|h)($|\?|#)/i.test(uri);
+    const isC = textDocument.languageId === "c" || /\.(c|h)$/i.test(uri);
     if (isC) {
       await this.validateCDocument(textDocument, plugin);
       return;
     }
 
-    // Handle SSP SystemStructureDescription & ParameterSet files (.ssd, .ssp, .ssv)
-    const isSsp =
-      textDocument.languageId === "ssp" || textDocument.languageId === "ssv" || /\.(ssd|ssp|ssv)($|\?|#)/i.test(uri);
+    const isSsp = textDocument.languageId === "ssp" || /\.(ssd|ssv|ssm|ssb|ssp)$/i.test(uri);
     if (isSsp) {
       await this.validateSspDocument(textDocument, plugin);
       return;
     }
 
-    // Handle CSV telemetry files (.csv)
-    const isCsv = textDocument.languageId === "csv" || /\.csv($|\?|#)/i.test(uri);
+    const isCsv = textDocument.languageId === "csv" || /\.csv$/i.test(uri);
     if (isCsv) {
       await this.validateCsvDocument(textDocument, plugin);
       return;
     }
 
-    // Handle SIMPACK multibody files (.spck, .sim, .mbs)
-    const isSimpack = textDocument.languageId === "simpack" || /\.(spck|sim|mbs)($|\?|#)/i.test(uri);
+    const isSimpack = textDocument.languageId === "simpack" || /\.(spck|simpack)$/i.test(uri);
     if (isSimpack) {
       await this.validateSimpackDocument(textDocument, plugin);
       return;
     }
 
-    // Handle GENSYS railway vehicle decks (.calc, .run, .sub, .geom, .trax, .wheel)
-    const isGensys = textDocument.languageId === "gensys" || /\.(calc|run|sub|geom|trax|wheel)($|\?|#)/i.test(uri);
+    const isGensys = textDocument.languageId === "gensys" || /\.(gen|gensys)$/i.test(uri);
     if (isGensys) {
       await this.validateGensysDocument(textDocument, plugin);
       return;
@@ -1339,10 +1335,10 @@ export class ValidationService {
 
     // 2. Uniform Parsing Pipeline
     const langId = plugin?.id ?? (textDocument.languageId || "modelica");
-    const parser = plugin?.parser ?? this.parserService.getParser(langId);
+    const parser = plugin?.parser ?? this.parserService?.getParser?.(langId);
 
     const isModelica = langId === "modelica" || /\.(mo|mos|msim)($|\?|#)/i.test(uri);
-    if (!parser && (!this.parserService.sharedContext || !isModelica)) {
+    if (!parser && (!this.parserService?.sharedContext || !isModelica)) {
       if (plugin?.actionHandlers) {
         const lintKey = Object.keys(plugin.actionHandlers).find((k) => k.startsWith("lint_"));
         if (lintKey && typeof plugin.actionHandlers[lintKey] === "function") {
@@ -1365,7 +1361,11 @@ export class ValidationService {
                 } else if (typeof (wsIdx as any).addFile === "function") {
                   (wsIdx as any).addFile(uri, text);
                 }
-              } catch {}
+              } catch (wsErr: any) {
+                this.connection.console.warn(
+                  `[validate] Failed to index ${uri} in workspace: ${wsErr?.message ?? wsErr}`,
+                );
+              }
             }
             this.lastSemanticDiagnostics.set(uri, diags);
             this.connection.sendDiagnostics({ uri, diagnostics: diags });
@@ -1700,7 +1700,11 @@ export class ValidationService {
       // Create / update LSP bridge
       const currentDoc = this.documentManager.documents.get(uri);
       const currentText = currentDoc ? currentDoc.getText() : text;
-      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(currentText), uri);
+      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(currentText), uri, {
+        documentLSPBridges: this.documentLSPBridges,
+        documents: this.documentManager.documents,
+        sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
+      });
       this.documentLSPBridges.set(uri, bridge as any);
 
       // Populate class wrappers immediately so diagram edit handlers always see up-to-date CST nodes
@@ -1844,11 +1848,31 @@ export class ValidationService {
       if (text) {
         const lines = text.split(/\r?\n/);
 
-        // 1. Modelica DroneSimulation diagnostics
-        if (
+        // 1. Multi-domain Digital Thread parameter parity diagnostics
+        const threadEntries = this.workspaceManager?.getThreadsForUri(uri) ?? [];
+        let calibratedMass: number | undefined;
+        let peerSysmlName: string | undefined;
+
+        for (const te of threadEntries) {
+          const aligned = this.workspaceManager?.findAlignedElementsBySlot(te.slot) ?? [];
+          for (const el of aligned) {
+            if (el.uri !== uri && el.properties?.["mass"] !== undefined) {
+              calibratedMass = el.properties["mass"];
+            }
+            if (el.domain === "sysml2" || el.domain === "sysml") {
+              peerSysmlName = el.name.replace(/^(?:part\s+def|model)\s+/, "");
+            }
+          }
+          if (calibratedMass !== undefined) break;
+        }
+
+        const isParityTarget =
           (uri.endsWith(".mo") || langId === "modelica") &&
-          (uri.includes("DroneSimulation") || text.includes("DroneSimulation"))
-        ) {
+          (calibratedMass !== undefined || uri.includes("DroneSimulation") || text.includes("DroneSimulation"));
+
+        if (isParityTarget) {
+          const targetMass = calibratedMass ?? 1.2;
+          const targetSysml = peerSysmlName ?? "DroneAssembly";
           const cachedTree = this.documentManager?.documentTrees?.get(uri);
           const rootNode = cachedTree?.tree?.rootNode;
           let handledViaCst = false;
@@ -1871,19 +1895,18 @@ export class ValidationService {
                   const startPos = textDocument.positionAt(idNode.startIndex);
                   const endPos = textDocument.positionAt(idNode.endIndex);
                   handledViaCst = true;
-                  if (Math.abs(val - 1.2) > 0.01) {
+                  if (Math.abs(val - targetMass) > 0.01) {
                     newSemanticDiagnostics.push({
                       severity: DiagnosticSeverity.Warning,
                       range: { start: startPos, end: endPos },
-                      message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (1.20 kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
+                      message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (${targetMass.toFixed(2)} kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
                       source: "modelscript-digital-thread",
                     });
                   } else {
                     newSemanticDiagnostics.push({
                       severity: DiagnosticSeverity.Information,
                       range: { start: startPos, end: endPos },
-                      message:
-                        "[Digital Thread In Parity] Parameter 'm' (1.20 kg) is synchronized with FEA structural mass and SysML v2 DroneAssembly.",
+                      message: `[Digital Thread In Parity] Parameter 'm' (${targetMass.toFixed(2)} kg) is synchronized with FEA structural mass and SysML v2 ${targetSysml}.`,
                       source: "modelscript-digital-thread",
                     });
                   }
@@ -1902,19 +1925,18 @@ export class ValidationService {
                 const val = parseFloat(massMatch[1]!);
                 const colMatch = /\bReal\s+(m)\b/.exec(line);
                 const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
-                if (Math.abs(val - 1.2) > 0.01) {
+                if (Math.abs(val - targetMass) > 0.01) {
                   newSemanticDiagnostics.push({
                     severity: DiagnosticSeverity.Warning,
                     range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-                    message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (1.20 kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
+                    message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (${targetMass.toFixed(2)} kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
                     source: "modelscript-digital-thread",
                   });
                 } else {
                   newSemanticDiagnostics.push({
                     severity: DiagnosticSeverity.Information,
                     range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-                    message:
-                      "[Digital Thread In Parity] Parameter 'm' (1.20 kg) is synchronized with FEA structural mass and SysML v2 DroneAssembly.",
+                    message: `[Digital Thread In Parity] Parameter 'm' (${targetMass.toFixed(2)} kg) is synchronized with FEA structural mass and SysML v2 ${targetSysml}.`,
                     source: "modelscript-digital-thread",
                   });
                 }
@@ -2121,7 +2143,7 @@ export class ValidationService {
   /**
    * Validates an OpenSCAD (`.scad`) document using the SCAD WASM parser, CST linter, and digital thread CAD bounds checks.
    */
-  private async validateScadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+  public async validateScadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const scadDiagnostics: Diagnostic[] = [];
 
@@ -2289,7 +2311,7 @@ export class ValidationService {
     return Math.min(Math.max(colZero + 1, lineText.length), colZero + 8);
   }
 
-  private async validatePscadDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validatePscadDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const pscadDiagnostics: Diagnostic[] = [];
 
@@ -2358,7 +2380,7 @@ export class ValidationService {
   /**
    * Parses, lints, and indexes an EASY5 (`.ez5`, `.ezm`, `.ezd`, `.eas`) dynamic simulation model.
    */
-  private async validateEasy5Document(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateEasy5Document(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const easy5Diagnostics: Diagnostic[] = [];
     try {
       const text = textDocument.getText();
@@ -2426,7 +2448,7 @@ export class ValidationService {
   /**
    * Parses, lints, and indexes a NASA ROCETS (`.roc`, `.deck`) propulsion deck.
    */
-  private async validateRocetsDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateRocetsDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const rocetsDiagnostics: Diagnostic[] = [];
     try {
       const text = textDocument.getText();
@@ -2494,7 +2516,7 @@ export class ValidationService {
   /**
    * Parses and lints a Fortran document (`.f`, `.for`, `.f90`, `.f95`, `.f03`, `.f08`).
    */
-  private async validateFortranDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateFortranDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const fortranDiagnostics: Diagnostic[] = [];
 
@@ -2585,7 +2607,7 @@ export class ValidationService {
   /**
    * Parses and lints a C document (`.c`, `.h`).
    */
-  private async validateCDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateCDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const cDiagnostics: Diagnostic[] = [];
 
@@ -2633,7 +2655,7 @@ export class ValidationService {
   /**
    * Validates an SSP (`SystemStructure.ssd`) or SSV (`ParameterSet.ssv`) XML document.
    */
-  private async validateSspDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateSspDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const sspDiagnostics: Diagnostic[] = [];
 
@@ -2683,7 +2705,7 @@ export class ValidationService {
   /**
    * Validates a CSV tabular data document using `@modelscript/csv`.
    */
-  private async validateCsvDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateCsvDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const csvDiagnostics: Diagnostic[] = [];
 
@@ -2727,7 +2749,7 @@ export class ValidationService {
   /**
    * Validates a SIMPACK multibody model (`.spck`, `.sim`, `.mbs`) and publishes diagnostics.
    */
-  private async validateSimpackDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateSimpackDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const simpackDiagnostics: Diagnostic[] = [];
 
@@ -2763,7 +2785,7 @@ export class ValidationService {
   /**
    * Validates a GENSYS railway vehicle deck (`.calc`, `.ins`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel`) and publishes diagnostics.
    */
-  private async validateGensysDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateGensysDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const gensysDiagnostics: Diagnostic[] = [];
 
@@ -2799,7 +2821,7 @@ export class ValidationService {
   /**
    * Validates a CFD configuration file (`.cfg`, `.su2`, `.foam`, `.cfd`) and emits aerodynamic polar diagnostics.
    */
-  private async validateCfdDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateCfdDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const cfdDiagnostics: Diagnostic[] = [];
 
@@ -2942,7 +2964,7 @@ export class ValidationService {
   /**
    * Validates an FEA input deck (`.inp`, `.bdf`, `.fea`) for card syntax, parameter formatting, and Von Mises stress safety factors.
    */
-  private async validateFeaDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  public async validateFeaDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const feaDiagnostics: Diagnostic[] = [];
 
@@ -3179,7 +3201,11 @@ export class ValidationService {
       }
 
       const engine = this.workspaceManager.globalStepQueryEngine;
-      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri);
+      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri, {
+        documentLSPBridges: this.documentLSPBridges,
+        documents: this.documentManager.documents,
+        sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
+      });
       this.documentLSPBridges.set(textDocument.uri, bridge);
 
       if (tree) {
@@ -3808,7 +3834,8 @@ export class ValidationService {
     if (!ctx || typeof ctx.flattenArena !== "function") return null;
     try {
       return ctx.flattenArena(name, symbolId, uri) ?? null;
-    } catch {
+    } catch (err: any) {
+      this.connection.console.debug?.(`[verification] Could not flatten '${name}' (${uri}): ${err?.message ?? err}`);
       return null;
     }
   }

@@ -35,14 +35,16 @@ import {
   ContractAlgebra,
   DecisionTableVerifier,
   EventTraceExplorer,
+  extractSysML2Constraints,
   extractSysML2ContractHierarchy,
   LoopInvariantAnalyzer,
+  mapConstraintsToOptimizer,
   SysML2DaeLowerer,
   type AssumeGuaranteeContract,
   type WhileLoopInfo,
 } from "@modelscript/sysml2";
 import { ClosedLoopCompilerEngine, runSelfHealingPipeline } from "../agent/index.js";
-import { LspContext } from "../lsp-context.js";
+import { LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arena-utils.js";
 import { flattenTargetClass } from "./simulationEndpoints.js";
@@ -418,15 +420,16 @@ export function registerAnalysisEndpoints(context: LspContext) {
           if (doc) await context.validationService.validateTextDocument(doc);
 
           const sysmlDb = qe.toQueryDB();
-          const extractor = (globalThis as any).extractSysML2Constraints;
-          const mapper = (globalThis as any).mapConstraintsToOptimizer;
-          if (typeof extractor === "function") {
-            const rawConstraints = extractor(sysmlDb, params.sysmlFilter ?? (params as any).constraintsFilter);
-            const rawVarMap = params.sysmlVariableMap ?? (params as any).variableMap;
-            const variableMap = rawVarMap ? new Map(Object.entries(rawVarMap)) : undefined;
-            stateConstraints = typeof mapper === "function" ? mapper(rawConstraints, variableMap) : rawConstraints;
-            context.connection.console.info(`[optimize] Extracted ${stateConstraints?.length ?? 0} constraints`);
-          }
+          const rawConstraints = extractSysML2Constraints(
+            sysmlDb,
+            params.sysmlFilter ?? (params as any).constraintsFilter,
+          );
+          const rawVarMap = params.sysmlVariableMap ?? (params as any).variableMap;
+          const variableMap = rawVarMap
+            ? new Map<string, string>(Object.entries(rawVarMap).map(([k, v]) => [k, String(v)]))
+            : undefined;
+          stateConstraints = mapConstraintsToOptimizer(rawConstraints, variableMap);
+          context.connection.console.info(`[optimize] Extracted ${stateConstraints?.length ?? 0} constraints`);
         } catch (e) {
           context.connection.console.warn(
             `[optimize] Constraint extraction failed: ${e instanceof Error ? e.message : String(e)}`,
@@ -2669,8 +2672,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
                 hierarchy: extracted,
               };
             }
+            const features = resolveFeatureFlags((context as any).settings);
             const isPowertrainDemo =
-              Boolean(params.uri && /powertrain/i.test(params.uri)) || /Powertrain/i.test(docText);
+              features.demos && (Boolean(params.uri && /powertrain/i.test(params.uri)) || /Powertrain/i.test(docText));
             if (!isPowertrainDemo) {
               return {
                 success: true,

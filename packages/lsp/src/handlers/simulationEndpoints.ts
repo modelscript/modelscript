@@ -8,6 +8,8 @@ import {
   WasmOpenFoamProvider,
 } from "@modelscript/exchange/cosim";
 import { generateMultiModelWrapper } from "@modelscript/exchange/fmu";
+import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener";
 import {
   bindRequirementsToModelica,
   Causality,
@@ -172,17 +174,14 @@ export function flattenTargetClass(
       context.workspaceManager?.globalModelicaQueryEngine ?? context.workspaceManager?.getQueryEngine?.("modelica");
     if (qe) {
       try {
-        const FlattenerClass = (globalThis as any).ArenaQueryFlattener;
-        if (FlattenerClass) {
-          const queryDB = qe.toQueryDB();
-          const flattener = new FlattenerClass(queryDB);
-          let simClassId = target.symbolId;
-          if (!qe.index?.symbols?.has(simClassId)) {
-            const c = qe.index?.byName?.get(target.className);
-            if (c && c.length > 0) simClassId = c[0]!;
-          }
-          arena = flattener.flatten(simClassId);
+        const queryDB = qe.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
+        let simClassId = target.symbolId;
+        if (!qe.index?.symbols?.has(simClassId)) {
+          const c = qe.index?.byName?.get(target.className);
+          if (c && c.length > 0) simClassId = c[0]!;
         }
+        arena = flattener.flatten(simClassId);
       } catch (e: any) {
         return { error: `Failed to flatten class '${target.className}': ${e?.message ?? e}` };
       }
@@ -299,7 +298,6 @@ export function registerSimulationEndpoints(context: LspContext) {
           target.className.toLowerCase().includes("fea") ||
           target.className.toLowerCase().includes("structural") ||
           target.className.toLowerCase().includes("stress") ||
-          target.className.toLowerCase().includes("dronearm") ||
           target.className.toLowerCase().includes("cantilever");
 
         const isCfdProcess =
@@ -1041,12 +1039,11 @@ export function registerSimulationEndpoints(context: LspContext) {
 
     try {
       const qe = context.workspaceManager.getQueryEngine("modelica");
-      const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
-      if (!InterpreterClass || !qe) {
+      if (!qe) {
         return { output: "", error: "Script execution engine not initialized." };
       }
 
-      const interpreter = new InterpreterClass(qe);
+      const interpreter = new ArenaScriptInterpreter(qe);
       const result = interpreter.execute(tree.rootNode);
       return result;
     } finally {
@@ -1056,13 +1053,10 @@ export function registerSimulationEndpoints(context: LspContext) {
 
   context.connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
     const qe = context.workspaceManager.getQueryEngine("modelica");
-    const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
-    const sharedContext =
-      context.state.sharedContext ?? context.parserService.sharedContext ?? (globalThis as any).sharedContext;
-    const parser =
-      (globalThis as any).parser ?? (globalThis as any).modelicaParser ?? context.parserService.getParser("modelica");
+    const sharedContext = context.state.sharedContext ?? context.parserService.sharedContext;
+    const parser = context.parserService.getParser("modelica") ?? (globalThis as any).modelicaParser;
 
-    if ((!sharedContext && !parser) || !qe || !InterpreterClass) {
+    if ((!sharedContext && !parser) || !qe) {
       return { output: "", error: "Language server not fully initialized." };
     }
 
@@ -1103,7 +1097,7 @@ export function registerSimulationEndpoints(context: LspContext) {
 
     let interpreter = notebookSessions.get(params.sessionId);
     if (!interpreter) {
-      interpreter = new InterpreterClass(qe);
+      interpreter = new ArenaScriptInterpreter(qe);
       notebookSessions.set(params.sessionId, interpreter);
     }
 
@@ -1478,15 +1472,14 @@ export async function computeModelReachability(
       return fallback;
     };
 
-    const isDroneModel =
-      target.className === "DroneSimulation" ||
-      (arena.getVarIdxByName("z") >= 0 &&
-        arena.getVarIdxByName("v") >= 0 &&
-        arena.getVarIdxByName("z_target") >= 0 &&
-        arena.getVarIdxByName("kz") >= 0 &&
-        arena.getVarIdxByName("kv") >= 0);
+    const isVerticalClimbController =
+      arena.getVarIdxByName("z") >= 0 &&
+      arena.getVarIdxByName("v") >= 0 &&
+      arena.getVarIdxByName("z_target") >= 0 &&
+      arena.getVarIdxByName("kz") >= 0 &&
+      arena.getVarIdxByName("kv") >= 0;
 
-    if (isDroneModel) {
+    if (isVerticalClimbController) {
       const tStartExec = Date.now();
       const m = getParamVal("m", 1.2);
       const A = getParamVal("A", 0.03);
