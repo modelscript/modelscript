@@ -349,6 +349,7 @@ export const baselineMigration: Migration = {
         is_silenced      INTEGER DEFAULT 0,
         is_sensitive     INTEGER DEFAULT 0,
         content_warning  TEXT,
+        space_id         TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         created_at       TEXT DEFAULT (datetime('now')),
         updated_at       TEXT DEFAULT (datetime('now')),
         published_at     TEXT DEFAULT (datetime('now'))
@@ -362,6 +363,7 @@ export const baselineMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_posts_reply_created ON posts(reply_to_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_posts_repost_created ON posts(repost_of_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_posts_visibility_created ON posts(visibility, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_posts_space ON posts(space_id, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS post_mentions (
         post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -430,6 +432,8 @@ export const baselineMigration: Migration = {
         post_id     INTEGER REFERENCES posts(id),
         metadata    TEXT,
         read        INTEGER DEFAULT 0,
+        archived    INTEGER DEFAULT 0,
+        starred     INTEGER DEFAULT 0,
         created_at  TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id, read);
@@ -555,10 +559,12 @@ export const baselineMigration: Migration = {
         visibility         TEXT DEFAULT 'public',
         default_branch     TEXT DEFAULT 'main',
         social_preview_url TEXT,
+        space_id           TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         created_at         TEXT DEFAULT (datetime('now')),
         UNIQUE(user_id, provider, namespace, project)
       );
       CREATE INDEX IF NOT EXISTS idx_linked_repos_user ON linked_repos(user_id);
+      CREATE INDEX IF NOT EXISTS idx_linked_repos_space ON linked_repos(space_id);
 
       CREATE TABLE IF NOT EXISTS repo_webhooks (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -610,12 +616,14 @@ export const baselineMigration: Migration = {
         icon              TEXT DEFAULT 'cpu',
         supported_formats TEXT DEFAULT '[]',
         is_public         INTEGER DEFAULT 1,
+        space_id          TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         created_at        TEXT DEFAULT (datetime('now')),
         updated_at        TEXT DEFAULT (datetime('now')),
         UNIQUE(user_id, slug)
       );
       CREATE INDEX IF NOT EXISTS idx_solutions_user ON solutions(user_id);
       CREATE INDEX IF NOT EXISTS idx_solutions_slug ON solutions(slug);
+      CREATE INDEX IF NOT EXISTS idx_solutions_space ON solutions(space_id);
 
       CREATE TABLE IF NOT EXISTS solution_releases (
         id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -646,10 +654,12 @@ export const baselineMigration: Migration = {
         repository_url    TEXT,
         quarantine_status TEXT DEFAULT 'clean',
         is_quarantined    INTEGER DEFAULT 0,
+        space_id          TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         created_at        TEXT DEFAULT (datetime('now')),
         modified_at       TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_packages_name ON packages(name);
+      CREATE INDEX IF NOT EXISTS idx_packages_space ON packages(space_id);
 
       CREATE TABLE IF NOT EXISTS package_versions (
         id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -724,18 +734,22 @@ export const baselineMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_pkg_dl_lookup ON package_downloads_daily(library_name, download_date);
 
       CREATE TABLE IF NOT EXISTS organizations (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        slug           TEXT NOT NULL UNIQUE,
-        name           TEXT NOT NULL,
-        display_name   TEXT,
-        description    TEXT,
-        website        TEXT,
-        billing_email  TEXT,
-        avatar_url     TEXT,
-        credit_balance REAL NOT NULL DEFAULT 0.0,
-        total_spent    REAL NOT NULL DEFAULT 0.0,
-        created_by     INTEGER NOT NULL REFERENCES users(id),
-        created_at     TEXT DEFAULT (datetime('now'))
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug            TEXT NOT NULL UNIQUE,
+        name            TEXT NOT NULL,
+        display_name    TEXT,
+        description     TEXT,
+        website         TEXT,
+        billing_email   TEXT,
+        avatar_url      TEXT,
+        banner_url      TEXT,
+        location        TEXT,
+        industry_preset TEXT DEFAULT 'systems_general',
+        is_verified     INTEGER NOT NULL DEFAULT 0,
+        credit_balance  REAL NOT NULL DEFAULT 0.0,
+        total_spent     REAL NOT NULL DEFAULT 0.0,
+        created_by      INTEGER NOT NULL REFERENCES users(id),
+        created_at      TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
 
@@ -747,6 +761,162 @@ export const baselineMigration: Migration = {
         PRIMARY KEY (org_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(user_id);
+
+      -- ── Ansatz Spaces (Polymorphic User & Organization Containers) ──────────────
+      CREATE TABLE IF NOT EXISTS spaces (
+        id                TEXT PRIMARY KEY,
+        slug              TEXT NOT NULL,
+        name              TEXT NOT NULL,
+        tagline           TEXT,
+        description       TEXT,
+        owner_type        TEXT NOT NULL CHECK(owner_type IN ('user', 'organization')),
+        user_id           INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        organization_id   INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+        domain_preset     TEXT NOT NULL DEFAULT 'systems_general',
+        visibility        TEXT NOT NULL DEFAULT 'public' CHECK(visibility IN ('public', 'unlisted', 'internal', 'private')),
+        avatar_url        TEXT,
+        banner_url        TEXT,
+        default_branch    TEXT NOT NULL DEFAULT 'main',
+        git_repo_path     TEXT,
+        enabled_tabs_json TEXT NOT NULL DEFAULT '["feed","chat","docs","articles","repos","packages","plm","twins"]',
+        settings_json     TEXT NOT NULL DEFAULT '{}',
+        follower_count    INTEGER NOT NULL DEFAULT 0,
+        member_count      INTEGER NOT NULL DEFAULT 1,
+        created_at        TEXT DEFAULT (datetime('now')),
+        updated_at        TEXT DEFAULT (datetime('now')),
+        CONSTRAINT chk_space_owner CHECK (
+          (owner_type = 'user' AND user_id IS NOT NULL AND organization_id IS NULL) OR
+          (owner_type = 'organization' AND organization_id IS NOT NULL AND user_id IS NULL)
+        ),
+        CONSTRAINT uq_space_user_slug UNIQUE(user_id, slug),
+        CONSTRAINT uq_space_org_slug UNIQUE(organization_id, slug)
+      );
+      CREATE INDEX IF NOT EXISTS idx_spaces_user ON spaces(user_id);
+      CREATE INDEX IF NOT EXISTS idx_spaces_org ON spaces(organization_id);
+      CREATE INDEX IF NOT EXISTS idx_spaces_preset ON spaces(domain_preset);
+      CREATE INDEX IF NOT EXISTS idx_spaces_visibility ON spaces(visibility);
+
+      -- ── Space Members & Engineering RBAC ────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS space_members (
+        space_id   TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL DEFAULT 'contributor' CHECK(role IN ('owner', 'lead_engineer', 'approver', 'contributor', 'reviewer', 'viewer')),
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (space_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_members_user ON space_members(user_id);
+
+      -- ── Space Followers (Activity Stream & Fediverse Subscriptions) ─────────────
+      CREATE TABLE IF NOT EXISTS space_follows (
+        space_id   TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (space_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_follows_user ON space_follows(user_id);
+
+      -- ── Space Living Docs / CMS Pages (Git-Backed Index) ────────────────────────
+      CREATE TABLE IF NOT EXISTS space_pages (
+        id                      TEXT PRIMARY KEY,
+        space_id                TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        slug                    TEXT NOT NULL,
+        title                   TEXT NOT NULL,
+        summary                 TEXT,
+        content_markdown        TEXT NOT NULL DEFAULT '',
+        path_in_git             TEXT NOT NULL,
+        parent_id               TEXT REFERENCES space_pages(id) ON DELETE SET NULL,
+        order_index             INTEGER NOT NULL DEFAULT 0,
+        last_commit_sha         TEXT,
+        author_user_id          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        is_published            INTEGER NOT NULL DEFAULT 1,
+        embedded_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        created_at              TEXT DEFAULT (datetime('now')),
+        updated_at              TEXT DEFAULT (datetime('now')),
+        CONSTRAINT uq_space_page_slug UNIQUE(space_id, slug)
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_pages_space ON space_pages(space_id, order_index);
+
+      -- ── Space Real-Time Chat Channels (Slack / Discord Model) ───────────────────
+      CREATE TABLE IF NOT EXISTS space_channels (
+        id         TEXT PRIMARY KEY,
+        space_id   TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        slug       TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        topic      TEXT,
+        kind       TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'announcement', 'bot_feed', 'telemetry', 'ecr_review')),
+        position   INTEGER NOT NULL DEFAULT 0,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        CONSTRAINT uq_space_channel_slug UNIQUE(space_id, slug)
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_channels_space ON space_channels(space_id, position);
+
+      -- ── Space Real-Time Chat Messages ───────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS space_messages (
+        id                      TEXT PRIMARY KEY,
+        channel_id              TEXT NOT NULL REFERENCES space_channels(id) ON DELETE CASCADE,
+        space_id                TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        author_id               INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        sender_type             TEXT NOT NULL DEFAULT 'user' CHECK(sender_type IN ('user', 'bot', 'telemetry_hook', 'ci_runner')),
+        sender_name             TEXT,
+        content                 TEXT NOT NULL,
+        reply_to_id             TEXT REFERENCES space_messages(id) ON DELETE SET NULL,
+        thread_reply_count      INTEGER NOT NULL DEFAULT 0,
+        attachments_json        TEXT NOT NULL DEFAULT '[]',
+        embedded_artifacts_json TEXT NOT NULL DEFAULT '[]',
+        reactions_json          TEXT NOT NULL DEFAULT '{}',
+        promoted_target_type    TEXT,
+        promoted_target_id      TEXT,
+        created_at              TEXT DEFAULT (datetime('now')),
+        edited_at               TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_messages_channel ON space_messages(channel_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_space_messages_space ON space_messages(space_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_space_messages_reply ON space_messages(reply_to_id);
+
+      -- ── Space Channel Read State & Unread Counters ──────────────────────────────
+      CREATE TABLE IF NOT EXISTS space_channel_reads (
+        channel_id            TEXT NOT NULL REFERENCES space_channels(id) ON DELETE CASCADE,
+        user_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        last_read_message_id  TEXT,
+        unread_mentions_count INTEGER NOT NULL DEFAULT 0,
+        last_read_at          TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (channel_id, user_id)
+      );
+
+      -- ── Space PLM Engineering Change Orders (ECO / ECR Proposals) ───────────────
+      CREATE TABLE IF NOT EXISTS space_eco_proposals (
+        id                      TEXT PRIMARY KEY,
+        space_id                TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        eco_number              INTEGER NOT NULL,
+        title                   TEXT NOT NULL,
+        description             TEXT NOT NULL DEFAULT '',
+        status                  TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('draft', 'open', 'in_review', 'approved', 'merged', 'rejected')),
+        severity                TEXT NOT NULL DEFAULT 'standard' CHECK(severity IN ('minor', 'standard', 'major', 'safety_critical')),
+        source_branch           TEXT NOT NULL DEFAULT 'feature/change',
+        target_branch           TEXT NOT NULL DEFAULT 'main',
+        author_id               INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        impacted_models_json    TEXT NOT NULL DEFAULT '[]',
+        simulation_gate_status  TEXT NOT NULL DEFAULT 'pending' CHECK(simulation_gate_status IN ('pending', 'running', 'passed', 'failed')),
+        simulation_summary_json TEXT NOT NULL DEFAULT '{}',
+        promoted_from_msg_id    TEXT,
+        created_at              TEXT DEFAULT (datetime('now')),
+        updated_at              TEXT DEFAULT (datetime('now')),
+        CONSTRAINT uq_space_eco_num UNIQUE(space_id, eco_number)
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_ecos_space ON space_eco_proposals(space_id, status);
+
+      -- ── Space PLM Cryptographic Approvals (21 CFR Part 11 / ISO 26262 / NERC) ──
+      CREATE TABLE IF NOT EXISTS space_eco_approvals (
+        eco_id        TEXT NOT NULL REFERENCES space_eco_proposals(id) ON DELETE CASCADE,
+        user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role          TEXT NOT NULL,
+        decision      TEXT NOT NULL CHECK(decision IN ('approved', 'changes_requested', 'rejected')),
+        comment       TEXT,
+        signature_hex TEXT,
+        created_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (eco_id, user_id)
+      );
 
       CREATE TABLE IF NOT EXISTS package_collaborators (
         library_name TEXT NOT NULL,
@@ -782,11 +952,13 @@ export const baselineMigration: Migration = {
         config             TEXT NOT NULL,
         current_parameters TEXT NOT NULL,
         current_weights    TEXT,
+        space_id           TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         created_at         TEXT DEFAULT (datetime('now')),
         last_telemetry_at  TEXT,
         last_adapted_at    TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_twins_instance ON twins(instance_id);
+      CREATE INDEX IF NOT EXISTS idx_twins_space ON twins(space_id);
 
       CREATE TABLE IF NOT EXISTS twin_adaptations (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -918,7 +1090,8 @@ export const baselineMigration: Migration = {
         name           TEXT NOT NULL,
         description    TEXT,
         created        TEXT NOT NULL,
-        default_branch TEXT NOT NULL
+        default_branch TEXT NOT NULL,
+        space_id       TEXT REFERENCES spaces(id) ON DELETE SET NULL
       );
 
       CREATE TABLE IF NOT EXISTS sysml2_commits (
@@ -981,6 +1154,7 @@ export const baselineMigration: Migration = {
         status         TEXT NOT NULL DEFAULT 'open',
         proposed_by    TEXT NOT NULL,
         diff_summary   TEXT NOT NULL,
+        space_id       TEXT REFERENCES spaces(id) ON DELETE SET NULL,
         created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
         resolved_at    DATETIME,
         resolved_by    TEXT,
@@ -1465,6 +1639,19 @@ export const baselineMigration: Migration = {
       "ALTER TABLE users ADD COLUMN signing_verified INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE users ADD COLUMN signing_policy_strict INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE users ADD COLUMN branch_tip_oid TEXT",
+      "ALTER TABLE organizations ADD COLUMN banner_url TEXT",
+      "ALTER TABLE organizations ADD COLUMN location TEXT",
+      "ALTER TABLE organizations ADD COLUMN industry_preset TEXT DEFAULT 'systems_general'",
+      "ALTER TABLE organizations ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE posts ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE linked_repos ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE packages ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE solutions ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE twins ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE sysml2_projects ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE thread_proposals ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE SET NULL",
+      "ALTER TABLE notifications ADD COLUMN archived INTEGER DEFAULT 0",
+      "ALTER TABLE notifications ADD COLUMN starred INTEGER DEFAULT 0",
     ];
 
     for (const stmt of alterStatements) {

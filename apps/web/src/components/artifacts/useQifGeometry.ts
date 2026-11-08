@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getArtifactView } from "../../api";
 import { artifactViewTitle, extractArtifactSourceText } from "../compose/attach/artifact-source";
 import {
@@ -31,7 +31,7 @@ export function useQifGeometry(
   viewConfig: Record<string, unknown> | null | undefined,
   legacyStepText: string | undefined,
 ): QifGeometryState {
-  const companion = readGeometryCompanion(viewConfig);
+  const companion = useMemo(() => readGeometryCompanion(viewConfig), [viewConfig]);
   const artifactId = companion ? String(companion.artifactId) : undefined;
   const isTurbine = isTurbineBladeInspection(viewConfig);
   const effectiveStepText = legacyStepText ?? (isTurbine ? TURBINE_BLADE_ROOT_STEP : undefined);
@@ -42,10 +42,14 @@ export function useQifGeometry(
     (typeof viewConfig?.["stepFilename"] === "string" ? (viewConfig["stepFilename"] as string) : undefined) ??
     (isTurbine ? "TurbineBladeRoot.step" : undefined);
 
+  const scaleFactor =
+    companion?.scaleFactor ??
+    (typeof viewConfig?.["geometryScale"] === "number" ? (viewConfig["geometryScale"] as number) : 1.0);
+
   const key = artifactId
-    ? `c:${artifactId}`
+    ? `c:${artifactId}:${scaleFactor}`
     : effectiveStepText
-      ? `l:${effectiveStepText.length}:${effectiveStepText.slice(0, 48)}`
+      ? `l:${effectiveStepText.length}:${effectiveStepText.slice(0, 48)}:${scaleFactor}`
       : undefined;
   const [resolved, setResolved] = useState<Resolved | null>(null);
 
@@ -65,9 +69,6 @@ export function useQifGeometry(
         if (!stepText) {
           state = { status: "error", title, message: "The paired STEP model could not be loaded." };
         } else {
-          const scaleFactor =
-            companion?.scaleFactor ??
-            (typeof viewConfig?.["geometryScale"] === "number" ? (viewConfig["geometryScale"] as number) : 1.0);
           const geometry = await stepTextToGeometry(stepText, title ?? "STEP part", scaleFactor);
           state = { status: "ready", title, stepText, geometry };
         }
@@ -83,7 +84,7 @@ export function useQifGeometry(
     return () => {
       cancelled = true;
     };
-  }, [key, artifactId, companionTitle, effectiveStepText, viewConfig, companion]);
+  }, [key, artifactId, companionTitle, effectiveStepText, scaleFactor]);
 
   if (!key) return { status: "none" };
   return resolved?.key === key ? resolved.state : { status: "loading", title: companionTitle };

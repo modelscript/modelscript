@@ -101,6 +101,10 @@ export function generateSbatchScript(spec: HpcJobSpec, stagingManifest?: JobStag
   lines.push("");
   lines.push("# --- Environment & Threading Setup ---");
   lines.push(`export OMP_NUM_THREADS=${cpusPerTask}`);
+  if (r.partition === "emt-rt") {
+    lines.push(`export MODELSCRIPT_EMT_PARTITIONS=${nodes * tasksPerNode}`);
+    lines.push('export MODELSCRIPT_EMT_RINGBUF_SHM="1"');
+  }
 
   if (spec.env) {
     for (const [key, value] of Object.entries(spec.env)) {

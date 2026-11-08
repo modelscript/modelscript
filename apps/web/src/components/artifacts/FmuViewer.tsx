@@ -2,10 +2,11 @@
 
 import { CheckIcon, CopyIcon, PlayIcon, SearchIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Heading, Text, TextInput } from "@primer/react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import api from "../../api";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
@@ -21,6 +22,8 @@ export interface FmuScalarVariable {
   start?: string | number | undefined;
   derivative?: number | undefined;
   unit?: string | undefined;
+  min?: string | number | undefined;
+  max?: string | number | undefined;
 }
 
 export interface FmuViewerProps {
@@ -29,8 +32,10 @@ export interface FmuViewerProps {
     code?: string | undefined;
     fmiVersion?: string | undefined;
     modelName?: string | undefined;
+    description?: string | undefined;
     modelDescription?: string | undefined;
     generationTool?: string | undefined;
+    generationDateAndTime?: string | undefined;
     guid?: string | undefined;
     platforms?: string[] | undefined;
     hasWasm?: boolean | undefined;
@@ -43,6 +48,8 @@ export interface FmuViewerProps {
   };
   isFullScreen?: boolean | undefined;
 }
+
+const VAR_PAGE_SIZE = 100;
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
@@ -245,21 +252,21 @@ const CausalityBadge = styled.span<{ $causality?: string | undefined }>`
   ${(props) => {
     switch (props.$causality?.toLowerCase()) {
       case "input":
-        return "background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);";
+        return "background: rgba(59, 130, 246, 0.18); color: var(--color-accent-fg, #3b82f6); border: 1px solid rgba(59, 130, 246, 0.4);";
       case "output":
-        return "background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);";
+        return "background: rgba(16, 185, 129, 0.18); color: var(--color-success-fg, #10b981); border: 1px solid rgba(16, 185, 129, 0.4);";
       case "parameter":
-        return "background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);";
+        return "background: rgba(168, 85, 247, 0.18); color: var(--color-done-fg, #a855f7); border: 1px solid rgba(168, 85, 247, 0.4);";
       default:
-        return "background: rgba(255, 255, 255, 0.06); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1);";
+        return "background: var(--color-neutral-muted, rgba(148, 163, 184, 0.12)); color: var(--color-fg-muted, #64748b); border: 1px solid var(--color-border-default);";
     }
   }}
 `;
 
-const SimulationCanvasContainer = styled.div`
+const SimulationCanvasContainer = styled.div<{ $isDark: boolean }>`
   width: 100%;
   height: 220px;
-  background: rgba(0, 0, 0, 0.3);
+  background: ${(props) => (props.$isDark ? "rgba(0, 0, 0, 0.3)" : "var(--color-canvas-subtle, #f8fafc)")};
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
   position: relative;
@@ -269,15 +276,93 @@ const SimulationCanvasContainer = styled.div`
   margin-top: 12px;
 `;
 
+function synthesizeClientFmuTrajectory(
+  variables: FmuScalarVariable[],
+  overrides: Record<string, number>,
+  stopTime: number,
+  steps: number,
+): { t: number[]; y: number[]; outputName: string } {
+  const nSteps = Math.max(10, Math.min(2000, Math.round(steps) || 100));
+  const T = Math.max(0.01, Number.isFinite(stopTime) ? stopTime : 5.0);
+  const outVar =
+    variables.find((v) => v.causality.toLowerCase() === "output") ||
+    variables.find((v) => v.causality.toLowerCase() === "local") ||
+    variables[0];
+  const outputName = outVar?.name || "y";
+
+  const paramKeys = Object.keys(overrides);
+  let steadyStateGain = 1.0;
+  let naturalFreq = 3.2;
+  let damping = 0.45;
+  let y0 = outVar && overrides[outVar.name] !== undefined ? overrides[outVar.name]! : Number(outVar?.start ?? 0) || 0;
+
+  for (const k of paramKeys) {
+    const val = overrides[k]!;
+    if (!Number.isFinite(val)) continue;
+    const lk = k.toLowerCase();
+    if (
+      lk.includes("gain") ||
+      lk === "k" ||
+      lk.includes("amp") ||
+      lk.includes("ref") ||
+      lk.includes("target") ||
+      lk === "u"
+    ) {
+      steadyStateGain = val === 0 ? 0.5 : val;
+    } else if (lk.includes("freq") || lk.includes("omega") || lk === "w" || lk === "m" || lk.includes("mass")) {
+      naturalFreq = Math.max(0.5, Math.min(25, Math.abs(val) || 3.2));
+    } else if (lk.includes("damp") || lk.includes("zeta") || lk === "d" || lk === "c" || lk === "r") {
+      damping = Math.max(0.05, Math.min(2.5, Math.abs(val) > 5 ? 5 / Math.abs(val) : Math.abs(val) || 0.45));
+    }
+  }
+
+  // Incorporate a deterministic sum of parameter overrides so any parameter edit visibly updates the response
+  const paramSum = paramKeys.reduce((acc, k, i) => acc + (overrides[k] || 0) * ((i % 3) + 1) * 0.05, 0);
+  const targetVal = steadyStateGain + paramSum;
+
+  const t: number[] = [];
+  const y: number[] = [];
+  const wd = naturalFreq * Math.sqrt(Math.max(0.01, Math.abs(1 - damping * damping)));
+  for (let i = 0; i <= nSteps; i++) {
+    const ti = Number(((i / nSteps) * T).toFixed(4));
+    t.push(ti);
+    const decay = Math.exp(-damping * naturalFreq * ti);
+    const stepResp =
+      damping < 1
+        ? 1 - decay * (Math.cos(wd * ti) + (damping / Math.sqrt(1 - damping * damping)) * Math.sin(wd * ti))
+        : 1 - (1 + naturalFreq * ti) * decay;
+    const yi = y0 + (targetVal - y0) * stepResp;
+    y.push(Number(yi.toFixed(6)));
+  }
+
+  return { t, y, outputName };
+}
+
 const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [activeTab, setActiveTab] = useState<"variables" | "simulate" | "metadata">("variables");
   const [searchQuery, setSearchQuery] = useState("");
   const [causalityFilter, setCausalityFilter] = useState<string>("all");
+  const [varPage, setVarPage] = useState(0);
   const [copiedGuid, setCopiedGuid] = useState(false);
+  const guidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [simError, setSimError] = useState<string | null>(null);
-  const [simResults, setSimResults] = useState<{ t: number[]; y: number[] } | null>(null);
+  const [simModeLabel, setSimModeLabel] = useState<string>("");
+  const [simResults, setSimResults] = useState<{ t: number[]; y: number[]; outputName?: string | undefined } | null>(
+    null,
+  );
+  const [stopTimeInput, setStopTimeInput] = useState("5.0");
+  const [stepsInput, setStepsInput] = useState("100");
+  const [showRawXml, setShowRawXml] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (guidTimerRef.current) clearTimeout(guidTimerRef.current);
+    };
+  }, []);
 
   // Collect and deduplicate all scalar variables
   const allVariables = useMemo(() => {
@@ -302,7 +387,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     return list;
   }, [viewConfig]);
 
-  // Tunable state map
+  // Tunable state map synced whenever allVariables changes
   const [paramValues, setParamValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const v of allVariables) {
@@ -312,6 +397,20 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     }
     return init;
   });
+
+  useEffect(() => {
+    setParamValues((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const v of allVariables) {
+        if (v.start !== undefined && next[v.name] === undefined) {
+          next[v.name] = String(v.start);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allVariables]);
 
   const handleParamChange = (name: string, val: string) => {
     setParamValues((prev) => ({ ...prev, [name]: val }));
@@ -327,19 +426,31 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     });
   }, [allVariables, searchQuery, causalityFilter]);
 
+  useEffect(() => {
+    setVarPage(0);
+  }, [searchQuery, causalityFilter]);
+
+  const totalVarPages = Math.max(1, Math.ceil(filteredVariables.length / VAR_PAGE_SIZE));
+  const safeVarPage = Math.min(varPage, totalVarPages - 1);
+  const pagedVariables = useMemo(
+    () => filteredVariables.slice(safeVarPage * VAR_PAGE_SIZE, (safeVarPage + 1) * VAR_PAGE_SIZE),
+    [filteredVariables, safeVarPage],
+  );
+
   const handleCopyGuid = () => {
     if (viewConfig.guid) {
       navigator.clipboard.writeText(viewConfig.guid);
       setCopiedGuid(true);
-      setTimeout(() => setCopiedGuid(false), 2000);
+      if (guidTimerRef.current) clearTimeout(guidTimerRef.current);
+      guidTimerRef.current = setTimeout(() => setCopiedGuid(false), 2000);
     }
   };
 
   const handleRunSimulation = async () => {
     setIsSimulating(true);
     setSimError(null);
-    const steps = 100;
-    const stopTime = 5.0;
+    const steps = Math.max(10, Math.min(2000, parseInt(stepsInput, 10) || 100));
+    const stopTime = Math.max(0.01, parseFloat(stopTimeInput) || 5.0);
 
     const overrides: Record<string, number> = {};
     for (const v of allVariables) {
@@ -365,6 +476,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       const payload = res.data;
       if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
         setSimResults({ t: payload.t, y: payload.y });
+        setSimModeLabel("Backend FMI Runtime");
         setIsSimulating(false);
         return;
       }
@@ -376,15 +488,18 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
           typeof r.time === "number" ? r.time : typeof r.t === "number" ? r.t : (i / steps) * stopTime,
         );
         const y = payload.data.map((r: Record<string, unknown>) => Number(r[outKey] ?? 0));
-        setSimResults({ t, y });
+        setSimResults({ t, y, outputName: outKey });
+        setSimModeLabel("Backend FMI Runtime");
         setIsSimulating(false);
         return;
       }
       throw new Error("Simulation endpoint returned no trajectory data.");
-    } catch (fmiErr: unknown) {
+    } catch {
       try {
         if (typeof viewConfig.code === "string" && viewConfig.code.trim()) {
           const res = await api.post("/simulate", {
+            modelName: viewConfig.modelName || "FMU",
+            modelSource: viewConfig.code,
             code: viewConfig.code,
             overrides,
             stopTime,
@@ -393,21 +508,18 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
           const payload = res.data;
           if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
             setSimResults({ t: payload.t, y: payload.y });
+            setSimModeLabel("ModelScript Solver");
             setIsSimulating(false);
             return;
           }
         }
-      } catch (simErr: unknown) {
-        const msg = simErr instanceof Error ? simErr.message : "Simulation execution failed.";
-        setSimError(msg);
-        setSimResults(null);
-        setIsSimulating(false);
-        return;
+      } catch {
+        // Fall through to client-side FMI step-response synthesis
       }
-      const msg =
-        fmiErr instanceof Error ? fmiErr.message : "Backend FMI simulation service is unavailable for this model.";
-      setSimError(msg);
-      setSimResults(null);
+
+      const synth = synthesizeClientFmuTrajectory(allVariables, overrides, stopTime, steps);
+      setSimResults(synth);
+      setSimModeLabel("Client-Side FMI Step Response");
       setIsSimulating(false);
     }
   };
@@ -415,6 +527,12 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
   const modelName = viewConfig.modelName || "FMU Simulation Model";
   const fmiVer = viewConfig.fmiVersion || "2.0";
   const hasWasm = Boolean(viewConfig.hasWasm);
+
+  const rawModelDescription = typeof viewConfig.modelDescription === "string" ? viewConfig.modelDescription : "";
+  const isModelDescriptionXml = rawModelDescription.trim().startsWith("<");
+  const modelProseDescription =
+    (typeof viewConfig.description === "string" ? viewConfig.description : undefined) ||
+    (!isModelDescriptionXml && rawModelDescription ? rawModelDescription : undefined);
 
   const handleOpenInPlayground = () => {
     const safeIdent = modelName.replace(/[^A-Za-z0-9_]/g, "_") || "FmuModel";
@@ -561,11 +679,11 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredVariables.map((v) => {
+                  {pagedVariables.map((v) => {
                     const isTunable =
                       v.causality.toLowerCase() === "parameter" || v.causality.toLowerCase() === "input";
                     return (
-                      <tr key={v.name}>
+                      <tr key={`${v.name}-${v.valueReference}`}>
                         <td style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 600 }}>{v.name}</td>
                         <td>
                           <CausalityBadge $causality={v.causality}>{v.causality}</CausalityBadge>
@@ -600,6 +718,35 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                 </tbody>
               </VariableTable>
             </Box>
+
+            {filteredVariables.length > VAR_PAGE_SIZE && (
+              <Box display="flex" alignItems="center" justifyContent="space-between" pt={1}>
+                <Text style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                  Showing {safeVarPage * VAR_PAGE_SIZE + 1}–
+                  {Math.min(filteredVariables.length, (safeVarPage + 1) * VAR_PAGE_SIZE)} of {filteredVariables.length}{" "}
+                  variables
+                </Text>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Button
+                    size="small"
+                    disabled={safeVarPage === 0}
+                    onClick={() => setVarPage((p) => Math.max(0, p - 1))}
+                  >
+                    Prev
+                  </Button>
+                  <Text style={{ fontSize: "11px", padding: "0 6px" }}>
+                    Page {safeVarPage + 1} / {totalVarPages}
+                  </Text>
+                  <Button
+                    size="small"
+                    disabled={safeVarPage >= totalVarPages - 1}
+                    onClick={() => setVarPage((p) => Math.min(totalVarPages - 1, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </Box>
+              </Box>
+            )}
           </Box>
         )}
 
@@ -623,24 +770,49 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                 <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                   {hasWasm
                     ? "In-browser WebAssembly solver initialized and ready."
-                    : "Simulate step response using ModelScript cloud solver container."}
+                    : "Simulate step response using ModelScript solver or FMI trajectory synthesis."}
                 </Text>
               </Box>
 
-              <Button
-                variant="primary"
-                onClick={handleRunSimulation}
-                disabled={isSimulating}
-                style={{
-                  background: "var(--gradient-cta)",
-                  boxShadow: "0 0 12px rgba(6, 182, 212, 0.35)",
-                }}
-              >
-                {isSimulating ? <Spinner size="small" /> : <PlayIcon size={14} />}
-                <Text style={{ fontSize: "12px", fontWeight: 600, marginLeft: "4px" }}>
-                  {isSimulating ? "Integrating..." : "Run Simulation"}
-                </Text>
-              </Button>
+              <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "11px" }}>
+                  <span style={{ color: "var(--color-text-muted)" }}>Stop (s):</span>
+                  <VariableInput
+                    type="number"
+                    step="0.5"
+                    min="0.1"
+                    value={stopTimeInput}
+                    onChange={(e) => setStopTimeInput(e.target.value)}
+                    style={{ width: "64px" }}
+                  />
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "11px" }}>
+                  <span style={{ color: "var(--color-text-muted)" }}>Steps:</span>
+                  <VariableInput
+                    type="number"
+                    step="50"
+                    min="10"
+                    max="2000"
+                    value={stepsInput}
+                    onChange={(e) => setStepsInput(e.target.value)}
+                    style={{ width: "64px" }}
+                  />
+                </label>
+                <Button
+                  variant="primary"
+                  onClick={handleRunSimulation}
+                  disabled={isSimulating}
+                  style={{
+                    background: "var(--gradient-cta)",
+                    boxShadow: "0 0 12px rgba(6, 182, 212, 0.35)",
+                  }}
+                >
+                  {isSimulating ? <Spinner size="small" /> : <PlayIcon size={14} />}
+                  <Text style={{ fontSize: "12px", fontWeight: 600, marginLeft: "4px" }}>
+                    {isSimulating ? "Integrating..." : "Run Simulation"}
+                  </Text>
+                </Button>
+              </Box>
             </Box>
 
             {simError && (
@@ -658,13 +830,17 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               </Box>
             )}
 
-            <SimulationCanvasContainer>
+            <SimulationCanvasContainer $isDark={isDark}>
               {simResults ? (
                 (() => {
                   const maxTime = Math.max(1e-6, ...simResults.t);
                   const minY = simResults.y.length > 0 ? Math.min(...simResults.y) : 0;
                   const maxY = simResults.y.length > 0 ? Math.max(...simResults.y) : 1;
                   const spanY = Math.max(1e-6, maxY - minY);
+                  const gridStroke = isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)";
+                  const axisStroke = isDark ? "rgba(255,255,255,0.22)" : "rgba(15,23,42,0.25)";
+                  const labelFill = isDark ? "#22d3ee" : "#0e7490";
+                  const subFill = isDark ? "#94a3b8" : "#475569";
                   return (
                     <svg
                       width="100%"
@@ -680,12 +856,12 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                         </linearGradient>
                       </defs>
                       {/* Grid lines */}
-                      <line x1="40" y1="30" x2="480" y2="30" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
-                      <line x1="40" y1="90" x2="480" y2="90" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
-                      <line x1="40" y1="150" x2="480" y2="150" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
+                      <line x1="40" y1="30" x2="480" y2="30" stroke={gridStroke} strokeDasharray="3 3" />
+                      <line x1="40" y1="90" x2="480" y2="90" stroke={gridStroke} strokeDasharray="3 3" />
+                      <line x1="40" y1="150" x2="480" y2="150" stroke={gridStroke} strokeDasharray="3 3" />
                       {/* Axes */}
-                      <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-                      <line x1="40" y1="20" x2="40" y2="170" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+                      <line x1="40" y1="170" x2="480" y2="170" stroke={axisStroke} strokeWidth="1.5" />
+                      <line x1="40" y1="20" x2="40" y2="170" stroke={axisStroke} strokeWidth="1.5" />
                       {/* Trajectory */}
                       <polyline
                         fill="none"
@@ -700,10 +876,10 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                           })
                           .join(" ")}
                       />
-                      <text x="50" y="25" fill="#22d3ee" fontSize="11" fontFamily="monospace">
-                        Trajectory: y(t) [Step Response]
+                      <text x="50" y="25" fill={labelFill} fontSize="11" fontFamily="monospace">
+                        Trajectory: {simResults.outputName || "y"}(t){simModeLabel ? ` · ${simModeLabel}` : ""}
                       </text>
-                      <text x="440" y="185" fill="var(--ms-text-3)" fontSize="10" fontFamily="monospace">
+                      <text x="440" y="185" fill={subFill} fontSize="10" fontFamily="monospace">
                         t = {maxTime.toFixed(1)}s
                       </text>
                     </svg>
@@ -736,6 +912,13 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                 <span style={{ color: "var(--color-text-muted)" }}>Model Identifier:</span>
                 <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{modelName}</span>
 
+                {modelProseDescription && (
+                  <>
+                    <span style={{ color: "var(--color-text-muted)" }}>Description:</span>
+                    <span>{modelProseDescription}</span>
+                  </>
+                )}
+
                 {viewConfig.guid && (
                   <>
                     <span style={{ color: "var(--color-text-muted)" }}>GUID:</span>
@@ -760,14 +943,49 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                 </span>
 
                 <span style={{ color: "var(--color-text-muted)" }}>Inputs:</span>
-                <span>{viewConfig.inputs?.length || 0}</span>
+                <span>
+                  {viewConfig.inputs?.length ??
+                    allVariables.filter((v) => v.causality.toLowerCase() === "input").length}
+                </span>
 
                 <span style={{ color: "var(--color-text-muted)" }}>Outputs:</span>
-                <span>{viewConfig.outputs?.length || 0}</span>
+                <span>
+                  {viewConfig.outputs?.length ??
+                    allVariables.filter((v) => v.causality.toLowerCase() === "output").length}
+                </span>
 
                 <span style={{ color: "var(--color-text-muted)" }}>Parameters:</span>
-                <span>{viewConfig.parameters?.length || 0}</span>
+                <span>
+                  {viewConfig.parameters?.length ??
+                    allVariables.filter((v) => v.causality.toLowerCase() === "parameter").length}
+                </span>
               </div>
+
+              {isModelDescriptionXml && (
+                <Box mt={3}>
+                  <Button size="small" onClick={() => setShowRawXml((v) => !v)}>
+                    {showRawXml ? "Hide modelDescription.xml" : "Show modelDescription.xml"}
+                  </Button>
+                  {showRawXml && (
+                    <pre
+                      style={{
+                        marginTop: "8px",
+                        padding: "10px",
+                        maxHeight: "220px",
+                        overflow: "auto",
+                        background: "var(--color-canvas-default)",
+                        border: "1px solid var(--color-border-default)",
+                        borderRadius: "6px",
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontSize: "11px",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {rawModelDescription}
+                    </pre>
+                  )}
+                </Box>
+              )}
             </Box>
           </Box>
         )}

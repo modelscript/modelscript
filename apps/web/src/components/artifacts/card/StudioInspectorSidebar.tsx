@@ -371,14 +371,16 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         )}
       </Box>
 
-      <Text style={{ fontSize: "13px", fontWeight: "bold", marginBottom: "8px", color: "white" }}>
+      <Text
+        style={{ fontSize: "13px", fontWeight: "bold", marginBottom: "8px", color: "var(--color-fg-default, white)" }}
+      >
         Interaction Guide
       </Text>
       <Box
         p={2}
-        bg="rgba(0,0,0,0.3)"
+        bg="var(--color-canvas-inset, rgba(0,0,0,0.2))"
         borderRadius="8px"
-        border="1px solid rgba(255,255,255,0.08)"
+        border="1px solid var(--color-border-default, rgba(255,255,255,0.08))"
         fontSize="11px"
         display="flex"
         flexDirection="column"
@@ -403,7 +405,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
           "webgpu",
           "webgpu-simulation",
           "gpu-simulation",
-        ].includes(artifact.view_type?.toLowerCase()) ? (
+        ].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               {isCoarsePointer ? (
@@ -442,7 +444,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               📍 <b>Spatial Pin:</b> {isCoarsePointer ? "Tap" : "Click"} in PIN mode to attach comments
             </div>
           </>
-        ) : ["fmu", "fmu-package", "fmu-simulator", "fmi"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["fmu", "fmu-package", "fmu-simulator", "fmi"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               ⚙️ <b>Tune Parameters:</b> Modify inputs in the variable table
@@ -454,7 +456,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               📈 <b>Plot Trajectory:</b> View response curves in real-time
             </div>
           </>
-        ) : ["sysml", "sysml2", "sysml-architecture-viewer", "kerml"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["sysml", "sysml2", "sysml-architecture-viewer", "kerml"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               🌳 <b>Architecture:</b> Browse IBD / BDD diagrams and pan/zoom
@@ -466,7 +468,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🔧 <b>Interactive Edit:</b> Switch to Edit mode for bidirectional AST sync
             </div>
           </>
-        ) : ["modelica", "modelica-diagram", "msx", "modelscript"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["modelica", "modelica-diagram", "msx", "modelscript"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               🧩 <b>Schematic Edit:</b> Drag components, wire ports, and edit parameters
@@ -478,7 +480,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🔄 <b>Split Sync:</b> Bidirectional sync between X6 diagram and Modelica code
             </div>
           </>
-        ) : ["pscad", "pscx", "pslx", "psse", "psse-sld", "raw"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["pscad", "pscx", "pslx", "psse", "psse-sld", "raw"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               ⚡ <b>Grid Schematic:</b> Pan and zoom single-line / EMT schematics
@@ -490,7 +492,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🔧 <b>Interactive Edit:</b> Edit power network topology and parameters
             </div>
           </>
-        ) : ["ssp", "ssd", "ssp-topology"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["ssp", "ssd", "ssp-topology"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               🔗 <b>FMU Topology:</b> Click any FMU block in the sidebar to highlight it on canvas
@@ -499,7 +501,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               ✋ <b>Pan &amp; Zoom:</b> Drag stage to pan, hold Ctrl / ⌘ + scroll or use HUD controls to zoom
             </div>
           </>
-        ) : ["simpack", "spck", "gensys", "gensys-track"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["simpack", "spck", "gensys", "gensys-track"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               🧊 <b>3D Multibody:</b> Orbit 3D kinematic topology or inspect 2D schematic
@@ -508,7 +510,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🛤️ <b>Dynamics:</b> Verify EN 14363 stability &amp; degree-of-freedom mobility
             </div>
           </>
-        ) : ["owl", "owl2", "ontology", "rdf", "ttl"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["owl", "owl2", "ontology", "rdf", "ttl"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               🕸️ <b>Ontology Graph:</b> Click class nodes to inspect axioms and disjointness
@@ -517,7 +519,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🔍 <b>Filter &amp; Search:</b> Filter classes and object properties in real time
             </div>
           </>
-        ) : ["sima", "sima-mooring"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["sima", "sima-mooring"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               ⚓ <b>Mooring Spread:</b> Click mooring lines or toggle ALS line-break test
@@ -526,7 +528,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               📐 <b>Catenary &amp; DNV:</b> Inspect 2D catenary sag profile and DNV-OS-E301 table
             </div>
           </>
-        ) : ["reqif", "reqifz", "reqif-viewer"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["reqif", "reqifz", "reqif-viewer"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               📋 <b>Tabular &amp; RTM:</b> Double-click cells to edit requirements and traceability
@@ -535,7 +537,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🕸️ <b>Architecture Diagram:</b> Pan/zoom requirements graph and click nodes to filter
             </div>
           </>
-        ) : ["dataset", "dataset-table", "csv", "tsv", "json-table"].includes(artifact.view_type?.toLowerCase()) ? (
+        ) : ["dataset", "dataset-table", "csv", "tsv", "json-table"].includes(artifact?.view_type?.toLowerCase()) ? (
           <>
             <div>
               ↕️ <b>Sort:</b> Click column headers to sort rows
@@ -545,6 +547,47 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             </div>
             <div>
               📊 <b>Profiling:</b> Toggle &ldquo;Stats&rdquo; for min, max, mean, unique
+            </div>
+          </>
+        ) : ["picture", "image"].includes(artifact?.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              🔍 <b>Zoom &amp; Pan:</b> Drag to pan, double-click or use toolbar buttons to zoom
+            </div>
+            <div>
+              📍 <b>Spatial Pin:</b> Toggle Pin mode and click any image region to drop a coordinate pin
+            </div>
+          </>
+        ) : ["video", "youtube_video"].includes(artifact?.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              ⏯️ <b>Playback:</b> Play/Pause, adjust speed (0.25x–2x), or unmute audio
+            </div>
+            <div>
+              🎞️ <b>Frame Step:</b> Step forward/backward frame-by-frame while paused
+            </div>
+          </>
+        ) : ["audio"].includes(artifact?.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              🔊 <b>Waveform Seek:</b> Click or use arrow keys on the waveform to scrub audio
+            </div>
+            <div>
+              🎛️ <b>Speed &amp; Mute:</b> Toggle playback rate (0.5x–2x) and mute state
+            </div>
+          </>
+        ) : ["pdf"].includes(artifact?.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              📄 <b>Document Preview:</b> Click preview to inspect pages inline or open in a dedicated tab
+            </div>
+          </>
+        ) : ["package", "library", "repository", "repo", "solution", "engineering-app", "app"].includes(
+            artifact?.view_type?.toLowerCase(),
+          ) ? (
+          <>
+            <div>
+              📦 <b>Ecosystem Resource:</b> Copy the CLI install command, cite the resource, or launch in the IDE
             </div>
           </>
         ) : (

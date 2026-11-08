@@ -5,6 +5,7 @@ import { Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { VegaEmbed } from "react-vega";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import { useThemeTokens } from "../../theme-tokens";
 import Box from "../Box";
 import Spinner from "../Spinner";
@@ -14,6 +15,9 @@ interface VegaViewerProps {
   viewConfig: any; // expects { spec: any, data?: any, title?: string }
   isFullScreen?: boolean | undefined;
 }
+
+const SANS_FONT = "Inter, -apple-system, BlinkMacSystemFont, sans-serif";
+const MONO_FONT = "JetBrains Mono, monospace";
 
 const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
@@ -113,6 +117,7 @@ const PlotContainer = styled.div`
 `;
 
 const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => {
+  const { theme } = useTheme();
   const tokens = useThemeTokens();
   const [spec, setSpec] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -122,10 +127,17 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
   const title = viewConfig?.title || "Statistical Visualization";
 
   useEffect(() => {
+    let active = true;
+    const abortController = new AbortController();
+    setError(null);
+    setLoading(true);
+
     async function loadSpec() {
       if (!viewConfig) {
-        setError("Missing view configuration");
-        setLoading(false);
+        if (active) {
+          setError("Missing view configuration");
+          setLoading(false);
+        }
         return;
       }
 
@@ -133,7 +145,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
         let loadedSpec = null;
         if (typeof viewConfig.spec === "string") {
           if (viewConfig.spec.startsWith("http") || viewConfig.spec.startsWith("/")) {
-            const res = await fetch(viewConfig.spec);
+            const res = await fetch(viewConfig.spec, { signal: abortController.signal });
             if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch Vega spec`);
             loadedSpec = await res.json();
           } else {
@@ -143,11 +155,27 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
           loadedSpec = JSON.parse(JSON.stringify(viewConfig.spec));
         }
 
+        if (!active || abortController.signal.aborted) return;
+
         if (loadedSpec && viewConfig.data) {
-          loadedSpec.data = Array.isArray(viewConfig.data) ? { values: viewConfig.data } : viewConfig.data;
+          const dataValues = Array.isArray(viewConfig.data)
+            ? viewConfig.data
+            : Array.isArray(viewConfig.data?.values)
+              ? viewConfig.data.values
+              : null;
+
+          if (Array.isArray(loadedSpec.data)) {
+            if (loadedSpec.data.length > 0 && dataValues) {
+              loadedSpec.data = [{ ...loadedSpec.data[0], values: dataValues }, ...loadedSpec.data.slice(1)];
+            } else if (dataValues) {
+              loadedSpec.data = [{ name: "table", values: dataValues }];
+            }
+          } else {
+            loadedSpec.data = Array.isArray(viewConfig.data) ? { values: viewConfig.data } : viewConfig.data;
+          }
         }
 
-        // Apply dark mode & transparent background optimizations
+        // Apply transparent background & responsive fit optimizations
         if (loadedSpec) {
           loadedSpec.background = "transparent";
           if (!loadedSpec.autosize) {
@@ -155,32 +183,47 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
           }
         }
 
-        setSpec(loadedSpec);
+        if (active) {
+          setSpec(loadedSpec);
+        }
       } catch (err: any) {
+        if (!active || abortController.signal.aborted || err?.name === "AbortError") return;
         console.error("Failed to load Vega spec", err);
         setError(err.message || "Failed to load Vega spec");
       } finally {
-        setLoading(false);
+        if (active && !abortController.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
-    loadSpec();
+    void loadSpec();
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
   }, [viewConfig]);
 
   const tabularMatrix = useMemo<string[][] | null>(() => {
-    const rawValues = Array.isArray(viewConfig?.data)
-      ? viewConfig.data
-      : Array.isArray(spec?.data?.values)
-        ? spec.data.values
-        : null;
+    const specValues = Array.isArray(spec?.data)
+      ? (spec.data.find((d: any) => Array.isArray(d?.values))?.values ?? spec.data[0]?.values)
+      : spec?.data?.values;
+    const rawValues = Array.isArray(viewConfig?.data) ? viewConfig.data : Array.isArray(specValues) ? specValues : null;
     if (!rawValues || rawValues.length === 0) return null;
     if (Array.isArray(rawValues[0])) {
       return rawValues.map((row: unknown[]) => row.map((cell) => String(cell ?? "")));
     }
     if (typeof rawValues[0] === "object" && rawValues[0] !== null) {
-      const headers = Array.from(
-        new Set(rawValues.slice(0, 50).flatMap((r: Record<string, unknown>) => Object.keys(r || {}))),
-      );
+      const headerSet = new Set<string>();
+      for (const r of rawValues as Record<string, unknown>[]) {
+        if (r && typeof r === "object") {
+          for (const k of Object.keys(r)) {
+            headerSet.add(k);
+          }
+        }
+      }
+      const headers = Array.from(headerSet);
       if (headers.length === 0) return null;
       const rows = rawValues.map((r: Record<string, unknown>) =>
         headers.map((h) => (r?.[h] === null || r?.[h] === undefined ? "" : String(r[h]))),
@@ -205,7 +248,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
       },
       config: {
         background: "transparent",
-        font: "var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
+        font: SANS_FONT,
         autosize: { type: "fit", contains: "padding" },
         axis: {
           domainColor: tokens.borderStrong,
@@ -213,14 +256,20 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
           labelColor: tokens.textSecondary,
           tickColor: tokens.borderStrong,
           titleColor: tokens.textPrimary,
-          labelFont: "var(--font-sans, sans-serif)",
-          titleFont: "var(--font-sans, sans-serif)",
+          labelFont: SANS_FONT,
+          titleFont: SANS_FONT,
         },
         legend: {
           labelColor: tokens.textSecondary,
           titleColor: tokens.textPrimary,
-          labelFont: "var(--font-sans, sans-serif)",
-          titleFont: "var(--font-sans, sans-serif)",
+          labelFont: SANS_FONT,
+          titleFont: SANS_FONT,
+        },
+        title: {
+          color: tokens.textPrimary,
+          subtitleColor: tokens.textSecondary,
+          font: SANS_FONT,
+          subtitleFont: MONO_FONT,
         },
         range: {
           category: [
@@ -236,7 +285,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
         },
       },
     };
-  }, [tokens]);
+  }, [tokens, theme]);
 
   if (loading) {
     return (
@@ -298,9 +347,11 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
         </Box>
 
         {hasTabularData && (
-          <ModeToggleGroup>
+          <ModeToggleGroup role="tablist" aria-label="Vega view mode">
             <ModeToggleButton
               type="button"
+              role="tab"
+              aria-selected={activeTab === "chart"}
               $active={activeTab === "chart"}
               onClick={() => setActiveTab("chart")}
               title="Show Vega-Lite Visualization"
@@ -310,6 +361,8 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
             </ModeToggleButton>
             <ModeToggleButton
               type="button"
+              role="tab"
+              aria-selected={activeTab === "table"}
               $active={activeTab === "table"}
               onClick={() => setActiveTab("table")}
               title="Inspect Underlying Tabular Dataset"
@@ -326,10 +379,11 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
           <CsvViewer
             viewConfig={{
               title,
+              initialMode: "table",
               data: tabularMatrix ?? (typeof viewConfig?.rawData === "string" ? viewConfig.rawData : undefined),
               url: typeof viewConfig?.sourceUrl === "string" ? viewConfig.sourceUrl : undefined,
             }}
-            isFullScreen={true}
+            isFullScreen={isFullScreen}
           />
         </div>
       ) : (
@@ -337,6 +391,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
           <VegaEmbed
             spec={spec}
             options={embedOptions as unknown as React.ComponentProps<typeof VegaEmbed>["options"]}
+            onError={(err: any) => setError(err?.message || "Vega rendering error")}
           />
         </PlotContainer>
       )}

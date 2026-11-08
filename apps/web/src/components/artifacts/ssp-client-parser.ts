@@ -142,13 +142,20 @@ export function parseSsdClientModel(xml: string, viewConfig: SspViewConfigLike):
         const paramNodes = cb === "parameter" ? [child] : child.children.filter((c) => tagBase(c.name) === "parameter");
         for (const pEl of paramNodes) {
           const pName = getXmlAttr(pEl, "name") || "param";
+          let compKey = prefix;
+          let cleanParamName = pName;
+          if (!compKey && pName.includes(".")) {
+            const dotIdx = pName.indexOf(".");
+            compKey = pName.slice(0, dotIdx);
+            cleanParamName = pName.slice(dotIdx + 1) || pName;
+          }
           for (const valEl of pEl.children) {
             const vb = tagBase(valEl.name);
             if (["real", "integer", "boolean", "string", "enumeration"].includes(vb)) {
               const val = getXmlAttr(valEl, "value") ?? "";
               const unit = getXmlAttr(valEl, "unit");
-              if (!paramsByComp.has(prefix)) paramsByComp.set(prefix, []);
-              paramsByComp.get(prefix)!.push({ name: pName, value: val, unit });
+              if (!paramsByComp.has(compKey)) paramsByComp.set(compKey, []);
+              paramsByComp.get(compKey)!.push({ name: cleanParamName, value: val, unit });
             }
           }
         }
@@ -239,7 +246,7 @@ export function parseSsdClientModel(xml: string, viewConfig: SspViewConfigLike):
         mimeType: fc.mimeType || "application/x-fmu-sharedlibrary",
         fmiType: fc.fmiType || "FMI 3.0 CS",
         ports,
-        parameters: fc.parameters ?? [],
+        parameters: paramsByComp.get(fc.name) ?? fc.parameters ?? [],
       });
     }
   }

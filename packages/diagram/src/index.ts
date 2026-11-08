@@ -782,8 +782,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   const parentH = parent?.clientHeight ?? 0;
   const clientW = container.clientWidth > 0 ? container.clientWidth : 0;
   const clientH = container.clientHeight > 0 ? container.clientHeight : 0;
-  const containerW = parentW > 0 ? parentW : (clientW > 0 ? clientW : 800);
-  const containerH = parentH > 0 ? parentH : (clientH > 0 ? clientH : 600);
+  const containerW = parentW > 0 ? parentW : clientW > 0 ? clientW : 800;
+  const containerH = parentH > 0 ? parentH : clientH > 0 ? clientH : 600;
 
   const initialEdgeStyle = resolveEdgeSelectionStyle(currentOptions?.language, currentOptions?.edgeSelectionStyle);
   container.setAttribute("data-edge-selection", initialEdgeStyle);
@@ -2320,9 +2320,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       options,
     }: {
       edge: Edge;
-      options?:
-        | { ignoreSnap?: boolean | undefined; ui?: boolean | undefined; toolId?: string | undefined }
-        | undefined;
+      options?: { ignoreSnap?: boolean | undefined; ui?: boolean | undefined; toolId?: string | undefined } | undefined;
     }) => {
       if (isRenderingDiagram || options?.ignoreSnap) return;
 
@@ -2468,10 +2466,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     if (gy) g.removeCell?.(gy);
   };
 
-  const renderSmartAlignmentGuidesOverlay = (
-    guideX: SmartGuideLine | null,
-    guideY: SmartGuideLine | null,
-  ) => {
+  const renderSmartAlignmentGuidesOverlay = (guideX: SmartGuideLine | null, guideY: SmartGuideLine | null) => {
     if (!guideX && !guideY) {
       clearAlignmentGuides();
       return;
@@ -2561,12 +2556,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
               }
             }
 
-            const alignRes = computeSmartAlignmentGuides(
-              draggedAlignable,
-              connectedPorts,
-              peerNodes,
-              snapThreshold,
-            );
+            const alignRes = computeSmartAlignmentGuides(draggedAlignable, connectedPorts, peerNodes, snapThreshold);
             snapDx = alignRes.snapDx;
             snapDy = alignRes.snapDy;
             guideX = alignRes.guideX;
@@ -4721,9 +4711,10 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         if (nodeData.markup && JSON.stringify(cell.getMarkup?.()) !== JSON.stringify(nodeData.markup)) {
           cell.setMarkup(nodeData.markup);
           const view = g.findViewByCell(cell);
-          if (view && typeof (view as any).render === "function") {
+          const viewWithRender = view as unknown as { render?: () => void };
+          if (viewWithRender && typeof viewWithRender.render === "function") {
             try {
-              (view as any).render();
+              viewWithRender.render();
             } catch {
               // fallback if headless or view render fails
             }
@@ -4892,8 +4883,8 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     const parentH = parent?.clientHeight ?? 0;
     const clientW = g.container.clientWidth > 0 ? g.container.clientWidth : 0;
     const clientH = g.container.clientHeight > 0 ? g.container.clientHeight : 0;
-    const containerW = parentW > 0 ? parentW : (clientW > 0 ? clientW : 800);
-    const containerH = parentH > 0 ? parentH : (clientH > 0 ? clientH : 600);
+    const containerW = parentW > 0 ? parentW : clientW > 0 ? clientW : 800;
+    const containerH = parentH > 0 ? parentH : clientH > 0 ? clientH : 600;
     g.resize(containerW, containerH);
     const viewportArea = { x: 0, y: 0, width: containerW, height: containerH };
 
@@ -4905,6 +4896,14 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         height: cs.height * 1.25,
       };
       g.zoomToRect(expandedRect, { viewportArea });
+      const ox = cs.axesStyle?.origin?.[0] ?? 0;
+      const oy = cs.axesStyle?.origin?.[1] ?? 0;
+      const gWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
+      if (typeof gWithCenter.centerPoint === "function") {
+        gWithCenter.centerPoint(ox, oy);
+      } else if (typeof g.centerContent === "function") {
+        g.centerContent();
+      }
     } else {
       try {
         g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2, viewportArea });
@@ -4936,6 +4935,14 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
               height: cs.height * 1.25,
             };
             g.zoomToRect(expandedRect, { viewportArea: currentViewport });
+            const ox = cs.axesStyle?.origin?.[0] ?? 0;
+            const oy = cs.axesStyle?.origin?.[1] ?? 0;
+            const gCheckWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
+            if (typeof gCheckWithCenter.centerPoint === "function") {
+              gCheckWithCenter.centerPoint(ox, oy);
+            } else if (typeof g.centerContent === "function") {
+              g.centerContent();
+            }
           } else {
             g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2 });
             g.centerContent();
@@ -5429,7 +5436,8 @@ export function updateSolderDots(g: Graph) {
   const crossingStyle = resolveWireCrossingStyle(lang, userCrossingPref);
 
   const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints, componentBoxes });
-  const crossings = crossingStyle === "none" ? [] : computeWireCrossings(allPaths, dots, { portPoints, componentBoxes });
+  const crossings =
+    crossingStyle === "none" ? [] : computeWireCrossings(allPaths, dots, { portPoints, componentBoxes });
   const existingDotIds = new Set<string>(existingDots.map((n: Node) => n.id));
   const newDotIds = new Set<string>();
   const existingCrossingIds = new Set<string>(existingCrossings.map((n: Node) => n.id));
@@ -5572,7 +5580,8 @@ export function updateParameterText(
   targetGraphOrContainer?: Graph | HTMLElement | null,
 ): void {
   const g =
-    (targetGraphOrContainer && typeof (targetGraphOrContainer as any).getCellById === "function"
+    (targetGraphOrContainer &&
+    typeof (targetGraphOrContainer as unknown as { getCellById?: unknown }).getCellById === "function"
       ? (targetGraphOrContainer as Graph)
       : targetGraphOrContainer && containerInstances.has(targetGraphOrContainer as HTMLElement)
         ? containerInstances.get(targetGraphOrContainer as HTMLElement)!.graph
@@ -5612,26 +5621,27 @@ export function updateParameterText(
   // Update cell's markup data structure so future getMarkup() is consistent
   const currentMarkup = cell.getMarkup?.();
   if (currentMarkup) {
-    const patchMarkupText = (item: any) => {
+    const patchMarkupText = (item: unknown) => {
       if (!item || typeof item !== "object") return;
-      if (item.tagName === "text") {
-        const c = typeof item.children === "string" ? item.children : item.textContent;
+      const rec = item as Record<string, unknown>;
+      if (rec["tagName"] === "text") {
+        const c = typeof rec["children"] === "string" ? rec["children"] : rec["textContent"];
         if (typeof c === "string") {
           const eq = c.indexOf("=");
           if (eq !== -1) {
             const left = c.slice(0, eq).trim();
             if (left === paramName || left.endsWith(`.${paramName}`)) {
-              if (typeof item.children === "string") item.children = `${paramName}=${newValue}`;
-              if (item.textContent) item.textContent = `${paramName}=${newValue}`;
+              if (typeof rec["children"] === "string") rec["children"] = `${paramName}=${newValue}`;
+              if (rec["textContent"]) rec["textContent"] = `${paramName}=${newValue}`;
             }
           } else if (oldValue && c.includes(oldValue)) {
-            if (typeof item.children === "string") item.children = c.replace(oldValue, newValue);
-            if (item.textContent) item.textContent = c.replace(oldValue, newValue);
+            if (typeof rec["children"] === "string") rec["children"] = c.replace(oldValue, newValue);
+            if (rec["textContent"]) rec["textContent"] = c.replace(oldValue, newValue);
           }
         }
       }
-      if (Array.isArray(item.children)) {
-        for (const ch of item.children) {
+      if (Array.isArray(rec["children"])) {
+        for (const ch of rec["children"]) {
           patchMarkupText(ch);
         }
       }
@@ -5640,17 +5650,25 @@ export function updateParameterText(
   }
 
   // Update propertyCache and cell data properties if present
-  const cached = propertyCache.get(nodeId) as any;
+  interface ParameterEntry {
+    name?: string;
+    value?: string;
+  }
+  const cached = propertyCache.get(nodeId) as { parameters?: ParameterEntry[] } | undefined;
   if (cached?.parameters && Array.isArray(cached.parameters)) {
-    const p = cached.parameters.find((item: any) => item && (item.name === paramName || item.name === `${paramName}`));
+    const p = cached.parameters.find(
+      (item: ParameterEntry) => item && (item.name === paramName || item.name === `${paramName}`),
+    );
     if (p) {
       p.value = newValue;
     }
   }
   const curData = cell.getData?.();
-  const curProps = curData?.["properties"] as Record<string, any> | undefined;
-  if (curProps?.["parameters"] && Array.isArray(curProps["parameters"])) {
-    const p = curProps["parameters"].find((item: any) => item && (item.name === paramName || item.name === `${paramName}`));
+  const curProps = curData?.["properties"] as { parameters?: ParameterEntry[] } | undefined;
+  if (curProps?.parameters && Array.isArray(curProps.parameters)) {
+    const p = curProps.parameters.find(
+      (item: ParameterEntry) => item && (item.name === paramName || item.name === `${paramName}`),
+    );
     if (p) {
       p.value = newValue;
     }

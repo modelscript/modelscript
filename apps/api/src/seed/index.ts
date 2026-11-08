@@ -14,13 +14,16 @@ import { FLUIDS_PROCESS_ENERGY_POSTS } from "./artifacts-catalog/fluids-process-
 import { MULTIBODY_ROBOTICS_POSTS } from "./artifacts-catalog/multibody-robotics.js";
 import { POWER_ELECTRONICS_POSTS } from "./artifacts-catalog/power-electronics.js";
 import { SYSTEMS_ONTOLOGICAL_POSTS } from "./artifacts-catalog/systems-ontological.js";
+import { seedPolyglotInbox } from "./inbox.js";
 import { createSeedPostProof, getSeedSigningKeyForUser, seedSigningKeys } from "./keys.js";
 import { SEED_FOLLOW_PAIRS, SEED_PERSONAS } from "./personas.js";
+import { seedPolyglotSpaces } from "./spaces.js";
 import type { SeedPostSpec } from "./types.js";
 
 const SEED_DIR = path.dirname(fileURLToPath(import.meta.url));
 const API_ROOT = path.resolve(SEED_DIR, "../..");
 
+export { seedPolyglotInbox, type SeedInboxSummary } from "./inbox.js";
 export {
   createSeedPostProof,
   getSeedSigningKeyForUser,
@@ -31,6 +34,7 @@ export {
   type SeedProofResult,
 } from "./keys.js";
 export { SEED_FOLLOW_PAIRS, SEED_PERSONAS, type SeedPersona } from "./personas.js";
+export { seedPolyglotSpaces, type SeedSpacesSummary } from "./spaces.js";
 export type { SeedComment, SeedCommentReply, SeedPostSpec } from "./types.js";
 
 /**
@@ -250,6 +254,14 @@ export interface SeedPolyglotSummary {
   postsCreated: number;
   artifactsCreated: number;
   commentsCreated: number;
+  organizationsSeeded?: number | undefined;
+  spacesSeeded?: number | undefined;
+  messagesSeeded?: number | undefined;
+  docsSeeded?: number | undefined;
+  ecosSeeded?: number | undefined;
+  notificationsSeeded?: number | undefined;
+  bookmarksSeeded?: number | undefined;
+  outboxJobsSeeded?: number | undefined;
 }
 
 /**
@@ -682,10 +694,24 @@ export async function seedPolyglotSocialData(
     }
   }
 
+  // Seed showcase Organizations, Spaces (Polymorphic containers), Channels, Messages & ECOs
+  const spacesSummary = seedPolyglotSpaces(db, userIds);
+
+  // Seed unified Inbox notifications, Saved bookmarks/starred items, Archive items, and Outbox HPC jobs
+  const inboxSummary = seedPolyglotInbox(db, userIds, { force: options?.force });
+
   return {
     usersSeeded: userIds.size,
     postsCreated,
     artifactsCreated,
     commentsCreated,
+    organizationsSeeded: spacesSummary.organizationsSeeded,
+    spacesSeeded: spacesSummary.spacesSeeded,
+    messagesSeeded: spacesSummary.messagesSeeded,
+    docsSeeded: spacesSummary.docsSeeded,
+    ecosSeeded: spacesSummary.ecosSeeded,
+    notificationsSeeded: inboxSummary.notificationsSeeded,
+    bookmarksSeeded: inboxSummary.bookmarksSeeded,
+    outboxJobsSeeded: inboxSummary.outboxJobsSeeded,
   };
 }

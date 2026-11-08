@@ -14,6 +14,7 @@
  *   - Transmission branch shadow prices / congestion rents
  */
 
+import { formatOpfReport } from "./format-report.js";
 import type {
   GenericPowerCase,
   OpfBranchResult,
@@ -22,7 +23,6 @@ import type {
   OpfOptions,
   OpfSolution,
 } from "./types.js";
-import { formatOpfReport } from "./format-report.js";
 
 /**
  * Inverts a real matrix A via Gauss-Jordan elimination with partial pivoting.
@@ -133,7 +133,10 @@ export function solveDcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
 
     const cleanId = g.id.trim() || "1";
     const customCost =
-      options.generatorCosts?.get(`${g.i}_${cleanId}`) ?? options.generatorCosts?.get(String(g.i));
+      options.generatorCosts?.get(`${g.i}_${cleanId}`) ??
+      options.generatorCosts?.get(String(g.i)) ??
+      powerCase.generatorCosts?.get(`${g.i}_${cleanId}`) ??
+      powerCase.generatorCosts?.get(String(g.i));
 
     // Default merit-order cost based on machine capacity / bus number
     const defaultC1 = 20.0 + (g.i % 7) * 4.5 + (cleanId === "1" ? 0 : 5.0);

@@ -213,6 +213,64 @@ export interface WasmEmtExports {
   emt_get_machine_speed_pu?(solverPtr: number, macIdx: number): number;
   emt_get_machine_angle_deg?(solverPtr: number, macIdx: number): number;
   emt_get_trajectory_count(solverPtr: number): number;
+  emt_register_hybrid_boundary?(
+    solverPtr: number,
+    nodeA: number,
+    nodeB: number,
+    nodeC: number,
+    gThevenin: number,
+    freqNomHz: number,
+  ): number;
+  emt_update_boundary_norton?(
+    solverPtr: number,
+    bndIdx: number,
+    iMagA: number,
+    iAngA: number,
+    iMagB: number,
+    iAngB: number,
+    iMagC: number,
+    iAngC: number,
+    rampSteps: number,
+  ): void;
+  emt_get_boundary_sequence_ptr?(solverPtr: number, bndIdx: number): number;
+  emt_partition_network?(
+    nNodes: number,
+    nZeroDelayBranches: number,
+    branchFromPtr: number,
+    branchToPtr: number,
+    nDelayLines: number,
+    lineFromPtr: number,
+    lineToPtr: number,
+    lineDelaySecPtr: number,
+    dtSec: number,
+    numPartitions: number,
+    outNodePartPtr: number,
+  ): number;
+  atomicChunkAlloc?(byteLength: number): number;
+}
+
+export interface WasmEmtHybridBoundarySequencePhasors {
+  /** Positive-sequence peak voltage phasor (Re, Im) in Volts and magnitude/angle. */
+  v1Re: number;
+  v1Im: number;
+  v1PeakVolts: number;
+  v1AngleRad: number;
+  /** Negative-sequence peak voltage phasor (Re, Im) in Volts and magnitude. */
+  v2Re: number;
+  v2Im: number;
+  v2PeakVolts: number;
+  /** Zero-sequence peak voltage phasor (Re, Im) in Volts and magnitude. */
+  v0Re: number;
+  v0Im: number;
+  v0PeakVolts: number;
+  /** Positive-sequence peak current phasor (Re, Im) entering EMT zone in Amperes. */
+  i1Re: number;
+  i1Im: number;
+  i1PeakAmp: number;
+  i1AngleRad: number;
+  /** Fundamental 3-phase active power P_1 (MW) and reactive power Q_1 (MVAr) entering EMT zone. */
+  p1Mw: number;
+  q1Mvar: number;
 }
 
 export class WasmEmtBridge {
@@ -907,4 +965,262 @@ export class WasmEmtBridge {
       voltages,
     };
   }
+
+  /**
+   * Registers a 3-phase hybrid EMT-TS boundary interface port at `(nodeA, nodeB, nodeC)`
+   * with driving-point Norton conductance `gThevenin` (per phase) and sliding-window fundamental DFT.
+   */
+  public registerHybridBoundary(
+    nodeA: number,
+    nodeB: number,
+    nodeC: number,
+    gThevenin: number,
+    freqNomHz = 60.0,
+  ): number {
+    if (typeof this.wasm.emt_register_hybrid_boundary === "function") {
+      return this.wasm.emt_register_hybrid_boundary(this.solverPtr, nodeA, nodeB, nodeC, gThevenin, freqNomHz);
+    }
+    return -1;
+  }
+
+  /**
+   * Updates the 3-phase Norton injection target magnitudes (in peak Amperes) and phase angles (in radians)
+   * at hybrid boundary `bndIdx`, ramping linearly over `rampSteps` fast EMT sub-steps.
+   */
+  public updateBoundaryNorton(
+    bndIdx: number,
+    iMagA: number,
+    iAngA: number,
+    iMagB: number,
+    iAngB: number,
+    iMagC: number,
+    iAngC: number,
+    rampSteps = 1,
+  ): void {
+    if (typeof this.wasm.emt_update_boundary_norton === "function") {
+      this.wasm.emt_update_boundary_norton(this.solverPtr, bndIdx, iMagA, iAngA, iMagB, iAngB, iMagC, iAngC, rampSteps);
+    }
+  }
+
+  /**
+   * Reads the latest sliding-window Fortescue sequence phasors `(V1, V2, V0, I1, P1, Q1)`
+   * directly from WebAssembly linear memory with zero-copy view access.
+   */
+  public getBoundarySequencePhasors(bndIdx: number): WasmEmtHybridBoundarySequencePhasors {
+    if (typeof this.wasm.emt_get_boundary_sequence_ptr === "function") {
+      const ptr = this.wasm.emt_get_boundary_sequence_ptr(this.solverPtr, bndIdx);
+      if (ptr > 0) {
+        const view = new Float64Array(this.memory.buffer, ptr, 8);
+        const v1Re = view[0]!;
+        const v1Im = view[1]!;
+        const v2Re = view[2]!;
+        const v2Im = view[3]!;
+        const v0Re = view[4]!;
+        const v0Im = view[5]!;
+        const i1Re = view[6]!;
+        const i1Im = view[7]!;
+
+        const v1PeakVolts = Math.hypot(v1Re, v1Im);
+        const v1AngleRad = Math.atan2(v1Im, v1Re);
+        const v2PeakVolts = Math.hypot(v2Re, v2Im);
+        const v0PeakVolts = Math.hypot(v0Re, v0Im);
+        const i1PeakAmp = Math.hypot(i1Re, i1Im);
+        const i1AngleRad = Math.atan2(i1Im, i1Re);
+
+        // S_1 = (3/2) * V_1_peak * conj(I_1_peak)
+        const p1Watts = 1.5 * (v1Re * i1Re + v1Im * i1Im);
+        const q1Var = 1.5 * (v1Im * i1Re - v1Re * i1Im);
+
+        return {
+          v1Re,
+          v1Im,
+          v1PeakVolts,
+          v1AngleRad,
+          v2Re,
+          v2Im,
+          v2PeakVolts,
+          v0Re,
+          v0Im,
+          v0PeakVolts,
+          i1Re,
+          i1Im,
+          i1PeakAmp,
+          i1AngleRad,
+          p1Mw: p1Watts * 1e-6,
+          q1Mvar: q1Var * 1e-6,
+        };
+      }
+    }
+    return {
+      v1Re: 0,
+      v1Im: 0,
+      v1PeakVolts: 0,
+      v1AngleRad: 0,
+      v2Re: 0,
+      v2Im: 0,
+      v2PeakVolts: 0,
+      v0Re: 0,
+      v0Im: 0,
+      v0PeakVolts: 0,
+      i1Re: 0,
+      i1Im: 0,
+      i1PeakAmp: 0,
+      i1AngleRad: 0,
+      p1Mw: 0,
+      q1Mvar: 0,
+    };
+  }
+}
+
+/**
+ * Invokes the AssemblyScript `emt_partition_network` kernel in WebAssembly linear memory
+ * to partition an EMT graph across `numPartitions` delay-decoupled domains.
+ */
+export function partitionEmtGraphWasm(
+  nNodes: number,
+  zeroDelayEdges: ReadonlyArray<{ from: number; to: number }>,
+  delayLines: ReadonlyArray<{ from: number; to: number; tauSec: number }>,
+  dtSec: number,
+  numPartitions: number,
+  wasmExports?: WasmEmtExports,
+): { nodePartitions: Int32Array; cutLineCount: number } {
+  const wasm = (wasmExports ?? getDefaultWasmExports()) as WasmEmtExports | undefined;
+  if (
+    wasm &&
+    typeof wasm.emt_partition_network === "function" &&
+    typeof wasm.atomicChunkAlloc === "function" &&
+    nNodes > 0
+  ) {
+    const nB = zeroDelayEdges.length;
+    const nL = delayLines.length;
+    const bFromPtr = nB > 0 ? wasm.atomicChunkAlloc(nB * 4) : 0;
+    const bToPtr = nB > 0 ? wasm.atomicChunkAlloc(nB * 4) : 0;
+    const lFromPtr = nL > 0 ? wasm.atomicChunkAlloc(nL * 4) : 0;
+    const lToPtr = nL > 0 ? wasm.atomicChunkAlloc(nL * 4) : 0;
+    const lTauPtr = nL > 0 ? wasm.atomicChunkAlloc(nL * 8) : 0;
+    const outPartPtr = wasm.atomicChunkAlloc(nNodes * 4);
+
+    if (nB > 0) {
+      const bFromView = new Int32Array(wasm.memory.buffer, bFromPtr, nB);
+      const bToView = new Int32Array(wasm.memory.buffer, bToPtr, nB);
+      for (let i = 0; i < nB; i++) {
+        bFromView[i] = zeroDelayEdges[i]!.from;
+        bToView[i] = zeroDelayEdges[i]!.to;
+      }
+    }
+    if (nL > 0) {
+      const lFromView = new Int32Array(wasm.memory.buffer, lFromPtr, nL);
+      const lToView = new Int32Array(wasm.memory.buffer, lToPtr, nL);
+      const lTauView = new Float64Array(wasm.memory.buffer, lTauPtr, nL);
+      for (let i = 0; i < nL; i++) {
+        lFromView[i] = delayLines[i]!.from;
+        lToView[i] = delayLines[i]!.to;
+        lTauView[i] = delayLines[i]!.tauSec;
+      }
+    }
+
+    const cutLineCount = wasm.emt_partition_network(
+      nNodes,
+      nB,
+      bFromPtr,
+      bToPtr,
+      nL,
+      lFromPtr,
+      lToPtr,
+      lTauPtr,
+      dtSec,
+      numPartitions,
+      outPartPtr,
+    );
+    const outView = new Int32Array(wasm.memory.buffer, outPartPtr, nNodes);
+    const nodePartitions = new Int32Array(outView);
+    return { nodePartitions, cutLineCount };
+  }
+
+  // Deterministic TypeScript Union-Find + FM fallback
+  const parent = new Int32Array(nNodes);
+  const size = new Int32Array(nNodes);
+  for (let i = 0; i < nNodes; i++) {
+    parent[i] = i;
+    size[i] = 1;
+  }
+  const find = (x: number): number => {
+    let r = x;
+    while (parent[r] !== r) r = parent[r]!;
+    let c = x;
+    while (c !== r) {
+      const nxt = parent[c]!;
+      parent[c] = r;
+      c = nxt;
+    }
+    return r;
+  };
+  const union = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    if (size[ra]! < size[rb]!) {
+      parent[ra] = rb;
+      size[rb]! += size[ra]!;
+    } else {
+      parent[rb] = ra;
+      size[ra]! += size[rb]!;
+    }
+  };
+  for (const e of zeroDelayEdges) {
+    if (e.from >= 0 && e.from < nNodes && e.to >= 0 && e.to < nNodes) {
+      union(e.from, e.to);
+    }
+  }
+  for (const l of delayLines) {
+    if (l.tauSec + 1e-12 < dtSec && l.from >= 0 && l.from < nNodes && l.to >= 0 && l.to < nNodes) {
+      union(l.from, l.to);
+    }
+  }
+  const rootToCluster = new Map<number, number>();
+  const clusterWeight: number[] = [];
+  const nodeCluster = new Int32Array(nNodes);
+  for (let i = 0; i < nNodes; i++) {
+    const r = find(i);
+    let c = rootToCluster.get(r);
+    if (c === undefined) {
+      c = clusterWeight.length;
+      rootToCluster.set(r, c);
+      clusterWeight.push(size[r]!);
+    }
+    nodeCluster[i] = c;
+  }
+  const nClusters = clusterWeight.length;
+  const kParts = Math.max(1, Math.min(numPartitions, nClusters || 1));
+  const clusterPart = new Int32Array(nClusters);
+  const targetLoad = nNodes / kParts;
+  let curP = 0;
+  let accLoad = 0;
+  for (let c = 0; c < nClusters; c++) {
+    const w = clusterWeight[c]!;
+    const remClusters = nClusters - c;
+    const remParts = kParts - curP - 1;
+    if (
+      curP < kParts - 1 &&
+      accLoad > 0 &&
+      remClusters >= remParts &&
+      (remClusters === remParts || accLoad + w > targetLoad * 1.05)
+    ) {
+      curP++;
+      accLoad = 0;
+    }
+    clusterPart[c] = curP;
+    accLoad += w;
+  }
+  const nodePartitions = new Int32Array(nNodes);
+  for (let i = 0; i < nNodes; i++) {
+    nodePartitions[i] = clusterPart[nodeCluster[i]!]!;
+  }
+  let cutLineCount = 0;
+  for (const l of delayLines) {
+    if (l.tauSec + 1e-12 >= dtSec && l.from >= 0 && l.from < nNodes && l.to >= 0 && l.to < nNodes) {
+      if (nodePartitions[l.from] !== nodePartitions[l.to]) cutLineCount++;
+    }
+  }
+  return { nodePartitions, cutLineCount };
 }

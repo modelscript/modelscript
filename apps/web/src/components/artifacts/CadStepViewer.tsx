@@ -464,6 +464,7 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
     const pA = vpMap.get(m[2]!) ?? ptMap.get(m[2]!);
     const pB = vpMap.get(m[3]!) ?? ptMap.get(m[3]!);
     const curveRef = m[4];
+    const sameSense = (m[5] ? m[5].toUpperCase() : ".T.") !== ".F.";
     if (pA && pB) {
       const circ = curveRef ? circleMap.get(curveRef) : undefined;
       const bspline = curveRef ? bsplineMap.get(curveRef) : undefined;
@@ -475,19 +476,23 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
         };
         const r = circ.radius;
         const c = ax.loc;
-        const u = ax.refDir;
-        const z = ax.axis;
-        const v: [number, number, number] = [
+        const zLen = Math.hypot(ax.axis[0], ax.axis[1], ax.axis[2]) || 1;
+        const z: [number, number, number] = [ax.axis[0] / zLen, ax.axis[1] / zLen, ax.axis[2] / zLen];
+        const uLen = Math.hypot(ax.refDir[0], ax.refDir[1], ax.refDir[2]) || 1;
+        const u: [number, number, number] = [ax.refDir[0] / uLen, ax.refDir[1] / uLen, ax.refDir[2] / uLen];
+        const vRaw: [number, number, number] = [
           z[1] * u[2] - z[2] * u[1],
           z[2] * u[0] - z[0] * u[2],
           z[0] * u[1] - z[1] * u[0],
         ];
+        const vLen = Math.hypot(vRaw[0], vRaw[1], vRaw[2]) || 1;
+        const v: [number, number, number] = [vRaw[0] / vLen, vRaw[1] / vLen, vRaw[2] / vLen];
         const distAB = Math.hypot(pA[0] - pB[0], pA[1] - pB[1], pA[2] - pB[2]);
         const segs = 16;
         const chain: [number, number, number][] = [];
         if (distAB < 1e-6) {
           for (let s = 0; s < segs; s++) {
-            const th = (s / segs) * 2 * Math.PI;
+            const th = (sameSense ? 1 : -1) * (s / segs) * 2 * Math.PI;
             const cs = Math.cos(th);
             const sn = Math.sin(th);
             const pt: [number, number, number] = [
@@ -508,8 +513,12 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
             dB[0]! * v[0] + dB[1]! * v[1] + dB[2]! * v[2],
             dB[0]! * u[0] + dB[1]! * u[1] + dB[2]! * u[2],
           );
-          while (thB <= thA + 1e-6) thB += 2 * Math.PI;
-          const arcSegs = Math.max(4, Math.round(((thB - thA) / (2 * Math.PI)) * segs));
+          if (sameSense) {
+            while (thB <= thA + 1e-6) thB += 2 * Math.PI;
+          } else {
+            while (thB >= thA - 1e-6) thB -= 2 * Math.PI;
+          }
+          const arcSegs = Math.max(4, Math.round((Math.abs(thB - thA) / (2 * Math.PI)) * segs));
           for (let s = 0; s <= arcSegs; s++) {
             const th = thA + (s / arcSegs) * (thB - thA);
             const cs = Math.cos(th);
@@ -524,9 +533,9 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
         }
         edgeChainMap.set(m[1]!, chain);
       } else if (bspline) {
-        edgeChainMap.set(m[1]!, bspline);
+        edgeChainMap.set(m[1]!, sameSense ? bspline : [...bspline].reverse());
       } else {
-        edgeChainMap.set(m[1]!, [pA, pB]);
+        edgeChainMap.set(m[1]!, sameSense ? [pA, pB] : [pB, pA]);
       }
     }
   }
@@ -639,6 +648,108 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
     [0.22, 0.38, 0.52],
   ];
 
+  const triangulatePolygonEarClip = (
+    poly: [number, number, number][],
+    polyNormal: [number, number, number],
+  ): [number, number, number][] => {
+    const n = poly.length;
+    if (n < 3) return [];
+    if (n === 3) return [[0, 1, 2]];
+
+    const nx = Math.abs(polyNormal[0]);
+    const ny = Math.abs(polyNormal[1]);
+    const nz = Math.abs(polyNormal[2]);
+    let uAxis = 0;
+    let vAxis = 1;
+    let sign = polyNormal[2] >= 0 ? 1 : -1;
+    if (nx >= ny && nx >= nz) {
+      uAxis = 1;
+      vAxis = 2;
+      sign = polyNormal[0] >= 0 ? 1 : -1;
+    } else if (ny >= nx && ny >= nz) {
+      uAxis = 2;
+      vAxis = 0;
+      sign = polyNormal[1] >= 0 ? 1 : -1;
+    }
+
+    const pts2d: [number, number][] = poly.map((p) => [p[uAxis]!, sign * p[vAxis]!]);
+    let signedArea = 0;
+    for (let i = 0; i < n; i++) {
+      const p1 = pts2d[i]!;
+      const p2 = pts2d[(i + 1) % n]!;
+      signedArea += p1[0] * p2[1] - p2[0] * p1[1];
+    }
+    const ccw = signedArea >= 0 ? 1 : -1;
+
+    const cross2d = (a: [number, number], b: [number, number], c: [number, number]): number =>
+      (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+
+    const pointInTri2d = (
+      p: [number, number],
+      a: [number, number],
+      b: [number, number],
+      c: [number, number],
+    ): boolean => {
+      const c1 = cross2d(a, b, p) * ccw;
+      const c2 = cross2d(b, c, p) * ccw;
+      const c3 = cross2d(c, a, p) * ccw;
+      return c1 >= -1e-9 && c2 >= -1e-9 && c3 >= -1e-9;
+    };
+
+    const avail = Array.from({ length: n }, (_, i) => i);
+    const tris: [number, number, number][] = [];
+    let guard = n * n * 2;
+
+    while (avail.length > 3 && guard-- > 0) {
+      let earFound = false;
+      const mLen = avail.length;
+      for (let i = 0; i < mLen; i++) {
+        const iPrev = avail[(i + mLen - 1) % mLen]!;
+        const iCurr = avail[i]!;
+        const iNext = avail[(i + 1) % mLen]!;
+        const a = pts2d[iPrev]!;
+        const b = pts2d[iCurr]!;
+        const c = pts2d[iNext]!;
+        if (cross2d(a, b, c) * ccw <= 1e-9) continue;
+
+        let hasInside = false;
+        for (let j = 0; j < mLen; j++) {
+          const idx = avail[j]!;
+          if (idx === iPrev || idx === iCurr || idx === iNext) continue;
+          const pt = pts2d[idx]!;
+          if (
+            Math.hypot(pt[0] - a[0], pt[1] - a[1]) < 1e-7 ||
+            Math.hypot(pt[0] - b[0], pt[1] - b[1]) < 1e-7 ||
+            Math.hypot(pt[0] - c[0], pt[1] - c[1]) < 1e-7
+          ) {
+            continue;
+          }
+          if (pointInTri2d(pt, a, b, c)) {
+            hasInside = true;
+            break;
+          }
+        }
+        if (!hasInside) {
+          tris.push([iPrev, iCurr, iNext]);
+          avail.splice(i, 1);
+          earFound = true;
+          break;
+        }
+      }
+      if (!earFound) {
+        const iPrev = avail[0]!;
+        const iCurr = avail[1]!;
+        const iNext = avail[2]!;
+        tris.push([iPrev, iCurr, iNext]);
+        avail.splice(1, 1);
+      }
+    }
+    if (avail.length === 3) {
+      tris.push([avail[0]!, avail[1]!, avail[2]!]);
+    }
+    return tris;
+  };
+
   const buildMeshFromPolygonGroup = (
     groupName: string,
     polygons: [number, number, number][][],
@@ -671,19 +782,46 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
       let fcx = 0;
       let fcy = 0;
       let fcz = 0;
-      for (const p of poly) {
+      let pnx = 0;
+      let pny = 0;
+      let pnz = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const p = poly[i]!;
+        const next = poly[(i + 1) % poly.length]!;
         fcx += p[0];
         fcy += p[1];
         fcz += p[2];
+        pnx += (p[1] - next[1]) * (p[2] + next[2]);
+        pny += (p[2] - next[2]) * (p[0] + next[0]);
+        pnz += (p[0] - next[0]) * (p[1] + next[1]);
       }
       fcx /= poly.length;
       fcy /= poly.length;
       fcz /= poly.length;
 
-      for (let i = 1; i < poly.length - 1; i++) {
-        const a = poly[0]!;
-        let b = poly[i]!;
-        let c = poly[i + 1]!;
+      const pnLen = Math.hypot(pnx, pny, pnz);
+      if (pnLen > 1e-12) {
+        pnx /= pnLen;
+        pny /= pnLen;
+        pnz /= pnLen;
+      } else {
+        pnx = 0;
+        pny = 0;
+        pnz = 1;
+      }
+
+      const polyOutDot = pnx * (fcx - cx) + pny * (fcy - cy) + pnz * (fcz - cz);
+      if (polyOutDot < 0) {
+        pnx = -pnx;
+        pny = -pny;
+        pnz = -pnz;
+      }
+
+      const triIndices = triangulatePolygonEarClip(poly, [pnx, pny, pnz]);
+      for (const [ia, ib, ic] of triIndices) {
+        const a = poly[ia]!;
+        let b = poly[ib]!;
+        let c = poly[ic]!;
         const ux = b[0] - a[0];
         const uy = b[1] - a[1];
         const uz = b[2] - a[2];
@@ -699,8 +837,8 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
         ny /= len;
         nz /= len;
 
-        const outDot = nx * (fcx - cx) + ny * (fcy - cy) + nz * (fcz - cz);
-        if (outDot < 0) {
+        const alignDot = nx * pnx + ny * pny + nz * pnz;
+        if (alignDot < 0) {
           const tmp = b;
           b = c;
           c = tmp;
@@ -769,10 +907,18 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   const [renderMode, setRenderMode] = useState<RenderMode>("shaded");
   const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
   const [clipOffset, setClipOffset] = useState<number>(0);
-  const [probedPoint, setProbedPoint] = useState<{ position: [number, number, number]; partName: string } | null>(null);
+  const [probedPoint, setProbedPoint] = useState<{
+    position: [number, number, number];
+    worldPosition?: [number, number, number];
+    partName: string;
+  } | null>(null);
   const [isPinMode, setIsPinMode] = useState(false);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
   const controlsRef = useRef<any>(null);
+  const stepSourceRef = useRef(stepSource);
+  useEffect(() => {
+    stepSourceRef.current = stepSource;
+  }, [stepSource]);
 
   const activeClippingPlanes = useMemo(() => {
     if (clipAxis === "none") return [];
@@ -863,13 +1009,20 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   const pregenExpressSvg = typeof viewConfig?.expressSvg === "string" ? viewConfig.expressSvg : "";
 
   const expressDiagram = useMemo(() => {
+    if (viewTab !== "diagram" && viewTab !== "code") {
+      return {
+        svg: "",
+        entityCounts: Object.fromEntries(CORE_STEP_ENTITY_TYPES.map((k) => [k, 0])),
+        totalEntities: 0,
+      };
+    }
     const parsed = parseStepExpressDiagram(effectiveStepSource);
     const rawSvg = pregenExpressSvg.trim().length > 0 ? DOMPurify.sanitize(pregenExpressSvg) : parsed.svg;
     return {
       ...parsed,
       svg: adaptSvgMarkupForTheme(rawSvg, isDark),
     };
-  }, [pregenExpressSvg, effectiveStepSource, isDark]);
+  }, [viewTab, pregenExpressSvg, effectiveStepSource, isDark]);
 
   const handleOpenInPlayground = () => {
     const targetUrl = buildEditorUrlForArtifact({
@@ -895,6 +1048,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
 
   useEffect(() => {
     let active = true;
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function loadStep() {
       try {
@@ -947,7 +1101,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
             viewConfig?.stepSource ||
             viewConfig?.source ||
             viewConfig?.content ||
-            stepSource ||
+            stepSourceRef.current ||
             "";
           if (!sourceText.trim() && stepUrl) {
             try {
@@ -964,7 +1118,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
               // Ignore fetch errors
             }
           }
-          if (active && sourceText.trim().length > 0 && !stepSource.trim()) {
+          if (active && sourceText.trim().length > 0 && !stepSourceRef.current.trim()) {
             setStepSource(sourceText);
           }
           if (sourceText.trim().length > 0) {
@@ -1013,8 +1167,10 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
           setAssemblyCenter(center);
           setAssemblyScale(scale);
 
-          setTimeout(() => {
-            (window as any).__ARTIFACT_READY = true;
+          readyTimer = setTimeout(() => {
+            if (active) {
+              (window as any).__ARTIFACT_READY = true;
+            }
           }, 1500);
         } else if (active) {
           setError("No CAD geometry meshes available for this STEP model.");
@@ -1030,8 +1186,9 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
 
     return () => {
       active = false;
+      if (readyTimer) clearTimeout(readyTimer);
     };
-  }, [viewConfig, stepUrl, modelTitle, stepSource]);
+  }, [viewConfig, stepUrl, modelTitle]);
 
   useEffect(() => {
     return () => {
@@ -1039,7 +1196,33 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     };
   }, [geometries]);
 
-  const codeLines = useMemo(() => effectiveStepSource.split(/\r?\n/), [effectiveStepSource]);
+  const meshItems = useMemo(() => {
+    if (!geometries) return [];
+    return geometries.map((geo, idx) => {
+      const meshCenter = geo.boundingSphere?.center;
+      const offset: [number, number, number] =
+        assemblyCenter && meshCenter && explosionFactor > 0
+          ? [
+              (meshCenter.x - assemblyCenter.x) * explosionFactor,
+              (meshCenter.y - assemblyCenter.y) * explosionFactor,
+              (meshCenter.z - assemblyCenter.z) * explosionFactor,
+            ]
+          : [0, 0, 0];
+      const compName =
+        typeof geo.userData?.name === "string" && geo.userData.name.trim().length > 0
+          ? geo.userData.name
+          : `CAD Component #${idx + 1}`;
+      const rgb = Array.isArray(geo.userData?.color) ? geo.userData.color : null;
+      const matColor =
+        rgb && rgb.length >= 3 ? new THREE.Color(Number(rgb[0]), Number(rgb[1]), Number(rgb[2])) : "#3b526b";
+      return { geo, idx, offset, compName, matColor };
+    });
+  }, [geometries, assemblyCenter, explosionFactor]);
+
+  const codeLines = useMemo(
+    () => (viewTab === "code" ? effectiveStepSource.split(/\r?\n/) : []),
+    [viewTab, effectiveStepSource],
+  );
 
   return (
     <Box
@@ -1263,61 +1446,57 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                           : [0, 0, 0]
                       }
                     >
-                      {geometries.map((geo, idx) => {
-                        const meshCenter = geo.boundingSphere?.center || new THREE.Vector3();
-                        const offset =
-                          assemblyCenter && explosionFactor > 0
-                            ? meshCenter.clone().sub(assemblyCenter).multiplyScalar(explosionFactor)
-                            : new THREE.Vector3();
-                        const compName =
-                          typeof geo.userData?.name === "string" && geo.userData.name.trim().length > 0
-                            ? geo.userData.name
-                            : `CAD Component #${idx + 1}`;
-                        const rgb = Array.isArray(geo.userData?.color) ? geo.userData.color : null;
-                        const matColor =
-                          rgb && rgb.length >= 3
-                            ? new THREE.Color(Number(rgb[0]), Number(rgb[1]), Number(rgb[2]))
-                            : "#3b526b";
-
-                        return (
-                          <mesh
-                            key={idx}
-                            geometry={geo}
-                            position={offset}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setProbedPoint({
-                                position: [e.point.x, e.point.y, e.point.z],
-                                partName: compName,
+                      {meshItems.map(({ geo, idx, offset, compName, matColor }) => (
+                        <mesh
+                          key={idx}
+                          geometry={geo}
+                          position={offset}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
+                            const cadPos: [number, number, number] = [
+                              e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
+                              e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
+                              e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
+                            ];
+                            setProbedPoint({
+                              position: cadPos,
+                              worldPosition: [e.point.x, e.point.y, e.point.z],
+                              partName: compName,
+                            });
+                            if (isPinMode && onPinCreated) {
+                              onPinCreated({
+                                worldPosition: cadPos,
+                                cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
+                                cameraTarget: cadPos,
+                                fieldName: compName,
+                                scalarValue: idx + 1,
                               });
-                              if (isPinMode && onPinCreated) {
-                                onPinCreated({
-                                  worldPosition: [e.point.x, e.point.y, e.point.z],
-                                  cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
-                                  cameraTarget: [e.point.x, e.point.y, e.point.z],
-                                  fieldName: compName,
-                                  scalarValue: idx + 1,
-                                });
-                                setIsPinMode(false);
-                              }
-                            }}
-                          >
-                            <meshPhysicalMaterial
-                              color={matColor}
-                              metalness={0.28}
-                              roughness={0.48}
-                              wireframe={renderMode === "wireframe"}
-                              transparent={renderMode === "xray"}
-                              opacity={renderMode === "xray" ? 0.35 : 1.0}
-                              clearcoat={0.1}
-                              side={THREE.DoubleSide}
-                              clippingPlanes={activeClippingPlanes}
-                              clipShadows={true}
-                            />
-                          </mesh>
-                        );
-                      })}
+                              setIsPinMode(false);
+                            }
+                          }}
+                        >
+                          <meshPhysicalMaterial
+                            color={matColor}
+                            metalness={0.28}
+                            roughness={0.48}
+                            wireframe={renderMode === "wireframe"}
+                            transparent={renderMode === "xray"}
+                            opacity={renderMode === "xray" ? 0.35 : 1.0}
+                            clearcoat={0.1}
+                            side={THREE.DoubleSide}
+                            clippingPlanes={activeClippingPlanes}
+                            clipShadows={true}
+                          />
+                        </mesh>
+                      ))}
                     </group>
+                    {probedPoint?.worldPosition && (
+                      <mesh position={probedPoint.worldPosition}>
+                        <sphereGeometry args={[0.38, 16, 16]} />
+                        <meshBasicMaterial color="#38bdf8" />
+                      </mesh>
+                    )}
                     <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
                   </Suspense>
                   <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
@@ -1339,6 +1518,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                   <Text style={{ fontSize: "12px", fontWeight: "bold" }}>Explode</Text>
                   <input
                     type="range"
+                    aria-label="Assembly explode factor"
                     min="0"
                     max="2"
                     step="0.01"

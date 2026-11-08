@@ -138,6 +138,10 @@
       "types": "./dist/solvers/wasm_gaussian.d.ts",
       "default": "./dist/solvers/wasm_gaussian.js"
     },
+    "./sparse_lu.js": {
+      "types": "./dist/solvers/sparse_lu.d.ts",
+      "default": "./dist/solvers/sparse_lu.js"
+    },
     "./wasm_groebner.js": {
       "types": "./dist/solvers/wasm_groebner.d.ts",
       "default": "./dist/solvers/wasm_groebner.js"

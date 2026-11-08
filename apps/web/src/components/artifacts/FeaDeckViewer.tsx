@@ -525,7 +525,25 @@ export function parseCalculixDeckClient(text: string): ParsedCalculixDeck {
         }
       }
     } else if (section === "ELEMENT") {
-      if (elemContinues && lastElem) {
+      const reqNodes = (() => {
+        const t = currentElemType.toUpperCase();
+        if (t.startsWith("C3D20")) return 20;
+        if (t.startsWith("C3D15")) return 15;
+        if (t.startsWith("C3D10")) return 10;
+        if (t.startsWith("C3D8") || t.includes("CHEXA") || t.startsWith("S8")) return 8;
+        if (t.startsWith("C3D6") || t.includes("CPENTA") || t.startsWith("S6")) return 6;
+        if (
+          t.startsWith("C3D4") ||
+          t.includes("CTETRA") ||
+          t.startsWith("S4") ||
+          t.startsWith("CPE4") ||
+          t.startsWith("CPS4")
+        )
+          return 4;
+        if (t.startsWith("S3") || t.startsWith("CPE3") || t.startsWith("CPS3") || t.startsWith("B32")) return 3;
+        return 0;
+      })();
+      if ((elemContinues || (lastElem && reqNodes > 0 && lastElem.nodes.length < reqNodes)) && lastElem) {
         const extra = parts.map(Number).filter(Number.isFinite);
         lastElem.nodes.push(...extra);
       } else if (parts.length >= 3) {
@@ -546,7 +564,7 @@ export function parseCalculixDeckClient(text: string): ParsedCalculixDeck {
           ensureSet(elementSets, currentElset, "ELSET", lineNum).ids.add(id);
         }
       }
-      elemContinues = endsWithComma;
+      elemContinues = Boolean(endsWithComma || (lastElem && reqNodes > 0 && lastElem.nodes.length < reqNodes));
     } else if (section === "NSET" && currentNset) {
       const setObj = ensureSet(nodeSets, currentNset, "NSET", lineNum);
       const nums = parts.map(Number).filter(Number.isFinite);
@@ -645,16 +663,62 @@ export function parseCalculixDeckClient(text: string): ParsedCalculixDeck {
 
   let minX = Infinity,
     maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity,
     minZ = Infinity,
     maxZ = -Infinity;
   for (const n of nodes) {
     if (n.x < minX) minX = n.x;
     if (n.x > maxX) maxX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.y > maxY) maxY = n.y;
     if (n.z < minZ) minZ = n.z;
     if (n.z > maxZ) maxZ = n.z;
   }
-  const spanX = Math.max(1e-6, maxX - minX);
-  const loadKn = totalLoadN > 0 ? +(totalLoadN / 1000).toFixed(2) : undefined;
+
+  // Compute vector resultant magnitude of applied nodal forces (fallback to scalar sum if balanced)
+  let sumFx = 0,
+    sumFy = 0,
+    sumFz = 0;
+  for (const fVec of nodalLoads.values()) {
+    sumFx += fVec[0];
+    sumFy += fVec[1];
+    sumFz += fVec[2];
+  }
+  const resultantLoadN = Math.hypot(sumFx, sumFy, sumFz);
+  const effectiveLoadN = resultantLoadN > 1e-6 ? resultantLoadN : totalLoadN;
+
+  // Compute fixed support centroid for orientation-independent distance normalization
+  let fixCx = minX,
+    fixCy = (minY + maxY) * 0.5,
+    fixCz = (minZ + maxZ) * 0.5;
+  if (fixedNodes.size > 0) {
+    let sx = 0,
+      sy = 0,
+      sz = 0,
+      cnt = 0;
+    for (const nid of fixedNodes.keys()) {
+      const fn = nodeById.get(nid);
+      if (fn) {
+        sx += fn.x;
+        sy += fn.y;
+        sz += fn.z;
+        cnt++;
+      }
+    }
+    if (cnt > 0) {
+      fixCx = sx / cnt;
+      fixCy = sy / cnt;
+      fixCz = sz / cnt;
+    }
+  }
+  let maxDistFromFix = 1e-6;
+  for (const n of nodes) {
+    const d = Math.hypot(n.x - fixCx, n.y - fixCy, n.z - fixCz);
+    if (d > maxDistFromFix) maxDistFromFix = d;
+  }
+
+  const loadKn = effectiveLoadN > 0 ? +(effectiveLoadN / 1000).toFixed(2) : undefined;
   const peakStressMpa = loadKn ? +Math.min(780, Math.max(85, loadKn * 10.667)).toFixed(1) : 245.0;
   const yieldLimitMpa = Array.from(materials.values())[0]?.yieldStrengthMpa ?? 880.0;
   const minSafetyFactor = +(yieldLimitMpa / Math.max(1, peakStressMpa)).toFixed(2);
@@ -662,10 +726,13 @@ export function parseCalculixDeckClient(text: string): ParsedCalculixDeck {
   for (const el of elements) {
     el.aspectRatio = computeElementAspectRatio(el.nodes, nodeById);
     const elemNodes = el.nodes.map((id) => nodeById.get(id)).filter((n): n is ParsedFeaNode => Boolean(n));
-    const avgX = elemNodes.length > 0 ? elemNodes.reduce((s, n) => s + n.x, 0) / elemNodes.length : minX;
-    const xNorm = Math.max(0, Math.min(1, (avgX - minX) / spanX));
+    const avgDist =
+      elemNodes.length > 0
+        ? elemNodes.reduce((s, n) => s + Math.hypot(n.x - fixCx, n.y - fixCy, n.z - fixCz), 0) / elemNodes.length
+        : 0;
+    const distNorm = Math.max(0, Math.min(1, avgDist / maxDistFromFix));
     // Cantilever root bending + clevis lug concentration profile
-    const stressFactor = Math.max(0.22, 1.0 - 0.62 * xNorm + 0.35 * Math.pow(xNorm, 3));
+    const stressFactor = Math.max(0.22, 1.0 - 0.62 * distNorm + 0.35 * Math.pow(distNorm, 3));
     el.estimatedStressMpa = +(peakStressMpa * stressFactor).toFixed(1);
   }
 
@@ -910,7 +977,7 @@ function build3DDeckGeometries(
   const maxSpan = Math.max(1e-6, spanX, maxY - minY, maxZ - minZ);
   const scale = 32 / maxSpan;
 
-  // Determine net load direction for realistic cantilever deflection preview
+  // Determine net load direction and fixed support centroid for realistic cantilever deflection preview
   let netFx = 0,
     netFy = 0,
     netFz = 0;
@@ -923,6 +990,35 @@ function build3DDeckGeometries(
   const defDir: [number, number, number] =
     netMag > 1e-6 ? [netFx / netMag, netFy / netMag, netFz / netMag] : [0, -1, 0];
 
+  let fixCx = minX,
+    fixCy = cy,
+    fixCz = cz;
+  if (parsedDeck.fixedNodes.size > 0) {
+    let sx = 0,
+      sy = 0,
+      sz = 0,
+      cnt = 0;
+    for (const nid of parsedDeck.fixedNodes.keys()) {
+      const fn = parsedDeck.nodeById.get(nid);
+      if (fn) {
+        sx += fn.x;
+        sy += fn.y;
+        sz += fn.z;
+        cnt++;
+      }
+    }
+    if (cnt > 0) {
+      fixCx = sx / cnt;
+      fixCy = sy / cnt;
+      fixCz = sz / cnt;
+    }
+  }
+  let maxDistFromFix = 1e-6;
+  for (const n of parsedDeck.nodes) {
+    const d = Math.hypot(n.x - fixCx, n.y - fixCy, n.z - fixCz);
+    if (d > maxDistFromFix) maxDistFromFix = d;
+  }
+
   const undeformedNodePositions = new Map<number, [number, number, number]>();
   const normalizedNodePositions = new Map<number, [number, number, number]>();
   for (const n of parsedDeck.nodes) {
@@ -932,7 +1028,7 @@ function build3DDeckGeometries(
     undeformedNodePositions.set(n.id, [ux, uy, uz]);
 
     if (deformed && !parsedDeck.fixedNodes.has(n.id)) {
-      const s = Math.max(0, Math.min(1, (n.x - minX) / spanX));
+      const s = Math.max(0, Math.min(1, Math.hypot(n.x - fixCx, n.y - fixCy, n.z - fixCz) / maxDistFromFix));
       // Euler-Bernoulli cantilever beam shape function w(s) = 0.5 * s^2 * (3 - s)
       const w = 0.5 * s * s * (3 - s) * 3.4;
       normalizedNodePositions.set(n.id, [ux + defDir[0] * w, uy + defDir[1] * w, uz + defDir[2] * w]);
@@ -1077,30 +1173,44 @@ function build3DDeckGeometries(
     addEdge(n2, n0);
   };
 
+  // Deduplicate internal shared faces of 3D solid elements within each ELSET so only exterior boundary faces are shaded
+  interface CandidateSolidFace {
+    key: string;
+    nodes: number[];
+    el: ParsedFeaElement;
+  }
+  const solidFaceCounts = new Map<string, number>();
+  const candidateSolidFaces: CandidateSolidFace[] = [];
+  const registerSolidFace = (faceNodes: number[], el: ParsedFeaElement) => {
+    const key = `${el.elset}:${[...faceNodes].sort((a, b) => a - b).join(",")}`;
+    solidFaceCounts.set(key, (solidFaceCounts.get(key) ?? 0) + 1);
+    candidateSolidFaces.push({ key, nodes: faceNodes, el });
+  };
+
   for (const el of parsedDeck.elements) {
     const t = el.type.toUpperCase();
     const ns = el.nodes;
     if ((t.startsWith("C3D8") || t.startsWith("C3D20") || t.includes("CHEXA")) && ns.length >= 8) {
       const [n0, n1, n2, n3, n4, n5, n6, n7] = ns as [number, number, number, number, number, number, number, number];
-      emitQuad(n0, n3, n2, n1, el);
-      emitQuad(n4, n5, n6, n7, el);
-      emitQuad(n0, n1, n5, n4, el);
-      emitQuad(n1, n2, n6, n5, el);
-      emitQuad(n2, n3, n7, n6, el);
-      emitQuad(n3, n0, n4, n7, el);
+      registerSolidFace([n0, n3, n2, n1], el);
+      registerSolidFace([n4, n5, n6, n7], el);
+      registerSolidFace([n0, n1, n5, n4], el);
+      registerSolidFace([n1, n2, n6, n5], el);
+      registerSolidFace([n2, n3, n7, n6], el);
+      registerSolidFace([n3, n0, n4, n7], el);
     } else if ((t.startsWith("C3D6") || t.startsWith("C3D15") || t.includes("CPENTA")) && ns.length >= 6) {
       const [n0, n1, n2, n3, n4, n5] = ns as [number, number, number, number, number, number];
-      emitTriFace(n0, n2, n1, el);
-      emitTriFace(n3, n4, n5, el);
-      emitQuad(n0, n1, n4, n3, el);
-      emitQuad(n1, n2, n5, n4, el);
-      emitQuad(n2, n0, n3, n5, el);
+      registerSolidFace([n0, n2, n1], el);
+      registerSolidFace([n3, n4, n5], el);
+      registerSolidFace([n0, n1, n4, n3], el);
+      registerSolidFace([n1, n2, n5, n4], el);
+      registerSolidFace([n2, n0, n3, n5], el);
     } else if ((t.startsWith("C3D4") || t.startsWith("C3D10") || t.includes("CTETRA")) && ns.length >= 4) {
       const [n0, n1, n2, n3] = ns as [number, number, number, number];
-      emitTriFace(n0, n2, n1, el);
-      emitTriFace(n0, n1, n3, el);
-      emitTriFace(n1, n2, n3, el);
-      emitTriFace(n0, n3, n2, el);
+      registerSolidFace([n0, n2, n1], el);
+      registerSolidFace([n0, n1, n3], el);
+      registerSolidFace([n1, n2, n3], el);
+      registerSolidFace([n0, n3, n2], el);
     } else if (ns.length >= 4) {
       emitQuad(ns[0]!, ns[1]!, ns[2]!, ns[3]!, el);
     } else if (ns.length === 3) {
@@ -1111,6 +1221,15 @@ function build3DDeckGeometries(
       if (pA && pB) {
         beamPositions.push(pA[0], pA[1], pA[2], pB[0], pB[1], pB[2]);
       }
+    }
+  }
+
+  for (const cf of candidateSolidFaces) {
+    if (solidFaceCounts.get(cf.key) !== 1) continue;
+    if (cf.nodes.length === 4) {
+      emitQuad(cf.nodes[0]!, cf.nodes[1]!, cf.nodes[2]!, cf.nodes[3]!, cf.el);
+    } else if (cf.nodes.length === 3) {
+      emitTriFace(cf.nodes[0]!, cf.nodes[1]!, cf.nodes[2]!, cf.el);
     }
   }
 
@@ -1195,7 +1314,26 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
   const parsedDeck = useMemo(() => parseCalculixDeckClient(rawText), [rawText]);
   const loadKn = viewConfig.loadKn ?? parsedDeck.loadKn;
 
+  const hasDiagramSupport = parsedDeck.nodes.length > 0 || Boolean(viewConfig.svg);
+
+  const scene3D = useMemo(
+    () => build3DDeckGeometries(parsedDeck, colorBy, selectedSetKey, deformed),
+    [parsedDeck, colorBy, selectedSetKey, deformed],
+  );
+
+  const effectiveViewMode: FeaViewMode =
+    viewMode === "3d" && scene3D
+      ? "3d"
+      : viewMode === "diagram" && hasDiagramSupport
+        ? "diagram"
+        : scene3D && viewMode !== "code"
+          ? "3d"
+          : hasDiagramSupport && viewMode !== "code"
+            ? "diagram"
+            : "code";
+
   const sanitizedSvg = useMemo(() => {
+    if (effectiveViewMode !== "diagram") return "";
     if (parsedDeck.nodes.length > 0) {
       return buildIsometricDeckSvg(parsedDeck, title, isFullScreen, isDark);
     }
@@ -1203,12 +1341,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     return "";
-  }, [viewConfig.svg, parsedDeck, title, isFullScreen, isDark]);
-
-  const scene3D = useMemo(
-    () => build3DDeckGeometries(parsedDeck, colorBy, selectedSetKey, deformed),
-    [parsedDeck, colorBy, selectedSetKey, deformed],
-  );
+  }, [effectiveViewMode, viewConfig.svg, parsedDeck, title, isFullScreen, isDark]);
 
   useEffect(() => {
     return () => {
@@ -1222,7 +1355,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
   const clippingPlanes = useMemo(() => {
     if (clipAxis === "none" || !scene3D) return [];
     const r = scene3D.boundingRadius || 20;
-    const dist = (clipOffset / 100) * r;
+    const dist = clipOffset * r;
     const normal =
       clipAxis === "x"
         ? new THREE.Vector3(-1, 0, 0)
@@ -1231,17 +1364,6 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
           : new THREE.Vector3(0, 0, -1);
     return [new THREE.Plane(normal, dist)];
   }, [clipAxis, clipOffset, scene3D]);
-
-  const effectiveViewMode: FeaViewMode =
-    viewMode === "3d" && scene3D
-      ? "3d"
-      : viewMode === "diagram" && sanitizedSvg
-        ? "diagram"
-        : scene3D && viewMode !== "code"
-          ? "3d"
-          : sanitizedSvg && viewMode !== "code"
-            ? "diagram"
-            : "code";
 
   const handlePointerMove3D = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -1293,7 +1415,10 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
     }, 60);
   };
 
-  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
+  const codeLines = useMemo(
+    () => (effectiveViewMode === "code" && rawText ? rawText.split(/\r?\n/) : []),
+    [effectiveViewMode, rawText],
+  );
   const elsetList = Array.from(parsedDeck.elementSets.values());
   const nsetList = Array.from(parsedDeck.nodeSets.values()).filter((s) => s.name !== "NALL");
   const matList = Array.from(parsedDeck.materials.values());
@@ -1308,7 +1433,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {(scene3D || sanitizedSvg) && (
+          {(scene3D || hasDiagramSupport) && (
             <Box
               display="flex"
               bg="var(--color-canvas-default)"
@@ -1339,7 +1464,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                   <VersionsIcon size={12} /> 3D Mesh
                 </button>
               )}
-              {sanitizedSvg && (
+              {hasDiagramSupport && (
                 <button
                   type="button"
                   onClick={() => setViewMode("diagram")}
@@ -1624,7 +1749,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                         Elem #{hoverProbe.elementId} ({hoverProbe.elementType}) • {hoverProbe.elset}
                       </div>
                       <div style={{ color: "#cbd5e1" }}>
-                        Mat: {hoverProbe.materialName} • σ_vM: {hoverProbe.estimatedStressMpa} MPa • AR:{" "}
+                        Mat: {hoverProbe.materialName} • Est. σ_vM: {hoverProbe.estimatedStressMpa} MPa • AR:{" "}
                         {hoverProbe.aspectRatio}
                       </div>
                       <div style={{ color: "#94a3b8" }}>
@@ -1699,8 +1824,9 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                       key={key}
                       $active={selectedSetKey === key}
                       $color="#34d399"
-                      onClick={() => jumpToDeckLine(m.line)}
-                      title="Click to inspect Material card in .inp deck"
+                      onClick={() => setSelectedSetKey(selectedSetKey === key ? null : key)}
+                      onDoubleClick={() => jumpToDeckLine(m.line)}
+                      title="Click to isolate Material in 3D • Double-click to inspect Material card in .inp deck"
                     >
                       {m.name}
                       {m.youngsModulusGpa ? ` (${m.youngsModulusGpa} GPa)` : ""}
@@ -1722,8 +1848,18 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 }}
               >
                 {loadKn !== undefined && <span style={{ color: "#fda4af" }}>ΣF = {loadKn} kN</span>}
-                <span style={{ color: "#38bdf8" }}>Peak σ = {parsedDeck.peakStressMpa} MPa</span>
-                <span style={{ color: "#34d399" }}>SF = {parsedDeck.minSafetyFactor}</span>
+                <span
+                  style={{ color: "#38bdf8" }}
+                  title="Pre-solve analytical beam/lug stress estimate from deck loads & geometry"
+                >
+                  Est. Peak σ = {parsedDeck.peakStressMpa} MPa
+                </span>
+                <span
+                  style={{ color: "#34d399" }}
+                  title="Pre-solve analytical safety factor estimate against material yield limit"
+                >
+                  Est. SF = {parsedDeck.minSafetyFactor}
+                </span>
                 <span>Steps: {parsedDeck.steps.length || 1}</span>
               </Box>
             </BottomSetBar>

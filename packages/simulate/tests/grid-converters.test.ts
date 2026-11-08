@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  exportExagoDeck,
   parseMatpower,
   parseVeraGridJson,
   serializeMatpower,
@@ -38,6 +39,13 @@ mpc.branch = [
   1    3    0.03    0.08    0.02  70.0  0     0     0     0     1;
   2    3    0.02    0.05    0.02  120.0 0     0     0     0     1;
 ];
+
+%% generator cost data
+%  1  startup  shutdown  n  c2  c1  c0
+mpc.gencost = [
+  2  0.0  0.0  3  0.0050  25.00  100.0;
+  2  0.0  0.0  3  0.0080  40.00  150.0;
+];
 `;
 
 const SAMPLE_VERAGRID_JSON = `{
@@ -71,11 +79,22 @@ test("MATPOWER (.m): Parses benchmark case and solves DC-OPF and AC-OPF", () => 
   assert.equal(pCase.loads[0]!.pl, 90.0);
   assert.equal(pCase.generators.length, 2);
   assert.equal(pCase.branches.length, 3);
+  assert.ok(pCase.generatorCosts);
+  assert.equal(pCase.generatorCosts.has("1_1"), true);
+  assert.equal(pCase.generatorCosts.has("2_1"), true);
+  const cost1 = pCase.generatorCosts.get("1_1");
+  assert.ok(cost1);
+  assert.equal(cost1.c1, 25.0);
+  assert.equal(cost1.c2, 0.005);
+  assert.equal(cost1.c0, 100.0);
 
-  // Solve DC-OPF
+  // Solve DC-OPF (should prioritize cheaper Gen 1 @ $25/MWh vs Gen 2 @ $40/MWh)
   const dcOpf = solveDcOpf(pCase);
   assert.equal(dcOpf.status, "OPTIMAL");
   assert.ok(dcOpf.totalGenMw >= 90.0);
+  const gen1Result = dcOpf.generators.find((g) => g.busNumber === 1);
+  assert.ok(gen1Result);
+  assert.ok(gen1Result.pgMw > 40.0); // Merit-order dispatch favored Gen 1
 
   // Solve AC-OPF
   const acOpf = solveAcOpf(pCase);
@@ -88,11 +107,18 @@ test("MATPOWER (.m): Parses benchmark case and solves DC-OPF and AC-OPF", () => 
   assert.ok(serialized.includes("mpc.bus = ["));
   assert.ok(serialized.includes("mpc.gen = ["));
   assert.ok(serialized.includes("mpc.branch = ["));
+  assert.ok(serialized.includes("mpc.gencost = ["));
 
   // Re-parse
   const reparsed = parseMatpower(serialized);
   assert.equal(reparsed.buses.size, 3);
   assert.equal(reparsed.generators.length, 2);
+  assert.ok(reparsed.generatorCosts);
+  const reparsedCost1 = reparsed.generatorCosts.get("1_1");
+  assert.ok(reparsedCost1);
+  assert.equal(reparsedCost1.c1, 25.0);
+  assert.equal(reparsedCost1.c2, 0.005);
+  assert.equal(reparsedCost1.c0, 100.0);
 });
 
 test("VeraGrid Native JSON: Parses circuit and solves DC-OPF and AC-OPF", () => {
@@ -123,4 +149,29 @@ test("VeraGrid Native JSON: Parses circuit and solves DC-OPF and AC-OPF", () => 
   const reparsed = parseVeraGridJson(jsonStr);
   assert.equal(reparsed.buses.size, 3);
   assert.equal(reparsed.generators.length, 2);
+});
+
+test("ExaGO Deck Exporter: Generates turnkey MATPOWER, .cont, .ini, and Slurm scripts", () => {
+  const pCase = parseMatpower(SAMPLE_CASE3_MATPOWER);
+  const deck = exportExagoDeck(pCase, {
+    caseName: "wecc_cluster",
+    optSolver: "hiop",
+    mpiRanks: 32,
+    contingencies: [
+      { id: "LINE_1_2", type: "branch", fromBus: 1, toBus: 2, ckt: "1" },
+      { id: "GEN_2", type: "gen", bus: 2, genId: "1" },
+    ],
+  });
+
+  assert.equal(deck.caseName, "wecc_cluster");
+  assert.ok(deck.matpowerCase.includes("function mpc = wecc_cluster"));
+  assert.ok(deck.matpowerCase.includes("mpc.gencost = ["));
+  assert.ok(deck.contingenciesCont);
+  assert.ok(deck.contingenciesCont.includes("BRANCH\t1\t2\t1"));
+  assert.ok(deck.contingenciesCont.includes("GEN\t2\t1"));
+  assert.ok(deck.configFile.includes("app = scopflow"));
+  assert.ok(deck.configFile.includes("opt_solver = hiop"));
+  assert.ok(deck.configFile.includes("ctgcfile = contingencies.cont"));
+  assert.ok(deck.slurmScript.includes("MPI_RANKS=32"));
+  assert.ok(deck.slurmScript.includes("scopflow"));
 });

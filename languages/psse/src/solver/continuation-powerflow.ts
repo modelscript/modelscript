@@ -60,10 +60,7 @@ export interface CpfResult {
 /**
  * Executes Continuation Power Flow (CPF) tracing P-V curves to the voltage collapse boundary.
  */
-export function solveContinuationPowerFlow(
-  psseCase: PsseCase,
-  options: CpfOptions = {},
-): CpfResult {
+export function solveContinuationPowerFlow(psseCase: PsseCase, options: CpfOptions = {}): CpfResult {
   const maxSteps = options.maxSteps ?? 40;
   let stepSize = options.stepSize ?? 0.1;
   const minStepSize = options.minStepSize ?? 0.002;
@@ -239,7 +236,9 @@ function formatCpfReport(res: CpfResult, caseTitle: string): string {
   lines.push("================================================================================");
   lines.push(`Status:                 ${res.converged ? "CONVERGED (Bifurcation Located)" : "FAILED"}`);
   lines.push(`Max Loadability Param:  lambda_max = ${res.lambdaMax.toFixed(4)}`);
-  lines.push(`Max Power Capability:   ${res.maxLoadabilityMw.toFixed(2)} MW (+${res.marginPercent.toFixed(1)}% over base)`);
+  lines.push(
+    `Max Power Capability:   ${res.maxLoadabilityMw.toFixed(2)} MW (+${res.marginPercent.toFixed(1)}% over base)`,
+  );
   lines.push(`Loading Margin:         ${res.marginMw.toFixed(2)} MW`);
   lines.push(`Weakest (Critical) Bus: Bus ${res.weakestBus}`);
   lines.push(`Critical Voltage (SNB): ${res.criticalVoltagePu.toFixed(4)} p.u.`);

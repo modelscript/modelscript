@@ -589,39 +589,53 @@ export function renderUniversalCodeThumbnailSvg(code: string, options: CodeThumb
   const className = options.className || detected?.name || options.title || "Source";
   const classKind = (options.classKind || detected?.kind || "code").toUpperCase();
   const isPartial = options.isPartial ?? detected?.isPartial ?? false;
-  const maxLines = options.maxLines ?? 16;
+  const maxLines = options.maxLines ?? 17;
 
   const allLines = code.replace(/\r\n/g, "\n").split("\n");
   const visibleLines = allLines.slice(0, maxLines);
 
   const badgeText = `${isPartial ? "PARTIAL " : ""}${meta.badge} · ${classKind}`;
-  const badgeWidth = Math.max(120, Math.min(220, badgeText.length * 7.5 + 24));
-  const badgeTextX = 20 + badgeWidth / 2;
-  const titleX = 20 + badgeWidth + 12;
+  const badgeWidth = Math.max(110, Math.min(210, badgeText.length * 7.2 + 20));
 
   const lineEls = visibleLines.map((rawLine, idx) => {
-    const y = 78 + idx * 21;
-    const clipped = rawLine.length > 88 ? `${rawLine.slice(0, 85)}...` : rawLine;
+    const y = 58 + idx * 22;
+    const clipped = rawLine.length > 92 ? `${rawLine.slice(0, 89)}...` : rawLine;
     return `<g>
-      <text x="48" y="${y}" text-anchor="end" fill="#484f58" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">${idx + 1}</text>
-      <text x="64" y="${y}" xml:space="preserve" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">${highlightCodeLineToSvgTspans(clipped, meta)}</text>
+      <text x="44" y="${y}" text-anchor="end" fill="#6e7681" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">${idx + 1}</text>
+      <text x="60" y="${y}" xml:space="preserve" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">${highlightCodeLineToSvgTspans(clipped, meta)}</text>
     </g>`;
   });
 
+  const hasOverflow = allLines.length > maxLines;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="100%" height="100%" data-preview-mode="code" data-dialect="${escapeXml(dialect)}">
-  <rect width="800" height="450" fill="#0d1117" rx="8"/>
-  <g transform="translate(20, 14)">
-    <rect x="0" y="0" width="${badgeWidth}" height="22" rx="4" fill="rgba(99, 102, 241, 0.12)" stroke="${meta.accent}" stroke-opacity="0.4"/>
-    <text x="${badgeTextX - 20}" y="15" text-anchor="middle" fill="${meta.accent}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" font-weight="700">${escapeXml(badgeText)}</text>
-    <text x="${titleX - 20}" y="16" fill="#f0f6fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="700">${escapeXml(className)}</text>
-    <text x="760" y="15" text-anchor="end" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">${allLines.length} lines</text>
+  <defs>
+    <linearGradient id="code-bottom-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#0d1117" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0d1117" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" fill="#0d1117"/>
+  <rect width="800" height="36" fill="#161b22"/>
+  <line x1="0" y1="36" x2="800" y2="36" stroke="#30363d" stroke-width="1"/>
+  <circle cx="18" cy="18" r="4.5" fill="#ff5f56" opacity="0.85"/>
+  <circle cx="32" cy="18" r="4.5" fill="#ffbd2e" opacity="0.85"/>
+  <circle cx="46" cy="18" r="4.5" fill="#27c93f" opacity="0.85"/>
+  <g transform="translate(66, 7)">
+    <rect x="0" y="0" width="${badgeWidth}" height="22" rx="4" fill="rgba(99, 102, 241, 0.12)" stroke="${meta.accent}" stroke-opacity="0.35"/>
+    <text x="${badgeWidth / 2}" y="15" text-anchor="middle" fill="${meta.accent}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" font-weight="700">${escapeXml(badgeText)}</text>
+    <text x="${badgeWidth + 12}" y="16" fill="#f0f6fc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600">${escapeXml(className)}</text>
   </g>
-  <rect x="20" y="46" width="760" height="384" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
-  <line x1="56" y1="46" x2="56" y2="430" stroke="#21262d" stroke-width="1"/>
+  <text x="780" y="22.5" text-anchor="end" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">${allLines.length} lines</text>
   ${lineEls.join("\n  ")}
   ${
-    allLines.length > maxLines
-      ? `<text x="64" y="418" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">… +${allLines.length - maxLines} more lines</text>`
+    hasOverflow
+      ? `<rect x="0" y="340" width="800" height="110" fill="url(#code-bottom-fade)" pointer-events="none"/>
+  <g transform="translate(400, 412)">
+    <rect x="-85" y="-13" width="170" height="26" rx="13" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="0" y="4" text-anchor="middle" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="500">… +${allLines.length - maxLines} more lines</text>
+  </g>`
       : ""
   }
 </svg>`;

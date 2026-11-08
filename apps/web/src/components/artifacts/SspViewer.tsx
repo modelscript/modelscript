@@ -407,14 +407,54 @@ function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): 
     model;
   if (fmus.length === 0) return "";
   const W = 980;
-  const H = 540;
+  const cols = Math.min(3, Math.max(1, fmus.length));
+  const numRows = fmus.length === 4 ? 2 : Math.max(1, Math.ceil(fmus.length / cols));
+  const H = Math.max(540, 120 + numRows * 184 + 90);
+  const feedbackBusY = H - 92;
 
   const resolveColor = (type?: string, unit?: string) => {
     if (type === "Boolean") return { stroke: "#ec4899", marker: "ssp-arr-pink" };
     if (type === "Integer") return { stroke: "#f97316", marker: "ssp-arr-orange" };
-    if (unit === "W" || unit === "kW") return { stroke: "#f59e0b", marker: "ssp-arr-amber" };
+    if (unit === "W" || unit === "kW" || unit === "V" || unit === "A" || unit === "Nm" || unit === "N") {
+      return { stroke: "#f59e0b", marker: "ssp-arr-amber" };
+    }
     return { stroke: "#38bdf8", marker: "ssp-arr-cyan" };
   };
+
+  const describeSignalDomain = (unit?: string, type?: string) => {
+    if (unit === "W" || unit === "kW") return { label: `Power / Heat [${unit}]`, stroke: "#f59e0b", text: "#fde68a" };
+    if (unit === "K" || unit === "degC" || unit === "°C")
+      return { label: `Temperature [${unit}]`, stroke: "#38bdf8", text: "#bae6fd" };
+    if (unit === "V" || unit === "kV" || unit === "A")
+      return { label: `Electrical [${unit}]`, stroke: "#f59e0b", text: "#fde68a" };
+    if (unit === "N" || unit === "kN" || unit === "Nm" || unit === "rad/s" || unit === "m/s")
+      return { label: `Mechanical [${unit}]`, stroke: "#f59e0b", text: "#fde68a" };
+    if (unit === "Pa" || unit === "bar" || unit === "kg/s")
+      return { label: `Fluid [${unit}]`, stroke: "#38bdf8", text: "#bae6fd" };
+    if (unit) return { label: `Signal [${unit}]`, stroke: "#38bdf8", text: "#bae6fd" };
+    if (type === "Boolean") return { label: "Boolean Signal", stroke: "#ec4899", text: "#fbcfe8" };
+    if (type === "Integer") return { label: "Integer Signal", stroke: "#f97316", text: "#fed7aa" };
+    return { label: `ssc:${type || "Real"}`, stroke: "#38bdf8", text: "#bae6fd" };
+  };
+
+  const legendDomains: { label: string; stroke: string; text: string }[] = [];
+  for (const c of connections) {
+    const d = describeSignalDomain(c.unit, c.type);
+    if (!legendDomains.some((existing) => existing.label === d.label)) {
+      legendDomains.push(d);
+    }
+    if (legendDomains.length >= 2) break;
+  }
+  if (legendDomains.length === 0) {
+    legendDomains.push({ label: "ssc:Real Signal", stroke: "#38bdf8", text: "#bae6fd" });
+  }
+  if (legendDomains.length === 1) {
+    legendDomains.push({
+      label: legendDomains[0]!.stroke === "#f59e0b" ? "State / Control" : "Coupling Signal",
+      stroke: legendDomains[0]!.stroke === "#f59e0b" ? "#38bdf8" : "#f59e0b",
+      text: legendDomains[0]!.stroke === "#f59e0b" ? "#bae6fd" : "#fde68a",
+    });
+  }
 
   const boxes =
     fmus.length === 4
@@ -425,7 +465,6 @@ function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): 
           { x: 726, y: 146, w: 218, h: 170 },
         ]
       : fmus.map((_, idx) => {
-          const cols = Math.min(3, Math.max(1, fmus.length));
           const col = idx % cols;
           const row = Math.floor(idx / cols);
           return { x: 76 + col * 296, y: 80 + row * 184, w: 242, h: 156 };
@@ -536,7 +575,7 @@ function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): 
       }
     } else {
       const rightX = srcPort.x + 30;
-      const busY = 448;
+      const busY = feedbackBusY;
       const leftX = Math.max(38, tgtPort.x - 34);
       pts = [
         { x: srcPort.x, y: srcPort.y },
@@ -631,6 +670,9 @@ function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): 
     );
   }
 
+  const leg0 = legendDomains[0]!;
+  const leg1 = legendDomains[1]!;
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%">`,
     `  <defs>`,
@@ -662,14 +704,14 @@ function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): 
     `    <tspan fill="#10b981">ssd</tspan> <tspan fill="#94a3b8" font-weight="500">[System]</tspan> ${escapeXmlText(systemName)} <tspan fill="#64748b" font-size="10" font-weight="500">(SSP ${escapeXmlText(sspVersion)} · FMI 3.0 CS)</tspan>`,
     `  </text>`,
     `  <g transform="translate(530, 18)">`,
-    `    <rect x="0" y="0" width="132" height="22" rx="5" fill="#111827" stroke="#f59e0b" stroke-opacity="0.45" stroke-width="1" />`,
-    `    <line x1="10" y1="11" x2="26" y2="11" stroke="#f59e0b" stroke-width="2.2" />`,
-    `    <polygon points="26,7.5 32,11 26,14.5" fill="#f59e0b" />`,
-    `    <text x="38" y="14.5" fill="#fde68a" font-size="9.5" font-weight="600" font-family="'Inter', system-ui, sans-serif">Heat Flow [W]</text>`,
-    `    <rect x="142" y="0" width="142" height="22" rx="5" fill="#111827" stroke="#38bdf8" stroke-opacity="0.45" stroke-width="1" />`,
-    `    <line x1="152" y1="11" x2="168" y2="11" stroke="#38bdf8" stroke-width="2.2" />`,
-    `    <polygon points="168,7.5 174,11 168,14.5" fill="#38bdf8" />`,
-    `    <text x="180" y="14.5" fill="#bae6fd" font-size="9.5" font-weight="600" font-family="'Inter', system-ui, sans-serif">Coolant Temp [K]</text>`,
+    `    <rect x="0" y="0" width="132" height="22" rx="5" fill="#111827" stroke="${leg0.stroke}" stroke-opacity="0.45" stroke-width="1" />`,
+    `    <line x1="10" y1="11" x2="26" y2="11" stroke="${leg0.stroke}" stroke-width="2.2" />`,
+    `    <polygon points="26,7.5 32,11 26,14.5" fill="${leg0.stroke}" />`,
+    `    <text x="38" y="14.5" fill="${leg0.text}" font-size="9.5" font-weight="600" font-family="'Inter', system-ui, sans-serif">${escapeXmlText(leg0.label)}</text>`,
+    `    <rect x="142" y="0" width="142" height="22" rx="5" fill="#111827" stroke="${leg1.stroke}" stroke-opacity="0.45" stroke-width="1" />`,
+    `    <line x1="152" y1="11" x2="168" y2="11" stroke="${leg1.stroke}" stroke-width="2.2" />`,
+    `    <polygon points="168,7.5 174,11 168,14.5" fill="${leg1.stroke}" />`,
+    `    <text x="180" y="14.5" fill="${leg1.text}" font-size="9.5" font-weight="600" font-family="'Inter', system-ui, sans-serif">${escapeXmlText(leg1.label)}</text>`,
     `    <rect x="294" y="0" width="130" height="22" rx="5" fill="#064e3b" fill-opacity="0.55" stroke="#10b981" stroke-opacity="0.5" stroke-width="1" />`,
     `    <text x="359" y="14.5" text-anchor="middle" fill="#a7f3d0" font-size="9.5" font-weight="700" font-family="'JetBrains Mono', ui-monospace, monospace">Δt = ${communicationStepMs.toFixed(1)} ms CS</text>`,
     `  </g>`,
@@ -747,20 +789,40 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   useEffect(() => {
     if (viewConfig.code) {
       setRawText(viewConfig.code);
-      return;
+      return undefined;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
-      const targetUrl =
-        viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
-          ? viewConfig.url
-          : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      const targetUrl = /^(?:https?:|blob:|data:|\/api\b)/i.test(viewConfig.url)
+        ? viewConfig.url
+        : `/api${viewConfig.url.startsWith("/") ? "" : "/"}${viewConfig.url}`;
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
-        .then((txt) => setRawText(txt))
-        .catch((err) => console.warn("[SspViewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .then((txt) => {
+          if (controller.signal.aborted) return;
+          if (txt.startsWith("PK\x03\x04")) {
+            const xmlMatch = txt.match(
+              /<(?:ssd:)?SystemStructureDescription[\s\S]*?<\/(?:ssd:)?SystemStructureDescription>/,
+            );
+            setRawText(xmlMatch ? xmlMatch[0] : "");
+          } else {
+            setRawText(txt);
+          }
+        })
+        .catch((err) => {
+          if (!controller.signal.aborted) {
+            console.warn("[SspViewer] Failed to fetch source:", err);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+      return () => controller.abort();
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
   const ssdModel = useMemo(() => parseSsdClientModel(rawText, viewConfig), [rawText, viewConfig]);
@@ -997,7 +1059,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
             </StageOverlayBottomLeft>
 
             <ZoomControls onClick={(e) => e.stopPropagation()}>
-              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.max(0.65, Number((z - 0.15).toFixed(2))))}>
+              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}>
                 −
               </ZoomBtn>
               <ZoomBtn
@@ -1009,7 +1071,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
               >
                 {Math.round(zoom * 100)}%
               </ZoomBtn>
-              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.min(2.25, Number((z + 0.15).toFixed(2))))}>
+              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.min(3.5, Number((z + 0.15).toFixed(2))))}>
                 +
               </ZoomBtn>
             </ZoomControls>
@@ -1105,28 +1167,47 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                 </tr>
               </thead>
               <tbody>
-                {ssdModel.connections.map((c, idx) => (
-                  <tr key={`${c.startElement}.${c.startConnector}->${c.endElement}.${c.endConnector}-${idx}`}>
-                    <td style={{ color: "var(--color-fg-muted, #64748b)" }}>{idx + 1}</td>
-                    <td>
-                      <span style={{ color: "#10b981", fontWeight: 600 }}>{c.startElement}</span>
-                      <span style={{ color: "var(--color-fg-muted, #64748b)" }}>.</span>
-                      <span style={{ color: "var(--color-fg-default, #f8fafc)" }}>{c.startConnector}</span>
-                    </td>
-                    <td>
-                      <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.endElement}</span>
-                      <span style={{ color: "var(--color-fg-muted, #64748b)" }}>.</span>
-                      <span style={{ color: "var(--color-fg-default, #f8fafc)" }}>{c.endConnector}</span>
-                    </td>
-                    <td>
-                      <PillBadge $tone={c.unit === "W" ? "purple" : "cyan"}>
-                        ssc:{c.type || "Real"}
-                        {c.unit ? ` [${c.unit}]` : ""}
-                      </PillBadge>
-                    </td>
-                    <td style={{ color: "#10b981", fontWeight: 600 }}>✓ Output → Input</td>
-                  </tr>
-                ))}
+                {ssdModel.connections.map((c, idx) => {
+                  const srcPort = ssdModel.fmus
+                    .find((f) => f.name === c.startElement)
+                    ?.ports?.find((p) => p.name === c.startConnector);
+                  const tgtPort = ssdModel.fmus
+                    .find((f) => f.name === c.endElement)
+                    ?.ports?.find((p) => p.name === c.endConnector);
+                  const srcKind = srcPort?.kind ?? "output";
+                  const tgtKind = tgtPort?.kind ?? "input";
+                  const isMismatch =
+                    (srcPort && srcKind === "input") ||
+                    (tgtPort && tgtKind === "output") ||
+                    (srcPort && tgtPort && srcPort.type !== tgtPort.type);
+                  const causalityLabel = isMismatch
+                    ? `⚠ ${srcKind} → ${tgtKind}${srcPort && tgtPort && srcPort.type !== tgtPort.type ? ` (${srcPort.type}≠${tgtPort.type})` : ""}`
+                    : srcKind === "inout" && tgtKind === "inout"
+                      ? "✓ InOut ↔ InOut"
+                      : "✓ Output → Input";
+                  return (
+                    <tr key={`${c.startElement}.${c.startConnector}->${c.endElement}.${c.endConnector}-${idx}`}>
+                      <td style={{ color: "var(--color-fg-muted, #64748b)" }}>{idx + 1}</td>
+                      <td>
+                        <span style={{ color: "#10b981", fontWeight: 600 }}>{c.startElement}</span>
+                        <span style={{ color: "var(--color-fg-muted, #64748b)" }}>.</span>
+                        <span style={{ color: "var(--color-fg-default, #f8fafc)" }}>{c.startConnector}</span>
+                      </td>
+                      <td>
+                        <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.endElement}</span>
+                        <span style={{ color: "var(--color-fg-muted, #64748b)" }}>.</span>
+                        <span style={{ color: "var(--color-fg-default, #f8fafc)" }}>{c.endConnector}</span>
+                      </td>
+                      <td>
+                        <PillBadge $tone={c.unit === "W" ? "purple" : "cyan"}>
+                          ssc:{c.type || "Real"}
+                          {c.unit ? ` [${c.unit}]` : ""}
+                        </PillBadge>
+                      </td>
+                      <td style={{ color: isMismatch ? "#f59e0b" : "#10b981", fontWeight: 600 }}>{causalityLabel}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </SignalTable>
           </PaneScroll>
@@ -1284,11 +1365,14 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                 </StatItem>
                 <StatItem>
                   <span>Master Solver</span>
-                  <strong>Gauss-Seidel</strong>
+                  <strong>{ssdModel.masterAlgorithm || "Gauss-Seidel"}</strong>
                 </StatItem>
                 <StatItem>
                   <span>Comm Step (Δt)</span>
-                  <strong>{ssdModel.communicationStepMs.toFixed(1)} ms (500 Hz)</strong>
+                  <strong>
+                    {ssdModel.communicationStepMs.toFixed(1)} ms (
+                    {Math.round(1000 / Math.max(0.001, ssdModel.communicationStepMs))} Hz)
+                  </strong>
                 </StatItem>
                 <StatItem>
                   <span>Experiment</span>

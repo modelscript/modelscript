@@ -251,6 +251,33 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
         return;
       }
 
+      if (msg.type === "chat:subscribe") {
+        const rawChannels = (msg as { channelIds?: unknown }).channelIds;
+        const singleChannel =
+          (msg as { channelId?: unknown; roomKey?: unknown }).channelId || (msg as { roomKey?: unknown }).roomKey;
+        const list = Array.isArray(rawChannels)
+          ? rawChannels.map((c) => String(c)).slice(0, 100)
+          : singleChannel
+            ? [String(singleChannel)]
+            : [];
+        chatSubscriptions.set(ws, new Set(list));
+        sendJson(ws, { type: "chat:subscribed", channelIds: list });
+        return;
+      }
+
+      if (msg.type === "chat:typing") {
+        const channelId = String((msg as { channelId?: unknown }).channelId || "");
+        const username = String((msg as { username?: unknown }).username || msg.displayName || "engineer");
+        if (channelId) {
+          broadcastSpaceChatEvent({
+            type: "chat:typing",
+            channelId,
+            username,
+          });
+        }
+        return;
+      }
+
       if (!joinedRoomUri || !joinedPeerId) {
         sendJson(ws, { type: "error", message: "Must send 'join' message before collaborating" });
         return;
@@ -407,6 +434,7 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
     });
 
     const handleDisconnect = () => {
+      chatSubscriptions.delete(ws);
       if (joinedRoomUri && joinedPeerId) {
         const room = rooms.get(joinedRoomUri);
         if (room) {
@@ -434,7 +462,7 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
     if (socket.destroyed || !socket.writable) {
       return;
     }
-    if (req.url?.startsWith(path)) {
+    if (req.url?.startsWith(path) || req.url?.startsWith("/api/v1/collab/ws")) {
       const originHeader = req.headers.origin;
       if (originHeader && (isStrictAirgapEnv() || process.env["NODE_ENV"] === "production")) {
         const allowedOrigins = new Set(
@@ -573,6 +601,7 @@ export function attachWebSocketMaintenanceGate(
 }
 
 let activeWss: WebSocketServer | null = null;
+const chatSubscriptions = new WeakMap<WsWebSocket, Set<string>>();
 
 export function broadcastBotTyping(event: {
   botId: number;
@@ -590,6 +619,30 @@ export function broadcastBotTyping(event: {
     if (client.readyState === 1) {
       try {
         client.send(message);
+      } catch {
+        // Ignore dead socket
+      }
+    }
+  }
+}
+
+export function broadcastSpaceChatEvent(event: {
+  type: "chat:message" | "chat:reaction" | "chat:promoted" | "chat:typing";
+  channelId: string;
+  spaceId?: string | undefined;
+  [key: string]: unknown;
+}): void {
+  if (!activeWss) return;
+  const payload = JSON.stringify({
+    ...event,
+    timestamp: new Date().toISOString(),
+  });
+  for (const client of activeWss.clients) {
+    if (client.readyState !== 1) continue;
+    const subs = chatSubscriptions.get(client);
+    if (!subs || subs.has(event.channelId) || (event.spaceId && subs.has(event.spaceId))) {
+      try {
+        client.send(payload);
       } catch {
         // Ignore dead socket
       }

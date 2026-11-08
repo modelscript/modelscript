@@ -76,10 +76,10 @@ export * from "./interop/gdt_schema.js";
 export * from "./interop/oslc_gateway.js";
 export * from "./interop/polyglot-transformer.js";
 export * from "./interop/provenance.js";
-export * from "./interop/tgg-pattern-interpreter.js";
 export * from "./interop/reqif.js";
 export * from "./interop/shape_refit.js";
 export * from "./interop/simplex_reconciler.js";
+export * from "./interop/tgg-pattern-interpreter.js";
 export * from "./interop/thread_hypergraph.js";
 export * from "./interop/thread_serializer.js";
 export * from "./interop/trade_study.js";
@@ -113,6 +113,7 @@ export {
   type SimulationResult as VerifierSimulationResult,
 } from "./simulation/wasm_verifier.js";
 export * from "./solvers/solvers_bridge.js";
+export * from "./solvers/sparse_lu.js";
 export * from "./solvers/wasm_bdf.js";
 export * from "./solvers/wasm_cad_diagram.js";
 export * from "./solvers/wasm_dopri5.js";

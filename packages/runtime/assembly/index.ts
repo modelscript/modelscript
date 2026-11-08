@@ -42,6 +42,7 @@ export * from "../src/wasm/formal/simplex";
 export * from "../src/wasm/formal/sturm";
 export * from "../src/wasm/formal/zonotope";
 export * from "../src/wasm/solvers/wasm_emt";
+export * from "../src/wasm/structural/emt_partitioner";
 export {
   cas_getRealValue,
   cas_isZero,

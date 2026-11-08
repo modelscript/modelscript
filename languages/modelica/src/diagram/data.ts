@@ -1003,7 +1003,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         visible: true,
         stroke: "#999",
         strokeWidth: 1,
-        boundsOnly: true,
+        boundsOnly: false,
       },
     },
     diagramBackground,
@@ -1917,8 +1917,20 @@ export function evaluateMacroExpression(
   let compVal: string | undefined;
   const compNode = componentInstance as
     | {
-        cstNode?: { tree?: { sourceCode?: string }; startIndex?: number; endIndex?: number; text?: string; children?: any[] };
-        abstractSyntaxNode?: { tree?: { sourceCode?: string }; startIndex?: number; endIndex?: number; text?: string; children?: any[] };
+        cstNode?: {
+          tree?: { sourceCode?: string };
+          startIndex?: number;
+          endIndex?: number;
+          text?: string;
+          children?: any[];
+        };
+        abstractSyntaxNode?: {
+          tree?: { sourceCode?: string };
+          startIndex?: number;
+          endIndex?: number;
+          text?: string;
+          children?: any[];
+        };
         modification?: { getModificationArgument?: (n: string) => { expression?: unknown } };
         text?: string;
       }

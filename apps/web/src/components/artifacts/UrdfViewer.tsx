@@ -162,6 +162,8 @@ const ControlsBar = styled.div`
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  max-height: 96px;
+  overflow-y: auto;
   font-size: 12px;
 `;
 
@@ -552,9 +554,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
   }, [robot]);
 
   const hasExplicitTrajectory = Boolean(
-    viewConfig.trajectory &&
-      Array.isArray(viewConfig.trajectory.times) &&
-      viewConfig.trajectory.times.length > 0,
+    viewConfig.trajectory && Array.isArray(viewConfig.trajectory.times) && viewConfig.trajectory.times.length > 0,
   );
 
   // For standalone URDF models with movable joints and no explicit trajectory,
@@ -576,9 +576,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
       : (synthesizedDemo?.programSteps ?? []);
 
   const hasTrajectory = Boolean(
-    effectiveTrajectory &&
-      Array.isArray(effectiveTrajectory.times) &&
-      effectiveTrajectory.times.length > 0,
+    effectiveTrajectory && Array.isArray(effectiveTrajectory.times) && effectiveTrajectory.times.length > 0,
   );
 
   const activeView = hasTrajectory
@@ -599,11 +597,9 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
           ? "dynamics"
           : "source";
 
-  const tMin = hasTrajectory && effectiveTrajectory ? effectiveTrajectory.times[0] ?? 0 : 0;
+  const tMin = hasTrajectory && effectiveTrajectory ? (effectiveTrajectory.times[0] ?? 0) : 0;
   const tMax =
-    hasTrajectory && effectiveTrajectory
-      ? effectiveTrajectory.times[effectiveTrajectory.times.length - 1] ?? 10
-      : 10;
+    hasTrajectory && effectiveTrajectory ? (effectiveTrajectory.times[effectiveTrajectory.times.length - 1] ?? 10) : 10;
 
   const [isPlaying, setIsPlaying] = useState<boolean>(hasTrajectory);
   const [playbackTime, setPlaybackTime] = useState<number>(tMin);
@@ -611,11 +607,18 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
   const [isLooping, setIsLooping] = useState<boolean>(true);
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const lastCommitRef = useRef<number>(0);
+  const playbackTimeRef = useRef<number>(tMin);
+
+  useEffect(() => {
+    playbackTimeRef.current = playbackTime;
+  }, [playbackTime]);
 
   useEffect(() => {
     if (hasTrajectory && effectiveTrajectory) {
       // Start at an interesting mid-cycle point and autoplay immediately
       const defaultStart = effectiveTrajectory.times.length > 4 ? (effectiveTrajectory.times[2] ?? 0) : 0;
+      playbackTimeRef.current = defaultStart;
       setPlaybackTime(defaultStart);
       setPlaybackSpeed(tMax > 60 ? 5.0 : 1.0);
       setIsPlaying(true);
@@ -623,43 +626,57 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
   }, [hasTrajectory, effectiveTrajectory, tMax]);
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || activeView !== "twin") {
       cancelAnimationFrame(animFrameRef.current);
       return;
     }
 
-    lastTimeRef.current = performance.now();
+    const startNow = performance.now();
+    lastTimeRef.current = startNow;
+    lastCommitRef.current = startNow;
 
     const loop = (now: number) => {
       const dt = ((now - lastTimeRef.current) / 1000) * playbackSpeed;
       lastTimeRef.current = now;
 
-      setPlaybackTime((prev) => {
-        let next = prev + dt;
-        if (next >= tMax) {
-          if (isLooping) {
-            next = tMin;
-          } else {
-            setIsPlaying(false);
-            return tMax;
-          }
+      let next = playbackTimeRef.current + dt;
+      if (next >= tMax) {
+        if (isLooping) {
+          next = tMin;
+          playbackTimeRef.current = next;
+          lastCommitRef.current = now;
+          setPlaybackTime(next);
+        } else {
+          playbackTimeRef.current = tMax;
+          setPlaybackTime(tMax);
+          setIsPlaying(false);
+          return;
         }
-        return next;
-      });
+      } else {
+        playbackTimeRef.current = next;
+        if (now - lastCommitRef.current >= 50) {
+          lastCommitRef.current = now;
+          setPlaybackTime(next);
+        }
+      }
 
       animFrameRef.current = requestAnimationFrame(loop);
     };
 
     animFrameRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [isPlaying, playbackSpeed, isLooping, tMin, tMax]);
+  }, [isPlaying, activeView, playbackSpeed, isLooping, tMin, tMax]);
 
   // Active joint coordinate map q(t)
   const activeJointMap = useMemo<Map<string, number>>(() => {
+    const manualEntries = Object.entries(jointAngles);
     if (activeView === "twin" && twinControlMode === "program" && effectiveTrajectory) {
       return interpolateJointTrajectory(effectiveTrajectory, playbackTime);
     }
-    return new Map(Object.entries(jointAngles));
+    if (manualEntries.length === 0 && twinControlMode === "program" && effectiveTrajectory) {
+      return interpolateJointTrajectory(effectiveTrajectory, playbackTime);
+    }
+    return new Map(manualEntries);
   }, [activeView, twinControlMode, effectiveTrajectory, playbackTime, jointAngles]);
 
   // Forward Kinematics link poses
@@ -751,6 +768,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
         name,
         type: "body",
         position: pos,
+        rotationMatrix: pose?.rotation,
         color: isBase ? "#8b949e" : linkColors[colorIdx++ % linkColors.length],
         dimensions: link.inertial?.mass ? [0.12, 0.12, 0.12] : [0.08, 0.08, 0.08],
       });
@@ -801,7 +819,9 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
     return (
       effectiveProgramSteps.find(
         (s: DigitalTwinProgramStep) => playbackTime >= s.startTime && playbackTime <= s.endTime,
-      ) || effectiveProgramSteps[0] || null
+      ) ||
+      effectiveProgramSteps[0] ||
+      null
     );
   }, [effectiveProgramSteps, playbackTime]);
 
@@ -829,8 +849,9 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
     return lastNode ? lastNode.position : null;
   }, [robot, linkPoses, toolpathTrace, nodes3D]);
 
-  // 2D SVG schematic diagram for the Kinematic Tree tab
+  // 2D SVG schematic diagram for the Kinematic Tree tab (lazy-rendered when tree tab is active)
   const svgMarkup = useMemo(() => {
+    if (activeView !== "tree") return "";
     if (robot && robot.links.size > 0) {
       try {
         const raw = renderUrdfSvg(robot);
@@ -843,10 +864,11 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
     }
     return "";
-  }, [viewConfig.svg, robot, isFullScreen]);
+  }, [activeView, viewConfig.svg, robot, isFullScreen]);
 
-  // Projected sources
+  // Projected sources (lazy-rendered when source tab is active)
   const projectedCode = useMemo(() => {
+    if (activeView !== "source") return "";
     if (!robot) return "";
     if (projectionMode === "modelica") {
       try {
@@ -870,13 +892,17 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
       }
     }
     return rawDeck;
-  }, [robot, projectionMode, rawDeck, viewConfig.trajectory]);
+  }, [activeView, robot, projectionMode, rawDeck, viewConfig.trajectory]);
 
   const handleCopyCode = async () => {
     if (!projectedCode) return;
-    await navigator.clipboard.writeText(projectedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(projectedCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Ignore clipboard error when permission is denied
+    }
   };
 
   const handleOpenPlayground = () => {
@@ -895,7 +921,10 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
     setCameraPresetTrigger((c) => c + 1);
   };
 
-  const codeLines = projectedCode ? projectedCode.split(/\r?\n/) : [];
+  const codeLines = useMemo(
+    () => (activeView === "source" && projectedCode ? projectedCode.split(/\r?\n/) : []),
+    [activeView, projectedCode],
+  );
 
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
   const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
@@ -1033,9 +1062,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                       title={isPlaying ? "Pause Digital Twin animation" : "Play Digital Twin animation"}
                       style={{
                         border: "1px solid rgba(56, 139, 253, 0.35)",
-                        background: isPlaying
-                          ? "rgba(46, 160, 67, 0.18)"
-                          : "var(--color-accent-emphasis, #1f6feb)",
+                        background: isPlaying ? "rgba(46, 160, 67, 0.18)" : "var(--color-accent-emphasis, #1f6feb)",
                         color: isPlaying ? "var(--color-success-fg, #3fb950)" : "#ffffff",
                         fontSize: "9px",
                         fontWeight: 700,
@@ -1103,9 +1130,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
               {twinControlMode === "program" ? (
                 <>
                   <StepsHeader>
-                    <span>
-                      Program Steps ({effectiveProgramSteps.length})
-                    </span>
+                    <span>Program Steps ({effectiveProgramSteps.length})</span>
                     {availableMachines.length > 1 && (
                       <Box display="flex" gap={1}>
                         {["ALL", ...availableMachines].map((m) => (
@@ -1114,12 +1139,8 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                             onClick={() => setMachineFilter(m)}
                             style={{
                               border: "none",
-                              background:
-                                machineFilter === m ? "rgba(56, 139, 253, 0.2)" : "transparent",
-                              color:
-                                machineFilter === m
-                                  ? "var(--color-accent-fg, #58a6ff)"
-                                  : "var(--color-fg-muted)",
+                              background: machineFilter === m ? "rgba(56, 139, 253, 0.2)" : "transparent",
+                              color: machineFilter === m ? "var(--color-accent-fg, #58a6ff)" : "var(--color-fg-muted)",
                               fontSize: "9px",
                               fontWeight: 700,
                               padding: "1px 4px",
@@ -1286,9 +1307,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                                 style={{ width: "100%", cursor: "pointer" }}
                               />
                               <Box display="flex" justifyContent="space-between" alignItems="center">
-                                <span style={{ fontSize: "9px", color: "var(--color-fg-muted)" }}>
-                                  {joint.type}
-                                </span>
+                                <span style={{ fontSize: "9px", color: "var(--color-fg-muted)" }}>{joint.type}</span>
                                 <span
                                   style={{
                                     fontSize: "9px",
@@ -1374,17 +1393,19 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
               {/* Bottom-Right Floating Camera & Layer Pill Bar (never overlaps top-right Sleep 3D button) */}
               <ViewportControlsOverlay>
                 <CameraPillGroup>
-                  {((isFullScreen ? ["iso", "front", "side", "top", "focus", "fit"] : ["iso", "front", "top", "fit"]) as ViewportCameraPreset[]).map(
-                    (preset) => (
-                      <MiniPillButton
-                        key={preset}
-                        $active={cameraPreset === preset}
-                        onClick={() => triggerCameraPreset(preset)}
-                      >
-                        {preset.charAt(0).toUpperCase() + preset.slice(1)}
-                      </MiniPillButton>
-                    ),
-                  )}
+                  {(
+                    (isFullScreen
+                      ? ["iso", "front", "side", "top", "focus", "fit"]
+                      : ["iso", "front", "top", "fit"]) as ViewportCameraPreset[]
+                  ).map((preset) => (
+                    <MiniPillButton
+                      key={preset}
+                      $active={cameraPreset === preset}
+                      onClick={() => triggerCameraPreset(preset)}
+                    >
+                      {preset.charAt(0).toUpperCase() + preset.slice(1)}
+                    </MiniPillButton>
+                  ))}
                 </CameraPillGroup>
                 <CameraPillGroup>
                   <MiniPillButton
@@ -1433,6 +1454,8 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                   toolpaths={allToolpaths}
                   clearance={liveTelemetry.clearance}
                   tcpPosition={tcpPosition}
+                  gripperOpeningMm={liveTelemetry.hasGripper !== false ? liveTelemetry.gripperOpeningMm : undefined}
+                  isFullScreen={isFullScreen}
                   showPaths={showPaths}
                   showColliders={showColliders}
                   showFrames={showFrames}
@@ -1459,6 +1482,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                   size="small"
                   onClick={() => {
                     setIsPlaying(false);
+                    playbackTimeRef.current = tMin;
                     setPlaybackTime(tMin);
                   }}
                   title="Reset timeline to start (0.0s)"
@@ -1504,8 +1528,10 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                     step={(tMax - tMin) / 1000}
                     value={playbackTime}
                     onChange={(e) => {
+                      const nextT = parseFloat(e.target.value);
+                      playbackTimeRef.current = nextT;
                       setTwinControlMode("program");
-                      setPlaybackTime(parseFloat(e.target.value));
+                      setPlaybackTime(nextT);
                     }}
                   />
                 </SegmentedTimelineTrack>
@@ -1524,11 +1550,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
 
                 <CameraPillGroup style={{ background: "var(--color-canvas-subtle)", boxShadow: "none" }}>
                   {(isFullScreen ? [0.5, 1, 2, 5, 10] : [1, 5, 10]).map((spd) => (
-                    <MiniPillButton
-                      key={spd}
-                      $active={playbackSpeed === spd}
-                      onClick={() => setPlaybackSpeed(spd)}
-                    >
+                    <MiniPillButton key={spd} $active={playbackSpeed === spd} onClick={() => setPlaybackSpeed(spd)}>
                       {spd}x
                     </MiniPillButton>
                   ))}
@@ -1569,11 +1591,10 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                 <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Joint Angles:</Text>
                 {Array.from(robot.joints.values())
                   .filter((j) => j.type !== "fixed" && !j.mimic)
-                  .slice(0, 7)
                   .map((joint) => {
                     const minVal = joint.limits?.lower ?? (joint.type === "prismatic" ? -0.25 : -Math.PI);
                     const maxVal = joint.limits?.upper ?? (joint.type === "prismatic" ? 0.25 : Math.PI);
-                    const curr = jointAngles[joint.name] ?? 0;
+                    const curr = jointAngles[joint.name] ?? activeJointMap.get(joint.name) ?? 0;
                     return (
                       <JointSliderWrapper key={joint.name}>
                         <Text style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}>
@@ -1587,7 +1608,11 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                           value={curr}
                           onChange={(e) => {
                             const val = Number.parseFloat(e.target.value);
-                            setJointAngles((prev) => ({ ...prev, [joint.name]: val }));
+                            setJointAngles((prev) => ({
+                              ...Object.fromEntries(activeJointMap),
+                              ...prev,
+                              [joint.name]: val,
+                            }));
                           }}
                           style={{ width: "84px", cursor: "pointer" }}
                         />
@@ -1608,6 +1633,8 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                 environment={viewConfig.environment || []}
                 toolpath={toolpathTrace}
                 toolpaths={allToolpaths}
+                gripperOpeningMm={liveTelemetry.hasGripper !== false ? liveTelemetry.gripperOpeningMm : undefined}
+                isFullScreen={isFullScreen}
                 showPaths={showPaths}
                 showColliders={showColliders}
                 showFrames={showFrames}
@@ -1753,10 +1780,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                   >
                     URDF XML
                   </SegmentedControl.Button>
-                  <SegmentedControl.Button
-                    selected={projectionMode === "usd"}
-                    onClick={() => setProjectionMode("usd")}
-                  >
+                  <SegmentedControl.Button selected={projectionMode === "usd"} onClick={() => setProjectionMode("usd")}>
                     OpenUSD (.usda)
                   </SegmentedControl.Button>
                   <SegmentedControl.Button

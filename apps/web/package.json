@@ -31,6 +31,8 @@
     "@modelscript/modelica": "*",
     "@modelscript/opensim": "*",
     "@modelscript/oscal": "*",
+    "@modelscript/pscad": "*",
+    "@modelscript/psse": "*",
     "@modelscript/qif": "*",
     "@modelscript/reqif": "*",
     "@modelscript/sima": "*",

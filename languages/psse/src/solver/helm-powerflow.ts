@@ -14,13 +14,8 @@
  */
 
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
-import type {
-  BranchPowerFlowResult,
-  BusPowerFlowResult,
-  PowerFlowOptions,
-  PowerFlowSolution,
-} from "./ac-powerflow.js";
 import type { PsseCase } from "../types.js";
+import type { BranchPowerFlowResult, BusPowerFlowResult, PowerFlowOptions, PowerFlowSolution } from "./ac-powerflow.js";
 
 interface Complex {
   r: number;
@@ -117,10 +112,7 @@ function solveLinearSystem(A: Float64Array, b: Float64Array, n: number): boolean
 /**
  * Executes the Holomorphic Embedding Load Flow Method (HELM).
  */
-export function solveHelmPowerFlow(
-  psseCase: PsseCase,
-  options: PowerFlowOptions = {},
-): PowerFlowSolution {
+export function solveHelmPowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {}): PowerFlowSolution {
   const netlist = extractPowerFlowNetlist(psseCase);
   const sbase = psseCase.header.sbase > 0 ? psseCase.header.sbase : 100.0;
   const N = netlist.nBuses;

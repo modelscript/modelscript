@@ -2372,6 +2372,47 @@ export function socialRouter(
   });
 
   /**
+   * POST /api/v1/social/notifications/triage
+   */
+  router.post("/notifications/triage", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const category = typeof req.body?.category === "string" ? req.body.category : undefined;
+    const archived = typeof req.body?.archived === "boolean" ? req.body.archived : undefined;
+    const starred = typeof req.body?.starred === "boolean" ? req.body.starred : undefined;
+    const read = typeof req.body?.read === "boolean" ? req.body.read : undefined;
+    const rawIds =
+      req.body?.ids ??
+      req.body?.notification_ids ??
+      (req.body?.id !== undefined
+        ? [req.body.id]
+        : req.body?.notification_id !== undefined
+          ? [req.body.notification_id]
+          : undefined);
+
+    if (Array.isArray(rawIds) && rawIds.length > 500) {
+      res.status(400).json({ error: "Batch size exceeds maximum limit of 500 notifications" });
+      return;
+    }
+
+    const ids = Array.isArray(rawIds)
+      ? Array.from(
+          new Set(
+            rawIds
+              .slice(0, 100)
+              .map((v: unknown) => Number(v))
+              .filter((n: number) => Number.isFinite(n)),
+          ),
+        )
+      : undefined;
+    try {
+      database.triageNotifications(userId, { ids, category, archived, starred, read });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ error: "Failed to triage notifications" });
+    }
+  });
+
+  /**
    * GET /api/v1/social/trending
    */
   router.get("/trending", optionalAuth, (req: Request, res: Response) => {

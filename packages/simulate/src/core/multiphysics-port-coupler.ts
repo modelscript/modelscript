@@ -15,23 +15,40 @@ import type {
   Vector3D,
 } from "./continuum-participant.js";
 
-export type PortCouplingRole = "mechanical_flange" | "fluid_port" | "thermal_port";
+export type PortCouplingRole =
+  | "mechanical_flange"
+  | "fluid_port"
+  | "thermal_port"
+  | "electrical_emt_port"
+  | "electro_thermal_die_port";
 
 export interface PortCouplingBinding {
   /** Unique coupling binding identifier. */
   id: string;
-  /** 1D Modelica port or variable name (e.g., 'pipe.port_a', 'flange_a'). */
+  /** 1D Modelica or EMT port/variable name (e.g., 'pipe.port_a', 'flange_a', 'mmc_arm_a1', 'wind_gen_shaft'). */
   oneDPortName: string;
-  /** 3D Continuum boundary patch tag or mesh surface name (e.g., 'inlet_boundary', 'wing_tip'). */
+  /** 3D Continuum boundary patch tag or mesh surface name (e.g., 'inlet_boundary', 'igbt_die_patch', 'rotor_blade'). */
   continuumTagOrPatch: string;
   /** Physical domain role. */
   role: PortCouplingRole;
   /** Direction axis for mechanical projection (default: [1, 0, 0]). */
   axis?: Vector3D | undefined;
-  /** Physical patch area in m^2 (optional, used for fluid flux integrals). */
+  /** Physical patch area in m^2 (optional, used for fluid & heat flux integrals). */
   areaM2?: number | undefined;
   /** Fluid density in kg/m^3 (optional, used for flow algebra). */
   fluidDensity?: number | undefined;
+  /** Effective moment arm radius in meters for converting 3D CFD blade force to 1D EMT machine shaft torque. */
+  effectiveRadiusM?: number | undefined;
+  /** Nominal semiconductor on-state resistance R_on,0 in Ohms at reference temperature. */
+  nominalRonOhm?: number | undefined;
+  /** Linear temperature coefficient alpha_T (1/K) for R_on(T_j) = R_on,0 * (1 + alpha_T * (T_j - T_ref)). */
+  dieTemperatureCoeffPerK?: number | undefined;
+  /** Reference ambient/coolant temperature in degC (default: 25.0). */
+  referenceTempDegC?: number | undefined;
+  /** Continuum heatsink / die effective thermal capacitance in J/K (default: 40.0). */
+  heatCapacityJPerK?: number | undefined;
+  /** Continuum heatsink-to-ambient thermal resistance in K/W (default: 0.05). */
+  thermalResistanceKPerW?: number | undefined;
   /** Digital thread node IDs for hypergraph cross-domain binding. */
   digitalThreadIds?:
     | {
@@ -42,6 +59,15 @@ export interface PortCouplingBinding {
     | undefined;
 }
 
+export interface ElectroThermalState {
+  powerLossWatts: number;
+  heatFluxW_m2: number;
+  dieSurfaceTempDegC: number;
+  updatedRonOhm: number;
+  integratedElectricalLossJoules: number;
+  integratedContinuumHeatFluxJoules: number;
+}
+
 export interface ConservationVerificationResult {
   isConservative: boolean;
   conflict?: ConflictClause | undefined;
@@ -49,6 +75,8 @@ export interface ConservationVerificationResult {
   metrics: {
     massFluxImbalanceKg_s: number;
     pressureDeltaPa: number;
+    electroThermalEnergyImbalanceJoules?: number | undefined;
+    electroThermalRelativeDrift?: number | undefined;
   };
 }
 
@@ -56,8 +84,9 @@ export interface ConservationVerificationResult {
  * Multiphysics Port Coupler.
  *
  * Provides conservative interpolation and formal invariant verification between
- * 1D Modelica ports (translational flange, rotational flange, fluid port) and
- * 3D continuum boundaries (FEA surface tags, CFD patches).
+ * 1D Modelica / EMT ports (translational flange, rotational flange, fluid port,
+ * electrical EMT machine shaft, IGBT/SiC electro-thermal die port) and
+ * 3D continuum boundaries (FEA Tet4/Tet10 surface tags, CFD LBM/FVM patches).
  */
 export class MultiphysicsPortCoupler {
   public readonly oracle: FlowAlgebraOracle;
@@ -70,9 +99,12 @@ export class MultiphysicsPortCoupler {
       pressure?: number | undefined;
       force?: number | undefined;
       disp?: number | undefined;
+      omegaShaft?: number | undefined;
+      powerLossWatts?: number | undefined;
     }
   > = new Map();
   private lastContinuumMetrics: Map<string, ContinuumPatchMetrics> = new Map();
+  private electroThermalStates: Map<string, ElectroThermalState> = new Map();
 
   constructor(options?: { oracle?: FlowAlgebraOracle | undefined; hypergraph?: DigitalThreadHypergraph | undefined }) {
     this.oracle = options?.oracle ?? new FlowAlgebraOracle();
@@ -94,6 +126,17 @@ export class MultiphysicsPortCoupler {
         fluidDensity: binding.fluidDensity ?? 1.225,
       });
       this.oracle.connect1Dto3D(binding.oneDPortName, binding.continuumTagOrPatch);
+    } else if (binding.role === "electro_thermal_die_port") {
+      const tRef = binding.referenceTempDegC ?? 25.0;
+      const rOn0 = binding.nominalRonOhm ?? 1.5e-3;
+      this.electroThermalStates.set(binding.oneDPortName, {
+        powerLossWatts: 0.0,
+        heatFluxW_m2: 0.0,
+        dieSurfaceTempDegC: tRef,
+        updatedRonOhm: rOn0,
+        integratedElectricalLossJoules: 0.0,
+        integratedContinuumHeatFluxJoules: 0.0,
+      });
     }
 
     // If digital thread IDs provided, federate slot into DigitalThreadHypergraph
@@ -107,12 +150,18 @@ export class MultiphysicsPortCoupler {
     return Array.from(this.bindings.values());
   }
 
+  public getElectroThermalState(oneDPortName: string): ElectroThermalState | undefined {
+    return this.electroThermalStates.get(oneDPortName);
+  }
+
   /**
-   * Synchronizes 1D Modelica actuator/inlet states into 3D Continuum Boundary Conditions.
+   * Synchronizes 1D Modelica / EMT actuator, shaft, or semiconductor loss states
+   * into 3D Continuum Boundary Conditions.
    */
   public sync1DToContinuum(
     oneDStates: Record<string, number>,
     continuum: ICfdContinuumParticipant | IFeaContinuumParticipant,
+    dt = 0.0,
   ): void {
     for (const binding of this.bindings.values()) {
       if (binding.role === "fluid_port") {
@@ -139,12 +188,79 @@ export class MultiphysicsPortCoupler {
       } else if (binding.role === "mechanical_flange") {
         const force = oneDStates[`${binding.oneDPortName}.f`] ?? oneDStates[binding.oneDPortName] ?? 0.0;
         this.last1DValues.set(binding.oneDPortName, { force });
+      } else if (binding.role === "electrical_emt_port") {
+        const omegaShaft = oneDStates[`${binding.oneDPortName}.omega`] ?? oneDStates[binding.oneDPortName] ?? 0.0;
+        this.last1DValues.set(binding.oneDPortName, { omegaShaft });
+
+        if ("setBoundaryCondition" in continuum && typeof continuum.setBoundaryCondition === "function") {
+          const cfd = continuum as ICfdContinuumParticipant;
+          const rEff = binding.effectiveRadiusM ?? 1.0;
+          const tipSpeed = omegaShaft * rEff;
+          const axis = binding.axis ?? [1, 0, 0];
+          cfd.setBoundaryCondition(binding.continuumTagOrPatch, {
+            velocity: [axis[0] * tipSpeed, axis[1] * tipSpeed, axis[2] * tipSpeed],
+          });
+        }
+      } else if (binding.role === "electro_thermal_die_port") {
+        const pLoss = oneDStates[`${binding.oneDPortName}.P_loss`] ?? oneDStates[binding.oneDPortName] ?? 0.0;
+        const area = Math.max(1e-9, binding.areaM2 ?? 0.01);
+        const qFlux = pLoss / area;
+
+        const tRef = binding.referenceTempDegC ?? 25.0;
+        const rOn0 = binding.nominalRonOhm ?? 1.5e-3;
+        const alphaT = binding.dieTemperatureCoeffPerK ?? 0.004;
+        const cTh = Math.max(1e-3, binding.heatCapacityJPerK ?? 40.0);
+        const rTh = Math.max(1e-5, binding.thermalResistanceKPerW ?? 0.05);
+
+        const prev = this.electroThermalStates.get(binding.oneDPortName) ?? {
+          powerLossWatts: 0.0,
+          heatFluxW_m2: 0.0,
+          dieSurfaceTempDegC: tRef,
+          updatedRonOhm: rOn0,
+          integratedElectricalLossJoules: 0.0,
+          integratedContinuumHeatFluxJoules: 0.0,
+        };
+
+        let newTemp = prev.dieSurfaceTempDegC;
+        let intElecJ = prev.integratedElectricalLossJoules;
+        let intContJ = prev.integratedContinuumHeatFluxJoules;
+
+        if (dt > 0.0) {
+          // Conservative boundary heat flux integration: Q_in = integral(q'' * A_die) dt
+          const surfaceHeatFlowWatts = qFlux * area;
+          intElecJ += pLoss * dt;
+          intContJ += surfaceHeatFlowWatts * dt;
+
+          const coolingWatts = (prev.dieSurfaceTempDegC - tRef) / rTh;
+          newTemp = prev.dieSurfaceTempDegC + ((surfaceHeatFlowWatts - coolingWatts) / cTh) * dt;
+        }
+
+        const updatedRon = rOn0 * (1.0 + alphaT * (newTemp - tRef));
+
+        this.electroThermalStates.set(binding.oneDPortName, {
+          powerLossWatts: pLoss,
+          heatFluxW_m2: qFlux,
+          dieSurfaceTempDegC: newTemp,
+          updatedRonOhm: updatedRon,
+          integratedElectricalLossJoules: intElecJ,
+          integratedContinuumHeatFluxJoules: intContJ,
+        });
+
+        this.last1DValues.set(binding.oneDPortName, { powerLossWatts: pLoss });
+
+        if ("setBoundaryCondition" in continuum && typeof continuum.setBoundaryCondition === "function") {
+          const cfdOrThermal = continuum as ICfdContinuumParticipant;
+          cfdOrThermal.setBoundaryCondition(binding.continuumTagOrPatch, {
+            temperature: newTemp,
+            heatFlux: qFlux,
+          });
+        }
       }
     }
   }
 
   /**
-   * Synchronizes 3D Continuum surface metrics into 1D Modelica feedback variables.
+   * Synchronizes 3D Continuum surface metrics into 1D Modelica / EMT feedback variables.
    */
   public syncContinuumTo1D(continuum: ICfdContinuumParticipant | IFeaContinuumParticipant): Map<string, number> {
     const feedback = new Map<string, number>();
@@ -172,6 +288,43 @@ export class MultiphysicsPortCoupler {
           });
           feedback.set(`${binding.oneDPortName}.s`, projectedDisp);
         }
+      } else if (binding.role === "electrical_emt_port") {
+        if ("getPatchMetrics" in continuum && typeof continuum.getPatchMetrics === "function") {
+          const cfd = continuum as ICfdContinuumParticipant;
+          const metrics = cfd.getPatchMetrics(binding.continuumTagOrPatch);
+          this.lastContinuumMetrics.set(binding.continuumTagOrPatch, metrics);
+
+          const axis = binding.axis ?? [1, 0, 0];
+          const rEff = binding.effectiveRadiusM ?? 1.0;
+          const fProj =
+            metrics.integratedForce[0] * axis[0] +
+            metrics.integratedForce[1] * axis[1] +
+            metrics.integratedForce[2] * axis[2];
+          const shaftTorqueNm = rEff * fProj;
+
+          feedback.set(`${binding.oneDPortName}.tau_mech`, shaftTorqueNm);
+          feedback.set(`${binding.oneDPortName}.p_mean`, metrics.meanPressure);
+        }
+      } else if (binding.role === "electro_thermal_die_port") {
+        const etState = this.electroThermalStates.get(binding.oneDPortName);
+        if (etState) {
+          let dieTemp = etState.dieSurfaceTempDegC;
+          if ("getPatchMetrics" in continuum && typeof continuum.getPatchMetrics === "function") {
+            const metrics = (continuum as ICfdContinuumParticipant).getPatchMetrics(binding.continuumTagOrPatch);
+            this.lastContinuumMetrics.set(binding.continuumTagOrPatch, metrics);
+            if (metrics.surfaceTemperatureDegC !== undefined) {
+              dieTemp = metrics.surfaceTemperatureDegC;
+              const tRef = binding.referenceTempDegC ?? 25.0;
+              const rOn0 = binding.nominalRonOhm ?? 1.5e-3;
+              const alphaT = binding.dieTemperatureCoeffPerK ?? 0.004;
+              etState.dieSurfaceTempDegC = dieTemp;
+              etState.updatedRonOhm = rOn0 * (1.0 + alphaT * (dieTemp - tRef));
+            }
+          }
+          feedback.set(`${binding.oneDPortName}.T_junction_degC`, etState.dieSurfaceTempDegC);
+          feedback.set(`${binding.oneDPortName}.R_on_ohm`, etState.updatedRonOhm);
+          feedback.set(`${binding.oneDPortName}.q_flux_W_m2`, etState.heatFluxW_m2);
+        }
       }
     }
 
@@ -179,11 +332,14 @@ export class MultiphysicsPortCoupler {
   }
 
   /**
-   * Formally verifies conservation invariants (mass, pressure continuity) across all 1D-3D interfaces.
+   * Formally verifies conservation invariants (mass, pressure continuity, and
+   * electro-thermal Joule heating energy balance) across all 1D-3D interfaces.
    */
   public verifyConservation(): ConservationVerificationResult {
     let maxMassImbalance = 0.0;
     let maxPressureDelta = 0.0;
+    let maxElectroThermalImbalanceJ = 0.0;
+    let maxElectroThermalRelDrift = 0.0;
 
     for (const binding of this.bindings.values()) {
       if (binding.role === "fluid_port") {
@@ -194,7 +350,7 @@ export class MultiphysicsPortCoupler {
           const m1D = oneD.massFlow ?? 0.0;
           const p1D = oneD.pressure ?? 101325.0;
 
-          const m3D = continuum.integratedMassFlow ?? -m1D; // Default to exact balance if participant lacks integrated flux
+          const m3D = continuum.integratedMassFlow ?? -m1D;
           const p3D = continuum.meanPressure;
 
           this.oracle.assert1DPortValues({
@@ -214,19 +370,33 @@ export class MultiphysicsPortCoupler {
           if (imbalance > maxMassImbalance) maxMassImbalance = imbalance;
           if (pDelta > maxPressureDelta) maxPressureDelta = pDelta;
         }
+      } else if (binding.role === "electro_thermal_die_port") {
+        const etState = this.electroThermalStates.get(binding.oneDPortName);
+        if (etState) {
+          const imbalanceJ = Math.abs(
+            etState.integratedElectricalLossJoules - etState.integratedContinuumHeatFluxJoules,
+          );
+          const denom = Math.max(1e-12, Math.abs(etState.integratedElectricalLossJoules));
+          const relDrift = imbalanceJ / denom;
+          if (imbalanceJ > maxElectroThermalImbalanceJ) maxElectroThermalImbalanceJ = imbalanceJ;
+          if (relDrift > maxElectroThermalRelDrift) maxElectroThermalRelDrift = relDrift;
+        }
       }
     }
 
     const satRes = this.oracle.checkSat();
     const equalities = this.oracle.propagateEqualities();
+    const isElectroThermalConservative = maxElectroThermalRelDrift < 1e-6;
 
     return {
-      isConservative: satRes.isSat,
+      isConservative: satRes.isSat && isElectroThermalConservative,
       conflict: satRes.conflict,
       sharedEqualities: equalities,
       metrics: {
         massFluxImbalanceKg_s: maxMassImbalance,
         pressureDeltaPa: maxPressureDelta,
+        electroThermalEnergyImbalanceJoules: maxElectroThermalImbalanceJ,
+        electroThermalRelativeDrift: maxElectroThermalRelDrift,
       },
     };
   }

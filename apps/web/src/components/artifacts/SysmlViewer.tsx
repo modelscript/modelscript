@@ -15,7 +15,7 @@ import {
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Text, TextInput } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
@@ -395,6 +395,66 @@ function parseSysmlSource(code: string): {
     };
   }
 
+  function extractBalancedSysmlBlocks(
+    code: string,
+    headerRegex: RegExp,
+  ): Array<{ match: RegExpExecArray; body: string }> {
+    const results: Array<{ match: RegExpExecArray; body: string }> = [];
+    const flags = headerRegex.flags.includes("g") ? headerRegex.flags : `${headerRegex.flags}g`;
+    const re = new RegExp(headerRegex.source, flags);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(code)) !== null) {
+      const openBraceIdx = m.index + m[0].length - 1;
+      if (code[openBraceIdx] !== "{") continue;
+      let depth = 1;
+      let i = openBraceIdx + 1;
+      const len = code.length;
+      while (i < len && depth > 0) {
+        const ch = code[i];
+        const next = code[i + 1];
+        if (ch === "/" && next === "*") {
+          const endComment = code.indexOf("*/", i + 2);
+          i = endComment === -1 ? len : endComment + 2;
+          continue;
+        }
+        if (ch === "/" && next === "/") {
+          const endLine = code.indexOf("\n", i + 2);
+          i = endLine === -1 ? len : endLine + 1;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          const quote = ch;
+          i++;
+          while (i < len && code[i] !== quote) {
+            if (code[i] === "\\") i++;
+            i++;
+          }
+          i++;
+          continue;
+        }
+        if (ch === "{") depth++;
+        else if (ch === "}") depth--;
+        i++;
+      }
+      if (depth === 0) {
+        results.push({ match: m, body: code.slice(openBraceIdx + 1, i - 1) });
+      }
+    }
+    return results;
+  }
+
+  function inferSysmlAttributeUnit(attrName: string, attrType: string): string {
+    if (/Velocity|Mps/i.test(attrType) || /Mps$/i.test(attrName)) return "m/s";
+    if (/Thrust|Kn/i.test(attrType)) return "kN";
+    if (/Angle|Deg/i.test(attrType) || /Deg$/i.test(attrName)) return "deg";
+    if (/TimeMs|Ms$/i.test(attrType) || /Ms$/i.test(attrName)) return "ms";
+    if (/Sec$/i.test(attrName)) return "s";
+    if (/Pct|Percentage/i.test(attrType) || /Pct$/i.test(attrName)) return "%";
+    if (/Meters$/i.test(attrName)) return "m";
+    if (/Cm$/i.test(attrName)) return "cm";
+    return "";
+  }
+
   const pkgMatch = code.match(/\bpackage\s+([A-Za-z_]\w*)/);
   const packageName = pkgMatch?.[1] || "";
 
@@ -408,24 +468,15 @@ function parseSysmlSource(code: string): {
     const attrType = m[2] || "";
     const num = Number(m[3]);
     if (Number.isFinite(num)) {
-      let unit = "";
-      if (/Velocity|Mps/i.test(attrType) || /Mps$/i.test(attrName)) unit = "m/s";
-      else if (/Thrust|Kn/i.test(attrType)) unit = "kN";
-      else if (/Angle|Deg/i.test(attrType) || /Deg$/i.test(attrName)) unit = "deg";
-      else if (/TimeMs|Ms$/i.test(attrType) || /Ms$/i.test(attrName)) unit = "ms";
-      else if (/Sec$/i.test(attrName)) unit = "s";
-      else if (/Pct|Percentage/i.test(attrType) || /Pct$/i.test(attrName)) unit = "%";
-      else if (/Meters$/i.test(attrName)) unit = "m";
-      else if (/Cm$/i.test(attrName)) unit = "cm";
+      const unit = inferSysmlAttributeUnit(attrName, attrType);
       attrValues.set(attrName, { value: num, ...(unit ? { unit } : {}) });
     }
   }
 
-  // 2. Extract port definitions
-  const portDefRe = /\bport\s+def\s+([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
-  while ((m = portDefRe.exec(code)) !== null) {
-    const pName = m[1]!;
-    const pBody = m[2] || "";
+  // 2. Extract port definitions using balanced brace scanning
+  const portDefHeaderRe = /\bport\s+def\s+([A-Za-z_]\w*)\s*\{/g;
+  for (const { match: pmMatch, body: pBody } of extractBalancedSysmlBlocks(code, portDefHeaderRe)) {
+    const pName = pmMatch[1]!;
     const attrs: string[] = [];
     const attrRe =
       /\b(?:(in|out|inout)\s+)?attribute\s+(?!def\b)([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_]\w*))?(?:\s*=\s*([^;\n]+))?/g;
@@ -440,23 +491,23 @@ function parseSysmlSource(code: string): {
     portDefs.push({ name: pName, attributes: attrs });
   }
 
-  // 3. Extract part definitions and usages
-  const partDefRe = /\bpart\s+def\s+([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
+  // 3. Extract part definitions and usages using balanced brace scanning
+  const partDefHeaderRe = /\bpart\s+def\s+([A-Za-z_]\w*)(?:\s*:>\s*[A-Za-z0-9_.:,\s]+)?\s*\{/g;
   const defMetaMap = new Map<
     string,
     {
       ports: string[];
       rawPorts: { name: string; type: string; conjugated: boolean; dir: string }[];
       attributes: string[];
+      numericAttrs: Map<string, { value: number; unit?: string | undefined }>;
       doc?: string | undefined;
       hasSubParts: boolean;
     }
   >();
   let rootPartDef = "";
 
-  while ((m = partDefRe.exec(code)) !== null) {
-    const defName = m[1]!;
-    const body = m[2] || "";
+  for (const { match: pdMatch, body } of extractBalancedSysmlBlocks(code, partDefHeaderRe)) {
+    const defName = pdMatch[1]!;
     const docMatch = body.match(/\bdoc\s*\/\*([\s\S]*?)\*\//);
     const doc = docMatch?.[1]?.replace(/\s+/g, " ").trim();
 
@@ -475,13 +526,29 @@ function parseSysmlSource(code: string): {
     }
 
     const attributes: string[] = [];
+    const numericAttrs = new Map<string, { value: number; unit?: string | undefined }>();
     const attrRe = /\battribute\s+(?!def\b)([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_]\w*))?(?:\s*=\s*([^;\n]+))?/g;
     let am: RegExpExecArray | null;
     while ((am = attrRe.exec(body)) !== null) {
       const aName = am[1]!;
-      const aType = am[2];
+      const aType = am[2] || "";
       const aVal = am[3]?.trim();
-      const info = attrValues.get(aName);
+      if (aVal !== undefined) {
+        const numMatch = aVal.match(/^([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/);
+        if (numMatch) {
+          const num = Number(numMatch[1]);
+          if (Number.isFinite(num)) {
+            const unit = inferSysmlAttributeUnit(aName, aType);
+            const entry = { value: num, ...(unit ? { unit } : {}) };
+            numericAttrs.set(aName, entry);
+            attrValues.set(`${defName}.${aName}`, entry);
+            if (!attrValues.has(aName)) {
+              attrValues.set(aName, entry);
+            }
+          }
+        }
+      }
+      const info = numericAttrs.get(aName) || attrValues.get(`${defName}.${aName}`) || attrValues.get(aName);
       const unitSuffix = info?.unit && aVal && !aVal.includes(info.unit) ? ` ${info.unit}` : "";
       if (aVal) {
         attributes.push(`${aName} = ${aVal}${unitSuffix}`);
@@ -497,7 +564,7 @@ function parseSysmlSource(code: string): {
       rootPartDef = defName;
     }
 
-    defMetaMap.set(defName, { ports, rawPorts, attributes, doc, hasSubParts });
+    defMetaMap.set(defName, { ports, rawPorts, attributes, numericAttrs, doc, hasSubParts });
     partDefsList.push({
       name: defName,
       type: hasSubParts ? "System Assembly" : "PartDefinition",
@@ -518,6 +585,11 @@ function parseSysmlSource(code: string): {
     for (const rp of meta?.rawPorts || []) {
       portTypeByEndpoint.set(`${name}.${rp.name}`, rp.type);
     }
+    if (meta?.numericAttrs) {
+      for (const [aName, entry] of meta.numericAttrs.entries()) {
+        attrValues.set(`${name}.${aName}`, entry);
+      }
+    }
     parts.push({
       name,
       type,
@@ -534,16 +606,17 @@ function parseSysmlSource(code: string): {
     }
   }
 
-  // 4. Extract state machines
-  const stateDefRe = /\bstate\s+def\s+([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
-  while ((m = stateDefRe.exec(code)) !== null) {
-    const smName = m[1]!;
-    const smBody = m[2] || "";
+  // 4. Extract state machines using balanced brace scanning
+  const stateDefHeaderRe = /\bstate\s+def\s+([A-Za-z_]\w*)\s*\{/g;
+  for (const { match: smHeader, body: smBody } of extractBalancedSysmlBlocks(code, stateDefHeaderRe)) {
+    const smName = smHeader[1]!;
     const stNames: string[] = [];
-    const stRe = /\bstate\s+(?!def\b)([A-Za-z_]\w*)\s*;/g;
+    const stRe = /\bstate\s+(?!def\b)([A-Za-z_]\w*)(?:\s*;|\s*\{)/g;
     let smMatch: RegExpExecArray | null;
     while ((smMatch = stRe.exec(smBody)) !== null) {
-      stNames.push(smMatch[1]!);
+      if (!stNames.includes(smMatch[1]!)) {
+        stNames.push(smMatch[1]!);
+      }
     }
     const transitions: SysmlStateMachine["transitions"] = [];
     const trRe =
@@ -572,34 +645,27 @@ function parseSysmlSource(code: string): {
     verifyByMap.set(m[1]!, m[2] || "VerificationCase");
   }
 
-  const reqHeaderRe = /\brequirement\s+(?:def\s+)?(?:<'([^']+)'>\s*)?([A-Za-z_]\w*)\s*\{/g;
+  const reqHeaderRe = /\brequirement\s+(?:def\s+)?(?:<['"]?([^'">]+)['"]?>\s*)?([A-Za-z_]\w*)\s*\{/g;
   let reqIdx = 1;
-  while ((m = reqHeaderRe.exec(code)) !== null) {
-    const explicitId = m[1];
-    const reqName = m[2]!;
-    const openBraceIdx = m.index + m[0].length - 1;
-    let depth = 1;
-    let pos = openBraceIdx + 1;
-    while (pos < code.length && depth > 0) {
-      if (code[pos] === "{") depth++;
-      else if (code[pos] === "}") depth--;
-      pos++;
-    }
-    const body = code.slice(openBraceIdx + 1, pos - 1);
+  for (const { match: rm, body } of extractBalancedSysmlBlocks(code, reqHeaderRe)) {
+    const explicitId = rm[1]?.trim();
+    const reqName = rm[2]!;
     const docMatch = body.match(/\bdoc\s*\/\*([\s\S]*?)\*\//) || body.match(/\/\*([\s\S]*?)\*\//);
     const text = docMatch ? docMatch[1]!.replace(/\s+/g, " ").trim() : `Requirement specification for ${reqName}`;
 
-    const subjMatch = body.match(/\bsubject\s+([A-Za-z_]\w*\s*:\s*[A-Za-z_]\w*)/);
-    const subject = subjMatch?.[1]?.replace(/\s+/g, " ").trim();
+    const subjMatch = body.match(/\bsubject\s+([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)/);
+    const subjVar = subjMatch?.[1];
+    const subjType = subjMatch?.[2];
+    const subject = subjMatch ? `${subjVar} : ${subjType}` : undefined;
 
-    const constraintMatch = body.match(/\b(?:require|assume)\s+constraint\s*\{([\s\S]*?)\}/);
-    const constraintExpr = constraintMatch?.[1]?.replace(/\s+/g, " ").trim();
+    const constraintBlocks = extractBalancedSysmlBlocks(body, /\b(?:require|assume)\s+constraint\s*\{/g);
+    const constraintExpr = constraintBlocks[0]?.body.replace(/\s+/g, " ").trim();
 
     const witnesses: SysmlConstraintWitness[] = [];
     if (constraintExpr) {
       const clauses = constraintExpr
         .split(/\band\b|&&/i)
-        .map((c) => c.trim())
+        .map((c) => c.trim().replace(/;$/, "").trim())
         .filter(Boolean);
       for (const clause of clauses) {
         const relMatch = clause.match(/^([A-Za-z0-9_.]+)\s*(<=|>=|==|<|>)\s*([-+]?\d+(?:\.\d+)?)$/);
@@ -608,7 +674,11 @@ function parseSysmlSource(code: string): {
           const op = relMatch[2]!;
           const rhsNum = Number(relMatch[3]);
           const shortVar = lhs.split(".").pop()!;
-          const found = attrValues.get(shortVar);
+          const found =
+            attrValues.get(lhs) ||
+            (subjType ? attrValues.get(`${subjType}.${shortVar}`) : undefined) ||
+            (subjVar ? attrValues.get(`${subjVar}.${shortVar}`) : undefined) ||
+            attrValues.get(shortVar);
           if (found !== undefined) {
             const actualVal = found.value;
             const unitStr = found.unit ? ` ${found.unit}` : "";
@@ -639,10 +709,10 @@ function parseSysmlSource(code: string): {
           } else {
             witnesses.push({
               expr: clause,
-              actual: "symbolic",
+              actual: "unresolved",
               bound: String(rhsNum),
-              margin: "symbolic",
-              passed: true,
+              margin: "unverified",
+              passed: false,
             });
           }
         }
@@ -652,9 +722,15 @@ function parseSysmlSource(code: string): {
     const satisfiedBy = satisfyByMap.get(reqName) || verifyByMap.get(reqName);
     let status: SysmlRequirement["status"] = "unverified";
     if (witnesses.length > 0) {
-      status = witnesses.every((w) => w.passed) ? "verified" : "violated";
-    } else if (constraintExpr) {
-      status = "verified";
+      const hasHardViolation = witnesses.some((w) => w.actual !== "unresolved" && !w.passed);
+      const allVerified = witnesses.every((w) => w.passed);
+      if (hasHardViolation) {
+        status = "violated";
+      } else if (allVerified) {
+        status = "verified";
+      } else {
+        status = satisfiedBy ? "satisfied" : "unverified";
+      }
     } else if (satisfiedBy) {
       status = "satisfied";
     }
@@ -704,7 +780,7 @@ function buildIbdDiagramSvg(
   connections: SysmlConnection[],
   states: SysmlStateMachine[],
   requirements: SysmlRequirement[],
-  isFullScreen = false,
+  _isFullScreen = false,
 ): string {
   const width = 940;
   const hasStateMachine = states.length > 0;
@@ -813,13 +889,13 @@ function buildIbdDiagramSvg(
   const smSvg: string[] = [];
   if (hasStateMachine) {
     const sm = states[0]!;
-    const stList = sm.states.slice(0, 5);
+    const stList = sm.states.slice(0, 6);
     const bandX = 32;
     const bandW = width - 64;
     const bandH = 72;
     smSvg.push(
       `<rect x="${bandX}" y="${curBottomY}" width="${bandW}" height="${bandH}" rx="6" fill="rgba(168, 85, 247, 0.06)" stroke="rgba(168, 85, 247, 0.35)" stroke-width="1.2" stroke-dasharray="4 3"/>`,
-      `<text x="${bandX + 14}" y="${curBottomY + 16}" fill="#c084fc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9.5" font-weight="700">«state def» ${escapeXml(sm.name)} (Modal GNC Trajectory Schedule)</text>`,
+      `<text x="${bandX + 14}" y="${curBottomY + 16}" fill="#c084fc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9.5" font-weight="700">«state def» ${escapeXml(sm.name)}</text>`,
     );
     const pillW = Math.min(168, Math.floor((bandW - 48 - (stList.length - 1) * 36) / Math.max(1, stList.length)));
     const pillH = 28;
@@ -832,20 +908,40 @@ function buildIbdDiagramSvg(
         `<rect x="${sx}" y="${stY}" width="${pillW}" height="${pillH}" rx="14" fill="#1e1b38" stroke="#a855f7" stroke-width="1.4"/>`,
         `<text x="${sx + pillW / 2}" y="${stY + 18}" text-anchor="middle" fill="#f3e8ff" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9.5" font-weight="600">${escapeXml(stName)}</text>`,
       );
-      if (idx < stList.length - 1) {
-        const tr = sm.transitions.find((t) => t.from === stName && t.to === stList[idx + 1]);
-        const ax1 = sx + pillW + 2;
-        const ax2 = sx + pillW + gap - 4;
-        const ay = stY + pillH / 2;
+    });
+    const drawnPairs = new Set<string>();
+    sm.transitions.forEach((tr) => {
+      const fromIdx = stList.indexOf(tr.from);
+      const toIdx = stList.indexOf(tr.to);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+      const pairKey = `${fromIdx}->${toIdx}`;
+      if (drawnPairs.has(pairKey)) return;
+      drawnPairs.add(pairKey);
+      const sx1 = stStartX + fromIdx * (pillW + gap);
+      const sx2 = stStartX + toIdx * (pillW + gap);
+      const ay = stY + pillH / 2;
+      if (toIdx === fromIdx + 1) {
+        const ax1 = sx1 + pillW + 2;
+        const ax2 = sx2 - 4;
         smSvg.push(
           `<line x1="${ax1}" y1="${ay}" x2="${ax2}" y2="${ay}" stroke="#c084fc" stroke-width="1.4" marker-end="url(#sysml-arrow-purple)"/>`,
         );
-        if (tr?.guard) {
-          const shortGuard = tr.guard.replace("altitudeMeters", "alt");
+        if (tr.guard) {
+          const shortGuard = tr.guard.length > 22 ? `${tr.guard.slice(0, 21)}…` : tr.guard;
           smSvg.push(
             `<text x="${(ax1 + ax2) / 2}" y="${ay - 6}" text-anchor="middle" fill="#d8b4fe" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8">[${escapeXml(shortGuard)}]</text>`,
           );
         }
+      } else {
+        const cx1 = sx1 + pillW / 2;
+        const cx2 = sx2 + pillW / 2;
+        const isForward = toIdx > fromIdx;
+        const startY = isForward ? stY : stY + pillH;
+        const endY = isForward ? stY - 2 : stY + pillH + 2;
+        const ctrlY = isForward ? stY - 14 : stY + pillH + 14;
+        smSvg.push(
+          `<path d="M ${cx1} ${startY} Q ${(cx1 + cx2) / 2} ${ctrlY} ${cx2} ${endY}" fill="none" stroke="#c084fc" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#sysml-arrow-purple)"/>`,
+        );
       }
     });
     curBottomY += bandH + 14;
@@ -894,8 +990,7 @@ function buildIbdDiagramSvg(
   const headerTitle = `ibd [part def] ${rootPartDef || systemName} [${systemName}]`;
   const tabW = Math.min(440, headerTitle.length * 7.2 + 28);
 
-  return sanitizeSvgMarkup(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
     <defs>
       <marker id="sysml-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
         <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399"/>
@@ -912,9 +1007,7 @@ function buildIbdDiagramSvg(
     ${nodesSvg.join("\n    ")}
     ${smSvg.join("\n    ")}
     ${reqSvg.join("\n    ")}
-  </svg>`,
-    { isFullScreen },
-  );
+  </svg>`;
 }
 
 function buildBddDiagramSvg(
@@ -922,7 +1015,7 @@ function buildBddDiagramSvg(
   rootPartDef: string,
   parts: SysmlPart[],
   portDefs: SysmlPortDef[],
-  isFullScreen = false,
+  _isFullScreen = false,
 ): string {
   const width = 940;
   const rootName = rootPartDef || systemName;
@@ -1006,8 +1099,7 @@ function buildBddDiagramSvg(
   const headerTitle = `bdd [package] ${systemName} (Structural Type Taxonomy)`;
   const tabW = Math.min(460, headerTitle.length * 7.2 + 28);
 
-  return sanitizeSvgMarkup(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
     <rect width="${width}" height="${height}" rx="8" fill="#0b111e"/>
     <rect x="12" y="12" width="${width - 24}" height="${height - 24}" rx="6" fill="none" stroke="#1e293b" stroke-width="1.5"/>
     <polygon points="12,12 ${12 + tabW},12 ${12 + tabW},30 ${12 + tabW - 12},40 12,40" fill="#161f33" stroke="#334155" stroke-width="1.2"/>
@@ -1020,9 +1112,7 @@ function buildBddDiagramSvg(
     ${compLines.join("\n    ")}
     ${childBlocks.join("\n    ")}
     ${portCards.join("\n    ")}
-  </svg>`,
-    { isFullScreen },
-  );
+  </svg>`;
 }
 
 const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = false }) => {
@@ -1033,19 +1123,31 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
   const [diagramMode, setDiagramMode] = useState<"ibd" | "bdd">("ibd");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
 
   const inlineCode = (viewConfig.code as string) || (viewConfig.source as string) || "";
   useEffect(() => {
     if (!inlineCode && typeof viewConfig.url === "string") {
-      fetch(viewConfig.url)
+      const controller = new AbortController();
+      fetch(viewConfig.url, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
-          if (txt) setFetchedCode(txt);
+          if (txt && !controller.signal.aborted) {
+            setFetchedCode(txt);
+          }
         })
         .catch(() => {});
+      return () => controller.abort();
     }
+    return undefined;
   }, [inlineCode, viewConfig.url]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   const sourceCode = inlineCode || fetchedCode || "";
   const format = viewConfig.format || "SysML2";
@@ -1082,13 +1184,19 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
         const satisfiedBy = vr.satisfiedBy || parsedMatch?.satisfiedBy;
         const subject = vr.subject || parsedMatch?.subject;
 
-        // Honest verification status: require actual constraint or satisfy link if source code was parsed
+        // Honest verification status: require actual evaluated constraint witness or satisfy link
         let status = vr.status;
         if (parsedMatch) {
           if (witnesses && witnesses.length > 0) {
-            status = witnesses.every((w) => w.passed) ? "verified" : "violated";
-          } else if (constraintExpr) {
-            status = "verified";
+            const hasHardViolation = witnesses.some((w) => w.actual !== "unresolved" && !w.passed);
+            const allVerified = witnesses.every((w) => w.passed);
+            if (hasHardViolation) {
+              status = "violated";
+            } else if (allVerified) {
+              status = "verified";
+            } else {
+              status = satisfiedBy ? "satisfied" : "unverified";
+            }
           } else if (satisfiedBy) {
             status = "satisfied";
           } else {
@@ -1168,7 +1276,8 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
   const handleCopyCode = () => {
     navigator.clipboard.writeText(sourceCode);
     setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopiedCode(false), 2000);
   };
 
   const handleOpenPlayground = () => {
@@ -1199,7 +1308,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
-      {hasFooter ? (
+      {hasFooter && !isFullScreen ? (
         <>
           <FooterTabs>
             <CompactTabStrip
@@ -1376,14 +1485,26 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       <ContentBody $noPadding={effectiveTab === "diagram"}>
         {effectiveTab === "diagram" && svgMarkup && (
           <DiagramStage>
-            {!hasFooter && (
+            {(!hasFooter || isFullScreen) && (
               <DiagramHudBar>
-                <Text style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "var(--font-mono, monospace)" }}>
+                <Text
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--color-text-muted, #64748b)",
+                    fontFamily: "var(--font-mono, monospace)",
+                  }}
+                >
                   {diagramMode === "ibd"
                     ? `ibd [part def] ${rootPartDef} — ${parts.length} parts · ${connections.length} port flows${states.length > 0 ? ` · ${states[0]!.states.length} modal states` : ""}`
                     : `bdd [package] ${systemName} — ${parts.length} part definitions · ${parsedModel.portDefs.length} port interfaces`}
                 </Text>
-                <Text style={{ fontSize: "10.5px", color: "#6ee7b7", fontFamily: "var(--font-mono, monospace)" }}>
+                <Text
+                  style={{
+                    fontSize: "10.5px",
+                    color: isDark ? "#6ee7b7" : "#047857",
+                    fontFamily: "var(--font-mono, monospace)",
+                  }}
+                >
                   {verifiedWithConstraintsCount > 0
                     ? `✓ ${verifiedWithConstraintsCount}/${requirements.length} formal constraints satisfied`
                     : ""}
@@ -1416,8 +1537,8 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
             </Box>
 
             <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }} gap={2}>
-              {filteredParts.map((p) => (
-                <TreeCard key={p.name}>
+              {filteredParts.map((p, idx) => (
+                <TreeCard key={`${p.name}-${idx}`}>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
                     <Box display="flex" alignItems="center" gap={1}>
                       <DotFillIcon size={12} fill="var(--color-accent-blue, #60a5fa)" />
@@ -1442,14 +1563,14 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                   {p.attributes && p.attributes.length > 0 && (
                     <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt={1}>
                       <Text style={{ fontSize: "10.5px", color: "var(--color-text-muted)" }}>Attrs:</Text>
-                      {p.attributes.map((attr) => (
+                      {p.attributes.map((attr, aIdx) => (
                         <span
-                          key={attr}
+                          key={`${attr}-${aIdx}`}
                           style={{
                             fontSize: "10.5px",
                             fontFamily: "var(--font-mono, monospace)",
                             background: "rgba(59, 130, 246, 0.08)",
-                            color: "#93c5fd",
+                            color: isDark ? "#93c5fd" : "#1d4ed8",
                             padding: "1px 6px",
                             borderRadius: "4px",
                             border: "1px solid rgba(59, 130, 246, 0.2)",
@@ -1464,14 +1585,14 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                   {p.ports && p.ports.length > 0 && (
                     <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt={1}>
                       <Text style={{ fontSize: "10.5px", color: "var(--color-text-muted)" }}>Ports:</Text>
-                      {p.ports.map((port) => (
+                      {p.ports.map((port, pIdx) => (
                         <span
-                          key={port}
+                          key={`${port}-${pIdx}`}
                           style={{
                             fontSize: "10.5px",
                             fontFamily: "var(--font-mono, monospace)",
                             background: "rgba(16, 185, 129, 0.08)",
-                            color: "#6ee7b7",
+                            color: isDark ? "#6ee7b7" : "#047857",
                             padding: "1px 6px",
                             borderRadius: "4px",
                             border: "1px solid rgba(16, 185, 129, 0.22)",
@@ -1493,7 +1614,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                 </Heading>
                 <Box
                   p={2}
-                  bg="rgba(0, 0, 0, 0.2)"
+                  bg={isDark ? "rgba(0, 0, 0, 0.2)" : "var(--color-canvas-subtle, #f8fafc)"}
                   borderRadius="6px"
                   border="1px solid var(--color-border-default)"
                   display="flex"
@@ -1511,13 +1632,13 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                       style={{
                         fontSize: "11.5px",
                         fontFamily: "var(--font-mono, monospace)",
-                        borderBottom: idx < connections.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                        borderBottom: idx < connections.length - 1 ? "1px solid var(--color-border-muted)" : "none",
                       }}
                     >
                       <Box display="flex" alignItems="center" gap={1}>
-                        <span style={{ color: "#60a5fa" }}>{c.source}</span>
+                        <span style={{ color: isDark ? "#60a5fa" : "#2563eb" }}>{c.source}</span>
                         <span style={{ color: "var(--color-text-muted)" }}>&rarr;</span>
-                        <span style={{ color: "#34d399" }}>{c.target}</span>
+                        <span style={{ color: isDark ? "#34d399" : "#059669" }}>{c.target}</span>
                       </Box>
                       {c.flowType && <Badge $variant="sysml">«flow» {c.flowType}</Badge>}
                     </Box>
@@ -1531,13 +1652,13 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
         {effectiveTab === "requirements" && (
           <Box display="flex" flexDirection="column" gap={2}>
             {requirements.length > 0 ? (
-              requirements.map((req) => {
+              requirements.map((req, rIdx) => {
                 const isVerified = req.status === "verified" && Boolean(req.constraintExpr || req.satisfiedBy);
                 const isSatisfied = req.status === "satisfied" && Boolean(req.satisfiedBy || req.constraintExpr);
                 const passesCheck = isVerified || isSatisfied;
                 return (
                   <Box
-                    key={req.id}
+                    key={`${req.id}-${rIdx}`}
                     p={2}
                     bg="var(--color-canvas-subtle, #161b22)"
                     border="1px solid var(--color-border-default, #30363d)"
@@ -1549,11 +1670,11 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                     <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
                       <Box display="flex" alignItems="center" gap={2}>
                         {passesCheck ? (
-                          <CheckCircleFillIcon size={15} fill="#34d399" />
+                          <CheckCircleFillIcon size={15} fill="#10b981" />
                         ) : req.status === "violated" ? (
-                          <XCircleFillIcon size={15} fill="#f87171" />
+                          <XCircleFillIcon size={15} fill="#ef4444" />
                         ) : (
-                          <DotFillIcon size={15} fill="#fbbf24" />
+                          <DotFillIcon size={15} fill="#f59e0b" />
                         )}
                         <Text style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--color-text-primary)" }}>
                           {req.id}: {req.name}
@@ -1594,11 +1715,14 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                           style={{
                             fontSize: "11px",
                             fontFamily: "var(--font-mono, monospace)",
-                            color: "#10b981",
+                            color: isDark ? "#10b981" : "#047857",
                             marginBottom: req.witnesses && req.witnesses.length > 0 ? "6px" : "0",
                           }}
                         >
-                          <span style={{ color: "#3b82f6", fontWeight: 600 }}>require constraint</span> {"{ "}
+                          <span style={{ color: isDark ? "#3b82f6" : "#2563eb", fontWeight: 600 }}>
+                            require constraint
+                          </span>{" "}
+                          {"{ "}
                           {formatConstraintMath(req.constraintExpr)}
                           {" }"}
                         </div>
@@ -1620,7 +1744,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                                   border: w.passed
                                     ? "1px solid rgba(16, 185, 129, 0.3)"
                                     : "1px solid rgba(248, 113, 113, 0.35)",
-                                  color: w.passed ? "var(--color-fg-default, #d1fae5)" : "#ef4444",
+                                  color: w.passed ? (isDark ? "#d1fae5" : "#065f46") : "#ef4444",
                                 }}
                               >
                                 <span style={{ color: w.passed ? "#10b981" : "#ef4444", fontWeight: 700 }}>
@@ -1628,7 +1752,9 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                                 </span>
                                 <span>{formatConstraintMath(w.expr)}:</span>
                                 <strong>{w.actual}</strong>
-                                <span style={{ color: "#10b981", opacity: 0.85 }}>({w.margin})</span>
+                                <span style={{ color: w.passed ? "#10b981" : "#ef4444", opacity: 0.85 }}>
+                                  ({w.margin})
+                                </span>
                               </span>
                             ))}
                           </Box>
@@ -1646,7 +1772,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                           borderRadius: "4px",
                           fontSize: "11px",
                           fontFamily: "var(--font-mono, monospace)",
-                          color: "#fbbf24",
+                          color: isDark ? "#fbbf24" : "#b45309",
                         }}
                       >
                         No formal `require constraint {"{ ... }"}` inequality declared in this requirement block.

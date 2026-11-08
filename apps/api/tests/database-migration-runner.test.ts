@@ -224,46 +224,43 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
     assert.equal(db.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='roll_one'").get(), undefined);
   });
 
-  await t.test(
-    "bidirectional migration matrix: rollback consolidated baseline and re-apply without drift",
-    async () => {
-      const { allMigrations } = await import("../src/migrations/index.js");
-      const freshTmp = fs.mkdtempSync(path.join(os.tmpdir(), "ms-bidirectional-test-"));
-      const freshDb = new LibraryDatabase(freshTmp);
+  await t.test("bidirectional migration matrix: rollback all migrations and re-apply without drift", async () => {
+    const { allMigrations } = await import("../src/migrations/index.js");
+    const freshTmp = fs.mkdtempSync(path.join(os.tmpdir(), "ms-bidirectional-test-"));
+    const freshDb = new LibraryDatabase(freshTmp);
 
+    try {
+      const runner = freshDb.migrationRunner;
+
+      assert.equal(allMigrations.length, 1);
+      assert.equal(allMigrations[0]!.name, "0001_baseline_schema");
+
+      const rollResult = runner.rollbackLastSync(allMigrations, { silent: true });
+      assert.equal(rollResult.rolledBack, "0001_baseline_schema");
+
+      const statusAfterDown = runner.getStatus(allMigrations);
+      assert.equal(statusAfterDown.currentVersion, null);
+      assert.equal(statusAfterDown.applied.length, 0);
+      assert.equal(statusAfterDown.pendingCount, 1);
+
+      // Re-apply consolidated baseline up to HEAD
+      const upResult = await runner.runPending(allMigrations, { skipBackup: true, silent: true });
+      assert.equal(upResult.appliedCount, 1);
+
+      const statusAfterUp = runner.getStatus(allMigrations);
+      assert.equal(statusAfterUp.pendingCount, 0);
+      assert.equal(statusAfterUp.currentVersion, "0001_baseline_schema");
+      assert.equal(statusAfterUp.checksumMatch, true);
+
+      // Physical & relational integrity check
+      const check = runner.verifyIntegrity();
+      assert.equal(check.foreignKeysOk, true);
+      assert.equal(check.integrityOk, true);
+    } finally {
       try {
-        const runner = freshDb.migrationRunner;
-
-        assert.equal(allMigrations.length, 1);
-        assert.equal(allMigrations[0]!.name, "0001_baseline_schema");
-
-        const rollResult = runner.rollbackLastSync(allMigrations, { silent: true });
-        assert.equal(rollResult.rolledBack, "0001_baseline_schema");
-
-        const statusAfterDown = runner.getStatus(allMigrations);
-        assert.equal(statusAfterDown.currentVersion, null);
-        assert.equal(statusAfterDown.applied.length, 0);
-        assert.equal(statusAfterDown.pendingCount, 1);
-
-        // Re-apply consolidated baseline up to HEAD
-        const upResult = await runner.runPending(allMigrations, { skipBackup: true, silent: true });
-        assert.equal(upResult.appliedCount, 1);
-
-        const statusAfterUp = runner.getStatus(allMigrations);
-        assert.equal(statusAfterUp.pendingCount, 0);
-        assert.equal(statusAfterUp.currentVersion, "0001_baseline_schema");
-        assert.equal(statusAfterUp.checksumMatch, true);
-
-        // Physical & relational integrity check
-        const check = runner.verifyIntegrity();
-        assert.equal(check.foreignKeysOk, true);
-        assert.equal(check.integrityOk, true);
-      } finally {
-        try {
-          freshDb.db.close();
-          fs.rmSync(freshTmp, { recursive: true, force: true });
-        } catch {}
-      }
-    },
-  );
+        freshDb.db.close();
+        fs.rmSync(freshTmp, { recursive: true, force: true });
+      } catch {}
+    }
+  });
 });

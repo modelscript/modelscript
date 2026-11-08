@@ -278,4 +278,73 @@ describe("Platform Engineering & Notifications Hub", () => {
     assert.strictEqual(postDwellPartition.newNotifications.filter((n) => !n.read).length, 0);
     assert.strictEqual(postDwellPartition.earlierNotifications.length, 2);
   });
+
+  it("computes Inbox lifecycle counts across inbox, saved, outbox, and archive", async () => {
+    const {
+      computeInboxViewCounts,
+      bookmarkPostToNotificationItem,
+      hpcJobToNotificationItem,
+      matchesNotificationSearch,
+    } = await import("../src/pages/notifications/types.ts");
+
+    const items = [
+      { id: 1, type: "simulation_completed", read: 0, archived: 0, starred: 1, metadata: { name: "IEEE39.Bus" } },
+      { id: 2, type: "mention", read: 1, archived: 0, starred: 0, post_content: "Check harmonic distortion" },
+      { id: 3, type: "package_published", read: 1, archived: 1, starred: 0, package_name: "@ms/power" },
+    ];
+    const bookmark = bookmarkPostToNotificationItem({
+      id: 77,
+      username: "alice",
+      display_name: "Alice Eng",
+      content: "Saved RLC resonant tank model",
+      created_at: new Date().toISOString(),
+    });
+    const outboxJob = hpcJobToNotificationItem(
+      {
+        id: 501,
+        name: "Modelica.Mechanics.MultiBody.DoublePendulum",
+        status: "completed",
+        solver: "CVODE",
+        computeProfile: "gpu-a100",
+        cpuSeconds: 4.25,
+        costCredits: 12,
+      },
+      "omar",
+    );
+
+    const viewCounts = computeInboxViewCounts(items as any, [bookmark], [outboxJob]);
+    assert.strictEqual(viewCounts.inbox, 2);
+    assert.strictEqual(viewCounts.saved, 2); // 1 starred notification + 1 bookmarked post
+    assert.strictEqual(viewCounts.outbox, 1);
+    assert.strictEqual(viewCounts.archive, 1);
+
+    assert.strictEqual(matchesNotificationSearch(items[0] as any, "ieee39"), true);
+    assert.strictEqual(matchesNotificationSearch(bookmark, "resonant tank"), true);
+    assert.strictEqual(matchesNotificationSearch(outboxJob, "DoublePendulum"), true);
+    assert.strictEqual(matchesNotificationSearch(outboxJob, "nonexistent"), false);
+  });
+
+  it("wires unified Inbox in Sidebar, wide layout in AppShell, and Master-Detail split pane in NotificationsPage", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const sidebarSrc = fs.readFileSync(path.resolve(import.meta.dirname, "../src/components/Sidebar.tsx"), "utf-8");
+    assert.ok(
+      sidebarSrc.includes('to: "/inbox", icon: InboxIcon, label: "Inbox"'),
+      "Sidebar must merge Notifications and Bookmarks into a unified Inbox link",
+    );
+
+    const appShellSrc = fs.readFileSync(path.resolve(import.meta.dirname, "../src/components/AppShell.tsx"), "utf-8");
+    assert.ok(
+      appShellSrc.includes('location.pathname.startsWith("/inbox")'),
+      "AppShell must enable isWideLayout (hiding global right panel) on /inbox",
+    );
+
+    const inboxPageSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/pages/NotificationsPage.tsx"),
+      "utf-8",
+    );
+    assert.ok(inboxPageSrc.includes("<InboxSplitLayout"), "NotificationsPage must render InboxSplitLayout");
+    assert.ok(inboxPageSrc.includes("<InboxReadingPane"), "NotificationsPage must render InboxReadingPane");
+  });
 });

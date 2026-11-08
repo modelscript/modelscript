@@ -26,18 +26,36 @@ import type {
 
 /** Default 24-hour normalized load curve (normalized to peak = 1.0). */
 export const DEFAULT_24H_LOAD_PROFILE: number[] = [
-  0.65, 0.60, 0.58, 0.57, 0.60, 0.68, // 00:00 - 05:00 (Night / base)
-  0.78, 0.88, 0.94, 0.98, 1.00, 0.99, // 06:00 - 11:00 (Morning ramp)
-  0.97, 0.95, 0.94, 0.96, 0.98, 1.00, // 12:00 - 17:00 (Afternoon peak)
-  0.96, 0.90, 0.84, 0.78, 0.72, 0.68, // 18:00 - 23:00 (Evening drop)
+  0.65,
+  0.6,
+  0.58,
+  0.57,
+  0.6,
+  0.68, // 00:00 - 05:00 (Night / base)
+  0.78,
+  0.88,
+  0.94,
+  0.98,
+  1.0,
+  0.99, // 06:00 - 11:00 (Morning ramp)
+  0.97,
+  0.95,
+  0.94,
+  0.96,
+  0.98,
+  1.0, // 12:00 - 17:00 (Afternoon peak)
+  0.96,
+  0.9,
+  0.84,
+  0.78,
+  0.72,
+  0.68, // 18:00 - 23:00 (Evening drop)
 ];
 
 /** Default 24-hour solar PV availability curve. */
 export const DEFAULT_24H_SOLAR_PROFILE: number[] = [
-  0.0, 0.0, 0.0, 0.0, 0.0, 0.05,
-  0.20, 0.45, 0.70, 0.88, 0.98, 1.00,
-  0.98, 0.90, 0.75, 0.50, 0.25, 0.08,
-  0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+  0.0, 0.0, 0.0, 0.0, 0.0, 0.05, 0.2, 0.45, 0.7, 0.88, 0.98, 1.0, 0.98, 0.9, 0.75, 0.5, 0.25, 0.08, 0.0, 0.0, 0.0, 0.0,
+  0.0, 0.0,
 ];
 
 /**
@@ -362,7 +380,10 @@ function formatMultiPeriodReport(sol: MultiPeriodOpfSolution, caseTitle: string)
         const bNum = String(entry.busNumber).padStart(3, " ");
         const ch = entry.chargeMw.toFixed(1).padStart(8, " ");
         const dis = entry.dischargeMw.toFixed(1).padStart(8, " ");
-        const net = (entry.netPowerMw >= 0 ? `+${entry.netPowerMw.toFixed(1)}` : entry.netPowerMw.toFixed(1)).padStart(8, " ");
+        const net = (entry.netPowerMw >= 0 ? `+${entry.netPowerMw.toFixed(1)}` : entry.netPowerMw.toFixed(1)).padStart(
+          8,
+          " ",
+        );
         const en = entry.energyMwh.toFixed(1).padStart(12, " ");
         const soc = `${entry.socPercent.toFixed(1)}%`.padStart(6, " ");
         lines.push(`${hr} | ${bNum} | ${ch} | ${dis} | ${net} | ${en} | ${soc}`);

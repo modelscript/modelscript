@@ -181,7 +181,8 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   );
   const expectedHeight = getViewerExpectedHeight(artifact?.view_type, viewConfig, isFullScreen);
   const renderViewer = () => {
-    switch (artifact.view_type) {
+    const normalizedViewType = String(artifact?.view_type || "").toLowerCase();
+    switch (normalizedViewType) {
       case "cad":
       case "cad-step":
       case "cad_step":
@@ -196,6 +197,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="CAD 3D Viewer"
             placeholderType="cad"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <CadStepViewer
@@ -249,6 +251,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="USD 3D Viewer"
             placeholderType="cad"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <UsdViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -281,6 +284,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="WebGPU Simulation"
             placeholderType="plot"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <ZeroCopyWebGPUViewer
@@ -305,7 +309,8 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlLight={resolvedThumbnailUrlLight}
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="Simulation Result Viewer"
-            placeholderType={artifact.view_type === "cfd-result" ? "cfd" : "fea"}
+            placeholderType={normalizedViewType === "cfd-result" ? "cfd" : "fea"}
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <SimulationResultViewer
@@ -326,6 +331,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="CFD Animation"
             placeholderType="cfd"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <CfdAnimationViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -341,6 +347,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="GCode Viewer"
             placeholderType="gcode"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <GCodeViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -371,6 +378,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="Digital Twin Telemetry Dashboard"
             placeholderType="plot"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -381,9 +389,14 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "pslx":
         return <PscadViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "psout":
+      case "waveform":
+      case "comtrade":
+      case "oscillography":
         return <PsoutViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "psse":
       case "raw":
+      case "powerflow":
+      case "sld":
         return <PsseSldViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "olga":
       case "opi":
@@ -412,6 +425,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="SSP Architecture"
             placeholderType="fmu"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <SspViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -427,6 +441,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="FEA Mesh & Deck Viewer"
             placeholderType="fea"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <FeaDeckViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -447,6 +462,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark || cfdFallbackThumb}
             title="CFD Boundary & Mesh Viewer"
             placeholderType="cfd"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <CfdConfigViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -465,6 +481,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="GENSYS Rail Dynamics"
             placeholderType="cad"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <GensysViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
@@ -482,6 +499,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="SIMPACK Multibody Dynamics"
             placeholderType="cad"
+            height={expectedHeight}
             isFullScreen={isFullScreen}
           >
             <SimpackViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />

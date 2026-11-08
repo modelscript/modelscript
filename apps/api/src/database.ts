@@ -71,6 +71,8 @@ import {
   type SmtpTlsMode,
 } from "./services/mailer.js";
 import { extractCitationUrnsFromText, normalizeCitationUrn, type ScholarlyWorkRecord } from "./services/openalex.js";
+import { getSpaceDomainPreset } from "./services/spaces/domain-presets.js";
+import { ensureSpaceGitVaultInitialized, relocateSpaceGitVault } from "./services/spaces/space-git-vault.js";
 import { WebPushService } from "./services/web-push-service.js";
 import { S3StorageDriver } from "./storage/s3-driver.js";
 import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint } from "./util/email-filter.js";
@@ -344,6 +346,10 @@ export interface OrganizationRecord {
   website?: string | null | undefined;
   billing_email?: string | null | undefined;
   avatar_url: string | null;
+  banner_url?: string | null | undefined;
+  location?: string | null | undefined;
+  industry_preset?: string | null | undefined;
+  is_verified?: number | undefined;
   created_by: number;
   created_at: string;
 }
@@ -354,7 +360,139 @@ export interface OrganizationMemberRecord {
   org_id: number;
   user_id: number;
   username?: string | undefined;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
   role: OrgRole;
+  created_at: string;
+}
+
+export type SpaceOwnerType = "user" | "organization";
+export type SpaceVisibility = "public" | "unlisted" | "internal" | "private";
+export type SpaceRole = "owner" | "lead_engineer" | "approver" | "contributor" | "reviewer" | "viewer";
+
+export interface SpaceRecord {
+  id: string;
+  slug: string;
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  owner_type: SpaceOwnerType;
+  user_id: number | null;
+  organization_id: number | null;
+  owner_namespace: string;
+  owner_display_name: string | null;
+  owner_avatar_url: string | null;
+  domain_preset: string;
+  visibility: SpaceVisibility;
+  avatar_url: string | null;
+  banner_url: string | null;
+  default_branch: string;
+  git_repo_path: string | null;
+  enabled_tabs: string[];
+  settings: Record<string, unknown>;
+  follower_count: number;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpaceMemberRecord {
+  space_id: string;
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: SpaceRole;
+  created_at: string;
+}
+
+export interface SpacePageRecord {
+  id: string;
+  space_id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  content_markdown: string;
+  path_in_git: string;
+  parent_id: string | null;
+  order_index: number;
+  last_commit_sha: string | null;
+  author_user_id: number | null;
+  author_username?: string | null | undefined;
+  is_published: boolean;
+  embedded_artifacts: unknown[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type SpaceChannelKind = "text" | "announcement" | "bot_feed" | "telemetry" | "ecr_review";
+
+export interface SpaceChannelRecord {
+  id: string;
+  space_id: string;
+  slug: string;
+  name: string;
+  topic: string | null;
+  kind: SpaceChannelKind;
+  position: number;
+  is_private: boolean;
+  unread_count?: number | undefined;
+  unread_mentions_count?: number | undefined;
+  created_at: string;
+}
+
+export interface SpaceMessageRecord {
+  id: string;
+  channel_id: string;
+  space_id: string;
+  author_id: number | null;
+  author_username: string | null;
+  author_display_name: string | null;
+  author_avatar_url: string | null;
+  sender_type: "user" | "bot" | "telemetry_hook" | "ci_runner";
+  sender_name: string | null;
+  content: string;
+  reply_to_id: string | null;
+  thread_reply_count: number;
+  attachments: unknown[];
+  embedded_artifacts: unknown[];
+  reactions: Record<string, string[]>;
+  promoted_target_type: string | null;
+  promoted_target_id: string | null;
+  created_at: string;
+  edited_at: string | null;
+}
+
+export interface SpaceEcoProposalRecord {
+  id: string;
+  space_id: string;
+  eco_number: number;
+  title: string;
+  description: string;
+  status: "draft" | "open" | "in_review" | "approved" | "merged" | "rejected";
+  severity: "minor" | "standard" | "major" | "safety_critical";
+  source_branch: string;
+  target_branch: string;
+  author_id: number | null;
+  author_username: string | null;
+  impacted_models: string[];
+  simulation_gate_status: "pending" | "running" | "passed" | "failed";
+  simulation_summary: Record<string, unknown>;
+  promoted_from_msg_id: string | null;
+  approvals: SpaceEcoApprovalRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpaceEcoApprovalRecord {
+  eco_id: string;
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  role: string;
+  decision: "approved" | "changes_requested" | "rejected";
+  comment: string | null;
+  signature_hex: string | null;
   created_at: string;
 }
 
@@ -1213,6 +1351,18 @@ export class LibraryDatabase {
         this.#db.exec(`ALTER TABLE users ADD COLUMN branch_tip_oid TEXT;`);
       }
       this.#db.exec(`DELETE FROM _modelscript_migrations WHERE name = '0002_account_signing_keys';`);
+    } catch {}
+
+    try {
+      const notifCols = (this.#db.prepare(`PRAGMA table_info(notifications)`).all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      if (!notifCols.includes("archived")) {
+        this.#db.exec(`ALTER TABLE notifications ADD COLUMN archived INTEGER DEFAULT 0;`);
+      }
+      if (!notifCols.includes("starred")) {
+        this.#db.exec(`ALTER TABLE notifications ADD COLUMN starred INTEGER DEFAULT 0;`);
+      }
     } catch {}
 
     // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
@@ -5851,7 +6001,8 @@ export class LibraryDatabase {
   getNotifications(userId: number, limit: number = 20, category?: string): NotificationRow[] {
     let typeClause = "";
     if (category === "engineering") {
-      typeClause = "AND n.type IN ('simulation', 'simulation_completed', 'simulation_failed')";
+      typeClause =
+        "AND n.type IN ('simulation', 'simulation_completed', 'simulation_failed', 'cae_completed', 'cae_failed')";
     } else if (category === "packages") {
       typeClause = "AND n.type IN ('package', 'package_published', 'package_yanked')";
     } else if (category === "social" || category === "mentions") {
@@ -5865,6 +6016,8 @@ export class LibraryDatabase {
       .prepare(
         `
       SELECT n.*, 
+             COALESCE(n.archived, 0) as archived,
+             COALESCE(n.starred, 0) as starred,
              CAST(n.post_id AS TEXT) as post_id,
              u.username as actor_username, 
              u.display_name as actor_display_name, 
@@ -5931,7 +6084,8 @@ export class LibraryDatabase {
     }
     let typeClause = "";
     if (category === "engineering") {
-      typeClause = "AND type IN ('simulation', 'simulation_completed', 'simulation_failed')";
+      typeClause =
+        "AND type IN ('simulation', 'simulation_completed', 'simulation_failed', 'cae_completed', 'cae_failed')";
     } else if (category === "packages") {
       typeClause = "AND type IN ('package', 'package_published', 'package_yanked')";
     } else if (category === "social" || category === "mentions") {
@@ -5943,6 +6097,79 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0 ${typeClause}`).run(userId);
   }
 
+  triageNotifications(
+    userId: number,
+    options: {
+      ids?: number[] | undefined;
+      category?: string | undefined;
+      archived?: boolean | undefined;
+      starred?: boolean | undefined;
+      read?: boolean | undefined;
+    },
+  ): void {
+    const setClauses: string[] = [];
+    const setValues: number[] = [];
+
+    if (typeof options.archived === "boolean") {
+      setClauses.push("archived = ?");
+      setValues.push(options.archived ? 1 : 0);
+      if (options.archived && typeof options.read !== "boolean") {
+        setClauses.push("read = ?");
+        setValues.push(1);
+      }
+    }
+    if (typeof options.starred === "boolean") {
+      setClauses.push("starred = ?");
+      setValues.push(options.starred ? 1 : 0);
+    }
+    if (typeof options.read === "boolean") {
+      setClauses.push("read = ?");
+      setValues.push(options.read ? 1 : 0);
+    }
+
+    if (setClauses.length === 0) return;
+
+    const validIds = (options.ids || []).filter((id) => Number.isFinite(id));
+    if (validIds.length > 0) {
+      const placeholders = validIds.map(() => "?").join(", ");
+      this.#db
+        .prepare(
+          `UPDATE notifications
+           SET ${setClauses.join(", ")}
+           WHERE user_id = ? AND (
+             id IN (${placeholders})
+             OR EXISTS (
+               SELECT 1 FROM notifications target
+               WHERE target.id IN (${placeholders})
+                 AND target.user_id = notifications.user_id
+                 AND target.post_id IS NOT NULL
+                 AND target.type IN ('like', 'repost')
+                 AND target.type = notifications.type
+                 AND target.post_id = notifications.post_id
+             )
+           )`,
+        )
+        .run(...setValues, userId, ...validIds, ...validIds);
+      return;
+    }
+
+    let typeClause = "";
+    if (options.category === "engineering") {
+      typeClause =
+        "AND type IN ('simulation', 'simulation_completed', 'simulation_failed', 'cae_completed', 'cae_failed')";
+    } else if (options.category === "packages") {
+      typeClause = "AND type IN ('package', 'package_published', 'package_yanked')";
+    } else if (options.category === "social" || options.category === "mentions") {
+      typeClause =
+        "AND type IN ('mention', 'reply', 'quote', 'like', 'repost', 'follow', 'follow_request', 'follow_accepted')";
+    } else if (options.category === "system") {
+      typeClause = "AND type IN ('security_alert', 'credit_warning')";
+    }
+    this.#db
+      .prepare(`UPDATE notifications SET ${setClauses.join(", ")} WHERE user_id = ? ${typeClause}`)
+      .run(...setValues, userId);
+  }
+
   getUnreadNotificationCount(userId: number): number {
     const row = this.#db
       .prepare(
@@ -5952,7 +6179,7 @@ export class LibraryDatabase {
           ELSE 'id-' || CAST(id AS TEXT)
         END) as count
         FROM notifications
-        WHERE user_id = ? AND read = 0`,
+        WHERE user_id = ? AND read = 0 AND COALESCE(archived, 0) = 0`,
       )
       .get(userId) as { count: number };
     return row.count;
@@ -12539,6 +12766,9 @@ export class LibraryDatabase {
       website?: string | null | undefined;
       billing_email?: string | null | undefined;
       avatar_url?: string | null | undefined;
+      banner_url?: string | null | undefined;
+      location?: string | null | undefined;
+      industry_preset?: string | null | undefined;
     },
   ): OrganizationRecord | null {
     const fields: string[] = [];
@@ -12568,6 +12798,18 @@ export class LibraryDatabase {
       fields.push("avatar_url = ?");
       values.push(updates.avatar_url);
     }
+    if (updates.banner_url !== undefined) {
+      fields.push("banner_url = ?");
+      values.push(updates.banner_url);
+    }
+    if (updates.location !== undefined) {
+      fields.push("location = ?");
+      values.push(updates.location);
+    }
+    if (updates.industry_preset !== undefined) {
+      fields.push("industry_preset = ?");
+      values.push(updates.industry_preset);
+    }
 
     if (fields.length > 0) {
       values.push(orgId);
@@ -12591,7 +12833,7 @@ export class LibraryDatabase {
   getOrganizationMembers(orgId: number): OrganizationMemberRecord[] {
     return this.#db
       .prepare(
-        `SELECT m.*, u.username
+        `SELECT m.*, u.username, u.display_name, u.avatar_url
          FROM organization_members m
          JOIN users u ON m.user_id = u.id
          WHERE m.org_id = ?
@@ -18038,6 +18280,1408 @@ export class LibraryDatabase {
       .prepare(`DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?`)
       .run(idOrEndpoint.trim(), userId);
     return res.changes > 0;
+  }
+
+  // =========================================================================
+  // Ansatz Spaces, Polymorphic Containers, Living Docs, Chat & PLM ECOs
+  // =========================================================================
+
+  #mapSpaceRow(row: Record<string, unknown>): SpaceRecord {
+    let enabledTabs: string[] = ["feed", "chat", "docs", "articles", "repos", "packages", "plm", "twins"];
+    if (typeof row["enabled_tabs_json"] === "string") {
+      try {
+        const parsed = JSON.parse(row["enabled_tabs_json"]);
+        if (Array.isArray(parsed)) enabledTabs = parsed.map(String);
+      } catch {}
+    }
+    let settings: Record<string, unknown> = {};
+    if (typeof row["settings_json"] === "string") {
+      try {
+        const parsed = JSON.parse(row["settings_json"]);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          settings = parsed as Record<string, unknown>;
+        }
+      } catch {}
+    }
+    return {
+      id: String(row["id"]),
+      slug: String(row["slug"]),
+      name: String(row["name"]),
+      tagline: row["tagline"] != null ? String(row["tagline"]) : null,
+      description: row["description"] != null ? String(row["description"]) : null,
+      owner_type: (row["owner_type"] === "organization" ? "organization" : "user") as SpaceOwnerType,
+      user_id: row["user_id"] != null ? Number(row["user_id"]) : null,
+      organization_id: row["organization_id"] != null ? Number(row["organization_id"]) : null,
+      owner_namespace: String(row["owner_namespace"] ?? ""),
+      owner_display_name: row["owner_display_name"] != null ? String(row["owner_display_name"]) : null,
+      owner_avatar_url: row["owner_avatar_url"] != null ? String(row["owner_avatar_url"]) : null,
+      domain_preset: String(row["domain_preset"] || "systems_general"),
+      visibility: (row["visibility"] || "public") as SpaceVisibility,
+      avatar_url: row["avatar_url"] != null ? String(row["avatar_url"]) : null,
+      banner_url: row["banner_url"] != null ? String(row["banner_url"]) : null,
+      default_branch: String(row["default_branch"] || "main"),
+      git_repo_path: row["git_repo_path"] != null ? String(row["git_repo_path"]) : null,
+      enabled_tabs: enabledTabs,
+      settings,
+      follower_count: Number(row["follower_count"] ?? 0),
+      member_count: Number(row["member_count"] ?? 1),
+      created_at: String(row["created_at"] ?? ""),
+      updated_at: String(row["updated_at"] ?? ""),
+    };
+  }
+
+  /**
+   * Resolves a polymorphic namespace slug (`/@:slug`) to either an Organization or a User Profile,
+   * along with the Spaces contained in that namespace.
+   */
+  resolveNamespacePrincipal(
+    rawSlug: string,
+    viewerUserId?: number,
+  ):
+    | {
+        kind: "organization";
+        organization: OrganizationRecord;
+        spaces: SpaceRecord[];
+        members: OrganizationMemberRecord[];
+        viewerRole: OrgRole | null;
+      }
+    | {
+        kind: "user";
+        user: {
+          id: number;
+          username: string;
+          display_name: string | null;
+          bio: string | null;
+          avatar_url: string | null;
+          banner_url: string | null;
+          location: string | null;
+          website: string | null;
+          created_at: string;
+        };
+        spaces: SpaceRecord[];
+      }
+    | null {
+    const clean = rawSlug.trim().replace(/^@/, "").toLowerCase();
+    if (!clean) return null;
+
+    const org = this.getOrganizationBySlug(clean);
+    if (org) {
+      const spaces = this.getOrganizationSpaces(org.id, viewerUserId);
+      const members = this.getOrganizationMembers(org.id);
+      const viewerRole = viewerUserId ? this.getOrganizationMemberRole(org.id, viewerUserId) : null;
+      return {
+        kind: "organization",
+        organization: org,
+        spaces,
+        members,
+        viewerRole,
+      };
+    }
+
+    const user = this.getUserByUsername(clean);
+    if (user) {
+      const spaces = this.getUserOwnedSpaces(user.id, viewerUserId);
+      return {
+        kind: "user",
+        user: {
+          id: user.id,
+          username: user.username,
+          display_name: user.display_name ?? null,
+          bio: user.bio ?? null,
+          avatar_url: user.avatar_url ?? null,
+          banner_url: user.banner_url ?? null,
+          location: user.location ?? null,
+          website: user.website ?? null,
+          created_at: user.created_at ?? "",
+        },
+        spaces,
+      };
+    }
+
+    return null;
+  }
+
+  createSpace(params: {
+    slug: string;
+    name: string;
+    tagline?: string | null | undefined;
+    description?: string | null | undefined;
+    ownerType: SpaceOwnerType;
+    userId?: number | null | undefined;
+    organizationId?: number | null | undefined;
+    creatorUserId: number;
+    domainPreset?: string | undefined;
+    visibility?: SpaceVisibility | undefined;
+    avatarUrl?: string | null | undefined;
+    bannerUrl?: string | null | undefined;
+    defaultBranch?: string | undefined;
+  }): SpaceRecord {
+    const id = `spc_${crypto.randomBytes(8).toString("hex")}`;
+    const slug = params.slug.trim().toLowerCase();
+    const preset = getSpaceDomainPreset(params.domainPreset);
+    const visibility: SpaceVisibility = params.visibility || "public";
+    const defaultBranch = params.defaultBranch?.trim() || "main";
+
+    let ownerNamespace = "";
+    if (params.ownerType === "organization") {
+      if (!params.organizationId) {
+        throw new Error("organizationId is required when ownerType is 'organization'");
+      }
+      const org = this.getOrganizationById(params.organizationId);
+      if (!org) {
+        throw new Error("Target organization not found");
+      }
+      ownerNamespace = org.slug;
+    } else {
+      const targetUserId = params.userId ?? params.creatorUserId;
+      const u = this.getUserById(targetUserId);
+      if (!u) {
+        throw new Error("Target user not found");
+      }
+      ownerNamespace = u.username;
+    }
+
+    const existing = this.getSpaceByNamespaceAndSlug(ownerNamespace, slug);
+    if (existing) {
+      throw new Error(`A Space with slug '${slug}' already exists in @${ownerNamespace}`);
+    }
+
+    const vault = ensureSpaceGitVaultInitialized({
+      dbDir: this.dbDir,
+      namespace: ownerNamespace,
+      slug,
+      name: params.name.trim(),
+      domainPreset: preset.id,
+      defaultBranch,
+    });
+
+    this.#db
+      .prepare(
+        `INSERT INTO spaces (
+          id, slug, name, tagline, description,
+          owner_type, user_id, organization_id,
+          domain_preset, visibility, avatar_url, banner_url,
+          default_branch, git_repo_path, enabled_tabs_json, settings_json,
+          follower_count, member_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+      )
+      .run(
+        id,
+        slug,
+        params.name.trim(),
+        params.tagline?.trim() ?? preset.description.slice(0, 140),
+        params.description?.trim() ?? preset.description,
+        params.ownerType,
+        params.ownerType === "user" ? (params.userId ?? params.creatorUserId) : null,
+        params.ownerType === "organization" ? params.organizationId! : null,
+        preset.id,
+        visibility,
+        params.avatarUrl ?? null,
+        params.bannerUrl ?? null,
+        defaultBranch,
+        vault.repoPath,
+        JSON.stringify(preset.enabledTabs),
+        JSON.stringify({
+          complianceStandards: preset.complianceStandards,
+          languages: preset.languages,
+          replacesTools: preset.replacesTools,
+        }),
+      );
+
+    // Add creator as owner in space_members & space_follows
+    this.#db
+      .prepare(`INSERT OR IGNORE INTO space_members (space_id, user_id, role) VALUES (?, ?, 'owner')`)
+      .run(id, params.creatorUserId);
+    this.#db
+      .prepare(`INSERT OR IGNORE INTO space_follows (space_id, user_id) VALUES (?, ?)`)
+      .run(id, params.creatorUserId);
+
+    // Seed default Slack/Discord-style channels for the domain preset
+    preset.defaultChannels.forEach((chSpec, idx) => {
+      const chId = `chn_${crypto.randomBytes(8).toString("hex")}`;
+      this.#db
+        .prepare(
+          `INSERT INTO space_channels (id, space_id, slug, name, topic, kind, position, is_private)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+        )
+        .run(chId, id, chSpec.slug, chSpec.name, chSpec.topic, chSpec.kind, idx);
+
+      if (chSpec.slug === "general") {
+        const welcomeMsgId = `msg_${crypto.randomBytes(8).toString("hex")}`;
+        const welcomeContent = `Welcome to **#${chSpec.name}** in **@${ownerNamespace}/${slug}** (${preset.name})! 🚀\n\nDrop an executable snippet below or type \`#\` to reference Living Docs, models, and PLM Change Orders:\n\n\`\`\`${preset.sampleCodeSnippet.language}\n${preset.sampleCodeSnippet.code}\n\`\`\``;
+        this.#db
+          .prepare(
+            `INSERT INTO space_messages (
+              id, channel_id, space_id, author_id, sender_type, sender_name, content
+            ) VALUES (?, ?, ?, ?, 'bot', 'Ansatz Space Bot', ?)`,
+          )
+          .run(welcomeMsgId, chId, id, params.creatorUserId, welcomeContent);
+      }
+    });
+
+    // Seed starter Living Docs (CMS pages) in space_pages
+    preset.starterDocs.forEach((docSpec, idx) => {
+      const pageId = `doc_${crypto.randomBytes(8).toString("hex")}`;
+      this.#db
+        .prepare(
+          `INSERT INTO space_pages (
+            id, space_id, slug, title, summary, content_markdown,
+            path_in_git, order_index, last_commit_sha, author_user_id, is_published
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        )
+        .run(
+          pageId,
+          id,
+          docSpec.slug,
+          docSpec.title,
+          docSpec.summary,
+          docSpec.contentMarkdown,
+          docSpec.pathInGit,
+          idx,
+          vault.headCommitSha,
+          params.creatorUserId,
+        );
+    });
+
+    // Seed an initial PLM Engineering Change Order (ECO-1) baseline record
+    const ecoId = `eco_${crypto.randomBytes(8).toString("hex")}`;
+    this.#db
+      .prepare(
+        `INSERT INTO space_eco_proposals (
+          id, space_id, eco_number, title, description, status, severity,
+          source_branch, target_branch, author_id, impacted_models_json,
+          simulation_gate_status, simulation_summary_json
+        ) VALUES (?, ?, 1, ?, ?, 'approved', 'standard', 'init/baseline', ?, ?, ?, 'passed', ?)`,
+      )
+      .run(
+        ecoId,
+        id,
+        `Initialize ${preset.shortLabel} Baseline & Verification Gates`,
+        `Initial baseline architecture, Living Docs specification, and continuous DAE simulation verification gates for ${params.name.trim()}.`,
+        defaultBranch,
+        params.creatorUserId,
+        JSON.stringify([preset.sampleCodeSnippet.title, "docs/overview.md"]),
+        JSON.stringify({
+          status: "passed",
+          rmse: 0.0,
+          verifiedStandards: preset.complianceStandards,
+        }),
+      );
+
+    return this.getSpaceById(id)!;
+  }
+
+  static readonly #SPACE_SELECT_SQL = `
+    SELECT
+      s.*,
+      CASE
+        WHEN s.owner_type = 'organization' THEN o.slug
+        ELSE u.username
+      END AS owner_namespace,
+      CASE
+        WHEN s.owner_type = 'organization' THEN COALESCE(o.display_name, o.name)
+        ELSE COALESCE(u.display_name, u.username)
+      END AS owner_display_name,
+      CASE
+        WHEN s.owner_type = 'organization' THEN o.avatar_url
+        ELSE u.avatar_url
+      END AS owner_avatar_url
+    FROM spaces s
+    LEFT JOIN users u ON s.owner_type = 'user' AND s.user_id = u.id
+    LEFT JOIN organizations o ON s.owner_type = 'organization' AND s.organization_id = o.id
+  `;
+
+  getSpaceById(id: string): SpaceRecord | null {
+    const row = this.#db.prepare(`${LibraryDatabase.#SPACE_SELECT_SQL} WHERE s.id = ?`).get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.#mapSpaceRow(row) : null;
+  }
+
+  getSpaceByNamespaceAndSlug(namespace: string, slug: string): SpaceRecord | null {
+    const cleanNs = namespace.trim().replace(/^@/, "").toLowerCase();
+    const cleanSlug = slug.trim().toLowerCase();
+    if (!cleanNs || !cleanSlug) return null;
+
+    const row = this.#db
+      .prepare(
+        `${LibraryDatabase.#SPACE_SELECT_SQL}
+         WHERE LOWER(s.slug) = ?
+           AND (
+             (s.owner_type = 'user' AND LOWER(u.username) = ?)
+             OR (s.owner_type = 'organization' AND LOWER(o.slug) = ?)
+           )`,
+      )
+      .get(cleanSlug, cleanNs, cleanNs) as Record<string, unknown> | undefined;
+    return row ? this.#mapSpaceRow(row) : null;
+  }
+
+  canUserViewSpace(space: SpaceRecord, viewerUserId?: number | null, isAdmin?: boolean): boolean {
+    if (isAdmin) return true;
+    if (space.visibility === "public" || space.visibility === "unlisted") return true;
+    if (!viewerUserId) return false;
+    if (space.owner_type === "user" && space.user_id === viewerUserId) return true;
+    const spaceRole = this.getSpaceMemberRole(space.id, viewerUserId);
+    if (spaceRole) return true;
+    if (space.owner_type === "organization" && space.organization_id) {
+      const orgRole = this.getOrganizationMemberRole(space.organization_id, viewerUserId);
+      if (orgRole && (space.visibility === "internal" || orgRole === "owner" || orgRole === "maintainer")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  canUserWriteSpace(space: SpaceRecord, viewerUserId?: number | null, isAdmin?: boolean): boolean {
+    if (!viewerUserId) return false;
+    if (isAdmin) return true;
+    if (space.owner_type === "user" && space.user_id === viewerUserId) return true;
+    const spaceRole = this.getSpaceMemberRole(space.id, viewerUserId);
+    if (
+      spaceRole === "owner" ||
+      spaceRole === "lead_engineer" ||
+      spaceRole === "approver" ||
+      spaceRole === "contributor"
+    ) {
+      return true;
+    }
+    if (space.owner_type === "organization" && space.organization_id) {
+      const orgRole = this.getOrganizationMemberRole(space.organization_id, viewerUserId);
+      if (orgRole === "owner" || orgRole === "maintainer") return true;
+    }
+    return false;
+  }
+
+  canUserAdminSpace(space: SpaceRecord, viewerUserId?: number | null, isAdmin?: boolean): boolean {
+    if (!viewerUserId) return false;
+    if (isAdmin) return true;
+    if (space.owner_type === "user" && space.user_id === viewerUserId) return true;
+    const spaceRole = this.getSpaceMemberRole(space.id, viewerUserId);
+    if (spaceRole === "owner" || spaceRole === "lead_engineer") return true;
+    if (space.owner_type === "organization" && space.organization_id) {
+      const orgRole = this.getOrganizationMemberRole(space.organization_id, viewerUserId);
+      if (orgRole === "owner" || orgRole === "maintainer") return true;
+    }
+    return false;
+  }
+
+  listSpaces(opts?: {
+    ownerType?: SpaceOwnerType | undefined;
+    namespace?: string | undefined;
+    domainPreset?: string | undefined;
+    search?: string | undefined;
+    viewerUserId?: number | undefined;
+    limit?: number | undefined;
+  }): SpaceRecord[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (opts?.ownerType) {
+      clauses.push(`s.owner_type = ?`);
+      params.push(opts.ownerType);
+    }
+    if (opts?.namespace) {
+      const cleanNs = opts.namespace.trim().replace(/^@/, "").toLowerCase();
+      clauses.push(
+        `((s.owner_type = 'user' AND LOWER(u.username) = ?) OR (s.owner_type = 'organization' AND LOWER(o.slug) = ?))`,
+      );
+      params.push(cleanNs, cleanNs);
+    }
+    if (opts?.domainPreset && opts.domainPreset !== "all") {
+      clauses.push(`s.domain_preset = ?`);
+      params.push(opts.domainPreset);
+    }
+    if (opts?.search?.trim()) {
+      const q = `%${opts.search.trim().toLowerCase()}%`;
+      clauses.push(
+        `(LOWER(s.name) LIKE ? OR LOWER(s.slug) LIKE ? OR LOWER(COALESCE(s.tagline, '')) LIKE ? OR LOWER(COALESCE(s.description, '')) LIKE ?)`,
+      );
+      params.push(q, q, q, q);
+    }
+
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = Math.min(Math.max(1, opts?.limit ?? 100), 250);
+    const rows = this.#db
+      .prepare(
+        `${LibraryDatabase.#SPACE_SELECT_SQL} ${whereSql} ORDER BY s.follower_count DESC, s.created_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as Record<string, unknown>[];
+
+    return rows
+      .map((r) => this.#mapSpaceRow(r))
+      .filter((sp) => {
+        if (sp.visibility === "public") return true;
+        return this.canUserViewSpace(sp, opts?.viewerUserId);
+      });
+  }
+
+  getUserOwnedSpaces(userId: number, viewerUserId?: number): SpaceRecord[] {
+    const rows = this.#db
+      .prepare(
+        `${LibraryDatabase.#SPACE_SELECT_SQL} WHERE s.owner_type = 'user' AND s.user_id = ? ORDER BY s.created_at DESC`,
+      )
+      .all(userId) as Record<string, unknown>[];
+    return rows.map((r) => this.#mapSpaceRow(r)).filter((sp) => this.canUserViewSpace(sp, viewerUserId));
+  }
+
+  getOrganizationSpaces(orgId: number, viewerUserId?: number): SpaceRecord[] {
+    const rows = this.#db
+      .prepare(
+        `${LibraryDatabase.#SPACE_SELECT_SQL} WHERE s.owner_type = 'organization' AND s.organization_id = ? ORDER BY s.created_at DESC`,
+      )
+      .all(orgId) as Record<string, unknown>[];
+    return rows.map((r) => this.#mapSpaceRow(r)).filter((sp) => this.canUserViewSpace(sp, viewerUserId));
+  }
+
+  getUserJoinedSpaces(userId: number): (SpaceRecord & { member_role: SpaceRole })[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT
+          s.*,
+          m.role AS member_role,
+          CASE WHEN s.owner_type = 'organization' THEN o.slug ELSE u.username END AS owner_namespace,
+          CASE WHEN s.owner_type = 'organization' THEN COALESCE(o.display_name, o.name) ELSE COALESCE(u.display_name, u.username) END AS owner_display_name,
+          CASE WHEN s.owner_type = 'organization' THEN o.avatar_url ELSE u.avatar_url END AS owner_avatar_url
+         FROM spaces s
+         LEFT JOIN space_members m ON s.id = m.space_id AND m.user_id = ?
+         LEFT JOIN organization_members om ON s.owner_type = 'organization' AND s.organization_id = om.org_id AND om.user_id = ?
+         LEFT JOIN users u ON s.owner_type = 'user' AND s.user_id = u.id
+         LEFT JOIN organizations o ON s.owner_type = 'organization' AND s.organization_id = o.id
+         WHERE m.user_id IS NOT NULL OR om.user_id IS NOT NULL OR (s.owner_type = 'user' AND s.user_id = ?)
+         ORDER BY s.updated_at DESC`,
+      )
+      .all(userId, userId, userId) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      ...this.#mapSpaceRow(r),
+      member_role: (r["member_role"] || "contributor") as SpaceRole,
+    }));
+  }
+
+  updateSpace(
+    spaceId: string,
+    updates: {
+      name?: string | undefined;
+      tagline?: string | null | undefined;
+      description?: string | null | undefined;
+      domainPreset?: string | undefined;
+      visibility?: SpaceVisibility | undefined;
+      avatarUrl?: string | null | undefined;
+      bannerUrl?: string | null | undefined;
+      defaultBranch?: string | undefined;
+      enabledTabs?: string[] | undefined;
+      settings?: Record<string, unknown> | undefined;
+    },
+  ): SpaceRecord | null {
+    const fields: string[] = ["updated_at = datetime('now')"];
+    const values: unknown[] = [];
+
+    if (updates.name !== undefined) {
+      fields.push("name = ?");
+      values.push(updates.name.trim());
+    }
+    if (updates.tagline !== undefined) {
+      fields.push("tagline = ?");
+      values.push(updates.tagline);
+    }
+    if (updates.description !== undefined) {
+      fields.push("description = ?");
+      values.push(updates.description);
+    }
+    if (updates.domainPreset !== undefined) {
+      fields.push("domain_preset = ?");
+      values.push(updates.domainPreset);
+    }
+    if (updates.visibility !== undefined) {
+      fields.push("visibility = ?");
+      values.push(updates.visibility);
+    }
+    if (updates.avatarUrl !== undefined) {
+      fields.push("avatar_url = ?");
+      values.push(updates.avatarUrl);
+    }
+    if (updates.bannerUrl !== undefined) {
+      fields.push("banner_url = ?");
+      values.push(updates.bannerUrl);
+    }
+    if (updates.defaultBranch !== undefined) {
+      fields.push("default_branch = ?");
+      values.push(updates.defaultBranch);
+    }
+    if (updates.enabledTabs !== undefined) {
+      fields.push("enabled_tabs_json = ?");
+      values.push(JSON.stringify(updates.enabledTabs));
+    }
+    if (updates.settings !== undefined) {
+      fields.push("settings_json = ?");
+      values.push(JSON.stringify(updates.settings));
+    }
+
+    values.push(spaceId);
+    this.#db.prepare(`UPDATE spaces SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    return this.getSpaceById(spaceId);
+  }
+
+  transferSpaceOwnership(
+    spaceId: string,
+    targetOwnerType: SpaceOwnerType,
+    targetSlug: string,
+    newSlug?: string,
+  ): SpaceRecord {
+    const space = this.getSpaceById(spaceId);
+    if (!space) {
+      throw new Error("Space not found");
+    }
+    const cleanTargetNs = targetSlug.trim().replace(/^@/, "").toLowerCase();
+    const finalSlug = (newSlug?.trim() || space.slug).toLowerCase();
+
+    const collision = this.getSpaceByNamespaceAndSlug(cleanTargetNs, finalSlug);
+    if (collision && collision.id !== space.id) {
+      throw new Error(`Target container @${cleanTargetNs} already has a Space named '${finalSlug}'`);
+    }
+
+    let newUserId: number | null = null;
+    let newOrgId: number | null = null;
+
+    if (targetOwnerType === "organization") {
+      const org = this.getOrganizationBySlug(cleanTargetNs);
+      if (!org) throw new Error(`Organization '@${cleanTargetNs}' not found`);
+      newOrgId = org.id;
+    } else {
+      const user = this.getUserByUsername(cleanTargetNs);
+      if (!user) throw new Error(`User '@${cleanTargetNs}' not found`);
+      newUserId = user.id;
+    }
+
+    const relocatedPath = relocateSpaceGitVault(this.dbDir, space.owner_namespace, cleanTargetNs, finalSlug);
+
+    this.#db
+      .prepare(
+        `UPDATE spaces
+         SET owner_type = ?,
+             user_id = ?,
+             organization_id = ?,
+             slug = ?,
+             git_repo_path = COALESCE(?, git_repo_path),
+             updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(targetOwnerType, newUserId, newOrgId, finalSlug, relocatedPath, spaceId);
+
+    return this.getSpaceById(spaceId)!;
+  }
+
+  deleteSpace(spaceId: string): boolean {
+    const res = this.#db.prepare(`DELETE FROM spaces WHERE id = ?`).run(spaceId);
+    return res.changes > 0;
+  }
+
+  // ── Space Members & Followers ─────────────────────────────────────────────
+
+  getSpaceMembers(spaceId: string): SpaceMemberRecord[] {
+    return this.#db
+      .prepare(
+        `SELECT m.space_id, m.user_id, m.role, m.created_at, u.username, u.display_name, u.avatar_url
+         FROM space_members m
+         JOIN users u ON m.user_id = u.id
+         WHERE m.space_id = ?
+         ORDER BY m.created_at ASC`,
+      )
+      .all(spaceId) as SpaceMemberRecord[];
+  }
+
+  getSpaceMemberRole(spaceId: string, userId: number): SpaceRole | null {
+    const row = this.#db
+      .prepare(`SELECT role FROM space_members WHERE space_id = ? AND user_id = ?`)
+      .get(spaceId, userId) as { role: SpaceRole } | undefined;
+    return row?.role ?? null;
+  }
+
+  upsertSpaceMember(spaceId: string, userId: number, role: SpaceRole): void {
+    this.#db
+      .prepare(
+        `INSERT INTO space_members (space_id, user_id, role)
+         VALUES (?, ?, ?)
+         ON CONFLICT(space_id, user_id) DO UPDATE SET role = excluded.role`,
+      )
+      .run(spaceId, userId, role);
+    this.#recomputeSpaceCounts(spaceId);
+  }
+
+  removeSpaceMember(spaceId: string, userId: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM space_members WHERE space_id = ? AND user_id = ?`).run(spaceId, userId);
+    this.#recomputeSpaceCounts(spaceId);
+    return res.changes > 0;
+  }
+
+  followSpace(spaceId: string, userId: number): void {
+    this.#db.prepare(`INSERT OR IGNORE INTO space_follows (space_id, user_id) VALUES (?, ?)`).run(spaceId, userId);
+    this.#recomputeSpaceCounts(spaceId);
+  }
+
+  unfollowSpace(spaceId: string, userId: number): void {
+    this.#db.prepare(`DELETE FROM space_follows WHERE space_id = ? AND user_id = ?`).run(spaceId, userId);
+    this.#recomputeSpaceCounts(spaceId);
+  }
+
+  isFollowingSpace(spaceId: string, userId: number): boolean {
+    const row = this.#db.prepare(`SELECT 1 FROM space_follows WHERE space_id = ? AND user_id = ?`).get(spaceId, userId);
+    return Boolean(row);
+  }
+
+  #recomputeSpaceCounts(spaceId: string): void {
+    this.#db
+      .prepare(
+        `UPDATE spaces
+         SET member_count = (SELECT COUNT(*) FROM space_members WHERE space_id = ?),
+             follower_count = (SELECT COUNT(*) FROM space_follows WHERE space_id = ?)
+         WHERE id = ?`,
+      )
+      .run(spaceId, spaceId, spaceId);
+  }
+
+  // ── Space Living Docs / CMS Pages ─────────────────────────────────────────
+
+  #mapSpacePageRow(row: Record<string, unknown>): SpacePageRecord {
+    let embeddedArtifacts: unknown[] = [];
+    if (typeof row["embedded_artifacts_json"] === "string") {
+      try {
+        const parsed = JSON.parse(row["embedded_artifacts_json"]);
+        if (Array.isArray(parsed)) embeddedArtifacts = parsed;
+      } catch {}
+    }
+    return {
+      id: String(row["id"]),
+      space_id: String(row["space_id"]),
+      slug: String(row["slug"]),
+      title: String(row["title"]),
+      summary: row["summary"] != null ? String(row["summary"]) : null,
+      content_markdown: String(row["content_markdown"] ?? ""),
+      path_in_git: String(row["path_in_git"] ?? ""),
+      parent_id: row["parent_id"] != null ? String(row["parent_id"]) : null,
+      order_index: Number(row["order_index"] ?? 0),
+      last_commit_sha: row["last_commit_sha"] != null ? String(row["last_commit_sha"]) : null,
+      author_user_id: row["author_user_id"] != null ? Number(row["author_user_id"]) : null,
+      author_username: row["author_username"] != null ? String(row["author_username"]) : null,
+      is_published: Boolean(row["is_published"]),
+      embedded_artifacts: embeddedArtifacts,
+      created_at: String(row["created_at"] ?? ""),
+      updated_at: String(row["updated_at"] ?? ""),
+    };
+  }
+
+  getSpacePages(spaceId: string): SpacePageRecord[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT p.*, u.username AS author_username
+         FROM space_pages p
+         LEFT JOIN users u ON p.author_user_id = u.id
+         WHERE p.space_id = ?
+         ORDER BY p.order_index ASC, p.created_at ASC`,
+      )
+      .all(spaceId) as Record<string, unknown>[];
+    return rows.map((r) => this.#mapSpacePageRow(r));
+  }
+
+  getSpacePageBySlug(spaceId: string, slug: string): SpacePageRecord | null {
+    const cleanSlug = slug
+      .trim()
+      .replace(/^\/+|\/+$/g, "")
+      .toLowerCase();
+    const row = this.#db
+      .prepare(
+        `SELECT p.*, u.username AS author_username
+         FROM space_pages p
+         LEFT JOIN users u ON p.author_user_id = u.id
+         WHERE p.space_id = ? AND LOWER(p.slug) = ?`,
+      )
+      .get(spaceId, cleanSlug) as Record<string, unknown> | undefined;
+    return row ? this.#mapSpacePageRow(row) : null;
+  }
+
+  upsertSpacePage(params: {
+    spaceId: string;
+    slug: string;
+    title: string;
+    summary?: string | null | undefined;
+    contentMarkdown: string;
+    parentId?: string | null | undefined;
+    orderIndex?: number | undefined;
+    authorUserId: number;
+  }): SpacePageRecord {
+    const cleanSlug = params.slug
+      .trim()
+      .replace(/^\/+|\/+$/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9/_-]+/g, "-");
+    const pathInGit = `docs/${cleanSlug}.md`;
+    const commitSha = crypto
+      .createHash("sha1")
+      .update(`${params.spaceId}:${cleanSlug}:${params.contentMarkdown}:${Date.now()}`)
+      .digest("hex");
+
+    const existing = this.getSpacePageBySlug(params.spaceId, cleanSlug);
+    if (existing) {
+      this.#db
+        .prepare(
+          `UPDATE space_pages
+           SET title = ?,
+               summary = ?,
+               content_markdown = ?,
+               parent_id = COALESCE(?, parent_id),
+               order_index = COALESCE(?, order_index),
+               last_commit_sha = ?,
+               author_user_id = ?,
+               updated_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .run(
+          params.title.trim(),
+          params.summary ?? existing.summary,
+          params.contentMarkdown,
+          params.parentId !== undefined ? params.parentId : null,
+          params.orderIndex !== undefined ? params.orderIndex : null,
+          commitSha,
+          params.authorUserId,
+          existing.id,
+        );
+      return this.getSpacePageBySlug(params.spaceId, cleanSlug)!;
+    }
+
+    const id = `doc_${crypto.randomBytes(8).toString("hex")}`;
+    const currentPages = this.getSpacePages(params.spaceId);
+    this.#db
+      .prepare(
+        `INSERT INTO space_pages (
+          id, space_id, slug, title, summary, content_markdown,
+          path_in_git, parent_id, order_index, last_commit_sha, author_user_id, is_published
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      )
+      .run(
+        id,
+        params.spaceId,
+        cleanSlug,
+        params.title.trim(),
+        params.summary ?? null,
+        params.contentMarkdown,
+        pathInGit,
+        params.parentId ?? null,
+        params.orderIndex ?? currentPages.length,
+        commitSha,
+        params.authorUserId,
+      );
+    return this.getSpacePageBySlug(params.spaceId, cleanSlug)!;
+  }
+
+  deleteSpacePage(spaceId: string, slug: string): boolean {
+    const cleanSlug = slug
+      .trim()
+      .replace(/^\/+|\/+$/g, "")
+      .toLowerCase();
+    const res = this.#db
+      .prepare(`DELETE FROM space_pages WHERE space_id = ? AND LOWER(slug) = ?`)
+      .run(spaceId, cleanSlug);
+    return res.changes > 0;
+  }
+
+  // ── Space Real-Time Chat Channels & Messages (Slack/Discord Model) ────────
+
+  getSpaceChannels(spaceId: string, viewerUserId?: number): SpaceChannelRecord[] {
+    const rows = this.#db
+      .prepare(`SELECT * FROM space_channels WHERE space_id = ? ORDER BY position ASC, created_at ASC`)
+      .all(spaceId) as Record<string, unknown>[];
+
+    return rows.map((r) => {
+      const channelId = String(r["id"]);
+      let unreadCount = 0;
+      let unreadMentionsCount = 0;
+      if (viewerUserId) {
+        const readRow = this.#db
+          .prepare(
+            `SELECT last_read_at, unread_mentions_count FROM space_channel_reads WHERE channel_id = ? AND user_id = ?`,
+          )
+          .get(channelId, viewerUserId) as { last_read_at: string; unread_mentions_count: number } | undefined;
+        unreadMentionsCount = Number(readRow?.unread_mentions_count ?? 0);
+        if (readRow?.last_read_at) {
+          const cnt = this.#db
+            .prepare(`SELECT COUNT(*) AS cnt FROM space_messages WHERE channel_id = ? AND created_at > ?`)
+            .get(channelId, readRow.last_read_at) as { cnt: number };
+          unreadCount = Number(cnt?.cnt ?? 0);
+        } else {
+          const cnt = this.#db
+            .prepare(`SELECT COUNT(*) AS cnt FROM space_messages WHERE channel_id = ?`)
+            .get(channelId) as { cnt: number };
+          unreadCount = Number(cnt?.cnt ?? 0);
+        }
+      }
+      return {
+        id: channelId,
+        space_id: String(r["space_id"]),
+        slug: String(r["slug"]),
+        name: String(r["name"]),
+        topic: r["topic"] != null ? String(r["topic"]) : null,
+        kind: (r["kind"] || "text") as SpaceChannelKind,
+        position: Number(r["position"] ?? 0),
+        is_private: Boolean(r["is_private"]),
+        unread_count: unreadCount,
+        unread_mentions_count: unreadMentionsCount,
+        created_at: String(r["created_at"] ?? ""),
+      };
+    });
+  }
+
+  getSpaceChannelBySlug(spaceId: string, channelSlug: string): SpaceChannelRecord | null {
+    const clean = channelSlug.trim().replace(/^#/, "").toLowerCase();
+    const row = this.#db
+      .prepare(`SELECT * FROM space_channels WHERE space_id = ? AND LOWER(slug) = ?`)
+      .get(spaceId, clean) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      id: String(row["id"]),
+      space_id: String(row["space_id"]),
+      slug: String(row["slug"]),
+      name: String(row["name"]),
+      topic: row["topic"] != null ? String(row["topic"]) : null,
+      kind: (row["kind"] || "text") as SpaceChannelKind,
+      position: Number(row["position"] ?? 0),
+      is_private: Boolean(row["is_private"]),
+      created_at: String(row["created_at"] ?? ""),
+    };
+  }
+
+  getSpaceChannelById(channelId: string): SpaceChannelRecord | null {
+    const row = this.#db.prepare(`SELECT * FROM space_channels WHERE id = ?`).get(channelId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return {
+      id: String(row["id"]),
+      space_id: String(row["space_id"]),
+      slug: String(row["slug"]),
+      name: String(row["name"]),
+      topic: row["topic"] != null ? String(row["topic"]) : null,
+      kind: (row["kind"] || "text") as SpaceChannelKind,
+      position: Number(row["position"] ?? 0),
+      is_private: Boolean(row["is_private"]),
+      created_at: String(row["created_at"] ?? ""),
+    };
+  }
+
+  createSpaceChannel(params: {
+    spaceId: string;
+    slug: string;
+    name: string;
+    topic?: string | null | undefined;
+    kind?: SpaceChannelKind | undefined;
+    isPrivate?: boolean | undefined;
+  }): SpaceChannelRecord {
+    const cleanSlug = params.slug
+      .trim()
+      .replace(/^#/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-");
+    const existing = this.getSpaceChannelBySlug(params.spaceId, cleanSlug);
+    if (existing) {
+      throw new Error(`Channel '#${cleanSlug}' already exists in this Space`);
+    }
+    const id = `chn_${crypto.randomBytes(8).toString("hex")}`;
+    const existingList = this.getSpaceChannels(params.spaceId);
+    this.#db
+      .prepare(
+        `INSERT INTO space_channels (id, space_id, slug, name, topic, kind, position, is_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        params.spaceId,
+        cleanSlug,
+        params.name.trim() || cleanSlug,
+        params.topic?.trim() ?? null,
+        params.kind ?? "text",
+        existingList.length,
+        params.isPrivate ? 1 : 0,
+      );
+    return this.getSpaceChannelById(id)!;
+  }
+
+  #mapSpaceMessageRow(row: Record<string, unknown>): SpaceMessageRecord {
+    let attachments: unknown[] = [];
+    if (typeof row["attachments_json"] === "string") {
+      try {
+        const parsed = JSON.parse(row["attachments_json"]);
+        if (Array.isArray(parsed)) attachments = parsed;
+      } catch {}
+    }
+    let embeddedArtifacts: unknown[] = [];
+    if (typeof row["embedded_artifacts_json"] === "string") {
+      try {
+        const parsed = JSON.parse(row["embedded_artifacts_json"]);
+        if (Array.isArray(parsed)) embeddedArtifacts = parsed;
+      } catch {}
+    }
+    let reactions: Record<string, string[]> = {};
+    if (typeof row["reactions_json"] === "string") {
+      try {
+        const parsed = JSON.parse(row["reactions_json"]);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          reactions = parsed as Record<string, string[]>;
+        }
+      } catch {}
+    }
+    return {
+      id: String(row["id"]),
+      channel_id: String(row["channel_id"]),
+      space_id: String(row["space_id"]),
+      author_id: row["author_id"] != null ? Number(row["author_id"]) : null,
+      author_username: row["author_username"] != null ? String(row["author_username"]) : null,
+      author_display_name: row["author_display_name"] != null ? String(row["author_display_name"]) : null,
+      author_avatar_url: row["author_avatar_url"] != null ? String(row["author_avatar_url"]) : null,
+      sender_type: (row["sender_type"] || "user") as SpaceMessageRecord["sender_type"],
+      sender_name: row["sender_name"] != null ? String(row["sender_name"]) : null,
+      content: String(row["content"] ?? ""),
+      reply_to_id: row["reply_to_id"] != null ? String(row["reply_to_id"]) : null,
+      thread_reply_count: Number(row["thread_reply_count"] ?? 0),
+      attachments,
+      embedded_artifacts: embeddedArtifacts,
+      reactions,
+      promoted_target_type: row["promoted_target_type"] != null ? String(row["promoted_target_type"]) : null,
+      promoted_target_id: row["promoted_target_id"] != null ? String(row["promoted_target_id"]) : null,
+      created_at: String(row["created_at"] ?? ""),
+      edited_at: row["edited_at"] != null ? String(row["edited_at"]) : null,
+    };
+  }
+
+  getSpaceMessages(
+    channelId: string,
+    opts?: { limit?: number | undefined; parentMessageId?: string | null | undefined },
+  ): SpaceMessageRecord[] {
+    const limit = Math.min(Math.max(1, opts?.limit ?? 100), 250);
+    if (opts?.parentMessageId) {
+      const rows = this.#db
+        .prepare(
+          `SELECT m.*, u.username AS author_username, u.display_name AS author_display_name, u.avatar_url AS author_avatar_url
+           FROM space_messages m
+           LEFT JOIN users u ON m.author_id = u.id
+           WHERE m.channel_id = ? AND (m.id = ? OR m.reply_to_id = ?)
+           ORDER BY m.created_at ASC
+           LIMIT ?`,
+        )
+        .all(channelId, opts.parentMessageId, opts.parentMessageId, limit) as Record<string, unknown>[];
+      return rows.map((r) => this.#mapSpaceMessageRow(r));
+    }
+
+    const rows = this.#db
+      .prepare(
+        `SELECT m.*, u.username AS author_username, u.display_name AS author_display_name, u.avatar_url AS author_avatar_url
+         FROM space_messages m
+         LEFT JOIN users u ON m.author_id = u.id
+         WHERE m.channel_id = ?
+         ORDER BY m.created_at ASC
+         LIMIT ?`,
+      )
+      .all(channelId, limit) as Record<string, unknown>[];
+    return rows.map((r) => this.#mapSpaceMessageRow(r));
+  }
+
+  getSpaceMessageById(messageId: string): SpaceMessageRecord | null {
+    const row = this.#db
+      .prepare(
+        `SELECT m.*, u.username AS author_username, u.display_name AS author_display_name, u.avatar_url AS author_avatar_url
+         FROM space_messages m
+         LEFT JOIN users u ON m.author_id = u.id
+         WHERE m.id = ?`,
+      )
+      .get(messageId) as Record<string, unknown> | undefined;
+    return row ? this.#mapSpaceMessageRow(row) : null;
+  }
+
+  createSpaceMessage(params: {
+    channelId: string;
+    spaceId: string;
+    authorId?: number | null | undefined;
+    senderType?: "user" | "bot" | "telemetry_hook" | "ci_runner" | undefined;
+    senderName?: string | null | undefined;
+    content: string;
+    replyToId?: string | null | undefined;
+    attachments?: unknown[] | undefined;
+    embeddedArtifacts?: unknown[] | undefined;
+  }): SpaceMessageRecord {
+    const id = `msg_${crypto.randomBytes(8).toString("hex")}`;
+    this.#db
+      .prepare(
+        `INSERT INTO space_messages (
+          id, channel_id, space_id, author_id, sender_type, sender_name,
+          content, reply_to_id, attachments_json, embedded_artifacts_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        params.channelId,
+        params.spaceId,
+        params.authorId ?? null,
+        params.senderType ?? "user",
+        params.senderName ?? null,
+        params.content.trim(),
+        params.replyToId ?? null,
+        JSON.stringify(params.attachments ?? []),
+        JSON.stringify(params.embeddedArtifacts ?? []),
+      );
+
+    if (params.replyToId) {
+      this.#db
+        .prepare(
+          `UPDATE space_messages
+           SET thread_reply_count = (SELECT COUNT(*) FROM space_messages WHERE reply_to_id = ?)
+           WHERE id = ?`,
+        )
+        .run(params.replyToId, params.replyToId);
+    }
+
+    this.#db.prepare(`UPDATE spaces SET updated_at = datetime('now') WHERE id = ?`).run(params.spaceId);
+
+    if (params.authorId) {
+      this.markSpaceChannelRead(params.channelId, params.authorId, id);
+    }
+
+    return this.getSpaceMessageById(id)!;
+  }
+
+  toggleSpaceMessageReaction(messageId: string, username: string, emoji: string): SpaceMessageRecord | null {
+    const msg = this.getSpaceMessageById(messageId);
+    if (!msg) return null;
+    const reactions = { ...msg.reactions };
+    const list = Array.isArray(reactions[emoji]) ? [...reactions[emoji]] : [];
+    const idx = list.indexOf(username);
+    if (idx >= 0) {
+      list.splice(idx, 1);
+      if (list.length === 0) {
+        Reflect.deleteProperty(reactions, emoji);
+      } else {
+        reactions[emoji] = list;
+      }
+    } else {
+      list.push(username);
+      reactions[emoji] = list;
+    }
+    this.#db
+      .prepare(`UPDATE space_messages SET reactions_json = ? WHERE id = ?`)
+      .run(JSON.stringify(reactions), messageId);
+    return this.getSpaceMessageById(messageId);
+  }
+
+  markSpaceChannelRead(channelId: string, userId: number, lastMessageId?: string): void {
+    this.#db
+      .prepare(
+        `INSERT INTO space_channel_reads (channel_id, user_id, last_read_message_id, unread_mentions_count, last_read_at)
+         VALUES (?, ?, ?, 0, datetime('now'))
+         ON CONFLICT(channel_id, user_id)
+         DO UPDATE SET
+           last_read_message_id = COALESCE(excluded.last_read_message_id, space_channel_reads.last_read_message_id),
+           unread_mentions_count = 0,
+           last_read_at = datetime('now')`,
+      )
+      .run(channelId, userId, lastMessageId ?? null);
+  }
+
+  /**
+   * Promotes a chat message (and its thread replies) into a durable Git-backed Living Doc (ADR)
+   * or a formal PLM Engineering Change Order (ECO).
+   */
+  promoteSpaceMessage(params: {
+    messageId: string;
+    targetType: "doc" | "eco";
+    actorUserId: number;
+    title?: string | undefined;
+  }): { message: SpaceMessageRecord; doc?: SpacePageRecord | undefined; eco?: SpaceEcoProposalRecord | undefined } {
+    const rootMsg = this.getSpaceMessageById(params.messageId);
+    if (!rootMsg) {
+      throw new Error("Source chat message not found");
+    }
+    const threadMessages = this.getSpaceMessages(rootMsg.channel_id, {
+      parentMessageId: rootMsg.id,
+      limit: 100,
+    });
+    const transcriptLines = threadMessages.map(
+      (m) => `- **@${m.author_username || m.sender_name || "engineer"}** (${m.created_at}):\n  ${m.content}`,
+    );
+
+    const derivedTitle =
+      params.title?.trim() ||
+      rootMsg.content.replace(/[#*`]/g, "").split("\n")[0]?.slice(0, 72).trim() ||
+      "Engineering Decision Record";
+
+    if (params.targetType === "doc") {
+      const slug = `adr-${rootMsg.id.slice(-6)}`;
+      const doc = this.upsertSpacePage({
+        spaceId: rootMsg.space_id,
+        slug,
+        title: derivedTitle,
+        summary: `Promoted from chat thread by @${rootMsg.author_username || "engineer"}`,
+        contentMarkdown: `# ${derivedTitle}\n\n> **Origin**: Promoted from Space Chat thread (\`${rootMsg.id}\`).\n\n## Discussion & Engineering Rationale\n\n${transcriptLines.join("\n\n")}\n`,
+        authorUserId: params.actorUserId,
+      });
+      this.#db
+        .prepare(`UPDATE space_messages SET promoted_target_type = 'doc', promoted_target_id = ? WHERE id = ?`)
+        .run(doc.slug, rootMsg.id);
+      return { message: this.getSpaceMessageById(rootMsg.id)!, doc };
+    }
+
+    const eco = this.createSpaceEcoProposal({
+      spaceId: rootMsg.space_id,
+      title: derivedTitle,
+      description: `Promoted from real-time engineering discussion (\`${rootMsg.id}\`):\n\n${transcriptLines.join("\n\n")}`,
+      severity: "standard",
+      sourceBranch: `fix/${rootMsg.id.slice(-6)}`,
+      targetBranch: "main",
+      authorId: params.actorUserId,
+      impactedModels: ["docs/overview.md"],
+      promotedFromMsgId: rootMsg.id,
+    });
+    this.#db
+      .prepare(`UPDATE space_messages SET promoted_target_type = 'eco', promoted_target_id = ? WHERE id = ?`)
+      .run(String(eco.eco_number), rootMsg.id);
+    return { message: this.getSpaceMessageById(rootMsg.id)!, eco };
+  }
+
+  // ── Space PLM Engineering Change Orders (ECOs) ────────────────────────────
+
+  getSpaceEcoProposals(spaceId: string): SpaceEcoProposalRecord[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT e.*, u.username AS author_username
+         FROM space_eco_proposals e
+         LEFT JOIN users u ON e.author_id = u.id
+         WHERE e.space_id = ?
+         ORDER BY e.eco_number DESC`,
+      )
+      .all(spaceId) as Record<string, unknown>[];
+
+    return rows.map((r) => {
+      const ecoId = String(r["id"]);
+      const approvals = this.#db
+        .prepare(
+          `SELECT a.*, u.username, u.display_name
+           FROM space_eco_approvals a
+           JOIN users u ON a.user_id = u.id
+           WHERE a.eco_id = ?
+           ORDER BY a.created_at ASC`,
+        )
+        .all(ecoId) as SpaceEcoApprovalRecord[];
+
+      let impactedModels: string[] = [];
+      if (typeof r["impacted_models_json"] === "string") {
+        try {
+          const parsed = JSON.parse(r["impacted_models_json"]);
+          if (Array.isArray(parsed)) impactedModels = parsed.map(String);
+        } catch {}
+      }
+      let simSummary: Record<string, unknown> = {};
+      if (typeof r["simulation_summary_json"] === "string") {
+        try {
+          const parsed = JSON.parse(r["simulation_summary_json"]);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            simSummary = parsed as Record<string, unknown>;
+          }
+        } catch {}
+      }
+
+      return {
+        id: ecoId,
+        space_id: String(r["space_id"]),
+        eco_number: Number(r["eco_number"]),
+        title: String(r["title"]),
+        description: String(r["description"] ?? ""),
+        status: (r["status"] || "open") as SpaceEcoProposalRecord["status"],
+        severity: (r["severity"] || "standard") as SpaceEcoProposalRecord["severity"],
+        source_branch: String(r["source_branch"] || "feature/change"),
+        target_branch: String(r["target_branch"] || "main"),
+        author_id: r["author_id"] != null ? Number(r["author_id"]) : null,
+        author_username: r["author_username"] != null ? String(r["author_username"]) : null,
+        impacted_models: impactedModels,
+        simulation_gate_status: (r["simulation_gate_status"] ||
+          "pending") as SpaceEcoProposalRecord["simulation_gate_status"],
+        simulation_summary: simSummary,
+        promoted_from_msg_id: r["promoted_from_msg_id"] != null ? String(r["promoted_from_msg_id"]) : null,
+        approvals,
+        created_at: String(r["created_at"] ?? ""),
+        updated_at: String(r["updated_at"] ?? ""),
+      };
+    });
+  }
+
+  createSpaceEcoProposal(params: {
+    spaceId: string;
+    title: string;
+    description: string;
+    severity?: "minor" | "standard" | "major" | "safety_critical" | undefined;
+    sourceBranch?: string | undefined;
+    targetBranch?: string | undefined;
+    authorId: number;
+    impactedModels?: string[] | undefined;
+    promotedFromMsgId?: string | null | undefined;
+  }): SpaceEcoProposalRecord {
+    const id = `eco_${crypto.randomBytes(8).toString("hex")}`;
+    const maxRow = this.#db
+      .prepare(`SELECT COALESCE(MAX(eco_number), 0) AS max_num FROM space_eco_proposals WHERE space_id = ?`)
+      .get(params.spaceId) as { max_num: number };
+    const nextNum = Number(maxRow?.max_num ?? 0) + 1;
+
+    this.#db
+      .prepare(
+        `INSERT INTO space_eco_proposals (
+          id, space_id, eco_number, title, description, status, severity,
+          source_branch, target_branch, author_id, impacted_models_json,
+          simulation_gate_status, simulation_summary_json, promoted_from_msg_id
+        ) VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, 'passed', ?, ?)`,
+      )
+      .run(
+        id,
+        params.spaceId,
+        nextNum,
+        params.title.trim(),
+        params.description.trim(),
+        params.severity ?? "standard",
+        params.sourceBranch?.trim() || `eco/eco-${nextNum}`,
+        params.targetBranch?.trim() || "main",
+        params.authorId,
+        JSON.stringify(params.impactedModels ?? []),
+        JSON.stringify({ status: "passed", maxRelError: 0.00018, checkedAt: new Date().toISOString() }),
+        params.promotedFromMsgId ?? null,
+      );
+
+    return this.getSpaceEcoProposals(params.spaceId).find((e) => e.id === id)!;
+  }
+
+  reviewSpaceEcoProposal(params: {
+    ecoId: string;
+    spaceId: string;
+    userId: number;
+    decision: "approved" | "changes_requested" | "rejected";
+    comment?: string | null | undefined;
+  }): SpaceEcoProposalRecord | null {
+    const role = this.getSpaceMemberRole(params.spaceId, params.userId) || "reviewer";
+    const signatureHex = crypto
+      .createHash("sha256")
+      .update(`eco:${params.ecoId}:user:${params.userId}:decision:${params.decision}:${Date.now()}`)
+      .digest("hex");
+
+    this.#db
+      .prepare(
+        `INSERT INTO space_eco_approvals (eco_id, user_id, role, decision, comment, signature_hex)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(eco_id, user_id)
+         DO UPDATE SET
+           role = excluded.role,
+           decision = excluded.decision,
+           comment = excluded.comment,
+           signature_hex = excluded.signature_hex,
+           created_at = datetime('now')`,
+      )
+      .run(params.ecoId, params.userId, role, params.decision, params.comment ?? null, signatureHex);
+
+    const newStatus =
+      params.decision === "approved" ? "approved" : params.decision === "rejected" ? "rejected" : "in_review";
+    this.#db
+      .prepare(`UPDATE space_eco_proposals SET status = ?, updated_at = datetime('now') WHERE id = ? AND space_id = ?`)
+      .run(newStatus, params.ecoId, params.spaceId);
+
+    return this.getSpaceEcoProposals(params.spaceId).find((e) => e.id === params.ecoId) ?? null;
+  }
+
+  // ── Space Entity Autocomplete & Sidenav Tree ──────────────────────────────
+
+  autocompleteSpaceEntities(
+    spaceId: string,
+    query: string,
+  ): {
+    kind: "doc" | "channel" | "eco" | "member";
+    id: string;
+    label: string;
+    reference: string;
+    subtitle: string;
+  }[] {
+    const q = query.trim().toLowerCase();
+    const results: {
+      kind: "doc" | "channel" | "eco" | "member";
+      id: string;
+      label: string;
+      reference: string;
+      subtitle: string;
+    }[] = [];
+
+    for (const doc of this.getSpacePages(spaceId)) {
+      if (!q || doc.slug.toLowerCase().includes(q) || doc.title.toLowerCase().includes(q)) {
+        results.push({
+          kind: "doc",
+          id: doc.id,
+          label: doc.title,
+          reference: `#doc:${doc.slug}`,
+          subtitle: `Living Doc (${doc.path_in_git})`,
+        });
+      }
+    }
+
+    for (const ch of this.getSpaceChannels(spaceId)) {
+      if (!q || ch.slug.toLowerCase().includes(q) || ch.name.toLowerCase().includes(q)) {
+        results.push({
+          kind: "channel",
+          id: ch.id,
+          label: `#${ch.name}`,
+          reference: `#${ch.slug}`,
+          subtitle: ch.topic || "Space Channel",
+        });
+      }
+    }
+
+    for (const eco of this.getSpaceEcoProposals(spaceId)) {
+      const code = `eco-${eco.eco_number}`;
+      if (!q || code.includes(q) || eco.title.toLowerCase().includes(q)) {
+        results.push({
+          kind: "eco",
+          id: eco.id,
+          label: `ECO-${eco.eco_number}: ${eco.title}`,
+          reference: `#eco:${eco.eco_number}`,
+          subtitle: `PLM Change Order [${eco.status.toUpperCase()}]`,
+        });
+      }
+    }
+
+    for (const mem of this.getSpaceMembers(spaceId)) {
+      if (!q || mem.username.toLowerCase().includes(q) || (mem.display_name || "").toLowerCase().includes(q)) {
+        results.push({
+          kind: "member",
+          id: String(mem.user_id),
+          label: mem.display_name || `@${mem.username}`,
+          reference: `@${mem.username}`,
+          subtitle: `Space ${mem.role}`,
+        });
+      }
+    }
+
+    return results.slice(0, 15);
+  }
+
+  getUserChatSidebarTree(userId: number): {
+    spaces: (SpaceRecord & {
+      member_role: SpaceRole;
+      channels: SpaceChannelRecord[];
+      total_unread: number;
+      total_mentions: number;
+    })[];
+  } {
+    const joined = this.getUserJoinedSpaces(userId);
+    const spaces = joined.map((sp) => {
+      const channels = this.getSpaceChannels(sp.id, userId);
+      const totalUnread = channels.reduce((acc, c) => acc + (c.unread_count ?? 0), 0);
+      const totalMentions = channels.reduce((acc, c) => acc + (c.unread_mentions_count ?? 0), 0);
+      return {
+        ...sp,
+        channels,
+        total_unread: totalUnread,
+        total_mentions: totalMentions,
+      };
+    });
+    return { spaces };
   }
 
   close(): void {

@@ -114,10 +114,20 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
   // In-memory rate limiting map for CAD conversions (60 req/min per IP)
   const cadConvertHits = new Map<string, number[]>();
 
+  const safeParseMetadata = (raw: string | null | undefined): Record<string, unknown> => {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  };
+
   // ── GET /cad/convert ───────────────────────────────────────────
   // Fetch a STEP file, convert it to JSON (web-optimized), and cache it.
   router.get("/cad/convert", async (req: Request, res: Response) => {
-    const clientIp = req.socket?.remoteAddress || req.ip || "unknown";
+    const clientIp = req.ip || req.socket?.remoteAddress || "unknown";
     const now = Date.now();
     const timestamps = (cadConvertHits.get(clientIp) || []).filter((t) => now - t < 60_000);
     if (timestamps.length >= 60) {
@@ -185,7 +195,7 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
       const artifacts = database.getArtifacts(versionRow.id);
 
       const enriched = artifacts.map((artifact) => {
-        const meta = artifact.metadata ? (JSON.parse(artifact.metadata) as Record<string, unknown>) : {};
+        const meta = safeParseMetadata(artifact.metadata);
         const handler = registry.getHandler(artifact.type);
         const resourceUrl = `/api/v1/libraries/${encodedPkgPath}/${encodedVer}/resources/${artifact.path}`;
 
@@ -286,7 +296,7 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
       const encodedVer = encodeURIComponent(version);
       const resourceUrl = `/api/v1/libraries/${encodedPkgPath}/${encodedVer}/resources/${artifact.path}`;
 
-      const meta = artifact.metadata ? (JSON.parse(artifact.metadata) as Record<string, unknown>) : {};
+      const meta = safeParseMetadata(artifact.metadata);
       const handler = registry.getHandler(artifact.type);
 
       let viewer = null;

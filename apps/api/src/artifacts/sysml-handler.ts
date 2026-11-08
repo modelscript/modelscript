@@ -23,6 +23,54 @@ export interface ExtractedSysmlConnection {
   flowType?: string | undefined;
 }
 
+function extractBalancedSysmlBlocks(
+  code: string,
+  headerRegex: RegExp,
+): Array<{ match: RegExpExecArray; body: string }> {
+  const results: Array<{ match: RegExpExecArray; body: string }> = [];
+  const flags = headerRegex.flags.includes("g") ? headerRegex.flags : `${headerRegex.flags}g`;
+  const re = new RegExp(headerRegex.source, flags);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code)) !== null) {
+    const openBraceIdx = m.index + m[0].length - 1;
+    if (code[openBraceIdx] !== "{") continue;
+    let depth = 1;
+    let i = openBraceIdx + 1;
+    const len = code.length;
+    while (i < len && depth > 0) {
+      const ch = code[i];
+      const next = code[i + 1];
+      if (ch === "/" && next === "*") {
+        const endComment = code.indexOf("*/", i + 2);
+        i = endComment === -1 ? len : endComment + 2;
+        continue;
+      }
+      if (ch === "/" && next === "/") {
+        const endLine = code.indexOf("\n", i + 2);
+        i = endLine === -1 ? len : endLine + 1;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        const quote = ch;
+        i++;
+        while (i < len && code[i] !== quote) {
+          if (code[i] === "\\") i++;
+          i++;
+        }
+        i++;
+        continue;
+      }
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      i++;
+    }
+    if (depth === 0) {
+      results.push({ match: m, body: code.slice(openBraceIdx + 1, i - 1) });
+    }
+  }
+  return results;
+}
+
 export function parseSysmlSourceMetadata(
   code: string,
   filePath = "model.sysml",
@@ -47,14 +95,12 @@ export function parseSysmlSourceMetadata(
   const requirements: ExtractedSysmlRequirement[] = [];
   const connections: ExtractedSysmlConnection[] = [];
 
-  // Map part def names to their declared ports and doc comments
+  // Map part def names to their declared ports and doc comments using balanced brace scanning
   const partDefPorts = new Map<string, string[]>();
   const partDefDocs = new Map<string, string>();
-  const partDefRegex = /\bpart\s+def\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:>\s*[A-Za-z0-9_.:,\s]+)?\s*\{([\s\S]*?)\}/g;
-  let m: RegExpExecArray | null;
-  while ((m = partDefRegex.exec(code)) !== null) {
+  const partDefHeaderRegex = /\bpart\s+def\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:>\s*[A-Za-z0-9_.:,\s]+)?\s*\{/g;
+  for (const { match: m, body } of extractBalancedSysmlBlocks(code, partDefHeaderRegex)) {
     const defName = m[1]!;
-    const body = m[2] ?? "";
     const ports: string[] = [];
     const portRegex = /\bport\s+(?:in\s+|out\s+|inout\s+)?([A-Za-z_][A-Za-z0-9_]*)/g;
     let pm: RegExpExecArray | null;
@@ -72,6 +118,7 @@ export function parseSysmlSourceMetadata(
   const partUsageRegex =
     /\bpart\s+(?!def\b)([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_.:]*)(?:\s*\[([^\]]+)\])?/g;
   const seenParts = new Set<string>();
+  let m: RegExpExecArray | null;
   while ((m = partUsageRegex.exec(code)) !== null) {
     const name = m[1]!;
     const type = m[2]!;
@@ -114,12 +161,11 @@ export function parseSysmlSourceMetadata(
     if (m[1]) verifiedReqs.add(m[1].split("::").pop()?.split(".").pop() ?? m[1]);
   }
 
-  const reqRegex = /\brequirement\s+(?:def\s+)?(?:\s*<([^>]+)>\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\}/g;
+  const reqHeaderRegex = /\brequirement\s+(?:def\s+)?(?:\s*<([^>]+)>\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
   let reqIdx = 1;
-  while ((m = reqRegex.exec(code)) !== null) {
-    const explicitId = m[1]?.trim().replace(/^['"]|['"]$/g, "");
-    const reqName = m[2]!;
-    const body = m[3] ?? "";
+  for (const { match: rm, body } of extractBalancedSysmlBlocks(code, reqHeaderRegex)) {
+    const explicitId = rm[1]?.trim().replace(/^['"]|['"]$/g, "");
+    const reqName = rm[2]!;
     const docMatch = body.match(/doc\s*\/\*\s*([\s\S]*?)\s*\*\//);
     const text = docMatch?.[1]?.trim() || `Requirement ${reqName}`;
     const id = explicitId || `REQ-${String(reqIdx).padStart(2, "0")}`;

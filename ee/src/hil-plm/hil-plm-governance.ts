@@ -71,6 +71,22 @@ export const ENTERPRISE_HIL_TARGETS: readonly EnterpriseHilTargetDescriptor[] = 
     description:
       "Deterministic PLCopen TC6 XML and Structured Text export for Siemens TIA Portal, Beckhoff TwinCAT, and Rockwell Studio 5000.",
   },
+  {
+    id: "zynq-rfsoc-hil",
+    name: "Xilinx Zynq UltraScale+ RFSoC / Open-FPGA Real-Time EMT Target",
+    category: "hil-realtime",
+    feature: "hil_codegen",
+    description:
+      "Pre-factored switch-state inverse admittance LUT C99 / HLS codegen for sub-microsecond power electronics HIL on Zynq UltraScale+ RFSoC.",
+  },
+  {
+    id: "iec61850-sv-goose",
+    name: "IEC 61850-9-2LE Sampled Values & GOOSE Substation Protection Bus",
+    category: "industrial-plc",
+    feature: "hil_codegen",
+    description:
+      "Deterministic ASN.1 BER Ethernet frame serializer/deserializer for IEC 61850-9-2LE merging units (0x88BA) and GOOSE relay trip frames (0x88B8).",
+  },
 ] as const;
 
 export const ENTERPRISE_PLM_CONNECTORS: readonly EnterprisePlmConnectorDescriptor[] = [

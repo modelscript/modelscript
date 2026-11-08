@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { LinkIcon } from "@primer/octicons-react";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import styled from "styled-components";
+import { safeHostname, sanitizeHttpUrl } from "../../util/url";
 
 const LinkCard = styled.a`
   display: flex;
@@ -18,13 +19,13 @@ const LinkCard = styled.a`
   }
 `;
 
-const ImageContainer = styled.div`
+const PreviewImage = styled.img`
   width: 100%;
   height: 150px;
+  object-fit: cover;
   background-color: var(--color-border-subtle);
-  background-size: cover;
-  background-position: center;
   border-bottom: 1px solid var(--color-border-subtle);
+  display: block;
 `;
 
 const ContentContainer = styled.div`
@@ -75,27 +76,41 @@ interface LinkPreviewViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
-import { safeCssImageUrl, safeHostname, sanitizeHttpUrl } from "../../util/url";
-
 const LinkPreviewViewer: React.FC<LinkPreviewViewerProps> = ({ viewConfig }) => {
   const { url, domain, title, description, image } = (viewConfig || {}) as LinkPreviewConfig;
   const safeHref = sanitizeHttpUrl(url, { allowRelative: true, prependHttpsIfMissingScheme: true });
-  const safeBgImage = safeCssImageUrl(image);
+  const safeImageSrc = sanitizeHttpUrl(image, { allowRelative: true });
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [safeImageSrc]);
 
   return (
     <LinkCard
       href={safeHref || "#"}
       target={safeHref ? "_blank" : undefined}
       rel="noopener noreferrer"
-      onClick={!safeHref ? (e) => e.preventDefault() : undefined}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!safeHref) e.preventDefault();
+      }}
     >
-      {safeBgImage && <ImageContainer style={{ backgroundImage: safeBgImage }} />}
+      {safeImageSrc && !imageError && (
+        <PreviewImage
+          src={safeImageSrc}
+          alt={title || "Link preview"}
+          loading="lazy"
+          decoding="async"
+          onError={() => setImageError(true)}
+        />
+      )}
       <ContentContainer>
         {title && <Title>{title}</Title>}
         {description && <Description>{description}</Description>}
         <Domain>
           <LinkIcon size={14} />
-          {domain || safeHostname(url, "ansatz.social")}
+          {domain || safeHostname(url, "modelscript.org")}
         </Domain>
       </ContentContainer>
     </LinkCard>

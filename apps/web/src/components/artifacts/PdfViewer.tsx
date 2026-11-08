@@ -145,7 +145,7 @@ const FloatingBadgeRow = styled.div`
   pointer-events: none;
 `;
 
-const PreviewCtaPill = styled.button`
+const PreviewCtaPill = styled.span`
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
@@ -190,7 +190,9 @@ const PageCountBadge = styled.div`
 `;
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const url = sanitizeHttpUrl(viewConfig?.url, { allowRelative: true });
+  const rawUrl = viewConfig?.url || viewConfig?.src || viewConfig?.pdfUrl || viewConfig?.fileUrl;
+  const url = sanitizeHttpUrl(rawUrl, { allowRelative: true });
+  const [userOpenedPreview, setUserOpenedPreview] = useState(false);
   const [inlinePreview, setInlinePreview] = useState(Boolean(isFullScreen));
   const [thumbFailed, setThumbFailed] = useState(false);
   const [dynamicMeta, setDynamicMeta] = useState<PdfDynamicMeta | null>(null);
@@ -199,13 +201,17 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
   useEffect(() => {
     if (isFullScreen) {
       setInlinePreview(true);
+    } else {
+      setInlinePreview(userOpenedPreview);
     }
-  }, [isFullScreen]);
+  }, [isFullScreen, userOpenedPreview]);
 
-  // Reset thumbnail state when URL changes
+  // Reset thumbnail and preview state when URL changes
   useEffect(() => {
     setThumbFailed(false);
     setDynamicMeta(null);
+    setUserOpenedPreview(false);
+    setInlinePreview(Boolean(isFullScreen));
   }, [url]);
 
   // Lazily fetch PDF metadata (.meta.json) for uploaded PDFs if pageCount isn't already in viewConfig
@@ -236,9 +242,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
     };
   }, [url, viewConfig?.pageCount, viewConfig?.metadata?.pageCount]);
 
-  // Hibernate inline PDF iframe when scrolled completely out of view
+  // Hibernate auto-opened inline PDF iframe when scrolled completely out of view,
+  // but preserve preview if the user explicitly clicked to open it.
   useEffect(() => {
-    if (!inlinePreview || isFullScreen) return;
+    if (!inlinePreview || isFullScreen || userOpenedPreview) return;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -253,11 +260,13 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
       observer.observe(containerRef.current);
     }
     return () => observer.disconnect();
-  }, [inlinePreview, isFullScreen]);
+  }, [inlinePreview, isFullScreen, userOpenedPreview]);
 
   const isMobile = useMemo(() => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const ua = navigator.userAgent || "";
+    const isIpadOS = navigator.maxTouchPoints > 1 && /Macintosh/.test(ua);
+    return isIpadOS || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
   }, []);
 
   const cleanUrlPath = url ? url.split("?")[0]?.split("#")[0] || "" : "";
@@ -295,8 +304,15 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
   const pdfAuthor: string | undefined =
     viewConfig?.pdfAuthor ?? viewConfig?.metadata?.pdfAuthor ?? dynamicMeta?.pdfAuthor;
 
+  const baseUrl = url.split("#")[0] || url;
+  const iframeSrc = `${baseUrl}#page=1&view=FitH`;
+
   const title =
-    viewConfig?.title || viewConfig?.filename || pdfTitle || url.split("/").pop() || "Technical Specification PDF";
+    viewConfig?.title ||
+    viewConfig?.filename ||
+    pdfTitle ||
+    baseUrl.split("/").pop()?.split("?")[0] ||
+    "Technical Specification PDF";
 
   const formattedSize = formatFileSize(fileSize);
   const badgeLabel =
@@ -307,13 +323,14 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
         : "PDF Document";
 
   const isStandalone = Boolean(viewConfig?.standalone);
-  const showTopToolbar = isFullScreen || inlinePreview || isStandalone;
+  const showTopToolbar = !isFullScreen && (inlinePreview || isStandalone);
 
   const handleStageClick = () => {
     if (isMobile) {
       window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
+    setUserOpenedPreview(true);
     setInlinePreview(true);
   };
 
@@ -326,7 +343,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
             <Text
               fontWeight="bold"
               fontSize="12.5px"
-              color="var(--color-text-primary)"
+              color="var(--color-fg-default)"
               style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}
               title={title}
             >
@@ -358,7 +375,13 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
                 size="small"
                 variant={inlinePreview ? "default" : "primary"}
                 leadingVisual={inlinePreview ? XIcon : PlayIcon}
-                onClick={() => setInlinePreview((prev) => !prev)}
+                onClick={() =>
+                  setInlinePreview((prev) => {
+                    const next = !prev;
+                    setUserOpenedPreview(next);
+                    return next;
+                  })
+                }
               >
                 {inlinePreview ? "Close Preview" : "Preview Inline"}
               </Button>
@@ -403,6 +426,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
               <img
                 src={resolvedThumbUrl}
                 alt={`First page of ${title}`}
+                decoding="async"
                 onError={() => setThumbFailed(true)}
                 style={{
                   width: "100%",
@@ -447,14 +471,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
           </PaperSheetFrame>
 
           <FloatingBadgeRow>
-            <PreviewCtaPill
-              type="button"
-              className="pdf-preview-cta"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleStageClick();
-              }}
-            >
+            <PreviewCtaPill className="pdf-preview-cta">
               {isMobile ? (
                 <>
                   <LinkExternalIcon size={12} /> View Full PDF
@@ -475,7 +492,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
       ) : (
         <Box flex={1} width="100%" height="100%" bg="var(--color-canvas-subtle)" position="relative">
           <iframe
-            src={`${url}#page=1&view=FitH`}
+            src={iframeSrc}
             width="100%"
             height="100%"
             style={{ border: "none", display: "block" }}

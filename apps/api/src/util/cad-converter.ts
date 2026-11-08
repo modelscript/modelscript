@@ -214,6 +214,7 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
     const pA = vpMap.get(m[2]!) ?? ptMap.get(m[2]!);
     const pB = vpMap.get(m[3]!) ?? ptMap.get(m[3]!);
     const curveRef = m[4];
+    const sameSense = (m[5] ? m[5].toUpperCase() : ".T.") !== ".F.";
     if (pA && pB) {
       const circ = curveRef ? circleMap.get(curveRef) : undefined;
       const bspline = curveRef ? bsplineMap.get(curveRef) : undefined;
@@ -225,8 +226,14 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
         };
         const r = circ.radius;
         const c = ax.loc;
-        const u = ax.refDir;
-        const z = ax.axis;
+        const zLen = Math.hypot(ax.axis[0], ax.axis[1], ax.axis[2]) || 1;
+        const z: [number, number, number] = [ax.axis[0] / zLen, ax.axis[1] / zLen, ax.axis[2] / zLen];
+        const uDotZ = ax.refDir[0] * z[0] + ax.refDir[1] * z[1] + ax.refDir[2] * z[2];
+        const ux0 = ax.refDir[0] - uDotZ * z[0];
+        const uy0 = ax.refDir[1] - uDotZ * z[1];
+        const uz0 = ax.refDir[2] - uDotZ * z[2];
+        const uLen = Math.hypot(ux0, uy0, uz0) || 1;
+        const u: [number, number, number] = [ux0 / uLen, uy0 / uLen, uz0 / uLen];
         const v: [number, number, number] = [
           z[1] * u[2] - z[2] * u[1],
           z[2] * u[0] - z[0] * u[2],
@@ -236,8 +243,9 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
         const segs = 16;
         const chain: [number, number, number][] = [];
         if (distAB < 1e-6) {
+          const dirSign = sameSense ? 1 : -1;
           for (let s = 0; s < segs; s++) {
-            const th = (s / segs) * 2 * Math.PI;
+            const th = dirSign * (s / segs) * 2 * Math.PI;
             const cs = Math.cos(th);
             const sn = Math.sin(th);
             const pt: [number, number, number] = [
@@ -259,8 +267,12 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
             dB[0]! * v[0] + dB[1]! * v[1] + dB[2]! * v[2],
             dB[0]! * u[0] + dB[1]! * u[1] + dB[2]! * u[2],
           );
-          while (thB <= thA + 1e-6) thB += 2 * Math.PI;
-          const arcSegs = Math.max(4, Math.round(((thB - thA) / (2 * Math.PI)) * segs));
+          if (sameSense) {
+            while (thB <= thA + 1e-6) thB += 2 * Math.PI;
+          } else {
+            while (thB >= thA - 1e-6) thB -= 2 * Math.PI;
+          }
+          const arcSegs = Math.max(4, Math.round((Math.abs(thB - thA) / (2 * Math.PI)) * segs));
           for (let s = 0; s <= arcSegs; s++) {
             const th = thA + (s / arcSegs) * (thB - thA);
             const cs = Math.cos(th);
@@ -276,9 +288,9 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
         }
         edgeChainMap.set(m[1]!, chain);
       } else if (bspline) {
-        edgeChainMap.set(m[1]!, bspline);
+        edgeChainMap.set(m[1]!, sameSense ? bspline : [...bspline].reverse());
       } else {
-        edgeChainMap.set(m[1]!, [pA, pB]);
+        edgeChainMap.set(m[1]!, sameSense ? [pA, pB] : [pB, pA]);
       }
     }
   }
@@ -391,6 +403,118 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
     [0.22, 0.38, 0.52],
   ];
 
+  const triangulatePolygonEarClip = (
+    poly: [number, number, number][],
+    polyNormal: [number, number, number],
+  ): [number, number, number][] => {
+    const n = poly.length;
+    if (n < 3) return [];
+    if (n === 3) return [[0, 1, 2]];
+
+    const [nx, ny, nz] = polyNormal;
+    const ref: [number, number, number] = Math.abs(nx) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    let t1x = ny * ref[2] - nz * ref[1];
+    let t1y = nz * ref[0] - nx * ref[2];
+    let t1z = nx * ref[1] - ny * ref[0];
+    const t1Len = Math.hypot(t1x, t1y, t1z) || 1;
+    t1x /= t1Len;
+    t1y /= t1Len;
+    t1z /= t1Len;
+    const t2x = ny * t1z - nz * t1y;
+    const t2y = nz * t1x - nx * t1z;
+    const t2z = nx * t1y - ny * t1x;
+
+    const pts2d: [number, number][] = poly.map((p) => [
+      p[0] * t1x + p[1] * t1y + p[2] * t1z,
+      p[0] * t2x + p[1] * t2y + p[2] * t2z,
+    ]);
+
+    let area2 = 0;
+    for (let i = 0; i < n; i++) {
+      const a = pts2d[i]!;
+      const b = pts2d[(i + 1) % n]!;
+      area2 += a[0] * b[1] - b[0] * a[1];
+    }
+    const sign = area2 >= 0 ? 1 : -1;
+
+    const cross2 = (a: [number, number], b: [number, number], c: [number, number]) =>
+      ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) * sign;
+
+    const pointInTri2 = (p: [number, number], a: [number, number], b: [number, number], c: [number, number]) => {
+      const c1 = cross2(a, b, p);
+      const c2 = cross2(b, c, p);
+      const c3 = cross2(c, a, p);
+      return c1 >= -1e-9 && c2 >= -1e-9 && c3 >= -1e-9;
+    };
+
+    const avail = poly.map((_, idx) => idx);
+    const tris: [number, number, number][] = [];
+    let guard = n * n + 8;
+
+    while (avail.length > 3 && guard-- > 0) {
+      const mLen = avail.length;
+      let earIdx = -1;
+      for (let i = 0; i < mLen; i++) {
+        const iPrev = avail[(i - 1 + mLen) % mLen]!;
+        const iCurr = avail[i]!;
+        const iNext = avail[(i + 1) % mLen]!;
+        const a = pts2d[iPrev]!;
+        const b = pts2d[iCurr]!;
+        const c = pts2d[iNext]!;
+        if (cross2(a, b, c) <= 1e-9) continue;
+
+        let containsOther = false;
+        for (let j = 0; j < mLen; j++) {
+          const idx = avail[j]!;
+          if (idx === iPrev || idx === iCurr || idx === iNext) continue;
+          const p = pts2d[idx]!;
+          if (
+            Math.hypot(p[0] - a[0], p[1] - a[1]) < 1e-7 ||
+            Math.hypot(p[0] - b[0], p[1] - b[1]) < 1e-7 ||
+            Math.hypot(p[0] - c[0], p[1] - c[1]) < 1e-7
+          ) {
+            continue;
+          }
+          if (pointInTri2(p, a, b, c)) {
+            containsOther = true;
+            break;
+          }
+        }
+        if (!containsOther) {
+          earIdx = i;
+          break;
+        }
+      }
+
+      if (earIdx === -1) {
+        let bestIdx = 0;
+        let bestCross = -Infinity;
+        for (let i = 0; i < mLen; i++) {
+          const a = pts2d[avail[(i - 1 + mLen) % mLen]!]!;
+          const b = pts2d[avail[i]!]!;
+          const c = pts2d[avail[(i + 1) % mLen]!]!;
+          const cr = cross2(a, b, c);
+          if (cr > bestCross) {
+            bestCross = cr;
+            bestIdx = i;
+          }
+        }
+        earIdx = bestIdx;
+      }
+
+      const iPrev = avail[(earIdx - 1 + mLen) % mLen]!;
+      const iCurr = avail[earIdx]!;
+      const iNext = avail[(earIdx + 1) % mLen]!;
+      tris.push([iPrev, iCurr, iNext]);
+      avail.splice(earIdx, 1);
+    }
+
+    if (avail.length === 3) {
+      tris.push([avail[0]!, avail[1]!, avail[2]!]);
+    }
+    return tris;
+  };
+
   const buildMeshFromPolygonGroup = (
     groupName: string,
     polygons: [number, number, number][][],
@@ -423,19 +547,49 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
       let fcx = 0;
       let fcy = 0;
       let fcz = 0;
-      for (const p of poly) {
-        fcx += p[0];
-        fcy += p[1];
-        fcz += p[2];
+      let pnx = 0;
+      let pny = 0;
+      let pnz = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const curr = poly[i]!;
+        const next = poly[(i + 1) % poly.length]!;
+        fcx += curr[0];
+        fcy += curr[1];
+        fcz += curr[2];
+        pnx += (curr[1] - next[1]) * (curr[2] + next[2]);
+        pny += (curr[2] - next[2]) * (curr[0] + next[0]);
+        pnz += (curr[0] - next[0]) * (curr[1] + next[1]);
       }
       fcx /= poly.length;
       fcy /= poly.length;
       fcz /= poly.length;
 
-      for (let i = 1; i < poly.length - 1; i++) {
-        const a = poly[0]!;
-        let b = poly[i]!;
-        let c = poly[i + 1]!;
+      const pnLen = Math.hypot(pnx, pny, pnz);
+      const polyNormal: [number, number, number] | null =
+        pnLen > 1e-12 ? [pnx / pnLen, pny / pnLen, pnz / pnLen] : null;
+
+      let isPlanar = Boolean(polyNormal);
+      if (polyNormal) {
+        for (const p of poly) {
+          const dist = Math.abs(
+            (p[0] - fcx) * polyNormal[0] + (p[1] - fcy) * polyNormal[1] + (p[2] - fcz) * polyNormal[2],
+          );
+          if (dist > 1e-2) {
+            isPlanar = false;
+            break;
+          }
+        }
+      }
+
+      const triIndices: [number, number, number][] =
+        poly.length > 3 && polyNormal
+          ? triangulatePolygonEarClip(poly, polyNormal)
+          : Array.from({ length: poly.length - 2 }, (_, i) => [0, i + 1, i + 2] as [number, number, number]);
+
+      for (const [ia, ib, ic] of triIndices) {
+        const a = poly[ia]!;
+        let b = poly[ib]!;
+        let c = poly[ic]!;
         const ux = b[0] - a[0];
         const uy = b[1] - a[1];
         const uz = b[2] - a[2];
@@ -451,14 +605,25 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
         ny /= len;
         nz /= len;
 
-        const outDot = nx * (fcx - cx) + ny * (fcy - cy) + nz * (fcz - cz);
-        if (outDot < 0) {
-          const tmp = b;
-          b = c;
-          c = tmp;
-          nx = -nx;
-          ny = -ny;
-          nz = -nz;
+        if (isPlanar && polyNormal) {
+          if (nx * polyNormal[0] + ny * polyNormal[1] + nz * polyNormal[2] < 0) {
+            const tmp = b;
+            b = c;
+            c = tmp;
+          }
+          nx = polyNormal[0];
+          ny = polyNormal[1];
+          nz = polyNormal[2];
+        } else {
+          const outDot = nx * (fcx - cx) + ny * (fcy - cy) + nz * (fcz - cz);
+          if (outDot < 0) {
+            const tmp = b;
+            b = c;
+            c = tmp;
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+          }
         }
 
         const baseIdx = vertices.length / 3;
@@ -549,7 +714,10 @@ export function tessellateStepBRepFromText(srcText: string): OcctMesh[] {
       [corners[1]!, corners[2]!, corners[6]!, corners[5]!],
     ];
     const fallbackMesh = buildMeshFromPolygonGroup("SolidBody", boxPolys, 0);
-    if (fallbackMesh) meshes.push(fallbackMesh);
+    if (fallbackMesh) {
+      fallbackMesh["isFallbackBox"] = true;
+      meshes.push(fallbackMesh);
+    }
   }
 
   return meshes;
@@ -585,6 +753,9 @@ export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: s
     if (fallbackMeshes.length > 0) {
       result.meshes = fallbackMeshes;
       result["success"] = true;
+      if (fallbackMeshes.some((m) => Boolean(m["isFallbackBox"]))) {
+        result["isFallbackBox"] = true;
+      }
     }
   }
 
@@ -662,7 +833,7 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
   if (cached) {
     try {
       const parsed = JSON.parse(cached) as ConvertedStepResult;
-      if (parsed && Array.isArray(parsed.meshes) && parsed.meshes.length > 0) {
+      if (parsed && Array.isArray(parsed.meshes) && parsed.meshes.length > 0 && !parsed["isFallbackBox"]) {
         return parsed;
       }
     } catch {
@@ -702,9 +873,12 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
     throw new Error("No meshes or assembly found in STEP file");
   }
 
-  // We have the raw meshes output from OCCT or B-Rep tessellation. Cache and return it.
-  const jsonStr = JSON.stringify(result);
-  database.setCachedCadGeometry(url, jsonStr);
+  // Only cache real tessellated geometry; never poison the SQLite cache with a fallback bounding box
+  const isFallbackBox = Boolean(result["isFallbackBox"] || result.meshes?.some((m) => Boolean(m["isFallbackBox"])));
+  if (!isFallbackBox) {
+    const jsonStr = JSON.stringify(result);
+    database.setCachedCadGeometry(url, jsonStr);
+  }
 
   return result;
 }

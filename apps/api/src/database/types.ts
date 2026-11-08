@@ -299,6 +299,8 @@ export interface NotificationRow {
   post_id: number | string | null;
   metadata: Record<string, unknown> | string | null;
   read: number;
+  archived?: number | undefined;
+  starred?: number | undefined;
   created_at: string;
   actor_username?: string | undefined;
   actor_display_name?: string | null | undefined;

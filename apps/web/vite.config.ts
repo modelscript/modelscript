@@ -521,6 +521,10 @@ export default defineConfig({
     "process.versions": {},
   },
   resolve: {
+    alias: [
+      { find: /^node:url$/, replacement: path.resolve(import.meta.dirname, "src/util/node-url-shim.ts") },
+      { find: /^url$/, replacement: path.resolve(import.meta.dirname, "src/util/node-url-shim.ts") },
+    ],
     dedupe: ["react", "react-dom", "react-router-dom", "styled-components", "@primer/react", "three"],
   },
   optimizeDeps: {

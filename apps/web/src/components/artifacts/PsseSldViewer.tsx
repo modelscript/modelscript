@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  renderPsseSldSvg,
   type PsseBranchLike,
   type PsseBusLike,
+  type PsseCaseLike,
   type PsseFixedShuntLike,
   type PsseGeneratorLike,
   type PsseLoadLike,
+  type PssePowerFlowOverlay,
   type PsseSwitchedShuntLike,
   type PsseTransformerLike,
+  renderPsseSldSvg,
 } from "@modelscript/diagram";
+import { type PowerFlowResult, type PsseCase, parseRaw, solvePowerFlow } from "@modelscript/psse";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
@@ -45,10 +49,12 @@ export interface PsseSldViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
+export type PsseOverlayMode = "powerflow" | "voltage" | "impedance";
+
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
-  height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
+  height: ${(props) => (props.$isFullScreen ? "100%" : "460px")};
   background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
@@ -70,6 +76,39 @@ const Toolbar = styled.div`
   gap: 8px;
   z-index: 10;
   overflow: hidden;
+`;
+
+const TelemetryRibbon = styled.div`
+  min-height: 30px;
+  background: var(--color-canvas-inset, var(--color-canvas-subtle));
+  border-bottom: 1px solid var(--color-border-muted, var(--color-border-default));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-fg-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+`;
+
+const TelemetryMetricsGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const MetricItem = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  strong {
+    color: var(--color-fg-default);
+    font-weight: 600;
+  }
 `;
 
 const HeaderLeft = styled.div`
@@ -204,7 +243,8 @@ function parsePsseRawClient(code: string) {
     const firstParts = stripInlineComment(lines[firstDataIdx] ?? "")
       .split(",")
       .map((p) => p.trim());
-    const ic = Number.parseInt(firstParts[0] || "", 10);
+    const icRaw = firstParts[0] ?? "";
+    const ic = icRaw === "" ? 0 : Number.parseInt(icRaw, 10);
     const secondIsQuote = (firstParts[1] ?? "").startsWith("'");
     if ((ic === 0 || ic === 1) && !secondIsQuote) {
       startIdx = firstDataIdx + 3;
@@ -228,7 +268,11 @@ function parsePsseRawClient(code: string) {
   for (let i = startIdx; i < lines.length; i++) {
     const rawLine = (lines[i] ?? "").trim();
     if (!rawLine || rawLine.startsWith("@!") || rawLine.startsWith("//") || rawLine.startsWith("/")) continue;
-    if (/^0(?:\s*,|\s*\/|\s*$)|^\s*Q\b/i.test(rawLine)) {
+    // 'Q' is the PSS/E end-of-file sentinel
+    if (/^\s*Q(?:\s*,|\s*\/|\s*$)/i.test(rawLine)) {
+      break;
+    }
+    if (/^0(?:\s*,|\s*\/|\s*$)/.test(rawLine)) {
       section++;
       continue;
     }
@@ -237,10 +281,13 @@ function parsePsseRawClient(code: string) {
     if (section === 0 && parts.length >= 8) {
       const id = Number.parseInt(parts[0] || "0", 10);
       const name = (parts[1] || `BUS ${id}`).replace(/^'|'$/g, "").trim();
-      const baseKv = Number.parseFloat(parts[2] || "138") || 138;
-      const type = Number.parseInt(parts[3] || "1", 10) || 1;
-      const vm = Number.parseFloat(parts[7] || "1.0");
-      const va = Number.parseFloat(parts[8] || "0.0") || 0;
+      const rawBaseKv = Number.parseFloat(parts[2] ?? "");
+      const baseKv = Number.isFinite(rawBaseKv) && rawBaseKv >= 0 ? rawBaseKv : 138;
+      const rawType = Number.parseInt(parts[3] ?? "", 10);
+      const type = Number.isFinite(rawType) ? rawType : 1;
+      const vm = Number.parseFloat(parts[7] ?? "1.0");
+      const rawVa = Number.parseFloat(parts[8] ?? "0.0");
+      const va = Number.isFinite(rawVa) ? rawVa : 0;
       const nvhi = parts[9] ? Number.parseFloat(parts[9]) : undefined;
       const nvlo = parts[10] ? Number.parseFloat(parts[10]) : undefined;
       const evhi = parts[11] ? Number.parseFloat(parts[11]) : undefined;
@@ -268,7 +315,8 @@ function parsePsseRawClient(code: string) {
       const id = (parts[1] || "1").replace(/^'|'$/g, "").trim() || "1";
       const status = Number.parseInt(parts[2] || "1", 10);
       const pl = Number.parseFloat(parts[5] || "0");
-      const ql = Number.parseFloat(parts[6] || "0") || 0;
+      const rawQl = Number.parseFloat(parts[6] ?? "0");
+      const ql = Number.isFinite(rawQl) ? rawQl : 0;
       if (!Number.isNaN(pl)) {
         if (status !== 0) loadMw += pl;
         if (bus > 0) loads.push({ i: bus, id, pl, ql, status: Number.isNaN(status) ? 1 : status });
@@ -277,8 +325,10 @@ function parsePsseRawClient(code: string) {
       const bus = Number.parseInt(parts[0] || "0", 10);
       const id = (parts[1] || "1").replace(/^'|'$/g, "").trim() || "1";
       const status = Number.parseInt(parts[2] || "1", 10);
-      const gl = Number.parseFloat(parts[3] || "0") || 0;
-      const bl = Number.parseFloat(parts[4] || "0") || 0;
+      const rawGl = Number.parseFloat(parts[3] ?? "0");
+      const gl = Number.isFinite(rawGl) ? rawGl : 0;
+      const rawBl = Number.parseFloat(parts[4] ?? "0");
+      const bl = Number.isFinite(rawBl) ? rawBl : 0;
       if (bus > 0) {
         if (status !== 0) shuntMvar += bl;
         fixedShunts.push({ i: bus, id, status: Number.isNaN(status) ? 1 : status, gl, bl });
@@ -287,7 +337,8 @@ function parsePsseRawClient(code: string) {
       const bus = Number.parseInt(parts[0] || "0", 10);
       const id = (parts[1] || "1").replace(/^'|'$/g, "").trim() || "1";
       const pg = Number.parseFloat(parts[2] || "0");
-      const qg = Number.parseFloat(parts[3] || "0") || 0;
+      const rawQg = Number.parseFloat(parts[3] ?? "0");
+      const qg = Number.isFinite(rawQg) ? rawQg : 0;
       const stat = parts[14] !== undefined ? Number.parseInt(parts[14], 10) : 1;
       const pt = parts[16] !== undefined ? Number.parseFloat(parts[16]) : undefined;
       const pb = parts[17] !== undefined ? Number.parseFloat(parts[17]) : undefined;
@@ -309,10 +360,14 @@ function parsePsseRawClient(code: string) {
       const fromBus = Number.parseInt(parts[0] || "0", 10);
       const toBus = Math.abs(Number.parseInt(parts[1] || "0", 10));
       const ckt = (parts[2] || "1").replace(/^'|'$/g, "").trim() || "1";
-      const r = Number.parseFloat(parts[3] || "0.01") || 0.01;
-      const x = Number.parseFloat(parts[4] || "0.05") || 0.05;
-      const b = Number.parseFloat(parts[5] || "0") || 0;
-      const rateA = Number.parseFloat(parts[6] || "0") || 0;
+      const rawR = Number.parseFloat(parts[3] ?? "");
+      const r = Number.isFinite(rawR) ? rawR : 0.01;
+      const rawX = Number.parseFloat(parts[4] ?? "");
+      const x = Number.isFinite(rawX) ? rawX : 0.05;
+      const rawB = Number.parseFloat(parts[5] ?? "");
+      const b = Number.isFinite(rawB) ? rawB : 0;
+      const rawRateA = Number.parseFloat(parts[6] ?? "");
+      const rateA = Number.isFinite(rawRateA) ? rawRateA : 0;
       const st = parts[13] !== undefined ? Number.parseInt(parts[13], 10) : 1;
       if (fromBus > 0 && toBus > 0) {
         branches.push({
@@ -329,7 +384,8 @@ function parsePsseRawClient(code: string) {
     } else if (section === 5 && parts.length >= 2) {
       const bus1 = Number.parseInt(parts[0] || "0", 10);
       const bus2 = Number.parseInt(parts[1] || "0", 10);
-      const bus3 = Number.parseInt(parts[2] || "0", 10) || 0;
+      const rawBus3 = Number.parseInt(parts[2] ?? "0", 10);
+      const bus3 = Number.isFinite(rawBus3) ? rawBus3 : 0;
       const ckt = (parts[3] || "1").replace(/^'|'$/g, "").trim() || "1";
       const stat = parts[11] !== undefined ? Number.parseInt(parts[11], 10) : 1;
       const line2 = stripInlineComment(lines[i + 1] ?? "")
@@ -338,9 +394,12 @@ function parsePsseRawClient(code: string) {
       const line3 = stripInlineComment(lines[i + 2] ?? "")
         .split(",")
         .map((p) => p.trim());
-      const r12 = Number.parseFloat(line2[0] || "0") || 0;
-      const x12 = Number.parseFloat(line2[1] || "0.05") || 0.05;
-      const windv1 = Number.parseFloat(line3[0] || "1.0") || 1.0;
+      const rawR12 = Number.parseFloat(line2[0] ?? "");
+      const r12 = Number.isFinite(rawR12) ? rawR12 : 0;
+      const rawX12 = Number.parseFloat(line2[1] ?? "");
+      const x12 = Number.isFinite(rawX12) ? rawX12 : 0.05;
+      const rawWindv1 = Number.parseFloat(line3[0] ?? "");
+      const windv1 = Number.isFinite(rawWindv1) && rawWindv1 > 0 ? rawWindv1 : 1.0;
       if (bus1 > 0 && bus2 > 0) {
         transformers.push({
           i: bus1,
@@ -355,11 +414,12 @@ function parsePsseRawClient(code: string) {
       }
       // Advance past the 3 (for 2-winding) or 4 (for 3-winding) continuation lines
       i += bus3 !== 0 ? 4 : 3;
-    } else if (section >= 8 && parts.length >= 10) {
+    } else if (section === 8 && parts.length >= 10) {
       const bus = Number.parseInt(parts[0] || "0", 10);
       const stat = Number.parseInt(parts[3] || "1", 10);
-      const binit = Number.parseFloat(parts[9] || "0") || 0;
-      if (bus > 0 && !Number.isNaN(binit) && Math.abs(binit) > 0) {
+      const rawBinit = Number.parseFloat(parts[9] ?? "0");
+      const binit = Number.isFinite(rawBinit) ? rawBinit : 0;
+      if (bus > 0 && Math.abs(binit) > 0) {
         if (stat !== 0) shuntMvar += binit;
         switchedShunts.push({ i: bus, stat: Number.isNaN(stat) ? 1 : stat, binit });
       }
@@ -385,11 +445,23 @@ function parsePsseRawClient(code: string) {
 
 export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [overlayMode, setOverlayMode] = useState<PsseOverlayMode>("powerflow");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const title = viewConfig.title || "PSS/E Power Flow Case (.raw)";
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (viewConfig.code) {
@@ -397,57 +469,160 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       return;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
       const targetUrl =
         viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
           ? viewConfig.url
           : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
           if (txt) setRawText(txt);
         })
-        .catch((err) => console.warn("[PsseSldViewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          console.warn("[PsseSldViewer] Failed to fetch source:", err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+      return () => controller.abort();
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
-  const parsedClient = useMemo(() => (rawText ? parsePsseRawClient(rawText) : undefined), [rawText]);
+  const psseAnalysis = useMemo(() => {
+    let parsedCase: PsseCase | null = null;
+    let powerflow: PowerFlowResult | null = null;
+    const parsedClient = rawText ? parsePsseRawClient(rawText) : undefined;
+
+    if (rawText.trim()) {
+      try {
+        const candidate = parseRaw(rawText);
+        if (candidate.buses.length > 0) {
+          parsedCase = candidate;
+          powerflow = solvePowerFlow(candidate);
+        }
+      } catch (err) {
+        console.warn("[PsseSldViewer] parseRaw / solvePowerFlow fallback:", err);
+      }
+    }
+
+    const buses: PsseBusLike[] =
+      parsedCase?.buses && parsedCase.buses.length > 0
+        ? parsedCase.buses
+        : parsedClient?.buses && parsedClient.buses.length > 0
+          ? parsedClient.buses
+          : (viewConfig.buses || []).map((b) => ({
+              i: b.id,
+              name: b.name,
+              baseKv: b.baseKv,
+              ide: 1,
+              vm: b.vm,
+              va: b.va,
+            }));
+
+    const loads = parsedCase?.loads ?? parsedClient?.loads ?? [];
+    const fixedShunts = parsedCase?.fixedShunts ?? parsedClient?.fixedShunts ?? [];
+    const switchedShunts = parsedCase?.switchedShunts ?? parsedClient?.switchedShunts ?? [];
+    const generators = parsedCase?.generators ?? parsedClient?.generators ?? [];
+    const branches = parsedCase?.branches ?? parsedClient?.branches ?? [];
+    const transformers = parsedCase?.transformers ?? parsedClient?.transformers ?? [];
+
+    const solvedVms =
+      powerflow && powerflow.buses.length > 0
+        ? powerflow.buses.map((b) => b.vm).filter((v) => Number.isFinite(v) && v > 0)
+        : buses.map((b) => b.vm).filter((v) => Number.isFinite(v) && v > 0);
+
+    const minVm = solvedVms.length > 0 ? Math.min(...solvedVms) : 1.0;
+    const maxVm = solvedVms.length > 0 ? Math.max(...solvedVms) : 1.0;
+
+    const totalGenMw =
+      viewConfig.metrics?.totalGenMw ??
+      (powerflow
+        ? Number(powerflow.buses.reduce((s, b) => s + b.pGen, 0).toFixed(1))
+        : (parsedClient?.totalGenMw ?? 0));
+    const totalLoadMw =
+      viewConfig.metrics?.totalLoadMw ??
+      (powerflow
+        ? Number(powerflow.buses.reduce((s, b) => s + b.pLoad, 0).toFixed(1))
+        : (parsedClient?.totalLoadMw ?? 0));
+    const lossesMw =
+      viewConfig.metrics?.lossesMw ??
+      (powerflow ? Number(powerflow.totalLossMw.toFixed(2)) : Number(Math.max(0, totalGenMw - totalLoadMw).toFixed(2)));
+
+    return {
+      parsedCase,
+      powerflow,
+      buses,
+      loads,
+      fixedShunts,
+      switchedShunts,
+      generators,
+      branches,
+      transformers,
+      summary: {
+        busCount: viewConfig.metrics?.busCount ?? buses.length,
+        generatorCount: viewConfig.metrics?.generatorCount ?? generators.length,
+        branchCount: viewConfig.metrics?.branchCount ?? branches.length + transformers.length,
+        totalGenMw,
+        totalLoadMw,
+        lossesMw,
+        minVm,
+        maxVm,
+        converged: powerflow?.converged ?? true,
+      },
+    };
+  }, [rawText, viewConfig.buses, viewConfig.metrics]);
 
   const sanitizedSvg = useMemo(() => {
-    const clientBuses: PsseBusLike[] =
-      parsedClient?.buses && parsedClient.buses.length > 0
-        ? parsedClient.buses
-        : (viewConfig.buses || []).map((b) => ({
-            i: b.id,
-            name: b.name,
-            baseKv: b.baseKv,
-            ide: 1,
-            vm: b.vm,
-            va: b.va,
-          }));
-    if (clientBuses.length > 0) {
+    if (psseAnalysis.buses.length > 0) {
       try {
-        const built = renderPsseSldSvg({
+        const { powerflow } = psseAnalysis;
+        const effectiveOverlay: PssePowerFlowOverlay | undefined =
+          overlayMode === "impedance" || !powerflow
+            ? undefined
+            : overlayMode === "voltage"
+              ? {
+                  converged: powerflow.converged,
+                  iterations: powerflow.iterations,
+                  totalLossMw: powerflow.totalLossMw,
+                  totalLossMvar: powerflow.totalLossMvar,
+                  buses: powerflow.buses,
+                  branches: [],
+                }
+              : powerflow;
+
+        const model: PsseCaseLike = {
           title1: title,
-          buses: clientBuses,
-          loads: parsedClient?.loads || [],
-          fixedShunts: parsedClient?.fixedShunts || [],
-          switchedShunts: parsedClient?.switchedShunts || [],
-          generators: parsedClient?.generators || [],
-          branches: parsedClient?.branches || [],
-          transformers: parsedClient?.transformers || [],
-        });
-        return sanitizeSvgMarkup(built, { isFullScreen });
+          buses: psseAnalysis.buses,
+          loads: psseAnalysis.loads,
+          fixedShunts: psseAnalysis.fixedShunts,
+          switchedShunts: psseAnalysis.switchedShunts,
+          generators: psseAnalysis.generators,
+          branches: psseAnalysis.branches,
+          transformers: psseAnalysis.transformers,
+          ...(effectiveOverlay ? { powerflow: effectiveOverlay } : {}),
+        };
+
+        const built = renderPsseSldSvg(model, {
+          ...(effectiveOverlay ?? {}),
+          powerflow,
+          overlayMode,
+        } as unknown as PssePowerFlowOverlay);
+        return sanitizeSvgMarkup(built, { isFullScreen, isDark });
       } catch {
         // Fallback to pre-rendered svg if available
       }
     }
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     return "";
-  }, [viewConfig.svg, viewConfig.buses, parsedClient, title, isFullScreen]);
+  }, [viewConfig.svg, psseAnalysis, overlayMode, title, isFullScreen, isDark]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
@@ -455,7 +630,8 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     if (rawText) {
       navigator.clipboard.writeText(rawText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -482,6 +658,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
   };
 
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
+  const { summary } = psseAnalysis;
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -522,6 +699,49 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           )}
         </Box>
       </Toolbar>
+
+      <TelemetryRibbon>
+        <TelemetryMetricsGroup>
+          <MetricItem>
+            Buses: <strong>{summary.busCount}</strong>
+          </MetricItem>
+          <MetricItem>
+            Gens: <strong>{summary.generatorCount}</strong>
+          </MetricItem>
+          <MetricItem>
+            Branches: <strong>{summary.branchCount}</strong>
+          </MetricItem>
+          <MetricItem>
+            Gen: <strong>{summary.totalGenMw.toFixed(1)} MW</strong>
+          </MetricItem>
+          <MetricItem>
+            Load: <strong>{summary.totalLoadMw.toFixed(1)} MW</strong>
+          </MetricItem>
+          <MetricItem>
+            Losses: <strong>{summary.lossesMw.toFixed(2)} MW</strong>
+          </MetricItem>
+          <MetricItem>
+            V:{" "}
+            <strong>
+              {summary.minVm.toFixed(3)}–{summary.maxVm.toFixed(3)} pu
+            </strong>
+          </MetricItem>
+        </TelemetryMetricsGroup>
+
+        {effectiveViewMode === "diagram" && (
+          <SegmentedControl>
+            <SegmentBtn type="button" $active={overlayMode === "powerflow"} onClick={() => setOverlayMode("powerflow")}>
+              Power Flow
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={overlayMode === "voltage"} onClick={() => setOverlayMode("voltage")}>
+              Voltage
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={overlayMode === "impedance"} onClick={() => setOverlayMode("impedance")}>
+              Impedance
+            </SegmentBtn>
+          </SegmentedControl>
+        )}
+      </TelemetryRibbon>
 
       <ContentArea>
         {loading ? (

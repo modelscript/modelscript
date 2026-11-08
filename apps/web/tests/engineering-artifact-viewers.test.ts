@@ -218,7 +218,138 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
       "UrdfRobotCadMeshes must provide detailed procedural 3D CAD sub-assemblies for UR3e cobot, Robotiq gripper, CNC gantry, and workstation fixtures",
     );
   });
+
+  it("verifies Ecosystem Cards (SolutionViewCard, PackageViewCard, RepositoryViewCard, LinkPreviewViewer) imports and routing safety", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const solutionSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/SolutionViewCard.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      solutionSrc.includes("Button") && solutionSrc.includes("Text") && solutionSrc.includes("Spinner"),
+      "SolutionViewCard must import Button, Text, and Spinner for fullscreen modal rendering",
+    );
+    assert.ok(solutionSrc.includes("`/@${author}`"), "SolutionViewCard must link author profiles using /@${author}");
+
+    const repoSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/RepositoryViewCard.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      repoSrc.includes('pathSegments.slice(0, -1).join("/")'),
+      "RepositoryViewCard must preserve multi-segment GitLab subgroup namespaces",
+    );
+
+    const editorRoutingSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/util/editor-routing.ts"),
+      "utf8",
+    );
+    for (const nonEditable of ["package", "library", "repository", "repo", "solution"]) {
+      assert.ok(
+        editorRoutingSrc.includes(`"${nonEditable}"`),
+        `NON_EDITABLE_MEDIA_VIEW_TYPES must include '${nonEditable}'`,
+      );
+    }
+  });
+
+  it("verifies Media & Document Viewers (PictureViewer, VideoViewer, AudioViewer, PdfViewer) spatial pins, audio controls, and double-download prevention", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const pictureSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/PictureViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      pictureSrc.includes("ImageStageWrapper") && pictureSrc.includes("imgRef.current"),
+      "PictureViewer must render spatial pins inside ImageStageWrapper within ImageTransformLayer and normalize against imgRef bounding rect",
+    );
+
+    const videoSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/VideoViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      videoSrc.includes("muted={isMuted}") && videoSrc.includes("VolumeSlider"),
+      "VideoViewer must bind muted={isMuted} and render unmute/volume controls",
+    );
+
+    const audioSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/AudioViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      audioSrc.includes('preload="metadata"') && audioSrc.includes("AbortController"),
+      "AudioViewer must use preload='metadata' and AbortController to prevent duplicate full-file downloads",
+    );
+  });
+
+  it("verifies Domain Engineering Viewers (PipelineLpsViewer, OlgaFlowViewer, PsseSldViewer, SimaViewer) compiler and solver integration", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const lpsSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/PipelineLpsViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      lpsSrc.includes("parseLps") &&
+        lpsSrc.includes("SteadyNetworkSolver") &&
+        lpsSrc.includes("renderLpsPressureProfileSvg") &&
+        lpsSrc.includes("renderCompressorMapSvg"),
+      "PipelineLpsViewer must integrate @modelscript/lps parser/solver and multi-view diagram builders",
+    );
+
+    const olgaSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/OlgaFlowViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      olgaSrc.includes("parseOlga") &&
+        olgaSrc.includes("simulateDriftFlux") &&
+        olgaSrc.includes("renderOlgaPvtEnvelopeSvg") &&
+        olgaSrc.includes("renderOlgaWellboreIprSvg"),
+      "OlgaFlowViewer must integrate @modelscript/olga drift-flux solver and multi-tab flow assurance diagrams",
+    );
+
+    const psseSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/PsseSldViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      psseSrc.includes("parseRaw") && psseSrc.includes("solvePowerFlow") && psseSrc.includes("overlayMode"),
+      "PsseSldViewer must integrate @modelscript/psse powerflow solver and selectable overlay modes",
+    );
+
+    const simaSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/SimaViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      simaSrc.includes("T: 0 kN (Severed)"),
+      "SimaViewer must report 0 kN tension on the severed mooring line in ALS mode",
+    );
+  });
+
+  it("verifies 3D & Multiphysics Viewers (CadStepViewer, SimulationResultViewer, FlowStreaks, vtu-parser) B-Rep ear-clipping and CellData support", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const cadStepSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/CadStepViewer.tsx"),
+      "utf8",
+    );
+    assert.ok(
+      cadStepSrc.includes("triangulatePolygonEarClip") && cadStepSrc.includes("sameSense"),
+      "CadStepViewer must use 2D projected ear-clipping triangulation and respect EDGE_CURVE same_sense",
+    );
+
+    const vtuSrc = fs.readFileSync(path.resolve(import.meta.dirname, "../src/util/vtu-parser.ts"), "utf8");
+    assert.ok(
+      vtuSrc.includes("CellData") && vtuSrc.includes("Float64Array"),
+      "vtu-parser must promote CellData scalar fields and support typed binary arrays",
+    );
+  });
 });
-
-
-

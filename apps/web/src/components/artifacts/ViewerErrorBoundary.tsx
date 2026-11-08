@@ -49,6 +49,15 @@ export class ViewerErrorBoundary extends Component<Props, State> {
     console.error("Artifact Viewer encountered an unhandled error:", error, errorInfo);
   }
 
+  public override componentDidUpdate(prevProps: Props) {
+    if (
+      this.state.hasError &&
+      (prevProps.viewerTitle !== this.props.viewerTitle || prevProps.children !== this.props.children)
+    ) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
   private handleReset = () => {
     this.setState({ hasError: false, error: null });
     this.props.onReset?.();

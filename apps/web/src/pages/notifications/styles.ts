@@ -3,27 +3,40 @@
 import styled from "styled-components";
 import { safeCssImageUrl } from "../../util/url";
 
-export const NotificationWrapper = styled.div<{ $unread: boolean }>`
+export const NotificationWrapper = styled.div<{ $unread: boolean; $selected?: boolean | undefined }>`
   position: relative;
   display: flex;
-  gap: 14px;
-  padding: 16px 20px;
+  gap: 12px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-default);
   border-left: 3px solid
-    ${(props) => (props.$unread ? "var(--color-accent-cyan, var(--color-accent-fg))" : "transparent")};
+    ${(props) =>
+      props.$selected
+        ? "var(--color-accent-fg)"
+        : props.$unread
+          ? "var(--color-accent-cyan, var(--color-accent-fg))"
+          : "transparent"};
   background-color: ${(props) =>
-    props.$unread ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.075))" : "transparent"};
+    props.$selected
+      ? "var(--surface-selected, rgba(56, 139, 253, 0.14))"
+      : props.$unread
+        ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.075))"
+        : "transparent"};
   cursor: pointer;
   transition:
-    background-color 0.65s cubic-bezier(0.16, 1, 0.3, 1),
-    border-left-color 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+    background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-left-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
     background-color: ${(props) =>
-      props.$unread ? "var(--surface-selected, rgba(56, 139, 253, 0.12))" : "var(--color-canvas-subtle)"};
+      props.$selected
+        ? "var(--surface-selected, rgba(56, 139, 253, 0.16))"
+        : props.$unread
+          ? "var(--surface-selected, rgba(56, 139, 253, 0.12))"
+          : "var(--color-canvas-subtle)"};
     transition:
       background-color 0.15s ease,
-      border-left-color 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+      border-left-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 `;
 
@@ -152,6 +165,28 @@ export const UnreadDotButton = styled.button`
   }
 `;
 
+export const QuickActionIconButton = styled.button<{ $active?: boolean | undefined }>`
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: ${(props) => (props.$active ? "var(--color-attention-fg, #d29922)" : "var(--color-fg-muted)")};
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: ${(props) => (props.$active ? "var(--color-attention-fg, #d29922)" : "var(--color-fg-default)")};
+    background: var(--color-neutral-muted, rgba(175, 184, 193, 0.18));
+    border-color: var(--color-border-default);
+  }
+`;
+
 export const TabBar = styled.div`
   display: flex;
   overflow-x: auto;
@@ -195,6 +230,145 @@ export const TabButton = styled.button<{ $active: boolean }>`
   }
 `;
 
+export const FilterStrip = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border-default);
+  background: var(--color-canvas-subtle);
+  flex-wrap: wrap;
+`;
+
+export const FilterPillGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+export const FilterPill = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: ${(props) => (props.$active ? 650 : 500)};
+  border: 1px solid
+    ${(props) =>
+      props.$active ? "var(--color-accent-emphasis, var(--color-accent-fg))" : "var(--color-border-default)"};
+  background: ${(props) =>
+    props.$active ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.14))" : "var(--color-canvas-default)"};
+  color: ${(props) => (props.$active ? "var(--color-accent-fg)" : "var(--color-fg-muted)")};
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--color-fg-default);
+    border-color: var(--color-accent-fg);
+  }
+`;
+
+export const CompactSearchBox = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 190px;
+  max-width: 260px;
+  flex: 1;
+
+  & > svg {
+    position: absolute;
+    left: 10px;
+    color: var(--color-fg-muted);
+    pointer-events: none;
+  }
+
+  input {
+    width: 100%;
+    height: 28px;
+    padding: 0 26px 0 30px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border-default);
+    background: var(--color-canvas-default);
+    color: var(--color-fg-default);
+    font-size: 12.5px;
+    outline: none;
+    transition: border-color 0.15s ease;
+
+    &:focus {
+      border-color: var(--color-accent-fg);
+    }
+
+    &::placeholder {
+      color: var(--color-fg-muted);
+    }
+  }
+`;
+
+export const InboxSplitLayout = styled.div`
+  display: grid;
+  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+  align-items: start;
+  min-height: calc(100vh - var(--dev-header-height, 0px) - 148px);
+
+  @media (max-width: 960px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+export const StreamPane = styled.div`
+  border-right: 1px solid var(--color-border-default);
+  min-width: 0;
+  min-height: calc(100vh - var(--dev-header-height, 0px) - 148px);
+
+  @media (max-width: 960px) {
+    border-right: none;
+  }
+`;
+
+export const ReadingPaneWrapper = styled.aside`
+  position: sticky;
+  top: calc(var(--dev-header-height, 0px) + 106px);
+  max-height: calc(100vh - var(--dev-header-height, 0px) - 106px);
+  overflow-y: auto;
+  padding: 20px 24px;
+  min-width: 0;
+  box-sizing: border-box;
+
+  @media (max-width: 960px) {
+    position: static;
+    max-height: none;
+    border-top: 1px solid var(--color-border-default);
+    padding: 16px;
+  }
+`;
+
+export const KbdBadge = styled.kbd`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-fg-muted);
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  box-shadow: inset 0 -1px 0 var(--color-border-default);
+`;
+
 export const UnreadPill = styled.span`
   background: var(--color-accent-emphasis);
   color: #ffffff;
@@ -208,12 +382,22 @@ export const UnreadPill = styled.span`
     transform 0.35s ease;
 `;
 
+export const CountPill = styled.span`
+  background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+  color: var(--color-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  line-height: 1.2;
+`;
+
 export const NotificationSectionDivider = styled.div<{ $variant: "new" | "earlier"; $hasActiveUnread?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 20px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--color-border-default);
   background: ${(props) =>
     props.$variant === "new"

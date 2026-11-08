@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  ArchiveIcon,
   ClockIcon,
   CpuIcon,
   CreditCardIcon,
@@ -8,6 +9,8 @@ import {
   PackageIcon,
   PlayIcon,
   ShieldIcon,
+  StarFillIcon,
+  StarIcon,
 } from "@primer/octicons-react";
 import { Button, Label, Text } from "@primer/react";
 import React, { useState } from "react";
@@ -15,19 +18,38 @@ import { useNavigate } from "react-router-dom";
 import { submitModerationAppeal } from "../../../api";
 import Box from "../../../components/Box";
 import { formatRelativeTime, getIconForType } from "../formatters";
-import { EngineeringCard, MetricChip, ModelBadge, NotificationWrapper, UnreadDotButton } from "../styles";
+import {
+  EngineeringCard,
+  MetricChip,
+  ModelBadge,
+  NotificationWrapper,
+  QuickActionIconButton,
+  UnreadDotButton,
+} from "../styles";
 import type { NotificationItem } from "../types";
 
 export interface EngineeringNotificationCardProps {
   notif: NotificationItem;
+  selected?: boolean | undefined;
+  onSelect?: ((notif: NotificationItem) => void) | undefined;
   onMarkRead?: ((id: string | number) => void) | undefined;
+  onToggleStar?: ((notif: NotificationItem) => void) | undefined;
+  onToggleArchive?: ((notif: NotificationItem) => void) | undefined;
 }
 
-export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardProps> = ({ notif, onMarkRead }) => {
+export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardProps> = ({
+  notif,
+  selected,
+  onSelect,
+  onMarkRead,
+  onToggleStar,
+  onToggleArchive,
+}) => {
   const navigate = useNavigate();
   const meta = notif.metadata || {};
-  const isSimulation = notif.type === "simulation_completed" || notif.type === "simulation";
-  const isSimFailed = notif.type === "simulation_failed";
+  const isSimulation =
+    notif.type === "simulation_completed" || notif.type === "simulation" || notif.type === "cae_completed";
+  const isSimFailed = notif.type === "simulation_failed" || notif.type === "cae_failed";
   const isPackageYanked = notif.type === "package_yanked";
   const isPackage = notif.type === "package" || notif.type === "package_published" || isPackageYanked;
   const isSecurity = notif.type === "security_alert";
@@ -54,6 +76,10 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
     if (showAppealForm) return;
     if (!notif.read) {
       onMarkRead?.(notif.id);
+    }
+    if (onSelect) {
+      onSelect(notif);
+      return;
     }
     if (isSimulation || isSimFailed) {
       const targetModel = meta.name;
@@ -96,18 +122,21 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
   return (
     <NotificationWrapper
       $unread={!notif.read}
+      $selected={selected}
       data-notification-id={String(notif.id)}
       data-unread={!notif.read ? "true" : "false"}
       onClick={handleCardClick}
     >
-      <Box width={36} display="flex" justifyContent="center" pt={1}>
+      <Box width={28} display="flex" justifyContent="center" pt={1}>
         {getIconForType(notif.type)}
       </Box>
-      <Box flex={1}>
+      <Box flex={1} style={{ minWidth: 0 }}>
         <EngineeringCard $status={cardStatus}>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box display="flex" alignItems="center" gap={2}>
-              {isSimulation && <Label variant="success">Simulation Completed</Label>}
+          <Box display="flex" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              {isSimulation && (
+                <Label variant="success">{notif.isOutboxJob ? "Dispatched Run" : "Simulation Completed"}</Label>
+              )}
               {isSimFailed && <Label variant="danger">Simulation Failed</Label>}
               {isPackage && !isPackageYanked && <Label variant="accent">Package Release</Label>}
               {isPackageYanked && <Label variant="danger">Package Yanked</Label>}
@@ -132,10 +161,38 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 </MetricChip>
               )}
             </Box>
-            <Box display="flex" alignItems="center" gap="6px" flexShrink={0}>
-              <Text style={{ fontSize: "13px", lineHeight: "16px" }} color="var(--color-fg-muted)">
+            <Box display="flex" alignItems="center" gap="4px" flexShrink={0}>
+              <Text style={{ fontSize: "12px", lineHeight: "16px" }} color="var(--color-fg-muted)">
                 {formatRelativeTime(notif.created_at || new Date().toISOString())}
               </Text>
+              {onToggleStar && !notif.isOutboxJob && (
+                <QuickActionIconButton
+                  type="button"
+                  $active={Boolean(notif.starred)}
+                  title={notif.starred ? "Remove from Saved (S)" : "Save for later (S)"}
+                  aria-label={notif.starred ? "Remove from Saved" : "Save for later"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleStar(notif);
+                  }}
+                >
+                  {notif.starred ? <StarFillIcon size={14} /> : <StarIcon size={14} />}
+                </QuickActionIconButton>
+              )}
+              {onToggleArchive && !notif.isOutboxJob && (
+                <QuickActionIconButton
+                  type="button"
+                  $active={Boolean(notif.archived)}
+                  title={notif.archived ? "Move back to Inbox (E)" : "Archive / Mark Done (E)"}
+                  aria-label={notif.archived ? "Move back to Inbox" : "Archive notification"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleArchive(notif);
+                  }}
+                >
+                  <ArchiveIcon size={14} />
+                </QuickActionIconButton>
+              )}
               {!notif.read && (
                 <UnreadDotButton
                   type="button"

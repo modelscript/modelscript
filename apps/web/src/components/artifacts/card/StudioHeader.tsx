@@ -178,7 +178,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             minWidth: 0,
           }}
         >
-          {artifact.title || artifact.name || artifact.view_type}
+          {artifact?.title || artifact?.name || artifact?.view_type}
         </Text>
         <span
           style={{
@@ -193,7 +193,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             flexShrink: 0,
           }}
         >
-          {artifact.view_type?.toUpperCase()}
+          {artifact?.view_type?.toUpperCase()}
         </span>
         {(viewConfig.provenance || viewConfig.solverInfo || viewConfig.profile) && (
           <span
@@ -297,9 +297,13 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 onCopyLink();
               }}
               style={{
-                background: copiedLink ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.08)",
-                border: copiedLink ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255, 255, 255, 0.15)",
-                color: copiedLink ? "#34d399" : "#e2e8f0",
+                background: copiedLink
+                  ? "rgba(16, 185, 129, 0.2)"
+                  : "var(--color-canvas-default, rgba(255, 255, 255, 0.08))",
+                border: copiedLink
+                  ? "1px solid rgba(16, 185, 129, 0.4)"
+                  : "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
+                color: copiedLink ? "#10b981" : "var(--color-fg-default, #e2e8f0)",
                 borderRadius: "6px",
                 padding: "5px 10px",
                 fontSize: "12px",
@@ -339,9 +343,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  background: "rgba(255, 255, 255, 0.08)",
-                  border: "1px solid rgba(255, 255, 255, 0.15)",
-                  color: "#e2e8f0",
+                  background: "var(--color-canvas-default, rgba(255, 255, 255, 0.08))",
+                  border: "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
+                  color: "var(--color-fg-default, #e2e8f0)",
                   borderRadius: "6px",
                   padding: "5px 10px",
                   fontSize: "12px",
@@ -369,7 +373,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 }}
                 style={{
                   background: "linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25))",
-                  color: "#ffffff",
+                  color: "var(--color-fg-default, #ffffff)",
                   border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))",
                   borderRadius: "6px",
                   padding: "5px 10px",
@@ -395,7 +399,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 }}
                 style={{
                   background: "linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(6, 182, 212, 0.22))",
-                  color: "#34d399",
+                  color: "#10b981",
                   border: "1px solid rgba(16, 185, 129, 0.45)",
                   borderRadius: "6px",
                   padding: "5px 10px",
@@ -445,7 +449,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 onClick={handleOpenEditor}
                 style={{
                   background: "linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2))",
-                  color: "#38bdf8",
+                  color: "var(--ms-accent-cyan, #0891b2)",
                   border: "1px solid rgba(6, 182, 212, 0.4)",
                   borderRadius: "6px",
                   padding: "5px 10px",
@@ -467,7 +471,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 onClick={handleOpenVsCode}
                 style={{
                   background: "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.18))",
-                  color: "#38bdf8",
+                  color: "var(--ms-accent-cyan, #0284c7)",
                   border: "1px solid rgba(56, 189, 248, 0.4)",
                   borderRadius: "6px",
                   padding: "5px 10px",
@@ -491,9 +495,13 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             onToggleSidebar();
           }}
           style={{
-            background: isStudioSidebarOpen ? "rgba(6, 182, 212, 0.2)" : "rgba(255, 255, 255, 0.08)",
-            border: isStudioSidebarOpen ? "1px solid rgba(6, 182, 212, 0.4)" : "1px solid rgba(255, 255, 255, 0.15)",
-            color: isStudioSidebarOpen ? "var(--ms-accent-cyan)" : "#e2e8f0",
+            background: isStudioSidebarOpen
+              ? "rgba(6, 182, 212, 0.2)"
+              : "var(--color-canvas-default, rgba(255, 255, 255, 0.08))",
+            border: isStudioSidebarOpen
+              ? "1px solid rgba(6, 182, 212, 0.4)"
+              : "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
+            color: isStudioSidebarOpen ? "var(--ms-accent-cyan)" : "var(--color-fg-default, #e2e8f0)",
             borderRadius: "6px",
             padding: "5px 10px",
             fontSize: "12px",
@@ -527,7 +535,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                       if (navigator.share) {
                         navigator
                           .share({
-                            title: artifact.title || artifact.name || "Ansatz Morsel",
+                            title: artifact?.title || artifact?.name || "Ansatz Morsel",
                             url: `${window.location.origin}/render-artifact/${artifactId}`,
                           })
                           .catch(() => onCopyLink());
@@ -541,6 +549,11 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                     </ActionList.LeadingVisual>
                     {copiedLink ? "Copied Link" : "Share / Copy Link"}
                   </ActionList.Item>
+                  {onSaveArtifact && hasUnsavedChanges && (
+                    <ActionList.Item onSelect={() => onSaveArtifact()} disabled={Boolean(isSavingArtifact)}>
+                      💾 {isSavingArtifact ? "Saving…" : "Save Artifact"}
+                    </ActionList.Item>
+                  )}
                   {isEditable && !isMultiFile && (
                     <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
                       <ActionList.LeadingVisual>
@@ -610,9 +623,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               onEnterFullScreen();
             }}
             style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              color: "#e2e8f0",
+              background: "var(--color-canvas-default, rgba(255, 255, 255, 0.08))",
+              border: "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
+              color: "var(--color-fg-default, #e2e8f0)",
               borderRadius: "6px",
               padding: "5px 10px",
               fontSize: "12px",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
@@ -10,7 +10,7 @@ import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
-import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
 const MorselEditor = React.lazy(() => import("../morsel/Morsel"));
@@ -50,26 +50,52 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [viewMode, setViewMode] = useState<CodeViewerTab>("code");
   const [isInteractiveDiagram, setIsInteractiveDiagram] = useState(false);
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
+  const [isFetchingCode, setIsFetchingCode] = useState(false);
 
   const inlineCode = viewConfig?.code || viewConfig?.content || "";
   useEffect(() => {
     if (!inlineCode && viewConfig?.url) {
-      fetch(viewConfig.url)
+      const controller = new AbortController();
+      setIsFetchingCode(true);
+      fetch(viewConfig.url, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
-          if (txt) setFetchedCode(txt);
+          if (txt && !controller.signal.aborted) {
+            setFetchedCode(txt);
+          }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsFetchingCode(false);
+          }
+        });
+      return () => controller.abort();
     }
+    setIsFetchingCode(false);
+    return undefined;
   }, [inlineCode, viewConfig?.url]);
 
-  const code =
-    inlineCode ||
-    fetchedCode ||
-    `model ${viewConfig?.model || "Model"}\n  // Modelica source\nend ${viewConfig?.model || "Model"};`;
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const safeModelIdent = useMemo(() => {
+    const raw = String(viewConfig?.model || "Model")
+      .replace(/\.mo$/i, "")
+      .replace(/[^A-Za-z0-9_]/g, "_")
+      .replace(/^_+/, "");
+    if (!raw) return "Model";
+    return /^[0-9]/.test(raw) ? `M_${raw}` : raw;
+  }, [viewConfig?.model]);
+
+  const code = inlineCode || fetchedCode || `model ${safeModelIdent}\n  // Modelica source\nend ${safeModelIdent};`;
 
   const title = viewConfig?.title || (viewConfig?.model ? `${viewConfig.model}.mo` : "Modelica Source");
   const dialect = viewConfig?.dialect || "modelica";
@@ -85,7 +111,8 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const codeLines = useMemo(() => code.split(/\r?\n/), [code]);
@@ -97,6 +124,13 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
     viewMode === "split" ||
     (viewMode === "diagram" && (!svgMarkup || isInteractiveDiagram || isFullScreen));
 
+  const [hasActivatedMorsel, setHasActivatedMorsel] = useState(usesMorselRuntime);
+  useEffect(() => {
+    if (usesMorselRuntime) {
+      setHasActivatedMorsel(true);
+    }
+  }, [usesMorselRuntime]);
+
   const morselInitialView =
     viewMode === "simulate"
       ? "simulation"
@@ -105,6 +139,19 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
         : viewMode === "split"
           ? "split-columns"
           : "diagram";
+
+  const footerTabItems = useMemo(() => {
+    const base = [
+      { id: "code", label: "Code", icon: <CodeIcon size={14} /> },
+      { id: "diagram", label: "Diagram", icon: <WorkflowIcon size={14} /> },
+      { id: "simulate", label: "Simulate", icon: <GraphIcon size={14} /> },
+      { id: "3d", label: "3D", icon: <StackIcon size={14} /> },
+    ];
+    if (isFullScreen) {
+      base.push({ id: "split", label: "Split", icon: <WorkflowIcon size={14} /> });
+    }
+    return base;
+  }, [isFullScreen]);
 
   return (
     <Wrapper $isFullScreen={isFullScreen}>
@@ -115,12 +162,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
               ariaLabel="Modelica viewer mode"
               active={viewMode}
               onChange={(id) => setViewMode(id as typeof viewMode)}
-              tabs={[
-                { id: "code", label: "Code", icon: <CodeIcon size={14} /> },
-                { id: "diagram", label: "Diagram", icon: <WorkflowIcon size={14} /> },
-                { id: "simulate", label: "Simulate", icon: <GraphIcon size={14} /> },
-                { id: "3d", label: "3D", icon: <StackIcon size={14} /> },
-              ]}
+              tabs={footerTabItems}
             />
           </FooterTabs>
           <FloatingTools>
@@ -306,98 +348,110 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
       )}
 
       <Box flex={1} style={{ minHeight: "220px", height: "100%", overflow: "auto", position: "relative" }}>
-        {usesMorselRuntime ? (
-          <Suspense
-            fallback={
+        {hasActivatedMorsel && (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: usesMorselRuntime ? "block" : "none",
+            }}
+          >
+            {isFetchingCode && !inlineCode && !fetchedCode ? (
               <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>
                 <Spinner size="small" />
                 <Text fontSize="12px" color="var(--color-fg-muted)">
-                  Initializing interactive runtime…
+                  Loading model source…
                 </Text>
               </Box>
-            }
-          >
-            <MorselEditor
-              dataUrl={null}
-              initialCode={code}
-              embed={true}
-              initialDialect={dialect}
-              initialView={morselInitialView}
-              simulateTriggerCount={viewMode === "simulate" || viewMode === "3d" ? 1 : undefined}
-              showParameterRibbon={true}
-              hideFloatingDock={true}
-            />
-          </Suspense>
-        ) : viewMode === "diagram" && svgMarkup ? (
-          <Box
-            p={3}
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            height="100%"
-            dangerouslySetInnerHTML={{ __html: svgMarkup }}
-          />
-        ) : !isFullScreen ? (
-          <Box
-            py={2}
-            height="100%"
-            overflow="auto"
-            bg="var(--color-canvas-default)"
-            style={{
-              fontFamily: '"JetBrains Mono", "Fira Code", var(--font-mono, monospace)',
-              fontSize: "12px",
-              lineHeight: 1.55,
-            }}
-          >
-            {codeLines.map((line, idx) => (
-              <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
-                <span
-                  style={{
-                    userSelect: "none",
-                    width: "36px",
-                    minWidth: "36px",
-                    textAlign: "right",
-                    paddingRight: "12px",
-                    color: "var(--color-fg-subtle)",
-                    fontSize: "11px",
-                  }}
-                >
-                  {idx + 1}
-                </span>
-                <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
-                  {highlightPolyglotLine(line, dialect)}
-                </span>
-              </div>
-            ))}
-          </Box>
-        ) : (
-          <Suspense
-            fallback={
-              <Box display="flex" alignItems="center" justifyContent="center" height="100%">
-                <Spinner size="small" />
-              </Box>
-            }
-          >
-            <MonacoEditor
-              height="100%"
-              language="modelica"
-              theme={getMonacoThemeName(isDark ? "dark" : "light")}
-              beforeMount={ensureMonacoThemesDefined}
-              value={code}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                fontSize: 13,
-                wordWrap: "on",
-                padding: { top: 12, bottom: 12 },
-                automaticLayout: true,
-                tabSize: 2,
-              }}
-            />
-          </Suspense>
+            ) : (
+              <Suspense
+                fallback={
+                  <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>
+                    <Spinner size="small" />
+                    <Text fontSize="12px" color="var(--color-fg-muted)">
+                      Initializing interactive runtime…
+                    </Text>
+                  </Box>
+                }
+              >
+                <MorselEditor
+                  dataUrl={null}
+                  initialCode={code}
+                  embed={true}
+                  initialDialect={dialect}
+                  initialView={morselInitialView}
+                  simulateTriggerCount={viewMode === "simulate" || viewMode === "3d" ? 1 : undefined}
+                  showParameterRibbon={true}
+                  hideFloatingDock={true}
+                />
+              </Suspense>
+            )}
+          </div>
         )}
+        {!usesMorselRuntime &&
+          (viewMode === "diagram" && svgMarkup ? (
+            <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
+          ) : !isFullScreen ? (
+            <Box
+              py={2}
+              height="100%"
+              overflow="auto"
+              bg="var(--color-canvas-default)"
+              style={{
+                fontFamily: '"JetBrains Mono", "Fira Code", var(--font-mono, monospace)',
+                fontSize: "12px",
+                lineHeight: 1.55,
+              }}
+            >
+              {codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, dialect)}
+                  </span>
+                </div>
+              ))}
+            </Box>
+          ) : (
+            <Suspense
+              fallback={
+                <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                  <Spinner size="small" />
+                </Box>
+              }
+            >
+              <MonacoEditor
+                height="100%"
+                language="modelica"
+                theme={getMonacoThemeName(isDark ? "dark" : "light")}
+                beforeMount={ensureMonacoThemesDefined}
+                value={code}
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  fontSize: 13,
+                  wordWrap: "on",
+                  padding: { top: 12, bottom: 12 },
+                  automaticLayout: true,
+                  tabSize: 2,
+                }}
+              />
+            </Suspense>
+          ))}
       </Box>
     </Wrapper>
   );

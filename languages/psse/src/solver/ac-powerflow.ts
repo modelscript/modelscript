@@ -10,9 +10,10 @@
  *   4. Branch complex power flow calculation (Pij, Qij, Pji, Qji) and thermal loading.
  */
 
+import { solveLinearSystemSparse } from "@modelscript/runtime";
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
+import type { PsseCase, PsseConCase } from "../types.js";
 import { solveHelmPowerFlow } from "./helm-powerflow.js";
-import type { PsseCase } from "../types.js";
 
 export interface PowerFlowOptions {
   /** Numerical algorithm to execute (default: "newton_raphson"). */
@@ -69,60 +70,10 @@ export interface PowerFlowSolution {
 }
 
 /**
- * Solves dense linear system A * x = b in-place using Gaussian elimination with partial pivoting.
+ * Solves linear system A * x = b in-place using sparse LU / Gaussian elimination with partial pivoting.
  */
 function solveLinearSystem(A: Float64Array, b: Float64Array, n: number): boolean {
-  for (let i = 0; i < n; i++) {
-    // Pivot selection
-    let maxRow = i;
-    let maxVal = Math.abs(A[i * n + i] ?? 0);
-    for (let k = i + 1; k < n; k++) {
-      const val = Math.abs(A[k * n + i] ?? 0);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = k;
-      }
-    }
-
-    if (maxVal < 1e-12) return false; // Singular matrix
-
-    // Swap rows
-    if (maxRow !== i) {
-      for (let c = i; c < n; c++) {
-        const tmpA = A[i * n + c] ?? 0;
-        A[i * n + c] = A[maxRow * n + c] ?? 0;
-        A[maxRow * n + c] = tmpA;
-      }
-      const tmpB = b[i] ?? 0;
-      b[i] = b[maxRow] ?? 0;
-      b[maxRow] = tmpB;
-    }
-
-    // Elimination
-    const pivot = A[i * n + i]!;
-    for (let k = i + 1; k < n; k++) {
-      const factor = (A[k * n + i] ?? 0) / pivot;
-      for (let c = i; c < n; c++) {
-        const curA = A[k * n + c] ?? 0;
-        const subA = A[i * n + c] ?? 0;
-        A[k * n + c] = curA - factor * subA;
-      }
-      const curB = b[k] ?? 0;
-      const subB = b[i] ?? 0;
-      b[k] = curB - factor * subB;
-    }
-  }
-
-  // Back-substitution
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = b[i] ?? 0;
-    for (let c = i + 1; c < n; c++) {
-      sum -= (A[i * n + c] ?? 0) * (b[c] ?? 0);
-    }
-    b[i] = sum / A[i * n + i]!;
-  }
-
-  return true;
+  return solveLinearSystemSparse(A, b, n, { sparseThreshold: 30 });
 }
 
 /**
@@ -1351,7 +1302,14 @@ export interface N1ContingencyAnalysisResult {
  */
 export function analyzeN1Contingencies(
   psseCase: PsseCase,
-  options: string | { vMinPu?: number | undefined; vMaxPu?: number | undefined; caseTitle?: string | undefined } = {},
+  options:
+    | string
+    | {
+        vMinPu?: number | undefined;
+        vMaxPu?: number | undefined;
+        caseTitle?: string | undefined;
+        conCase?: PsseConCase | undefined;
+      } = {},
 ): N1ContingencyAnalysisResult {
   const opts = typeof options === "string" ? { caseTitle: options } : options;
   const vMin = opts.vMinPu ?? 0.95;
@@ -1461,65 +1419,205 @@ export function analyzeN1Contingencies(
     };
   };
 
-  // 1. N-1 AC Transmission Branch Outages
-  for (let idx = 0; idx < psseCase.branches.length; idx++) {
-    const br = psseCase.branches[idx]!;
-    if (br.st === 0) continue;
-    br.st = 0;
-    try {
-      const sol = solvePowerFlow(psseCase);
-      contingencies.push(
-        evaluateSolution(
-          `BR_${br.i}_${br.j}_${br.ckt.trim() || "1"}`,
-          "branch",
-          `Line ${br.i} - ${br.j} Ckt ${br.ckt.trim() || "1"}`,
-          sol,
-        ),
-      );
-    } finally {
-      br.st = 1;
-    }
-  }
+  const explicitCon = (typeof options === "object" ? options.conCase : undefined) ?? psseCase.con;
 
-  // 2. N-1 Transformer Outages
-  for (let idx = 0; idx < psseCase.transformers.length; idx++) {
-    const xf = psseCase.transformers[idx]!;
-    if (xf.stat === 0) continue;
-    xf.stat = 0;
-    try {
-      const sol = solvePowerFlow(psseCase);
-      contingencies.push(
-        evaluateSolution(
-          `XF_${xf.i}_${xf.j}_${xf.ckt.trim() || "1"}`,
-          "transformer",
-          `Transformer ${xf.i} - ${xf.j} Ckt ${xf.ckt.trim() || "1"}`,
-          sol,
-        ),
-      );
-    } finally {
-      xf.stat = 1;
+  if (explicitCon && explicitCon.contingencies.length > 0) {
+    for (const c of explicitCon.contingencies) {
+      const restoreFns: Array<() => void> = [];
+      try {
+        for (const a of c.actions) {
+          switch (a.type) {
+            case "open_branch": {
+              for (const br of psseCase.branches) {
+                if (
+                  ((br.i === a.fromBus && br.j === a.toBus) || (br.i === a.toBus && br.j === a.fromBus)) &&
+                  (a.ckt === "*" || br.ckt.trim() === a.ckt.trim())
+                ) {
+                  const prev = br.st;
+                  br.st = 0;
+                  restoreFns.push(() => {
+                    br.st = prev;
+                  });
+                }
+              }
+              for (const xf of psseCase.transformers) {
+                if (
+                  ((xf.i === a.fromBus && xf.j === a.toBus) || (xf.i === a.toBus && xf.j === a.fromBus)) &&
+                  (a.ckt === "*" || xf.ckt.trim() === a.ckt.trim())
+                ) {
+                  const prev = xf.stat;
+                  xf.stat = 0;
+                  restoreFns.push(() => {
+                    xf.stat = prev;
+                  });
+                }
+              }
+              break;
+            }
+            case "close_branch": {
+              for (const br of psseCase.branches) {
+                if (
+                  ((br.i === a.fromBus && br.j === a.toBus) || (br.i === a.toBus && br.j === a.fromBus)) &&
+                  (a.ckt === "*" || br.ckt.trim() === a.ckt.trim())
+                ) {
+                  const prev = br.st;
+                  br.st = 1;
+                  restoreFns.push(() => {
+                    br.st = prev;
+                  });
+                }
+              }
+              break;
+            }
+            case "trip_generator": {
+              for (const gen of psseCase.generators) {
+                if (gen.i === a.bus && (a.id === "*" || gen.id.trim() === a.id.trim())) {
+                  const prev = gen.stat;
+                  gen.stat = 0;
+                  restoreFns.push(() => {
+                    gen.stat = prev;
+                  });
+                }
+              }
+              break;
+            }
+            case "disconnect_bus": {
+              for (const br of psseCase.branches) {
+                if (br.i === a.bus || br.j === a.bus) {
+                  const prev = br.st;
+                  br.st = 0;
+                  restoreFns.push(() => {
+                    br.st = prev;
+                  });
+                }
+              }
+              for (const xf of psseCase.transformers) {
+                if (xf.i === a.bus || xf.j === a.bus) {
+                  const prev = xf.stat;
+                  xf.stat = 0;
+                  restoreFns.push(() => {
+                    xf.stat = prev;
+                  });
+                }
+              }
+              for (const gen of psseCase.generators) {
+                if (gen.i === a.bus) {
+                  const prev = gen.stat;
+                  gen.stat = 0;
+                  restoreFns.push(() => {
+                    gen.stat = prev;
+                  });
+                }
+              }
+              for (const ld of psseCase.loads) {
+                if (ld.i === a.bus) {
+                  const prev = ld.status;
+                  ld.status = 0;
+                  restoreFns.push(() => {
+                    ld.status = prev;
+                  });
+                }
+              }
+              break;
+            }
+            case "change_rating": {
+              for (const br of psseCase.branches) {
+                if (
+                  ((br.i === a.fromBus && br.j === a.toBus) || (br.i === a.toBus && br.j === a.fromBus)) &&
+                  (a.ckt === "*" || br.ckt.trim() === a.ckt.trim())
+                ) {
+                  const prev = br.rateA;
+                  br.rateA = a.rateA;
+                  restoreFns.push(() => {
+                    br.rateA = prev;
+                  });
+                }
+              }
+              break;
+            }
+            case "change_generator_pmax": {
+              for (const gen of psseCase.generators) {
+                if (gen.i === a.bus && (a.id === "*" || gen.id.trim() === a.id.trim())) {
+                  const prev = gen.pt;
+                  gen.pt = a.pMax;
+                  restoreFns.push(() => {
+                    gen.pt = prev;
+                  });
+                }
+              }
+              break;
+            }
+          }
+        }
+        const sol = solvePowerFlow(psseCase);
+        contingencies.push(evaluateSolution(c.id, "branch", c.label ? `${c.id}: ${c.label}` : c.id, sol));
+      } finally {
+        for (let r = restoreFns.length - 1; r >= 0; r--) {
+          restoreFns[r]!();
+        }
+      }
     }
-  }
+  } else {
+    // 1. N-1 AC Transmission Branch Outages
+    for (let idx = 0; idx < psseCase.branches.length; idx++) {
+      const br = psseCase.branches[idx]!;
+      if (br.st === 0) continue;
+      br.st = 0;
+      try {
+        const sol = solvePowerFlow(psseCase);
+        contingencies.push(
+          evaluateSolution(
+            `BR_${br.i}_${br.j}_${br.ckt.trim() || "1"}`,
+            "branch",
+            `Line ${br.i} - ${br.j} Ckt ${br.ckt.trim() || "1"}`,
+            sol,
+          ),
+        );
+      } finally {
+        br.st = 1;
+      }
+    }
 
-  // 3. N-1 Generator Outages (excluding Slack bus sole generator)
-  for (let idx = 0; idx < psseCase.generators.length; idx++) {
-    const gen = psseCase.generators[idx]!;
-    if (gen.stat === 0) continue;
-    const bus = psseCase.buses.get(gen.i);
-    if (bus?.ide === 3) continue; // Keep slack bus reference intact
-    gen.stat = 0;
-    try {
-      const sol = solvePowerFlow(psseCase);
-      contingencies.push(
-        evaluateSolution(
-          `GEN_${gen.i}_${gen.id.trim() || "1"}`,
-          "generator",
-          `Generator Bus ${gen.i} ID ${gen.id.trim() || "1"} (${gen.pg.toFixed(1)} MW)`,
-          sol,
-        ),
-      );
-    } finally {
-      gen.stat = 1;
+    // 2. N-1 Transformer Outages
+    for (let idx = 0; idx < psseCase.transformers.length; idx++) {
+      const xf = psseCase.transformers[idx]!;
+      if (xf.stat === 0) continue;
+      xf.stat = 0;
+      try {
+        const sol = solvePowerFlow(psseCase);
+        contingencies.push(
+          evaluateSolution(
+            `XF_${xf.i}_${xf.j}_${xf.ckt.trim() || "1"}`,
+            "transformer",
+            `Transformer ${xf.i} - ${xf.j} Ckt ${xf.ckt.trim() || "1"}`,
+            sol,
+          ),
+        );
+      } finally {
+        xf.stat = 1;
+      }
+    }
+
+    // 3. N-1 Generator Outages (excluding Slack bus sole generator)
+    for (let idx = 0; idx < psseCase.generators.length; idx++) {
+      const gen = psseCase.generators[idx]!;
+      if (gen.stat === 0) continue;
+      const bus = psseCase.buses.get(gen.i);
+      if (bus?.ide === 3) continue; // Keep slack bus reference intact
+      gen.stat = 0;
+      try {
+        const sol = solvePowerFlow(psseCase);
+        contingencies.push(
+          evaluateSolution(
+            `GEN_${gen.i}_${gen.id.trim() || "1"}`,
+            "generator",
+            `Generator Bus ${gen.i} ID ${gen.id.trim() || "1"} (${gen.pg.toFixed(1)} MW)`,
+            sol,
+          ),
+        );
+      } finally {
+        gen.stat = 1;
+      }
     }
   }
 

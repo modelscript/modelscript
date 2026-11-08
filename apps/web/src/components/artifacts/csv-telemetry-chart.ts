@@ -19,7 +19,7 @@ export function buildClientTelemetrySvg(
     let numericCount = 0;
     for (let r = 0; r < sampleRowCount; r++) {
       const raw = rows[r]?.[c];
-      if (raw !== undefined && raw !== null && raw !== "") {
+      if (raw !== undefined && raw !== null && String(raw).trim() !== "") {
         const n = Number(raw);
         if (Number.isFinite(n)) {
           numericCount++;
@@ -58,25 +58,37 @@ export function buildClientTelemetrySvg(
   const step = Math.max(1, Math.floor(rows.length / maxPts));
   const sampledRows: number[][] = [];
   for (let i = 0; i < rows.length; i += step) {
-    sampledRows.push(rows[i]!.map((cell) => Number(cell)));
+    sampledRows.push(
+      rows[i]!.map((cell) =>
+        cell === "" || cell === null || cell === undefined || (typeof cell === "string" && cell.trim() === "")
+          ? NaN
+          : Number(cell),
+      ),
+    );
   }
 
   const polylines: string[] = [];
   const legendItems: string[] = [];
+  const totalDenom = Math.max(1, sampledRows.length - 1);
 
   seriesIndices.forEach((colIdx, sIdx) => {
     const color = palette[sIdx % palette.length]!;
-    const vals = sampledRows
-      .map((r) => r[colIdx])
-      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-    if (vals.length === 0) return;
+    const validEntries: { rowIdx: number; val: number }[] = [];
+    sampledRows.forEach((r, rowIdx) => {
+      const v = r[colIdx];
+      if (typeof v === "number" && Number.isFinite(v)) {
+        validEntries.push({ rowIdx, val: v });
+      }
+    });
+    if (validEntries.length === 0) return;
 
+    const vals = validEntries.map((e) => e.val);
     const minV = Math.min(...vals);
     const maxV = Math.max(...vals);
     const span = Math.max(1e-6, maxV - minV);
-    const pts = vals.map((v, i) => {
-      const x = +(padX + (i / Math.max(1, vals.length - 1)) * plotW).toFixed(1);
-      const y = +(padTop + plotH - ((v - minV) / span) * plotH).toFixed(1);
+    const pts = validEntries.map(({ rowIdx, val }) => {
+      const x = +(padX + (rowIdx / totalDenom) * plotW).toFixed(1);
+      const y = +(padTop + plotH - ((val - minV) / span) * plotH).toFixed(1);
       return `${x},${y}`;
     });
     polylines.push(

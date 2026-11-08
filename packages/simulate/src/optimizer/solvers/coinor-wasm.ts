@@ -671,7 +671,10 @@ let cachedSolver: CoinorWasmSolver | null = null;
 export async function loadCoinorWasm(wasmUrl?: string): Promise<CoinorWasmSolver> {
   if (cachedSolver) return cachedSolver;
 
-  const isNode = typeof globalThis.process !== "undefined" && globalThis.process.versions?.node;
+  const isNode =
+    typeof window === "undefined" &&
+    typeof globalThis.process !== "undefined" &&
+    Boolean(globalThis.process.versions?.node);
 
   if (isNode) {
     const { fileURLToPath } = await import("node:url");

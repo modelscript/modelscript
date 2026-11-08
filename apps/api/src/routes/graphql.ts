@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Router } from "express";
+import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
 import {
   GraphQLList,
@@ -237,7 +237,7 @@ export function graphqlRouter(database: LibraryDatabase): Router {
     }
 
     let cachedAllClasses: ReturnType<typeof database.getAllClasses> | null = null;
-    (req as RequestWithGqlContext).__gqlContext = {
+    (req as unknown as RequestWithGqlContext).__gqlContext = {
       database,
       name,
       version,

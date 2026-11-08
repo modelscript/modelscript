@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
 import {
   extractFortranSignature,
@@ -123,13 +120,24 @@ export type {
 
 let cachedParser: TreeSitterParser | null = null;
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 function findFile(relativePaths: string[]): string {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  for (const rel of relativePaths) {
-    const candidate = path.resolve(currentDir, rel);
-    if (fs.existsSync(candidate)) return candidate;
+  if (typeof window === "undefined" && typeof process !== "undefined" && typeof require === "function") {
+    try {
+      const nodePath = require("node:path");
+      const { fileURLToPath } = require("node:url");
+      const nodeFs = require("node:fs");
+      const currentDir = nodePath.dirname(fileURLToPath(import.meta.url));
+      for (const rel of relativePaths) {
+        const candidate = nodePath.resolve(currentDir, rel);
+        if (nodeFs.existsSync(candidate)) return candidate;
+      }
+      return nodePath.resolve(currentDir, relativePaths[0]!);
+    } catch {
+      // fallback
+    }
   }
-  return path.resolve(currentDir, relativePaths[0]!);
+  return relativePaths[0]!;
 }
 
 /**
@@ -141,18 +149,26 @@ export async function getFortranParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer
   let wasmInput: Uint8Array | ArrayBuffer | string | undefined = wasmUrlOrBytes;
   if (!wasmInput) {
     if (
-      typeof fs?.readFileSync === "function" &&
+      typeof window === "undefined" &&
+      typeof process !== "undefined" &&
+      typeof require === "function" &&
       typeof import.meta?.url === "string" &&
       import.meta.url.startsWith("file:")
     ) {
-      const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
-      wasmInput = fs.readFileSync(wasmPath);
+      try {
+        const nodeFs = require("node:fs");
+        const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
+        wasmInput = nodeFs.readFileSync(wasmPath);
+      } catch {
+        wasmInput = "fortran.wasm";
+      }
     } else {
       wasmInput = "fortran.wasm";
     }
   }
+  /* eslint-enable @typescript-eslint/no-require-imports */
 
-  const { parser } = await createWasmParser(wasmInput);
+  const { parser } = await createWasmParser(wasmInput ?? "fortran.wasm");
   cachedParser = parser;
   return parser;
 }

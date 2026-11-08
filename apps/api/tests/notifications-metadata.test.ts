@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { LibraryDatabase } from "../src/database.js";
+import { seedPolyglotInbox, seedPolyglotUsers } from "../src/seed/index.js";
 
 test("Notifications & Metadata - Schema, Category Filtering, and Hydration", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-notifs-test-"));
@@ -148,6 +149,46 @@ test("Notifications & Metadata - Schema, Category Filtering, and Hydration", () 
     const socialNotifs = db.getNotifications(user.id, 50, "mentions");
     assert.ok(socialNotifs.some((n) => n.type === "follow_request"));
     assert.ok(socialNotifs.some((n) => n.type === "follow_accepted"));
+
+    // 9. Verify Inbox triage: starring, archiving, and unread count exclusion
+    const targetFollowReq = socialNotifs.find((n) => n.type === "follow_request")!;
+    assert.ok(targetFollowReq);
+    assert.strictEqual(targetFollowReq.archived, 0);
+    assert.strictEqual(targetFollowReq.starred, 0);
+
+    db.triageNotifications(user.id, { ids: [targetFollowReq.id], starred: true, archived: true });
+    const updatedNotifs = db.getNotifications(user.id, 50, "mentions");
+    const triagedRow = updatedNotifs.find((n) => n.id === targetFollowReq.id)!;
+    assert.strictEqual(triagedRow.starred, 1);
+    assert.strictEqual(triagedRow.archived, 1);
+    assert.strictEqual(triagedRow.read, 1);
+
+    // 7. Test seedPolyglotInbox populates Inbox, Saved (bookmarks + starred), Outbox (HPC jobs), and Archive idempotently
+    const userIds = seedPolyglotUsers(db);
+    const omarId = userIds.get("omar")!;
+    const seedRes1 = seedPolyglotInbox(db, userIds);
+    assert.ok(
+      seedRes1.notificationsSeeded >= 18,
+      `Expected >= 18 notifications seeded, got ${seedRes1.notificationsSeeded}`,
+    );
+    assert.ok(seedRes1.outboxJobsSeeded >= 4, `Expected >= 4 outbox jobs seeded, got ${seedRes1.outboxJobsSeeded}`);
+
+    const omarNotifs = db.getNotifications(omarId, 50);
+    assert.ok(omarNotifs.length >= 18);
+    assert.ok(omarNotifs.some((n) => n.type === "simulation_completed" && n.starred === 1));
+    assert.ok(omarNotifs.some((n) => n.type === "simulation_failed"));
+    assert.ok(omarNotifs.some((n) => n.type === "package_published" && n.starred === 1));
+    assert.ok(omarNotifs.some((n) => n.type === "package_yanked"));
+    assert.ok(omarNotifs.some((n) => n.type === "security_alert"));
+    assert.ok(omarNotifs.some((n) => n.type === "credit_warning"));
+    assert.ok(omarNotifs.some((n) => n.archived === 1));
+
+    const omarJobs = db.getUserCompletedHpcJobs(omarId, 10);
+    assert.ok(omarJobs.length >= 4);
+
+    // Second invocation is idempotent
+    const seedRes2 = seedPolyglotInbox(db, userIds);
+    assert.strictEqual(seedRes2.notificationsSeeded, 0);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

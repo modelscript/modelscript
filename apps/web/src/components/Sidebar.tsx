@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  BellIcon,
   BookIcon,
-  BookmarkIcon,
   CodeIcon,
+  CommentDiscussionIcon,
   GearIcon,
   HomeIcon,
+  InboxIcon,
   KebabHorizontalIcon,
   LinkExternalIcon,
   MarkGithubIcon,
   MoonIcon,
+  OrganizationIcon,
   PackageIcon,
   PersonIcon,
   PlusIcon,
@@ -1089,7 +1090,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
   }, [showLogoutMenu]);
 
   React.useEffect(() => {
-    if (location.pathname === "/notifications") {
+    if (location.pathname === "/inbox" || location.pathname === "/notifications") {
       setUnreadCount(0);
     }
   }, [location.pathname, setUnreadCount]);
@@ -1099,6 +1100,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
   const hasPackages = useFeatureFlag("package_browser");
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const hasReferences = useFeatureFlag(["references", "scientific_references"]);
+  const hasSpaces = useFeatureFlag("spaces_hub");
+  const hasSpaceChat = useFeatureFlag("space_chat");
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   const branding = useInstanceBranding();
@@ -1140,9 +1143,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
   const communityLinks: SidebarLinkItem[] = [];
   if (user) communityLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
   communityLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore" });
+  if (hasSpaces) {
+    communityLinks.push({ to: "/spaces", icon: OrganizationIcon, label: "Spaces" });
+  }
   if (user) {
-    communityLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications" });
-    communityLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
+    if (hasSpaceChat) {
+      communityLinks.push({ to: "/chat", icon: CommentDiscussionIcon, label: "Chat" });
+    }
+    communityLinks.push({ to: "/inbox", icon: InboxIcon, label: "Inbox" });
     if (hasFeeds) {
       communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
     }
@@ -1171,7 +1179,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
   }
 
   const renderLinkItem = (link: SidebarLinkItem, compact = false) => {
-    const isActive = location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
+    const isActive =
+      location.pathname === link.to ||
+      location.pathname.startsWith(`${link.to}/`) ||
+      (link.to === "/inbox" &&
+        (location.pathname === "/notifications" ||
+          location.pathname.startsWith("/notifications/") ||
+          location.pathname === "/bookmarks" ||
+          location.pathname.startsWith("/bookmarks/")));
     return (
       <NavItem
         key={link.to}
@@ -1204,7 +1219,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
             }}
           >
             <link.icon size={compact ? 16 : 19} />
-            {link.to === "/notifications" && unreadCount > 0 && (
+            {link.to === "/inbox" && unreadCount > 0 && (
               <div
                 style={{
                   position: "absolute",

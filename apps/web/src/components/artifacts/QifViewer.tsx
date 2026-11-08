@@ -258,6 +258,12 @@ function QifFeatureMesh({
     return geo;
   }, [payload]);
 
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
   const color = useMemo(() => {
     if (isSelected) return new THREE.Color("#38bdf8");
     if (payload.isBodyEnvelope) return new THREE.Color("#334155");
@@ -303,7 +309,12 @@ function QifFeatureMesh({
 
 let focusTriggerCounter = 0;
 
-const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
+const QifViewerInner: React.FC<QifViewerProps & { parsedDoc?: QifDocument }> = ({
+  artifactId,
+  viewConfig,
+  isFullScreen = false,
+  parsedDoc,
+}) => {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
@@ -360,34 +371,33 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
   const baseParsedData = useMemo((): {
     doc: QifDocument;
     scene: Qif3dMbdScene;
-    rawSpcSvg: string;
-    rawHeatmapSvg: string;
   } => {
-    const doc: QifDocument = parseQif(rawQifText);
+    const doc: QifDocument = parsedDoc ?? parseQif(rawQifText);
     const scene = buildQif3dMbdScene(doc, pairedStepText, activeSerial);
-    const rawSpcSvg = DOMPurify.sanitize(renderQifSpcChartSvg(scene.spcSummary));
-    const rawHeatmapSvg = DOMPurify.sanitize(renderQifMbdHeatmapSvg(doc, scene.spcSummary));
     return {
       doc,
       scene,
-      rawSpcSvg,
-      rawHeatmapSvg,
     };
-  }, [rawQifText, pairedStepText, activeSerial]);
+  }, [parsedDoc, rawQifText, pairedStepText, activeSerial]);
 
   const activeAnnotation = useMemo(
     () => annotations.find((a) => a.id === activeAnnotationId) ?? null,
     [annotations, activeAnnotationId],
   );
 
-  const spcSvg = useMemo(
-    () => adaptSvgMarkupForTheme(baseParsedData.rawSpcSvg, isDark),
-    [baseParsedData.rawSpcSvg, isDark],
-  );
-  const heatmapSvg = useMemo(
-    () => adaptSvgMarkupForTheme(baseParsedData.rawHeatmapSvg, isDark),
-    [baseParsedData.rawHeatmapSvg, isDark],
-  );
+  const spcSvg = useMemo(() => {
+    if (viewTab !== "spc") return "";
+    const rawSpcSvg = DOMPurify.sanitize(renderQifSpcChartSvg(baseParsedData.scene.spcSummary));
+    return adaptSvgMarkupForTheme(rawSpcSvg, isDark);
+  }, [viewTab, baseParsedData.scene.spcSummary, isDark]);
+
+  const heatmapSvg = useMemo(() => {
+    if (viewTab !== "spc") return "";
+    const rawHeatmapSvg = DOMPurify.sanitize(
+      renderQifMbdHeatmapSvg(baseParsedData.doc, baseParsedData.scene.spcSummary),
+    );
+    return adaptSvgMarkupForTheme(rawHeatmapSvg, isDark);
+  }, [viewTab, baseParsedData.doc, baseParsedData.scene.spcSummary, isDark]);
 
   const { doc, scene: sceneBase } = baseParsedData;
   const partGeometry = geometryState.status === "ready" ? geometryState.geometry : null;
@@ -432,6 +442,10 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
 
   const sceneScale = useMemo(() => {
     return scene.boundingBox.radius > 0 ? 17 / scene.boundingBox.radius : 0.42;
+  }, [scene.boundingBox.radius]);
+
+  const unitScale = useMemo(() => {
+    return scene.boundingBox.radius > 0 ? scene.boundingBox.radius / 40 : 1;
   }, [scene.boundingBox.radius]);
 
   const sceneCenter = scene.boundingBox.center;
@@ -532,9 +546,16 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
   };
 
   const activeSourceLines = useMemo(() => {
+    if (viewTab !== "code") return [];
     const text = sourceSubTab === "qif" ? rawQifText : (pairedStepText ?? "");
     return text.split(/\r?\n/);
-  }, [sourceSubTab, rawQifText, pairedStepText]);
+  }, [viewTab, sourceSubTab, rawQifText, pairedStepText]);
+
+  const currentSerialIdx = useMemo(() => {
+    if (!scene.availableSerialNumbers || scene.availableSerialNumbers.length === 0) return 0;
+    const rawIdx = scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "");
+    return rawIdx >= 0 ? rawIdx : 0;
+  }, [scene.availableSerialNumbers, activeSerial, scene.activeSerialNumber]);
 
   return (
     <Box
@@ -632,23 +653,17 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   <span style={{ color: "#94a3b8" }}>SN:</span>
                   <button
                     type="button"
-                    disabled={
-                      (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) <= 0
-                    }
+                    disabled={currentSerialIdx <= 0}
                     onClick={() => {
-                      const curIdx = scene.availableSerialNumbers!.indexOf(
-                        activeSerial ?? scene.activeSerialNumber ?? "",
-                      );
-                      if (curIdx > 0) setActiveSerial(scene.availableSerialNumbers![curIdx - 1]);
+                      if (currentSerialIdx > 0) {
+                        setActiveSerial(scene.availableSerialNumbers![currentSerialIdx - 1]);
+                      }
                     }}
                     style={{
                       background: "none",
                       border: "none",
-                      color:
-                        (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) > 0
-                          ? "#38bdf8"
-                          : "#475569",
-                      cursor: "pointer",
+                      color: currentSerialIdx > 0 ? "#38bdf8" : "#475569",
+                      cursor: currentSerialIdx > 0 ? "pointer" : "default",
                       padding: "0 2px",
                       fontWeight: 800,
                       fontSize: "9px",
@@ -659,31 +674,21 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                     ◀
                   </button>
                   <span style={{ fontWeight: 700, color: "#38bdf8" }}>
-                    {activeSerial ?? scene.activeSerialNumber ?? scene.availableSerialNumbers[0]}
+                    {scene.availableSerialNumbers[currentSerialIdx]}
                   </span>
                   <button
                     type="button"
-                    disabled={
-                      (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) >=
-                      scene.availableSerialNumbers.length - 1
-                    }
+                    disabled={currentSerialIdx >= scene.availableSerialNumbers.length - 1}
                     onClick={() => {
-                      const curIdx = scene.availableSerialNumbers!.indexOf(
-                        activeSerial ?? scene.activeSerialNumber ?? "",
-                      );
-                      if (curIdx < scene.availableSerialNumbers!.length - 1) {
-                        setActiveSerial(scene.availableSerialNumbers![curIdx + 1]);
+                      if (currentSerialIdx < scene.availableSerialNumbers!.length - 1) {
+                        setActiveSerial(scene.availableSerialNumbers![currentSerialIdx + 1]);
                       }
                     }}
                     style={{
                       background: "none",
                       border: "none",
-                      color:
-                        (scene.availableSerialNumbers.indexOf(activeSerial ?? scene.activeSerialNumber ?? "") || 0) <
-                        scene.availableSerialNumbers.length - 1
-                          ? "#38bdf8"
-                          : "#475569",
-                      cursor: "pointer",
+                      color: currentSerialIdx < scene.availableSerialNumbers.length - 1 ? "#38bdf8" : "#475569",
+                      cursor: currentSerialIdx < scene.availableSerialNumbers.length - 1 ? "pointer" : "default",
                       padding: "0 2px",
                       fontWeight: 800,
                       fontSize: "9px",
@@ -865,13 +870,13 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
               </Box>
             )}
 
-            {/* Floating 3D Spatial Annotation Card */}
+            {/* Floating 3D Spatial Annotation Card (positioned below ViewportCameraControls) */}
             {activeAnnotation && (
               <Box
                 data-testid="qif-active-annotation-card"
                 position="absolute"
-                top={12}
-                left={56}
+                top={52}
+                left={12}
                 zIndex={15}
                 p={2}
                 borderRadius="10px"
@@ -1027,7 +1032,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                 <Line
                   points={[
                     [0, 0, 0],
-                    [10, 0, 0],
+                    [10 * unitScale, 0, 0],
                   ]}
                   color="#ef4444"
                   lineWidth={1.6}
@@ -1035,7 +1040,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                 <Line
                   points={[
                     [0, 0, 0],
-                    [0, 10, 0],
+                    [0, 10 * unitScale, 0],
                   ]}
                   color="#22c55e"
                   lineWidth={1.6}
@@ -1043,7 +1048,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                 <Line
                   points={[
                     [0, 0, 0],
-                    [0, 0, 10],
+                    [0, 0, 10 * unitScale],
                   ]}
                   color="#3b82f6"
                   lineWidth={1.6}
@@ -1065,7 +1070,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                     return (
                       <group key={hit.id}>
                         <mesh position={hit.position}>
-                          <sphereGeometry args={[isHighlighted ? 0.55 : 0.35, 10, 10]} />
+                          <sphereGeometry args={[(isHighlighted ? 0.55 : 0.35) * unitScale, 10, 10]} />
                           <meshStandardMaterial
                             color={isHighlighted ? hitStatusColor : "#475569"}
                             emissive={isHighlighted ? hitStatusColor : "#000000"}
@@ -1076,7 +1081,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                           <>
                             <Line points={[hit.position, tip]} color={whiskerColor} lineWidth={1.6} />
                             <mesh position={tip}>
-                              <sphereGeometry args={[0.22, 6, 6]} />
+                              <sphereGeometry args={[0.22 * unitScale, 6, 6]} />
                               <meshBasicMaterial color={whiskerColor} />
                             </mesh>
                           </>
@@ -1094,8 +1099,8 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                         color="#94a3b8"
                         lineWidth={1}
                         dashed
-                        dashSize={1.5}
-                        gapSize={1.5}
+                        dashSize={1.5 * unitScale}
+                        gapSize={1.5 * unitScale}
                       />
                       <Html position={datum.badgePosition} center zIndexRange={[1, 4]}>
                         <div
@@ -1140,7 +1145,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                           lineWidth={isActive ? 2 : 1.1}
                         />
                         <mesh position={callout.surfaceAnchor}>
-                          <sphereGeometry args={[0.7, 10, 10]} />
+                          <sphereGeometry args={[0.7 * unitScale, 10, 10]} />
                           <meshBasicMaterial color={isActive ? "#38bdf8" : statusColor} />
                         </mesh>
                         <Html position={callout.calloutPosition} center zIndexRange={[1, 5]}>
@@ -1207,7 +1212,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                             setActiveAnnotationId((prev) => (prev === ann.id ? null : ann.id));
                           }}
                         >
-                          <sphereGeometry args={[isActive ? 0.9 : 0.6, 12, 12]} />
+                          <sphereGeometry args={[(isActive ? 0.9 : 0.6) * unitScale, 12, 12]} />
                           <meshStandardMaterial
                             color={pinColor}
                             emissive={pinColor}
@@ -1215,7 +1220,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                           />
                         </mesh>
                         <Html
-                          position={[ann.position[0], ann.position[1], ann.position[2] + 2]}
+                          position={[ann.position[0], ann.position[1], ann.position[2] + 2 * unitScale]}
                           center
                           zIndexRange={[1, 6]}
                         >
@@ -1343,11 +1348,23 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                 data-testid="qif-add-annotation-btn"
                 onClick={() => {
                   const newId = `ann-${Date.now()}`;
+                  const targetCallout = activeCallout ?? issueCallouts[tourIndex] ?? scene.callouts[0] ?? null;
+                  const selectedFeat = selectedFeatureId
+                    ? doc.features.find((f) => f.id === selectedFeatureId)
+                    : undefined;
+                  const noteAnchor: [number, number, number] = targetCallout
+                    ? [targetCallout.surfaceAnchor[0], targetCallout.surfaceAnchor[1], targetCallout.surfaceAnchor[2]]
+                    : selectedFeat
+                      ? [selectedFeat.location[0], selectedFeat.location[1], selectedFeat.location[2]]
+                      : [sceneCenter[0] + annotations.length * 1.5 * unitScale, sceneCenter[1], sceneCenter[2]];
                   const newNote: Qif3dAnnotation = {
                     id: newId,
-                    position: [sceneCenter[0], sceneCenter[1], sceneCenter[2]],
+                    position: noteAnchor,
+                    featureId: targetCallout?.featureId ?? selectedFeatureId ?? undefined,
                     author: "Inspector",
-                    text: "Review required on this zone.",
+                    text: targetCallout
+                      ? `Review required on ${targetCallout.characteristicName} (${targetCallout.featureName}).`
+                      : "Review required on this zone.",
                     createdAt: "Just now",
                     resolved: false,
                   };
@@ -1369,7 +1386,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                   color: "#fbbf24",
                   border: "1px solid rgba(245, 158, 11, 0.35)",
                 }}
-                title="Add 3D review note on model"
+                title="Add 3D review note on selected feature or model"
               >
                 + Note
               </button>
@@ -1791,7 +1808,7 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
 
 export const QifViewer: React.FC<QifViewerProps> = (props) => {
   const { viewConfig } = props;
-  const validation = useMemo((): { ok: true } | { ok: false; message: string } => {
+  const validation = useMemo((): { ok: true; doc: QifDocument } | { ok: false; message: string } => {
     const cfg = (viewConfig && typeof viewConfig === "object" ? viewConfig : {}) as Record<string, unknown>;
     const candidate = cfg["code"] || cfg["qifCode"] || cfg["source"] || cfg["content"] || "";
     const text = typeof candidate === "string" ? candidate : "";
@@ -1803,7 +1820,7 @@ export const QifViewer: React.FC<QifViewerProps> = (props) => {
       if (doc.features.length === 0 && doc.characteristics.length === 0) {
         return { ok: false, message: "No features or characteristics were found in this QIF file." };
       }
-      return { ok: true };
+      return { ok: true, doc };
     } catch (err) {
       return { ok: false, message: `Could not parse QIF: ${err instanceof Error ? err.message : String(err)}` };
     }
@@ -1827,7 +1844,7 @@ export const QifViewer: React.FC<QifViewerProps> = (props) => {
       </Box>
     );
   }
-  return <QifViewerInner {...props} />;
+  return <QifViewerInner {...props} parsedDoc={validation.doc} />;
 };
 
 export default QifViewer;

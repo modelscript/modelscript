@@ -32,7 +32,7 @@ import {
   TrashIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { updateArtifactView } from "../../api/artifacts";
@@ -375,6 +375,16 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   const targetArtifactId = propArtifactId || viewConfig?.artifactId;
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelingEditRef = useRef<boolean>(false);
+  const committingEditRef = useRef<boolean>(false);
+
+  const hasInlineCode = typeof viewConfig?.code === "string" && viewConfig.code.trim().length > 0;
+  const hasRemoteUrl = !hasInlineCode && typeof viewConfig?.url === "string" && viewConfig.url.trim().length > 0;
+  const [isLoadingUrl, setIsLoadingUrl] = useState<boolean>(hasRemoteUrl);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchRetryToken, setFetchRetryToken] = useState<number>(0);
 
   const initialSource = useMemo(() => {
     if (typeof viewConfig?.code === "string" && viewConfig.code.trim().length > 0) {
@@ -403,32 +413,53 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
   // Sync if viewConfig.code changes or fetch from URL if needed
   useEffect(() => {
     if (typeof viewConfig?.code === "string" && viewConfig.code.trim().length > 0) {
       setXmlText(viewConfig.code);
       setBaselineXml(viewConfig.code);
+      setIsLoadingUrl(false);
+      setFetchError(null);
       return;
     }
     if (typeof viewConfig?.url === "string" && viewConfig.url.trim().length > 0) {
-      let cancelled = false;
-      fetch(viewConfig.url)
+      const controller = new AbortController();
+      setIsLoadingUrl(true);
+      setFetchError(null);
+      fetch(viewConfig.url, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then((txt) => {
-          if (!cancelled && txt.trim()) {
+          if (controller.signal.aborted) return;
+          if (txt.trim()) {
             setXmlText(txt);
             setBaselineXml(txt);
+            setIsLoadingUrl(false);
+            setFetchError(null);
+          } else {
+            setFetchError("Remote ReqIF document returned an empty response.");
+            setIsLoadingUrl(false);
           }
         })
-        .catch(() => {
-          // Keep fallback XML
+        .catch((err: unknown) => {
+          if (controller.signal.aborted) return;
+          setFetchError(err instanceof Error ? err.message : "Failed to fetch ReqIF specification.");
+          setIsLoadingUrl(false);
         });
       return () => {
-        cancelled = true;
+        controller.abort();
       };
     }
+    setIsLoadingUrl(false);
+    setFetchError(null);
     return undefined;
-  }, [viewConfig?.code, viewConfig?.url]);
+  }, [viewConfig?.code, viewConfig?.url, fetchRetryToken]);
 
   // Execute the ReqIF Tabular DSL sheet
   const tabularPayload: CompiledTabularPayload = useMemo(
@@ -442,12 +473,29 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     [xmlText, activeSheet, tabularPayload],
   );
 
-  // Build 2D Diagram model & SVG on demand
-  const diagramModel = useMemo(() => buildReqIfDiagram(xmlText), [xmlText]);
+  // Cheaply extract specification title without running full graph layout on every cell edit
+  const specTitle = useMemo(() => {
+    if (typeof viewConfig?.title === "string" && viewConfig.title.trim()) {
+      return viewConfig.title.trim();
+    }
+    const headerTitle = xmlText.match(/<TITLE>\s*([^<]+?)\s*<\/TITLE>/i)?.[1];
+    if (headerTitle) return headerTitle.trim();
+    const specLongName = xmlText.match(/<SPECIFICATION\b[^>]*\bLONG-NAME="([^"]+)"/i)?.[1];
+    return specLongName?.trim() || "OMG ReqIF 1.2 Specification";
+  }, [viewConfig, xmlText]);
+
+  // Build 2D Diagram model & SVG lazily only when Diagram mode is active
   const diagramData = useMemo(() => {
-    const svg = renderReqIfDiagramSvg(diagramModel, { isDark });
-    return { model: diagramModel, svg };
-  }, [diagramModel, isDark]);
+    if (mode !== "diagram") {
+      return {
+        model: { title: specTitle, nodes: [], edges: [] },
+        svg: "",
+      };
+    }
+    const model = buildReqIfDiagram(xmlText);
+    const svg = renderReqIfDiagramSvg(model, { isDark });
+    return { model, svg };
+  }, [mode, xmlText, isDark, specTitle]);
 
   const isEdited = xmlText !== baselineXml;
 
@@ -466,7 +514,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           ...viewConfig,
           code: xmlText,
         },
-        title: (viewConfig?.title as string) || diagramData.model.title || undefined,
+        title: specTitle || undefined,
       });
       setSaveSuccess(true);
       setBaselineXml(xmlText);
@@ -476,7 +524,8 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           detail: { artifactId: targetArtifactId, artifactView: updated?.artifactView },
         }),
       );
-      setTimeout(() => setSaveSuccess(false), 2500);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err: unknown) {
       console.error("Failed to save artifact:", err);
       toast.error("Failed to save changes. Make sure you own this artifact.");
@@ -527,8 +576,14 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     setEditingCell(null);
   }, [baselineXml, onCodeChange]);
 
+  const startInlineEdit = useCallback((rowId: string, columnId: string, value: string) => {
+    cancelingEditRef.current = false;
+    committingEditRef.current = false;
+    setEditingCell({ rowId, columnId, value });
+  }, []);
+
   const commitInlineEdit = useCallback(() => {
-    if (!editingCell) return;
+    if (!editingCell || cancelingEditRef.current || committingEditRef.current) return;
     const validation = validateReqIfTabularCell(
       xmlText,
       activeSheet,
@@ -540,6 +595,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       setEditingCell({ ...editingCell, error: validation.message });
       return;
     }
+    committingEditRef.current = true;
     applyMutation({
       kind: "updateCell",
       sheetId: activeSheet,
@@ -548,6 +604,9 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       value: editingCell.value,
     });
     setEditingCell(null);
+    queueMicrotask(() => {
+      committingEditRef.current = false;
+    });
   }, [editingCell, xmlText, activeSheet, applyMutation]);
 
   const handleAddRow = useCallback(() => {
@@ -588,8 +647,8 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   const visibleRows: TabularRow[] = useMemo(() => {
     let list = tabularPayload.rows;
 
-    // Hierarchy collapse filtering for tree sheets
-    if (tabularPayload.sheetKind === "tree" && collapsedRowIds.size > 0) {
+    // Hierarchy collapse filtering for tree sheets (disabled when flat column sorting is active)
+    if (tabularPayload.sheetKind === "tree" && !sortColumn && collapsedRowIds.size > 0) {
       const hiddenAncestors = new Set(collapsedRowIds);
       list = list.filter((row) => {
         if (row.parentId && hiddenAncestors.has(row.parentId)) {
@@ -655,7 +714,8 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             : xmlText;
       navigator.clipboard?.writeText(textToCopy);
       setCopiedFeedback(format.toUpperCase());
-      setTimeout(() => setCopiedFeedback(null), 1800);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedFeedback(null), 1800);
     },
     [tabularPayload, xmlText],
   );
@@ -671,7 +731,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   }, [xmlText, viewConfig?.specId]);
 
   const handleOpenInPlayground = useCallback(() => {
-    const title = (viewConfig?.title as string) || diagramData.model.title || "Specification.reqif";
+    const title = specTitle || "Specification.reqif";
     const encoded = compressMorselPayload({
       v: 1,
       lang: "reqif" as any,
@@ -682,7 +742,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
       : "";
     navigate(`/morsel${fromParam}#m=${encoded}`);
-  }, [xmlText, viewConfig, diagramData.model.title, navigate]);
+  }, [xmlText, viewConfig, specTitle, navigate]);
 
   const renderCellContent = (row: TabularRow, col: SerializedTabularColumn) => {
     const rawVal = row.cells[col.id];
@@ -699,10 +759,22 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             autoFocus
             value={editingCell.value}
             onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value, error: undefined })}
-            onBlur={commitInlineEdit}
+            onBlur={() => {
+              if (cancelingEditRef.current) {
+                cancelingEditRef.current = false;
+                return;
+              }
+              commitInlineEdit();
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") commitInlineEdit();
-              if (e.key === "Escape") setEditingCell(null);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitInlineEdit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelingEditRef.current = true;
+                setEditingCell(null);
+              }
             }}
           />
           {editingCell.error && <span style={{ color: "#f87171", fontSize: 10 }}>{editingCell.error}</span>}
@@ -710,10 +782,10 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       );
     }
 
-    // Indent & tree chevron for `identifier` column in tree sheet
+    // Indent & tree chevron for `identifier` column in tree sheet (suppressed when flat column sorting is active)
     if (col.id === "identifier" && tabularPayload.sheetKind === "tree") {
-      const depth = row.depth ?? 0;
-      const hasChildren = (row.childIds?.length ?? 0) > 0;
+      const depth = sortColumn ? 0 : (row.depth ?? 0);
+      const hasChildren = !sortColumn && (row.childIds?.length ?? 0) > 0;
       const isCollapsed = collapsedRowIds.has(row.id);
 
       return (
@@ -840,7 +912,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     if (col.type === "contract") {
       return (
         <div
-          onDoubleClick={() => col.editable && setEditingCell({ rowId: row.id, columnId: col.id, value: strVal })}
+          onDoubleClick={() => col.editable && startInlineEdit(row.id, col.id, strVal)}
           title="Double-click to edit formal mathematical contract (e.g. overshoot <= 2.5 %)"
           style={{ cursor: col.editable ? "pointer" : "default" }}
         >
@@ -885,7 +957,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     // Editable text / xhtml / number cells
     return (
       <div
-        onDoubleClick={() => col.editable && setEditingCell({ rowId: row.id, columnId: col.id, value: strVal })}
+        onDoubleClick={() => col.editable && startInlineEdit(row.id, col.id, strVal)}
         title={col.editable ? "Double-click to edit cell (syncs to ReqIF XML)" : strVal}
         style={{
           cursor: col.editable ? "text" : "default",
@@ -1167,7 +1239,10 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             }
           }}
         >
-          <InteractiveSvgStage svgHtml={sanitizeSvgMarkup(diagramData.svg, { isFullScreen })} />
+          <InteractiveSvgStage
+            svgHtml={sanitizeSvgMarkup(diagramData.svg, { isFullScreen })}
+            isFullScreen={isFullScreen}
+          />
         </div>
         {selectedNode && (
           <div
@@ -1250,11 +1325,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           >
             OMG ReqIF 1.2
           </BadgePill>
-          {!isFullScreen && (
-            <span style={{ fontWeight: 700, fontSize: 13 }}>
-              {(viewConfig?.title as string) || diagramData.model.title}
-            </span>
-          )}
+          {!isFullScreen && <span style={{ fontWeight: 700, fontSize: 13 }}>{specTitle}</span>}
           {isEdited && (
             <BadgePill
               $bg="var(--ms-status-warn-bg, rgba(245, 158, 11, 0.16))"
@@ -1332,75 +1403,79 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       </TopBar>
 
       {/* Live KPI Telemetry Ribbon */}
-      <KpiRibbon $isDark={isDark}>
-        {requirementsPayload.kpis.map((kpi) => {
-          const isActive = activeKpiFilter === kpi.id;
-          const accent =
-            kpi.status === "error" ? "#ef4444" : kpi.status === "warn" ? "#f59e0b" : kpi.accentColor || "#38bdf8";
-          return (
-            <KpiCard
-              key={kpi.id}
-              type="button"
-              $isDark={isDark}
-              $active={isActive}
-              $accent={accent}
-              title={
-                kpi.hasFilter ? `${kpi.description || kpi.label} (Click to filter table)` : kpi.description || kpi.label
-              }
-              onClick={() => {
-                if (!kpi.hasFilter) return;
-                setActiveSheet("requirements");
-                setActiveKpiFilter((prev) => (prev === kpi.id ? null : kpi.id));
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: isDark ? "#94a3b8" : "#64748b",
-                }}
-              >
-                {kpi.label}
-              </span>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  gap: 6,
+      {!isLoadingUrl && !fetchError && (
+        <KpiRibbon $isDark={isDark}>
+          {requirementsPayload.kpis.map((kpi) => {
+            const isActive = activeKpiFilter === kpi.id;
+            const accent =
+              kpi.status === "error" ? "#ef4444" : kpi.status === "warn" ? "#f59e0b" : kpi.accentColor || "#38bdf8";
+            return (
+              <KpiCard
+                key={kpi.id}
+                type="button"
+                $isDark={isDark}
+                $active={isActive}
+                $accent={accent}
+                title={
+                  kpi.hasFilter
+                    ? `${kpi.description || kpi.label} (Click to filter table)`
+                    : kpi.description || kpi.label
+                }
+                onClick={() => {
+                  if (!kpi.hasFilter) return;
+                  setActiveSheet("requirements");
+                  setActiveKpiFilter((prev) => (prev === kpi.id ? null : kpi.id));
                 }}
               >
                 <span
                   style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    fontFamily: "JetBrains Mono, monospace",
-                    color: accent,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: isDark ? "#94a3b8" : "#64748b",
                   }}
                 >
-                  {kpi.value}
+                  {kpi.label}
                 </span>
-                {kpi.sublabel && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    gap: 6,
+                  }}
+                >
                   <span
                     style={{
-                      fontSize: 10.5,
-                      color: isDark ? "#64748b" : "#94a3b8",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      fontFamily: "JetBrains Mono, monospace",
+                      color: accent,
                     }}
                   >
-                    {kpi.sublabel}
+                    {kpi.value}
                   </span>
-                )}
-              </div>
-            </KpiCard>
-          );
-        })}
-      </KpiRibbon>
+                  {kpi.sublabel && (
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        color: isDark ? "#64748b" : "#94a3b8",
+                      }}
+                    >
+                      {kpi.sublabel}
+                    </span>
+                  )}
+                </div>
+              </KpiCard>
+            );
+          })}
+        </KpiRibbon>
+      )}
 
       {/* Sheet Switcher & Spreadsheet Actions Toolbar (shown in Tabular & Split modes) */}
-      {(mode === "tabular" || mode === "split") && (
+      {!isLoadingUrl && !fetchError && (mode === "tabular" || mode === "split") && (
         <SubToolbar $isDark={isDark}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
             {tabularPayload.availableSheets.map((s) => (
@@ -1519,30 +1594,73 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       )}
 
       {/* Main Content Area */}
-      {mode === "tabular" && renderTabularPane()}
-      {mode === "diagram" && renderDiagramPane()}
-      {mode === "code" && renderCodePane()}
-      {mode === "split" && (
+      {isLoadingUrl ? (
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)",
             flex: 1,
-            overflow: "hidden",
+            minHeight: 280,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: isDark ? "#94a3b8" : "#64748b",
+            fontSize: 13,
+            gap: 8,
           }}
         >
-          <div
-            style={{
-              borderRight: `1px solid ${isDark ? "#1e293b" : "#e2e8f0"}`,
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {renderTabularPane()}
-          </div>
-          <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>{renderCodePane()}</div>
+          <SyncIcon size={14} />
+          <span>Loading OMG ReqIF 1.2 specification…</span>
         </div>
+      ) : fetchError ? (
+        <div
+          role="alert"
+          style={{
+            flex: 1,
+            minHeight: 280,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            padding: 24,
+            textAlign: "center",
+            color: isDark ? "#fca5a5" : "#dc2626",
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Failed to load ReqIF specification</div>
+          <div style={{ fontSize: 12, color: isDark ? "#94a3b8" : "#64748b", maxWidth: 420 }}>{fetchError}</div>
+          <PillButton $isDark={isDark} onClick={() => setFetchRetryToken((n) => n + 1)}>
+            <SyncIcon size={12} />
+            Retry
+          </PillButton>
+        </div>
+      ) : (
+        <>
+          {mode === "tabular" && renderTabularPane()}
+          {mode === "diagram" && renderDiagramPane()}
+          {mode === "code" && renderCodePane()}
+          {mode === "split" && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)",
+                flex: 1,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  borderRight: `1px solid ${isDark ? "#1e293b" : "#e2e8f0"}`,
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                {renderTabularPane()}
+              </div>
+              <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>{renderCodePane()}</div>
+            </div>
+          )}
+        </>
       )}
     </Container>
   );

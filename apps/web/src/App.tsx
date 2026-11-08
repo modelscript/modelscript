@@ -111,6 +111,10 @@ const TermsPage = lazyWithRetry(() => import("./pages/TermsPage"));
 const VerifyEmailPage = lazyWithRetry(() => import("./pages/VerifyEmailPage"));
 const TemplateDetailPage = lazyWithRetry(() => import("./pages/TemplateDetailPage"));
 const WorkspacePage = lazyWithRetry(() => import("./pages/WorkspacePage"));
+const OrganizationPage = lazyWithRetry(() => import("./pages/OrganizationPage"));
+const SpaceChatPage = lazyWithRetry(() => import("./pages/SpaceChatPage"));
+const SpacePage = lazyWithRetry(() => import("./pages/SpacePage"));
+const SpacesExplorePage = lazyWithRetry(() => import("./pages/SpacesExplorePage"));
 
 /**
  * Skeleton loading placeholder rendered while lazy-loaded route bundles are fetched.
@@ -216,10 +220,10 @@ function GlobalModals() {
           navWithScroll("/explore");
         } else if (k === "n") {
           e.preventDefault();
-          navWithScroll("/notifications");
+          navWithScroll("/inbox");
         } else if (k === "b") {
           e.preventDefault();
-          navWithScroll("/bookmarks");
+          navWithScroll("/inbox?view=saved");
         } else if (k === "f") {
           if (hasFeeds) {
             e.preventDefault();
@@ -323,21 +327,22 @@ function LegacyUserRedirect() {
 }
 
 function UserRootRouteGuard({ element }: { element: React.ReactElement }) {
-  const { username } = useParams<{ username?: string | undefined }>();
+  const { username, namespace } = useParams<{ username?: string | undefined; namespace?: string | undefined }>();
+  const handle = username || namespace;
   const location = useLocation();
 
-  if (!username) {
+  if (!handle) {
     return <NotFoundPage />;
   }
 
   // Handle percent-encoded @ (%40) by redirecting to canonical /@...
-  if (username.startsWith("%40") || username.toLowerCase().startsWith("%40")) {
+  if (handle.startsWith("%40") || handle.toLowerCase().startsWith("%40")) {
     const cleanPath = location.pathname.replace(/^\/%40/i, "/@");
     return <Navigate to={`${cleanPath}${location.search}${location.hash}`} replace />;
   }
 
-  // All user profile and status routes MUST start with '@'
-  if (!username.startsWith("@")) {
+  // All user profile, org container, and space routes under /:handle MUST start with '@'
+  if (!handle.startsWith("@")) {
     return <NotFoundPage />;
   }
 
@@ -561,6 +566,8 @@ function App() {
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const hasReferences = useFeatureFlag(["references", "scientific_references"]);
   const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
+  const hasSpaces = useFeatureFlag("spaces_hub");
+  const hasSpaceChat = useFeatureFlag("space_chat");
 
   return (
     <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
@@ -629,6 +636,32 @@ function App() {
                     <Route path="/feed" element={<Navigate to="/home" replace />} />
                     <Route path="/explore" element={<ExplorePage />} />
                     <Route
+                      path="/spaces"
+                      element={hasSpaces ? <SpacesExplorePage /> : <Navigate to="/explore" replace />}
+                    />
+                    <Route
+                      path="/chat"
+                      element={
+                        hasSpaceChat ? (
+                          <RequireAuth feature="Space Chat">
+                            <SpaceChatPage />
+                          </RequireAuth>
+                        ) : (
+                          <Navigate to="/spaces" replace />
+                        )
+                      }
+                    />
+                    <Route path="/orgs/:slug" element={<OrganizationPage />} />
+                    <Route path="/s/:namespace/:spaceSlug" element={<SpacePage />} />
+                    <Route
+                      path="/inbox"
+                      element={
+                        <RequireAuth feature="your inbox">
+                          <NotificationsPage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
                       path="/notifications"
                       element={
                         <RequireAuth feature="your notifications">
@@ -638,6 +671,14 @@ function App() {
                     />
                     <Route
                       path="/bookmarks"
+                      element={
+                        <RequireAuth feature="your bookmarks">
+                          <NotificationsPage initialView="saved" />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/bookmarks/feed"
                       element={
                         <RequireAuth feature="your bookmarks">
                           <BookmarksPage />
@@ -775,7 +816,7 @@ function App() {
                     <Route path="/users/:username/followers" element={<LegacyUserRedirect />} />
                     <Route path="/users/:username/following" element={<LegacyUserRedirect />} />
 
-                    {/* Canonical user profile and status routes with '@' guard */}
+                    {/* Canonical user profile, org container, and space routes with '@' guard */}
                     <Route path="/:username" element={<UserRootRouteGuard element={<ProfilePage />} />} />
                     <Route path="/:username/about" element={<UserRootRouteGuard element={<AboutAccountPage />} />} />
                     <Route path="/:username/status/:id" element={<UserRootRouteGuard element={<PostDetailPage />} />} />
@@ -785,6 +826,7 @@ function App() {
                     />
                     <Route path="/:username/followers" element={<UserRootRouteGuard element={<FollowersPage />} />} />
                     <Route path="/:username/following" element={<UserRootRouteGuard element={<FollowingPage />} />} />
+                    <Route path="/:namespace/:spaceSlug" element={<UserRootRouteGuard element={<SpacePage />} />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>

@@ -10,13 +10,12 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const API_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 async function main(): Promise<void> {
-  const dbPath = path.join(API_ROOT, "data", "modelscript.db");
-  const uploadDir = path.join(API_ROOT, "data", "uploads");
-  const db = new LibraryDatabase(dbPath);
+  const db = new LibraryDatabase(process.env["DB_PATH"] || process.env["DB_DIR"]);
+  const uploadDir = path.join(db.dbDir, "uploads");
   try {
     const summary = await seedPolyglotSocialData(db, { uploadDir });
     console.log(
-      `[PolyglotSeed] Completed: ${summary.usersSeeded} users, ${summary.artifactsCreated} artifacts, ${summary.postsCreated} posts, ${summary.commentsCreated} comments/replies.`,
+      `[PolyglotSeed] Completed: ${summary.usersSeeded} users, ${summary.artifactsCreated} artifacts, ${summary.postsCreated} posts, ${summary.commentsCreated} comments/replies, ${summary.organizationsSeeded ?? 0} orgs, ${summary.spacesSeeded ?? 0} spaces, ${summary.messagesSeeded ?? 0} chat messages.`,
     );
   } finally {
     db.close();

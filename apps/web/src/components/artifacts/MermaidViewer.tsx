@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CopyIcon, DownloadIcon, GraphIcon, SyncIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, GraphIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
 interface MermaidViewerProps {
@@ -101,6 +102,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
   const viewportRef = useRef<HTMLDivElement>(null);
 
   const [code, setCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
   const [svgString, setSvgString] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
@@ -129,26 +131,51 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
   const title = viewConfig?.title || "Architecture Diagram";
 
   useEffect(() => {
+    let cancelled = false;
+    const abortController = new AbortController();
+    setError(null);
+    setSvgString(null);
+
     async function fetchCode() {
       if (viewConfig?.codeUrl) {
+        setLoading(true);
         try {
-          const res = await fetch(viewConfig.codeUrl);
+          const res = await fetch(viewConfig.codeUrl, { signal: abortController.signal });
           if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch Mermaid code`);
           const text = await res.text();
-          setCode(text);
+          if (!cancelled && !abortController.signal.aborted) {
+            setCode(text);
+          }
         } catch (err: any) {
-          setError(err.message || "Failed to fetch Mermaid code");
+          if (!cancelled && !abortController.signal.aborted && err?.name !== "AbortError") {
+            setError(err.message || "Failed to fetch Mermaid code");
+          }
+        } finally {
+          if (!cancelled && !abortController.signal.aborted) {
+            setLoading(false);
+          }
         }
       } else if (viewConfig?.code) {
+        setLoading(false);
         setCode(viewConfig.code);
+      } else {
+        setLoading(false);
+        setCode(null);
       }
     }
-    fetchCode();
+
+    void fetchCode();
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
   }, [viewConfig]);
 
   useEffect(() => {
     if (!code) return;
 
+    let cancelled = false;
     const isDark = theme === "dark";
 
     mermaid.initialize({
@@ -172,31 +199,59 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
             edgeLabelBackground: "#161b22",
           }
         : {
+            darkMode: false,
             background: "transparent",
+            primaryColor: "#f8fafc",
+            primaryBorderColor: "#0284c7",
+            primaryTextColor: "#0f172a",
+            lineColor: "#475569",
+            secondaryColor: "#f1f5f9",
+            tertiaryColor: "#e2e8f0",
+            mainBkg: "#ffffff",
+            nodeBorder: "#0284c7",
+            clusterBkg: "#f8fafc",
+            clusterBorder: "#cbd5e1",
+            titleColor: "#0f172a",
+            edgeLabelBackground: "#ffffff",
           },
       securityLevel: "strict",
     });
 
+    const cleanupOrphanedNode = (renderId: string) => {
+      if (typeof document !== "undefined") {
+        document.getElementById(renderId)?.remove();
+        document.getElementById(`d${renderId}`)?.remove();
+      }
+    };
+
     const renderMermaid = async () => {
+      const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
       try {
         setError(null);
-        const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
         const { svg } = await mermaid.render(id, code);
+        if (cancelled) {
+          cleanupOrphanedNode(id);
+          return;
+        }
         const cleanSvg = DOMPurify.sanitize(svg, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-          ADD_TAGS: ["foreignObject"],
+          USE_PROFILES: { svg: true, svgFilters: true, html: true },
+          ADD_TAGS: ["foreignObject", "div", "span", "p", "br", "b", "i", "strong", "em", "style"],
+          ADD_ATTR: ["style", "class", "id", "xmlns"],
         });
         setSvgString(cleanSvg);
-        if (containerRef.current) {
-          containerRef.current.innerHTML = cleanSvg;
-        }
       } catch (err: any) {
+        cleanupOrphanedNode(id);
+        if (cancelled) return;
         console.error("Mermaid rendering failed:", err);
         setError(err.message || "Failed to render Mermaid diagram");
       }
     };
 
-    renderMermaid();
+    void renderMermaid();
+
+    return () => {
+      cancelled = true;
+    };
   }, [code, theme]);
 
   // Pan / Drag Handlers
@@ -267,20 +322,6 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
       window.removeEventListener("blur", handleWindowMouseUp);
       window.removeEventListener("dragend", handleWindowMouseUp);
     };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current && !isDragging) return;
-    if (typeof e.buttons === "number" && (e.buttons & 1) === 0) {
-      endDrag();
-      return;
-    }
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    setPan({
-      x: panStartRef.current.x + dx,
-      y: panStartRef.current.y + dy,
-    });
   };
 
   const handleMouseUp = () => {
@@ -377,6 +418,15 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
           )}
           <Button
             size="small"
+            variant={showCode ? "primary" : "default"}
+            leadingVisual={CodeIcon}
+            onClick={() => setShowCode((s) => !s)}
+            title="Toggle Mermaid source view"
+          >
+            Source
+          </Button>
+          <Button
+            size="small"
             leadingVisual={copiedSvg ? CheckIcon : CopyIcon}
             onClick={handleCopySvg}
             title="Copy SVG XML to clipboard"
@@ -401,7 +451,11 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
         </Box>
       </Toolbar>
 
-      {error ? (
+      {loading ? (
+        <Box flex={1} display="flex" alignItems="center" justifyContent="center" p={4}>
+          <Spinner size="medium" />
+        </Box>
+      ) : error ? (
         <Box p={4} display="flex" flexDirection="column" gap={3} bg="var(--color-canvas-subtle)" flex={1}>
           <Box p={3} bg="rgba(239, 68, 68, 0.1)" border="1px solid rgba(239, 68, 68, 0.3)" borderRadius="6px">
             <Text color="var(--color-danger-fg)" fontWeight="bold" fontSize="13px">
@@ -431,12 +485,25 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
             )}
           </Box>
         </Box>
+      ) : showCode && code ? (
+        <Box p={3} bg="var(--color-canvas-subtle)" flex={1} overflow="auto">
+          <pre
+            style={{
+              margin: 0,
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: "12px",
+              color: "var(--color-fg-default)",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {code}
+          </pre>
+        </Box>
       ) : (
         <CanvasViewport
           ref={viewportRef}
           $isDragging={isDragging}
           onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onDragStart={(e) => e.preventDefault()}
         >
@@ -444,6 +511,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
             <div
               ref={containerRef}
               style={{ width: "100%", height: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}
+              dangerouslySetInnerHTML={svgString ? { __html: svgString } : undefined}
             />
           </SvgTransformLayer>
           <ZoomHintBadge show={showHint && !isFullScreen} label="💡 Hold ⌘/Ctrl to zoom diagram" />

@@ -8,12 +8,12 @@ import type {
 } from "@modelscript/urdf";
 import { GizmoHelper, GizmoViewport, Grid } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
 import { resolveCssColor, useThemeTokens } from "../../theme-tokens";
 import SafeOrbitControls from "./SafeOrbitControls";
-import { DigitalTwinEnvironmentMesh, UrdfVisualMesh } from "./UrdfRobotCadMeshes";
+import { DigitalTwinEnvironmentMesh, UrdfVisualMesh, urdfPoseToThree } from "./UrdfRobotCadMeshes";
 
 export interface MultibodyNode3D {
   id: string;
@@ -21,6 +21,7 @@ export interface MultibodyNode3D {
   type: "body" | "marker" | "wheelset" | "track";
   position: [number, number, number];
   rotation?: [number, number, number] | undefined;
+  rotationMatrix?: [number, number, number, number, number, number, number, number, number] | undefined;
   dimensions?: [number, number, number] | undefined;
   color?: string | undefined;
 }
@@ -46,6 +47,8 @@ export interface MultibodyViewport3DProps {
   toolpaths?: DigitalTwinToolpathTrace[] | undefined;
   clearance?: DigitalTwinClearanceResult | undefined;
   tcpPosition?: [number, number, number] | null | undefined;
+  gripperOpeningMm?: number | undefined;
+  isFullScreen?: boolean | undefined;
   showPaths?: boolean | undefined;
   showColliders?: boolean | undefined;
   showFrames?: boolean | undefined;
@@ -80,51 +83,89 @@ const FallbackContainer = styled.div`
   gap: 8px;
 `;
 
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+
+function computeSegmentTransform(
+  fromUrdf: [number, number, number],
+  toUrdf: [number, number, number],
+  radius: number,
+): {
+  position: [number, number, number];
+  quaternion: THREE.Quaternion;
+  scale: [number, number, number];
+} | null {
+  const [x1, y1, z1] = fromUrdf;
+  const [x2, y2, z2] = toUrdf;
+  const p1 = new THREE.Vector3(x1, z1, -y1);
+  const p2 = new THREE.Vector3(x2, z2, -y2);
+  const dir = p2.clone().sub(p1);
+  const dist = dir.length();
+  if (dist < 1e-5) return null;
+  const mid = p1.add(p2).multiplyScalar(0.5);
+  const quat = new THREE.Quaternion().setFromUnitVectors(UP_AXIS, dir.divideScalar(dist));
+  return {
+    position: [mid.x, mid.y, mid.z],
+    quaternion: quat,
+    scale: [radius, dist, radius],
+  };
+}
+
 const CameraPresetController: React.FC<{
+  controlsRef: React.RefObject<any>;
   preset?: ViewportCameraPreset | undefined;
   trigger?: number | undefined;
   tcpPosition?: [number, number, number] | null | undefined;
   sceneScale?: number | undefined;
-}> = ({ preset, trigger, tcpPosition, sceneScale = 1.0 }) => {
+}> = ({ controlsRef, preset, trigger, tcpPosition, sceneScale = 1.0 }) => {
   const { camera } = useThree();
 
   useEffect(() => {
     if (!preset) return;
     const s = Math.max(0.25, Math.min(6.0, sceneScale));
+    let targetX = 0;
+    let targetY = 0.08 * s;
+    let targetZ = 0;
     switch (preset) {
       case "iso":
         camera.position.set(1.28 * s, 0.92 * s, 1.48 * s);
-        camera.lookAt(0, 0.08 * s, 0);
+        targetY = 0.08 * s;
         break;
       case "front":
         camera.position.set(0, 0.35 * s, 1.65 * s);
-        camera.lookAt(0, 0.15 * s, 0);
+        targetY = 0.15 * s;
         break;
       case "side":
         camera.position.set(1.65 * s, 0.35 * s, 0);
-        camera.lookAt(0, 0.15 * s, 0);
+        targetY = 0.15 * s;
         break;
       case "top":
         camera.position.set(0, 1.95 * s, 0.01);
-        camera.lookAt(0, 0, 0);
+        targetY = 0;
         break;
       case "focus":
         if (tcpPosition) {
           const [tx, ty, tz] = tcpPosition;
           camera.position.set(tx + 0.55 * s, tz + 0.42 * s, -ty + 0.65 * s);
-          camera.lookAt(tx, tz, -ty);
+          targetX = tx;
+          targetY = tz;
+          targetZ = -ty;
         } else {
           camera.position.set(0.75 * s, 0.65 * s, 0.85 * s);
-          camera.lookAt(0, 0.25 * s, 0);
+          targetY = 0.25 * s;
         }
         break;
       case "fit":
         camera.position.set(1.42 * s, 1.02 * s, 1.62 * s);
-        camera.lookAt(0, 0.06 * s, 0);
+        targetY = 0.06 * s;
         break;
     }
+    camera.lookAt(targetX, targetY, targetZ);
     camera.updateProjectionMatrix();
-  }, [camera, preset, trigger, tcpPosition, sceneScale]);
+    if (controlsRef.current) {
+      controlsRef.current.target.set(targetX, targetY, targetZ);
+      controlsRef.current.update();
+    }
+  }, [camera, controlsRef, preset, trigger, tcpPosition, sceneScale]);
 
   return null;
 };
@@ -139,6 +180,8 @@ const SceneContent: React.FC<{
   toolpaths?: DigitalTwinToolpathTrace[] | undefined;
   clearance?: DigitalTwinClearanceResult | undefined;
   tcpPosition?: [number, number, number] | null | undefined;
+  gripperOpeningMm?: number | undefined;
+  isFullScreen?: boolean | undefined;
   showPaths: boolean;
   showColliders: boolean;
   showFrames: boolean;
@@ -155,6 +198,8 @@ const SceneContent: React.FC<{
   toolpaths,
   clearance,
   tcpPosition,
+  gripperOpeningMm,
+  isFullScreen,
   showPaths,
   showColliders,
   showFrames,
@@ -163,21 +208,28 @@ const SceneContent: React.FC<{
   cameraPresetTrigger,
 }) => {
   const tokens = useThemeTokens();
+  const controlsRef = useRef<any>(null);
   const hasRichUrdfVisuals = Boolean(urdfVisuals && urdfVisuals.length > 0);
 
-  const linkGeometries = useMemo(() => {
+  const linkSegments = useMemo(() => {
     if (hasRichUrdfVisuals && !showFrames) return [];
-    return links.map((link) => {
-      const [x1, y1, z1] = link.from;
-      const [x2, y2, z2] = link.to;
-      const p1 = new THREE.Vector3(x1, z1, -y1);
-      const p2 = new THREE.Vector3(x2, z2, -y2);
-      const dist = p1.distanceTo(p2);
-      if (dist < 1e-5) return null;
-      const curve = new THREE.LineCurve3(p1, p2);
-      const geom = new THREE.TubeGeometry(curve, 1, hasRichUrdfVisuals ? 0.008 : 0.025, 8, false);
-      return { link, geom };
-    }).filter((item): item is { link: MultibodyLink3D; geom: THREE.TubeGeometry } => item !== null);
+    const radius = hasRichUrdfVisuals ? 0.008 : 0.025;
+    return links
+      .map((link) => {
+        const transform = computeSegmentTransform(link.from, link.to, radius);
+        if (!transform) return null;
+        return { link, ...transform };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          link: MultibodyLink3D;
+          position: [number, number, number];
+          quaternion: THREE.Quaternion;
+          scale: [number, number, number];
+        } => item !== null,
+      );
   }, [links, hasRichUrdfVisuals, showFrames]);
 
   const allToolpaths = useMemo(() => {
@@ -201,42 +253,33 @@ const SceneContent: React.FC<{
 
   const secondaryToolpathCurves = useMemo(() => {
     if (!showPaths || allToolpaths.length <= 1) return [];
-    return allToolpaths.slice(1).map((tp) => {
-      if (!tp.points || tp.points.length < 2) return null;
-      const vectors = tp.points.map(([x, y, z]) => new THREE.Vector3(x, z, -y));
-      const curve = new THREE.CatmullRomCurve3(vectors);
-      const geom = new THREE.TubeGeometry(curve, Math.max(24, tp.points.length * 2), 0.0038, 8, false);
-      return { geom, color: tp.color || "#f43f5e" };
-    }).filter((item): item is { geom: THREE.TubeGeometry; color: string } => item !== null);
+    return allToolpaths
+      .slice(1)
+      .map((tp) => {
+        if (!tp.points || tp.points.length < 2) return null;
+        const vectors = tp.points.map(([x, y, z]) => new THREE.Vector3(x, z, -y));
+        const curve = new THREE.CatmullRomCurve3(vectors);
+        const geom = new THREE.TubeGeometry(curve, Math.max(24, tp.points.length * 2), 0.0038, 8, false);
+        return { geom, color: tp.color || "#f43f5e" };
+      })
+      .filter((item): item is { geom: THREE.TubeGeometry; color: string } => item !== null);
   }, [showPaths, allToolpaths]);
 
-  const clearanceCurve = useMemo(() => {
+  const clearanceSegment = useMemo(() => {
     if (!showColliders || !clearance) return null;
-    const [x1, y1, z1] = clearance.fromPoint;
-    const [x2, y2, z2] = clearance.toPoint;
-    const p1 = new THREE.Vector3(x1, z1, -y1);
-    const p2 = new THREE.Vector3(x2, z2, -y2);
-    if (p1.distanceTo(p2) < 1e-4) return null;
-    const curve = new THREE.LineCurve3(p1, p2);
-    return new THREE.TubeGeometry(curve, 1, 0.0035, 6, false);
+    return computeSegmentTransform(clearance.fromPoint, clearance.toPoint, 0.0035);
   }, [showColliders, clearance]);
 
   useEffect(() => {
     return () => {
-      for (const item of linkGeometries) {
-        item.geom.dispose();
-      }
       if (toolpathCurve) {
         toolpathCurve.dispose();
       }
       for (const sec of secondaryToolpathCurves) {
         sec.geom.dispose();
       }
-      if (clearanceCurve) {
-        clearanceCurve.dispose();
-      }
     };
-  }, [linkGeometries, toolpathCurve, secondaryToolpathCurves, clearanceCurve]);
+  }, [toolpathCurve, secondaryToolpathCurves]);
 
   const { sceneScale, floorY } = useMemo(() => {
     let maxExtent = 0.45;
@@ -271,6 +314,7 @@ const SceneContent: React.FC<{
   return (
     <>
       <CameraPresetController
+        controlsRef={controlsRef}
         preset={cameraPreset}
         trigger={cameraPresetTrigger}
         tcpPosition={tcpPosition}
@@ -334,26 +378,27 @@ const SceneContent: React.FC<{
       {showPaths && tcpPosition && (
         <mesh position={[tcpPosition[0], tcpPosition[2], -tcpPosition[1]]}>
           <sphereGeometry args={[0.014, 20, 20]} />
-          <meshStandardMaterial
-            color="#38bdf8"
-            emissive="#38bdf8"
-            emissiveIntensity={0.85}
-          />
+          <meshStandardMaterial color="#38bdf8" emissive="#38bdf8" emissiveIntensity={0.85} />
         </mesh>
       )}
 
       {/* Render High-Fidelity URDF Visual Meshes */}
       {hasRichUrdfVisuals &&
-        urdfVisuals!.map((vis) => <UrdfVisualMesh key={vis.id} visual={vis} />)}
+        urdfVisuals!.map((vis) => <UrdfVisualMesh key={vis.id} visual={vis} gripperOpeningMm={gripperOpeningMm} />)}
 
       {/* Render URDF Collision Primitives when Colliders toggle is active */}
       {showColliders &&
-        urdfCollisions?.map((col) => <UrdfVisualMesh key={col.id} visual={col} />)}
+        urdfCollisions?.map((col) => <UrdfVisualMesh key={col.id} visual={col} gripperOpeningMm={gripperOpeningMm} />)}
 
       {/* Render Minimum Clearance Vector when Colliders toggle is active */}
-      {showColliders && clearance && clearanceCurve && (
+      {showColliders && clearance && clearanceSegment && (
         <group>
-          <mesh geometry={clearanceCurve}>
+          <mesh
+            position={clearanceSegment.position}
+            quaternion={clearanceSegment.quaternion}
+            scale={clearanceSegment.scale}
+          >
+            <cylinderGeometry args={[1, 1, 1, 6]} />
             <meshStandardMaterial
               color={clearance.minDistanceMm < 30 ? "#ef4444" : "#f59e0b"}
               emissive={clearance.minDistanceMm < 30 ? "#ef4444" : "#f59e0b"}
@@ -382,17 +427,18 @@ const SceneContent: React.FC<{
               ? tokens.status.warn.fg
               : tokens.status.pass.fg;
         const color = resolveCssColor(node.color || defaultColor, tokens, defaultColor);
+        const nodeQuat = node.rotationMatrix ? urdfPoseToThree([0, 0, 0], node.rotationMatrix).quaternion : undefined;
 
         if (hasRichUrdfVisuals) {
           return showFrames ? (
-            <group key={node.id} position={[x, z, -y]}>
+            <group key={node.id} position={[x, z, -y]} {...(nodeQuat ? { quaternion: nodeQuat } : {})}>
               <axesHelper args={[0.085]} />
             </group>
           ) : null;
         }
 
         return (
-          <group key={node.id} position={[x, z, -y]}>
+          <group key={node.id} position={[x, z, -y]} {...(nodeQuat ? { quaternion: nodeQuat } : {})}>
             {node.type === "body" || node.type === "wheelset" ? (
               <mesh>
                 <boxGeometry args={[dx, dz, dy]} />
@@ -410,23 +456,44 @@ const SceneContent: React.FC<{
       })}
 
       {/* Render Joint/Spring links */}
-      {linkGeometries.map(({ link, geom }) => {
+      {linkSegments.map(({ link, position, quaternion, scale }) => {
         const defaultLinkColor = link.type === "joint" ? tokens.status.warn.fg : tokens.brand;
         const linkColor = resolveCssColor(link.color || defaultLinkColor, tokens, defaultLinkColor);
         return (
-          <mesh key={link.id} geometry={geom}>
+          <mesh key={link.id} position={position} quaternion={quaternion} scale={scale}>
+            <cylinderGeometry args={[1, 1, 1, 8]} />
             <meshStandardMaterial color={linkColor} roughness={0.3} />
           </mesh>
         );
       })}
 
-      <SafeOrbitControls enableDamping dampingFactor={0.05} />
+      <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-left" margin={[56, 56]}>
         <GizmoViewport axisColors={["#ef4444", "#22c55e", "#3b82f6"]} labelColor="#ffffff" />
       </GizmoHelper>
     </>
   );
 };
+
+let cachedWebGLSupport: boolean | null = null;
+
+function checkWebGLAvailable(): boolean {
+  if (cachedWebGLSupport !== null) return cachedWebGLSupport;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    if (!gl) {
+      cachedWebGLSupport = false;
+      return false;
+    }
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    cachedWebGLSupport = true;
+    return true;
+  } catch {
+    cachedWebGLSupport = false;
+    return false;
+  }
+}
 
 export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
   nodes,
@@ -438,6 +505,8 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
   toolpaths,
   clearance,
   tcpPosition,
+  gripperOpeningMm,
+  isFullScreen,
   showPaths = true,
   showColliders = false,
   showFrames = false,
@@ -446,18 +515,7 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
   cameraPresetTrigger,
   height = "320px",
 }) => {
-  // Check if WebGL canvas is supported in current environment
-  const isWebGLAvailable = useMemo(() => {
-    try {
-      const canvas = document.createElement("canvas");
-      return !!(
-        window.WebGLRenderingContext &&
-        (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
-      );
-    } catch {
-      return false;
-    }
-  }, []);
+  const isWebGLAvailable = useMemo(() => checkWebGLAvailable(), []);
 
   return (
     <ViewportContainer $height={height}>
@@ -473,6 +531,8 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
             toolpaths={toolpaths}
             clearance={clearance}
             tcpPosition={tcpPosition}
+            gripperOpeningMm={gripperOpeningMm}
+            isFullScreen={isFullScreen}
             showPaths={showPaths}
             showColliders={showColliders}
             showFrames={showFrames}

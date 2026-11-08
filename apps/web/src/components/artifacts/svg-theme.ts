@@ -138,7 +138,7 @@ export function resolveCurrentThemeIsDark(explicitIsDark?: boolean): boolean {
   return true;
 }
 
-const LIGHT_THEME_SVG_CACHE_LIMIT = 256;
+const LIGHT_THEME_SVG_CACHE_LIMIT = 512;
 const lightThemeSvgCache = new Map<string, string>();
 
 function setLightThemeSvgCache(key: string, value: string): void {

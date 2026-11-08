@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  renderOlgaSchematicSvg,
+  type OlgaCompressorLike,
   type OlgaFlowpathLike,
+  type OlgaModelLike,
   type OlgaNodeLike,
+  type OlgaPumpLike,
   type OlgaValveLike,
-} from "@modelscript/diagram";
+  renderOlgaElevationProfileSvg,
+  renderOlgaPvtEnvelopeSvg,
+  renderOlgaSchematicSvg,
+  renderOlgaSlugStatisticsSvg,
+  renderOlgaWellboreIprSvg,
+} from "@modelscript/diagram/olga-diagram-builder";
+import { type OlgaModel, type OlgaSimulationResult, parseOlga, simulateDriftFlux } from "@modelscript/olga";
 import {
   AlertIcon,
   CheckCircleIcon,
@@ -13,12 +21,14 @@ import {
   CodeIcon,
   CopyIcon,
   DownloadIcon,
+  GraphIcon,
   PulseIcon,
 } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
@@ -43,10 +53,12 @@ export interface OlgaFlowViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
+type OlgaViewMode = "schematic" | "elevation" | "pvt" | "ipr" | "slug" | "code";
+
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
-  height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
+  height: ${(props) => (props.$isFullScreen ? "100%" : "460px")};
   background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
@@ -68,6 +80,32 @@ const Toolbar = styled.div`
   gap: 8px;
   z-index: 10;
   overflow: hidden;
+`;
+
+const TelemetryRibbon = styled.div`
+  min-height: 28px;
+  background: var(--color-canvas-inset, var(--color-canvas-subtle));
+  border-bottom: 1px solid var(--color-border-muted, var(--color-border-default));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-fg-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+`;
+
+const MetricItem = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  strong {
+    color: var(--color-fg-default);
+    font-weight: 600;
+  }
 `;
 
 const HeaderLeft = styled.div`
@@ -139,7 +177,7 @@ const SegmentBtn = styled.button<{ $active: boolean }>`
   color: ${(p) => (p.$active ? "var(--color-fg-on-emphasis, var(--color-fg-default))" : "var(--color-fg-muted)")};
   font-size: 11px;
   font-weight: 600;
-  padding: 3px 9px;
+  padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
   display: inline-flex;
@@ -212,31 +250,121 @@ function parseOlgaClient(code: string) {
   const nodes: OlgaNodeLike[] = [];
   const flowpaths: OlgaFlowpathLike[] = [];
   const valves: OlgaValveLike[] = [];
+  const pumps: OlgaPumpLike[] = [];
+  const compressors: OlgaCompressorLike[] = [];
 
-  for (const em of code.matchAll(
-    /\b(VALVE|CHOKE|PUMP|COMPRESSOR|SEPARATOR|HEATER)\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?/gi,
-  )) {
-    valves.push({
-      name: em[2] || `V_${valves.length + 1}`,
-      position: 500 * (valves.length + 1),
-      diameter: diameterMeters,
-      opening: 0.85,
+  for (const em of code.matchAll(/\b(VALVE|CHOKE|PUMP|COMPRESSOR)\b([^\n]*)/gi)) {
+    const kind = (em[1] || "VALVE").toUpperCase();
+    const rest = em[2] || "";
+    const labelMatch = rest.match(/\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
+    const posMatch = rest.match(/\bPOSITION\s*=\s*([0-9.eE+-]+)/i);
+    const openMatch = rest.match(/\bOPENING\s*=\s*([0-9.eE+-]+)/i);
+    const dpMatch = rest.match(/\b(?:DPBOOST|DELTAP)\s*=\s*([0-9.eE+-]+)/i);
+    const crMatch = rest.match(/\b(?:PRATIO|PRESSURERATIO)\s*=\s*([0-9.eE+-]+)/i);
+    const posVal = posMatch?.[1]
+      ? Number.parseFloat(posMatch[1])
+      : 500 * (valves.length + pumps.length + compressors.length + 1);
+
+    if (kind === "PUMP") {
+      pumps.push({
+        name: labelMatch?.[1] || `PMP_${pumps.length + 1}`,
+        position: Number.isFinite(posVal) ? posVal : 500,
+        dpBoost: dpMatch?.[1] ? Number.parseFloat(dpMatch[1]) : 50e5,
+      });
+    } else if (kind === "COMPRESSOR") {
+      compressors.push({
+        name: labelMatch?.[1] || `COMP_${compressors.length + 1}`,
+        position: Number.isFinite(posVal) ? posVal : 800,
+        pressureRatio: crMatch?.[1] ? Number.parseFloat(crMatch[1]) : 2.2,
+      });
+    } else {
+      valves.push({
+        name: labelMatch?.[1] || `V_${valves.length + 1}`,
+        position: Number.isFinite(posVal) ? posVal : 500 * (valves.length + 1),
+        diameter: diameterMeters,
+        opening: openMatch?.[1] ? Number.parseFloat(openMatch[1]) : 0.85,
+      });
+    }
+  }
+
+  // Collect explicit PIPE definitions so branches get accurate per-pipe geometry
+  const explicitPipes: { label: string; length: number; elevation: number; diameter: number; branch?: string }[] = [];
+  for (const pm of code.matchAll(/\bPIPE\b([^\n]*)/gi)) {
+    const rest = pm[1] || "";
+    const labelMatch = rest.match(/\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
+    const lenMatch = rest.match(/\bLENGTH\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
+    const elevMatch = rest.match(/\bELEVATION\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
+    const diaLocalMatch = rest.match(/\bDIAMETER\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
+    const branchMatch = rest.match(/\bBRANCH\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
+
+    let lenM = 2000;
+    if (lenMatch?.[1]) {
+      const v = Number.parseFloat(lenMatch[1]);
+      const u = (lenMatch[2] || "m").toLowerCase();
+      if (Number.isFinite(v)) lenM = u === "km" ? v * 1000 : v;
+    }
+    let elevM = 0;
+    if (elevMatch?.[1]) {
+      const v = Number.parseFloat(elevMatch[1]);
+      if (Number.isFinite(v)) elevM = v;
+    }
+    let diaM = diameterMeters;
+    if (diaLocalMatch?.[1]) {
+      const v = Number.parseFloat(diaLocalMatch[1]);
+      const u = (diaLocalMatch[2] || "m").toLowerCase();
+      if (Number.isFinite(v)) diaM = u.startsWith("in") ? v * 0.0254 : v;
+    }
+
+    explicitPipes.push({
+      label: labelMatch?.[1] || `PIPE_${explicitPipes.length + 1}`,
+      length: lenM,
+      elevation: elevM,
+      diameter: diaM,
+      ...(branchMatch?.[1] ? { branch: branchMatch[1] } : {}),
     });
   }
 
-  for (const bm of code.matchAll(/\bBRANCH\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi)) {
+  const branchMatches = Array.from(
+    code.matchAll(/\bBRANCH\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi),
+  );
+  for (const [bIdx, bm] of branchMatches.entries()) {
     const label = bm[1] || `FP_${flowpaths.length + 1}`;
+    const rest = bm[2] || "";
+    const lenMatch = rest.match(/\bLENGTH\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
+    const elevMatch = rest.match(/\bELEVATION\s*=\s*([0-9.eE+-]+)/i);
+    const diaLocalMatch = rest.match(/\bDIAMETER\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
+
+    const matchingPipes = explicitPipes.filter((p) => p.branch === label);
+    const fallbackLen = lenMatch?.[1]
+      ? Number.parseFloat(lenMatch[1]) * ((lenMatch[2] || "m").toLowerCase() === "km" ? 1000 : 1)
+      : totalLengthM > 0
+        ? Math.round(totalLengthM / Math.max(1, branchMatches.length))
+        : 5000;
+    const fallbackElev = elevMatch?.[1] ? Number.parseFloat(elevMatch[1]) : 0;
+    const fallbackDia = diaLocalMatch?.[1]
+      ? Number.parseFloat(diaLocalMatch[1]) * ((diaLocalMatch[2] || "m").toLowerCase().startsWith("in") ? 0.0254 : 1)
+      : diameterMeters;
+
+    const branchPipes =
+      matchingPipes.length > 0
+        ? matchingPipes
+        : bIdx === 0 && explicitPipes.length > 0 && explicitPipes.every((p) => !p.branch)
+          ? explicitPipes
+          : [
+              {
+                label: `PIPE_${bIdx + 1}`,
+                length: Number.isFinite(fallbackLen) ? fallbackLen : 5000,
+                elevation: Number.isFinite(fallbackElev) ? fallbackElev : 0,
+                diameter: Number.isFinite(fallbackDia) ? fallbackDia : diameterMeters,
+              },
+            ];
+
     flowpaths.push({
       name: label,
-      pipes: [
-        {
-          label: `PIPE_${flowpaths.length + 1}`,
-          length: totalLengthM > 0 ? totalLengthM : 5000,
-          elevation: 0,
-          diameter: diameterMeters,
-        },
-      ],
-      valves: flowpaths.length === 0 ? valves : [],
+      pipes: branchPipes,
+      valves: bIdx === 0 ? valves : [],
+      ...(bIdx === 0 && pumps.length > 0 ? { pumps } : {}),
+      ...(bIdx === 0 && compressors.length > 0 ? { compressors } : {}),
     });
   }
 
@@ -279,15 +407,20 @@ function parseOlgaClient(code: string) {
     }
     flowpaths.push({
       name: "FLOWLINE",
-      pipes: [
-        {
-          label: "P1",
-          length: totalLengthM > 0 ? totalLengthM : 4500,
-          elevation: 150,
-          diameter: diameterMeters,
-        },
-      ],
+      pipes:
+        explicitPipes.length > 0
+          ? explicitPipes
+          : [
+              {
+                label: "P1",
+                length: totalLengthM > 0 ? totalLengthM : 4500,
+                elevation: 150,
+                diameter: diameterMeters,
+              },
+            ],
       valves,
+      ...(pumps.length > 0 ? { pumps } : {}),
+      ...(compressors.length > 0 ? { compressors } : {}),
     });
   }
 
@@ -303,11 +436,22 @@ function parseOlgaClient(code: string) {
 
 export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<OlgaViewMode>("schematic");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const title = viewConfig.title || viewConfig.pipelineName || "OLGA Flow Assurance (.opi)";
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (viewConfig.code) {
@@ -315,59 +459,206 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
       return;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
       const targetUrl =
         viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
           ? viewConfig.url
           : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
           if (txt) setRawText(txt);
         })
-        .catch((err) => console.warn("[OlgaFlowViewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          console.warn("[OlgaFlowViewer] Failed to fetch source:", err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+      return () => controller.abort();
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
-  const parsedClient = useMemo(() => (rawText ? parseOlgaClient(rawText) : undefined), [rawText]);
+  const olgaAnalysis = useMemo(() => {
+    let parsedModel: OlgaModel | null = null;
+    let simResult: OlgaSimulationResult | null = null;
+    const clientFallback = rawText ? parseOlgaClient(rawText) : undefined;
 
-  const sanitizedSvg = useMemo(() => {
-    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    if (rawText.trim()) {
+      try {
+        const candidate = parseOlga(rawText);
+        if (candidate.flowpaths.length > 0) {
+          parsedModel = candidate;
+          simResult = simulateDriftFlux(candidate, { timeSteps: 8, gridPoints: 20 });
+        }
+      } catch (err) {
+        console.warn("[OlgaFlowViewer] parseOlga / simulateDriftFlux fallback:", err);
+      }
     }
-    if (parsedClient && parsedClient.flowpaths.length > 0) {
+
+    const effectiveModel: OlgaModelLike = parsedModel ?? {
+      title,
+      nodes: clientFallback?.nodes ?? [],
+      flowpaths: clientFallback?.flowpaths ?? [],
+    };
+
+    // Compute telemetry summary metrics
+    let calcLengthM = 0;
+    let firstDiaM = 0.3048;
+    for (const fp of effectiveModel.flowpaths) {
+      for (const p of fp.pipes) {
+        calcLengthM += p.length;
+        if (p.diameter > 0) firstDiaM = p.diameter;
+      }
+    }
+
+    let calcDpBar: number | undefined;
+    let calcHoldupPct: number | undefined;
+    if (simResult && simResult.profiles.length > 0) {
+      const lastSnap = simResult.profiles[simResult.profiles.length - 1]!;
+      if (lastSnap.pressure.length >= 2) {
+        const pIn = lastSnap.pressure[0]!;
+        const pOut = lastSnap.pressure[lastSnap.pressure.length - 1]!;
+        const pInBar = pIn > 2000 ? pIn / 1e5 : pIn;
+        const pOutBar = pOut > 2000 ? pOut / 1e5 : pOut;
+        calcDpBar = Math.abs(pInBar - pOutBar);
+      }
+      if (lastSnap.holdup.length > 0) {
+        const avgH = lastSnap.holdup.reduce((acc, v) => acc + v, 0) / lastSnap.holdup.length;
+        calcHoldupPct = avgH <= 1.0 ? avgH * 100 : avgH;
+      }
+    }
+
+    const lengthKm =
+      viewConfig.lengthKm ??
+      (calcLengthM > 0 ? Number((calcLengthM / 1000).toFixed(2)) : (clientFallback?.lengthKm ?? 4.5));
+    const diameterInches =
+      viewConfig.diameterInches ?? clientFallback?.diameterInches ?? Number((firstDiaM * 39.3701).toFixed(1));
+    const pressureDropBar =
+      viewConfig.pressureDropBar ?? (calcDpBar !== undefined ? Number(calcDpBar.toFixed(1)) : 68.5);
+    const rawHoldup = viewConfig.liquidHoldupAvg ?? calcHoldupPct ?? 24.8;
+    const liquidHoldupPct = rawHoldup <= 1.0 ? rawHoldup * 100 : rawHoldup;
+
+    return {
+      parsedModel,
+      simResult,
+      effectiveModel,
+      telemetry: {
+        lengthKm,
+        diameterInches,
+        pressureDropBar,
+        liquidHoldupPct,
+      },
+    };
+  }, [
+    rawText,
+    title,
+    viewConfig.lengthKm,
+    viewConfig.diameterInches,
+    viewConfig.pressureDropBar,
+    viewConfig.liquidHoldupAvg,
+  ]);
+
+  const schematicSvg = useMemo(() => {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
+    }
+    if (olgaAnalysis.effectiveModel.flowpaths.length > 0) {
       try {
         const built = renderOlgaSchematicSvg({
+          ...olgaAnalysis.effectiveModel,
           title,
-          nodes: parsedClient.nodes,
-          flowpaths: parsedClient.flowpaths,
         });
-        return sanitizeSvgMarkup(built, { isFullScreen });
+        return sanitizeSvgMarkup(built, { isFullScreen, isDark });
       } catch {
         return "";
       }
     }
     return "";
-  }, [viewConfig.svg, parsedClient, title, isFullScreen]);
+  }, [viewConfig.svg, olgaAnalysis.effectiveModel, title, isFullScreen, isDark]);
 
-  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
+  const elevationSvg = useMemo(() => {
+    try {
+      const built = renderOlgaElevationProfileSvg(
+        { ...olgaAnalysis.effectiveModel, title },
+        olgaAnalysis.simResult ?? undefined,
+      );
+      return sanitizeSvgMarkup(built, { isFullScreen, isDark });
+    } catch {
+      return "";
+    }
+  }, [olgaAnalysis, title, isFullScreen, isDark]);
+
+  const pvtSvg = useMemo(() => {
+    try {
+      const built = renderOlgaPvtEnvelopeSvg(
+        olgaAnalysis.parsedModel?.pvtData,
+        olgaAnalysis.simResult ?? undefined,
+        title,
+      );
+      return sanitizeSvgMarkup(built, { isFullScreen, isDark });
+    } catch {
+      return "";
+    }
+  }, [olgaAnalysis, title, isFullScreen, isDark]);
+
+  const iprSvg = useMemo(() => {
+    try {
+      const iprSource = olgaAnalysis.parsedModel?.sources.find((s) => s.ipr)?.ipr;
+      const wellName = olgaAnalysis.effectiveModel.nodes[0]?.name || "SUBSEA WELL";
+      const built = renderOlgaWellboreIprSvg(iprSource, wellName);
+      return sanitizeSvgMarkup(built, { isFullScreen, isDark });
+    } catch {
+      return "";
+    }
+  }, [olgaAnalysis, isFullScreen, isDark]);
+
+  const slugSvg = useMemo(() => {
+    try {
+      const built = renderOlgaSlugStatisticsSvg(olgaAnalysis.simResult ?? undefined);
+      return sanitizeSvgMarkup(built, { isFullScreen, isDark });
+    } catch {
+      return "";
+    }
+  }, [olgaAnalysis, isFullScreen, isDark]);
+
+  const activeSvg =
+    viewMode === "schematic"
+      ? schematicSvg
+      : viewMode === "elevation"
+        ? elevationSvg
+        : viewMode === "pvt"
+          ? pvtSvg
+          : viewMode === "ipr"
+            ? iprSvg
+            : viewMode === "slug"
+              ? slugSvg
+              : "";
+
+  const effectiveViewMode: OlgaViewMode = viewMode !== "code" && activeSvg ? viewMode : "code";
 
   const handleCopy = () => {
     if (rawText) {
       navigator.clipboard.writeText(rawText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const handleExportSvg = () => {
-    if (!sanitizedSvg) return;
-    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const svgToExport = activeSvg || schematicSvg;
+    if (!svgToExport) return;
+    const blob = new Blob([svgToExport], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-olga.svg`;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-olga-${viewMode}.svg`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -385,6 +676,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
 
   const slugRisk = viewConfig.slugRisk;
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
+  const { telemetry } = olgaAnalysis;
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -402,21 +694,35 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {sanitizedSvg && (
-            <SegmentedControl>
-              <SegmentBtn
-                type="button"
-                $active={effectiveViewMode === "diagram"}
-                onClick={() => setViewMode("diagram")}
-              >
-                <PulseIcon size={12} /> Profile
-              </SegmentBtn>
-              <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
-                <CodeIcon size={12} /> Input Deck
-              </SegmentBtn>
-            </SegmentedControl>
-          )}
-          {sanitizedSvg && (
+          <SegmentedControl>
+            <SegmentBtn
+              type="button"
+              $active={effectiveViewMode === "schematic"}
+              onClick={() => setViewMode("schematic")}
+            >
+              <PulseIcon size={12} /> Schematic
+            </SegmentBtn>
+            <SegmentBtn
+              type="button"
+              $active={effectiveViewMode === "elevation"}
+              onClick={() => setViewMode("elevation")}
+            >
+              <GraphIcon size={12} /> Elevation & Holdup
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={effectiveViewMode === "pvt"} onClick={() => setViewMode("pvt")}>
+              PVT & Hydrate
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={effectiveViewMode === "ipr"} onClick={() => setViewMode("ipr")}>
+              Wellbore IPR
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={effectiveViewMode === "slug"} onClick={() => setViewMode("slug")}>
+              Slug Catcher
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Input Deck
+            </SegmentBtn>
+          </SegmentedControl>
+          {activeSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
               SVG
             </Button>
@@ -432,12 +738,27 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
         </Box>
       </Toolbar>
 
+      <TelemetryRibbon>
+        <MetricItem>
+          Length: <strong>{telemetry.lengthKm.toFixed(2)} km</strong>
+        </MetricItem>
+        <MetricItem>
+          Diameter: <strong>{telemetry.diameterInches.toFixed(1)} in</strong>
+        </MetricItem>
+        <MetricItem>
+          ΔP: <strong>{telemetry.pressureDropBar.toFixed(1)} bar</strong>
+        </MetricItem>
+        <MetricItem>
+          Liquid Holdup: <strong>{telemetry.liquidHoldupPct.toFixed(1)}%</strong>
+        </MetricItem>
+      </TelemetryRibbon>
+
       <ContentArea>
         {loading ? (
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : effectiveViewMode === "code" || !sanitizedSvg ? (
+        ) : effectiveViewMode === "code" || !activeSvg ? (
           <CodePre>
             {lines.length > 0 ? (
               lines.map((line, idx) => (
@@ -453,7 +774,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
             )}
           </CodePre>
         ) : (
-          <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
+          <InteractiveSvgStage svgMarkup={activeSvg} isFullScreen={isFullScreen} />
         )}
       </ContentArea>
     </CardWrapper>

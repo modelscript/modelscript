@@ -173,6 +173,36 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     category: "core",
     maturity: "production",
   },
+  spaces_hub: {
+    key: "spaces_hub",
+    name: "Ansatz Spaces & Organization Portals",
+    description:
+      "Polymorphic Organization and User Spaces bundling Living Docs (CMS), Engineering Blog, Repositories, Packages, and Digital Thread.",
+    defaultValue: true,
+    category: "core",
+    maturity: "production",
+    allowedRoles: ["admin", "beta_tester", "user", "guest"],
+  },
+  space_chat: {
+    key: "space_chat",
+    name: "Real-Time Space Chat & Sidenav",
+    description:
+      "Slack/Discord-style real-time engineering channels, sidenav dock, inline WASM execution, and thread promotion to Living Docs / ECOs.",
+    defaultValue: true,
+    category: "social",
+    maturity: "production",
+    allowedRoles: ["admin", "beta_tester", "user", "guest"],
+  },
+  space_plm_workflows: {
+    key: "space_plm_workflows",
+    name: "Space PDM & PLM Engineering Change Orders",
+    description:
+      "Git-backed Engineering Change Orders (ECOs), 3D CAD semantic diffs, simulation regression gates, and cryptographic approval sign-offs.",
+    defaultValue: true,
+    category: "developer",
+    maturity: "production",
+    allowedRoles: ["admin", "beta_tester", "user", "guest"],
+  },
 
   // ── High-Liability / Heavy Subsystems (Disabled by default for launch) ──
   cae_cloud_solver: {

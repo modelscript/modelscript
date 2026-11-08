@@ -157,6 +157,22 @@ export function sampleColormapCss(preset: ColormapPreset, t: number): string {
   return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
 
+/**
+ * Compute loadFactor-adjusted scalar value, preserving non-zero ambient baselines
+ * (such as Temperature in Kelvin or atmospheric pressure).
+ */
+export function computeScaledScalar(
+  rawScalar: number,
+  scalarMin: number,
+  scalarMax: number,
+  loadFactor: number,
+): number {
+  if (scalarMin > 0 && scalarMin > scalarMax * 0.15) {
+    return scalarMin + (rawScalar - scalarMin) * loadFactor;
+  }
+  return rawScalar * loadFactor;
+}
+
 // ── Shader Source ────────────────────────────────────────────────
 
 export const COLORMAP_VERTEX_SHADER = `
@@ -164,11 +180,14 @@ export const COLORMAP_VERTEX_SHADER = `
   varying float vScalar;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying vec3 vWorldPosition;
 
   void main() {
     vScalar = scalar;
     vNormal = normalize(normalMatrix * normal);
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPos.xyz;
+    vec4 mvPosition = viewMatrix * worldPos;
     vViewPosition = -mvPosition.xyz;
     gl_Position = projectionMatrix * mvPosition;
   }
@@ -180,22 +199,34 @@ export const COLORMAP_FRAGMENT_SHADER = `
   uniform float scalarMax;
   uniform float opacity;
   uniform float loadFactor;
+  uniform vec4 clipPlane;
+  uniform float clipEnabled;
 
   varying float vScalar;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying vec3 vWorldPosition;
 
   void main() {
-    // Normalize scalar to [0, 1]
+    if (clipEnabled > 0.5 && dot(vWorldPosition, clipPlane.xyz) + clipPlane.w < 0.0) {
+      discard;
+    }
+
+    // Normalize scalar to [0, 1], preserving non-zero ambient baselines (e.g. Kelvin temperature)
     float range = scalarMax - scalarMin;
-    float currentScalar = vScalar * loadFactor;
+    float currentScalar = (scalarMin > 0.0 && scalarMin > scalarMax * 0.15)
+      ? (scalarMin + (vScalar - scalarMin) * loadFactor)
+      : (vScalar * loadFactor);
     float t = range > 0.0 ? clamp((currentScalar - scalarMin) / range, 0.0, 1.0) : 0.5;
 
     // Sample colormap
     vec4 color = texture2D(colormap, vec2(t, 0.5));
 
-    // Basic lighting (Lambertian + ambient)
+    // Two-sided Lambertian + ambient lighting
     vec3 normal = normalize(vNormal);
+    if (!gl_FrontFacing) {
+      normal = -normal;
+    }
     vec3 lightDir = normalize(vec3(0.5, 1.0, 0.8));
     float diffuse = max(dot(normal, lightDir), 0.0);
     float ambient = 0.35;

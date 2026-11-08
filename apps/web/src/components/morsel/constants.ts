@@ -411,6 +411,31 @@ Solve
     supports3d: false,
   },
   {
+    id: "comtrade",
+    name: "COMTRADE / Oscillography",
+    tier: "beta",
+    ext: "cfg",
+    extensions: [".cfg", ".dat", ".c37"],
+    family: "ini",
+    defaultCode: `Station,Device,2013
+4,3A,1D
+1,Ia,A,,A,0.001,0,0,-32768,32767,1,1,S
+2,Ib,B,,A,0.001,0,0,-32768,32767,1,1,S
+3,Ic,C,,A,0.001,0,0,-32768,32767,1,1,S
+4,Trip,A,,0,0,0,0
+60
+1
+4000,1000
+01/01/2026,00:00:00.000000
+01/01/2026,00:00:00.250000
+ASCII
+1
+`,
+    supportsDiagram: false,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
     id: "plcopen",
     name: "PLCopen / IEC 61131-3",
     tier: "beta",

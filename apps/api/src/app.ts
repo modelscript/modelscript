@@ -61,6 +61,7 @@ import { simulateRouter } from "./routes/simulate.js";
 import { sitemapsRouter } from "./routes/sitemaps.js";
 import { socialRouter } from "./routes/social.js";
 import { renderSolutionBundleHtml, solutionsRouter } from "./routes/solutions.js";
+import { spacesRouter } from "./routes/spaces.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
@@ -662,6 +663,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/users", createSigningKeysRouter(database));
   app.use("/api/v1/posts", createPostEvidenceRouter(database));
   app.use("/api/v1/solutions", solutionsRouter(database));
+  app.use("/api/v1/spaces", spacesRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
   const mountedReferencesRouter = referencesRouter(database);
   app.use("/api/v1/references", mountedReferencesRouter);

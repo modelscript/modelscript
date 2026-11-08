@@ -49,10 +49,16 @@ export class NodeFsBridge implements FileSystemBridge {
 
   constructor() {
     try {
-      if (typeof process !== "undefined" && process.versions?.node && typeof require === "function") {
+      if (
+        typeof window === "undefined" &&
+        typeof process !== "undefined" &&
+        process.versions?.node &&
+        typeof require === "function"
+      ) {
         const nodeRequire = require;
         this.fs = nodeRequire("node:fs") as typeof import("node:fs");
-        this.fileURLToPath = (nodeRequire("node:url") as typeof import("node:url")).fileURLToPath;
+        const nodeUrl = nodeRequire("node:url") as typeof import("node:url");
+        this.fileURLToPath = nodeUrl?.fileURLToPath ?? null;
       }
     } catch {
       // In browser webworker
@@ -132,7 +138,7 @@ export class NodeFsBridge implements FileSystemBridge {
  * Creates the default FileSystemBridge appropriate for the active runtime environment.
  */
 export function createDefaultFsBridge(): FileSystemBridge {
-  if (typeof process !== "undefined" && process.versions?.node) {
+  if (typeof window === "undefined" && typeof process !== "undefined" && Boolean(process.versions?.node)) {
     return new NodeFsBridge();
   }
   return new MemoryFsBridge();

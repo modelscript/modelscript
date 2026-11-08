@@ -199,7 +199,13 @@ export function buildOlgaDiagram(model: OlgaModelLike): OlgaDiagramGraph {
       (n) => n.flowpath === flowpath.name && (n.type === "TERMINAL" || n.type === "WELL" || n.boundaryPosition === 0),
     );
     const wellName = inletNode?.name || (isMultiFlowpath ? `WELL_${fIdx + 1}` : "SUBSEA WELL");
-    const wellP = inletNode?.pressure ? `${(inletNode.pressure / 1e5).toFixed(0)} bar` : "180 bar";
+    const wellPBar =
+      inletNode?.pressure !== undefined
+        ? inletNode.pressure > 2000
+          ? inletNode.pressure / 1e5
+          : inletNode.pressure
+        : 180;
+    const wellP = `${wellPBar.toFixed(0)} bar`;
     const wellId = `node_wellhead_${fIdx}`;
 
     cells.push({
@@ -356,6 +362,17 @@ export function buildOlgaDiagram(model: OlgaModelLike): OlgaDiagramGraph {
   // 6. Outlet Convergence: Manifold Junction and/or Topside Separator
   const midY = startY + ((flowpaths.length - 1) * rowHeight) / 2;
   const sepX = maxFlowpathX + 40;
+  const outletNode = model.nodes.find(
+    (n) =>
+      n.type === "PRESSURE" || n.type === "SEPARATOR" || (n.boundaryPosition !== undefined && n.boundaryPosition > 0),
+  );
+  const sepPBar =
+    outletNode?.pressure !== undefined
+      ? outletNode.pressure > 2000
+        ? outletNode.pressure / 1e5
+        : outletNode.pressure
+      : 32;
+  const sepLabel = `SLUG CATCHER\n& SEPARATOR\nP: ${sepPBar.toFixed(0)} bar`;
 
   if (sharedJunctions.length > 0) {
     const junc = sharedJunctions[0]!;
@@ -395,7 +412,7 @@ export function buildOlgaDiagram(model: OlgaModelLike): OlgaDiagramGraph {
       y: midY - 24,
       width: 115,
       height: 52,
-      label: "SLUG CATCHER\n& SEPARATOR\nP: 32 bar",
+      label: sepLabel,
       attrs: {
         body: { rx: 8, fill: "#1e293b", stroke: "#10b981", strokeWidth: 2.5 },
         label: { fill: "#f8fafc", fontSize: 10, fontFamily: "Inter, system-ui, sans-serif" },
@@ -419,7 +436,7 @@ export function buildOlgaDiagram(model: OlgaModelLike): OlgaDiagramGraph {
       y: midY - 24,
       width: 115,
       height: 52,
-      label: "SLUG CATCHER\n& SEPARATOR\nP: 32 bar",
+      label: sepLabel,
       attrs: {
         body: { rx: 8, fill: "#1e293b", stroke: "#10b981", strokeWidth: 2.5 },
         label: { fill: "#f8fafc", fontSize: 10, fontFamily: "Inter, system-ui, sans-serif" },
@@ -1039,8 +1056,10 @@ export function renderOlgaPvtEnvelopeSvg(
   if (simResult && simResult.profiles && simResult.profiles.length > 0) {
     const snap = simResult.profiles[simResult.profiles.length - 1]!;
     for (let k = 0; k < snap.temperature.length; k++) {
-      const tC = snap.temperature[k]! - 273.15;
-      const pBar = snap.pressure[k]! / 1e5;
+      const tRaw = snap.temperature[k]!;
+      const tC = tRaw > 180 ? tRaw - 273.15 : tRaw;
+      const pRaw = snap.pressure[k]!;
+      const pBar = pRaw > 2000 ? pRaw / 1e5 : pRaw;
       trajPts.push({ t: tC, p: pBar });
 
       const lnP = Math.log(Math.max(5, pBar));
@@ -1110,7 +1129,11 @@ export function renderOlgaWellboreIprSvg(
 ): string {
   const svgW = 860;
   const svgH = 430;
-  const presRes = ipr?.reservoirPressure ? ipr.reservoirPressure / 1e5 : 190.0;
+  const presRes = ipr?.reservoirPressure
+    ? ipr.reservoirPressure > 2000
+      ? ipr.reservoirPressure / 1e5
+      : ipr.reservoirPressure
+    : 190.0;
   const qMax = ipr?.maxLiquidRate ?? 75.0;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" width="100%" height="100%" style="background:#090d16;">\n`;

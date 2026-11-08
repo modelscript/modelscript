@@ -19,12 +19,7 @@ export function urdfPoseToThree(
   if (rot && rot.length === 9) {
     const [r0, r1, r2, r3, r4, r5, r6, r7, r8] = rot;
     const m4 = new THREE.Matrix4();
-    m4.set(
-      r0, r2, -r1, 0,
-      r6, r8, -r7, 0,
-      -r3, -r5, r4, 0,
-      0, 0, 0, 1,
-    );
+    m4.set(r0, r2, -r1, 0, r6, r8, -r7, 0, -r3, -r5, r4, 0, 0, 0, 0, 1);
     quaternion.setFromRotationMatrix(m4);
   }
   return { position, quaternion };
@@ -50,7 +45,8 @@ const ProceduralRobotPart: React.FC<{
   radius?: number | undefined;
   length?: number | undefined;
   size?: { x: number; y: number; z: number } | undefined;
-}> = ({ partKind, primaryColor, radius = 0.045, length = 0.2, size }) => {
+  gripperOpeningMm?: number | undefined;
+}> = ({ partKind, primaryColor, radius = 0.045, length = 0.2, size, gripperOpeningMm }) => {
   switch (partKind) {
     case "ur3e_base":
       return (
@@ -228,7 +224,12 @@ const ProceduralRobotPart: React.FC<{
         </group>
       );
 
-    case "robotiq_gripper":
+    case "robotiq_gripper": {
+      const padHalfGap =
+        gripperOpeningMm !== undefined && Number.isFinite(gripperOpeningMm)
+          ? Math.max(0.004, Math.min(0.038, gripperOpeningMm * 0.0005))
+          : 0.019;
+      const jawHalfGap = padHalfGap + 0.007;
       return (
         <group>
           {/* Adapter coupling */}
@@ -252,25 +253,26 @@ const ProceduralRobotPart: React.FC<{
             <meshStandardMaterial color={STEEL_FLANGE} metalness={0.75} roughness={0.25} />
           </mesh>
           {/* Left parallel jaw + silicone pad */}
-          <mesh position={[0, 0.105, -0.026]}>
+          <mesh position={[0, 0.105, -jawHalfGap]}>
             <boxGeometry args={[0.018, 0.046, 0.01]} />
             <meshStandardMaterial color={UR_ALUMINUM} metalness={0.65} roughness={0.3} />
           </mesh>
-          <mesh position={[0, 0.112, -0.019]}>
+          <mesh position={[0, 0.112, -padHalfGap]}>
             <boxGeometry args={[0.018, 0.026, 0.004]} />
             <meshStandardMaterial color="#0f172a" roughness={0.8} />
           </mesh>
           {/* Right parallel jaw + silicone pad */}
-          <mesh position={[0, 0.105, 0.026]}>
+          <mesh position={[0, 0.105, jawHalfGap]}>
             <boxGeometry args={[0.018, 0.046, 0.01]} />
             <meshStandardMaterial color={UR_ALUMINUM} metalness={0.65} roughness={0.3} />
           </mesh>
-          <mesh position={[0, 0.112, 0.019]}>
+          <mesh position={[0, 0.112, padHalfGap]}>
             <boxGeometry args={[0.018, 0.026, 0.004]} />
             <meshStandardMaterial color="#0f172a" roughness={0.8} />
           </mesh>
         </group>
       );
+    }
 
     case "cnc_gantry_carriage":
       return (
@@ -334,11 +336,7 @@ const ProceduralRobotPart: React.FC<{
       return (
         <mesh>
           <boxGeometry args={[sx, sz, sy]} />
-          <meshStandardMaterial
-            color={primaryColor || UR_SILVER}
-            metalness={0.35}
-            roughness={0.35}
-          />
+          <meshStandardMaterial color={primaryColor || UR_SILVER} metalness={0.35} roughness={0.35} />
         </mesh>
       );
     }
@@ -373,7 +371,10 @@ function classifyCadPart(vis: UrdfVisualPose3D): string | null {
   return null;
 }
 
-export const UrdfVisualMesh: React.FC<{ visual: UrdfVisualPose3D }> = ({ visual }) => {
+export const UrdfVisualMesh: React.FC<{
+  visual: UrdfVisualPose3D;
+  gripperOpeningMm?: number | undefined;
+}> = ({ visual, gripperOpeningMm }) => {
   const { position, quaternion } = useMemo(
     () => urdfPoseToThree(visual.position, visual.rotation),
     [visual.position, visual.rotation],
@@ -387,13 +388,14 @@ export const UrdfVisualMesh: React.FC<{ visual: UrdfVisualPose3D }> = ({ visual 
 
   return (
     <group position={position} quaternion={quaternion}>
-      { !visual.isCollision && cadPart ? (
+      {!visual.isCollision && cadPart ? (
         <ProceduralRobotPart
           partKind={cadPart}
           primaryColor={color}
           radius={g.radius}
           length={g.length}
           size={g.size}
+          gripperOpeningMm={gripperOpeningMm}
         />
       ) : g.type === "cylinder" ? (
         <mesh>

@@ -700,8 +700,8 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
   });
 
   const resolvedSvgHtml = useMemo(
-    () => adaptSvgMarkupForTheme(svgMarkup ?? svgHtml ?? "", isDark),
-    [svgMarkup, svgHtml, isDark],
+    () => sanitizeSvgMarkup(svgMarkup ?? svgHtml ?? "", { isFullScreen, isDark }),
+    [svgMarkup, svgHtml, isFullScreen, isDark],
   );
 
   const cleanupDragListenersRef = React.useRef<(() => void) | null>(null);
@@ -863,7 +863,7 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
         <button
           type="button"
           title="Zoom out"
-          onClick={() => setZoom((z) => Math.max(0.5, Number((z - 0.15).toFixed(2))))}
+          onClick={() => setZoom((z) => Math.max(0.35, Number((z - 0.15).toFixed(2))))}
           style={{
             background: "transparent",
             border: "none",
@@ -899,7 +899,7 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
         <button
           type="button"
           title="Zoom in"
-          onClick={() => setZoom((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+          onClick={() => setZoom((z) => Math.min(3.5, Number((z + 0.15).toFixed(2))))}
           style={{
             background: "transparent",
             border: "none",
@@ -1008,6 +1008,29 @@ const IconBtn = styled.button<{ $primary?: boolean; $success?: boolean }>`
   &:focus-visible {
     outline: 2px solid var(--ms-brand, #0e7490);
     outline-offset: 1px;
+  }
+`;
+
+const InteractivePromptPill = styled.div`
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  background: var(--color-canvas-default, #0d1117);
+  border: 1px solid var(--color-border-default, #30363d);
+  padding: 5px 12px;
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--color-canvas-subtle);
+    border-color: var(--ms-brand, #0e7490);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
   }
 `;
 
@@ -1571,7 +1594,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
             </ToggleBtn>
           </ToggleGroup>
         )}
-        {svgMarkup && (effectiveViewMode === "diagram" || isCodeSvg) && (
+        {svgMarkup && effectiveViewMode === "diagram" && !isCodeSvg && (
           <IconBtn type="button" onClick={handleDownloadSvg} title="Download SVG" aria-label="Download SVG">
             <DownloadIcon size={14} />
           </IconBtn>
@@ -1636,25 +1659,11 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               }}
               dangerouslySetInnerHTML={{ __html: svgMarkup }}
             />
-            <div
-              style={{
-                position: "absolute",
-                bottom: "12px",
-                right: "12px",
-                background: "var(--ms-brand, #0e7490)",
-                padding: "6px 14px",
-                borderRadius: "9999px",
-                border: "1px solid rgba(255, 255, 255, 0.25)",
-                boxShadow: "0 4px 14px rgba(0, 0, 0, 0.45)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              <Text style={{ fontSize: "12px", lineHeight: "16px", color: "#ffffff", fontWeight: 600 }}>
+            <InteractivePromptPill>
+              <Text style={{ fontSize: "11px", lineHeight: "16px", color: "var(--color-fg-default)", fontWeight: 600 }}>
                 ▶ Interactive Editor
               </Text>
-            </div>
+            </InteractivePromptPill>
           </Box>
         ) : isFullScreen || interactive ? (
           <Suspense

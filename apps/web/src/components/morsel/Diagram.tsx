@@ -197,8 +197,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const parent = container.parentElement;
           const parentW = parent?.clientWidth ?? 0;
           const parentH = parent?.clientHeight ?? 0;
-          const cw = parentW > 0 ? parentW : (container.clientWidth > 0 ? container.clientWidth : 800);
-          const ch = parentH > 0 ? parentH : (container.clientHeight > 0 ? container.clientHeight : 600);
+          const cw = parentW > 0 ? parentW : container.clientWidth > 0 ? container.clientWidth : 800;
+          const ch = parentH > 0 ? parentH : container.clientHeight > 0 ? container.clientHeight : 600;
           if (typeof (g as any).resize === "function" && cw > 0 && ch > 0) {
             (g as any).resize(cw, ch);
           }
@@ -214,6 +214,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               zoomToRect?: (rect: unknown, options?: unknown) => void;
             };
             zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width: cw, height: ch } });
+            const ox = cs.axesStyle?.origin?.[0] ?? 0;
+            const oy = cs.axesStyle?.origin?.[1] ?? 0;
+            if (typeof (g as any).centerPoint === "function") {
+              (g as any).centerPoint(ox, oy);
+            } else if (typeof (g as any).centerContent === "function") {
+              (g as any).centerContent();
+            }
           } else {
             g.zoomToFit({ maxScale: 1, padding: 20 });
             (g as any).centerContent?.();
@@ -283,8 +290,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         const parent = container?.parentElement;
         const parentW = parent?.clientWidth ?? 0;
         const parentH = parent?.clientHeight ?? 0;
-        const cw = parentW > 0 ? parentW : (container?.clientWidth && container.clientWidth > 0 ? container.clientWidth : 800);
-        const ch = parentH > 0 ? parentH : (container?.clientHeight && container.clientHeight > 0 ? container.clientHeight : 600);
+        const cw =
+          parentW > 0 ? parentW : container?.clientWidth && container.clientWidth > 0 ? container.clientWidth : 800;
+        const ch =
+          parentH > 0 ? parentH : container?.clientHeight && container.clientHeight > 0 ? container.clientHeight : 600;
         if (typeof g.resize === "function" && cw > 0 && ch > 0) {
           g.resize(cw, ch);
         }
@@ -301,6 +310,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           } else {
             g.zoomToFit({ maxScale: 1, padding: 24 });
             g.centerContent?.();
+          }
+          const ox = cs.axesStyle?.origin?.[0] ?? 0;
+          const oy = cs.axesStyle?.origin?.[1] ?? 0;
+          if (typeof g.centerPoint === "function") {
+            g.centerPoint(ox, oy);
+          } else if (typeof g.centerContent === "function") {
+            g.centerContent();
           }
         } else {
           g.zoomToFit({ maxScale: 1, padding: 24 });
@@ -384,9 +400,19 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                     height: cs.height * 1.25,
                   };
                   zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width, height } });
+                  const ox = cs.axesStyle?.origin?.[0] ?? 0;
+                  const oy = cs.axesStyle?.origin?.[1] ?? 0;
+                  if (typeof (g as any).centerPoint === "function") {
+                    (g as any).centerPoint(ox, oy);
+                  } else if (typeof zoomable.centerContent === "function") {
+                    zoomable.centerContent();
+                  }
                 } else if (typeof zoomable.zoomToFit === "function") {
                   zoomable.zoomToFit({ maxScale: 1, padding: 24 });
                   zoomable.centerContent?.();
+                }
+                if (typeof (g as any).zoom === "function") {
+                  propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
                 }
               }
             }, 60);

@@ -8,7 +8,7 @@
  *   - VeraGrid (GridCal) native JSON schema
  */
 
-import type { GenericPowerCase } from "./types.js";
+import type { GeneratorCostCurve, GenericPowerCase } from "./types.js";
 
 /**
  * Parses a MATPOWER (.m) case file into a canonical GenericPowerCase.
@@ -186,6 +186,61 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
     }
   }
 
+  // 4. Extract gencost matrix if present
+  const gencostRows = extractMatrix("gencost");
+  const generatorCosts = new Map<string, GeneratorCostCurve>();
+
+  for (let k = 0; k < generators.length && k < gencostRows.length; k++) {
+    const g = generators[k]!;
+    const row = gencostRows[k]!;
+    if (row.length < 4) continue;
+
+    const model = Math.round(row[0]!); // 1 = piecewise linear, 2 = polynomial
+    const n = Math.round(row[3]!); // number of coefficients / points
+    let c2 = 0.0;
+    let c1 = 20.0;
+    let c0 = 0.0;
+
+    if (model === 2) {
+      if (n === 3 && row.length >= 7) {
+        c2 = row[4] ?? 0.0;
+        c1 = row[5] ?? 20.0;
+        c0 = row[6] ?? 0.0;
+      } else if (n === 2 && row.length >= 6) {
+        c2 = 0.0;
+        c1 = row[4] ?? 20.0;
+        c0 = row[5] ?? 0.0;
+      } else if (n === 1 && row.length >= 5) {
+        c2 = 0.0;
+        c1 = 0.0;
+        c0 = row[4] ?? 0.0;
+      } else if (n > 3 && row.length >= 4 + n) {
+        c2 = row[4 + n - 3] ?? 0.0;
+        c1 = row[4 + n - 2] ?? 20.0;
+        c0 = row[4 + n - 1] ?? 0.0;
+      }
+    } else if (model === 1 && n >= 2 && row.length >= 4 + 2 * n) {
+      const p1 = row[4]!;
+      const f1 = row[5]!;
+      const pn = row[4 + 2 * n - 2]!;
+      const fn = row[4 + 2 * n - 1]!;
+      if (Math.abs(pn - p1) > 1e-6) {
+        c1 = (fn - f1) / (pn - p1);
+        c0 = f1 - c1 * p1;
+      } else {
+        c1 = 20.0;
+        c0 = f1;
+      }
+      c2 = 0.0;
+    }
+
+    const costCurve: GeneratorCostCurve = { c0, c1, c2 };
+    generatorCosts.set(`${g.i}_${g.id}`, costCurve);
+    if (!generatorCosts.has(String(g.i))) {
+      generatorCosts.set(String(g.i), costCurve);
+    }
+  }
+
   return {
     header: { sbase, basfrq: 60.0 },
     title1: "MATPOWER IMPORTED CASE",
@@ -194,6 +249,7 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
     generators,
     branches,
     transformers,
+    generatorCosts: generatorCosts.size > 0 ? generatorCosts : undefined,
   };
 }
 
@@ -271,6 +327,24 @@ export function serializeMatpower(powerCase: GenericPowerCase, caseName = "case_
   }
   lines.push(`];`);
   lines.push(``);
+
+  // Generator Cost Matrix (gencost)
+  if (powerCase.generatorCosts && powerCase.generatorCosts.size > 0) {
+    lines.push(`%% generator cost data`);
+    lines.push(`%  1  startup  shutdown  n  c(n-1) ... c0`);
+    lines.push(`mpc.gencost = [`);
+    for (const g of powerCase.generators) {
+      const cleanId = g.id.trim() || "1";
+      const cost = powerCase.generatorCosts.get(`${g.i}_${cleanId}`) ??
+        powerCase.generatorCosts.get(String(g.i)) ?? { c0: 0.0, c1: 20.0, c2: 0.0 };
+      const c2 = cost.c2 ?? 0.0;
+      const c1 = cost.c1;
+      const c0 = cost.c0 ?? 0.0;
+      lines.push(`  2\t0.0\t0.0\t3\t${c2.toFixed(6)}\t${c1.toFixed(4)}\t${c0.toFixed(2)};`);
+    }
+    lines.push(`];`);
+    lines.push(``);
+  }
 
   return lines.join("\n");
 }

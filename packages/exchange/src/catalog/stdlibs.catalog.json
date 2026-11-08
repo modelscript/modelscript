@@ -202,6 +202,24 @@
       "minExpectedClasses": 30
     },
     {
+      "id": "psse-ieee-transmission-1.0.0",
+      "language": "psse",
+      "packageName": "IEEE-Transmission-Benchmarks",
+      "version": "1.0.0",
+      "description": "Standard IEEE 14, 30, 57, 118 & 300-bus transmission test networks with coordinates",
+      "license": "CC0-1.0",
+      "tier": "tier2_domain",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "IEEE-Transmission-Benchmarks-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/IEEE-Transmission-Benchmarks-1.0.0.zip",
+        "fallbackUrl": "https://github.com/power-grid-benchmarks/IEEE-Cases/archive/refs/tags/v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 10
+    },
+    {
       "id": "autosar-schemas-4.4.0",
       "language": "autosar",
       "packageName": "AUTOSAR-Metamodels",

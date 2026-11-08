@@ -439,6 +439,13 @@ export const NON_EDITABLE_MEDIA_VIEW_TYPES = new Set([
   "youtube_video",
   "audio",
   "link-preview",
+  "package",
+  "library",
+  "repository",
+  "repo",
+  "solution",
+  "engineering-app",
+  "app",
 ]);
 
 /**

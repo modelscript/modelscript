@@ -13,12 +13,14 @@ import {
   XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
+import { Button, Text } from "@primer/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { getSolution, type Solution, type SolutionRelease } from "../../api";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import Box from "../Box";
+import Spinner from "../Spinner";
 
 interface SolutionViewCardProps {
   viewConfig: {
@@ -90,8 +92,9 @@ const IframeWrapper = styled.div<{ $isFullScreen?: boolean }>`
 export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionViewCardProps) {
   const navigate = useNavigate();
 
-  const author = viewConfig.author || "modelscript";
-  const slug = viewConfig.slug || "solution";
+  const rawAuthor = (viewConfig?.author || "modelscript").replace(/^@/, "");
+  const author = rawAuthor || "modelscript";
+  const slug = viewConfig?.slug || "solution";
 
   const [solution, setSolution] = useState<Solution | null>(null);
   const [release, setRelease] = useState<SolutionRelease | null>(null);
@@ -99,14 +102,22 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
   const [isRunning, setIsRunning] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const downloadMenuContainerRef = useRef<HTMLDivElement>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useClickOutside(downloadMenuContainerRef, () => setShowDownloadMenu(false), showDownloadMenu);
 
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
   // If full config is not pre-populated, fetch from API
   useEffect(() => {
-    if (viewConfig.name && viewConfig.bundle_url) {
+    let cancelled = false;
+    if (viewConfig?.name && viewConfig?.bundle_url) {
       setSolution({
         id: viewConfig.id || 0,
         user_id: 0,
@@ -125,39 +136,62 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
         tauri_linux_url: viewConfig.tauri_linux_url,
         tauri_darwin_url: viewConfig.tauri_darwin_url,
       });
-    } else if (author && slug) {
+    } else if (viewConfig?.author || viewConfig?.slug) {
       setLoading(true);
       getSolution(author, slug)
         .then((data) => {
+          if (cancelled) return;
           setSolution(data.solution);
           setRelease(data.release);
         })
         .catch((err) => {
-          console.warn("Could not load solution for card:", err);
+          if (!cancelled) console.warn("Could not load solution for card:", err);
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }
-  }, [author, slug, viewConfig]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    author,
+    slug,
+    viewConfig?.author,
+    viewConfig?.slug,
+    viewConfig?.name,
+    viewConfig?.bundle_url,
+    viewConfig?.id,
+    viewConfig?.description,
+    viewConfig?.category,
+    viewConfig?.supported_formats,
+    viewConfig?.version,
+    viewConfig?.tauri_windows_url,
+    viewConfig?.tauri_linux_url,
+    viewConfig?.tauri_darwin_url,
+  ]);
 
-  const name = solution?.name || viewConfig.name || slug;
-  const version = release?.version || solution?.latest_version || viewConfig.version || "1.0.0";
-  const category = solution?.category || viewConfig.category || "Engineering Application";
-  const description = solution?.description || viewConfig.description || "";
-  const supportedFormats = solution?.supported_formats || viewConfig.supported_formats || [];
-  const rawBundleUrl = release?.bundle_url || solution?.bundle_url || viewConfig.bundle_url;
+  const name = solution?.name || viewConfig?.name || slug;
+  const version = release?.version || solution?.latest_version || viewConfig?.version || "1.0.0";
+  const category = solution?.category || viewConfig?.category || "Engineering Application";
+  const description = solution?.description || viewConfig?.description || "";
+  const supportedFormats = solution?.supported_formats || viewConfig?.supported_formats || [];
+  const rawBundleUrl = release?.bundle_url || solution?.bundle_url || viewConfig?.bundle_url;
   const bundleUrl = rawBundleUrl
     ? rawBundleUrl.replace(/^https?:\/\/cdn\.modelscript\.org\/solutions\//i, "/static/solutions/")
     : `/static/solutions/${encodeURIComponent(slug)}/index.html`;
-  const tauriWindows = release?.tauri_windows_url || solution?.tauri_windows_url || viewConfig.tauri_windows_url;
-  const tauriLinux = release?.tauri_linux_url || solution?.tauri_linux_url || viewConfig.tauri_linux_url;
-  const tauriDarwin = release?.tauri_darwin_url || solution?.tauri_darwin_url || viewConfig.tauri_darwin_url;
-  const dedicatedUrl = `/solutions/${author}/${slug}`;
+  const tauriWindows = release?.tauri_windows_url || solution?.tauri_windows_url || viewConfig?.tauri_windows_url;
+  const tauriLinux = release?.tauri_linux_url || solution?.tauri_linux_url || viewConfig?.tauri_linux_url;
+  const tauriDarwin = release?.tauri_darwin_url || solution?.tauri_darwin_url || viewConfig?.tauri_darwin_url;
+  const dedicatedUrl = `/solutions/${encodeURIComponent(author)}/${encodeURIComponent(slug)}`;
 
-  const handleCopyLink = () => {
+  const handleCopyLink = (e: React.MouseEvent) => {
+    e.stopPropagation();
     const fullUrl = `${window.location.origin}${dedicatedUrl}`;
-    navigator.clipboard.writeText(fullUrl);
+    navigator.clipboard?.writeText(fullUrl).catch(() => {});
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
@@ -198,6 +232,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
               <Link
                 to={dedicatedUrl}
+                onClick={(e) => e.stopPropagation()}
                 style={{
                   fontSize: "15px",
                   fontWeight: 700,
@@ -215,7 +250,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
                   fontWeight: 600,
                   padding: "1px 6px",
                   borderRadius: "8px",
-                  background: "rgba(255, 255, 255, 0.06)",
+                  background: "var(--color-neutral-muted, rgba(148, 163, 184, 0.12))",
                   border: "1px solid var(--color-border-default)",
                   color: "var(--color-fg-muted)",
                   fontFamily: "ui-monospace, monospace",
@@ -240,7 +275,8 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             <Text fontSize="12px" color="var(--color-fg-muted)" style={{ marginTop: "2px", display: "block" }}>
               Published by{" "}
               <Link
-                to={`/${author}`}
+                to={`/@${author}`}
+                onClick={(e) => e.stopPropagation()}
                 style={{ color: "var(--color-accent-emphasis, #a855f7)", textDecoration: "none" }}
               >
                 @{author}
@@ -291,7 +327,10 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
           <Button
             size="small"
             variant={isRunning ? "primary" : "default"}
-            onClick={() => setIsRunning(!isRunning)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsRunning(!isRunning);
+            }}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -308,7 +347,10 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             <div ref={downloadMenuContainerRef} style={{ position: "relative" }}>
               <Button
                 size="small"
-                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDownloadMenu(!showDownloadMenu);
+                }}
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
               >
                 <DownloadIcon size={14} /> Desktop <ChevronDownIcon size={12} />
@@ -316,11 +358,12 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
 
               {showDownloadMenu && (
                 <div
+                  onClick={(e) => e.stopPropagation()}
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: "100%",
-                    marginTop: "4px",
+                    bottom: "100%",
+                    marginBottom: "4px",
                     zIndex: 50,
                     minWidth: "190px",
                     backgroundColor: "var(--color-canvas-default, #0f172a)",
@@ -407,7 +450,14 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             </div>
           )}
 
-          <Button size="small" onClick={() => navigate(dedicatedUrl)} title="Open Fullscreen Solution Page">
+          <Button
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(dedicatedUrl);
+            }}
+            title="Open Fullscreen Solution Page"
+          >
             <LinkExternalIcon size={14} /> Fullscreen App
           </Button>
         </Box>
@@ -419,7 +469,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
 
       {/* Inline App Running Sandbox */}
       {isRunning && (
-        <InlineAppContainer>
+        <InlineAppContainer onClick={(e) => e.stopPropagation()}>
           <Box
             p={2}
             px={3}
@@ -451,6 +501,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
                 <ScreenFullIcon size={12} /> Theater Mode
               </Button>
               <button
+                type="button"
                 onClick={() => setIsRunning(false)}
                 style={{
                   background: "none",
@@ -470,7 +521,11 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             <iframe
               title={name}
               src={bundleUrl || `/embed/solution/${solution?.id || 1}`}
-              sandbox="allow-scripts allow-downloads allow-forms"
+              sandbox={
+                bundleUrl.startsWith("/")
+                  ? "allow-scripts allow-same-origin allow-downloads allow-forms"
+                  : "allow-scripts allow-downloads allow-forms"
+              }
               style={{
                 width: "100%",
                 height: "100%",

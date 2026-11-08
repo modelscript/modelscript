@@ -3,7 +3,7 @@
 import { CheckCircleFillIcon, CheckIcon, CpuIcon, FlameIcon, PlayIcon, PulseIcon, XIcon } from "@primer/octicons-react";
 import { Button, Flash, Heading, Label, Text } from "@primer/react";
 import axios from "axios";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../api";
 import { useAuth } from "../../AuthContext";
 import Box from "../Box";
@@ -34,6 +34,7 @@ export interface DigitalTwinViewerConfig {
   instanceSerial?: string | undefined;
   modelicaClass?: string | undefined;
   channel?: string | undefined;
+  unit?: string | undefined;
   severity?: "low" | "medium" | "high" | undefined;
   healthScore?: number | undefined;
   rulHours?: number | undefined;
@@ -76,6 +77,11 @@ interface LoadedTwinData {
   activeSession?: { healthScore?: number | undefined } | undefined;
 }
 
+interface ActionNotice {
+  text: string;
+  variant: "success" | "danger" | "default";
+}
+
 async function injectTwinTelemetry(
   twinId: number,
   timestamp: number,
@@ -85,7 +91,7 @@ async function injectTwinTelemetry(
   return data;
 }
 
-export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProps> = ({ viewConfig }) => {
+export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProps> = ({ viewConfig, isFullScreen }) => {
   let user: { id: number } | null = null;
   try {
     const auth = useAuth();
@@ -94,15 +100,18 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     user = null;
   }
 
-  const twinId = viewConfig.twinId ?? 1;
+  const explicitTwinId = viewConfig.twinId;
+  const twinId = explicitTwinId ?? 1;
+  const unit = viewConfig.unit || "°C";
+
   const [twinData, setTwinData] = useState<LoadedTwinData | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [proposalStatus, setProposalStatus] = useState<"open" | "approved" | "rejected">("open");
   const [activeTab, setActiveTab] = useState<"telemetry" | "hotspots" | "proposals">("telemetry");
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<ActionNotice | null>(null);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
 
-  // Initialize telemetry from viewConfig.telemetry or viewConfig.initialSeries (or empty array waiting for live MQTT/WebSocket stream)
+  // Initialize telemetry from viewConfig.telemetry or viewConfig.initialSeries
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>(
     () => viewConfig.telemetry ?? viewConfig.initialSeries ?? [],
   );
@@ -112,12 +121,16 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     setTelemetry(Array.isArray(initial) ? initial : []);
   }, [viewConfig.telemetry, viewConfig.initialSeries]);
 
-  // Subscribe to live twin SSE / WebSocket stream when available
+  // Subscribe to live twin SSE stream only when viewConfig.twinId is explicitly provided
   useEffect(() => {
-    if (!twinId || typeof EventSource === "undefined") return;
+    if (!explicitTwinId || typeof EventSource === "undefined") return;
     let evtSource: EventSource | null = null;
     try {
-      evtSource = new EventSource(`/api/v1/twins/${twinId}/stream`);
+      const baseUrl = (api.defaults.baseURL || "/api/v1").replace(/\/+$/, "");
+      evtSource = new EventSource(`${baseUrl}/twins/${explicitTwinId}/stream`);
+      evtSource.onerror = () => {
+        evtSource?.close();
+      };
       evtSource.onmessage = (e) => {
         try {
           const payload = JSON.parse(e.data);
@@ -142,13 +155,13 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     return () => {
       evtSource?.close();
     };
-  }, [twinId]);
+  }, [explicitTwinId]);
 
   useEffect(() => {
     async function loadTwinDetails() {
-      if (!twinId) return;
+      if (!explicitTwinId) return;
       try {
-        const { data } = await api.get(`/twins/${twinId}`);
+        const { data } = await api.get(`/twins/${explicitTwinId}`);
         setTwinData(data);
         if (data.proposals && data.proposals.length > 0) {
           setProposalStatus(data.proposals[0].status);
@@ -157,36 +170,70 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
         // Fallback to embedded viewConfig
       }
     }
-    loadTwinDetails();
-  }, [twinId]);
+    void loadTwinDetails();
+  }, [explicitTwinId]);
 
   const deltas = viewConfig.parameterDeltas ?? {};
   const healthScore = viewConfig.healthScore ?? twinData?.activeSession?.healthScore ?? 85.0;
   const rulHours = viewConfig.rulHours;
 
+  const hasProposalsOrDeltas = useMemo(() => {
+    return (
+      Object.keys(deltas).length > 0 ||
+      viewConfig.proposalId !== undefined ||
+      Boolean(twinData?.proposals && twinData.proposals.length > 0)
+    );
+  }, [deltas, viewConfig.proposalId, twinData]);
+
+  const primaryParam = useMemo(() => {
+    const calParams = viewConfig.calibratedParameters ?? {};
+    const key =
+      "R_th" in calParams
+        ? "R_th"
+        : "R_th" in deltas
+          ? "R_th"
+          : (Object.keys(calParams)[0] ?? Object.keys(deltas)[0] ?? "R_th");
+    const value = calParams[key] ?? deltas[key]?.calibrated;
+    const deltaPct = deltas[key]?.deltaPct;
+    const paramUnit = key === "R_th" ? "K/W" : "";
+    return { key, value, deltaPct, paramUnit };
+  }, [viewConfig.calibratedParameters, deltas]);
+
   const handleInjectTestStep = async () => {
     setActionMessage(null);
-    const nextT = telemetry.length > 0 ? Number((telemetry[telemetry.length - 1]!.t + 1.0).toFixed(1)) : 0.0;
+    const prevPoint = telemetry[telemetry.length - 1];
+    const nextT = prevPoint ? Number((prevPoint.t + 1.0).toFixed(1)) : 0.0;
+    const baseVal = prevPoint?.baseline ?? 25.0;
+    const nextMeas = Number(((prevPoint?.meas ?? baseVal) + 2.5).toFixed(2));
     try {
       const data = await injectTwinTelemetry(twinId, nextT, [
-        { name: viewConfig.channel || "y_meas", value: telemetry[telemetry.length - 1]?.meas ?? 0 },
+        { name: viewConfig.channel || "y_meas", value: nextMeas },
       ]);
       if (Array.isArray(data?.telemetry)) {
         setTelemetry(data.telemetry);
       } else if (typeof data?.meas === "number" || typeof data?.y_meas === "number") {
         const measVal = Number(data.meas ?? data.y_meas);
         const twinVal = Number(data.twin ?? data.y_twin ?? measVal);
-        const baseVal = Number(data.baseline ?? data.y_nominal ?? twinVal);
+        const nominalVal = Number(data.baseline ?? data.y_nominal ?? baseVal);
         setTelemetry((prev) => [
           ...prev,
-          { t: Number(data.t ?? nextT), meas: measVal, baseline: baseVal, twin: twinVal },
+          { t: Number(data.t ?? nextT), meas: measVal, baseline: nominalVal, twin: twinVal },
+        ]);
+      } else {
+        setTelemetry((prev) => [
+          ...prev,
+          { t: nextT, meas: nextMeas, baseline: baseVal, twin: Number(((baseVal + nextMeas) * 0.5).toFixed(2)) },
         ]);
       }
+      setActionMessage({
+        text: `Injected step perturbation (${nextMeas} ${unit}) at t = ${nextT}s.`,
+        variant: "success",
+      });
     } catch (err: unknown) {
       const msg =
         (axios.isAxiosError(err) && (err.response?.data as { error?: string | undefined })?.error) ||
         (err instanceof Error ? err.message : "Failed to inject telemetry step");
-      setActionMessage(`Telemetry injection failed: ${msg}`);
+      setActionMessage({ text: `Telemetry injection failed: ${msg}`, variant: "danger" });
     }
   };
 
@@ -204,12 +251,15 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     try {
       await reviewGovernanceProposal("approve", "Approved based on CUSUM telemetry verification.");
       setProposalStatus("approved");
-      setActionMessage("Physics Pull Request approved! Active model baseline updated.");
+      setActionMessage({
+        text: "Physics Pull Request approved! Active model baseline updated.",
+        variant: "success",
+      });
     } catch (err: unknown) {
       const msg =
         (axios.isAxiosError(err) && (err.response?.data as { error?: string | undefined })?.error) ||
         (err instanceof Error ? err.message : "Unknown error");
-      setActionMessage(`Approval failed: ${msg}`);
+      setActionMessage({ text: `Approval failed: ${msg}`, variant: "danger" });
     } finally {
       setActionLoading(false);
     }
@@ -221,12 +271,12 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     try {
       await reviewGovernanceProposal("reject", "Rejected by engineer.");
       setProposalStatus("rejected");
-      setActionMessage("Proposal rejected.");
+      setActionMessage({ text: "Proposal rejected.", variant: "default" });
     } catch (err: unknown) {
       const msg =
         (axios.isAxiosError(err) && (err.response?.data as { error?: string | undefined })?.error) ||
         (err instanceof Error ? err.message : String(err));
-      setActionMessage(`Error: ${msg}`);
+      setActionMessage({ text: `Error: ${msg}`, variant: "danger" });
     } finally {
       setActionLoading(false);
     }
@@ -252,12 +302,12 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
           coords: h.coords || [0, 0, 0],
           value,
           nominal,
-          unit: h.unit || "°C",
+          unit: h.unit || unit,
           deltaPct,
           severity,
         };
       });
-  }, [viewConfig.hotspots]);
+  }, [viewConfig.hotspots, unit]);
 
   const activeHotspot = useMemo(
     () => computedHotspots.find((h) => h.id === selectedHotspotId) ?? computedHotspots[0] ?? null,
@@ -287,33 +337,59 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
       gridLevels: [Math.round(lo + (hi - lo) * 0.2), mid, Math.round(lo + (hi - lo) * 0.8)],
     };
   }, [telemetry]);
+
   const width = 640;
   const height = 180;
   const pad = 24;
-  const maxTime = useMemo(() => Math.max(20.0, ...telemetry.map((p) => (Number.isFinite(p.t) ? p.t : 0))), [telemetry]);
 
-  const toX = (t: number) => pad + (t / maxTime) * (width - 2 * pad);
-  const toY = (val: number) => height - pad - ((val - minVal) / Math.max(1e-6, maxVal - minVal)) * (height - 2 * pad);
+  const { minTime, maxTime } = useMemo(() => {
+    const validTimes = telemetry.map((p) => p.t).filter((t) => Number.isFinite(t));
+    if (validTimes.length === 0) {
+      return { minTime: 0.0, maxTime: 20.0 };
+    }
+    const minT = Math.min(...validTimes);
+    const maxT = Math.max(minT + 1.0, ...validTimes);
+    return { minTime: minT, maxTime: maxT };
+  }, [telemetry]);
 
-  const measPath = telemetry
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.meas).toFixed(1)}`)
-    .join(" ");
+  const toX = useCallback(
+    (t: number) => pad + ((t - minTime) / Math.max(1.0, maxTime - minTime)) * (width - 2 * pad),
+    [minTime, maxTime],
+  );
+  const toY = useCallback(
+    (val: number) => height - pad - ((val - minVal) / Math.max(1e-6, maxVal - minVal)) * (height - 2 * pad),
+    [minVal, maxVal],
+  );
 
-  const baselinePath = telemetry
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.baseline).toFixed(1)}`)
-    .join(" ");
+  const { measPath, baselinePath, twinPath } = useMemo(() => {
+    return {
+      measPath: telemetry
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.meas).toFixed(1)}`)
+        .join(" "),
+      baselinePath: telemetry
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.baseline).toFixed(1)}`)
+        .join(" "),
+      twinPath: telemetry
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.twin).toFixed(1)}`)
+        .join(" "),
+    };
+  }, [telemetry, toX, toY]);
 
-  const twinPath = telemetry
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.twin).toFixed(1)}`)
-    .join(" ");
+  const clampedDriftX = useMemo(() => {
+    if (typeof viewConfig.driftEventTime !== "number") return null;
+    return Math.max(pad, Math.min(width - pad, toX(viewConfig.driftEventTime)));
+  }, [viewConfig.driftEventTime, toX]);
 
   return (
     <Box
       sx={{
         backgroundColor: "canvas.default",
-        border: "1px solid",
+        border: isFullScreen ? "none" : "1px solid",
         borderColor: "border.default",
-        borderRadius: 2,
+        borderRadius: isFullScreen ? 0 : 2,
+        height: isFullScreen ? "100%" : undefined,
+        display: "flex",
+        flexDirection: "column",
         overflow: "hidden",
         fontFamily: "sans-serif",
       }}
@@ -346,29 +422,38 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
           <Button
             size="small"
             variant={activeTab === "telemetry" ? "primary" : "invisible"}
-            onClick={() => setActiveTab("telemetry")}
+            onClick={() => {
+              setActiveTab("telemetry");
+              setActionMessage(null);
+            }}
           >
             Telemetry & Drift
           </Button>
           <Button
             size="small"
             variant={activeTab === "hotspots" ? "primary" : "invisible"}
-            onClick={() => setActiveTab("hotspots")}
+            onClick={() => {
+              setActiveTab("hotspots");
+              setActionMessage(null);
+            }}
           >
             3D Hotspots
           </Button>
           <Button
             size="small"
             variant={activeTab === "proposals" ? "primary" : "invisible"}
-            onClick={() => setActiveTab("proposals")}
+            onClick={() => {
+              setActiveTab("proposals");
+              setActionMessage(null);
+            }}
           >
-            Physics PR {proposalStatus === "open" && <Label variant="severe">1</Label>}
+            Physics PR {proposalStatus === "open" && hasProposalsOrDeltas && <Label variant="severe">1</Label>}
           </Button>
         </Box>
       </Box>
 
       {/* Main content body */}
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ p: 3, flex: 1, overflowY: "auto" }}>
         {activeTab === "telemetry" && (
           <Box>
             {/* KPI Badges */}
@@ -400,20 +485,30 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                   borderColor: "border.subtle",
                 }}
               >
-                <Text sx={{ color: "fg.muted", fontSize: 0 }}>Calibrated R_th</Text>
+                <Text sx={{ color: "fg.muted", fontSize: 0 }}>Calibrated {primaryParam.key}</Text>
                 <Heading sx={{ fontSize: 3, color: "accent.fg", mt: 1 }}>
-                  {viewConfig.calibratedParameters?.["R_th"] !== undefined ? (
+                  {primaryParam.value !== undefined ? (
                     <>
-                      {viewConfig.calibratedParameters["R_th"].toFixed(3)}{" "}
-                      <Text sx={{ fontSize: 1, fontWeight: "normal" }}>K/W</Text>
+                      {primaryParam.value.toFixed(3)}{" "}
+                      {primaryParam.paramUnit && (
+                        <Text sx={{ fontSize: 1, fontWeight: "normal" }}>{primaryParam.paramUnit}</Text>
+                      )}
                     </>
                   ) : (
                     "—"
                   )}
                 </Heading>
-                <Text sx={{ fontSize: 0, color: deltas["R_th"]?.deltaPct !== undefined ? "danger.fg" : "fg.muted" }}>
-                  {deltas["R_th"]?.deltaPct !== undefined
-                    ? `${deltas["R_th"].deltaPct >= 0 ? "+" : ""}${deltas["R_th"].deltaPct.toFixed(1)}% Degradation`
+                <Text
+                  sx={{
+                    fontSize: 0,
+                    color:
+                      primaryParam.deltaPct !== undefined && Math.abs(primaryParam.deltaPct) > 5
+                        ? "danger.fg"
+                        : "fg.muted",
+                  }}
+                >
+                  {primaryParam.deltaPct !== undefined
+                    ? `${primaryParam.deltaPct >= 0 ? "+" : ""}${primaryParam.deltaPct.toFixed(1)}% Degradation`
                     : "—"}
                 </Text>
               </Box>
@@ -493,8 +588,8 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               </Box>
 
               {actionMessage && activeTab === "telemetry" && (
-                <Flash variant="danger" sx={{ mb: 2 }}>
-                  {actionMessage}
+                <Flash variant={actionMessage.variant} sx={{ mb: 2 }}>
+                  {actionMessage.text}
                 </Flash>
               )}
 
@@ -532,29 +627,31 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                         strokeWidth="0.5"
                       />
                       <text x={pad - 4} y={toY(val) + 4} fill="var(--color-fg-muted)" fontSize="9" textAnchor="end">
-                        {val}°C
+                        {val}
+                        {unit}
                       </text>
                     </g>
                   ))}
 
                   {/* Optional vertical drift detection boundary */}
-                  {typeof viewConfig.driftEventTime === "number" && (
+                  {clampedDriftX !== null && (
                     <>
                       <line
-                        x1={toX(viewConfig.driftEventTime)}
+                        x1={clampedDriftX}
                         y1={pad}
-                        x2={toX(viewConfig.driftEventTime)}
+                        x2={clampedDriftX}
                         y2={height - pad}
                         stroke="var(--color-danger-fg)"
                         strokeWidth="1.5"
                         strokeDasharray="3 3"
                       />
                       <text
-                        x={toX(viewConfig.driftEventTime) + 4}
+                        x={clampedDriftX > width - 160 ? clampedDriftX - 4 : clampedDriftX + 4}
                         y={pad + 12}
                         fill="var(--color-danger-fg)"
                         fontSize="10"
                         fontWeight="bold"
+                        textAnchor={clampedDriftX > width - 160 ? "end" : "start"}
                       >
                         {viewConfig.driftEventLabel || `CUSUM Drift Event (t = ${viewConfig.driftEventTime}s)`}
                       </text>
@@ -571,6 +668,16 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                   />
                   <path d={twinPath} fill="none" stroke="var(--color-accent-purple)" strokeWidth="2.5" />
                   <path d={measPath} fill="none" stroke="var(--color-accent-cyan)" strokeWidth="1.5" opacity="0.9" />
+
+                  {/* Render circle markers when <= 2 points so single injected points are visible */}
+                  {telemetry.length <= 2 &&
+                    telemetry.map((p, idx) => (
+                      <g key={`pt-${idx}`}>
+                        <circle cx={toX(p.t)} cy={toY(p.baseline)} r={3.5} fill="var(--color-danger-fg)" />
+                        <circle cx={toX(p.t)} cy={toY(p.twin)} r={4} fill="var(--color-accent-purple)" />
+                        <circle cx={toX(p.t)} cy={toY(p.meas)} r={4} fill="var(--color-accent-cyan)" />
+                      </g>
+                    ))}
                 </svg>
               )}
             </Box>
@@ -636,6 +743,66 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               </Box>
             ) : (
               <>
+                {/* Visual 2D/Isometric Spatial Hotspot Map */}
+                <Box
+                  sx={{
+                    mb: 3,
+                    p: 2,
+                    borderRadius: 2,
+                    backgroundColor: "canvas.default",
+                    border: "1px solid",
+                    borderColor: "border.default",
+                  }}
+                >
+                  <svg width="100%" height={150} viewBox="0 0 600 150" role="img" aria-label="3D Spatial Hotspot Map">
+                    <polygon
+                      points="90,115 260,30 520,30 350,115"
+                      fill="rgba(6, 182, 212, 0.04)"
+                      stroke="var(--color-border-default)"
+                      strokeDasharray="4 4"
+                    />
+                    <line x1={175} y1={72} x2={435} y2={72} stroke="var(--color-border-muted)" strokeDasharray="2 3" />
+                    <line x1={305} y1={30} x2={135} y2={115} stroke="var(--color-border-muted)" strokeDasharray="2 3" />
+                    {computedHotspots.map((hs, idx) => {
+                      const xs = computedHotspots.map((h) => h.coords[0]);
+                      const ys = computedHotspots.map((h) => h.coords[1]);
+                      const zs = computedHotspots.map((h) => h.coords[2]);
+                      const minX = Math.min(...xs);
+                      const maxX = Math.max(minX + 1, ...xs);
+                      const minY = Math.min(...ys);
+                      const maxY = Math.max(minY + 1, ...ys);
+                      const minZ = Math.min(...zs);
+                      const maxZ = Math.max(minZ + 1, ...zs);
+                      const nx = computedHotspots.length === 1 ? 0.5 : (hs.coords[0] - minX) / (maxX - minX);
+                      const ny = computedHotspots.length === 1 ? 0.5 : (hs.coords[1] - minY) / (maxY - minY);
+                      const nz = computedHotspots.length === 1 ? 0.5 : (hs.coords[2] - minZ) / (maxZ - minZ);
+                      const cx = 140 + nx * 280 + ny * 60 + idx * 8;
+                      const cy = 105 - ny * 55 - nz * 25;
+                      const isSel = activeHotspot?.id === hs.id;
+                      const color =
+                        hs.severity === "critical" ? "#ef4444" : hs.severity === "warning" ? "#f59e0b" : "#10b981";
+                      return (
+                        <g key={hs.id} style={{ cursor: "pointer" }} onClick={() => setSelectedHotspotId(hs.id)}>
+                          {isSel && (
+                            <circle cx={cx} cy={cy} r={14} fill="none" stroke={color} strokeWidth={1.5} opacity={0.6} />
+                          )}
+                          <circle cx={cx} cy={cy} r={isSel ? 7 : 5.5} fill={color} />
+                          <text
+                            x={cx + 10}
+                            y={cy + 4}
+                            fill="var(--color-fg-default)"
+                            fontSize="10"
+                            fontWeight={isSel ? "bold" : "normal"}
+                          >
+                            {hs.name} ({hs.value.toFixed(1)}
+                            {hs.unit})
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </Box>
+
                 {activeHotspot && (
                   <Box
                     sx={{
@@ -717,7 +884,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                           <td
                             style={{
                               padding: "8px",
-                              color: hs.deltaPct > 10 ? "var(--color-danger-fg)" : "var(--color-success-fg)",
+                              color: Math.abs(hs.deltaPct) > 10 ? "var(--color-danger-fg)" : "var(--color-success-fg)",
                             }}
                           >
                             {hs.deltaPct >= 0 ? "+" : ""}
@@ -799,24 +966,31 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                 </thead>
                 <tbody>
                   {Object.entries(deltas).length > 0 ? (
-                    Object.entries(deltas).map(([name, d]) => (
-                      <tr key={name} style={{ borderBottom: "1px solid #21262d" }}>
-                        <td style={{ padding: "8px", fontWeight: "bold" }}>`{name}`</td>
-                        <td style={{ padding: "8px" }}>{d.prior.toFixed(4)}</td>
-                        <td style={{ padding: "8px", color: "var(--color-accent-cyan, #06b6d4)" }}>
-                          {d.calibrated.toFixed(4)}
-                        </td>
-                        <td style={{ padding: "8px", color: d.deltaPct >= 0 ? "#f85149" : "#3fb950" }}>
-                          {d.deltaPct >= 0 ? "+" : ""}
-                          {d.deltaPct.toFixed(1)}%
-                        </td>
-                        <td style={{ padding: "8px" }}>
-                          <Label variant="severe">Degraded</Label>
-                        </td>
-                      </tr>
-                    ))
+                    Object.entries(deltas).map(([name, d]) => {
+                      const absDelta = Math.abs(d.deltaPct);
+                      const statusLabel = absDelta > 20 ? "Critical Drift" : absDelta > 5 ? "Degraded" : "Calibrated";
+                      const statusVariant = absDelta > 20 ? "danger" : absDelta > 5 ? "severe" : "success";
+                      return (
+                        <tr key={name} style={{ borderBottom: "1px solid var(--color-border-muted, #21262d)" }}>
+                          <td style={{ padding: "8px", fontWeight: "bold" }}>
+                            <code>{name}</code>
+                          </td>
+                          <td style={{ padding: "8px" }}>{d.prior.toFixed(4)}</td>
+                          <td style={{ padding: "8px", color: "var(--color-accent-cyan, #06b6d4)" }}>
+                            {d.calibrated.toFixed(4)}
+                          </td>
+                          <td style={{ padding: "8px", color: absDelta > 5 ? "#f85149" : "#3fb950" }}>
+                            {d.deltaPct >= 0 ? "+" : ""}
+                            {d.deltaPct.toFixed(1)}%
+                          </td>
+                          <td style={{ padding: "8px" }}>
+                            <Label variant={statusVariant}>{statusLabel}</Label>
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
-                    <tr style={{ borderBottom: "1px solid #21262d" }}>
+                    <tr style={{ borderBottom: "1px solid var(--color-border-muted, #21262d)" }}>
                       <td colSpan={5} style={{ padding: "12px 8px", textAlign: "center", color: "#8b949e" }}>
                         —
                       </td>
@@ -826,8 +1000,8 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               </table>
 
               {actionMessage && (
-                <Flash variant={proposalStatus === "approved" ? "success" : "default"} sx={{ mb: 3 }}>
-                  {actionMessage}
+                <Flash variant={actionMessage.variant} sx={{ mb: 3 }}>
+                  {actionMessage.text}
                 </Flash>
               )}
 
@@ -860,7 +1034,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                     color: proposalStatus === "approved" ? "success.fg" : "danger.fg",
                   }}
                 >
-                  <CheckCircleFillIcon size={16} />
+                  {proposalStatus === "approved" ? <CheckCircleFillIcon size={16} /> : <XIcon size={16} />}
                   <Text sx={{ fontWeight: "bold" }}>
                     {proposalStatus === "approved"
                       ? "Proposal approved: Baseline committed to asset thread."

@@ -15,7 +15,7 @@ import {
   ZapIcon,
 } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
@@ -347,13 +347,62 @@ const LineNo = styled.span`
   padding-right: 16px;
 `;
 
-function parseNumericVal(raw: string | number | undefined): number | undefined {
+function escapeXmlAttr(val: string): string {
+  return val.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function escapeRegExp(val: string): string {
+  return val.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseNumericVal(
+  raw: string | number | undefined,
+  targetUnit?: "mH" | "uF" | "kV" | "MVA" | "ohm" | "s",
+): number | undefined {
   if (raw === undefined || raw === null) return undefined;
-  const cleaned = String(raw)
-    .replace(/\s*\[[^\]]*\]\s*/g, "")
-    .trim();
+  const str = String(raw).trim();
+  const unitMatch = str.match(/\[\s*([^\]]+?)\s*\]/);
+  const unit = unitMatch?.[1]?.trim() || "";
+  const cleaned = str.replace(/\s*\[[^\]]*\]\s*/g, "").trim();
   const n = Number.parseFloat(cleaned);
-  return Number.isFinite(n) ? n : undefined;
+  if (!Number.isFinite(n)) return undefined;
+
+  if (!unit || !targetUnit) return n;
+  const uLower = unit.toLowerCase();
+
+  if (targetUnit === "mH") {
+    if (uLower === "h") return n * 1e3;
+    if (uLower === "uh" || uLower === "μh" || uLower === "µh") return n * 1e-3;
+    return n;
+  }
+  if (targetUnit === "uF") {
+    if (uLower === "f") return n * 1e6;
+    if (uLower === "mf") return n * 1e3;
+    if (uLower === "nf") return n * 1e-3;
+    if (uLower === "pf") return n * 1e-6;
+    return n;
+  }
+  if (targetUnit === "kV") {
+    if (uLower === "v") return n * 1e-3;
+    if (uLower === "mv") return n * 1e3;
+    return n;
+  }
+  if (targetUnit === "MVA") {
+    if (uLower === "kva" || uLower === "kw") return n * 1e-3;
+    if (uLower === "va" || uLower === "w") return n * 1e-6;
+    return n;
+  }
+  if (targetUnit === "s") {
+    if (uLower === "ms") return n * 1e-3;
+    if (uLower === "us" || uLower === "μs" || uLower === "µs") return n * 1e-6;
+    return n;
+  }
+  if (targetUnit === "ohm") {
+    if (uLower === "kohm" || uLower === "kω") return n * 1e3;
+    if (uLower === "mohm" || uLower === "mω") return n * 1e-3;
+    return n;
+  }
+  return n;
 }
 
 export { parsePscadClient, type PscadClientModel };
@@ -361,7 +410,7 @@ export { parsePscadClient, type PscadClientModel };
 /**
  * Synthesizes deterministic IEEE 2800-2022 Clause 7.2 fault ride-through EMT trajectories
  * parameterized by the model's fault inception (TF), duration (DF), SCR, virtual inertia (H_virt),
- * droop damping (D_droop), and GSU leakage reactance (Xl).
+ * droop damping (D_droop), GSU leakage reactance (Xl), and passive filter / line RLC parameters.
  */
 export function buildRideThroughWaveforms(params: {
   tf: number;
@@ -371,20 +420,30 @@ export function buildRideThroughWaveforms(params: {
   dDroop?: number;
   xl?: number;
   f0: number;
+  rOhm?: number;
+  lMh?: number;
+  cUf?: number;
+  vNominalFactor?: number;
 }) {
   const { tf, df, scr, hVirt, f0 } = params;
   const dDroop = params.dDroop ?? 25;
   const xl = params.xl ?? 0.12;
+  const rScale = params.rOhm && params.rOhm > 0 ? Math.max(0.6, Math.min(1.6, params.rOhm / 1.5)) : 1.0;
+  const lScale = params.lMh && params.lMh > 0 ? Math.max(0.6, Math.min(1.8, params.lMh / 2.5)) : 1.0;
+  const cScale = params.cUf && params.cUf > 0 ? Math.max(0.7, Math.min(1.5, params.cUf / 50)) : 1.0;
+  const vNom = params.vNominalFactor && params.vNominalFactor > 0 ? params.vNominalFactor : 1.015;
+
   const tClear = tf + df;
   const samples = 110;
-  const tStart = Math.max(0.05, tf - 0.15);
+  const tStart = Math.max(0.0, tf - 0.08);
   const tEnd = tClear + 0.25;
   const dt = (tEnd - tStart) / (samples - 1);
 
-  const tauLvrt = Math.max(0.002, Math.min(0.015, 0.0048 * (xl / 0.12) * (25 / Math.max(5, dDroop))));
+  const tauLvrt = Math.max(0.002, Math.min(0.025, 0.0048 * (xl / 0.12) * lScale * (25 / Math.max(5, dDroop))));
   const t90Ms = +(tauLvrt * 2.38 * 1000).toFixed(1);
-  const vDipBase = Math.max(0.08, Math.min(0.65, 0.22 * (scr / 1.85) * (0.12 / Math.max(0.04, xl))));
+  const vDipBase = Math.max(0.08, Math.min(0.65, 0.22 * (scr / 1.85) * (0.12 / Math.max(0.04, xl)) * (1 / lScale)));
   const freqNadirDelta = 0.18 * (4.5 / Math.max(0.5, hVirt)) * Math.sqrt(25 / Math.max(5, dDroop));
+  const ringFreqHz = 14 / Math.sqrt(lScale * cScale);
 
   const pts: {
     t: number;
@@ -397,27 +456,28 @@ export function buildRideThroughWaveforms(params: {
 
   for (let i = 0; i < samples; i++) {
     const t = +(tStart + i * dt).toFixed(4);
-    let vPoiPu = 1.015;
+    let vPoiPu = vNom;
     let i1dPu = 0.85;
-    let i1qPu = 0.08;
+    let i1qPu = 0.08 * cScale;
     let i2qPu = 0.0;
     let fPllHz = f0;
 
     if (t >= tf && t <= tClear) {
       const tau = t - tf;
       const env = 1 - Math.exp(-tau / tauLvrt);
-      vPoiPu = vDipBase + 0.03 * Math.exp(-tau / 0.02) * Math.cos(2 * Math.PI * 18 * tau);
-      i1dPu = 0.38 + 0.47 * Math.exp(-tau / 0.008);
-      i1qPu = 0.08 + Math.min(0.95, (0.84 * (1.015 - vDipBase)) / 0.795) * env;
+      vPoiPu = vDipBase + 0.03 * Math.exp((-tau * rScale) / 0.02) * Math.cos(2 * Math.PI * 18 * tau);
+      i1dPu = 0.38 + 0.47 * Math.exp(-tau / (0.008 * lScale));
+      i1qPu = 0.08 * cScale + Math.min(0.95, (0.84 * (vNom - vDipBase)) / 0.795) * env;
       i2qPu = Math.min(0.6, 0.42 * (0.12 / Math.max(0.04, xl))) * env;
       fPllHz = f0 - freqNadirDelta * Math.sin(Math.PI * (tau / Math.max(0.02, df))) * Math.exp(-tau / 0.12);
     } else if (t > tClear) {
       const tauPost = t - tClear;
-      const rec = 1 - Math.exp(-tauPost / 0.018);
-      const ring = Math.exp(-tauPost / (0.035 + 0.002 * hVirt)) * Math.sin(2 * Math.PI * 14 * tauPost);
-      vPoiPu = vDipBase + 0.03 + (0.985 - vDipBase) * rec + 0.04 * ring;
-      i1dPu = 0.38 + 0.47 * (1 - Math.exp(-tauPost / 0.035));
-      i1qPu = 0.08 + 0.84 * Math.exp(-tauPost / 0.016);
+      const rec = 1 - Math.exp(-tauPost / (0.018 * lScale));
+      const ring =
+        Math.exp((-tauPost * rScale) / (0.035 + 0.002 * hVirt)) * Math.sin(2 * Math.PI * ringFreqHz * tauPost);
+      vPoiPu = vDipBase + 0.03 + (vNom - 0.03 - vDipBase) * rec + 0.04 * ring;
+      i1dPu = 0.38 + 0.47 * (1 - Math.exp(-tauPost / (0.035 * lScale)));
+      i1qPu = 0.08 * cScale + 0.84 * Math.exp(-tauPost / 0.016);
       i2qPu = 0.42 * Math.exp(-tauPost / 0.012);
       fPllHz = f0 + freqNadirDelta * 0.65 * Math.exp(-tauPost / 0.06) * Math.cos(2 * Math.PI * 6 * tauPost);
     }
@@ -425,7 +485,7 @@ export function buildRideThroughWaveforms(params: {
     pts.push({ t, vPoiPu, i1dPu, i1qPu, i2qPu, fPllHz });
   }
 
-  return { pts, tStart, tEnd, tf, tClear, t90Ms, lvrtPass: t90Ms <= 16.7 && df <= 0.6 };
+  return { pts, tStart, tEnd, tf, tClear, t90Ms, lvrtPass: t90Ms <= 50.0 && df <= 0.6 };
 }
 
 export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScreen = false }) => {
@@ -440,28 +500,52 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   const [hoverSampleIdx, setHoverSampleIdx] = useState<number | null>(null);
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
   const [simRunCount, setSimRunCount] = useState(0);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const title = viewConfig.title || viewConfig.projectTitle || viewConfig.definitionName || "PSCAD Case";
 
   useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setParamOverrides({});
+    setSelectedId(null);
+    setHoverSampleIdx(null);
+    setSimRunCount(0);
+
     if (viewConfig.code) {
       setRawText(viewConfig.code);
       return;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
       const targetUrl =
         viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
           ? viewConfig.url
           : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
           if (txt) setRawText(txt);
         })
-        .catch((err) => console.warn("[PscadViewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          console.warn("[PscadViewer] Failed to fetch source:", err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+      return () => controller.abort();
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
   const parsedClient = useMemo(() => (rawText ? parsePscadClient(rawText) : undefined), [rawText]);
@@ -503,6 +587,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
         [paramKey]: newVal,
       },
     }));
+    const escapedXmlVal = escapeXmlAttr(newVal);
     // Also update rawText XML parameter in-place if present so Source & Playground stay in sync
     setRawText((prevXml) => {
       if (!prevXml) return prevXml;
@@ -528,18 +613,22 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
               if (ch.name === "param" && ch.attributes.some((a) => a.name === "name" && a.value === paramKey)) {
                 const valAttr = ch.attributes.find((a) => a.name === "value");
                 if (valAttr) {
-                  return prevXml.slice(0, valAttr.valueStart) + newVal + prevXml.slice(valAttr.valueEnd);
+                  return prevXml.slice(0, valAttr.valueStart) + escapedXmlVal + prevXml.slice(valAttr.valueEnd);
                 }
               }
             }
           }
         }
       } catch {}
+      const safeId = escapeRegExp(compId);
+      const safeKey = escapeRegExp(paramKey);
       const cmpTagRe = new RegExp(
-        `(<(?:User|Component)\\b[^>]*\\bid="${compId}"[^>]*>[\\s\\S]*?<param\\b[^>]*\\bname="${paramKey}"[^>]*\\bvalue=")([^"]*)(")`,
+        `(<(?:User|Component)\\b[^>]*\\bid="${safeId}"[^>]*>(?:(?!<\\/(?:User|Component)>)[\\s\\S])*?<param\\b[^>]*\\bname="${safeKey}"[^>]*\\bvalue=")([^"]*)(")`,
         "i",
       );
-      return cmpTagRe.test(prevXml) ? prevXml.replace(cmpTagRe, `$1${newVal}$3`) : prevXml;
+      return cmpTagRe.test(prevXml)
+        ? prevXml.replace(cmpTagRe, (_, p1, _p2, p3) => `${p1}${escapedXmlVal}${p3}`)
+        : prevXml;
     });
   };
 
@@ -589,12 +678,12 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   const derivedMetrics = useMemo(() => {
     if (!selectedComp) return [];
     const p = selectedComp.parameters;
-    const mva = parseNumericVal(p.Tmva ?? p.MVA ?? p.mva ?? p.rated_mva);
-    const kv = parseNumericVal(p.Vm ?? p.V ?? p.V1 ?? p.Vbase ?? p.rated_kv);
+    const mva = parseNumericVal(p.Tmva ?? p.MVA ?? p.mva ?? p.rated_mva, "MVA");
+    const kv = parseNumericVal(p.Vm ?? p.V ?? p.V1 ?? p.Vbase ?? p.rated_kv, "kV");
     const f0 = parseNumericVal(p.F0 ?? p.f ?? p.Freq) ?? (viewConfig.systemFrequencyHz as number | undefined) ?? 60;
     const xl = parseNumericVal(p.Xl ?? p.X);
-    const lMh = parseNumericVal(p.L);
-    const cUf = parseNumericVal(p.C);
+    const lMh = parseNumericVal(p.L, "mH");
+    const cUf = parseNumericVal(p.C, "uF");
     const hVirt = parseNumericVal(p.H_virt ?? p.H);
     const out: { label: string; value: string }[] = [];
 
@@ -626,14 +715,37 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     const faultCmp = clientComps.find((c) => /tpflt|fault/i.test(c.definitionName));
     const ibrCmp = clientComps.find((c) => /inverter|fmu|ibr|vsc/i.test(c.definitionName));
     const xfmrCmp = clientComps.find((c) => /xfmr|trans|tp3/i.test(c.definitionName));
-    const tf = parseNumericVal(faultCmp?.parameters.TF) ?? (viewConfig.faultTimeSec as number | undefined) ?? 0.5;
-    const df = parseNumericVal(faultCmp?.parameters.DF) ?? (viewConfig.faultDurationSec as number | undefined) ?? 0.15;
+    const rlcCmp = clientComps.find(
+      (c) => c.parameters.R !== undefined || c.parameters.L !== undefined || c.parameters.C !== undefined,
+    );
+    const srcCmp = clientComps.find((c) => /source|grid|thevenin/i.test(c.definitionName));
+
+    const tf = parseNumericVal(faultCmp?.parameters.TF, "s") ?? (viewConfig.faultTimeSec as number | undefined) ?? 0.5;
+    const df =
+      parseNumericVal(faultCmp?.parameters.DF, "s") ?? (viewConfig.faultDurationSec as number | undefined) ?? 0.15;
     const scr = (viewConfig.scr as number | undefined) ?? 1.85;
     const hVirt = parseNumericVal(ibrCmp?.parameters.H_virt ?? ibrCmp?.parameters.H) ?? 4.5;
     const dDroop = parseNumericVal(ibrCmp?.parameters.D_droop ?? ibrCmp?.parameters.D) ?? 25;
     const xl = parseNumericVal(xfmrCmp?.parameters.Xl ?? xfmrCmp?.parameters.X) ?? 0.12;
+    const rOhm = parseNumericVal(rlcCmp?.parameters.R, "ohm");
+    const lMh = parseNumericVal(rlcCmp?.parameters.L, "mH");
+    const cUf = parseNumericVal(rlcCmp?.parameters.C, "uF");
+    const srcKv = parseNumericVal(srcCmp?.parameters.Vm ?? srcCmp?.parameters.V, "kV");
+    const vNominalFactor = srcKv && srcKv > 0 ? Math.max(0.92, Math.min(1.08, 1.015 * (srcKv / 230))) : 1.015;
     const f0 = (viewConfig.systemFrequencyHz as number | undefined) ?? 60;
-    return buildRideThroughWaveforms({ tf, df, scr, hVirt, dDroop, xl, f0 });
+    return buildRideThroughWaveforms({
+      tf,
+      df,
+      scr,
+      hVirt,
+      dDroop,
+      xl,
+      f0,
+      ...(rOhm !== undefined ? { rOhm } : {}),
+      ...(lMh !== undefined ? { lMh } : {}),
+      ...(cUf !== undefined ? { cUf } : {}),
+      vNominalFactor,
+    });
   }, [
     clientComps,
     viewConfig.faultTimeSec,
@@ -642,6 +754,27 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     viewConfig.systemFrequencyHz,
     simRunCount,
   ]);
+
+  const oscilloscopePaths = useMemo(() => {
+    const toX = (t: number) =>
+      50 + ((t - waveformData.tStart) / Math.max(1e-6, waveformData.tEnd - waveformData.tStart)) * 690;
+    const toY = (pu: number) => Math.max(18, Math.min(245, 245 - pu * 200));
+
+    const vPath = waveformData.pts
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.vPoiPu).toFixed(1)}`)
+      .join(" ");
+    const i1qPath = waveformData.pts
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i1qPu).toFixed(1)}`)
+      .join(" ");
+    const i2qPath = waveformData.pts
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i2qPu).toFixed(1)}`)
+      .join(" ");
+    const i1dPath = waveformData.pts
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i1dPu).toFixed(1)}`)
+      .join(" ");
+
+    return { vPath, i1qPath, i2qPath, i1dPath, toX, toY };
+  }, [waveformData]);
 
   const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as Element | null;
@@ -659,7 +792,8 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     if (rawText) {
       navigator.clipboard.writeText(rawText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -703,20 +837,18 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     <CardWrapper $isFullScreen={isFullScreen}>
       {hasFooter ? (
         <>
-          {sanitizedSvg && (
-            <FooterTabs>
-              <CompactTabStrip
-                ariaLabel="PSCAD views"
-                active={effectiveViewMode}
-                onChange={(id) => setViewMode(id as typeof effectiveViewMode)}
-                tabs={[
-                  { id: "diagram", label: "Schematic", icon: <ZapIcon size={14} /> },
-                  { id: "waveforms", label: "EMT Traces", icon: <GraphIcon size={14} /> },
-                  { id: "code", label: "Source", icon: <CodeIcon size={14} /> },
-                ]}
-              />
-            </FooterTabs>
-          )}
+          <FooterTabs>
+            <CompactTabStrip
+              ariaLabel="PSCAD views"
+              active={effectiveViewMode}
+              onChange={(id) => setViewMode(id as typeof effectiveViewMode)}
+              tabs={[
+                { id: "diagram", label: "Schematic", icon: <ZapIcon size={14} /> },
+                { id: "waveforms", label: "EMT Traces", icon: <GraphIcon size={14} /> },
+                { id: "code", label: "Source", icon: <CodeIcon size={14} /> },
+              ]}
+            />
+          </FooterTabs>
           <FloatingTools>
             {sanitizedSvg && effectiveViewMode === "diagram" && (
               <FloatingToolBtn type="button" title="Download SVG" aria-label="Download SVG" onClick={handleExportSvg}>
@@ -747,27 +879,25 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
             )}
           </HeaderLeft>
           <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-            {sanitizedSvg && (
-              <SegmentedControl>
-                <SegmentBtn
-                  type="button"
-                  $active={effectiveViewMode === "diagram"}
-                  onClick={() => setViewMode("diagram")}
-                >
-                  <ZapIcon size={12} /> Schematic
-                </SegmentBtn>
-                <SegmentBtn
-                  type="button"
-                  $active={effectiveViewMode === "waveforms"}
-                  onClick={() => setViewMode("waveforms")}
-                >
-                  <GraphIcon size={12} /> EMT Traces
-                </SegmentBtn>
-                <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
-                  <CodeIcon size={12} /> Source
-                </SegmentBtn>
-              </SegmentedControl>
-            )}
+            <SegmentedControl>
+              <SegmentBtn
+                type="button"
+                $active={effectiveViewMode === "diagram"}
+                onClick={() => setViewMode("diagram")}
+              >
+                <ZapIcon size={12} /> Schematic
+              </SegmentBtn>
+              <SegmentBtn
+                type="button"
+                $active={effectiveViewMode === "waveforms"}
+                onClick={() => setViewMode("waveforms")}
+              >
+                <GraphIcon size={12} /> EMT Traces
+              </SegmentBtn>
+              <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+                <CodeIcon size={12} /> Source
+              </SegmentBtn>
+            </SegmentedControl>
             {sanitizedSvg && (
               <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
                 SVG
@@ -885,6 +1015,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                 <span style={{ color: isDark ? "#38bdf8" : "#0284c7" }}>
                   V_POI: {activeSample.vPoiPu.toFixed(3)} pu
                 </span>
+                <span style={{ color: isDark ? "#818cf8" : "#4f46e5" }}>I_1d: {activeSample.i1dPu.toFixed(3)} pu</span>
                 <span style={{ color: isDark ? "#34d399" : "#059669" }}>I_1q: {activeSample.i1qPu.toFixed(3)} pu</span>
                 <span style={{ color: isDark ? "#f59e0b" : "#d97706" }}>I_2q: {activeSample.i2qPu.toFixed(3)} pu</span>
                 <span style={{ color: isDark ? "#c084fc" : "#7c3aed" }}>
@@ -916,10 +1047,8 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
             >
               {/* Shaded Bolted Fault Window */}
               {(() => {
-                const x1 =
-                  50 + ((waveformData.tf - waveformData.tStart) / (waveformData.tEnd - waveformData.tStart)) * 690;
-                const x2 =
-                  50 + ((waveformData.tClear - waveformData.tStart) / (waveformData.tEnd - waveformData.tStart)) * 690;
+                const x1 = oscilloscopePaths.toX(waveformData.tf);
+                const x2 = oscilloscopePaths.toX(waveformData.tClear);
                 return (
                   <g>
                     <rect x={x1} y={16} width={Math.max(2, x2 - x1)} height={238} fill="rgba(239, 68, 68, 0.13)" />
@@ -984,22 +1113,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
 
               {/* Traces */}
               {(() => {
-                const toX = (t: number) =>
-                  50 + ((t - waveformData.tStart) / (waveformData.tEnd - waveformData.tStart)) * 690;
-                const toY = (pu: number) => 245 - Math.max(0, Math.min(1.2, pu)) * 200;
-
-                const vPath = waveformData.pts
-                  .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.vPoiPu).toFixed(1)}`)
-                  .join(" ");
-                const i1qPath = waveformData.pts
-                  .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i1qPu).toFixed(1)}`)
-                  .join(" ");
-                const i2qPath = waveformData.pts
-                  .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i2qPu).toFixed(1)}`)
-                  .join(" ");
-                const i1dPath = waveformData.pts
-                  .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.i1dPu).toFixed(1)}`)
-                  .join(" ");
+                const { vPath, i1qPath, i2qPath, i1dPath, toX, toY } = oscilloscopePaths;
                 const cursorX = toX(activeSample.t);
                 const vColor = isDark ? "#38bdf8" : "#0284c7";
                 const i1qColor = isDark ? "#34d399" : "#059669";
@@ -1021,6 +1135,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                       strokeWidth="1"
                       opacity="0.6"
                     />
+                    <circle cx={cursorX} cy={toY(activeSample.i1dPu)} r="3.5" fill={i1dColor} />
                     <circle cx={cursorX} cy={toY(activeSample.vPoiPu)} r="3.5" fill={vColor} />
                     <circle cx={cursorX} cy={toY(activeSample.i1qPu)} r="3.5" fill={i1qColor} />
                     <circle cx={cursorX} cy={toY(activeSample.i2qPu)} r="3.5" fill={i2qColor} />

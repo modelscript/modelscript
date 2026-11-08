@@ -266,7 +266,7 @@ export function renderSimaCatenaryProfileSvg(params: SimaCatenaryViewParams): st
     <rect x="-11" y="-11" width="22" height="11" fill="#ef4444" rx="2"/>
     <polygon points="-14,0 14,0 0,14" fill="#dc2626"/>
     <circle cx="0" cy="-5.5" r="2.8" fill="#ffffff"/>
-    <text x="-4" y="25" fill="#fca5a5" font-size="10" font-weight="600">Anchor (0° Uplift)</text>
+    <text x="-4" y="-16" fill="#fca5a5" font-size="10" font-weight="600">Anchor (0° Uplift)</text>
   </g>
 
   <!-- Touchdown Point (TDP) Indicator -->
@@ -499,10 +499,15 @@ export function renderSimaMooringSpreadSvg(params: SimaMooringSpreadViewParams):
   </g>`;
   }
 
-  // Environmental vectors (Wave, Wind, Current)
+  // Environmental vectors (Wave, Wind, Current) mapped through the same (xIsNorth, ySign) frame as mooring lines
   const env = params.environment;
   const makeArrow = (deg: number, color: string, label: string, rOffset: number) => {
-    const rad = (deg * Math.PI) / 180;
+    const engRad = (deg * Math.PI) / 180;
+    const engX = Math.cos(engRad);
+    const engY = Math.sin(engRad);
+    const screenDx = xIsNorth ? ySign * engY : engX;
+    const screenDy = xIsNorth ? -engX : -engY;
+    const rad = Math.atan2(screenDx, -screenDy);
     const arrowLen = 42;
     const startX = cx + (plotRadius + rOffset + arrowLen) * Math.sin(rad);
     const startY = cy - (plotRadius + rOffset + arrowLen) * Math.cos(rad);

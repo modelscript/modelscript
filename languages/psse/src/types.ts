@@ -325,6 +325,83 @@ export interface PsseCase {
   vscDc: VscDcRecord[];
   switchedShunts: SwitchedShuntRecord[];
   dyr?: PsseDyrCase | undefined;
+  con?: PsseConCase | undefined;
+}
+
+/**
+ * PSS/E Contingency Outage Action.
+ */
+export type ContingencyAction =
+  | { type: "open_branch"; fromBus: number; toBus: number; ckt: string }
+  | { type: "close_branch"; fromBus: number; toBus: number; ckt: string }
+  | { type: "trip_generator"; bus: number; id: string }
+  | { type: "disconnect_bus"; bus: number }
+  | { type: "change_rating"; fromBus: number; toBus: number; ckt: string; rateA: number }
+  | { type: "change_generator_pmax"; bus: number; id: string; pMax: number };
+
+/**
+ * Single defined contingency block in a PSS/E `.con` file.
+ */
+export interface ContingencyDefinition {
+  id: string;
+  label?: string | undefined;
+  actions: ContingencyAction[];
+  span?: SourceSpan | undefined;
+}
+
+/**
+ * Parsed PSS/E Contingency Data Collection (`.con`).
+ */
+export interface PsseConCase {
+  contingencies: ContingencyDefinition[];
+  byName: Map<string, ContingencyDefinition>;
+}
+
+/**
+ * Monitored voltage range rule in PSS/E `.mon` file.
+ */
+export interface MonitoredVoltageRange {
+  busStart: number;
+  busEnd: number;
+  vMin: number;
+  vMax: number;
+}
+
+/**
+ * Monitored branch flow rule in PSS/E `.mon` file.
+ */
+export interface MonitoredBranch {
+  fromBus: number;
+  toBus: number;
+  ckt?: string | undefined;
+}
+
+/**
+ * Parsed PSS/E Monitored Elements Case (`.mon`).
+ */
+export interface PsseMonCase {
+  voltageRanges: MonitoredVoltageRange[];
+  monitoredBranches: MonitoredBranch[];
+  monitoredSubsystems: string[];
+  monitorTieLines: boolean;
+}
+
+/**
+ * Parsed PSS/E Subsystem Definition (`.sub`).
+ */
+export interface SubsystemDefinition {
+  name: string;
+  kvRanges: Array<[number, number]>;
+  buses: number[];
+  areas: number[];
+  zones: number[];
+}
+
+/**
+ * Parsed PSS/E Subsystems Collection (`.sub`).
+ */
+export interface PsseSubCase {
+  subsystems: Map<string, SubsystemDefinition>;
 }
 
 /**

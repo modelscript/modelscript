@@ -22,8 +22,8 @@
  */
 
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
-import { solvePowerFlow } from "./ac-powerflow.js";
 import type { PsseCase, PsseDyrCase } from "../types.js";
+import { solvePowerFlow } from "./ac-powerflow.js";
 
 export interface SmallSignalOptions {
   /** Damping ratio threshold for critical oscillatory modes (default: 0.05 / 5%). */
@@ -253,10 +253,7 @@ function solveLinearSystem(A: Float64Array, b: Float64Array, n: number): boolean
 /**
  * Executes a full Small-Signal Stability Modal Analysis on a PSS/E base case.
  */
-export function analyzeSmallSignalStability(
-  psseCase: PsseCase,
-  options: SmallSignalOptions = {},
-): ModalAnalysisResult {
+export function analyzeSmallSignalStability(psseCase: PsseCase, options: SmallSignalOptions = {}): ModalAnalysisResult {
   const pf = solvePowerFlow(psseCase);
   const netlist = extractPowerFlowNetlist(psseCase);
   const N = netlist.nBuses;
@@ -663,10 +660,7 @@ export function analyzeSmallSignalStability(
 /**
  * Formats a Small-Signal Modal Stability Analysis result into an engineering report.
  */
-export function formatModalAnalysisReport(
-  result: ModalAnalysisResult,
-  caseTitle = "PSS/E BASE CASE",
-): string {
+export function formatModalAnalysisReport(result: ModalAnalysisResult, caseTitle = "PSS/E BASE CASE"): string {
   const lines: string[] = [];
   lines.push(`================================================================================`);
   lines.push(`  PSS/E SMALL-SIGNAL STABILITY & MODAL ANALYSIS REPORT — ${caseTitle}`);

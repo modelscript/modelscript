@@ -3,12 +3,12 @@
 import Box from "./Box";
 
 import {
-  BellIcon,
   BookIcon,
   BookmarkIcon,
   CodeIcon,
   GearIcon,
   HomeIcon,
+  InboxIcon,
   MoonIcon,
   PackageIcon,
   PersonIcon,
@@ -426,13 +426,34 @@ const AppShell: React.FC = () => {
     location.pathname.startsWith("/sketch") ||
     location.pathname.startsWith("/morsel");
 
-  // Make wide layout for /settings/*, /admin/*, and /packages/* detail pages (no right panel, extends to edge of right nav)
+  // Check if current route is part of the Spaces environment (Spaces explore, Chat, Orgs, or Space detail)
+  const isSpaceRoute = React.useMemo(() => {
+    const p = location.pathname;
+    if (p.startsWith("/spaces") || p.startsWith("/chat") || p.startsWith("/s/") || p.startsWith("/orgs/")) {
+      return true;
+    }
+    const clean = p.replace(/^\/+|\/+$/g, "");
+    const segments = clean.split("/");
+    if (segments.length >= 2 && segments[0]?.startsWith("@")) {
+      const reserved = new Set(["status", "about", "followers", "following"]);
+      if (!reserved.has(segments[1]!)) {
+        return true;
+      }
+    }
+    return false;
+  }, [location.pathname]);
+
+  // Make wide layout for /settings/*, /admin/*, /inbox, /notifications, /bookmarks, /packages/* detail pages, and Spaces environment (no right rail, spans exactly across main + right rail width: 1066px inside 1410px centered container)
   const isWideLayout =
     location.pathname.startsWith("/settings") ||
     location.pathname.startsWith("/admin") ||
+    location.pathname.startsWith("/inbox") ||
+    location.pathname.startsWith("/notifications") ||
+    location.pathname.startsWith("/bookmarks") ||
     (location.pathname.startsWith("/packages") &&
       location.pathname !== "/packages" &&
-      location.pathname !== "/packages/");
+      location.pathname !== "/packages/") ||
+    isSpaceRoute;
 
   const [isNotebookInspector, setIsNotebookInspector] = React.useState(false);
 
@@ -708,12 +729,16 @@ const AppShell: React.FC = () => {
                 <PlusIcon size={24} />
               </CenterPostButton>
               <BottomBarButton
-                $active={location.pathname === "/notifications"}
-                onClick={() => handleNavWithScroll(user ? "/notifications" : "/login")}
+                $active={
+                  location.pathname === "/inbox" ||
+                  location.pathname === "/notifications" ||
+                  location.pathname === "/bookmarks"
+                }
+                onClick={() => handleNavWithScroll(user ? "/inbox" : "/login")}
                 style={{ position: "relative" }}
-                aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
+                aria-label={unreadCount > 0 ? `Inbox (${unreadCount} unread)` : "Inbox"}
               >
-                <BellIcon size={24} />
+                <InboxIcon size={24} />
                 {unreadCount > 0 && (
                   <div
                     style={{

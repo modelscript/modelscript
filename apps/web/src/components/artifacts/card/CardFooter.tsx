@@ -19,6 +19,7 @@ import { CiteButton } from "../../citations/CiteButton";
 import { DraftingTriangleIcon } from "../../icons";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
 import { useCardFooterSlotRegister } from "./CardFooterSlot";
+import { formatViewType } from "./utils";
 
 const CardFooterBar = styled(Box)`
   container-type: inline-size;
@@ -58,7 +59,7 @@ const CardFooterBar = styled(Box)`
     color: var(--ms-brand, #0e7490);
   }
 
-  /* Tabbed viewers portal their tab strip here; when present it replaces the title/type label. */
+  /* Tabbed viewers portal their tab strip here; when present it sits alongside or replaces the title. */
   .card-footer-slot {
     display: inline-flex;
     align-items: center;
@@ -68,8 +69,10 @@ const CardFooterBar = styled(Box)`
   .card-footer-slot:empty {
     display: none;
   }
-  .card-footer-slot:not(:empty) ~ .card-footer-title-group {
-    display: none;
+  @container card-footer (max-width: 480px) {
+    .card-footer-slot:not(:empty) ~ .card-footer-title-group {
+      display: none;
+    }
   }
   .card-footer-title-group {
     display: flex;
@@ -225,38 +228,39 @@ export const CardFooter: React.FC<CardFooterProps> = ({
     "gpu-simulation",
     "link-preview",
   ].includes(rawViewType);
+  void isUntitledMediaOr3dViewer;
+  const formatLabel = formatViewType(artifact?.view_type, viewConfig);
 
   return (
     <CardFooterBar
       px={2}
       borderTop="1px solid var(--color-border-default)"
-      backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"
+      backgroundColor="var(--color-canvas-subtle)"
       display="flex"
       justifyContent="space-between"
       alignItems="center"
       style={{ gap: "8px", minHeight: "36px", flexShrink: 0, marginTop: "auto" }}
     >
       <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
+        <span
+          className="card-footer-format-badge"
+          style={{
+            fontSize: "10.5px",
+            lineHeight: "14px",
+            color: "var(--color-fg-muted)",
+            fontWeight: 700,
+            fontFamily: "var(--font-mono, monospace)",
+            whiteSpace: "nowrap",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            paddingLeft: 4,
+            flexShrink: 0,
+          }}
+        >
+          {formatLabel}
+        </span>
         <div ref={registerSlot} className="card-footer-slot" />
         <div className="card-footer-title-group">
-          {!isUntitledMediaOr3dViewer && (
-            <span
-              style={{
-                fontSize: "10.5px",
-                lineHeight: "14px",
-                color: "var(--color-fg-muted)",
-                fontWeight: 700,
-                fontFamily: "var(--font-mono, monospace)",
-                whiteSpace: "nowrap",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                paddingLeft: 4,
-                flexShrink: 0,
-              }}
-            >
-              {rawViewType || "ARTIFACT"}
-            </span>
-          )}
           <Text
             style={{
               fontSize: "12px",

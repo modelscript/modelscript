@@ -40,6 +40,8 @@ export interface GenericPowerCase {
     rata1?: number;
     stat?: number;
   }>;
+  /** Generator economic cost curves keyed by `${busNumber}_${genId}` or `${busNumber}`. */
+  generatorCosts?: Map<string, GeneratorCostCurve> | undefined;
 }
 
 export interface GeneratorCostCurve {
@@ -202,4 +204,3 @@ export interface MultiPeriodOpfSolution {
   bessTrajectories: Map<string, BessPeriodResult[]>;
   reportText: string;
 }
-

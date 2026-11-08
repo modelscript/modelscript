@@ -79,25 +79,34 @@ const CodeSnippetBox = styled.div`
 export const PackageViewCard: React.FC<PackageViewCardProps> = ({ viewConfig }) => {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const name = viewConfig.name || "Unnamed Package";
-  const version = viewConfig.version || "1.0.0";
-  const description = viewConfig.description || "No description provided.";
-  const dialect = (viewConfig.dialect || "modelica").toUpperCase();
-  const installCmd = `msx install ${name}`;
+  React.useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const name = viewConfig?.name || "Unnamed Package";
+  const version = viewConfig?.version || "1.0.0";
+  const description = viewConfig?.description || "No description provided.";
+  const dialect = (viewConfig?.dialect || "modelica").toUpperCase();
+  const keywords = Array.isArray(viewConfig?.keywords) ? viewConfig.keywords.filter(Boolean) : [];
+  const installCmd = viewConfig?.version ? `msx install ${name}@${version}` : `msx install ${name}`;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(installCmd);
+    navigator.clipboard?.writeText(installCmd).catch(() => {});
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const handleView = (e: React.MouseEvent) => {
     e.stopPropagation();
     const pkgPath = encodePackagePath(name);
     navigate(
-      viewConfig.version ? `/packages/${pkgPath}/${encodeURIComponent(viewConfig.version)}` : `/packages/${pkgPath}`,
+      viewConfig?.version ? `/packages/${pkgPath}/${encodeURIComponent(viewConfig.version)}` : `/packages/${pkgPath}`,
     );
   };
 
@@ -124,18 +133,18 @@ export const PackageViewCard: React.FC<PackageViewCardProps> = ({ viewConfig }) 
               <VersionPill>v{version}</VersionPill>
               <DialectBadge>⚡ {dialect}</DialectBadge>
             </Box>
-            {viewConfig.license && (
-              <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>License: {viewConfig.license}</span>
+            {viewConfig?.license && (
+              <span style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>License: {viewConfig.license}</span>
             )}
           </Box>
         </Box>
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} onClick={(e) => e.stopPropagation()}>
           <CiteButton
             target={buildCitationFromPackage({
               name,
               version,
               description,
-              license: viewConfig.license,
+              license: viewConfig?.license,
             })}
             label="Cite"
             variant="button"
@@ -151,14 +160,23 @@ export const PackageViewCard: React.FC<PackageViewCardProps> = ({ viewConfig }) 
         {description}
       </Text>
 
+      {keywords.length > 0 && (
+        <Box display="flex" gap={1} flexWrap="wrap">
+          {keywords.slice(0, 6).map((kw) => (
+            <VersionPill key={kw}>#{kw}</VersionPill>
+          ))}
+        </Box>
+      )}
+
       <CodeSnippetBox>
         <span>{installCmd}</span>
         <button
+          type="button"
           onClick={handleCopy}
           style={{
             background: "transparent",
             border: "none",
-            color: copied ? "var(--color-status-verified, #10b981)" : "var(--color-text-muted, #8b949e)",
+            color: copied ? "var(--color-status-verified, #10b981)" : "var(--color-fg-muted, #8b949e)",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",

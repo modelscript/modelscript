@@ -2,6 +2,7 @@
 
 import {
   AlertIcon,
+  BookmarkFillIcon,
   CreditCardIcon,
   HeartFillIcon,
   MentionIcon,
@@ -57,6 +58,8 @@ export function formatPostContent(content: string) {
 
 export const getIconForType = (type: string) => {
   switch (type) {
+    case "bookmark":
+      return <BookmarkFillIcon color="var(--color-attention-fg, #d29922)" size={20} />;
     case "like":
       return <HeartFillIcon color="var(--color-danger-fg)" size={22} />;
     case "follow":
@@ -73,8 +76,10 @@ export const getIconForType = (type: string) => {
       return <MentionIcon color="var(--color-done-fg)" size={22} />;
     case "simulation":
     case "simulation_completed":
+    case "cae_completed":
       return <RocketIcon color="var(--color-success-fg)" size={22} />;
     case "simulation_failed":
+    case "cae_failed":
       return <AlertIcon color="var(--color-danger-fg)" size={22} />;
     case "package":
     case "package_published":
@@ -143,6 +148,8 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
   }
 
   switch (type) {
+    case "bookmark":
+      return <>Saved post from {actorText}</>;
     case "like":
       return <>{actorText} liked your post</>;
     case "follow":
@@ -161,8 +168,10 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
       return <>{actorText} mentioned you</>;
     case "simulation":
     case "simulation_completed":
+    case "cae_completed":
       return isSelf ? <>Your simulation completed successfully</> : <>{actorText} completed a simulation run</>;
     case "simulation_failed":
+    case "cae_failed":
       return isSelf ? <>Your simulation run terminated with errors</> : <>{actorText}'s simulation failed</>;
     case "package":
     case "package_published":

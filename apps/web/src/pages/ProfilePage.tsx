@@ -4,16 +4,19 @@ import { Button, Flash, Heading, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { blockUser, getUserProfile, muteUser, reportUser, unblockUser, unmuteUser } from "../api";
+import { resolveNamespacePrincipal } from "../api/spaces";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ProfileArticles from "../components/ProfileArticles";
 import ProfilePackages from "../components/ProfilePackages";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
+import ProfileSpaces from "../components/ProfileSpaces";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { formatProfileTitle, usePageTitle } from "../util/title";
+import OrganizationPage from "./OrganizationPage";
 import { ProfileHeader, ReportModal, Tab, TabBar, UnblockModal, type LinkedAccount, type ProfileData } from "./profile";
 
 const PROFILE_TABS = ["Posts", "Replies", "Reposts", "Packages", "Articles", "Repos"];
@@ -24,19 +27,23 @@ const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
+  const hasSpaces = useFeatureFlag("spaces_hub");
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [isOrgContainer, setIsOrgContainer] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab")?.toLowerCase();
   const activeTab =
-    PROFILE_TABS.find(
-      (t) =>
-        t.toLowerCase() === tabParam ||
-        (t === "Reposts" && tabParam === "repost") ||
-        (t === "Replies" && tabParam === "reply"),
-    ) ?? "Posts";
+    tabParam === "spaces" && hasSpaces
+      ? "Spaces"
+      : (PROFILE_TABS.find(
+          (t) =>
+            t.toLowerCase() === tabParam ||
+            (t === "Reposts" && tabParam === "repost") ||
+            (t === "Replies" && tabParam === "reply"),
+        ) ?? "Posts");
   const setActiveTab = (tab: string) => setSearchParams(tab === "Posts" ? {} : { tab: tab.toLowerCase() });
 
   const userIdentifier = profile?.display_name
@@ -152,6 +159,7 @@ const ProfilePage: React.FC = () => {
       setLoading(true);
       setActionError(null);
       setProfile(null);
+      setIsOrgContainer(false);
       try {
         const data = await getUserProfile(username);
         setProfile(data.profile);
@@ -161,6 +169,15 @@ const ProfilePage: React.FC = () => {
         setIsMuted(Boolean(user && token && data.isMuted));
         setLinkedAccounts(data.linkedAccounts || []);
       } catch (err) {
+        try {
+          const principal = await resolveNamespacePrincipal(username);
+          if (principal && principal.kind === "organization") {
+            setIsOrgContainer(true);
+            return;
+          }
+        } catch {
+          // Ignore namespace fallback error
+        }
         console.error(err);
       } finally {
         setLoading(false);
@@ -187,6 +204,10 @@ const ProfilePage: React.FC = () => {
         <Spinner size="large" />
       </Box>
     );
+  }
+
+  if (isOrgContainer && username) {
+    return <OrganizationPage orgSlugOverride={username} />;
   }
 
   if (!profile) {
@@ -255,7 +276,10 @@ const ProfilePage: React.FC = () => {
               "Posts",
               ...(profile.account_type === "rss"
                 ? []
-                : ["Replies", "Reposts", "Packages", "Articles", ...(hasRepos ? ["Repos"] : [])]),
+                : [
+                    ...["Replies", "Reposts", "Packages", "Articles", ...(hasRepos ? ["Repos"] : [])],
+                    ...(hasSpaces ? ["Spaces"] : []),
+                  ]),
             ].map((tab) => (
               <Tab
                 key={tab}
@@ -271,6 +295,8 @@ const ProfilePage: React.FC = () => {
 
           {activeTab === "Repos" && hasRepos ? (
             <ProfileRepos username={profile.username} isOwnProfile={isOwnProfile} />
+          ) : activeTab === "Spaces" && hasSpaces ? (
+            <ProfileSpaces username={profile.username} isOwnProfile={isOwnProfile} />
           ) : activeTab === "Posts" ? (
             <ProfilePosts
               username={profile.username}

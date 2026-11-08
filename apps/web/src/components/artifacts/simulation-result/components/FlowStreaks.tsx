@@ -43,9 +43,8 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
     const totalCount = isCellData ? velocityData.length / 3 : posOriginal.length / 3;
     const count = Math.ceil(totalCount / downsampleFactor);
 
-    // Use a small thin cylinder
+    // Use a small thin cylinder (default length along Y axis, matching `up` and `localPos.y` in vertex shader)
     const baseCylinder = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 5);
-    baseCylinder.rotateX(Math.PI / 2); // Align cylinder along Z axis locally so we can orient it easily if needed, or keep Y axis
 
     const instancedGeo = new THREE.InstancedBufferGeometry().copy(
       baseCylinder as unknown as THREE.InstancedBufferGeometry,
@@ -198,6 +197,7 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
   }, [material]);
 
   useFrame((state) => {
+    if (!animate) return;
     const mat = meshRef.current?.material as THREE.ShaderMaterial | undefined;
     if (mat?.uniforms?.time) {
       mat.uniforms.time.value = state.clock.elapsedTime * 0.5;

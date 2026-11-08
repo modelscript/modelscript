@@ -11,16 +11,12 @@ export function formatOpfReport(sol: OpfSolution, caseTitle = "POWER NETWORK"): 
   lines.push(`================================================================================`);
   lines.push(`  OPTIMAL POWER FLOW (DC-OPF) DISPATCH & LMP REPORT — ${caseTitle}`);
   lines.push(`================================================================================`);
-  lines.push(
-    `  Status          : ${sol.status} (Formulation: ${sol.formulation.toUpperCase()}-OPF)`,
-  );
+  lines.push(`  Status          : ${sol.status} (Formulation: ${sol.formulation.toUpperCase()}-OPF)`);
   lines.push(`  Total Gen Cost  : $${sol.objectiveValue.toLocaleString()}/hr`);
   lines.push(
     `  System Demand   : ${sol.totalLoadMw.toFixed(2)} MW  |  Total Generation: ${sol.totalGenMw.toFixed(2)} MW`,
   );
-  lines.push(
-    `  Average LMP     : $${sol.averageLmp.toFixed(2)}/MWh`,
-  );
+  lines.push(`  Average LMP     : $${sol.averageLmp.toFixed(2)}/MWh`);
   lines.push(`--------------------------------------------------------------------------------`);
   lines.push(`  ECONOMIC GENERATION DISPATCH`);
   lines.push(`  Bus   Gen ID   Dispatch (MW)   Min (MW)   Max (MW)   Offer ($/MWh)   Cost ($/hr)   Limit Status`);
@@ -35,8 +31,12 @@ export function formatOpfReport(sol: OpfSolution, caseTitle = "POWER NETWORK"): 
 
   lines.push(`--------------------------------------------------------------------------------`);
   lines.push(`  BUS LOCATIONAL MARGINAL PRICES (LMPS) & CONGESTION DECOMPOSITION`);
-  lines.push(`  Bus   Name                     Base kV   Va (deg)   Load (MW)   LMP ($/MWh)   Energy ($)   Congestion ($)`);
-  lines.push(`  ----  -----------------------  -------  ---------  ----------  ------------  -----------  ---------------`);
+  lines.push(
+    `  Bus   Name                     Base kV   Va (deg)   Load (MW)   LMP ($/MWh)   Energy ($)   Congestion ($)`,
+  );
+  lines.push(
+    `  ----  -----------------------  -------  ---------  ----------  ------------  -----------  ---------------`,
+  );
 
   for (const b of sol.buses.slice(0, 20)) {
     lines.push(

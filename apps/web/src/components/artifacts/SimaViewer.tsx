@@ -2,18 +2,18 @@
 
 import { renderSimaCatenaryProfileSvg, renderSimaMooringSpreadSvg } from "@modelscript/diagram/sima-diagram-builder";
 import {
-  evaluateOffsetLimits,
-  parseSimaFile,
-  solveCatenary,
-  verifyDnvMooringCompliance,
   type DnvVerificationReport,
+  evaluateOffsetLimits,
   type MooringLine,
   type OffsetLimitReport,
+  parseSimaFile,
   type SimaModel,
+  solveCatenary,
+  verifyDnvMooringCompliance,
 } from "@modelscript/sima";
 import { AlertIcon, CheckCircleIcon, CheckIcon, CopyIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl } from "@primer/react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
@@ -142,10 +142,10 @@ const ContentArea = styled.div`
   background: var(--color-canvas-default, #070b14);
 `;
 
-const FloatingControlBar = styled.div`
+const FloatingControlBar = styled.div<{ $centered?: boolean }>`
   position: absolute;
   top: 10px;
-  right: 12px;
+  ${(p) => (p.$centered ? "left: 50%; transform: translateX(-50%);" : "right: 12px;")}
   display: flex;
   align-items: center;
   gap: 6px;
@@ -160,7 +160,7 @@ const FloatingControlBar = styled.div`
 const FloatingInspectorChip = styled.div`
   position: absolute;
   bottom: 10px;
-  right: 12px;
+  left: 12px;
   max-width: 340px;
   background: var(--surface-hud, var(--color-canvas-subtle, rgba(15, 23, 42, 0.92)));
   border: 1px solid rgba(56, 189, 248, 0.35);
@@ -320,8 +320,17 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
   const [viewMode, setViewMode] = useState<SimaViewMode>("spread");
   const [selectedLineIdx, setSelectedLineIdx] = useState<number>(0);
   const [alsBrokenMode, setAlsBrokenMode] = useState<boolean>(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const title = viewConfig.title || viewConfig.vesselName || "SIMA Mooring & Hydrodynamics (.sima)";
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const inlineCode = (viewConfig.code || (viewConfig.source as string | undefined)) as string | undefined;
@@ -330,19 +339,29 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       return;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
       const targetUrl =
         viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
           ? viewConfig.url
           : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
           if (txt) setRawText(txt);
         })
-        .catch((err) => console.warn("[SimaViewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          console.warn("[SimaViewer] Failed to fetch source:", err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+      return () => controller.abort();
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
   // Parse the SIMA model & run live catenary / DNV-OS-E301 / offset verification directly from source
@@ -449,8 +468,11 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
 
     const h = model.environment.waterDepth;
     const flPos = selectedLine.fairleadPosition ?? [0, 0, -18];
+    const verticalSpan = Math.max(10, h + (flPos[2] ?? 0));
     const ancPos = selectedLine.anchorPosition;
-    const span = Math.hypot((flPos[0] ?? 0) - (ancPos[0] ?? 0), (flPos[1] ?? 0) - (ancPos[1] ?? 0));
+    const baseSpan = Math.hypot((flPos[0] ?? 0) - (ancPos[0] ?? 0), (flPos[1] ?? 0) - (ancPos[1] ?? 0));
+    // Under ALS Damaged Load, solve the catenary at the ALS displaced horizontal span
+    const effectiveSpan = alsBrokenMode ? Math.min(selectedLine.totalLength * 0.992, baseSpan + 14.5) : baseSpan;
     const avgWeight =
       selectedLine.segments.reduce((acc, s) => acc + s.submergedWeightPerMeter * s.length, 0) /
       Math.max(1, selectedLine.totalLength);
@@ -461,8 +483,8 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     let catResult: ReturnType<typeof solveCatenary> | null = null;
     try {
       catResult = solveCatenary({
-        waterDepth: h,
-        horizontalSpan: span,
+        waterDepth: verticalSpan,
+        horizontalSpan: effectiveSpan,
         lineLength: selectedLine.totalLength,
         submergedWeight: avgWeight || 2500,
         axialStiffnessEA: avgEa || 1e9,
@@ -472,15 +494,19 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     }
 
     const dnvLine = dnvReport?.lines[clampedLineIdx];
-    const activeTension = alsBrokenMode
-      ? (dnvLine?.tensionDamaged ?? catResult?.fairleadTotalTension)
-      : (dnvLine?.tensionIntact ?? catResult?.fairleadTotalTension);
-    const activeSf = alsBrokenMode ? dnvLine?.safetyFactorDamaged : dnvLine?.safetyFactorIntact;
+    const activeTension =
+      catResult?.fairleadTotalTension ?? (alsBrokenMode ? dnvLine?.tensionDamaged : dnvLine?.tensionIntact);
+    const activeSf =
+      dnvLine?.mbl && activeTension && activeTension > 0
+        ? dnvLine.mbl / activeTension
+        : alsBrokenMode
+          ? dnvLine?.safetyFactorDamaged
+          : dnvLine?.safetyFactorIntact;
 
     return renderSimaCatenaryProfileSvg({
-      title: `2D Catenary Sag Profile — ${selectedLine.name}`,
-      waterDepth: h,
-      horizontalSpan: span,
+      title: `2D Catenary Sag Profile — ${selectedLine.name}${alsBrokenMode ? " (ALS Damaged)" : ""}`,
+      waterDepth: verticalSpan,
+      horizontalSpan: effectiveSpan,
       lineLength: selectedLine.totalLength,
       submergedWeight: avgWeight,
       suspendedLength: catResult?.suspendedLength,
@@ -533,17 +559,18 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     if (!rawText) return;
     navigator.clipboard.writeText(rawText).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1800);
     });
   }, [rawText]);
 
   const waterDepth =
     analysis.model?.environment.waterDepth ?? viewConfig.waterDepthM ?? viewConfig.waterDepthMeters ?? 320;
   const lineCount = activeLines.length || viewConfig.lineCount || viewConfig.mooringLinesCount || 0;
-  const dnvAllPassed = analysis.dnvReport ? analysis.dnvReport.summary.allPassed : (viewConfig.dnvCompliant ?? true);
+  const dnvAllPassed = analysis.dnvReport ? analysis.dnvReport.summary.allPassed : Boolean(viewConfig.dnvCompliant);
   const minSf = analysis.dnvReport?.summary.minSafetyFactor;
 
-  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
+  const codeLines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -643,7 +670,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
             )}
 
             <div onClick={handleSpreadSvgClick} style={{ display: "flex", flex: 1, minHeight: 0, width: "100%" }}>
-              <InteractiveSvgStage svgHtml={liveSpreadSvg} />
+              <InteractiveSvgStage svgHtml={liveSpreadSvg} isFullScreen={isFullScreen} />
             </div>
 
             {selectedLine && selectedDnvLine && (
@@ -673,7 +700,9 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                   }}
                 >
                   <span>L: {selectedLine.totalLength.toFixed(0)}m</span>
-                  <span>T: {(selectedDnvLine.tensionIntact / 1000).toFixed(0)} kN</span>
+                  <span>
+                    {alsBrokenMode ? "T: 0 kN (Severed)" : `T: ${(selectedDnvLine.tensionIntact / 1000).toFixed(0)} kN`}
+                  </span>
                   <span>MBL: {(selectedDnvLine.mbl / 1000).toFixed(0)} kN</span>
                   <button
                     type="button"
@@ -698,7 +727,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
         ) : viewMode === "catenary" && liveCatenarySvg ? (
           <>
             {activeLines.length > 0 && (
-              <FloatingControlBar>
+              <FloatingControlBar $centered>
                 <span style={{ fontSize: "10.5px", color: "var(--color-fg-muted, #94a3b8)", fontWeight: 600 }}>
                   Line:
                 </span>
@@ -718,7 +747,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                 </AlsToggleButton>
               </FloatingControlBar>
             )}
-            <InteractiveSvgStage svgHtml={liveCatenarySvg} />
+            <InteractiveSvgStage svgHtml={liveCatenarySvg} isFullScreen={isFullScreen} />
           </>
         ) : viewMode === "dnv" && analysis.dnvReport ? (
           <MatrixWrapper>

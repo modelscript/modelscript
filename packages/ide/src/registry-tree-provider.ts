@@ -66,6 +66,30 @@ const CURATED_LIBRARIES: AnsatzPackageSummary[] = [
     license: "OMG",
     domains: ["SysML v2", "Systems Engineering"],
   },
+  {
+    name: "IEEE-Transmission-Benchmarks",
+    latestVersion: "1.0.0",
+    versions: ["1.0.0"],
+    description: "Standard IEEE 14, 30, 57, 118 & 300-bus transmission test networks with coordinates",
+    license: "CC0-1.0",
+    domains: ["Power & Energy", "PSS/E", "Transmission"],
+  },
+  {
+    name: "PSSE-Standard-Dynamics",
+    latestVersion: "1.0.0",
+    versions: ["1.0.0"],
+    description: "Standard IEEE & WECC generator, exciter, governor, and stabilizer dynamic models",
+    license: "Apache-2.0",
+    domains: ["Power & Energy", "PSS/E", "Dynamics"],
+  },
+  {
+    name: "IEEE-Test-Feeders",
+    latestVersion: "1.0.0",
+    versions: ["1.0.0"],
+    description: "IEEE 13-Bus, 34-Bus, 123-Bus & 8500-Node OpenDSS distribution test feeders",
+    license: "Apache-2.0",
+    domains: ["Power & Energy", "OpenDSS", "Distribution"],
+  },
 ];
 
 /**

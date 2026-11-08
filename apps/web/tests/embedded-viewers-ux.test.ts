@@ -544,16 +544,16 @@ Model {
       );
     });
 
-    it("uses a single bluish container without duplicate inner grey rounded borders or top/bottom margin gaps", () => {
+    it("uses a single clean container without heavy bluish chrome or top/bottom margin gaps", () => {
       const cardSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../src/components/artifacts/ArtifactViewCard.tsx"),
         "utf8",
       );
       assert.ok(
-        cardSrc.includes('background="var(--ms-brand-soft)"') &&
-          cardSrc.includes("var(--color-accent-blue-border") &&
+        cardSrc.includes('background="var(--color-canvas-default)"') &&
+          cardSrc.includes('border="1px solid var(--color-border-default)"') &&
           !cardSrc.includes("mt={2}"),
-        "ArtifactViewCard must be the single canonical bluish container without mt={2} top gaps",
+        "ArtifactViewCard must be a clean standardized container without mt={2} top gaps",
       );
 
       const postBodySrc = fs.readFileSync(
@@ -580,8 +580,8 @@ Model {
       );
       assert.ok(
         modelicaDiagramSrc.includes("props.$isFullScreen || !props.$standalone") &&
-          modelicaDiagramSrc.includes("background: var(--ms-brand-soft"),
-        "ModelicaDiagramViewer must omit inner rounded borders when embedded and use the bluish container background on CardToolbar",
+          modelicaDiagramSrc.includes("background: var(--color-canvas-subtle"),
+        "ModelicaDiagramViewer must omit inner rounded borders when embedded and use the clean theme canvas background on CardToolbar",
       );
 
       const footerSrc = fs.readFileSync(
@@ -589,9 +589,26 @@ Model {
         "utf8",
       );
       assert.ok(
-        footerSrc.includes('backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"'),
-        "CardFooter must use the bluish container background seamlessly with the outer ArtifactViewCard",
+        footerSrc.includes('backgroundColor="var(--color-canvas-subtle)"'),
+        "CardFooter must use the clean container background seamlessly with the outer ArtifactViewCard",
       );
+    });
+
+    it("standardizes format type badge across all artifact types in CardFooter", () => {
+      const footerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/CardFooter.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        footerSrc.includes("formatLabel") && footerSrc.includes("card-footer-format-badge"),
+        "CardFooter must render standardized format badge at the bottom left for all cards",
+      );
+
+      const utilsSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/utils.ts"),
+        "utf8",
+      );
+      assert.ok(utilsSrc.includes("export function formatViewType"), "card/utils must export formatViewType helper");
     });
 
     it("maintains deterministic viewer height before, during, and after loading spinners disappear", () => {

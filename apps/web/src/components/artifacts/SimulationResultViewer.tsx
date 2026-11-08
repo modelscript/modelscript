@@ -14,7 +14,7 @@ import { Html, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { type ColormapPreset, createColormapTexture } from "../../util/colormap";
+import { type ColormapPreset, computeScaledScalar, createColormapTexture } from "../../util/colormap";
 import { type VtuField, type VtuParseResult, parseVtu } from "../../util/vtu-parser";
 import Box from "../Box";
 import Spinner from "../Spinner";
@@ -31,7 +31,7 @@ import {
   ViewerControlsBar,
   ViewerHeaderBar,
 } from "./simulation-result";
-import ViewportCameraControls from "./ViewportCameraControls";
+import ViewportCameraControls, { type ClipAxis } from "./ViewportCameraControls";
 
 function Loader() {
   const { progress } = useProgress();
@@ -71,6 +71,8 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   const [loadFactor, setLoadFactor] = useState(100);
   const [animateFlow, setAnimateFlow] = useState(true);
   const [isWireframe, setIsWireframe] = useState(false);
+  const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
+  const [clipOffset, setClipOffset] = useState<number>(0);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
   const [probeData, setProbeData] = useState<{ point: [number, number, number]; value: number } | null>(null);
   const orbitControlsRef = useRef<any>(null);
@@ -80,6 +82,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   // Load and parse the VTU data
   useEffect(() => {
     let active = true;
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function loadData() {
       try {
@@ -142,7 +145,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
       } finally {
         if (active) {
           setLoading(false);
-          setTimeout(() => {
+          readyTimer = setTimeout(() => {
             (window as any).__ARTIFACT_READY = true;
           }, 1500);
         }
@@ -152,6 +155,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
     loadData();
     return () => {
       active = false;
+      if (readyTimer) clearTimeout(readyTimer);
     };
   }, [viewConfig.url, viewConfig.resultVtuUrl, viewConfig.resultUrl, viewConfig.fileUrl, viewConfig.vtuInline]);
 
@@ -182,6 +186,22 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   const velocityField: VtuField | undefined = vtuData?.fields.find(
     (f) => f.name.toLowerCase().includes("velocity") || f.name.toLowerCase().includes("vel"),
   );
+
+  // Normalize displacement scale so 100% load produces a peak deformation of 15% of the 20-unit normalized model radius (3.0 units)
+  const normalizedDisplacementScale = useMemo(() => {
+    if (!displacementField) return 0;
+    const maxDisp = Math.max(Math.abs(displacementField.range[0]), Math.abs(displacementField.range[1]));
+    if (maxDisp <= 1e-12) return 0;
+    return (loadFactor / 100.0) * (3.0 / maxDisp);
+  }, [displacementField, loadFactor]);
+
+  const activeClipPlane = useMemo((): [number, number, number, number] | null => {
+    if (clipAxis === "none") return null;
+    const d = clipOffset * 22;
+    if (clipAxis === "x") return [-1, 0, 0, d];
+    if (clipAxis === "y") return [0, -1, 0, d];
+    return [0, 0, -1, d];
+  }, [clipAxis, clipOffset]);
 
   // Available scalar fields for the dropdown
   const scalarFields: FieldMeta[] = useMemo(() => {
@@ -233,6 +253,12 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   }
 
   const fieldUnit = viewConfig.fieldUnits?.[activeField];
+  const legendMin = currentField
+    ? computeScaledScalar(currentField.range[0], currentField.range[0], currentField.range[1], loadFactor / 100.0)
+    : 0;
+  const legendMax = currentField
+    ? computeScaledScalar(currentField.range[1], currentField.range[0], currentField.range[1], loadFactor / 100.0)
+    : 1;
 
   return (
     <Box
@@ -250,13 +276,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
 
       {/* Color legend */}
       {currentField && !isThumbnail && (
-        <ColorLegend
-          preset={colormapPreset}
-          min={currentField.range[0]}
-          max={currentField.range[1]}
-          fieldName={activeField}
-          unit={fieldUnit}
-        />
+        <ColorLegend preset={colormapPreset} min={legendMin} max={legendMax} fieldName={activeField} unit={fieldUnit} />
       )}
 
       {/* Viewport Camera & Render Controls */}
@@ -265,10 +285,17 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
         onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
         isWireframe={isWireframe}
         onToggleWireframe={setIsWireframe}
+        clipAxis={clipAxis}
+        onClipAxisChange={setClipAxis}
+        clipOffset={clipOffset}
+        onClipOffsetChange={setClipOffset}
       />
 
       {/* 3D Canvas */}
-      <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 50], fov: 50 }}>
+      <Canvas
+        gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
+        camera={{ position: [0, 0, 50], fov: 50 }}
+      >
         <AutoThumbnailCapture
           artifactId={artifactId}
           hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
@@ -286,12 +313,13 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
                 scalarMax={currentField.range[1]}
                 colormapTexture={colormapTexture}
                 displacementData={displacementField ? displacementField.data : null}
-                displacementScale={(loadFactor / 100.0) * 200}
+                displacementScale={normalizedDisplacementScale}
                 loadFactor={loadFactor}
                 activeField={activeField}
                 onPinCreated={onPinCreated}
                 isWireframe={isWireframe}
                 onProbePoint={setProbeData}
+                clipPlane={activeClipPlane}
               />
               {probeData && (
                 <Html

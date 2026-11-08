@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./components/CustomInspectionTooltip";
+export * from "./components/Ieee2800VerificationCard";
 export * from "./components/InteractiveLegend";
 export * from "./components/MeasurementHud";
 export * from "./components/SimulationToolbar";

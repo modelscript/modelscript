@@ -47,6 +47,10 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
       }
     };
 
+    const handleBlur = () => {
+      setIsZoomAllowed(false);
+    };
+
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         setIsZoomAllowed(true);
@@ -79,6 +83,7 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
     canvas.addEventListener("wheel", handleWheel, { passive: true });
     canvas.addEventListener("touchstart", handleTouchStart, { passive: true });
     canvas.addEventListener("touchend", handleTouchEnd, { passive: true });
@@ -86,6 +91,7 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
       canvas.removeEventListener("wheel", handleWheel);
       canvas.removeEventListener("touchstart", handleTouchStart);
       canvas.removeEventListener("touchend", handleTouchEnd);

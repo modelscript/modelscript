@@ -59,6 +59,21 @@ export interface DigitalThreadMetrics {
   parityRate: number;
 }
 
+function inferUnitFromTypeName(typeName?: string): string | undefined {
+  if (!typeName) return undefined;
+  const lower = typeName.toLowerCase();
+  if (lower.includes("torque") || lower.includes("moment")) return "N.m";
+  if (lower.includes("angularvelocity") || lower.includes("angularspeed")) return "rad/s";
+  if (lower.includes("voltage") || lower.includes("electricpotential")) return "V";
+  if (lower.includes("current")) return "A";
+  if (lower.includes("temperature")) return "K";
+  if (lower.includes("pressure")) return "Pa";
+  if (lower.includes("force")) return "N";
+  if (lower.includes("mass")) return "kg";
+  if (lower.includes("length") || lower.includes("distance") || lower.includes("position")) return "m";
+  return undefined;
+}
+
 /* ─── Physical Quantity Parity Checker ─── */
 
 export function checkUnitParity(sourceUnit?: string, targetUnit?: string): DigitalThreadTwin["parity"] {
@@ -103,7 +118,8 @@ export function checkUnitParity(sourceUnit?: string, targetUnit?: string): Digit
   if (
     (normalizedS === "n.m" && normalizedT === "n*m") ||
     (normalizedS === "n*m" && normalizedT === "n.m") ||
-    (normalizedS === "n.m" && normalizedT === "kg.m2/s2")
+    (normalizedS === "n.m" && normalizedT === "kg.m2/s2") ||
+    (normalizedT === "n.m" && normalizedS === "kg.m2/s2")
   ) {
     return {
       status: "compatible",
@@ -115,7 +131,11 @@ export function checkUnitParity(sourceUnit?: string, targetUnit?: string): Digit
   }
 
   // Angular velocity
-  if ((s.includes("rad/s") && t.includes("rad/s")) || (s.includes("1/s") && t.includes("rad/s"))) {
+  if (
+    (s.includes("rad/s") && t.includes("rad/s")) ||
+    (s.includes("1/s") && t.includes("rad/s")) ||
+    (t.includes("1/s") && s.includes("rad/s"))
+  ) {
     return {
       status: "compatible",
       sourceUnit: sourceUnit || "",
@@ -132,11 +152,22 @@ export function checkUnitParity(sourceUnit?: string, targetUnit?: string): Digit
       sourceUnit: sourceUnit || "",
       targetUnit: targetUnit || "",
       message: `Rotational speed scale: 1 RPM = 0.10472 rad/s`,
-      factor: 0.104719755,
+      factor: s === "rpm" ? 0.104719755 : 9.549296596,
     };
   }
 
-  // Mass
+  // Length (m <-> mm)
+  if ((s === "m" && t === "mm") || (s === "mm" && t === "m")) {
+    return {
+      status: "compatible",
+      sourceUnit: sourceUnit || "",
+      targetUnit: targetUnit || "",
+      message: `Length scaling factor: 1 m = 1000 mm`,
+      factor: s === "m" ? 1000 : 0.001,
+    };
+  }
+
+  // Mass (g <-> kg)
   if ((s === "g" && t === "kg") || (s === "kg" && t === "g")) {
     return {
       status: "compatible",
@@ -216,8 +247,9 @@ export function extractDigitalThreadTwins(
 
       // If twin counterpart is found
       if (twinRef) {
-        const sourceUnit = unit || "N.m";
-        const targetUnit = unit ? (unit === "N.m" ? "N*m" : unit) : "N*m";
+        const inferredUnit = unit || inferUnitFromTypeName(comp.type_name);
+        const sourceUnit = inferredUnit;
+        const targetUnit = inferredUnit === "N.m" ? "N*m" : inferredUnit;
         twins.push({
           id: `twin-${comp.component_name}-${twinRef}`,
           source: {
@@ -225,7 +257,7 @@ export function extractDigitalThreadTwins(
             name: `${packageName}.${comp.component_name}`,
             kind: comp.type_name,
             variable: comp.component_name,
-            unit: sourceUnit,
+            ...(sourceUnit ? { unit: sourceUnit } : {}),
             quantity: "Physical Variable",
           },
           target: {
@@ -233,7 +265,7 @@ export function extractDigitalThreadTwins(
             name: twinRef,
             kind: "PartDefinition",
             attribute: comp.component_name,
-            unit: targetUnit,
+            ...(targetUnit ? { unit: targetUnit } : {}),
             quantity: "System Requirement",
           },
           relationship: "twin",
@@ -245,6 +277,8 @@ export function extractDigitalThreadTwins(
       if (cadRef) {
         const cleanCadTarget = cadRef.split("#")[0]!.replace("cad://", "");
         const matchedCadFile = cadFiles.find((c) => c.path.includes(cleanCadTarget)) || cadFiles[0];
+        const srcLengthUnit = unit || "m";
+        const isMmSource = srcLengthUnit.toLowerCase() === "mm";
         twins.push({
           id: `cad-${comp.component_name}-${cadRef}`,
           source: {
@@ -252,21 +286,25 @@ export function extractDigitalThreadTwins(
             name: `${packageName}.${comp.component_name}`,
             kind: comp.type_name,
             variable: comp.component_name,
-            unit: "m",
+            unit: srcLengthUnit,
             quantity: "Kinematic Transform",
           },
           target: {
             domain: "cad",
             name: cadRef.replace("cad://", ""),
             kind: "STEP B-Rep Solid",
+            unit: "mm",
             resourcePath: matchedCadFile?.path,
           },
           relationship: "cad-binding",
           parity: {
             status: "compatible",
-            sourceUnit: "m",
+            sourceUnit: srcLengthUnit,
             targetUnit: "mm",
-            message: "Geometric transform bound: scale {1, 1, 1}",
+            factor: isMmSource ? 1.0 : 1000.0,
+            message: isMmSource
+              ? "Geometric transform bound: scale {1, 1, 1}"
+              : "Geometric transform bound (m → mm): scale {1000, 1000, 1000}",
           },
           cadViewerConfig: {
             url: matchedCadFile?.path || cadRef,
@@ -304,14 +342,16 @@ export function extractDigitalThreadTwins(
             domain: "cad",
             name: cad.displayName || cad.path,
             kind: "STEP Assembly Product",
+            unit: "mm",
             resourcePath: cad.path,
           },
           relationship: "cad-binding",
           parity: {
             status: "compatible",
             sourceUnit: "m",
-            targetUnit: "m",
-            message: "Solid B-Rep bound to Modelica dynamic assembly",
+            targetUnit: "mm",
+            factor: 1000.0,
+            message: "Solid B-Rep bound to Modelica dynamic assembly (m → mm, scale {1000, 1000, 1000})",
           },
           cadViewerConfig: {
             url: cad.path,
@@ -336,26 +376,25 @@ export function extractDigitalThreadTwins(
       );
 
       if (matchingClass && !twins.some((t) => t.target.name === sys.path)) {
+        const inferredUnit = inferUnitFromTypeName(matchingClass.class_name);
         twins.push({
           id: `sysml-poly-${sys.id}`,
           source: {
             domain: "modelica",
             name: matchingClass.class_name,
             kind: matchingClass.class_kind || "ModelicaClass",
-            unit: "rad/s",
+            ...(inferredUnit ? { unit: inferredUnit } : {}),
           },
           target: {
             domain: "sysml2",
             name: sys.displayName || sys.path,
             kind: "PartDefinition & Requirements",
             resourcePath: sys.path,
-            unit: "rad/s",
+            ...(inferredUnit ? { unit: inferredUnit } : {}),
           },
           relationship: "implements",
           parity: {
-            status: "compatible",
-            sourceUnit: "rad/s",
-            targetUnit: "rad/s",
+            ...checkUnitParity(inferredUnit, inferredUnit),
             message: "SysML v2 requirements verified against dynamic equations",
           },
           sysmlConfig: {

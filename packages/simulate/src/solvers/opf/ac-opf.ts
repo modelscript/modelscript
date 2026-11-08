@@ -11,6 +11,7 @@
  * - Nodal Locational Marginal Prices (LMPs) decomposed into Energy + Congestion + Loss
  */
 
+import { solveLinearSystemSparse } from "../sparse-solver-bridge.js";
 import { formatOpfReport } from "./format-report.js";
 import type {
   GenericPowerCase,
@@ -20,51 +21,6 @@ import type {
   OpfOptions,
   OpfSolution,
 } from "./types.js";
-
-/**
- * Solves a real linear system A * x = b via Gaussian elimination with partial pivoting.
- */
-function solveDense(A: Float64Array, b: Float64Array, n: number): boolean {
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    let maxVal = Math.abs(A[i * n + i]!);
-    for (let k = i + 1; k < n; k++) {
-      const val = Math.abs(A[k * n + i]!);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = k;
-      }
-    }
-    if (maxVal < 1e-12) return false;
-    if (maxRow !== i) {
-      for (let k = 0; k < n; k++) {
-        const tmp = A[i * n + k]!;
-        A[i * n + k] = A[maxRow * n + k]!;
-        A[maxRow * n + k] = tmp;
-      }
-      const tb = b[i]!;
-      b[i] = b[maxRow]!;
-      b[maxRow] = tb;
-    }
-    const pivot = A[i * n + i]!;
-    for (let k = i + 1; k < n; k++) {
-      const factor = A[k * n + i]! / pivot;
-      for (let j = i; j < n; j++) {
-        A[k * n + j] = (A[k * n + j] ?? 0) - factor * A[i * n + j]!;
-      }
-      b[k] = (b[k] ?? 0) - factor * b[i]!;
-    }
-  }
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = b[i]!;
-    for (let j = i + 1; j < n; j++) {
-      sum -= A[i * n + j]! * b[j]!;
-    }
-    const pivot = A[i * n + i]!;
-    b[i] = Math.abs(pivot) > 1e-12 ? sum / pivot : 0;
-  }
-  return true;
-}
 
 /**
  * Executes a full Nonlinear AC Optimal Power Flow (AC-OPF) calculation.
@@ -128,7 +84,10 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
 
     const cleanId = g.id.trim() || "1";
     const customCost =
-      options.generatorCosts?.get(`${g.i}_${cleanId}`) ?? options.generatorCosts?.get(String(g.i));
+      options.generatorCosts?.get(`${g.i}_${cleanId}`) ??
+      options.generatorCosts?.get(String(g.i)) ??
+      powerCase.generatorCosts?.get(`${g.i}_${cleanId}`) ??
+      powerCase.generatorCosts?.get(String(g.i));
     const defaultC1 = 20.0 + (g.i % 7) * 4.5 + (cleanId === "1" ? 0 : 5.0);
     const costC1 = customCost ? customCost.c1 : defaultC1;
     const costC0 = customCost?.c0 ?? 0.0;
@@ -342,9 +301,7 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
 
         // dP_i / dVa_k
         const dP_dVa =
-          i === k
-            ? -Qcalc[i]! - vi * vi * Bbus[i * N + i]! * sbase
-            : vi * vk * (g * sinTh - b * cosTh) * sbase;
+          i === k ? -Qcalc[i]! - vi * vi * Bbus[i * N + i]! * sbase : vi * vk * (g * sinTh - b * cosTh) * sbase;
         Jac[r * dim + c] = dP_dVa;
       }
 
@@ -357,10 +314,7 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
         const sinTh = Math.sin(th_ik);
 
         // dP_i / dVm_k
-        const dP_dVm =
-          i === k
-            ? Pcalc[i]! / vi + vi * Gbus[i * N + i]! * sbase
-            : vi * (g * cosTh + b * sinTh) * sbase;
+        const dP_dVm = i === k ? Pcalc[i]! / vi + vi * Gbus[i * N + i]! * sbase : vi * (g * cosTh + b * sinTh) * sbase;
         Jac[r * dim + (nNonSlack + c)] = dP_dVm;
       }
     }
@@ -380,9 +334,7 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
 
         // dQ_i / dVa_k
         const dQ_dVa =
-          i === k
-            ? Pcalc[i]! - vi * vi * Gbus[i * N + i]! * sbase
-            : -vi * vk * (g * cosTh + b * sinTh) * sbase;
+          i === k ? Pcalc[i]! - vi * vi * Gbus[i * N + i]! * sbase : -vi * vk * (g * cosTh + b * sinTh) * sbase;
         Jac[rowQ * dim + c] = dQ_dVa;
       }
 
@@ -395,15 +347,12 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
         const sinTh = Math.sin(th_ik);
 
         // dQ_i / dVm_k
-        const dQ_dVm =
-          i === k
-            ? Qcalc[i]! / vi - vi * Bbus[i * N + i]! * sbase
-            : vi * (g * sinTh - b * cosTh) * sbase;
+        const dQ_dVm = i === k ? Qcalc[i]! / vi - vi * Bbus[i * N + i]! * sbase : vi * (g * sinTh - b * cosTh) * sbase;
         Jac[rowQ * dim + (nNonSlack + c)] = dQ_dVm;
       }
     }
 
-    if (!solveDense(Jac, resVec, dim)) break;
+    if (!solveLinearSystemSparse(Jac, resVec, dim)) break;
 
     // Apply update
     for (let r = 0; r < nNonSlack; r++) {
@@ -430,9 +379,7 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
     const b = -br.x / denom;
 
     const pFwd = (vf * vf * g - vf * vt * (g * Math.cos(th_ft) + b * Math.sin(th_ft))) * sbase;
-    const qFwd =
-      (-vf * vf * (b + br.bChg / 2.0) - vf * vt * (g * Math.sin(th_ft) - b * Math.cos(th_ft))) *
-      sbase;
+    const qFwd = (-vf * vf * (b + br.bChg / 2.0) - vf * vt * (g * Math.sin(th_ft) - b * Math.cos(th_ft))) * sbase;
     const sFwd = Math.sqrt(pFwd * pFwd + qFwd * qFwd);
 
     const th_tf = Va[t]! - Va[f]!;

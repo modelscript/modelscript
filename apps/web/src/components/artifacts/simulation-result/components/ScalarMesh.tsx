@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { COLORMAP_FRAGMENT_SHADER, COLORMAP_VERTEX_SHADER } from "../../../../util/colormap";
+import { COLORMAP_FRAGMENT_SHADER, COLORMAP_VERTEX_SHADER, computeScaledScalar } from "../../../../util/colormap";
 import type { SpatialPin } from "../types";
 
 export interface ScalarMeshProps {
@@ -18,6 +18,7 @@ export interface ScalarMeshProps {
   activeField: string;
   isWireframe?: boolean | undefined;
   onProbePoint?: ((data: { point: [number, number, number]; value: number } | null) => void) | undefined;
+  clipPlane?: [number, number, number, number] | null | undefined;
 }
 
 export const ScalarMesh: React.FC<ScalarMeshProps> = ({
@@ -33,6 +34,7 @@ export const ScalarMesh: React.FC<ScalarMeshProps> = ({
   activeField,
   isWireframe = false,
   onProbePoint,
+  clipPlane = null,
 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -46,6 +48,12 @@ export const ScalarMesh: React.FC<ScalarMeshProps> = ({
         scalarMax: { value: scalarMax },
         opacity: { value: 1.0 },
         loadFactor: { value: loadFactor / 100.0 },
+        clipPlane: {
+          value: clipPlane
+            ? new THREE.Vector4(clipPlane[0], clipPlane[1], clipPlane[2], clipPlane[3])
+            : new THREE.Vector4(0, 0, -1, 0),
+        },
+        clipEnabled: { value: clipPlane ? 1.0 : 0.0 },
       },
       side: THREE.DoubleSide,
       transparent: false,
@@ -112,19 +120,28 @@ export const ScalarMesh: React.FC<ScalarMeshProps> = ({
       if (mat.uniforms.scalarMax) mat.uniforms.scalarMax.value = scalarMax;
       if (mat.uniforms.colormap) mat.uniforms.colormap.value = colormapTexture;
       if (mat.uniforms.loadFactor) mat.uniforms.loadFactor.value = loadFactor / 100.0;
+      if (mat.uniforms.clipPlane) {
+        if (clipPlane) {
+          mat.uniforms.clipPlane.value.set(clipPlane[0], clipPlane[1], clipPlane[2], clipPlane[3]);
+        }
+      }
+      if (mat.uniforms.clipEnabled) {
+        mat.uniforms.clipEnabled.value = clipPlane ? 1.0 : 0.0;
+      }
       mat.needsUpdate = true;
     }
-  }, [scalarMin, scalarMax, colormapTexture, loadFactor]);
+  }, [scalarMin, scalarMax, colormapTexture, loadFactor, clipPlane]);
 
   // Handle double click for spatial pinning
   const handleDoubleClick = (e: any) => {
     e.stopPropagation();
 
     // Find scalar value at this face (approximate by taking the first vertex of the face)
-    let scalarValue = 0;
+    let rawScalar = 0;
     if (e.face && e.face.a !== undefined && scalarData) {
-      scalarValue = scalarData[e.face.a]!;
+      rawScalar = scalarData[e.face.a]!;
     }
+    const scalarValue = computeScaledScalar(rawScalar, scalarMin, scalarMax, loadFactor / 100.0);
 
     // Determine camera target (simplified: look directly along the ray from camera to point)
     const cameraTarget = [e.point.x, e.point.y, e.point.z] as [number, number, number];
@@ -144,10 +161,11 @@ export const ScalarMesh: React.FC<ScalarMeshProps> = ({
 
   const handlePointerMove = (e: any) => {
     e.stopPropagation();
-    let scalarValue = 0;
+    let rawScalar = 0;
     if (e.face && e.face.a !== undefined && scalarData) {
-      scalarValue = scalarData[e.face.a]!;
+      rawScalar = scalarData[e.face.a]!;
     }
+    const scalarValue = computeScaledScalar(rawScalar, scalarMin, scalarMax, loadFactor / 100.0);
     onProbePoint?.({
       point: [e.point.x, e.point.y, e.point.z],
       value: scalarValue,

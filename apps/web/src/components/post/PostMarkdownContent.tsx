@@ -993,3 +993,5 @@ export const PostMarkdownContent: React.FC<{
     </>
   );
 };
+
+export default PostMarkdownContent;

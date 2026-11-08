@@ -55,19 +55,13 @@ describe("Morsel Diagram Coordinate Grid Centering on Load Completion", () => {
       src.includes("const target = container.parentElement ?? container;"),
       "Diagram.tsx must observe container.parentElement ?? container",
     );
-    assert.ok(
-      src.includes("ro?.observe(target)"),
-      "Diagram.tsx must pass target to ro.observe",
-    );
+    assert.ok(src.includes("ro?.observe(target)"), "Diagram.tsx must pass target to ro.observe");
   });
 
   it("verifies MorselVisualizerPane.tsx triggers zoomToFit when loadingProgress finishes", () => {
     const src = fs.readFileSync(visualizerPanePath, "utf-8");
 
-    assert.ok(
-      src.includes("loadingProgress >= 100"),
-      "MorselVisualizerPane.tsx must check for loadingProgress >= 100",
-    );
+    assert.ok(src.includes("loadingProgress >= 100"), "MorselVisualizerPane.tsx must check for loadingProgress >= 100");
     assert.ok(
       src.includes("effectiveDiagramRef?.current?.zoomToFit()") ||
         src.includes("effectiveDiagramRef.current?.zoomToFit()"),
@@ -109,6 +103,43 @@ describe("Morsel Diagram Coordinate Grid Centering on Load Completion", () => {
     assert.ok(
       src.includes("setTimeout(checkAndRecenter, 60)") && src.includes("setTimeout(checkAndRecenter, 300)"),
       "packages/diagram renderDiagramInternal must schedule recenter at 60ms and 300ms",
+    );
+    // Origin centering in renderDiagramInternal and checkAndRecenter
+    assert.ok(
+      src.includes("const ox = cs.axesStyle?.origin?.[0] ?? 0;") && src.includes("centerPoint(ox, oy)"),
+      "packages/diagram must center coordinate system origin using centerPoint(ox, oy)",
+    );
+  });
+
+  it("verifies languages/modelica/src/diagram/data.ts sets boundsOnly: false so axes extend to infinity", () => {
+    const dataPath = path.resolve(import.meta.dirname, "../../../languages/modelica/src/diagram/data.ts");
+    const src = fs.readFileSync(dataPath, "utf-8");
+
+    assert.ok(
+      src.includes("boundsOnly: false"),
+      "languages/modelica/src/diagram/data.ts must set boundsOnly: false for coordinate axes to extend to infinity",
+    );
+  });
+
+  it("verifies Diagram.tsx centers coordinate origin using centerPoint(ox, oy) when coordinateSystem is present", () => {
+    const src = fs.readFileSync(diagramEditorPath, "utf-8");
+
+    assert.ok(
+      src.includes("const ox = cs.axesStyle?.origin?.[0] ?? 0;"),
+      "Diagram.tsx must extract origin ox from cs.axesStyle",
+    );
+    assert.ok(
+      src.includes("centerPoint(ox, oy)"),
+      "Diagram.tsx must call centerPoint(ox, oy) to center axes at the origin",
+    );
+  });
+
+  it("verifies MorselVisualizerPane.tsx triggers zoomToFit in onRenderComplete when diagram finishes rendering", () => {
+    const src = fs.readFileSync(visualizerPanePath, "utf-8");
+
+    assert.ok(
+      src.includes("onRenderComplete={(data) => {") && src.includes("effectiveDiagramRef?.current?.zoomToFit()"),
+      "MorselVisualizerPane.tsx must trigger zoomToFit in onRenderComplete if not already centered",
     );
   });
 });

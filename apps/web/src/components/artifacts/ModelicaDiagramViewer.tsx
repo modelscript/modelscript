@@ -65,8 +65,8 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean; $standalone?: boolean |
 const CardToolbar = styled.div`
   height: 36px;
   min-height: 36px;
-  background: var(--ms-brand-soft, var(--color-canvas-subtle, #161b22));
-  border-bottom: 1px solid var(--color-accent-blue-border, var(--color-border-default, #30363d));
+  background: var(--color-canvas-subtle, #161b22);
+  border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -299,22 +299,52 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
 
   const inlineCode = (viewConfig.code as string) || (viewConfig.content as string) || "";
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
+  const [isFetchingCode, setIsFetchingCode] = useState<boolean>(
+    () => !inlineCode && typeof viewConfig.url === "string" && Boolean(viewConfig.url),
+  );
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const svgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!inlineCode && typeof viewConfig.url === "string") {
-      fetch(viewConfig.url)
-        .then((r) => (r.ok ? r.text() : ""))
-        .then((txt) => {
-          if (txt) setFetchedCode(txt);
-        })
-        .catch(() => {});
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      if (svgTimerRef.current) clearTimeout(svgTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (inlineCode || typeof viewConfig.url !== "string" || !viewConfig.url) {
+      setIsFetchingCode(false);
+      return;
     }
+    const controller = new AbortController();
+    setIsFetchingCode(true);
+    fetch(viewConfig.url, { signal: controller.signal })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((txt) => {
+        if (txt) setFetchedCode(txt);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsFetchingCode(false);
+        }
+      });
+    return () => controller.abort();
   }, [inlineCode, viewConfig.url]);
 
   const baseCode = inlineCode || fetchedCode || "model Example\n\nend Example;";
   const [editedCode, setEditedCode] = useState<string | null>(null);
+  const [savedBaselineCode, setSavedBaselineCode] = useState<string>(baseCode);
+
+  useEffect(() => {
+    setSavedBaselineCode(baseCode);
+  }, [baseCode]);
+
   const code = editedCode ?? baseCode;
-  const hasUnsavedChanges = Boolean(editedCode && editedCode !== baseCode);
+  const hasUnsavedChanges = Boolean(editedCode && editedCode !== savedBaselineCode);
 
   const handleSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -333,6 +363,9 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
         },
         title: (viewConfig.title as string) || undefined,
       });
+      if (editedCode !== null) {
+        setSavedBaselineCode(editedCode);
+      }
       setSaveSuccess(true);
       toast.success("Artifact changes saved successfully!");
       onSaved?.(updated);
@@ -341,7 +374,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
           detail: { artifactId: targetArtifactId, artifactView: updated?.artifactView },
         }),
       );
-      setTimeout(() => setSaveSuccess(false), 2500);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err: unknown) {
       console.error("Failed to save artifact:", err);
       toast.error("Failed to save changes. Make sure you own this artifact.");
@@ -357,6 +391,11 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
     (typeof viewConfig.thumbnail_url === "string" && viewConfig.thumbnail_url) ||
     (typeof viewConfig.thumbnailUrl === "string" && viewConfig.thumbnailUrl) ||
     "";
+  const [thumbError, setThumbError] = useState(false);
+
+  useEffect(() => {
+    setThumbError(false);
+  }, [rawThumbUrl]);
 
   const explicitMode =
     (viewConfig.previewMode as string | undefined) ||
@@ -397,15 +436,20 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
+  const fallbackCodeSvg = useMemo(
+    () => sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title), { isFullScreen, isDark }),
+    [code, title, isFullScreen, isDark],
+  );
+
   const validInlineSvg = useMemo(() => {
     if (rawSvg && !isLegacyBogusModelicaSvg(rawSvg, previewMode)) {
       return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
     }
-    if (!rawThumbUrl) {
-      return sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title), { isFullScreen, isDark });
+    if (!rawThumbUrl || thumbError) {
+      return fallbackCodeSvg;
     }
     return "";
-  }, [rawSvg, rawThumbUrl, previewMode, code, title, isFullScreen, isDark]);
+  }, [rawSvg, rawThumbUrl, thumbError, previewMode, fallbackCodeSvg, isFullScreen, isDark]);
 
   const [interactive, setInteractive] = useState(isFullScreen);
   const [hasBeenActive, setHasBeenActive] = useState(isFullScreen);
@@ -469,7 +513,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
     e.stopPropagation();
     navigator.clipboard.writeText(code);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const handleExportSvg = (e: React.MouseEvent) => {
@@ -491,7 +536,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       setCopiedSvg(true);
-      setTimeout(() => setCopiedSvg(false), 2000);
+      if (svgTimerRef.current) clearTimeout(svgTimerRef.current);
+      svgTimerRef.current = setTimeout(() => setCopiedSvg(false), 2000);
     } else if (validInlineSvg) {
       const blob = new Blob([validInlineSvg], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -503,7 +549,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       setCopiedSvg(true);
-      setTimeout(() => setCopiedSvg(false), 2000);
+      if (svgTimerRef.current) clearTimeout(svgTimerRef.current);
+      svgTimerRef.current = setTimeout(() => setCopiedSvg(false), 2000);
     } else {
       handleCopy(e);
     }
@@ -590,6 +637,18 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
             />
           </FooterTabs>
           <FloatingTools>
+            {(hasUnsavedChanges || saveSuccess) && targetArtifactId && (
+              <FloatingToolBtn
+                type="button"
+                $success={saveSuccess}
+                disabled={isSaving}
+                title={saveSuccess ? "Saved!" : isSaving ? "Saving…" : "Save changes to artifact"}
+                aria-label="Save changes to artifact"
+                onClick={handleSave}
+              >
+                {saveSuccess ? <CheckIcon size={14} /> : <SyncIcon size={14} />}
+              </FloatingToolBtn>
+            )}
             {viewMode === "diagram" && (
               <FloatingToolBtn type="button" title="Download SVG" aria-label="Download SVG" onClick={handleExportSvg}>
                 {copiedSvg ? <CheckIcon size={14} /> : <DownloadIcon size={14} />}
@@ -688,7 +747,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
               {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
               <span>{copied ? "Copied" : "Copy"}</span>
             </IconActionButton>
-            {hasUnsavedChanges && targetArtifactId && (
+            {(hasUnsavedChanges || saveSuccess) && targetArtifactId && (
               <button
                 type="button"
                 onClick={handleSave}
@@ -768,27 +827,33 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
               display: viewMode === "code" && !isFullScreen ? "none" : "block",
             }}
           >
-            <Suspense
-              fallback={
-                <Box display="flex" alignItems="center" justifyContent="center" height="100%">
-                  <Text style={{ color: "var(--color-fg-muted)" }}>Loading interactive modeling environment…</Text>
-                </Box>
-              }
-            >
-              <MorselEditorLazy
-                dataUrl={null}
-                initialCode={baseCode}
-                initialDialect={dialect}
-                initialView={activeMorselView}
-                initialClassName={typeof viewConfig.primaryClass === "string" ? viewConfig.primaryClass : undefined}
-                hideCenterFloatingToolbar={!isFullScreen}
-                defaultRibbonExpanded={Boolean(isFullScreen && (viewMode === "simulation" || viewMode === "3d"))}
-                simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}
-                onActiveViewChange={handleActiveViewChange}
-                onCodeChange={setEditedCode}
-                embed={true}
-              />
-            </Suspense>
+            {isFetchingCode && !inlineCode && !fetchedCode && !editedCode ? (
+              <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                <Text style={{ color: "var(--color-fg-muted)" }}>Loading model source…</Text>
+              </Box>
+            ) : (
+              <Suspense
+                fallback={
+                  <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                    <Text style={{ color: "var(--color-fg-muted)" }}>Loading interactive modeling environment…</Text>
+                  </Box>
+                }
+              >
+                <MorselEditorLazy
+                  dataUrl={null}
+                  initialCode={code}
+                  initialDialect={dialect}
+                  initialView={activeMorselView}
+                  initialClassName={typeof viewConfig.primaryClass === "string" ? viewConfig.primaryClass : undefined}
+                  hideCenterFloatingToolbar={!isFullScreen}
+                  defaultRibbonExpanded={Boolean(isFullScreen && (viewMode === "simulation" || viewMode === "3d"))}
+                  simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}
+                  onActiveViewChange={handleActiveViewChange}
+                  onCodeChange={setEditedCode}
+                  embed={true}
+                />
+              </Suspense>
+            )}
           </div>
         )}
 
@@ -822,7 +887,12 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
                 dangerouslySetInnerHTML={{ __html: validInlineSvg }}
               />
             ) : (
-              <img src={rawThumbUrl} alt={title} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              <img
+                src={rawThumbUrl}
+                alt={title}
+                onError={() => setThumbError(true)}
+                style={{ width: "100%", height: "100%", objectFit: "contain" }}
+              />
             )}
             <div
               style={{

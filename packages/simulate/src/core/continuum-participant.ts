@@ -12,6 +12,7 @@ export interface ContinuumBoundaryCondition {
   pressure?: number | undefined;
   massFlow?: number | undefined;
   temperature?: number | undefined;
+  heatFlux?: number | undefined;
   displacement?: Vector3D | undefined;
   force?: Vector3D | undefined;
 }
@@ -22,6 +23,8 @@ export interface ContinuumPatchMetrics {
   meanPressure: number;
   integratedMassFlow?: number | undefined;
   areaM2?: number | undefined;
+  surfaceTemperatureDegC?: number | undefined;
+  integratedHeatFlowWatts?: number | undefined;
 }
 
 export interface CfdStepOutput {

@@ -703,7 +703,10 @@ let cachedModule: SundialsEmscriptenModule | null = null;
 export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscriptenModule> {
   if (cachedModule) return cachedModule;
 
-  const isNode = typeof globalThis.process !== "undefined" && globalThis.process.versions?.node;
+  const isNode =
+    typeof window === "undefined" &&
+    typeof globalThis.process !== "undefined" &&
+    Boolean(globalThis.process.versions?.node);
 
   if (isNode) {
     const { fileURLToPath, pathToFileURL } = await import("node:url");

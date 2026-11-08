@@ -467,13 +467,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
   useEffect(() => {
     if (loadingProgress !== undefined && loadingProgress >= 100 && !hasCenteredOnLoadRef.current) {
-      hasCenteredOnLoadRef.current = true;
-      const timer = setTimeout(() => {
-        effectiveDiagramRef?.current?.zoomToFit();
-      }, 50);
-      return () => clearTimeout(timer);
+      if (!isDiagramLoading || diagramData) {
+        hasCenteredOnLoadRef.current = true;
+        const timer = setTimeout(() => {
+          effectiveDiagramRef?.current?.zoomToFit();
+        }, 50);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [loadingProgress, effectiveDiagramRef]);
+  }, [loadingProgress, isDiagramLoading, diagramData, effectiveDiagramRef]);
 
   const handleUndo = () => {
     if (isSpatialEditPending) isSpatialEditPending.current = false;
@@ -1277,7 +1279,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
+                    <div
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}
+                    >
                       <span
                         style={{
                           fontSize: 12,
@@ -2105,6 +2109,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   onRenderComplete={(data) => {
                     if (!data?.isLoading) {
                       setIsDiagramLoading(false);
+                      if (!hasCenteredOnLoadRef.current && (loadingProgress === undefined || loadingProgress >= 100)) {
+                        hasCenteredOnLoadRef.current = true;
+                        setTimeout(() => {
+                          effectiveDiagramRef?.current?.zoomToFit();
+                        }, 50);
+                      }
                     }
                   }}
                   onSelect={(name, cachedProps, isLoading) => {

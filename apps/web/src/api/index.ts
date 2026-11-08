@@ -14,6 +14,7 @@ export * from "./organizations";
 export * from "./packages";
 export * from "./references";
 export * from "./social";
+export * from "./spaces";
 export * from "./vcs";
 
 import { api } from "./client";

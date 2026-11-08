@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  lintOntoSpmProcedure,
+  Owl2TableauReasoner,
+  parseOntoSpm,
+  parseOwl2ToAxioms,
+  reasonOwl2Ontology,
+} from "@modelscript/owl2";
+import {
   CheckCircleFillIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -101,6 +108,149 @@ export interface ParsedOwlOntology {
   rawAxiomCount: number;
 }
 
+export interface Owl2ReasoningSummary {
+  consistent: boolean;
+  unsatisfiableClasses: string[];
+  entailedSubsumptions: number;
+  ontoSpmIssues: number;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseOwl2(rawText: string) {
+  try {
+    return parseOwl2ToAxioms(rawText);
+  } catch {
+    return null;
+  }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function checkOntoSpmCompliance(rawText: string): number {
+  if (!rawText || (!rawText.includes("OntoSPM") && !rawText.includes("Surgical") && !rawText.includes("Action"))) {
+    return 0;
+  }
+  try {
+    const proc = parseOntoSpm(rawText);
+    const diags = lintOntoSpmProcedure(proc);
+    return Array.isArray(diags) ? diags.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function runTableauReasoner(rawText: string, ontology: ParsedOwlOntology): Owl2ReasoningSummary {
+  const unsatisfiableSet = new Set<string>();
+  let consistent = true;
+  let entailedSubsumptions = 0;
+
+  if (rawText && rawText.trim().length > 0) {
+    try {
+      const report = reasonOwl2Ontology(rawText);
+      if (report) {
+        if (report.consistent === false) consistent = false;
+        if (Array.isArray(report.unsatisfiableClasses)) {
+          for (const u of report.unsatisfiableClasses) {
+            if (typeof u === "string" && u) unsatisfiableSet.add(u);
+          }
+        }
+        if (Array.isArray(report.inferredSubClassAxioms)) {
+          entailedSubsumptions = report.inferredSubClassAxioms.length;
+        }
+      }
+    } catch {
+      try {
+        const parsed = parseOwl2(rawText);
+        if (parsed?.axioms) {
+          const reasoner = new Owl2TableauReasoner(parsed.axioms);
+          const res = reasoner.classify();
+          if (res.consistent === false) consistent = false;
+          for (const u of res.unsatisfiableClasses ?? []) {
+            unsatisfiableSet.add(u);
+          }
+        }
+      } catch {
+        // Fallback to local structural DL consistency verification below
+      }
+    }
+  }
+
+  // Structural DL consistency & unsatisfiability verification on parsed ontology graph
+  const getAncestors = (clsIri: string): Set<string> => {
+    const visited = new Set<string>([clsIri]);
+    const queue = [clsIri];
+    while (queue.length > 0) {
+      const curr = queue.pop()!;
+      const ent = ontology.entities.get(curr);
+      if (!ent) continue;
+      for (const sup of [...ent.superClasses, ...ent.equivalentTo]) {
+        if (!visited.has(sup)) {
+          visited.add(sup);
+          queue.push(sup);
+        }
+      }
+    }
+    return visited;
+  };
+
+  const ancestorMap = new Map<string, Set<string>>();
+  for (const ent of ontology.entities.values()) {
+    if (ent.kind === "class" || ent.kind === "definedClass") {
+      ancestorMap.set(ent.iri, getAncestors(ent.iri));
+    }
+  }
+
+  for (const [clsIri, ancestors] of ancestorMap.entries()) {
+    const clsEnt = ontology.entities.get(clsIri);
+    if (clsEnt && clsEnt.superClasses.includes("owl:Nothing")) {
+      unsatisfiableSet.add(clsIri);
+    }
+    for (const ancA of ancestors) {
+      const entA = ontology.entities.get(ancA);
+      if (!entA) continue;
+      for (const disjB of entA.disjointWith) {
+        if (ancestors.has(disjB)) {
+          unsatisfiableSet.add(clsIri);
+        }
+      }
+    }
+  }
+
+  // Check ABox individual assertions against disjoint classes or unsatisfiable types
+  for (const ent of ontology.entities.values()) {
+    if (ent.kind !== "individual") continue;
+    const allTypes = new Set<string>();
+    for (const t of ent.types) {
+      if (unsatisfiableSet.has(t)) {
+        consistent = false;
+      }
+      const ancs = ancestorMap.get(t);
+      if (ancs) {
+        ancs.forEach((a) => allTypes.add(a));
+      } else {
+        allTypes.add(t);
+      }
+    }
+    for (const tA of allTypes) {
+      const entA = ontology.entities.get(tA);
+      if (!entA) continue;
+      for (const disjB of entA.disjointWith) {
+        if (allTypes.has(disjB)) {
+          consistent = false;
+        }
+      }
+    }
+  }
+
+  const ontoSpmIssues = checkOntoSpmCompliance(rawText);
+  return {
+    consistent,
+    unsatisfiableClasses: Array.from(unsatisfiableSet),
+    entailedSubsumptions,
+    ontoSpmIssues,
+  };
+}
+
 function getShortLabel(iri: string): string {
   const clean = iri.replace(/^<|>$/g, "").trim();
   const hashIdx = clean.lastIndexOf("#");
@@ -145,6 +295,23 @@ function resolveDisplayTitle(viewConfig: Owl2ViewerProps["viewConfig"], ontology
   return "OWL 2 Ontology";
 }
 
+function normalizeIriToken(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function tokenizeOwlArgs(argList: string): string[] {
+  const tokens: string[] = [];
+  for (const m of argList.matchAll(/<[^>]+>|[^\s()]+/g)) {
+    const tok = normalizeIriToken(m[0]);
+    if (tok) tokens.push(tok);
+  }
+  return tokens;
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
   const prefixes: Record<string, string> = {};
@@ -162,7 +329,7 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
     const short = getShortLabel(token);
     if (!short) return matched;
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i]!.includes(token) || lines[i]!.includes(`:${short}`)) {
+      if (lines[i]!.includes(token) || lines[i]!.includes(`:${short}`) || lines[i]!.includes(`#${short}`)) {
         matched.push(i + 1);
       }
     }
@@ -172,8 +339,14 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   for (const m of rawText.matchAll(/Prefix\s*\(\s*([A-Za-z0-9_-]*:)\s*=\s*<([^>]+)>\s*\)/g)) {
     prefixes[m[1]!] = m[2]!;
   }
+  for (const m of rawText.matchAll(/@?prefix\s+([A-Za-z0-9_-]*:)\s*<([^>]+)>/gi)) {
+    prefixes[m[1]!] = m[2]!;
+  }
 
-  const ontMatch = rawText.match(/Ontology\s*\(\s*<([^>]+)>/);
+  const ontMatch =
+    rawText.match(/Ontology\s*\(\s*<([^>]+)>/) ||
+    rawText.match(/<owl:Ontology[^>]*\brdf:about="([^"]+)"/i) ||
+    rawText.match(/<([^>]+)>\s+(?:a|rdf:type)\s+owl:Ontology\b/);
   if (ontMatch?.[1]) {
     ontologyIri = ontMatch[1];
   }
@@ -182,8 +355,19 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
     rawIri: string,
     defaultKind: ParsedOwlEntity["kind"] = "class",
   ): ParsedOwlEntity | undefined => {
-    const iri = rawIri.trim();
-    if (!iri || iri === "owl:Thing" || iri === "owl:Nothing" || iri.startsWith("xsd:") || iri.startsWith("rdfs:")) {
+    const iri = normalizeIriToken(rawIri);
+    if (
+      !iri ||
+      iri === "owl:Thing" ||
+      iri === "owl:Nothing" ||
+      iri.endsWith("#Thing") ||
+      iri.endsWith("#Nothing") ||
+      iri.startsWith("xsd:") ||
+      iri.startsWith("http://www.w3.org/2001/XMLSchema#") ||
+      iri.startsWith("rdfs:") ||
+      iri.startsWith("rdf:") ||
+      iri.startsWith("owl:")
+    ) {
       return undefined;
     }
     let existing = entities.get(iri);
@@ -223,27 +407,40 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
     if (val && !arr.includes(val)) arr.push(val);
   };
 
-  // 1. Declarations
-  for (const m of rawText.matchAll(/\bDeclaration\s*\(\s*Class\s*\(\s*([^\s)]+)\s*\)\s*\)/g)) {
+  const IRI_TOK = "(?:<[^>]+>|[:A-Za-z0-9_#./-]+)";
+
+  // 1. Declarations (Functional-Style)
+  for (const m of rawText.matchAll(
+    new RegExp(`\\bDeclaration\\s*\\(\\s*Class\\s*\\(\\s*(${IRI_TOK})\\s*\\)\\s*\\)`, "g"),
+  )) {
     ensureEntity(m[1]!, "class");
     rawAxiomCount++;
   }
-  for (const m of rawText.matchAll(/\bDeclaration\s*\(\s*ObjectProperty\s*\(\s*([^\s)]+)\s*\)\s*\)/g)) {
+  for (const m of rawText.matchAll(
+    new RegExp(`\\bDeclaration\\s*\\(\\s*ObjectProperty\\s*\\(\\s*(${IRI_TOK})\\s*\\)\\s*\\)`, "g"),
+  )) {
     ensureEntity(m[1]!, "objectProperty");
     rawAxiomCount++;
   }
-  for (const m of rawText.matchAll(/\bDeclaration\s*\(\s*DataProperty\s*\(\s*([^\s)]+)\s*\)\s*\)/g)) {
+  for (const m of rawText.matchAll(
+    new RegExp(`\\bDeclaration\\s*\\(\\s*DataProperty\\s*\\(\\s*(${IRI_TOK})\\s*\\)\\s*\\)`, "g"),
+  )) {
     ensureEntity(m[1]!, "dataProperty");
     rawAxiomCount++;
   }
-  for (const m of rawText.matchAll(/\bDeclaration\s*\(\s*NamedIndividual\s*\(\s*([^\s)]+)\s*\)\s*\)/g)) {
+  for (const m of rawText.matchAll(
+    new RegExp(`\\bDeclaration\\s*\\(\\s*NamedIndividual\\s*\\(\\s*(${IRI_TOK})\\s*\\)\\s*\\)`, "g"),
+  )) {
     ensureEntity(m[1]!, "individual");
     rawAxiomCount++;
   }
 
   // 2. SubClassOf (existential/universal restrictions & atomic subsumption)
   for (const m of rawText.matchAll(
-    /\bSubClassOf\s*\(\s*([:A-Za-z0-9_#-]+)\s+(ObjectSomeValuesFrom|ObjectAllValuesFrom)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)\s*\)/g,
+    new RegExp(
+      `\\bSubClassOf\\s*\\(\\s*(${IRI_TOK})\\s+(ObjectSomeValuesFrom|ObjectAllValuesFrom)\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)\\s*\\)`,
+      "g",
+    ),
   )) {
     const sub = ensureEntity(m[1]!, "class");
     const quant = m[2] === "ObjectAllValuesFrom" ? "∀" : "∃";
@@ -257,8 +454,14 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
     rawAxiomCount++;
   }
 
-  for (const m of rawText.matchAll(/\bSubClassOf\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g)) {
+  for (const m of rawText.matchAll(new RegExp(`\\bSubClassOf\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"))) {
+    const supRaw = normalizeIriToken(m[2]!);
     const sub = ensureEntity(m[1]!, "class");
+    if (supRaw === "owl:Nothing" || supRaw.endsWith("#Nothing")) {
+      if (sub) pushUnique(sub.superClasses, "owl:Nothing");
+      rawAxiomCount++;
+      continue;
+    }
     const sup = ensureEntity(m[2]!, "class");
     if (sub && sup && sub.iri !== sup.iri) {
       pushUnique(sub.superClasses, sup.iri);
@@ -269,10 +472,7 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
 
   // 3. DisjointClasses & EquivalentClasses
   for (const m of rawText.matchAll(/\bDisjointClasses\s*\(([^)]+)\)/g)) {
-    const tokens = m[1]!
-      .trim()
-      .split(/\s+/)
-      .filter((t) => t.length > 0 && !t.includes("("));
+    const tokens = tokenizeOwlArgs(m[1]!);
     for (const t of tokens) ensureEntity(t, "class");
     for (let i = 0; i < tokens.length; i++) {
       for (let j = i + 1; j < tokens.length; j++) {
@@ -288,10 +488,7 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   }
 
   for (const m of rawText.matchAll(/\bEquivalentClasses\s*\(([^)]+)\)/g)) {
-    const tokens = m[1]!
-      .trim()
-      .split(/\s+/)
-      .filter((t) => t.length > 0 && !t.includes("("));
+    const tokens = tokenizeOwlArgs(m[1]!);
     for (const t of tokens) {
       const ent = ensureEntity(t, "definedClass");
       if (ent) ent.kind = "definedClass";
@@ -309,7 +506,7 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
 
   // 4. Object/Data Property Domains, Ranges, Inverses, SubProperties & Characteristics
   for (const m of rawText.matchAll(
-    /\b(ObjectPropertyDomain|DataPropertyDomain)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g,
+    new RegExp(`\\b(ObjectPropertyDomain|DataPropertyDomain)\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"),
   )) {
     const isData = m[1] === "DataPropertyDomain";
     const prop = ensureEntity(m[2]!, isData ? "dataProperty" : "objectProperty");
@@ -322,26 +519,33 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   }
 
   for (const m of rawText.matchAll(
-    /\b(ObjectPropertyRange|DataPropertyRange)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g,
+    new RegExp(`\\b(ObjectPropertyRange|DataPropertyRange)\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"),
   )) {
-    const isData = m[1] === "DataPropertyRange" || m[3]!.startsWith("xsd:");
+    const rngToken = normalizeIriToken(m[3]!);
+    const isData =
+      m[1] === "DataPropertyRange" ||
+      rngToken.startsWith("xsd:") ||
+      rngToken.startsWith("http://www.w3.org/2001/XMLSchema#");
     const prop = ensureEntity(m[2]!, isData ? "dataProperty" : "objectProperty");
     if (prop) {
       if (!isData) {
-        const rng = ensureEntity(m[3]!, "class");
+        const rng = ensureEntity(rngToken, "class");
         if (rng) {
           pushUnique(prop.ranges, rng.iri);
           pushUnique(rng.rangeOfProperties, prop.iri);
         }
       } else {
-        pushUnique(prop.ranges, m[3]!);
+        pushUnique(
+          prop.ranges,
+          getShortLabel(rngToken).startsWith("xsd:") ? rngToken : `xsd:${getShortLabel(rngToken)}`,
+        );
       }
     }
     rawAxiomCount++;
   }
 
   for (const m of rawText.matchAll(
-    /\b(SubObjectPropertyOf|SubDataPropertyOf)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g,
+    new RegExp(`\\b(SubObjectPropertyOf|SubDataPropertyOf)\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"),
   )) {
     const isData = m[1] === "SubDataPropertyOf";
     const subP = ensureEntity(m[2]!, isData ? "dataProperty" : "objectProperty");
@@ -353,7 +557,9 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
     rawAxiomCount++;
   }
 
-  for (const m of rawText.matchAll(/\bInverseObjectProperties\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g)) {
+  for (const m of rawText.matchAll(
+    new RegExp(`\\bInverseObjectProperties\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"),
+  )) {
     const p1 = ensureEntity(m[1]!, "objectProperty");
     const p2 = ensureEntity(m[2]!, "objectProperty");
     if (p1 && p2) {
@@ -364,7 +570,10 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   }
 
   for (const m of rawText.matchAll(
-    /\b(FunctionalObjectProperty|InverseFunctionalObjectProperty|TransitiveObjectProperty|SymmetricObjectProperty|AsymmetricObjectProperty|ReflexiveObjectProperty|IrreflexiveObjectProperty|FunctionalDataProperty)\s*\(\s*([:A-Za-z0-9_#-]+)\s*\)/g,
+    new RegExp(
+      `\\b(FunctionalObjectProperty|InverseFunctionalObjectProperty|TransitiveObjectProperty|SymmetricObjectProperty|AsymmetricObjectProperty|ReflexiveObjectProperty|IrreflexiveObjectProperty|FunctionalDataProperty)\\s*\\(\\s*(${IRI_TOK})\\s*\\)`,
+      "g",
+    ),
   )) {
     const kindName = m[1]!;
     const prop = ensureEntity(m[2]!, kindName === "FunctionalDataProperty" ? "dataProperty" : "objectProperty");
@@ -376,7 +585,9 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   }
 
   // 5. Individuals: ClassAssertion & ObjectPropertyAssertion & DataPropertyAssertion
-  for (const m of rawText.matchAll(/\bClassAssertion\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g)) {
+  for (const m of rawText.matchAll(
+    new RegExp(`\\bClassAssertion\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"),
+  )) {
     const cls = ensureEntity(m[1]!, "class");
     const ind = ensureEntity(m[2]!, "individual");
     if (cls && ind) {
@@ -387,7 +598,7 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   }
 
   for (const m of rawText.matchAll(
-    /\bObjectPropertyAssertion\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g,
+    new RegExp(`\\bObjectPropertyAssertion\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s+(${IRI_TOK})\\s*\\)`, "g"),
   )) {
     const prop = ensureEntity(m[1]!, "objectProperty");
     const subj = ensureEntity(m[2]!, "individual");
@@ -400,7 +611,7 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
   }
 
   for (const m of rawText.matchAll(
-    /\bDataPropertyAssertion\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s+"([^"]*)"/g,
+    new RegExp(`\\bDataPropertyAssertion\\s*\\(\\s*(${IRI_TOK})\\s+(${IRI_TOK})\\s+"([^"]*)"`, "g"),
   )) {
     const prop = ensureEntity(m[1]!, "dataProperty");
     const subj = ensureEntity(m[2]!, "individual");
@@ -408,6 +619,95 @@ export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOnt
       subj.dataAssertions.push({ property: prop.iri, value: m[3]! });
     }
     rawAxiomCount++;
+  }
+
+  // 6. RDF/XML & Turtle multi-format support (via @modelscript/owl2 parser + structural patterns)
+  if (
+    entities.size === 0 ||
+    rawText.includes("<owl:") ||
+    rawText.includes("rdf:RDF") ||
+    rawText.includes("rdfs:subClassOf")
+  ) {
+    const parsedFromCompiler = parseOwl2(rawText);
+    if (parsedFromCompiler) {
+      if (!ontologyIri && parsedFromCompiler.ontologyIri) {
+        ontologyIri = parsedFromCompiler.ontologyIri;
+      }
+      for (const clsIri of parsedFromCompiler.classes ?? []) {
+        ensureEntity(clsIri, "class");
+      }
+      for (const opIri of parsedFromCompiler.objectProperties ?? []) {
+        ensureEntity(opIri, "objectProperty");
+      }
+      for (const dpIri of parsedFromCompiler.dataProperties ?? []) {
+        ensureEntity(dpIri, "dataProperty");
+      }
+      for (const indIri of parsedFromCompiler.individuals ?? []) {
+        ensureEntity(indIri, "individual");
+      }
+      for (const ax of parsedFromCompiler.axioms ?? []) {
+        rawAxiomCount++;
+        if (ax.kind === "SubClassOf" && typeof ax.subClass === "string" && typeof ax.superClass === "string") {
+          const sub = ensureEntity(ax.subClass, "class");
+          const sup = ensureEntity(ax.superClass, "class");
+          if (sub && sup && sub.iri !== sup.iri) {
+            pushUnique(sub.superClasses, sup.iri);
+            pushUnique(sup.subClasses, sub.iri);
+          }
+        } else if (ax.kind === "DisjointClasses" && Array.isArray(ax.classes)) {
+          const exprs = ax.classes.filter((c): c is string => typeof c === "string");
+          for (const c of exprs) ensureEntity(c, "class");
+          for (let i = 0; i < exprs.length; i++) {
+            for (let j = i + 1; j < exprs.length; j++) {
+              const e1 = entities.get(normalizeIriToken(exprs[i]!));
+              const e2 = entities.get(normalizeIriToken(exprs[j]!));
+              if (e1 && e2) {
+                pushUnique(e1.disjointWith, e2.iri);
+                pushUnique(e2.disjointWith, e1.iri);
+              }
+            }
+          }
+        } else if (
+          ax.kind === "ClassAssertion" &&
+          typeof ax.classExpr === "string" &&
+          typeof ax.individual === "string"
+        ) {
+          const cls = ensureEntity(ax.classExpr, "class");
+          const ind = ensureEntity(ax.individual, "individual");
+          if (cls && ind) {
+            pushUnique(ind.types, cls.iri);
+            pushUnique(cls.instances, ind.iri);
+          }
+        }
+      }
+    }
+
+    // Direct RDF/XML element extraction fallback
+    for (const m of rawText.matchAll(
+      /<owl:Class\b[^>]*(?:rdf:about|rdf:ID)="([^"]+)"[^>]*>([\s\S]*?)<\/owl:Class>/gi,
+    )) {
+      const cls = ensureEntity(m[1]!, "class");
+      const body = m[2]!;
+      for (const sm of body.matchAll(/<rdfs:subClassOf\b[^>]*rdf:resource="([^"]+)"/gi)) {
+        const sup = ensureEntity(sm[1]!, "class");
+        if (cls && sup && cls.iri !== sup.iri) {
+          pushUnique(cls.superClasses, sup.iri);
+          pushUnique(sup.subClasses, cls.iri);
+        }
+      }
+      for (const dm of body.matchAll(/<owl:disjointWith\b[^>]*rdf:resource="([^"]+)"/gi)) {
+        const disj = ensureEntity(dm[1]!, "class");
+        if (cls && disj && cls.iri !== disj.iri) {
+          pushUnique(cls.disjointWith, disj.iri);
+          pushUnique(disj.disjointWith, cls.iri);
+        }
+      }
+      rawAxiomCount++;
+    }
+    for (const m of rawText.matchAll(/<owl:Class\b[^>]*(?:rdf:about|rdf:ID)="([^"]+)"\s*\/>/gi)) {
+      ensureEntity(m[1]!, "class");
+      rawAxiomCount++;
+    }
   }
 
   // Fold DataProperties with a domain into their domain class's restrictions/attributes
@@ -735,17 +1035,25 @@ export function computeGraphLayout(
       }
     }
   } else {
-    const getDepth = (iri: string, visited = new Set<string>()): number => {
-      if (visited.has(iri)) return 0;
-      visited.add(iri);
+    const depthCache = new Map<string, number>();
+    const getDepth = (iri: string, pathVisited = new Set<string>()): number => {
+      if (pathVisited.has(iri)) return 0;
+      const cached = depthCache.get(iri);
+      if (cached !== undefined) return cached;
       const ent = ontology.entities.get(iri);
-      if (!ent || ent.superClasses.length === 0) return 0;
+      if (!ent || ent.superClasses.length === 0) {
+        depthCache.set(iri, 0);
+        return 0;
+      }
+      const nextVisited = new Set(pathVisited);
+      nextVisited.add(iri);
       let maxParentDepth = 0;
       for (const sup of ent.superClasses) {
         if (visibleSet.has(sup)) {
-          maxParentDepth = Math.max(maxParentDepth, getDepth(sup, visited) + 1);
+          maxParentDepth = Math.max(maxParentDepth, getDepth(sup, nextVisited) + 1);
         }
       }
+      depthCache.set(iri, maxParentDepth);
       return maxParentDepth;
     };
 
@@ -1422,6 +1730,8 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
   const [isDragging, setIsDragging] = useState(false);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const codeContainerRef = useRef<HTMLDivElement | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef = useRef<{
     active: boolean;
     startX: number;
@@ -1439,28 +1749,76 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
   });
 
   useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return undefined;
+    const onWinMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current.active) return;
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        dragRef.current.moved = true;
+      }
+      setPan({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy });
+    };
+    const onWinMouseUp = () => {
+      dragRef.current.active = false;
+      setIsDragging(false);
+    };
+    window.addEventListener("mousemove", onWinMouseMove);
+    window.addEventListener("mouseup", onWinMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onWinMouseMove);
+      window.removeEventListener("mouseup", onWinMouseUp);
+    };
+  }, [isDragging]);
+
+  useEffect(() => {
     if (viewConfig.code) {
       setRawText(viewConfig.code);
       return;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
       const targetUrl =
-        viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
+        viewConfig.url.startsWith("http") ||
+        viewConfig.url.startsWith("/api") ||
+        viewConfig.url.startsWith("blob:") ||
+        viewConfig.url.startsWith("data:")
           ? viewConfig.url
           : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
-        .then((txt) => setRawText(txt))
-        .catch((err) => console.warn("[Owl2Viewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .then((txt) => {
+          if (!controller.signal.aborted) setRawText(txt);
+        })
+        .catch((err) => {
+          if (!controller.signal.aborted) {
+            console.warn("[Owl2Viewer] Failed to fetch source:", err);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+      return () => {
+        controller.abort();
+      };
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
   const ontology = useMemo(
     () => parseOwl2Source(rawText, viewConfig.ontologyIri || ""),
     [rawText, viewConfig.ontologyIri],
   );
+
+  const reasoningResult = useMemo(() => runTableauReasoner(rawText, ontology), [rawText, ontology]);
 
   const displayTitle = useMemo(
     () => resolveDisplayTitle(viewConfig, ontology.ontologyIri),
@@ -1492,10 +1850,12 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     return "diagram";
   }, [viewMode, totalEntities]);
 
-  const graphLayout = useMemo(
-    () => computeGraphLayout(ontology, projection, focusIri),
-    [ontology, projection, focusIri],
-  );
+  const graphLayout = useMemo(() => {
+    if (resolvedViewMode !== "diagram") {
+      return { nodes: [], edges: [], routedEdges: [], width: 680, height: 300 };
+    }
+    return computeGraphLayout(ontology, projection, focusIri);
+  }, [resolvedViewMode, ontology, projection, focusIri]);
 
   const { showHint } = useWheelZoom({
     containerRef: viewportRef,
@@ -1516,7 +1876,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     return "";
   }, [graphLayout.nodes.length, viewConfig.svg, isFullScreen]);
 
-  const hasGraph = graphLayout.nodes.length > 0 || Boolean(fallbackSvg);
+  const hasGraph = totalEntities > 0 || graphLayout.nodes.length > 0 || Boolean(fallbackSvg);
   const effectiveViewMode: Owl2ViewMode = resolvedViewMode === "diagram" && !hasGraph ? "code" : resolvedViewMode;
 
   // Grouped entities for Tree View
@@ -1565,7 +1925,8 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     if (!rawText) return;
     navigator.clipboard.writeText(rawText);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 1800);
   };
 
   const handleResetView = () => {
@@ -1623,7 +1984,8 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
   const handleJumpToSource = (ent: ParsedOwlEntity) => {
     setHighlightedLines(new Set(ent.sourceLines));
     setViewMode("code");
-    setTimeout(() => {
+    if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current);
+    jumpTimerRef.current = setTimeout(() => {
       const firstLine = ent.sourceLines[0];
       if (firstLine && codeContainerRef.current) {
         const lineEl = codeContainerRef.current.querySelector(`[data-line="${firstLine}"]`);
@@ -1632,9 +1994,16 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     }, 40);
   };
 
-  const renderClassSubtree = (cls: ParsedOwlEntity, depth: number, visited = new Set<string>()): React.ReactNode => {
-    if (visited.has(cls.iri)) return null;
-    visited.add(cls.iri);
+  const renderClassSubtree = (
+    cls: ParsedOwlEntity,
+    depth: number,
+    visited = new Set<string>(),
+    budget: { count: number; max: number } = { count: 0, max: 500 },
+  ): React.ReactNode => {
+    if (visited.has(cls.iri) || budget.count >= budget.max) return null;
+    budget.count++;
+    const nextVisited = new Set(visited);
+    nextVisited.add(cls.iri);
 
     const q = treeFilter.trim().toLowerCase();
     const children = cls.subClasses
@@ -1643,18 +2012,20 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
       .sort((a, b) => a.label.localeCompare(b.label));
 
     const selfMatches = !q || cls.label.toLowerCase().includes(q) || cls.iri.toLowerCase().includes(q);
-    const renderedChildren = children
-      .map((child) => renderClassSubtree(child, depth + 1, new Set(visited)))
-      .filter(Boolean);
+    const isCollapsed = collapsedNodes.has(cls.iri) && !q;
+    const renderedChildren =
+      !isCollapsed || q
+        ? children.map((child) => renderClassSubtree(child, depth + 1, nextVisited, budget)).filter(Boolean)
+        : [];
 
     if (!selfMatches && renderedChildren.length === 0) return null;
 
-    const isCollapsed = collapsedNodes.has(cls.iri) && !q;
     const palette = getEntityColors(cls.kind, isDark);
     const isSelected = selectedEntity?.iri === cls.iri;
+    const isUnsatisfiable = reasoningResult.unsatisfiableClasses.includes(cls.iri);
 
     return (
-      <React.Fragment key={`${cls.iri}_${depth}`}>
+      <React.Fragment key={`${cls.iri}_${depth}_${budget.count}`}>
         <TreeRowBtn type="button" $selected={isSelected} $depth={depth} onClick={() => setSelectedIri(cls.iri)}>
           {children.length > 0 ? (
             <span
@@ -1666,13 +2037,26 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           ) : (
             <span style={{ width: 12, display: "inline-block" }} />
           )}
-          <KindBadge $color={palette.stroke}>{palette.shortBadge}</KindBadge>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          <KindBadge $color={isUnsatisfiable ? "#ef4444" : palette.stroke}>{palette.shortBadge}</KindBadge>
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              color: isUnsatisfiable ? "#ef4444" : undefined,
+              textDecoration: isUnsatisfiable ? "line-through" : undefined,
+            }}
+          >
             {cls.label}
           </span>
-          {cls.disjointWith.length > 0 && (
+          {(cls.disjointWith.length > 0 || isUnsatisfiable) && (
             <span
-              title={`Disjoint with: ${cls.disjointWith.map(getShortLabel).join(", ")}`}
+              title={
+                isUnsatisfiable
+                  ? `Unsatisfiable class (⊑ owl:Nothing)`
+                  : `Disjoint with: ${cls.disjointWith.map(getShortLabel).join(", ")}`
+              }
               style={{ fontSize: "10px", color: "#ef4444", fontFamily: "var(--font-mono, monospace)", fontWeight: 700 }}
             >
               ⊥
@@ -2064,12 +2448,29 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           {!isFullScreen && (
             <ModelTitle title={ontology.ontologyIri || viewConfig.title || displayTitle}>{displayTitle}</ModelTitle>
           )}
-          <PillBadge
-            $variant="verified"
-            title={`OWL 2 DL · Tableau Reasoner verified consistency (0 unsatisfiable classes)${ontology.ontologyIri ? ` · IRI: ${ontology.ontologyIri}` : ""}`}
-          >
-            <CheckCircleFillIcon size={11} /> DL Consistent
-          </PillBadge>
+          {reasoningResult.consistent && reasoningResult.unsatisfiableClasses.length === 0 ? (
+            <PillBadge
+              $variant="verified"
+              title={`OWL 2 DL · Tableau Reasoner verified consistency (0 unsatisfiable classes${reasoningResult.entailedSubsumptions > 0 ? `, ${reasoningResult.entailedSubsumptions} inferred subsumption(s)` : ""})${ontology.ontologyIri ? ` · IRI: ${ontology.ontologyIri}` : ""}`}
+            >
+              <CheckCircleFillIcon size={11} /> DL Consistent
+            </PillBadge>
+          ) : (
+            <PillBadge
+              $variant="owl"
+              style={{
+                background: "rgba(239, 68, 68, 0.14)",
+                color: "#ef4444",
+                borderColor: "rgba(239, 68, 68, 0.4)",
+              }}
+              title={`OWL 2 DL · Tableau Reasoner detected ${reasoningResult.unsatisfiableClasses.length} unsatisfiable class(es)${reasoningResult.unsatisfiableClasses.length > 0 ? `: ${reasoningResult.unsatisfiableClasses.map(getShortLabel).join(", ")}` : ""}`}
+            >
+              <XIcon size={11} />{" "}
+              {!reasoningResult.consistent
+                ? `DL Inconsistent (${reasoningResult.unsatisfiableClasses.length} ⊥)`
+                : `${reasoningResult.unsatisfiableClasses.length} Unsatisfiable (⊥)`}
+            </PillBadge>
+          )}
           <PillBadge
             $variant="neutral"
             title={`${counts.classCount} Classes · ${counts.propertyCount} Properties · ${counts.individualCount} Individuals · ${counts.axiomCount} Axioms`}
@@ -2116,7 +2517,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
             </Button>
           )}
 
-          {Boolean(viewConfig?.standalone) && !isFullScreen && !viewConfig?.artifactId && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -2128,7 +2529,10 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                   code: rawText || `Ontology(<http://example.org/ontology>\n)\n`,
                   title: displayTitle,
                 });
-                navigate(`/morsel#m=${hash}`);
+                const fromParam = viewConfig?.artifactId
+                  ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
+                  : "";
+                navigate(`/morsel${fromParam}#m=${hash}`);
               }}
             >
               Open in Morsel
@@ -2490,7 +2894,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                 </svg>
               </div>
 
-              <ZoomHintBadge visible={showHint} />
+              <ZoomHintBadge show={showHint} />
             </GraphViewport>
 
             {selectedEntity && <EntityDrawer>{renderInspectorDetails(selectedEntity, false)}</EntityDrawer>}
@@ -2560,7 +2964,12 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                   </span>
                 </TreeRowBtn>
                 {!collapsedNodes.has("__GROUP_CLASSES__") &&
-                  treeGroups.rootClasses.map((rootCls) => renderClassSubtree(rootCls, 1))}
+                  (() => {
+                    const sharedBudget = { count: 0, max: 500 };
+                    return treeGroups.rootClasses.map((rootCls) =>
+                      renderClassSubtree(rootCls, 1, new Set<string>(), sharedBudget),
+                    );
+                  })()}
 
                 {/* 2. Object Properties */}
                 {treeGroups.objProps.length > 0 && (

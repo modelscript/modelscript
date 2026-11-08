@@ -124,6 +124,8 @@ export function parseVtu(xmlString: string): VtuParseResult {
   // ── Parse cells ──
   const cellsNode = piece.querySelector("Cells");
   let indices: Uint32Array;
+  let cellConnectivity: Float32Array | null = null;
+  let cellOffsets: Float32Array | null = null;
 
   if (cellsNode) {
     const connectivityNode = Array.from(cellsNode.querySelectorAll("DataArray")).find(
@@ -137,11 +139,15 @@ export function parseVtu(xmlString: string): VtuParseResult {
     );
 
     if (connectivityNode && offsetsNode && typesNode) {
-      indices = triangulateFromVtkCells(connectivityNode, offsetsNode, typesNode, numCells);
+      const triRes = triangulateFromVtkCells(connectivityNode, offsetsNode, typesNode, numCells);
+      indices = triRes.indices;
+      cellConnectivity = triRes.connectivity;
+      cellOffsets = triRes.offsets;
     } else if (connectivityNode) {
       // Assume all triangles if no offsets/types
       const conn = parseDataArray(connectivityNode, numCells * 3);
       indices = new Uint32Array(conn);
+      cellConnectivity = conn;
     } else {
       indices = new Uint32Array(0);
     }
@@ -166,7 +172,14 @@ export function parseVtu(xmlString: string): VtuParseResult {
   if (cellDataNode) {
     for (const da of Array.from(cellDataNode.querySelectorAll("DataArray"))) {
       const field = parseFieldDataArray(da, numCells, "cell");
-      if (field) fields.push(field);
+      if (field) {
+        fields.push(field);
+        // Promote CellData to a vertex-averaged point field when no PointData with the same name exists
+        if (!fields.some((f) => f.association === "point" && f.name === field.name)) {
+          const promoted = promoteCellFieldToPointField(field, numPoints, numCells, cellConnectivity, cellOffsets);
+          if (promoted) fields.push(promoted);
+        }
+      }
     }
   }
 
@@ -205,33 +218,123 @@ export function parseVtu(xmlString: string): VtuParseResult {
 
 // ── Helpers ─────────────────────────────────────────────────────
 
-function parseDataArray(node: XmlLikeElement, expectedLength: number): Float32Array {
-  const format = node.getAttribute("format") || "ascii";
+function parseDataArray(node: XmlLikeElement, expectedLength?: number): Float32Array {
+  const format = (node.getAttribute("format") || "ascii").toLowerCase();
+  const dataType = node.getAttribute("type") || "Float32";
   const text = (node.textContent || "").trim();
 
   if (format === "ascii") {
+    if (!text) return new Float32Array(expectedLength ?? 0);
     const values = text.split(/\s+/).map(Number);
-    const arr = new Float32Array(expectedLength);
-    for (let i = 0; i < Math.min(values.length, expectedLength); i++) {
+    const len = expectedLength ?? values.length;
+    const arr = new Float32Array(len);
+    for (let i = 0; i < Math.min(values.length, len); i++) {
       arr[i] = values[i]!;
     }
     return arr;
   } else if (format === "binary") {
     // Base64-encoded binary
-    const binary = atob(text);
-    // VTK prepends a header with the byte count (4 or 8 bytes)
-    const headerSize = 4; // UInt32 header
-    const buffer = new ArrayBuffer(binary.length - headerSize);
+    const binary = atob(text.replace(/\s+/g, ""));
+    const headerSize = 4; // UInt32 byte-count header
+    const byteLength = Math.max(0, binary.length - headerSize);
+    const buffer = new ArrayBuffer(byteLength);
     const view = new Uint8Array(buffer);
-    for (let i = 0; i < buffer.byteLength; i++) {
+    for (let i = 0; i < byteLength; i++) {
       view[i] = binary.charCodeAt(i + headerSize);
     }
-    return new Float32Array(buffer);
+    switch (dataType) {
+      case "Float64":
+        return new Float32Array(new Float64Array(buffer, 0, Math.floor(byteLength / 8)));
+      case "Int32":
+        return new Float32Array(new Int32Array(buffer, 0, Math.floor(byteLength / 4)));
+      case "UInt32":
+        return new Float32Array(new Uint32Array(buffer, 0, Math.floor(byteLength / 4)));
+      case "Int16":
+        return new Float32Array(new Int16Array(buffer, 0, Math.floor(byteLength / 2)));
+      case "UInt16":
+        return new Float32Array(new Uint16Array(buffer, 0, Math.floor(byteLength / 2)));
+      case "Int8":
+        return new Float32Array(new Int8Array(buffer));
+      case "UInt8":
+        return new Float32Array(new Uint8Array(buffer));
+      case "Int64":
+      case "UInt64": {
+        const count = Math.floor(byteLength / 8);
+        const dv = new DataView(buffer);
+        const out = new Float32Array(count);
+        const isSigned = dataType === "Int64";
+        for (let i = 0; i < count; i++) {
+          const val = isSigned ? dv.getBigInt64(i * 8, true) : dv.getBigUint64(i * 8, true);
+          out[i] = Number(val);
+        }
+        return out;
+      }
+      case "Float32":
+      default:
+        return new Float32Array(buffer, 0, Math.floor(byteLength / 4));
+    }
   }
 
   // Fallback: try parsing as ASCII
-  const values = text.split(/\s+/).map(Number);
+  const values = text ? text.split(/\s+/).map(Number) : [];
   return new Float32Array(values);
+}
+
+function promoteCellFieldToPointField(
+  cellField: VtuField,
+  numPoints: number,
+  numCells: number,
+  connectivity: Float32Array | null,
+  offsets: Float32Array | null,
+): VtuField | null {
+  if (!connectivity || connectivity.length === 0 || numPoints === 0 || numCells === 0) return null;
+  const nc = cellField.numComponents;
+  const pointData = new Float32Array(numPoints * nc);
+  const counts = new Uint32Array(numPoints);
+
+  for (let c = 0; c < numCells; c++) {
+    const start = offsets ? (c === 0 ? 0 : Math.round(offsets[c - 1]!)) : c * 3;
+    const end = offsets ? Math.round(offsets[c]!) : (c + 1) * 3;
+    for (let idx = start; idx < end && idx < connectivity.length; idx++) {
+      const ptIdx = Math.round(connectivity[idx]!);
+      if (ptIdx >= 0 && ptIdx < numPoints) {
+        for (let k = 0; k < nc; k++) {
+          pointData[ptIdx * nc + k] = (pointData[ptIdx * nc + k] ?? 0) + (cellField.data[c * nc + k] ?? 0);
+        }
+        counts[ptIdx] = (counts[ptIdx] ?? 0) + 1;
+      }
+    }
+  }
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (let p = 0; p < numPoints; p++) {
+    const cnt = counts[p] || 1;
+    if (nc === 1) {
+      const v = (pointData[p] ?? 0) / cnt;
+      pointData[p] = v;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    } else {
+      let magSq = 0;
+      for (let k = 0; k < nc; k++) {
+        const v = (pointData[p * nc + k] ?? 0) / cnt;
+        pointData[p * nc + k] = v;
+        magSq += v * v;
+      }
+      const mag = Math.sqrt(magSq);
+      if (mag < min) min = mag;
+      if (mag > max) max = mag;
+    }
+  }
+
+  return {
+    name: cellField.name,
+    association: "point",
+    numComponents: nc,
+    data: pointData,
+    range: [Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max : 1],
+  };
 }
 
 function parseFieldDataArray(
@@ -274,63 +377,118 @@ function triangulateFromVtkCells(
   offsetsNode: XmlLikeElement,
   typesNode: XmlLikeElement,
   numCells: number,
-): Uint32Array {
-  const connectivityText = (connectivityNode.textContent || "").trim();
-  const connectivity = connectivityText.split(/\s+/).map(Number);
+): { indices: Uint32Array; connectivity: Float32Array; offsets: Float32Array } {
+  const offsets = parseDataArray(offsetsNode, numCells);
+  const totalConn = numCells > 0 ? Math.round(offsets[numCells - 1] ?? 0) : 0;
+  const connectivity = parseDataArray(connectivityNode, totalConn > 0 ? totalConn : undefined);
+  const types = parseDataArray(typesNode, numCells);
 
-  const offsetsText = (offsetsNode.textContent || "").trim();
-  const offsets = offsetsText.split(/\s+/).map(Number);
+  const surfaceTriangles: number[] = [];
+  const volumeFaces = new Map<string, { corners: number[]; count: number }>();
 
-  const typesText = (typesNode.textContent || "").trim();
-  const types = typesText.split(/\s+/).map(Number);
-
-  const triangles: number[] = [];
+  const addVolumeFace = (corners: number[]) => {
+    const key = [...corners].sort((a, b) => a - b).join(",");
+    const existing = volumeFaces.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      volumeFaces.set(key, { corners, count: 1 });
+    }
+  };
 
   for (let i = 0; i < numCells; i++) {
-    const start = i === 0 ? 0 : offsets[i - 1]!;
-    const end = offsets[i]!;
+    const start = i === 0 ? 0 : Math.round(offsets[i - 1]!);
+    const end = Math.round(offsets[i]!);
     const cellSize = end - start;
-    const cellType = types[i];
+    const cellType = Math.round(types[i]!);
 
-    // VTK cell types: 5 = triangle, 9 = quad, 10 = tetra, etc.
-    if (cellType === 5 && cellSize === 3) {
-      // Triangle
-      triangles.push(connectivity[start]!, connectivity[start + 1]!, connectivity[start + 2]!);
-    } else if (cellType === 9 && cellSize === 4) {
-      // Quad → 2 triangles
-      triangles.push(connectivity[start]!, connectivity[start + 1]!, connectivity[start + 2]!);
-      triangles.push(connectivity[start]!, connectivity[start + 2]!, connectivity[start + 3]!);
-    } else if (cellType === 10 && cellSize === 4) {
-      // Tetrahedron → 4 triangles (surface faces)
-      const [a, b, c, d] = [
-        connectivity[start],
-        connectivity[start + 1],
-        connectivity[start + 2],
-        connectivity[start + 3],
-      ];
-      triangles.push(a!, b!, c!);
-      triangles.push(a!, b!, d!);
-      triangles.push(a!, c!, d!);
-      triangles.push(b!, c!, d!);
-    } else if (cellType === 12 && cellSize === 8) {
-      // Hexahedron → 12 triangles (6 quad faces)
-      const v = connectivity.slice(start, end);
-      // front, back, left, right, top, bottom
-      triangles.push(v[0]!, v[1]!, v[2]!, v[0]!, v[2]!, v[3]!); // front
-      triangles.push(v[4]!, v[7]!, v[6]!, v[4]!, v[6]!, v[5]!); // back
-      triangles.push(v[0]!, v[4]!, v[5]!, v[0]!, v[5]!, v[1]!); // bottom
-      triangles.push(v[2]!, v[6]!, v[7]!, v[2]!, v[7]!, v[3]!); // top
-      triangles.push(v[0]!, v[3]!, v[7]!, v[0]!, v[7]!, v[4]!); // left
-      triangles.push(v[1]!, v[5]!, v[6]!, v[1]!, v[6]!, v[2]!); // right
+    // VTK cell types: 5 = triangle, 9 = quad, 10/24 = tetra, 12/25 = hex, 13/26 = wedge, 14/27 = pyramid
+    if ((cellType === 5 || cellType === 22) && cellSize >= 3) {
+      surfaceTriangles.push(
+        Math.round(connectivity[start]!),
+        Math.round(connectivity[start + 1]!),
+        Math.round(connectivity[start + 2]!),
+      );
+    } else if ((cellType === 9 || cellType === 23) && cellSize >= 4) {
+      const v0 = Math.round(connectivity[start]!);
+      const v1 = Math.round(connectivity[start + 1]!);
+      const v2 = Math.round(connectivity[start + 2]!);
+      const v3 = Math.round(connectivity[start + 3]!);
+      surfaceTriangles.push(v0, v1, v2, v0, v2, v3);
+    } else if ((cellType === 10 || cellType === 24) && cellSize >= 4) {
+      // Tetrahedron → 4 outward-oriented faces
+      const a = Math.round(connectivity[start]!);
+      const b = Math.round(connectivity[start + 1]!);
+      const c = Math.round(connectivity[start + 2]!);
+      const d = Math.round(connectivity[start + 3]!);
+      addVolumeFace([a, c, b]);
+      addVolumeFace([a, b, d]);
+      addVolumeFace([b, c, d]);
+      addVolumeFace([a, d, c]);
+    } else if ((cellType === 12 || cellType === 25) && cellSize >= 8) {
+      // Hexahedron → 6 outward quad faces
+      const v0 = Math.round(connectivity[start]!);
+      const v1 = Math.round(connectivity[start + 1]!);
+      const v2 = Math.round(connectivity[start + 2]!);
+      const v3 = Math.round(connectivity[start + 3]!);
+      const v4 = Math.round(connectivity[start + 4]!);
+      const v5 = Math.round(connectivity[start + 5]!);
+      const v6 = Math.round(connectivity[start + 6]!);
+      const v7 = Math.round(connectivity[start + 7]!);
+      addVolumeFace([v0, v3, v2, v1]);
+      addVolumeFace([v4, v5, v6, v7]);
+      addVolumeFace([v0, v1, v5, v4]);
+      addVolumeFace([v1, v2, v6, v5]);
+      addVolumeFace([v2, v3, v7, v6]);
+      addVolumeFace([v3, v0, v4, v7]);
+    } else if ((cellType === 13 || cellType === 26) && cellSize >= 6) {
+      // Wedge / Prism → 2 triangles + 3 quads
+      const v0 = Math.round(connectivity[start]!);
+      const v1 = Math.round(connectivity[start + 1]!);
+      const v2 = Math.round(connectivity[start + 2]!);
+      const v3 = Math.round(connectivity[start + 3]!);
+      const v4 = Math.round(connectivity[start + 4]!);
+      const v5 = Math.round(connectivity[start + 5]!);
+      addVolumeFace([v0, v2, v1]);
+      addVolumeFace([v3, v4, v5]);
+      addVolumeFace([v0, v1, v4, v3]);
+      addVolumeFace([v1, v2, v5, v4]);
+      addVolumeFace([v2, v0, v3, v5]);
+    } else if ((cellType === 14 || cellType === 27) && cellSize >= 5) {
+      // Pyramid → 1 quad base + 4 triangle sides
+      const v0 = Math.round(connectivity[start]!);
+      const v1 = Math.round(connectivity[start + 1]!);
+      const v2 = Math.round(connectivity[start + 2]!);
+      const v3 = Math.round(connectivity[start + 3]!);
+      const v4 = Math.round(connectivity[start + 4]!);
+      addVolumeFace([v0, v3, v2, v1]);
+      addVolumeFace([v0, v1, v4]);
+      addVolumeFace([v1, v2, v4]);
+      addVolumeFace([v2, v3, v4]);
+      addVolumeFace([v3, v0, v4]);
     } else if (cellSize >= 3) {
       // Generic polygon → fan triangulation
+      const v0 = Math.round(connectivity[start]!);
       for (let j = 1; j < cellSize - 1; j++) {
-        triangles.push(connectivity[start]!, connectivity[start + j]!, connectivity[start + j + 1]!);
+        surfaceTriangles.push(v0, Math.round(connectivity[start + j]!), Math.round(connectivity[start + j + 1]!));
       }
     }
   }
 
-  return new Uint32Array(triangles);
+  for (const { corners, count } of volumeFaces.values()) {
+    if (count !== 1) continue;
+    if (corners.length === 3) {
+      surfaceTriangles.push(corners[0]!, corners[1]!, corners[2]!);
+    } else if (corners.length === 4) {
+      surfaceTriangles.push(corners[0]!, corners[1]!, corners[2]!, corners[0]!, corners[2]!, corners[3]!);
+    }
+  }
+
+  return {
+    indices: new Uint32Array(surfaceTriangles),
+    connectivity,
+    offsets,
+  };
 }
 
 function computeNormals(positions: Float32Array, indices: Uint32Array): Float32Array | null {

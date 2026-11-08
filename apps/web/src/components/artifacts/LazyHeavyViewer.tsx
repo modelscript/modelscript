@@ -57,9 +57,16 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   const [isActive, setIsActive] = useState(isFullScreen);
   const [frozenSnapshot, setFrozenSnapshot] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const reactInstanceId = React.useId();
+  const instanceKey = artifactId ? String(artifactId) : `anon-${reactInstanceId}`;
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const radialBg = getThumbnailRadialBg(theme);
+
+  // Clear stale canvas snapshot when theme switches so light/dark thumbnail variants take effect
+  useEffect(() => {
+    setFrozenSnapshot(null);
+  }, [theme]);
 
   const captureCanvasSnapshot = (): string | null => {
     const canvas = containerRef.current?.querySelector("canvas");
@@ -76,7 +83,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   useEffect(() => {
     const handleCaptured = (e: Event) => {
       const detail = (e as CustomEvent<{ artifactId: number; dataUrl: string }>).detail;
-      if (detail && detail.artifactId === artifactId && detail.dataUrl) {
+      if (detail && detail.artifactId === artifactId && artifactId !== 0 && detail.dataUrl) {
         setFrozenSnapshot(detail.dataUrl);
       }
     };
@@ -86,12 +93,12 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
 
   // Context pooling integration
   useEffect(() => {
+    const id = `artifact-${instanceKey}`;
     if (!isActive || isFullScreen) {
-      globalContextPool.release(`artifact-${artifactId}`);
+      globalContextPool.release(id);
       return;
     }
 
-    const id = `artifact-${artifactId}`;
     globalContextPool.requestActive({
       id,
       onSleep: (snapshot) => {
@@ -108,7 +115,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     return () => {
       globalContextPool.release(id);
     };
-  }, [isActive, isFullScreen, artifactId]);
+  }, [isActive, isFullScreen, instanceKey]);
 
   const defaultThumbnailUrl = isDark ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
   const currentThumbnailUrl = frozenSnapshot || defaultThumbnailUrl;
@@ -121,8 +128,8 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   // Handle global mutual exclusion
   useEffect(() => {
     const handleActivate = (e: Event) => {
-      const activeId = (e as CustomEvent<number>).detail;
-      if (activeId !== artifactId && !isFullScreen) {
+      const activeKey = String((e as CustomEvent<string | number>).detail);
+      if (activeKey !== instanceKey && !isFullScreen) {
         const snap = captureCanvasSnapshot();
         if (snap) setFrozenSnapshot(snap);
         setIsActive(false);
@@ -130,7 +137,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     };
     window.addEventListener("activate-3d-viewer", handleActivate);
     return () => window.removeEventListener("activate-3d-viewer", handleActivate);
-  }, [artifactId, isFullScreen]);
+  }, [instanceKey, isFullScreen]);
 
   // Handle intersection observer to unload on scroll out
   useEffect(() => {
@@ -267,6 +274,11 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
 
       {/* Interactive 3D launch overlay */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label={
+          title ? `${frozenSnapshot ? "Re-activate" : "Interact in"} 3D viewer for ${title}` : "Interact in 3D viewer"
+        }
         style={{
           position: "absolute",
           top: 0,
@@ -282,7 +294,15 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
         }}
         onClick={() => {
           setIsActive(true);
-          window.dispatchEvent(new CustomEvent("activate-3d-viewer", { detail: artifactId }));
+          window.dispatchEvent(new CustomEvent("activate-3d-viewer", { detail: instanceKey }));
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsActive(true);
+            window.dispatchEvent(new CustomEvent("activate-3d-viewer", { detail: instanceKey }));
+          }
         }}
       >
         <div

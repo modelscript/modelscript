@@ -12,11 +12,12 @@ import {
 import { Button, Text, TextInput } from "@primer/react";
 import DOMPurify from "dompurify";
 import Papa from "papaparse";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import Spinner from "../Spinner";
-import { adaptSvgMarkupForTheme, resolveCurrentThemeIsDark } from "./svg-theme.js";
+import { adaptSvgMarkupForTheme } from "./svg-theme.js";
 
 export interface DatasetColumn {
   name: string;
@@ -43,6 +44,7 @@ export interface CsvViewerProps {
     format?: "csv" | "tsv" | "json" | string | undefined;
     hasHeader?: boolean | undefined;
     delimiter?: string | undefined;
+    initialMode?: "chart" | "table" | undefined;
     svg?: string | undefined;
     thumbnailUrl?: string | undefined;
     thumbnail_url?: string | undefined;
@@ -58,6 +60,7 @@ export { buildClientTelemetrySvg };
 const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--color-canvas-default, #0d1117);
@@ -70,7 +73,7 @@ const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
 
 const Toolbar = styled.div`
   min-height: 44px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
+  background: var(--color-canvas-subtle, #161b22);
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
@@ -78,8 +81,6 @@ const Toolbar = styled.div`
   padding: 6px 12px;
   gap: 10px;
   flex-wrap: wrap;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 `;
 
 const ModeToggleGroup = styled.div`
@@ -88,7 +89,7 @@ const ModeToggleGroup = styled.div`
   gap: 2px;
   padding: 2px;
   border-radius: 6px;
-  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.04));
+  background: var(--color-canvas-default, rgba(255, 255, 255, 0.04));
   border: 1px solid var(--color-border-default, #30363d);
 `;
 
@@ -103,8 +104,8 @@ const ModeToggleButton = styled.button<{ $active: boolean }>`
   font-weight: ${(p) => (p.$active ? 600 : 500)};
   font-family: var(--font-mono, monospace);
   cursor: pointer;
-  background: ${(p) => (p.$active ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--ms-brand, #22d3ee)" : "var(--color-fg-muted, #8b949e)")};
+  background: ${(p) => (p.$active ? "var(--color-neutral-muted, rgba(127, 127, 127, 0.15))" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--color-fg-default, #f1f5f9)" : "var(--color-fg-muted, #8b949e)")};
   transition:
     background 0.12s ease,
     color 0.12s ease;
@@ -114,7 +115,7 @@ const ModeToggleButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const ChartContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`
+const ChartContainer = styled.div<{ $isFullScreen?: boolean | undefined; $isDark?: boolean | undefined }>`
   flex: 1;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "calc(100% - 44px)")};
@@ -124,17 +125,17 @@ const ChartContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`
   align-items: center;
   justify-content: center;
   position: relative;
-  background: radial-gradient(circle at center, rgba(14, 25, 45, 0.5) 0%, rgba(13, 17, 23, 0.98) 100%);
+  background: var(--color-canvas-default, #0d1117);
   overflow: hidden;
-  padding: 12px;
+  padding: 8px 12px;
 
   svg {
     max-width: 100%;
     max-height: 100%;
     width: auto;
     height: auto;
-    border-radius: 6px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    border-radius: 4px;
+    box-shadow: none;
   }
 `;
 
@@ -146,23 +147,20 @@ const SwitchToTablePill = styled.button`
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  background: var(--surface-hud, rgba(15, 23, 42, 0.85));
+  background: var(--color-canvas-default, #0d1117);
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 20px;
-  color: var(--color-text-primary, #e6edf3);
+  color: var(--color-fg-default, #e6edf3);
   font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.15s ease;
   z-index: 5;
 
   &:hover {
-    background: rgba(30, 41, 59, 0.95);
-    border-color: var(--color-accent-emphasis, #1f6feb);
-    color: #fff;
+    background: var(--color-canvas-subtle, #161b22);
+    border-color: var(--color-border-default, #30363d);
     transform: translateY(-1px);
   }
 `;
@@ -181,7 +179,7 @@ const StatsDrawer = styled.div`
 
 const StatCard = styled.div`
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
   padding: 6px 8px;
   display: flex;
@@ -291,13 +289,26 @@ const PaginationBar = styled.div`
 `;
 
 export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, thumbnailUrl }) => {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
 
   // User tab selection override (null = auto default to chart if available, else table)
-  const [userSelectedMode, setUserSelectedMode] = useState<"chart" | "table" | null>(null);
+  const [userSelectedMode, setUserSelectedMode] = useState<"chart" | "table" | null>(() =>
+    viewConfig?.initialMode === "table" || viewConfig?.initialMode === "chart" ? viewConfig.initialMode : null,
+  );
+
+  useEffect(() => {
+    if (viewConfig?.initialMode === "table" || viewConfig?.initialMode === "chart") {
+      setUserSelectedMode(viewConfig.initialMode);
+    } else {
+      setUserSelectedMode(null);
+    }
+  }, [viewConfig?.initialMode]);
 
   // SVG markup state (either directly in viewConfig.svg or fetched from thumbnailUrl)
   const [svgMarkup, setSvgMarkup] = useState<string | null>(() => {
@@ -321,18 +332,21 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
       setSvgMarkup(viewConfig.svg.trim());
       return;
     }
+    setSvgMarkup(null);
     if (resolvedThumbUrl && (resolvedThumbUrl.endsWith(".svg") || resolvedThumbUrl.includes(".svg"))) {
       let active = true;
-      fetch(resolvedThumbUrl)
+      const controller = new AbortController();
+      fetch(resolvedThumbUrl, { signal: controller.signal })
         .then((res) => (res.ok ? res.text() : null))
         .then((text) => {
-          if (active && text && text.includes("<svg")) {
+          if (active && !controller.signal.aborted && text && text.includes("<svg")) {
             setSvgMarkup(text.trim());
           }
         })
         .catch(() => {});
       return () => {
         active = false;
+        controller.abort();
       };
     }
   }, [viewConfig?.svg, resolvedThumbUrl]);
@@ -346,27 +360,42 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
 
-  const columnsMeta: DatasetColumn[] = Array.isArray(viewConfig?.columns) ? viewConfig.columns : [];
-
-  const parseCsvText = (text: string) => {
-    try {
-      const parsed = Papa.parse<string[]>(text, {
-        skipEmptyLines: true,
-      });
-
-      if (parsed.errors && parsed.errors.length > 0 && parsed.data.length === 0) {
-        throw new Error(parsed.errors[0]?.message || "Failed to parse tabular data");
-      }
-
-      setCsvData(parsed.data || []);
-    } catch (err: any) {
-      setError(err.message || "Failed to parse tabular format");
+  const effectiveDelimiter = useMemo(() => {
+    if (typeof viewConfig?.delimiter === "string" && viewConfig.delimiter.length > 0) {
+      return viewConfig.delimiter;
     }
-  };
+    if (typeof viewConfig?.format === "string" && viewConfig.format.toLowerCase() === "tsv") {
+      return "\t";
+    }
+    return undefined;
+  }, [viewConfig?.delimiter, viewConfig?.format]);
+
+  const parseCsvText = useCallback(
+    (text: string) => {
+      try {
+        const parsed = Papa.parse<string[]>(text, {
+          skipEmptyLines: true,
+          ...(effectiveDelimiter ? { delimiter: effectiveDelimiter } : {}),
+        });
+
+        if (parsed.errors && parsed.errors.length > 0 && parsed.data.length === 0) {
+          throw new Error(parsed.errors[0]?.message || "Failed to parse tabular data");
+        }
+
+        setCsvData(parsed.data || []);
+      } catch (err: any) {
+        setError(err.message || "Failed to parse tabular format");
+      }
+    },
+    [effectiveDelimiter],
+  );
 
   useEffect(() => {
+    setError(null);
+
     // 1. Structured DatasetDetails from dataset-handler
     if (viewConfig?.columns && (viewConfig.previewRows || viewConfig.rows)) {
+      setLoading(false);
       const headerRow = viewConfig.columns.map((c) => c.name);
       const dataRows = viewConfig.previewRows || viewConfig.rows || [];
       setCsvData([headerRow, ...dataRows]);
@@ -376,6 +405,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
     // 2. Direct string or 2D array via code or data
     const inlineSource = viewConfig?.code ?? viewConfig?.data;
     if (inlineSource) {
+      setLoading(false);
       if (typeof inlineSource === "string") {
         parseCsvText(inlineSource);
       } else if (Array.isArray(inlineSource)) {
@@ -386,35 +416,95 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
 
     // 3. Remote URL
     if (viewConfig?.url) {
+      let active = true;
+      const controller = new AbortController();
       setLoading(true);
-      fetch(viewConfig.url)
+      fetch(viewConfig.url, { signal: controller.signal })
         .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status} loading dataset`);
           return res.text();
         })
         .then((text) => {
+          if (!active || controller.signal.aborted) return;
           parseCsvText(text);
           setLoading(false);
         })
         .catch((err) => {
+          if (!active || controller.signal.aborted || err?.name === "AbortError") return;
           setError(err.message);
           setLoading(false);
         });
-      return;
+      return () => {
+        active = false;
+        controller.abort();
+      };
     }
 
+    setLoading(false);
     setCsvData([]);
-  }, [viewConfig]);
+  }, [viewConfig, parseCsvText]);
 
-  const headers = useMemo(() => csvData[0] || [], [csvData]);
+  const hasExplicitColumns = Boolean(viewConfig?.columns && (viewConfig.previewRows || viewConfig.rows));
+  const hasHeader = hasExplicitColumns ? true : viewConfig?.hasHeader !== false;
+
+  const headers = useMemo(() => {
+    const firstRow = csvData[0] || [];
+    if (!hasHeader) {
+      return firstRow.map((_, idx) => `Col ${idx + 1}`);
+    }
+    return firstRow;
+  }, [csvData, hasHeader]);
+
   const maxPreviewRows = typeof viewConfig?.maxPreviewRows === "number" ? viewConfig.maxPreviewRows : 0;
   const rawRows = useMemo(() => {
-    const sliced = csvData.slice(1);
+    const sliced = hasHeader ? csvData.slice(1) : csvData;
     if (maxPreviewRows > 0) {
       return sliced.slice(0, maxPreviewRows);
     }
     return sliced;
-  }, [csvData, maxPreviewRows]);
+  }, [csvData, hasHeader, maxPreviewRows]);
+
+  const columnsMeta = useMemo<DatasetColumn[]>(() => {
+    if (Array.isArray(viewConfig?.columns) && viewConfig.columns.length > 0) {
+      return viewConfig.columns;
+    }
+    if (headers.length === 0 || rawRows.length === 0) return [];
+    return headers.map((h, colIdx) => {
+      let min = Infinity;
+      let max = -Infinity;
+      let sum = 0;
+      let numCount = 0;
+      let boolCount = 0;
+      let nonEmptyCount = 0;
+      const uniqueSet = new Set<string>();
+      for (const row of rawRows) {
+        const raw = row[colIdx];
+        const str = raw !== undefined && raw !== null ? String(raw).trim() : "";
+        if (str === "") continue;
+        nonEmptyCount++;
+        uniqueSet.add(str);
+        const n = Number(str);
+        if (Number.isFinite(n)) {
+          numCount++;
+          if (n < min) min = n;
+          if (n > max) max = n;
+          sum += n;
+        } else if (str.toLowerCase() === "true" || str.toLowerCase() === "false") {
+          boolCount++;
+        }
+      }
+      const isNumber = nonEmptyCount > 0 && numCount / nonEmptyCount >= 0.6;
+      const isBoolean = !isNumber && nonEmptyCount > 0 && boolCount / nonEmptyCount >= 0.8;
+      return {
+        name: h,
+        type: isNumber ? "number" : isBoolean ? "boolean" : "string",
+        min: isNumber && numCount > 0 ? min : undefined,
+        max: isNumber && numCount > 0 ? max : undefined,
+        mean: isNumber && numCount > 0 ? sum / numCount : undefined,
+        unique: uniqueSet.size,
+      };
+    });
+  }, [viewConfig, headers, rawRows]);
 
   const chartTitle = (typeof viewConfig?.title === "string" && viewConfig.title.trim()) || "Dataset Telemetry";
   const fallbackChartSvg = useMemo(() => {
@@ -427,7 +517,6 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
 
   const rawActiveSvg = svgMarkup || fallbackChartSvg;
 
-  const isDark = resolveCurrentThemeIsDark();
   const displaySvg = useMemo(() => {
     if (!rawActiveSvg) return null;
     const themed = adaptSvgMarkupForTheme(rawActiveSvg, isDark);
@@ -454,6 +543,12 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
     return [...filteredRows].sort((a, b) => {
       const valA = a[sortCol] ?? "";
       const valB = b[sortCol] ?? "";
+      const isEmptyA = String(valA).trim() === "";
+      const isEmptyB = String(valB).trim() === "";
+      if (isEmptyA && isEmptyB) return 0;
+      if (isEmptyA) return 1;
+      if (isEmptyB) return -1;
+
       const numA = Number(valA);
       const numB = Number(valB);
 
@@ -692,7 +787,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
       </Toolbar>
 
       {activeMode === "chart" ? (
-        <ChartContainer $isFullScreen={isFullScreen}>
+        <ChartContainer $isFullScreen={isFullScreen} $isDark={isDark}>
           {displaySvg ? (
             <div
               style={{

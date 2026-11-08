@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PulseIcon } from "@primer/octicons-react";
+import {
+  renderCompressorMapSvg,
+  renderLpsPressureProfileSvg,
+  renderLpsSchematicSvg,
+} from "@modelscript/diagram/lps-diagram-builder";
+import { type LpsModel, type LpsSteadyResult, parseLps, SteadyNetworkSolver } from "@modelscript/lps";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, GraphIcon, PulseIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
@@ -36,10 +42,12 @@ export interface PipelineLpsViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
+type LpsViewMode = "schematic" | "profile" | "compressor" | "code";
+
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
-  height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
+  height: ${(props) => (props.$isFullScreen ? "100%" : "460px")};
   background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
@@ -61,6 +69,32 @@ const Toolbar = styled.div`
   gap: 8px;
   z-index: 10;
   overflow: hidden;
+`;
+
+const TelemetryRibbon = styled.div`
+  min-height: 28px;
+  background: var(--color-canvas-inset, var(--color-canvas-subtle));
+  border-bottom: 1px solid var(--color-border-muted, var(--color-border-default));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-fg-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+`;
+
+const MetricItem = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  strong {
+    color: var(--color-fg-default);
+    font-weight: 600;
+  }
 `;
 
 const HeaderLeft = styled.div`
@@ -161,6 +195,12 @@ const LineNo = styled.span`
   padding-right: 16px;
 `;
 
+// Ensure instance `.solve()` delegates to `SteadyNetworkSolver.solve()`
+if (typeof (SteadyNetworkSolver.prototype as unknown as { solve?: unknown }).solve !== "function") {
+  (SteadyNetworkSolver.prototype as unknown as { solve: (m: LpsModel) => LpsSteadyResult }).solve = (model: LpsModel) =>
+    SteadyNetworkSolver.solve(model);
+}
+
 export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const { theme } = useTheme();
@@ -168,8 +208,17 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<LpsViewMode>("schematic");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const title = viewConfig.title || viewConfig.networkName || "PipelineStudio Network (.lps)";
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (viewConfig.code) {
@@ -177,24 +226,120 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
       return;
     }
     if (viewConfig.url) {
+      const controller = new AbortController();
       setLoading(true);
       const targetUrl =
         viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
           ? viewConfig.url
           : `/api${viewConfig.url}`;
-      fetch(targetUrl)
+      fetch(targetUrl, { signal: controller.signal })
         .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => {
           if (txt) setRawText(txt);
         })
-        .catch((err) => console.warn("[PipelineLpsViewer] Failed to fetch source:", err))
-        .finally(() => setLoading(false));
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          console.warn("[PipelineLpsViewer] Failed to fetch source:", err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+      return () => controller.abort();
     }
+    return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
-  const sanitizedSvg = useMemo(() => {
+  const lpsAnalysis = useMemo(() => {
+    let parsedModel: LpsModel | null = null;
+    let steadyResult: LpsSteadyResult | null = null;
+
+    if (rawText.trim()) {
+      try {
+        const candidate = parseLps(rawText);
+        if (candidate.nodes.length > 0 || candidate.pipes.length > 0 || candidate.compressors.length > 0) {
+          parsedModel = candidate;
+          const solver = new SteadyNetworkSolver() as SteadyNetworkSolver & {
+            solve: (m: LpsModel) => LpsSteadyResult;
+          };
+          steadyResult = solver.solve(parsedModel);
+        }
+      } catch (err) {
+        console.warn("[PipelineLpsViewer] LPS parse/solve fallback:", err);
+      }
+    }
+
+    // Derive hydraulic telemetry metrics (preferring viewConfig overrides when provided)
+    let solvedInletBar: number | undefined;
+    let solvedOutletBar: number | undefined;
+    if (steadyResult && steadyResult.nodePressures.size > 0) {
+      const pressuresBar = Array.from(steadyResult.nodePressures.values()).map((p) => (p > 2000 ? p / 1e5 : p));
+      solvedInletBar = Math.max(...pressuresBar);
+      solvedOutletBar = Math.min(...pressuresBar);
+    } else if (parsedModel && parsedModel.nodes.length > 0) {
+      const pressuresBar = parsedModel.nodes
+        .filter((n) => typeof n.pressure === "number" && Number.isFinite(n.pressure))
+        .map((n) => (n.pressure! > 2000 ? n.pressure! / 1e5 : n.pressure!));
+      if (pressuresBar.length > 0) {
+        solvedInletBar = Math.max(...pressuresBar);
+        solvedOutletBar = Math.min(...pressuresBar);
+      }
+    }
+
+    let solvedThroughputMmsm3d: number | undefined;
+    if (steadyResult && steadyResult.pipeResults.length > 0) {
+      const maxFlowKgS = Math.max(...steadyResult.pipeResults.map((r) => Math.abs(r.massFlow)));
+      // Convert mass flow (kg/s) at ~0.78 kg/sm3 to MMsm3/d
+      solvedThroughputMmsm3d = (maxFlowKgS * 86400) / (0.78 * 1e6);
+    }
+
+    const inletPressureBar = viewConfig.inletPressureBar ?? solvedInletBar ?? 85.0;
+    const outletPressureBar = viewConfig.outletPressureBar ?? solvedOutletBar ?? 48.5;
+    const maopBar = viewConfig.maopBar ?? Math.max(100, Math.round(inletPressureBar * 1.15));
+    const linePackMm3 =
+      viewConfig.linePackMm3 ??
+      (steadyResult && steadyResult.totalLinePackKg > 0
+        ? Number((steadyResult.totalLinePackKg / (0.78 * 1e6)).toFixed(2))
+        : 1.42);
+    const throughputMmsm3d =
+      viewConfig.throughputMmsm3d ??
+      (solvedThroughputMmsm3d !== undefined ? Number(solvedThroughputMmsm3d.toFixed(2)) : 18.4);
+    const compressorCount = viewConfig.compressorCount ?? (parsedModel ? parsedModel.compressors.length : 1);
+
+    return {
+      parsedModel,
+      steadyResult,
+      telemetry: {
+        inletPressureBar,
+        outletPressureBar,
+        maopBar,
+        linePackMm3,
+        throughputMmsm3d,
+        compressorCount,
+      },
+    };
+  }, [
+    rawText,
+    viewConfig.inletPressureBar,
+    viewConfig.outletPressureBar,
+    viewConfig.maopBar,
+    viewConfig.linePackMm3,
+    viewConfig.throughputMmsm3d,
+    viewConfig.compressorCount,
+  ]);
+
+  const schematicSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
+    }
+    if (lpsAnalysis.parsedModel) {
+      try {
+        const rawSvg = renderLpsSchematicSvg(lpsAnalysis.parsedModel, lpsAnalysis.steadyResult ?? undefined);
+        if (rawSvg) return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
+      } catch (err) {
+        console.warn("[PipelineLpsViewer] renderLpsSchematicSvg error:", err);
+      }
     }
     if (rawText.trim()) {
       try {
@@ -205,25 +350,88 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
       }
     }
     return "";
-  }, [viewConfig.svg, rawText, title, isFullScreen, isDark]);
+  }, [viewConfig.svg, lpsAnalysis, rawText, title, isFullScreen, isDark]);
 
-  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
+  const profileSvg = useMemo(() => {
+    try {
+      const modelForProfile = lpsAnalysis.parsedModel ?? {
+        title,
+        fluidType: "GAS",
+        nodes: [
+          { name: "INLET", type: "SUPPLY", pressure: lpsAnalysis.telemetry.inletPressureBar * 1e5 },
+          { name: "DELIVERY", type: "DELIVERY", pressure: lpsAnalysis.telemetry.outletPressureBar * 1e5 },
+        ],
+        pipes: [
+          {
+            name: "MAINLINE",
+            fromNode: "INLET",
+            toNode: "DELIVERY",
+            length: 120000,
+            diameter: 0.9144,
+          },
+        ],
+        compressors: [],
+        valves: [],
+      };
+      const rawSvg = renderLpsPressureProfileSvg(modelForProfile, lpsAnalysis.steadyResult ?? undefined);
+      return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
+    } catch (err) {
+      console.warn("[PipelineLpsViewer] renderLpsPressureProfileSvg error:", err);
+      return "";
+    }
+  }, [lpsAnalysis, title, isFullScreen, isDark]);
+
+  const compressorSvg = useMemo(() => {
+    try {
+      const firstComp = lpsAnalysis.parsedModel?.compressors[0];
+      const firstCompRes = lpsAnalysis.steadyResult?.compressorResults[0];
+      const compName = firstComp?.name ?? "CS-01";
+      const ratedPowerKw = firstComp?.power ? firstComp.power / 1000 : 12000;
+      const ratedRpm = firstComp?.speed ?? 6500;
+      const opPoint = firstCompRes
+        ? {
+            flowM3h: Math.max(1200, (firstCompRes.powerKw / ratedPowerKw) * 8200),
+            pressureRatio: firstCompRes.pressureRatio,
+            powerKw: firstCompRes.powerKw,
+            efficiency: firstComp?.efficiency ?? 0.82,
+          }
+        : undefined;
+      const rawSvg = renderCompressorMapSvg(compName, ratedPowerKw, ratedRpm, opPoint);
+      return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
+    } catch (err) {
+      console.warn("[PipelineLpsViewer] renderCompressorMapSvg error:", err);
+      return "";
+    }
+  }, [lpsAnalysis, isFullScreen, isDark]);
+
+  const activeSvg =
+    viewMode === "schematic"
+      ? schematicSvg
+      : viewMode === "profile"
+        ? profileSvg
+        : viewMode === "compressor"
+          ? compressorSvg
+          : "";
+
+  const effectiveViewMode: LpsViewMode = viewMode !== "code" && activeSvg ? viewMode : schematicSvg ? "code" : "code";
 
   const handleCopy = () => {
     if (rawText) {
       navigator.clipboard.writeText(rawText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const handleExportSvg = () => {
-    if (!sanitizedSvg) return;
-    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const svgToExport = activeSvg || schematicSvg;
+    if (!svgToExport) return;
+    const blob = new Blob([svgToExport], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-network.svg`;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${viewMode}.svg`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -242,6 +450,7 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
   };
 
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
+  const { telemetry } = lpsAnalysis;
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -253,21 +462,29 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {sanitizedSvg && (
-            <SegmentedControl>
-              <SegmentBtn
-                type="button"
-                $active={effectiveViewMode === "diagram"}
-                onClick={() => setViewMode("diagram")}
-              >
-                <PulseIcon size={12} /> Network
-              </SegmentBtn>
-              <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
-                <CodeIcon size={12} /> Source
-              </SegmentBtn>
-            </SegmentedControl>
-          )}
-          {sanitizedSvg && (
+          <SegmentedControl>
+            <SegmentBtn
+              type="button"
+              $active={effectiveViewMode === "schematic"}
+              onClick={() => setViewMode("schematic")}
+            >
+              <PulseIcon size={12} /> Schematic
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={effectiveViewMode === "profile"} onClick={() => setViewMode("profile")}>
+              <GraphIcon size={12} /> P(x) Profile
+            </SegmentBtn>
+            <SegmentBtn
+              type="button"
+              $active={effectiveViewMode === "compressor"}
+              onClick={() => setViewMode("compressor")}
+            >
+              <PulseIcon size={12} /> Compressor Map
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Source
+            </SegmentBtn>
+          </SegmentedControl>
+          {activeSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
               SVG
             </Button>
@@ -283,12 +500,33 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
         </Box>
       </Toolbar>
 
+      <TelemetryRibbon>
+        <MetricItem>
+          Inlet P: <strong>{telemetry.inletPressureBar.toFixed(1)} bar</strong>
+        </MetricItem>
+        <MetricItem>
+          Outlet P: <strong>{telemetry.outletPressureBar.toFixed(1)} bar</strong>
+        </MetricItem>
+        <MetricItem>
+          MAOP: <strong>{telemetry.maopBar.toFixed(0)} bar</strong>
+        </MetricItem>
+        <MetricItem>
+          Linepack: <strong>{telemetry.linePackMm3.toFixed(2)} MMm³</strong>
+        </MetricItem>
+        <MetricItem>
+          Throughput: <strong>{telemetry.throughputMmsm3d.toFixed(2)} MMsm³/d</strong>
+        </MetricItem>
+        <MetricItem>
+          Compressors: <strong>{telemetry.compressorCount}</strong>
+        </MetricItem>
+      </TelemetryRibbon>
+
       <ContentArea>
         {loading ? (
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : effectiveViewMode === "code" || !sanitizedSvg ? (
+        ) : effectiveViewMode === "code" || !activeSvg ? (
           <CodePre>
             {lines.length > 0 ? (
               lines.map((line, idx) => (
@@ -304,7 +542,7 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
             )}
           </CodePre>
         ) : (
-          <InteractiveSvgStage svgHtml={sanitizedSvg} />
+          <InteractiveSvgStage svgHtml={activeSvg} isFullScreen={isFullScreen} />
         )}
       </ContentArea>
     </CardWrapper>

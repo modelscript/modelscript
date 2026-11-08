@@ -1,23 +1,43 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ArchiveIcon, BookmarkFillIcon, StarFillIcon, StarIcon } from "@primer/octicons-react";
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Box from "../../../components/Box";
 import ProfileHoverCard from "../../../components/ProfileHoverCard";
 import { safeJsonParse } from "../../../util/json";
 import { formatPostContent, formatRelativeTime, getIconForType, getMessageForType } from "../formatters";
-import { Avatar, AvatarOverflowPill, AvatarsRow, NotificationWrapper, UnreadDotButton } from "../styles";
+import {
+  Avatar,
+  AvatarOverflowPill,
+  AvatarsRow,
+  NotificationWrapper,
+  QuickActionIconButton,
+  UnreadDotButton,
+} from "../styles";
 import type { NotificationItem } from "../types";
 
 export interface SocialNotificationRowProps {
   notif: NotificationItem;
   currentUsername?: string | undefined;
+  selected?: boolean | undefined;
+  onSelect?: ((notif: NotificationItem) => void) | undefined;
   onMarkRead?: ((id: string | number) => void) | undefined;
+  onToggleStar?: ((notif: NotificationItem) => void) | undefined;
+  onToggleArchive?: ((notif: NotificationItem) => void) | undefined;
 }
 
 const MAX_VISIBLE_AVATARS = 8;
 
-export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ notif, currentUsername, onMarkRead }) => {
+export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({
+  notif,
+  currentUsername,
+  selected,
+  onSelect,
+  onMarkRead,
+  onToggleStar,
+  onToggleArchive,
+}) => {
   const navigate = useNavigate();
 
   let thumbnail: string | null = null;
@@ -42,6 +62,10 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
     if (!notif.read) {
       onMarkRead?.(notif.id);
     }
+    if (onSelect) {
+      onSelect(notif);
+      return;
+    }
     const postAuthor = notif.post_author || notif.author_username || currentUsername || primaryActor.username;
     const url =
       isFollowEvent || !notif.post_id
@@ -56,15 +80,66 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
   const visibleActors = notif.actors?.slice(0, MAX_VISIBLE_AVATARS) || [];
   const overflowCount = Math.max(0, (notif.actors?.length || 0) - MAX_VISIBLE_AVATARS);
 
+  const renderTriageButtons = () => (
+    <>
+      {onToggleStar && (
+        <QuickActionIconButton
+          type="button"
+          $active={Boolean(notif.starred || notif.isBookmark)}
+          title={notif.isBookmark ? "Remove bookmark" : notif.starred ? "Remove from Saved (S)" : "Save for later (S)"}
+          aria-label={notif.isBookmark ? "Remove bookmark" : notif.starred ? "Remove from Saved" : "Save for later"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleStar(notif);
+          }}
+        >
+          {notif.isBookmark ? (
+            <BookmarkFillIcon size={14} />
+          ) : notif.starred ? (
+            <StarFillIcon size={14} />
+          ) : (
+            <StarIcon size={14} />
+          )}
+        </QuickActionIconButton>
+      )}
+      {onToggleArchive && !notif.isBookmark && (
+        <QuickActionIconButton
+          type="button"
+          $active={Boolean(notif.archived)}
+          title={notif.archived ? "Move back to Inbox (E)" : "Archive / Mark Done (E)"}
+          aria-label={notif.archived ? "Move back to Inbox" : "Archive notification"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleArchive(notif);
+          }}
+        >
+          <ArchiveIcon size={14} />
+        </QuickActionIconButton>
+      )}
+      {!notif.read && (
+        <UnreadDotButton
+          type="button"
+          title="Mark as read"
+          aria-label="Mark notification as read"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkRead?.(notif.id);
+          }}
+        />
+      )}
+    </>
+  );
+
   return (
     <NotificationWrapper
       key={notif.id}
       $unread={!notif.read}
+      $selected={selected}
       data-notification-id={String(notif.id)}
       data-unread={!notif.read ? "true" : "false"}
       onClick={handleRowClick}
     >
-      {notif.type === "mention" || notif.type === "reply" ? (
+      {notif.type === "mention" || notif.type === "reply" || notif.type === "bookmark" ? (
         <>
           <Box width={36} display="flex" justifyContent="flex-end" pt={1}>
             <ProfileHoverCard username={primaryActor.username || ""}>
@@ -81,15 +156,15 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
               </Link>
             </ProfileHoverCard>
           </Box>
-          <Box flex={1} display="flex" flexDirection="row">
-            <Box flex={1}>
+          <Box flex={1} display="flex" flexDirection="row" style={{ minWidth: 0 }}>
+            <Box flex={1} style={{ minWidth: 0 }}>
               <Box
                 display="flex"
                 alignItems="center"
                 justifyContent="space-between"
                 gap="8px"
                 mb="4px"
-                style={{ fontSize: "15px", lineHeight: "20px" }}
+                style={{ fontSize: "14px", lineHeight: "20px" }}
               >
                 <Box display="flex" alignItems="center" gap="4px" flexWrap="wrap">
                   <ProfileHoverCard username={primaryActor.username || ""}>
@@ -107,28 +182,20 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
                   </ProfileHoverCard>
                   <span style={{ color: "var(--color-fg-muted)" }}>@{primaryActor.username}</span>
                   <span style={{ color: "var(--color-fg-muted)" }}>·</span>
-                  <span style={{ color: "var(--color-fg-muted)" }}>{relativeTime}</span>
+                  <span style={{ color: "var(--color-fg-muted)", fontSize: "12px" }}>{relativeTime}</span>
                 </Box>
-                {!notif.read && (
-                  <UnreadDotButton
-                    type="button"
-                    title="Mark as read"
-                    aria-label="Mark notification as read"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMarkRead?.(notif.id);
-                    }}
-                  />
-                )}
+                <Box display="flex" alignItems="center" gap="4px" flexShrink={0}>
+                  {renderTriageButtons()}
+                </Box>
               </Box>
               {notif.post_content && (
-                <Box style={{ fontSize: "15px", lineHeight: "20px" }} color="var(--color-fg-muted)">
+                <Box style={{ fontSize: "14px", lineHeight: "20px" }} color="var(--color-fg-muted)">
                   {formatPostContent(notif.post_content)}
                 </Box>
               )}
             </Box>
             {thumbnail && (
-              <Box width="60px" height="60px" borderRadius="8px" overflow="hidden" ml={2} flexShrink={0}>
+              <Box width="56px" height="56px" borderRadius="8px" overflow="hidden" ml={2} flexShrink={0}>
                 <img
                   src={thumbnail}
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -140,10 +207,10 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
         </>
       ) : (
         <>
-          <Box width={36} display="flex" justifyContent="center" pt={1}>
+          <Box width={28} display="flex" justifyContent="center" pt={1}>
             {getIconForType(notif.type)}
           </Box>
-          <Box flex={1}>
+          <Box flex={1} style={{ minWidth: 0 }}>
             <Box display="flex" alignItems="center" justifyContent="space-between" gap="8px">
               <AvatarsRow>
                 {visibleActors.map((a) => {
@@ -170,28 +237,18 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
                 })}
                 {overflowCount > 0 && <AvatarOverflowPill>+{overflowCount}</AvatarOverflowPill>}
               </AvatarsRow>
-              <Box display="flex" alignItems="center" gap="6px" flexShrink={0}>
-                <span style={{ fontSize: "13px", lineHeight: "16px", color: "var(--color-fg-muted)" }}>
+              <Box display="flex" alignItems="center" gap="4px" flexShrink={0}>
+                <span style={{ fontSize: "12px", lineHeight: "16px", color: "var(--color-fg-muted)" }}>
                   {relativeTime}
                 </span>
-                {!notif.read && (
-                  <UnreadDotButton
-                    type="button"
-                    title="Mark as read"
-                    aria-label="Mark notification as read"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMarkRead?.(notif.id);
-                    }}
-                  />
-                )}
+                {renderTriageButtons()}
               </Box>
             </Box>
-            <Box mt={1} style={{ fontSize: "15px", lineHeight: "20px" }}>
+            <Box mt={1} style={{ fontSize: "14px", lineHeight: "20px" }}>
               {getMessageForType(notif.type, notif.actors, currentUsername)}
             </Box>
             {notif.post_content && (
-              <Box mt={1} color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
+              <Box mt={1} color="var(--color-fg-muted)" style={{ fontSize: "14px", lineHeight: "20px" }}>
                 {formatPostContent(notif.post_content)}
               </Box>
             )}

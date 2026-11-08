@@ -308,6 +308,25 @@ export const markNotificationsRead = async (
   await api.post("/social/notifications/read", body);
 };
 
+export const triageNotifications = async (options: {
+  ids?: Array<string | number> | undefined;
+  category?: string | undefined;
+  archived?: boolean | undefined;
+  starred?: boolean | undefined;
+  read?: boolean | undefined;
+}): Promise<void> => {
+  const cleanIds = options.ids
+    ? Array.from(new Set(options.ids.filter((v) => v !== undefined && v !== null && v !== "")))
+    : undefined;
+  await api.post("/social/notifications/triage", {
+    ...(cleanIds && cleanIds.length > 0 ? { ids: cleanIds, notification_ids: cleanIds } : {}),
+    ...(options.category && options.category !== "all" ? { category: options.category } : {}),
+    ...(typeof options.archived === "boolean" ? { archived: options.archived } : {}),
+    ...(typeof options.starred === "boolean" ? { starred: options.starred } : {}),
+    ...(typeof options.read === "boolean" ? { read: options.read } : {}),
+  });
+};
+
 export const getFeeds = async (): Promise<{ feeds: any[] }> => {
   const { data } = await api.get("/social/feeds");
   return data;

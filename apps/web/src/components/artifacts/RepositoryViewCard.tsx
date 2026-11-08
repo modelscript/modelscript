@@ -71,7 +71,7 @@ const ProviderBadge = styled.span`
 export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConfig }) => {
   const navigate = useNavigate();
 
-  const rawUrl = String(viewConfig.cloneUrl || viewConfig.repoUrl || viewConfig.url || "");
+  const rawUrl = String(viewConfig?.cloneUrl || viewConfig?.repoUrl || viewConfig?.url || "");
   let hostname = "";
   let pathSegments: string[] = [];
   try {
@@ -79,23 +79,30 @@ export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConf
       ? `ssh://${rawUrl.replace(":", "/")}`
       : rawUrl.includes("://")
         ? rawUrl
-        : `https://${rawUrl}`;
-    const parsed = new URL(normalized);
-    hostname = parsed.hostname.toLowerCase();
-    pathSegments = parsed.pathname.split("/").filter(Boolean);
+        : rawUrl
+          ? `https://${rawUrl}`
+          : "";
+    if (normalized) {
+      const parsed = new URL(normalized);
+      hostname = parsed.hostname.toLowerCase();
+      pathSegments = parsed.pathname.split("/").filter(Boolean);
+    }
   } catch {
     // Ignore invalid URLs
   }
 
-  const namespace = viewConfig.namespace || pathSegments[0] || "user";
-  const project = (viewConfig.project || pathSegments[1] || "repository").replace(/\.git$/i, "");
+  const derivedNamespace = pathSegments.length >= 2 ? pathSegments.slice(0, -1).join("/") : pathSegments[0] || "user";
+  const derivedProject = pathSegments.length >= 2 ? pathSegments[pathSegments.length - 1] : pathSegments[1];
+
+  const namespace = viewConfig?.namespace || derivedNamespace || "user";
+  const project = (viewConfig?.project || derivedProject || "repository").replace(/\.git$/i, "");
   const fullName = `${namespace}/${project}`;
-  const description = viewConfig.description || "Engineering model repository.";
+  const description = viewConfig?.description || "Engineering model repository.";
 
   const isGitHub = hostname === "github.com" || hostname.endsWith(".github.com");
   const isGitLab = hostname === "gitlab.com" || hostname.endsWith(".gitlab.com");
-  const provider = viewConfig.provider || (isGitHub ? "github" : isGitLab ? "gitlab" : "internal");
-  const branch = viewConfig.defaultBranch || "main";
+  const provider = viewConfig?.provider || (isGitHub ? "github" : isGitLab ? "gitlab" : "internal");
+  const branch = viewConfig?.defaultBranch || "main";
 
   const handleOpenIde = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,7 +147,7 @@ export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConf
             </Box>
           </Box>
         </Box>
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} onClick={(e) => e.stopPropagation()}>
           <CiteButton
             target={buildCitationFromRepo({
               provider,

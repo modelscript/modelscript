@@ -72,6 +72,8 @@ export class WasmEmtSolver {
   maxCtrlBlocks: u32;
   nPlls: u32;
   maxPlls: u32;
+  nBoundaries: u32;
+  maxBoundaries: u32;
 
   dt: f64;
   t: f64;
@@ -314,6 +316,33 @@ export class WasmEmtSolver {
   pllVdPuPtr: usize;         // Float64Array[maxPlls]
   pllVqPuPtr: usize;         // Float64Array[maxPlls]
 
+  // Hybrid EMT-TS Boundary Norton + Sliding-Window Fundamental DFT data
+  bndNodeAPtr: usize;        // Int32Array[maxBoundaries]
+  bndNodeBPtr: usize;        // Int32Array[maxBoundaries]
+  bndNodeCPtr: usize;        // Int32Array[maxBoundaries]
+  bndGThevPtr: usize;        // Float64Array[maxBoundaries]
+  bndOmegaPtr: usize;        // Float64Array[maxBoundaries]
+  bndIMagStartAPtr: usize;   // Float64Array[maxBoundaries]
+  bndIMagEndAPtr: usize;     // Float64Array[maxBoundaries]
+  bndIAngStartAPtr: usize;   // Float64Array[maxBoundaries]
+  bndIAngEndAPtr: usize;     // Float64Array[maxBoundaries]
+  bndIMagStartBPtr: usize;   // Float64Array[maxBoundaries]
+  bndIMagEndBPtr: usize;     // Float64Array[maxBoundaries]
+  bndIAngStartBPtr: usize;   // Float64Array[maxBoundaries]
+  bndIAngEndBPtr: usize;     // Float64Array[maxBoundaries]
+  bndIMagStartCPtr: usize;   // Float64Array[maxBoundaries]
+  bndIMagEndCPtr: usize;     // Float64Array[maxBoundaries]
+  bndIAngStartCPtr: usize;   // Float64Array[maxBoundaries]
+  bndIAngEndCPtr: usize;     // Float64Array[maxBoundaries]
+  bndRampStepPtr: usize;     // Uint32Array[maxBoundaries]
+  bndRampTotalPtr: usize;    // Uint32Array[maxBoundaries]
+  bndWinLenPtr: usize;       // Int32Array[maxBoundaries]
+  bndWinIdxPtr: usize;       // Int32Array[maxBoundaries]
+  bndWinCountPtr: usize;     // Int32Array[maxBoundaries]
+  bndWinBufPtrs: usize;      // usize[maxBoundaries] (Float64Array[winLen * 12])
+  bndDftSumsPtrs: usize;     // usize[maxBoundaries] (Float64Array[12])
+  bndSeqOutPtrs: usize;      // usize[maxBoundaries] (Float64Array[8]: V1r, V1i, V2r, V2i, V0r, V0i, I1r, I1i)
+
   // Trajectory recording buffer in linear memory (zero-copy streaming)
   trajectoryBufferPtr: usize;
   trajectoryCapacitySteps: u32;
@@ -339,6 +368,7 @@ export class WasmEmtSolver {
     this.maxFdLines = 16;
     this.maxCtrlBlocks = 64;
     this.maxPlls = 16;
+    this.maxBoundaries = 8;
 
     this.nBranches = 0;
     this.nSources = 0;
@@ -354,6 +384,7 @@ export class WasmEmtSolver {
     this.nFdLines = 0;
     this.nCtrlBlocks = 0;
     this.nPlls = 0;
+    this.nBoundaries = 0;
 
     this.dt = dt;
     this.t = 0.0;
@@ -594,6 +625,33 @@ export class WasmEmtSolver {
     this.pllFreqHzPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
     this.pllVdPuPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
     this.pllVqPuPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+
+    // Allocate hybrid EMT-TS boundary buffers
+    this.bndNodeAPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<i32>());
+    this.bndNodeBPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<i32>());
+    this.bndNodeCPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<i32>());
+    this.bndGThevPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndOmegaPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIMagStartAPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIMagEndAPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIAngStartAPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIAngEndAPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIMagStartBPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIMagEndBPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIAngStartBPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIAngEndBPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIMagStartCPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIMagEndCPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIAngStartCPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndIAngEndCPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<f64>());
+    this.bndRampStepPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<u32>());
+    this.bndRampTotalPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<u32>());
+    this.bndWinLenPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<i32>());
+    this.bndWinIdxPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<i32>());
+    this.bndWinCountPtr = atomicChunkAlloc(this.maxBoundaries * sizeof<i32>());
+    this.bndWinBufPtrs = atomicChunkAlloc(this.maxBoundaries * sizeof<usize>());
+    this.bndDftSumsPtrs = atomicChunkAlloc(this.maxBoundaries * sizeof<usize>());
+    this.bndSeqOutPtrs = atomicChunkAlloc(this.maxBoundaries * sizeof<usize>());
 
     this.trajectoryBufferPtr = 0;
     this.trajectoryCapacitySteps = 0;
@@ -1256,6 +1314,140 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Registers a 3-phase hybrid EMT-TS boundary interface port at `(nodeA, nodeB, nodeC)`
+   * with driving-point Norton conductance `gThevenin` (per phase) and sliding-window fundamental DFT.
+   */
+  addHybridBoundary(
+    nodeA: i32,
+    nodeB: i32,
+    nodeC: i32,
+    gThevenin: f64,
+    freqNomHz: f64
+  ): i32 {
+    if (this.nBoundaries >= this.maxBoundaries) return -1;
+    let idx = this.nBoundaries++;
+    let f0 = freqNomHz > 0.0 ? freqNomHz : 60.0;
+    let omega = freqNomHz > 0.0 ? 2.0 * Math.PI * freqNomHz : 0.0;
+    let winLen = <i32>Math.max(4.0, Math.round(1.0 / (f0 * this.dt)));
+
+    store<i32>(this.bndNodeAPtr + (((idx as usize)) << 2), nodeA);
+    store<i32>(this.bndNodeBPtr + (((idx as usize)) << 2), nodeB);
+    store<i32>(this.bndNodeCPtr + (((idx as usize)) << 2), nodeC);
+    store<f64>(this.bndGThevPtr + (((idx as usize)) << 3), gThevenin > 0.0 ? gThevenin : 0.1);
+    store<f64>(this.bndOmegaPtr + (((idx as usize)) << 3), omega);
+
+    store<f64>(this.bndIMagStartAPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIMagEndAPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIAngStartAPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIAngEndAPtr + (((idx as usize)) << 3), 0.0);
+
+    store<f64>(this.bndIMagStartBPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIMagEndBPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIAngStartBPtr + (((idx as usize)) << 3), (-2.0 * Math.PI) / 3.0);
+    store<f64>(this.bndIAngEndBPtr + (((idx as usize)) << 3), (-2.0 * Math.PI) / 3.0);
+
+    store<f64>(this.bndIMagStartCPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIMagEndCPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.bndIAngStartCPtr + (((idx as usize)) << 3), (2.0 * Math.PI) / 3.0);
+    store<f64>(this.bndIAngEndCPtr + (((idx as usize)) << 3), (2.0 * Math.PI) / 3.0);
+
+    store<u32>(this.bndRampStepPtr + (((idx as usize)) << 2), 0);
+    store<u32>(this.bndRampTotalPtr + (((idx as usize)) << 2), 1);
+    store<i32>(this.bndWinLenPtr + (((idx as usize)) << 2), winLen);
+    store<i32>(this.bndWinIdxPtr + (((idx as usize)) << 2), 0);
+    store<i32>(this.bndWinCountPtr + (((idx as usize)) << 2), 0);
+
+    let winBufBytes = (<u32>(winLen * 12)) * sizeof<f64>();
+    let winBufPtr = atomicChunkAlloc(winBufBytes);
+    let dftSumsPtr = atomicChunkAlloc(12 * sizeof<f64>());
+    let seqOutPtr = atomicChunkAlloc(8 * sizeof<f64>());
+
+    for (let k: i32 = 0; k < winLen * 12; k++) {
+      store<f64>(winBufPtr + (((k as usize)) << 3), 0.0);
+    }
+    for (let k: i32 = 0; k < 12; k++) {
+      store<f64>(dftSumsPtr + (((k as usize)) << 3), 0.0);
+    }
+    for (let k: i32 = 0; k < 8; k++) {
+      store<f64>(seqOutPtr + (((k as usize)) << 3), 0.0);
+    }
+
+    store<usize>(this.bndWinBufPtrs + ((idx as usize) * sizeof<usize>()), winBufPtr);
+    store<usize>(this.bndDftSumsPtrs + ((idx as usize) * sizeof<usize>()), dftSumsPtr);
+    store<usize>(this.bndSeqOutPtrs + ((idx as usize) * sizeof<usize>()), seqOutPtr);
+
+    return idx as i32;
+  }
+
+  /**
+   * Updates the 3-phase Norton injection target magnitudes (in peak Amperes) and phase angles (in radians)
+   * at hybrid boundary `bndIdx`, ramping linearly over `rampSteps` fast EMT sub-steps.
+   */
+  updateBoundaryNorton(
+    bndIdx: u32,
+    iMagA: f64,
+    iAngA: f64,
+    iMagB: f64,
+    iAngB: f64,
+    iMagC: f64,
+    iAngC: f64,
+    rampSteps: u32
+  ): void {
+    if (bndIdx >= this.nBoundaries) return;
+    let off8 = (bndIdx as usize) << 3;
+    let off4 = (bndIdx as usize) << 2;
+
+    // Current interpolated values become the new start values
+    let stepCur = load<u32>(this.bndRampStepPtr + off4);
+    let stepTot = load<u32>(this.bndRampTotalPtr + off4);
+    let alpha: f64 = stepTot > 0 ? Math.min(1.0, (<f64>stepCur) / (<f64>stepTot)) : 1.0;
+
+    let curMagA = load<f64>(this.bndIMagStartAPtr + off8) + alpha * (load<f64>(this.bndIMagEndAPtr + off8) - load<f64>(this.bndIMagStartAPtr + off8));
+    let curAngA = load<f64>(this.bndIAngStartAPtr + off8) + alpha * (load<f64>(this.bndIAngEndAPtr + off8) - load<f64>(this.bndIAngStartAPtr + off8));
+    let curMagB = load<f64>(this.bndIMagStartBPtr + off8) + alpha * (load<f64>(this.bndIMagEndBPtr + off8) - load<f64>(this.bndIMagStartBPtr + off8));
+    let curAngB = load<f64>(this.bndIAngStartBPtr + off8) + alpha * (load<f64>(this.bndIAngEndBPtr + off8) - load<f64>(this.bndIAngStartBPtr + off8));
+    let curMagC = load<f64>(this.bndIMagStartCPtr + off8) + alpha * (load<f64>(this.bndIMagEndCPtr + off8) - load<f64>(this.bndIMagStartCPtr + off8));
+    let curAngC = load<f64>(this.bndIAngStartCPtr + off8) + alpha * (load<f64>(this.bndIAngEndCPtr + off8) - load<f64>(this.bndIAngStartCPtr + off8));
+
+    // If rampSteps <= 1 (instantaneous step update) or first update at t=0, snap directly to target
+    if (rampSteps <= 1 || (this.stepCount == 0 && curMagA == 0.0 && curMagB == 0.0 && curMagC == 0.0)) {
+      curMagA = iMagA;
+      curAngA = iAngA;
+      curMagB = iMagB;
+      curAngB = iAngB;
+      curMagC = iMagC;
+      curAngC = iAngC;
+    }
+
+    store<f64>(this.bndIMagStartAPtr + off8, curMagA);
+    store<f64>(this.bndIMagEndAPtr + off8, iMagA);
+    store<f64>(this.bndIAngStartAPtr + off8, curAngA);
+    store<f64>(this.bndIAngEndAPtr + off8, iAngA);
+
+    store<f64>(this.bndIMagStartBPtr + off8, curMagB);
+    store<f64>(this.bndIMagEndBPtr + off8, iMagB);
+    store<f64>(this.bndIAngStartBPtr + off8, curAngB);
+    store<f64>(this.bndIAngEndBPtr + off8, iAngB);
+
+    store<f64>(this.bndIMagStartCPtr + off8, curMagC);
+    store<f64>(this.bndIMagEndCPtr + off8, iMagC);
+    store<f64>(this.bndIAngStartCPtr + off8, curAngC);
+    store<f64>(this.bndIAngEndCPtr + off8, iAngC);
+
+    store<u32>(this.bndRampStepPtr + off4, 0);
+    store<u32>(this.bndRampTotalPtr + off4, rampSteps > 0 ? rampSteps : 1);
+  }
+
+  /**
+   * Returns the linear memory pointer to the 8-element `Float64Array` containing the latest
+   * Fortescue sequence phasors `(V1_re, V1_im, V2_re, V2_im, V0_re, V0_im, I1_re, I1_im)` in peak V/A.
+   */
+  getBoundarySequencePtr(bndIdx: u32): usize {
+    if (bndIdx >= this.nBoundaries) return 0;
+    return load<usize>(this.bndSeqOutPtrs + ((bndIdx as usize) * sizeof<usize>()));
+  }
+
   /** Adds `delta` to entry `(r, c)` of the dense nodal conductance matrix $[G]$. */
   @inline
   private addG(r: u32, c: u32, delta: f64): void {
@@ -1437,6 +1629,17 @@ export class WasmEmtSolver {
       this.stampShunt(node, gSource);
     }
 
+    // 2b. Stamp hybrid EMT-TS boundary driving-point Norton conductances
+    for (let bnd: u32 = 0; bnd < this.nBoundaries; bnd++) {
+      let nodeA = load<i32>(this.bndNodeAPtr + (((bnd as usize)) << 2));
+      let nodeB = load<i32>(this.bndNodeBPtr + (((bnd as usize)) << 2));
+      let nodeC = load<i32>(this.bndNodeCPtr + (((bnd as usize)) << 2));
+      let gThev = load<f64>(this.bndGThevPtr + (((bnd as usize)) << 3));
+      this.stampShunt(nodeA, gThev);
+      this.stampShunt(nodeB, gThev);
+      this.stampShunt(nodeC, gThev);
+    }
+
     // 3. Numerical ground regularizer to prevent singular matrix on floating nodes
     for (let i: u32 = 0; i < n; i++) {
       this.addG(i, i, 1e-7);
@@ -1540,6 +1743,24 @@ export class WasmEmtSolver {
       store<f64>(this.pllFreqHzPtr + (((pll as usize)) << 3), omegaNom / (2.0 * Math.PI));
       store<f64>(this.pllVdPuPtr + (((pll as usize)) << 3), 0.0);
       store<f64>(this.pllVqPuPtr + (((pll as usize)) << 3), 1.0);
+    }
+    for (let bnd: u32 = 0; bnd < this.nBoundaries; bnd++) {
+      let winLen = load<i32>(this.bndWinLenPtr + (((bnd as usize)) << 2));
+      let winBufPtr = load<usize>(this.bndWinBufPtrs + ((bnd as usize) * sizeof<usize>()));
+      let dftSumsPtr = load<usize>(this.bndDftSumsPtrs + ((bnd as usize) * sizeof<usize>()));
+      let seqOutPtr = load<usize>(this.bndSeqOutPtrs + ((bnd as usize) * sizeof<usize>()));
+      store<i32>(this.bndWinIdxPtr + (((bnd as usize)) << 2), 0);
+      store<i32>(this.bndWinCountPtr + (((bnd as usize)) << 2), 0);
+      store<u32>(this.bndRampStepPtr + (((bnd as usize)) << 2), 0);
+      for (let k: i32 = 0; k < winLen * 12; k++) {
+        store<f64>(winBufPtr + (((k as usize)) << 3), 0.0);
+      }
+      for (let k: i32 = 0; k < 12; k++) {
+        store<f64>(dftSumsPtr + (((k as usize)) << 3), 0.0);
+      }
+      for (let k: i32 = 0; k < 8; k++) {
+        store<f64>(seqOutPtr + (((k as usize)) << 3), 0.0);
+      }
     }
   }
 
@@ -1728,6 +1949,44 @@ export class WasmEmtSolver {
       if (nodeC >= 0 && (nodeC as u32) < n) {
         let p = this.bVecPtr + (((nodeC as usize)) << 3);
         store<f64>(p, load<f64>(p) + iInjC);
+      }
+    }
+
+    // 2d. Inject interpolated hybrid EMT-TS boundary Norton currents
+    for (let bnd: u32 = 0; bnd < this.nBoundaries; bnd++) {
+      let off8 = (bnd as usize) << 3;
+      let off4 = (bnd as usize) << 2;
+      let nodeA = load<i32>(this.bndNodeAPtr + off4);
+      let nodeB = load<i32>(this.bndNodeBPtr + off4);
+      let nodeC = load<i32>(this.bndNodeCPtr + off4);
+      let omega = load<f64>(this.bndOmegaPtr + off8);
+
+      let stepCur = load<u32>(this.bndRampStepPtr + off4);
+      let stepTot = load<u32>(this.bndRampTotalPtr + off4);
+      let alpha: f64 = stepTot > 0 ? Math.min(1.0, (<f64>stepCur) / (<f64>stepTot)) : 1.0;
+
+      let magA = load<f64>(this.bndIMagStartAPtr + off8) + alpha * (load<f64>(this.bndIMagEndAPtr + off8) - load<f64>(this.bndIMagStartAPtr + off8));
+      let angA = load<f64>(this.bndIAngStartAPtr + off8) + alpha * (load<f64>(this.bndIAngEndAPtr + off8) - load<f64>(this.bndIAngStartAPtr + off8));
+      let magB = load<f64>(this.bndIMagStartBPtr + off8) + alpha * (load<f64>(this.bndIMagEndBPtr + off8) - load<f64>(this.bndIMagStartBPtr + off8));
+      let angB = load<f64>(this.bndIAngStartBPtr + off8) + alpha * (load<f64>(this.bndIAngEndBPtr + off8) - load<f64>(this.bndIAngStartBPtr + off8));
+      let magC = load<f64>(this.bndIMagStartCPtr + off8) + alpha * (load<f64>(this.bndIMagEndCPtr + off8) - load<f64>(this.bndIMagStartCPtr + off8));
+      let angC = load<f64>(this.bndIAngStartCPtr + off8) + alpha * (load<f64>(this.bndIAngEndCPtr + off8) - load<f64>(this.bndIAngStartCPtr + off8));
+
+      let iNortonA = magA * Math.sin(omega * t + angA);
+      let iNortonB = magB * Math.sin(omega * t + angB);
+      let iNortonC = magC * Math.sin(omega * t + angC);
+
+      if (nodeA >= 0 && (nodeA as u32) < n) {
+        let p = this.bVecPtr + (((nodeA as usize)) << 3);
+        store<f64>(p, load<f64>(p) + iNortonA);
+      }
+      if (nodeB >= 0 && (nodeB as u32) < n) {
+        let p = this.bVecPtr + (((nodeB as usize)) << 3);
+        store<f64>(p, load<f64>(p) + iNortonB);
+      }
+      if (nodeC >= 0 && (nodeC as u32) < n) {
+        let p = this.bVecPtr + (((nodeC as usize)) << 3);
+        store<f64>(p, load<f64>(p) + iNortonC);
       }
     }
 
@@ -2677,6 +2936,154 @@ export class WasmEmtSolver {
       store<f64>(this.ctrlOutPtr + (((cb as usize)) << 3), y);
     }
 
+    // 5j. Update Hybrid EMT-TS Boundary Sliding-Window Fundamental DFT & Fortescue Symmetrical Components
+    for (let bnd: u32 = 0; bnd < this.nBoundaries; bnd++) {
+      let off8 = (bnd as usize) << 3;
+      let off4 = (bnd as usize) << 2;
+      let nodeA = load<i32>(this.bndNodeAPtr + off4);
+      let nodeB = load<i32>(this.bndNodeBPtr + off4);
+      let nodeC = load<i32>(this.bndNodeCPtr + off4);
+      let gThev = load<f64>(this.bndGThevPtr + off8);
+      let omega = load<f64>(this.bndOmegaPtr + off8);
+
+      let va: f64 = (nodeA >= 0 && (nodeA as u32) < n) ? vVec[nodeA] : 0.0;
+      let vb: f64 = (nodeB >= 0 && (nodeB as u32) < n) ? vVec[nodeB] : 0.0;
+      let vc: f64 = (nodeC >= 0 && (nodeC as u32) < n) ? vVec[nodeC] : 0.0;
+
+      let stepCur = load<u32>(this.bndRampStepPtr + off4);
+      let stepTot = load<u32>(this.bndRampTotalPtr + off4);
+      let alpha: f64 = stepTot > 0 ? Math.min(1.0, (<f64>stepCur) / (<f64>stepTot)) : 1.0;
+
+      let magA = load<f64>(this.bndIMagStartAPtr + off8) + alpha * (load<f64>(this.bndIMagEndAPtr + off8) - load<f64>(this.bndIMagStartAPtr + off8));
+      let angA = load<f64>(this.bndIAngStartAPtr + off8) + alpha * (load<f64>(this.bndIAngEndAPtr + off8) - load<f64>(this.bndIAngStartAPtr + off8));
+      let magB = load<f64>(this.bndIMagStartBPtr + off8) + alpha * (load<f64>(this.bndIMagEndBPtr + off8) - load<f64>(this.bndIMagStartBPtr + off8));
+      let angB = load<f64>(this.bndIAngStartBPtr + off8) + alpha * (load<f64>(this.bndIAngEndBPtr + off8) - load<f64>(this.bndIAngStartBPtr + off8));
+      let magC = load<f64>(this.bndIMagStartCPtr + off8) + alpha * (load<f64>(this.bndIMagEndCPtr + off8) - load<f64>(this.bndIMagStartCPtr + off8));
+      let angC = load<f64>(this.bndIAngStartCPtr + off8) + alpha * (load<f64>(this.bndIAngEndCPtr + off8) - load<f64>(this.bndIAngStartCPtr + off8));
+
+      let iNortonA = magA * Math.sin(omega * t + angA);
+      let iNortonB = magB * Math.sin(omega * t + angB);
+      let iNortonC = magC * Math.sin(omega * t + angC);
+
+      // Net current entering the EMT zone from the external TS boundary
+      let ia = iNortonA - gThev * va;
+      let ib = iNortonB - gThev * vb;
+      let ic = iNortonC - gThev * vc;
+
+      let sinWt = Math.sin(omega * t);
+      let cosWt = Math.cos(omega * t);
+
+      let winLen = load<i32>(this.bndWinLenPtr + off4);
+      let winIdx = load<i32>(this.bndWinIdxPtr + off4);
+      let winCount = load<i32>(this.bndWinCountPtr + off4);
+      let winBufPtr = load<usize>(this.bndWinBufPtrs + ((bnd as usize) * sizeof<usize>()));
+      let dftSumsPtr = load<usize>(this.bndDftSumsPtrs + ((bnd as usize) * sizeof<usize>()));
+      let seqOutPtr = load<usize>(this.bndSeqOutPtrs + ((bnd as usize) * sizeof<usize>()));
+
+      let slotBase = winBufPtr + (((winIdx * 12) as usize) << 3);
+      let s0 = va * sinWt;
+      let s1 = va * cosWt;
+      let s2 = vb * sinWt;
+      let s3 = vb * cosWt;
+      let s4 = vc * sinWt;
+      let s5 = vc * cosWt;
+      let s6 = ia * sinWt;
+      let s7 = ia * cosWt;
+      let s8 = ib * sinWt;
+      let s9 = ib * cosWt;
+      let s10 = ic * sinWt;
+      let s11 = ic * cosWt;
+
+      store<f64>(dftSumsPtr + (0 << 3), load<f64>(dftSumsPtr + (0 << 3)) - load<f64>(slotBase + (0 << 3)) + s0);
+      store<f64>(dftSumsPtr + (1 << 3), load<f64>(dftSumsPtr + (1 << 3)) - load<f64>(slotBase + (1 << 3)) + s1);
+      store<f64>(dftSumsPtr + (2 << 3), load<f64>(dftSumsPtr + (2 << 3)) - load<f64>(slotBase + (2 << 3)) + s2);
+      store<f64>(dftSumsPtr + (3 << 3), load<f64>(dftSumsPtr + (3 << 3)) - load<f64>(slotBase + (3 << 3)) + s3);
+      store<f64>(dftSumsPtr + (4 << 3), load<f64>(dftSumsPtr + (4 << 3)) - load<f64>(slotBase + (4 << 3)) + s4);
+      store<f64>(dftSumsPtr + (5 << 3), load<f64>(dftSumsPtr + (5 << 3)) - load<f64>(slotBase + (5 << 3)) + s5);
+      store<f64>(dftSumsPtr + (6 << 3), load<f64>(dftSumsPtr + (6 << 3)) - load<f64>(slotBase + (6 << 3)) + s6);
+      store<f64>(dftSumsPtr + (7 << 3), load<f64>(dftSumsPtr + (7 << 3)) - load<f64>(slotBase + (7 << 3)) + s7);
+      store<f64>(dftSumsPtr + (8 << 3), load<f64>(dftSumsPtr + (8 << 3)) - load<f64>(slotBase + (8 << 3)) + s8);
+      store<f64>(dftSumsPtr + (9 << 3), load<f64>(dftSumsPtr + (9 << 3)) - load<f64>(slotBase + (9 << 3)) + s9);
+      store<f64>(dftSumsPtr + (10 << 3), load<f64>(dftSumsPtr + (10 << 3)) - load<f64>(slotBase + (10 << 3)) + s10);
+      store<f64>(dftSumsPtr + (11 << 3), load<f64>(dftSumsPtr + (11 << 3)) - load<f64>(slotBase + (11 << 3)) + s11);
+
+      store<f64>(slotBase + (0 << 3), s0);
+      store<f64>(slotBase + (1 << 3), s1);
+      store<f64>(slotBase + (2 << 3), s2);
+      store<f64>(slotBase + (3 << 3), s3);
+      store<f64>(slotBase + (4 << 3), s4);
+      store<f64>(slotBase + (5 << 3), s5);
+      store<f64>(slotBase + (6 << 3), s6);
+      store<f64>(slotBase + (7 << 3), s7);
+      store<f64>(slotBase + (8 << 3), s8);
+      store<f64>(slotBase + (9 << 3), s9);
+      store<f64>(slotBase + (10 << 3), s10);
+      store<f64>(slotBase + (11 << 3), s11);
+
+      let nextIdx = (winIdx + 1) % winLen;
+      let nextCount = winCount < winLen ? winCount + 1 : winLen;
+      store<i32>(this.bndWinIdxPtr + off4, nextIdx);
+      store<i32>(this.bndWinCountPtr + off4, nextCount);
+      if (stepCur < stepTot) {
+        store<u32>(this.bndRampStepPtr + off4, stepCur + 1);
+      }
+
+      let scale = 2.0 / (<f64>nextCount);
+      let vaRe = load<f64>(dftSumsPtr + (0 << 3)) * scale;
+      let vaIm = load<f64>(dftSumsPtr + (1 << 3)) * scale;
+      let vbRe = load<f64>(dftSumsPtr + (2 << 3)) * scale;
+      let vbIm = load<f64>(dftSumsPtr + (3 << 3)) * scale;
+      let vcRe = load<f64>(dftSumsPtr + (4 << 3)) * scale;
+      let vcIm = load<f64>(dftSumsPtr + (5 << 3)) * scale;
+
+      let iaRe = load<f64>(dftSumsPtr + (6 << 3)) * scale;
+      let iaIm = load<f64>(dftSumsPtr + (7 << 3)) * scale;
+      let ibRe = load<f64>(dftSumsPtr + (8 << 3)) * scale;
+      let ibIm = load<f64>(dftSumsPtr + (9 << 3)) * scale;
+      let icRe = load<f64>(dftSumsPtr + (10 << 3)) * scale;
+      let icIm = load<f64>(dftSumsPtr + (11 << 3)) * scale;
+
+      // Fortescue symmetrical component decomposition: a = -0.5 + j*(sqrt(3)/2), a^2 = -0.5 - j*(sqrt(3)/2)
+      let aRe: f64 = -0.5;
+      let aIm: f64 = 0.8660254037844386;
+
+      // a * Vb and a^2 * Vb
+      let aVbRe = aRe * vbRe - aIm * vbIm;
+      let aVbIm = aRe * vbIm + aIm * vbRe;
+      let a2VbRe = aRe * vbRe + aIm * vbIm;
+      let a2VbIm = aRe * vbIm - aIm * vbRe;
+
+      // a * Vc and a^2 * Vc
+      let aVcRe = aRe * vcRe - aIm * vcIm;
+      let aVcIm = aRe * vcIm + aIm * vcRe;
+      let a2VcRe = aRe * vcRe + aIm * vcIm;
+      let a2VcIm = aRe * vcIm - aIm * vcRe;
+
+      let v1Re = (vaRe + aVbRe + a2VcRe) / 3.0;
+      let v1Im = (vaIm + aVbIm + a2VcIm) / 3.0;
+      let v2Re = (vaRe + a2VbRe + aVcRe) / 3.0;
+      let v2Im = (vaIm + a2VbIm + aVcIm) / 3.0;
+      let v0Re = (vaRe + vbRe + vcRe) / 3.0;
+      let v0Im = (vaIm + vbIm + vcIm) / 3.0;
+
+      // Positive-sequence current I1 = (Ia + a * Ib + a^2 * Ic) / 3
+      let aIbRe = aRe * ibRe - aIm * ibIm;
+      let aIbIm = aRe * ibIm + aIm * ibRe;
+      let a2IcRe = aRe * icRe + aIm * icIm;
+      let a2IcIm = aRe * icIm - aIm * icRe;
+      let i1Re = (iaRe + aIbRe + a2IcRe) / 3.0;
+      let i1Im = (iaIm + aIbIm + a2IcIm) / 3.0;
+
+      store<f64>(seqOutPtr + (0 << 3), v1Re);
+      store<f64>(seqOutPtr + (1 << 3), v1Im);
+      store<f64>(seqOutPtr + (2 << 3), v2Re);
+      store<f64>(seqOutPtr + (3 << 3), v2Im);
+      store<f64>(seqOutPtr + (4 << 3), v0Re);
+      store<f64>(seqOutPtr + (5 << 3), v0Im);
+      store<f64>(seqOutPtr + (6 << 3), i1Re);
+      store<f64>(seqOutPtr + (7 << 3), i1Im);
+    }
+
     // 6. Record trajectory step if buffer allocated
     if (this.trajectoryBufferPtr != 0 && this.trajectoryRecordedSteps < this.trajectoryCapacitySteps) {
       let offset = (this.trajectoryRecordedSteps * this.stridePerStep) as usize;
@@ -3203,4 +3610,37 @@ export function emt_get_pll_vq_pu(solverPtr: usize, pllIdx: u32): f64 {
   return load<f64>(solver.pllVqPuPtr + (((pllIdx as usize)) << 3));
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addHybridBoundary`. */
+export function emt_register_hybrid_boundary(
+  solverPtr: usize,
+  nodeA: i32,
+  nodeB: i32,
+  nodeC: i32,
+  gThevenin: f64,
+  freqNomHz: f64
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addHybridBoundary(nodeA, nodeB, nodeC, gThevenin, freqNomHz);
+}
 
+/** C-ABI wrapper for `WasmEmtSolver.updateBoundaryNorton`. */
+export function emt_update_boundary_norton(
+  solverPtr: usize,
+  bndIdx: u32,
+  iMagA: f64,
+  iAngA: f64,
+  iMagB: f64,
+  iAngB: f64,
+  iMagC: f64,
+  iAngC: f64,
+  rampSteps: u32
+): void {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  solver.updateBoundaryNorton(bndIdx, iMagA, iAngA, iMagB, iAngB, iMagC, iAngC, rampSteps);
+}
+
+/** C-ABI wrapper for `WasmEmtSolver.getBoundarySequencePtr`. */
+export function emt_get_boundary_sequence_ptr(solverPtr: usize, bndIdx: u32): usize {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.getBoundarySequencePtr(bndIdx);
+}

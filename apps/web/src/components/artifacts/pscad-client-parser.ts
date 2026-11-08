@@ -13,6 +13,18 @@ function getXmlAttr(el: XmlElement, name: string): string | undefined {
   return undefined;
 }
 
+function finiteNum(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function optionalFiniteNum(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export interface PscadClientModel {
   buses: PscadBusLike[];
   components: PscadComponentLike[];
@@ -38,14 +50,77 @@ export function parsePscadClient(code: string): PscadClientModel {
   let timeStepUs: number | undefined;
 
   const doc = parseXml(code);
-  const elements: XmlElement[] = [];
-  const collect = (node: XmlElement) => {
-    elements.push(node);
+  const allElements: XmlElement[] = [];
+  const definitions: XmlElement[] = [];
+  const collectAll = (node: XmlElement) => {
+    allElements.push(node);
+    if (node.name.toLowerCase() === "definition") {
+      definitions.push(node);
+    }
     for (const child of node.children) {
-      collect(child);
+      collectAll(child);
     }
   };
-  if (doc.root) collect(doc.root);
+  if (doc.root) collectAll(doc.root);
+
+  // Extract global project settings (such as time_step) across the full XML document
+  for (const el of allElements) {
+    if (el.name.toLowerCase() === "param" && getXmlAttr(el, "name") === "time_step") {
+      const parsedDt = optionalFiniteNum(getXmlAttr(el, "value"));
+      if (parsedDt !== undefined) timeStepUs = parsedDt;
+    }
+  }
+
+  // Scope schematic element extraction to the primary <definition> (preferring name="Main")
+  // so multi-module .pscx projects do not superimpose all sub-modules onto (0,0).
+  const countSchematicItems = (rootNode: XmlElement): number => {
+    let count = 0;
+    const walk = (n: XmlElement) => {
+      const t = n.name.toLowerCase();
+      if (t === "user" || t === "component" || t === "wire" || t === "bus") {
+        count++;
+      }
+      for (const c of n.children) {
+        if (c.name.toLowerCase() !== "definition") walk(c);
+      }
+    };
+    walk(rootNode);
+    return count;
+  };
+
+  let targetRoot: XmlElement | undefined = doc.root ?? undefined;
+  if (definitions.length > 0) {
+    const mainDef = definitions.find((d) => {
+      const defName = (getXmlAttr(d, "name") || "").toLowerCase();
+      return (defName === "main" || defName.endsWith(":main")) && countSchematicItems(d) > 0;
+    });
+    if (mainDef) {
+      targetRoot = mainDef;
+    } else {
+      let bestDef = definitions[0]!;
+      let bestCount = countSchematicItems(bestDef);
+      for (const d of definitions.slice(1)) {
+        const c = countSchematicItems(d);
+        if (c > bestCount) {
+          bestCount = c;
+          bestDef = d;
+        }
+      }
+      if (bestCount > 0) {
+        targetRoot = bestDef;
+      }
+    }
+  }
+
+  const elements: XmlElement[] = [];
+  const collectTarget = (node: XmlElement, isRoot: boolean) => {
+    if (!isRoot && node.name.toLowerCase() === "definition") return;
+    elements.push(node);
+    for (const child of node.children) {
+      collectTarget(child, false);
+    }
+  };
+  if (targetRoot) collectTarget(targetRoot, true);
 
   for (const el of elements) {
     const tag = el.name.toLowerCase();
@@ -72,10 +147,10 @@ export function parsePscadClient(code: string): PscadClientModel {
           definitionName: defName,
           instanceName: params.Name || params.name || defName.split(":").pop() || `C${idx + 1}`,
           position: {
-            x: xStr ? Number.parseFloat(xStr) : 140 + col * 180,
-            y: yStr ? Number.parseFloat(yStr) : 140 + row * 120,
+            x: finiteNum(xStr, 140 + col * 180),
+            y: finiteNum(yStr, 140 + row * 120),
           },
-          rotation: rotStr ? Number.parseFloat(rotStr) : undefined,
+          rotation: optionalFiniteNum(rotStr),
           parameters: params,
         });
         idx++;
@@ -90,26 +165,24 @@ export function parsePscadClient(code: string): PscadClientModel {
       buses.push({
         id,
         name,
-        voltageBaseKv: vStr ? Number.parseFloat(vStr) : 230,
+        voltageBaseKv: finiteNum(vStr, 230),
         position: {
-          x: xStr ? Number.parseFloat(xStr) : 200,
-          y: yStr ? Number.parseFloat(yStr) : 150,
+          x: finiteNum(xStr, 200),
+          y: finiteNum(yStr, 150),
         },
-        length: lenStr ? Number.parseFloat(lenStr) : 80,
+        length: finiteNum(lenStr, 80),
       });
     } else if (tag === "wire") {
       const classId = (getXmlAttr(el, "classid") || "").toLowerCase();
-      if (classId === "branch") continue;
-
       const id = getXmlAttr(el, "id");
-      const wx = Number.parseFloat(getXmlAttr(el, "x") || "0");
-      const wy = Number.parseFloat(getXmlAttr(el, "y") || "0");
+      const wx = finiteNum(getXmlAttr(el, "x"), 0);
+      const wy = finiteNum(getXmlAttr(el, "y"), 0);
 
       const vertices: { x: number; y: number }[] = [];
       for (const child of el.children) {
         if (child.name.toLowerCase() === "vertex") {
-          const vx = Number.parseFloat(getXmlAttr(child, "x") || "0");
-          const vy = Number.parseFloat(getXmlAttr(child, "y") || "0");
+          const vx = finiteNum(getXmlAttr(child, "x"), 0);
+          const vy = finiteNum(getXmlAttr(child, "y"), 0);
           vertices.push({ x: vx + wx, y: vy + wy });
         }
       }
@@ -122,14 +195,14 @@ export function parsePscadClient(code: string): PscadClientModel {
         const wStr = getXmlAttr(el, "w");
         const hStr = getXmlAttr(el, "h");
         if (x2Str !== undefined || y2Str !== undefined) {
-          const x1 = x1Str !== undefined ? Number.parseFloat(x1Str) : wx;
-          const y1 = y1Str !== undefined ? Number.parseFloat(y1Str) : wy;
-          const x2 = x2Str !== undefined ? Number.parseFloat(x2Str) : x1;
-          const y2 = y2Str !== undefined ? Number.parseFloat(y2Str) : y1;
+          const x1 = finiteNum(x1Str, wx);
+          const y1 = finiteNum(y1Str, wy);
+          const x2 = finiteNum(x2Str, x1);
+          const y2 = finiteNum(y2Str, y1);
           vertices.push({ x: x1, y: y1 }, { x: x2, y: y2 });
         } else if (wStr !== undefined || hStr !== undefined) {
-          const dw = wStr !== undefined ? Number.parseFloat(wStr) : 0;
-          const dh = hStr !== undefined ? Number.parseFloat(hStr) : 0;
+          const dw = finiteNum(wStr, 0);
+          const dh = finiteNum(hStr, 0);
           if (dw !== 0 || dh !== 0) {
             vertices.push({ x: wx, y: wy }, { x: wx + dw, y: wy + dh });
           }
@@ -152,7 +225,7 @@ export function parsePscadClient(code: string): PscadClientModel {
         buses.push({
           id: busId,
           name: nameParam || busId,
-          voltageBaseKv: kvParam ? Number.parseFloat(kvParam) : 230,
+          voltageBaseKv: finiteNum(kvParam, 230),
           position: p0,
           length: Math.hypot(p1.x - p0.x, p1.y - p0.y) || 80,
         });
@@ -173,17 +246,14 @@ export function parsePscadClient(code: string): PscadClientModel {
         stickies.push({
           id,
           position: {
-            x: xStr ? Number.parseFloat(xStr) : 90,
-            y: yStr ? Number.parseFloat(yStr) : 90,
+            x: finiteNum(xStr, 90),
+            y: finiteNum(yStr, 90),
           },
-          width: wStr ? Number.parseFloat(wStr) : 420,
-          height: hStr ? Number.parseFloat(hStr) : 34,
+          width: finiteNum(wStr, 420),
+          height: finiteNum(hStr, 34),
           text: rawBody,
         });
       }
-    } else if (tag === "param" && getXmlAttr(el, "name") === "time_step") {
-      const dtVal = getXmlAttr(el, "value");
-      if (dtVal) timeStepUs = Number.parseFloat(dtVal);
     }
   }
 
@@ -221,7 +291,7 @@ export function parsePscadClient(code: string): PscadClientModel {
   const ibrCount = components.filter((c) => /ibr|inv|vsc|pv|bess|wind|fmu/i.test(c.definitionName)).length;
   if (timeStepUs === undefined) {
     const dtMatch = code.match(/time_step\s*=\s*"?([0-9.eE+-]+)"?/i);
-    timeStepUs = dtMatch?.[1] ? Number.parseFloat(dtMatch[1]) : undefined;
+    timeStepUs = optionalFiniteNum(dtMatch?.[1]);
   }
   return {
     buses,

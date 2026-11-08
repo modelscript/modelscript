@@ -3,7 +3,7 @@
 import { DownloadIcon, GraphIcon, SearchIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import Papa from "papaparse";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -17,6 +17,7 @@ import {
   YAxis,
 } from "recharts";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import Spinner from "../Spinner";
 import VegaViewer from "./VegaViewer";
@@ -58,12 +59,77 @@ const OverridePill = styled.span`
   font-size: 11px;
   padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-canvas-default, rgba(127, 127, 127, 0.08));
   color: var(--color-text-secondary, #8b949e);
-  border: 1px solid var(--color-border, #30363d);
+  border: 1px solid var(--color-border-default, #30363d);
 `;
 
+const MAX_RENDER_POINTS = 1500;
+const DOWNSAMPLE_THRESHOLD = 2000;
+
+function downsampleMinMax(
+  rows: Record<string, number>[],
+  primaryVar: string | undefined,
+  targetPoints = MAX_RENDER_POINTS,
+): Record<string, number>[] {
+  if (rows.length <= DOWNSAMPLE_THRESHOLD) return rows;
+  if (!primaryVar) {
+    const step = Math.max(1, Math.floor(rows.length / targetPoints));
+    const sampled: Record<string, number>[] = [];
+    for (let i = 0; i < rows.length; i += step) {
+      sampled.push(rows[i]!);
+    }
+    if (sampled[sampled.length - 1] !== rows[rows.length - 1]) {
+      sampled.push(rows[rows.length - 1]!);
+    }
+    return sampled;
+  }
+
+  const bucketCount = Math.max(1, Math.floor((targetPoints - 2) / 2));
+  const bucketSize = (rows.length - 2) / bucketCount;
+  const result: Record<string, number>[] = [rows[0]!];
+
+  for (let b = 0; b < bucketCount; b++) {
+    const start = 1 + Math.floor(b * bucketSize);
+    const end = Math.min(rows.length - 1, 1 + Math.floor((b + 1) * bucketSize));
+    if (start >= end) {
+      if (rows[start]) result.push(rows[start]!);
+      continue;
+    }
+    let minIdx = start;
+    let maxIdx = start;
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+    for (let i = start; i < end; i++) {
+      const v = rows[i]?.[primaryVar];
+      if (typeof v === "number" && Number.isFinite(v)) {
+        if (v < minVal) {
+          minVal = v;
+          minIdx = i;
+        }
+        if (v > maxVal) {
+          maxVal = v;
+          maxIdx = i;
+        }
+      }
+    }
+    if (minIdx === maxIdx) {
+      result.push(rows[minIdx]!);
+    } else if (minIdx < maxIdx) {
+      result.push(rows[minIdx]!, rows[maxIdx]!);
+    } else {
+      result.push(rows[maxIdx]!, rows[minIdx]!);
+    }
+  }
+
+  result.push(rows[rows.length - 1]!);
+  return result;
+}
+
 const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig, isFullScreen }) => {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [data, setData] = useState<Record<string, number>[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +146,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
   const [nextCursorTarget, setNextCursorTarget] = useState<1 | 2>(1);
   const [showStatsDrawer, setShowStatsDrawer] = useState(false);
 
-  const zoom = () => {
+  const zoom = useCallback(() => {
     if (refAreaLeft === refAreaRight || refAreaRight === "") {
       setRefAreaLeft("");
       setRefAreaRight("");
@@ -92,7 +158,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     setRight(r);
     setRefAreaLeft("");
     setRefAreaRight("");
-  };
+  }, [refAreaLeft, refAreaRight]);
 
   const zoomOut = () => {
     setLeft("dataMin");
@@ -100,6 +166,17 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     setRefAreaLeft("");
     setRefAreaRight("");
   };
+
+  useEffect(() => {
+    if (refAreaLeft === "") return;
+    const handleWindowMouseUp = () => {
+      zoom();
+    };
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    };
+  }, [refAreaLeft, zoom]);
 
   const exportCsv = () => {
     if (!data || data.length === 0) return;
@@ -137,22 +214,43 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
 
   useEffect(() => {
     let active = true;
+    const abortController = new AbortController();
+
+    setError(null);
+    setLeft("dataMin");
+    setRight("dataMax");
+    setRefAreaLeft("");
+    setRefAreaRight("");
+    setCursor1Time(null);
+    setCursor2Time(null);
+    setNextCursorTarget(1);
 
     async function loadData() {
       // 1. Direct data array supplied
       if (Array.isArray(viewConfig?.data) && viewConfig.data.length > 0) {
+        setLoading(false);
         setData(viewConfig.data);
         return;
       }
 
-      // 2. CSV URL supplied
+      // 2. CSV URL supplied (supporting query strings like .csv?token=...)
       const csvUrl = viewConfig?.csvUrl || viewConfig?.url;
-      if (csvUrl && typeof csvUrl === "string" && (csvUrl.endsWith(".csv") || viewConfig?.format === "csv")) {
+      const isCsvUrl = (() => {
+        if (!csvUrl || typeof csvUrl !== "string") return false;
+        try {
+          return new URL(csvUrl, "http://localhost").pathname.toLowerCase().endsWith(".csv");
+        } catch {
+          return csvUrl.toLowerCase().split("?")[0]!.endsWith(".csv");
+        }
+      })();
+
+      if (csvUrl && typeof csvUrl === "string" && (isCsvUrl || viewConfig?.format === "csv")) {
         setLoading(true);
         try {
-          const res = await fetch(csvUrl);
+          const res = await fetch(csvUrl, { signal: abortController.signal });
           if (!res.ok) throw new Error(`HTTP ${res.status} fetching simulation CSV`);
           const text = await res.text();
+          if (!active || abortController.signal.aborted) return;
           const parsed = Papa.parse<Record<string, string>>(text, {
             header: true,
             skipEmptyLines: true,
@@ -161,16 +259,20 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
 
           if (active && parsed.data && parsed.data.length > 0) {
             setData(parsed.data as any[]);
+          } else if (active) {
+            setData([]);
           }
         } catch (err: any) {
-          if (active) setError(err.message || "Failed to load simulation CSV");
+          if (!active || abortController.signal.aborted || err?.name === "AbortError") return;
+          setError(err.message || "Failed to load simulation CSV");
         } finally {
-          if (active) setLoading(false);
+          if (active && !abortController.signal.aborted) setLoading(false);
         }
         return;
       }
 
       if (active) {
+        setLoading(false);
         setData([]);
       }
     }
@@ -179,14 +281,34 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
 
     return () => {
       active = false;
+      abortController.abort();
     };
   }, [viewConfig]);
 
-  // Extract plottable variables (keys other than 'time' or 't')
+  // Auto-detect time column key ('time' or 't')
+  const timeKey = useMemo(
+    () =>
+      data.some((r) => typeof r?.time === "number")
+        ? "time"
+        : data.some((r) => typeof r?.t === "number")
+          ? "t"
+          : "time",
+    [data],
+  );
+
+  // Extract plottable variables across rows (keys other than 'time' or 't')
   const variables = useMemo(() => {
     if (!data || data.length === 0) return [];
-    const keys = Object.keys(data[0] || {});
-    return keys.filter((k) => k !== "time" && k !== "t" && typeof data[0]?.[k] === "number");
+    const keySet = new Set<string>();
+    const sampleCount = Math.min(data.length, 50);
+    for (let i = 0; i < sampleCount; i++) {
+      for (const k of Object.keys(data[i] || {})) {
+        keySet.add(k);
+      }
+    }
+    return Array.from(keySet).filter(
+      (k) => k !== "time" && k !== "t" && data.some((row) => typeof row?.[k] === "number" && Number.isFinite(row[k])),
+    );
   }, [data]);
 
   const variableStats = useMemo(() => {
@@ -194,7 +316,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     const minT = typeof left === "number" ? left : -Infinity;
     const maxT = typeof right === "number" ? right : Infinity;
     const windowed = data.filter((row) => {
-      const t = Number(row.time ?? row.t ?? 0);
+      const t = Number(row[timeKey] ?? row.time ?? row.t ?? 0);
       return t >= minT && t <= maxT;
     });
     const rows = windowed.length > 0 ? windowed : data;
@@ -205,8 +327,15 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
       let sqSum = 0;
       let count = 0;
       let finalVal = 0;
+      let prevT: number | null = null;
+      let prevVal: number | null = null;
+      let totalDt = 0;
+      let trapSum = 0;
+      let trapSqSum = 0;
+
       for (const r of rows) {
         const val = r[v];
+        const t = Number(r[timeKey] ?? r.time ?? r.t ?? 0);
         if (typeof val === "number" && Number.isFinite(val)) {
           if (val < min) min = val;
           if (val > max) max = val;
@@ -214,10 +343,23 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
           sqSum += val * val;
           count++;
           finalVal = val;
+
+          if (Number.isFinite(t)) {
+            if (prevT !== null && prevVal !== null) {
+              const dt = t - prevT;
+              if (dt > 0) {
+                totalDt += dt;
+                trapSum += 0.5 * (prevVal + val) * dt;
+                trapSqSum += 0.5 * (prevVal * prevVal + val * val) * dt;
+              }
+            }
+            prevT = t;
+            prevVal = val;
+          }
         }
       }
-      const mean = count > 0 ? sum / count : 0;
-      const rms = count > 0 ? Math.sqrt(sqSum / count) : 0;
+      const mean = totalDt > 0 ? trapSum / totalDt : count > 0 ? sum / count : 0;
+      const rms = totalDt > 0 ? Math.sqrt(trapSqSum / totalDt) : count > 0 ? Math.sqrt(sqSum / count) : 0;
       return {
         name: v,
         min: count > 0 ? min : 0,
@@ -227,36 +369,72 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
         final: finalVal,
       };
     });
-  }, [data, variables, left, right]);
+  }, [data, variables, left, right, timeKey]);
 
   const chartData = useMemo(() => {
-    if (!isNormalized || data.length === 0 || variables.length === 0) return data;
-    const bounds: Record<string, { min: number; span: number }> = {};
-    for (const st of variableStats) {
-      const span = st.max - st.min;
-      bounds[st.name] = { min: st.min, span: span > 1e-12 ? span : 1 };
+    if (data.length === 0 || variables.length === 0) return data;
+
+    // Filter to zoomed window if active before downsampling so zooming into 100k-row data reveals fine detail
+    let workingRows = data;
+    if (typeof left === "number" || typeof right === "number") {
+      const minT = typeof left === "number" ? left : -Infinity;
+      const maxT = typeof right === "number" ? right : Infinity;
+      const windowed = data.filter((row) => {
+        const t = Number(row[timeKey] ?? row.time ?? row.t ?? 0);
+        return t >= minT && t <= maxT;
+      });
+      if (windowed.length > 0) {
+        workingRows = windowed;
+      }
     }
-    return data.map((row) => {
+
+    const primaryVisibleVar = variables.find((v) => !hiddenVars.has(v)) ?? variables[0];
+    const sampled = downsampleMinMax(workingRows, primaryVisibleVar, MAX_RENDER_POINTS);
+
+    if (!isNormalized && !isLogScale) return sampled;
+
+    const bounds: Record<string, { min: number; span: number }> = {};
+    if (isNormalized) {
+      for (const st of variableStats) {
+        const span = st.max - st.min;
+        bounds[st.name] = { min: st.min, span: span > 1e-12 ? span : 1 };
+      }
+    }
+
+    return sampled.map((row) => {
       const next: Record<string, number> = { ...row };
       for (const v of variables) {
-        const b = bounds[v];
         const raw = row[v];
-        if (b && typeof raw === "number") {
-          next[v] = (raw - b.min) / b.span;
+        if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+        let transformed = raw;
+        if (isNormalized) {
+          const b = bounds[v];
+          if (b) {
+            transformed = (raw - b.min) / b.span;
+          }
+        }
+        if (isLogScale) {
+          if (isNormalized) {
+            next[v] = Math.max(1e-6, transformed);
+          } else {
+            next[v] = transformed <= 0 ? (null as unknown as number) : transformed;
+          }
+        } else {
+          next[v] = transformed;
         }
       }
       return next;
     });
-  }, [data, isNormalized, variables, variableStats]);
+  }, [data, isNormalized, isLogScale, variables, variableStats, hiddenVars, left, right, timeKey]);
 
   const cursorReadout = useMemo(() => {
     if (cursor1Time === null && cursor2Time === null) return null;
     const findNearestRow = (targetT: number | null) => {
       if (targetT === null || data.length === 0) return null;
       let best = data[0]!;
-      let bestDist = Math.abs(Number(best.time ?? best.t ?? 0) - targetT);
+      let bestDist = Math.abs(Number(best[timeKey] ?? best.time ?? best.t ?? 0) - targetT);
       for (const row of data) {
-        const d = Math.abs(Number(row.time ?? row.t ?? 0) - targetT);
+        const d = Math.abs(Number(row[timeKey] ?? row.time ?? row.t ?? 0) - targetT);
         if (d < bestDist) {
           best = row;
           bestDist = d;
@@ -266,8 +444,8 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     };
     const row1 = findNearestRow(cursor1Time);
     const row2 = findNearestRow(cursor2Time);
-    const t1 = row1 ? Number(row1.time ?? row1.t ?? 0) : null;
-    const t2 = row2 ? Number(row2.time ?? row2.t ?? 0) : null;
+    const t1 = row1 ? Number(row1[timeKey] ?? row1.time ?? row1.t ?? 0) : null;
+    const t2 = row2 ? Number(row2[timeKey] ?? row2.time ?? row2.t ?? 0) : null;
     const dt = t1 !== null && t2 !== null ? t2 - t1 : null;
     const freqHz = dt !== null && Math.abs(dt) > 1e-12 ? 1 / Math.abs(dt) : null;
     const visibleVars = variables.filter((v) => !hiddenVars.has(v));
@@ -279,7 +457,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
       return { name: v, y1, y2, dy, slope };
     });
     return { t1, t2, dt, freqHz, deltas };
-  }, [cursor1Time, cursor2Time, data, variables, hiddenVars]);
+  }, [cursor1Time, cursor2Time, data, variables, hiddenVars, timeKey]);
 
   const toggleVariable = (varName: string) => {
     setHiddenVars((prev) => {
@@ -304,14 +482,10 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     <Wrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <Box display="flex" alignItems="center" gap={2}>
-          {!isFullScreen && (
-            <>
-              <GraphIcon size={16} fill="var(--color-accent-emphasis, #06b6d4)" />
-              <Text fontWeight="bold" fontSize="13px" color="var(--color-text-primary)">
-                {modelName}
-              </Text>
-            </>
-          )}
+          <GraphIcon size={16} fill="var(--color-accent-emphasis, #06b6d4)" />
+          <Text fontWeight="bold" fontSize="13px" color="var(--color-text-primary)">
+            {modelName}
+          </Text>
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
           {(left !== "dataMin" || right !== "dataMax") && (
@@ -331,8 +505,8 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
               if (next && cursor1Time === null && data.length > 0) {
                 const i1 = Math.floor(data.length * 0.25);
                 const i2 = Math.floor(data.length * 0.75);
-                setCursor1Time(Number(data[i1]?.time ?? data[i1]?.t ?? 0));
-                setCursor2Time(Number(data[i2]?.time ?? data[i2]?.t ?? 0));
+                setCursor1Time(Number(data[i1]?.[timeKey] ?? data[i1]?.time ?? data[i1]?.t ?? 0));
+                setCursor2Time(Number(data[i2]?.[timeKey] ?? data[i2]?.time ?? data[i2]?.t ?? 0));
               }
             }}
             title="Toggle Dual Measurement Cursors (C1 / C2, Δt, Hz, dy/dt)"
@@ -500,9 +674,9 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
                 if (!cursorMode) zoom();
               }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.1)"} />
               <XAxis
-                dataKey="time"
+                dataKey={timeKey}
                 domain={[left, right]}
                 type="number"
                 allowDataOverflow
@@ -515,15 +689,15 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
                 fontSize={11}
                 allowDataOverflow
                 scale={isLogScale ? "log" : "auto"}
-                domain={isNormalized ? [0, 1] : isLogScale ? [1e-6, "auto"] : undefined}
+                domain={isLogScale ? (isNormalized ? [1e-4, 1] : ["auto", "auto"]) : isNormalized ? [0, 1] : undefined}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "rgba(14, 20, 36, 0.95)",
-                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  backgroundColor: isDark ? "rgba(14, 20, 36, 0.95)" : "rgba(255, 255, 255, 0.96)",
+                  border: isDark ? "1px solid rgba(255, 255, 255, 0.15)" : "1px solid rgba(15, 23, 42, 0.15)",
                   borderRadius: "8px",
                   fontSize: "12px",
-                  color: "#fff",
+                  color: isDark ? "#fff" : "#0f172a",
                 }}
                 labelFormatter={(label) => `Time: ${Number(label).toFixed(3)}s`}
               />
@@ -540,6 +714,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
                   dataKey={v}
                   stroke={SIM_COLORS[idx % SIM_COLORS.length]}
                   dot={false}
+                  connectNulls
                   strokeWidth={2}
                   isAnimationActive={false}
                   hide={hiddenVars.has(v)}
@@ -580,7 +755,12 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
         >
           <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
             <thead>
-              <tr style={{ color: "var(--color-fg-muted)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <tr
+                style={{
+                  color: "var(--color-fg-muted)",
+                  borderBottom: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(15,23,42,0.12)",
+                }}
+              >
                 <th style={{ padding: "3px 6px" }}>Variable</th>
                 <th style={{ padding: "3px 6px" }}>Min</th>
                 <th style={{ padding: "3px 6px" }}>Max</th>
@@ -591,7 +771,12 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
             </thead>
             <tbody>
               {variableStats.map((st, idx) => (
-                <tr key={st.name} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                <tr
+                  key={st.name}
+                  style={{
+                    borderBottom: isDark ? "1px solid rgba(255,255,255,0.04)" : "1px solid rgba(15,23,42,0.06)",
+                  }}
+                >
                   <td style={{ padding: "3px 6px", color: SIM_COLORS[idx % SIM_COLORS.length], fontWeight: 600 }}>
                     {st.name}
                   </td>

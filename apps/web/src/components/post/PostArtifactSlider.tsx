@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ChevronLeftIcon, ChevronRightIcon } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { safeJsonParse } from "../../util/json";
 import { isLongFormArticle } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
+import Spinner from "../Spinner";
 import { PostMarkdownContent } from "./PostMarkdownContent";
+
+const PsseSldViewer = React.lazy(() => import("../artifacts/PsseSldViewer"));
+const PsoutViewer = React.lazy(() => import("../artifacts/PsoutViewer"));
 
 export interface PostSlideItem {
   id: string | number;
-  type: "code" | "artifact";
+  type: "code" | "artifact" | "powerflow" | "waveform";
   lang?: string | undefined;
   code?: string | undefined;
   rawBlock?: string | undefined;
@@ -307,6 +311,14 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
       <div style={{ width: "100%", maxWidth: "100%", marginTop: "10px" }}>
         {single.type === "code" ? (
           <PostMarkdownContent text={single.rawBlock || `\`\`\`${single.lang || "modelica"}\n${single.code}\n\`\`\``} />
+        ) : single.type === "powerflow" ? (
+          <Suspense fallback={<Spinner />}>
+            <PsseSldViewer viewConfig={{ code: single.code, title: single.caption }} isFullScreen={false} />
+          </Suspense>
+        ) : single.type === "waveform" ? (
+          <Suspense fallback={<Spinner />}>
+            <PsoutViewer viewConfig={{ code: single.code, title: single.caption }} isFullScreen={false} />
+          </Suspense>
         ) : (
           <ArtifactViewCard
             artifactId={single.artifactId!}
@@ -375,6 +387,14 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
                   <PostMarkdownContent
                     text={slide.rawBlock || `\`\`\`${slide.lang || "modelica"}\n${slide.code}\n\`\`\``}
                   />
+                ) : slide.type === "powerflow" ? (
+                  <Suspense fallback={<Spinner />}>
+                    <PsseSldViewer viewConfig={{ code: slide.code, title: slide.caption }} isFullScreen={false} />
+                  </Suspense>
+                ) : slide.type === "waveform" ? (
+                  <Suspense fallback={<Spinner />}>
+                    <PsoutViewer viewConfig={{ code: slide.code, title: slide.caption }} isFullScreen={false} />
+                  </Suspense>
                 ) : (
                   <ArtifactViewCard
                     artifactId={slide.artifactId!}
@@ -428,6 +448,16 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
 };
 
 export default React.memo(PostArtifactSlider);
+
+export function isPowerFlowCode(lang?: string): boolean {
+  const l = (lang || "").toLowerCase().trim();
+  return l === "psse" || l === "raw" || l === "powerflow" || l === "sld";
+}
+
+export function isWaveformCode(lang?: string): boolean {
+  const l = (lang || "").toLowerCase().trim();
+  return l === "comtrade" || l === "psout" || l === "oscillography";
+}
 
 /**
  * Extracts artifact slides and clean prose text for short posts.
@@ -484,9 +514,7 @@ export function extractShortPostSlides(
 
   // 2. Extract artifact IDs and views (must be valid positive numeric/snowflake IDs)
   const metaArtIds: string[] = Array.isArray(postMeta?.["artifactIds"])
-    ? (postMeta["artifactIds"] as unknown[])
-        .filter(isValidArtifactId)
-        .map(String)
+    ? (postMeta["artifactIds"] as unknown[]).filter(isValidArtifactId).map(String)
     : [];
 
   const nbObj = (notebookData && typeof notebookData === "object" ? notebookData : {}) as Record<string, unknown>;
@@ -560,9 +588,14 @@ export function extractShortPostSlides(
     // Add code blocks as slides
     for (let i = 0; i < codeBlocks.length; i++) {
       const cb = codeBlocks[i]!;
+      const slideType: PostSlideItem["type"] = isPowerFlowCode(cb.lang)
+        ? "powerflow"
+        : isWaveformCode(cb.lang)
+          ? "waveform"
+          : "code";
       slides.push({
         id: `code-${i}`,
-        type: "code",
+        type: slideType,
         lang: cb.lang,
         code: cb.code,
         rawBlock: cb.raw,
@@ -616,7 +649,42 @@ export function extractShortPostSlides(
     };
   }
 
-  // If 0 or 1 code block and 0 artifacts:
+  // If exactly 1 code block and 0 artifacts:
+  if (combinedArtifacts.length === 0 && codeBlocks.length === 1) {
+    const cb = codeBlocks[0]!;
+    if (isPowerFlowCode(cb.lang)) {
+      return {
+        isShortPost: true,
+        proseText: rawContent.replace(FENCED_CODE_REGEX, "").trim(),
+        slides: [
+          {
+            id: `powerflow-${cb.index}`,
+            type: "powerflow",
+            lang: cb.lang,
+            code: cb.code,
+            rawBlock: cb.raw,
+          },
+        ],
+      };
+    }
+    if (isWaveformCode(cb.lang)) {
+      return {
+        isShortPost: true,
+        proseText: rawContent.replace(FENCED_CODE_REGEX, "").trim(),
+        slides: [
+          {
+            id: `waveform-${cb.index}`,
+            type: "waveform",
+            lang: cb.lang,
+            code: cb.code,
+            rawBlock: cb.raw,
+          },
+        ],
+      };
+    }
+  }
+
+  // If 0 or 1 non-power code block and 0 artifacts:
   return {
     isShortPost: true,
     proseText: rawContent,

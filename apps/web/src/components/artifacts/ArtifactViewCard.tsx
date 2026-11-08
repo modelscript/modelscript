@@ -136,6 +136,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         Boolean(target?.closest(".monaco-editor, [contenteditable='true'], input, textarea, select"));
 
       if (e.key === "Escape") {
+        if (isDiffOpen || isHpcModalOpen) return;
         if (!isEditable) {
           setIsFullScreen(false);
         }
@@ -168,13 +169,14 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isFullScreen,
+    isDiffOpen,
+    isHpcModalOpen,
     artifactId,
-    artifact?.view_type,
-    artifact?.title,
-    artifact?.name,
+    artifact,
     viewConfig,
     navigate,
     handleCopyLink,
+    setIsFullScreen,
   ]);
 
   useEffect(() => {
@@ -195,6 +197,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   }, [initialArtifactView]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!validArtifactId) {
       if (initialArtifactView) {
         setArtifact(initialArtifactView);
@@ -206,12 +209,17 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     if (initialArtifactView) {
       const initialIdStr = String(initialArtifactView.id || "").trim();
       const validIdStr = String(validArtifactId).trim();
-      const isMatch =
-        !validArtifactId ||
-        initialIdStr === validIdStr ||
-        (/^\d{16,}$/.test(initialIdStr) &&
-          /^\d{16,}$/.test(validIdStr) &&
-          Math.abs(Number(initialIdStr) - Number(validIdStr)) <= 128);
+      let isSnowflakeClose = false;
+      if (/^\d{16,}$/.test(initialIdStr) && /^\d{16,}$/.test(validIdStr)) {
+        try {
+          const a = BigInt(initialIdStr);
+          const b = BigInt(validIdStr);
+          isSnowflakeClose = (a >= b ? a - b : b - a) <= 128n;
+        } catch {
+          isSnowflakeClose = false;
+        }
+      }
+      const isMatch = !validArtifactId || initialIdStr === validIdStr || isSnowflakeClose;
 
       if (isMatch) {
         setArtifact(initialArtifactView);
@@ -222,27 +230,32 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     }
     async function fetchArtifact() {
       if (!validArtifactId) {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
         return;
       }
       try {
         const data = await getArtifactView(validArtifactId);
+        if (cancelled) return;
         const resolved = data?.artifactView ?? data?.artifact_view ?? data;
         if (resolved && (resolved.view_type || resolved.view_config || resolved.title)) {
           setArtifact(resolved);
           cacheArtifact(resolved);
         }
       } catch (err) {
+        if (cancelled) return;
         console.warn("[ArtifactViewCard] Network fetch failed, reading from offline cache:", err);
         const cached = await getCachedArtifact(validArtifactId);
-        if (cached) {
+        if (!cancelled && cached) {
           setArtifact(cached);
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     fetchArtifact();
+    return () => {
+      cancelled = true;
+    };
   }, [validArtifactId, initialArtifactView]);
 
   const resolvedForkedFromId = useMemo<number | string | null>(() => {
@@ -270,8 +283,10 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       setParamDeltaCount(viewConfig.modifiedParametersCount);
     } else if (Array.isArray(viewConfig.parameterDeltas)) {
       setParamDeltaCount(viewConfig.parameterDeltas.length);
+    } else {
+      setParamDeltaCount(null);
     }
-  }, [viewConfig.modifiedParametersCount, viewConfig.parameterDeltas]);
+  }, [validArtifactId, viewConfig.modifiedParametersCount, viewConfig.parameterDeltas]);
 
   useEffect(() => {
     if (paramDeltaCount !== null || !resolvedForkedFromId) return;
@@ -324,8 +339,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     return (
       <Box
         borderRadius="12px"
-        border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
-        background="var(--ms-brand-soft)"
+        border="1px solid var(--color-border-default)"
+        background="var(--color-canvas-default)"
         overflow="hidden"
         position="relative"
         style={{
@@ -352,8 +367,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         <Box
           height="40px"
           minHeight="40px"
-          borderTop="1px solid var(--color-accent-blue-border, var(--color-border-default))"
-          backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"
+          borderTop="1px solid var(--color-border-default)"
+          backgroundColor="var(--color-canvas-subtle)"
           style={{ flexShrink: 0, marginTop: "auto" }}
         />
         {loadingCaption && (
@@ -362,8 +377,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
               padding: "6px 12px",
               fontSize: "12px",
               color: "var(--color-fg-muted)",
-              borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
-              background: "var(--ms-brand-soft)",
+              borderTop: "1px solid var(--color-border-default)",
+              background: "var(--color-canvas-default)",
               display: "flex",
               alignItems: "center",
               gap: "6px",
@@ -547,8 +562,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       <>
         <Box
           borderRadius="12px"
-          border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
-          background="var(--ms-brand-soft)"
+          border="1px solid var(--color-border-default)"
+          background="var(--color-canvas-default)"
           overflow="hidden"
           style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
           onClick={(e) => {
@@ -589,8 +604,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
                 padding: "6px 12px",
                 fontSize: "12px",
                 color: "var(--color-fg-muted)",
-                borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
-                background: "var(--ms-brand-soft)",
+                borderTop: "1px solid var(--color-border-default)",
+                background: "var(--color-canvas-default)",
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
@@ -637,8 +652,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     <CardFooterSlotProvider>
       <Box
         borderRadius="12px"
-        border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
-        background="var(--ms-brand-soft)"
+        border="1px solid var(--color-border-default)"
+        background="var(--color-canvas-default)"
         overflow="hidden"
         position="relative"
         style={{
@@ -669,8 +684,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
               padding: "6px 12px",
               fontSize: "12px",
               color: "var(--color-fg-muted)",
-              borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
-              background: "var(--ms-brand-soft)",
+              borderTop: "1px solid var(--color-border-default)",
+              background: "var(--color-canvas-default)",
               display: "flex",
               alignItems: "center",
               gap: "6px",

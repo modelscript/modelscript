@@ -8,6 +8,7 @@ import { downloadParquetFile } from "../../util/binary-export";
 import Spinner from "../Spinner";
 import { SIMULATION_COLORS } from "./constants";
 import {
+  Ieee2800VerificationCard,
   InteractiveLegend,
   MeasurementHud,
   type SimulationResultsProps,
@@ -43,6 +44,32 @@ export function SimulationResults({
   const [xAxisVar, setXAxisVar] = useState<string>("time");
   const [hiddenVars, setHiddenVars] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
+  const [showIeee2800, setShowIeee2800] = useState(false);
+
+  const hasIeee2800Channels = useMemo(() => {
+    if (!data || data.length === 0) return false;
+    const sample = data[0]!;
+    const keys = Object.keys(sample).map((k) => k.toLowerCase());
+    return keys.some(
+      (k) =>
+        k.includes("vpoi") ||
+        k.includes("iibr") ||
+        k.includes("v_a") ||
+        k.includes("v_b") ||
+        k.includes("ia") ||
+        k.includes("ib") ||
+        k === "v1" ||
+        k === "v2" ||
+        k === "i1q" ||
+        k === "i2q" ||
+        (modelName &&
+          (modelName.toLowerCase().includes("grid") ||
+            modelName.toLowerCase().includes("ibr") ||
+            modelName.toLowerCase().includes("inverter") ||
+            modelName.toLowerCase().includes("solar") ||
+            modelName.toLowerCase().includes("wind"))),
+    );
+  }, [data, modelName]);
 
   const baselineScopeKey = modelName || jobId ? `${BASELINE_GLOBAL_KEY}:${modelName || jobId}` : null;
 
@@ -693,6 +720,38 @@ export function SimulationResults({
         activeVariables={activeVariables}
         onClearCursors={handleClearCursors}
       />
+
+      {/* IEEE 2800-2022 Grid Code Verification Toggle & Card */}
+      {hasIeee2800Channels && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            data-testid="toggle-ieee2800-btn"
+            onClick={() => setShowIeee2800(!showIeee2800)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 12px",
+              borderRadius: "6px",
+              fontSize: "12px",
+              fontWeight: 600,
+              background: showIeee2800
+                ? "var(--color-accent-emphasis, #1f6feb)"
+                : "var(--color-canvas-subtle, #161b22)",
+              color: "#ffffff",
+              border: "1px solid var(--color-border-default, #30363d)",
+              cursor: "pointer",
+            }}
+          >
+            🛡️ IEEE 2800 Verification {showIeee2800 ? "▲" : "▼"}
+          </button>
+        </div>
+      )}
+
+      {hasIeee2800Channels && showIeee2800 && (
+        <Ieee2800VerificationCard data={data} colorMode={colorMode} onClose={() => setShowIeee2800(false)} />
+      )}
 
       {/* Interactive Legend Bar */}
       <InteractiveLegend

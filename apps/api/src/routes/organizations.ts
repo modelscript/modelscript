@@ -105,6 +105,8 @@ export function organizationsRouter(database: LibraryDatabase): Router {
 
     const callerRole = req.user ? database.getOrganizationMemberRole(org.id, req.user.id) : null;
     const isMemberOrAdmin = Boolean(callerRole || req.user?.accountType === "admin");
+    const spaces = database.getOrganizationSpaces(org.id, req.user?.id);
+    const members = database.getOrganizationMembers(org.id);
 
     const safeOrg = isMemberOrAdmin
       ? org
@@ -112,13 +114,41 @@ export function organizationsRouter(database: LibraryDatabase): Router {
           id: org.id,
           slug: org.slug,
           name: org.name,
+          display_name: org.display_name,
           description: org.description,
           avatar_url: org.avatar_url,
+          banner_url: org.banner_url,
+          location: org.location,
+          industry_preset: org.industry_preset,
+          is_verified: org.is_verified,
           website: org.website,
           created_at: org.created_at,
         };
 
-    res.json({ organization: safeOrg });
+    res.json({
+      organization: safeOrg,
+      spaces,
+      members,
+      viewerRole: callerRole,
+    });
+  });
+
+  /**
+   * GET /api/v1/organizations/:slug/spaces
+   *
+   * List Spaces belonging to an organization.
+   */
+  router.get("/:slug/spaces", optionalAuth, (req: Request, res: Response): void => {
+    const slug = String(req.params["slug"] ?? "")
+      .trim()
+      .toLowerCase();
+    const org = database.getOrganizationBySlug(slug);
+    if (!org) {
+      res.status(404).json({ error: `Organization '${slug}' not found` });
+      return;
+    }
+    const spaces = database.getOrganizationSpaces(org.id, req.user?.id);
+    res.json({ spaces });
   });
 
   /**
@@ -164,6 +194,15 @@ export function organizationsRouter(database: LibraryDatabase): Router {
           : undefined;
     const avatarUrlRaw =
       body.avatar_url !== undefined ? body.avatar_url : body.avatarUrl !== undefined ? body.avatarUrl : undefined;
+    const bannerUrlRaw =
+      body.banner_url !== undefined ? body.banner_url : body.bannerUrl !== undefined ? body.bannerUrl : undefined;
+    const locationRaw = body.location !== undefined ? body.location : undefined;
+    const industryPresetRaw =
+      body.industry_preset !== undefined
+        ? body.industry_preset
+        : body.industryPreset !== undefined
+          ? body.industryPreset
+          : undefined;
 
     try {
       const updated = database.updateOrganization(org.id, {
@@ -175,6 +214,10 @@ export function organizationsRouter(database: LibraryDatabase): Router {
         billing_email:
           billingEmailRaw !== undefined ? (billingEmailRaw ? String(billingEmailRaw).trim() : null) : undefined,
         avatar_url: avatarUrlRaw !== undefined ? (avatarUrlRaw ? String(avatarUrlRaw).trim() : null) : undefined,
+        banner_url: bannerUrlRaw !== undefined ? (bannerUrlRaw ? String(bannerUrlRaw).trim() : null) : undefined,
+        location: locationRaw !== undefined ? (locationRaw ? String(locationRaw).trim() : null) : undefined,
+        industry_preset:
+          industryPresetRaw !== undefined ? (industryPresetRaw ? String(industryPresetRaw).trim() : null) : undefined,
       });
 
       res.json({ success: true, organization: updated });

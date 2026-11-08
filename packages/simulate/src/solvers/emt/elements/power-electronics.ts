@@ -26,11 +26,13 @@
  *      Current Suppressing Control (CCSC).
  */
 
+import { emitMmcValveKernelWGSL, MmcValveArmBank, type MmcIgbtThermalParams } from "../wgsl/mmc-valve-kernel.wgsl.js";
+
 export interface ConverterBridgeConfig {
   id: string;
   bus: string;
-  topology?: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | undefined;
-  kind?: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | undefined;
+  topology?: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | "mmc_valve_gpu" | undefined;
+  kind?: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | "mmc_valve_gpu" | undefined;
   ratedMva: number;
   ratedAcKv?: number | undefined; // AC bus rated peak or RMS voltage (kV)
   ratedKv?: number | undefined;
@@ -54,6 +56,9 @@ export interface ConverterBridgeConfig {
   // MMC submodule parameters
   numSubmodulesPerArm?: number | undefined; // Number of submodules per arm N (default: 32)
   submoduleCapacitanceF?: number | undefined; // Individual SM capacitance C_sm (default: 10e-3 F)
+  submoduleType?: "half_bridge" | "full_bridge" | undefined;
+  deadTimeUs?: number | undefined; // Gate dead-time in microseconds (default: 2.0 us)
+  igbtThermalParams?: MmcIgbtThermalParams | undefined;
   enableCcsc?: boolean | undefined; // Enable 2nd-harmonic Circulating Current Suppressing Control (default: true)
   // LCC 6-pulse thyristor control parameters
   firingAngleDeg?: number | undefined; // Thyristor delay angle alpha in [5°, 165°] (default: 18°)
@@ -70,10 +75,15 @@ export interface ConverterBridgeState {
   pAcWatts: number; // Instantaneous 3-phase active power exchanged with AC grid (W)
   dutyCycleA: number; // Normalized sub-step PWM/NLM duty cycle in [0, 1] for Phase A
   overlapAngleRad: number; // Commutation overlap angle mu (rad) for LCC bridge
-  // MMC Thévenin arm states
+  // MMC Thévenin & Valve-Level GPU arm states
   numSubmodules: number; // N submodules per arm
   activeSubmodulesUpperA: number; // Instantaneous inserted upper-arm SM count in [0, N] for Phase A
   submoduleVoltageSpreadPct: number; // Relative arm capacitor sum spread (%) across arms
+  submoduleWithinArmSpreadPct?: number | undefined; // Max-to-min individual SM spread (%) within an arm
+  maxJunctionTempDegC?: number | undefined; // Peak IGBT junction temperature T_j across all submodules (degC)
+  totalValveLossWatts?: number | undefined; // Total instantaneous 6-arm semiconductor power loss (W)
+  valveArmBank?: MmcValveArmBank | undefined; // Discrete valve-level submodule bank
+  wgslShaderSource?: string | undefined; // Generated WGSL compute shader for GPU execution
   vCapSumUpper: Float64Array; // Upper arm total SM capacitor voltage sum V_cu^Sigma per phase (V)
   vCapSumLower: Float64Array; // Lower arm total SM capacitor voltage sum V_cl^Sigma per phase (V)
   iCirculating: Float64Array; // Phase-leg circulating current i_circ per phase (A)
@@ -91,14 +101,13 @@ export function createConverterBridgeState(
   const freqHz = cfg.nominalFreqHz ?? defaultFreqHz;
   const omega0 = 2 * Math.PI * freqHz;
   const topo = cfg.topology ?? cfg.kind ?? "vsc_pwm";
+  const isMmc = topo === "mmc_thevenin" || topo === "mmc_valve_gpu";
   // For an MMC, the effective AC phase filter impedance is the parallel combination of upper & lower arms (R_arm/2, L_arm/2)
   const rF =
-    topo === "mmc_thevenin" && cfg.armResistanceOhm !== undefined
-      ? 0.5 * cfg.armResistanceOhm
-      : (cfg.filterResistanceOhm ?? 0.05);
+    isMmc && cfg.armResistanceOhm !== undefined ? 0.5 * cfg.armResistanceOhm : (cfg.filterResistanceOhm ?? 0.05);
   const lF = Math.max(
     1e-5,
-    topo === "mmc_thevenin" && cfg.armInductanceH !== undefined
+    isMmc && cfg.armInductanceH !== undefined
       ? 0.5 * cfg.armInductanceH
       : (cfg.filterInductanceH ?? cfg.commutationInductanceH ?? 0.005),
   );
@@ -115,6 +124,24 @@ export function createConverterBridgeState(
   vCapSumUpper.fill(vDcInit);
   vCapSumLower.fill(vDcInit);
 
+  let valveArmBank: MmcValveArmBank | undefined;
+  let wgslShaderSource: string | undefined;
+  if (topo === "mmc_valve_gpu") {
+    const valveCfg = {
+      numSubmodulesPerArm: numSubmodules,
+      submoduleType: cfg.submoduleType ?? "half_bridge",
+      submoduleCapacitanceF: cfg.submoduleCapacitanceF ?? 10e-3,
+      armInductanceH: cfg.armInductanceH ?? 0.01,
+      armResistanceOhm: cfg.armResistanceOhm ?? 0.1,
+      nominalDcKv: dcKv,
+      dtSec: dt,
+      deadTimeUs: cfg.deadTimeUs ?? 2.0,
+      thermalParams: cfg.igbtThermalParams,
+    };
+    valveArmBank = new MmcValveArmBank(valveCfg);
+    wgslShaderSource = emitMmcValveKernelWGSL(valveCfg);
+  }
+
   return {
     config: cfg,
     nodes,
@@ -129,6 +156,11 @@ export function createConverterBridgeState(
     numSubmodules,
     activeSubmodulesUpperA: Math.round(numSubmodules / 2),
     submoduleVoltageSpreadPct: 0.0,
+    submoduleWithinArmSpreadPct: topo === "mmc_valve_gpu" ? 0.0 : undefined,
+    maxJunctionTempDegC: topo === "mmc_valve_gpu" ? (cfg.igbtThermalParams?.tAmbientDegC ?? 40.0) : undefined,
+    totalValveLossWatts: topo === "mmc_valve_gpu" ? 0.0 : undefined,
+    valveArmBank,
+    wgslShaderSource,
     vCapSumUpper,
     vCapSumLower,
     iCirculating: new Float64Array(nPh),
@@ -340,6 +372,109 @@ export function stepConverterBridge(st: ConverterBridgeState, vVec: Float64Array
     st.vDcVolts = Math.max(50.0, st.vDcVolts + (st.iDcAmp / cDc) * dt);
     st.submoduleVoltageSpreadPct =
       maxArmSum >= minArmSum ? ((maxArmSum - minArmSum) / Math.max(100.0, st.vDcVolts)) * 100.0 : 0.0;
+  } else if (topo === "mmc_valve_gpu" && st.valveArmBank) {
+    // Valve-Level GPU/SIMD Modular Multilevel Converter (MMC) with Bitonic Sorting & Dual-Float Tree Reduction
+    const ma = cfg.modulationIndex ?? 0.9;
+    const delta = cfg.phaseAngleRad ?? (cfg.phaseAngleDeg !== undefined ? (cfg.phaseAngleDeg * Math.PI) / 180.0 : 0.15);
+    const nSm = st.numSubmodules;
+    const lArm = Math.max(
+      1e-4,
+      cfg.armInductanceH ?? (cfg.filterInductanceH !== undefined ? 2.0 * cfg.filterInductanceH : 0.01),
+    );
+    const rArm = cfg.armResistanceOhm ?? (cfg.filterResistanceOhm !== undefined ? 2.0 * cfg.filterResistanceOhm : 0.1);
+    const enableCcsc = cfg.enableCcsc ?? true;
+    const bank = st.valveArmBank;
+
+    let minArmSum = Number.POSITIVE_INFINITY;
+    let maxArmSum = Number.NEGATIVE_INFINITY;
+    let maxWithinArmSpreadPct = 0.0;
+    let maxTj = cfg.igbtThermalParams?.tAmbientDegC ?? 40.0;
+    let totalLossW = 0.0;
+
+    for (let p = 0; p < nPh; p++) {
+      const phShift = (p * 2 * Math.PI) / 3;
+      const vGrid = st.nodes[p]! >= 0 ? vVec[st.nodes[p]!]! : 0;
+      const vCuSumPrev = st.vCapSumUpper[p]!;
+      const vClSumPrev = st.vCapSumLower[p]!;
+      const iCircPrev = st.iCirculating[p]!;
+
+      const vSumErr = 0.5 * (vCuSumPrev + vClSumPrev) - st.vDcVolts;
+      const ccscTrim = enableCcsc
+        ? Math.max(-0.08, Math.min(0.08, 0.0005 * iCircPrev + (0.15 * vSumErr) / Math.max(1e3, st.vDcVolts)))
+        : 0.0;
+
+      const { nUpper, nLower } = evaluateSubStepNlmArms(ma, st.omega0, delta, phShift, ccscTrim, t, dt, nSm);
+      if (p === 0) {
+        st.activeSubmodulesUpperA = Math.round(nUpper);
+        st.dutyCycleA = Math.max(0.0, Math.min(1.0, nLower / nSm));
+      }
+
+      const iPhasePrev = st.iTerminalPhase[p]!;
+      const vPoleEst = 0.5 * ((nLower / nSm) * vClSumPrev - (nUpper / nSm) * vCuSumPrev);
+      const iDcLeg = (vPoleEst * iPhasePrev) / Math.max(100.0, st.vDcVolts);
+      const iUpperArm = iDcLeg + iCircPrev + 0.5 * iPhasePrev;
+      const iLowerArm = iDcLeg + iCircPrev - 0.5 * iPhasePrev;
+
+      // Step upper arm (2*p) and lower arm (2*p + 1) in valve bank (Bitonic sort + Foster RC + dual-float reduction)
+      const upperOut = bank.stepArm(2 * p, nUpper, iUpperArm, 0.5 * st.vDcVolts - vGrid, false);
+      const lowerOut = bank.stepArm(2 * p + 1, nLower, iLowerArm, 0.5 * st.vDcVolts + vGrid, false);
+
+      const vUpper = upperOut.vTheveninInsertedVolts;
+      const vLower = lowerOut.vTheveninInsertedVolts;
+      const vConvPole = 0.5 * (vLower - vUpper);
+
+      const vDiff = vConvPole - vGrid;
+      const iPhase = st.gFilter * vDiff + st.iHistFilter[p]!;
+      st.iHistFilter[p] = st.alphaFilter * iPhase + st.gFilter * vDiff;
+      st.iTerminalPhase[p] = iPhase;
+      pAcTotal += vConvPole * iPhase;
+
+      const vCm = 0.5 * (st.vDcVolts - (vUpper + vLower));
+      const rEffArm = rArm + (enableCcsc ? 2.5 : 0.0);
+      const iCirc = ((lArm - 0.5 * rEffArm * dt) * iCircPrev + dt * vCm) / (lArm + 0.5 * rEffArm * dt);
+      st.iCirculating[p] = iCirc;
+
+      st.vCapSumUpper[p] = upperOut.vCapSumVolts;
+      st.vCapSumLower[p] = lowerOut.vCapSumVolts;
+      if (upperOut.vCapSumVolts < minArmSum) minArmSum = upperOut.vCapSumVolts;
+      if (upperOut.vCapSumVolts > maxArmSum) maxArmSum = upperOut.vCapSumVolts;
+      if (lowerOut.vCapSumVolts < minArmSum) minArmSum = lowerOut.vCapSumVolts;
+      if (lowerOut.vCapSumVolts > maxArmSum) maxArmSum = lowerOut.vCapSumVolts;
+
+      const vSmNom = st.vDcVolts / nSm;
+      const spreadU = ((upperOut.vCapMaxVolts - upperOut.vCapMinVolts) / Math.max(10.0, vSmNom)) * 100.0;
+      const spreadL = ((lowerOut.vCapMaxVolts - lowerOut.vCapMinVolts) / Math.max(10.0, vSmNom)) * 100.0;
+      if (spreadU > maxWithinArmSpreadPct) maxWithinArmSpreadPct = spreadU;
+      if (spreadL > maxWithinArmSpreadPct) maxWithinArmSpreadPct = spreadL;
+
+      if (upperOut.maxJunctionTempDegC > maxTj) maxTj = upperOut.maxJunctionTempDegC;
+      if (lowerOut.maxJunctionTempDegC > maxTj) maxTj = lowerOut.maxJunctionTempDegC;
+      totalLossW += upperOut.armPowerLossWatts + lowerOut.armPowerLossWatts;
+
+      const { nUpper: nUpperNext, nLower: nLowerNext } = evaluateSubStepNlmArms(
+        ma,
+        st.omega0,
+        delta,
+        phShift,
+        ccscTrim,
+        t + dt,
+        dt,
+        nSm,
+      );
+      const vConvNext = 0.5 * ((nLowerNext / nSm) * lowerOut.vCapSumVolts - (nUpperNext / nSm) * upperOut.vCapSumVolts);
+      st.iInjectedPhase[p] = st.gFilter * vConvNext + st.iHistFilter[p]!;
+    }
+
+    st.pAcWatts = pAcTotal;
+    const iDcFromAc = -pAcTotal / Math.max(100.0, st.vDcVolts);
+    const iDcLoad = gDcLoad * (st.vDcVolts - dcKv * 1e3);
+    st.iDcAmp = iDcExt + iDcFromAc - iDcLoad;
+    st.vDcVolts = Math.max(50.0, st.vDcVolts + (st.iDcAmp / cDc) * dt);
+    st.submoduleVoltageSpreadPct =
+      maxArmSum >= minArmSum ? ((maxArmSum - minArmSum) / Math.max(100.0, st.vDcVolts)) * 100.0 : 0.0;
+    st.submoduleWithinArmSpreadPct = maxWithinArmSpreadPct;
+    st.maxJunctionTempDegC = maxTj;
+    st.totalValveLossWatts = totalLossW;
   } else {
     // 6-Pulse Line-Commutated Thyristor Bridge (LCC)
     const alphaRad = ((cfg.firingAngleDeg ?? 18.0) * Math.PI) / 180.0;
