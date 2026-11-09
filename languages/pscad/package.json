@@ -63,6 +63,7 @@
   "dependencies": {
     "@modelscript/c": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/fortran": "*",
     "@modelscript/runtime": "*"
   },

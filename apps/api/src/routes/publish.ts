@@ -4,6 +4,9 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import multer from "multer";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
 
@@ -14,13 +17,26 @@ import type { FederationWorker } from "../services/federation-worker.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { indexDataPackageResources } from "../util/datapackage-indexer.js";
+import { verifyOidcPackageAuthorization, verifyOidcToken, type OidcAttestation } from "../util/oidc-verifier.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { scanPackageArchive } from "../util/package-scanner.js";
+import { verifyPackageReleaseSignature } from "../util/package-signature.js";
 import { extractManifestFromZip } from "../util/zip.js";
 
+const uploadDir = process.env["UPLOAD_TEMP_DIR"] || path.join(os.tmpdir(), "modelscript-uploads");
+try {
+  fs.mkdirSync(uploadDir, { recursive: true });
+} catch {}
+
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}`;
+      cb(null, `upload-${uniqueSuffix}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
+    },
+  }),
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 
 function isValidPackageName(name: string): boolean {
@@ -38,6 +54,50 @@ function resolvePackageParams(req: Request): { name: string; version: string; ba
   return { name: nameParam || "", version, baseName: nameParam || "" };
 }
 
+const RESERVED_CORE_NAMES = ["modelica", "complex", "sysml", "kerml", "openmodelica", "modelscript", "ansatz"];
+
+function levenshteinDistance(a: string, b: string): number {
+  const an = a.length;
+  const bn = b.length;
+  if (an === 0) return bn;
+  if (bn === 0) return an;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= bn; i++) {
+    matrix[i] = new Array(an + 1).fill(0);
+    matrix[i]![0] = i;
+  }
+  for (let j = 0; j <= an; j++) {
+    matrix[0]![j] = j;
+  }
+
+  for (let i = 1; i <= bn; i++) {
+    for (let j = 1; j <= an; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i]![j] = matrix[i - 1]![j - 1]!;
+      } else {
+        matrix[i]![j] = Math.min(matrix[i - 1]![j - 1]! + 1, matrix[i]![j - 1]! + 1, matrix[i - 1]![j]! + 1);
+      }
+    }
+  }
+  return matrix[bn]![an]!;
+}
+
+function findTyposquatConflict(packageName: string): string | null {
+  const baseName = (
+    packageName.startsWith("@") && packageName.includes("/") ? packageName.split("/")[1]! : packageName
+  ).toLowerCase();
+
+  for (const reserved of RESERVED_CORE_NAMES) {
+    if (baseName !== reserved) {
+      const dist = levenshteinDistance(baseName, reserved);
+      if (dist <= 2 && Math.abs(baseName.length - reserved.length) <= 2) {
+        return reserved;
+      }
+    }
+  }
+  return null;
+}
+
 export function publishRouter(
   storage: LibraryStorage,
   jobQueue: JobQueue,
@@ -47,16 +107,87 @@ export function publishRouter(
   const router = createRouter();
 
   /**
+   * Middleware that authenticates publish requests via ambient/keyless CI/CD OIDC tokens
+   * or falls back to standard session/PAT authentication.
+   */
+  const authenticatePublishRequest = async (req: Request, res: Response, next: () => void): Promise<void> => {
+    const oidcHeader = (req.headers["x-package-oidc-token"] || req.headers["x-oidc-token"]) as string | undefined;
+    const authHeader = req.headers["authorization"];
+    let candidateOidcToken = oidcHeader;
+
+    // Detect if Authorization header carries an OIDC JWT (3 segments, not ms_pat_ / ms_bot_)
+    if (!candidateOidcToken && authHeader?.startsWith("Bearer ")) {
+      const rawBearer = authHeader.slice(7).trim();
+      if (!rawBearer.startsWith("ms_pat_") && !rawBearer.startsWith("ms_bot_") && rawBearer.split(".").length === 3) {
+        try {
+          const payload = JSON.parse(Buffer.from(rawBearer.split(".")[1]!, "base64url").toString("utf-8"));
+          if (
+            payload.iss &&
+            (payload.iss.includes("github") ||
+              payload.iss.includes("gitlab") ||
+              payload.iss.includes("circleci") ||
+              payload.iss.includes("test"))
+          ) {
+            candidateOidcToken = rawBearer;
+          }
+        } catch {}
+      }
+    }
+
+    if (candidateOidcToken) {
+      const oidcVerify = await verifyOidcToken(candidateOidcToken);
+      if (!oidcVerify.valid || !oidcVerify.attestation) {
+        res.status(401).json({
+          error: `OIDC attestation verification failed: ${oidcVerify.error || "Invalid token"} (M3012)`,
+          code: "M3012",
+        });
+        return;
+      }
+
+      (req as any).oidcAttestation = oidcVerify.attestation;
+      if (!req.user) {
+        const botUser = database.getOrCreateCiBotUser({
+          provider: oidcVerify.attestation.provider,
+          repository: oidcVerify.attestation.repository,
+          actor: oidcVerify.attestation.actor,
+        });
+        req.user = {
+          ...botUser,
+          role: botUser.account_type || "bot",
+          accountType: botUser.account_type || "bot",
+        } as any;
+      }
+      next();
+      return;
+    }
+
+    // Standard session / PAT / proxy auth
+    requireAuth(req, res, () => {
+      // If user also provided an explicit X-Package-OIDC-Token, verify and attach attestation
+      if (oidcHeader) {
+        verifyOidcToken(oidcHeader).then((v) => {
+          if (v.valid && v.attestation) {
+            (req as any).oidcAttestation = v.attestation;
+          }
+          next();
+        });
+      } else {
+        next();
+      }
+    });
+  };
+
+  /**
    * POST /api/v1/libraries/:name/:version
    * POST /api/v1/libraries/:scope/:name/:version
    *
    * Upload a versioned Modelica library as a zip file.
    * The library name and version are validated against the zip's root package.mo.
-   * Requires authentication.
+   * Requires authentication (API token or Keyless OIDC CI/CD ID token).
    */
   router.post(
     ["/:name/:version", "/:scope/:name/:version"],
-    requireAuth,
+    authenticatePublishRequest,
     enforceExportCompliance(() => database),
     upload.single("file"),
     async (req: Request, res: Response): Promise<void> => {
@@ -116,6 +247,16 @@ export function publishRouter(
         return;
       }
 
+      // Typosquatting defense against protected namespaces
+      const typosquatConflict = findTyposquatConflict(name);
+      if (typosquatConflict && !isAdmin) {
+        res.status(403).json({
+          error: `Package name '${name}' is suspiciously similar to protected core package '${typosquatConflict}' (M2006). Typosquatting defense is active.`,
+          code: "M2006",
+        });
+        return;
+      }
+
       if (!isScoped && !isTestUnscopedAllowed && !isAdmin) {
         const existing = database.getLibraryReleases(name);
         if (existing.length === 0) {
@@ -127,8 +268,24 @@ export function publishRouter(
         }
       }
 
-      // 1.6 RBAC authorization check for scoped packages and package maintainership
-      if (req.user) {
+      // 1.6 RBAC / OIDC authorization check for scoped packages and package maintainership
+      const oidcAttestation = (req as any).oidcAttestation as OidcAttestation | undefined;
+      let oidcAuthorized = false;
+      if (oidcAttestation) {
+        const oidcAuth = verifyOidcPackageAuthorization(oidcAttestation, name, database);
+        if (!oidcAuth.authorized && !isAdmin) {
+          res.status(403).json({
+            error:
+              oidcAuth.reason ||
+              `OIDC repository '${oidcAttestation.repository}' is not authorized to publish to package namespace '${name}' (M4012)`,
+            code: "M4012",
+          });
+          return;
+        }
+        oidcAuthorized = oidcAuth.authorized;
+      }
+
+      if (req.user && !oidcAuthorized) {
         const authCheck = database.canUserPublishPackage(name, req.user.id);
         if (!authCheck.allowed) {
           res.status(403).json({ error: authCheck.reason || "Unauthorized to publish to this package namespace" });
@@ -142,45 +299,81 @@ export function publishRouter(
         return;
       }
 
-      // 2.5 Security Scan (Zip Slip, Zip Bomb, Executables, AST Prohibited calls)
-      const scanResult = await scanPackageArchive(req.file.buffer);
-      if (!scanResult.valid) {
-        database.logAudit({
-          actorId: req.user?.id ?? null,
-          action: "package_upload_quarantined",
-          resourceType: "package",
-          resourceId: `${name}@${version}`,
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-          details: { violations: scanResult.violations },
-        });
-        res.status(400).json({
-          error: `Package upload rejected by security scanner: ${scanResult.quarantineReason}`,
-          violations: scanResult.violations,
-        });
-        return;
-      }
+      const tempUploadPath = req.file.path;
+      try {
+        const fileBuffer = req.file.buffer || (tempUploadPath ? await fs.promises.readFile(tempUploadPath) : null);
+        if (!fileBuffer) {
+          res.status(400).json({ error: "Failed to read uploaded archive content" });
+          return;
+        }
 
-      // Compute cryptographic SHA-256 CAS content hash
-      const actualSha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
-      const actualContentHash = `sha256:${actualSha256}`;
-
-      const clientContentHash = (req.body?.contentHash || req.headers["x-content-sha256"]) as string | undefined;
-      if (clientContentHash) {
-        const expected = clientContentHash.toLowerCase().replace(/^sha256:/, "");
-        if (expected !== actualSha256) {
+        // 2.5 Security Scan (Zip Slip, Zip Bomb, Executables, AST Prohibited calls)
+        const scanResult = await scanPackageArchive(fileBuffer);
+        if (!scanResult.valid) {
+          database.logAudit({
+            actorId: req.user?.id ?? null,
+            action: "package_upload_quarantined",
+            resourceType: "package",
+            resourceId: `${name}@${version}`,
+            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            details: { violations: scanResult.violations },
+          });
           res.status(400).json({
-            error: `Content hash mismatch: client specified ${clientContentHash}, but computed hash is ${actualContentHash}. Package archive may be corrupted or tampered (M3010).`,
-            computedHash: actualContentHash,
+            error: `Package upload rejected by security scanner: ${scanResult.quarantineReason}`,
+            violations: scanResult.violations,
           });
           return;
         }
-      }
 
-      const signature = (req.body?.signature || req.headers["x-package-signature"]) as string | undefined;
+        // Compute cryptographic SHA-256 CAS content hash
+        const actualSha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+        const actualContentHash = `sha256:${actualSha256}`;
 
-      try {
+        const clientContentHash = (req.body?.contentHash || req.headers["x-content-sha256"]) as string | undefined;
+        if (clientContentHash) {
+          const expected = clientContentHash.toLowerCase().replace(/^sha256:/, "");
+          if (expected !== actualSha256) {
+            res.status(400).json({
+              error: `Content hash mismatch: client specified ${clientContentHash}, but computed hash is ${actualContentHash}. Package archive may be corrupted or tampered (M3010).`,
+              computedHash: actualContentHash,
+            });
+            return;
+          }
+        }
+
+        const signature = (req.body?.signature || req.headers["x-package-signature"]) as string | undefined;
+        const explicitPublicKey = (req.body?.publicKey || req.headers["x-package-public-key"]) as string | undefined;
+        const authorUser = req.user?.id ? database.getUserById(req.user.id) : undefined;
+        const isStrictSigning = Boolean(authorUser?.signing_policy_strict);
+
+        if (signature) {
+          const sigVerifyResult = verifyPackageReleaseSignature({
+            contentHash: actualContentHash,
+            signature,
+            userId: req.user?.id,
+            database,
+            explicitPublicKey,
+            packageName: name,
+            packageVersion: version,
+          });
+          if (!sigVerifyResult.valid) {
+            res.status(422).json({
+              error: sigVerifyResult.error || "Cryptographic signature verification failed (M3011).",
+              code: "M3011",
+            });
+            return;
+          }
+        } else if (isStrictSigning) {
+          res.status(422).json({
+            error:
+              "Strict signing policy is active for your account. All package releases must carry a valid cryptographic Ed25519 signature (M3011).",
+            code: "M3011",
+          });
+          return;
+        }
+
         // 3. Extract manifest (package.json, package.mo, or adapted native manifest) from the zip
-        const manifestResult = await extractManifestFromZip(req.file.buffer, {
+        const manifestResult = await extractManifestFromZip(fileBuffer, {
           fallbackName: name,
           fallbackVersion: version,
         });
@@ -226,15 +419,20 @@ export function publishRouter(
         }
 
         // 7. Store the library
-        const filePath = await storage.store(name, version, req.file.buffer);
+        const filePath = await storage.store(name, version, fileBuffer);
 
-        // Record verified release with content hash and optional signature
+        // Record verified release with content hash, optional signature, and OIDC provenance
         database.saveLibraryRelease({
           libraryName: name,
           libraryVersion: version,
           contentHash: actualContentHash,
           signature: signature ?? null,
           publishedBy: req.user?.id ?? null,
+          oidcIssuer: oidcAttestation?.issuer ?? null,
+          oidcSubject: oidcAttestation?.subject ?? null,
+          oidcRepository: oidcAttestation?.repository ?? null,
+          oidcWorkflowRef: oidcAttestation?.workflowRef ?? oidcAttestation?.workflow ?? null,
+          oidcRunId: oidcAttestation?.runId ?? null,
         });
 
         // Assign dist-tag (default "latest", or custom tag such as "beta")
@@ -298,14 +496,14 @@ export function publishRouter(
 
         let versionId = database.getPackageVersion(packageId, version)?.id;
         if (!versionId) {
-          const shasum = crypto.createHash("sha1").update(req.file.buffer).digest("hex");
+          const shasum = crypto.createHash("sha1").update(fileBuffer).digest("hex");
           versionId = database.storePackageVersion(
             packageId,
             version,
             filePath,
             shasum,
             null,
-            req.file.buffer.length,
+            fileBuffer.length,
             initialManifestStr,
             null,
             req.user?.id ?? null,
@@ -347,7 +545,17 @@ export function publishRouter(
           resourceType: "package",
           resourceId: `${name}@${version}`,
           ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-          details: { contentHash: actualContentHash, totalFiles: scanResult.totalFiles },
+          details: {
+            contentHash: actualContentHash,
+            totalFiles: scanResult.totalFiles,
+            oidc: oidcAttestation
+              ? {
+                  repository: oidcAttestation.repository,
+                  workflow: oidcAttestation.workflow,
+                  runId: oidcAttestation.runId,
+                }
+              : undefined,
+          },
         });
 
         if (req.user?.id) {
@@ -416,6 +624,12 @@ export function publishRouter(
         }
         const message = err instanceof Error ? err.message : "Internal server error";
         res.status(400).json({ error: message });
+      } finally {
+        if (tempUploadPath && fs.existsSync(tempUploadPath)) {
+          try {
+            fs.unlinkSync(tempUploadPath);
+          } catch {}
+        }
       }
     },
   );

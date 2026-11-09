@@ -14,7 +14,7 @@ interface Plan {
   /** Yearly price for contract plans. */
   yearly?: number;
   customLabel?: string;
-  priceNote: string;
+  priceNote?: string;
   summary: string;
   features: string[];
   cta: { label: string; href: string };
@@ -87,8 +87,6 @@ const contract: Plan[] = [
     id: "sdk",
     name: "Commercial SDK",
     audience: "Software vendors shipping ModelScript inside a closed-source product",
-    yearly: 12000,
-    priceNote: "per year, per product",
     summary: "A license to redistribute ModelScript in your product without the AGPL source-sharing obligations. For vendors, not for internal use.",
     features: [
       "AGPL-3.0 copyleft exemption",
@@ -99,15 +97,13 @@ const contract: Plan[] = [
       "48-hour response on blocking issues",
       "Private channel with the compiler team",
     ],
-    cta: { label: "Request a Pilot", href: mail("[Commercial SDK Inquiry] ModelScript Evaluation") },
+    cta: { label: "Contact Sales", href: mail("[Commercial SDK Inquiry] ModelScript Evaluation") },
     comingSoon: true,
   },
   {
     id: "enterprise",
     name: "Enterprise Appliance",
     audience: "Organizations running ModelScript internally: utilities, aerospace, automotive, regulated industries",
-    yearly: 48000,
-    priceNote: "per year, starting price. Final price depends on sites and seats.",
     summary: "A self-contained deployment of ModelScript with the Enterprise Edition features, for internal use on networks with no internet access.",
     features: [
       "Full Enterprise Edition feature set (ee/)",
@@ -120,7 +116,7 @@ const contract: Plan[] = [
       "24-hour mission-critical support",
       "Internal use only. Redistribution in a product needs the Commercial SDK.",
     ],
-    cta: { label: "Schedule Architecture Review", href: mail("[Enterprise Appliance Inquiry] Evaluation") },
+    cta: { label: "Contact Sales", href: mail("[Enterprise Appliance Inquiry] Evaluation") },
     comingSoon: true,
   },
 ];
@@ -132,8 +128,6 @@ function price(p: Plan): string {
   const v = interval.value === "annual" ? p.annual : p.monthly;
   return fmt(v ?? 0);
 }
-
-const priceNotePrefix = (p: Plan) => (p.id === "enterprise" ? "From " : "");
 
 const isExternal = (href: string) => /^https?:/.test(href);
 
@@ -236,9 +230,9 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
         <span v-if="p.comingSoon" class="badge badge-pilot">Pilot Available</span>
         <h3 :id="`plan-${p.id}`" class="name">{{ p.name }}</h3>
         <p class="audience">{{ p.audience }}</p>
-        <p class="price">
-          <span class="from">{{ priceNotePrefix(p) }}</span><span class="amount">{{ price(p) }}</span>
-          <span class="unit">{{ p.priceNote }}</span>
+        <p class="price contact-price">
+          <span class="amount contact-heading">Contact us</span>
+          <span class="unit">at <a :href="p.cta.href">{{ MAIL }}</a></span>
         </p>
         <p class="summary">{{ p.summary }}</p>
         <ul>
@@ -404,6 +398,18 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
   font-size: 34px;
   font-weight: 800;
   color: var(--vp-c-text-1);
+}
+.amount.contact-heading {
+  font-size: 26px;
+  line-height: 1.15;
+}
+.contact-price .unit a {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.contact-price .unit a:hover {
+  color: var(--vp-c-brand-2);
 }
 .from,
 .unit {

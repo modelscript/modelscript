@@ -10,10 +10,18 @@
  *   4. Branch complex power flow calculation (Pij, Qij, Pji, Qji) and thermal loading.
  */
 
-import { solveLinearSystemSparse } from "@modelscript/runtime";
+import {
+  computeAmdOrdering,
+  solveLinearSystemSparse,
+  solveSparseCCS,
+  sparseLuFactor,
+  sparseLuSolve,
+  SparseTripletBuilder,
+} from "@modelscript/runtime";
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
-import type { PsseCase, PsseConCase } from "../types.js";
+import type { PsseCase, PsseConCase, PsseSeqCase } from "../types.js";
 import { solveHelmPowerFlow } from "./helm-powerflow.js";
+import type { PsseWasmMachinaDllRunner } from "./usr-dll-runner.js";
 
 export interface PowerFlowOptions {
   /** Numerical algorithm to execute (default: "newton_raphson"). */
@@ -159,9 +167,46 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     }
   }
 
-  // Admittance matrix entries lookup helper
-  const getG = (i: number, k: number): number => netlist.ybus.g.get(i)?.get(k) ?? 0;
-  const getB = (i: number, k: number): number => netlist.ybus.b.get(i)?.get(k) ?? 0;
+  // Build flat CSR structure for Ybus so power injection and Jacobian stamping run in O(nnz)
+  let totalYbusNnz = 0;
+  for (let i = 0; i < N; i++) {
+    const rowB = netlist.ybus.b.get(i);
+    const rowG = netlist.ybus.g.get(i);
+    const cols = new Set<number>();
+    if (rowB) for (const k of rowB.keys()) cols.add(k);
+    if (rowG) for (const k of rowG.keys()) cols.add(k);
+    totalYbusNnz += cols.size;
+  }
+
+  const yRowPtr = new Int32Array(N + 1);
+  const yColIdx = new Int32Array(totalYbusNnz);
+  const yG = new Float64Array(totalYbusNnz);
+  const yB = new Float64Array(totalYbusNnz);
+  const yDiagG = new Float64Array(N);
+  const yDiagB = new Float64Array(N);
+
+  let yPos = 0;
+  for (let i = 0; i < N; i++) {
+    yRowPtr[i] = yPos;
+    const rowG = netlist.ybus.g.get(i);
+    const rowB = netlist.ybus.b.get(i);
+    const cols = new Set<number>();
+    if (rowB) for (const k of rowB.keys()) cols.add(k);
+    if (rowG) for (const k of rowG.keys()) cols.add(k);
+    for (const k of cols) {
+      const gVal = rowG?.get(k) ?? 0;
+      const bVal = rowB?.get(k) ?? 0;
+      yColIdx[yPos] = k;
+      yG[yPos] = gVal;
+      yB[yPos] = bVal;
+      if (i === k) {
+        yDiagG[i] = gVal;
+        yDiagB[i] = bVal;
+      }
+      yPos++;
+    }
+  }
+  yRowPtr[N] = yPos;
 
   // Evaluate ZIP load at bus i for current Vm[i]
   const evalPload = (i: number): number => {
@@ -173,15 +218,44 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     return Qload0[i]! + IloadQ[i]! * v - YloadQ[i]! * v * v;
   };
 
+  // Compute Pcalc and Qcalc in O(nnz) over CSR Ybus
+  const Pcalc = new Float64Array(N);
+  const Qcalc = new Float64Array(N);
+  const computePQCalc = (bothPQ = true): void => {
+    for (let i = 0; i < N; i++) {
+      const vi = Vm[i]!;
+      const thetaI = Va[i]!;
+      let pSum = 0;
+      let qSum = 0;
+      const start = yRowPtr[i]!;
+      const end = yRowPtr[i + 1]!;
+      for (let p = start; p < end; p++) {
+        const k = yColIdx[p]!;
+        const vk = Vm[k]!;
+        const deltaTheta = thetaI - Va[k]!;
+        const g = yG[p]!;
+        const b = yB[p]!;
+        const cosD = Math.cos(deltaTheta);
+        const sinD = Math.sin(deltaTheta);
+        if (bothPQ) {
+          pSum += vk * (g * cosD + b * sinD);
+        }
+        qSum += vk * (g * sinD - b * cosD);
+      }
+      if (bothPQ) Pcalc[i] = vi * pSum;
+      Qcalc[i] = vi * qSum;
+    }
+  };
+
   const useFastDecoupled = options.algorithm === "fast_decoupled";
   const enforceQ = options.enforceQLimits ?? !useFastDecoupled;
 
   // Helper to check PV bus reactive limits and switch violated PV buses to PQ
-  const checkAndSwitchPvQLimits = (Qcalc: Float64Array): boolean => {
+  const checkAndSwitchPvQLimits = (QcalcVec: Float64Array): boolean => {
     let switched = false;
     for (let i = 0; i < N; i++) {
       if (busTypes[i] === 2 && hasGenAtBus[i] && Qmin[i]! < Qmax[i]!) {
-        const qReq = Qcalc[i]! + evalQload(i);
+        const qReq = QcalcVec[i]! + evalQload(i);
         if (qReq > Qmax[i]! + 1e-5) {
           Qgen[i] = Qmax[i]!;
           busTypes[i] = 1; // Switch PV -> PQ at upper limit
@@ -196,6 +270,11 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     return switched;
   };
 
+  const busToPIdx = new Int32Array(N);
+  const busToQIdx = new Int32Array(N);
+  let cachedColPerm: Int32Array | undefined;
+  let cachedNVars = -1;
+
   // Active indices:
   // Non-slack buses participate in delta P / delta theta
   // PQ buses participate in delta Q / delta V
@@ -204,30 +283,8 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   let maxMismatch = 0;
 
   for (; iter < maxIter; iter++) {
-    // 1. Calculate Pcalc and Qcalc
-    const Pcalc = new Float64Array(N);
-    const Qcalc = new Float64Array(N);
-
-    for (let i = 0; i < N; i++) {
-      const vi = Vm[i]!;
-      const thetaI = Va[i]!;
-      let pSum = 0;
-      let qSum = 0;
-
-      for (let k = 0; k < N; k++) {
-        const vk = Vm[k]!;
-        const deltaTheta = thetaI - Va[k]!;
-        const g = getG(i, k);
-        const b = getB(i, k);
-        const cosD = Math.cos(deltaTheta);
-        const sinD = Math.sin(deltaTheta);
-
-        pSum += vk * (g * cosD + b * sinD);
-        qSum += vk * (g * sinD - b * cosD);
-      }
-      Pcalc[i] = vi * pSum;
-      Qcalc[i] = vi * qSum;
-    }
+    // 1. Calculate Pcalc and Qcalc in O(nnz)
+    computePQCalc(true);
 
     // PV-to-PQ Q-limit switching
     if (enforceQ && iter >= 1) {
@@ -236,12 +293,16 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
     const nonSlackIndices: number[] = [];
     const pqIndices: number[] = [];
+    busToPIdx.fill(-1);
+    busToQIdx.fill(-1);
 
     for (let i = 0; i < N; i++) {
       if (busTypes[i] !== 3) {
+        busToPIdx[i] = nonSlackIndices.length;
         nonSlackIndices.push(i);
       }
       if (busTypes[i] === 1) {
+        busToQIdx[i] = pqIndices.length;
         pqIndices.push(i);
       }
     }
@@ -281,46 +342,37 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
     if (useFastDecoupled && iter >= 1) {
       // Fast Decoupled Power Flow (Stott-Alsac alternating P-theta and Q-V half-steps)
+      const bpTriplets = new SparseTripletBuilder(nP, nP, totalYbusNnz);
+      const bppTriplets = new SparseTripletBuilder(Math.max(1, nQ), Math.max(1, nQ), totalYbusNnz);
+
       for (let sub = 0; sub < 2; sub++) {
-        // Recompute Pcalc for P-theta step on second sub-sweep
         if (sub > 0) {
-          for (let i = 0; i < N; i++) {
-            const vi = Vm[i]!;
-            const thetaI = Va[i]!;
-            let pSum = 0;
-            let qSum = 0;
-            for (let k = 0; k < N; k++) {
-              const vk = Vm[k]!;
-              const deltaTheta = thetaI - Va[k]!;
-              const g = getG(i, k);
-              const b = getB(i, k);
-              pSum += vk * (g * Math.cos(deltaTheta) + b * Math.sin(deltaTheta));
-              qSum += vk * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
-            }
-            Pcalc[i] = vi * pSum;
-            Qcalc[i] = vi * qSum;
-          }
+          computePQCalc(true);
         }
 
-        const Bp = new Float64Array(nP * nP);
+        bpTriplets.clear();
         const dTheta = new Float64Array(nP);
         for (let r = 0; r < nP; r++) {
           const i = nonSlackIndices[r]!;
           const vi = Vm[i]!;
           dTheta[r] = (Pgen[i]! - evalPload(i) - Pcalc[i]!) / vi;
-          for (let c = 0; c < nP; c++) {
-            const k = nonSlackIndices[c]!;
+          const start = yRowPtr[i]!;
+          const end = yRowPtr[i + 1]!;
+          for (let p = start; p < end; p++) {
+            const k = yColIdx[p]!;
+            const c = busToPIdx[k]!;
+            if (c < 0) continue;
             if (i !== k) {
               const deltaTheta = Va[i]! - Va[k]!;
-              const g = getG(i, k);
-              const b = getB(i, k);
-              Bp[r * nP + c] = Vm[k]! * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
+              const g = yG[p]!;
+              const b = yB[p]!;
+              bpTriplets.add(r, c, Vm[k]! * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta)));
             } else {
-              Bp[r * nP + c] = -Qcalc[i]! / vi - getB(i, i) * vi;
+              bpTriplets.add(r, c, -Qcalc[i]! / vi - yDiagB[i]! * vi);
             }
           }
         }
-        if (!solveLinearSystem(Bp, dTheta, nP)) break;
+        if (!solveSparseCCS(bpTriplets.toCCS(), dTheta, { allowPerturbation: true })) break;
         for (let m = 0; m < nP; m++) {
           const idx = nonSlackIndices[m]!;
           const dTh = Math.max(-0.5, Math.min(0.5, dTheta[m] ?? 0));
@@ -328,40 +380,32 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
         }
 
         // Recompute Qcalc using updated angles Va before Q-V half-step
-        for (let i = 0; i < N; i++) {
-          const vi = Vm[i]!;
-          const thetaI = Va[i]!;
-          let qSum = 0;
-          for (let k = 0; k < N; k++) {
-            const vk = Vm[k]!;
-            const deltaTheta = thetaI - Va[k]!;
-            const g = getG(i, k);
-            const b = getB(i, k);
-            qSum += vk * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
-          }
-          Qcalc[i] = vi * qSum;
-        }
+        computePQCalc(false);
 
         if (nQ > 0) {
-          const Bpp = new Float64Array(nQ * nQ);
+          bppTriplets.clear();
           const dV = new Float64Array(nQ);
           for (let r = 0; r < nQ; r++) {
             const i = pqIndices[r]!;
             const vi = Vm[i]!;
             dV[r] = (Qgen[i]! - evalQload(i) - Qcalc[i]!) / vi;
-            for (let c = 0; c < nQ; c++) {
-              const k = pqIndices[c]!;
+            const start = yRowPtr[i]!;
+            const end = yRowPtr[i + 1]!;
+            for (let p = start; p < end; p++) {
+              const k = yColIdx[p]!;
+              const c = busToQIdx[k]!;
+              if (c < 0) continue;
               if (i !== k) {
                 const deltaTheta = Va[i]! - Va[k]!;
-                const g = getG(i, k);
-                const b = getB(i, k);
-                Bpp[r * nQ + c] = g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta);
+                const g = yG[p]!;
+                const b = yB[p]!;
+                bppTriplets.add(r, c, g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
               } else {
-                Bpp[r * nQ + c] = Qcalc[i]! / (vi * vi) - getB(i, i);
+                bppTriplets.add(r, c, Qcalc[i]! / (vi * vi) - yDiagB[i]!);
               }
             }
           }
-          if (!solveLinearSystem(Bpp, dV, nQ)) break;
+          if (!solveSparseCCS(bppTriplets.toCCS(), dV, { allowPerturbation: true })) break;
           for (let m = 0; m < nQ; m++) {
             const idx = pqIndices[m]!;
             const stepV = Math.max(-0.2, Math.min(0.2, dV[m] ?? 0));
@@ -372,94 +416,134 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
       continue;
     }
 
-    // 3. Assemble Full Newton-Raphson Jacobian Matrix J
-    const J = new Float64Array(nVars * nVars);
-
-    // H = ∂P / ∂θ (nP x nP)
-    for (let r = 0; r < nP; r++) {
-      const i = nonSlackIndices[r]!;
-      const vi = Vm[i]!;
-      for (let c = 0; c < nP; c++) {
-        const k = nonSlackIndices[c]!;
-        if (i !== k) {
-          const deltaTheta = Va[i]! - Va[k]!;
-          const g = getG(i, k);
-          const b = getB(i, k);
-          const dPdTheta = vi * Vm[k]! * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
-          J[r * nVars + c] = dPdTheta;
-        } else {
-          // Diagonal H_ii = -Q_i - B_ii * V_i^2
-          J[r * nVars + c] = -Qcalc[i]! - getB(i, i) * vi * vi;
-        }
-      }
-    }
-
-    // N = ∂P / ∂V (nP x nQ)
-    for (let r = 0; r < nP; r++) {
-      const i = nonSlackIndices[r]!;
-      const vi = Vm[i]!;
-      for (let c = 0; c < nQ; c++) {
-        const k = pqIndices[c]!;
-        const colIdx = nP + c;
-        if (i !== k) {
-          const deltaTheta = Va[i]! - Va[k]!;
-          const g = getG(i, k);
-          const b = getB(i, k);
-          const dPdV = vi * (g * Math.cos(deltaTheta) + b * Math.sin(deltaTheta));
-          J[r * nVars + colIdx] = dPdV;
-        } else {
-          // Diagonal N_ii = P_i / V_i + G_ii * V_i + ∂Pload/∂V
-          const dPloaddV = IloadP[i]! + 2 * YloadP[i]! * vi;
-          J[r * nVars + colIdx] = Pcalc[i]! / vi + getG(i, i) * vi + dPloaddV;
-        }
-      }
-    }
-
-    // M = ∂Q / ∂θ (nQ x nP)
-    for (let r = 0; r < nQ; r++) {
-      const i = pqIndices[r]!;
-      const rowIdx = nP + r;
-      const vi = Vm[i]!;
-      for (let c = 0; c < nP; c++) {
-        const k = nonSlackIndices[c]!;
-        if (i !== k) {
-          const deltaTheta = Va[i]! - Va[k]!;
-          const g = getG(i, k);
-          const b = getB(i, k);
-          const dQdTheta = -vi * Vm[k]! * (g * Math.cos(deltaTheta) + b * Math.sin(deltaTheta));
-          J[rowIdx * nVars + c] = dQdTheta;
-        } else {
-          // Diagonal M_ii = P_i - G_ii * V_i^2
-          J[rowIdx * nVars + c] = Pcalc[i]! - getG(i, i) * vi * vi;
-        }
-      }
-    }
-
-    // L = ∂Q / ∂V (nQ x nQ)
-    for (let r = 0; r < nQ; r++) {
-      const i = pqIndices[r]!;
-      const rowIdx = nP + r;
-      const vi = Vm[i]!;
-      for (let c = 0; c < nQ; c++) {
-        const k = pqIndices[c]!;
-        const colIdx = nP + c;
-        if (i !== k) {
-          const deltaTheta = Va[i]! - Va[k]!;
-          const g = getG(i, k);
-          const b = getB(i, k);
-          const dQdV = vi * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
-          J[rowIdx * nVars + colIdx] = dQdV;
-        } else {
-          // Diagonal L_ii = Q_i / V_i - B_ii * V_i + ∂Qload/∂V
-          const dQloaddV = IloadQ[i]! - 2 * YloadQ[i]! * vi;
-          J[rowIdx * nVars + colIdx] = Qcalc[i]! / vi - getB(i, i) * vi + dQloaddV;
-        }
-      }
-    }
-
-    // 4. Solve Linear System J * [Δθ; ΔV] = [ΔP; ΔQ]
+    // 3. Assemble Full Newton-Raphson Jacobian Matrix J directly in O(nnz) sparse triplet form
     const delta = new Float64Array(mismatch);
-    const solved = solveLinearSystem(J, delta, nVars);
+    let solved = false;
+
+    if (nVars >= 24) {
+      const jTriplets = new SparseTripletBuilder(nVars, nVars, 4 * totalYbusNnz);
+
+      for (let i = 0; i < N; i++) {
+        const rP = busToPIdx[i]!;
+        const rQ = busToQIdx[i]!;
+        if (rP < 0 && rQ < 0) continue;
+
+        const vi = Vm[i]!;
+        const thetaI = Va[i]!;
+        const start = yRowPtr[i]!;
+        const end = yRowPtr[i + 1]!;
+
+        for (let p = start; p < end; p++) {
+          const k = yColIdx[p]!;
+          const cP = busToPIdx[k]!;
+          const cQ = busToQIdx[k]!;
+          if (cP < 0 && cQ < 0) continue;
+
+          if (i !== k) {
+            const vk = Vm[k]!;
+            const deltaTheta = thetaI - Va[k]!;
+            const g = yG[p]!;
+            const b = yB[p]!;
+            const cosD = Math.cos(deltaTheta);
+            const sinD = Math.sin(deltaTheta);
+            const gSinMinusBCos = g * sinD - b * cosD;
+            const gCosPlusBSin = g * cosD + b * sinD;
+
+            // H_ik = ∂P_i / ∂θ_k
+            if (rP >= 0 && cP >= 0) {
+              jTriplets.add(rP, cP, vi * vk * gSinMinusBCos);
+            }
+            // N_ik = ∂P_i / ∂V_k
+            if (rP >= 0 && cQ >= 0) {
+              jTriplets.add(rP, nP + cQ, vi * gCosPlusBSin);
+            }
+            // M_ik = ∂Q_i / ∂θ_k
+            if (rQ >= 0 && cP >= 0) {
+              jTriplets.add(nP + rQ, cP, -vi * vk * gCosPlusBSin);
+            }
+            // L_ik = ∂Q_i / ∂V_k
+            if (rQ >= 0 && cQ >= 0) {
+              jTriplets.add(nP + rQ, nP + cQ, vi * gSinMinusBCos);
+            }
+          } else {
+            const gii = yDiagG[i]!;
+            const bii = yDiagB[i]!;
+            // Diagonal H_ii = -Q_i - B_ii * V_i^2
+            if (rP >= 0 && cP >= 0) {
+              jTriplets.add(rP, cP, -Qcalc[i]! - bii * vi * vi);
+            }
+            // Diagonal N_ii = P_i / V_i + G_ii * V_i + ∂Pload/∂V
+            if (rP >= 0 && cQ >= 0) {
+              const dPloaddV = IloadP[i]! + 2 * YloadP[i]! * vi;
+              jTriplets.add(rP, nP + cQ, Pcalc[i]! / vi + gii * vi + dPloaddV);
+            }
+            // Diagonal M_ii = P_i - G_ii * V_i^2
+            if (rQ >= 0 && cP >= 0) {
+              jTriplets.add(nP + rQ, cP, Pcalc[i]! - gii * vi * vi);
+            }
+            // Diagonal L_ii = Q_i / V_i - B_ii * V_i + ∂Qload/∂V
+            if (rQ >= 0 && cQ >= 0) {
+              const dQloaddV = IloadQ[i]! - 2 * YloadQ[i]! * vi;
+              jTriplets.add(nP + rQ, nP + cQ, Qcalc[i]! / vi - bii * vi + dQloaddV);
+            }
+          }
+        }
+      }
+
+      const jCCS = jTriplets.toCCS();
+      if (cachedNVars !== nVars || !cachedColPerm) {
+        cachedColPerm = nVars >= 48 ? computeAmdOrdering(jCCS) : undefined;
+        cachedNVars = nVars;
+      }
+      solved = solveSparseCCS(jCCS, delta, {
+        allowPerturbation: false,
+        colPerm: cachedColPerm,
+      });
+    } else {
+      const J = new Float64Array(nVars * nVars);
+      for (let i = 0; i < N; i++) {
+        const rP = busToPIdx[i]!;
+        const rQ = busToQIdx[i]!;
+        if (rP < 0 && rQ < 0) continue;
+        const vi = Vm[i]!;
+        const thetaI = Va[i]!;
+        const start = yRowPtr[i]!;
+        const end = yRowPtr[i + 1]!;
+        for (let p = start; p < end; p++) {
+          const k = yColIdx[p]!;
+          const cP = busToPIdx[k]!;
+          const cQ = busToQIdx[k]!;
+          if (cP < 0 && cQ < 0) continue;
+          if (i !== k) {
+            const vk = Vm[k]!;
+            const deltaTheta = thetaI - Va[k]!;
+            const g = yG[p]!;
+            const b = yB[p]!;
+            const cosD = Math.cos(deltaTheta);
+            const sinD = Math.sin(deltaTheta);
+            if (rP >= 0 && cP >= 0) J[rP * nVars + cP] = vi * vk * (g * sinD - b * cosD);
+            if (rP >= 0 && cQ >= 0) J[rP * nVars + (nP + cQ)] = vi * (g * cosD + b * sinD);
+            if (rQ >= 0 && cP >= 0) J[(nP + rQ) * nVars + cP] = -vi * vk * (g * cosD + b * sinD);
+            if (rQ >= 0 && cQ >= 0) J[(nP + rQ) * nVars + (nP + cQ)] = vi * (g * sinD - b * cosD);
+          } else {
+            const gii = yDiagG[i]!;
+            const bii = yDiagB[i]!;
+            if (rP >= 0 && cP >= 0) J[rP * nVars + cP] = -Qcalc[i]! - bii * vi * vi;
+            if (rP >= 0 && cQ >= 0) {
+              const dPloaddV = IloadP[i]! + 2 * YloadP[i]! * vi;
+              J[rP * nVars + (nP + cQ)] = Pcalc[i]! / vi + gii * vi + dPloaddV;
+            }
+            if (rQ >= 0 && cP >= 0) J[(nP + rQ) * nVars + cP] = Pcalc[i]! - gii * vi * vi;
+            if (rQ >= 0 && cQ >= 0) {
+              const dQloaddV = IloadQ[i]! - 2 * YloadQ[i]! * vi;
+              J[(nP + rQ) * nVars + (nP + cQ)] = Qcalc[i]! / vi - bii * vi + dQloaddV;
+            }
+          }
+        }
+      }
+      solved = solveLinearSystem(J, delta, nVars);
+    }
+
     if (!solved) break;
 
     // 5. Update State with adaptive damping
@@ -504,10 +588,13 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
       let pCalc = 0;
       let qCalc = 0;
       const vi = Vm[i]!;
-      for (let k = 0; k < N; k++) {
+      const start = yRowPtr[i]!;
+      const end = yRowPtr[i + 1]!;
+      for (let p = start; p < end; p++) {
+        const k = yColIdx[p]!;
         const deltaTheta = Va[i]! - Va[k]!;
-        const g = getG(i, k);
-        const b = getB(i, k);
+        const g = yG[p]!;
+        const b = yB[p]!;
         pCalc += vi * Vm[k]! * (g * Math.cos(deltaTheta) + b * Math.sin(deltaTheta));
         qCalc += vi * Vm[k]! * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
       }
@@ -684,6 +771,31 @@ export interface PsseTransientOptions {
   faultSusceptancePu?: number | undefined;
   /** Optional parsed PSS/E `.dyr` dynamic model collection. */
   dyr?: import("../types.js").PsseDyrCase | undefined;
+  /** Optional compiled user-written `dsusr.dll` / `libdsusr.so` models executed via Wasm-Machina. */
+  userDllModels?:
+    | Array<{
+        busNumber: number;
+        machineId?: string | undefined;
+        symbolName: string;
+        runner: PsseWasmMachinaDllRunner;
+        con: readonly number[];
+        numStates?: number | undefined;
+      }>
+    | undefined;
+  /**
+   * External boundary current injections for TS-EMT co-simulation.
+   * Injects complex current (Ir + j Ii) in per-unit into the designated boundary bus.
+   */
+  boundaryInjections?:
+    | Array<{
+        busNumber: number;
+        inject: (t: number, vr: number, vi: number) => { irPu: number; iiPu: number };
+      }>
+    | undefined;
+  /** Co-simulation step callback: invoked at each macro-step with bus voltage phasors. */
+  onStep?:
+    | ((t: number, busVoltages: Map<number, { vmPu: number; vaRad: number; vrPu: number; viPu: number }>) => void)
+    | undefined;
 }
 
 export interface PsseTransientResult {
@@ -849,24 +961,44 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     const H = (dyrH !== undefined && dyrH > 0 ? dyrH : 3.5) * ratingScale;
     const D = (dyrD !== undefined && dyrD > 0 ? dyrD : 2.0) * ratingScale;
 
-    // Turbine-governor speed droop response (1/R) and servo time constant
-    const dyrR = dyrGov?.namedParams["R"];
+    // Turbine-governor speed droop response (1/R) and servo time constant (TGOV1, HYGOV, GGOV1, GAST, WPID, PIDGOV, CCGOV1, DEGOV1)
+    const dyrR =
+      dyrGov?.namedParams["R"] ??
+      dyrGov?.namedParams["Rp"] ??
+      dyrGov?.namedParams["Rperm"] ??
+      dyrGov?.namedParams["Droop"];
     const govDroopInv = dyrR !== undefined && dyrR > 0.005 ? (0.25 / dyrR) * ratingScale : 0.0;
-    const tGov = Math.max(0.08, dyrGov?.namedParams["T1"] ?? dyrGov?.namedParams["Tg"] ?? 0.3);
-    const pMaxPu = Math.max(
-      Pm0 * 1.25,
-      ((dyrGov?.namedParams["VMAX"] ?? dyrGov?.namedParams["GMAX"] ?? 1.2) * (g.mbase > 0 ? g.mbase : sbase)) / sbase,
+    const tGov = Math.max(
+      0.08,
+      dyrGov?.namedParams["T1"] ??
+        dyrGov?.namedParams["Tg"] ??
+        dyrGov?.namedParams["Ta"] ??
+        dyrGov?.namedParams["T4"] ??
+        dyrGov?.namedParams["Tw"] ??
+        0.3,
     );
+    const govMaxRaw =
+      dyrGov?.namedParams["VMAX"] ??
+      dyrGov?.namedParams["GMAX"] ??
+      dyrGov?.namedParams["Gmax"] ??
+      dyrGov?.namedParams["Pmax"] ??
+      dyrGov?.namedParams["PMAX"] ??
+      dyrGov?.namedParams["Tmax"] ??
+      1.2;
+    const pMaxPu = Math.max(Pm0 * 1.25, (govMaxRaw * (g.mbase > 0 ? g.mbase : sbase)) / sbase);
 
-    // Automatic Voltage Regulator (EXST1 / IEEET1 / SEXS)
+    // Automatic Voltage Regulator (EXST1 / IEEET1 / SEXS / ESAC1A / ESAC4A / ESST1A / ESST4B / EXAC1 / EXAC2 / SCRX / IEEEX1)
     const hasExciter = Boolean(dyrExc || dyrGen);
-    const rawKa = dyrExc?.namedParams["KA"] ?? dyrExc?.namedParams["K"] ?? 40.0;
+    const rawKa = dyrExc?.namedParams["KA"] ?? dyrExc?.namedParams["KPR"] ?? dyrExc?.namedParams["K"] ?? 40.0;
     const ka = Math.min(80.0, Math.max(5.0, rawKa * 0.25));
-    const ta = Math.max(0.03, dyrExc?.namedParams["TA"] ?? dyrExc?.namedParams["TE"] ?? 0.06);
+    const ta = Math.max(
+      0.03,
+      dyrExc?.namedParams["TA"] ?? dyrExc?.namedParams["TE"] ?? dyrExc?.namedParams["TB"] ?? 0.06,
+    );
     const efdMax = Math.max(efd0 + 0.5, dyrExc?.namedParams["VRMAX"] ?? dyrExc?.namedParams["EMAX"] ?? 5.0);
     const efdMin = Math.min(0.0, dyrExc?.namedParams["VRMIN"] ?? dyrExc?.namedParams["EMIN"] ?? -2.0);
     const vRef = vMag + efd0 / ka;
-    const ksPss = dyrPss?.namedParams["KS"] ?? 0.0;
+    const ksPss = dyrPss?.namedParams["KS"] ?? dyrPss?.namedParams["KS1"] ?? dyrPss?.namedParams["K2"] ?? 0.0;
 
     const label = cleanId === "1" && count === 1 ? `Bus${g.i}` : `Bus${g.i}_${cleanId}`;
 
@@ -925,11 +1057,59 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     baseB[idx * N + idx] = (baseB[idx * N + idx] ?? 0) + m.ygImag;
   }
 
+  // Initialize WECC CMPLDW / CLOD / CIM5 composite load induction motor states (FIDVR stalling & slip)
+  interface CompositeMotorLoadState {
+    busNum: number;
+    busIdx: number;
+    fMotor: number;
+    vStallPu: number;
+    tStallSec: number;
+    pl0Pu: number;
+    slip: number;
+    stallTimerSec: number;
+    isStalled: boolean;
+  }
+  const motorLoads: CompositeMotorLoadState[] = [];
+  const motorStallShuntB = new Float64Array(N);
+  if (dyrCase?.loadsByBusId) {
+    const seenMotorBuses = new Set<number>();
+    for (const [, ldRec] of dyrCase.loadsByBusId) {
+      if (seenMotorBuses.has(ldRec.ibus)) continue;
+      const bIdx = netlist.busIndices.get(ldRec.ibus);
+      if (bIdx === undefined) continue;
+      seenMotorBuses.add(ldRec.ibus);
+      const bRes = pf.buses[bIdx];
+      const pl0Pu = Math.max(0.05, (bRes ? bRes.plMw : 50.0) / sbase);
+      const fMotor = Math.min(
+        0.95,
+        Math.max(
+          0.2,
+          (ldRec.namedParams["FmA"] ?? 0.25) +
+            (ldRec.namedParams["FmB"] ?? 0.15) +
+            (ldRec.namedParams["FmC"] ?? 0.1) +
+            (ldRec.namedParams["FmD"] ?? 0.2),
+        ),
+      );
+      motorLoads.push({
+        busNum: ldRec.ibus,
+        busIdx: bIdx,
+        fMotor,
+        vStallPu: ldRec.namedParams["Vstall"] ?? 0.65,
+        tStallSec: ldRec.namedParams["Tstall"] ?? 0.033,
+        pl0Pu,
+        slip: 0.025,
+        stallTimerSec: 0.0,
+        isStalled: false,
+      });
+    }
+  }
+
   // Solve network voltages V_r, V_i for given machine rotor angles delta[], transient EMFs eqPrime[], and fault state
   const solveNetworkVoltages = (
     deltas: Float64Array,
     eqPrimes: Float64Array,
     faultActive: boolean,
+    tSec: number = 0.0,
   ): { vr: Float64Array; vi: Float64Array; pe: Float64Array; id: Float64Array; vt: Float64Array } => {
     const dim = 2 * N;
     const A = new Float64Array(dim * dim);
@@ -939,8 +1119,11 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       for (let k = 0; k < N; k++) {
         const g = baseG[i * N + k]!;
         let b = baseB[i * N + k]!;
-        if (faultActive && i === faultBusIdx && k === faultBusIdx) {
-          b -= faultB;
+        if (i === k) {
+          b += motorStallShuntB[i]!;
+          if (faultActive && i === faultBusIdx) {
+            b -= faultB;
+          }
         }
         // Real equation: G * Vr - B * Vi = Ir
         A[2 * i * dim + 2 * k] = g;
@@ -962,6 +1145,18 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       const ii = mach.ygReal * ei + mach.ygImag * er;
       rhs[2 * mach.busIdx] = (rhs[2 * mach.busIdx] ?? 0) + ir;
       rhs[2 * mach.busIdx + 1] = (rhs[2 * mach.busIdx + 1] ?? 0) + ii;
+    }
+
+    // External boundary current injections from TS-EMT co-simulation
+    if (options.boundaryInjections) {
+      for (const binj of options.boundaryInjections) {
+        const bIdx = netlist.busIndices.get(binj.busNumber);
+        if (bIdx !== undefined) {
+          const inj = binj.inject(tSec, Vm0[bIdx]!, 0.0);
+          rhs[2 * bIdx] = (rhs[2 * bIdx] ?? 0) + inj.irPu;
+          rhs[2 * bIdx + 1] = (rhs[2 * bIdx + 1] ?? 0) + inj.iiPu;
+        }
+      }
     }
 
     solveLinearSystem(A, rhs, dim);
@@ -1025,6 +1220,9 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     trackedBusIndices.push(i);
     stateNames.push(`Vm_Bus${netlist.busNumbers[i]}_pu`);
   }
+  for (const ml of motorLoads) {
+    stateNames.push(`s_motor_Bus${ml.busNum}`);
+  }
 
   const ySeries: number[][] = stateNames.map(() => []);
   const tArr: number[] = [];
@@ -1044,6 +1242,37 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     pm[m] = mach.Pm0;
   }
 
+  // Initialize optional Wasm-Machina user-written DLL models (`MODE = 1`)
+  const dllRuntimeModels = (options.userDllModels ?? []).map((u, idx) => {
+    const nSt = Math.max(1, u.numStates ?? 4);
+    const state = new Float64Array(nSt);
+    const dstate = new Float64Array(nSt);
+    const machIdx = machines.findIndex((m) => m.busNum === u.busNumber);
+    const eterm0 = machIdx >= 0 ? Vm0[machines[machIdx]!.busIdx]! : 1.0;
+    const efdInit = machIdx >= 0 ? efd[machIdx]! : 1.0;
+    const pmechInit = machIdx >= 0 ? pm[machIdx]! : 0.8;
+    const initRes = u.runner.stepModel(u.symbolName, 1, {
+      mc: idx + 1,
+      islot: 1,
+      time: 0.0,
+      delt: dt,
+      con: u.con,
+      state,
+      dstate,
+      eterm: eterm0,
+      speed: 0.0,
+      efd: efdInit,
+      pmech: pmechInit,
+    });
+    return {
+      config: u,
+      mc: idx + 1,
+      machIdx,
+      state: initRes.state,
+      dstate: initRes.dstate,
+    };
+  });
+
   const nSteps = Math.max(10, Math.round(stopTime / dt));
   let maxRotorAngleSpreadDeg = 0;
   let maxFreqDeviationHz = 0;
@@ -1053,7 +1282,7 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     const t = Number((step * dt).toFixed(4));
     const faultActive = t >= faultStart - 1e-9 && t < faultClear - 1e-9;
 
-    const { vr, vi, pe } = solveNetworkVoltages(delta, eqPrime, faultActive);
+    const { vr, vi, pe } = solveNetworkVoltages(delta, eqPrime, faultActive, t);
 
     tArr.push(t);
     let sIdx = 0;
@@ -1097,7 +1326,55 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       ySeries[sIdx++]!.push(Number(vm.toFixed(4)));
     }
 
+    for (const ml of motorLoads) {
+      ySeries[sIdx++]!.push(Number(ml.slip.toFixed(4)));
+    }
+
+    if (options.onStep) {
+      const busMap = new Map<number, { vmPu: number; vaRad: number; vrPu: number; viPu: number }>();
+      for (let i = 0; i < N; i++) {
+        const bNum = netlist.busNumbers[i]!;
+        const vrm = vr[i]!;
+        const vim = vi[i]!;
+        busMap.set(bNum, {
+          vmPu: Math.hypot(vrm, vim),
+          vaRad: Math.atan2(vim, vrm),
+          vrPu: vrm,
+          viPu: vim,
+        });
+      }
+      options.onStep(t, busMap);
+    }
+
     if (step === nSteps) break;
+
+    // Step composite load induction motors (WECC CMPLDW / CLOD / CIM5 FIDVR stall & slip dynamics)
+    for (const ml of motorLoads) {
+      const vm = Math.hypot(vr[ml.busIdx]!, vi[ml.busIdx]!);
+      if (!ml.isStalled) {
+        if (vm < ml.vStallPu) {
+          ml.stallTimerSec += dt;
+          if (ml.stallTimerSec >= ml.tStallSec) {
+            ml.isStalled = true;
+            ml.slip = 1.0;
+          }
+        } else {
+          ml.stallTimerSec = Math.max(0.0, ml.stallTimerSec - 0.5 * dt);
+        }
+        if (!ml.isStalled) {
+          // Induction motor electromechanical slip ODE: 2*Hm * ds/dt = Tm - Te(V, s)
+          const sSafe = Math.max(0.005, ml.slip);
+          const tePu = (vm * vm * (sSafe / 0.025)) / (1.0 + Math.pow(sSafe / 0.12, 2));
+          const tmPu = 1.0;
+          const dsDt = (tmPu - tePu) / 1.2;
+          ml.slip = Math.min(1.0, Math.max(0.005, ml.slip + dt * dsDt));
+        }
+      }
+      // Locked-rotor / high-slip reactive current draw increases inductive shunt susceptance (FIDVR)
+      motorStallShuntB[ml.busIdx] = ml.isStalled
+        ? -3.2 * ml.fMotor * ml.pl0Pu
+        : -0.6 * ml.fMotor * ml.pl0Pu * Math.max(0.0, (ml.slip - 0.025) / 0.975);
+    }
 
     // Advance (delta, dOmega, eqPrime, efd, pm) via RK4
     const evalDerivs = (
@@ -1128,12 +1405,13 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
         const pAccel = curPm[m]! - curPe[m]! - mach.D * speedDevPu;
         ddOmega[m] = (omega0 / (2 * mach.H)) * pAccel;
 
-        // Flux-decay transient EMF equation + AVR excitation system
+        // Flux-decay transient EMF equation + open-circuit saturation S(E'q) + AVR excitation system
         if (mach.hasExciter) {
           const vPss = mach.ksPss * speedDevPu;
           const efdTarget = Math.min(mach.efdMax, Math.max(mach.efdMin, mach.ka * (mach.vRef - curVt[m]! + vPss)));
           dEfd[m] = (efdTarget - curEfd[m]!) / mach.ta;
-          dEqPrime[m] = (curEfd[m]! - curEqPrime[m]! - (mach.xd - mach.xdPrime) * curId[m]!) / mach.td0Prime;
+          const satTerm = 0.08 * Math.pow(Math.max(0.0, curEqPrime[m]! - 0.8), 2);
+          dEqPrime[m] = (curEfd[m]! - curEqPrime[m]! - satTerm - (mach.xd - mach.xdPrime) * curId[m]!) / mach.td0Prime;
         }
       }
       return { dDelta, ddOmega, dEqPrime, dEfd, dPm };
@@ -1199,6 +1477,49 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
         mach.pMaxPu,
         Math.max(0.0, pm[m]! + (dt / 6.0) * (k1.dPm[m]! + 2 * k2.dPm[m]! + 2 * k3.dPm[m]! + k4.dPm[m]!)),
       );
+    }
+
+    // Step Wasm-Machina user-written DLL models (`MODE = 2` derivatives & `MODE = 3` outputs)
+    for (const dm of dllRuntimeModels) {
+      if (dm.machIdx < 0) continue;
+      const m = dm.machIdx;
+      const mach = machines[m]!;
+      const vtCur = Math.hypot(vr[mach.busIdx]!, vi[mach.busIdx]!);
+      const speedCur = dOmega[m]! / omega0;
+      const res2 = dm.config.runner.stepModel(dm.config.symbolName, 2, {
+        mc: dm.mc,
+        islot: 1,
+        time: t,
+        delt: dt,
+        con: dm.config.con,
+        state: dm.state,
+        dstate: dm.dstate,
+        eterm: vtCur,
+        speed: speedCur,
+        efd: efd[m]!,
+        pmech: pm[m]!,
+      });
+      for (let i = 0; i < dm.state.length; i++) {
+        dm.state[i] = res2.state[i]! + dt * res2.dstate[i]!;
+      }
+      const res3 = dm.config.runner.stepModel(dm.config.symbolName, 3, {
+        mc: dm.mc,
+        islot: 1,
+        time: t + dt,
+        delt: dt,
+        con: dm.config.con,
+        state: dm.state,
+        dstate: res2.dstate,
+        eterm: vtCur,
+        speed: speedCur,
+        efd: res2.efd,
+        pmech: res2.pmech,
+      });
+      dm.state = res3.state;
+      dm.dstate = res3.dstate;
+      if (Number.isFinite(res3.efd) && res3.efd !== 0) {
+        efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, res3.efd));
+      }
     }
   }
 
@@ -1730,7 +2051,13 @@ export interface ShortCircuitAnalysisResult {
  */
 export function calculateShortCircuit(
   psseCase: PsseCase,
-  options: string | { cFactor?: number | undefined; caseTitle?: string | undefined } = {},
+  options:
+    | string
+    | {
+        cFactor?: number | undefined;
+        caseTitle?: string | undefined;
+        seq?: PsseSeqCase | undefined;
+      } = {},
 ): ShortCircuitAnalysisResult {
   const opts = typeof options === "string" ? { caseTitle: options } : options;
   const cFactor = opts.cFactor ?? 1.05;
@@ -1739,6 +2066,7 @@ export function calculateShortCircuit(
   const pf = solvePowerFlow(psseCase);
   const N = netlist.nBuses;
   const dyrCase = psseCase.dyr;
+  const seqCase = opts.seq ?? psseCase.seq;
 
   const caseTitle = opts.caseTitle || psseCase.title1 || `PSS/E Grid (Rev ${psseCase.header.rev})`;
 
@@ -1755,12 +2083,14 @@ export function calculateShortCircuit(
     return emptyRes;
   }
 
-  // Build positive-sequence nodal admittance matrix Y1 (augmented with generator subtransient admittances)
-  // and zero-sequence nodal admittance matrix Y0
+  // Build positive-sequence (Y1), negative-sequence (Y2), and zero-sequence (Y0) nodal admittance matrices
   const Y1G = new Float64Array(N * N);
   const Y1B = new Float64Array(N * N);
+  const Y2G = new Float64Array(N * N);
+  const Y2B = new Float64Array(N * N);
   const Y0G = new Float64Array(N * N);
   const Y0B = new Float64Array(N * N);
+  let hasDistinctY2 = false;
 
   for (let i = 0; i < N; i++) {
     for (let k = 0; k < N; k++) {
@@ -1768,13 +2098,115 @@ export function calculateShortCircuit(
       const b = netlist.ybus.b.get(i)?.get(k) ?? 0;
       Y1G[i * N + k] = g;
       Y1B[i * N + k] = b;
-      // Zero-sequence network impedance is typically ~2.5x positive-sequence for overhead transmission
-      Y0G[i * N + k] = g / 2.5;
-      Y0B[i * N + k] = b / 2.5;
+      Y2G[i * N + k] = g;
+      Y2B[i * N + k] = b;
+      if (!seqCase) {
+        // Default heuristic when .seq file is omitted: zero-sequence impedance ~2.5x positive-sequence
+        Y0G[i * N + k] = g / 2.5;
+        Y0B[i * N + k] = b / 2.5;
+      }
     }
     // Small shunt regularization to prevent singular Y0 on isolated zero-sequence sub-networks
     Y0B[i * N + i] = (Y0B[i * N + i] ?? 0) - 1e-4;
     Y1B[i * N + i] = (Y1B[i * N + i] ?? 0) - 1e-5;
+    Y2B[i * N + i] = (Y2B[i * N + i] ?? 0) - 1e-5;
+  }
+
+  // If explicit .seq data is present, assemble exact zero-sequence network from branches, transformers (connection codes), and shunts
+  if (seqCase) {
+    const seqBranchMap = new Map<string, (typeof seqCase.branches)[number]>();
+    for (const sb of seqCase.branches) {
+      const ckt = sb.ckt.trim() || "1";
+      seqBranchMap.set(`${sb.i}_${sb.j}_${ckt}`, sb);
+      seqBranchMap.set(`${sb.j}_${sb.i}_${ckt}`, sb);
+    }
+
+    for (const br of psseCase.branches) {
+      if (br.st === 0) continue;
+      const iIdx = netlist.busIndices.get(br.i);
+      const jIdx = netlist.busIndices.get(br.j);
+      if (iIdx === undefined || jIdx === undefined) continue;
+      const ckt = br.ckt.trim() || "1";
+      const sb = seqBranchMap.get(`${br.i}_${br.j}_${ckt}`);
+      const r0 = sb ? sb.r0 : br.r * 2.5;
+      const x0 = sb && Math.abs(sb.x0) > 1e-7 ? sb.x0 : br.x * 2.5;
+      const b0 = sb ? sb.b0 : br.b;
+      const z0Sq = Math.max(1e-10, r0 * r0 + x0 * x0);
+      const g0 = r0 / z0Sq;
+      const bSeries0 = -x0 / z0Sq;
+      const ggi = sb ? sb.gi0 : 0;
+      const bbi = sb ? sb.bi0 : 0;
+      const ggj = sb ? sb.gj0 : 0;
+      const bbj = sb ? sb.bj0 : 0;
+
+      Y0G[iIdx * N + iIdx] = (Y0G[iIdx * N + iIdx] ?? 0) + g0 + ggi;
+      Y0B[iIdx * N + iIdx] = (Y0B[iIdx * N + iIdx] ?? 0) + bSeries0 + 0.5 * b0 + bbi;
+      Y0G[jIdx * N + jIdx] = (Y0G[jIdx * N + jIdx] ?? 0) + g0 + ggj;
+      Y0B[jIdx * N + jIdx] = (Y0B[jIdx * N + jIdx] ?? 0) + bSeries0 + 0.5 * b0 + bbj;
+      Y0G[iIdx * N + jIdx] = (Y0G[iIdx * N + jIdx] ?? 0) - g0;
+      Y0B[iIdx * N + jIdx] = (Y0B[iIdx * N + jIdx] ?? 0) - bSeries0;
+      Y0G[jIdx * N + iIdx] = (Y0G[jIdx * N + iIdx] ?? 0) - g0;
+      Y0B[jIdx * N + iIdx] = (Y0B[jIdx * N + iIdx] ?? 0) - bSeries0;
+    }
+
+    const seqXfmrMap = new Map<string, (typeof seqCase.transformers)[number]>();
+    for (const st of seqCase.transformers) {
+      const ckt = st.ckt.trim() || "1";
+      seqXfmrMap.set(`${st.i}_${st.j}_${ckt}`, st);
+      seqXfmrMap.set(`${st.j}_${st.i}_${ckt}`, st);
+    }
+
+    for (const xf of psseCase.transformers) {
+      if (xf.stat === 0) continue;
+      const iIdx = netlist.busIndices.get(xf.i);
+      const jIdx = netlist.busIndices.get(xf.j);
+      if (iIdx === undefined || jIdx === undefined) continue;
+      const ckt = xf.ckt.trim() || "1";
+      const st = seqXfmrMap.get(`${xf.i}_${xf.j}_${ckt}`);
+      const cc = st ? st.cc : 1; // Default 1 = Yg-Yg pass-through
+      const r0 = (st ? st.r01 : xf.r12) + (st ? 3.0 * st.rg1 : 0);
+      const x0 = (st && Math.abs(st.x01) > 1e-7 ? st.x01 : xf.x12) + (st ? 3.0 * st.xg1 : 0);
+      const z0Sq = Math.max(1e-10, r0 * r0 + x0 * x0);
+      const g0 = r0 / z0Sq;
+      const b0 = -x0 / z0Sq;
+
+      if (cc === 1) {
+        // Grounded Wye - Grounded Wye (series pass-through)
+        Y0G[iIdx * N + iIdx] = (Y0G[iIdx * N + iIdx] ?? 0) + g0;
+        Y0B[iIdx * N + iIdx] = (Y0B[iIdx * N + iIdx] ?? 0) + b0;
+        Y0G[jIdx * N + jIdx] = (Y0G[jIdx * N + jIdx] ?? 0) + g0;
+        Y0B[jIdx * N + jIdx] = (Y0B[jIdx * N + jIdx] ?? 0) + b0;
+        Y0G[iIdx * N + jIdx] = (Y0G[iIdx * N + jIdx] ?? 0) - g0;
+        Y0B[iIdx * N + jIdx] = (Y0B[iIdx * N + jIdx] ?? 0) - b0;
+        Y0G[jIdx * N + iIdx] = (Y0G[jIdx * N + iIdx] ?? 0) - g0;
+        Y0B[jIdx * N + iIdx] = (Y0B[jIdx * N + iIdx] ?? 0) - b0;
+      } else if (cc === 2) {
+        // Grounded Wye (Bus i) - Delta (Bus j): zero-sequence shunt to ground at Bus i, open at Bus j
+        Y0G[iIdx * N + iIdx] = (Y0G[iIdx * N + iIdx] ?? 0) + g0;
+        Y0B[iIdx * N + iIdx] = (Y0B[iIdx * N + iIdx] ?? 0) + b0;
+      } else if (cc === 3) {
+        // Delta (Bus i) - Grounded Wye (Bus j): zero-sequence shunt to ground at Bus j, open at Bus i
+        Y0G[jIdx * N + jIdx] = (Y0G[jIdx * N + jIdx] ?? 0) + g0;
+        Y0B[jIdx * N + jIdx] = (Y0B[jIdx * N + jIdx] ?? 0) + b0;
+      }
+      // cc >= 4 (ungrounded Wye or Delta-Delta): blocked zero-sequence path
+    }
+
+    for (const sh of seqCase.shunts) {
+      const idx = netlist.busIndices.get(sh.i);
+      if (idx === undefined) continue;
+      Y0G[idx * N + idx] = (Y0G[idx * N + idx] ?? 0) + sh.g0 / sbase;
+      Y0B[idx * N + idx] = (Y0B[idx * N + idx] ?? 0) + sh.b0 / sbase;
+    }
+  }
+
+  const seqGenMap = new Map<string, NonNullable<typeof seqCase>["generators"][number]>();
+  if (seqCase) {
+    for (const sg of seqCase.generators) {
+      const cleanId = sg.id.trim() || "1";
+      seqGenMap.set(`${sg.i}_${cleanId}`, sg);
+      seqGenMap.set(String(sg.i), sg);
+    }
   }
 
   for (const g of psseCase.generators) {
@@ -1783,10 +2215,15 @@ export function calculateShortCircuit(
     if (busIdx === undefined) continue;
     const cleanId = g.id.trim() || "1";
     const dyrGen = dyrCase?.generatorsByBusId.get(`${g.i}_${cleanId}`) ?? dyrCase?.generatorsByBusId.get(String(g.i));
+    const seqGen = seqGenMap.get(`${g.i}_${cleanId}`) ?? seqGenMap.get(String(g.i));
     const mbaseRatio = g.mbase > 0 ? sbase / g.mbase : 1.0;
-    const rawXdpp = dyrGen?.namedParams["Xdpp"] ?? dyrGen?.namedParams["Xdp"] ?? (g.zx > 0 && g.zx < 1.0 ? g.zx : 0.18);
+
+    const rawXdpp =
+      seqGen && seqGen.zxpos > 0
+        ? seqGen.zxpos
+        : (dyrGen?.namedParams["Xdpp"] ?? dyrGen?.namedParams["Xdp"] ?? (g.zx > 0 && g.zx < 1.0 ? g.zx : 0.18));
     const xdpp = Math.max(0.05, rawXdpp * mbaseRatio);
-    const ra = Math.max(0.002, (g.zr > 0 ? g.zr : 0.005) * mbaseRatio);
+    const ra = Math.max(0.002, (seqGen && seqGen.zrpos > 0 ? seqGen.zrpos : g.zr > 0 ? g.zr : 0.005) * mbaseRatio);
     const zSq = ra * ra + xdpp * xdpp;
     const yg1 = ra / zSq;
     const yb1 = -xdpp / zSq;
@@ -1794,20 +2231,70 @@ export function calculateShortCircuit(
     Y1G[busIdx * N + busIdx] = (Y1G[busIdx * N + busIdx] ?? 0) + yg1;
     Y1B[busIdx * N + busIdx] = (Y1B[busIdx * N + busIdx] ?? 0) + yb1;
 
-    // Grounded generator step-up zero-sequence admittance
-    const x0 = Math.max(0.04, 0.5 * xdpp);
-    const z0Sq = ra * ra + x0 * x0;
-    Y0G[busIdx * N + busIdx] = (Y0G[busIdx * N + busIdx] ?? 0) + ra / z0Sq;
+    // Negative-sequence generator admittance
+    const x2 = seqGen && seqGen.zxneg > 0 ? Math.max(0.04, seqGen.zxneg * mbaseRatio) : xdpp;
+    const r2 = seqGen && seqGen.zrneg > 0 ? Math.max(0.002, seqGen.zrneg * mbaseRatio) : ra;
+    if (Math.abs(x2 - xdpp) > 1e-6 || Math.abs(r2 - ra) > 1e-6) {
+      hasDistinctY2 = true;
+    }
+    const z2Sq = r2 * r2 + x2 * x2;
+    Y2G[busIdx * N + busIdx] = (Y2G[busIdx * N + busIdx] ?? 0) + r2 / z2Sq;
+    Y2B[busIdx * N + busIdx] = (Y2B[busIdx * N + busIdx] ?? 0) - x2 / z2Sq;
+
+    // Zero-sequence generator + neutral grounding impedance Z0_total = (zr0 + 3*zrg) + j(zx0 + 3*zxg)
+    const r0 = seqGen ? Math.max(0.001, (seqGen.zr0 + 3.0 * seqGen.zrg) * mbaseRatio) : ra;
+    const x0 =
+      seqGen && seqGen.zx0 > 0
+        ? Math.max(0.02, (seqGen.zx0 + 3.0 * seqGen.zxg) * mbaseRatio)
+        : Math.max(0.04, 0.5 * xdpp);
+    const z0Sq = r0 * r0 + x0 * x0;
+    Y0G[busIdx * N + busIdx] = (Y0G[busIdx * N + busIdx] ?? 0) + r0 / z0Sq;
     Y0B[busIdx * N + busIdx] = (Y0B[busIdx * N + busIdx] ?? 0) - x0 / z0Sq;
   }
 
-  // Helper to compute diagonal driving-point impedance Z_kk = (Y^-1)_kk for bus k
-  const computeTheveninImpedance = (YG: Float64Array, YB: Float64Array, busIdx: number): { r: number; x: number } => {
-    const dim = 2 * N;
+  // Factorize each 2N x 2N sequence network once using Gilbert-Peierls Sparse LU + AMD ordering
+  const dim = 2 * N;
+  const factorizeSequenceNetwork = (YG: Float64Array, YB: Float64Array) => {
+    const builder = new SparseTripletBuilder(dim, dim, Math.max(32, 16 * N));
+    for (let i = 0; i < N; i++) {
+      for (let k = 0; k < N; k++) {
+        const g = YG[i * N + k]!;
+        const b = YB[i * N + k]!;
+        if (Math.abs(g) > 1e-15 || Math.abs(b) > 1e-15) {
+          builder.add(2 * i, 2 * k, g);
+          builder.add(2 * i, 2 * k + 1, -b);
+          builder.add(2 * i + 1, 2 * k, b);
+          builder.add(2 * i + 1, 2 * k + 1, g);
+        }
+      }
+    }
+    const ccs = builder.toCCS();
+    return sparseLuFactor(ccs, { allowPerturbation: true, useAmdOrdering: dim >= 48 });
+  };
+
+  const lu1 = factorizeSequenceNetwork(Y1G, Y1B);
+  const lu2 = hasDistinctY2 ? factorizeSequenceNetwork(Y2G, Y2B) : lu1;
+  const lu0 = factorizeSequenceNetwork(Y0G, Y0B);
+  const rhsScratch = new Float64Array(dim);
+  const solScratch = new Float64Array(dim);
+
+  const computeTheveninImpedance = (
+    lu: ReturnType<typeof sparseLuFactor>,
+    YG: Float64Array,
+    YB: Float64Array,
+    busIdx: number,
+  ): { r: number; x: number } => {
+    if (lu) {
+      rhsScratch.fill(0);
+      rhsScratch[2 * busIdx] = 1.0;
+      sparseLuSolve(lu, rhsScratch, solScratch);
+      const r = Math.max(1e-5, solScratch[2 * busIdx] ?? 0.01);
+      const x = Math.max(1e-4, solScratch[2 * busIdx + 1] ?? 0.1);
+      return { r, x };
+    }
     const A = new Float64Array(dim * dim);
     const rhs = new Float64Array(dim);
-    rhs[2 * busIdx] = 1.0; // Inject 1 + j0 p.u. current at busIdx
-
+    rhs[2 * busIdx] = 1.0;
     for (let i = 0; i < N; i++) {
       for (let k = 0; k < N; k++) {
         const g = YG[i * N + k]!;
@@ -1818,7 +2305,6 @@ export function calculateShortCircuit(
         A[(2 * i + 1) * dim + (2 * k + 1)] = g;
       }
     }
-
     solveLinearSystem(A, rhs, dim);
     const r = Math.max(1e-5, rhs[2 * busIdx] ?? 0.01);
     const x = Math.max(1e-4, rhs[2 * busIdx + 1] ?? 0.1);
@@ -1840,9 +2326,9 @@ export function calculateShortCircuit(
     // Base current in kA: I_base = S_base(MVA) / (sqrt(3) * V_base(kV))
     const iBaseKa = sbase / (Math.SQRT2 * Math.sqrt(1.5) * baseKv);
 
-    const z1 = computeTheveninImpedance(Y1G, Y1B, i);
-    const z2 = z1; // Negative-sequence impedance equals subtransient positive-sequence
-    const z0 = computeTheveninImpedance(Y0G, Y0B, i);
+    const z1 = computeTheveninImpedance(lu1, Y1G, Y1B, i);
+    const z2 = hasDistinctY2 ? computeTheveninImpedance(lu2, Y2G, Y2B, i) : z1;
+    const z0 = computeTheveninImpedance(lu0, Y0G, Y0B, i);
 
     const z1Mag = Math.hypot(z1.r, z1.x);
     const z12Mag = Math.hypot(z1.r + z2.r, z1.x + z2.x);

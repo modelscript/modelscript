@@ -222,6 +222,19 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
       if (arena.getExprLeft(exprId) >= 0) collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
       collectArenaExprDeps(arena, arena.getExprRight(exprId), deps, excludeDer);
       break;
+    case ExprKind.TensorSlice:
+      collectArenaExprDeps(arena, arena.getExprData1(exprId), deps, excludeDer);
+      collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
+      break;
+    case ExprKind.TensorBroadcast:
+    case ExprKind.TensorReduce:
+    case ExprKind.TensorMap:
+      collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
+      break;
+    case ExprKind.TensorMatMul:
+      collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
+      collectArenaExprDeps(arena, arena.getExprRight(exprId), deps, excludeDer);
+      break;
     // Literals, Colon, Object: no variable dependencies
   }
 }
@@ -726,6 +739,10 @@ export function performBltTransformationArena(
             }
           }
         }
+      }
+
+      if (typeof (arena as any).syncWasmStringPool === "function") {
+        (arena as any).syncWasmStringPool();
       }
 
       resPtr = arena.exports.computeBltFromArena(arena.ptr, maskPtr, parameterVars ? 1 : 0, stateVars ? 1 : 0);

@@ -29,6 +29,8 @@ export * from "./analysis/wasm_stochastic_barrier.js";
 export * from "./analysis/wasm_taylor_model.js";
 export * from "./analysis/wasm_zonotope.js";
 export * from "./analysis/wasm_zonotope_reach.js";
+export * from "./autodiff/wasm-adjoint-synthesizer.js";
+export * from "./autodiff/wasm-cfg.js";
 export * from "./autodiff/wasm_event_relaxer.js";
 export * from "./autodiff/wasm_fused_kernel.js";
 export * from "./autodiff/wasm_isolation.js";
@@ -55,7 +57,7 @@ export * from "./formal/hc4_contractor.js";
 export * from "./formal/ic3_engine.js";
 export * from "./formal/inductive_prover.js";
 export * from "./formal/nlsat_solver.js";
-export * from "./formal/oracles/safety_theory_oracle.js";
+export * from "./formal/oracles/index.js";
 export * from "./formal/proof_manifest.js";
 export * from "./formal/region_decomposer.js";
 export * from "./formal/relational_verifier.js";
@@ -112,6 +114,7 @@ export {
   type VerificationResult,
   type SimulationResult as VerifierSimulationResult,
 } from "./simulation/wasm_verifier.js";
+export * from "./solvers/krylov.js";
 export * from "./solvers/solvers_bridge.js";
 export * from "./solvers/sparse_lu.js";
 export * from "./solvers/wasm_bdf.js";
@@ -172,4 +175,6 @@ export * from "./formal/dae/taylor_domain.js";
 export * from "./formal/multidomain_coordinator.js";
 export * from "./formal/oracles/index.js";
 export * from "./formal/theory_coordinator.js";
+export * from "./math/double64.js";
+export * from "./solvers/distributed-krylov.js";
 export * from "./util/snowflake.js";

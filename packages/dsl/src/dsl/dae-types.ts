@@ -66,6 +66,21 @@ export enum ExprKind {
   Comprehension = 18,
   PartialFunc = 19,
   Object = 20,
+  TensorSlice = 21,
+  TensorBroadcast = 22,
+  TensorMatMul = 23,
+  TensorReduce = 24,
+  TensorMap = 25,
+}
+
+/** Reduction operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.TensorReduce`. */
+export enum TensorReduceOp {
+  Sum = 0,
+  Product = 1,
+  Max = 2,
+  Min = 3,
+  Mean = 4,
+  Norm2 = 5,
 }
 
 /** Binary operator kind stored in `EXPR_DATA1` for `ExprKind.Binary` nodes. */

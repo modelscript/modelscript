@@ -10,6 +10,13 @@
 import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { EpanetNetwork } from "../types.js";
 
+export interface EpanetPddOptions {
+  enabled: boolean;
+  pMin?: number | undefined; // Minimum pressure for zero flow, default 0 m
+  pReq?: number | undefined; // Required service pressure, default 20 m
+  exponent?: number | undefined; // Pressure exponent alpha, default 0.5
+}
+
 export interface EpanetHydraulicResult {
   converged: boolean;
   iterations: number;
@@ -19,6 +26,7 @@ export interface EpanetHydraulicResult {
   linkFlows: Map<string, number>; // Flow rate Q [L/s or SI unit]
   linkVelocities: Map<string, number>; // Velocity v [m/s]
   linkHeadLosses: Map<string, number>; // Head loss delta H [m]
+  nodeActualDemands?: Map<string, number> | undefined; // Actual delivered demand under PDD [L/s]
 }
 
 export interface EpanetSolverOptions {
@@ -26,6 +34,11 @@ export interface EpanetSolverOptions {
   tolerance?: number | undefined;
   /** Whether to execute Cholesky linear solves via native WebAssembly kernel. Default: false. */
   useWasm?: boolean | undefined;
+  demandOverrides?: Map<string, number> | undefined;
+  tankLevels?: Map<string, number> | undefined;
+  linkStatusOverrides?: Map<string, "OPEN" | "CLOSED"> | undefined;
+  pumpSpeedOverrides?: Map<string, number> | undefined;
+  pdd?: EpanetPddOptions | undefined;
 }
 
 interface WasmCholeskyExports {
@@ -78,11 +91,29 @@ export function solveHydraulics(
   const wasmExports: WasmCholeskyExports | null = useWasm
     ? (getDefaultWasmExports() as WasmCholeskyExports | null)
     : null;
+
+  const linkStatusOverrides = typeof options === "object" ? options?.linkStatusOverrides : undefined;
+  const pumpSpeedOverrides = typeof options === "object" ? options?.pumpSpeedOverrides : undefined;
+  const demandOverrides = typeof options === "object" ? options?.demandOverrides : undefined;
+  const tankLevels = typeof options === "object" ? options?.tankLevels : undefined;
+  const pddOpts = typeof options === "object" ? options?.pdd : undefined;
+  const isPdd = pddOpts?.enabled ?? net.options?.demandModel === "PDD";
+  const pddMinP = pddOpts?.pMin ?? net.options?.pddMinPressure ?? 0.0;
+  const pddReqP = pddOpts?.pReq ?? net.options?.pddReqPressure ?? 20.0;
+  const pddExp = pddOpts?.exponent ?? net.options?.pddPressureExponent ?? 0.5;
+
+  const getPipeStatus = (p: { id: string; status: string }) =>
+    linkStatusOverrides?.get(p.id.toLowerCase()) ?? linkStatusOverrides?.get(p.id) ?? p.status;
+  const getPumpStatus = (p: { id: string; status: string }) =>
+    linkStatusOverrides?.get(p.id.toLowerCase()) ?? linkStatusOverrides?.get(p.id) ?? p.status;
+  const getValveStatus = (v: { id: string }) =>
+    linkStatusOverrides?.get(v.id.toLowerCase()) ?? linkStatusOverrides?.get(v.id) ?? "OPEN";
+
   const junctions = net.junctions;
   const reservoirs = net.reservoirs;
-  const openPipes = net.pipes.filter((p) => p.status !== "CLOSED");
-  const openPumps = (net.pumps ?? []).filter((p) => p.status !== "CLOSED");
-  const openValves = net.valves ?? [];
+  const openPipes = net.pipes.filter((p) => getPipeStatus(p) !== "CLOSED");
+  const openPumps = (net.pumps ?? []).filter((p) => getPumpStatus(p) !== "CLOSED");
+  const openValves = (net.valves ?? []).filter((v) => getValveStatus(v) !== "CLOSED");
 
   const numJunctions = junctions.length;
   if (numJunctions === 0) {
@@ -140,7 +171,9 @@ export function solveHydraulics(
   }
 
   for (const pump of openPumps) {
-    const speed = Math.max(0.1, pump.speed ?? 1.0);
+    const customSpeed =
+      pumpSpeedOverrides?.get(pump.id.toLowerCase()) ?? pumpSpeedOverrides?.get(pump.id) ?? pump.speed;
+    const speed = Math.max(0.1, customSpeed ?? 1.0);
     let h0 = 50.0;
     let rPump = 0.005;
     let nu = 2.0;
@@ -226,14 +259,19 @@ export function solveHydraulics(
 
   const resMap = new Map<string, number>();
   reservoirs.forEach((r) => resMap.set(r.id.toLowerCase(), r.totalHead));
-  net.tanks.forEach((t) => resMap.set(t.id.toLowerCase(), t.elevation + t.initLevel));
+  net.tanks.forEach((t) => {
+    const customLvl = tankLevels?.get(t.id.toLowerCase()) ?? tankLevels?.get(t.id) ?? t.initLevel;
+    resMap.set(t.id.toLowerCase(), t.elevation + customLvl);
+  });
 
   // Determine nominal head for initialization
   let refHead = 100.0;
   if (reservoirs.length > 0) {
     refHead = reservoirs[0]!.totalHead;
   } else if (net.tanks.length > 0) {
-    refHead = net.tanks[0]!.elevation + net.tanks[0]!.initLevel;
+    const t0 = net.tanks[0]!;
+    const customLvl0 = tankLevels?.get(t0.id.toLowerCase()) ?? tankLevels?.get(t0.id) ?? t0.initLevel;
+    refHead = t0.elevation + customLvl0;
   }
 
   // Unknown heads vector H (dimension numJunctions)
@@ -256,7 +294,9 @@ export function solveHydraulics(
   // Demands vector q_demand (L/s)
   const qDemand = new Float64Array(numJunctions);
   for (let j = 0; j < numJunctions; j++) {
-    qDemand[j] = junctions[j]!.demand;
+    const junc = junctions[j]!;
+    const customDem = demandOverrides?.get(junc.id.toLowerCase()) ?? demandOverrides?.get(junc.id) ?? junc.demand;
+    qDemand[j] = customDem;
   }
 
   let converged = false;
@@ -271,6 +311,7 @@ export function solveHydraulics(
   const M_flat = new Float64Array(numJunctions * numJunctions);
   const LScratch = new Float64Array(numJunctions * numJunctions);
   const yScratch = new Float64Array(numJunctions);
+  const nodeActualDemandArr = new Float64Array(numJunctions);
 
   const computeLinkHydraulics = (
     lnk: HydraulicLink,
@@ -394,9 +435,32 @@ export function solveHydraulics(
     // 2. Build Junction Matrix M = A12^T * A11_inv * A12 (flat numJunctions x numJunctions)
     M_flat.fill(0);
 
-    // Initial RHS = -qDemand
+    // Initial RHS and diagonal of M: demand contribution (DDA or PDD)
     for (let j = 0; j < numJunctions; j++) {
-      RHS[j] = -qDemand[j]!;
+      const baseDem = qDemand[j]!;
+      if (!isPdd || baseDem <= 0) {
+        RHS[j] = -baseDem;
+        nodeActualDemandArr[j] = baseDem;
+      } else {
+        const junc = junctions[j]!;
+        const hCurr = H[j]!;
+        const pCurr = hCurr - junc.elevation;
+        if (pCurr >= pddReqP) {
+          RHS[j] = -baseDem;
+          nodeActualDemandArr[j] = baseDem;
+        } else if (pCurr <= pddMinP) {
+          RHS[j] = 0.0;
+          nodeActualDemandArr[j] = 0.0;
+        } else {
+          const ratio = (pCurr - pddMinP) / (pddReqP - pddMinP);
+          const actDem = baseDem * Math.pow(ratio, pddExp);
+          const dq_dh = ((baseDem * pddExp) / (pddReqP - pddMinP)) * Math.pow(Math.max(1e-6, ratio), pddExp - 1.0);
+          nodeActualDemandArr[j] = actDem;
+          const idx = j * numJunctions + j;
+          M_flat[idx] = (M_flat[idx] ?? 0) + dq_dh;
+          RHS[j] = -actDem + dq_dh * hCurr;
+        }
+      }
     }
 
     for (let p = 0; p < numLinks; p++) {
@@ -541,6 +605,11 @@ export function solveHydraulics(
     linkHeadLosses.set(lnk.id, hLoss);
   }
 
+  const nodeActualDemands = new Map<string, number>();
+  for (let j = 0; j < numJunctions; j++) {
+    nodeActualDemands.set(junctions[j]!.id, nodeActualDemandArr[j] ?? qDemand[j]!);
+  }
+
   return {
     converged,
     iterations: iter,
@@ -550,6 +619,7 @@ export function solveHydraulics(
     linkFlows,
     linkVelocities,
     linkHeadLosses,
+    nodeActualDemands,
   };
 }
 

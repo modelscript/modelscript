@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
-import { epanetToModelica, lintEpanet, lowerEpanetToDae, parseInp, solveHydraulics } from "@modelscript/epanet";
+import {
+  epanetToModelica,
+  lintEpanet,
+  lowerEpanetToDae,
+  parseInp,
+  performAwwaM36WaterAudit,
+  solveExtendedPeriod,
+  solveHydraulics,
+  solveOptimalPumpScheduling,
+  solvePddHydraulics,
+  solveWaterHammerMoc,
+  solveWaterQuality,
+} from "@modelscript/epanet";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -12,8 +23,21 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: inspect | lint | solve | to-modelica | to-dae",
-        choices: ["inspect", "lint", "solve", "to-modelica", "to-dae"],
+        describe:
+          "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | to-modelica | to-dae",
+        choices: [
+          "inspect",
+          "lint",
+          "solve",
+          "eps",
+          "pdd",
+          "surge",
+          "audit",
+          "ops",
+          "quality",
+          "to-modelica",
+          "to-dae",
+        ],
       })
       .positional("files", {
         type: "string",
@@ -113,6 +137,134 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
           for (const [linkId, flow] of res.linkFlows) {
             console.log(`  Link '${linkId}': Flow = ${flow.toFixed(3)} LPS`);
           }
+          break;
+        }
+
+        case "eps": {
+          const eps = solveExtendedPeriod(net);
+          console.log(`\n=== Extended Period Simulation (EPS) for ${net.title ?? path.basename(file)} ===`);
+          console.log(`Duration: ${eps.steps.length} hydraulic steps`);
+          console.log(`Min System Pressure: ${eps.minSystemPressure.toFixed(2)} m`);
+          console.log(`Max System Pressure: ${eps.maxSystemPressure.toFixed(2)} m`);
+          console.log(`Total Pumping Energy: ${eps.totalEnergyKwh.toFixed(2)} kWh`);
+          if (eps.criticalJunctions.length > 0) {
+            console.log(`Critical Low Pressure Nodes: ${eps.criticalJunctions.join(", ")}`);
+          }
+          break;
+        }
+
+        case "pdd": {
+          const pdd = solvePddHydraulics(net);
+          console.log(`\n=== Pressure-Dependent Demand (PDD) Evaluation for ${net.title ?? path.basename(file)} ===`);
+          console.log(`Global Satisfaction: ${(pdd.satisfactionRatio * 100).toFixed(1)}%`);
+          console.log(`Required Total Demand:  ${pdd.requiredDemandLps.toFixed(2)} LPS`);
+          console.log(`Delivered Total Demand: ${pdd.deliveredDemandLps.toFixed(2)} LPS`);
+          console.log(`Deficit / Shortfall:    ${pdd.unsuppliedDemandLps.toFixed(2)} LPS`);
+          if (pdd.unservedNodes.length > 0) {
+            console.log(`Unserved Nodes (${pdd.unservedNodes.length}): ${pdd.unservedNodes.slice(0, 10).join(", ")}`);
+          } else {
+            console.log(`✔ All nodes received 100% required demand.`);
+          }
+          break;
+        }
+
+        case "surge": {
+          const pipe = net.pipes[0] ?? {
+            id: "MAIN_TRANSMISSION",
+            length: 1000.0,
+            diameter: 300.0,
+            roughness: 100,
+            node1: "N1",
+            node2: "N2",
+          };
+          const hyd = solveHydraulics(net);
+          const flowLps = Math.abs(hyd.linkFlows.get(pipe.id) ?? 50.0);
+          const surge = solveWaterHammerMoc(
+            {
+              id: pipe.id,
+              lengthM: pipe.length,
+              diameterM: pipe.diameter / 1000.0,
+              waveSpeedMps: 1200.0,
+            },
+            {
+              flowM3s: flowLps / 1000.0,
+              headUpstreamM: hyd.nodeHeads.get(pipe.node1) ?? 50.0,
+              headDownstreamM: hyd.nodeHeads.get(pipe.node2) ?? 45.0,
+            },
+            {
+              type: "VALVE_CLOSURE",
+              durationSeconds: 0.5,
+            },
+          );
+          console.log(
+            `\n=== Method of Characteristics (MOC) Water Hammer Surge for ${net.title ?? path.basename(file)} ===`,
+          );
+          console.log(`Pipe Evaluated:     ${pipe.id} (L=${pipe.length} m, D=${pipe.diameter} mm)`);
+          console.log(
+            `Max System Head:    ${surge.maxHeadM.toFixed(2)} m (Joukowsky Surge dH = ${surge.joukowskySurgeM.toFixed(2)} m)`,
+          );
+          console.log(`Min System Head:    ${surge.minHeadM.toFixed(2)} m`);
+          console.log(`Max Pressure:       ${surge.maxPressurePsi.toFixed(2)} psi`);
+          console.log(
+            `Cavitation Risk:    ${surge.cavitationOccurred ? "YES (Vapor column separation detected)" : "NO"}`,
+          );
+          console.log(`Fundamental Period: ${surge.fundamentalPeriodSeconds.toFixed(3)} s`);
+          break;
+        }
+
+        case "audit": {
+          let totalBaseDemandLps = 0;
+          for (const j of net.junctions) {
+            totalBaseDemandLps += Math.max(0, j.demand);
+          }
+          const annualDemandM3 = totalBaseDemandLps * 0.001 * 86400 * 365;
+          const inputVolume = Math.max(1000, annualDemandM3 * 1.15);
+          const audit = performAwwaM36WaterAudit(net, {
+            systemInputVolumeM3Year: inputVolume,
+            billedMeteredM3Year: annualDemandM3 * 0.85,
+            serviceConnectionsCount: Math.max(100, net.junctions.length * 50),
+          });
+          console.log(`\n=== AWWA M36 Water Audit & Loss Control for ${net.title ?? path.basename(file)} ===`);
+          console.log(`Infrastructure Leakage Index (ILI): ${audit.ili.toFixed(2)} (Band ${audit.performanceBand})`);
+          console.log(
+            `Non-Revenue Water:                  ${audit.nonRevenueWaterPct.toFixed(1)}% (${(audit.nonRevenueWaterM3Year / 1e6).toFixed(3)} Mm³/yr)`,
+          );
+          console.log(
+            `Real Losses:                        ${(audit.realLossesM3Year / 1e6).toFixed(3)} Mm³/yr (Cost: $${(audit.financialImpact.realLossCostUsd / 1e6).toFixed(2)}M/yr)`,
+          );
+          console.log(
+            `Apparent Losses:                    ${(audit.apparentLossesM3Year / 1e6).toFixed(3)} Mm³/yr (Lost Revenue: $${(audit.financialImpact.apparentLossRevenueLostUsd / 1e6).toFixed(2)}M/yr)`,
+          );
+          break;
+        }
+
+        case "ops": {
+          const ops = solveOptimalPumpScheduling(net);
+          console.log(`\n=== Optimal Pump Scheduling (OPS) for ${net.title ?? path.basename(file)} ===`);
+          console.log(
+            `Total Energy:     ${ops.totalEnergyKwh.toFixed(1)} kWh (Baseline: ${ops.baselineEnergyKwh.toFixed(1)} kWh)`,
+          );
+          console.log(`Total Cost:       $${ops.totalCost.toFixed(2)} (Baseline: $${ops.baselineCost.toFixed(2)})`);
+          console.log(`Cost Savings:     ${ops.costSavingsPct.toFixed(1)}%`);
+          console.log(
+            `Peak Power Draw:  ${ops.peakPowerKw.toFixed(1)} kW (Demand Charge: $${ops.demandChargeCost.toFixed(2)})`,
+          );
+          console.log(`Summary:          ${ops.summary}`);
+          break;
+        }
+
+        case "quality": {
+          const qual = solveWaterQuality(net);
+          console.log(
+            `\n=== Water Quality Simulation (Chlorine Residual & Decay) for ${net.title ?? path.basename(file)} ===`,
+          );
+          console.log(`Parameter:             ${qual.parameter}`);
+          console.log(`System Average:        ${qual.systemAverageValue.toFixed(2)} mg/L`);
+          console.log(`Min System Residual:   ${qual.minSystemResidual.toFixed(2)} mg/L`);
+          if (qual.criticalNodes.length > 0) {
+            console.log(`Critical Nodes Below 0.2 mg/L: ${qual.criticalNodes.join(", ")}`);
+          }
+          console.log(`Summary:               ${qual.summary}`);
           break;
         }
 

@@ -1,0 +1,47 @@
+{
+  "name": "@modelscript/fiber",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./catalog": {
+      "types": "./dist/src/catalog/tia-598.d.ts",
+      "default": "./dist/src/catalog/tia-598.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/fiber-gis-parser.d.ts",
+      "default": "./dist/src/parser/fiber-gis-parser.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "preview",
+    "category": "language"
+  }
+}

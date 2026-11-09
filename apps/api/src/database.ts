@@ -72,8 +72,24 @@ import {
 } from "./services/mailer.js";
 import { extractCitationUrnsFromText, normalizeCitationUrn, type ScholarlyWorkRecord } from "./services/openalex.js";
 import { getSpaceDomainPreset } from "./services/spaces/domain-presets.js";
-import { ensureSpaceGitVaultInitialized, relocateSpaceGitVault } from "./services/spaces/space-git-vault.js";
+import { computeEcoBlastRadius } from "./services/spaces/eco-blast-radius-service.js";
+import { computeEcoBomDelta } from "./services/spaces/eco-bom-service.js";
+import { generateAasxPackage, generateDdpContainer } from "./services/spaces/eco-packaging-service.js";
+import { computeEcoSimulationVerification } from "./services/spaces/eco-simulation-gate-service.js";
+import {
+  createSpaceGitBranch,
+  ensureSpaceGitVaultInitialized,
+  getSpaceGitDiff,
+  mergeSpaceGitBranches,
+  relocateSpaceGitVault,
+  tagSpaceGitCommit,
+} from "./services/spaces/space-git-vault.js";
 import { WebPushService } from "./services/web-push-service.js";
+import {
+  discoverWorkflowsInRepo,
+  executeWorkflowManifest,
+  type WorkflowRunResult,
+} from "./services/workflows/index.js";
 import { S3StorageDriver } from "./storage/s3-driver.js";
 import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint } from "./util/email-filter.js";
 import { PERSONA_SEED_TOPICS, extractHashtags } from "./util/extract-topics.js";
@@ -107,6 +123,7 @@ export type {
   UserArchiveData,
   UserFederationInfo,
   UserRow,
+  WorkflowRunResult,
 };
 
 export function normalizeUtcTimestamp(ts?: string | number | Date | null): string {
@@ -496,6 +513,27 @@ export interface SpaceEcoApprovalRecord {
   created_at: string;
 }
 
+export interface SpaceWorkflowRunRecord {
+  id: string;
+  space_id: string;
+  eco_id: string | null;
+  provider: "github" | "gitlab" | "ansatz";
+  workflow_file: string;
+  workflow_name: string;
+  trigger_event: string;
+  commit_sha: string | null;
+  ref: string | null;
+  status: "pending" | "running" | "passed" | "failed" | "cancelled";
+  conclusion: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number;
+  jobs: unknown[];
+  artifacts: unknown[];
+  summary: Record<string, unknown>;
+  logs: string;
+}
+
 export interface SpaceIssueRecord {
   id: string;
   space_id: string;
@@ -510,6 +548,11 @@ export interface SpaceIssueRecord {
   labels: string[];
   linked_pr_number: number | null;
   closed_at: string | null;
+  external_source?: "jira" | "github" | "gitlab" | "polarion" | null | undefined;
+  external_key?: string | null | undefined;
+  external_url?: string | null | undefined;
+  external_updated_at?: string | null | undefined;
+  sync_status?: "synced" | "pending_push" | "conflict" | undefined;
   comments?: SpaceIssueCommentRecord[];
   created_at: string;
   updated_at: string;
@@ -1394,6 +1437,30 @@ export class LibraryDatabase {
       }
     } catch {}
 
+    try {
+      const issueCols = (this.#db.prepare(`PRAGMA table_info(space_issues)`).all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      if (!issueCols.includes("external_source")) {
+        this.#db.exec(`ALTER TABLE space_issues ADD COLUMN external_source TEXT DEFAULT NULL;`);
+      }
+      if (!issueCols.includes("external_key")) {
+        this.#db.exec(`ALTER TABLE space_issues ADD COLUMN external_key TEXT DEFAULT NULL;`);
+      }
+      if (!issueCols.includes("external_url")) {
+        this.#db.exec(`ALTER TABLE space_issues ADD COLUMN external_url TEXT DEFAULT NULL;`);
+      }
+      if (!issueCols.includes("external_updated_at")) {
+        this.#db.exec(`ALTER TABLE space_issues ADD COLUMN external_updated_at TEXT DEFAULT NULL;`);
+      }
+      if (!issueCols.includes("sync_status")) {
+        this.#db.exec(`ALTER TABLE space_issues ADD COLUMN sync_status TEXT DEFAULT 'synced';`);
+      }
+      this.#db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_space_issues_external ON space_issues(space_id, external_source, external_key);`,
+      );
+    } catch {}
+
     // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
     // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
     try {
@@ -1657,11 +1724,17 @@ export class LibraryDatabase {
           labels_json          TEXT NOT NULL DEFAULT '[]',
           linked_pr_number     INTEGER,
           closed_at            TEXT,
+          external_source      TEXT DEFAULT NULL,
+          external_key         TEXT DEFAULT NULL,
+          external_url         TEXT DEFAULT NULL,
+          external_updated_at  TEXT DEFAULT NULL,
+          sync_status          TEXT DEFAULT 'synced',
           created_at           TEXT DEFAULT (datetime('now')),
           updated_at           TEXT DEFAULT (datetime('now')),
           CONSTRAINT uq_space_issue_num UNIQUE(space_id, issue_number)
         );
         CREATE INDEX IF NOT EXISTS idx_space_issues_space ON space_issues(space_id, status);
+        CREATE INDEX IF NOT EXISTS idx_space_issues_external ON space_issues(space_id, external_source, external_key);
 
         CREATE TABLE IF NOT EXISTS space_issue_comments (
           id         TEXT PRIMARY KEY,
@@ -1671,6 +1744,30 @@ export class LibraryDatabase {
           created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_space_issue_comments_issue ON space_issue_comments(issue_id);
+
+        CREATE TABLE IF NOT EXISTS space_workflow_runs (
+          id              TEXT PRIMARY KEY,
+          space_id        TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+          eco_id          TEXT REFERENCES space_eco_proposals(id) ON DELETE CASCADE,
+          provider        TEXT NOT NULL DEFAULT 'github',
+          workflow_file   TEXT NOT NULL,
+          workflow_name   TEXT NOT NULL,
+          trigger_event   TEXT NOT NULL DEFAULT 'eco',
+          commit_sha      TEXT,
+          ref             TEXT,
+          status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'passed', 'failed', 'cancelled')),
+          conclusion      TEXT,
+          started_at      TEXT DEFAULT (datetime('now')),
+          completed_at    TEXT,
+          duration_ms     INTEGER DEFAULT 0,
+          jobs_json       TEXT NOT NULL DEFAULT '[]',
+          artifacts_json  TEXT NOT NULL DEFAULT '[]',
+          summary_json    TEXT NOT NULL DEFAULT '{}',
+          logs_text       TEXT DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_space_workflow_runs_eco ON space_workflow_runs(eco_id);
+        CREATE INDEX IF NOT EXISTS idx_space_workflow_runs_space ON space_workflow_runs(space_id, status);
+        CREATE INDEX IF NOT EXISTS idx_space_workflow_runs_sha ON space_workflow_runs(space_id, commit_sha);
       `);
     } catch {}
   }
@@ -12378,7 +12475,7 @@ export class LibraryDatabase {
   }
 
   /**
-   * Save or update a library release record with content hash and signature.
+   * Save or update a library release record with content hash, signature, and optional OIDC CI/CD attestation.
    */
   saveLibraryRelease(release: {
     libraryName: string;
@@ -12386,14 +12483,27 @@ export class LibraryDatabase {
     contentHash: string;
     signature?: string | null | undefined;
     publishedBy?: number | null | undefined;
+    oidcIssuer?: string | null | undefined;
+    oidcSubject?: string | null | undefined;
+    oidcRepository?: string | null | undefined;
+    oidcWorkflowRef?: string | null | undefined;
+    oidcRunId?: string | null | undefined;
   }): void {
     const stmt = this.#db.prepare(`
-      INSERT INTO library_releases (library_name, library_version, content_hash, signature, published_by)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO library_releases (
+        library_name, library_version, content_hash, signature, published_by,
+        oidc_issuer, oidc_subject, oidc_repository, oidc_workflow_ref, oidc_run_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(library_name, library_version) DO UPDATE SET
         content_hash = excluded.content_hash,
         signature = excluded.signature,
         published_by = excluded.published_by,
+        oidc_issuer = excluded.oidc_issuer,
+        oidc_subject = excluded.oidc_subject,
+        oidc_repository = excluded.oidc_repository,
+        oidc_workflow_ref = excluded.oidc_workflow_ref,
+        oidc_run_id = excluded.oidc_run_id,
         published_at = datetime('now')
     `);
     stmt.run(
@@ -12402,8 +12512,46 @@ export class LibraryDatabase {
       release.contentHash,
       release.signature ?? null,
       release.publishedBy ?? null,
+      release.oidcIssuer ?? null,
+      release.oidcSubject ?? null,
+      release.oidcRepository ?? null,
+      release.oidcWorkflowRef ?? null,
+      release.oidcRunId ?? null,
     );
     this.invalidateLibraryDiscoveryCache();
+  }
+
+  /**
+   * Find or provision a virtual CI/CD bot user identity for keyless OIDC token publishing.
+   */
+  getOrCreateCiBotUser(info: { provider: string; repository: string; actor?: string | undefined }): UserRow {
+    const repoParts = info.repository.split("/");
+    const repoOwner = repoParts[0] || "ci";
+
+    // 1. Check if owner username exists
+    const existingUser = this.getUserByUsername(repoOwner);
+    if (existingUser) {
+      return existingUser;
+    }
+
+    // 2. Check if repository is linked to an existing account
+    const linked = this.getLinkedRepoById(info.repository);
+    if (linked) {
+      const linkedUser = this.getUserById(linked.user_id);
+      if (linkedUser) return linkedUser;
+    }
+
+    // 3. Find or create a dedicated CI publisher account
+    const botUsername = `${info.provider}-ci-bot`;
+    const botUser = this.getUserByUsername(botUsername);
+    if (botUser) return botUser;
+
+    const email = `${info.provider}-ci@modelscript.local`;
+    const created = this.createUser(botUsername, email, crypto.randomBytes(32).toString("hex"), {
+      accountType: "bot",
+      emailVerified: true,
+    });
+    return this.getUserById(created.id)!;
   }
 
   /**
@@ -16583,14 +16731,15 @@ export class LibraryDatabase {
     tokenHash: string;
     scopes: string[];
     packagePattern?: string | undefined;
+    ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
     const scopesJson = JSON.stringify(params.scopes);
     const pattern = params.packagePattern || "*";
     const result = this.#db
       .prepare(
-        `INSERT INTO api_tokens (user_id, name, token_prefix, token_hash, scopes, package_pattern, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO api_tokens (user_id, name, token_prefix, token_hash, scopes, package_pattern, ip_allowlist, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         params.userId,
@@ -16599,6 +16748,7 @@ export class LibraryDatabase {
         params.tokenHash,
         scopesJson,
         pattern,
+        params.ipAllowlist ?? null,
         params.expiresAt ?? null,
       );
     return Number(result.lastInsertRowid);
@@ -16611,6 +16761,7 @@ export class LibraryDatabase {
     tokenHash: string;
     scopes: string[];
     packagePattern?: string | undefined;
+    ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
     return this.storeApiTokenRow(params);
@@ -16623,6 +16774,7 @@ export class LibraryDatabase {
     tokenHash: string;
     scopes: string[];
     packagePattern?: string | undefined;
+    ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
     return this.storeApiTokenRow(params);
@@ -16635,6 +16787,7 @@ export class LibraryDatabase {
     tokenHash: string;
     scopes: string[];
     packagePattern?: string | undefined;
+    ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
     return this.storeApiTokenRow(params);
@@ -16643,7 +16796,7 @@ export class LibraryDatabase {
   getApiTokenByHash(tokenHash: string): ApiTokenRecord | null {
     const row = this.#db
       .prepare(
-        `SELECT id, user_id, name, token_prefix, token_hash, scopes, package_pattern, expires_at, last_used_at, last_used_ip, created_at
+        `SELECT id, user_id, name, token_prefix, token_hash, scopes, package_pattern, ip_allowlist, expires_at, last_used_at, last_used_ip, created_at
          FROM api_tokens
          WHERE token_hash = ?`,
       )
@@ -16664,7 +16817,7 @@ export class LibraryDatabase {
   listApiTokens(userId: number): Omit<ApiTokenRecord, "token_hash">[] {
     const rows = this.#db
       .prepare(
-        `SELECT id, user_id, name, token_prefix, scopes, package_pattern, expires_at, last_used_at, last_used_ip, created_at
+        `SELECT id, user_id, name, token_prefix, scopes, package_pattern, ip_allowlist, expires_at, last_used_at, last_used_ip, created_at
          FROM api_tokens
          WHERE user_id = ?
          ORDER BY created_at DESC`,
@@ -19879,7 +20032,21 @@ export class LibraryDatabase {
         params.promotedFromMsgId ?? null,
       );
 
-    return this.getSpaceEcoProposals(params.spaceId).find((e) => e.id === id)!;
+    const createdEco = this.getSpaceEcoProposals(params.spaceId).find((e) => e.id === id)!;
+
+    // Materialize real git branch in Space's bare vault if vault exists
+    const space = this.getSpaceById(params.spaceId);
+    if (space?.git_repo_path && fs.existsSync(space.git_repo_path)) {
+      try {
+        createSpaceGitBranch({
+          repoPath: space.git_repo_path,
+          branchName: createdEco.source_branch,
+          fromRef: createdEco.target_branch,
+        });
+      } catch {}
+    }
+
+    return createdEco;
   }
 
   reviewSpaceEcoProposal(params: {
@@ -19960,6 +20127,18 @@ export class LibraryDatabase {
     const eco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId);
     if (!eco) return null;
 
+    const space = this.getSpaceById(spaceId);
+    if (space?.git_repo_path && fs.existsSync(space.git_repo_path)) {
+      const realDiff = getSpaceGitDiff({
+        repoPath: space.git_repo_path,
+        baseRef: eco.target_branch,
+        targetRef: eco.source_branch,
+      });
+      if (realDiff && realDiff.files.length > 0) {
+        return realDiff;
+      }
+    }
+
     const files = (eco.impacted_models.length > 0 ? eco.impacted_models : ["models/SystemBaseline.mo"]).map(
       (modelPath) => {
         const isMo = modelPath.endsWith(".mo") || !modelPath.includes(".");
@@ -20022,90 +20201,315 @@ end ${modelName};
     };
   }
 
-  getSpaceEcoSimulation(
-    spaceId: string,
-    ecoId: string,
-  ): {
-    gateStatus: SpaceEcoProposalRecord["simulation_gate_status"];
-    checkedAt: string;
-    solver: string;
-    tolerance: number;
-    maxRelError: number;
-    variablesCount: number;
-    equationsCount: number;
-    trajectories: {
-      time: number;
-      baseline: number;
-      branch: number;
-      upperTolerance: number;
-      lowerTolerance: number;
-    }[];
-    checks: {
-      name: string;
-      status: "passed" | "failed";
-      value: string;
-      limit: string;
-      margin: string;
-    }[];
-  } | null {
+  getSpaceEcoSimulation(spaceId: string, ecoId: string): ReturnType<typeof computeEcoSimulationVerification> | null {
     const eco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId);
     if (!eco) return null;
 
-    const pointsCount = 41;
-    const trajectories = [];
-    for (let i = 0; i < pointsCount; i++) {
-      const t = Number((i * 0.25).toFixed(2));
-      const baselineVal = Number((Math.exp(-0.18 * t) * Math.cos(2.4 * t)).toFixed(4));
-      const branchVal = Number((Math.exp(-0.25 * t) * Math.cos(2.4 * t)).toFixed(4));
-      const env = Number((0.08 * Math.exp(-0.15 * t)).toFixed(4));
-      trajectories.push({
-        time: t,
-        baseline: baselineVal,
-        branch: branchVal,
-        upperTolerance: Number((baselineVal + env).toFixed(4)),
-        lowerTolerance: Number((baselineVal - env).toFixed(4)),
+    const space = this.getSpaceById(spaceId);
+    const verification = computeEcoSimulationVerification({
+      repoPath: space?.git_repo_path,
+      baseRef: eco.target_branch,
+      targetRef: eco.source_branch,
+      impactedModels: eco.impacted_models,
+      severity: eco.severity,
+      gateStatus: eco.simulation_gate_status,
+      simulationSummary: eco.simulation_summary,
+    });
+
+    const runs = this.getSpaceWorkflowRuns(spaceId, ecoId);
+    const latestRun = runs[0] || null;
+
+    return {
+      ...verification,
+      workflowRunsCount: runs.length,
+      latestWorkflowRun: latestRun
+        ? {
+            id: latestRun.id,
+            provider: latestRun.provider,
+            workflowName: latestRun.workflow_name,
+            status: latestRun.status,
+            durationMs: latestRun.duration_ms,
+            startedAt: latestRun.started_at,
+          }
+        : null,
+    };
+  }
+
+  getSpaceWorkflowRuns(spaceId: string, ecoId?: string): SpaceWorkflowRunRecord[] {
+    let sql = `SELECT * FROM space_workflow_runs WHERE space_id = ?`;
+    const params: unknown[] = [spaceId];
+    if (ecoId) {
+      sql += ` AND eco_id = ?`;
+      params.push(ecoId);
+    }
+    sql += ` ORDER BY started_at DESC`;
+    const rows = this.#db.prepare(sql).all(...params) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: String(r["id"]),
+      space_id: String(r["space_id"]),
+      eco_id: r["eco_id"] != null ? String(r["eco_id"]) : null,
+      provider: String(r["provider"] || "github") as SpaceWorkflowRunRecord["provider"],
+      workflow_file: String(r["workflow_file"] || ""),
+      workflow_name: String(r["workflow_name"] || ""),
+      trigger_event: String(r["trigger_event"] || "eco"),
+      commit_sha: r["commit_sha"] != null ? String(r["commit_sha"]) : null,
+      ref: r["ref"] != null ? String(r["ref"]) : null,
+      status: String(r["status"] || "pending") as SpaceWorkflowRunRecord["status"],
+      conclusion: r["conclusion"] != null ? String(r["conclusion"]) : null,
+      started_at: String(r["started_at"] || ""),
+      completed_at: r["completed_at"] != null ? String(r["completed_at"]) : null,
+      duration_ms: Number(r["duration_ms"] || 0),
+      jobs: typeof r["jobs_json"] === "string" ? JSON.parse(r["jobs_json"] || "[]") : [],
+      artifacts: typeof r["artifacts_json"] === "string" ? JSON.parse(r["artifacts_json"] || "[]") : [],
+      summary: typeof r["summary_json"] === "string" ? JSON.parse(r["summary_json"] || "{}") : {},
+      logs: String(r["logs_text"] || ""),
+    }));
+  }
+
+  getSpaceWorkflowRunById(id: string): SpaceWorkflowRunRecord | null {
+    const r = this.#db.prepare(`SELECT * FROM space_workflow_runs WHERE id = ?`).get(id) as
+      | Record<string, unknown>
+      | undefined;
+    if (!r) return null;
+    return {
+      id: String(r["id"]),
+      space_id: String(r["space_id"]),
+      eco_id: r["eco_id"] != null ? String(r["eco_id"]) : null,
+      provider: String(r["provider"] || "github") as SpaceWorkflowRunRecord["provider"],
+      workflow_file: String(r["workflow_file"] || ""),
+      workflow_name: String(r["workflow_name"] || ""),
+      trigger_event: String(r["trigger_event"] || "eco"),
+      commit_sha: r["commit_sha"] != null ? String(r["commit_sha"]) : null,
+      ref: r["ref"] != null ? String(r["ref"]) : null,
+      status: String(r["status"] || "pending") as SpaceWorkflowRunRecord["status"],
+      conclusion: r["conclusion"] != null ? String(r["conclusion"]) : null,
+      started_at: String(r["started_at"] || ""),
+      completed_at: r["completed_at"] != null ? String(r["completed_at"]) : null,
+      duration_ms: Number(r["duration_ms"] || 0),
+      jobs: typeof r["jobs_json"] === "string" ? JSON.parse(r["jobs_json"] || "[]") : [],
+      artifacts: typeof r["artifacts_json"] === "string" ? JSON.parse(r["artifacts_json"] || "[]") : [],
+      summary: typeof r["summary_json"] === "string" ? JSON.parse(r["summary_json"] || "{}") : {},
+      logs: String(r["logs_text"] || ""),
+    };
+  }
+
+  createSpaceWorkflowRun(params: {
+    id?: string;
+    spaceId: string;
+    ecoId?: string | null;
+    provider?: "github" | "gitlab" | "ansatz";
+    workflowFile: string;
+    workflowName: string;
+    triggerEvent?: string;
+    commitSha?: string | null;
+    ref?: string | null;
+    status?: "pending" | "running" | "passed" | "failed" | "cancelled";
+    conclusion?: string | null;
+    durationMs?: number;
+    jobs?: unknown[];
+    artifacts?: unknown[];
+    summary?: Record<string, unknown>;
+    logs?: string;
+  }): SpaceWorkflowRunRecord {
+    const id = params.id || `wfr_${crypto.randomBytes(8).toString("hex")}`;
+    this.#db
+      .prepare(
+        `INSERT INTO space_workflow_runs (
+          id, space_id, eco_id, provider, workflow_file, workflow_name,
+          trigger_event, commit_sha, ref, status, conclusion, started_at,
+          completed_at, duration_ms, jobs_json, artifacts_json, summary_json, logs_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        params.spaceId,
+        params.ecoId ?? null,
+        params.provider || "github",
+        params.workflowFile,
+        params.workflowName,
+        params.triggerEvent || "eco",
+        params.commitSha ?? null,
+        params.ref ?? null,
+        params.status || "pending",
+        params.conclusion ?? null,
+        params.status === "passed" || params.status === "failed" ? new Date().toISOString() : null,
+        params.durationMs ?? 0,
+        JSON.stringify(params.jobs ?? []),
+        JSON.stringify(params.artifacts ?? []),
+        JSON.stringify(params.summary ?? {}),
+        params.logs || "",
+      );
+    return this.getSpaceWorkflowRunById(id)!;
+  }
+
+  updateSpaceWorkflowRun(
+    id: string,
+    updates: {
+      status?: "pending" | "running" | "passed" | "failed" | "cancelled";
+      conclusion?: string | null;
+      completedAt?: string | null;
+      durationMs?: number;
+      jobs?: unknown[];
+      artifacts?: unknown[];
+      summary?: Record<string, unknown>;
+      logs?: string;
+    },
+  ): SpaceWorkflowRunRecord | null {
+    const current = this.getSpaceWorkflowRunById(id);
+    if (!current) return null;
+
+    const newStatus = updates.status || current.status;
+    const newConclusion = updates.conclusion !== undefined ? updates.conclusion : current.conclusion;
+    const newCompletedAt = updates.completedAt !== undefined ? updates.completedAt : current.completed_at;
+    const newDurationMs = updates.durationMs !== undefined ? updates.durationMs : current.duration_ms;
+    const newJobs = updates.jobs !== undefined ? JSON.stringify(updates.jobs) : JSON.stringify(current.jobs);
+    const newArtifacts =
+      updates.artifacts !== undefined ? JSON.stringify(updates.artifacts) : JSON.stringify(current.artifacts);
+    const newSummary =
+      updates.summary !== undefined ? JSON.stringify(updates.summary) : JSON.stringify(current.summary);
+    const newLogs = updates.logs !== undefined ? updates.logs : current.logs;
+
+    this.#db
+      .prepare(
+        `UPDATE space_workflow_runs
+         SET status = ?, conclusion = ?, completed_at = ?, duration_ms = ?,
+             jobs_json = ?, artifacts_json = ?, summary_json = ?, logs_text = ?
+         WHERE id = ?`,
+      )
+      .run(newStatus, newConclusion, newCompletedAt, newDurationMs, newJobs, newArtifacts, newSummary, newLogs, id);
+
+    return this.getSpaceWorkflowRunById(id);
+  }
+
+  findEcoByCommitOrBranch(spaceId: string, commitOrBranch: string): SpaceEcoProposalRecord | null {
+    const ecos = this.getSpaceEcoProposals(spaceId);
+    const clean = commitOrBranch.replace(/^refs\/heads\//, "").trim();
+
+    // 1. Exact branch match
+    const byBranch = ecos.find(
+      (e) => e.source_branch === clean || clean.endsWith(e.source_branch) || e.source_branch.endsWith(clean),
+    );
+    if (byBranch) return byBranch;
+
+    // 2. ECO number in branch name (e.g. eco/ECO-2 or eco-2)
+    const numMatch = clean.match(/(?:eco[-/])(\d+)/i);
+    if (numMatch) {
+      const num = parseInt(numMatch[1]!, 10);
+      const byNum = ecos.find((e) => e.eco_number === num);
+      if (byNum) return byNum;
+    }
+
+    // 3. Open ECO fallback
+    const openEcos = ecos.filter((e) => e.status !== "merged" && e.status !== "rejected");
+    return openEcos[0] || null;
+  }
+
+  runSpaceWorkflows(
+    spaceId: string,
+    ecoId: string,
+    workflowFile?: string,
+  ): {
+    eco: SpaceEcoProposalRecord;
+    runs: SpaceWorkflowRunRecord[];
+    simulation: ReturnType<LibraryDatabase["getSpaceEcoSimulation"]>;
+  } | null {
+    const eco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId);
+    if (!eco) return null;
+    const space = this.getSpaceById(spaceId);
+
+    const recordedRuns: SpaceWorkflowRunRecord[] = [];
+    let overallPassed = true;
+    let latestSummary: Record<string, unknown> = {};
+
+    let manifests =
+      space?.git_repo_path && fs.existsSync(space.git_repo_path)
+        ? discoverWorkflowsInRepo({
+            repoPath: space.git_repo_path,
+            ref: eco.source_branch,
+          })
+        : [];
+
+    if (manifests.length === 0 && space?.git_repo_path && fs.existsSync(space.git_repo_path)) {
+      manifests = discoverWorkflowsInRepo({
+        repoPath: space.git_repo_path,
+        ref: eco.target_branch,
       });
     }
 
+    if (workflowFile) {
+      const filtered = manifests.filter(
+        (m) => m.filePath === workflowFile || m.filePath.endsWith(workflowFile) || m.name === workflowFile,
+      );
+      if (filtered.length > 0) {
+        manifests = filtered;
+      }
+    }
+
+    if (manifests.length > 0 && space?.git_repo_path) {
+      for (const manifest of manifests) {
+        const runRes = executeWorkflowManifest({
+          repoPath: space.git_repo_path,
+          ref: eco.source_branch,
+          manifest,
+          ecoId: eco.id,
+          spaceId: space.id,
+        });
+
+        const saved = this.createSpaceWorkflowRun({
+          id: runRes.id,
+          spaceId: space.id,
+          ecoId: eco.id,
+          provider: runRes.provider,
+          workflowFile: runRes.workflowFile,
+          workflowName: runRes.workflowName,
+          triggerEvent: "eco",
+          ref: runRes.ref,
+          status: runRes.status,
+          conclusion: runRes.conclusion,
+          durationMs: runRes.durationMs,
+          jobs: runRes.jobs,
+          artifacts: runRes.artifacts,
+          summary: runRes.simulationSummary as unknown as Record<string, unknown>,
+          logs: runRes.logs,
+        });
+        recordedRuns.push(saved);
+
+        if (runRes.status === "failed") {
+          overallPassed = false;
+        }
+        if (runRes.hasArtifactSummary || Object.keys(latestSummary).length === 0) {
+          latestSummary = runRes.simulationSummary as unknown as Record<string, unknown>;
+        }
+      }
+    } else {
+      const simCheck = computeEcoSimulationVerification({
+        repoPath: space?.git_repo_path,
+        baseRef: eco.target_branch,
+        targetRef: eco.source_branch,
+        impactedModels: eco.impacted_models,
+        severity: eco.severity,
+      });
+      overallPassed = simCheck.gateStatus === "passed";
+      latestSummary = simCheck as unknown as Record<string, unknown>;
+    }
+
+    const gateStatus = overallPassed ? "passed" : "failed";
+    this.#db
+      .prepare(
+        `UPDATE space_eco_proposals
+         SET simulation_gate_status = ?,
+             simulation_summary_json = ?,
+             updated_at = datetime('now')
+         WHERE id = ? AND space_id = ?`,
+      )
+      .run(gateStatus, JSON.stringify(latestSummary), ecoId, spaceId);
+
+    const updatedEco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId)!;
+    const simResult = this.getSpaceEcoSimulation(spaceId, ecoId);
     return {
-      gateStatus: eco.simulation_gate_status,
-      checkedAt: String(eco.simulation_summary["checkedAt"] || eco.updated_at || new Date().toISOString()),
-      solver: "SUNDIALS CVODE (BDF stiff acausal)",
-      tolerance: 1e-4,
-      maxRelError: Number(eco.simulation_summary["maxRelError"] || 0.00018),
-      variablesCount: 142,
-      equationsCount: 142,
-      trajectories,
-      checks: [
-        {
-          name: "DAE Index & Pantelides Reduction",
-          status: "passed",
-          value: "Index 1",
-          limit: "Index <= 1",
-          margin: "Strictly Causalized",
-        },
-        {
-          name: "Peak Transient Overshoot",
-          status: "passed",
-          value: "8.2%",
-          limit: "< 15.0%",
-          margin: "+6.8% Safety Margin",
-        },
-        {
-          name: "Settling Time (2% band)",
-          status: "passed",
-          value: "2.40s",
-          limit: "< 3.50s",
-          margin: "1.10s Ahead of Envelope",
-        },
-        {
-          name: "Nelson-Oppen Multi-Theory Consistency",
-          status: "passed",
-          value: "13 Oracles",
-          limit: "13 Required",
-          margin: "Confluent",
-        },
-      ],
+      eco: updatedEco,
+      runs: recordedRuns,
+      simulation: simResult,
     };
   }
 
@@ -20116,48 +20520,20 @@ end ${modelName};
     eco: SpaceEcoProposalRecord;
     simulation: ReturnType<LibraryDatabase["getSpaceEcoSimulation"]>;
   } | null {
-    const eco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId);
-    if (!eco) return null;
-
-    const checkedAt = new Date().toISOString();
-    const simSummary = {
-      status: "passed",
-      maxRelError: 0.00016,
-      checkedAt,
-      verifiedBy: "WasmDAESolver",
+    const result = this.runSpaceWorkflows(spaceId, ecoId);
+    if (!result) return null;
+    return {
+      eco: result.eco,
+      simulation: result.simulation,
     };
-
-    this.#db
-      .prepare(
-        `UPDATE space_eco_proposals
-         SET simulation_gate_status = 'passed',
-             simulation_summary_json = ?,
-             updated_at = datetime('now')
-         WHERE id = ? AND space_id = ?`,
-      )
-      .run(JSON.stringify(simSummary), ecoId, spaceId);
-
-    const updatedEco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId)!;
-    const simResult = this.getSpaceEcoSimulation(spaceId, ecoId);
-    return { eco: updatedEco, simulation: simResult };
   }
 
-  getSpaceEcoBlastRadius(
-    spaceId: string,
-    ecoId: string,
-  ): {
-    directModels: string[];
-    downstreamDependencies: { model: string; dependencyType: string; path: string }[];
-    allocatedRequirements: { reqId: string; title: string; standard: string; status: "satisfied" | "violated" }[];
-    riskScore: "low" | "medium" | "high" | "safety_critical";
-  } | null {
+  getSpaceEcoBlastRadius(spaceId: string, ecoId: string): ReturnType<typeof computeEcoBlastRadius> | null {
     const eco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId);
     if (!eco) return null;
 
-    const directModels = eco.impacted_models.length > 0 ? eco.impacted_models : ["models/SystemBaseline.mo"];
-    const baseModel = directModels[0] || "SystemBaseline";
-
-    const downstreamDependencies = [
+    const baseModel = eco.impacted_models[0] || "SystemBaseline";
+    const defaultDownstreamDependencies = [
       {
         model: `${baseModel}Assembly`,
         dependencyType: "extends",
@@ -20175,7 +20551,7 @@ end ${modelName};
       },
     ];
 
-    const allocatedRequirements = [
+    const defaultAllocatedRequirements = [
       {
         reqId: "REQ-DYN-012",
         title: "Dynamic Overshoot Margin Under ISO Lane Change",
@@ -20190,19 +20566,16 @@ end ${modelName};
       },
     ];
 
-    const riskScore =
-      eco.severity === "safety_critical"
-        ? ("safety_critical" as const)
-        : eco.severity === "major"
-          ? ("high" as const)
-          : ("medium" as const);
-
-    return {
-      directModels,
-      downstreamDependencies,
-      allocatedRequirements,
-      riskScore,
-    };
+    const space = this.getSpaceById(spaceId);
+    return computeEcoBlastRadius({
+      repoPath: space?.git_repo_path,
+      baseRef: eco.target_branch,
+      targetRef: eco.source_branch,
+      impactedModels: eco.impacted_models,
+      severity: eco.severity,
+      defaultDownstreamDependencies,
+      defaultAllocatedRequirements,
+    });
   }
 
   getSpaceEcoBom(
@@ -20226,8 +20599,8 @@ end ${modelName};
       targetQuantity: number;
       unitCostUsd: number;
       massKg: number;
-      packageDependency?: string;
-      variantOverrides?: Record<string, unknown>;
+      packageDependency?: string | undefined;
+      variantOverrides?: Record<string, unknown> | undefined;
     }[];
   } | null {
     const eco = this.getSpaceEcoProposals(spaceId).find((e) => e.id === ecoId);
@@ -20302,26 +20675,14 @@ end ${modelName};
       },
     ];
 
-    const totalPartsDelta = parts.reduce((acc, p) => acc + (p.targetQuantity - p.baselineQuantity), 0);
-    const costDeltaUsd = Number(
-      parts.reduce((acc, p) => acc + (p.targetQuantity - p.baselineQuantity) * p.unitCostUsd, 0).toFixed(2),
-    );
-    const massDeltaKg = Number(
-      parts.reduce((acc, p) => acc + (p.targetQuantity - p.baselineQuantity) * p.massKg, 0).toFixed(3),
-    );
-    const carbonDeltaKgCo2 = Number((-1.85 * (massDeltaKg < 0 ? Math.abs(massDeltaKg) : -massDeltaKg)).toFixed(2));
-
-    return {
-      sourceBranch: eco.source_branch,
-      targetBranch: eco.target_branch,
-      summary: {
-        totalPartsDelta,
-        massDeltaKg,
-        costDeltaUsd,
-        carbonDeltaKgCo2,
-      },
-      parts,
-    };
+    const space = this.getSpaceById(spaceId);
+    return computeEcoBomDelta({
+      repoPath: space?.git_repo_path,
+      baseRef: eco.target_branch,
+      targetRef: eco.source_branch,
+      impactedModels: eco.impacted_models,
+      defaultParts: parts,
+    });
   }
 
   mergeSpaceEcoProposal(params: { spaceId: string; ecoId: string; userId: number }): {
@@ -20361,7 +20722,28 @@ end ${modelName};
     }
 
     const releaseTag = `v1.0.${eco.eco_number}-eco`;
-    const commitSha = crypto.randomBytes(20).toString("hex");
+    let commitSha = crypto.randomBytes(20).toString("hex");
+
+    const space = this.getSpaceById(params.spaceId);
+    if (space?.git_repo_path && fs.existsSync(space.git_repo_path)) {
+      const mergeRes = mergeSpaceGitBranches({
+        repoPath: space.git_repo_path,
+        sourceBranch: eco.source_branch,
+        targetBranch: eco.target_branch,
+        message: `Merge ECO-${eco.eco_number}: ${eco.title}`,
+      });
+      if (mergeRes.success && mergeRes.commitSha) {
+        commitSha = mergeRes.commitSha;
+        try {
+          tagSpaceGitCommit({
+            repoPath: space.git_repo_path,
+            tagName: releaseTag,
+            targetRef: commitSha,
+            message: `Release ${releaseTag} from approved ECO-${eco.eco_number}`,
+          });
+        } catch {}
+      }
+    }
 
     this.#db
       .prepare(
@@ -20371,21 +20753,28 @@ end ${modelName};
 
     const updatedEco = this.getSpaceEcoProposals(params.spaceId).find((e) => e.id === params.ecoId)!;
 
-    const aasxPackage = {
-      filename: `ansatz-space-${params.spaceId}-eco${eco.eco_number}.aasx`,
-      assetId: `urn:ansatz:space:${params.spaceId}:eco:${eco.eco_number}`,
-      version: "3.0.0",
-      submodels: ["TechnicalData", "OperationalData", "SimulationVerificationTrace", "Security21CFR11"],
-    };
+    const pkgDir = path.join(this.dbDir, "packages", params.spaceId);
+    if (!fs.existsSync(pkgDir)) {
+      try {
+        fs.mkdirSync(pkgDir, { recursive: true });
+      } catch {}
+    }
 
-    const ddpContainer = {
-      filename: `ddp-package-eco${eco.eco_number}.zip`,
-      standard: "ISO 10303-242:2020 (AP242 ed2)",
-      manifestChecksum: crypto
-        .createHash("sha256")
-        .update(commitSha + releaseTag)
-        .digest("hex"),
-    };
+    const aasxPackage = generateAasxPackage({
+      spaceId: params.spaceId,
+      ecoNumber: eco.eco_number,
+      commitSha,
+      releaseTag,
+      outputDir: pkgDir,
+    });
+
+    const ddpContainer = generateDdpContainer({
+      spaceId: params.spaceId,
+      ecoNumber: eco.eco_number,
+      commitSha,
+      releaseTag,
+      outputDir: pkgDir,
+    });
 
     let announcementMessage: SpaceMessageRecord | undefined;
     try {
@@ -20490,6 +20879,12 @@ end ${modelName};
         labels,
         linked_pr_number: r["linked_pr_number"] != null ? Number(r["linked_pr_number"]) : null,
         closed_at: r["closed_at"] != null ? String(r["closed_at"]) : null,
+        external_source:
+          r["external_source"] != null ? (String(r["external_source"]) as SpaceIssueRecord["external_source"]) : null,
+        external_key: r["external_key"] != null ? String(r["external_key"]) : null,
+        external_url: r["external_url"] != null ? String(r["external_url"]) : null,
+        external_updated_at: r["external_updated_at"] != null ? String(r["external_updated_at"]) : null,
+        sync_status: (r["sync_status"] || "synced") as SpaceIssueRecord["sync_status"],
         created_at: String(r["created_at"]),
         updated_at: String(r["updated_at"]),
       };
@@ -20614,6 +21009,102 @@ end ${modelName};
     this.#db.prepare(`UPDATE space_issues SET ${updates.join(", ")} WHERE id = ?`).run(...values);
 
     return this.getSpaceIssues(params.spaceId).find((i) => i.id === existing.id)!;
+  }
+
+  upsertSpaceIssueFromExternal(params: {
+    spaceId: string;
+    externalSource: "jira" | "github" | "gitlab" | "polarion";
+    externalKey: string;
+    externalUrl?: string | null | undefined;
+    externalUpdatedAt?: string | null | undefined;
+    title: string;
+    description?: string | undefined;
+    status: "open" | "closed";
+    severity?: "minor" | "standard" | "major" | "safety_critical" | undefined;
+    authorId?: number | null | undefined;
+    impactedModels?: string[] | undefined;
+    labels?: string[] | undefined;
+    linkedPrNumber?: number | null | undefined;
+    syncStatus?: "synced" | "pending_push" | "conflict" | undefined;
+  }): { issue: SpaceIssueRecord; isNew: boolean } {
+    const existing = this.#db
+      .prepare(
+        `SELECT id, issue_number FROM space_issues
+         WHERE space_id = ? AND external_source = ? AND external_key = ?`,
+      )
+      .get(params.spaceId, params.externalSource, params.externalKey) as
+      | { id: string; issue_number: number }
+      | undefined;
+
+    if (existing) {
+      const closedAt = params.status === "closed" ? "datetime('now')" : "NULL";
+      this.#db
+        .prepare(
+          `UPDATE space_issues SET
+            title = ?,
+            description = ?,
+            status = ?,
+            severity = ?,
+            impacted_models_json = ?,
+            labels_json = ?,
+            external_url = ?,
+            external_updated_at = ?,
+            sync_status = ?,
+            closed_at = ${closedAt},
+            updated_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .run(
+          params.title.trim(),
+          params.description?.trim() || "",
+          params.status,
+          params.severity ?? "standard",
+          JSON.stringify(params.impactedModels ?? []),
+          JSON.stringify(params.labels ?? []),
+          params.externalUrl ?? null,
+          params.externalUpdatedAt ?? null,
+          params.syncStatus ?? "synced",
+          existing.id,
+        );
+      return { issue: this.getSpaceIssueById(params.spaceId, existing.id)!, isNew: false };
+    }
+
+    const id = `issue_${crypto.randomBytes(8).toString("hex")}`;
+    const maxRow = this.#db
+      .prepare(`SELECT COALESCE(MAX(issue_number), 0) AS max_num FROM space_issues WHERE space_id = ?`)
+      .get(params.spaceId) as { max_num: number };
+    const nextNum = Number(maxRow?.max_num ?? 0) + 1;
+    const closedAt = params.status === "closed" ? "datetime('now')" : "NULL";
+
+    this.#db
+      .prepare(
+        `INSERT INTO space_issues (
+          id, space_id, issue_number, title, description, status, severity,
+          author_id, impacted_models_json, labels_json, linked_pr_number,
+          external_source, external_key, external_url, external_updated_at, sync_status,
+          closed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${closedAt}, datetime('now'), datetime('now'))`,
+      )
+      .run(
+        id,
+        params.spaceId,
+        nextNum,
+        params.title.trim(),
+        params.description?.trim() || "",
+        params.status,
+        params.severity ?? "standard",
+        params.authorId ?? null,
+        JSON.stringify(params.impactedModels ?? []),
+        JSON.stringify(params.labels ?? []),
+        params.linkedPrNumber ?? null,
+        params.externalSource,
+        params.externalKey,
+        params.externalUrl ?? null,
+        params.externalUpdatedAt ?? null,
+        params.syncStatus ?? "synced",
+      );
+
+    return { issue: this.getSpaceIssueById(params.spaceId, id)!, isNew: true };
   }
 
   addSpaceIssueComment(params: { issueId: string; userId: number; content: string }): SpaceIssueCommentRecord {
@@ -20761,6 +21252,7 @@ export interface ApiTokenRecord {
   token_hash: string;
   scopes: string[];
   package_pattern: string;
+  ip_allowlist?: string | null | undefined;
   expires_at: string | null;
   last_used_at: string | null;
   last_used_ip: string | null;

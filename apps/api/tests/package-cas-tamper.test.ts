@@ -112,6 +112,14 @@ test("Package Content-Addressed Storage (CAS) & Supply Chain Integrity", async (
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.headers["x-content-sha256"], correctHash);
     assert.strictEqual(res.headers["etag"], `"${correctHash}"`);
+    assert.strictEqual(res.headers["cache-control"], "public, max-age=31536000, immutable");
     assert.strictEqual(res.headers["x-package-signature"], "sig-ed25519-valid-key");
+
+    // Test 304 Not Modified when If-None-Match matches ETag
+    const conditionalRes = await request(app)
+      .get("/api/v1/libraries/SecurePump/1.0.0/download")
+      .set("If-None-Match", `"${correctHash}"`);
+
+    assert.strictEqual(conditionalRes.status, 304);
   });
 });

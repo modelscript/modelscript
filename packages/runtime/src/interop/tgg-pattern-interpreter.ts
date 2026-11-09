@@ -201,6 +201,7 @@ function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, any>): vo
   if (!allResolved) return;
   if (/^[\d.+\-*/()\s]+$/.test(resolvedRhs)) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const val = Function(`"use strict"; return (${resolvedRhs});`)();
       if (typeof val === "number" && Number.isFinite(val)) {
         env[lhs] = val;

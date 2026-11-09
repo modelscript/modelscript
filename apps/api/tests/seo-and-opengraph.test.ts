@@ -120,6 +120,31 @@ test("SEO, OpenGraph Previews, and AI Bot Discoverability Infrastructure", async
     assert.ok(text.includes("1 Parameters"));
   });
 
+  await t.test("GET /api/v1/og/class/:pkg/:version/:className.png renders raster 1200x630 PNG card", async () => {
+    const res = await request(app)
+      .get("/api/v1/og/class/@robotics/DeltaDynamics/2.1.0/DeltaDynamics.Robots.Delta3DOF.png")
+      .expect(200);
+
+    assert.ok(res.headers["content-type"]?.includes("image/png"));
+    const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.text || "");
+    assert.ok(body.length > 1000);
+    // PNG magic header 0x89 0x50 0x4E 0x47
+    assert.strictEqual(body[0], 0x89);
+    assert.strictEqual(body[1], 0x50);
+    assert.strictEqual(body[2], 0x4e);
+    assert.strictEqual(body[3], 0x47);
+  });
+
+  await t.test("GET /api/v1/og/brand.png renders default brand 1200x630 PNG card", async () => {
+    const res = await request(app).get("/api/v1/og/brand.png").expect(200);
+
+    assert.ok(res.headers["content-type"]?.includes("image/png"));
+    const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.text || "");
+    assert.ok(body.length > 1000);
+    assert.strictEqual(body[0], 0x89);
+    assert.strictEqual(body[1], 0x50);
+  });
+
   // ─────────────────────────────────────────────────────────────
   // 2. Server-Side Head Injection & Social Previews
   // ─────────────────────────────────────────────────────────────
@@ -132,9 +157,15 @@ test("SEO, OpenGraph Previews, and AI Bot Discoverability Infrastructure", async
       res.text.includes(`<meta property="og:title" content="Delta Robot Dynamic Trajectory Tracking | Ansatz" />`),
     );
     assert.ok(
-      res.text.includes(`<meta property="og:image" content="https://ansatz.social/api/v1/og/post/${post.id}" />`),
+      res.text.includes(`<meta property="og:image" content="https://ansatz.social/api/v1/og/post/${post.id}.png" />`),
     );
+    assert.ok(res.text.includes('<meta property="og:image:type" content="image/png" />'));
+    assert.ok(res.text.includes('<meta property="og:image:width" content="1200" />'));
+    assert.ok(res.text.includes('<meta property="og:image:height" content="630" />'));
     assert.ok(res.text.includes('<meta name="twitter:card" content="summary_large_image" />'));
+    assert.ok(
+      res.text.includes(`<meta name="twitter:image" content="https://ansatz.social/api/v1/og/post/${post.id}.png" />`),
+    );
     assert.ok(res.text.includes(`<link rel="canonical" href="https://ansatz.social/posts/${post.id}" />`));
     assert.ok(
       res.text.includes(
@@ -159,9 +190,10 @@ test("SEO, OpenGraph Previews, and AI Bot Discoverability Infrastructure", async
     assert.ok(res.text.includes("DeltaDynamics.Robots.Delta3DOF (model) | @robotics/DeltaDynamics@2.1.0 | Ansatz"));
     assert.ok(
       res.text.includes(
-        `https://ansatz.social/api/v1/og/class/@robotics/DeltaDynamics/2.1.0/DeltaDynamics.Robots.Delta3DOF`,
+        `https://ansatz.social/api/v1/og/class/@robotics/DeltaDynamics/2.1.0/DeltaDynamics.Robots.Delta3DOF.png`,
       ),
     );
+    assert.ok(res.text.includes('<meta name="twitter:card" content="summary_large_image" />'));
     assert.ok(res.text.includes(`"@type":"SoftwareSourceCode"`));
     assert.ok(res.text.includes(`"@type":"BreadcrumbList"`));
     assert.ok(res.text.includes("Tool center point (TCP) end-effector flange"));
@@ -262,4 +294,83 @@ test("SEO, OpenGraph Previews, and AI Bot Discoverability Infrastructure", async
     assert.ok(res.text.includes("Sitemap: https://ansatz.social/sitemap.xml"));
     assert.ok(res.text.includes("LLMs-Txt: https://ansatz.social/packages/llms.txt"));
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // 5. Verification for Modelica Standard Library Class Card
+  // ─────────────────────────────────────────────────────────────
+  await t.test(
+    "Twitterbot requesting Modelica.Blocks.Examples.BooleanNetwork1 receives full Twitter Card with PNG image",
+    async () => {
+      // Seed Modelica package
+      const { id: modelicaPkgId } = db.getOrCreatePackage("Modelica");
+      db.storePackageVersion(
+        modelicaPkgId,
+        "4.1.0",
+        "modelica-4.1.0.tgz",
+        "shasum410",
+        null,
+        100000,
+        JSON.stringify({ name: "Modelica", version: "4.1.0" }),
+        null,
+        null,
+      );
+      db.storeClassMetadata("Modelica", "4.1.0", {
+        className: "Modelica.Blocks.Examples.BooleanNetwork1",
+        classKind: "model",
+        description: "Demonstrates a network of Boolean blocks with visualization.",
+        documentation: "Example Boolean logic circuit with pulses, AND/OR/XOR gates.",
+        iconHash: "iconNet",
+        diagramHash: "diagNet",
+        baseClasses: [],
+        components: [
+          {
+            name: "booleanPulse1",
+            typeName: "Modelica.Blocks.Sources.BooleanPulse",
+            causality: "connector",
+            variability: "continuous",
+            description: "Generate pulse signal",
+            modifiers: [],
+          },
+        ],
+      });
+
+      const pageRes = await request(app)
+        .get("/packages/Modelica/4.1.0/classes/Modelica.Blocks.Examples.BooleanNetwork1")
+        .set("User-Agent", "Twitterbot/1.0")
+        .set("Accept", "text/html")
+        .expect(200);
+
+      assert.ok(pageRes.headers["content-type"]?.includes("text/html"));
+      assert.ok(pageRes.text.includes('<meta name="twitter:card" content="summary_large_image" />'));
+      assert.ok(
+        pageRes.text.includes(
+          '<meta name="twitter:image" content="https://ansatz.social/api/v1/og/class/Modelica/4.1.0/Modelica.Blocks.Examples.BooleanNetwork1.png" />',
+        ),
+      );
+      assert.ok(
+        pageRes.text.includes(
+          '<meta property="og:image" content="https://ansatz.social/api/v1/og/class/Modelica/4.1.0/Modelica.Blocks.Examples.BooleanNetwork1.png" />',
+        ),
+      );
+      assert.ok(pageRes.text.includes('<meta property="og:image:type" content="image/png" />'));
+      assert.ok(pageRes.text.includes('<meta property="og:image:width" content="1200" />'));
+      assert.ok(pageRes.text.includes('<meta property="og:image:height" content="630" />'));
+      assert.ok(pageRes.text.includes("BooleanNetwork1"));
+
+      // Verify the image URL itself returns valid PNG
+      const imgRes = await request(app)
+        .get("/api/v1/og/class/Modelica/4.1.0/Modelica.Blocks.Examples.BooleanNetwork1.png")
+        .set("User-Agent", "Twitterbot/1.0")
+        .expect(200);
+
+      assert.ok(imgRes.headers["content-type"]?.includes("image/png"));
+      const body = Buffer.isBuffer(imgRes.body) ? imgRes.body : Buffer.from(imgRes.text || "");
+      assert.ok(body.length > 5000);
+      // PNG magic header
+      assert.strictEqual(body[0], 0x89);
+      assert.strictEqual(body[1], 0x50);
+      assert.strictEqual(body[2], 0x4e);
+      assert.strictEqual(body[3], 0x47);
+    },
+  );
 });

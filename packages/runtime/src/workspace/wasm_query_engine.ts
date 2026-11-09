@@ -555,8 +555,12 @@ export class WasmQueryEngine {
       const text = (this.tree as any).getText(start, end, entry);
       if (text !== null && text !== undefined) return text;
     }
-    if (entry?.resourceId && (this.index as any).documents) {
-      const doc = (this.index as any).documents.get(entry.resourceId);
+    const docs =
+      (this.index as any).documents ||
+      (this.index as any).workspace?.documents ||
+      (this.index as any).workspaceIndex?.documents;
+    if (entry?.resourceId && docs) {
+      const doc = docs.get(entry.resourceId);
       if (doc && typeof doc.getText === "function") {
         return doc.getText().substring(start, end);
       }
@@ -594,8 +598,12 @@ export class WasmQueryEngine {
     const start = startOffset !== undefined ? startOffset : entry ? entry.startOffset : 0;
     const end = endOffset !== undefined ? endOffset : entry ? entry.endOffset : 0;
     let treeToUse = this.tree;
-    if (entry?.resourceId && (this.index as any).documents) {
-      const doc = (this.index as any).documents.get(entry.resourceId);
+    const docs =
+      (this.index as any).documents ||
+      (this.index as any).workspace?.documents ||
+      (this.index as any).workspaceIndex?.documents;
+    if (entry?.resourceId && docs) {
+      const doc = docs.get(entry.resourceId);
       if (doc && doc.tree) {
         treeToUse = doc.tree;
       }

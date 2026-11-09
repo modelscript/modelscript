@@ -2,9 +2,10 @@
 
 import AdmZip from "adm-zip";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { Argv, CommandModule } from "yargs";
-import { getApiUrl, requireToken } from "../util/auth.js";
+import { getApiUrl, getToken, requireToken } from "../util/auth.js";
 import {
   buildPackageZip,
   collectPackageFiles,
@@ -14,10 +15,16 @@ import {
 } from "../util/package-files.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { computePackageContentHash } from "../util/package-verify.js";
+import { signPackageContentHash } from "../util/signing.js";
 
 interface PublishArgs {
   path: string;
   signature?: string | undefined;
+  sign?: boolean | undefined;
+  key?: string | undefined;
+  pubkey?: string | undefined;
+  oidc?: boolean | undefined;
+  oidcToken?: string | undefined;
   dryRun?: boolean | undefined;
   tag?: string | undefined;
   noVerify?: boolean | undefined;
@@ -35,6 +42,28 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       })
       .option("signature", {
         description: "Cryptographic detached signature for supply chain verification",
+        type: "string",
+      })
+      .option("sign", {
+        description: "Sign the package using an Ed25519 private key",
+        type: "boolean",
+        default: false,
+      })
+      .option("key", {
+        description: "Path to Ed25519 private key used to sign the package release",
+        type: "string",
+      })
+      .option("pubkey", {
+        description: "Path to Ed25519 public key corresponding to the signing key",
+        type: "string",
+      })
+      .option("oidc", {
+        description: "Enable keyless OIDC signing from ambient CI/CD environment (GitHub Actions, GitLab CI)",
+        type: "boolean",
+        default: false,
+      })
+      .option("oidc-token", {
+        description: "Explicit OIDC ID token JWT for keyless supply chain attestation",
         type: "string",
       })
       .option("dry-run", {
@@ -136,6 +165,72 @@ export const Publish: CommandModule<{}, PublishArgs> = {
     const contentHash = computePackageContentHash(zipBuffer);
     const totalUncompressedBytes = files.reduce((acc, f) => acc + f.size, 0);
 
+    let signature = args.signature;
+    let explicitPublicKey = args.pubkey;
+
+    if (!signature && (args.sign || args.key)) {
+      const candidatePaths = [
+        args.key,
+        process.env["MODELSCRIPT_SIGNING_KEY"],
+        path.join(os.homedir(), ".modelscript", "signing.key"),
+        path.join(os.homedir(), ".ssh", "id_ed25519_modelscript"),
+        path.join(os.homedir(), ".ssh", "id_ed25519"),
+      ].filter((p): p is string => Boolean(p && existsSync(p)));
+
+      const resolvedKeyPath = candidatePaths[0];
+      if (resolvedKeyPath) {
+        try {
+          const signed = signPackageContentHash(contentHash, resolvedKeyPath);
+          signature = signed.signature;
+          if (!explicitPublicKey && signed.publicKeySpki) {
+            explicitPublicKey = signed.publicKeySpki;
+          }
+          console.log(`🔏 Signed package release with key: ${resolvedKeyPath}`);
+        } catch (err) {
+          console.error(
+            `Failed to sign package with ${resolvedKeyPath}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          process.exit(1);
+        }
+      } else if (args.key) {
+        console.error(`Error: Signing key not found at ${args.key}`);
+        process.exit(1);
+      }
+    }
+
+    // Ambient / Explicit OIDC discovery for Keyless signing
+    let oidcToken = args.oidcToken || process.env["MODELSCRIPT_OIDC_TOKEN"] || process.env["OIDC_ID_TOKEN"];
+
+    if (
+      !oidcToken &&
+      (args.oidc ||
+        process.env["ACTIONS_ID_TOKEN_REQUEST_URL"] ||
+        process.env["CI_JOB_JWT_V2"] ||
+        process.env["CI_JOB_JWT"])
+    ) {
+      if (process.env["ACTIONS_ID_TOKEN_REQUEST_URL"] && process.env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]) {
+        try {
+          const audience = encodeURIComponent("modelscript-registry");
+          const idTokenUrl = `${process.env["ACTIONS_ID_TOKEN_REQUEST_URL"]}&audience=${audience}`;
+          const oidcRes = await fetch(idTokenUrl, {
+            headers: { Authorization: `bearer ${process.env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]}` },
+          });
+          if (oidcRes.ok) {
+            const idTokenData = (await oidcRes.json()) as { value?: string };
+            if (idTokenData.value) {
+              oidcToken = idTokenData.value;
+              console.log(`🔐 Acquired ambient GitHub Actions OIDC ID token`);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      } else if (process.env["CI_JOB_JWT_V2"] || process.env["CI_JOB_JWT"]) {
+        oidcToken = process.env["CI_JOB_JWT_V2"] || process.env["CI_JOB_JWT"];
+        console.log(`🔐 Acquired ambient GitLab CI OIDC ID token`);
+      }
+    }
+
     if (args.dryRun) {
       console.log(`📦 Packaging ${name}@${version}`);
       for (let i = 0; i < files.length; i++) {
@@ -147,6 +242,12 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       console.log(`- Uncompressed Size: ${formatBytes(totalUncompressedBytes)}`);
       console.log(`- Archive Size: ${formatBytes(zipBuffer.length)}`);
       console.log(`- Content Hash (SHA-256): ${contentHash}`);
+      if (signature) {
+        console.log(`- Signature: ${signature.slice(0, 32)}...`);
+      }
+      if (oidcToken) {
+        console.log(`- Keyless OIDC Attestation: Active (verified ambient runner identity)`);
+      }
       console.log(`- Dist-Tag: ${args.tag || "latest"}`);
       console.log(`\nNotice: Dry run complete. No network requests made.`);
       return;
@@ -154,7 +255,10 @@ export const Publish: CommandModule<{}, PublishArgs> = {
 
     console.log(`Publishing ${name}@${version} (tag: ${args.tag || "latest"})...`);
 
-    const token = requireToken();
+    let token = getToken();
+    if (!token && !oidcToken) {
+      token = requireToken();
+    }
     console.log(`Content Hash (SHA-256): ${contentHash}`);
 
     // Create FormData manually since Node 18+ has a global Request/Response/FormData
@@ -166,8 +270,14 @@ export const Publish: CommandModule<{}, PublishArgs> = {
     formData.append("file", blob, "library.zip");
     formData.append("contentHash", contentHash);
     formData.append("tag", args.tag || "latest");
-    if (args.signature) {
-      formData.append("signature", args.signature);
+    if (signature) {
+      formData.append("signature", signature);
+    }
+    if (explicitPublicKey) {
+      formData.append("publicKey", explicitPublicKey);
+    }
+    if (oidcToken) {
+      formData.append("oidcToken", oidcToken);
     }
 
     try {
@@ -175,11 +285,21 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
       const headers: Record<string, string> = {
-        Authorization: `Bearer ${token}`,
         "X-Content-SHA256": contentHash,
       };
-      if (args.signature) {
-        headers["X-Package-Signature"] = args.signature;
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      } else if (oidcToken) {
+        headers["Authorization"] = `Bearer ${oidcToken}`;
+      }
+      if (oidcToken) {
+        headers["X-Package-OIDC-Token"] = oidcToken;
+      }
+      if (signature) {
+        headers["X-Package-Signature"] = signature;
+      }
+      if (explicitPublicKey) {
+        headers["X-Package-Public-Key"] = explicitPublicKey;
       }
 
       const res = await fetch(endpoint, {

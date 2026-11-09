@@ -12,5 +12,6 @@ export * from "./ontology_oracle.js";
 export * from "./power_grid_oracle.js";
 export * from "./safety_theory_oracle.js";
 export * from "./spatial_physics_oracle.js";
+export * from "./telecom_oracle.js";
 export * from "./tolerance_stack_oracle.js";
 export * from "./uq_oracle.js";

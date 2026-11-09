@@ -9,6 +9,15 @@
  */
 
 import {
+  bicgstab,
+  ccsMatVec,
+  denseMatVec,
+  gmres,
+  ilu0Factor,
+  ilu0Preconditioner,
+  ilu0Solve,
+  jacobiPreconditioner,
+  jfnkSolve,
   denseToCCS as runtimeDenseToCCS,
   factorizeLinearMatrix as runtimeFactorizeLinearMatrix,
   flatToCCS as runtimeFlatToCCS,
@@ -16,12 +25,30 @@ import {
   sparseLuFactor as runtimeSparseLuFactor,
   sparseLuSolve as runtimeSparseLuSolve,
   type FactorizedLinearSolver,
+  type ILU0Factorization,
+  type JFNKOptions,
+  type JFNKResult,
+  type KrylovOptions,
+  type KrylovResult,
+  type MatVecOperator,
+  type Preconditioner,
   type SparseCCSMatrix,
   type SparseLU,
 } from "@modelscript/runtime";
 
 export type CCSMatrix = SparseCCSMatrix;
-export type { FactorizedLinearSolver, SparseCCSMatrix, SparseLU };
+export type {
+  FactorizedLinearSolver,
+  ILU0Factorization,
+  JFNKOptions,
+  JFNKResult,
+  KrylovOptions,
+  KrylovResult,
+  MatVecOperator,
+  Preconditioner,
+  SparseCCSMatrix,
+  SparseLU,
+};
 
 export const denseToCCS = runtimeDenseToCCS;
 export const flatToCCS = runtimeFlatToCCS;
@@ -33,3 +60,14 @@ export const sparseLuFactor = (A: SparseCCSMatrix): SparseLU => {
 export const sparseLuSolve = runtimeSparseLuSolve;
 export const factorizeLinearMatrix = runtimeFactorizeLinearMatrix;
 export const solveLinearSystemSparse = runtimeSolveLinearSystemSparse;
+export {
+  bicgstab,
+  ccsMatVec,
+  denseMatVec,
+  gmres,
+  ilu0Factor,
+  ilu0Preconditioner,
+  ilu0Solve,
+  jacobiPreconditioner,
+  jfnkSolve,
+};

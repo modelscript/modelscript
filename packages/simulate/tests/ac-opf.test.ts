@@ -48,7 +48,7 @@ test("AC-OPF: Solves nonlinear AC power flow, optimizes reactive power, and calc
 
   // Voltage magnitudes must satisfy bounds
   for (const b of sol.buses) {
-    assert.ok(b.vm >= 0.90 && b.vm <= 1.10, `Bus ${b.busNumber} voltage ${b.vm} pu must be within limits`);
+    assert.ok(b.vm >= 0.9 && b.vm <= 1.1, `Bus ${b.busNumber} voltage ${b.vm} pu must be within limits`);
   }
 
   // Reactive power should be dispatched
@@ -70,7 +70,8 @@ test("AC-OPF: Converges on IEEE 14-bus test case with positive losses and voltag
   const rawPath = path.resolve(process.cwd(), "languages/psse/testsuite/ieee14.raw");
   if (!fs.existsSync(rawPath)) return;
 
-  const { parseRaw } = await import("@modelscript/psse");
+  const pssePkg = "@modelscript/psse";
+  const { parseRaw } = (await import(pssePkg)) as any;
   const rawContent = fs.readFileSync(rawPath, "utf-8");
   const parsed = parseRaw(rawContent);
 
@@ -87,4 +88,3 @@ test("AC-OPF: Converges on IEEE 14-bus test case with positive losses and voltag
   assert.ok(sol.averageLmp > 0, "Average LMP must be positive");
   assert.ok(sol.reportText.includes("OPTIMAL POWER FLOW"));
 });
-

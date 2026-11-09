@@ -165,6 +165,11 @@ export interface SpaceIssueRecord {
   labels: string[];
   linked_pr_number: number | null;
   closed_at: string | null;
+  external_source?: "jira" | "github" | "gitlab" | "polarion" | null | undefined;
+  external_key?: string | null | undefined;
+  external_url?: string | null | undefined;
+  external_updated_at?: string | null | undefined;
+  sync_status?: "synced" | "pending_push" | "conflict" | undefined;
   comments?: SpaceIssueCommentRecord[];
   created_at: string;
   updated_at: string;
@@ -568,6 +573,15 @@ export interface SpaceEcoSimulationResult {
   equationsCount: number;
   trajectories: SpaceEcoTrajectoryPoint[];
   checks: SpaceEcoSimCheck[];
+  workflowRunsCount?: number;
+  latestWorkflowRun?: {
+    id: string;
+    provider: string;
+    workflowName: string;
+    status: string;
+    durationMs: number;
+    startedAt: string;
+  } | null;
 }
 
 export interface SpaceEcoImpactResult {
@@ -835,6 +849,75 @@ export const addSpaceIssueComment = async (
   }>(
     `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/issues/${encodeURIComponent(issueId)}/comments`,
     { content },
+  );
+  return data;
+};
+
+export interface JiraSyncOptions {
+  jiraBaseUrl?: string | undefined;
+  email?: string | undefined;
+  apiToken?: string | undefined;
+  jql?: string | undefined;
+  maxResults?: number | undefined;
+  modelCustomField?: string | undefined;
+}
+
+export interface JiraSyncResult {
+  success: boolean;
+  synced: number;
+  created: number;
+  updated: number;
+  issues: SpaceIssueRecord[];
+}
+
+export const syncSpaceJiraIssues = async (
+  namespace: string,
+  slug: string,
+  options: JiraSyncOptions,
+): Promise<JiraSyncResult> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.post<JiraSyncResult>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/integrations/jira/sync`,
+    options,
+  );
+  return data;
+};
+
+export interface SpaceJiraIntegrationConfig {
+  configured: boolean;
+  baseUrl: string;
+  email: string;
+  jql: string;
+  modelCustomField: string;
+  autoCommentOnSimulation: boolean;
+  hasApiToken: boolean;
+}
+
+export const getSpaceJiraIntegration = async (namespace: string, slug: string): Promise<SpaceJiraIntegrationConfig> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<SpaceJiraIntegrationConfig>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/integrations/jira`,
+  );
+  return data;
+};
+
+export const updateSpaceJiraIntegration = async (
+  namespace: string,
+  slug: string,
+  config: {
+    baseUrl?: string | undefined;
+    email?: string | undefined;
+    apiToken?: string | undefined;
+    jql?: string | undefined;
+    modelCustomField?: string | undefined;
+    autoCommentOnSimulation?: boolean | undefined;
+    testConnection?: boolean | undefined;
+  },
+): Promise<{ success: boolean; integration: SpaceJiraIntegrationConfig }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.put<{ success: boolean; integration: SpaceJiraIntegrationConfig }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/integrations/jira`,
+    config,
   );
   return data;
 };

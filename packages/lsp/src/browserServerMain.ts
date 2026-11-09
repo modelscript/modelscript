@@ -420,6 +420,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       full: true,
     },
     documentFormattingProvider: true,
+    documentRangeFormattingProvider: true,
     colorProvider: true,
     documentSymbolProvider: true,
     definitionProvider: true,

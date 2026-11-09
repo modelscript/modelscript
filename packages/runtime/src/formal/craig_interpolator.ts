@@ -413,14 +413,26 @@ export class CraigInterpolator {
     const T: number[][] = Array.from({ length: numRows + 1 }, () => new Array<number>(numCols + 1).fill(0));
     const basic = new Array<number>(numRows);
 
+    const M: number[] = new Array<number>(n);
     for (let j = 0; j < n; j++) {
       const v = allVars[j]!;
+      let maxAbs = 0;
       for (let i = 0; i < m; i++) {
-        T[j]![i] = allConstraints[i]!.coeffs.get(v) ?? 0;
+        const coeff = Math.abs(allConstraints[i]!.coeffs.get(v) ?? 0);
+        if (coeff > maxAbs) maxAbs = coeff;
+      }
+      M[j] = Math.max(1.0, maxAbs + 1.0);
+    }
+
+    for (let j = 0; j < n; j++) {
+      const v = allVars[j]!;
+      const shift = M[j]!;
+      for (let i = 0; i < m; i++) {
+        T[j]![i] = (allConstraints[i]!.coeffs.get(v) ?? 0) + shift;
       }
       const aCol = m + j;
       T[j]![aCol] = 1;
-      T[j]![numCols] = 0;
+      T[j]![numCols] = shift;
       basic[j] = aCol;
     }
 

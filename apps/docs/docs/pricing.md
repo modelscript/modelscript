@@ -54,11 +54,11 @@ If your product embeds the optional 3D CAD/STEP geometry engine (`@modelscript/c
 
 ### How is the Commercial SDK priced?
 
-It is priced per product per year. If you ship several distinct products, or have a large user base, [contact us](mailto:sales@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) for a quote.
+Commercial SDK pricing is customized based on your product architecture, distribution model, and support requirements. Please [contact us](mailto:sales@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) at sales@modelscript.org for a quote.
 
 ### How is the Enterprise Appliance priced?
 
-The listed price is a starting point. The final price depends on the number of sites and seats and on the support level. We quote it after a short scoping call.
+Enterprise Appliance pricing is customized based on the number of sites and seats, deployment environment (air-gapped, on-premise HPC clusters), and support level. Please [contact us](mailto:sales@modelscript.org?subject=%5BEnterprise%20Appliance%20Inquiry%5D%20Pricing) at sales@modelscript.org for a custom quote after a short scoping call.
 
 ### I'm a large company using ModelScript internally. Do I need the Commercial SDK?
 

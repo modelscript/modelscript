@@ -5848,6 +5848,7 @@ export * from "./color-inversion.js";
 export * from "./context-menu.js";
 export * from "./easy5-diagram-builder.js";
 export * from "./eclipse-diagram-builder.js";
+export * from "./epanet-diagram-builder.js";
 export * from "./fault-tree.js";
 export * from "./glyphs.js";
 export * from "./html-diff-bundle.js";
@@ -6017,3 +6018,16 @@ export function flipSelectedNodes(axis: "x" | "y" = "x", targetGraph?: Graph | n
     activeFlipSelectedNodes(axis, g);
   }
 }
+
+export {
+  applySldLayoutToCase,
+  parsePsseSld,
+  renderSldSvg,
+  serializePsseSld,
+  sldToDiagramGraph,
+  type PsseSldAnnotationItem,
+  type PsseSldBranchItem,
+  type PsseSldBusItem,
+  type PsseSldComponentItem,
+  type PsseSldDrawing,
+} from "./psse-sld-parser.js";

@@ -104,4 +104,24 @@ export class LocalFsObjectStager implements ObjectStager {
       epilogueScript: `# [Local Staging] Output artifacts written directly to target directory`,
     };
   }
+
+  public async readLogChunk(
+    remoteKey: string,
+    startByte: number,
+  ): Promise<{ chunk: string; totalBytes: number } | null> {
+    try {
+      const filePath = this.resolveKey(remoteKey);
+      if (!fs.existsSync(filePath)) return null;
+      const stats = fs.statSync(filePath);
+      if (stats.size <= startByte) return null;
+      const fd = fs.openSync(filePath, "r");
+      const length = stats.size - startByte;
+      const buf = Buffer.alloc(length);
+      fs.readSync(fd, buf, 0, length, startByte);
+      fs.closeSync(fd);
+      return { chunk: buf.toString("utf8"), totalBytes: stats.size };
+    } catch {
+      return null;
+    }
+  }
 }

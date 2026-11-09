@@ -672,13 +672,23 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 </span>
               </div>
             )}
-            {packageSignature && (
-              <div style={{ marginTop: 6 }}>
+            <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {packageSignature && (
                 <Label variant="success" style={{ fontSize: 10 }}>
                   <VerifiedIcon size={11} /> Signed Release
                 </Label>
-              </div>
-            )}
+              )}
+              <a
+                href={`/api/v1/libraries/${name.startsWith("@") ? name.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(name)}/${encodeURIComponent(version)}/provenance.json`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: "none" }}
+              >
+                <Label variant="accent" style={{ fontSize: 10, cursor: "pointer" }}>
+                  <ShieldCheckIcon size={11} /> SLSA Level 3
+                </Label>
+              </a>
+            </div>
           </div>
         )}
       </SidebarCard>

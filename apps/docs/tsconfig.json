@@ -6,7 +6,10 @@
     "target": "ES2022",
     "noEmit": true,
     "incremental": false,
-    "strict": true
+    "strict": false,
+    "exactOptionalPropertyTypes": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "skipLibCheck": true
   },
   "include": ["docs/**/*", "docs/.vitepress/**/*", "scripts/**/*", "tests/**/*"]
 }

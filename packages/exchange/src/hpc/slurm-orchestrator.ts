@@ -364,14 +364,24 @@ echo "[HPC] Execution finished at $(date)."
     }
   }
 
-  public async terminate(): Promise<void> {
+  public getStatus(): HpcJobStatus {
+    return this.jobStatus;
+  }
+
+  public async cancel(): Promise<void> {
+    await this.terminate("cancelled");
+  }
+
+  public async terminate(finalStatus: HpcJobStatus = "completed"): Promise<void> {
     if (this.slurmJobId && /^\d+$/.test(this.slurmJobId) && this.jobStatus === "running") {
       await new Promise<void>((resolve) => {
         const proc = spawn("scancel", [this.slurmJobId!], { stdio: "ignore" });
         proc.on("error", () => resolve());
         proc.on("close", () => resolve());
       });
+      this.jobStatus = finalStatus === "completed" ? "cancelled" : finalStatus;
+      return;
     }
-    this.jobStatus = "completed";
+    this.jobStatus = finalStatus;
   }
 }

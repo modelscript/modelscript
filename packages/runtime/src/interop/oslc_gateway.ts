@@ -26,8 +26,26 @@ export const OSLC_PREFIXES = {
   oslc_rm: "http://open-services.net/ns/rm#",
   oslc_qm: "http://open-services.net/ns/qm#",
   oslc_am: "http://open-services.net/ns/am#",
+  oslc_cm: "http://open-services.net/ns/cm#",
   ms: "https://modelscript.org/ns/thread#",
 };
+
+export interface OslcChangeRequestResource {
+  uri: string;
+  identifier: string;
+  title: string;
+  description: string;
+  status: string;
+  severity?: string | undefined;
+  created?: string | undefined;
+  modified?: string | undefined;
+  affectsModel: string[];
+  tracksRequirement: string[];
+  testedBy: string[];
+  externalKey?: string | undefined;
+  externalUrl?: string | undefined;
+  attributes: Record<string, string | number | boolean>;
+}
 
 export interface OslcRequirementResource {
   uri: string;
@@ -75,6 +93,7 @@ export class OslcGateway {
   private requirements: Map<string, OslcRequirementResource> = new Map();
   private testResults: Map<string, OslcTestResultResource> = new Map();
   private architectureElements: Map<string, OslcArchitectureResource> = new Map();
+  private changeRequests: Map<string, OslcChangeRequestResource> = new Map();
   private server: http.Server | null = null;
 
   constructor(baseUri: string = "http://localhost:8080") {
@@ -169,6 +188,78 @@ export class OslcGateway {
 
     this.architectureElements.set(id, resource);
     return resource;
+  }
+
+  registerChangeRequest(
+    cr: Partial<OslcChangeRequestResource> & { identifier: string; title: string },
+  ): OslcChangeRequestResource {
+    const id = cr.identifier;
+    const uri = cr.uri || `${this.baseUri}/oslc/cm/changerequests/${encodeURIComponent(id)}`;
+    const now = new Date().toISOString();
+
+    const resource: OslcChangeRequestResource = {
+      uri,
+      identifier: id,
+      title: cr.title,
+      description: cr.description || "",
+      status: cr.status || "open",
+      severity: cr.severity || "standard",
+      created: cr.created || now,
+      modified: cr.modified || now,
+      affectsModel: cr.affectsModel || [],
+      tracksRequirement: cr.tracksRequirement || [],
+      testedBy: cr.testedBy || [],
+      externalKey: cr.externalKey,
+      externalUrl: cr.externalUrl,
+      attributes: cr.attributes || {},
+    };
+
+    this.changeRequests.set(id, resource);
+    return resource;
+  }
+
+  getChangeRequest(identifier: string): OslcChangeRequestResource | undefined {
+    return this.changeRequests.get(identifier);
+  }
+
+  listChangeRequests(): OslcChangeRequestResource[] {
+    return Array.from(this.changeRequests.values());
+  }
+
+  /**
+   * Imports Ansatz Space issues or Jira tickets into OSLC Change Management resources.
+   */
+  importSpaceIssues(
+    issues: Array<{
+      issue_number: number;
+      title: string;
+      description?: string | undefined;
+      status: string;
+      severity?: string | undefined;
+      impacted_models?: string[] | undefined;
+      external_source?: string | null | undefined;
+      external_key?: string | null | undefined;
+      external_url?: string | null | undefined;
+      created_at?: string | undefined;
+      updated_at?: string | undefined;
+    }>,
+  ): void {
+    for (const issue of issues) {
+      this.registerChangeRequest({
+        identifier: issue.external_key || `ISSUE-${issue.issue_number}`,
+        title: issue.title,
+        description: issue.description || "",
+        status: issue.status,
+        severity: issue.severity,
+        affectsModel: (issue.impacted_models || []).map((m) =>
+          m.startsWith("http") ? m : `${this.baseUri}/oslc/am/elements/${encodeURIComponent(m)}`,
+        ),
+        externalKey: issue.external_key || undefined,
+        externalUrl: issue.external_url || undefined,
+        created: issue.created_at,
+        modified: issue.updated_at,
+      });
+    }
   }
 
   /**
@@ -301,7 +392,7 @@ export class OslcGateway {
   // Serialization: JSON-LD
   // --------------------------------------------------------------------------
 
-  exportJsonLd(domain: "rm" | "qm" | "am" | "all" = "all"): object {
+  exportJsonLd(domain: "rm" | "qm" | "am" | "cm" | "all" = "all"): object {
     const graph: any[] = [];
 
     if (domain === "rm" || domain === "all") {
@@ -384,6 +475,43 @@ export class OslcGateway {
       }
     }
 
+    if (domain === "cm" || domain === "all") {
+      for (const cr of this.changeRequests.values()) {
+        const item: any = {
+          "@id": cr.uri,
+          "@type": ["oslc_cm:ChangeRequest", "oslc:Resource"],
+          "dcterms:identifier": cr.identifier,
+          "dcterms:title": cr.title,
+          "dcterms:description": cr.description,
+          "oslc_cm:status": cr.status,
+          "dcterms:created": cr.created,
+          "dcterms:modified": cr.modified,
+        };
+        if (cr.severity) {
+          item["oslc_cm:severity"] = cr.severity;
+        }
+        if (cr.affectsModel.length > 0) {
+          item["oslc_cm:affectsExecutionResult"] = cr.affectsModel.map((uri) => ({ "@id": uri }));
+        }
+        if (cr.tracksRequirement.length > 0) {
+          item["oslc_cm:tracksRequirement"] = cr.tracksRequirement.map((uri) => ({ "@id": uri }));
+        }
+        if (cr.testedBy.length > 0) {
+          item["oslc_cm:testedBy"] = cr.testedBy.map((uri) => ({ "@id": uri }));
+        }
+        if (cr.externalKey) {
+          item["ms:externalKey"] = cr.externalKey;
+        }
+        if (cr.externalUrl) {
+          item["ms:externalUrl"] = cr.externalUrl;
+        }
+        if (Object.keys(cr.attributes).length > 0) {
+          item["ms:attributes"] = cr.attributes;
+        }
+        graph.push(item);
+      }
+    }
+
     return {
       "@context": {
         ...OSLC_PREFIXES,
@@ -396,7 +524,7 @@ export class OslcGateway {
   // Serialization: RDF Turtle
   // --------------------------------------------------------------------------
 
-  exportTurtle(domain: "rm" | "qm" | "am" | "all" = "all"): string {
+  exportTurtle(domain: "rm" | "qm" | "am" | "cm" | "all" = "all"): string {
     const lines: string[] = [];
 
     // Prefix declarations
@@ -407,6 +535,7 @@ export class OslcGateway {
     lines.push("@prefix oslc_rm: <http://open-services.net/ns/rm#> .");
     lines.push("@prefix oslc_qm: <http://open-services.net/ns/qm#> .");
     lines.push("@prefix oslc_am: <http://open-services.net/ns/am#> .");
+    lines.push("@prefix oslc_cm: <http://open-services.net/ns/cm#> .");
     lines.push("@prefix ms: <https://modelscript.org/ns/thread#> .");
     lines.push("");
 
@@ -495,6 +624,44 @@ export class OslcGateway {
       }
     }
 
+    if (domain === "cm" || domain === "all") {
+      for (const cr of this.changeRequests.values()) {
+        lines.push(`<${cr.uri}>`);
+        lines.push(`    a oslc_cm:ChangeRequest, oslc:Resource ;`);
+        lines.push(`    dcterms:identifier "${escapeStr(cr.identifier)}" ;`);
+        lines.push(`    dcterms:title "${escapeStr(cr.title)}" ;`);
+        if (cr.description) {
+          lines.push(`    dcterms:description "${escapeStr(cr.description)}" ;`);
+        }
+        lines.push(`    oslc_cm:status "${escapeStr(cr.status)}" ;`);
+        if (cr.severity) {
+          lines.push(`    oslc_cm:severity "${escapeStr(cr.severity)}" ;`);
+        }
+        lines.push(`    dcterms:created "${cr.created}" ;`);
+        lines.push(`    dcterms:modified "${cr.modified}" ;`);
+
+        for (const aff of cr.affectsModel) {
+          lines.push(`    oslc_cm:affectsExecutionResult <${aff}> ;`);
+        }
+        for (const trk of cr.tracksRequirement) {
+          lines.push(`    oslc_cm:tracksRequirement <${trk}> ;`);
+        }
+        for (const tst of cr.testedBy) {
+          lines.push(`    oslc_cm:testedBy <${tst}> ;`);
+        }
+        if (cr.externalKey) {
+          lines.push(`    ms:externalKey "${escapeStr(cr.externalKey)}" ;`);
+        }
+        if (cr.externalUrl) {
+          lines.push(`    ms:externalUrl <${cr.externalUrl}> ;`);
+        }
+
+        const lastIdx = lines.length - 1;
+        lines[lastIdx] = lines[lastIdx]!.replace(/ ;$/, " .");
+        lines.push("");
+      }
+    }
+
     return lines.join("\n");
   }
 
@@ -514,7 +681,7 @@ export class OslcGateway {
       statusCode: number,
       data: any,
       isGraphOrTurtle: boolean = false,
-      domain: "rm" | "qm" | "am" | "all" = "all",
+      domain: "rm" | "qm" | "am" | "cm" | "all" = "all",
     ) => {
       if (prefersTurtle) {
         res.writeHead(statusCode, {
@@ -567,6 +734,12 @@ export class OslcGateway {
             "@type": "oslc:ServiceProvider",
             "dcterms:title": "Architecture & Digital Thread Service Provider (OSLC-AM)",
             "oslc:details": `${this.baseUri}/oslc/am/elements`,
+          },
+          {
+            "@id": `${this.baseUri}/oslc/cm/provider`,
+            "@type": "oslc:ServiceProvider",
+            "dcterms:title": "Change Management & Issue Tracking Service Provider (OSLC-CM)",
+            "oslc:details": `${this.baseUri}/oslc/cm/changerequests`,
           },
         ],
       };
@@ -661,6 +834,43 @@ export class OslcGateway {
         return sendResponse(404, { error: `Architecture element not found: ${id}` });
       }
       return sendResponse(200, elem);
+    }
+
+    // Route: OSLC-CM Change Requests
+    if (pathname === "/oslc/cm/changerequests") {
+      if (req.method === "GET") {
+        return sendResponse(200, Array.from(this.changeRequests.values()), true, "cm");
+      }
+      if (req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
+        req.on("end", () => {
+          try {
+            const parsed = JSON.parse(body);
+            const created = this.registerChangeRequest(parsed);
+            res.writeHead(201, {
+              Location: created.uri,
+              "Content-Type": "application/json",
+            });
+            res.end(JSON.stringify(created, null, 2));
+          } catch (err: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        });
+        return;
+      }
+    }
+
+    if (pathname.startsWith("/oslc/cm/changerequests/")) {
+      const id = decodeURIComponent(pathname.replace("/oslc/cm/changerequests/", ""));
+      const cr = this.changeRequests.get(id);
+      if (!cr) {
+        return sendResponse(404, { error: `ChangeRequest not found: ${id}` });
+      }
+      return sendResponse(200, cr);
     }
 
     // Route not found

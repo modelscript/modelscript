@@ -811,7 +811,7 @@
     "group": "power",
     "pkgName": "@modelscript/psse",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "stable",
     "cliCommand": "msx psse",
     "actions": [
       "inspect",
@@ -1196,6 +1196,69 @@
       ]
     },
     "ruleCount": 10
+  },
+  {
+    "slug": "optical",
+    "name": "OpenROADM & Telcordia .sor",
+    "sidebar": "Optical & DWDM (.sor)",
+    "ext": ".sor",
+    "role": "OTDR trace analytics & DWDM transmission",
+    "group": "electronics",
+    "pkgName": "@modelscript/optical",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "ran",
+    "name": "NSMA WG16 & Planet Antenna",
+    "sidebar": "RAN & Microwave (.adf)",
+    "ext": ".adf, .pat",
+    "role": "Antenna 3D patterns & microwave link budgets",
+    "group": "electronics",
+    "pkgName": "@modelscript/ran",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": false,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "fiber",
+    "name": "TIA-598-D Outside Plant",
+    "sidebar": "Fiber OSP Cadastre",
+    "ext": ".geojson",
+    "role": "Fiber strand tracing & physical SRLG diversity",
+    "group": "electronics",
+    "pkgName": "@modelscript/fiber",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": false,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
   },
   {
     "slug": "urdf",

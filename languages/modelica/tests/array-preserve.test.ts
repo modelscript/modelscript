@@ -41,6 +41,7 @@ end VectorODE;
 
       assert.strictEqual(daePreserve.varCount, 2);
       assert.strictEqual(daePreserve.eqCount, 1);
+      assert.deepStrictEqual(daePreserve.getEquationShape(0), [10]);
       assert.strictEqual(daePreserve.getVarTotalScalarElements(), 11);
 
       const xVarIdx = daePreserve.getVarIdxByName("x");

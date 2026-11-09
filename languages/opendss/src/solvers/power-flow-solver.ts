@@ -1,6 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { DssDeck, DssLine, DssTransformer } from "../types.js";
+import {
+  buildOpenDssYbus,
+  solveAdmittancePowerFlow,
+  solveAdmittanceQsts,
+  type AdmittancePowerFlowOptions,
+} from "./opendss-ybus-solver.js";
+
+export { buildOpenDssYbus, solveAdmittancePowerFlow, solveAdmittanceQsts };
+export type { AdmittancePowerFlowOptions };
+
+export interface DistributionPowerFlowOptions extends AdmittancePowerFlowOptions {
+  method?: "admittance" | "fbs" | "auto";
+}
 
 export interface BusPowerFlowResult {
   busName: string;
@@ -26,6 +39,9 @@ export interface PowerFlowSummary {
   totalGenKw: number;
   lossesKw: number;
   buses: Map<string, BusPowerFlowResult>;
+  controlActions?: string[];
+  tapPositions?: Map<string, number[]>;
+  capacitorStates?: Map<string, boolean>;
 }
 
 export interface QstsStepResult {
@@ -92,9 +108,25 @@ function computeVuf(vA: number, vB: number, vC: number): number {
 }
 
 /**
- * Multi-bus 3-phase unbalanced forward-backward sweep distribution power flow solver for OpenDSS.
+ * Multi-bus 3-phase unbalanced distribution power flow solver for OpenDSS.
+ * Supports both Sparse Nodal Admittance [Ybus] (with AMD sparse LU factorization)
+ * and Forward-Backward Sweep (FBS) DistFlow methods.
  */
-export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1e-4): PowerFlowSummary {
+export function solveDistributionPowerFlow(
+  deck: DssDeck,
+  maxItersOrOptions: number | DistributionPowerFlowOptions = 20,
+  tol = 1e-4,
+): PowerFlowSummary {
+  if (typeof maxItersOrOptions === "object") {
+    const opts = maxItersOrOptions;
+    if (opts.method === "admittance") {
+      return solveAdmittancePowerFlow(deck, opts);
+    }
+  }
+
+  const maxIters = typeof maxItersOrOptions === "number" ? maxItersOrOptions : (maxItersOrOptions.maxIterations ?? 20);
+  const tolerance = typeof maxItersOrOptions === "number" ? tol : (maxItersOrOptions.tolerance ?? tol);
+
   const buses = new Map<string, BusPowerFlowResult>();
   const busPhaseInjections = new Map<string, BusPhaseLoad>();
 
@@ -453,7 +485,7 @@ export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1
       }
     }
 
-    if (maxDeltaV < tol) {
+    if (maxDeltaV < tolerance) {
       converged = true;
       break;
     }
@@ -479,7 +511,14 @@ export const solveOpenDssPowerFlow = solveDistributionPowerFlow;
  * Quasi-Static Time-Series (QSTS) solver for OpenDSS decks containing `LoadShape` profiles.
  * Evaluates multi-step distribution power flow across the load shape time series.
  */
-export function solveOpenDssQsts(deck: DssDeck, loadShapeName?: string): QstsSimulationResult {
+export function solveOpenDssQsts(
+  deck: DssDeck,
+  loadShapeName?: string,
+  options?: DistributionPowerFlowOptions,
+): QstsSimulationResult {
+  if (options?.method === "admittance") {
+    return solveAdmittanceQsts(deck, loadShapeName, options);
+  }
   const shapes = deck.loadShapes ?? new Map();
   let selectedShape = loadShapeName ? shapes.get(loadShapeName) : undefined;
   if (!selectedShape) {

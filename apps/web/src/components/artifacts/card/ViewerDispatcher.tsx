@@ -74,6 +74,9 @@ const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
 const QifViewer = React.lazy(() => import("../QifViewer"));
 const UrdfViewer = React.lazy(() => import("../UrdfViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
+const OtdrTraceViewer = React.lazy(() => import("../OtdrTraceViewer"));
+const FiberSpliceMatrixViewer = React.lazy(() => import("../FiberSpliceMatrixViewer"));
+const MicrowaveProfileViewer = React.lazy(() => import("../MicrowaveProfileViewer"));
 
 export function getViewerExpectedHeight(
   viewType: string | undefined,
@@ -135,7 +138,17 @@ export function getViewerExpectedHeight(
     case "reqifz":
       return "430px";
     case "qif":
+    case "otdr":
+    case "sor":
+    case "optical-trace":
       return "480px";
+    case "fiber-splice":
+    case "splice-matrix":
+    case "tia-598":
+    case "microwave-profile":
+    case "fresnel-profile":
+    case "ran-microwave":
+      return "520px";
     case "package":
     case "library":
     case "repository":
@@ -415,6 +428,22 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "gtsuite":
       case "gtm":
         return <GtSuiteViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "otdr":
+      case "sor":
+      case "optical-trace":
+      case "optical":
+        return <OtdrTraceViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "fiber-splice":
+      case "splice-matrix":
+      case "tia-598":
+      case "fiber":
+        return <FiberSpliceMatrixViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "microwave-profile":
+      case "fresnel-profile":
+      case "ran-microwave":
+      case "microwave":
+      case "ran":
+        return <MicrowaveProfileViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "ssp":
       case "ssd":
         return (

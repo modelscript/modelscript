@@ -6,6 +6,7 @@
  * WebGPU acceleration, and numerical optimization engines for ModelScript.
  */
 
+export * from "./analysis/bifurcation-palc.js";
 export * from "./calibration/index.js";
 export * from "./cfd/index.js";
 export * from "./control/index.js";

@@ -11,13 +11,17 @@
  */
 
 import { renderPsseSvg } from "@modelscript/diagram/psse-diagram-builder";
+import { parsePsseSld, renderSldSvg } from "@modelscript/diagram/psse-sld-parser";
 import {
   analyzeN1Contingencies,
   analyzeSmallSignalStability,
+  auditNercCompliance,
   calculateShortCircuit,
+  executeIdv,
   extractPowerFlowNetlist,
   lintPsse,
   lowerPsseToDae,
+  parseDyr,
   parseRaw,
   psseToModelica,
   solveContinuationPowerFlow,
@@ -34,7 +38,8 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, summary, diagram, netlist, solve, opf, fault, modes, n1)",
+        description:
+          "Action to perform (lint, summary, diagram, netlist, solve, opf, fault, modes, n1, sld, idv, verify-nerc)",
         type: "string",
         choices: [
           "inspect",
@@ -50,17 +55,30 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           "modes",
           "n1",
           "cpf",
+          "sld",
+          "idv",
+          "verify-nerc",
+          "to-cgmes",
+          "from-cgmes",
         ],
         demandOption: true,
       })
       .positional("files", {
-        description: "PSS/E RAW file(s) to process",
+        description: "PSS/E file(s) to process (.raw, .sld, .drw, .idv)",
         type: "string",
         array: true,
       })
       .option("out", {
         alias: ["o", "output"],
         description: "Output file path (e.g. for SVG diagram or report)",
+        type: "string",
+      })
+      .option("raw", {
+        description: "Associated PSS/E RAW power flow base case file",
+        type: "string",
+      })
+      .option("dyr", {
+        description: "Associated PSS/E DYR dynamic models data file",
         type: "string",
       })
       .option("algorithm", {
@@ -99,8 +117,38 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
     const maxIterations = (argv["max-iter"] as number) ?? 25;
 
     if (files.length === 0) {
-      console.error("[psse] No PSS/E .raw files specified.");
+      console.error("[psse] No PSS/E or CGMES files specified.");
       process.exit(1);
+    }
+
+    if (action === "from-cgmes") {
+      console.log(`[psse] Converting CGMES profile(s) to PSS/E RAW format...`);
+      const { parseCgmesFiles, cgmesToPsse } = await import("@modelscript/cgmes");
+      const { writeRaw } = await import("@modelscript/psse");
+
+      const sources = files.map((f) => {
+        const p = path.resolve(process.cwd(), f);
+        if (!fs.existsSync(p)) {
+          console.error(`[psse] File not found: ${p}`);
+          process.exit(1);
+        }
+        return fs.readFileSync(p, "utf-8");
+      });
+
+      const cgmesModel = parseCgmesFiles(sources);
+      const { psseCase } = cgmesToPsse(cgmesModel);
+      const rawOutput = writeRaw(psseCase);
+
+      if (out) {
+        const outPath = path.resolve(process.cwd(), out);
+        fs.writeFileSync(outPath, rawOutput, "utf-8");
+        console.log(
+          `  ✔ Exported PSS/E RAW base case to ${outPath} (${psseCase.buses.size} buses, ${psseCase.branches.length} branches, ${psseCase.generators.length} gens)`,
+        );
+      } else {
+        console.log(rawOutput);
+      }
+      return;
     }
 
     for (const file of files) {
@@ -111,7 +159,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       }
 
       const text = fs.readFileSync(absPath, "utf-8");
-      const parsed = parseRaw(text);
+      const parsed = action === "sld" || action === "idv" ? (null as any) : parseRaw(text);
 
       switch (action) {
         case "lint": {
@@ -320,6 +368,120 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           if (out) {
             fs.writeFileSync(path.resolve(process.cwd(), out), cpf.reportText);
           }
+          break;
+        }
+
+        case "sld": {
+          console.log(`[psse] Ingesting PSS/E Single-Line Diagram (.sld/.drw): ${path.basename(file)}...`);
+          const drawing = parsePsseSld(text);
+          console.log(`  Title:      ${drawing.title}`);
+          console.log(`  Buses:      ${drawing.buses.size} busbars mapped`);
+          console.log(`  Branches:   ${drawing.branches.length} transmission lines`);
+          console.log(`  Equipment:  ${drawing.components.length} equipment glyphs`);
+          console.log(`  Labels:     ${drawing.annotations.length} annotations`);
+
+          const rawOpt = argv["raw"] as string | undefined;
+          let rawCase = undefined;
+          if (rawOpt) {
+            const rawAbs = path.resolve(process.cwd(), rawOpt);
+            if (fs.existsSync(rawAbs)) {
+              rawCase = parseRaw(fs.readFileSync(rawAbs, "utf-8"));
+              console.log(`  Linked to RAW base case: ${path.basename(rawOpt)}`);
+            }
+          }
+
+          const svg = renderSldSvg(drawing, rawCase);
+          const outPath = out || `${path.basename(file, path.extname(file))}.svg`;
+          fs.writeFileSync(path.resolve(process.cwd(), outPath), svg, "utf-8");
+          console.log(`  ✔ Rendered standalone SVG diagram to ${outPath}`);
+          break;
+        }
+
+        case "idv": {
+          console.log(`[psse] Executing PSS/E .idv macro script: ${path.basename(file)}...`);
+          const rawOpt = argv["raw"] as string | undefined;
+          let initialCase = undefined;
+          if (rawOpt) {
+            const rawAbs = path.resolve(process.cwd(), rawOpt);
+            if (fs.existsSync(rawAbs)) {
+              initialCase = parseRaw(fs.readFileSync(rawAbs, "utf-8"));
+            }
+          }
+
+          const result = executeIdv(text, undefined, { initialCase });
+          console.log(`  Executed: ${result.commandsExecuted} / ${result.totalCommands} commands.`);
+          for (const l of result.logs) {
+            console.log(`  ℹ ${l}`);
+          }
+          if (result.errors.length > 0) {
+            for (const e of result.errors) {
+              console.error(`  ✖ ${e}`);
+            }
+            process.exitCode = 1;
+          } else {
+            console.log(`  ✔ All IDV batch commands completed successfully.`);
+          }
+          if (out) {
+            const outText = result.logs.concat(result.errors).join("\n");
+            fs.writeFileSync(path.resolve(process.cwd(), out), outText, "utf-8");
+          }
+          break;
+        }
+
+        case "verify-nerc": {
+          console.log(`[psse] Running automated NERC compliance audit on ${path.basename(file)}...`);
+          const dyrOpt = argv["dyr"] as string | undefined;
+          if (dyrOpt) {
+            const dyrAbs = path.resolve(process.cwd(), dyrOpt);
+            if (fs.existsSync(dyrAbs)) {
+              parsed.dyr = parseDyr(fs.readFileSync(dyrAbs, "utf-8"));
+              console.log(`  Attached dynamic models from: ${path.basename(dyrOpt)}`);
+            }
+          }
+
+          const report = auditNercCompliance(parsed, {
+            caseTitle: parsed.title1 || path.basename(file),
+          });
+          console.log(report.markdownReport);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), report.markdownReport, "utf-8");
+            console.log(`  ✔ Exported compliance report to ${out}`);
+          }
+          if (report.overallStatus === "NON-COMPLIANT") {
+            process.exitCode = 1;
+          }
+          break;
+        }
+
+        case "to-cgmes": {
+          console.log(`[psse] Converting ${path.basename(file)} to ENTSO-E CGMES (CIM / IEC 61970-301)...`);
+          const { psseToCgmes, exportCgmesArchive } = await import("@modelscript/cgmes");
+          const { model } = psseToCgmes(parsed);
+          const archive = exportCgmesArchive(model);
+
+          const outDir = out ? path.resolve(process.cwd(), out) : path.dirname(absPath);
+          if (!fs.existsSync(outDir)) {
+            fs.mkdirSync(outDir, { recursive: true });
+          }
+
+          const baseName = path.basename(file, path.extname(file));
+          const eqPath = path.join(outDir, `${baseName}_EQ.xml`);
+          const tpPath = path.join(outDir, `${baseName}_TP.xml`);
+          const sshPath = path.join(outDir, `${baseName}_SSH.xml`);
+          const svPath = path.join(outDir, `${baseName}_SV.xml`);
+
+          fs.writeFileSync(eqPath, archive.eqXml, "utf-8");
+          fs.writeFileSync(tpPath, archive.tpXml, "utf-8");
+          fs.writeFileSync(sshPath, archive.sshXml, "utf-8");
+          fs.writeFileSync(svPath, archive.svXml, "utf-8");
+
+          console.log(`  ✔ Exported CGMES profiles to ${outDir}:`);
+          console.log(
+            `    - Equipment (EQ): ${path.basename(eqPath)} (${model.lines.size} lines, ${model.transformers.size} xfmrs, ${model.generators.size} gens)`,
+          );
+          console.log(`    - Topology (TP): ${path.basename(tpPath)} (${model.nodes.size} topological nodes)`);
+          console.log(`    - Steady State Hypothesis (SSH): ${path.basename(sshPath)}`);
+          console.log(`    - State Variables (SV): ${path.basename(svPath)} (${model.svVoltages.size} node voltages)`);
           break;
         }
       }

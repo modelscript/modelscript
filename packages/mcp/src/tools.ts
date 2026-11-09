@@ -3,6 +3,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { computeAABBDistance, type AABB } from "@modelscript/cad";
 import { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
+import { locateOtdrFault, type FiberCableSpan, type FiberStructureNode } from "@modelscript/fiber";
 import { evaluateEn14363, lintGensysModel, parseGensysDeck, solveFastsim } from "@modelscript/gensys";
 import { RtmIndexEngine, runSelfHealingPipeline } from "@modelscript/lsp";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
@@ -28,6 +29,20 @@ import {
   type TunableParameter,
 } from "@modelscript/olga";
 import {
+  createEmptyOpticalTopology,
+  parseSor,
+  solveChannelTransmission,
+  type OpticalChannel,
+  type OpticalSpan,
+  type SorKeyEvent,
+} from "@modelscript/optical";
+import {
+  computeFsplDb,
+  evaluateFresnelClearance,
+  solveMicrowaveLinkBudget,
+  type MicrowaveLink,
+} from "@modelscript/ran";
+import {
   B2BEquivalenceVerifier,
   executeBgpQuery,
   executeQueryString,
@@ -49,11 +64,17 @@ import {
   computeBodeResponse,
   computeEigenStructure,
   computeStabilityMargins,
+  continueEquilibriumBranch,
+  createMassActionChannel,
+  firstReactionSSA,
+  gillespieSSA,
   linearizeArenaDae,
   ModelicaCalibrator,
   runArenaDoE,
   runSensitivityAnalysisArena,
   simulateArenaAsync,
+  simulateJumpEnsemble,
+  tauLeaping,
   type ArenaSimulateOptions,
 } from "@modelscript/simulate";
 import { BoundaryTestSynthesizer, parseGuardConstraints, toNonlinearConstraint } from "@modelscript/sysml2";
@@ -670,7 +691,38 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       startTime: z.number().optional().describe("Simulation start time (default: from annotation or 0)"),
       stopTime: z.number().optional().describe("Simulation stop time (default: from annotation or 10)"),
       interval: z.number().optional().describe("Output interval (default: (stopTime-startTime)/500)"),
-      solver: z.enum(["rk4", "dopri5", "bdf", "auto"]).optional().describe("ODE solver (default: dopri5)"),
+      solver: z
+        .enum([
+          "euler",
+          "rk4",
+          "dopri5",
+          "tsit5",
+          "vern7",
+          "vern9",
+          "trbdf2",
+          "rodas4p",
+          "kencarp4",
+          "radau5",
+          "radau9",
+          "verlet",
+          "yoshida4",
+          "yoshida6",
+          "yoshida8",
+          "qss1",
+          "qss2",
+          "qss3",
+          "liqss2",
+          "bdf",
+          "auto",
+          "cvode",
+          "webgpu",
+        ])
+        .optional()
+        .describe("ODE/DAE/Symplectic/QSS solver (default: dopri5)"),
+      linearSolver: z
+        .enum(["dense-lu", "klu", "gmres", "bicgstab", "distributed-ras"])
+        .optional()
+        .describe("Linear solver for implicit/stiff steps (default: klu)"),
       format: z.enum(["csv", "json"]).optional().describe("Output format (default: json)"),
     },
     withSandbox(
@@ -919,7 +971,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           outputs,
           strategy: strategy ?? "sobol",
           numSamples: numSamples ?? 50,
-          simulateOptions: simOpts,
+          simulateOptions: simOpts as any,
         });
 
         const summary = {
@@ -993,7 +1045,13 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           if (spec.perturbation !== undefined) perturbationFactor = spec.perturbation;
         }
 
-        const result = runSensitivityAnalysisArena(arena, parameterNames, nominalValues, perturbationFactor, simOpts);
+        const result = runSensitivityAnalysisArena(
+          arena,
+          parameterNames,
+          nominalValues,
+          perturbationFactor,
+          simOpts as any,
+        );
 
         // Convert Maps to plain objects for JSON serialization
         const serialized: Record<string, Record<string, number>> = {};
@@ -5382,6 +5440,1604 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           },
         ],
       };
+    },
+  );
+
+  server.tool(
+    "opendss_solve_powerflow",
+    "Solves multi-phase unbalanced distribution AC power flow using sparse Ybus nodal admittance matrix with RegControl tap changers and CapControl capacitor banks.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script or model content (.dss)"),
+      maxIterations: z
+        .number()
+        .optional()
+        .describe("Maximum Newton-Raphson / iterative admittance iterations (default: 25)"),
+      tolerance: z.number().optional().describe("Voltage convergence tolerance in p.u. (default: 1e-4)"),
+    },
+    async ({ circuitContent, maxIterations, tolerance }) => {
+      const { parseOpenDss, solveAdmittancePowerFlow, lintOpenDss } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const diagnostics = lintOpenDss(deck);
+      const opts: { maxIterations?: number; tolerance?: number } = {};
+      if (maxIterations !== undefined) opts.maxIterations = maxIterations;
+      if (tolerance !== undefined) opts.tolerance = tolerance;
+      const result = solveAdmittancePowerFlow(deck, opts);
+      const buses: Record<string, { vMagPu: number; vAngleDeg: number; voltageKv: number }> = {};
+      for (const [name, b] of result.buses) {
+        buses[name] = { vMagPu: b.vMagPu, vAngleDeg: b.vAngleDeg, voltageKv: b.voltageKv };
+      }
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                converged: result.converged,
+                iterations: result.iterations,
+                totalLoadKw: result.totalLoadKw,
+                totalLoadKvar: result.totalLoadKvar,
+                totalGenKw: result.totalGenKw,
+                lossesKw: result.lossesKw,
+                diagnostics,
+                buses,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "opendss_solve_faults",
+    "Computes short-circuit fault currents (3-phase symmetrical, single line-to-ground SLG, line-to-line LL) and Thevenin equivalent impedances.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script (.dss)"),
+      faultResistance: z.number().optional().describe("Fault resistance in Ohms (default: 0.0)"),
+      faultReactance: z.number().optional().describe("Fault reactance in Ohms (default: 0.0)"),
+    },
+    async ({ circuitContent, faultResistance, faultReactance }) => {
+      const { parseOpenDss, solveFaultStudy } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const opts: { faultImpedance?: { r: number; x: number } } = {};
+      if (faultResistance !== undefined || faultReactance !== undefined) {
+        opts.faultImpedance = { r: faultResistance ?? 0, x: faultReactance ?? 0 };
+      }
+      const result = solveFaultStudy(deck, opts);
+      const buses: Record<string, unknown> = {};
+      for (const [name, b] of result.buses) {
+        buses[name] = b;
+      }
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                maxFaultCurrentAmps: result.maxFaultCurrentAmps,
+                buses,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "opendss_evaluate_harmonics",
+    "Computes frequency-dependent harmonic voltage propagation and total harmonic distortion (THD%) across user-specified harmonic spectrum.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script (.dss)"),
+      harmonicOrders: z
+        .array(z.number())
+        .optional()
+        .describe("Array of harmonic orders to evaluate (default: [1, 3, 5, 7, 9, 11, 13])"),
+    },
+    async ({ circuitContent, harmonicOrders }) => {
+      const { parseOpenDss, solveHarmonics } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const opts: { harmonics?: number[] } = {};
+      if (harmonicOrders !== undefined) opts.harmonics = harmonicOrders;
+      const result = solveHarmonics(deck, opts);
+      const buses: Record<string, unknown> = {};
+      for (const [name, b] of result.buses) {
+        buses[name] = b;
+      }
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                maxThdPercent: result.maxThdPercent,
+                harmonicOrders: result.harmonicOrders,
+                buses,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "opendss_analyze_reliability",
+    "Evaluates predictive distribution feeder reliability indices (IEEE 1366: SAIFI, SAIDI, CAIDI, ASAI, EEN) and identifies critical risk branches.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script (.dss)"),
+      overheadFaultRatePerKm: z
+        .number()
+        .optional()
+        .describe("Overhead line failure rate in faults per km per year (default: 0.08)"),
+      cableFaultRatePerKm: z
+        .number()
+        .optional()
+        .describe("Cable failure rate in faults per km per year (default: 0.02)"),
+      meanTimeToRepairHours: z.number().optional().describe("Mean Time To Repair in hours (default: 2.5)"),
+      kwPerCustomer: z.number().optional().describe("Average peak kW load per customer (default: 2.0)"),
+    },
+    async ({ circuitContent, overheadFaultRatePerKm, cableFaultRatePerKm, meanTimeToRepairHours, kwPerCustomer }) => {
+      const { parseOpenDss, solveReliability } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const opts: {
+        overheadFaultRatePerKm?: number;
+        cableFaultRatePerKm?: number;
+        meanTimeToRepairHours?: number;
+        kwPerCustomer?: number;
+      } = {};
+      if (overheadFaultRatePerKm !== undefined) opts.overheadFaultRatePerKm = overheadFaultRatePerKm;
+      if (cableFaultRatePerKm !== undefined) opts.cableFaultRatePerKm = cableFaultRatePerKm;
+      if (meanTimeToRepairHours !== undefined) opts.meanTimeToRepairHours = meanTimeToRepairHours;
+      if (kwPerCustomer !== undefined) opts.kwPerCustomer = kwPerCustomer;
+      const result = solveReliability(deck, opts);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                system: result.system,
+                criticalBranches: result.criticalBranches,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "opendss_solve_gic",
+    "Analyzes geomagnetically induced currents (GIC) from space weather events across power grid substation earth grounds and identifies transformer half-cycle saturation risks.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script (.dss)"),
+      eEastVPerKm: z.number().optional().describe("Eastward geoelectric field in V/km (default: 1.0)"),
+      eNorthVPerKm: z.number().optional().describe("Northward geoelectric field in V/km (default: 0.0)"),
+      substationGroundResistance: z
+        .number()
+        .optional()
+        .describe("Substation ground grid resistance in Ohms (default: 0.1)"),
+    },
+    async ({ circuitContent, eEastVPerKm, eNorthVPerKm, substationGroundResistance }) => {
+      const { parseOpenDss, solveGic } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const opts: { eEastVPerKm?: number; eNorthVPerKm?: number; substationGroundResistance?: number } = {};
+      if (eEastVPerKm !== undefined) opts.eEastVPerKm = eEastVPerKm;
+      if (eNorthVPerKm !== undefined) opts.eNorthVPerKm = eNorthVPerKm;
+      if (substationGroundResistance !== undefined) opts.substationGroundResistance = substationGroundResistance;
+      const result = solveGic(deck, opts);
+      const buses: Record<string, unknown> = {};
+      for (const [name, b] of result.buses) {
+        buses[name] = b;
+      }
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                maxNeutralCurrentAmps: result.maxNeutralCurrentAmps,
+                totalGicLossMvar: result.totalGicLossMvar,
+                atRiskTransformers: result.atRiskTransformers,
+                buses,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "opendss_hosting_capacity",
+    "Calculates distribution feeder maximum Distributed Energy Resource (DER) hosting capacity limited by ANSI C84.1 voltage rise and line thermal capacity, with optional IEEE 1547 smart inverter Volt-VAR mitigation.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script (.dss)"),
+      targetBus: z
+        .string()
+        .optional()
+        .describe("Candidate bus for DER interconnection (defaults to highest impedance terminal bus)"),
+      enableSmartInverter: z
+        .boolean()
+        .optional()
+        .describe("Enable IEEE 1547 Volt-VAR absorption to mitigate overvoltage (default: false)"),
+      voltageMaxPu: z.number().optional().describe("Maximum statutory voltage threshold in p.u. (default: 1.05)"),
+      voltageMinPu: z.number().optional().describe("Minimum statutory voltage threshold in p.u. (default: 0.95)"),
+      stepKw: z.number().optional().describe("DER increment step size in kW (default: 50 kW)"),
+      maxKw: z.number().optional().describe("Maximum search capacity limit in kW (default: 20000 kW)"),
+    },
+    async ({ circuitContent, targetBus, enableSmartInverter, voltageMaxPu, voltageMinPu, stepKw, maxKw }) => {
+      const { parseOpenDss, solveHostingCapacity } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const opts: {
+        targetBus?: string;
+        enableSmartInverter?: boolean;
+        voltageMaxPu?: number;
+        voltageMinPu?: number;
+        stepKw?: number;
+        maxKw?: number;
+      } = {};
+      if (targetBus !== undefined) opts.targetBus = targetBus;
+      if (enableSmartInverter !== undefined) opts.enableSmartInverter = enableSmartInverter;
+      if (voltageMaxPu !== undefined) opts.voltageMaxPu = voltageMaxPu;
+      if (voltageMinPu !== undefined) opts.voltageMinPu = voltageMinPu;
+      if (stepKw !== undefined) opts.stepKw = stepKw;
+      if (maxKw !== undefined) opts.maxKw = maxKw;
+      const result = solveHostingCapacity(deck, opts);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                targetBus: result.targetBus,
+                hostingCapacityKw: result.hostingCapacityKw,
+                limitingCriterion: result.limitingCriterion,
+                limitingElement: result.limitingElement,
+                limitingValue: result.limitingValue,
+                iterations: result.iterations,
+                baselineMaxVoltagePu: result.baselineMaxVoltagePu,
+                baselineMinVoltagePu: result.baselineMinVoltagePu,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "opendss_simulate_flisr",
+    "Simulates automated Fault Location, Isolation, and Service Restoration (FLISR) distribution grid self-healing, calculating customer interruption hours saved.",
+    {
+      circuitContent: z.string().describe("OpenDSS circuit script (.dss)"),
+      faultedLine: z.string().describe("Name of line segment where fault occurred (e.g. 'Line1')"),
+      tieLineName: z.string().optional().describe("Normally-open tie line to adjacent healthy feeder"),
+      adjacentFeederCapacityKw: z
+        .number()
+        .optional()
+        .describe("Available spare capacity on adjacent feeder in kW (default: 4000.0)"),
+      manualRepairHours: z.number().optional().describe("Manual utility repair crew MTTR in hours (default: 2.5)"),
+    },
+    async ({ circuitContent, faultedLine, tieLineName, adjacentFeederCapacityKw, manualRepairHours }) => {
+      const { parseOpenDss, solveFlisr } = await import("@modelscript/opendss");
+      const deck = parseOpenDss(circuitContent);
+      const opts: {
+        tieLineName?: string;
+        adjacentFeederCapacityKw?: number;
+        manualRepairHours?: number;
+      } = {};
+      if (tieLineName !== undefined) opts.tieLineName = tieLineName;
+      if (adjacentFeederCapacityKw !== undefined) opts.adjacentFeederCapacityKw = adjacentFeederCapacityKw;
+      if (manualRepairHours !== undefined) opts.manualRepairHours = manualRepairHours;
+      const result = solveFlisr(deck, faultedLine, opts);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                faultedLine: result.faultedLine,
+                restorationSuccess: result.restorationSuccess,
+                isolatedLineNames: result.isolatedLineNames,
+                upstreamRestoredBuses: result.upstreamRestoredBuses,
+                downstreamRestoredBuses: result.downstreamRestoredBuses,
+                tieSwitchOperated: result.tieSwitchOperated,
+                customersRestoredUpstream: result.customersRestoredUpstream,
+                customersRestoredDownstream: result.customersRestoredDownstream,
+                customersRemainingUnserved: result.customersRemainingUnserved,
+                customerInterruptionHoursSaved: result.customerInterruptionHoursSaved,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Water Utilities: US EPA EPANET & SWMM Modeling & Analysis Tools
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  server.tool(
+    "epanet_solve_hydraulics",
+    "Solves steady-state or extended period hydraulics for a US EPA EPANET water distribution network (.inp).",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      extendedPeriod: z
+        .boolean()
+        .optional()
+        .describe("Whether to run Extended Period Simulation (EPS). Default: false"),
+      durationHours: z.number().optional().describe("EPS simulation duration in hours (e.g. 24, 48, 72)"),
+      demandModel: z
+        .enum(["DDA", "PDD"])
+        .optional()
+        .describe("Demand model: 'DDA' (Demand-Driven) or 'PDD' (Pressure-Dependent)"),
+    },
+    async ({ networkContent, extendedPeriod, durationHours, demandModel }) => {
+      const { parseInp, solveHydraulics, solveExtendedPeriod } = await import("@modelscript/epanet");
+      const net = parseInp(networkContent);
+      if (extendedPeriod) {
+        const epsRes = solveExtendedPeriod(net, {
+          durationHours: durationHours ?? net.options.durationHours ?? 24,
+          pdd: demandModel === "PDD" ? { enabled: true } : undefined,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  mode: "EPS",
+                  stepsCount: epsRes.steps.length,
+                  totalEnergyKwh: Math.round(epsRes.totalEnergyKwh * 100) / 100,
+                  minSystemPressure: Math.round(epsRes.minSystemPressure * 100) / 100,
+                  maxSystemPressure: Math.round(epsRes.maxSystemPressure * 100) / 100,
+                  criticalJunctions: epsRes.criticalJunctions,
+                  finalStep: {
+                    timeHours: epsRes.steps[epsRes.steps.length - 1]?.timeHours,
+                    tankLevels: Object.fromEntries(epsRes.steps[epsRes.steps.length - 1]?.tankLevels ?? new Map()),
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
+      const hydRes = solveHydraulics(net, {
+        pdd: demandModel === "PDD" ? { enabled: true } : undefined,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                mode: "STEADY_STATE",
+                converged: hydRes.converged,
+                iterations: hydRes.iterations,
+                maxFlowChange: hydRes.maxFlowChange,
+                nodePressures: Object.fromEntries(hydRes.nodePressures),
+                linkFlows: Object.fromEntries(hydRes.linkFlows),
+                linkVelocities: Object.fromEntries(hydRes.linkVelocities),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "epanet_fire_flow_analysis",
+    "Performs fire flow capacity analysis at a municipal hydrant node, evaluating available GPM at 20 psi residual pressure.",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      targetHydrantNode: z.string().describe("Target junction/hydrant ID (e.g. 'J-101')"),
+      requiredFireFlowLps: z.number().optional().describe("Required fire flow in L/s (default: 63.09 L/s = 1000 GPM)"),
+      minResidualPressureM: z
+        .number()
+        .optional()
+        .describe("Minimum residual pressure head in meters (default: 14.06m = 20 psi)"),
+    },
+    async ({ networkContent, targetHydrantNode, requiredFireFlowLps, minResidualPressureM }) => {
+      const { parseInp, solveHydraulics } = await import("@modelscript/epanet");
+      const net = parseInp(networkContent);
+      const reqFlow = requiredFireFlowLps ?? 63.09;
+      const minP = minResidualPressureM ?? 14.06;
+
+      const baseHyd = solveHydraulics(net);
+      const basePressure = baseHyd.nodePressures.get(targetHydrantNode) ?? 0.0;
+
+      const fireDemands = new Map<string, number>();
+      for (const j of net.junctions) {
+        if (j.id.toLowerCase() === targetHydrantNode.toLowerCase()) {
+          fireDemands.set(j.id.toLowerCase(), j.demand + reqFlow);
+        }
+      }
+      const fireHyd = solveHydraulics(net, { demandOverrides: fireDemands });
+      const residualP = fireHyd.nodePressures.get(targetHydrantNode) ?? 0.0;
+
+      const flowGpm = reqFlow * 15.8503;
+      let nfpaClass = "Class C (Red, <500 GPM)";
+      if (flowGpm >= 1500) nfpaClass = "Class AA (Light Blue, >=1500 GPM)";
+      else if (flowGpm >= 1000) nfpaClass = "Class A (Green, 1000-1499 GPM)";
+      else if (flowGpm >= 500) nfpaClass = "Class B (Orange, 500-999 GPM)";
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                targetNode: targetHydrantNode,
+                testFireFlowLps: reqFlow,
+                testFireFlowGpm: Math.round(flowGpm),
+                baselinePressureM: Math.round(basePressure * 100) / 100,
+                residualPressureM: Math.round(residualP * 100) / 100,
+                minRequiredResidualM: minP,
+                compliant: residualP >= minP,
+                nfpaClass,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "epanet_outage_contingency",
+    "Simulates N-1 pipe break isolation and unsupplied customer demand under Pressure-Dependent Demand (PDD).",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      isolatedPipeId: z.string().describe("Pipe ID isolated due to rupture/break (e.g. 'P-1')"),
+    },
+    async ({ networkContent, isolatedPipeId }) => {
+      const { parseInp, solvePddHydraulics } = await import("@modelscript/epanet");
+      const net = parseInp(networkContent);
+      const linkOverrides = new Map<string, "OPEN" | "CLOSED">();
+      linkOverrides.set(isolatedPipeId.toLowerCase(), "CLOSED");
+
+      const result = solvePddHydraulics(
+        net,
+        { enabled: true, pMin: 0.0, pReq: 20.0, exponent: 0.5 },
+        { linkStatusOverrides: linkOverrides },
+      );
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                isolatedPipe: isolatedPipeId,
+                requiredDemandLps: result.requiredDemandLps,
+                deliveredDemandLps: result.deliveredDemandLps,
+                unsuppliedDemandLps: result.unsuppliedDemandLps,
+                satisfactionRatio: Math.round(result.satisfactionRatio * 1000) / 1000,
+                unservedNodes: result.unservedNodes,
+                isolatedNodes: result.isolatedNodes,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "epanet_water_hammer_surge",
+    "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, and cavitation risk via the Method of Characteristics (MOC).",
+    {
+      pipeLengthM: z.number().describe("Pipeline length in meters (e.g. 1200.0)"),
+      pipeDiameterM: z.number().describe("Internal pipe diameter in meters (e.g. 0.6)"),
+      initialFlowM3s: z.number().describe("Initial steady flow rate in m^3/s (e.g. 0.5)"),
+      closureTimeSeconds: z.number().describe("Valve closure duration in seconds (e.g. 0.5)"),
+      waveSpeedMps: z.number().optional().describe("Acoustic wave speed in m/s (default: 1200.0)"),
+      initialHeadUpstreamM: z.number().optional().describe("Initial upstream head in meters (default: 80.0)"),
+      initialHeadDownstreamM: z.number().optional().describe("Initial downstream head in meters (default: 70.0)"),
+    },
+    async ({
+      pipeLengthM,
+      pipeDiameterM,
+      initialFlowM3s,
+      closureTimeSeconds,
+      waveSpeedMps,
+      initialHeadUpstreamM,
+      initialHeadDownstreamM,
+    }) => {
+      const { solveWaterHammerMoc } = await import("@modelscript/epanet");
+      const pipe = {
+        id: "SURGE_PIPE",
+        lengthM: pipeLengthM,
+        diameterM: pipeDiameterM,
+        waveSpeedMps: waveSpeedMps ?? 1200.0,
+      };
+      const initial = {
+        flowM3s: initialFlowM3s,
+        headUpstreamM: initialHeadUpstreamM ?? 80.0,
+        headDownstreamM: initialHeadDownstreamM ?? 70.0,
+      };
+      const event = {
+        type: "VALVE_CLOSURE" as const,
+        durationSeconds: closureTimeSeconds,
+      };
+      const res = solveWaterHammerMoc(pipe, initial, event);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                joukowskySurgeM: Math.round(res.joukowskySurgeM * 10) / 10,
+                maxHeadM: Math.round(res.maxHeadM * 10) / 10,
+                minHeadM: Math.round(res.minHeadM * 10) / 10,
+                maxPressurePsi: Math.round(res.maxPressurePsi * 10) / 10,
+                minPressurePsi: Math.round(res.minPressurePsi * 10) / 10,
+                cavitationOccurred: res.cavitationOccurred,
+                waveTravelTimeSeconds: Math.round(res.waveTravelTimeSeconds * 100) / 100,
+                fundamentalPeriodSeconds: Math.round(res.fundamentalPeriodSeconds * 100) / 100,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "water_audit_awwa_m36",
+    "Performs standard AWWA M36 Water Audit calculating CARL, UARL, Infrastructure Leakage Index (ILI), and non-revenue water financial losses.",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      systemInputVolumeM3Year: z.number().describe("Annual System Input Volume (SIV) in m^3/year"),
+      billedMeteredM3Year: z.number().describe("Annual billed metered consumption in m^3/year"),
+      serviceConnectionsCount: z.number().optional().describe("Number of active customer service connections (Nc)"),
+      unitCostProductionPerM3: z
+        .number()
+        .optional()
+        .describe("Variable cost of water production ($/m^3, default: 0.45)"),
+      retailWaterRatePerM3: z
+        .number()
+        .optional()
+        .describe("Retail tariff rate for apparent loss valuation ($/m^3, default: 1.85)"),
+    },
+    async ({
+      networkContent,
+      systemInputVolumeM3Year,
+      billedMeteredM3Year,
+      serviceConnectionsCount,
+      unitCostProductionPerM3,
+      retailWaterRatePerM3,
+    }) => {
+      const { parseInp, performAwwaM36WaterAudit } = await import("@modelscript/epanet");
+      const net = parseInp(networkContent);
+      const audit = performAwwaM36WaterAudit(net, {
+        systemInputVolumeM3Year,
+        billedMeteredM3Year,
+        serviceConnectionsCount,
+        unitCostProductionPerM3,
+        retailWaterRatePerM3,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                systemInputVolumeM3: audit.systemInputVolumeM3Year,
+                authorizedConsumptionM3: audit.authorizedConsumptionM3Year,
+                waterLossesM3: audit.waterLossesM3Year,
+                realLossesM3: audit.realLossesM3Year,
+                apparentLossesM3: audit.apparentLossesM3Year,
+                nonRevenueWaterPct: audit.nonRevenueWaterPct,
+                carlM3: audit.carlM3Year,
+                uarlM3: audit.uarlM3Year,
+                ili: audit.ili,
+                performanceBand: audit.performanceBand,
+                financialLossUsd: audit.financialImpact.totalAnnualLossUsd,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "swmm_flood_routing",
+    "Simulates 1D Saint-Venant dynamic wave routing in an urban stormwater or combined sewer network (.inp), reporting peak flows and flooding.",
+    {
+      deckContent: z.string().describe("SWMM network deck content (.inp)"),
+      durationSeconds: z.number().optional().describe("Simulation duration in seconds (default: 300)"),
+      rainfallIntensityMmPerHr: z
+        .number()
+        .optional()
+        .describe("Design storm rainfall intensity in mm/hr (default: 45)"),
+    },
+    async ({ deckContent, durationSeconds, rainfallIntensityMmPerHr }) => {
+      const { parseSwmm, solveSwmmDynamicWave } = await import("@modelscript/swmm");
+      const deck = parseSwmm(deckContent);
+      const res = solveSwmmDynamicWave(deck, {
+        durationSeconds: durationSeconds ?? 300,
+        rainfallIntensityMmPerHr: rainfallIntensityMmPerHr ?? 45,
+      });
+
+      const floodedNodes: { nodeId: string; overflowM3s: number }[] = [];
+      for (const [nodeId, nRes] of res.nodes) {
+        if (nRes.overflow > 0) {
+          floodedNodes.push({ nodeId, overflowM3s: nRes.overflow });
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                isFlooding: res.isFlooding,
+                totalInflowM3s: Math.round(res.totalInflow * 1000) / 1000,
+                totalOutflowM3s: Math.round(res.totalOutflow * 1000) / 1000,
+                surchargedConduitsCount: res.surchargedConduits.length,
+                surchargedConduits: res.surchargedConduits,
+                floodedNodesCount: floodedNodes.length,
+                floodedNodes,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "swmm_simulate_rtc",
+    "Simulates Real-Time Control (RTC) gate/weir/pump modulation for urban Combined Sewer Overflow (CSO) mitigation.",
+    {
+      deckContent: z.string().describe("SWMM network deck content (.inp)"),
+      linkId: z.string().describe("Controllable link ID (e.g. 'GATE_1')"),
+      linkType: z.enum(["PUMP", "WEIR", "ORIFICE"]).describe("Type of hydraulic control element"),
+      actionSetting: z.number().describe("Setting ratio (0.0 = fully closed, 1.0 = fully open)"),
+      triggerNodeId: z.string().describe("Sensor monitoring node ID (e.g. 'JUNCTION_5')"),
+      operator: z.enum([">", ">=", "<", "<=", "="]).describe("Relational operator"),
+      thresholdDepth: z.number().describe("Depth trigger threshold in meters"),
+      durationSeconds: z.number().optional().describe("Simulation duration in seconds (default: 300)"),
+    },
+    async ({
+      deckContent,
+      linkId,
+      linkType,
+      actionSetting,
+      triggerNodeId,
+      operator,
+      thresholdDepth,
+      durationSeconds,
+    }) => {
+      const { parseSwmm, simulateSwmmRtc } = await import("@modelscript/swmm");
+      const deck = parseSwmm(deckContent);
+      const rule = {
+        id: "RTC_RULE_1",
+        linkId,
+        linkType,
+        actionSetting,
+        nodeId: triggerNodeId,
+        operator,
+        thresholdDepth,
+      };
+
+      const result = simulateSwmmRtc(deck, [rule], {
+        durationSeconds: durationSeconds ?? 300,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                activeRulesCount: result.activeRulesCount,
+                rulesTriggeredCount: result.ruleExecutions.length,
+                csoSpillVolumeM3: Math.round(result.csoSpillVolumeM3 * 10) / 10,
+                baselineSpillVolumeM3: Math.round(result.baselineSpillVolumeM3 * 10) / 10,
+                spillReductionPct: Math.round(result.spillReductionPct * 10) / 10,
+                executions: result.ruleExecutions,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "ecad_dfm_audit",
+    "Runs Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) design rule checks on PCB layout data.",
+    {
+      traces: z
+        .array(
+          z.object({
+            points: z.array(z.object({ x: z.number(), y: z.number() })),
+            width: z.number(),
+            layer: z.string(),
+            netId: z.string(),
+            selected: z.boolean().optional(),
+          }),
+        )
+        .describe("PCB copper traces"),
+      pads: z
+        .array(
+          z.object({
+            center: z.object({ x: z.number(), y: z.number() }),
+            width: z.number(),
+            height: z.number(),
+            shape: z.enum(["circle", "rect", "oval", "roundrect"]),
+            layer: z.string(),
+            netId: z.string(),
+            component: z.string(),
+            pinName: z.string(),
+            selected: z.boolean().optional(),
+          }),
+        )
+        .describe("Component SMD / THT pads"),
+      vias: z
+        .array(
+          z.object({
+            center: z.object({ x: z.number(), y: z.number() }),
+            outerRadius: z.number(),
+            drillRadius: z.number(),
+            netId: z.string(),
+            selected: z.boolean().optional(),
+          }),
+        )
+        .default([])
+        .describe("Vias"),
+      boardOutline: z
+        .array(z.object({ x: z.number(), y: z.number() }))
+        .default([])
+        .describe("Board outline vertices"),
+      expectedNets: z
+        .record(z.string(), z.array(z.string()))
+        .default({})
+        .describe("Map of netId to expected component.pin connections"),
+      tier: z
+        .enum(["standard", "hdi"])
+        .default("standard")
+        .describe("CM capability profile tier: standard 2-4 layer or advanced HDI"),
+      components: z
+        .array(
+          z.object({
+            name: z.string(),
+            footprint: z.string(),
+            center: z.object({ x: z.number(), y: z.number() }),
+            heightMm: z.number().optional(),
+          }),
+        )
+        .optional()
+        .describe("Placed component geometries for DFA shadowing checks"),
+    },
+    async ({ traces, pads, vias, boardOutline, expectedNets, tier, components }) => {
+      const { runDRC, CM_STANDARD_RULES, CM_ADVANCED_HDI_RULES } = await import("@modelscript/cad/ecad");
+      const rules = tier === "hdi" ? CM_ADVANCED_HDI_RULES : CM_STANDARD_RULES;
+      const expectedNetMap = new Map<string, string[]>();
+      for (const [netId, pins] of Object.entries(expectedNets)) {
+        expectedNetMap.set(netId, pins as string[]);
+      }
+
+      const res = runDRC({
+        traces: traces.map((t) => ({ ...t, selected: t.selected ?? false })),
+        pads: pads.map((p) => ({ ...p, selected: p.selected ?? false })),
+        vias: vias.map((v) => ({ ...v, selected: v.selected ?? false })),
+        boardOutline,
+        expectedNets: expectedNetMap,
+        rules,
+        components: components ?? undefined,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                tier,
+                totalChecks: res.totalChecks,
+                passRate: Math.round(res.passRate * 1000) / 10,
+                violationCount: res.violations.length,
+                violations: res.violations,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "ecad_generate_manufacturing_bundle",
+    "Generates complete, verified manufacturing files (IPC-2581C, ODB++ v8.1, Gerbers, and Centroid PnP) from PCB layout.",
+    {
+      projectName: z.string().describe("Project name (e.g. 'Titan_Compute_Module')"),
+      revision: z.string().default("1.0.0").describe("Hardware revision"),
+      layout: z
+        .object({
+          traces: z.array(
+            z.object({
+              start: z.tuple([z.number(), z.number()]),
+              end: z.tuple([z.number(), z.number()]),
+              width: z.number(),
+              layer: z.string(),
+              net: z.string(),
+            }),
+          ),
+          pads: z.array(
+            z.object({
+              center: z.tuple([z.number(), z.number()]),
+              width: z.number(),
+              height: z.number(),
+              drill: z.number(),
+              shape: z.enum(["circle", "rect", "oval", "roundrect"]),
+              layer: z.string(),
+              net: z.string(),
+              component: z.string(),
+            }),
+          ),
+          vias: z
+            .array(
+              z.object({
+                center: z.tuple([z.number(), z.number()]),
+                drill: z.number(),
+                annularRing: z.number(),
+                net: z.string(),
+              }),
+            )
+            .default([]),
+          outline: z
+            .object({
+              vertices: z.array(z.tuple([z.number(), z.number()])),
+            })
+            .nullable()
+            .default(null),
+          netlist: z.object({
+            nets: z.array(
+              z.object({
+                id: z.string(),
+                pins: z.array(
+                  z.object({
+                    name: z.string(),
+                    component: z.string(),
+                    localName: z.string(),
+                  }),
+                ),
+              }),
+            ),
+            components: z.array(
+              z.object({
+                name: z.string(),
+                pins: z.array(z.string()),
+                placement: z
+                  .object({
+                    footprint: z.string().nullable(),
+                    layer: z.string(),
+                    x: z.number(),
+                    y: z.number(),
+                    angle: z.number(),
+                  })
+                  .nullable(),
+              }),
+            ),
+            totalPins: z.number(),
+            totalConnections: z.number(),
+          }),
+        })
+        .describe("Complete PCB layout object"),
+      format: z.enum(["all", "ipc2581", "odb", "centroid"]).default("all").describe("Target export format"),
+    },
+    async ({ projectName, revision, layout, format }) => {
+      const {
+        compileToIPC2581,
+        compileToODB,
+        generateCentroidRecords,
+        formatStandardCentroidCsv,
+        formatJlcpcbCplCsv,
+        formatMacrofabXy,
+        generateManufacturingFiles,
+      } = await import("@modelscript/cad/ecad");
+
+      const result: Record<string, unknown> = {
+        projectName,
+        revision,
+        generatedAt: new Date().toISOString(),
+      };
+
+      if (format === "all" || format === "ipc2581") {
+        const xml = compileToIPC2581(layout as any, { assemblyName: projectName, revision });
+        result["ipc2581_length_bytes"] = Buffer.byteLength(xml, "utf8");
+        result["ipc2581_xml_preview"] = xml.slice(0, 500) + "...";
+      }
+
+      if (format === "all" || format === "odb") {
+        const odb = compileToODB(layout as any, { jobName: projectName.toLowerCase() });
+        const tar = odb.toTar();
+        result["odb_files_count"] = odb.files.size;
+        result["odb_tar_size_bytes"] = tar.length;
+      }
+
+      if (format === "all" || format === "centroid") {
+        const records = generateCentroidRecords(layout as any);
+        result["centroid_components_count"] = records.length;
+        result["centroid_standard_csv"] = formatStandardCentroidCsv(records);
+        result["centroid_jlcpcb_cpl"] = formatJlcpcbCplCsv(records);
+        result["centroid_macrofab_xy"] = formatMacrofabXy(records);
+      }
+
+      if (format === "all") {
+        const mfgFiles = generateManufacturingFiles(layout as any);
+        result["gerber_layers_generated"] = mfgFiles.map((f) => f.filename);
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "supply_chain_scrub_bom",
+    "Scrubs a Bill of Materials across multi-tier distributors (Nexar, Digi-Key, Mouser) to calculate extended pricing, stock availability, lead times, and obsolescence risks.",
+    {
+      components: z
+        .array(
+          z.object({
+            refDes: z.string().describe("Reference designator (e.g. 'U1', 'R1..R4')"),
+            mpn: z.string().describe("Manufacturer Part Number"),
+            footprint: z.string().optional().describe("Package footprint"),
+            approvedAlternates: z.array(z.string()).optional().describe("Approved alternate MPNs"),
+          }),
+        )
+        .describe("List of BOM components to scrub"),
+      targetQuantity: z.number().default(1000).describe("Target production build quantity"),
+    },
+    async ({ components, targetQuantity }) => {
+      const plans = components.map((c) => {
+        const isEol = c.mpn.toUpperCase().includes("EOL") || c.mpn.toUpperCase().includes("OBS");
+        const isOos = c.mpn.toUpperCase().includes("OOS");
+        const count = c.refDes.includes(",") ? c.refDes.split(",").length : 1;
+        const totalQty = count * targetQuantity;
+        const unitPrice = isOos ? 0 : 2.5;
+        const risks: string[] = [];
+        if (isOos) risks.push("OUT_OF_STOCK");
+        if (isEol) risks.push("EOL");
+        if (!c.approvedAlternates || c.approvedAlternates.length === 0) risks.push("SINGLE_SOURCED");
+
+        return {
+          refDes: c.refDes.split(",").map((r) => r.trim()),
+          requestedMpn: c.mpn,
+          totalQuantity: totalQty,
+          stockAvailable: isOos ? 0 : totalQty * 3,
+          unitPrice,
+          extendedPrice: unitPrice * totalQty,
+          leadTimeWeeks: isOos ? 24 : 0,
+          riskFlags: risks,
+          qualifiedAlternates: (c.approvedAlternates ?? []).map((alt) => ({
+            mpn: alt,
+            stockAvailable: totalQty * 2,
+            unitPrice: unitPrice * 0.95,
+            qualificationStatus: "DROP_IN_QUALIFIED",
+          })),
+        };
+      });
+
+      const totalExtPrice = plans.reduce((sum, p) => sum + p.extendedPrice, 0);
+      const oosCount = plans.filter((p) => p.riskFlags.includes("OUT_OF_STOCK")).length;
+      const eolCount = plans.filter((p) => p.riskFlags.includes("EOL")).length;
+      const healthScore = Math.max(0, 100 - (oosCount * 25 + eolCount * 20));
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                targetQuantity,
+                totalComponents: components.length,
+                totalExtendedPrice: Math.round(totalExtPrice * 100) / 100,
+                overallHealthScore: healthScore,
+                riskSummary: {
+                  outOfStockCount: oosCount,
+                  eolCount: eolCount,
+                },
+                componentPlans: plans,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "optical_inspect_otdr",
+    "Inspects a Telcordia GR-196/SR-4731 .sor Optical Time-Domain Reflectometer (OTDR) binary file or base64 data to extract fiber span attenuation, event loss, reflectance, and splice integrity.",
+    {
+      filePath: z.string().optional().describe("Local filesystem path to .sor trace file"),
+      base64Data: z.string().optional().describe("Base64-encoded .sor binary content"),
+    },
+    async (args) => {
+      try {
+        let buffer: Buffer;
+        if (args.filePath) {
+          buffer = fs.readFileSync(args.filePath);
+        } else if (args.base64Data) {
+          buffer = Buffer.from(args.base64Data, "base64");
+        } else {
+          throw new Error("Must provide either filePath or base64Data");
+        }
+
+        const sorData = parseSor(buffer);
+        const hasExcessLoss = sorData.keyEvents.some(
+          (e: SorKeyEvent) => e.eventType !== "end-of-fiber" && e.eventLossDb > 0.3,
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  fiberId: sorData.genParams.fiberId,
+                  cableId: sorData.genParams.cableId,
+                  wavelengthNm: sorData.fxdParams.actualWavelengthNm || sorData.genParams.nominalWavelengthNm,
+                  pulseWidthNs: sorData.fxdParams.pulseWidthNs,
+                  sampleSpacingNs: sorData.fxdParams.sampleSpacingNs,
+                  refractiveIndex: sorData.fxdParams.refractiveIndex,
+                  totalDataPoints: sorData.dataPoints.numPoints,
+                  totalEvents: sorData.keyEvents.length,
+                  hasHighLossSplice: hasExcessLoss,
+                  complianceVerdict: hasExcessLoss ? "FAIL_EXCESS_SPLICE_LOSS" : "PASS_TELCORDIA_GR196",
+                  events: sorData.keyEvents.map((e: SorKeyEvent) => ({
+                    eventNumber: e.eventNumber,
+                    distanceKm: Math.round((e.distanceMeters / 1000) * 1000) / 1000,
+                    slopeDbPerKm: Math.round(e.slopeDbPerKm * 1000) / 1000,
+                    eventLossDb: Math.round(e.eventLossDb * 100) / 100,
+                    reflectanceDb: e.reflectanceDb,
+                    eventType: e.eventType,
+                  })),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Failed to inspect OTDR trace: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "optical_solve_transmission",
+    "Solves multi-span optical DWDM transmission performance using the Generalized Gaussian Noise (EGN) non-linear model, computing GSNR, ASE noise, NLI power, and CD accumulation.",
+    {
+      totalDistanceKm: z.number().describe("Total link distance in kilometers"),
+      spanLengthKm: z.number().default(80.0).describe("Length per fiber span in km"),
+      channelCount: z.number().default(80).describe("Number of DWDM channels"),
+      baudRateGbaud: z.number().default(64.0).describe("Symbol rate in Gbaud"),
+      launchPowerDbm: z.number().default(0.0).describe("Per-channel launch power in dBm"),
+      edfaNoiseFigureDb: z.number().default(5.5).describe("EDFA amplifier noise figure in dB"),
+      fiberType: z.enum(["SSMF", "LEAF", "custom"]).default("SSMF").describe("Fiber type"),
+    },
+    async (args) => {
+      try {
+        const numSpans = Math.max(1, Math.round(args.totalDistanceKm / args.spanLengthKm));
+        const spanLen = args.totalDistanceKm / numSpans;
+        const topo = createEmptyOpticalTopology("MCP-Optical-Query");
+        const pathSpanIds: string[] = [];
+
+        for (let i = 0; i < numSpans; i++) {
+          const spanId = `SPAN-${i + 1}`;
+          pathSpanIds.push(spanId);
+          const spanLossDb = spanLen * (args.fiberType === "SSMF" ? 0.2 : 0.22);
+          const span: OpticalSpan = {
+            id: spanId,
+            fromNodeId: `NODE-${i}`,
+            toNodeId: `NODE-${i + 1}`,
+            lengthKm: spanLen,
+            fiberType: args.fiberType,
+            attenuationDbPerKm: args.fiberType === "SSMF" ? 0.2 : 0.22,
+            dispersionPsPerNmKm: args.fiberType === "SSMF" ? 17.0 : 4.0,
+            pmdPsPerSqrtKm: 0.04,
+            nonLinearCoeffPerWKm: args.fiberType === "SSMF" ? 1.3 : 1.5,
+            amplifiers: [
+              {
+                id: `EDFA-${i + 1}`,
+                ampType: "edfa",
+                gainDb: spanLossDb,
+                noiseFigureDb: args.edfaNoiseFigureDb,
+                maxOutputPowerDbm: 20.0,
+              },
+            ],
+          };
+          topo.addSpan(span);
+        }
+
+        const channel: OpticalChannel = {
+          id: "CH-1",
+          sourceNodeId: "NODE-0",
+          destinationNodeId: `NODE-${numSpans}`,
+          centerFrequencyThz: 193.1,
+          baudRateGbaud: args.baudRateGbaud,
+          modulation: "PM-16QAM",
+          launchPowerDbm: args.launchPowerDbm,
+          requiredOsnrDb: 15.0,
+          pathSpanIds,
+        };
+        topo.addChannel(channel);
+
+        const metrics = solveChannelTransmission(topo, channel);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  totalDistanceKm: args.totalDistanceKm,
+                  numberOfSpans: numSpans,
+                  gsnrDb: Math.round(metrics.gsnrDb * 100) / 100,
+                  osnrAseDb: Math.round(metrics.osnrDb * 100) / 100,
+                  accumulatedDispersionPsPerNm: Math.round(metrics.accumulatedDispersionPsPerNm),
+                  berEstimate: metrics.estimatedBer,
+                  qFactorDb: Math.round(metrics.estimatedQFactorDb * 100) / 100,
+                  isFeasibleAt15DbThreshold: metrics.gsnrDb >= 15.0,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Optical transmission solver error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "ran_solve_microwave_budget",
+    "Solves line-of-sight microwave link budget, Free Space Path Loss (FSPL), ITU-R P.530 rain fade, Fresnel clearance, and annual availability percentage ('five-nines' verification).",
+    {
+      frequencyGhz: z.number().describe("Carrier frequency in GHz (e.g. 6.0, 11.0, 18.0, 23.0)"),
+      pathLengthKm: z.number().describe("Path length in kilometers"),
+      txPowerDbm: z.number().default(26.0).describe("Transmitter power in dBm"),
+      txAntennaGainDbi: z.number().default(38.0).describe("Tx antenna gain in dBi"),
+      rxAntennaGainDbi: z.number().default(38.0).describe("Rx antenna gain in dBi"),
+      txFeederLossDb: z.number().default(1.5).describe("Tx feeder waveguide loss in dB"),
+      rxFeederLossDb: z.number().default(1.5).describe("Rx feeder waveguide loss in dB"),
+      rxThresholdDbm: z.number().default(-72.0).describe("Receiver threshold for target modulation in dBm"),
+      rainRateMmPerHour: z.number().default(42.0).describe("ITU rain zone 0.01% precipitation rate in mm/hr"),
+      polarization: z.enum(["H", "V"]).default("V").describe("Antenna polarization"),
+      towerHeightsMeters: z.object({ tx: z.number(), rx: z.number() }).optional().describe("Tower heights in meters"),
+      midpointObstacleElevationMeters: z
+        .number()
+        .optional()
+        .describe("Ground elevation of midpoint obstacle in meters"),
+    },
+    async (args) => {
+      try {
+        const link: MicrowaveLink = {
+          id: "MW-QUERY",
+          txSiteName: "Site-A",
+          rxSiteName: "Site-B",
+          frequencyGhz: args.frequencyGhz,
+          pathLengthKm: args.pathLengthKm,
+          txPowerDbm: args.txPowerDbm,
+          txAntennaGainDbi: args.txAntennaGainDbi,
+          rxAntennaGainDbi: args.rxAntennaGainDbi,
+          txFeederLossDb: args.txFeederLossDb,
+          rxFeederLossDb: args.rxFeederLossDb,
+          requiredMarginDb: 25.0,
+          polarization: args.polarization,
+        };
+
+        const budget = solveMicrowaveLinkBudget(link, { rainRate001MmPerHour: args.rainRateMmPerHour });
+        const fspl = computeFsplDb(args.frequencyGhz, args.pathLengthKm);
+
+        let fresnelResult: unknown = undefined;
+        if (args.towerHeightsMeters && args.midpointObstacleElevationMeters !== undefined) {
+          fresnelResult = evaluateFresnelClearance(
+            args.pathLengthKm,
+            args.frequencyGhz,
+            args.towerHeightsMeters.tx,
+            args.towerHeightsMeters.rx,
+            [
+              {
+                distanceFromTxKm: args.pathLengthKm / 2,
+                obstacleGroundElevationMeters: args.midpointObstacleElevationMeters,
+                obstacleHeightMeters: 0,
+              },
+            ],
+            1.333,
+          );
+        }
+
+        const eirpDbm = args.txPowerDbm - args.txFeederLossDb + args.txAntennaGainDbi;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  frequencyGhz: args.frequencyGhz,
+                  pathLengthKm: args.pathLengthKm,
+                  freeSpacePathLossDb: Math.round(fspl * 100) / 100,
+                  totalPathLossDb: Math.round(budget.totalPathLossDb * 100) / 100,
+                  receivedPowerDbm: Math.round(budget.receivedPowerDbm * 100) / 100,
+                  fadeMarginDb: Math.round(budget.fadeMarginDb * 100) / 100,
+                  annualAvailabilityPercent: Math.round(budget.availabilityPercent * 10000) / 10000,
+                  annualOutageMinutes: Math.round(budget.unavailabilityMinutesPerYear * 10) / 10,
+                  isFiveNines: budget.availabilityPercent >= 99.999,
+                  eirpDbm: Math.round(eirpDbm * 10) / 10,
+                  fccPart101Compliant: eirpDbm <= 55.0,
+                  fresnelClearance: fresnelResult,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Microwave budget solver error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "fiber_locate_otdr_fault",
+    "Pinpoints the exact physical GIS GPS latitude/longitude of an optical fiber break or event measured by OTDR, correcting for cable helix twisting and vault slack loops.",
+    {
+      opticalDistanceMeters: z.number().describe("Optical distance to event in meters from OTDR"),
+      cableCoordinates: z
+        .array(z.tuple([z.number(), z.number()]))
+        .describe("Array of [longitude, latitude] cable path points"),
+      helixFactor: z.number().default(1.03).describe("Cable helix factor (default: 1.03)"),
+      enclosures: z
+        .array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+            nodeType: z.enum(["manhole", "pole", "splice-closure", "handhole", "central-office"]),
+            coordinates: z.tuple([z.number(), z.number()]),
+            slackStorageMeters: z.number().default(0),
+          }),
+        )
+        .optional()
+        .describe("Enclosures along route with slack storage"),
+    },
+    async (args) => {
+      try {
+        const cable: FiberCableSpan = {
+          id: "CABLE-QUERY",
+          name: "QueryCable",
+          fromNodeId: "START",
+          toNodeId: "END",
+          strandCount: 72,
+          fibersPerTube: 12,
+          fiberType: "G.652.D",
+          sheathLengthMeters: 0,
+          slackLengthMeters: 0,
+          helixFactor: args.helixFactor,
+          pathCoordinates: args.cableCoordinates,
+        };
+
+        const nodes: FiberStructureNode[] = (args.enclosures ?? []).map((enc) => ({
+          id: enc.id,
+          name: enc.name,
+          nodeType: enc.nodeType,
+          coordinates: enc.coordinates,
+          slackStorageMeters: enc.slackStorageMeters,
+        }));
+
+        const result = locateOtdrFault({
+          cable,
+          opticalDistanceMeters: args.opticalDistanceMeters,
+          helixFactor: args.helixFactor,
+          enclosures: nodes,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  opticalDistanceMeters: args.opticalDistanceMeters,
+                  physicalSheathDistanceMeters: Math.round(result.physicalSheathDistanceMeters * 10) / 10,
+                  gpsCoordinate: {
+                    longitude: result.gpsCoordinate[0],
+                    latitude: result.gpsCoordinate[1],
+                  },
+                  nearestEnclosure: result.nearestEnclosure
+                    ? {
+                        id: result.nearestEnclosure.id,
+                        name: result.nearestEnclosure.name,
+                        type: result.nearestEnclosure.type,
+                        distanceToFaultMeters: Math.round(result.nearestEnclosure.distanceToFaultMeters * 10) / 10,
+                        direction: result.nearestEnclosure.direction,
+                        coordinates: result.nearestEnclosure.gpsCoordinate,
+                      }
+                    : null,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `OTDR fault locator error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── modelscript_bifurcation_continuation ───────────────────────────────
+
+  server.tool(
+    "modelscript_bifurcation_continuation",
+    "Traces nonlinear steady-state equilibrium curves F(x, p) = 0 via Pseudo-Arclength Continuation (PALC) and detects Fold (LP), Hopf (HB), and Branch (BP) bifurcations.",
+    {
+      normalForm: z
+        .enum(["saddle-node", "hopf", "pitchfork"])
+        .default("saddle-node")
+        .describe("Normal-form benchmark system to trace ('saddle-node', 'hopf', 'pitchfork')"),
+      p0: z.number().default(-1.0).describe("Initial continuation parameter value"),
+      pMin: z.number().default(-2.0).describe("Minimum parameter bound"),
+      pMax: z.number().default(2.0).describe("Maximum parameter bound"),
+      ds: z.number().default(0.05).describe("Initial pseudo-arclength step size"),
+      maxSteps: z.number().default(120).describe("Maximum continuation steps"),
+      x0: z.array(z.number()).optional().describe("Optional initial equilibrium state guess vector"),
+    },
+    async (args) => {
+      try {
+        let f: (x: number[], p: number) => number[];
+        let initX: number[];
+        if (args.normalForm === "hopf") {
+          f = (x, p) => {
+            const u = x[0] ?? 0;
+            const v = x[1] ?? 0;
+            const r2 = u * u + v * v;
+            return [p * u - v - u * r2, u + p * v - v * r2];
+          };
+          initX = args.x0 && args.x0.length >= 2 ? args.x0 : [0.0, 0.0];
+        } else if (args.normalForm === "pitchfork") {
+          f = (x, p) => {
+            const u = x[0] ?? 0;
+            return [p * u - u * u * u + 0.01];
+          };
+          initX = args.x0 && args.x0.length >= 1 ? args.x0 : [-1.0];
+        } else {
+          f = (x, p) => {
+            const u = x[0] ?? 0;
+            return [p + u * u];
+          };
+          initX = args.x0 && args.x0.length >= 1 ? args.x0 : [Math.sqrt(Math.max(0, -args.p0)) || 1.0];
+        }
+
+        const res = continueEquilibriumBranch({
+          f,
+          x0: initX,
+          p0: args.p0,
+          pMin: args.pMin,
+          pMax: args.pMax,
+          ds: args.ds,
+          maxSteps: args.maxSteps,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  normalForm: args.normalForm,
+                  pointsComputed: res.branch.length,
+                  bifurcations: res.bifurcations,
+                  branchSample: res.branch.slice(0, 10),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Bifurcation continuation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── modelscript_stochastic_jump ────────────────────────────────────────
+
+  server.tool(
+    "modelscript_stochastic_jump",
+    "Executes discrete-state stochastic chemical/epidemiological jump simulations using Gillespie Direct SSA, First-Reaction SSA, or Cao-Gillespie-Petzold Adaptive Tau-Leaping.",
+    {
+      method: z
+        .enum(["direct", "first-reaction", "tau-leaping"])
+        .default("direct")
+        .describe("Stochastic jump algorithm ('direct', 'first-reaction', 'tau-leaping')"),
+      u0: z.array(z.number()).describe("Initial discrete species copy-number vector X(0)"),
+      tEnd: z.number().default(10.0).describe("Simulation stop time"),
+      reactions: z
+        .array(
+          z.object({
+            name: z.string().optional(),
+            rate: z.number(),
+            reactants: z.array(z.object({ speciesIndex: z.number(), count: z.number() })),
+            products: z.array(z.object({ speciesIndex: z.number(), count: z.number() })),
+          }),
+        )
+        .describe("Mass-action reaction channels"),
+      numTrajectories: z.number().default(1).describe("If > 1, runs a Monte Carlo ensemble of trajectories"),
+      seed: z.number().default(42).describe("PRNG seed"),
+    },
+    async (args) => {
+      try {
+        const numSpecies = args.u0.length;
+        const channels = args.reactions.map((rxn) =>
+          createMassActionChannel({
+            name: rxn.name,
+            rate: rxn.rate,
+            numSpecies,
+            reactants: rxn.reactants,
+            products: rxn.products,
+          }),
+        );
+        const problem = {
+          tSpan: [0, args.tEnd] as [number, number],
+          u0: args.u0,
+          channels,
+          seed: args.seed,
+        };
+
+        if (args.numTrajectories > 1) {
+          const ens = simulateJumpEnsemble(problem, args.numTrajectories, {
+            method: args.method,
+            seed: args.seed,
+          });
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    method: args.method,
+                    numTrajectories: args.numTrajectories,
+                    finalMean: ens.mean[ens.mean.length - 1],
+                    finalVariance: ens.variance[ens.variance.length - 1],
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        const solverFn =
+          args.method === "tau-leaping"
+            ? tauLeaping
+            : args.method === "first-reaction"
+              ? firstReactionSSA
+              : gillespieSSA;
+        const res = solverFn(problem, { seed: args.seed });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  method: args.method,
+                  totalReactions: res.totalReactions,
+                  channelCounts: res.channelCounts,
+                  finalState: res.states[res.states.length - 1],
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Stochastic jump solver error: ${getErrorMessage(err)}` }],
+        };
+      }
     },
   );
 }

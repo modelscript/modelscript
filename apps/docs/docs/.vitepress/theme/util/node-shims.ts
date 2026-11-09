@@ -8,12 +8,18 @@
 export const sep = "/";
 export const delimiter = ":";
 export const basename = (p: string, ext?: string): string => {
-  const seg = String(p ?? "").replace(/\\/g, "/").split("/").pop() || "";
+  const seg =
+    String(p ?? "")
+      .replace(/\\/g, "/")
+      .split("/")
+      .pop() || "";
   if (ext && seg.endsWith(ext)) return seg.slice(0, -ext.length);
   return seg;
 };
 export const dirname = (p: string): string => {
-  const parts = String(p ?? "").replace(/\\/g, "/").split("/");
+  const parts = String(p ?? "")
+    .replace(/\\/g, "/")
+    .split("/");
   parts.pop();
   return parts.join("/") || ".";
 };
@@ -23,11 +29,7 @@ export const extname = (p: string): string => {
   return idx > 0 ? b.slice(idx) : "";
 };
 export const isAbsolute = (p: string): boolean => String(p ?? "").startsWith("/");
-export const join = (...args: string[]): string =>
-  args
-    .filter(Boolean)
-    .join("/")
-    .replace(/\/+/g, "/");
+export const join = (...args: string[]): string => args.filter(Boolean).join("/").replace(/\/+/g, "/");
 export const normalize = (p: string): string => p;
 export const relative = (_from: string, to: string): string => to;
 export const resolve = (...args: string[]): string => {
@@ -57,7 +59,7 @@ export const win32 = posix;
 
 // --- url ---
 export const fileURLToPath = (u: string | URL): string => {
-  const s = typeof u === "string" ? u : u?.href ?? "";
+  const s = typeof u === "string" ? u : (u?.href ?? "");
   return s.replace(/^file:\/\//, "");
 };
 export const pathToFileURL = (p: string): URL => new URL(`file://${p}`);
@@ -124,10 +126,10 @@ export const randomBytes = (size: number): Uint8Array => {
   return arr;
 };
 export const createHash = (): any => {
-  let buf = "";
+  let _buf = "";
   return {
     update: (data: unknown) => {
-      buf += String(data);
+      _buf += String(data);
       return this;
     },
     digest: (enc?: string) => (enc === "hex" ? "0".repeat(64) : new Uint8Array(32)),

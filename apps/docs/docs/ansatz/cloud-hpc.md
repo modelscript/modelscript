@@ -28,12 +28,13 @@ flowchart LR
 
 Organizations and individual engineers allocate jobs against pre-configured hardware profiles. Credits are reserved atomically prior to `sbatch` submission and settled based on actual wall-clock core-seconds (`BillingService`), with unused reservations automatically refunded upon early termination or `msx cloud cancel`:
 
-| Profile ID    | Hardware Allocation                         | Interconnect & Accelerator | Target Workloads                                                                              |
-| :------------ | :------------------------------------------ | :------------------------- | :-------------------------------------------------------------------------------------------- |
-| `standard`    | 8 vCPU, 32 GB ECC RAM                       | Shared NVMe scratch        | Stiff Modelica/PSCAD DAE sweeps, Sobol DoE (up to 512 runs), SPICE transient corners          |
-| `high-memory` | 32 vCPU, 256 GB ECC RAM                     | High-bandwidth DDR5        | Full-grid ENTSO-E CGMES / PSS/E $N-1$ contingency screening, 3D tetrahedral FEA assembly      |
-| `gpu-a100`    | 16 vCPU, 128 GB RAM, 1× NVIDIA A100 (80 GB) | NVLink / CUDA 12           | Batched ensemble DAE integration, Neural/PINN surrogate training, TOPAS Monte Carlo dose      |
-| `hpc-mpi-64`  | 64 Physical Cores (2 Nodes), 512 GB RAM     | InfiniBand NDR (400 Gb/s)  | Distributed OpenMPI SU2/OpenFOAM RANS/LES aerodynamics and multi-well ECLIPSE reservoir decks |
+| Profile ID                | Hardware Allocation                                       | Rate      | Interconnect & Accelerator         | Target Workloads                                                                              |
+| :------------------------ | :-------------------------------------------------------- | :-------- | :--------------------------------- | :-------------------------------------------------------------------------------------------- |
+| `standard`                | 4 vCPU, 16 GB ECC RAM                                     | 10 cr/hr  | Shared NVMe scratch                | Stiff Modelica/PSCAD DAE sweeps, Sobol DoE (up to 512 runs), SPICE transient corners          |
+| `high-memory`             | 16 vCPU, 256 GB ECC RAM                                   | 35 cr/hr  | High-bandwidth DDR5                | Full-grid ENTSO-E CGMES / PSS/E $N-1$ contingency screening, 3D tetrahedral FEA assembly      |
+| `gpu-a100`                | 8 vCPU, 64 GB RAM, 1× NVIDIA A100                         | 80 cr/hr  | NVLink / CUDA 12                   | Batched ensemble DAE integration, Neural/PINN surrogate training, TOPAS Monte Carlo dose      |
+| `hpc-mpi-64`              | 64 Cores (2 Nodes × 32 ranks), 128 GB RAM                 | 150 cr/hr | InfiniBand NDR (400 Gb/s)          | Distributed OpenMPI SU2/OpenFOAM RANS/LES aerodynamics and multi-well ECLIPSE reservoir decks |
+| `emt-distributed-cluster` | 64 Cores (4 Nodes × 16 ranks), 4× NVIDIA A100, 128 GB RAM | 180 cr/hr | InfiniBand NDR & Shared RingBuffer | Multi-island EMT power grid partitioning with Bergeron transmission line delay decoupling     |
 
 ---
 

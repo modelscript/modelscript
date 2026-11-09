@@ -14,15 +14,15 @@
  * and Struct-of-Arrays alignment tracking (`DigitalThreadHypergraph`).
  */
 
-import { evaluateCfdExpression } from "../../../../../../languages/cfd/src/materializer.js";
 import { OpenFoamDialect } from "../../../../../../languages/cfd/src/dialects/openfoam.js";
+import { evaluateCfdExpression } from "../../../../../../languages/cfd/src/materializer.js";
 import { InpDialect } from "../../../../../../languages/fea/src/dialects/inp.js";
 import { evaluateScad } from "../../../../../../languages/scad/src/evaluator.js";
 import { scanStepEntities } from "../../../../../../languages/step/src/schema.js";
 import { parseUrdf } from "../../../../../../languages/urdf/src/parser/urdf-parser.js";
 import { computeMeshVolumeAndArea } from "../../../../../../packages/cad/src/csg-bsp.js";
-import { SolidKind, type Solid } from "../../../../../../packages/cad/src/types.js";
 import { ToleranceStackVerifier } from "../../../../../../packages/cad/src/tolerance-stack.js";
+import { SolidKind, type Solid } from "../../../../../../packages/cad/src/types.js";
 import { CaeContractOracle } from "../../../../../../packages/runtime/src/formal/oracles/cae_contract_oracle.js";
 import { ConstraintTheoryOracle } from "../../../../../../packages/runtime/src/formal/oracles/constraint_oracle.js";
 import { ToleranceStackOracle } from "../../../../../../packages/runtime/src/formal/oracles/tolerance_stack_oracle.js";
@@ -90,12 +90,7 @@ export interface CoordinatorScenario {
   icon: IconName;
   description: string;
   command: string;
-  panes: [
-    CoordinatorPaneSpec,
-    CoordinatorPaneSpec,
-    CoordinatorPaneSpec,
-    CoordinatorPaneSpec,
-  ];
+  panes: [CoordinatorPaneSpec, CoordinatorPaneSpec, CoordinatorPaneSpec, CoordinatorPaneSpec];
   presets: CoordinatorPreset[];
   badges: string[];
 }
@@ -357,12 +352,7 @@ export interface CoordinatorEvaluationResult {
   variableLinks: CoordinatedVariableLink[];
   hypergraphNodes: HypergraphNodeStatus[];
   conflicts: ConflictClause[];
-  paneDiagnostics: [
-    WorkflowDiagnostic[],
-    WorkflowDiagnostic[],
-    WorkflowDiagnostic[],
-    WorkflowDiagnostic[],
-  ];
+  paneDiagnostics: [WorkflowDiagnostic[], WorkflowDiagnostic[], WorkflowDiagnostic[], WorkflowDiagnostic[]];
   parsedMetadata: ParsedScenarioMetadata;
   paneVisuals: [PaneVisualData, PaneVisualData, PaneVisualData, PaneVisualData];
   summaryText: string;
@@ -376,10 +366,7 @@ function extractNum(code: string, pattern: RegExp, fallback: number): number {
   const identMatch = /^([A-Za-z_]\w*)\\s\*/.exec(pattern.source);
   if (identMatch) {
     const targetName = identMatch[1]!;
-    if (
-      code.includes("package ") &&
-      (code.includes("requirement ") || code.includes("part def "))
-    ) {
+    if (code.includes("package ") && (code.includes("requirement ") || code.includes("part def "))) {
       const sysmlCst = parseSysml2Cst(code);
       for (const part of sysmlCst.partDefs) {
         const rawAttr = part.attributes[targetName];
@@ -423,9 +410,7 @@ function findLineCol(
   const matchLines = m[0].split("\n");
   const endLine = startLine + matchLines.length - 1;
   const endCol =
-    matchLines.length === 1
-      ? startCol + m[0].length
-      : (matchLines[matchLines.length - 1]?.length ?? 0) + 1;
+    matchLines.length === 1 ? startCol + m[0].length : (matchLines[matchLines.length - 1]?.length ?? 0) + 1;
   return { startLine, startCol, endLine, endCol };
 }
 
@@ -464,7 +449,8 @@ function evaluateModelicaOutputEquation(
   }
   const rhsExpression = eqNode.rhs.trim();
   const evaluated = evaluateCfdExpression(rhsExpression, (ident) => paramMap.get(ident));
-  const value = evaluated !== undefined && Number.isFinite(evaluated) ? evaluated : fallbackValue;
+  const value =
+    evaluated !== undefined && typeof evaluated === "number" && Number.isFinite(evaluated) ? evaluated : fallbackValue;
   return { value, rhsExpression, paramMap };
 }
 
@@ -499,26 +485,10 @@ function buildScadVisualTrianglesAndTree(scadCode: string): {
     const i0 = indices[t * 3]!;
     const i1 = indices[t * 3 + 1]!;
     const i2 = indices[t * 3 + 2]!;
-    const v0: [number, number, number] = [
-      verts[i0 * 3] ?? 0,
-      verts[i0 * 3 + 1] ?? 0,
-      verts[i0 * 3 + 2] ?? 0,
-    ];
-    const v1: [number, number, number] = [
-      verts[i1 * 3] ?? 0,
-      verts[i1 * 3 + 1] ?? 0,
-      verts[i1 * 3 + 2] ?? 0,
-    ];
-    const v2: [number, number, number] = [
-      verts[i2 * 3] ?? 0,
-      verts[i2 * 3 + 1] ?? 0,
-      verts[i2 * 3 + 2] ?? 0,
-    ];
-    const n0: [number, number, number] = [
-      normals[i0 * 3] ?? 0,
-      normals[i0 * 3 + 1] ?? 0,
-      normals[i0 * 3 + 2] ?? 1,
-    ];
+    const v0: [number, number, number] = [verts[i0 * 3] ?? 0, verts[i0 * 3 + 1] ?? 0, verts[i0 * 3 + 2] ?? 0];
+    const v1: [number, number, number] = [verts[i1 * 3] ?? 0, verts[i1 * 3 + 1] ?? 0, verts[i1 * 3 + 2] ?? 0];
+    const v2: [number, number, number] = [verts[i2 * 3] ?? 0, verts[i2 * 3 + 1] ?? 0, verts[i2 * 3 + 2] ?? 0];
+    const n0: [number, number, number] = [normals[i0 * 3] ?? 0, normals[i0 * 3 + 1] ?? 0, normals[i0 * 3 + 2] ?? 1];
     const tagIdx = faceTags[t] ?? 0;
     const tagObj = tagIdx > 0 ? tags[tagIdx - 1] : undefined;
     triangles.push({
@@ -531,10 +501,7 @@ function buildScadVisualTrianglesAndTree(scadCode: string): {
   }
 
   // Extract tag_port(...) declarations and 1-based line numbers from the OpenSCAD WASM GLR CST
-  const portTags = new Map<
-    string,
-    { portType: string; normal: [number, number, number]; line: number }
-  >();
+  const portTags = new Map<string, { portType: string; normal: [number, number, number]; line: number }>();
   const scadRoot = getWasmRuntime("scad")?.parser.parse(scadCode)?.rootNode;
   if (scadRoot) {
     for (const tagNode of scadRoot.descendantsOfType(["TagPortOp", "ModuleInstantiation"])) {
@@ -545,18 +512,13 @@ function buildScadVisualTrianglesAndTree(scadCode: string): {
       const strNodes = tagNode.descendantsOfType(["STRING", "string"]);
       if (strNodes.length >= 1) {
         const pName = strNodes[0]!.text.trim().replace(/^["']|["']$/g, "");
-        const pType =
-          strNodes.length >= 2
-            ? strNodes[1]!.text.trim().replace(/^["']|["']$/g, "")
-            : "port";
+        const pType = strNodes.length >= 2 ? strNodes[1]!.text.trim().replace(/^["']|["']$/g, "") : "port";
         const vecNode = tagNode.descendantsOfType(["VectorLiteral", "vector", "list"])[0];
         let normal: [number, number, number] = [0, 0, 1];
         if (vecNode) {
           const exprNodes = vecNode.descendantsOfType(["Expression"]);
           const rawItems = exprNodes.length >= 3 ? exprNodes : vecNode.namedChildren;
-          const nums = rawItems
-            .map((c) => Number.parseFloat(c.text.trim()))
-            .filter((n) => Number.isFinite(n));
+          const nums = rawItems.map((c) => Number.parseFloat(c.text.trim())).filter((n) => Number.isFinite(n));
           if (nums.length >= 3) {
             normal = [nums[0]!, nums[1]!, nums[2]!];
           }
@@ -577,17 +539,11 @@ function buildScadVisualTrianglesAndTree(scadCode: string): {
       const existing = portTags.get(s.tag.portName);
       portTags.set(s.tag.portName, {
         portType: s.tag.portType || existing?.portType || "port",
-        normal: s.tag.normal
-          ? [s.tag.normal[0], s.tag.normal[1], s.tag.normal[2]]
-          : (existing?.normal ?? [0, 0, 1]),
+        normal: s.tag.normal ? [s.tag.normal[0], s.tag.normal[1], s.tag.normal[2]] : (existing?.normal ?? [0, 0, 1]),
         line: existing?.line ?? 1,
       });
       collectSolidPortTags(s.child);
-    } else if (
-      s.kind === SolidKind.Union ||
-      s.kind === SolidKind.Subtract ||
-      s.kind === SolidKind.Intersect
-    ) {
+    } else if (s.kind === SolidKind.Union || s.kind === SolidKind.Subtract || s.kind === SolidKind.Intersect) {
       collectSolidPortTags(s.left);
       collectSolidPortTags(s.right);
     } else if (s.kind === SolidKind.Transform) {
@@ -617,12 +573,26 @@ function buildScadVisualTrianglesAndTree(scadCode: string): {
         walkSolid(s.right, depth + 1, activeTag);
         break;
       case SolidKind.Subtract:
-        csgTree.push({ id, kind: "difference", label: "difference()", detail: "Boolean CSG Subtraction", tag: activeTag, depth });
+        csgTree.push({
+          id,
+          kind: "difference",
+          label: "difference()",
+          detail: "Boolean CSG Subtraction",
+          tag: activeTag,
+          depth,
+        });
         walkSolid(s.left, depth + 1, activeTag);
         walkSolid(s.right, depth + 1, activeTag);
         break;
       case SolidKind.Intersect:
-        csgTree.push({ id, kind: "intersection", label: "intersection()", detail: "Boolean CSG Intersection", tag: activeTag, depth });
+        csgTree.push({
+          id,
+          kind: "intersection",
+          label: "intersection()",
+          detail: "Boolean CSG Intersection",
+          tag: activeTag,
+          depth,
+        });
         walkSolid(s.left, depth + 1, activeTag);
         walkSolid(s.right, depth + 1, activeTag);
         break;
@@ -706,9 +676,7 @@ function parseExplicitDirectiveLinks(
       const lineText = lines[i]!;
       const lineNum = i + 1;
 
-      const twinMatch = /@(twin|port_map)\s*:\s*([^\s<]+)\s*(<->|<-|->)\s*([^\s*]+(?:\s*\*\))?)/.exec(
-        lineText,
-      );
+      const twinMatch = /@(twin|port_map)\s*:\s*([^\s<]+)\s*(<->|<-|->)\s*([^\s*]+(?:\s*\*\))?)/.exec(lineText);
       if (twinMatch) {
         const rawTarget = twinMatch[4]!.replace(/\*\/$/, "").replace(/-->$/, "").trim();
         links.push({
@@ -732,9 +700,7 @@ function parseExplicitDirectiveLinks(
           directiveKind: "@mesh_source",
           sourceExpr: pane.fileName,
           direction: "<-",
-          targetExpr: meshSourceMatch[2]
-            ? `${meshSourceMatch[1]} (${meshSourceMatch[2]})`
-            : meshSourceMatch[1]!,
+          targetExpr: meshSourceMatch[2] ? `${meshSourceMatch[1]} (${meshSourceMatch[2]})` : meshSourceMatch[1]!,
           rawText: lineText.trim(),
         });
       }
@@ -814,7 +780,7 @@ export const COORDINATOR_SCENARIOS: CoordinatorScenario[] = [
     accent: "#38bdf8",
     icon: "shield",
     description:
-      "Continuously validate a 4-language flight control actuator digital thread. Variables and B-Rep boundary ports are explicitly linked across each language's native FQN hierarchy via SysML v2 `subject` bindings (`ActuatorArchitecture::ClevisBracket`), Modelica `annotation(twin = \"...\")` attributes, OpenSCAD `tag_port(\"fixed_root\" | \"clevis_lug\")` CSG geometry, and CalculiX `*INCLUDE`, `*BOUNDARY`, and `*CLOAD` directives.",
+      'Continuously validate a 4-language flight control actuator digital thread. Variables and B-Rep boundary ports are explicitly linked across each language\'s native FQN hierarchy via SysML v2 `subject` bindings (`ActuatorArchitecture::ClevisBracket`), Modelica `annotation(twin = "...")` attributes, OpenSCAD `tag_port("fixed_root" | "clevis_lug")` CSG geometry, and CalculiX `*INCLUDE`, `*BOUNDARY`, and `*CLOAD` directives.',
     command:
       "msx verify --coordinator ActuatorContract.sysml ElectroMechanicalActuator.mo MountingBracket.scad BracketStress.inp",
     panes: [
@@ -859,7 +825,7 @@ export const COORDINATOR_SCENARIOS: CoordinatorScenario[] = [
         roleLabel: "1D Multi-Physics Load Dynamics",
         fileName: "ElectroMechanicalActuator.mo",
         namespaceFqn: "Modelica::FlightControl.ElectroMechanicalActuator",
-        fqnSyntaxNote: "within Pkg; Model.var + annotation(twin = \"...\")",
+        fqnSyntaxNote: 'within Pkg; Model.var + annotation(twin = "...")',
         lang: "modelica",
         threadDomain: ThreadDomain.Modelica,
         threadDomainName: "Modelica",
@@ -886,7 +852,7 @@ end ElectroMechanicalActuator;`,
         roleLabel: "3D Parametric B-Rep Geometry",
         fileName: "MountingBracket.scad",
         namespaceFqn: "CAD::MountingBracket",
-        fqnSyntaxNote: "tag_port(\"fixed_root\" | \"clevis_lug\") + @twin FQN",
+        fqnSyntaxNote: 'tag_port("fixed_root" | "clevis_lug") + @twin FQN',
         lang: "scad",
         threadDomain: ThreadDomain.CAD,
         threadDomainName: "CAD",
@@ -969,45 +935,36 @@ ActuatorBracket();`,
       {
         id: "thin-flange",
         label: "Thin CAD Flange (8.5 → 5.2 mm)",
-        description: "Thinning OpenSCAD flange reduces mass to 0.54 kg but spikes FEA von Mises stress to 441.8 MPa (> 280 MPa).",
+        description:
+          "Thinning OpenSCAD flange reduces mass to 0.54 kg but spikes FEA von Mises stress to 441.8 MPa (> 280 MPa).",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
-          next[2] = replaceNumInCode(
-            next[2],
-            /(flange_thickness\s*=\s*)(-?\d+(?:\.\d+)?)(;)/,
-            "5.2",
-          );
+          next[2] = replaceNumInCode(next[2], /(flange_thickness\s*=\s*)(-?\d+(?:\.\d+)?)(;)/, "5.2");
           return { codes: next, editedPaneIndex: 2 };
         },
       },
       {
         id: "high-torque",
         label: "Boost Motor Torque (42 → 68 N·m)",
-        description: "Increasing Modelica stall torque raises peak thrust to 72.6 kN, violating FEA stress and deflection limits.",
+        description:
+          "Increasing Modelica stall torque raises peak thrust to 72.6 kN, violating FEA stress and deflection limits.",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
-          next[1] = replaceNumInCode(
-            next[1],
-            /(parameter\s+Real\s+stall_torque\s*=\s*)(-?\d+(?:\.\d+)?)(\s*)/,
-            "68.0",
-          );
+          next[1] = replaceNumInCode(next[1], /(parameter\s+Real\s+stall_torque\s*=\s*)(-?\d+(?:\.\d+)?)(\s*)/, "68.0");
           return { codes: next, editedPaneIndex: 1 };
         },
       },
       {
         id: "steel-material",
         label: "Switch CAD to 316L Steel (7990 kg/m³)",
-        description: "Switching CAD density from Al-7075 (2810) to Steel (7990) increases bracket mass to 2.51 kg (> 1.25 kg budget).",
+        description:
+          "Switching CAD density from Al-7075 (2810) to Steel (7990) increases bracket mass to 2.51 kg (> 1.25 kg budget).",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
-          next[2] = replaceNumInCode(
-            next[2],
-            /(density_kg_m3\s*=\s*)(-?\d+(?:\.\d+)?)(;)/,
-            "7990",
-          );
+          next[2] = replaceNumInCode(next[2], /(density_kg_m3\s*=\s*)(-?\d+(?:\.\d+)?)(;)/, "7990");
           return { codes: next, editedPaneIndex: 2 };
         },
       },
@@ -1031,7 +988,7 @@ ActuatorBracket();`,
     accent: "#10b981",
     icon: "zap",
     description:
-      "Coordinate an 800V battery pack fast-charge digital thread across SysML v2 (`BatteryThermal::ColdPlateManifold`), Modelica electro-thermal equations (`Powertrain.BatteryPackLoop`), OpenSCAD micro-channel CSG geometry (`CAD::ColdPlateChannels` with `tag_port(\"coolant_inlet\" | \"fluid_core\" | \"coolant_outlet\")`), and OpenFOAM `geometry` + `boundaryField` patches (`CFD::CoolantManifold`).",
+      'Coordinate an 800V battery pack fast-charge digital thread across SysML v2 (`BatteryThermal::ColdPlateManifold`), Modelica electro-thermal equations (`Powertrain.BatteryPackLoop`), OpenSCAD micro-channel CSG geometry (`CAD::ColdPlateChannels` with `tag_port("coolant_inlet" | "fluid_core" | "coolant_outlet")`), and OpenFOAM `geometry` + `boundaryField` patches (`CFD::CoolantManifold`).',
     command:
       "msx verify --coordinator ThermalSafety.sysml BatteryPackLoop.mo ColdPlateChannels.scad CoolantManifold.cfd",
     panes: [
@@ -1076,7 +1033,7 @@ ActuatorBracket();`,
         roleLabel: "1D Electro-Thermal Cell Loop",
         fileName: "BatteryPackLoop.mo",
         namespaceFqn: "Modelica::Powertrain.BatteryPackLoop",
-        fqnSyntaxNote: "within Powertrain; + annotation(twin = \"...\")",
+        fqnSyntaxNote: 'within Powertrain; + annotation(twin = "...")',
         lang: "modelica",
         threadDomain: ThreadDomain.Modelica,
         threadDomainName: "Modelica",
@@ -1102,7 +1059,7 @@ end BatteryPackLoop;`,
         roleLabel: "Micro-Channel Extrusion CAD",
         fileName: "ColdPlateChannels.scad",
         namespaceFqn: "CAD::ColdPlateChannels",
-        fqnSyntaxNote: "tag_port(\"coolant_inlet\"|\"fluid_core\"|\"coolant_outlet\")",
+        fqnSyntaxNote: 'tag_port("coolant_inlet"|"fluid_core"|"coolant_outlet")',
         lang: "scad",
         threadDomain: ThreadDomain.CAD,
         threadDomainName: "CAD",
@@ -1198,22 +1155,20 @@ solverSummary {
       {
         id: "narrow-channels",
         label: "Narrow CAD Channels (4.2 → 1.9 mm)",
-        description: "Narrowing OpenSCAD micro-channels shrinks hydraulic diameter D_h to 2.33 mm, spiking CFD ΔP to 30.8 kPa (> 18 kPa).",
+        description:
+          "Narrowing OpenSCAD micro-channels shrinks hydraulic diameter D_h to 2.33 mm, spiking CFD ΔP to 30.8 kPa (> 18 kPa).",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
-          next[2] = replaceNumInCode(
-            next[2],
-            /(channel_width_mm\s*=\s*)(-?\d+(?:\.\d+)?)(;)/,
-            "1.9",
-          );
+          next[2] = replaceNumInCode(next[2], /(channel_width_mm\s*=\s*)(-?\d+(?:\.\d+)?)(;)/, "1.9");
           return { codes: next, editedPaneIndex: 2 };
         },
       },
       {
         id: "overcurrent-charge",
         label: "Boost Fast-Charge (320 → 460 A)",
-        description: "Increasing Modelica pack_current to 460 A raises I²R heat load to 2962.4 W, pushing CFD cell temp to 327.6 K (> 318.15 K).",
+        description:
+          "Increasing Modelica pack_current to 460 A raises I²R heat load to 2962.4 W, pushing CFD cell temp to 327.6 K (> 318.15 K).",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
@@ -1228,7 +1183,8 @@ solverSummary {
       {
         id: "pump-degradation",
         label: "Drop Coolant Flow (14.0 → 6.5 L/min)",
-        description: "Reducing Modelica coolant_flow_lpm to 6.5 L/min violates both SysML min_flow_rate_lpm (8.0) and CFD max_cell_temp_K.",
+        description:
+          "Reducing Modelica coolant_flow_lpm to 6.5 L/min violates both SysML min_flow_rate_lpm (8.0) and CFD max_cell_temp_K.",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
@@ -1335,7 +1291,7 @@ solverSummary {
         roleLabel: "MultiBody Inverse Dynamics",
         fileName: "HarmonicDriveDynamics.mo",
         namespaceFqn: "Modelica::SurgicalControl.HarmonicDriveDynamics",
-        fqnSyntaxNote: "within SurgicalControl; + annotation(twin = \"...\")",
+        fqnSyntaxNote: 'within SurgicalControl; + annotation(twin = "...")',
         lang: "modelica",
         threadDomain: ThreadDomain.Modelica,
         threadDomainName: "Modelica",
@@ -1392,7 +1348,8 @@ end HarmonicDriveDynamics;`,
       {
         id: "loose-tolerance",
         label: "Loosen STEP Bore Tolerance (±0.015 → ±0.028 mm)",
-        description: "Widening #12 PLUS_MINUS_TOLERANCE in STEP AP242 expands worst-case clearance to [0.008, 0.088] mm, violating both seizure and backlash limits.",
+        description:
+          "Widening #12 PLUS_MINUS_TOLERANCE in STEP AP242 expands worst-case clearance to [0.008, 0.088] mm, violating both seizure and backlash limits.",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
@@ -1407,22 +1364,20 @@ end HarmonicDriveDynamics;`,
       {
         id: "heavy-payload",
         label: "Overload Instrument Payload (4.2 → 7.6 kg)",
-        description: "Increasing Modelica payload_mass to 7.6 kg drives RNEA peak torque to 161.9 N·m, exceeding URDF effort (140 N·m).",
+        description:
+          "Increasing Modelica payload_mass to 7.6 kg drives RNEA peak torque to 161.9 N·m, exceeding URDF effort (140 N·m).",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
-          next[2] = replaceNumInCode(
-            next[2],
-            /(parameter\s+Real\s+payload_mass\s*=\s*)(-?\d+(?:\.\d+)?)(\s*)/,
-            "7.6",
-          );
+          next[2] = replaceNumInCode(next[2], /(parameter\s+Real\s+payload_mass\s*=\s*)(-?\d+(?:\.\d+)?)(\s*)/, "7.6");
           return { codes: next, editedPaneIndex: 2 };
         },
       },
       {
         id: "shaft-interference",
         label: "Oversize Shaft Journal #21 (40.000 → 40.028 mm)",
-        description: "Increasing #21 LENGTH_MEASURE_WITH_UNIT in STEP AP242 shrinks worst-case clearance to -0.007 mm (mechanical interference!).",
+        description:
+          "Increasing #21 LENGTH_MEASURE_WITH_UNIT in STEP AP242 shrinks worst-case clearance to -0.007 mm (mechanical interference!).",
         isFault: true,
         apply: (defaults) => {
           const next = [...defaults] as [string, string, string, string];
@@ -1458,21 +1413,19 @@ export function evaluateCoordinatorScenario(
   editedPaneIndex: number = 0,
 ): CoordinatorEvaluationResult {
   const t0 = nowMs();
-  const scenario =
-    COORDINATOR_SCENARIOS.find((s) => s.id === scenarioId) ?? COORDINATOR_SCENARIOS[0]!;
+  const scenario = COORDINATOR_SCENARIOS.find((s) => s.id === scenarioId) ?? COORDINATOR_SCENARIOS[0]!;
   const codes: [string, string, string, string] = [...rawCodes];
-  const paneDiagnostics: [
-    WorkflowDiagnostic[],
-    WorkflowDiagnostic[],
-    WorkflowDiagnostic[],
-    WorkflowDiagnostic[],
-  ] = [[], [], [], []];
+  const paneDiagnostics: [WorkflowDiagnostic[], WorkflowDiagnostic[], WorkflowDiagnostic[], WorkflowDiagnostic[]] = [
+    [],
+    [],
+    [],
+    [],
+  ];
 
   // Parse SysML v2 requirements and Modelica twin annotations using runtime binder
   const sysmlReqs = parseSysmlRequirements(codes[0]);
   const modelicaPaneIdx = scenario.panes.findIndex((p) => p.lang === "modelica");
-  const modelicaTwins =
-    modelicaPaneIdx >= 0 ? extractModelicaTwinAnnotations(codes[modelicaPaneIdx]!) : new Map();
+  const modelicaTwins = modelicaPaneIdx >= 0 ? extractModelicaTwinAnnotations(codes[modelicaPaneIdx]!) : new Map();
 
   const coordinator = new SemanticTheoryCoordinator();
   const constraintOracle = new ConstraintTheoryOracle();
@@ -1497,11 +1450,7 @@ export function evaluateCoordinatorScenario(
   let meshSourceSummary = "";
   let paneVisuals!: [PaneVisualData, PaneVisualData, PaneVisualData, PaneVisualData];
 
-  const getSysmlAttrOrBound = (
-    attrName: string,
-    targetAttrName: string,
-    fallback: number,
-  ): number => {
+  const getSysmlAttrOrBound = (attrName: string, targetAttrName: string, fallback: number): number => {
     for (const req of sysmlReqs) {
       if (req.attributes && typeof req.attributes[attrName] === "number") {
         return req.attributes[attrName]!;
@@ -1566,11 +1515,7 @@ export function evaluateCoordinatorScenario(
 
     // Propagate computed_mass_kg across CAD -> Modelica -> SysML2::ActuatorArchitecture::ClevisBracket.mass
     if (editedPaneIndex !== 1) {
-      codes[2] = replaceNumInCode(
-        codes[2],
-        /(computed_mass_kg\s*=\s*)(-?\d+(?:\.\d+)?)(;)/,
-        computedMassKg.toFixed(2),
-      );
+      codes[2] = replaceNumInCode(codes[2], /(computed_mass_kg\s*=\s*)(-?\d+(?:\.\d+)?)(;)/, computedMassKg.toFixed(2));
       codes[1] = replaceNumInCode(
         codes[1],
         /(parameter\s+Real\s+bracket_mass\s*=\s*)(-?\d+(?:\.\d+)?)(\s*)/,
@@ -1674,10 +1619,7 @@ export function evaluateCoordinatorScenario(
         conflicts.push({
           literals: [],
           explanation: msg,
-          culpritEntities: [
-            `CAD::MountingBracket::port.${target.name}`,
-            `FEA::BracketStress::NSET(${target.name})`,
-          ],
+          culpritEntities: [`CAD::MountingBracket::port.${target.name}`, `FEA::BracketStress::NSET(${target.name})`],
           theoryName: "SpatialPhysicsOracle",
         });
       }
@@ -1746,38 +1688,14 @@ export function evaluateCoordinatorScenario(
     );
 
     if (editedPaneIndex !== 3) {
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(clevis_lug,\s*3,\s*)(-?\d+(?:\.\d+)?)(\b)/,
-        appliedLoadN.toFixed(1),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(S_MISES_MAX\s*=\s*)(-?\d+(?:\.\d+)?)(\b)/,
-        vonMisesMax.toFixed(1),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(U3_MAX\s*=\s*)(-?\d+(?:\.\d+)?)(\b)/,
-        maxDeflectionMm.toFixed(2),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(\*DENSITY\s*\n\s*)(-?\d+(?:\.\d+)?)(\b)/,
-        density.toFixed(1),
-      );
+      codes[3] = replaceNumInCode(codes[3], /(clevis_lug,\s*3,\s*)(-?\d+(?:\.\d+)?)(\b)/, appliedLoadN.toFixed(1));
+      codes[3] = replaceNumInCode(codes[3], /(S_MISES_MAX\s*=\s*)(-?\d+(?:\.\d+)?)(\b)/, vonMisesMax.toFixed(1));
+      codes[3] = replaceNumInCode(codes[3], /(U3_MAX\s*=\s*)(-?\d+(?:\.\d+)?)(\b)/, maxDeflectionMm.toFixed(2));
+      codes[3] = replaceNumInCode(codes[3], /(\*DENSITY\s*\n\s*)(-?\d+(?:\.\d+)?)(\b)/, density.toFixed(1));
     }
 
-    const effectiveVonMises = extractNum(
-      codes[3],
-      /S_MISES_MAX\s*=\s*(-?\d+(?:\.\d+)?)/,
-      vonMisesMax,
-    );
-    const effectiveDeflection = extractNum(
-      codes[3],
-      /U3_MAX\s*=\s*(-?\d+(?:\.\d+)?)/,
-      maxDeflectionMm,
-    );
+    const effectiveVonMises = extractNum(codes[3], /S_MISES_MAX\s*=\s*(-?\d+(?:\.\d+)?)/, vonMisesMax);
+    const effectiveDeflection = extractNum(codes[3], /U3_MAX\s*=\s*(-?\d+(?:\.\d+)?)/, maxDeflectionMm);
 
     // Sync SysML v2 part def ClevisBracket attributes (Pane 0)
     codes[0] = replaceNumInCode(
@@ -2087,13 +2005,9 @@ export function evaluateCoordinatorScenario(
             Math.abs(xb - gaugeLengthM) < 1e-6 &&
             Math.abs(xc - gaugeLengthM) < 1e-6) ||
           (ya < 1e-6 && yb < 1e-6 && yc < 1e-6) ||
-          (Math.abs(ya - heightM) < 1e-6 &&
-            Math.abs(yb - heightM) < 1e-6 &&
-            Math.abs(yc - heightM) < 1e-6) ||
+          (Math.abs(ya - heightM) < 1e-6 && Math.abs(yb - heightM) < 1e-6 && Math.abs(yc - heightM) < 1e-6) ||
           (za < 1e-6 && zb < 1e-6 && zc < 1e-6) ||
-          (Math.abs(za - depthM) < 1e-6 &&
-            Math.abs(zb - depthM) < 1e-6 &&
-            Math.abs(zc - depthM) < 1e-6);
+          (Math.abs(za - depthM) < 1e-6 && Math.abs(zb - depthM) < 1e-6 && Math.abs(zc - depthM) < 1e-6);
         if (!onBoundary) continue;
 
         const u0: [number, number, number] = [xa * scaleToMm, za * scaleToMm, ya * scaleToMm];
@@ -2151,8 +2065,18 @@ export function evaluateCoordinatorScenario(
         partAttributes: [
           { name: "mass", value: effectiveMassKg.toFixed(2), unit: "kg", sourceHint: "<- CAD::MountingBracket" },
           { name: "peak_thrust", value: peakThrustKn.toFixed(1), unit: "kN", sourceHint: "<- Modelica::FlightControl" },
-          { name: "von_mises_stress", value: effectiveVonMises.toFixed(1), unit: "MPa", sourceHint: "<- FEA::BracketStress" },
-          { name: "tip_deflection", value: effectiveDeflection.toFixed(2), unit: "mm", sourceHint: "<- FEA::BracketStress" },
+          {
+            name: "von_mises_stress",
+            value: effectiveVonMises.toFixed(1),
+            unit: "MPa",
+            sourceHint: "<- FEA::BracketStress",
+          },
+          {
+            name: "tip_deflection",
+            value: effectiveDeflection.toFixed(2),
+            unit: "mm",
+            sourceHint: "<- FEA::BracketStress",
+          },
         ],
         requirementId: "REQ_ACTUATOR_01",
         subjectName: "bracket",
@@ -2266,8 +2190,7 @@ export function evaluateCoordinatorScenario(
     const internalRes = Math.max(0.001, moEq.paramMap.get("internal_res") ?? 0.014);
     const coolantFlowLpm = Math.max(
       1.0,
-      moEq.paramMap.get("coolant_flow_lpm") ??
-        extractNum(codes[1], /coolant_flow_lpm\s*=\s*(-?\d+(?:\.\d+)?)/, 14.0),
+      moEq.paramMap.get("coolant_flow_lpm") ?? extractNum(codes[1], /coolant_flow_lpm\s*=\s*(-?\d+(?:\.\d+)?)/, 14.0),
     );
     const heatRejectionW = Number(moEq.value.toFixed(1));
 
@@ -2337,20 +2260,26 @@ export function evaluateCoordinatorScenario(
     // 4. Parse OpenFOAM `.cfd` dictionary via `@modelscript/cfd`'s `OpenFoamDialect`
     const cfdDoc = new OpenFoamDialect().parse(codes[3]);
     const geomSource =
-      String(cfdDoc.directives["geometry.ColdPlateChannels.scad.source"] ?? "").replace(
-        /^"|"$/g,
-        "",
-      ) || "CAD::ColdPlateChannels::SerpentineColdPlate";
+      String(cfdDoc.directives["geometry.ColdPlateChannels.scad.source"] ?? "").replace(/^"|"$/g, "") ||
+      "CAD::ColdPlateChannels::SerpentineColdPlate";
     meshSourceSummary = `geometry { ColdPlateChannels.scad (${geomSource}) } -> LbmVoxelizer (20×10×8 D3Q19)`;
 
     // Verify every OpenFOAM boundaryField patch against OpenSCAD `tag_port(...)` declarations
-    const expectedPatches =
-      cfdDoc.markers.length > 0
-        ? cfdDoc.markers
-        : ["coolant_inlet", "fluid_core", "coolant_outlet"];
+    const markerKeys =
+      cfdDoc.markers instanceof Map
+        ? Array.from(cfdDoc.markers.keys())
+        : Array.isArray(cfdDoc.markers)
+          ? (cfdDoc.markers as string[])
+          : [];
+    const expectedPatches: string[] =
+      markerKeys.length > 0 ? markerKeys : ["coolant_inlet", "fluid_core", "coolant_outlet"];
     for (const patchName of expectedPatches) {
       const cadPort = scadData.portTags.get(patchName);
-      const patchType = String(cfdDoc.directives[`boundaryField.${patchName}.type`] ?? "patch");
+      const patchType = String(
+        (cfdDoc.directives instanceof Map
+          ? cfdDoc.directives.get(`boundaryField.${patchName}.type`)
+          : (cfdDoc.directives as Record<string, string>)?.[`boundaryField.${patchName}.type`]) ?? "patch",
+      );
       const caePos = findLineCol(codes[3], new RegExp(`\\b${patchName}\\s*\\{`));
       const isBound = cadPort !== undefined;
       portBindings.push({
@@ -2439,12 +2368,8 @@ export function evaluateCoordinatorScenario(
     const lbmConstrictionRatio = Math.max(1.0, lbmRes.maxVelocity / Math.max(0.1, meanInletVelMs));
     const dynamicHeadPa = 0.5 * fluidRho * uSerpMs * uSerpMs;
     const darcyDropPa =
-      passesPerBank *
-      ((darcyF * (passLengthM / dhM) + 0.12 * lbmConstrictionRatio) / nParallelBanks) *
-      dynamicHeadPa;
-    const computedPressureDropKpa = Number(
-      ((lbmRes.pressureDropPa * 0.4 + darcyDropPa) * 1e-3).toFixed(1),
-    );
+      passesPerBank * ((darcyF * (passLengthM / dhM) + 0.12 * lbmConstrictionRatio) / nParallelBanks) * dynamicHeadPa;
+    const computedPressureDropKpa = Number(((lbmRes.pressureDropPa * 0.4 + darcyDropPa) * 1e-3).toFixed(1));
 
     const massFlowKgS = fluidRho * (coolantFlowLpm / 60000);
     const nusselt = 0.023 * Math.pow(reynolds, 0.8) * Math.pow(prandtl, 0.3);
@@ -2455,58 +2380,22 @@ export function evaluateCoordinatorScenario(
     const computedMaxTempK = Number((inletTempK + deltaTBulkK + deltaTConvK).toFixed(1));
 
     if (editedPaneIndex !== 3) {
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(volumetricFlowRate\s+)(-?\d+(?:\.\d+)?)(;)/,
-        coolantFlowLpm.toFixed(1),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(qWall\s+)(-?\d+(?:\.\d+)?)(;)/,
-        heatRejectionW.toFixed(1),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(Dh\s+)(-?\d+(?:\.\d+)?)(;)/,
-        hydraulicDiaMm.toFixed(2),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(inletFlowRate\s+)(-?\d+(?:\.\d+)?)(;)/,
-        coolantFlowLpm.toFixed(1),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(wallHeatLoad\s+)(-?\d+(?:\.\d+)?)(;)/,
-        heatRejectionW.toFixed(1),
-      );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(hydraulicDiameter\s+)(-?\d+(?:\.\d+)?)(;)/,
-        hydraulicDiaMm.toFixed(2),
-      );
+      codes[3] = replaceNumInCode(codes[3], /(volumetricFlowRate\s+)(-?\d+(?:\.\d+)?)(;)/, coolantFlowLpm.toFixed(1));
+      codes[3] = replaceNumInCode(codes[3], /(qWall\s+)(-?\d+(?:\.\d+)?)(;)/, heatRejectionW.toFixed(1));
+      codes[3] = replaceNumInCode(codes[3], /(Dh\s+)(-?\d+(?:\.\d+)?)(;)/, hydraulicDiaMm.toFixed(2));
+      codes[3] = replaceNumInCode(codes[3], /(inletFlowRate\s+)(-?\d+(?:\.\d+)?)(;)/, coolantFlowLpm.toFixed(1));
+      codes[3] = replaceNumInCode(codes[3], /(wallHeatLoad\s+)(-?\d+(?:\.\d+)?)(;)/, heatRejectionW.toFixed(1));
+      codes[3] = replaceNumInCode(codes[3], /(hydraulicDiameter\s+)(-?\d+(?:\.\d+)?)(;)/, hydraulicDiaMm.toFixed(2));
       codes[3] = replaceNumInCode(
         codes[3],
         /(pressureDrop_kPa\s+)(-?\d+(?:\.\d+)?)(;)/,
         computedPressureDropKpa.toFixed(1),
       );
-      codes[3] = replaceNumInCode(
-        codes[3],
-        /(maxSurfaceTemp_K\s+)(-?\d+(?:\.\d+)?)(;)/,
-        computedMaxTempK.toFixed(1),
-      );
+      codes[3] = replaceNumInCode(codes[3], /(maxSurfaceTemp_K\s+)(-?\d+(?:\.\d+)?)(;)/, computedMaxTempK.toFixed(1));
     }
 
-    const effectiveDeltaPKpa = extractNum(
-      codes[3],
-      /pressureDrop_kPa\s+(-?\d+(?:\.\d+)?)/,
-      computedPressureDropKpa,
-    );
-    const effectiveMaxTempK = extractNum(
-      codes[3],
-      /maxSurfaceTemp_K\s+(-?\d+(?:\.\d+)?)/,
-      computedMaxTempK,
-    );
+    const effectiveDeltaPKpa = extractNum(codes[3], /pressureDrop_kPa\s+(-?\d+(?:\.\d+)?)/, computedPressureDropKpa);
+    const effectiveMaxTempK = extractNum(codes[3], /maxSurfaceTemp_K\s+(-?\d+(?:\.\d+)?)/, computedMaxTempK);
 
     // Sync SysML v2 part def ColdPlateManifold attributes (Pane 0)
     codes[0] = replaceNumInCode(
@@ -2564,7 +2453,7 @@ export function evaluateCoordinatorScenario(
       varB: "CFD::CoolantManifold::thermoFluidProperties.hydraulicDiameter",
       domain: "real",
       bounds: [hydraulicDiaMm, hydraulicDiaMm],
-      explanation: "evaluateScad() hydraulic_dia_mm on tag_port(\"fluid_core\") <-> OpenFOAM boundaryField",
+      explanation: 'evaluateScad() hydraulic_dia_mm on tag_port("fluid_core") <-> OpenFOAM boundaryField',
       sourceOracle: "SpatialPhysicsOracle",
     });
 
@@ -2772,9 +2661,7 @@ export function evaluateCoordinatorScenario(
         const uMag = Math.sqrt(ux * ux + uy * uy + uz * uz);
         const xFrac = ix / Math.max(1, lbmConfig.nx - 1);
         const pKpa = Number((effectiveDeltaPKpa * (1 - xFrac)).toFixed(2));
-        const tK = Number(
-          (298.15 + (effectiveMaxTempK - 298.15) * (isSolid ? 1.0 : 0.25 + 0.75 * xFrac)).toFixed(1),
-        );
+        const tK = Number((298.15 + (effectiveMaxTempK - 298.15) * (isSolid ? 1.0 : 0.25 + 0.75 * xFrac)).toFixed(1));
         lbmCells.push({
           ix,
           iy,
@@ -2793,9 +2680,24 @@ export function evaluateCoordinatorScenario(
         packageName: "BatteryThermal",
         partName: "ColdPlateManifold",
         partAttributes: [
-          { name: "max_surface_temp", value: effectiveMaxTempK.toFixed(1), unit: "K", sourceHint: "<- CFD::CoolantManifold" },
-          { name: "pressure_drop", value: effectiveDeltaPKpa.toFixed(1), unit: "kPa", sourceHint: "<- CFD::CoolantManifold" },
-          { name: "coolant_flow", value: coolantFlowLpm.toFixed(1), unit: "L/min", sourceHint: "<- Modelica::Powertrain" },
+          {
+            name: "max_surface_temp",
+            value: effectiveMaxTempK.toFixed(1),
+            unit: "K",
+            sourceHint: "<- CFD::CoolantManifold",
+          },
+          {
+            name: "pressure_drop",
+            value: effectiveDeltaPKpa.toFixed(1),
+            unit: "kPa",
+            sourceHint: "<- CFD::CoolantManifold",
+          },
+          {
+            name: "coolant_flow",
+            value: coolantFlowLpm.toFixed(1),
+            unit: "L/min",
+            sourceHint: "<- Modelica::Powertrain",
+          },
           { name: "heat_load", value: heatRejectionW.toFixed(1), unit: "W", sourceHint: "<- Modelica::Powertrain" },
         ],
         requirementId: "REQ_THERMAL_02",
@@ -2885,7 +2787,7 @@ export function evaluateCoordinatorScenario(
       },
       {
         kind: "cfd-3d",
-        solverName: cfdDoc.solver || "chtMultiRegionSimpleFoam",
+        solverName: (cfdDoc as { solver?: string }).solver || "chtMultiRegionSimpleFoam",
         meshSourceFile: `ColdPlateChannels.scad (${geomSource})`,
         nx: lbmConfig.nx,
         ny: lbmConfig.ny,
@@ -2924,8 +2826,7 @@ export function evaluateCoordinatorScenario(
     // 2. Parse URDF (Pane 1: URDF::SurgicalArm) via `@modelscript/urdf` `parseUrdf`
     const urdfModel = parseUrdf(codes[1]);
     const upperArmLink = urdfModel.links.get("upper_arm");
-    const shoulderJoint =
-      urdfModel.joints.get("shoulder_pitch") ?? Array.from(urdfModel.joints.values())[0];
+    const shoulderJoint = urdfModel.joints.get("shoulder_pitch") ?? Array.from(urdfModel.joints.values())[0];
     const urdfMass = upperArmLink?.inertial?.mass ?? 2.8;
     const urdfEffort = shoulderJoint?.limits?.effort ?? 140.0;
 
@@ -2936,14 +2837,10 @@ export function evaluateCoordinatorScenario(
         urdfMass.toFixed(1),
       );
     }
-    const moArmMass =
-      parseModelicaCst(codes[2])
-        .components.find((c) => c.name === "arm_mass")
-        ?.bindingExpr
-        ? Number.parseFloat(
-            parseModelicaCst(codes[2]).components.find((c) => c.name === "arm_mass")!.bindingExpr!,
-          ) || urdfMass
-        : urdfMass;
+    const moArmMass = parseModelicaCst(codes[2]).components.find((c) => c.name === "arm_mass")?.bindingExpr
+      ? Number.parseFloat(parseModelicaCst(codes[2]).components.find((c) => c.name === "arm_mass")!.bindingExpr!) ||
+        urdfMass
+      : urdfMass;
     if (editedPaneIndex === 2 && Math.abs(moArmMass - urdfMass) > 1e-4) {
       codes[1] = codes[1].replace(
         /(<link\s+name="upper_arm"[\s\S]*?<mass\s+value=")(-?\d+(?:\.\d+)?)(")/,
@@ -3210,10 +3107,7 @@ export function evaluateCoordinatorScenario(
     );
 
     if (!clearanceSat) {
-      const posSysml = findLineCol(
-        codes[0],
-        /joint\.min_radial_clearance\s*>=\s*min_clearance_mm/,
-      );
+      const posSysml = findLineCol(codes[0], /joint\.min_radial_clearance\s*>=\s*min_clearance_mm/);
       const posStep = findLineCol(codes[3], /#30\s*=\s*EVALUATED_CLEARANCE_ENVELOPE[^\n]+/);
       const msg = `[MSC-THEORY-CONFLICT] ToleranceStackOracle: 'STEP::BearingFit_AP242::#30(#12, #22)' worst-case clearance [${wcMin.toFixed(3)}, ${wcMax.toFixed(3)}] mm violates 'SysML2::SurgicalRobotics::REQ_HARMONIC_03' envelope [${minClearanceMm.toFixed(3)}, ${maxClearanceMm.toFixed(3)}] mm.`;
       paneDiagnostics[0].push({ ...posSysml, severity: "error", code: "MSC-GDT-STACK", message: msg });
@@ -3301,8 +3195,8 @@ export function evaluateCoordinatorScenario(
           {
             name: shoulderJoint?.name ?? "shoulder_pitch",
             type: shoulderJoint?.type ?? "revolute",
-            parent: shoulderJoint?.parent ?? "base_column",
-            child: shoulderJoint?.child ?? "upper_arm",
+            parent: shoulderJoint?.parentLink ?? "base_column",
+            child: shoulderJoint?.childLink ?? "upper_arm",
             lowerRad: shoulderJoint?.limits?.lower ?? -1.57,
             upperRad: shoulderJoint?.limits?.upper ?? 1.57,
             effortLimitNm: urdfEffort,
@@ -3373,12 +3267,9 @@ export function evaluateCoordinatorScenario(
   };
 
   // Generic file-driven Nelson-Oppen equality & bound assertion into SemanticTheoryCoordinator
-  const sysmlPkg =
-    sysmlReqs[0]?.packageName ?? scenario.panes[0]?.namespaceFqn?.split("::").pop() ?? "SysML";
+  const sysmlPkg = sysmlReqs[0]?.packageName ?? scenario.panes[0]?.namespaceFqn?.split("::").pop() ?? "SysML";
   for (const req of sysmlReqs) {
-    const attrSuffix = req.targetAttribute.includes(".")
-      ? req.targetAttribute.split(".").pop()!
-      : req.targetAttribute;
+    const attrSuffix = req.targetAttribute.includes(".") ? req.targetAttribute.split(".").pop()! : req.targetAttribute;
     const canonicalAttrFqn = req.subjectName
       ? `SysML2::${sysmlPkg}::${req.subjectName}.${attrSuffix}`
       : `SysML2::${sysmlPkg}::${req.targetAttribute}`;
@@ -3478,23 +3369,14 @@ export function evaluatePolyglotDigitalThreadFromFiles(
 ): CoordinatorEvaluationResult & { scenarioId: string; scenarioTitle: string } {
   const hasCfd = files.some((f) => f.fileName.endsWith(".cfd"));
   const hasStepOrUrdf = files.some(
-    (f) =>
-      f.fileName.endsWith(".step") ||
-      f.fileName.endsWith(".stp") ||
-      f.fileName.endsWith(".urdf"),
+    (f) => f.fileName.endsWith(".step") || f.fileName.endsWith(".stp") || f.fileName.endsWith(".urdf"),
   );
 
   const inferredScenarioId =
     explicitScenarioId ??
-    (hasCfd
-      ? "ev-battery-coldplate"
-      : hasStepOrUrdf
-        ? "robotics-gdt-tolerance"
-        : "aerospace-actuator");
+    (hasCfd ? "ev-battery-coldplate" : hasStepOrUrdf ? "robotics-gdt-tolerance" : "aerospace-actuator");
 
-  const scenario =
-    COORDINATOR_SCENARIOS.find((s) => s.id === inferredScenarioId) ??
-    COORDINATOR_SCENARIOS[0]!;
+  const scenario = COORDINATOR_SCENARIOS.find((s) => s.id === inferredScenarioId) ?? COORDINATOR_SCENARIOS[0]!;
 
   const codes: [string, string, string, string] = [
     scenario.panes[0].defaultCode,
@@ -3517,13 +3399,9 @@ export function evaluatePolyglotDigitalThreadFromFiles(
   for (const file of files) {
     const base = file.fileName.split(/[\\/]/).pop() ?? file.fileName;
     const lower = base.toLowerCase();
-    let matchedIdx = scenario.panes.findIndex(
-      (p) => p.fileName.toLowerCase() === lower,
-    );
+    let matchedIdx = scenario.panes.findIndex((p) => p.fileName.toLowerCase() === lower);
     if (matchedIdx < 0) {
-      matchedIdx = scenario.panes.findIndex((p) =>
-        (extForLang[p.lang] ?? []).some((ext) => lower.endsWith(ext)),
-      );
+      matchedIdx = scenario.panes.findIndex((p) => (extForLang[p.lang] ?? []).some((ext) => lower.endsWith(ext)));
     }
     if (matchedIdx >= 0) {
       codes[matchedIdx] = file.content;
@@ -3540,4 +3418,3 @@ export function evaluatePolyglotDigitalThreadFromFiles(
     scenarioTitle: scenario.title,
   };
 }
-

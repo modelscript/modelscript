@@ -245,6 +245,90 @@ describe("Phase 2: BLT-Driven Incremental Reachability Engine (@modelscript/runt
     assert.strictEqual(stateEnclosure.low, 6.0);
     assert.strictEqual(stateEnclosure.high, 12.0);
   });
+
+  it("should certify a 4D regular algebraic loop using Gauss-Jordan Krawczyk operator", () => {
+    const arena = new DAEBuilder();
+    const y1Idx = arena.addVariable("y1", VarType.Real, Variability.Continuous);
+    const y2Idx = arena.addVariable("y2", VarType.Real, Variability.Continuous);
+    const y3Idx = arena.addVariable("y3", VarType.Real, Variability.Continuous);
+    const y4Idx = arena.addVariable("y4", VarType.Real, Variability.Continuous);
+
+    const y1Name = arena.interner.intern("y1");
+    const y2Name = arena.interner.intern("y2");
+    const y3Name = arena.interner.intern("y3");
+    const y4Name = arena.interner.intern("y4");
+
+    const tenth = arena.addRealLiteral(0.1);
+
+    // Eq 1: y1 + 0.1 * y2 = 1.0
+    const eq1 = arena.addEquation(
+      EqKind.Simple,
+      arena.addBinaryExpr(
+        BinOp.Add,
+        arena.addExpression(0, y1Name),
+        arena.addBinaryExpr(BinOp.Mul, tenth, arena.addExpression(0, y2Name)),
+      ),
+      arena.addRealLiteral(1.0),
+    );
+
+    // Eq 2: y2 + 0.1 * y3 = 2.0
+    const eq2 = arena.addEquation(
+      EqKind.Simple,
+      arena.addBinaryExpr(
+        BinOp.Add,
+        arena.addExpression(0, y2Name),
+        arena.addBinaryExpr(BinOp.Mul, tenth, arena.addExpression(0, y3Name)),
+      ),
+      arena.addRealLiteral(2.0),
+    );
+
+    // Eq 3: y3 + 0.1 * y4 = 3.0
+    const eq3 = arena.addEquation(
+      EqKind.Simple,
+      arena.addBinaryExpr(
+        BinOp.Add,
+        arena.addExpression(0, y3Name),
+        arena.addBinaryExpr(BinOp.Mul, tenth, arena.addExpression(0, y4Name)),
+      ),
+      arena.addRealLiteral(3.0),
+    );
+
+    // Eq 4: y4 + 0.1 * y1 = 4.0
+    const eq4 = arena.addEquation(
+      EqKind.Simple,
+      arena.addBinaryExpr(
+        BinOp.Add,
+        arena.addExpression(0, y4Name),
+        arena.addBinaryExpr(BinOp.Mul, tenth, arena.addExpression(0, y1Name)),
+      ),
+      arena.addRealLiteral(4.0),
+    );
+
+    const bltResult: ArenaBltResult = {
+      sortedEquations: [eq1, eq2, eq3, eq4],
+      blocks: [
+        {
+          eqIdxs: [eq1, eq2, eq3, eq4],
+          vars: [y1Idx, y2Idx, y3Idx, y4Idx],
+        },
+      ],
+    };
+
+    const engine = new DaeBltReachabilityEngine(arena, {
+      initialBounds: new Map([
+        [y1Idx, new NumericalInterval(0.0, 5.0)],
+        [y2Idx, new NumericalInterval(0.0, 5.0)],
+        [y3Idx, new NumericalInterval(0.0, 5.0)],
+        [y4Idx, new NumericalInterval(0.0, 5.0)],
+      ]),
+    });
+
+    const summary = engine.verify(bltResult);
+    assert.strictEqual(summary.algebraicLoopsCount, 1);
+    assert.strictEqual(summary.singularLoopsCount, 0);
+    assert.strictEqual(summary.isFullyCertified, true);
+    assert.ok(!summary.issues.some((i) => i.kind === "singular_algebraic_loop"));
+  });
 });
 
 describe("BLT singularity check uses sound derivatives", () => {

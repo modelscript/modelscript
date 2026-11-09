@@ -481,6 +481,8 @@ export interface PublishPackageArchiveParams {
   description?: string | undefined;
   license?: string | undefined;
   contentHash?: string | undefined;
+  signature?: string | undefined;
+  publicKey?: string | undefined;
 }
 
 export const publishPackageArchive = async (
@@ -492,6 +494,8 @@ export const publishPackageArchive = async (
     description?: string | undefined;
     license?: string | undefined;
     contentHash?: string | undefined;
+    signature?: string | undefined;
+    publicKey?: string | undefined;
   },
 ) => {
   const resolvedName = typeof nameOrParams === "string" ? nameOrParams : nameOrParams.name;
@@ -505,10 +509,18 @@ export const publishPackageArchive = async (
   if (resolvedOptions?.description) formData.append("description", resolvedOptions.description);
   if (resolvedOptions?.license) formData.append("license", resolvedOptions.license);
   if (resolvedOptions?.contentHash) formData.append("contentHash", resolvedOptions.contentHash);
+  if (resolvedOptions?.signature) formData.append("signature", resolvedOptions.signature);
+  if (resolvedOptions?.publicKey) formData.append("publicKey", resolvedOptions.publicKey);
 
   const headers: Record<string, string> = {};
   if (resolvedOptions?.contentHash) {
     headers["X-Content-SHA256"] = resolvedOptions.contentHash;
+  }
+  if (resolvedOptions?.signature) {
+    headers["X-Package-Signature"] = resolvedOptions.signature;
+  }
+  if (resolvedOptions?.publicKey) {
+    headers["X-Publisher-Public-Key"] = resolvedOptions.publicKey;
   }
 
   const { data } = await api.post(
@@ -715,7 +727,17 @@ export interface VersionComparisonResult {
     parameter: string;
     oldUnit: string;
     newUnit: string;
+    conversionHint?: string | undefined;
   }[];
+  breakingChanges?:
+    | {
+        category: "connector_incompatible" | "component_removed" | "causality_drift" | "class_removed";
+        className: string;
+        componentName?: string | undefined;
+        message: string;
+        severity: "breaking" | "warning";
+      }[]
+    | undefined;
 }
 
 export const comparePackageVersions = async (

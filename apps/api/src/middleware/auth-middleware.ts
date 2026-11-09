@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import net from "node:net";
 import { LibraryDatabase } from "../database.js";
 import { locationService } from "../services/location.js";
+import { isIpInAllowlist } from "../util/cidr-matcher.js";
 
 let sharedAuthDatabase: LibraryDatabase | null = null;
 
@@ -86,6 +87,7 @@ declare module "express-serve-static-core" {
     user?: AuthUser | undefined;
     tokenScopes?: string[] | undefined;
     tokenPackagePattern?: string | undefined;
+    tokenIpAllowlist?: string | null | undefined;
     tokenId?: number | undefined;
     rawBody?: Buffer | string | undefined;
     isDomainSilenced?: boolean | undefined;
@@ -98,6 +100,7 @@ declare module "express" {
     user?: AuthUser | undefined;
     tokenScopes?: string[] | undefined;
     tokenPackagePattern?: string | undefined;
+    tokenIpAllowlist?: string | null | undefined;
     tokenId?: number | undefined;
     cookies?: Record<string, string> | undefined;
     rawBody?: Buffer | string | undefined;
@@ -456,6 +459,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string"
         ? req.headers["x-forwarded-for"].split(",")[0]?.trim() || req.ip
         : req.ip;
+
+    if (
+      tokenRecord.ip_allowlist &&
+      !isIpInAllowlist(tokenClientIp || remoteAddr || "127.0.0.1", tokenRecord.ip_allowlist)
+    ) {
+      res.status(403).json({
+        error: `Access denied: client IP address (${tokenClientIp || remoteAddr}) is not permitted by API token IP allowlist`,
+      });
+      return;
+    }
+
     if (
       !tokenRecord.last_used_at ||
       tokenRecord.last_used_ip !== (tokenClientIp ?? null) ||
@@ -471,6 +485,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     };
     req.tokenScopes = tokenRecord.scopes;
     req.tokenPackagePattern = tokenRecord.package_pattern;
+    req.tokenIpAllowlist = tokenRecord.ip_allowlist ?? null;
     req.tokenId = tokenRecord.id;
     next();
     return;
@@ -661,7 +676,16 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       }
       if (!expired) {
         const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
-        if (user && !isAccountBlocked(user.status)) {
+        const remoteAddr = req.socket?.remoteAddress || req.ip || "";
+        const tokenClientIp =
+          isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string"
+            ? req.headers["x-forwarded-for"].split(",")[0]?.trim() || req.ip
+            : req.ip;
+        const ipAllowed =
+          !tokenRecord.ip_allowlist ||
+          isIpInAllowlist(tokenClientIp || remoteAddr || "127.0.0.1", tokenRecord.ip_allowlist);
+
+        if (user && !isAccountBlocked(user.status) && ipAllowed) {
           req.user = {
             ...user,
             role: user.account_type || "user",
@@ -669,6 +693,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
           };
           req.tokenScopes = tokenRecord.scopes;
           req.tokenPackagePattern = tokenRecord.package_pattern;
+          req.tokenIpAllowlist = tokenRecord.ip_allowlist ?? null;
           req.tokenId = tokenRecord.id;
         }
       }

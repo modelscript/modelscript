@@ -9,6 +9,8 @@ import { DependencySolver, type PackageVersionProvider } from "../solver/solver.
 import { getApiUrl, getToken } from "../util/auth.js";
 import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
 import { parsePackageUses } from "../util/package-mo.js";
+import { defaultPackageStore } from "../util/store.js";
+import type { VendorManifest } from "./vendor.js";
 
 interface InstallArgs {
   package?: string | undefined;
@@ -17,6 +19,11 @@ interface InstallArgs {
   frozen?: boolean | undefined;
   ci?: boolean | undefined;
   dryRun?: boolean | undefined;
+  offline?: boolean | undefined;
+  vendorFirst?: boolean | undefined;
+  preferVendor?: boolean | undefined;
+  vendorDir?: string | undefined;
+  allowYanked?: boolean | undefined;
 }
 
 import { EXTENSION_TO_LANGUAGE_ID, detectAndAdaptArchiveManifest } from "@modelscript/exchange";
@@ -117,12 +124,15 @@ export function installLocalArchive(
     }
   }
 
+  const storePackageDir = defaultPackageStore.extractToStore(pkgName, pkgVersion, actualHash, buffer);
+
   const targetDirName = pkgName.startsWith("@") ? pkgName.replace("/", "__") : pkgName;
   const destDir = path.join(cwd, "libraries", targetDirName);
-  mkdirSync(destDir, { recursive: true });
-  zip.extractAllTo(destDir, true);
+  const linkResult = defaultPackageStore.linkToWorkspace(storePackageDir, destDir);
 
-  console.log(`✓ Installed ${pkgName}@${pkgVersion} to ${path.relative(cwd, destDir)}`);
+  console.log(
+    `✓ Installed ${pkgName}@${pkgVersion} to ${path.relative(cwd, destDir)} (${linkResult.hardlinks} hardlinks, ${linkResult.copies} copied)`,
+  );
 
   if (save) {
     const pkgJsonPath = path.join(cwd, "package.json");
@@ -182,6 +192,28 @@ export const Install: CommandModule<{}, InstallArgs> = {
         description: "Simulate transitive dependency resolution without writing packages or lockfile to disk",
         type: "boolean",
         default: false,
+      })
+      .option("offline", {
+        alias: "o",
+        description: "Install strictly from local vendor directory and global CAS store with zero network requests",
+        type: "boolean",
+        default: false,
+      })
+      .option("vendor-first", {
+        alias: "prefer-vendor",
+        description: "Prefer locally vendored dependencies before making remote registry network requests",
+        type: "boolean",
+        default: false,
+      })
+      .option("vendor-dir", {
+        description: "Path to the local vendor directory (defaults to ./vendor)",
+        type: "string",
+        default: "vendor",
+      })
+      .option("allow-yanked", {
+        description: "Allow installation of yanked (tombstoned) package releases",
+        type: "boolean",
+        default: false,
       }) as unknown as Argv<InstallArgs>;
   },
   handler: async (args) => {
@@ -189,6 +221,20 @@ export const Install: CommandModule<{}, InstallArgs> = {
     const cwd = process.cwd();
     const isFrozen = Boolean(args.frozenLockfile || args.frozen || args.ci);
     const lockfile = readLockfile(cwd);
+
+    const isOffline = Boolean(args.offline);
+    const isVendorFirst = isOffline || Boolean(args.vendorFirst || args.preferVendor);
+    const vendorDir = path.resolve(cwd, args.vendorDir || "vendor");
+    const vendorManifestPath = path.join(vendorDir, "vendor-manifest.json");
+
+    let vendorManifest: VendorManifest | null = null;
+    if (existsSync(vendorManifestPath)) {
+      try {
+        vendorManifest = JSON.parse(readFileSync(vendorManifestPath, "utf-8")) as VendorManifest;
+      } catch (err) {
+        console.warn(`Warning: Failed to parse vendor manifest at ${vendorManifestPath}: ${err}`);
+      }
+    }
 
     if (isFrozen && !lockfile) {
       console.error(
@@ -290,29 +336,104 @@ export const Install: CommandModule<{}, InstallArgs> = {
       }
     }
 
-    // Initialize package version provider querying the Registry API
+    // Initialize package version provider querying vendor, CAS store, and/or Registry API
     const provider: PackageVersionProvider = {
       async getVersions(pkgName: string): Promise<string[]> {
+        const localVersions: string[] = [];
+
+        // 1. Check local vendor manifest
+        if (vendorManifest?.packages[pkgName]) {
+          const v = vendorManifest.packages[pkgName].version;
+          if (!localVersions.includes(v)) localVersions.push(v);
+        }
+
+        // 2. Check local CAS store
+        const storeVersions = defaultPackageStore.listCachedVersions(pkgName);
+        for (const sv of storeVersions) {
+          if (!localVersions.includes(sv)) localVersions.push(sv);
+        }
+
+        // Offline mode: strictly return local versions with zero network requests
+        if (isOffline) {
+          return localVersions;
+        }
+
+        // Vendor-first mode: if satisfied locally, do not make network calls
+        if (isVendorFirst && localVersions.length > 0) {
+          return localVersions;
+        }
+
+        // 3. Query remote registry
         const pPath = pkgName.startsWith("@")
           ? pkgName.split("/").map(encodeURIComponent).join("/")
           : encodeURIComponent(pkgName);
         try {
           const res = await fetch(`${API_URL}/api/v1/libraries/${pPath}`, { headers });
-          if (!res.ok) return [];
+          if (!res.ok) return localVersions;
           const data = (await res.json()) as {
             versions?: (string | { version: string })[] | undefined;
             version?: string | undefined;
           };
+          const remoteVersions: string[] = [];
           if (Array.isArray(data.versions)) {
-            return data.versions.map((v) => (typeof v === "string" ? v : v.version));
+            remoteVersions.push(...data.versions.map((v) => (typeof v === "string" ? v : v.version)));
+          } else if (typeof data.version === "string") {
+            remoteVersions.push(data.version);
           }
-          if (typeof data.version === "string") return [data.version];
-          return [];
+          for (const rv of remoteVersions) {
+            if (!localVersions.includes(rv)) localVersions.push(rv);
+          }
+          return localVersions;
         } catch {
-          return [];
+          return localVersions;
         }
       },
       async getManifest(pkgName: string, ver: string): ReturnType<PackageVersionProvider["getManifest"]> {
+        // 1. Check vendor manifest
+        if (vendorManifest?.packages[pkgName] && vendorManifest.packages[pkgName].version === ver) {
+          const vPkg = vendorManifest.packages[pkgName]!;
+          const vDir = path.resolve(vendorDir, vPkg.directory);
+          const vPkgJson = path.join(vDir, "package.json");
+          if (existsSync(vPkgJson)) {
+            try {
+              const parsed = JSON.parse(readFileSync(vPkgJson, "utf-8"));
+              return {
+                name: pkgName,
+                version: ver,
+                dependencies: { ...parsed.dependencies, ...parsed.modelscript?.dependencies },
+              };
+            } catch {}
+          }
+          const vPkgMo = path.join(vDir, "package.mo");
+          if (existsSync(vPkgMo)) {
+            try {
+              const content = readFileSync(vPkgMo, "utf-8");
+              return {
+                name: pkgName,
+                version: ver,
+                dependencies: parsePackageUses(content),
+              };
+            } catch {}
+          }
+          return {
+            name: pkgName,
+            version: ver,
+            dependencies: vPkg.dependencies || {},
+          };
+        }
+
+        // 2. Check local CAS store
+        const cachedManifest = defaultPackageStore.getCachedManifest(pkgName, ver);
+        if (cachedManifest) {
+          return cachedManifest;
+        }
+
+        // Offline mode: cannot query remote
+        if (isOffline) {
+          return null;
+        }
+
+        // 3. Query remote registry
         const pPath = pkgName.startsWith("@")
           ? pkgName.split("/").map(encodeURIComponent).join("/")
           : encodeURIComponent(pkgName);
@@ -322,6 +443,19 @@ export const Install: CommandModule<{}, InstallArgs> = {
           return (await res.json()) as Awaited<ReturnType<PackageVersionProvider["getManifest"]>>;
         } catch {
           return null;
+        }
+      },
+      async getReleases(pkgName: string): Promise<import("../solver/solver.js").PackageReleaseMetadata[]> {
+        const pPath = pkgName.startsWith("@")
+          ? pkgName.split("/").map(encodeURIComponent).join("/")
+          : encodeURIComponent(pkgName);
+        try {
+          const res = await fetch(`${API_URL}/api/v1/libraries/${pPath}`, { headers });
+          if (!res.ok) return [];
+          const data = (await res.json()) as { releases?: import("../solver/solver.js").PackageReleaseMetadata[] };
+          return Array.isArray(data.releases) ? data.releases : [];
+        } catch {
+          return [];
         }
       },
     };
@@ -334,7 +468,9 @@ export const Install: CommandModule<{}, InstallArgs> = {
     }));
 
     console.log(`Solving dependency graph for ${rootRequirements.length} root package(s)...`);
-    const solution = await solver.solve(rootRequirements);
+    const solution = await solver.solve(rootRequirements, {
+      allowYanked: Boolean(args.allowYanked),
+    });
 
     if (!solution.success) {
       console.error(`\n❌ Dependency resolution failed:\n${solution.error}\n`);
@@ -352,6 +488,23 @@ export const Install: CommandModule<{}, InstallArgs> = {
       return;
     }
 
+    if (solution.deprecated) {
+      for (const [deprPkg, deprInfo] of Object.entries(solution.deprecated)) {
+        console.warn(
+          `\n⚠️  [DEPRECATED] Package "${deprPkg}@${deprInfo.version}" is deprecated:\n   ${deprInfo.reason}\n`,
+        );
+      }
+    }
+
+    if (solution.yanked && !args.allowYanked) {
+      for (const [yankPkg, yankInfo] of Object.entries(solution.yanked)) {
+        console.error(
+          `\n❌ [YANKED RELEASE] Package "${yankPkg}@${yankInfo.version}" has been yanked by the maintainer:\n   Reason: ${yankInfo.reason}\n   Pass --allow-yanked to force installation.\n`,
+        );
+      }
+      process.exit(1);
+    }
+
     for (const pkgName of solution.order) {
       const resolvedVersion = solution.packages[pkgName]?.version;
       if (!resolvedVersion) continue;
@@ -362,75 +515,165 @@ export const Install: CommandModule<{}, InstallArgs> = {
       const packagePath = pkgName.startsWith("@")
         ? pkgName.split("/").map(encodeURIComponent).join("/")
         : encodeURIComponent(pkgName);
-      const downloadUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/download`;
+      const downloadUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/download${args.allowYanked ? "?allowYanked=true" : ""}`;
 
       try {
-        const dlRes = await fetch(downloadUrl, { headers });
-        if (!dlRes.ok) {
-          throw new Error(`Download failed (${dlRes.status}): ${dlRes.statusText}`);
-        }
-
-        const arrayBuf = await dlRes.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
-        const actualHash = computeBufferIntegrity(buffer);
-
-        const expectedHash = dlRes.headers.get("x-content-sha256");
-        if (expectedHash) {
-          if (expectedHash.toLowerCase() !== actualHash.toLowerCase()) {
-            console.warn(`Warning: Content hash mismatch! Expected ${expectedHash}, got ${actualHash}`);
-          } else {
-            console.log(`✓ Verified CAS integrity: ${actualHash.slice(0, 19)}...`);
-          }
-        }
-
-        // Check lockfile entry if present before extraction
         const currentLock = lockfile || readLockfile(cwd);
         const lockedPkg = currentLock?.packages[pkgName];
-        if (lockedPkg && lockedPkg.integrity) {
-          if (!verifyIntegrity(buffer, lockedPkg.integrity)) {
-            if (isFrozen) {
-              console.error(
-                `Error: Integrity verification failed for ${pkgName}@${resolvedVersion}: expected ${lockedPkg.integrity}, got ${actualHash}.`,
-              );
-              process.exit(1);
-            } else {
-              console.warn(
-                `⚠️ Lockfile integrity warning for ${pkgName}: expected ${lockedPkg.integrity}, got ${actualHash}`,
+        const lockedIntegrity = lockedPkg?.integrity;
+
+        let actualHash: string;
+        let storePackageDir: string;
+        let zip: AdmZip;
+        let installSourceType: "vendor" | "store" | "network" = "network";
+
+        // Check 1: Vendor directory / archive
+        const vPkg = vendorManifest?.packages[pkgName];
+        const isVendored = vPkg && vPkg.version === resolvedVersion;
+
+        if (isVendored) {
+          installSourceType = "vendor";
+          const vDir = path.resolve(vendorDir, vPkg.directory);
+          const vArchive = vPkg.archive ? path.resolve(vendorDir, vPkg.archive) : undefined;
+
+          if (vArchive && existsSync(vArchive)) {
+            const buf = readFileSync(vArchive);
+            actualHash = computeBufferIntegrity(buf);
+            if (vPkg.integrity && actualHash.toLowerCase() !== vPkg.integrity.toLowerCase()) {
+              throw new Error(
+                `Integrity mismatch for vendored archive ${pkgName}@${resolvedVersion}: expected ${vPkg.integrity}, got ${actualHash}`,
               );
             }
+            storePackageDir = defaultPackageStore.extractToStore(pkgName, resolvedVersion, actualHash, buf);
+            zip = new AdmZip(buf);
+          } else if (existsSync(vDir)) {
+            zip = new AdmZip();
+            zip.addLocalFolder(vDir);
+            const buf = zip.toBuffer();
+            actualHash = vPkg.integrity || computeBufferIntegrity(buf);
+            storePackageDir = defaultPackageStore.extractToStore(pkgName, resolvedVersion, actualHash, buf);
+          } else {
+            throw new Error(`Vendored package directory not found: ${vDir}`);
           }
-        } else if (isFrozen) {
-          console.error(`Error: Package "${pkgName}" is not listed in 'msx.lock'.`);
-          process.exit(1);
+          console.log(`✓ Resolved from local vendor (${actualHash.slice(0, 19)}...)`);
+        } else if (lockedIntegrity && defaultPackageStore.hasPackage(pkgName, resolvedVersion, lockedIntegrity)) {
+          // Check 2: Locked package already in CAS store with matching integrity
+          installSourceType = "store";
+          console.log(`✓ Using cached package from store (${lockedIntegrity.slice(0, 19)}...)`);
+          actualHash = lockedIntegrity;
+          storePackageDir = defaultPackageStore.getPackageStorePath(pkgName, resolvedVersion, lockedIntegrity);
+          const cachedBuf = defaultPackageStore.getCachedArchive(lockedIntegrity);
+          zip = cachedBuf ? new AdmZip(cachedBuf) : new AdmZip();
+        } else if (
+          (!lockedIntegrity || isOffline) &&
+          defaultPackageStore.getCachedPackageDir(pkgName, resolvedVersion)
+        ) {
+          // Check 3: Available in CAS store (only if not pinned to a different hash, or in offline mode)
+          const candidateStoreDir = defaultPackageStore.getCachedPackageDir(pkgName, resolvedVersion)!;
+          const meta = defaultPackageStore.getCachedPackageMeta(pkgName, resolvedVersion);
+          const metaHash = meta?.contentHash || "sha256:cas-cached";
+          if (lockedIntegrity && metaHash.toLowerCase() !== lockedIntegrity.toLowerCase()) {
+            if (isFrozen) {
+              console.error(
+                `Error: Integrity verification failed for ${pkgName}@${resolvedVersion}: expected ${lockedIntegrity}, got ${metaHash}.`,
+              );
+              process.exit(1);
+            }
+          }
+          installSourceType = "store";
+          storePackageDir = candidateStoreDir;
+          actualHash = metaHash;
+          console.log(`✓ Using cached package from CAS store (${actualHash.slice(0, 19)}...)`);
+          const cachedBuf = meta?.contentHash ? defaultPackageStore.getCachedArchive(meta.contentHash) : null;
+          if (cachedBuf) {
+            zip = new AdmZip(cachedBuf);
+          } else {
+            zip = new AdmZip();
+            zip.addLocalFolder(storePackageDir);
+          }
+        } else {
+          // Check 4: Remote registry network download
+          if (isOffline) {
+            throw new Error(
+              `Package "${pkgName}@${resolvedVersion}" is not available in local vendor directory or CAS store (offline mode active).`,
+            );
+          }
+
+          installSourceType = "network";
+          const dlRes = await fetch(downloadUrl, { headers });
+          if (!dlRes.ok) {
+            let errorDetail = dlRes.statusText;
+            try {
+              const errData = (await dlRes.json()) as { error?: string };
+              if (errData.error) errorDetail = errData.error;
+            } catch {}
+            throw new Error(`Download failed (${dlRes.status}): ${errorDetail}`);
+          }
+
+          const arrayBuf = await dlRes.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
+          actualHash = computeBufferIntegrity(buffer);
+
+          const expectedHash = dlRes.headers.get("x-content-sha256");
+          if (expectedHash) {
+            if (expectedHash.toLowerCase() !== actualHash.toLowerCase()) {
+              console.warn(`Warning: Content hash mismatch! Expected ${expectedHash}, got ${actualHash}`);
+            } else {
+              console.log(`✓ Verified CAS integrity: ${actualHash.slice(0, 19)}...`);
+            }
+          }
+
+          // Check lockfile entry if present before extraction
+          if (lockedPkg && lockedPkg.integrity) {
+            if (!verifyIntegrity(buffer, lockedPkg.integrity)) {
+              if (isFrozen) {
+                console.error(
+                  `Error: Integrity verification failed for ${pkgName}@${resolvedVersion}: expected ${lockedPkg.integrity}, got ${actualHash}.`,
+                );
+                process.exit(1);
+              } else {
+                console.warn(
+                  `⚠️ Lockfile integrity warning for ${pkgName}: expected ${lockedPkg.integrity}, got ${actualHash}`,
+                );
+              }
+            }
+          } else if (isFrozen) {
+            console.error(`Error: Package "${pkgName}" is not listed in 'msx.lock'.`);
+            process.exit(1);
+          }
+
+          storePackageDir = defaultPackageStore.extractToStore(pkgName, resolvedVersion, actualHash, buffer);
+          zip = new AdmZip(buffer);
         }
 
         const targetDirName = pkgName.startsWith("@") ? pkgName.replace("/", "__") : pkgName;
         const destDir = path.join(cwd, "libraries", targetDirName);
-        mkdirSync(destDir, { recursive: true });
+        const linkResult = defaultPackageStore.linkToWorkspace(storePackageDir, destDir);
 
-        const zip = new AdmZip(buffer);
-        zip.extractAllTo(destDir, true);
-
-        // Fetch pre-compiled salsa-index.db if provided by registry
-        const indexUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/salsa-index.db`;
-        try {
-          const idxRes = await fetch(indexUrl, { headers });
-          if (idxRes.ok) {
-            const idxBuf = Buffer.from(await idxRes.arrayBuffer());
-            if (idxBuf.length > 0) {
-              const metaDir = path.join(destDir, ".modelscript");
-              mkdirSync(metaDir, { recursive: true });
-              writeFileSync(path.join(metaDir, "salsa-index.db"), idxBuf);
-              console.log(
-                `✓ Cached pre-compiled Salsa index: ${path.relative(cwd, path.join(metaDir, "salsa-index.db"))}`,
-              );
+        // Fetch pre-compiled salsa-index.db if provided by registry (and not offline)
+        if (installSourceType === "network" && !isOffline) {
+          const indexUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/salsa-index.db`;
+          try {
+            const idxRes = await fetch(indexUrl, { headers });
+            if (idxRes.ok) {
+              const idxBuf = Buffer.from(await idxRes.arrayBuffer());
+              if (idxBuf.length > 0) {
+                const metaDir = path.join(destDir, ".modelscript");
+                mkdirSync(metaDir, { recursive: true });
+                writeFileSync(path.join(metaDir, "salsa-index.db"), idxBuf);
+                console.log(
+                  `✓ Cached pre-compiled Salsa index: ${path.relative(cwd, path.join(metaDir, "salsa-index.db"))}`,
+                );
+              }
             }
+          } catch {
+            // Pre-compiled index is optional
           }
-        } catch {
-          // Pre-compiled index is optional
         }
 
-        console.log(`✓ Installed ${pkgName}@${resolvedVersion} to ${path.relative(cwd, destDir)}`);
+        console.log(
+          `✓ Installed ${pkgName}@${resolvedVersion} to ${path.relative(cwd, destDir)} (${linkResult.hardlinks} hardlinks, ${linkResult.copies} copied)`,
+        );
 
         if (args.save && !isFrozen) {
           if (isDirect) {
@@ -451,9 +694,16 @@ export const Install: CommandModule<{}, InstallArgs> = {
           // Update msx.lock with v2 DAG metadata
           const domains = extractDomainSummaryFromZip(zip);
           const pkgDeps = solution.packages[pkgName]?.dependencies;
+          const resolvedLocation =
+            installSourceType === "vendor"
+              ? `vendor:${path.relative(cwd, path.resolve(vendorDir, vPkg!.directory))}`
+              : installSourceType === "store"
+                ? `store:${pkgName}@${resolvedVersion}`
+                : downloadUrl;
+
           updateLockfilePackage(cwd, pkgName, {
             version: resolvedVersion,
-            resolved: downloadUrl,
+            resolved: currentLock?.packages[pkgName]?.resolved || resolvedLocation,
             integrity: actualHash,
             domains,
             dependencies: pkgDeps,

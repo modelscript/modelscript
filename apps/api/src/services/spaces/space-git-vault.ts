@@ -194,7 +194,7 @@ export function relocateSpaceGitVault(
 
 export interface SpaceGitCommitOptions {
   repoPath: string;
-  files: Record<string, string>;
+  files: Record<string, string> | { path: string; content: string }[];
   message: string;
   authorName?: string | undefined;
   authorEmail?: string | undefined;
@@ -260,7 +260,11 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
       } catch {}
     }
 
-    for (const [filePath, content] of Object.entries(opts.files)) {
+    const fileEntries: [string, string][] = Array.isArray(opts.files)
+      ? opts.files.map((f: { path: string; content: string }) => [f.path, f.content])
+      : Object.entries(opts.files);
+
+    for (const [filePath, content] of fileEntries) {
       const cleanPath = filePath.replace(/^\/+/, "");
       if (!cleanPath) continue;
       const blobSha = execFileSync("git", ["-C", opts.repoPath, "hash-object", "-w", "--stdin"], {
@@ -336,5 +340,349 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
         fs.unlinkSync(tempIdx);
       }
     } catch {}
+  }
+}
+
+export function inferLanguageFromFilename(filename: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".mo")) return "modelica";
+  if (lower.endsWith(".md")) return "markdown";
+  if (lower.endsWith(".sysml")) return "sysml2";
+  if (lower.endsWith(".sp") || lower.endsWith(".cir")) return "spice";
+  if (lower.endsWith(".scad")) return "scad";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".xml")) return "xml";
+  if (lower.endsWith(".csv")) return "csv";
+  if (lower.endsWith(".c") || lower.endsWith(".h")) return "c";
+  if (lower.endsWith(".rs")) return "rust";
+  return "text";
+}
+
+export interface SpaceGitDiffFile {
+  filename: string;
+  language: string;
+  oldContent: string;
+  newContent: string;
+  additions: number;
+  deletions: number;
+  status: "added" | "modified" | "deleted";
+}
+
+export interface SpaceGitDiffResult {
+  sourceBranch: string;
+  targetBranch: string;
+  files: SpaceGitDiffFile[];
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
+/**
+ * Creates a new branch in a Space's bare Git vault off a base ref (defaults to HEAD).
+ */
+export function createSpaceGitBranch(opts: { repoPath: string; branchName: string; fromRef?: string | undefined }): {
+  success: boolean;
+  sha?: string;
+  error?: string;
+} {
+  if (!opts.repoPath || !fs.existsSync(opts.repoPath)) {
+    return { success: false, error: "Repository does not exist on disk" };
+  }
+  const cleanBranch = opts.branchName.trim().replace(/^refs\/heads\//, "");
+  if (!cleanBranch || cleanBranch.includes("..") || cleanBranch.startsWith("-") || /\s/.test(cleanBranch)) {
+    return { success: false, error: `Invalid branch name '${opts.branchName}'` };
+  }
+  const fromRef = opts.fromRef?.trim() || "HEAD";
+  const env = gitSubprocessEnv();
+
+  try {
+    const sha = execFileSync("git", ["-C", opts.repoPath, "rev-parse", fromRef], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    if (!/^[a-f0-9]{40}$/.test(sha)) {
+      return { success: false, error: `Base ref '${fromRef}' not found in repository` };
+    }
+
+    execFileSync("git", ["-C", opts.repoPath, "branch", cleanBranch, sha], {
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    return { success: true, sha };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Deletes a branch in a Space's bare Git vault.
+ */
+export function deleteSpaceGitBranch(opts: { repoPath: string; branchName: string }): boolean {
+  if (!opts.repoPath || !fs.existsSync(opts.repoPath)) return false;
+  const cleanBranch = opts.branchName.trim().replace(/^refs\/heads\//, "");
+  if (!cleanBranch || cleanBranch === "main" || cleanBranch === "master") return false;
+  try {
+    execFileSync("git", ["-C", opts.repoPath, "branch", "-D", cleanBranch], {
+      env: gitSubprocessEnv(),
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads a single file at a given git revision (commit/branch/tag) directly from the bare repository.
+ */
+export function readSpaceGitFileAtRef(opts: { repoPath: string; ref: string; filePath: string }): string | null {
+  if (!opts.repoPath || !fs.existsSync(opts.repoPath)) return null;
+  const cleanPath = opts.filePath.trim().replace(/^\/+/, "");
+  try {
+    return execFileSync("git", ["-C", opts.repoPath, "show", `${opts.ref}:${cleanPath}`], {
+      env: gitSubprocessEnv(),
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 5 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Computes a structured diff between two branches or commit refs inside a bare Git vault.
+ */
+export function getSpaceGitDiff(opts: {
+  repoPath: string;
+  baseRef: string;
+  targetRef: string;
+}): SpaceGitDiffResult | null {
+  if (!opts.repoPath || !fs.existsSync(opts.repoPath)) return null;
+  const env = gitSubprocessEnv();
+
+  try {
+    const baseSha = execFileSync("git", ["-C", opts.repoPath, "rev-parse", opts.baseRef], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const targetSha = execFileSync("git", ["-C", opts.repoPath, "rev-parse", opts.targetRef], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    if (!/^[a-f0-9]{40}$/.test(baseSha) || !/^[a-f0-9]{40}$/.test(targetSha)) {
+      return null;
+    }
+
+    const diffStatOut = execFileSync(
+      "git",
+      ["-C", opts.repoPath, "diff", "--name-status", opts.baseRef, opts.targetRef],
+      {
+        env,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+
+    const lines = diffStatOut ? diffStatOut.split("\n").filter(Boolean) : [];
+    const files: SpaceGitDiffFile[] = [];
+
+    let totalAdditions = 0;
+    let totalDeletions = 0;
+
+    for (const line of lines) {
+      const parts = line.split(/\t+/);
+      const statusCode = parts[0]?.trim() || "M";
+      const filePath = parts[1]?.trim() || "";
+      if (!filePath) continue;
+
+      let status: "added" | "modified" | "deleted" = "modified";
+      if (statusCode.startsWith("A")) status = "added";
+      else if (statusCode.startsWith("D")) status = "deleted";
+
+      const oldContent =
+        status === "added"
+          ? ""
+          : (readSpaceGitFileAtRef({ repoPath: opts.repoPath, ref: opts.baseRef, filePath }) ?? "");
+      const newContent =
+        status === "deleted"
+          ? ""
+          : (readSpaceGitFileAtRef({ repoPath: opts.repoPath, ref: opts.targetRef, filePath }) ?? "");
+
+      const oldLines = oldContent ? oldContent.split("\n").length : 0;
+      const newLines = newContent ? newContent.split("\n").length : 0;
+      let additions = 0;
+      let deletions = 0;
+      if (status === "added") {
+        additions = newLines;
+      } else if (status === "deleted") {
+        deletions = oldLines;
+      } else {
+        additions = Math.max(0, newLines - oldLines);
+        deletions = Math.max(0, oldLines - newLines);
+        if (additions === 0 && deletions === 0 && oldContent !== newContent) {
+          additions = 1;
+          deletions = 1;
+        }
+      }
+
+      totalAdditions += additions;
+      totalDeletions += deletions;
+
+      files.push({
+        filename: filePath,
+        language: inferLanguageFromFilename(filePath),
+        oldContent,
+        newContent,
+        additions,
+        deletions,
+        status,
+      });
+    }
+
+    return {
+      sourceBranch: opts.targetRef,
+      targetBranch: opts.baseRef,
+      files,
+      totalAdditions,
+      totalDeletions,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Executes an in-memory 3-way tree merge in the bare Git vault using modern git-merge-tree,
+ * creates a merge commit with both parents, and updates the target branch atomically.
+ */
+export function mergeSpaceGitBranches(opts: {
+  repoPath: string;
+  sourceBranch: string;
+  targetBranch: string;
+  message: string;
+  authorName?: string | undefined;
+  authorEmail?: string | undefined;
+}): { success: boolean; commitSha?: string; error?: string } {
+  if (!opts.repoPath || !fs.existsSync(opts.repoPath)) {
+    return { success: false, error: "Repository does not exist" };
+  }
+  const authorName = opts.authorName || "Ansatz Space Approver";
+  const authorEmail = opts.authorEmail || "approver@modelscript.org";
+  const dateStr = new Date().toISOString();
+  const env: NodeJS.ProcessEnv = {
+    ...gitSubprocessEnv(),
+    GIT_AUTHOR_NAME: authorName,
+    GIT_AUTHOR_EMAIL: authorEmail,
+    GIT_AUTHOR_DATE: dateStr,
+    GIT_COMMITTER_NAME: authorName,
+    GIT_COMMITTER_EMAIL: authorEmail,
+    GIT_COMMITTER_DATE: dateStr,
+  };
+
+  try {
+    const targetSha = execFileSync("git", ["-C", opts.repoPath, "rev-parse", `refs/heads/${opts.targetBranch}`], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const sourceSha = execFileSync("git", ["-C", opts.repoPath, "rev-parse", `refs/heads/${opts.sourceBranch}`], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    if (!/^[a-f0-9]{40}$/.test(targetSha) || !/^[a-f0-9]{40}$/.test(sourceSha)) {
+      return {
+        success: false,
+        error: `Invalid refs for merge: ${opts.targetBranch} (${targetSha}) or ${opts.sourceBranch} (${sourceSha})`,
+      };
+    }
+
+    // Modern Git in-memory tree merge without working directory
+    const mergeTreeOut = execFileSync(
+      "git",
+      ["-C", opts.repoPath, "merge-tree", "--write-tree", opts.targetBranch, opts.sourceBranch],
+      {
+        env,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).trim();
+
+    const mergedTreeSha = mergeTreeOut.split("\n")[0]?.trim();
+    if (!mergedTreeSha || !/^[a-f0-9]{40}$/.test(mergedTreeSha)) {
+      return { success: false, error: "Merge conflict detected during 3-way tree merge" };
+    }
+
+    // Create merge commit with 2 parents: targetSha (first parent) and sourceSha (second parent)
+    const commitSha = execFileSync(
+      "git",
+      ["-C", opts.repoPath, "commit-tree", mergedTreeSha, "-p", targetSha, "-p", sourceSha, "-m", opts.message],
+      {
+        env,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+
+    // Update target branch ref
+    execFileSync("git", ["-C", opts.repoPath, "update-ref", `refs/heads/${opts.targetBranch}`, commitSha], {
+      env,
+      stdio: "ignore",
+    });
+
+    return { success: true, commitSha };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Creates an annotated Git tag on a commit inside the bare vault.
+ */
+export function tagSpaceGitCommit(opts: {
+  repoPath: string;
+  tagName: string;
+  targetRef: string;
+  message: string;
+  taggerName?: string | undefined;
+  taggerEmail?: string | undefined;
+}): { success: boolean; tagSha?: string; error?: string } {
+  if (!opts.repoPath || !fs.existsSync(opts.repoPath)) {
+    return { success: false, error: "Repository does not exist" };
+  }
+  const taggerName = opts.taggerName || "Ansatz Space Release Bot";
+  const taggerEmail = opts.taggerEmail || "release@modelscript.org";
+  const env: NodeJS.ProcessEnv = {
+    ...gitSubprocessEnv(),
+    GIT_COMMITTER_NAME: taggerName,
+    GIT_COMMITTER_EMAIL: taggerEmail,
+    GIT_COMMITTER_DATE: new Date().toISOString(),
+  };
+
+  try {
+    const targetSha = execFileSync("git", ["-C", opts.repoPath, "rev-parse", opts.targetRef], {
+      env,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    execFileSync("git", ["-C", opts.repoPath, "tag", "-a", opts.tagName, targetSha, "-m", opts.message], {
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    return { success: true, tagSha: targetSha };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: msg };
   }
 }

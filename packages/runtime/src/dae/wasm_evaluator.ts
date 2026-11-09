@@ -1539,6 +1539,28 @@ export function evaluateArenaRuntime(
     case ExprKind.Comprehension:
       return 0;
 
+    case ExprKind.TensorSlice: {
+      const base = arena.getExprData1(exprId);
+      return evaluateArenaRuntime(arena, base, valuesByStringId, preValuesByStringId);
+    }
+    case ExprKind.TensorBroadcast:
+    case ExprKind.TensorMap: {
+      const op = arena.getExprLeft(exprId);
+      return evaluateArenaRuntime(arena, op, valuesByStringId, preValuesByStringId);
+    }
+    case ExprKind.TensorMatMul: {
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+      return (
+        evaluateArenaRuntime(arena, left, valuesByStringId, preValuesByStringId) *
+        evaluateArenaRuntime(arena, right, valuesByStringId, preValuesByStringId)
+      );
+    }
+    case ExprKind.TensorReduce: {
+      const op = arena.getExprLeft(exprId);
+      return evaluateArenaRuntime(arena, op, valuesByStringId, preValuesByStringId);
+    }
+
     // 8. Intrinsic & Built-in Function Calls
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);

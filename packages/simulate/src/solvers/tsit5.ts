@@ -168,6 +168,38 @@ export function tsit5Interpolate(y0: number[], y1: number[], k: number[][], h: n
 }
 
 /**
+ * Analytic time-derivative of the continuous Hermite interpolant for Tsit5 dense output.
+ * Evaluates dy/dt at t0 + theta * h, where theta in [0, 1], for Neutral DDEs (NDDEs).
+ */
+export function tsit5InterpolateDerivative(
+  y0: number[],
+  y1: number[],
+  k: number[][],
+  h: number,
+  theta: number,
+): number[] {
+  const n = y0.length;
+  if (Math.abs(h) < 1e-16) {
+    return (k[0] ?? new Array<number>(n).fill(0)).slice();
+  }
+  const out = new Array<number>(n);
+  const theta2 = theta * theta;
+  const dh00 = (6 * theta2 - 6 * theta) / h;
+  const dh10 = 3 * theta2 - 4 * theta + 1;
+  const dh01 = (-6 * theta2 + 6 * theta) / h;
+  const dh11 = 3 * theta2 - 2 * theta;
+
+  for (let i = 0; i < n; i++) {
+    const y0_i = y0[i] ?? 0;
+    const y1_i = y1[i] ?? 0;
+    const f0_i = k[0]?.[i] ?? 0;
+    const f1_i = k[6]?.[i] ?? 0;
+    out[i] = dh00 * y0_i + dh10 * f0_i + dh01 * y1_i + dh11 * f1_i;
+  }
+  return out;
+}
+
+/**
  * Integrate an ODE system using the Tsitouras 5(4) adaptive method.
  */
 export function tsit5(

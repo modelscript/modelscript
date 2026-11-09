@@ -11,7 +11,15 @@
  * - `msx swmm route-flow <file>`
  */
 
-import { lintSwmm, lowerSwmmToDae, parseSwmm, routeNetworkFlow, swmmToModelica } from "@modelscript/swmm";
+import {
+  computeSwmmWaterQuality,
+  lintSwmm,
+  lowerSwmmToDae,
+  parseSwmm,
+  routeNetworkFlow,
+  simulateSwmmRtc,
+  swmmToModelica,
+} from "@modelscript/swmm";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -22,9 +30,9 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (inspect, lint, to-dae, to-modelica, route-flow)",
+        description: "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality)",
         type: "string",
-        choices: ["inspect", "summary", "lint", "to-dae", "to-modelica", "route-flow"],
+        choices: ["inspect", "summary", "lint", "to-dae", "to-modelica", "route-flow", "rtc", "quality"],
         demandOption: true,
       })
       .positional("files", {
@@ -122,6 +130,36 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
             console.log(
               `    - ${id.padEnd(12, " ")} Q=${res.flowRate.toFixed(3).padEnd(8, " ")} V=${res.velocity.toFixed(2).padEnd(6, " ")} Depth=${res.depth.toFixed(2).padEnd(6, " ")} Status=${res.status}`,
             );
+          }
+          break;
+        }
+
+        case "rtc": {
+          const rtc = simulateSwmmRtc(deck);
+          console.log(`=== SWMM Real-Time Control (RTC) Dynamic Wave Routing ===`);
+          console.log(`  Rules Executed:       ${rtc.ruleExecutions.length}`);
+          console.log(`  Active Rules Count:   ${rtc.activeRulesCount}`);
+          console.log(`  CSO Spill Volume:     ${rtc.csoSpillVolumeM3.toFixed(2)} m³`);
+          console.log(`  Baseline Spill:       ${rtc.baselineSpillVolumeM3.toFixed(2)} m³`);
+          console.log(`  Spill Reduction:      ${rtc.spillReductionPct.toFixed(1)}%`);
+          console.log(`  Flooding Active:      ${rtc.isFlooding ? "YES" : "NO"}`);
+          console.log(`  Total Inflow:         ${rtc.totalInflow.toFixed(3)} ${deck.flowUnits}`);
+          console.log(`  Total Outflow:        ${rtc.totalOutflow.toFixed(3)} ${deck.flowUnits}`);
+          break;
+        }
+
+        case "quality": {
+          const runoffMap = new Map<string, number>();
+          for (const [subId, sub] of deck.subcatchments) {
+            runoffMap.set(subId, sub.area * 100.0);
+          }
+          const qual = computeSwmmWaterQuality(deck, runoffMap);
+          console.log(`=== SWMM Water Quality Washoff & Pollutant Buildup ===`);
+          console.log(`  Dominant Pollutant:   ${qual.dominantPollutant}`);
+          console.log(`  Subcatchments Modeled: ${qual.subcatchments.size}`);
+          console.log(`  Total Exported Pollutant Mass:`);
+          for (const [pol, mass] of Object.entries(qual.totalExportedMassKg)) {
+            console.log(`    - ${pol.padEnd(8, " ")}: ${mass.toFixed(2)} kg`);
           }
           break;
         }

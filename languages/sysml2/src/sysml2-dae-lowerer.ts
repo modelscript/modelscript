@@ -16,15 +16,21 @@ import {
   DAEBuilder,
   executeArenaStatements,
   initBltWasm,
+  type LanguageWorkspaceIndex,
+  type QueryDB,
   StmtKind,
   Variability,
   VarType,
+  type WorkspaceIndex,
 } from "@modelscript/runtime";
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParserSync } from "../src-gen/bindings.js";
 import {
+  findCstDescendants,
+  findFirstDescendant,
   lowerSysmlExpr,
   prefixSysmlExpression,
   SysML2CstFlattener,
@@ -112,6 +118,13 @@ type ParsedAstStmt =
   | { kind: "if"; condTokens: SysML2Token[]; thenBody: ParsedAstStmt[]; elseBody?: ParsedAstStmt[] | undefined }
   | { kind: "return"; exprTokens?: SysML2Token[] | undefined };
 
+export interface SysML2LowerOptions {
+  overrides?: Record<string, number> | undefined;
+  rootComponentName?: string | undefined;
+  queryDb?: QueryDB | undefined;
+  workspaceIndex?: WorkspaceIndex | LanguageWorkspaceIndex | undefined;
+}
+
 /**
  * Compiles SysML v2 calculations, action scripts, and physical part/constraint equations
  * directly into linear-memory `DAEBuilder` arenas for zero-GC execution and DAE simulation.
@@ -144,17 +157,37 @@ export class SysML2DaeLowerer {
 
     const arena = existingArena ?? new DAEBuilder();
 
-    // Extract all action/calc blocks in the source (supports standalone or embedded in part/package)
-    const blockHeaderRegex = /\b(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
     const actionBlocks: { name: string; bodyText: string }[] = [];
-    let bm: RegExpExecArray | null;
-    while ((bm = blockHeaderRegex.exec(sysmlSource)) !== null) {
-      const blockName = bm[1]!;
-      const openBrace = sysmlSource.indexOf("{", bm.index);
-      if (openBrace !== -1) {
-        const { body, endPos } = this.extractBraceBlock(sysmlSource, openBrace);
-        actionBlocks.push({ name: blockName, bodyText: body });
-        blockHeaderRegex.lastIndex = endPos;
+    const parser = getSysmlParser();
+    const tree = parser?.parse(sysmlSource);
+    const root = tree?.rootNode;
+    if (root) {
+      const actionDefNodes = [
+        ...findCstDescendants(root, "ActionDefinition"),
+        ...findCstDescendants(root, "CalcDefinition"),
+      ];
+      for (const adNode of actionDefNodes) {
+        const nameNode = findFirstDescendant(adNode, "Name") || findFirstDescendant(adNode, "ID");
+        const blockName = nameNode?.text?.trim();
+        if (blockName) {
+          const bodyText = adNode.text || "";
+          actionBlocks.push({ name: blockName, bodyText });
+        }
+      }
+    }
+
+    if (actionBlocks.length === 0) {
+      // Extract all action/calc blocks in the source (supports standalone or embedded in part/package)
+      const blockHeaderRegex = /\b(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
+      let bm: RegExpExecArray | null;
+      while ((bm = blockHeaderRegex.exec(sysmlSource)) !== null) {
+        const blockName = bm[1]!;
+        const openBrace = sysmlSource.indexOf("{", bm.index);
+        if (openBrace !== -1) {
+          const { body, endPos } = this.extractBraceBlock(sysmlSource, openBrace);
+          actionBlocks.push({ name: blockName, bodyText: body });
+          blockHeaderRegex.lastIndex = endPos;
+        }
       }
     }
 
@@ -772,7 +805,7 @@ export class SysML2DaeLowerer {
   public static lowerCst(
     sourceOrRootNode: string | SysmlCstNode,
     existingArena?: DAEBuilder,
-    options?: { overrides?: Record<string, number> | undefined; rootComponentName?: string | undefined },
+    options?: SysML2LowerOptions,
   ): LoweredConstraintDae & { rootName: string } {
     let root: SysmlCstNode;
     let sourceText: string | undefined;
@@ -792,6 +825,8 @@ export class SysML2DaeLowerer {
       sourceText,
       overrides: options?.overrides,
       rootComponentName: options?.rootComponentName,
+      queryDb: options?.queryDb,
+      workspaceIndex: options?.workspaceIndex,
     });
     const res = flattener.flatten(root);
     return {
@@ -808,20 +843,28 @@ export class SysML2DaeLowerer {
   /**
    * Lowers a physical SysML v2 Constraint or Part definition with differential and algebraic equations into a DAEBuilder.
    */
-  public static async lowerConstraint(sysmlSource: string, existingArena?: DAEBuilder): Promise<LoweredConstraintDae> {
+  public static async lowerConstraint(
+    sysmlSource: string,
+    existingArena?: DAEBuilder,
+    options?: SysML2LowerOptions,
+  ): Promise<LoweredConstraintDae> {
     try {
       await initBltWasm();
     } catch {}
 
     const arena = existingArena ?? new DAEBuilder();
-    return this.lowerCst(sysmlSource, arena);
+    return this.lowerCst(sysmlSource, arena, options);
   }
 
   /**
    * Universal entry point: lowers any SysML v2 source (Action, Calculation, Constraint, Part,
    * or hybrid continuous-discrete system combining both) into a unified DAEBuilder arena.
    */
-  public static async lowerSystem(sysmlSource: string, existingArena?: DAEBuilder): Promise<DAEBuilder> {
+  public static async lowerSystem(
+    sysmlSource: string,
+    existingArena?: DAEBuilder,
+    options?: SysML2LowerOptions,
+  ): Promise<DAEBuilder> {
     const arena = existingArena ?? new DAEBuilder();
     const hasDeclarative =
       /\b(?:constraint|assert\s+constraint|when)\b/.test(sysmlSource) ||
@@ -832,12 +875,12 @@ export class SysML2DaeLowerer {
     const hasImperative = /\b(?:action|calc)\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{/.test(sysmlSource);
 
     if (hasDeclarative && hasImperative) {
-      await this.lowerConstraint(sysmlSource, arena);
+      await this.lowerConstraint(sysmlSource, arena, options);
       await this.lowerAction(sysmlSource, arena);
       return arena;
     }
     if (hasDeclarative || (!hasImperative && /==/.test(sysmlSource))) {
-      await this.lowerConstraint(sysmlSource, arena);
+      await this.lowerConstraint(sysmlSource, arena, options);
       return arena;
     }
     await this.lowerAction(sysmlSource, arena);

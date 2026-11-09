@@ -115,25 +115,32 @@ export class HjiLevelSetSolver {
   public static solve(problem: HjiProblem, tEnd: number, dt: number): HjiResult {
     const { bounds, gridPoints, f, controlBounds, disturbanceBounds, targetLevelSet } = problem;
     const dims = bounds.length;
-    const nx = gridPoints[0] ?? 21;
-    const ny = dims > 1 ? (gridPoints[1] ?? 21) : 1;
-    const totalPts = nx * ny;
+    const gridCounts = bounds.map((_, d) => gridPoints[d] ?? 21);
+    const strides = new Array<number>(dims);
+    let totalPts = 1;
+    for (let d = 0; d < dims; d++) {
+      strides[d] = totalPts;
+      totalPts *= gridCounts[d]!;
+    }
 
-    const dx = (bounds[0]![1] - bounds[0]![0]) / Math.max(1, nx - 1);
-    const dy = dims > 1 && bounds[1] ? (bounds[1][1] - bounds[1][0]) / Math.max(1, ny - 1) : 1.0;
+    const dx = bounds.map((b, d) => (b[1] - b[0]) / Math.max(1, gridCounts[d]! - 1));
+
+    const getPoint = (idx: number, ptOut: number[]): void => {
+      for (let d = 0; d < dims; d++) {
+        const coord = Math.floor(idx / strides[d]!) % gridCounts[d]!;
+        ptOut[d] = bounds[d]![0] + coord * dx[d]!;
+      }
+    };
 
     // Initial level-set values V(x, 0) = l(x)
     const V0 = new Float64Array(totalPts);
     let initialUnsafePts = 0;
-    for (let j = 0; j < ny; j++) {
-      const y = dims > 1 && bounds[1] ? bounds[1][0] + j * dy : 0.0;
-      for (let i = 0; i < nx; i++) {
-        const x = bounds[0]![0] + i * dx;
-        const pt = dims > 1 ? [x, y] : [x];
-        const val = targetLevelSet(pt);
-        V0[j * nx + i] = val;
-        if (val <= 0) initialUnsafePts++;
-      }
+    const ptBuf = new Array<number>(dims);
+    for (let idx = 0; idx < totalPts; idx++) {
+      getPoint(idx, ptBuf);
+      const val = targetLevelSet(ptBuf);
+      V0[idx] = val;
+      if (val <= 0) initialUnsafePts++;
     }
     let V = new Float64Array(V0);
 
@@ -142,52 +149,51 @@ export class HjiLevelSetSolver {
 
     const eulerForwardOperator = (stageV: Float64Array, stepDt: number): Float64Array => {
       const outV = new Float64Array(totalPts);
-      for (let j = 0; j < ny; j++) {
-        const y = dims > 1 && bounds[1] ? bounds[1][0] + j * dy : 0.0;
-        for (let i = 0; i < nx; i++) {
-          const idx = j * nx + i;
-          const x = bounds[0]![0] + i * dx;
-          const pt = dims > 1 ? [x, y] : [x];
+      const pt = new Array<number>(dims);
+      const pAvg = new Float64Array(dims);
+      const dMinus = new Float64Array(dims);
+      const dPlus = new Float64Array(dims);
 
-          const wenoX = HjiLevelSetSolver.weno5Derivatives(stageV, idx, 1, dx, nx);
-          const pAvgX = 0.5 * (wenoX.derivMinus + wenoX.derivPlus);
+      for (let idx = 0; idx < totalPts; idx++) {
+        getPoint(idx, pt);
 
-          const wenoY =
-            dims >= 2 && ny > 1
-              ? HjiLevelSetSolver.weno5Derivatives(stageV, idx, nx, dy, ny)
-              : { derivMinus: 0, derivPlus: 0 };
-          const pAvgY = 0.5 * (wenoY.derivMinus + wenoY.derivPlus);
-
-          // Optimal Hamiltonian: min_{u} max_{w} (p^T f(x, u, w))
-          let minMaxHamiltonian = Infinity;
-          let alphaX = 0.0;
-          let alphaY = 0.0;
-
-          for (const u of uCandidates) {
-            let maxOverW = -Infinity;
-            for (const w of wCandidates) {
-              const fVec = f(pt, u, w);
-              const fx = fVec[0] ?? 0;
-              const fy = dims >= 2 ? (fVec[1] ?? 0) : 0;
-              if (Math.abs(fx) > alphaX) alphaX = Math.abs(fx);
-              if (Math.abs(fy) > alphaY) alphaY = Math.abs(fy);
-
-              const term = pAvgX * fx + (dims >= 2 ? pAvgY * fy : 0);
-              if (term > maxOverW) maxOverW = term;
-            }
-            if (maxOverW < minMaxHamiltonian) {
-              minMaxHamiltonian = maxOverW;
-            }
-          }
-
-          // Lax-Friedrichs dissipative numerical flux
-          const dissipation =
-            0.5 * alphaX * (wenoX.derivPlus - wenoX.derivMinus) +
-            (dims >= 2 ? 0.5 * alphaY * (wenoY.derivPlus - wenoY.derivMinus) : 0);
-          const dVdt = -(minMaxHamiltonian - dissipation);
-
-          outV[idx] = stageV[idx]! - stepDt * dVdt;
+        for (let d = 0; d < dims; d++) {
+          const weno = HjiLevelSetSolver.weno5Derivatives(stageV, idx, strides[d]!, dx[d]!, gridCounts[d]!);
+          pAvg[d] = 0.5 * (weno.derivMinus + weno.derivPlus);
+          dMinus[d] = weno.derivMinus;
+          dPlus[d] = weno.derivPlus;
         }
+
+        // Optimal Hamiltonian: min_{u} max_{w} (p^T f(x, u, w))
+        let minMaxHamiltonian = Infinity;
+        const alpha = new Float64Array(dims);
+
+        for (const u of uCandidates) {
+          let maxOverW = -Infinity;
+          for (const w of wCandidates) {
+            const fVec = f(pt, u, w);
+            let term = 0;
+            for (let d = 0; d < dims; d++) {
+              const fd = fVec[d] ?? 0;
+              const absFd = Math.abs(fd);
+              if (absFd > alpha[d]!) alpha[d] = absFd;
+              term += pAvg[d]! * fd;
+            }
+            if (term > maxOverW) maxOverW = term;
+          }
+          if (maxOverW < minMaxHamiltonian) {
+            minMaxHamiltonian = maxOverW;
+          }
+        }
+
+        // Lax-Friedrichs dissipative numerical flux
+        let dissipation = 0.0;
+        for (let d = 0; d < dims; d++) {
+          dissipation += 0.5 * alpha[d]! * (dPlus[d]! - dMinus[d]!);
+        }
+        const dVdt = -(minMaxHamiltonian - dissipation);
+
+        outV[idx] = stageV[idx]! - stepDt * dVdt;
       }
       return outV;
     };
@@ -231,22 +237,21 @@ export class HjiLevelSetSolver {
 
     let isSafe: boolean;
     if (problem.initialState) {
-      const x0 = problem.initialState[0] ?? 0;
-      const i0 = Math.max(0, Math.min(nx - 1, Math.round((x0 - bounds[0]![0]) / dx)));
-      const y0 = dims > 1 ? (problem.initialState[1] ?? 0) : 0;
-      const j0 = dims > 1 && bounds[1] ? Math.max(0, Math.min(ny - 1, Math.round((y0 - bounds[1][0]) / dy))) : 0;
-      isSafe = V[j0 * nx + i0]! > 0;
+      let initIdx = 0;
+      for (let d = 0; d < dims; d++) {
+        const x0_d = problem.initialState[d] ?? 0;
+        const coord = Math.max(0, Math.min(gridCounts[d]! - 1, Math.round((x0_d - bounds[d]![0]) / dx[d]!)));
+        initIdx += coord * strides[d]!;
+      }
+      isSafe = V[initIdx]! > 0;
     } else if (problem.initialLevelSet) {
       isSafe = true;
-      for (let j = 0; j < ny && isSafe; j++) {
-        const y = dims > 1 && bounds[1] ? bounds[1][0] + j * dy : 0.0;
-        for (let i = 0; i < nx; i++) {
-          const x = bounds[0]![0] + i * dx;
-          const pt = dims > 1 ? [x, y] : [x];
-          if (problem.initialLevelSet(pt) <= 0 && V[j * nx + i]! <= 0) {
-            isSafe = false;
-            break;
-          }
+      const pt = new Array<number>(dims);
+      for (let idx = 0; idx < totalPts; idx++) {
+        getPoint(idx, pt);
+        if (problem.initialLevelSet(pt) <= 0 && V[idx]! <= 0) {
+          isSafe = false;
+          break;
         }
       }
     } else if (initialUnsafePts === 0) {

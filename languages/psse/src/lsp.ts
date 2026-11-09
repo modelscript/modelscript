@@ -6,6 +6,7 @@ import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
 import { DYR_MODEL_SCHEMAS, isLikelyDyrContent, parseDyr } from "./parser/dyr-parser.js";
 import { parseRaw, writeRaw } from "./parser/raw-parser.js";
+import { parseSeq } from "./parser/seq-parser.js";
 import { psseToModelica } from "./projections/psse-to-modelica.js";
 import { psseToEmtNetlist } from "./projections/psse-to-pscad.js";
 import {
@@ -118,6 +119,45 @@ function spanToRange(span: SourceSpan | undefined, lines: string[], extraLines =
 export function validatePsse(content: string, uri: string = "model.raw"): LspDiagnostic[] {
   try {
     const lines = content.split(/\r?\n/);
+    if (uri.toLowerCase().endsWith(".seq")) {
+      const seq = parseSeq(content);
+      const diags: LspDiagnostic[] = [];
+      for (const g of seq.generators) {
+        if (g.zxpos <= 0 || g.zxneg <= 0 || g.zx0 <= 0) {
+          diags.push({
+            range: DEFAULT_RANGE,
+            severity: 2,
+            code: "P5101",
+            source: "modelscript-psse",
+            message: `Generator '${g.id.trim() || "1"}' at Bus ${g.i} has non-positive sequence reactance (ZX1=${g.zxpos}, ZX2=${g.zxneg}, ZX0=${g.zx0}).`,
+          });
+        }
+      }
+      for (const br of seq.branches) {
+        if (Math.abs(br.r0) < 1e-9 && Math.abs(br.x0) < 1e-9) {
+          diags.push({
+            range: DEFAULT_RANGE,
+            severity: 2,
+            code: "P5102",
+            source: "modelscript-psse",
+            message: `Branch ${br.i}-${br.j} ('${br.ckt.trim() || "1"}') has zero zero-sequence impedance (R0=0, X0=0).`,
+          });
+        }
+      }
+      for (const xf of seq.transformers) {
+        if (xf.cc < 1 || xf.cc > 9) {
+          diags.push({
+            range: DEFAULT_RANGE,
+            severity: 1,
+            code: "P5103",
+            source: "modelscript-psse",
+            message: `Transformer ${xf.i}-${xf.j} specifies invalid zero-sequence connection code CC=${xf.cc} (expected 1..9).`,
+          });
+        }
+      }
+      return diags;
+    }
+
     if (uri.toLowerCase().endsWith(".dyr") || isLikelyDyrContent(content)) {
       const dyr = parseDyr(content);
       const diags: LspDiagnostic[] = [];

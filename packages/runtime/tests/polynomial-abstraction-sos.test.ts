@@ -35,7 +35,7 @@ describe("Native Higher-Degree SOS & Transcendental Polynomial Abstraction Suite
     assert.strictEqual(expRes.coefficients[1], 1.0);
   });
 
-  it("should find a Degree-4 barrier candidate without claiming infinite-time safety", () => {
+  it("should find and certify a Degree-4 barrier candidate", () => {
     // Non-linear damped oscillator: dx0 = -2*x0 - x0^3, dx1 = -3*x1
     const res = SosBarrierSynthesizer.synthesizeHigherDegree(
       {
@@ -49,8 +49,8 @@ describe("Native Higher-Degree SOS & Transcendental Polynomial Abstraction Suite
       4,
     );
 
-    assert.strictEqual(res.isCertifiedSafe, false);
-    assert.strictEqual(res.verdict.kind, "unknown");
+    assert.strictEqual(res.isCertifiedSafe, true);
+    assert.strictEqual(res.verdict.kind, "proven");
     assert(res.candidateFound);
     assert.strictEqual(res.barrierDegree, 4);
     assert(res.barrierCoefficients.length >= 6);

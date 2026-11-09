@@ -226,6 +226,11 @@ export enum EqKind {
  * - `Der` / `Pre`: `LEFT` = argument `ExprId`, `DATA1` = derivative order (for `Der`).
  * - `EnumLiteral`: `DATA1` = qualified literal `StringId`, `LEFT` = 1-based ordinal index.
  * - `Comprehension`: `DATA1` = body `ExprId`, `LEFT` = iterator variable `StringId`, `RIGHT` = range `ExprId`.
+ * - `TensorSlice`: `DATA1` = base `ExprId`, `LEFT` = slice range `ExprId`, `RIGHT` = axis index.
+ * - `TensorBroadcast`: `DATA1` = target shape descriptor, `LEFT` = operand `ExprId`, `RIGHT` = axis flags.
+ * - `TensorMatMul`: `DATA1` = transposition flags, `LEFT` = lhs `ExprId`, `RIGHT` = rhs `ExprId`.
+ * - `TensorReduce`: `DATA1` = `TensorReduceOp`, `LEFT` = operand `ExprId`, `RIGHT` = axis index.
+ * - `TensorMap`: `DATA1` = operator ID, `LEFT` = operand `ExprId`, `RIGHT` = aux.
  */
 export enum ExprKind {
   Name = 0,
@@ -249,6 +254,21 @@ export enum ExprKind {
   Comprehension = 18,
   PartialFunc = 19,
   Object = 20,
+  TensorSlice = 21,
+  TensorBroadcast = 22,
+  TensorMatMul = 23,
+  TensorReduce = 24,
+  TensorMap = 25,
+}
+
+/** Reduction operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.TensorReduce`. */
+export enum TensorReduceOp {
+  Sum = 0,
+  Product = 1,
+  Max = 2,
+  Min = 3,
+  Mean = 4,
+  Norm2 = 5,
 }
 
 /** Binary operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.Binary`. */
@@ -346,5 +366,36 @@ export enum BuiltinMathFunc {
   Homotopy = 24,
   SemiLinear = 25,
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Execution Block & Linear Bytecode Layout
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Number of i32 words per linear execution block row. */
+export const EXEC_BLOCK_STRIDE: u32 = 3;
+/** Word offset: block kind (0 = single assign, 1 = system loop, 2 = direct copy, 3 = negated copy). */
+export const EXEC_KIND: u32 = 0;
+/** Word offset: target variable ID (or StringId). */
+export const EXEC_TARGET: u32 = 1;
+/** Word offset: expression ID (or source variable ID) to evaluate. */
+export const EXEC_EXPR: u32 = 2;
+
+/** Execution block kinds. */
+export const EXEC_OP_SINGLE: i32 = 0;
+export const EXEC_OP_SYSTEM: i32 = 1;
+export const EXEC_OP_DIRECT_COPY: i32 = 2;
+export const EXEC_OP_NEG_COPY: i32 = 3;
+
+/** Flat linear bytecode opcodes for simulation kernel. */
+export const BC_OP_NAME: i32 = 1;       // [BC_OP_NAME, targetId, srcId]
+export const BC_OP_NEG_NAME: i32 = 2;   // [BC_OP_NEG_NAME, targetId, srcId]
+export const BC_OP_LIT: i32 = 3;        // [BC_OP_LIT, targetId, litIdx]
+export const BC_OP_ADD_NAMES: i32 = 4;  // [BC_OP_ADD_NAMES, targetId, leftId, rightId]
+export const BC_OP_SUB_NAMES: i32 = 5;  // [BC_OP_SUB_NAMES, targetId, leftId, rightId]
+export const BC_OP_MUL_NAMES: i32 = 6;  // [BC_OP_MUL_NAMES, targetId, leftId, rightId]
+export const BC_OP_DIV_NAMES: i32 = 7;  // [BC_OP_DIV_NAMES, targetId, leftId, rightId]
+export const BC_OP_EXPR: i32 = 8;       // [BC_OP_EXPR, targetId, exprId]
+export const BC_OP_SYSTEM: i32 = 9;     // [BC_OP_SYSTEM, sysBlockIndex]
+
 
 

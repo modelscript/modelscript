@@ -894,7 +894,7 @@ export class DaeBltReachabilityEngine {
     globalBounds: Map<number, NumericalInterval>,
   ): boolean {
     const n = block.vars.length;
-    if (n > 4) return false; // Higher dimensional matrix inversion preconditioner skipped
+    if (n > 32) return false; // Higher dimensional matrix inversion preconditioner skipped (> 32 vars)
 
     // Invert nominal Jacobian matrix C \approx J_nominal^{-1}
     const C = this.invertNominalMatrix(nominalJ);
@@ -1001,7 +1001,57 @@ export class DaeBltReachabilityEngine {
       ];
     }
 
-    return null;
+    // General Gauss-Jordan elimination with partial pivoting for n >= 4
+    const A = M.map((row) => [...row]);
+    const inv: number[][] = Array.from({ length: n }, (_, i) => {
+      const row = new Array<number>(n).fill(0);
+      row[i] = 1.0;
+      return row;
+    });
+
+    for (let col = 0; col < n; col++) {
+      let maxRow = col;
+      let maxVal = Math.abs(A[col]![col]!);
+      for (let r = col + 1; r < n; r++) {
+        const val = Math.abs(A[r]![col]!);
+        if (val > maxVal) {
+          maxVal = val;
+          maxRow = r;
+        }
+      }
+      if (maxVal < 1e-14) return null;
+
+      if (maxRow !== col) {
+        const tmpA = A[col]!;
+        A[col] = A[maxRow]!;
+        A[maxRow] = tmpA;
+
+        const tmpInv = inv[col]!;
+        inv[col] = inv[maxRow]!;
+        inv[maxRow] = tmpInv;
+      }
+
+      const pivot = A[col]![col]!;
+      const invPivot = 1.0 / pivot;
+      for (let c = 0; c < n; c++) {
+        A[col]![c]! *= invPivot;
+        inv[col]![c]! *= invPivot;
+      }
+
+      for (let r = 0; r < n; r++) {
+        if (r !== col) {
+          const factor = A[r]![col]!;
+          if (Math.abs(factor) > 1e-15) {
+            for (let c = 0; c < n; c++) {
+              A[r]![c]! -= factor * A[col]![c]!;
+              inv[r]![c]! -= factor * inv[col]![c]!;
+            }
+          }
+        }
+      }
+    }
+
+    return inv;
   }
 
   /**

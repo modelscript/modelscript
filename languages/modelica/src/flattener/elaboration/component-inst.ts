@@ -9637,57 +9637,115 @@ export function instantiateElements(
           // Generate 1-based cartesian index tuples across `arrayDims` and emit a scalarized
           // variable in `DAEBuilder` for each element, formatting Boolean/Enumeration subscripts
           // via `dimLabels` when the dimension is typed by `Boolean` or an `enumeration`.
-          const tuples = generateArrayTuples(arrayDims);
-          for (const tuple of tuples) {
-            const indexStr = `[${tuple.map((val, dIdx) => (dimLabels[dIdx] && dimLabels[dIdx]![val - 1] ? dimLabels[dIdx]![val - 1] : val)).join(",")}]`;
-            const arrVarName = `${name}${indexStr}`;
-            const varIdx = dae.addVariable(
-              dae.interner.intern(arrVarName),
-              varType as number,
-              variability as number,
-              causality as number,
-              0.0,
-            );
-            if (isComponentHidden(flattener, elemId)) {
-              dae.hiddenVarIndices.add(varIdx);
-            }
-            if (elemCst) {
-              const startB = elemCst.startIndex ?? elemCst.startOffset;
-              const endB = elemCst.endIndex ?? elemCst.endOffset;
-              if (startB != null && endB != null) {
-                dae.setVarSourceRange(varIdx, startB, endB);
+          const is1DNumeric = arrayDims.length === 1 && (!dimLabels || !dimLabels[0] || dimLabels[0].length === 0);
+
+          if (is1DNumeric) {
+            const dim1 = arrayDims[0]!;
+            const tuple = [1];
+            for (let i = 1; i <= dim1; i++) {
+              tuple[0] = i;
+              const arrVarName = `${name}[${i}]`;
+              const varIdx = dae.addVariable(
+                dae.interner.intern(arrVarName),
+                varType as number,
+                variability as number,
+                causality as number,
+                0.0,
+              );
+              if (isComponentHidden(flattener, elemId)) {
+                dae.hiddenVarIndices.add(varIdx);
               }
+              if (elemCst) {
+                const startB = elemCst.startIndex ?? elemCst.startOffset;
+                const endB = elemCst.endIndex ?? elemCst.endOffset;
+                if (startB != null && endB != null) {
+                  dae.setVarSourceRange(varIdx, startB, endB);
+                }
+              }
+              if (isElemProtected) {
+                dae.setVarProtected(varIdx, true);
+              }
+              validateFunctionComponentDeclaration(flattener, dae, compInst, causality, isElemProtected, elemCst);
+              if (
+                compInst?.flowPrefix === "flow" ||
+                (meta as any)?.flowPrefix === "flow" ||
+                parentMods?.parentFlowPrefix === "flow"
+              ) {
+                dae.setVarFlow(varIdx, true);
+              }
+              if (
+                compInst?.flowPrefix === "stream" ||
+                (meta as any)?.flowPrefix === "stream" ||
+                parentMods?.parentFlowPrefix === "stream"
+              ) {
+                dae.setVarStream(varIdx, true);
+              }
+              if (
+                compInst?.isFinal ||
+                (meta as any)?.isFinal ||
+                (parentMods?.isFinal && parentMods?.isRecord) ||
+                (!dae.extensionMetadata?.["isOldFrontend"] &&
+                  (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
+                (isEvaluated && !prefix) ||
+                (!flattener.options.omcCompatibility && isEvaluated)
+              ) {
+                dae.setVarFinal(varIdx, true);
+              }
+              applyModifiers(varIdx, tuple, dimLabels);
             }
-            if (isElemProtected) {
-              dae.setVarProtected(varIdx, true);
+          } else {
+            const tuples = generateArrayTuples(arrayDims);
+            for (const tuple of tuples) {
+              const indexStr = `[${tuple.map((val, dIdx) => (dimLabels[dIdx] && dimLabels[dIdx]![val - 1] ? dimLabels[dIdx]![val - 1] : val)).join(",")}]`;
+              const arrVarName = `${name}${indexStr}`;
+              const varIdx = dae.addVariable(
+                dae.interner.intern(arrVarName),
+                varType as number,
+                variability as number,
+                causality as number,
+                0.0,
+              );
+              if (isComponentHidden(flattener, elemId)) {
+                dae.hiddenVarIndices.add(varIdx);
+              }
+              if (elemCst) {
+                const startB = elemCst.startIndex ?? elemCst.startOffset;
+                const endB = elemCst.endIndex ?? elemCst.endOffset;
+                if (startB != null && endB != null) {
+                  dae.setVarSourceRange(varIdx, startB, endB);
+                }
+              }
+              if (isElemProtected) {
+                dae.setVarProtected(varIdx, true);
+              }
+              validateFunctionComponentDeclaration(flattener, dae, compInst, causality, isElemProtected, elemCst);
+              if (
+                compInst?.flowPrefix === "flow" ||
+                (meta as any)?.flowPrefix === "flow" ||
+                parentMods?.parentFlowPrefix === "flow"
+              ) {
+                dae.setVarFlow(varIdx, true);
+              }
+              if (
+                compInst?.flowPrefix === "stream" ||
+                (meta as any)?.flowPrefix === "stream" ||
+                parentMods?.parentFlowPrefix === "stream"
+              ) {
+                dae.setVarStream(varIdx, true);
+              }
+              if (
+                compInst?.isFinal ||
+                (meta as any)?.isFinal ||
+                (parentMods?.isFinal && parentMods?.isRecord) ||
+                (!dae.extensionMetadata?.["isOldFrontend"] &&
+                  (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
+                (isEvaluated && !prefix) ||
+                (!flattener.options.omcCompatibility && isEvaluated)
+              ) {
+                dae.setVarFinal(varIdx, true);
+              }
+              applyModifiers(varIdx, tuple, dimLabels);
             }
-            validateFunctionComponentDeclaration(flattener, dae, compInst, causality, isElemProtected, elemCst);
-            if (
-              compInst?.flowPrefix === "flow" ||
-              (meta as any)?.flowPrefix === "flow" ||
-              parentMods?.parentFlowPrefix === "flow"
-            ) {
-              dae.setVarFlow(varIdx, true);
-            }
-            if (
-              compInst?.flowPrefix === "stream" ||
-              (meta as any)?.flowPrefix === "stream" ||
-              parentMods?.parentFlowPrefix === "stream"
-            ) {
-              dae.setVarStream(varIdx, true);
-            }
-            if (
-              compInst?.isFinal ||
-              (meta as any)?.isFinal ||
-              (parentMods?.isFinal && parentMods?.isRecord) ||
-              (!dae.extensionMetadata?.["isOldFrontend"] &&
-                (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
-              (isEvaluated && !prefix) ||
-              (!flattener.options.omcCompatibility && isEvaluated)
-            ) {
-              dae.setVarFinal(varIdx, true);
-            }
-            applyModifiers(varIdx, tuple, dimLabels);
           }
           const isRecordParamOrConst =
             Boolean(
@@ -9784,12 +9842,18 @@ export function instantiateElements(
                       const d = flattener.db.query<any[] | null>("arrayDimensions", e.id);
                       return Boolean(d && d.length > 0);
                     })) &&
-                  tuples.length > 0
+                  arrayDims &&
+                  arrayDims.length > 0
                 ) {
                   const baseName = dae.hasArrayElements(resolvedBText) ? resolvedBText : bText;
-                  const elemExprIds = tuples.map((t) =>
-                    dae.addExpression(ExprKind.Name, dae.interner.intern(`${baseName}[${t.join(",")}]`)),
-                  );
+                  const elemExprIds =
+                    arrayDims.length === 1
+                      ? Array.from({ length: arrayDims[0]! }, (_, idx) =>
+                          dae.addExpression(ExprKind.Name, dae.interner.intern(`${baseName}[${idx + 1}]`)),
+                        )
+                      : generateArrayTuples(arrayDims).map((t) =>
+                          dae.addExpression(ExprKind.Name, dae.interner.intern(`${baseName}[${t.join(",")}]`)),
+                        );
                   rhsExprId = dae.addArrayCtorExpr(elemExprIds);
                 } else {
                   rhsExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedBText));

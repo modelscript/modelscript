@@ -39,6 +39,7 @@
  *   - Directly feeds the dynamic 3D CAD spatial collision pipeline (`dynamic-clearance.ts`).
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { Interval } from "./wasm_interval.js";
 import { Zonotope } from "./wasm_zonotope.js";
 
@@ -276,6 +277,13 @@ export class ConstrainedZonotope {
     if (res.status === "INFEASIBLE") {
       return null;
     }
+    if (res.status === "TIMEOUT") {
+      let maxVal = 0;
+      for (let j = 0; j < p; j++) {
+        maxVal += Math.abs(w[j]!);
+      }
+      return vDotC + maxVal;
+    }
     return vDotC + res.value;
   }
 
@@ -286,6 +294,77 @@ export class ConstrainedZonotope {
     if (this.A.length === 0 && this.C.length === 0) {
       return true;
     }
+
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.simplex_create === "function" &&
+      typeof wasm.simplex_initDutertreDeMoura === "function" &&
+      typeof wasm.simplex_setBound === "function" &&
+      typeof wasm.simplex_setEntry === "function" &&
+      typeof wasm.simplex_solveDutertreDeMoura === "function"
+    ) {
+      try {
+        const p = this.numGenerators;
+        const me = this.A.length;
+        const mi = this.C.length;
+        const m = me + mi;
+
+        if (m > 0 && p > 0) {
+          const sPtr = wasm.simplex_create(m, p);
+          if (sPtr) {
+            wasm.simplex_initDutertreDeMoura(sPtr, m, p);
+
+            // Variable bounds: xi_j in [-1, 1] for j = 0..p-1
+            for (let j = 0; j < p; j++) {
+              wasm.simplex_setBound(sPtr, j, 1, -1.0, 0); // lower bound -1
+              wasm.simplex_setBound(sPtr, j, 0, 1.0, 0); // upper bound 1
+            }
+
+            // Row constraints:
+            // A * xi = b => y_i = sum A_ij xi_j with y_i in [b_i, b_i]
+            for (let i = 0; i < me; i++) {
+              const row = this.A[i]!;
+              for (let j = 0; j < p; j++) {
+                const val = row[j] ?? 0;
+                if (Math.abs(val) > 1e-15) {
+                  wasm.simplex_setEntry(sPtr, i, j, val);
+                }
+              }
+              const bVal = this.b[i] ?? 0;
+              const varIdx = p + i;
+              wasm.simplex_setBound(sPtr, varIdx, 1, bVal, 0); // lower = bVal
+              wasm.simplex_setBound(sPtr, varIdx, 0, bVal, 0); // upper = bVal
+            }
+
+            // C * xi <= d => y_{me + k} = sum C_kj xi_j with y_{me + k} in [-inf, d_k]
+            for (let k = 0; k < mi; k++) {
+              const row = this.C[k]!;
+              const r = me + k;
+              for (let j = 0; j < p; j++) {
+                const val = row[j] ?? 0;
+                if (Math.abs(val) > 1e-15) {
+                  wasm.simplex_setEntry(sPtr, r, j, val);
+                }
+              }
+              const dVal = this.d[k] ?? 0;
+              const varIdx = p + r;
+              wasm.simplex_setBound(sPtr, varIdx, 0, dVal, 0); // upper = dVal
+            }
+
+            const res = wasm.simplex_solveDutertreDeMoura(sPtr, 2000);
+            if (typeof wasm.simplex_destroy === "function") {
+              wasm.simplex_destroy(sPtr);
+            }
+            if (res === 1) return true; // SIMPLEX_RESULT_OPTIMAL
+            if (res === 2) return false; // SIMPLEX_RESULT_INFEASIBLE
+          }
+        }
+      } catch {
+        // Fallback to TS simplex
+      }
+    }
+
     const zeroObj = new Array<number>(this.numGenerators).fill(0);
     const res = solveBoundedLp(zeroObj, this.A, this.b, this.C, this.d);
     return res.status === "OPTIMAL";
@@ -459,7 +538,7 @@ export class ConstrainedZonotope {
 }
 
 export interface BoundedLpResult {
-  status: "OPTIMAL" | "INFEASIBLE";
+  status: "OPTIMAL" | "INFEASIBLE" | "TIMEOUT";
   value: number;
   xi: number[];
 }
@@ -681,6 +760,7 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     }
   }
 
+  let converged = false;
   let iter = 0;
   while (iter++ < 300) {
     let enterCol = -1;
@@ -691,7 +771,10 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
         enterCol = c;
       }
     }
-    if (enterCol === -1) break;
+    if (enterCol === -1) {
+      converged = true;
+      break;
+    }
 
     let leaveRow = -1;
     let minRatio = Infinity;
@@ -727,5 +810,8 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     optVal += w[j]! * xi[j]!;
   }
 
+  if (!converged) {
+    return { status: "TIMEOUT", value: optVal, xi };
+  }
   return { status: "OPTIMAL", value: optVal, xi };
 }

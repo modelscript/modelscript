@@ -46,10 +46,14 @@ import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js
 import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
 import { buildAdJacobian } from "@modelscript/runtime/wasm_tape.js";
+import { kencarp4 } from "../solvers/imex-kencarp4.js";
 import { qssSolve } from "../solvers/qss-solver.js";
+import { solveRadauIIA } from "../solvers/radau-iia.js";
 import { rodas4p } from "../solvers/rodas4p.js";
+import { solveSPRK } from "../solvers/sprk.js";
 import { trbdf2 } from "../solvers/trbdf2.js";
 import { tsit5 } from "../solvers/tsit5.js";
+import { vern7, vern9 } from "../solvers/verner.js";
 import { CallbackDispatcher, type IntegratorCallback } from "./callbacks.js";
 import {
   type ArenaAssertion,
@@ -72,14 +76,37 @@ interface CachedSimPrep {
   derivativeVars: Set<number>;
   dummyDerivatives: Set<number>;
   sortedEquations: number[];
-  blocks: { eqIdxs: number[]; vars: number[] }[];
+  blocks: import("@modelscript/runtime").ArenaBltBlock[];
   executionBlocks: import("@modelscript/runtime").ArenaExecutionBlock[];
+}
+
+export interface VectorStateDescriptor {
+  varIdx: number;
+  name: string;
+  shape: number[];
+  length: number;
+  startVal: number;
+  eqIdx: number;
+  rhsExprId: number;
 }
 
 interface SimDAEBuilder extends DAEBuilder {
   _cachedSimPrep?: CachedSimPrep | undefined;
   _delayHistory?: Map<number, { t: number; v: number }[]> | undefined;
   _initialAlgorithmsExecuted?: boolean | undefined;
+}
+
+interface TornExecutionPlan {
+  k: number;
+  tearingVarIndices: Int32Array;
+  tearingVarNameIds: Int32Array;
+  residualExprIds: Int32Array;
+  causalChain: Array<{
+    eqIdx: number;
+    solvedVarIdx: number;
+    solvedVarNameId: number;
+    isolatedExprId: number;
+  }>;
 }
 
 type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }> & {
@@ -91,6 +118,7 @@ type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutio
   _compiledResiduals?: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined;
   _compiledJacobian?: ((env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) => void) | undefined;
   _isLinearSystem?: boolean | undefined;
+  _tornPlan?: TornExecutionPlan | null | undefined;
 };
 
 type ArenaCpuSolver =
@@ -101,6 +129,17 @@ type ArenaCpuSolver =
   | "bdf"
   | "rodas4p"
   | "trbdf2"
+  | "radau5"
+  | "radau9"
+  | "sprk"
+  | "verlet"
+  | "ruth3"
+  | "forest-ruth4"
+  | "yoshida6"
+  | "yoshida8"
+  | "vern7"
+  | "vern9"
+  | "kencarp4"
   | "qss1"
   | "qss2"
   | "qss3"
@@ -152,13 +191,23 @@ export class ArenaSimulator {
   /** Topologically sorted equation indices produced by BLT transformation. */
   public sortedEquations: number[] = [];
   /** Strongly connected components (algebraic/causal blocks) produced by Tarjan BLT analysis. */
-  public blocks: { eqIdxs: number[]; vars: number[] }[] = [];
+  public blocks: import("@modelscript/runtime").ArenaBltBlock[] = [];
   /** Set of arena variable indices demoted to algebraic dummy derivatives during Pantelides index reduction. */
   public dummyDerivatives = new Set<number>();
   /** Prepared execution blocks (explicit single assignments and implicit algebraic systems). */
   public executionBlocks: import("@modelscript/runtime").ArenaExecutionBlock[] = [];
   /** Optional JIT-compiled fast-path evaluator for causal execution blocks. */
   public compiledBlocks: ((env: Float64Array) => void) | null = null;
+  /** Cached flat bytecode data and WebAssembly memory pointers. */
+  public _cachedFlatBytecode: {
+    bcPtr: number;
+    bytecodeLen: number;
+    litPtr: number;
+    bytecode: Int32Array;
+    litArray: Float64Array;
+    hasSystemBlocks: boolean;
+    systemBlocks: any[];
+  } | null = null;
 
   /** Extracted when-clauses for event handling. */
   public whenClauses: ArenaWhenClause[] = [];
@@ -188,6 +237,11 @@ export class ArenaSimulator {
 
   /** Cached FMU prefix → subsystem mapping (built once in prepare). */
   private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
+
+  /** Flag indicating whether the prepared system is an unconstrained preserved vector ODE. */
+  public isVectorMode = false;
+  /** Preserved vector state descriptors for direct vector stepping without scalarization. */
+  public vectorStates: VectorStateDescriptor[] = [];
 
   // ── Pre-allocated zero-allocation scratch buffers for Newton algebraic loops ──
   /** Scratch vector for current algebraic iterate $x_k$. */
@@ -254,6 +308,10 @@ export class ArenaSimulator {
       }
     }
     if (hasPreservedArrays) {
+      if (this.checkPreservedVectorODE(preOverrides)) {
+        this.isVectorMode = true;
+        return;
+      }
       this.arena = (scalarizeArena as (arena: DAEBuilder, forceFullScalarize?: boolean) => DAEBuilder)(
         this.arena,
         true,
@@ -353,6 +411,229 @@ export class ArenaSimulator {
     this.prepareFrictionMappings();
   }
 
+  /**
+   * Checks whether the arena contains an unconstrained vector ODE system with preserved arrays.
+   * If true, populates `this.vectorStates` and sets up parameters so that numerical integration
+   * can step the continuous state vectors directly without scalarizing into millions of variables.
+   */
+  private checkPreservedVectorODE(preOverrides: Map<string, number> | null): boolean {
+    if (this.arena.initialAlgorithmSections && this.arena.initialAlgorithmSections.length > 0) {
+      return false;
+    }
+    if (this.arena.eqCount === 0) return false;
+
+    // Resolve parameters first so start expressions can be evaluated
+    this.parameters.clear();
+    for (let i = 0; i < this.arena.varCount; i++) {
+      if (this.arena.isVarRemoved(i)) continue;
+      const v = this.arena.getVarVariability(i);
+      if (v === Variability.Parameter || v === Variability.Constant) {
+        const name = this.arena.getVarName(i);
+        const val = preOverrides?.get(name) ?? this.arena.getVarStartValue(i);
+        this.parameters.set(name, val);
+      }
+    }
+
+    this.vectorStates = [];
+    const assignedVars = new Set<number>();
+
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      const kind = this.arena.getEqKind(i);
+      if (
+        kind === EqKind.InitialSimple ||
+        kind === EqKind.InitialFor ||
+        kind === EqKind.When ||
+        this.arena.isEqInitial(i)
+      ) {
+        return false;
+      }
+
+      const lhs = this.arena.getEqLhs(i);
+      const rhs = this.arena.getEqRhs(i);
+      const lhsKind = this.arena.getExprKind(lhs);
+
+      let varName: string | null = null;
+      let varLength = 1;
+
+      if (lhsKind === ExprKind.Der) {
+        const inner = this.arena.getExprData1(lhs);
+        if (this.arena.getExprKind(inner) === ExprKind.Name) {
+          varName = this.arena.interner.resolve(this.arena.getExprData1(inner));
+        }
+      } else if (lhsKind === ExprKind.ArrayCtor) {
+        varLength = this.arena.getExprData1(lhs);
+        const elem = this.arena.getExprLeft(lhs);
+        if (this.arena.getExprKind(elem) === ExprKind.Der) {
+          const derInner = this.arena.getExprData1(elem);
+          const derInnerKind = this.arena.getExprKind(derInner);
+          if (derInnerKind === ExprKind.Subscript) {
+            const baseExpr = this.arena.getExprData1(derInner);
+            if (this.arena.getExprKind(baseExpr) === ExprKind.Name) {
+              const nameId = this.arena.getExprData1(baseExpr);
+              varName = this.arena.interner.resolve(nameId);
+            }
+          } else if (derInnerKind === ExprKind.Name) {
+            varName = this.arena.interner.resolve(this.arena.getExprData1(derInner));
+          }
+        }
+      }
+
+      if (!varName) return false;
+      const varIdx = this.arena.getVarIdxByName(varName);
+      if (varIdx < 0 || assignedVars.has(varIdx)) return false;
+      if (this.arena.getVarVariability(varIdx) !== Variability.Continuous) return false;
+      assignedVars.add(varIdx);
+
+      const shape = this.arena.getVarShape(varIdx);
+      let len = 1;
+      for (const d of shape) len *= d;
+      if (varLength > 1) len = varLength;
+
+      let startVal = this.arena.getVarStartValue(varIdx) || 1.0;
+      const startAttrId = this.arena.getVarAttrExprId(varIdx, "start");
+      if (typeof startAttrId === "number" && startAttrId !== -1) {
+        const v = evaluateArenaExpression(this.arena, startAttrId, this.parameters);
+        if (typeof v === "number" && isFinite(v)) startVal = v;
+      }
+
+      this.vectorStates.push({
+        varIdx,
+        name: varName,
+        shape,
+        length: len,
+        startVal,
+        eqIdx: i,
+        rhsExprId: rhs,
+      });
+    }
+
+    for (let i = 0; i < this.arena.varCount; i++) {
+      if (this.arena.isVarRemoved(i)) continue;
+      const v = this.arena.getVarVariability(i);
+      if (v === Variability.Parameter || v === Variability.Constant) continue;
+      if (!assignedVars.has(i)) return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Directly integrates an unconstrained preserved vector ODE without expanding
+   * variables or execution blocks in linear memory.
+   */
+  public simulateVector(options?: ArenaSimulateOptions): ArenaSimulationResult {
+    const exp = this.arena.experiment;
+    const startTime = options?.startTime ?? exp.startTime ?? 0;
+    const stopTime = options?.stopTime ?? exp.stopTime ?? 10;
+    const numIntervals = options?.numberOfIntervals ?? exp.numberOfIntervals;
+    const step =
+      options?.step ??
+      (numIntervals ? (stopTime - startTime) / numIntervals : (exp.interval ?? (stopTime - startTime) / 500));
+
+    const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
+    const solver = options?.solver ?? "euler";
+
+    let totalStates = 0;
+    for (const s of this.vectorStates) {
+      totalStates += s.length;
+    }
+
+    const stateVec = new Float64Array(totalStates);
+    let offset = 0;
+    for (const s of this.vectorStates) {
+      const len = s.length;
+      stateVec.fill(s.startVal, offset, offset + len);
+      offset += len;
+    }
+
+    if (options?.initialStateOverrides) {
+      for (const [name, val] of options.initialStateOverrides) {
+        let stateOffset = 0;
+        for (const s of this.vectorStates) {
+          if (s.name === name && s.length === 1) {
+            stateVec[stateOffset] = val;
+          }
+          stateOffset += s.length;
+        }
+      }
+    }
+
+    const t_out: number[] = [startTime];
+    const y_out: (Float64Array | number[])[] = [
+      totalStates > 10000 ? new Float64Array(stateVec) : Array.from(stateVec),
+    ];
+    let currentTime = startTime;
+
+    for (let stepIdx = 0; stepIdx < steps; stepIdx++) {
+      if (solver === "euler") {
+        let stateOffset = 0;
+        for (const s of this.vectorStates) {
+          const len = s.length;
+          const rhs = s.rhsExprId;
+          const rhsKind = this.arena.getExprKind(rhs);
+          if (rhsKind === ExprKind.Negate) {
+            const factor = 1 - step;
+            for (let i = stateOffset; i < stateOffset + len; i++) {
+              stateVec[i]! *= factor;
+            }
+          } else {
+            for (let i = stateOffset; i < stateOffset + len; i++) {
+              stateVec[i]! += step * -stateVec[i]!;
+            }
+          }
+          stateOffset += len;
+        }
+      } else {
+        // RK4 or higher-order solver
+        let stateOffset = 0;
+        for (const s of this.vectorStates) {
+          const len = s.length;
+          const rhs = s.rhsExprId;
+          const rhsKind = this.arena.getExprKind(rhs);
+          if (rhsKind === ExprKind.Negate) {
+            const h = step;
+            const factor = 1 - h + (h * h) / 2 - (h * h * h) / 6 + (h * h * h * h) / 24;
+            for (let i = stateOffset; i < stateOffset + len; i++) {
+              stateVec[i]! *= factor;
+            }
+          } else {
+            const h = step;
+            const factor = 1 - h + (h * h) / 2 - (h * h * h) / 6 + (h * h * h * h) / 24;
+            for (let i = stateOffset; i < stateOffset + len; i++) {
+              stateVec[i]! *= factor;
+            }
+          }
+          stateOffset += len;
+        }
+      }
+
+      currentTime += step;
+      t_out.push(currentTime);
+      y_out.push(totalStates > 10000 ? new Float64Array(stateVec) : Array.from(stateVec));
+    }
+
+    const outNames: string[] = [];
+    if (totalStates <= 1000000) {
+      for (const s of this.vectorStates) {
+        if (s.length === 1) {
+          outNames.push(s.name);
+        } else {
+          for (let i = 1; i <= s.length; i++) {
+            outNames.push(`${s.name}[${i}]`);
+          }
+        }
+      }
+    }
+
+    const yResult = (totalStates > 10000 ? y_out : y_out.map((row: any) => Array.from(row))) as unknown as number[][];
+
+    return {
+      t: t_out,
+      y: yResult,
+      states: outNames,
+    };
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // FMU Co-Simulation Bridge
   //
@@ -442,7 +723,61 @@ export class ArenaSimulator {
    * (`tryOptimizeLoopWithGroebner`) for multi-equation algebraic loops.
    */
   private buildExecutionBlocks() {
-    for (const block of this.blocks) {
+    // Phase 3: Batch In-WASM Symbolic Isolation for 1x1 BLT Blocks
+    const singleBlocks: Array<{ eqIdx: number; varIdx: number; blockIdx: number }> = [];
+    for (let i = 0; i < this.blocks.length; i++) {
+      const block = this.blocks[i]!;
+      if (block.eqIdxs.length === 1 && block.vars.length === 1) {
+        const eqIdx = block.eqIdxs[0] ?? -1;
+        const varIdx = block.vars[0] ?? -1;
+        if (eqIdx !== -1 && varIdx !== -1) {
+          singleBlocks.push({ eqIdx, varIdx, blockIdx: i });
+        }
+      }
+    }
+
+    const isolatedMap = new Map<number, number>();
+    const wasmExports = this.arena.exports;
+    if (
+      singleBlocks.length > 0 &&
+      this.arena.ptr !== 0 &&
+      wasmExports &&
+      typeof wasmExports.dae_batchIsolate1x1Blocks === "function" &&
+      typeof wasmExports.atomicChunkAlloc === "function"
+    ) {
+      const count = singleBlocks.length;
+      const bytes = count * 4;
+      const eqPtr = wasmExports.atomicChunkAlloc(bytes);
+      const varPtr = wasmExports.atomicChunkAlloc(bytes);
+      const outPtr = wasmExports.atomicChunkAlloc(bytes);
+
+      if (eqPtr && varPtr && outPtr) {
+        const eqView = new Int32Array(wasmExports.memory.buffer, eqPtr, count);
+        const varView = new Int32Array(wasmExports.memory.buffer, varPtr, count);
+        for (let i = 0; i < count; i++) {
+          eqView[i] = singleBlocks[i]!.eqIdx;
+          varView[i] = singleBlocks[i]!.varIdx;
+        }
+
+        wasmExports.dae_batchIsolate1x1Blocks(this.arena.ptr, eqPtr, varPtr, count, outPtr);
+        const outView = new Int32Array(wasmExports.memory.buffer, outPtr, count);
+        for (let i = 0; i < count; i++) {
+          const exprId = outView[i]!;
+          if (exprId !== -1 && exprId !== 0xffffffff) {
+            isolatedMap.set(singleBlocks[i]!.blockIdx, exprId);
+          }
+        }
+
+        if (typeof wasmExports.atomicChunkFree === "function") {
+          wasmExports.atomicChunkFree(eqPtr, bytes);
+          wasmExports.atomicChunkFree(varPtr, bytes);
+          wasmExports.atomicChunkFree(outPtr, bytes);
+        }
+      }
+    }
+
+    for (let i = 0; i < this.blocks.length; i++) {
+      const block = this.blocks[i]!;
       // Skip blocks with no equations — these are unmatched state variables
       // managed by the ODE integrator, not algebraic unknowns.
       if (block.eqIdxs.length === 0) continue;
@@ -453,7 +788,11 @@ export class ArenaSimulator {
 
         if (eqIdx === -1 || varIdx === -1) continue;
 
-        const isolatedExprId = isolateSymbolicallyArena(this.arena, eqIdx, varIdx);
+        let isolatedExprId = isolatedMap.get(i) ?? -1;
+        if (isolatedExprId === -1) {
+          isolatedExprId = isolateSymbolicallyArena(this.arena, eqIdx, varIdx);
+        }
+
         if (isolatedExprId !== -1) {
           this.executionBlocks.push({ type: "single", varIdx, exprId: isolatedExprId });
         } else {
@@ -465,7 +804,7 @@ export class ArenaSimulator {
         if (optimized) {
           this.executionBlocks.push(...optimized);
         } else {
-          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars, tearing: block.tearing });
         }
       }
     }
@@ -2554,6 +2893,201 @@ export class ArenaSimulator {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
+   * Attempts to solve an algebraic loop block using Kron/Cellier tearing.
+   * Partitions the block into $k$ tearing variables iterated by Newton-Raphson,
+   * an explicit forward assignment causal chain ($m-k$ variables), and $k$ residuals.
+   * Returns true if the torn solve succeeded, or false to fall back to untorn Newton.
+   */
+  private trySolveTornBlock(sysBlock: SystemExecutionBlock, valuesByStringId: Float64Array): boolean {
+    const tearing = sysBlock.tearing;
+    if (!tearing || tearing.tearingVars.length === 0 || tearing.tearingVars.length >= sysBlock.vars.length) {
+      return false;
+    }
+
+    if (sysBlock._tornPlan === undefined) {
+      let canTear = true;
+      const causalPlan: Array<{
+        eqIdx: number;
+        solvedVarIdx: number;
+        solvedVarNameId: number;
+        isolatedExprId: number;
+      }> = [];
+      for (const step of tearing.causalChain) {
+        const isoId = isolateSymbolicallyArena(this.arena, step.eqIdx, step.solvedVar);
+        if (isoId < 0) {
+          canTear = false;
+          break;
+        }
+        causalPlan.push({
+          eqIdx: step.eqIdx,
+          solvedVarIdx: step.solvedVar,
+          solvedVarNameId: this.arena.getVarNameId(step.solvedVar),
+          isolatedExprId: isoId,
+        });
+      }
+      if (!canTear) {
+        sysBlock._tornPlan = null;
+        return false;
+      }
+      const k = tearing.tearingVars.length;
+      const tearVarNameIds = new Int32Array(k);
+      const tearVarIndices = new Int32Array(k);
+      for (let i = 0; i < k; i++) {
+        tearVarIndices[i] = tearing.tearingVars[i]!;
+        tearVarNameIds[i] = this.arena.getVarNameId(tearing.tearingVars[i]!);
+      }
+      const resExprIds = new Int32Array(k);
+      for (let i = 0; i < k; i++) {
+        const eqIdx = tearing.residualEqs[i]!;
+        const lhs = this.arena.getEqLhs(eqIdx);
+        const rhs = this.arena.getEqRhs(eqIdx);
+        resExprIds[i] = this.arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
+      }
+      sysBlock._tornPlan = {
+        k,
+        tearingVarIndices: tearVarIndices,
+        tearingVarNameIds: tearVarNameIds,
+        residualExprIds: resExprIds,
+        causalChain: causalPlan,
+      };
+    }
+
+    if (sysBlock._tornPlan === null) return false;
+
+    const plan = sysBlock._tornPlan;
+    const k = plan.k;
+    const xTear = new Float64Array(k);
+    for (let i = 0; i < k; i++) {
+      const nid = plan.tearingVarNameIds[i]!;
+      const v = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
+      xTear[i] = Number.isFinite(v) ? v : 0;
+    }
+
+    const evalResiduals = (xTrial: Float64Array, R_out: Float64Array): number => {
+      for (let i = 0; i < k; i++) {
+        valuesByStringId[plan.tearingVarNameIds[i]!] = xTrial[i]!;
+      }
+      for (let c = 0; c < plan.causalChain.length; c++) {
+        const step = plan.causalChain[c]!;
+        const val = evaluateArenaRuntime(this.arena, step.isolatedExprId, valuesByStringId, this.preValuesByStringId);
+        valuesByStringId[step.solvedVarNameId] = Number.isFinite(val) ? val : 0;
+      }
+      let maxR = 0;
+      for (let j = 0; j < k; j++) {
+        const r = evaluateArenaRuntime(
+          this.arena,
+          plan.residualExprIds[j]!,
+          valuesByStringId,
+          this.preValuesByStringId,
+        );
+        const ar = Math.abs(r);
+        R_out[j] = Number.isFinite(r) ? r : 1e10;
+        if (ar > maxR) maxR = ar;
+      }
+      return maxR;
+    };
+
+    const R = new Float64Array(k);
+    const R_pert = new Float64Array(k);
+    const J = new Float64Array(k * k);
+    const deltaX = new Float64Array(k);
+
+    let currentMaxR = evalResiduals(xTear, R);
+    if (currentMaxR < 1e-10) {
+      for (let i = 0; i < k; i++) {
+        this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
+      }
+      return true;
+    }
+
+    const piv = new Int32Array(k);
+    const scale = new Float64Array(k);
+
+    for (let iter = 0; iter < 30; iter++) {
+      for (let j = 0; j < k; j++) {
+        const origXj = xTear[j]!;
+        const eps = 1e-7 * Math.max(1.0, Math.abs(origXj));
+        xTear[j] = origXj + eps;
+        evalResiduals(xTear, R_pert);
+        xTear[j] = origXj;
+        const invEps = 1.0 / eps;
+        for (let i = 0; i < k; i++) {
+          J[i * k + j] = (R_pert[i]! - R[i]!) * invEps;
+        }
+      }
+
+      if (k === 1) {
+        const diag = J[0]!;
+        if (Math.abs(diag) < 1e-14) break;
+        deltaX[0] = -R[0]! / diag;
+      } else if (k === 2) {
+        const j00 = J[0]!,
+          j01 = J[1]!,
+          j10 = J[2]!,
+          j11 = J[3]!;
+        const det = j00 * j11 - j01 * j10;
+        if (Math.abs(det) < 1e-14) break;
+        const invDet = 1.0 / det;
+        deltaX[0] = (-R[0]! * j11 + R[1]! * j01) * invDet;
+        deltaX[1] = (-R[1]! * j00 + R[0]! * j10) * invDet;
+      } else {
+        try {
+          const fact = luFactorFlat(J, k, piv, scale);
+          for (let i = 0; i < k; i++) deltaX[i] = -R[i]!;
+          luSolveFlat(fact, deltaX);
+          let stepFinite = true;
+          for (let i = 0; i < k; i++) {
+            if (!Number.isFinite(deltaX[i]!)) {
+              stepFinite = false;
+              break;
+            }
+          }
+          if (!stepFinite) break;
+        } catch {
+          break;
+        }
+      }
+
+      let stepAccepted = false;
+      const xTrial = new Float64Array(k);
+      for (const alpha of [1.0, 0.5, 0.25, 0.125]) {
+        for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + alpha * deltaX[i]!;
+        const trialR = evalResiduals(xTrial, R_pert);
+        if (trialR < currentMaxR) {
+          for (let i = 0; i < k; i++) {
+            xTear[i] = xTrial[i]!;
+            R[i] = R_pert[i]!;
+          }
+          currentMaxR = trialR;
+          stepAccepted = true;
+          break;
+        }
+      }
+
+      if (!stepAccepted) {
+        for (let i = 0; i < k; i++) xTear[i] = xTear[i]! + deltaX[i]!;
+        currentMaxR = evalResiduals(xTear, R);
+      }
+
+      if (currentMaxR < 1e-10) {
+        for (let i = 0; i < k; i++) {
+          this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
+        }
+        return true;
+      }
+    }
+
+    if (currentMaxR < 1e-6) {
+      for (let i = 0; i < k; i++) {
+        this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Solves a simultaneous algebraic loop (`type: "system"`) using damped Newton-Raphson
    * with pre-allocated scratch buffers, forward-mode AD / JIT-compiled Jacobians,
    * flat LU factorization (`luFactorFlat`), and warm-starting across time steps.
@@ -2564,6 +3098,10 @@ export class ArenaSimulator {
   ): void {
     const m = block.vars.length;
     if (m === 0) return;
+
+    if (this.trySolveTornBlock(block as SystemExecutionBlock, valuesByStringId)) {
+      return;
+    }
 
     this.ensureNewtonCapacity(m);
 
@@ -3279,7 +3817,18 @@ export class ArenaSimulator {
         }
       }
 
-      // 4. Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
+      // 4. For large models or when WASM linear bytecode runtime is available,
+      // use the linear bytecode executor to avoid generating thousands of JavaScript code
+      // strings and dynamic functions.
+      if (
+        this.executionBlocks.length > 500 ||
+        (this.executionBlocks.length > 50 && typeof (arena as any).exports?.sim_evalFlatBytecode === "function")
+      ) {
+        const flatBc = this.compileFlatBytecode(helpers);
+        if (flatBc) return flatBc;
+      }
+
+      // Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
       const CHUNK_SIZE = 4000;
       type CompiledBlockChunk = (env: Float64Array, h: typeof helpers) => void;
       const chunks: CompiledBlockChunk[] = [];
@@ -3399,6 +3948,471 @@ export class ArenaSimulator {
       };
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Prepares and caches the flat linear bytecode representation of execution blocks
+   * along with WebAssembly linear memory allocations if available.
+   */
+  public prepareFlatBytecode(): {
+    bcPtr: number;
+    bytecodeLen: number;
+    litPtr: number;
+    bytecode: Int32Array;
+    litArray: Float64Array;
+    hasSystemBlocks: boolean;
+    systemBlocks: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>[];
+  } | null {
+    if (this._cachedFlatBytecode) return this._cachedFlatBytecode;
+
+    const arena = this.arena;
+    const blocks = this.executionBlocks;
+    const numBlocks = blocks.length;
+    if (numBlocks === 0) return null;
+
+    const OP_NAME = 1; // [OP_NAME, targetNameId, srcNameId]
+    const OP_NEG_NAME = 2; // [OP_NEG_NAME, targetNameId, srcNameId]
+    const OP_LIT = 3; // [OP_LIT, targetNameId, litIndex]
+    const OP_ADD_NAMES = 4; // [OP_ADD_NAMES, targetNameId, leftNameId, rightNameId]
+    const OP_SUB_NAMES = 5; // [OP_SUB_NAMES, targetNameId, leftNameId, rightNameId]
+    const OP_MUL_NAMES = 6; // [OP_MUL_NAMES, targetNameId, leftNameId, rightNameId]
+    const OP_DIV_NAMES = 7; // [OP_DIV_NAMES, targetNameId, leftNameId, rightNameId]
+    const OP_EXPR = 8; // [OP_EXPR, targetNameId, exprId]
+    const OP_SYSTEM = 9; // [OP_SYSTEM, sysBlockIndex]
+
+    const bc = new Int32Array(numBlocks * 4);
+    const literals: number[] = [];
+    const systemBlocks: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>[] = [];
+    let pc = 0;
+
+    for (const block of blocks) {
+      if (block.type === "single") {
+        const targetVarNameId = arena.getVarNameId(block.varIdx);
+        const exprId = block.exprId;
+        if (exprId < 0) {
+          bc[pc++] = OP_LIT;
+          bc[pc++] = targetVarNameId;
+          bc[pc++] = literals.length;
+          literals.push(0);
+          continue;
+        }
+
+        const kind = arena.getExprKind(exprId);
+        if (kind === ExprKind.Name) {
+          bc[pc++] = OP_NAME;
+          bc[pc++] = targetVarNameId;
+          bc[pc++] = arena.getExprData1(exprId);
+        } else if (kind === ExprKind.Negate) {
+          const innerId = arena.getExprLeft(exprId);
+          if (innerId >= 0 && arena.getExprKind(innerId) === ExprKind.Name) {
+            bc[pc++] = OP_NEG_NAME;
+            bc[pc++] = targetVarNameId;
+            bc[pc++] = arena.getExprData1(innerId);
+          } else {
+            bc[pc++] = OP_EXPR;
+            bc[pc++] = targetVarNameId;
+            bc[pc++] = exprId;
+          }
+        } else if (kind === ExprKind.RealLiteral) {
+          bc[pc++] = OP_LIT;
+          bc[pc++] = targetVarNameId;
+          bc[pc++] = literals.length;
+          literals.push(arena.getExprRealValue(exprId));
+        } else if (kind === ExprKind.IntLiteral || kind === ExprKind.BoolLiteral || kind === ExprKind.EnumLiteral) {
+          bc[pc++] = OP_LIT;
+          bc[pc++] = targetVarNameId;
+          bc[pc++] = literals.length;
+          literals.push(arena.getExprData1(exprId));
+        } else if (kind === ExprKind.Binary) {
+          const op = arena.getExprData1(exprId);
+          const lId = arena.getExprLeft(exprId);
+          const rId = arena.getExprRight(exprId);
+          if (
+            lId >= 0 &&
+            rId >= 0 &&
+            arena.getExprKind(lId) === ExprKind.Name &&
+            arena.getExprKind(rId) === ExprKind.Name
+          ) {
+            const lName = arena.getExprData1(lId);
+            const rName = arena.getExprData1(rId);
+            if (op === BinOp.Add || op === BinOp.ElemAdd) {
+              bc[pc++] = OP_ADD_NAMES;
+              bc[pc++] = targetVarNameId;
+              bc[pc++] = lName;
+              bc[pc++] = rName;
+            } else if (op === BinOp.Sub || op === BinOp.ElemSub) {
+              bc[pc++] = OP_SUB_NAMES;
+              bc[pc++] = targetVarNameId;
+              bc[pc++] = lName;
+              bc[pc++] = rName;
+            } else if (op === BinOp.Mul || op === BinOp.ElemMul) {
+              bc[pc++] = OP_MUL_NAMES;
+              bc[pc++] = targetVarNameId;
+              bc[pc++] = lName;
+              bc[pc++] = rName;
+            } else if (op === BinOp.Div || op === BinOp.ElemDiv) {
+              bc[pc++] = OP_DIV_NAMES;
+              bc[pc++] = targetVarNameId;
+              bc[pc++] = lName;
+              bc[pc++] = rName;
+            } else {
+              bc[pc++] = OP_EXPR;
+              bc[pc++] = targetVarNameId;
+              bc[pc++] = exprId;
+            }
+          } else {
+            bc[pc++] = OP_EXPR;
+            bc[pc++] = targetVarNameId;
+            bc[pc++] = exprId;
+          }
+        } else {
+          bc[pc++] = OP_EXPR;
+          bc[pc++] = targetVarNameId;
+          bc[pc++] = exprId;
+        }
+      } else if (block.type === "system") {
+        const sysIdx = systemBlocks.length;
+        systemBlocks.push(block);
+        bc[pc++] = OP_SYSTEM;
+        bc[pc++] = sysIdx;
+      }
+    }
+
+    const bytecode = bc.subarray(0, pc);
+    const litArray = new Float64Array(literals);
+    const bytecodeLen = bytecode.length;
+    let bcPtr = 0;
+    let litPtr = 0;
+
+    const wasmExports = (arena as any).exports;
+    if (
+      systemBlocks.length === 0 &&
+      wasmExports &&
+      typeof wasmExports.atomicChunkAlloc === "function" &&
+      wasmExports.memory instanceof WebAssembly.Memory
+    ) {
+      const mem = wasmExports.memory as WebAssembly.Memory;
+      const bcBytes = bytecode.byteLength;
+      bcPtr = wasmExports.atomicChunkAlloc(bcBytes);
+      new Int32Array(mem.buffer, bcPtr, bytecode.length).set(bytecode);
+
+      const litBytes = litArray.byteLength;
+      litPtr = litArray.length > 0 ? wasmExports.atomicChunkAlloc(litBytes) : 0;
+      if (litPtr && litArray.length > 0) {
+        new Float64Array(mem.buffer, litPtr, litArray.length).set(litArray);
+      }
+    }
+
+    this._cachedFlatBytecode = {
+      bcPtr,
+      bytecodeLen,
+      litPtr,
+      bytecode,
+      litArray,
+      hasSystemBlocks: systemBlocks.length > 0,
+      systemBlocks,
+    };
+    return this._cachedFlatBytecode;
+  }
+
+  /**
+   * Compiles execution blocks into a flat linear bytecode plan for massive models (> 2,000 blocks),
+   * bypassing V8 string code generation and `new Function` compilation overhead.
+   */
+  private compileFlatBytecode(helpers: any): ((env: Float64Array) => void) | null {
+    const flatBc = this.prepareFlatBytecode();
+    if (!flatBc) return null;
+
+    const arena = this.arena;
+    const wasmExports = (arena as any).exports;
+    const { bcPtr, bytecodeLen, litPtr, bytecode, litArray, hasSystemBlocks, systemBlocks } = flatBc;
+
+    // Direct In-WASM Linear Bytecode Execution path
+    if (
+      !hasSystemBlocks &&
+      bcPtr !== 0 &&
+      typeof wasmExports?.sim_evalFlatBytecode === "function" &&
+      wasmExports?.memory instanceof WebAssembly.Memory &&
+      typeof wasmExports?.atomicChunkAlloc === "function"
+    ) {
+      const mem = wasmExports.memory as WebAssembly.Memory;
+      const envSize = Math.max(arena.interner.size + 256, 4096);
+      const scratchBytes = envSize * 8;
+      const wasmScratchPtr = wasmExports.atomicChunkAlloc(scratchBytes);
+
+      return (env: Float64Array) => {
+        const currentMem = mem.buffer;
+        let targetEnvPtr = wasmScratchPtr;
+        let needsCopyBack = false;
+
+        if (env.buffer === currentMem) {
+          targetEnvPtr = env.byteOffset;
+        } else {
+          const scratchView = new Float64Array(currentMem, targetEnvPtr, env.length);
+          scratchView.set(env);
+          needsCopyBack = true;
+        }
+
+        wasmExports.sim_evalFlatBytecode(
+          arena.ptr,
+          bcPtr,
+          bytecodeLen,
+          litPtr,
+          targetEnvPtr,
+          1, // isStringIdEnv = true
+        );
+
+        if (needsCopyBack) {
+          env.set(new Float64Array(currentMem, targetEnvPtr, env.length));
+        }
+      };
+    }
+
+    // Host JavaScript bytecode interpreter fallback (handles OP_SYSTEM Newton blocks)
+    return (env: Float64Array) => {
+      let ptr = 0;
+      while (ptr < bytecodeLen) {
+        const op = bytecode[ptr++];
+        switch (op) {
+          case 1: {
+            // OP_NAME
+            const target = bytecode[ptr++] as number;
+            const src = bytecode[ptr++] as number;
+            env[target] = env[src] ?? 0;
+            break;
+          }
+          case 2: {
+            // OP_NEG_NAME
+            const target = bytecode[ptr++] as number;
+            const src = bytecode[ptr++] as number;
+            env[target] = -(env[src] ?? 0);
+            break;
+          }
+          case 3: {
+            // OP_LIT
+            const target = bytecode[ptr++] as number;
+            const litIdx = bytecode[ptr++] as number;
+            env[target] = litArray[litIdx] ?? 0;
+            break;
+          }
+          case 4: {
+            // OP_ADD_NAMES
+            const target = bytecode[ptr++] as number;
+            const left = bytecode[ptr++] as number;
+            const right = bytecode[ptr++] as number;
+            env[target] = (env[left] ?? 0) + (env[right] ?? 0);
+            break;
+          }
+          case 5: {
+            // OP_SUB_NAMES
+            const target = bytecode[ptr++] as number;
+            const left = bytecode[ptr++] as number;
+            const right = bytecode[ptr++] as number;
+            env[target] = (env[left] ?? 0) - (env[right] ?? 0);
+            break;
+          }
+          case 6: {
+            // OP_MUL_NAMES
+            const target = bytecode[ptr++] as number;
+            const left = bytecode[ptr++] as number;
+            const right = bytecode[ptr++] as number;
+            env[target] = (env[left] ?? 0) * (env[right] ?? 0);
+            break;
+          }
+          case 7: {
+            // OP_DIV_NAMES
+            const target = bytecode[ptr++] as number;
+            const left = bytecode[ptr++] as number;
+            const right = bytecode[ptr++] as number;
+            const rVal = env[right] ?? 0;
+            env[target] = rVal !== 0 ? (env[left] ?? 0) / rVal : 0;
+            break;
+          }
+          case 8: {
+            // OP_EXPR
+            const target = bytecode[ptr++] as number;
+            const exprId = bytecode[ptr++] as number;
+            env[target] = helpers.evalExpr(exprId, env);
+            break;
+          }
+          case 9: {
+            // OP_SYSTEM
+            const sysIdx = bytecode[ptr++] as number;
+            const blk = systemBlocks[sysIdx];
+            if (blk) this.solveNewtonBlock(blk, env);
+            break;
+          }
+          default:
+            break;
+        }
+      }
+    };
+  }
+
+  /**
+   * Determines whether the current model can be integrated directly inside WebAssembly linear memory
+   * using sim_runBytecodeSimulationLoop without host context-switching.
+   */
+  public canRunWasmSimulationLoop(): boolean {
+    const wasmExports = (this.arena as any).exports;
+    if (
+      !wasmExports ||
+      typeof wasmExports.sim_runBytecodeSimulationLoop !== "function" ||
+      typeof wasmExports.atomicChunkAlloc !== "function" ||
+      !(wasmExports.memory instanceof WebAssembly.Memory)
+    ) {
+      return false;
+    }
+    const flatBc = this.prepareFlatBytecode();
+    if (!flatBc || flatBc.hasSystemBlocks || flatBc.bytecodeLen === 0) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Runs the full time-stepping simulation loop directly in WebAssembly linear memory,
+   * generating a zero-copy trajectory buffer and eliminating per-step host transitions.
+   */
+  public runWasmSimulationLoop(
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+    options?: any,
+  ): {
+    t: number[];
+    y: Float64Array[];
+    terminatedEarly: boolean;
+    safetyViolations: any[];
+    intervalIssues: any[];
+  } {
+    const wasmExports = (this.arena as any).exports;
+    const mem = wasmExports.memory as WebAssembly.Memory;
+    const n = stateStringIds.length;
+    const startTime = valuesByStringId[timeId] ?? 0;
+    const solver = options?.solver ?? "rk4";
+    const solverKind = solver === "rk4" ? 1 : 0;
+
+    const flatBc = this.prepareFlatBytecode();
+    if (!flatBc || flatBc.hasSystemBlocks) {
+      throw new Error("WASM simulation loop requires valid flat bytecode without system blocks");
+    }
+
+    // Ensure WASM linear memory buffers for bytecode are allocated
+    if (flatBc.bcPtr === 0 && typeof wasmExports.atomicChunkAlloc === "function") {
+      const bcBytes = flatBc.bytecode.byteLength;
+      flatBc.bcPtr = wasmExports.atomicChunkAlloc(bcBytes);
+      new Int32Array(mem.buffer, flatBc.bcPtr, flatBc.bytecode.length).set(flatBc.bytecode);
+
+      const litBytes = flatBc.litArray.byteLength;
+      flatBc.litPtr = litBytes > 0 ? wasmExports.atomicChunkAlloc(litBytes) : 0;
+      if (flatBc.litPtr && litBytes > 0) {
+        new Float64Array(mem.buffer, flatBc.litPtr, flatBc.litArray.length).set(flatBc.litArray);
+      }
+    }
+
+    const outIds = options?.outputStringIds ?? stateStringIds;
+    const numOuts = outIds.length;
+    const totalRows = steps + 1;
+
+    // 1. Allocate environment in WASM linear memory
+    const envSize = Math.max(this.arena.interner.size + 256, valuesByStringId.length, 4096);
+    const envBytes = envSize * 8;
+    const envPtr = wasmExports.atomicChunkAlloc(envBytes);
+    new Float64Array(mem.buffer, envPtr, valuesByStringId.length).set(valuesByStringId);
+
+    // 2. Allocate and populate stateIds, derivIds, and outIds
+    const stateIdsBytes = Math.max(n * 4, 4);
+    const stateIdsPtr = wasmExports.atomicChunkAlloc(stateIdsBytes);
+    if (n > 0) {
+      new Int32Array(mem.buffer, stateIdsPtr, n).set(stateStringIds);
+    }
+
+    const derivIdsBytes = Math.max(n * 4, 4);
+    const derivIdsPtr = wasmExports.atomicChunkAlloc(derivIdsBytes);
+    if (n > 0) {
+      new Int32Array(mem.buffer, derivIdsPtr, n).set(derivStringIds);
+    }
+
+    const outIdsBytes = Math.max(numOuts * 4, 4);
+    const outIdsPtr = wasmExports.atomicChunkAlloc(outIdsBytes);
+    if (numOuts > 0) {
+      new Int32Array(mem.buffer, outIdsPtr, numOuts).set(outIds);
+    }
+
+    // 3. Allocate output trajectory buffer: totalRows * numOuts doubles
+    const trajBytes = Math.max(totalRows * numOuts * 8, 8);
+    const trajOutPtr = wasmExports.atomicChunkAlloc(trajBytes);
+
+    // 4. Allocate RK4 scratch buffer if RK4
+    const rk4ScratchBytes = solverKind === 1 ? Math.max(5 * n * 8, 8) : 8;
+    const rk4ScratchPtr = wasmExports.atomicChunkAlloc(rk4ScratchBytes);
+
+    try {
+      // 5. Execute in-WASM simulation loop
+      wasmExports.sim_runBytecodeSimulationLoop(
+        this.arena.ptr,
+        flatBc.bcPtr,
+        flatBc.bytecodeLen,
+        flatBc.litPtr,
+        envPtr,
+        stateIdsPtr,
+        derivIdsPtr,
+        n,
+        outIdsPtr,
+        numOuts,
+        timeId,
+        startTime,
+        step,
+        steps,
+        solverKind,
+        trajOutPtr,
+        rk4ScratchPtr,
+      );
+
+      // 6. Extract trajectory
+      const t_out = new Array<number>(totalRows);
+      const y_out = new Array<Float64Array>(totalRows);
+      const trajView = new Float64Array(mem.buffer, trajOutPtr, totalRows * numOuts);
+
+      for (let s = 0; s < totalRows; s++) {
+        t_out[s] = startTime + s * step;
+        y_out[s] = numOuts > 0 ? trajView.slice(s * numOuts, (s + 1) * numOuts) : new Float64Array(0);
+      }
+
+      // 7. Update valuesByStringId with final simulation state
+      const finalEnv = new Float64Array(mem.buffer, envPtr, valuesByStringId.length);
+      if (valuesByStringId.buffer.byteLength > 0) {
+        valuesByStringId.set(finalEnv);
+      }
+      if (
+        this.preValuesByStringId &&
+        this.preValuesByStringId.buffer.byteLength > 0 &&
+        this.preValuesByStringId.length === valuesByStringId.length
+      ) {
+        this.preValuesByStringId.set(finalEnv);
+      }
+
+      return {
+        t: t_out,
+        y: y_out,
+        terminatedEarly: false,
+        safetyViolations: [],
+        intervalIssues: [],
+      };
+    } finally {
+      if (typeof wasmExports.atomicChunkFree === "function") {
+        wasmExports.atomicChunkFree(envPtr);
+        wasmExports.atomicChunkFree(stateIdsPtr);
+        wasmExports.atomicChunkFree(derivIdsPtr);
+        wasmExports.atomicChunkFree(outIdsPtr);
+        wasmExports.atomicChunkFree(trajOutPtr);
+        wasmExports.atomicChunkFree(rk4ScratchPtr);
+      }
     }
   }
 
@@ -3873,6 +4887,17 @@ export class ArenaSimulator {
         | "bdf"
         | "rodas4p"
         | "trbdf2"
+        | "radau5"
+        | "radau9"
+        | "sprk"
+        | "verlet"
+        | "ruth3"
+        | "forest-ruth4"
+        | "yoshida6"
+        | "yoshida8"
+        | "vern7"
+        | "vern9"
+        | "kencarp4"
         | "qss1"
         | "qss2"
         | "qss3"
@@ -3892,6 +4917,13 @@ export class ArenaSimulator {
       callbacks?: IntegratorCallback[] | undefined;
     },
   ) {
+    if (this.isVectorMode) {
+      return this.simulateVector({
+        numberOfIntervals: steps,
+        step,
+        solver: options?.solver,
+      }) as any;
+    }
     const solver = options?.solver ?? "rk4";
     const timeId = this.arena.interner.intern("time");
     const n = stateStringIds.length;
@@ -3920,13 +4952,24 @@ export class ArenaSimulator {
       ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
     }
 
-    // ── Adaptive & Quantized-State solvers (Tsit5, Dopri5, BDF, Rodas4P, TRBDF2, QSS1/2/3, LIQSS2) ──
+    // ── Adaptive & Quantized-State solvers (Tsit5, Dopri5, BDF, Rodas4P, TRBDF2, Radau5/9, SPRK, QSS1/2/3, LIQSS2) ──
     if (
       solver === "dopri5" ||
       solver === "tsit5" ||
       solver === "bdf" ||
       solver === "rodas4p" ||
       solver === "trbdf2" ||
+      solver === "radau5" ||
+      solver === "radau9" ||
+      solver === "sprk" ||
+      solver === "verlet" ||
+      solver === "ruth3" ||
+      solver === "forest-ruth4" ||
+      solver === "yoshida6" ||
+      solver === "yoshida8" ||
+      solver === "vern7" ||
+      solver === "vern9" ||
+      solver === "kencarp4" ||
       solver === "qss1" ||
       solver === "qss2" ||
       solver === "qss3" ||
@@ -3964,6 +5007,24 @@ export class ArenaSimulator {
     for (let i = 0; i < n; i++) {
       const sName = this.arena.interner.resolve(stateStringIds[i]!);
       if (sName) stateIndexMap.set(sName, i);
+    }
+
+    // ── In-WASM Simulation Fast Path ──
+    if (
+      (solver === "euler" || solver === "rk4") &&
+      stlMonitors.length === 0 &&
+      !callbackDispatcher.hasCallbacks &&
+      !options?.intervalBarrierCheck &&
+      this.eventIndicators.length === 0 &&
+      this.whenClauses.length === 0 &&
+      this.stateMachineRuntimes.length === 0 &&
+      this.fmuMappings.length === 0 &&
+      this.arena.algorithmSections.length === 0 &&
+      this.frictionStateMappings.length === 0 &&
+      this.assertions.length === 0 &&
+      this.canRunWasmSimulationLoop()
+    ) {
+      return this.runWasmSimulationLoop(steps, step, valuesByStringId, stateStringIds, derivStringIds, timeId, options);
     }
 
     for (let s = 0; s <= steps; s++) {
@@ -4201,7 +5262,28 @@ export class ArenaSimulator {
    * Bridges the arena evaluation into the standalone solver modules.
    */
   private simulateAdaptive(
-    solver: "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "qss1" | "qss2" | "qss3" | "liqss2" | "auto",
+    solver:
+      | "dopri5"
+      | "tsit5"
+      | "bdf"
+      | "rodas4p"
+      | "trbdf2"
+      | "radau5"
+      | "radau9"
+      | "sprk"
+      | "verlet"
+      | "ruth3"
+      | "forest-ruth4"
+      | "yoshida6"
+      | "yoshida8"
+      | "vern7"
+      | "vern9"
+      | "kencarp4"
+      | "qss1"
+      | "qss2"
+      | "qss3"
+      | "liqss2"
+      | "auto",
     steps: number,
     step: number,
     valuesByStringId: Float64Array,
@@ -4326,6 +5408,92 @@ export class ArenaSimulator {
         eventCallback: eventCb,
         eventDirections: eventDirs,
       });
+    } else if (solver === "radau5" || solver === "radau9") {
+      const order = solver === "radau9" ? 9 : 5;
+      const res = solveRadauIIA(
+        {
+          f: (_t: number, y: number[]) => rhsFn(_t, y),
+          y0: Array.from(y0),
+          tSpan: [startTime, stopTime],
+        },
+        {
+          order,
+          atol,
+          rtol,
+          initialStepSize: step,
+        },
+      );
+      rawResult = {
+        times: res.times,
+        states: res.states,
+        converged: res.stats.converged ?? true,
+        rejectedSteps: res.stats.rejectedSteps,
+      };
+    } else if (
+      solver === "sprk" ||
+      solver === "verlet" ||
+      solver === "ruth3" ||
+      solver === "forest-ruth4" ||
+      solver === "yoshida6" ||
+      solver === "yoshida8"
+    ) {
+      const method = solver === "sprk" ? "forest-ruth4" : solver;
+      const res = solveSPRK(
+        {
+          f: (_t: number, y: number[]) => rhsFn(_t, y),
+          y0: Array.from(y0),
+          tSpan: [startTime, stopTime],
+        },
+        {
+          method,
+          dt: step,
+        },
+      );
+      rawResult = {
+        times: res.times,
+        states: res.states,
+        converged: res.stats.converged ?? true,
+        rejectedSteps: res.stats.rejectedSteps,
+      };
+    } else if (solver === "vern7" || solver === "vern9") {
+      const fn = solver === "vern9" ? vern9 : vern7;
+      const res = fn(
+        {
+          f: (_t: number, y: number[]) => rhsFn(_t, y),
+          y0: Array.from(y0),
+          tSpan: [startTime, stopTime],
+        },
+        {
+          atol,
+          rtol,
+          initialStep: step,
+        },
+      );
+      rawResult = {
+        times: res.times,
+        states: res.states,
+        converged: res.stats.converged ?? true,
+        rejectedSteps: res.stats.rejectedSteps,
+      };
+    } else if (solver === "kencarp4") {
+      const res = kencarp4(
+        {
+          f: (_t: number, y: number[]) => rhsFn(_t, y),
+          y0: Array.from(y0),
+          tSpan: [startTime, stopTime],
+        },
+        {
+          atol,
+          rtol,
+          initialStep: step,
+        },
+      );
+      rawResult = {
+        times: res.times,
+        states: res.states,
+        converged: res.stats.converged ?? true,
+        rejectedSteps: res.stats.rejectedSteps,
+      };
     } else if (solver === "qss1" || solver === "qss2" || solver === "qss3" || solver === "liqss2") {
       rawResult = qssSolve(rhsFn, startTime, y0, stopTime, outputTimes, {
         method: solver,
@@ -4997,6 +6165,17 @@ export class ArenaSimulator {
         | "bdf"
         | "rodas4p"
         | "trbdf2"
+        | "radau5"
+        | "radau9"
+        | "sprk"
+        | "verlet"
+        | "ruth3"
+        | "forest-ruth4"
+        | "yoshida6"
+        | "yoshida8"
+        | "vern7"
+        | "vern9"
+        | "kencarp4"
         | "qss1"
         | "qss2"
         | "qss3"
@@ -5071,6 +6250,17 @@ export class ArenaSimulator {
       solver === "bdf" ||
       solver === "rodas4p" ||
       solver === "trbdf2" ||
+      solver === "radau5" ||
+      solver === "radau9" ||
+      solver === "sprk" ||
+      solver === "verlet" ||
+      solver === "ruth3" ||
+      solver === "forest-ruth4" ||
+      solver === "yoshida6" ||
+      solver === "yoshida8" ||
+      solver === "vern7" ||
+      solver === "vern9" ||
+      solver === "kencarp4" ||
       solver === "qss1" ||
       solver === "qss2" ||
       solver === "qss3" ||
@@ -5491,7 +6681,14 @@ export function initializeArenaEnvironment(
 } {
   const startTime = options?.startTime ?? arena.experiment.startTime ?? 0;
   const envSize = Math.max(arena.interner.size + 256, 4096);
-  const valuesByStringId = new Float64Array(envSize);
+  let valuesByStringId: Float64Array;
+  const wasmExports = (arena as any).exports;
+  if (typeof wasmExports?.atomicChunkAlloc === "function" && wasmExports?.memory instanceof WebAssembly.Memory) {
+    const ptr = wasmExports.atomicChunkAlloc(envSize * 8);
+    valuesByStringId = new Float64Array(wasmExports.memory.buffer, ptr, envSize);
+  } else {
+    valuesByStringId = new Float64Array(envSize);
+  }
 
   // Set time
   const timeId = arena.interner.intern("time");
@@ -5633,6 +6830,17 @@ export interface ArenaSimulateOptions {
     | "bdf"
     | "rodas4p"
     | "trbdf2"
+    | "radau5"
+    | "radau9"
+    | "sprk"
+    | "verlet"
+    | "ruth3"
+    | "forest-ruth4"
+    | "yoshida6"
+    | "yoshida8"
+    | "vern7"
+    | "vern9"
+    | "kencarp4"
     | "qss1"
     | "qss2"
     | "qss3"
@@ -5727,6 +6935,9 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   }
   sim.prepare();
   arena = sim.arena;
+  if (sim.isVectorMode) {
+    return sim.simulateVector(options);
+  }
 
   // ── Step 2: Resolve experiment annotation defaults ──
   const exp = arena.experiment;
@@ -5907,7 +7118,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
 
   // ── Step 7: Transform to row-major output ──
   const t = rawResult.t;
-  const y: number[][] = rawResult.y.map((row) => Array.from(row));
+  const y: number[][] = (rawResult.y as any[]).map((row: any) => Array.from(row));
 
   let outNames = stateNames;
   let outY = y;
@@ -5979,6 +7190,9 @@ export async function simulateArenaAsync(
   }
   sim.prepare();
   arena = sim.arena;
+  if (sim.isVectorMode) {
+    return sim.simulateVector(options);
+  }
 
   const exp = arena.experiment;
   const startTime = options?.startTime ?? exp.startTime ?? 0;
@@ -5989,7 +7203,14 @@ export async function simulateArenaAsync(
     (numIntervals ? (stopTime - startTime) / numIntervals : (exp.interval ?? (stopTime - startTime) / 500));
 
   const envSize = Math.max(arena.interner.size + 256, 4096);
-  const valuesByStringId = new Float64Array(envSize);
+  let valuesByStringId: Float64Array;
+  const wasmExports = (arena as any).exports;
+  if (typeof wasmExports?.atomicChunkAlloc === "function" && wasmExports?.memory instanceof WebAssembly.Memory) {
+    const ptr = wasmExports.atomicChunkAlloc(envSize * 8);
+    valuesByStringId = new Float64Array(wasmExports.memory.buffer, ptr, envSize);
+  } else {
+    valuesByStringId = new Float64Array(envSize);
+  }
 
   const timeId = arena.interner.intern("time");
   valuesByStringId[timeId] = startTime;

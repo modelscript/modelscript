@@ -35,6 +35,7 @@ COPY packages/dsl/package.json packages/dsl/
 COPY packages/embed/package.json packages/embed/
 COPY packages/examples/drone-chassis/package.json packages/examples/drone-chassis/
 COPY packages/examples/pscad-microgrid/package.json packages/examples/pscad-microgrid/
+COPY packages/examples/telecom-co-microgrid/package.json packages/examples/telecom-co-microgrid/
 COPY packages/exchange/package.json packages/exchange/
 COPY packages/ide/package.json packages/ide/
 COPY packages/lsp/package.json packages/lsp/
@@ -64,6 +65,7 @@ COPY languages/energyplus/package.json languages/energyplus/
 COPY languages/epanet/package.json languages/epanet/
 COPY languages/fea/package.json languages/fea/
 COPY languages/febio/package.json languages/febio/
+COPY languages/fiber/package.json languages/fiber/
 COPY languages/fortran/package.json languages/fortran/
 COPY languages/genbank/package.json languages/genbank/
 COPY languages/gensys/package.json languages/gensys/
@@ -82,6 +84,7 @@ COPY languages/opendrive/package.json languages/opendrive/
 COPY languages/opendss/package.json languages/opendss/
 COPY languages/openscenario/package.json languages/openscenario/
 COPY languages/opensim/package.json languages/opensim/
+COPY languages/optical/package.json languages/optical/
 COPY languages/oscal/package.json languages/oscal/
 COPY languages/owl2/package.json languages/owl2/
 COPY languages/pdb/package.json languages/pdb/
@@ -90,6 +93,7 @@ COPY languages/plcopen/package.json languages/plcopen/
 COPY languages/pscad/package.json languages/pscad/
 COPY languages/psse/package.json languages/psse/
 COPY languages/qif/package.json languages/qif/
+COPY languages/ran/package.json languages/ran/
 COPY languages/relap5/package.json languages/relap5/
 COPY languages/reqif/package.json languages/reqif/
 COPY languages/rocets/package.json languages/rocets/

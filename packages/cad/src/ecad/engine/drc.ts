@@ -37,6 +37,13 @@ export interface DRCViolation {
   affectedObjects: string[];
 }
 
+export interface DfaComponentInfo {
+  name: string;
+  footprint: string;
+  center: Point2D;
+  heightMm?: number | undefined;
+}
+
 /** Design rules to check against. */
 export interface DesignRules {
   /** Minimum copper-to-copper clearance (mm). */
@@ -49,6 +56,20 @@ export interface DesignRules {
   minAnnularRing: number;
   /** Minimum clearance to board edge (mm). */
   boardEdgeClearance: number;
+  /** Check for acute trace angle acid traps (< 90 deg). Default false. */
+  checkAcidTraps?: boolean;
+  /** Minimum acceptable trace bend angle in degrees (default: 90). */
+  minAcidTrapAngleDeg?: number;
+  /** Check for copper area density imbalance between top & bottom layers. Default false. */
+  checkCopperBalance?: boolean;
+  /** Maximum allowable copper area ratio difference (default: 0.3 or 30%). */
+  maxCopperImbalanceRatio?: number;
+  /** Check for tombstoning risk on 2-pin passive components with unequal trace widths. Default false. */
+  checkTombstoning?: boolean;
+  /** Check for In-Circuit Test (ICT) net coverage (at least 1 testpoint or probeable via/pad per net). Default false. */
+  checkIctTestpointCoverage?: boolean;
+  /** Check for component reflow shadowing (tall part blocking heat from small part). Default false. */
+  checkReflowShadowing?: boolean;
 }
 
 /** Input data for DRC checks. */
@@ -60,6 +81,10 @@ export interface DRCInput {
   rules: DesignRules;
   /** Expected connections (net ID → pin names). */
   expectedNets: Map<string, string[]>;
+  /** Optional component footprints & positions for DFA */
+  components?: DfaComponentInfo[] | undefined;
+  /** Optional testpoint pad locations for DFT */
+  testpoints?: Point2D[] | undefined;
 }
 
 /** Result of a DRC run. */
@@ -70,7 +95,7 @@ export interface DRCResult {
   timestamp: number;
 }
 
-// ── Default rules ──
+// ── Default & CM Presets ──
 
 export const DEFAULT_DESIGN_RULES: DesignRules = {
   minClearance: 0.127, // 5mil
@@ -78,6 +103,36 @@ export const DEFAULT_DESIGN_RULES: DesignRules = {
   minViaDrill: 0.2,
   minAnnularRing: 0.1,
   boardEdgeClearance: 0.25,
+  checkAcidTraps: false,
+  minAcidTrapAngleDeg: 90,
+  checkCopperBalance: false,
+  maxCopperImbalanceRatio: 0.3,
+  checkTombstoning: false,
+  checkIctTestpointCoverage: false,
+  checkReflowShadowing: false,
+};
+
+export const CM_STANDARD_RULES: DesignRules = {
+  ...DEFAULT_DESIGN_RULES,
+  checkAcidTraps: true,
+  checkCopperBalance: true,
+  checkTombstoning: true,
+  checkIctTestpointCoverage: true,
+};
+
+export const CM_ADVANCED_HDI_RULES: DesignRules = {
+  minClearance: 0.075, // 3mil
+  minTraceWidth: 0.075, // 3mil
+  minViaDrill: 0.15,
+  minAnnularRing: 0.075,
+  boardEdgeClearance: 0.2,
+  checkAcidTraps: true,
+  minAcidTrapAngleDeg: 90,
+  checkCopperBalance: true,
+  maxCopperImbalanceRatio: 0.2,
+  checkTombstoning: true,
+  checkIctTestpointCoverage: true,
+  checkReflowShadowing: true,
 };
 
 // ── DRC Engine ──
@@ -330,6 +385,181 @@ export function runDRC(input: DRCInput): DRCResult {
         position: { x: 0, y: 0 },
         affectedObjects: unconnected,
       });
+    }
+  }
+
+  // 8. Acid trap check (acute trace angles < 90 deg)
+  if (input.rules.checkAcidTraps) {
+    const minAngleDeg = input.rules.minAcidTrapAngleDeg ?? 90;
+    const minAngleRad = (minAngleDeg * Math.PI) / 180;
+    for (const trace of input.traces) {
+      if (trace.points.length < 3) continue;
+      for (let i = 1; i < trace.points.length - 1; i++) {
+        totalChecks++;
+        const p0 = trace.points[i - 1]!;
+        const p1 = trace.points[i]!;
+        const p2 = trace.points[i + 1]!;
+        const v1x = p0.x - p1.x;
+        const v1y = p0.y - p1.y;
+        const v2x = p2.x - p1.x;
+        const v2y = p2.y - p1.y;
+        const len1 = Math.hypot(v1x, v1y);
+        const len2 = Math.hypot(v2x, v2y);
+        if (len1 < 1e-4 || len2 < 1e-4) continue;
+        const dot = (v1x * v2x + v1y * v2y) / (len1 * len2);
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+        if (angle < minAngleRad) {
+          const angleDeg = (angle * 180) / Math.PI;
+          violations.push({
+            id: nextId(),
+            rule: "acid-trap",
+            severity: "warning",
+            message: `Acute trace bend angle of ${angleDeg.toFixed(1)}° (< ${minAngleDeg}°) creates acid trap risk during chemical etching`,
+            position: p1,
+            affectedObjects: [trace.netId],
+          });
+        }
+      }
+    }
+  }
+
+  // 9. Copper imbalance check (layer density asymmetry causing reflow warpage)
+  if (input.rules.checkCopperBalance) {
+    totalChecks++;
+    let topCopper = 0;
+    let botCopper = 0;
+    for (const t of input.traces) {
+      let len = 0;
+      for (let k = 0; k < t.points.length - 1; k++) {
+        len += distance(t.points[k]!, t.points[k + 1]!);
+      }
+      const area = len * t.width;
+      const l = t.layer.toLowerCase();
+      if (l.includes("bottom") || l.includes("b.cu")) botCopper += area;
+      else topCopper += area;
+    }
+    for (const p of input.pads) {
+      const area = p.shape === "circle" ? Math.PI * (p.width / 2) ** 2 : p.width * p.height;
+      const l = p.layer.toLowerCase();
+      if (l.includes("bottom") || l.includes("b.cu")) botCopper += area;
+      else topCopper += area;
+    }
+    const maxCopper = Math.max(topCopper, botCopper);
+    if (maxCopper > 0) {
+      const imbalanceRatio = Math.abs(topCopper - botCopper) / maxCopper;
+      const threshold = input.rules.maxCopperImbalanceRatio ?? 0.3;
+      if (imbalanceRatio > threshold) {
+        violations.push({
+          id: nextId(),
+          rule: "copper-imbalance",
+          severity: "warning",
+          message: `Copper area imbalance between top (${topCopper.toFixed(1)}mm²) and bottom (${botCopper.toFixed(1)}mm²) is ${(imbalanceRatio * 100).toFixed(1)}% (max allowed ${(threshold * 100).toFixed(1)}%), risking board warpage during reflow`,
+          position: { x: 0, y: 0 },
+          affectedObjects: ["TopCopper", "BottomCopper"],
+        });
+      }
+    }
+  }
+
+  // 10. Tombstoning risk check on passive 2-pin components
+  if (input.rules.checkTombstoning) {
+    const compPads = new Map<string, RenderPad[]>();
+    for (const pad of input.pads) {
+      if (!pad.component) continue;
+      let list = compPads.get(pad.component);
+      if (!list) {
+        list = [];
+        compPads.set(pad.component, list);
+      }
+      list.push(pad);
+    }
+    for (const [compName, pads] of compPads) {
+      if (pads.length === 2 && (compName.startsWith("R") || compName.startsWith("C") || compName.startsWith("L"))) {
+        totalChecks++;
+        const p1 = pads[0]!;
+        const p2 = pads[1]!;
+        let width1 = 0;
+        let width2 = 0;
+        for (const trace of input.traces) {
+          for (const pt of trace.points) {
+            if (distance(pt, p1.center) <= p1.width / 2 + trace.width / 2) {
+              if (trace.width > width1) width1 = trace.width;
+            }
+            if (distance(pt, p2.center) <= p2.width / 2 + trace.width / 2) {
+              if (trace.width > width2) width2 = trace.width;
+            }
+          }
+        }
+        const maxWidth = Math.max(width1, width2);
+        const minWidth = Math.min(width1, width2);
+        if (maxWidth >= 0.4 && (minWidth === 0 || maxWidth / minWidth >= 2.0)) {
+          violations.push({
+            id: nextId(),
+            rule: "tombstoning-risk",
+            severity: "warning",
+            message: `Thermal mass asymmetry on ${compName} pads (trace widths ${width1.toFixed(2)}mm vs ${width2.toFixed(2)}mm) causes tombstoning risk during SMT reflow`,
+            position: midpoint(p1.center, p2.center),
+            affectedObjects: [compName],
+          });
+        }
+      }
+    }
+  }
+
+  // 11. In-Circuit Test (ICT) net coverage check
+  if (input.rules.checkIctTestpointCoverage) {
+    const coveredNets = new Set<string>();
+    for (const via of input.vias) {
+      if (via.drillRadius * 2 >= 0.4) {
+        coveredNets.add(via.netId);
+      }
+    }
+    for (const pad of input.pads) {
+      if (pad.component.toUpperCase().startsWith("TP") || pad.pinName.toUpperCase().includes("TP")) {
+        coveredNets.add(pad.netId);
+      }
+    }
+    if (input.testpoints) {
+      for (const tp of input.testpoints) {
+        for (const pad of input.pads) {
+          if (distance(tp, pad.center) < 0.5) coveredNets.add(pad.netId);
+        }
+      }
+    }
+    for (const [netId] of input.expectedNets) {
+      totalChecks++;
+      if (!coveredNets.has(netId)) {
+        violations.push({
+          id: nextId(),
+          rule: "dft-uncovered-test-net",
+          severity: "warning",
+          message: `Net ${netId} has no dedicated testpoint or probeable via for In-Circuit Testing (ICT)`,
+          position: { x: 0, y: 0 },
+          affectedObjects: [netId],
+        });
+      }
+    }
+  }
+
+  // 12. Component reflow shadowing check
+  if (input.rules.checkReflowShadowing && input.components) {
+    const tallComps = input.components.filter((c) => (c.heightMm ?? 1.0) >= 3.0);
+    const lowComps = input.components.filter((c) => (c.heightMm ?? 1.0) <= 1.0);
+    for (const tall of tallComps) {
+      for (const low of lowComps) {
+        totalChecks++;
+        const d = distance(tall.center, low.center);
+        if (d < 4.0 && d > 0) {
+          violations.push({
+            id: nextId(),
+            rule: "reflow-shadow",
+            severity: "warning",
+            message: `Tall component ${tall.name} (${tall.heightMm}mm) shadows low-profile component ${low.name} (${low.heightMm}mm) at distance ${d.toFixed(2)}mm (< 4.0mm), risking poor solder reflow`,
+            position: midpoint(tall.center, low.center),
+            affectedObjects: [tall.name, low.name],
+          });
+        }
+      }
     }
   }
 

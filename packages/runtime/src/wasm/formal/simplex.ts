@@ -181,6 +181,21 @@ export class WasmSimplexSolver {
     let numRows = n + 1;
     let numCols = m + numRows;
 
+    // Apply shift to equality rows using normalization row to ensure strictly positive RHS
+    for (let j = 0; j < n; j++) {
+      let maxAbs: f64 = 0.0;
+      for (let i = 0; i < m; i++) {
+        let absVal = Math.abs(this.get(j, i));
+        if (absVal > maxAbs) maxAbs = absVal;
+      }
+      let shift: f64 = Math.max(1.0, maxAbs + 1.0);
+      for (let i = 0; i < m; i++) {
+        let cur = this.get(j, i);
+        this.set(j, i, cur + shift);
+      }
+      this.set(j, numCols, shift);
+    }
+
     // Phase I: Maximize - sum(artificials)
     for (let c = 0; c <= numCols; c++) {
       this.set(numRows, c, 0.0);

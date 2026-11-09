@@ -3287,6 +3287,19 @@ export class ModelicaFlattener {
 
     expandArrayConnectEquations(dae);
 
+    const resolvedRecordValCache = new Map<string, number | null>();
+    const rootComponentsMap = new Map<string, any>();
+    for (const s of this.db.childrenOf(rootClassId)) {
+      if (s.kind === "Component") rootComponentsMap.set(s.name, s);
+    }
+    if (rootSym?.resourceId) {
+      for (const s of this.getFileSymbols(rootSym.resourceId)) {
+        if (s.kind === "Component" && !rootComponentsMap.has(s.name)) {
+          rootComponentsMap.set(s.name, s);
+        }
+      }
+    }
+
     for (let vIdx = 0; vIdx < dae.varCount; vIdx++) {
       let exprId = dae.getVarExpression(vIdx);
       if (exprId === undefined || exprId < 0 || exprId === 0xffffffff) continue;
@@ -3303,12 +3316,8 @@ export class ModelicaFlattener {
           refName = dae.interner.resolve(dae.getExprData1(innerId)) || "";
         } else {
           const vName = dae.getVarName(vIdx);
-          if (!vName.includes(".")) {
-            const vEntry =
-              this.db.childrenOf(rootClassId).find((s) => s.kind === "Component" && s.name === vName) ??
-              (rootSym?.resourceId
-                ? this.getFileSymbols(rootSym.resourceId).find((s) => s.kind === "Component" && s.name === vName)
-                : undefined);
+          if (!vName.includes(".") && !vName.includes("[")) {
+            const vEntry = rootComponentsMap.get(vName);
             if (vEntry) {
               const compInst = this.db.query<any>("componentInstance", vEntry.id);
               const rawVal = compInst?.modification?.value?.text?.trim();
@@ -3317,37 +3326,44 @@ export class ModelicaFlattener {
           }
         }
         if (refName && refName.includes(".")) {
-          const parts = refName.split(".");
-          if (parts.length >= 3) {
-            const pkgName = parts[0]!;
-            const bIdx1 = parts[1]!.indexOf("[");
-            const compName = bIdx1 >= 0 ? parts[1]!.slice(0, bIdx1) : parts[1]!;
-            const pkgSym = this.db.byName(pkgName).find((e) => e.kind === "Package" || e.kind === "Class");
-            const compSym = pkgSym
-              ? this.db.childrenOf(pkgSym.id).find((c) => c.kind === "Component" && c.name === compName)
-              : null;
-            if (compSym) {
-              const compInst = this.db.query<any>("componentInstance", compSym.id);
-              const bIdx2 = parts[2]!.indexOf("[");
-              const firstField = bIdx2 >= 0 ? parts[2]!.slice(0, bIdx2) : parts[2]!;
-              const arg = compInst?.modification?.args?.find((a: any) => a.name === firstField);
-              let valText: string | undefined = arg?.value?.text?.trim();
-              for (let pIdx = 3; pIdx < parts.length && valText; pIdx++) {
-                const bIdxSub = parts[pIdx]!.indexOf("[");
-                const subField = bIdxSub >= 0 ? parts[pIdx]!.slice(0, bIdxSub) : parts[pIdx]!;
-                const m = new RegExp(`\\b${subField}\\s*=\\s*([^,)]+)`).exec(valText);
-                valText = m ? m[1]!.trim() : undefined;
-              }
-              if (valText !== undefined) {
-                const num = Number(valText);
-                if (!Number.isNaN(num)) {
-                  const vType = dae.getVarType(vIdx);
-                  const newExprId =
-                    vType === VarType.Integer ? dae.addIntLiteral(Math.round(num)) : dae.addRealLiteral(num);
-                  dae.setVarExpression(vIdx, newExprId);
+          let num = resolvedRecordValCache.get(refName);
+          if (num === undefined) {
+            num = null;
+            const parts = refName.split(".");
+            if (parts.length >= 3) {
+              const pkgName = parts[0]!;
+              const bIdx1 = parts[1]!.indexOf("[");
+              const compName = bIdx1 >= 0 ? parts[1]!.slice(0, bIdx1) : parts[1]!;
+              const pkgSym = this.db.byName(pkgName).find((e) => e.kind === "Package" || e.kind === "Class");
+              const compSym = pkgSym
+                ? this.db.childrenOf(pkgSym.id).find((c) => c.kind === "Component" && c.name === compName)
+                : null;
+              if (compSym) {
+                const compInst = this.db.query<any>("componentInstance", compSym.id);
+                const bIdx2 = parts[2]!.indexOf("[");
+                const firstField = bIdx2 >= 0 ? parts[2]!.slice(0, bIdx2) : parts[2]!;
+                const arg = compInst?.modification?.args?.find((a: any) => a.name === firstField);
+                let valText: string | undefined = arg?.value?.text?.trim();
+                for (let pIdx = 3; pIdx < parts.length && valText; pIdx++) {
+                  const bIdxSub = parts[pIdx]!.indexOf("[");
+                  const subField = bIdxSub >= 0 ? parts[pIdx]!.slice(0, bIdxSub) : parts[pIdx]!;
+                  const m = new RegExp(`\\b${subField}\\s*=\\s*([^,)]+)`).exec(valText);
+                  valText = m ? m[1]!.trim() : undefined;
+                }
+                if (valText !== undefined) {
+                  const parsed = Number(valText);
+                  if (!Number.isNaN(parsed)) {
+                    num = parsed;
+                  }
                 }
               }
             }
+            resolvedRecordValCache.set(refName, num);
+          }
+          if (num !== null) {
+            const vType = dae.getVarType(vIdx);
+            const newExprId = vType === VarType.Integer ? dae.addIntLiteral(Math.round(num)) : dae.addRealLiteral(num);
+            dae.setVarExpression(vIdx, newExprId);
           }
         }
       }

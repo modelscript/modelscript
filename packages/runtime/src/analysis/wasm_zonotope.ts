@@ -15,6 +15,7 @@
  *   - Convex set enclosure and branching splits
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { Interval } from "./wasm_interval.js";
 
 export class Zonotope {
@@ -76,8 +77,42 @@ export class Zonotope {
    */
   public toIntervals(): Interval[] {
     const n = this.dim;
-    const result: Interval[] = [];
+    const p = this.generators.length;
 
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.zonotope_bounds === "function" && typeof wasm.__new === "function" && n > 0 && p > 0) {
+      try {
+        const cPtr = wasm.__new(n * 8, 0);
+        const gPtr = wasm.__new(n * p * 8, 0);
+        const outLoPtr = wasm.__new(n * 8, 0);
+        const outHiPtr = wasm.__new(n * 8, 0);
+
+        const mem = wasm.memory as WebAssembly.Memory;
+        const cView = new Float64Array(mem.buffer, cPtr, n);
+        for (let i = 0; i < n; i++) cView[i] = this.center[i] ?? 0;
+
+        const gView = new Float64Array(mem.buffer, gPtr, n * p);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < p; j++) {
+            gView[i * p + j] = this.generators[j]?.[i] ?? 0;
+          }
+        }
+
+        wasm.zonotope_bounds(n, p, cPtr, gPtr, outLoPtr, outHiPtr);
+
+        const loView = new Float64Array(mem.buffer, outLoPtr, n);
+        const hiView = new Float64Array(mem.buffer, outHiPtr, n);
+        const result: Interval[] = [];
+        for (let i = 0; i < n; i++) {
+          result.push(new Interval(loView[i]!, hiView[i]!));
+        }
+        return result;
+      } catch {
+        // Fallback to TS
+      }
+    }
+
+    const result: Interval[] = [];
     for (let i = 0; i < n; i++) {
       let r = 0;
       for (const g of this.generators) {
@@ -97,8 +132,63 @@ export class Zonotope {
   public linearMap(A: number[][]): Zonotope {
     const m = A.length;
     const n = this.dim;
+    const p = this.generators.length;
 
-    // New center: c' = A * c
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.zonotope_linear_transform === "function" &&
+      typeof wasm.__new === "function" &&
+      m === n &&
+      n > 0 &&
+      p > 0
+    ) {
+      try {
+        const matPtr = wasm.__new(n * n * 8, 0);
+        const cPtr = wasm.__new(n * 8, 0);
+        const gPtr = wasm.__new(n * p * 8, 0);
+        const outCPtr = wasm.__new(n * 8, 0);
+        const outGPtr = wasm.__new(n * p * 8, 0);
+
+        const mem = wasm.memory as WebAssembly.Memory;
+        const matView = new Float64Array(mem.buffer, matPtr, n * n);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            matView[i * n + j] = A[i]?.[j] ?? 0;
+          }
+        }
+
+        const cView = new Float64Array(mem.buffer, cPtr, n);
+        for (let i = 0; i < n; i++) cView[i] = this.center[i] ?? 0;
+
+        const gView = new Float64Array(mem.buffer, gPtr, n * p);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < p; j++) {
+            gView[i * p + j] = this.generators[j]?.[i] ?? 0;
+          }
+        }
+
+        wasm.zonotope_linear_transform(n, p, matPtr, cPtr, gPtr, outCPtr, outGPtr);
+
+        const outCView = new Float64Array(mem.buffer, outCPtr, n);
+        const newCenter = Array.from(outCView);
+
+        const outGView = new Float64Array(mem.buffer, outGPtr, n * p);
+        const newGenerators: number[][] = [];
+        for (let j = 0; j < p; j++) {
+          const col = new Array<number>(n);
+          for (let i = 0; i < n; i++) {
+            col[i] = outGView[i * p + j]!;
+          }
+          newGenerators.push(col);
+        }
+
+        return new Zonotope(newCenter, newGenerators);
+      } catch {
+        // Fallback to TS
+      }
+    }
+
     const newCenter = new Array<number>(m).fill(0);
     for (let i = 0; i < m; i++) {
       let sum = 0;
@@ -109,7 +199,6 @@ export class Zonotope {
       newCenter[i] = sum;
     }
 
-    // New generators: g'_k = A * g_k
     const newGenerators: number[][] = [];
     for (const g of this.generators) {
       const newG = new Array<number>(m).fill(0);
@@ -165,6 +254,51 @@ export class Zonotope {
     const maxG = Math.floor(maxOrder * n);
     if (this.generators.length <= maxG || maxG <= n) {
       return this.clone();
+    }
+    const p = this.generators.length;
+
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.zonotope_reduce_girard === "function" &&
+      typeof wasm.__new === "function" &&
+      n > 0 &&
+      p > 0
+    ) {
+      try {
+        const gensPtr = wasm.__new(n * p * 8, 0);
+        const outGPtr = wasm.__new(n * maxG * 8, 0);
+        const scratchPtr = wasm.__new(p * 16, 0);
+
+        const mem = wasm.memory as WebAssembly.Memory;
+        const gView = new Float64Array(mem.buffer, gensPtr, n * p);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < p; j++) {
+            gView[i * p + j] = this.generators[j]?.[i] ?? 0;
+          }
+        }
+
+        const finalCount = wasm.zonotope_reduce_girard(n, p, maxG, gensPtr, outGPtr, scratchPtr);
+
+        const outGView = new Float64Array(mem.buffer, outGPtr, n * finalCount);
+        const newGenerators: number[][] = [];
+        for (let j = 0; j < finalCount; j++) {
+          const col = new Array<number>(n);
+          let nonZero = false;
+          for (let i = 0; i < n; i++) {
+            const v = outGView[i * finalCount + j]!;
+            col[i] = v;
+            if (Math.abs(v) > 1e-14) nonZero = true;
+          }
+          if (nonZero) {
+            newGenerators.push(col);
+          }
+        }
+
+        return new Zonotope([...this.center], newGenerators);
+      } catch {
+        // Fallback to TS
+      }
     }
 
     // Calculate L1 norm of each generator: ||g_j||_1

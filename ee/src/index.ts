@@ -50,6 +50,15 @@ import {
   type GeoLocationLookupAdapter,
 } from "./compliance/export-control.js";
 import {
+  auditTelecomSupplyChain,
+  evaluateFccPart4Outage,
+  FCC_COVERED_LIST_VENDORS,
+  type FccPart4NorsEvaluation,
+  type ScrmAuditResult,
+  type TelecomEquipmentItem,
+  type TelecomOutageEvent,
+} from "./compliance/telecom-compliance.js";
+import {
   checkEnterpriseDesktopAirgapCompliance,
   createEnterpriseDesktopRouter,
   verifyBlackboxFmuEntitlement,
@@ -136,6 +145,7 @@ export function mountEnterpriseEdition(ctx: EnterprisePluginHostContext): void {
 
 export {
   ALL_ENTERPRISE_FEATURES,
+  auditTelecomSupplyChain,
   checkEnterpriseDesktopAirgapCompliance,
   computeAttestationDigest,
   createAirgapSecurityHeadersMiddleware,
@@ -149,8 +159,10 @@ export {
   defaultOidcService,
   ENTERPRISE_HIL_TARGETS,
   ENTERPRISE_PLM_CONNECTORS,
+  evaluateFccPart4Outage,
   extractRequestCountry,
   extractRequestRegion,
+  FCC_COVERED_LIST_VENDORS,
   generateLicenseKeyPair,
   isExportRestricted,
   isOfacSanctioned,
@@ -198,11 +210,15 @@ export {
   type EnterpriseTier,
   type EnterpriseTwinsRouters,
   type ExportControlAuditLogger,
+  type FccPart4NorsEvaluation,
   type GeoLocationLookupAdapter,
   type LicenseVerificationResult,
   type OidcClaims,
   type OidcDatabaseAdapter,
   type OidcUserRecord,
   type RegulatoryStandard,
+  type ScrmAuditResult,
   type SignedComplianceAttestation,
+  type TelecomEquipmentItem,
+  type TelecomOutageEvent,
 };

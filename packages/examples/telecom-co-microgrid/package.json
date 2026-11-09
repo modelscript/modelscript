@@ -1,0 +1,18 @@
+{
+  "name": "@modelscript/example-telecom-microgrid",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Telecom Central Office / Data Center -48V DC Microgrid with ATS, standby diesel generator, N+1 rectifiers, and dual battery backup strings.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "Telecom_Microgrid.mo",
+  "scripts": {
+    "lint": "eslint tests --no-warn-ignored",
+    "sim": "npx tsx simulate_microgrid.ts",
+    "test": "node ../../../scripts/test-runner.js"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "example"
+  }
+}

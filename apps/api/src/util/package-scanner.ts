@@ -42,13 +42,36 @@ export const PROHIBITED_MODELICA_CALLS = [
   },
 ];
 
+export function sanitizeModelicaForScanning(code: string): string {
+  // Strip block comments /* ... */
+  let sanitized = code.replace(/\/\*[\s\S]*?\*\//g, " ");
+  // Strip single-line comments // ...
+  sanitized = sanitized.replace(/\/\/[^\r\n]*/g, " ");
+  return sanitized;
+}
+
 export function scanModelicaSource(code: string): string[] {
   const violations: string[] = [];
+  const cleanCode = sanitizeModelicaForScanning(code);
+
   for (const { pattern, name } of PROHIBITED_MODELICA_CALLS) {
-    if (pattern.test(code)) {
+    if (pattern.test(code) || pattern.test(cleanCode)) {
       violations.push(name);
     }
   }
+
+  // Path traversal detection in Include / Library annotations
+  const annotationMatches = cleanCode.match(/\bannotation\s*\([\s\S]*?\)/gi);
+  if (annotationMatches) {
+    for (const ann of annotationMatches) {
+      if (/\b(Include|IncludeDirectory|Library|LibraryDirectory)\s*=\s*["'][^"']*\.\./i.test(ann)) {
+        if (!violations.includes("Untrusted external C Include/Library annotation")) {
+          violations.push("Untrusted external C Include/Library annotation");
+        }
+      }
+    }
+  }
+
   return violations;
 }
 
@@ -169,10 +192,9 @@ export async function scanPackageArchive(buffer: Buffer): Promise<PackageScanRes
             readStream.on("end", () => {
               if (!aborted) {
                 const code = Buffer.concat(chunks).toString("utf-8");
-                for (const { pattern, name } of PROHIBITED_MODELICA_CALLS) {
-                  if (pattern.test(code)) {
-                    violations.push(`Malicious/prohibited construct detected in "${entry.fileName}": ${name}`);
-                  }
+                const foundViolations = scanModelicaSource(code);
+                for (const v of foundViolations) {
+                  violations.push(`Malicious/prohibited construct detected in "${entry.fileName}": ${v}`);
                 }
               }
               zipfile.readEntry();

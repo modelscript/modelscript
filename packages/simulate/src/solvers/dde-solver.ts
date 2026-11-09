@@ -20,15 +20,23 @@
  *   Section II.17.
  */
 
-import type { CommonSolverResult, DDEOptions, DDEProblem, SolverStats } from "../core/problem-types.js";
-import { TSIT5_A, TSIT5_B5, TSIT5_C, TSIT5_E, tsit5Interpolate } from "./tsit5.js";
+import type {
+  CommonSolverResult,
+  DDEHistoryFunction,
+  DDEOptions,
+  DDEProblem,
+  SolverStats,
+} from "../core/problem-types.js";
+import { TSIT5_A, TSIT5_B5, TSIT5_C, TSIT5_E, tsit5Interpolate, tsit5InterpolateDerivative } from "./tsit5.js";
 
 export interface DdeResult extends CommonSolverResult {
   stats: SolverStats;
+  /** Discontinuity breaking points encountered or scheduled during integration. */
+  breakingPoints?: number[];
 }
 
 /**
- * Stores integration step interpolants for historical delay evaluation.
+ * Stores integration step interpolants for historical delay state and derivative evaluation.
  */
 class StepHistoryStore {
   private tStarts: number[] = [];
@@ -38,7 +46,21 @@ class StepHistoryStore {
   private kStages: number[][][] = [];
   private stepSizes: number[] = [];
 
-  constructor(private historyFn: (t: number) => number[]) {}
+  // Optional active in-progress step predictor for overlapping small delays (tau < h)
+  private activeT0 = 0;
+  private activeY0: number[] | null = null;
+  private activeF0: number[] | null = null;
+
+  constructor(
+    private historyFn: (t: number) => number[],
+    private historyDerivFn: (t: number) => number[],
+  ) {}
+
+  setActiveStepOrigin(t0: number, y0: number[], f0: number[]): void {
+    this.activeT0 = t0;
+    this.activeY0 = y0;
+    this.activeF0 = f0;
+  }
 
   /** Record an accepted step */
   pushStep(t0: number, t1: number, y0: number[], y1: number[], k: number[][]): void {
@@ -51,19 +73,30 @@ class StepHistoryStore {
   }
 
   /**
-   * Evaluate state at any past time tau <= current_time using cubic Hermite interpolation.
+   * Evaluate state y(t) at any past time t <= current_time using cubic Hermite interpolation.
    */
   evaluate(t: number): number[] {
-    if (this.tStarts.length === 0 || t <= (this.tStarts[0] ?? 0)) {
+    if (this.tStarts.length === 0) {
+      if (this.activeY0 && this.activeF0 && t > this.activeT0) {
+        const dt = t - this.activeT0;
+        return this.activeY0.map((yi, i) => yi + dt * (this.activeF0![i] ?? 0));
+      }
+      return this.historyFn(t);
+    }
+
+    if (t <= (this.tStarts[0] ?? 0)) {
       return this.historyFn(t);
     }
 
     const nSteps = this.tStarts.length;
-    // Binary search for step interval containing t
     let low = 0;
     let high = nSteps - 1;
 
-    if (t >= (this.tEnds[high] ?? 0)) {
+    if (t > (this.tEnds[high] ?? 0)) {
+      if (this.activeY0 && this.activeF0 && t > this.activeT0) {
+        const dt = t - this.activeT0;
+        return this.activeY0.map((yi, i) => yi + dt * (this.activeF0![i] ?? 0));
+      }
       return this.yEnds[high]!;
     }
 
@@ -83,8 +116,55 @@ class StepHistoryStore {
       }
     }
 
-    // Fallback: nearest end
     return this.yEnds[nSteps - 1]!;
+  }
+
+  /**
+   * Evaluate derivative dy/dt(t) at any past time t <= current_time using the analytic
+   * derivative of the cubic Hermite step interpolant (for Neutral DDEs).
+   */
+  evaluateDerivative(t: number): number[] {
+    if (this.tStarts.length === 0) {
+      if (this.activeF0 && t > this.activeT0) {
+        return [...this.activeF0];
+      }
+      return this.historyDerivFn(t);
+    }
+
+    if (t <= (this.tStarts[0] ?? 0)) {
+      return this.historyDerivFn(t);
+    }
+
+    const nSteps = this.tStarts.length;
+    let low = 0;
+    let high = nSteps - 1;
+
+    if (t > (this.tEnds[high] ?? 0)) {
+      if (this.activeF0 && t > this.activeT0) {
+        return [...this.activeF0];
+      }
+      const lastK = this.kStages[high]!;
+      return [...(lastK[6] ?? lastK[0]!)];
+    }
+
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const t0 = this.tStarts[mid]!;
+      const t1 = this.tEnds[mid]!;
+
+      if (t >= t0 && t <= t1) {
+        const h = this.stepSizes[mid]!;
+        const theta = h > 0 ? (t - t0) / h : 0;
+        return tsit5InterpolateDerivative(this.yStarts[mid]!, this.yEnds[mid]!, this.kStages[mid]!, h, theta);
+      } else if (t < t0) {
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+
+    const lastK = this.kStages[nSteps - 1]!;
+    return [...(lastK[6] ?? lastK[0]!)];
   }
 }
 
@@ -109,7 +189,8 @@ function computeBreakingPoints(t0: number, tEnd: number, constantDelays?: number
 }
 
 /**
- * Solve a Delay Differential Equation (DDE) using the Method of Steps.
+ * Solve a Delay Differential Equation (DDE) or Neutral DDE (NDDE) with constant or
+ * state-dependent delays using the Method of Steps.
  */
 export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResult {
   const [t0, tEnd] = problem.tSpan;
@@ -119,10 +200,30 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
   const maxStep = options.maxStep ?? Math.abs(tEnd - t0);
   const minStep = 1e-15;
 
-  const historyStore = new StepHistoryStore((t) => problem.h(t, problem.p));
+  const evalInitialHistory = (pastT: number): number[] => problem.h(pastT, problem.p);
+  const evalInitialDerivHistory = (pastT: number): number[] => {
+    if (problem.hPrime) {
+      return problem.hPrime(pastT, problem.p);
+    }
+    const eps = 1e-7;
+    const tPlus = Math.min(t0, pastT + eps);
+    const tMinus = pastT - eps;
+    const dt = tPlus - tMinus;
+    if (dt <= 0) return new Array<number>(n).fill(0);
+    const hPlus = problem.h(tPlus, problem.p);
+    const hMinus = problem.h(tMinus, problem.p);
+    return hPlus.map((v, idx) => (v - (hMinus[idx] ?? 0)) / dt);
+  };
 
-  // Identify breaking points
+  const historyStore = new StepHistoryStore(evalInitialHistory, evalInitialDerivHistory);
+
+  const historyCallable = ((pastT: number) => historyStore.evaluate(pastT)) as DDEHistoryFunction;
+  const derivHistoryCallable = (pastT: number) => historyStore.evaluateDerivative(pastT);
+  historyCallable.derivative = derivHistoryCallable;
+
+  // Identify constant-delay breaking points
   const breakingPoints = computeBreakingPoints(t0, tEnd, problem.constantDelays);
+  const trackedDiscontinuities: number[] = [t0, ...breakingPoints];
   let breakingIdx = 0;
 
   const stats: SolverStats = {
@@ -140,14 +241,16 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
   let h = options.initialStep ?? Math.min(Math.max((tEnd - t0) / 100, 1e-5), maxStep);
 
   const k: number[][] = new Array(7);
-  k[0] = problem.f(t, y, (pastT) => historyStore.evaluate(pastT), problem.p);
+  k[0] = problem.f(t, y, historyCallable, problem.p, derivHistoryCallable);
   stats.fEvals++;
 
   const yStage = new Array<number>(n);
   const yNew = new Array<number>(n);
 
   while (t < tEnd - 1e-14 && stats.acceptedSteps + stats.rejectedSteps < 100000) {
-    // Check if next step crosses a breaking point or tEnd
+    historyStore.setActiveStepOrigin(t, y, k[0]!);
+
+    // Check if next step crosses a scheduled breaking point or tEnd
     let targetT = tEnd;
     if (breakingIdx < breakingPoints.length) {
       targetT = Math.min(targetT, breakingPoints[breakingIdx]!);
@@ -158,7 +261,6 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
     }
 
     if (Math.abs(h) < minStep) {
-      // Step on breaking point
       if (breakingIdx < breakingPoints.length && Math.abs(t - breakingPoints[breakingIdx]!) < 1e-10) {
         breakingIdx++;
         h = options.initialStep ?? Math.min((tEnd - t0) / 100, maxStep);
@@ -181,7 +283,7 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
       }
 
       const tStage = t + c_s * h;
-      k[s] = problem.f(tStage, yStage, (pastT) => historyStore.evaluate(pastT), problem.p);
+      k[s] = problem.f(tStage, yStage, historyCallable, problem.p, derivHistoryCallable);
       stats.fEvals++;
     }
 
@@ -195,7 +297,7 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
     }
 
     // Stage 6 (FSAL)
-    k[6] = problem.f(t + h, yNew, (pastT) => historyStore.evaluate(pastT), problem.p);
+    k[6] = problem.f(t + h, yNew, historyCallable, problem.p, derivHistoryCallable);
     stats.fEvals++;
 
     // Error estimation
@@ -211,6 +313,58 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
     }
 
     if (maxErrorRatio <= 1.0) {
+      // Check for state-dependent delay breaking-point crossings on [t, t + h]
+      if (problem.stateDependentDelays && problem.stateDependentDelays.length > 0 && h > 1e-10) {
+        let earliestCrossTheta = 2.0;
+        for (const delayFn of problem.stateDependentDelays) {
+          const lag0 = t - Math.max(0, delayFn(t, y, problem.p));
+          const lag1 = t + h - Math.max(0, delayFn(t + h, yNew, problem.p));
+          for (const xi of trackedDiscontinuities) {
+            if (xi > t + 1e-12) continue;
+            const g0 = lag0 - xi;
+            const g1 = lag1 - xi;
+            // Detect strict sign change across a discontinuity point xi
+            if ((g0 < -1e-11 && g1 > 1e-11) || (g0 > 1e-11 && g1 < -1e-11)) {
+              // Bisect theta in [0, 1] using cubic Hermite interpolant
+              let lo = 0.0;
+              let hi = 1.0;
+              let gLo = g0;
+              for (let iter = 0; iter < 30; iter++) {
+                const mid = 0.5 * (lo + hi);
+                const tMid = t + mid * h;
+                const yMid = tsit5Interpolate(y, yNew, k, h, mid);
+                const gMid = tMid - Math.max(0, delayFn(tMid, yMid, problem.p)) - xi;
+                if (Math.abs(gMid) < 1e-13) {
+                  lo = mid;
+                  hi = mid;
+                  break;
+                }
+                if ((gLo < 0 && gMid < 0) || (gLo > 0 && gMid > 0)) {
+                  lo = mid;
+                  gLo = gMid;
+                } else {
+                  hi = mid;
+                }
+              }
+              const thetaStar = 0.5 * (lo + hi);
+              if (thetaStar > 1e-9 && thetaStar < earliestCrossTheta) {
+                earliestCrossTheta = thetaStar;
+              }
+            }
+          }
+        }
+
+        if (earliestCrossTheta < 1.0 - 1e-7) {
+          // Record the discovered state-dependent breaking point and clamp h to land on it
+          const tCross = t + earliestCrossTheta * h;
+          trackedDiscontinuities.push(tCross);
+          breakingPoints.push(tCross);
+          breakingPoints.sort((a, b) => a - b);
+          h = earliestCrossTheta * h;
+          continue;
+        }
+      }
+
       // Step accepted
       stats.acceptedSteps++;
       historyStore.pushStep(t, t + h, y, yNew, k);
@@ -220,10 +374,13 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
       times.push(t);
       states.push([...y]);
 
-      k[0] = k[6]!;
-
-      if (breakingIdx < breakingPoints.length && Math.abs(t - breakingPoints[breakingIdx]!) < 1e-10) {
+      // Re-evaluate k[0] right after crossing a breaking point (derivative jump!)
+      if (breakingIdx < breakingPoints.length && Math.abs(t - breakingPoints[breakingIdx]!) < 1e-9) {
         breakingIdx++;
+        k[0] = problem.f(t, y, historyCallable, problem.p, derivHistoryCallable);
+        stats.fEvals++;
+      } else {
+        k[0] = k[6]!;
       }
 
       const factor = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-4), -0.2)));
@@ -240,5 +397,6 @@ export function ddeSteps(problem: DDEProblem, options: DDEOptions = {}): DdeResu
     times,
     states,
     stats,
+    breakingPoints: trackedDiscontinuities,
   };
 }

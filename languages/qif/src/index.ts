@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./ingest/factory-test-parser.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

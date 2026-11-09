@@ -117,6 +117,16 @@ export interface SwmmSubcatchment {
   range: SwmmRange;
 }
 
+export interface SwmmControlRule {
+  id: string;
+  linkId: string;
+  linkType: "PUMP" | "WEIR" | "ORIFICE";
+  actionSetting: number; // e.g. pump setting 0.0 or 1.0, or weir opening ratio 0.0 to 1.0
+  nodeId: string;
+  operator: ">" | ">=" | "<" | "<=" | "=";
+  thresholdDepth: number;
+}
+
 export interface SwmmDeck {
   title?: string | undefined;
   flowUnits: SwmmFlowUnits;
@@ -131,6 +141,7 @@ export interface SwmmDeck {
   weirs: Map<string, SwmmWeir>;
   crossSections: Map<string, SwmmCrossSection>;
   subcatchments: Map<string, SwmmSubcatchment>;
+  controls?: SwmmControlRule[] | undefined;
   duplicateNodes?: { id: string; range: SwmmRange }[] | undefined;
   duplicateLinks?: { id: string; range: SwmmRange }[] | undefined;
   range?: SwmmRange | undefined;

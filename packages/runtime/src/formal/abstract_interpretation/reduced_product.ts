@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { OCTAGON_INF, OctagonDBM } from "../../analysis/octagon_dbm.js";
+import { Float64OctagonDBM, OCTAGON_INF, OCTAGON_INF_F64, OctagonDBM } from "../../analysis/octagon_dbm.js";
 import { ArraySegmentState } from "./array_segment_domain.js";
 import type { AbstractDomain } from "./domain.js";
 import { NumericalInterval as Interval, IntervalDomain, IntervalEnvironment } from "./interval_domain.js";
@@ -16,7 +16,7 @@ import { TvpiDomain, TvpiState } from "./tvpi_domain.js";
 export class ReducedProductState {
   constructor(
     public readonly intervals: IntervalEnvironment,
-    public readonly octagon: OctagonDBM,
+    public readonly octagon: OctagonDBM | Float64OctagonDBM,
     public readonly varIndices: Map<string, number>,
     public readonly arraySegments: Map<string, ArraySegmentState> = new Map(),
     public readonly isBottomState: boolean = false,
@@ -27,6 +27,17 @@ export class ReducedProductState {
     return new ReducedProductState(
       IntervalEnvironment.top(),
       new OctagonDBM(maxVars),
+      new Map(),
+      new Map(),
+      false,
+      TvpiState.top(),
+    );
+  }
+
+  static topContinuous(maxVars: number = 32): ReducedProductState {
+    return new ReducedProductState(
+      IntervalEnvironment.top(),
+      new Float64OctagonDBM(maxVars),
       new Map(),
       new Map(),
       false,
@@ -89,12 +100,22 @@ export class ReducedProductState {
     }
 
     // 1. Intervals -> Octagon
+    const isF64 = this.octagon instanceof Float64OctagonDBM;
+    const infBound = isF64 ? OCTAGON_INF_F64 / 2 : OCTAGON_INF / 2;
+
     for (const [name, ival] of this.intervals.entries()) {
       if (ival.isBottom()) return ReducedProductState.bottom(this.octagon.numVars);
       const idx = this.getVarIndex(name);
       if (idx < this.octagon.numVars) {
-        const low = ival.low !== -Infinity && !isNaN(ival.low) ? Math.floor(ival.low) : -OCTAGON_INF / 2;
-        const high = ival.high !== Infinity && !isNaN(ival.high) ? Math.ceil(ival.high) : OCTAGON_INF / 2;
+        let low: number;
+        let high: number;
+        if (isF64) {
+          low = ival.low !== -Infinity && !isNaN(ival.low) ? ival.low : -infBound;
+          high = ival.high !== Infinity && !isNaN(ival.high) ? ival.high : infBound;
+        } else {
+          low = ival.low !== -Infinity && !isNaN(ival.low) ? Math.floor(ival.low) : -infBound;
+          high = ival.high !== Infinity && !isNaN(ival.high) ? Math.ceil(ival.high) : infBound;
+        }
         this.octagon.setInterval(idx, low, high);
       }
     }
@@ -113,8 +134,8 @@ export class ReducedProductState {
       const dbmHigh = this.octagon.getUpperBound(idx);
 
       const dbmIval = new Interval(
-        dbmLow === -OCTAGON_INF ? -Infinity : dbmLow,
-        dbmHigh === OCTAGON_INF ? Infinity : dbmHigh,
+        dbmLow <= -infBound || dbmLow === -Infinity ? -Infinity : dbmLow,
+        dbmHigh >= infBound || dbmHigh === Infinity ? Infinity : dbmHigh,
       );
 
       const curr = tightenedEnv.get(name);
@@ -219,7 +240,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (b.isBottom()) return false;
     return (
       this.intervalDomain.isLeq(a.intervals, b.intervals) &&
-      a.octagon.isLeq(b.octagon) &&
+      (a.octagon as any).isLeq(b.octagon) &&
       this.tvpiDomain.isLeq(a.tvpi, b.tvpi)
     );
   }
@@ -229,7 +250,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (b.isBottom()) return a.clone();
 
     const joinedIntervals = this.intervalDomain.join(a.intervals, b.intervals);
-    const joinedOctagon = a.octagon.join(b.octagon);
+    const joinedOctagon = (a.octagon as any).join(b.octagon);
     const joinedTvpi = this.tvpiDomain.join(a.tvpi, b.tvpi);
 
     // Merge array segment states
@@ -256,7 +277,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     const meetIntervals = this.intervalDomain.meet(a.intervals, b.intervals);
     if (this.intervalDomain.isBottom(meetIntervals)) return this.bottom();
 
-    const meetOctagon = a.octagon.meet(b.octagon);
+    const meetOctagon = (a.octagon as any).meet(b.octagon);
     if (meetOctagon.hasNegativeCycle()) return this.bottom();
 
     const meetTvpi = this.tvpiDomain.meet(a.tvpi, b.tvpi);
@@ -286,7 +307,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (b.isBottom()) return a.clone();
 
     const widenedIntervals = this.intervalDomain.widen(a.intervals, b.intervals, thresholds);
-    const widenedOctagon = a.octagon.widenWithThresholds(b.octagon, thresholds);
+    const widenedOctagon = (a.octagon as any).widenWithThresholds(b.octagon, thresholds);
     const widenedTvpi = this.tvpiDomain.widen(a.tvpi, b.tvpi, thresholds);
 
     const widenedArrays = new Map<string, ArraySegmentState>();
@@ -309,7 +330,7 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (a.isBottom() || b.isBottom()) return this.bottom();
 
     const narrowedIntervals = this.intervalDomain.narrow(a.intervals, b.intervals);
-    const narrowedOctagon = a.octagon.narrow(b.octagon);
+    const narrowedOctagon = (a.octagon as any).narrow(b.octagon);
     const narrowedTvpi = this.tvpiDomain.narrow(a.tvpi, b.tvpi);
 
     return new ReducedProductState(

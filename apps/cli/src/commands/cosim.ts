@@ -14,6 +14,7 @@ import {
   psoSolve,
   type SingleObjectiveResult,
 } from "@modelscript/simulate/optimizer";
+import fs from "node:fs";
 import type { ArgumentsCamelCase, Argv, CommandModule } from "yargs";
 
 interface CosimArgs {
@@ -580,11 +581,126 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
   },
 };
 
+interface TsEmtArgs extends CosimArgs {
+  raw: string;
+  pscx: string;
+  boundary: string;
+  duration: number;
+  "dt-ts": number;
+  "dt-emt": number;
+  out?: string | undefined;
+}
+
+/** Multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD. */
+const tsEmt: CommandModule<CosimArgs, TsEmtArgs> = {
+  command: "ts-emt <raw> <pscx>",
+  describe: "Run multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD",
+  builder: (yargs) => {
+    return yargs
+      .positional("raw", {
+        description: "Path to PSS/E base case (.raw)",
+        type: "string",
+        demandOption: true,
+      })
+      .positional("pscx", {
+        description: "Path to PSCAD project (.pscx)",
+        type: "string",
+        demandOption: true,
+      })
+      .option("boundary", {
+        alias: "b",
+        description: "Boundary bus mapping, e.g. '3:Bus3' (psseBusNumber:pscadBusId)",
+        type: "string",
+        demandOption: true,
+      })
+      .option("duration", {
+        alias: ["d", "tstop"],
+        description: "Simulation duration in seconds",
+        type: "number",
+        default: 0.5,
+      })
+      .option("dt-ts", {
+        description: "PSS/E macro time step in seconds",
+        type: "number",
+        default: 0.005,
+      })
+      .option("dt-emt", {
+        description: "PSCAD EMT micro time step in seconds",
+        type: "number",
+        default: 50e-6,
+      })
+      .option("out", {
+        alias: "o",
+        description: "Output JSON or CSV report file path",
+        type: "string",
+      });
+  },
+  handler: async (args) => {
+    const rawContent = fs.readFileSync(args.raw, "utf-8");
+    const pscxContent = fs.readFileSync(args.pscx, "utf-8");
+
+    const [bTsStr, bEmtStr] = (args.boundary || "").split(":");
+    const psseBusNumber = parseInt(bTsStr || "1", 10);
+    const pscadBusId = (bEmtStr || "Bus1").trim();
+
+    const { parseRaw, simulatePsseTransient } = await import("@modelscript/psse");
+    const { parsePscx, extractEmtNetlist, EmtSolver } = await import("@modelscript/pscad");
+    const { runTsEmtCoSimulation } = await import("@modelscript/exchange");
+
+    const pCase = parseRaw(rawContent);
+    const pProj = parsePscx(pscxContent);
+    const netlist = extractEmtNetlist(pProj);
+
+    console.log(`Starting TS-EMT Hybrid Co-Simulation...`);
+    console.log(`  PSS/E Model: ${args.raw} (Bus ${psseBusNumber})`);
+    console.log(`  PSCAD Model: ${args.pscx} (Node '${pscadBusId}')`);
+    console.log(
+      `  Macro TS Step: ${(args["dt-ts"] * 1e3).toFixed(2)} ms | Micro EMT Step: ${(args["dt-emt"] * 1e6).toFixed(1)} µs`,
+    );
+    console.log(`  Duration: ${args.duration} s`);
+
+    const result = await runTsEmtCoSimulation(
+      (tsOpts: any) => simulatePsseTransient(pCase, tsOpts),
+      (emtOpts: any) => {
+        const solver = new EmtSolver(netlist, emtOpts);
+        return solver.solve();
+      },
+      {
+        durationSec: args.duration,
+        dtTsSec: args["dt-ts"],
+        dtEmtSec: args["dt-emt"],
+        boundaryPorts: [
+          {
+            psseBusNumber,
+            pscadBusId,
+          },
+        ],
+      },
+    );
+
+    console.log(`\n✔ TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
+    console.log(`  Total TS Macro-Steps: ${result.totalMacroSteps}`);
+    console.log(`  Total EMT Sub-Steps: ${result.totalEmtSubSteps}`);
+    console.log(`  Multi-Rate Step Ratio: 1:${result.ratioM}`);
+    if (result.macroRecords.length > 0) {
+      const last = result.macroRecords[result.macroRecords.length - 1]!;
+      console.log(`  Final Boundary TS Voltage: ${last.vTsMagPu.toFixed(4)} pu ∠ ${last.vTsAngleDeg.toFixed(2)}°`);
+      console.log(`  Final Boundary EMT Voltage Peak: ${last.vEmtPeakKv.toFixed(2)} kV`);
+      console.log(`  Final Injected RMS Current: ${last.iEmtInjAmpRms.toFixed(1)} A`);
+    }
+
+    if (args.out) {
+      fs.writeFileSync(args.out, JSON.stringify(result.macroRecords, null, 2), "utf-8");
+      console.log(`  Exported report to: ${args.out}`);
+    }
+  },
+};
+
 // ── Main command ──
 
 export const Cosim: CommandModule<{}, CosimArgs> = {
   command: "cosim",
-  describe: "Co-simulation management (sessions, participants, FMUs, replay, optimize)",
+  describe: "Co-simulation management (sessions, participants, FMUs, replay, optimize, ts-emt)",
 
   builder: ((yargs: Argv) => {
     return yargs
@@ -601,12 +717,142 @@ export const Cosim: CommandModule<{}, CosimArgs> = {
       .command(replay)
       .command(historianSessions)
       .command(optimizeCosim)
+      .command(tsEmt)
+      .command(multiTsEmt)
       .demandCommand(
         1,
-        "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history, optimize)",
+        "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history, optimize, ts-emt, multi-ts-emt)",
       );
   }) as CommandModule<{}, CosimArgs>["builder"],
   handler: () => {
     // Parent command — handled by subcommands
+  },
+};
+
+interface MultiTsEmtArgs extends CosimArgs {
+  raw: string;
+  plant: string[];
+  duration: number;
+  "dt-ts": number;
+  "dt-emt": number;
+  extrapolation?: "constant" | "linear" | "quadratic" | undefined;
+  out?: string | undefined;
+}
+
+/** Multi-rate concurrent multi-plant TS-EMT hybrid co-simulation between PSS/E and multiple PSCAD plants. */
+const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
+  command: "multi-ts-emt <raw>",
+  describe: "Run concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
+  builder: ((yargs: any) => {
+    return yargs
+      .positional("raw", {
+        description: "Path to PSS/E base case (.raw)",
+        type: "string",
+        demandOption: true,
+      })
+      .option("plant", {
+        alias: "p",
+        description: "Plant mapping: 'id:path.pscx:psseBus:emtBus' (can be specified multiple times)",
+        type: "array",
+        demandOption: true,
+      })
+      .option("duration", {
+        alias: ["d", "tstop"],
+        description: "Simulation duration in seconds",
+        type: "number",
+        default: 0.5,
+      })
+      .option("dt-ts", {
+        description: "PSS/E macro time step in seconds",
+        type: "number",
+        default: 0.005,
+      })
+      .option("dt-emt", {
+        description: "PSCAD EMT micro time step in seconds",
+        type: "number",
+        default: 50e-6,
+      })
+      .option("extrapolation", {
+        description: "Boundary voltage extrapolation mode",
+        choices: ["constant", "linear", "quadratic"] as const,
+        default: "quadratic" as const,
+      })
+      .option("out", {
+        alias: "o",
+        description: "Output JSON report file path",
+        type: "string",
+      });
+  }) as any,
+  handler: async (args) => {
+    const rawContent = fs.readFileSync(args.raw, "utf-8");
+    const { parseRaw, simulatePsseTransient } = await import("@modelscript/psse");
+    const { parsePscx, extractEmtNetlist, EmtSolver } = await import("@modelscript/pscad");
+    const { runMultiPlantTsEmtCoSimulation } = await import("@modelscript/exchange");
+
+    const pCase = parseRaw(rawContent);
+
+    const plantSpecs = (args.plant as string[]).map((pStr) => {
+      const parts = pStr.split(":");
+      if (parts.length < 4) {
+        throw new Error(`Invalid plant specification '${pStr}'. Expected format 'id:path.pscx:psseBusNumber:emtBusId'`);
+      }
+      const [id, pscxPath, psseBusStr, emtBusId] = parts;
+      const psseBusNumber = parseInt(psseBusStr!, 10);
+      const content = fs.readFileSync(pscxPath!, "utf-8");
+      const proj = parsePscx(content);
+      const netlist = extractEmtNetlist(proj);
+
+      return {
+        id: id!,
+        pscxPath: pscxPath!,
+        psseBusNumber,
+        emtBusId: emtBusId!,
+        netlist,
+      };
+    });
+
+    console.log(`Starting Concurrent Multi-Plant TS-EMT Co-Simulation...`);
+    console.log(`  PSS/E Bulk Transmission: ${args.raw}`);
+    console.log(`  Concurrent EMT Plants: ${plantSpecs.length}`);
+    for (const p of plantSpecs) {
+      console.log(`    - [${p.id}] ${p.pscxPath} (PSS/E Bus ${p.psseBusNumber} <-> EMT Bus '${p.emtBusId}')`);
+    }
+    console.log(
+      `  Macro TS Step: ${(args["dt-ts"] * 1e3).toFixed(2)} ms | Micro EMT Step: ${(args["dt-emt"] * 1e6).toFixed(1)} µs`,
+    );
+    console.log(`  Duration: ${args.duration} s | Extrapolation: ${args.extrapolation}`);
+
+    const plants = plantSpecs.map((p) => ({
+      id: p.id,
+      boundaryPorts: [
+        {
+          psseBusNumber: p.psseBusNumber,
+          pscadBusId: p.emtBusId,
+        },
+      ],
+      runner: (emtOpts: any) => {
+        const solver = new EmtSolver(p.netlist, emtOpts);
+        return solver.solve();
+      },
+    }));
+
+    const result = await runMultiPlantTsEmtCoSimulation((tsOpts: any) => simulatePsseTransient(pCase, tsOpts), {
+      durationSec: args.duration,
+      dtTsSec: args["dt-ts"],
+      dtEmtSec: args["dt-emt"],
+      extrapolation: args.extrapolation,
+      plants,
+    });
+
+    console.log(`\n✔ Concurrent Multi-Plant TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
+    console.log(`  Total TS Macro-Steps: ${result.totalMacroSteps}`);
+    console.log(`  Total EMT Sub-Steps: ${result.totalEmtSubSteps}`);
+    console.log(`  Simulated Plants: ${result.plantCount}`);
+    console.log(`  Multi-Rate Step Ratio: 1:${result.ratioM}`);
+
+    if (args.out) {
+      fs.writeFileSync(args.out, JSON.stringify(result.macroRecords, null, 2), "utf-8");
+      console.log(`  Exported report to: ${args.out}`);
+    }
   },
 };

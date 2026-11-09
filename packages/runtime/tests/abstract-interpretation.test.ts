@@ -291,4 +291,24 @@ describe("Phase 1: Abstract Interpretation Generic Engine (@modelscript/runtime)
     assert.ok(dynamicThresholds.includes(249));
     assert.ok(dynamicThresholds.includes(251));
   });
+
+  it("should preserve continuous fractional bounds without integer rounding in Float64OctagonDBM", () => {
+    const s = ReducedProductState.topContinuous(4);
+    // Set fractional bounds: x in [0.25, 0.75], y in [1.5, 3.25]
+    let env = s.intervals;
+    env = env.set("x", new Interval(0.25, 0.75));
+    env = env.set("y", new Interval(1.5, 3.25));
+
+    const sWithIntervals = new ReducedProductState(env, s.octagon, s.varIndices, s.arraySegments, false, s.tvpi);
+    // Assume difference constraint: y - x <= 2.1
+    sWithIntervals.octagon.assumeDiff(sWithIntervals.getVarIndex("y"), sWithIntervals.getVarIndex("x"), 2.1);
+
+    const reduced = sWithIntervals.reduce();
+    assert.strictEqual(reduced.isBottom(), false);
+
+    // Tightened upper bound on y: x.high + 2.1 = 0.75 + 2.1 = 2.85 < 3.25
+    const yIval = reduced.intervals.get("y");
+    assert.ok(Math.abs(yIval.high - 2.85) < 1e-9, `Expected y.high ~ 2.85, got ${yIval.high}`);
+    assert.ok(Math.abs(yIval.low - 1.5) < 1e-9, `Expected y.low ~ 1.5, got ${yIval.low}`);
+  });
 });

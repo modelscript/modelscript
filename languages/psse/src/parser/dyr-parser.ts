@@ -366,19 +366,681 @@ export const DYR_MODEL_SCHEMAS: Record<string, DyrModelSchema> = {
       { name: "Vstmin", unit: "p.u.", description: "Minimum stabilizer output limit Vstmin" },
     ],
   },
+  GENTPJ: {
+    model: "GENTPJ",
+    category: "generator",
+    title: "WECC Salient/Round-Rotor Synchronous Generator with Kis Saturation (GENTPJ)",
+    description: "Sixth-order synchronous machine model with current-compensated saturation factor Kis.",
+    params: [
+      { name: "Td0p", unit: "s", description: "d-axis transient open-circuit time constant T'd0" },
+      { name: "Td0pp", unit: "s", description: "d-axis subtransient open-circuit time constant T''d0" },
+      { name: "Tq0p", unit: "s", description: "q-axis transient open-circuit time constant T'q0" },
+      { name: "Tq0pp", unit: "s", description: "q-axis subtransient open-circuit time constant T''q0" },
+      { name: "H", unit: "MW·s/MVA", description: "Inertia constant H" },
+      { name: "D", unit: "p.u.", description: "Speed damping coefficient D" },
+      { name: "Xd", unit: "p.u.", description: "d-axis synchronous reactance Xd" },
+      { name: "Xq", unit: "p.u.", description: "q-axis synchronous reactance Xq" },
+      { name: "Xdp", unit: "p.u.", description: "d-axis transient reactance X'd" },
+      { name: "Xqp", unit: "p.u.", description: "q-axis transient reactance X'q" },
+      { name: "Xdpp", unit: "p.u.", description: "d-axis subtransient reactance X''d" },
+      { name: "Xqpp", unit: "p.u.", description: "q-axis subtransient reactance X''q" },
+      { name: "Xl", unit: "p.u.", description: "Stator leakage reactance Xl" },
+      { name: "S10", unit: "p.u.", description: "Saturation factor S(1.0)" },
+      { name: "S12", unit: "p.u.", description: "Saturation factor S(1.2)" },
+      { name: "Kis", unit: "p.u.", description: "Stator current saturation compensation factor Kis" },
+    ],
+  },
+  GENSAE: {
+    model: "GENSAE",
+    category: "generator",
+    title: "Salient-Pole Generator with Exponential Saturation",
+    description: "Fifth-order salient-pole synchronous machine with exponential magnetic saturation.",
+    params: [
+      { name: "Td0p", unit: "s", description: "d-axis transient open-circuit time constant T'd0" },
+      { name: "Td0pp", unit: "s", description: "d-axis subtransient open-circuit time constant T''d0" },
+      { name: "Tq0pp", unit: "s", description: "q-axis subtransient open-circuit time constant T''q0" },
+      { name: "H", unit: "MW·s/MVA", description: "Inertia constant H" },
+      { name: "D", unit: "p.u.", description: "Speed damping coefficient D" },
+      { name: "Xd", unit: "p.u.", description: "d-axis synchronous reactance Xd" },
+      { name: "Xq", unit: "p.u.", description: "q-axis synchronous reactance Xq" },
+      { name: "Xdp", unit: "p.u.", description: "d-axis transient reactance X'd" },
+      { name: "Xdpp", unit: "p.u.", description: "Subtransient reactance X''d" },
+      { name: "Xl", unit: "p.u.", description: "Stator leakage reactance Xl" },
+    ],
+  },
+  REGC_B: {
+    model: "REGC_B",
+    category: "generator",
+    title: "WECC Renewable Energy Generator/Converter Model B",
+    description: "High-bandwidth voltage/current-controlled renewable inverter generator interface.",
+    params: [
+      { name: "Tg", unit: "s", description: "Converter time constant Tg" },
+      { name: "Rrpwr", unit: "p.u./s", description: "Active current recovery ramp limit Rrpwr" },
+      { name: "Brkpt", unit: "p.u.", description: "LVPL breakpoint voltage Brkpt" },
+      { name: "Zerox", unit: "p.u.", description: "LVPL zero crossing voltage Zerox" },
+      { name: "Lvpl1", unit: "p.u.", description: "LVPL current gain Lvpl1" },
+      { name: "Vtmax", unit: "p.u.", description: "High-voltage limit Vtmax" },
+      { name: "Lvpnt0", unit: "p.u.", description: "Low-voltage threshold 0 Lvpnt0" },
+      { name: "Lvpnt1", unit: "p.u.", description: "Low-voltage threshold 1 Lvpnt1" },
+      { name: "Iolim", unit: "p.u.", description: "Reactive current limit Iolim" },
+      { name: "Tfltr", unit: "s", description: "Voltage filter time constant Tfltr" },
+    ],
+  },
+  REGC_C: {
+    model: "REGC_C",
+    category: "generator",
+    title: "WECC Grid-Forming / Inner-Loop Renewable Converter Model C",
+    description: "Grid-forming and inner-current-loop renewable inverter generator model.",
+    params: [
+      { name: "Tg", unit: "s", description: "Converter time constant Tg" },
+      { name: "Kppll", unit: "rad/s", description: "PLL proportional gain Kppll" },
+      { name: "Kipll", unit: "rad/s²", description: "PLL integral gain Kipll" },
+      { name: "Imax", unit: "p.u.", description: "Converter maximum current limit Imax" },
+    ],
+  },
+  WTGARA: {
+    model: "WTGARA",
+    category: "generator",
+    title: "WECC Wind Turbine Aerodynamic Model",
+    description: "Blade pitch angle and wind speed aerodynamic torque conversion model.",
+    params: [
+      { name: "Ka", unit: "p.u./deg", description: "Aerodynamic pitch sensitivity factor Ka" },
+      { name: "Theta0", unit: "deg", description: "Initial blade pitch angle Theta0" },
+    ],
+  },
+  ESAC1A: {
+    model: "ESAC1A",
+    category: "exciter",
+    title: "IEEE Type AC1A Alternator-Rectifier Excitation System",
+    description: "Brushless alternator-rectifier excitation system with non-controlled rectifiers.",
+    params: [
+      { name: "TR", unit: "s", description: "Transducer filter time constant TR" },
+      { name: "TB", unit: "s", description: "Regulator lag time constant TB" },
+      { name: "TC", unit: "s", description: "Regulator lead time constant TC" },
+      { name: "KA", unit: "p.u.", description: "Regulator gain KA" },
+      { name: "TA", unit: "s", description: "Regulator time constant TA" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum regulator output VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum regulator output VRMIN" },
+      { name: "TE", unit: "s", description: "Exciter time constant TE" },
+      { name: "KF", unit: "p.u.", description: "Rate feedback gain KF" },
+      { name: "TF", unit: "s", description: "Rate feedback time constant TF" },
+    ],
+  },
+  ESAC4A: {
+    model: "ESAC4A",
+    category: "exciter",
+    title: "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
+    description: "High-initial-response alternator-supplied thyristor excitation system.",
+    params: [
+      { name: "TR", unit: "s", description: "Voltage transducer time constant TR" },
+      { name: "VIMAX", unit: "p.u.", description: "Maximum error input VIMAX" },
+      { name: "VIMIN", unit: "p.u.", description: "Minimum error input VIMIN" },
+      { name: "TC", unit: "s", description: "Lead time constant TC" },
+      { name: "TB", unit: "s", description: "Lag time constant TB" },
+      { name: "KA", unit: "p.u.", description: "Regulator gain KA" },
+      { name: "TA", unit: "s", description: "Regulator time constant TA" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum regulator output VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum regulator output VRMIN" },
+      { name: "KC", unit: "p.u.", description: "Rectifier loading factor KC" },
+    ],
+  },
+  ESST1A: {
+    model: "ESST1A",
+    category: "exciter",
+    title: "IEEE Type ST1A Potential-Source Controlled-Rectifier Exciter",
+    description: "IEEE Std 421.5 ST1A static excitation system with UEL/OEL inputs and transient gain reduction.",
+    params: [
+      { name: "TR", unit: "s", description: "Voltage sensing time constant TR" },
+      { name: "VIMAX", unit: "p.u.", description: "Maximum voltage error limit VIMAX" },
+      { name: "VIMIN", unit: "p.u.", description: "Minimum voltage error limit VIMIN" },
+      { name: "TC", unit: "s", description: "Lead time constant TC" },
+      { name: "TB", unit: "s", description: "Lag time constant TB" },
+      { name: "TC1", unit: "s", description: "Second lead time constant TC1" },
+      { name: "TB1", unit: "s", description: "Second lag time constant TB1" },
+      { name: "KA", unit: "p.u.", description: "Voltage regulator gain KA" },
+      { name: "TA", unit: "s", description: "Voltage regulator time constant TA" },
+      { name: "VAMAX", unit: "p.u.", description: "Maximum amplifier internal output VAMAX" },
+      { name: "VAMIN", unit: "p.u.", description: "Minimum amplifier internal output VAMIN" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum exciter ceiling voltage VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum exciter ceiling voltage VRMIN" },
+      { name: "KC", unit: "p.u.", description: "Rectifier commutation factor KC" },
+      { name: "KF", unit: "p.u.", description: "Rate feedback gain KF" },
+      { name: "TF", unit: "s", description: "Rate feedback time constant TF" },
+    ],
+  },
+  ESST4B: {
+    model: "ESST4B",
+    category: "exciter",
+    title: "IEEE Type ST4B Potential- or Compound-Source Controlled-Rectifier Exciter",
+    description: "Proportional-integral (PI) outer voltage loop and inner field-voltage regulator static exciter.",
+    params: [
+      { name: "TR", unit: "s", description: "Transducer filter time constant TR" },
+      { name: "KPR", unit: "p.u.", description: "Voltage regulator proportional gain KPR" },
+      { name: "KIR", unit: "p.u./s", description: "Voltage regulator integral gain KIR" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum regulator output VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum regulator output VRMIN" },
+      { name: "TA", unit: "s", description: "Thyristor bridge firing delay time constant TA" },
+      { name: "KPM", unit: "p.u.", description: "Inner loop proportional gain KPM" },
+      { name: "KIM", unit: "p.u./s", description: "Inner loop integral gain KIM" },
+      { name: "VMMAX", unit: "p.u.", description: "Maximum inner loop output VMMAX" },
+      { name: "VMMIN", unit: "p.u.", description: "Minimum inner loop output VMMIN" },
+      { name: "KG", unit: "p.u.", description: "Feedback gain KG" },
+      { name: "KP", unit: "p.u.", description: "Potential circuit gain coefficient KP" },
+      { name: "KI", unit: "p.u.", description: "Potential circuit current coefficient KI" },
+      { name: "VBMAX", unit: "p.u.", description: "Maximum available exciter voltage VBMAX" },
+      { name: "KC", unit: "p.u.", description: "Rectifier loading factor KC" },
+      { name: "XL", unit: "p.u.", description: "Reactance associated with potential source XL" },
+      { name: "THETAP", unit: "deg", description: "Rectifier firing phase angle THETAP" },
+    ],
+  },
+  EXAC1: {
+    model: "EXAC1",
+    category: "exciter",
+    title: "IEEE Type AC1 Alternator-Rectifier Excitation System",
+    description: "Brushless excitation system with rotating diode bridge and demagnetizing factor KD.",
+    params: [
+      { name: "TR", unit: "s", description: "Filter time constant TR" },
+      { name: "TB", unit: "s", description: "Lag time constant TB" },
+      { name: "TC", unit: "s", description: "Lead time constant TC" },
+      { name: "KA", unit: "p.u.", description: "Regulator gain KA" },
+      { name: "TA", unit: "s", description: "Regulator time constant TA" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum regulator output VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum regulator output VRMIN" },
+      { name: "TE", unit: "s", description: "Exciter time constant TE" },
+      { name: "KF", unit: "p.u.", description: "Rate feedback gain KF" },
+      { name: "TF", unit: "s", description: "Rate feedback time constant TF" },
+    ],
+  },
+  EXAC2: {
+    model: "EXAC2",
+    category: "exciter",
+    title: "IEEE Type AC2 High-Initial-Response Brushless Exciter",
+    description: "Alternator-rectifier exciter with field current feedback loop.",
+    params: [
+      { name: "TR", unit: "s", description: "Transducer filter time constant TR" },
+      { name: "TB", unit: "s", description: "Lag time constant TB" },
+      { name: "TC", unit: "s", description: "Lead time constant TC" },
+      { name: "KA", unit: "p.u.", description: "Amplifier gain KA" },
+      { name: "TA", unit: "s", description: "Amplifier time constant TA" },
+      { name: "VAMAX", unit: "p.u.", description: "Maximum amplifier output VAMAX" },
+      { name: "VAMIN", unit: "p.u.", description: "Minimum amplifier output VAMIN" },
+      { name: "KB", unit: "p.u.", description: "Second stage regulator gain KB" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum field regulator output VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum field regulator output VRMIN" },
+      { name: "TE", unit: "s", description: "Exciter field time constant TE" },
+    ],
+  },
+  SCRX: {
+    model: "SCRX",
+    category: "exciter",
+    title: "Bus- or Solid-Fed SCR Static Exciter Model",
+    description: "High-gain thyristor bus-fed or compound-fed static exciter with negative field current capability.",
+    params: [
+      { name: "TATB", unit: "ratio", description: "Lead/lag ratio TA/TB" },
+      { name: "TB", unit: "s", description: "Lag time constant TB" },
+      { name: "K", unit: "p.u.", description: "Exciter regulator gain K" },
+      { name: "TE", unit: "s", description: "Thyristor bridge time constant TE" },
+      { name: "EMIN", unit: "p.u.", description: "Minimum field voltage EMIN" },
+      { name: "EMAX", unit: "p.u.", description: "Maximum field voltage EMAX" },
+      { name: "CSWITCH", unit: "flag", description: "Power source switch (0=bus-fed, 1=independent)" },
+      { name: "RCFD", unit: "ratio", description: "Crowbar/field discharge resistance ratio r_c/r_fd" },
+    ],
+  },
+  IEEEX1: {
+    model: "IEEEX1",
+    category: "exciter",
+    title: "IEEE Type 1 Excitation System with Saturation",
+    description: "Standard DC commutator exciter with regulator limits and stabilizing feedback.",
+    params: [
+      { name: "TR", unit: "s", description: "Filter time constant TR" },
+      { name: "KA", unit: "p.u.", description: "Regulator gain KA" },
+      { name: "TA", unit: "s", description: "Regulator time constant TA" },
+      { name: "TB", unit: "s", description: "Lag time constant TB" },
+      { name: "TC", unit: "s", description: "Lead time constant TC" },
+      { name: "VRMAX", unit: "p.u.", description: "Maximum regulator output VRMAX" },
+      { name: "VRMIN", unit: "p.u.", description: "Minimum regulator output VRMIN" },
+      { name: "KE", unit: "p.u.", description: "Exciter constant KE" },
+      { name: "TE", unit: "s", description: "Exciter time constant TE" },
+    ],
+  },
+  REEC_B: {
+    model: "REEC_B",
+    category: "exciter",
+    title: "WECC Renewable Energy Electrical Control Model B (Solar PV / BESS)",
+    description:
+      "Electrical control model for utility-scale solar PV and battery storage without fault current freezing.",
+    params: [
+      { name: "Vdip", unit: "p.u.", description: "Low-voltage dip threshold Vdip" },
+      { name: "Vup", unit: "p.u.", description: "High-voltage swell threshold Vup" },
+      { name: "Trv", unit: "s", description: "Voltage filter time constant Trv" },
+      { name: "dbd1", unit: "p.u.", description: "Lower deadband dbd1" },
+      { name: "dbd2", unit: "p.u.", description: "Upper deadband dbd2" },
+      { name: "Kqv", unit: "p.u.", description: "Reactive current injection gain Kqv" },
+      { name: "Iqh1", unit: "p.u.", description: "Max reactive current injection Iqh1" },
+      { name: "Iql1", unit: "p.u.", description: "Min reactive current injection Iql1" },
+      { name: "Vref0", unit: "p.u.", description: "Voltage reference Vref0" },
+      { name: "Tp", unit: "s", description: "Active power filter time constant Tp" },
+      { name: "Qmax", unit: "p.u.", description: "Max reactive power Qmax" },
+      { name: "Qmin", unit: "p.u.", description: "Min reactive power Qmin" },
+      { name: "Vmax", unit: "p.u.", description: "Max voltage limit Vmax" },
+      { name: "Vmin", unit: "p.u.", description: "Min voltage limit Vmin" },
+      { name: "Kqp", unit: "p.u.", description: "Reactive power proportional gain Kqp" },
+      { name: "Kqi", unit: "p.u./s", description: "Reactive power integral gain Kqi" },
+      { name: "Kvp", unit: "p.u.", description: "Voltage regulator proportional gain Kvp" },
+      { name: "Kvi", unit: "p.u./s", description: "Voltage regulator integral gain Kvi" },
+      { name: "Tiq", unit: "s", description: "Reactive current time constant Tiq" },
+      { name: "dPmax", unit: "p.u./s", description: "Max active power ramp rate dPmax" },
+      { name: "dPmin", unit: "p.u./s", description: "Min active power ramp rate dPmin" },
+      { name: "Pmax", unit: "p.u.", description: "Max active power Pmax" },
+      { name: "Pmin", unit: "p.u.", description: "Min active power Pmin" },
+      { name: "Imax", unit: "p.u.", description: "Max total converter current Imax" },
+      { name: "Tpord", unit: "s", description: "Power order lag time constant Tpord" },
+    ],
+  },
+  REEC_C: {
+    model: "REEC_C",
+    category: "exciter",
+    title: "WECC Battery Energy Storage Electrical Control Model (REEC_C)",
+    description: "Four-quadrant BESS electrical control model with state-of-charge (SOC) limits.",
+    params: [
+      { name: "Vdip", unit: "p.u.", description: "Voltage dip threshold Vdip" },
+      { name: "Vup", unit: "p.u.", description: "Voltage swell threshold Vup" },
+      { name: "Trv", unit: "s", description: "Voltage transducer time constant Trv" },
+      { name: "Kqv", unit: "p.u.", description: "Reactive fault current gain Kqv" },
+      { name: "SOCini", unit: "p.u.", description: "Initial battery State of Charge SOCini" },
+      { name: "SOCmax", unit: "p.u.", description: "Maximum battery State of Charge SOCmax" },
+      { name: "SOCmin", unit: "p.u.", description: "Minimum battery State of Charge SOCmin" },
+      { name: "Teng", unit: "s", description: "Battery storage energy capacity time constant Teng" },
+    ],
+  },
+  GAST: {
+    model: "GAST",
+    category: "governor",
+    title: "Gas Turbine-Governor Model (GAST)",
+    description:
+      "Single-shaft industrial gas turbine governor with fuel valve, combustor lag, and exhaust temperature limit.",
+    params: [
+      { name: "R", unit: "p.u.", description: "Permanent speed droop R" },
+      { name: "T1", unit: "s", description: "Fuel valve positioner time constant T1" },
+      { name: "T2", unit: "s", description: "Combustion chamber / turbine volume time constant T2" },
+      { name: "T3", unit: "s", description: "Exhaust temperature load-limit radiation shield time constant T3" },
+      { name: "AT", unit: "p.u.", description: "Ambient temperature load limit AT" },
+      { name: "KT", unit: "p.u.", description: "Temperature control loop gain KT" },
+      { name: "VMAX", unit: "p.u.", description: "Maximum turbine power limit VMAX" },
+      { name: "VMIN", unit: "p.u.", description: "Minimum fuel valve opening VMIN" },
+      { name: "Dturb", unit: "p.u.", description: "Turbine rotor damping factor Dturb" },
+    ],
+  },
+  WPID: {
+    model: "WPID",
+    category: "governor",
+    title: "Woodward PID Hydro Turbine-Governor Model",
+    description: "PID electronic hydro governor with gate servomotor and penstock water-hammer dynamics.",
+    params: [
+      { name: "Tw", unit: "s", description: "Water starting time constant Tw" },
+      { name: "Tr", unit: "s", description: "Speed transducer time constant Tr" },
+      { name: "Kp", unit: "p.u.", description: "PID proportional gain Kp" },
+      { name: "Ki", unit: "p.u./s", description: "PID integral gain Ki" },
+      { name: "Kd", unit: "p.u.·s", description: "PID derivative gain Kd" },
+      { name: "Ta", unit: "s", description: "Pilot servomotor time constant Ta" },
+      { name: "Tb", unit: "s", description: "Gate servomotor time constant Tb" },
+      { name: "Rperm", unit: "p.u.", description: "Permanent speed droop Rperm" },
+      { name: "Velmax", unit: "p.u./s", description: "Maximum gate opening rate Velmax" },
+      { name: "Gmax", unit: "p.u.", description: "Maximum gate position Gmax" },
+      { name: "Gmin", unit: "p.u.", description: "Minimum gate position Gmin" },
+      { name: "D", unit: "p.u.", description: "Turbine damping factor D" },
+    ],
+  },
+  PIDGOV: {
+    model: "PIDGOV",
+    category: "governor",
+    title: "WECC Hydro PID Turbine-Governor Model",
+    description: "Three-term PID hydro governor with nonlinear turbine gate-power lookup curve.",
+    params: [
+      { name: "Tr", unit: "s", description: "Speed detector time constant Tr" },
+      { name: "Rperm", unit: "p.u.", description: "Permanent droop Rperm" },
+      { name: "Kp", unit: "p.u.", description: "Proportional gain Kp" },
+      { name: "Ki", unit: "p.u./s", description: "Integral gain Ki" },
+      { name: "Kd", unit: "p.u.·s", description: "Derivative gain Kd" },
+      { name: "Ta", unit: "s", description: "Gate servo time constant Ta" },
+      { name: "Gmax", unit: "p.u.", description: "Max gate opening Gmax" },
+      { name: "Gmin", unit: "p.u.", description: "Min gate opening Gmin" },
+      { name: "Tw", unit: "s", description: "Water inertia time constant Tw" },
+    ],
+  },
+  CCGOV1: {
+    model: "CCGOV1",
+    category: "governor",
+    title: "Combined-Cycle Gas & Steam Turbine-Governor Model",
+    description: "Combined-cycle single-shaft or multi-shaft gas turbine and HRSG steam turbine governor.",
+    params: [
+      { name: "R", unit: "p.u.", description: "Speed regulation droop R" },
+      { name: "Tpelec", unit: "s", description: "Electrical power filter time constant Tpelec" },
+      { name: "Kpgov", unit: "p.u.", description: "Gas governor proportional gain Kpgov" },
+      { name: "Kigov", unit: "p.u./s", description: "Gas governor integral gain Kigov" },
+      { name: "Tact", unit: "s", description: "Fuel valve actuator time constant Tact" },
+      { name: "Kturb", unit: "p.u.", description: "Gas turbine gain Kturb" },
+      { name: "Tb", unit: "s", description: "Gas turbine lag time constant Tb" },
+      { name: "Twh", unit: "s", description: "Waste-heat boiler / HRSG steam time constant Twh" },
+    ],
+  },
+  DEGOV1: {
+    model: "DEGOV1",
+    category: "governor",
+    title: "Woodward Diesel Engine Speed Governor Model",
+    description: "Electronic diesel generator speed governor with actuator lead-lag and combustion delay.",
+    params: [
+      { name: "T1", unit: "s", description: "Actuator time constant T1" },
+      { name: "T2", unit: "s", description: "Actuator time constant T2" },
+      { name: "T3", unit: "s", description: "Actuator time constant T3" },
+      { name: "K", unit: "p.u.", description: "Actuator gain K" },
+      { name: "T4", unit: "s", description: "Electric control box lead time constant T4" },
+      { name: "T5", unit: "s", description: "Electric control box lag time constant T5" },
+      { name: "T6", unit: "s", description: "Derivative time constant T6" },
+      { name: "TD", unit: "s", description: "Engine cylinder firing transport delay TD" },
+      { name: "TMAX", unit: "p.u.", description: "Maximum torque limit TMAX" },
+      { name: "TMIN", unit: "p.u.", description: "Minimum torque limit TMIN" },
+      { name: "R", unit: "p.u.", description: "Permanent droop R" },
+    ],
+  },
+  HYGOVM: {
+    model: "HYGOVM",
+    category: "governor",
+    title: "Modified WECC Hydro Turbine-Governor Model",
+    description: "Hydro turbine governor with nonlinear penstock head loss and surge tank effects.",
+    params: [
+      { name: "R", unit: "p.u.", description: "Permanent droop R" },
+      { name: "r", unit: "p.u.", description: "Temporary droop r" },
+      { name: "Tr", unit: "s", description: "Dashpot time constant Tr" },
+      { name: "Tg", unit: "s", description: "Gate servo time constant Tg" },
+      { name: "TW", unit: "s", description: "Water starting time constant TW" },
+    ],
+  },
+  WSIEG1: {
+    model: "WSIEG1",
+    category: "governor",
+    title: "WECC Steam Turbine-Governor Model",
+    description: "WECC tandem/cross-compound steam turbine-governor with fast valving capability.",
+    params: [
+      { name: "K", unit: "p.u.", description: "Governor gain K (1/R)" },
+      { name: "T1", unit: "s", description: "Lag time constant T1" },
+      { name: "T2", unit: "s", description: "Lead time constant T2" },
+      { name: "T3", unit: "s", description: "Valve servo time constant T3" },
+      { name: "PMAX", unit: "p.u.", description: "Max power limit PMAX" },
+      { name: "PMIN", unit: "p.u.", description: "Min power limit PMIN" },
+      { name: "T4", unit: "s", description: "Steam chest time constant T4" },
+    ],
+  },
+  REPC_B: {
+    model: "REPC_B",
+    category: "governor",
+    title: "WECC Renewable Energy Plant Controller Model B",
+    description: "Multi-unit plant-level voltage, reactive power, and frequency controller for large IBR plants.",
+    params: [
+      { name: "Tfltr", unit: "s", description: "Measurement filter time constant Tfltr" },
+      { name: "Kp", unit: "p.u.", description: "Reactive/voltage proportional gain Kp" },
+      { name: "Ki", unit: "p.u./s", description: "Reactive/voltage integral gain Ki" },
+      { name: "Kpg", unit: "p.u.", description: "Active power proportional gain Kpg" },
+      { name: "Kig", unit: "p.u./s", description: "Active power integral gain Kig" },
+      { name: "Ddn", unit: "p.u.", description: "Over-frequency droop gain Ddn" },
+      { name: "Dup", unit: "p.u.", description: "Under-frequency droop gain Dup" },
+    ],
+  },
+  WTDTA1: {
+    model: "WTDTA1",
+    category: "governor",
+    title: "WECC Generic Wind Turbine Two-Mass Drive-Train Model (WTDTA1)",
+    description: "Two-mass turbine/generator torsional shaft model for Type 3 and Type 4 wind turbines.",
+    params: [
+      { name: "H", unit: "MW·s/MVA", description: "Total drive-train inertia constant H" },
+      { name: "DAMP", unit: "p.u.", description: "Generator damping coefficient DAMP" },
+      { name: "Htfrac", unit: "fraction", description: "Turbine inertia fraction Htfrac = Ht / H" },
+      { name: "Freq1", unit: "Hz", description: "First shaft torsional mode natural frequency Freq1" },
+      { name: "Dshaft", unit: "p.u.", description: "Shaft mutual torsional damping Dshaft" },
+    ],
+  },
+  WTTQA1: {
+    model: "WTTQA1",
+    category: "governor",
+    title: "WECC Wind Turbine Torque/Speed Control Model",
+    description: "Wind turbine rotor speed and active power torque reference controller.",
+    params: [
+      { name: "Kpp", unit: "p.u.", description: "Torque PI proportional gain Kpp" },
+      { name: "Kip", unit: "p.u./s", description: "Torque PI integral gain Kip" },
+      { name: "Tp", unit: "s", description: "Power measurement filter time constant Tp" },
+      { name: "Twref", unit: "s", description: "Speed reference filter time constant Twref" },
+    ],
+  },
+  WTPTA1: {
+    model: "WTPTA1",
+    category: "governor",
+    title: "WECC Wind Turbine Pitch Angle Control Model",
+    description: "Blade pitch servo and PI controller limiting rotor overspeed during faults and high wind.",
+    params: [
+      { name: "Kiw", unit: "deg/s", description: "Pitch speed controller integral gain Kiw" },
+      { name: "Kpw", unit: "deg", description: "Pitch speed controller proportional gain Kpw" },
+      { name: "Kic", unit: "deg/s", description: "Pitch power compensation integral gain Kic" },
+      { name: "Kpc", unit: "deg", description: "Pitch power compensation proportional gain Kpc" },
+      { name: "Tpi", unit: "s", description: "Blade pitch actuator time constant Tpi" },
+    ],
+  },
+  PSS2B: {
+    model: "PSS2B",
+    category: "stabilizer",
+    title: "IEEE Std 421.5 Dual-Input Power System Stabilizer (PSS2B)",
+    description: "Extended dual-input accelerating-power stabilizer with three lead-lag stages.",
+    params: [
+      { name: "Tw1", unit: "s", description: "First washout time constant Tw1" },
+      { name: "Tw2", unit: "s", description: "Second washout time constant Tw2" },
+      { name: "T6", unit: "s", description: "Input 1 lag time constant T6" },
+      { name: "Tw3", unit: "s", description: "Input 2 washout time constant Tw3" },
+      { name: "Tw4", unit: "s", description: "Input 2 second washout time constant Tw4" },
+      { name: "T7", unit: "s", description: "Input 2 lag time constant T7" },
+      { name: "Ks2", unit: "p.u.", description: "Power input gain Ks2" },
+      { name: "Ks3", unit: "p.u.", description: "Signal matching gain Ks3" },
+      { name: "T8", unit: "s", description: "Ramp-tracking lead time constant T8" },
+      { name: "T9", unit: "s", description: "Ramp-tracking lag time constant T9" },
+      { name: "Ks1", unit: "p.u.", description: "Main stabilizer gain Ks1" },
+      { name: "T1", unit: "s", description: "Stage 1 lead time constant T1" },
+      { name: "T2", unit: "s", description: "Stage 1 lag time constant T2" },
+      { name: "T3", unit: "s", description: "Stage 2 lead time constant T3" },
+      { name: "T4", unit: "s", description: "Stage 2 lag time constant T4" },
+      { name: "T10", unit: "s", description: "Stage 3 lead time constant T10" },
+      { name: "T11", unit: "s", description: "Stage 3 lag time constant T11" },
+      { name: "Vstmax", unit: "p.u.", description: "Maximum stabilizer output Vstmax" },
+      { name: "Vstmin", unit: "p.u.", description: "Minimum stabilizer output Vstmin" },
+    ],
+  },
+  PSS4B: {
+    model: "PSS4B",
+    category: "stabilizer",
+    title: "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
+    description: "Three-band (low, intermediate, and high frequency) differential-filter power system stabilizer.",
+    params: [
+      { name: "KL", unit: "p.u.", description: "Low-frequency band gain KL (0.05–0.2 Hz inter-area modes)" },
+      { name: "FL", unit: "Hz", description: "Low-frequency band center frequency FL" },
+      { name: "KI", unit: "p.u.", description: "Intermediate-frequency band gain KI (0.2–0.8 Hz local modes)" },
+      { name: "FI", unit: "Hz", description: "Intermediate-frequency band center frequency FI" },
+      { name: "KH", unit: "p.u.", description: "High-frequency band gain KH (0.8–4.0 Hz intra-plant modes)" },
+      { name: "FH", unit: "Hz", description: "High-frequency band center frequency FH" },
+      { name: "Vstmax", unit: "p.u.", description: "Maximum total output limit Vstmax" },
+      { name: "Vstmin", unit: "p.u.", description: "Minimum total output limit Vstmin" },
+    ],
+  },
+  STAB2A: {
+    model: "STAB2A",
+    category: "stabilizer",
+    title: "ASEA / ABB Power-Sensitive Stabilizer",
+    description: "Electrical power-input washout and phase-lag power system stabilizer.",
+    params: [
+      { name: "K2", unit: "p.u.", description: "Washout gain K2" },
+      { name: "T2", unit: "s", description: "Washout time constant T2" },
+      { name: "K3", unit: "p.u.", description: "Phase compensation gain K3" },
+      { name: "T3", unit: "s", description: "Phase lag time constant T3" },
+      { name: "T4", unit: "s", description: "High-frequency filter time constant T4" },
+      { name: "T5", unit: "s", description: "Filter lag time constant T5" },
+      { name: "HLIM", unit: "p.u.", description: "Stabilizer output limit HLIM" },
+    ],
+  },
+  CMPLDW: {
+    model: "CMPLDW",
+    category: "load",
+    title: "WECC Composite Load Model (CMPLDW) with FIDVR & Motor Stall",
+    description:
+      "Substation transformer, feeder equivalent impedance, 3-phase induction motors A/B/C, 1-phase A/C compressor motor D (with voltage stall protection), power electronic load, and static ZIP load.",
+    params: [
+      { name: "MVA", unit: "MVA", description: "Load substation base MVA (<0 = fraction of bus load)" },
+      { name: "Rfdr", unit: "p.u.", description: "Equivalent distribution feeder resistance Rfdr" },
+      { name: "Xfdr", unit: "p.u.", description: "Equivalent distribution feeder reactance Xfdr" },
+      { name: "Fb", unit: "fraction", description: "Fraction of feeder impedance before shunt capacitor Fb" },
+      { name: "Fma", unit: "fraction", description: "Motor A (3-ph constant-torque commercial A/C) load fraction" },
+      { name: "Fmb", unit: "fraction", description: "Motor B (3-ph high-inertia fan/pump) load fraction" },
+      { name: "Fmc", unit: "fraction", description: "Motor C (3-ph low-inertia pump) load fraction" },
+      { name: "Fmd", unit: "fraction", description: "Motor D (1-ph residential A/C compressor with stall) fraction" },
+      { name: "Fel", unit: "fraction", description: "Power electronic constant-P/Q load fraction Fel" },
+      { name: "Vstall", unit: "p.u.", description: "Motor D single-phase compressor stall threshold voltage Vstall" },
+      { name: "Tstall", unit: "s", description: "Motor D stall delay time Tstall (typically 0.033 s)" },
+      { name: "Rstall", unit: "p.u.", description: "Motor D stalled rotor resistance Rstall" },
+      { name: "Xstall", unit: "p.u.", description: "Motor D stalled rotor reactance Xstall" },
+    ],
+  },
+  CLOD: {
+    model: "CLOD",
+    category: "load",
+    title: "Complex Load Model (Large/Small Motors, Discharge Lighting, & KP)",
+    description:
+      "Aggregate substation dynamic load model comprising large/small induction motors, transformer excitation, and discharge lighting.",
+    params: [
+      { name: "PctLargeMotor", unit: "%", description: "Percentage of large induction motors" },
+      { name: "PctSmallMotor", unit: "%", description: "Percentage of small induction motors" },
+      { name: "PctTransformer", unit: "%", description: "Percentage of transformer exciting current" },
+      { name: "PctLighting", unit: "%", description: "Percentage of discharge lighting" },
+      { name: "PctConstP", unit: "%", description: "Percentage of constant-power load" },
+      { name: "Kp", unit: "exponent", description: "Remaining active load voltage exponent Kp" },
+      { name: "Rbranch", unit: "p.u.", description: "Substation feeder resistance Rbranch" },
+      { name: "Xbranch", unit: "p.u.", description: "Substation feeder reactance Xbranch" },
+    ],
+  },
+  CIM5: {
+    model: "CIM5",
+    category: "load",
+    title: "Fifth-Order Double-Cage Induction Motor Load Model (CIM5)",
+    description: "Dynamic 5th-order squirrel-cage or double-cage industrial induction motor load model.",
+    params: [
+      { name: "Ra", unit: "p.u.", description: "Stator armature resistance Ra" },
+      { name: "Xa", unit: "p.u.", description: "Stator leakage reactance Xa" },
+      { name: "Xm", unit: "p.u.", description: "Magnetizing reactance Xm" },
+      { name: "R1", unit: "p.u.", description: "Rotor cage 1 resistance R1" },
+      { name: "X1", unit: "p.u.", description: "Rotor cage 1 leakage reactance X1" },
+      { name: "R2", unit: "p.u.", description: "Rotor cage 2 resistance R2" },
+      { name: "X2", unit: "p.u.", description: "Rotor cage 2 leakage reactance X2" },
+      { name: "H", unit: "MW·s/MVA", description: "Motor + mechanical load inertia constant H" },
+      { name: "D", unit: "exponent", description: "Load torque speed exponent D (T_m = T_0 * omega^D)" },
+    ],
+  },
+  IEEEL: {
+    model: "IEEEL",
+    category: "load",
+    title: "IEEE Polynomial & Frequency-Dependent Static Load Model",
+    description: "Voltage-polynomial (ZIP) and frequency-sensitivity dynamic load representation.",
+    params: [
+      { name: "a1", unit: "fraction", description: "Active load constant-impedance fraction a1" },
+      { name: "a2", unit: "fraction", description: "Active load constant-current fraction a2" },
+      { name: "a3", unit: "fraction", description: "Active load constant-power fraction a3" },
+      { name: "a4", unit: "fraction", description: "Reactive load constant-impedance fraction a4" },
+      { name: "a5", unit: "fraction", description: "Reactive load constant-current fraction a5" },
+      { name: "a6", unit: "fraction", description: "Reactive load constant-power fraction a6" },
+      { name: "a7", unit: "p.u./p.u.", description: "Active load frequency sensitivity factor a7" },
+      { name: "a8", unit: "p.u./p.u.", description: "Reactive load frequency sensitivity factor a8" },
+    ],
+  },
+  SVSMO1: {
+    model: "SVSMO1",
+    category: "facts",
+    title: "WECC Static Var Compensator (SVC) Model 1",
+    description: "Thyristor-Controlled Reactor (TCR) and Thyristor-Switched Capacitor (TSC) continuous SVC model.",
+    params: [
+      { name: "Tr", unit: "s", description: "Voltage transducer time constant Tr" },
+      { name: "K", unit: "p.u.", description: "Voltage regulator proportional gain K" },
+      { name: "T1", unit: "s", description: "Lead time constant T1" },
+      { name: "T2", unit: "s", description: "Lag time constant T2" },
+      { name: "T3", unit: "s", description: "Thyristor firing delay time constant T3" },
+      { name: "Bmax", unit: "p.u.", description: "Maximum capacitive susceptance limit Bmax" },
+      { name: "Bmin", unit: "p.u.", description: "Minimum inductive susceptance limit Bmin" },
+      { name: "Xsl", unit: "p.u.", description: "SVC V-I droop slope Xsl" },
+    ],
+  },
+  SVSMO3: {
+    model: "SVSMO3",
+    category: "facts",
+    title: "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
+    description: "Voltage-source converter STATCOM dynamic reactive current controller.",
+    params: [
+      { name: "Tr", unit: "s", description: "Voltage measurement filter time constant Tr" },
+      { name: "Kp", unit: "p.u.", description: "Voltage regulator proportional gain Kp" },
+      { name: "Ki", unit: "p.u./s", description: "Voltage regulator integral gain Ki" },
+      { name: "Imax", unit: "p.u.", description: "Maximum capacitive current limit Imax" },
+      { name: "Imin", unit: "p.u.", description: "Maximum inductive current limit Imin" },
+      { name: "Xsl", unit: "p.u.", description: "STATCOM droop slope Xsl" },
+    ],
+  },
+  CSTCNT: {
+    model: "CSTCNT",
+    category: "facts",
+    title: " Controlled Series Capacitor / TCSC Dynamic Model",
+    description: "Thyristor-Controlled Series Capacitor (TCSC) power oscillation damping and reactance controller.",
+    params: [
+      { name: "Tr", unit: "s", description: "Transducer time constant Tr" },
+      { name: "Kp", unit: "p.u.", description: "Controller proportional gain Kp" },
+      { name: "Ki", unit: "p.u./s", description: "Controller integral gain Ki" },
+      { name: "Bmax", unit: "p.u.", description: "Maximum series reactance boost limit Bmax" },
+      { name: "Bmin", unit: "p.u.", description: "Minimum series reactance limit Bmin" },
+    ],
+  },
+  CDC4T: {
+    model: "CDC4T",
+    category: "hvdc",
+    title: "Two-Terminal LCC HVDC Line Dynamic Model with VDCOL (CDC4T)",
+    description:
+      "Line-commutated converter (LCC) two-terminal HVDC link with Voltage-Dependent Current Order Limiter (VDCOL).",
+    params: [
+      { name: "AlfaDy", unit: "deg", description: "Minimum dynamic rectifier firing angle AlfaDy" },
+      { name: "GamDy", unit: "deg", description: "Minimum dynamic inverter extinction angle GamDy" },
+      { name: "Tvdc", unit: "s", description: "DC voltage transducer time constant Tvdc" },
+      { name: "Tidc", unit: "s", description: "DC current transducer time constant Tidc" },
+      { name: "Vblock", unit: "p.u.", description: "AC voltage blocking threshold Vblock" },
+      { name: "VdcolV1", unit: "kV", description: "VDCOL lower voltage knee VdcolV1" },
+      { name: "VdcolI1", unit: "p.u.", description: "VDCOL minimum current order VdcolI1" },
+      { name: "VdcolV2", unit: "kV", description: "VDCOL upper voltage knee VdcolV2" },
+      { name: "VdcolI2", unit: "p.u.", description: "VDCOL nominal current order VdcolI2" },
+    ],
+  },
+  VSC_DC: {
+    model: "VSC_DC",
+    category: "hvdc",
+    title: "Voltage Source Converter (VSC) HVDC Dynamic Link Model",
+    description: "Point-to-point VSC-HVDC link with independent P/Vdc and Q/Vac control at rectifier and inverter.",
+    params: [
+      { name: "Tp", unit: "s", description: "Active power order filter time constant Tp" },
+      { name: "Tq", unit: "s", description: "Reactive power / AC voltage regulator time constant Tq" },
+      { name: "Kvac", unit: "p.u.", description: "AC voltage droop gain Kvac" },
+      { name: "Imax", unit: "p.u.", description: "Maximum converter current rating Imax" },
+    ],
+  },
 };
 
 function classifyDyrModel(modelName: string): PsseDyrCategory {
   const upper = modelName.toUpperCase();
   const schema = DYR_MODEL_SCHEMAS[upper];
   if (schema) return schema.category;
-  if (upper.startsWith("GEN") || upper.startsWith("REG")) return "generator";
+  if (upper.startsWith("GEN") || upper.startsWith("REG") || upper.startsWith("WTGAR")) return "generator";
   if (
     upper.startsWith("EX") ||
     upper.startsWith("REEC") ||
     upper.startsWith("IEEE") ||
     upper.startsWith("ES") ||
-    upper.startsWith("SEXS")
+    upper.startsWith("SEXS") ||
+    upper.startsWith("SCRX")
   ) {
     return "exciter";
   }
@@ -387,12 +1049,26 @@ function classifyDyrModel(modelName: string): PsseDyrCategory {
     upper.startsWith("HY") ||
     upper.startsWith("GG") ||
     upper.startsWith("GAST") ||
+    upper.startsWith("WPID") ||
+    upper.startsWith("PIDG") ||
+    upper.startsWith("CCGO") ||
+    upper.startsWith("DEGO") ||
+    upper.startsWith("WSIE") ||
     upper.startsWith("REPC") ||
-    upper.startsWith("WTG")
+    upper.startsWith("WT")
   ) {
     return "governor";
   }
   if (upper.startsWith("PSS") || upper.startsWith("STAB")) return "stabilizer";
+  if (upper.startsWith("CMPL") || upper.startsWith("CLOD") || upper.startsWith("CIM") || upper.startsWith("LDFR")) {
+    return "load";
+  }
+  if (upper.startsWith("SVS") || upper.startsWith("CSTC") || upper.startsWith("STAT")) {
+    return "facts";
+  }
+  if (upper.startsWith("CDC") || upper.startsWith("VSC")) {
+    return "hvdc";
+  }
   return "user";
 }
 
@@ -451,8 +1127,12 @@ export function isLikelyDyrContent(source: string): boolean {
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line || line.startsWith("//") || line.startsWith("@!") || line.startsWith("/*")) continue;
-    // A .dyr record starts with an integer bus number followed by a quoted model name like 'GENROU' or 'REGC_A'
-    if (/^\d+(?:,\s*|\s+)'(?:GEN|EX|TG|HY|IEEE|SEXS|PSS|USR|REG|REE|REP|WTG|GGOV|ESDC)/i.test(line)) {
+    // A .dyr record starts with an integer bus number followed by a quoted model name like 'GENROU' or 'CMPLDW'
+    if (
+      /^\d+(?:,\s*|\s+)'(?:GEN|EX|TG|HY|IEEE|SEXS|SCRX|PSS|STAB|USR|REG|REE|REP|WT|GGOV|GAST|WPID|PIDG|CCGO|DEGO|WSIE|ES|CMPL|CLOD|CIM|SVS|CST|CDC|VSC)/i.test(
+        line,
+      )
+    ) {
       return true;
     }
     return false;
@@ -470,6 +1150,8 @@ export function parseDyr(source: string): PsseDyrCase {
   const excitersByBusId = new Map<string, PsseDyrRecord>();
   const governorsByBusId = new Map<string, PsseDyrRecord>();
   const stabilizersByBusId = new Map<string, PsseDyrRecord>();
+  const loadsByBusId = new Map<string, PsseDyrRecord>();
+  const factsByBusId = new Map<string, PsseDyrRecord>();
 
   const lines = source.split(/\r?\n/);
   let currentBuffer = "";
@@ -556,6 +1238,16 @@ export function parseDyr(source: string): PsseDyrCase {
       if (!stabilizersByBusId.has(String(ibus))) {
         stabilizersByBusId.set(String(ibus), rec);
       }
+    } else if (category === "load") {
+      loadsByBusId.set(key, rec);
+      if (!loadsByBusId.has(String(ibus))) {
+        loadsByBusId.set(String(ibus), rec);
+      }
+    } else if (category === "facts" || category === "hvdc") {
+      factsByBusId.set(key, rec);
+      if (!factsByBusId.has(String(ibus))) {
+        factsByBusId.set(String(ibus), rec);
+      }
     }
   };
 
@@ -618,6 +1310,8 @@ export function parseDyr(source: string): PsseDyrCase {
     excitersByBusId,
     governorsByBusId,
     stabilizersByBusId,
+    loadsByBusId,
+    factsByBusId,
   };
 }
 

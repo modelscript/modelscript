@@ -420,8 +420,10 @@ export class SpacerEngine {
             const indSat = this.testSatisfiability(inductiveTestAssumptions);
             if (indSat.isSat) {
               isInductive = false;
-
-              // Craig Interpolation lemma push to strengthen frames
+              break;
+            } else {
+              // Inductive step succeeded: linA and linB are mutually UNSAT.
+              // Synthesize a Craig separating interpolant to strengthen frames with a verified lemma.
               const linA: LinearConstraint[] = [];
               for (const c of [...bodyGuarantees, ...rule.bodyConstraints]) {
                 const parsed = CraigInterpolator.toLinearConstraints(c);
@@ -444,7 +446,6 @@ export class SpacerEngine {
                   this.addLemmaToFrame(rule.head!.name, depth, formalLemma);
                 }
               }
-              break;
             }
           }
         }

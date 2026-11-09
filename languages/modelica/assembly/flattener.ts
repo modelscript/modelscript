@@ -2674,6 +2674,18 @@ export class ModificationEnvironment {
   /** Linear memory pointer (`u32`) to the enclosing parent `ModificationEnvironment`, or `0` if root. */
   parentEnvPtr: u32;
 
+  /** Returns current high-water mark for pooling ModificationEnvironment instances. */
+  @inline static getWatermark(): u32 {
+    return ModificationEnvironment.poolIdx;
+  }
+
+  /** Restores high-water mark, recycling environments allocated beyond the mark. */
+  @inline static restoreWatermark(mark: u32): void {
+    if (mark <= ModificationEnvironment.poolIdx) {
+      ModificationEnvironment.poolIdx = mark;
+    }
+  }
+
   @inline static create(parentPtr: u32 = 0): u32 {
     if (ModificationEnvironment.poolPtrs == 0) {
       ModificationEnvironment.poolPtrs = changetype<usize>(createChunkedUint32Array(256));
@@ -6896,15 +6908,23 @@ export class DisjointSet {
     }
   }
 
-  /** Returns the canonical representative `VarId` for the connected component containing `v` (with path compression). */
+  /** Returns the canonical representative `VarId` for the connected component containing `v` (with iterative path compression). */
   find(v: u32): u32 {
     this.ensureCapacity(v);
-    let p = this.parent.get(v);
-    if (p != v) {
-      p = this.find(p);
-      this.parent.set(v, p);
+    let root = v;
+    let p = this.parent.get(root);
+    while (p != root) {
+      this.ensureCapacity(p);
+      root = p;
+      p = this.parent.get(root);
     }
-    return p;
+    let curr = v;
+    while (curr != root) {
+      let next = this.parent.get(curr);
+      this.parent.set(curr, root);
+      curr = next;
+    }
+    return root;
   }
 
   /** Merges the connected component sets containing `v1` and `v2` using union-by-rank. */
@@ -9455,6 +9475,7 @@ export class ModelicaFlattener {
 
     this.resolveOverconstrainedGraph();
 
+    let compStart = this.tempBuffer.length;
     for (let i: u32 = 0; i < initialEqCount; i++) {
       let eq = EqAccessor.at(this.dae.getEqData(), i);
       if (eq.isConnect) {
@@ -9480,24 +9501,34 @@ export class ModelicaFlattener {
                 }
               }
             } else {
-              for (let v: u32 = 0; v < varCount; v++) {
-                if (this.dae.isVarRemoved(v)) continue;
-                let vNameId = this.dae.getVarNameId(v);
-                if (pool.hasPrefix(vNameId, fromNameId)) {
-                  let suffId = pool.getSuffixAfterPrefix(vNameId, fromNameId);
-                  if (suffId != 0) {
-                    let targetNameId = pool.concatIds(toNameId, suffId);
-                    let toVar = this.dae.lookupVariableByName(targetNameId);
-                    if (toVar >= 0 && !this.dae.isVarRemoved(toVar as u32)) {
-                      if (!this.isBrokenOcPair(vNameId, targetNameId)) {
-                        this.ensureUfCapacity(v);
-                        this.ensureUfCapacity(toVar as u32);
-                        this.unionSets(v, toVar as u32);
-                        this.disjointSet.incrementCardinality(v);
-                        this.disjointSet.incrementCardinality(toVar as u32);
-                      }
-                    }
-                  }
+              this.tempBuffer.push(fromNameId);
+              this.tempBuffer.push(toNameId);
+            }
+          }
+        }
+      }
+    }
+
+    let compPairs = (this.tempBuffer.length - compStart) / 2;
+    if (compPairs > 0) {
+      for (let v: u32 = 0; v < varCount; v++) {
+        if (this.dae.isVarRemoved(v)) continue;
+        let vNameId = this.dae.getVarNameId(v);
+        for (let p: u32 = 0; p < compPairs; p++) {
+          let fromNameId = this.tempBuffer.get(compStart + p * 2);
+          let toNameId = this.tempBuffer.get(compStart + p * 2 + 1);
+          if (pool.hasPrefix(vNameId, fromNameId)) {
+            let suffId = pool.getSuffixAfterPrefix(vNameId, fromNameId);
+            if (suffId != 0) {
+              let targetNameId = pool.concatIds(toNameId, suffId);
+              let toVar = this.dae.lookupVariableByName(targetNameId);
+              if (toVar >= 0 && !this.dae.isVarRemoved(toVar as u32)) {
+                if (!this.isBrokenOcPair(vNameId, targetNameId)) {
+                  this.ensureUfCapacity(v);
+                  this.ensureUfCapacity(toVar as u32);
+                  this.unionSets(v, toVar as u32);
+                  this.disjointSet.incrementCardinality(v);
+                  this.disjointSet.incrementCardinality(toVar as u32);
                 }
               }
             }
@@ -9505,6 +9536,7 @@ export class ModelicaFlattener {
         }
       }
     }
+    this.tempBuffer.length = compStart;
 
     // Emit equalityConstraint(u, v) = {0.0, ...} for broken overconstrained connection loops
     if (this.brokenOcConnCount > 0) {
@@ -13193,6 +13225,7 @@ export class ModelicaFlattener {
         }
         if (dim1 > 0 && dim2 == 0) {
           for (let i: u32 = 1; i <= dim1; i++) {
+            let elemWatermark = ModificationEnvironment.getWatermark();
             let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
             let elemEnvPtr = subEnvPtr;
             if (isRec && valExprId != 0xffffffff) {
@@ -13311,6 +13344,7 @@ export class ModelicaFlattener {
             this.scopeStack.push(0, elemEnvPtr, subPrefix, 0);
             count += this.instantiateClassLoc(subClassLoc, subPrefix, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
             this.scopeStack.pop();
+            ModificationEnvironment.restoreWatermark(elemWatermark);
             let varEndIdx = this.dae.varCount;
             if (isRec) {
               if (variability == (Variability.Constant as i32)) {
@@ -13349,6 +13383,7 @@ export class ModelicaFlattener {
         } else if (dim1 > 0 && dim2 > 0) {
           for (let i: u32 = 1; i <= dim1; i++) {
             for (let j: u32 = 1; j <= dim2; j++) {
+              let elemWatermark = ModificationEnvironment.getWatermark();
               let subPrefix = concatArrayIndex2D(pool, fullVarNameId, i, j);
               let elemEnvPtr = subEnvPtr;
               if (isRec && valExprId != 0xffffffff) {
@@ -13463,6 +13498,7 @@ export class ModelicaFlattener {
               this.scopeStack.push(0, elemEnvPtr, subPrefix, 0);
               count += this.instantiateClassLoc(subClassLoc, subPrefix, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
               this.scopeStack.pop();
+              ModificationEnvironment.restoreWatermark(elemWatermark);
               let varEndIdx = this.dae.varCount;
               if (isRec) {
                 if (variability == (Variability.Constant as i32)) {
@@ -13811,10 +13847,12 @@ export class ModelicaFlattener {
               this.registerArrayShape(compNameId, dim1);
             }
             for (let i: u32 = 1; i <= dim1; i++) {
+              let elemWatermark = ModificationEnvironment.getWatermark();
               let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
               this.scopeStack.push(0, subEnvPtr, subPrefix, 0);
               count += this.lowerAllClassEquationsLoc(effectiveSubClassLoc, subPrefix);
               this.scopeStack.pop();
+              ModificationEnvironment.restoreWatermark(elemWatermark);
             }
           } else {
             this.scopeStack.push(0, subEnvPtr, fullVarNameId, 0);

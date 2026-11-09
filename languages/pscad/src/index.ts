@@ -21,6 +21,7 @@ export * from "./projections/fmu-to-pscad.js";
 export * from "./projections/modelica.js";
 export * from "./projections/ssp.js";
 export * from "./psout/index.js";
+export * from "./script/emtdc-abi-bridge.js";
 export * from "./script/fortran-ast.js";
 export * from "./script/fortran-codegen.js";
 export * from "./script/fortran-preprocessor.js";

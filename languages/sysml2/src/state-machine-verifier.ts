@@ -678,8 +678,16 @@ function checkConjunctPairMutuallyExclusive(
       if (c.nonlinear) {
         nl = c.nonlinear;
       } else {
-        const rel =
-          c.operator === "<=" || c.operator === "<" ? "<=" : c.operator === ">=" || c.operator === ">" ? ">=" : "==";
+        const rel: "<=" | ">=" | "==" | "<" | ">" =
+          c.operator === "<"
+            ? "<"
+            : c.operator === "<="
+              ? "<="
+              : c.operator === ">"
+                ? ">"
+                : c.operator === ">="
+                  ? ">="
+                  : "==";
         nl = {
           expr: { kind: "var", name: c.variable },
           rel,
@@ -701,10 +709,14 @@ function checkConjunctPairMutuallyExclusive(
     for (const c of allConstraints) {
       if (!c.nonlinear && initialBox.has(c.variable)) {
         const cur = initialBox.get(c.variable)!;
-        if (c.operator === ">=" || c.operator === ">") {
+        if (c.operator === ">=") {
           initialBox.set(c.variable, new Interval(Math.max(cur.lo, c.value), cur.hi));
-        } else if (c.operator === "<=" || c.operator === "<") {
+        } else if (c.operator === ">") {
+          initialBox.set(c.variable, new Interval(Math.max(cur.lo, c.value + 1e-9), cur.hi));
+        } else if (c.operator === "<=") {
           initialBox.set(c.variable, new Interval(cur.lo, Math.min(cur.hi, c.value)));
+        } else if (c.operator === "<") {
+          initialBox.set(c.variable, new Interval(cur.lo, Math.min(cur.hi, c.value - 1e-9)));
         } else if (c.operator === "==") {
           initialBox.set(c.variable, new Interval(c.value, c.value));
         }

@@ -16,6 +16,8 @@ import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js
 import { parsePscx } from "./parser/pscx-parser.js";
 import { writePscadPsout } from "./psout/index.js";
 import { EmtSolver } from "./solver/emt-solver.js";
+import { runFrequencyScan } from "./solver/frequency-scanner.js";
+import { runPointOnWaveSweep } from "./solver/parametric-sweep.js";
 import {
   verifyIeee2800Compliance,
   type Ieee2800ComplianceReport,
@@ -382,6 +384,136 @@ export const pscadLanguage = language({
           ...params,
           documentText: text,
           solverRunner: params?.solverRunner ?? ctx?.solverRunner,
+        });
+      },
+    },
+    {
+      id: "compute_line_constants",
+      title: "Compute Overhead Tower & Cable Line Constants (LCP)",
+      description:
+        "Computes frequency-dependent Carson/Derri-Semlyen R/L/C matrices and modal parameters for transmission lines.",
+      category: "query",
+      execute: async (ctx: { documentText?: string | undefined }, params: { documentText?: string | undefined }) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+        return {
+          project: project.name,
+          nominalFrequencyHz: netlist.nominalFrequencyHz,
+          lines: netlist.transmissionLines.map((ln) => ({
+            id: ln.id,
+            fromBus: ln.fromBus,
+            toBus: ln.toBus,
+            lengthKm: ln.lengthKm,
+            modelType: ln.modelType,
+            z0CharacteristicOhm: Math.sqrt(Math.max(1e-6, ln.lPerKm) / Math.max(1e-12, ln.cPerKm)),
+            propagationVelocityKmSec: 1.0 / Math.sqrt(Math.max(1e-6, ln.lPerKm) * Math.max(1e-12, ln.cPerKm)),
+            rPerKm: ln.rPerKm,
+            lPerKm: ln.lPerKm,
+            cPerKm: ln.cPerKm,
+            r0PerKm: ln.r0PerKm,
+            l0PerKm: ln.l0PerKm,
+            c0PerKm: ln.c0PerKm,
+          })),
+        };
+      },
+    },
+    {
+      id: "analyze_relay_coordination",
+      title: "Analyze Distance (21) R-X Mho/Quad Zones & Overcurrent (51) TCC Curves",
+      description:
+        "Computes R-X Mho/Quad zone boundaries, apparent impedance trajectories, and IEEE/IEC TCC trip curves.",
+      category: "query",
+      execute: async (ctx: { documentText?: string | undefined }, params: { documentText?: string | undefined }) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+        const sim = synthesizeCompanionTrajectory(netlist, 50e-6, Math.min(0.2, project.settings.durationSec || 0.1));
+        const relays = (netlist.protectionRelays ?? []).map((r) => {
+          const z1 = r.zone1ReachOhm ?? 15.0;
+          const z2 = r.zone2ReachOhm ?? 1.25 * z1;
+          const z3 = r.zone3ReachOhm ?? 1.6 * z1;
+          const mtaRad = (75.0 * Math.PI) / 180.0;
+          const buildMhoCircle = (reach: number) =>
+            Array.from({ length: 37 }, (_, idx) => {
+              const ang = (idx * 10.0 * Math.PI) / 180.0;
+              const cx = 0.5 * reach * Math.cos(mtaRad);
+              const cy = 0.5 * reach * Math.sin(mtaRad);
+              return {
+                rOhm: Number((cx + 0.5 * reach * Math.cos(ang)).toFixed(4)),
+                xOhm: Number((cy + 0.5 * reach * Math.sin(ang)).toFixed(4)),
+              };
+            });
+          const multiples = [1.5, 2.0, 3.0, 5.0, 8.0, 10.0, 15.0, 20.0];
+          const td = r.timeDialSetting ?? 0.5;
+          const tccCurve = multiples.map((m) => ({
+            multipleOfPickup: m,
+            tripTimeSec: Number(((0.14 * td) / (Math.pow(m, 0.02) - 1.0)).toFixed(4)),
+          }));
+          const tripSignal = sim.controlSignals?.get(`${r.id}_trip`);
+          const zAppSignal = sim.controlSignals?.get(`${r.id}_zAppOhm`);
+          return {
+            id: r.id,
+            ansiCode: r.ansiCode,
+            monitoredBus: r.monitoredBus,
+            monitoredBranch: r.monitoredBranch,
+            tripBreakerId: r.tripBreakerId,
+            mhoZones: {
+              zone1: buildMhoCircle(z1),
+              zone2: buildMhoCircle(z2),
+              zone3: buildMhoCircle(z3),
+            },
+            tccCurve,
+            tripped: tripSignal ? tripSignal.some((v) => v > 0.5) : false,
+            minApparentImpedanceOhm:
+              zAppSignal && zAppSignal.length > 0 ? Math.min(...Array.from(zAppSignal)) : undefined,
+          };
+        });
+        return { project: project.name, relays };
+      },
+    },
+    {
+      id: "run_pow_sweep",
+      title: "Point-on-Wave (PoW) Parametric Sweep & SSOV Histogram",
+      description:
+        "Executes statistical breaker closing angle sweeps (0-360 deg with Gaussian pole scatter) and computes 2% SSOV overvoltage.",
+      category: "simulate",
+      execute: async (
+        ctx: { documentText?: string | undefined },
+        params?: { documentText?: string | undefined; breakerId?: string; numRuns?: number },
+      ) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+        return runPointOnWaveSweep(netlist, {
+          breakerId: params?.breakerId,
+          numRuns: params?.numRuns ?? 30,
+        });
+      },
+    },
+    {
+      id: "run_frequency_scan",
+      title: "Subsynchronous Impedance Frequency Scan (SSR/SSCI)",
+      description:
+        "Scans driving-point impedance Z(f) across 1-150 Hz to detect series resonance and undamped negative resistance SSCI modes.",
+      category: "simulate",
+      execute: async (
+        ctx: { documentText?: string | undefined },
+        params?: { documentText?: string | undefined; busId?: string; fMinHz?: number; fMaxHz?: number },
+      ) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+        const firstBus = Array.from(netlist.buses.keys())[0] ?? "Bus1";
+        const targetBus = params?.busId ?? netlist.fmuInstances[0]?.busConnection ?? firstBus;
+        return runFrequencyScan(netlist, {
+          busId: targetBus,
+          fMinHz: params?.fMinHz ?? 1.0,
+          fMaxHz: params?.fMaxHz ?? 150.0,
         });
       },
     },

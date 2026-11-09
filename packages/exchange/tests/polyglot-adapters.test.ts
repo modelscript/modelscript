@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
-import { fmuToPscad } from "../../../languages/pscad/src/index.js";
-import { fmuToPsse } from "../../../languages/psse/src/index.js";
-import { fmuToSimulink } from "../../../languages/simulink/src/index.js";
 
 console.log("=== Running Polyglot Black-Box Adapter Tests ===");
+
+const pscadMod = "../../../languages/pscad/src/index.js";
+const psseMod = "../../../languages/psse/src/index.js";
+const slxMod = "../../../languages/simulink/src/index.js";
+const autosarMod = "../../../languages/autosar/src/index.js";
+
+const { fmuToPscad } = await import(pscadMod);
+const { fmuToPsse } = await import(psseMod);
+const { fmuToSimulink } = await import(slxMod);
 
 const sampleFmu = {
   modelName: "SolarInverter",
@@ -99,7 +105,7 @@ assert.ok(slxResult.simulinkBlockXml.includes('<Block BlockType="S-Function" Nam
 
 // 4. Test AUTOSAR Classic SWC Projection
 console.log("4. Testing fmuToAutosar...");
-const { fmuToAutosar } = await import("../../../languages/autosar/src/index.js");
+const { fmuToAutosar } = await import(autosarMod);
 const autosarResult = fmuToAutosar(sampleFmu, 0.02);
 assert.strictEqual(autosarResult.swcName, "SolarInverter_Swc");
 assert.strictEqual(autosarResult.runnableName, "SolarInverter_Swc_Step");

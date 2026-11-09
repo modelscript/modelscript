@@ -115,13 +115,32 @@ export function computeSettlingTime(t: number[], x: number[], band: number = 0.0
 export function computeOvershoot(x: number[], targetVal?: number): number {
   if (x.length === 0) return 0;
   const finalVal = targetVal !== undefined ? targetVal : (x[x.length - 1] ?? 0);
-  const maxVal = Math.max(...x);
-  if (finalVal === 0) {
-    return maxVal;
+  const x0 = x[0] ?? 0;
+
+  let minVal = x0;
+  let maxVal = x0;
+  for (let i = 1; i < x.length; i++) {
+    const val = x[i]!;
+    if (val < minVal) minVal = val;
+    if (val > maxVal) maxVal = val;
   }
-  const diff = maxVal - finalVal;
-  if (diff <= 0) return 0;
-  return (diff / Math.abs(finalVal)) * 100;
+
+  if (finalVal === 0) {
+    return Math.max(Math.abs(minVal), Math.abs(maxVal));
+  }
+
+  if (finalVal > x0) {
+    const diff = maxVal - finalVal;
+    if (diff <= 0) return 0;
+    return (diff / Math.abs(finalVal)) * 100;
+  } else if (finalVal < x0) {
+    const diff = finalVal - minVal;
+    if (diff <= 0) return 0;
+    return (diff / Math.abs(finalVal)) * 100;
+  } else {
+    const maxDev = Math.max(Math.abs(maxVal - finalVal), Math.abs(finalVal - minVal));
+    return (maxDev / Math.abs(finalVal)) * 100;
+  }
 }
 
 /**

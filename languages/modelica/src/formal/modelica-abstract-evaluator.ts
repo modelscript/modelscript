@@ -30,6 +30,27 @@ function isBinaryAddSub(str: string, idx: number): boolean {
   return /[a-zA-Z0-9_)\]]/.test(prevChar);
 }
 
+function splitArguments(argString: string): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < argString.length; i++) {
+    const ch = argString[i]!;
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    if (ch === "," && depth === 0) {
+      args.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim().length > 0) {
+    args.push(current.trim());
+  }
+  return args;
+}
+
 export class ModelicaAbstractEvaluator {
   /**
    * Evaluates an arithmetic, relational, or function call expression over the abstract state.
@@ -118,11 +139,32 @@ export class ModelicaAbstractEvaluator {
     }
 
     // 4. Built-in Math and Array Functions
-    const funcMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$/.exec(trimmed);
-    if (funcMatch) {
-      const fnName = funcMatch[1]!;
-      const rawArgs = funcMatch[2] ? funcMatch[2].split(",").map((s) => s.trim()) : [];
-
+    let fnName = "";
+    let rawArgs: string[] = [];
+    const openParenIdx = trimmed.indexOf("(");
+    if (openParenIdx > 0 && trimmed.endsWith(")")) {
+      const candidateName = trimmed.slice(0, openParenIdx).trim();
+      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(candidateName)) {
+        let depth = 0;
+        let closedAtEnd = false;
+        for (let i = openParenIdx; i < trimmed.length; i++) {
+          const ch = trimmed[i]!;
+          if (ch === "(" || ch === "[" || ch === "{") depth++;
+          else if (ch === ")" || ch === "]" || ch === "}") {
+            depth--;
+            if (depth === 0) {
+              if (i === trimmed.length - 1) closedAtEnd = true;
+              break;
+            }
+          }
+        }
+        if (closedAtEnd) {
+          fnName = candidateName;
+          rawArgs = splitArguments(trimmed.slice(openParenIdx + 1, trimmed.length - 1));
+        }
+      }
+    }
+    if (fnName) {
       // 4.1 sqrt(x)
       if (fnName === "sqrt" && rawArgs[0]) {
         const argIval = this.evalExpr(rawArgs[0], state, collectRTE, ctx);

@@ -143,7 +143,9 @@ test("Exchange HPC Slurm CFD Provider & In-Situ Telemetry Codec", async (t) => {
         assert.ok(currentSlice !== null);
         assert.strictEqual(currentSlice.numVertices, 36, "Should load 6x6 slice from postProcessing/in_situ_slice.bin");
 
-        await provider.terminate();
+        assert.strictEqual(provider.getStatus(), "running");
+        await provider.cancel();
+        assert.strictEqual(provider.getStatus(), "cancelled", "Should transition to cancelled status upon cancel()");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }

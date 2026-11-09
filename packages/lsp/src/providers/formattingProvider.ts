@@ -211,40 +211,17 @@ export function registerFormattingProvider(
       return formatStepDocument(document);
     }
 
-    // SysML2 formatting — simple brace-based indentation
-    if (params.textDocument.uri.endsWith(".sysml")) {
-      const text = document.getText();
-      const tabSize = params.options.tabSize ?? 2;
-      const indent = params.options.insertSpaces !== false ? " ".repeat(tabSize) : "\t";
-      const lines = text.split("\n");
-      const formatted: string[] = [];
-      let depth = 0;
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          formatted.push("");
-          continue;
-        }
-
-        // Closing brace decreases indent before writing
-        if (trimmed.startsWith("}")) {
-          depth = Math.max(0, depth - 1);
-        }
-
-        formatted.push(indent.repeat(depth) + trimmed);
-
-        // Opening brace increases indent after writing
-        const openBraces = (trimmed.match(/{/g) || []).length;
-        const closeBraces = (trimmed.match(/}/g) || []).length;
-        depth = Math.max(0, depth + openBraces - closeBraces);
-        // But if we already decremented for a leading `}`, add it back since we counted it in closeBraces
-        if (trimmed.startsWith("}") && closeBraces > openBraces) {
-          // Already handled above, no adjustment needed
-        }
-      }
-
-      const result = formatted.join("\n");
+    // SysML2 / KerML formatting
+    if (
+      params.textDocument.uri.match(/\.(sysml|kerml)$/i) ||
+      document.languageId === "sysml2" ||
+      document.languageId === "kerml"
+    ) {
+      const { formatSysmlSource } = await import("@modelscript/sysml2");
+      const formatted = formatSysmlSource(document.getText(), {
+        tabSize: params.options.tabSize,
+        insertSpaces: params.options.insertSpaces,
+      });
       const lastLine = document.lineCount - 1;
       const lastChar = document.getText().length - document.offsetAt({ line: lastLine, character: 0 });
       return [
@@ -253,7 +230,7 @@ export function registerFormattingProvider(
             start: { line: 0, character: 0 },
             end: { line: lastLine, character: lastChar },
           },
-          newText: result,
+          newText: formatted,
         },
       ];
     }
@@ -281,5 +258,36 @@ export function registerFormattingProvider(
         newText: formatted,
       },
     ];
+  });
+
+  connection.onDocumentRangeFormatting(async (params): Promise<TextEdit[]> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+
+    if (
+      params.textDocument.uri.match(/\.(sysml|kerml)$/i) ||
+      document.languageId === "sysml2" ||
+      document.languageId === "kerml"
+    ) {
+      const { formatSysmlSource } = await import("@modelscript/sysml2");
+      const formatted = formatSysmlSource(document.getText(), {
+        tabSize: params.options.tabSize,
+        insertSpaces: params.options.insertSpaces,
+        startLine: params.range.start.line,
+        endLine: params.range.end.line,
+      });
+      const lastLine = document.lineCount - 1;
+      const lastChar = document.getText().length - document.offsetAt({ line: lastLine, character: 0 });
+      return [
+        {
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: lastLine, character: lastChar },
+          },
+          newText: formatted,
+        },
+      ];
+    }
+    return [];
   });
 }

@@ -370,8 +370,38 @@ export class SemanticTheoryCoordinator {
   private unionVars(a: string, b: string): string {
     const aIsNum = a.trim() !== "" && !isNaN(Number(a));
     const bIsNum = b.trim() !== "" && !isNaN(Number(b));
-    if (bIsNum && !aIsNum) return this.getCanonicalVar(a);
-    if (aIsNum && !bIsNum) return this.getCanonicalVar(b);
+    if (aIsNum && bIsNum) {
+      if (Math.abs(Number(a) - Number(b)) > 1e-9) {
+        this.infeasibleConflict = this.makeBoundInversionConflict(a, Number(a), Number(b), [], [a, b]);
+      }
+      return a;
+    }
+    if (bIsNum && !aIsNum) {
+      const rootA = this.getCanonicalVar(a);
+      const val = Number(b);
+      const bA = this.canonicalBounds.get(rootA);
+      const lo = Math.max(bA ? bA[0] : -Infinity, val);
+      const hi = Math.min(bA ? bA[1] : Infinity, val);
+      this.canonicalBounds.set(rootA, [lo, hi]);
+      if (lo > hi + 1e-9) {
+        const jA = this.canonicalBoundJustifications.get(rootA);
+        this.infeasibleConflict = this.makeBoundInversionConflict(rootA, lo, hi, jA ? Array.from(jA) : [], [rootA, a]);
+      }
+      return rootA;
+    }
+    if (aIsNum && !bIsNum) {
+      const rootB = this.getCanonicalVar(b);
+      const val = Number(a);
+      const bB = this.canonicalBounds.get(rootB);
+      const lo = Math.max(bB ? bB[0] : -Infinity, val);
+      const hi = Math.min(bB ? bB[1] : Infinity, val);
+      this.canonicalBounds.set(rootB, [lo, hi]);
+      if (lo > hi + 1e-9) {
+        const jB = this.canonicalBoundJustifications.get(rootB);
+        this.infeasibleConflict = this.makeBoundInversionConflict(rootB, lo, hi, jB ? Array.from(jB) : [], [rootB, b]);
+      }
+      return rootB;
+    }
     const rootA = this.getCanonicalVar(a);
     const rootB = this.getCanonicalVar(b);
     if (rootA !== rootB) {

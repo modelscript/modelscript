@@ -174,4 +174,35 @@ test("ExaGO Deck Exporter: Generates turnkey MATPOWER, .cont, .ini, and Slurm sc
   assert.ok(deck.configFile.includes("ctgcfile = contingencies.cont"));
   assert.ok(deck.slurmScript.includes("MPI_RANKS=32"));
   assert.ok(deck.slurmScript.includes("scopflow"));
+  assert.ok(deck.slurmScript.includes("#SBATCH --job-name=exago-wecc_cluster"));
+  assert.ok(deck.slurmScript.includes("#SBATCH --ntasks=32"));
+  assert.ok(deck.slurmScript.includes('srun --mpi=pmix -n "${MPI_RANKS}"'));
+
+  // Verify custom cluster options
+  const clusterDeck = exportExagoDeck(pCase, {
+    caseName: "grid_hpc",
+    mpiRanks: 64,
+    cluster: {
+      partition: "mpi-large",
+      nodes: 2,
+      tasksPerNode: 32,
+      memoryMb: 65536,
+      walltime: "02:30:00",
+      modules: ["openmpi/4.1", "petsc/3.19"],
+    },
+  });
+  assert.ok(clusterDeck.slurmScript.includes("#SBATCH --partition=mpi-large"));
+  assert.ok(clusterDeck.slurmScript.includes("#SBATCH --nodes=2"));
+  assert.ok(clusterDeck.slurmScript.includes("#SBATCH --mem=65536M"));
+  assert.ok(clusterDeck.slurmScript.includes("#SBATCH --time=02:30:00"));
+  assert.ok(clusterDeck.slurmScript.includes("module load openmpi/4.1"));
+
+  // Verify standalone script without sbatch headers
+  const standaloneDeck = exportExagoDeck(pCase, {
+    caseName: "local_run",
+    mpiRanks: 8,
+    generateSbatchHeaders: false,
+  });
+  assert.ok(!standaloneDeck.slurmScript.includes("#SBATCH"));
+  assert.ok(standaloneDeck.slurmScript.includes('mpiexec -n "${MPI_RANKS}"'));
 });

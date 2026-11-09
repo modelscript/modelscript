@@ -296,14 +296,12 @@ interface CstNodeLike {
   children?: CstNodeLike[] | undefined;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 function buildClassAdapter(
   context: any,
   symbolId: number,
   AnnotationEvaluatorClass: any,
   visited = new Set<number>(),
 ): any {
-  /* eslint-enable @typescript-eslint/no-explicit-any */
   if (visited.has(symbolId)) return null;
   visited.add(symbolId);
 
@@ -312,11 +310,11 @@ function buildClassAdapter(
   if (!entry) return null;
   const cstNode = queryDB.cstNode(symbolId) as CstNodeLike | null;
   const children = queryDB.childrenOf(symbolId) || [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const components: any[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const connectEquations: any[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const extendsClassInstances: any[] = [];
 
   for (const child of children) {
@@ -425,7 +423,6 @@ function buildClassAdapter(
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adapter: any = {
     id: symbolId,
     db: queryDB,
@@ -482,9 +479,8 @@ function buildClassAdapter(
  * Stage 1 Renderer: Renders a non-empty Modelica Diagram into a 800x450 SVG thumbnail.
  */
 export function renderModelicaDiagramThumbnailSvg(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   diagData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   x6MarkupToSvg: (markup: any) => string,
   className: string,
   classKind: string,
@@ -517,7 +513,7 @@ export function renderModelicaDiagramThumbnailSvg(
   }
 
   // Helper to resolve port world coordinates
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const resolvePortPoint = (node: any, px: number, py: number): { x: number; y: number } => {
     const nx = Number(node?.x ?? 0);
     const ny = Number(node?.y ?? 0);
@@ -543,15 +539,14 @@ export function renderModelicaDiagramThumbnailSvg(
     if (Array.isArray(edge?.data?.points) && edge.data.points.length >= 2) {
       pts = edge.data.points;
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const srcNode = nodes.find((n: any) => n.id === edge?.source?.cell);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const tgtNode = nodes.find((n: any) => n.id === edge?.target?.cell);
       const srcPorts = Array.isArray(srcNode?.ports) ? srcNode.ports : srcNode?.ports?.items;
       const tgtPorts = Array.isArray(tgtNode?.ports) ? tgtNode.ports : tgtNode?.ports?.items;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const srcPort = srcPorts?.find((p: any) => p.id === edge?.source?.port);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const tgtPort = tgtPorts?.find((p: any) => p.id === edge?.target?.port);
 
       const p1 =
@@ -1167,7 +1162,6 @@ export async function preprocessModelicaArtifact(
         const hasDiagramEdges =
           (diagData.edges?.length ?? 0) > 0 &&
           (hasDiagramNodes ||
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             diagData.edges.some((e: any) => Array.isArray(e?.data?.points) && e.data.points.length >= 2));
 
         if (hasDiagramNodes || hasDiagramBg || hasDiagramEdges) {
@@ -1280,7 +1274,6 @@ export async function preprocessModelicaArtifact(
                     ? Math.min(1000, Math.max(50, Math.round((stopTime - startTime) / stepSize)))
                     : 300);
 
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const simRes = simulateArena(arena as any, {
                   startTime,
                   stopTime,

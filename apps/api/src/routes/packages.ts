@@ -2,6 +2,7 @@
 
 import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -27,9 +28,17 @@ import type { LibraryStorage } from "../storage.js";
 import { inspectClassSource } from "../util/class-source-inspector.js";
 import { getPackageVersionResources, resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
 import { getLanguageIconSvg } from "../util/language-icons.js";
+import {
+  comparePackageVulnerabilities,
+  formatCycloneDxVulnerabilities,
+  formatSpdxSecurityRefs,
+  scanDependenciesVulnerabilities,
+  scanPackageVulnerabilities,
+} from "../util/osv-scanner.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { scanPackageArchive } from "../util/package-scanner.js";
 import { renderPolyglotClassDiagramSvg } from "../util/polyglot-doc-indexer.js";
+import { generateSlsaProvenance } from "../util/slsa-provenance.js";
 import { extractManifestFromZip, extractPackageMoFromZip } from "../util/zip.js";
 
 function isValidPackageName(name: string): boolean {
@@ -56,13 +65,27 @@ function checkPackageTokenAccess(req: Request, res: Response, packageName: strin
   return true;
 }
 
-function safeUpstreamUrl(pathname: string): URL {
-  const base = process.env["UPSTREAM_HUB"] || "https://hub.modelscript.org";
-  const url = new URL(pathname, base);
+function getUpstreamRegistries(): string[] {
+  const envList = process.env["UPSTREAM_REGISTRIES"] || process.env["UPSTREAM_HUB"] || "https://hub.modelscript.org";
+  return envList
+    .split(/[,\s]+/)
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+}
+
+function safeUpstreamRegistryUrl(baseRegistry: string, subpath: string): URL {
+  const cleanBase = baseRegistry.trim().replace(/\/+$/, "");
+  const cleanSubpath = subpath.startsWith("/") ? subpath : `/${subpath}`;
+  const url = new URL(cleanSubpath, cleanBase);
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Invalid protocol for upstream hub");
+    throw new Error(`Invalid protocol '${url.protocol}' for upstream registry '${baseRegistry}'`);
   }
   return url;
+}
+
+function safeUpstreamUrl(pathname: string): URL {
+  const primary = getUpstreamRegistries()[0] || "https://hub.modelscript.org";
+  return safeUpstreamRegistryUrl(primary, pathname);
 }
 
 function walkDir(dir: string, callback: (relPath: string, content: string) => void, baseDir = dir) {
@@ -758,24 +781,46 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     }
 
     if (versions.length === 0) {
-      // FEDERATION: Proxy list from upstream
-      try {
-        const upstreamUrl = safeUpstreamUrl(`/api/v1/libraries/${encodeURIComponent(name)}`);
-        const upstreamRes = await fetch(upstreamUrl.toString());
-        if (upstreamRes.ok) {
-          const data = await upstreamRes.json();
-          res.json(data);
-          return;
+      // FEDERATION: Proxy list from configured upstream registries in order
+      const registries = getUpstreamRegistries();
+      for (const reg of registries) {
+        try {
+          const upstreamUrl = safeUpstreamRegistryUrl(reg, `/api/v1/libraries/${encodeURIComponent(name)}`);
+          const upstreamRes = await fetch(upstreamUrl.toString());
+          if (upstreamRes.ok) {
+            const data = await upstreamRes.json();
+            res.json(data);
+            return;
+          }
+        } catch {
+          // Fall through to next upstream
         }
-      } catch {
-        // Fall through
       }
 
       res.status(404).json({ error: `Package "${name}" not found` });
       return;
     }
 
-    res.json({ name, versions });
+    const releasesMeta = database.getLibraryReleases(name);
+    const releaseMap = new Map(releasesMeta.map((r) => [r.library_version, r]));
+
+    const releases = versions.map((v) => {
+      const meta = releaseMap.get(v);
+      return {
+        version: v,
+        isYanked: Boolean(meta?.is_yanked),
+        yankReason: meta?.yank_reason ?? null,
+        isDeprecated: Boolean(meta?.is_deprecated),
+        deprecationReason: meta?.deprecation_reason ?? null,
+        publishedAt: meta?.published_at ?? null,
+      };
+    });
+
+    if (req.query["includeYanked"] === "false") {
+      versions = versions.filter((v) => !releaseMap.get(v)?.is_yanked);
+    }
+
+    res.json({ name, versions, releases });
   });
 
   /**
@@ -803,178 +848,325 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    * GET /api/v1/libraries/:scope/:name/compare
    *
    * Compare two versions of a package across physical classes, parameters,
-   * 3D CAD models, and physical unit parity drift.
+   * 3D CAD models, physical unit parity drift, and OSV security vulnerabilities.
    * Query params: `base` (string), `head` (string)
    */
-  router.get(["/:name/compare", "/:scope/:name/compare"], (req: Request, res: Response, next: NextFunction): void => {
-    if (isScopeInvalid(req)) return next();
-    const { name } = extractPkgAndVersion(req);
-    const base = req.query["base"] as string;
-    const head = req.query["head"] as string;
+  router.get(
+    ["/:name/compare", "/:scope/:name/compare"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name } = extractPkgAndVersion(req);
+      const base = req.query["base"] as string;
+      const head = req.query["head"] as string;
 
-    if (!name || !isValidPackageName(name)) {
-      res.status(400).json({ error: "Valid package name is required" });
-      return;
-    }
+      if (!name || !isValidPackageName(name)) {
+        res.status(400).json({ error: "Valid package name is required" });
+        return;
+      }
 
-    if (!base || !head) {
-      res.status(400).json({ error: "Both 'base' and 'head' query parameters are required" });
-      return;
-    }
+      if (!base || !head) {
+        res.status(400).json({ error: "Both 'base' and 'head' query parameters are required" });
+        return;
+      }
 
-    const pkg = database.getPackage(name);
-    if (!pkg) {
-      res.status(404).json({ error: `Package "${name}" not found` });
-      return;
-    }
+      const pkg = database.getPackage(name);
+      if (!pkg) {
+        res.status(404).json({ error: `Package "${name}" not found` });
+        return;
+      }
 
-    const baseVersionRow = database.getPackageVersion(pkg.id, base);
-    const headVersionRow = database.getPackageVersion(pkg.id, head);
+      const baseVersionRow = database.getPackageVersion(pkg.id, base);
+      const headVersionRow = database.getPackageVersion(pkg.id, head);
 
-    if (!baseVersionRow || !headVersionRow) {
-      res.status(404).json({
-        error: `Specified versions not found: base="${base}" (${baseVersionRow ? "found" : "missing"}), head="${head}" (${headVersionRow ? "found" : "missing"})`,
-      });
-      return;
-    }
+      if (!baseVersionRow || !headVersionRow) {
+        res.status(404).json({
+          error: `Specified versions not found: base="${base}" (${baseVersionRow ? "found" : "missing"}), head="${head}" (${headVersionRow ? "found" : "missing"})`,
+        });
+        return;
+      }
 
-    // 1. Compare classes
-    const baseClasses = database.getClasses(name, base);
-    const headClasses = database.getClasses(name, head);
+      // 1. Compare classes
+      const baseClasses = database.getClasses(name, base);
+      const headClasses = database.getClasses(name, head);
 
-    const baseClassMap = new Map(baseClasses.map((c) => [c.class_name, c]));
-    const headClassMap = new Map(headClasses.map((c) => [c.class_name, c]));
+      const baseClassMap = new Map(baseClasses.map((c) => [c.class_name, c]));
+      const headClassMap = new Map(headClasses.map((c) => [c.class_name, c]));
 
-    const addedClasses: { name: string; kind: string; description: string | null }[] = [];
-    const removedClasses: { name: string; kind: string; description: string | null }[] = [];
-    const modifiedClasses: {
-      name: string;
-      kind: string;
-      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[];
-    }[] = [];
-    const parityDrift: { className: string; parameter: string; oldUnit: string; newUnit: string }[] = [];
+      const addedClasses: { name: string; kind: string; description: string | null }[] = [];
+      const removedClasses: { name: string; kind: string; description: string | null }[] = [];
+      const modifiedClasses: {
+        name: string;
+        kind: string;
+        parameterChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[];
+      }[] = [];
+      const parityDrift: { className: string; parameter: string; oldUnit: string; newUnit: string }[] = [];
 
-    for (const [clsName, headCls] of headClassMap.entries()) {
-      if (!baseClassMap.has(clsName)) {
-        addedClasses.push({ name: clsName, kind: headCls.class_kind, description: headCls.description });
-      } else {
-        // Compare class details & parameters
-        const baseDetail = database.getClass(name, base, clsName);
-        const headDetail = database.getClass(name, head, clsName);
+      const breakingChanges: {
+        category: "connector_incompatible" | "component_removed" | "causality_drift" | "class_removed";
+        className: string;
+        componentName?: string | undefined;
+        message: string;
+        severity: "breaking" | "warning";
+      }[] = [];
 
-        if (baseDetail && headDetail) {
-          const baseCompMap = new Map(baseDetail.components.map((c) => [c.component_name, c]));
-          const paramChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[] = [];
+      const getUnitConversionHint = (oldU: string, newU: string): string | undefined => {
+        const o = oldU.replace(/^Modelica\.SIunits\./i, "").toLowerCase();
+        const n = newU.replace(/^Modelica\.SIunits\./i, "").toLowerCase();
+        if ((o === "pressure" || o === "pa") && (n === "bar" || n === "absolutebar")) {
+          return "1 bar = 100,000 Pa (1e5 scale factor)";
+        }
+        if ((o === "bar" || o === "absolutebar") && (n === "pressure" || n === "pa")) {
+          return "1 Pa = 1e-5 bar (1e-5 scale factor)";
+        }
+        if (o.includes("degc") && (n.includes("temp") || n === "k")) {
+          return "Kelvin = degC + 273.15 (offset shift)";
+        }
+        if ((o.includes("temp") || o === "k") && n.includes("degc")) {
+          return "degC = Kelvin - 273.15 (offset shift)";
+        }
+        if ((o === "watt" || o === "w") && (n === "kw" || n === "kilowatt")) {
+          return "1 kW = 1,000 W (1e3 scale factor)";
+        }
+        if ((o === "meter" || o === "m") && (n === "mm" || n === "millimeter")) {
+          return "1 m = 1,000 mm (1e3 scale factor)";
+        }
+        return undefined;
+      };
 
-          for (const headComp of headDetail.components) {
-            const baseComp = baseCompMap.get(headComp.component_name);
-            const headMod = headComp.modifiers?.[0];
-            const baseMod = baseComp?.modifiers?.[0];
+      for (const [clsName, headCls] of headClassMap.entries()) {
+        if (!baseClassMap.has(clsName)) {
+          addedClasses.push({ name: clsName, kind: headCls.class_kind, description: headCls.description });
+        } else {
+          // Compare class details & parameters
+          const baseDetail = database.getClass(name, base, clsName);
+          const headDetail = database.getClass(name, head, clsName);
 
-            if (!baseComp) {
-              paramChanges.push({
-                name: headComp.component_name,
-                old: null,
-                new: headMod?.modifier_value ?? headComp.type_name,
-              });
-            } else if (headMod?.modifier_value !== baseMod?.modifier_value) {
-              paramChanges.push({
-                name: headComp.component_name,
-                old: baseMod?.modifier_value ?? null,
-                new: headMod?.modifier_value ?? null,
-              });
+          if (baseDetail && headDetail) {
+            const baseCompMap = new Map(baseDetail.components.map((c) => [c.component_name, c]));
+            const paramChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[] = [];
+
+            // Detect removed components & connectors
+            for (const [baseCompName, baseComp] of baseCompMap.entries()) {
+              if (!headDetail.components.some((c) => c.component_name === baseCompName)) {
+                const isConnector =
+                  baseComp.causality === "input" ||
+                  baseComp.causality === "output" ||
+                  /pin|port|flange|terminal|plug|wire|bus|connector/i.test(baseComp.type_name) ||
+                  /pin|port|flange|terminal|plug|wire|bus/i.test(baseCompName);
+
+                breakingChanges.push({
+                  category: isConnector ? "connector_incompatible" : "component_removed",
+                  className: clsName,
+                  componentName: baseCompName,
+                  message: `${isConnector ? "Connector" : "Component"} '${baseCompName}' (${baseComp.type_name}) was removed in v${head}.`,
+                  severity: "breaking",
+                });
+              }
             }
 
-            // Check unit changes in modifiers or type
-            const baseUnit = baseComp?.type_name || "";
-            const headUnit = headComp.type_name || "";
-            if (baseComp && baseUnit !== headUnit && (baseUnit.includes(".") || headUnit.includes("."))) {
-              parityDrift.push({
-                className: clsName,
-                parameter: headComp.component_name,
-                oldUnit: baseUnit,
-                newUnit: headUnit,
+            for (const headComp of headDetail.components) {
+              const baseComp = baseCompMap.get(headComp.component_name);
+              const headMod = headComp.modifiers?.[0];
+              const baseMod = baseComp?.modifiers?.[0];
+
+              if (!baseComp) {
+                paramChanges.push({
+                  name: headComp.component_name,
+                  old: null,
+                  new: headMod?.modifier_value ?? headComp.type_name,
+                });
+              } else if (headMod?.modifier_value !== baseMod?.modifier_value) {
+                paramChanges.push({
+                  name: headComp.component_name,
+                  old: baseMod?.modifier_value ?? null,
+                  new: headMod?.modifier_value ?? null,
+                });
+              }
+
+              // Check causality drift on matching components
+              if (baseComp && baseComp.causality !== headComp.causality) {
+                breakingChanges.push({
+                  category: "causality_drift",
+                  className: clsName,
+                  componentName: headComp.component_name,
+                  message: `Causality for port '${headComp.component_name}' changed from '${baseComp.causality || "unspecified"}' to '${headComp.causality || "unspecified"}'.`,
+                  severity: "breaking",
+                });
+              }
+
+              // Check unit changes in modifiers or type
+              const baseUnit = baseComp?.type_name || "";
+              const headUnit = headComp.type_name || "";
+              if (baseComp && baseUnit !== headUnit && (baseUnit.includes(".") || headUnit.includes("."))) {
+                const hint = getUnitConversionHint(baseUnit, headUnit);
+                parityDrift.push({
+                  className: clsName,
+                  parameter: headComp.component_name,
+                  oldUnit: baseUnit,
+                  newUnit: headUnit,
+                  ...(hint ? { conversionHint: hint } : {}),
+                } as {
+                  className: string;
+                  parameter: string;
+                  oldUnit: string;
+                  newUnit: string;
+                  conversionHint?: string | undefined;
+                });
+              }
+            }
+
+            if (paramChanges.length > 0) {
+              modifiedClasses.push({
+                name: clsName,
+                kind: headCls.class_kind,
+                parameterChanges: paramChanges,
               });
             }
-          }
-
-          if (paramChanges.length > 0) {
-            modifiedClasses.push({
-              name: clsName,
-              kind: headCls.class_kind,
-              parameterChanges: paramChanges,
-            });
           }
         }
       }
-    }
 
-    for (const [clsName, baseCls] of baseClassMap.entries()) {
-      if (!headClassMap.has(clsName)) {
-        removedClasses.push({ name: clsName, kind: baseCls.class_kind, description: baseCls.description });
+      for (const [clsName, baseCls] of baseClassMap.entries()) {
+        if (!headClassMap.has(clsName)) {
+          removedClasses.push({ name: clsName, kind: baseCls.class_kind, description: baseCls.description });
+          breakingChanges.push({
+            category: "class_removed",
+            className: clsName,
+            message: `Class '${clsName}' (${baseCls.class_kind}) was deleted.`,
+            severity: "breaking",
+          });
+        }
       }
-    }
 
-    // 2. Compare CAD artifacts
-    const baseArtifacts = database.getArtifacts(baseVersionRow.id).filter((a) => a.type === "cad");
-    const headArtifacts = database.getArtifacts(headVersionRow.id).filter((a) => a.type === "cad");
+      // 2. Compare CAD artifacts
+      let baseArtifacts = database.getArtifacts(baseVersionRow.id).filter((a) => a.type === "cad");
+      let headArtifacts = database.getArtifacts(headVersionRow.id).filter((a) => a.type === "cad");
 
-    const baseCadMap = new Map(baseArtifacts.map((a) => [a.path, a]));
-    const headCadMap = new Map(headArtifacts.map((a) => [a.path, a]));
-
-    const cadChanges: {
-      file: string;
-      status: "added" | "removed" | "modified" | "unchanged";
-      volumeDeltaPercent?: number | undefined;
-    }[] = [];
-
-    for (const [cadPath] of headCadMap.entries()) {
-      if (!baseCadMap.has(cadPath)) {
-        cadChanges.push({ file: cadPath, status: "added" });
-      } else {
-        // Compare mesh properties if cached
-        const baseMeshRaw = storage.readCadMesh(name, base, cadPath);
-        const headMeshRaw = storage.readCadMesh(name, head, cadPath);
-
-        if (baseMeshRaw && headMeshRaw) {
-          try {
-            const baseJson = JSON.parse(baseMeshRaw);
-            const headJson = JSON.parse(headMeshRaw);
-            const baseVol = baseJson.properties?.volume || 0;
-            const headVol = headJson.properties?.volume || 0;
-
-            if (baseVol > 0 && headVol > 0 && Math.abs(baseVol - headVol) > 1e-6) {
-              const deltaPct = Number((((headVol - baseVol) / baseVol) * 100).toFixed(2));
-              cadChanges.push({ file: cadPath, status: "modified", volumeDeltaPercent: deltaPct });
-            } else {
-              cadChanges.push({ file: cadPath, status: "unchanged" });
+      // Fallback: If artifacts not indexed yet in DB, check extracted storage for .step / .stp files
+      if (baseArtifacts.length === 0 || headArtifacts.length === 0) {
+        const findStepFiles = (dir: string): string[] => {
+          if (!fs.existsSync(dir)) return [];
+          const results: string[] = [];
+          const walk = (current: string, rel: string) => {
+            for (const item of fs.readdirSync(current)) {
+              const full = path.join(current, item);
+              const relItem = rel ? `${rel}/${item}` : item;
+              try {
+                const stat = fs.statSync(full);
+                if (stat.isDirectory()) {
+                  walk(full, relItem);
+                } else if (/\.(step|stp)$/i.test(item)) {
+                  results.push(relItem);
+                }
+              } catch {}
             }
-          } catch {
+          };
+          try {
+            walk(dir, "");
+          } catch {}
+          return results;
+        };
+
+        if (baseArtifacts.length === 0) {
+          const baseExtracted = storage.getExtractedPath(name, base);
+          const stepFiles = findStepFiles(baseExtracted);
+          baseArtifacts = stepFiles.map((p) => ({
+            path: p,
+            type: "cad",
+            id: 0,
+            version_id: baseVersionRow.id,
+            name: path.basename(p),
+            mime_type: "application/step",
+            size_bytes: 0,
+            sha256_hash: "",
+            created_at: "",
+            metadata: null,
+          }));
+        }
+        if (headArtifacts.length === 0) {
+          const headExtracted = storage.getExtractedPath(name, head);
+          const stepFiles = findStepFiles(headExtracted);
+          headArtifacts = stepFiles.map((p) => ({
+            path: p,
+            type: "cad",
+            id: 0,
+            version_id: headVersionRow.id,
+            name: path.basename(p),
+            mime_type: "application/step",
+            size_bytes: 0,
+            sha256_hash: "",
+            created_at: "",
+            metadata: null,
+          }));
+        }
+      }
+
+      const baseCadMap = new Map(baseArtifacts.map((a) => [a.path, a]));
+      const headCadMap = new Map(headArtifacts.map((a) => [a.path, a]));
+
+      const cadChanges: {
+        file: string;
+        status: "added" | "removed" | "modified" | "unchanged";
+        volumeDeltaPercent?: number | undefined;
+      }[] = [];
+
+      for (const [cadPath] of headCadMap.entries()) {
+        if (!baseCadMap.has(cadPath)) {
+          cadChanges.push({ file: cadPath, status: "added" });
+        } else {
+          // Compare mesh properties if cached
+          const baseMeshRaw = storage.readCadMesh(name, base, cadPath);
+          const headMeshRaw = storage.readCadMesh(name, head, cadPath);
+
+          if (baseMeshRaw && headMeshRaw) {
+            try {
+              const baseJson = JSON.parse(baseMeshRaw);
+              const headJson = JSON.parse(headMeshRaw);
+              const baseVol = baseJson.properties?.volume || 0;
+              const headVol = headJson.properties?.volume || 0;
+
+              if (baseVol > 0 && headVol > 0 && Math.abs(baseVol - headVol) > 1e-6) {
+                const deltaPct = Number((((headVol - baseVol) / baseVol) * 100).toFixed(2));
+                cadChanges.push({ file: cadPath, status: "modified", volumeDeltaPercent: deltaPct });
+              } else {
+                cadChanges.push({ file: cadPath, status: "unchanged" });
+              }
+            } catch {
+              cadChanges.push({ file: cadPath, status: "modified" });
+            }
+          } else {
             cadChanges.push({ file: cadPath, status: "modified" });
           }
-        } else {
-          cadChanges.push({ file: cadPath, status: "modified" });
         }
       }
-    }
 
-    for (const [cadPath] of baseCadMap.entries()) {
-      if (!headCadMap.has(cadPath)) {
-        cadChanges.push({ file: cadPath, status: "removed" });
+      for (const [cadPath] of baseCadMap.entries()) {
+        if (!headCadMap.has(cadPath)) {
+          cadChanges.push({ file: cadPath, status: "removed" });
+        }
       }
-    }
 
-    res.json({
-      versionDelta: { base, head },
-      classes: {
-        added: addedClasses,
-        removed: removedClasses,
-        modified: modifiedClasses,
-      },
-      cadChanges,
-      parityDrift,
-    });
-  });
+      const vulns = await comparePackageVulnerabilities(name, base, head);
+
+      res.json({
+        versionDelta: { base, head },
+        classes: {
+          added: addedClasses,
+          removed: removedClasses,
+          modified: modifiedClasses,
+        },
+        cadChanges,
+        parityDrift,
+        breakingChanges,
+        vulnerabilities: {
+          fixed: vulns.fixed,
+          introduced: vulns.introduced,
+          unresolved: vulns.unresolved,
+          current: vulns.current,
+        },
+      });
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/dependents
@@ -1133,19 +1325,23 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       const file = storage.read(name, version);
       if (!file) {
-        // FEDERATION: Proxy metadata from upstream
-        try {
-          const upstreamUrl = safeUpstreamUrl(
-            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
-          );
-          const upstreamRes = await fetch(upstreamUrl.toString());
-          if (upstreamRes.ok) {
-            const data = await upstreamRes.json();
-            res.json(data);
-            return;
+        // FEDERATION: Proxy metadata from configured upstream registries in order
+        const registries = getUpstreamRegistries();
+        for (const reg of registries) {
+          try {
+            const upstreamUrl = safeUpstreamRegistryUrl(
+              reg,
+              `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+            );
+            const upstreamRes = await fetch(upstreamUrl.toString());
+            if (upstreamRes.ok) {
+              const data = await upstreamRes.json();
+              res.json(data);
+              return;
+            }
+          } catch {
+            // Fall through to next upstream
           }
-        } catch {
-          // Fall through
         }
 
         res.status(404).json({ error: `Package "${name}@${version}" not found` });
@@ -1185,6 +1381,17 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
             ? (manifestAuthor as { name: string }).name
             : undefined;
 
+      const osv = await scanPackageVulnerabilities(name, version);
+      const oidcDetails = {
+        oidcIssuer: release?.oidc_issuer ?? undefined,
+        oidcSubject: release?.oidc_subject ?? undefined,
+        oidcRepository: release?.oidc_repository ?? undefined,
+        oidcWorkflowRef: release?.oidc_workflow_ref ?? undefined,
+        oidcRunId: release?.oidc_run_id ?? undefined,
+        vulnerabilitiesCount: osv.summary.total,
+        vulnerabilities: osv.vulnerabilities,
+      };
+
       if (pkgRecord?.description) {
         res.json({
           name,
@@ -1206,6 +1413,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           yankReason: release?.yank_reason ?? null,
           yankedAt: release?.yanked_at ?? null,
           canManage,
+          ...oidcDetails,
         });
         return;
       }
@@ -1234,6 +1442,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           yankReason: release?.yank_reason ?? null,
           yankedAt: release?.yanked_at ?? null,
           canManage,
+          ...oidcDetails,
         });
       } catch {
         // If we cannot parse package.mo from the zip (e.g. polyglot package.json or datapackage.json archive), return DB metadata
@@ -1257,6 +1466,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           yankReason: release?.yank_reason ?? null,
           yankedAt: release?.yanked_at ?? null,
           canManage,
+          ...oidcDetails,
         });
       }
     },
@@ -1448,7 +1658,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    * Download the zip file for a specific package version.
    */
   router.get(
-    ["/:name/:version/download", "/:scope/:name/:version/download"],
+    [
+      "/:name/:version/download",
+      "/:scope/:name/:version/download",
+      "/:name/:version/archive.zip",
+      "/:scope/:name/:version/archive.zip",
+    ],
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
@@ -1470,95 +1685,99 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           res.status(404).json({ error: `Library ${name}@${version} not found locally (air-gapped mode enforced)` });
           return;
         }
-        // FEDERATION: Proxy download from upstream and cache it
-        try {
-          const upstreamUrl = safeUpstreamUrl(
-            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`,
-          );
-          const upstreamRes = await fetch(upstreamUrl.toString());
-          if (upstreamRes.ok) {
-            const contentLength = Number(upstreamRes.headers.get("content-length"));
-            if (contentLength > 50 * 1024 * 1024) {
-              res.status(502).json({ error: "Upstream package exceeds 50MB limit" });
-              return;
-            }
-            const buffer = await upstreamRes.arrayBuffer();
-            const nodeBuffer = Buffer.from(buffer);
-            if (nodeBuffer.length > 50 * 1024 * 1024) {
-              res.status(502).json({ error: "Upstream package exceeds 50MB limit" });
-              return;
-            }
-
-            const scanResult = await scanPackageArchive(nodeBuffer);
-            if (!scanResult.valid) {
-              res.status(502).json({
-                error: `Upstream package failed security screening: ${scanResult.violations.join(", ")}`,
-              });
-              return;
-            }
-
-            const manifestResult = await extractManifestFromZip(nodeBuffer, {
-              fallbackName: name,
-              fallbackVersion: version,
-            });
-            let manifestName: string | undefined;
-            if (manifestResult.type === "json") {
-              try {
-                const parsed = JSON.parse(manifestResult.content);
-                manifestName = parsed?.name;
-              } catch {}
-            } else if (manifestResult.type === "mo") {
-              manifestName = parsePackageMo(manifestResult.content)?.name ?? undefined;
-            }
-            const baseName = name.includes("/") ? name.split("/")[1] : name;
-            if (manifestName && manifestName !== name && manifestName !== baseName) {
-              res.status(502).json({
-                error: `Upstream package name mismatch: expected '${name}', found '${manifestName}'`,
-              });
-              return;
-            }
-
-            // Cache locally only when package is tracked in local catalog, caller is authenticated, or in test mode
-            const canPersistPullThrough =
-              Boolean(database.getPackage(name)) ||
-              Boolean(req.headers.authorization) ||
-              process.env["NODE_ENV"] === "test";
-            if (canPersistPullThrough) {
-              try {
-                await storage.store(name, version, nodeBuffer);
-                // Also extract and compile locally for index parity
-                const libraryPath = await storage.extractLibrary(name, version);
-                const { fileURLToPath } = await import("node:url");
-                const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-                const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
-                jobQueue.enqueueProcess(
-                  `${name}@${version}`,
-                  workerScript,
-                  {
-                    name,
-                    version,
-                    libraryPath,
-                    storageDir: storage.dataDir,
-                    dbDir: database.dbDir,
-                  },
-                  { priority: "normal" },
-                );
-              } catch {
-                // Ignore if it already exists or fails
+        // FEDERATION: Proxy download from configured upstream registries in order and cache in local CAS
+        const registries = getUpstreamRegistries();
+        for (const reg of registries) {
+          try {
+            const upstreamUrl = safeUpstreamRegistryUrl(
+              reg,
+              `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`,
+            );
+            const upstreamRes = await fetch(upstreamUrl.toString());
+            if (upstreamRes.ok) {
+              const contentLength = Number(upstreamRes.headers.get("content-length"));
+              if (contentLength > 50 * 1024 * 1024) {
+                res.status(502).json({ error: "Upstream package exceeds 50MB limit" });
+                return;
               }
-            }
+              const buffer = await upstreamRes.arrayBuffer();
+              const nodeBuffer = Buffer.from(buffer);
+              if (nodeBuffer.length > 50 * 1024 * 1024) {
+                res.status(502).json({ error: "Upstream package exceeds 50MB limit" });
+                return;
+              }
 
-            res.setHeader("Content-Type", "application/zip");
-            res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}.zip"`);
-            res.setHeader("Content-Length", nodeBuffer.length);
-            res.send(nodeBuffer);
-            return;
+              const scanResult = await scanPackageArchive(nodeBuffer);
+              if (!scanResult.valid) {
+                res.status(502).json({
+                  error: `Upstream package failed security screening: ${scanResult.violations.join(", ")}`,
+                });
+                return;
+              }
+
+              const manifestResult = await extractManifestFromZip(nodeBuffer, {
+                fallbackName: name,
+                fallbackVersion: version,
+              });
+              let manifestName: string | undefined;
+              if (manifestResult.type === "json") {
+                try {
+                  const parsed = JSON.parse(manifestResult.content);
+                  manifestName = parsed?.name;
+                } catch {}
+              } else if (manifestResult.type === "mo") {
+                manifestName = parsePackageMo(manifestResult.content)?.name ?? undefined;
+              }
+              const baseName = name.includes("/") ? name.split("/")[1] : name;
+              if (manifestName && manifestName !== name && manifestName !== baseName) {
+                res.status(502).json({
+                  error: `Upstream package name mismatch: expected '${name}', found '${manifestName}'`,
+                });
+                return;
+              }
+
+              // Cache locally in CAS store only when package is tracked in local catalog, caller is authenticated, or in test mode
+              const canPersistPullThrough =
+                Boolean(database.getPackage(name)) ||
+                Boolean(req.headers.authorization) ||
+                process.env["NODE_ENV"] === "test";
+              if (canPersistPullThrough) {
+                try {
+                  await storage.store(name, version, nodeBuffer);
+                  // Also extract and compile locally for index parity
+                  const libraryPath = await storage.extractLibrary(name, version);
+                  const { fileURLToPath } = await import("node:url");
+                  const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+                  const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+                  jobQueue.enqueueProcess(
+                    `${name}@${version}`,
+                    workerScript,
+                    {
+                      name,
+                      version,
+                      libraryPath,
+                      storageDir: storage.dataDir,
+                      dbDir: database.dbDir,
+                    },
+                    { priority: "normal" },
+                  );
+                } catch {
+                  // Ignore if it already exists or fails
+                }
+              }
+
+              res.setHeader("Content-Type", "application/zip");
+              res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}.zip"`);
+              res.setHeader("Content-Length", String(nodeBuffer.length));
+              res.send(nodeBuffer);
+              return;
+            }
+          } catch {
+            // Fall through to next upstream registry
           }
-        } catch {
-          // Fall through
         }
 
-        res.status(404).json({ error: `Package "${name}@${version}" not found` });
+        res.status(404).json({ error: `Package "${name}@${version}" not found in local store or upstream registries` });
         return;
       }
 
@@ -1583,6 +1802,14 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         if (release?.signature) {
           res.setHeader("X-Package-Signature", release.signature);
         }
+      }
+
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+
+      const ifNoneMatch = req.headers["if-none-match"];
+      if (ifNoneMatch && contentHash && (ifNoneMatch === `"${contentHash}"` || ifNoneMatch === contentHash)) {
+        res.status(304).end();
+        return;
       }
 
       res.setHeader("Content-Type", "application/zip");
@@ -1904,6 +2131,406 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   );
 
   /**
+   * GET /api/v1/libraries/:name/:version/sbom.json
+   * GET /api/v1/libraries/:scope/:name/:version/sbom.json
+   * Export an automated Software Bill of Materials (SBOM) in CycloneDX 1.6 or SPDX 2.3/3.0 format.
+   * Query params: `format` ("cyclonedx" | "spdx", default: "cyclonedx"), `export` (boolean).
+   */
+  router.get(
+    ["/:name/:version/sbom.json", "/:scope/:name/:version/sbom.json"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const format = (req.query["format"] as string | undefined)?.toLowerCase() === "spdx" ? "spdx" : "cyclonedx";
+      const isExport = req.query["export"] === "true" || req.query["export"] === "1";
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const { manifest } = await resolveCanonicalManifest(storage, database, name, version);
+        const lockfile = resolveDataPackageLockfile(storage, database, name, version);
+        const release = database.getLibraryRelease(name, version);
+        const contentHash = release?.content_hash || storage.getContentHash(name, version);
+        const pkgRecord = database.getPackage(name);
+
+        const rootOsvScan = await scanPackageVulnerabilities(name, version);
+        const depOsvMap = await scanDependenciesVulnerabilities(lockfile.packages);
+
+        if (format === "spdx") {
+          const sanitizeSpdx = (s: string) => s.replace(/[^a-zA-Z0-9.-]/g, "-");
+          const encodePkgPath = (p: string) =>
+            p.startsWith("@") ? p.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(p);
+          const rootSpdxId = `SPDXRef-Package-${sanitizeSpdx(name)}`;
+          const rootSecRefs = formatSpdxSecurityRefs(rootOsvScan.vulnerabilities);
+          const packages: Record<string, unknown>[] = [
+            {
+              name,
+              SPDXID: rootSpdxId,
+              versionInfo: version,
+              downloadLocation: `https://ansatz.social/api/v1/libraries/${encodePkgPath(name)}/${encodeURIComponent(version)}/download`,
+              filesAnalyzed: false,
+              checksums: contentHash
+                ? [
+                    {
+                      algorithm: "SHA256",
+                      checksumValue: contentHash.replace(/^sha256:/i, ""),
+                    },
+                  ]
+                : [],
+              licenseConcluded: manifest.license || "NOASSERTION",
+              licenseDeclared: manifest.license || "NOASSERTION",
+              copyrightText: "NOASSERTION",
+              externalRefs: [
+                {
+                  referenceCategory: "PACKAGE-MANAGER",
+                  referenceType: "purl",
+                  referenceLocator: `pkg:modelscript/${name}@${version}`,
+                },
+                ...rootSecRefs,
+              ],
+            },
+          ];
+
+          const relationships: Record<string, string>[] = [
+            {
+              spdxElementId: "SPDXRef-DOCUMENT",
+              relationshipType: "DESCRIBES",
+              relatedSpdxElement: rootSpdxId,
+            },
+          ];
+
+          for (const [depKey, dep] of Object.entries(lockfile.packages)) {
+            const lastAt = depKey.lastIndexOf("@");
+            const depName = lastAt > 0 ? depKey.slice(0, lastAt) : depKey;
+            const depVer = dep.version || (lastAt > 0 ? depKey.slice(lastAt + 1) : "1.0.0");
+            if (depName === name && depVer === version) continue;
+            const depSpdxId = `SPDXRef-Package-${sanitizeSpdx(depName)}`;
+            const depAdvs = depOsvMap.get(`${depName}@${depVer}`) || [];
+            packages.push({
+              name: depName,
+              SPDXID: depSpdxId,
+              versionInfo: depVer,
+              downloadLocation: `https://ansatz.social/api/v1/libraries/${encodePkgPath(depName)}/${encodeURIComponent(depVer)}/download`,
+              filesAnalyzed: false,
+              checksums: dep.integrity
+                ? [
+                    {
+                      algorithm: "SHA256",
+                      checksumValue: dep.integrity.replace(/^sha256:/i, ""),
+                    },
+                  ]
+                : [],
+              licenseConcluded: "NOASSERTION",
+              licenseDeclared: "NOASSERTION",
+              copyrightText: "NOASSERTION",
+              externalRefs: [
+                {
+                  referenceCategory: "PACKAGE-MANAGER",
+                  referenceType: "purl",
+                  referenceLocator: `pkg:modelscript/${depName}@${depVer}`,
+                },
+                ...formatSpdxSecurityRefs(depAdvs),
+              ],
+            });
+
+            relationships.push({
+              spdxElementId: rootSpdxId,
+              relationshipType: "DEPENDS_ON",
+              relatedSpdxElement: depSpdxId,
+            });
+          }
+
+          const spdxDoc: Record<string, unknown> = {
+            spdxVersion: "SPDX-2.3",
+            dataLicense: "CC0-1.0",
+            SPDXID: "SPDXRef-DOCUMENT",
+            name: `${name}@${version}`,
+            documentNamespace: `https://ansatz.social/spdx/${name.replace(/\//g, "-")}-${version}-${crypto.randomUUID()}`,
+            creationInfo: {
+              created: new Date().toISOString(),
+              creators: ["Tool: ModelScript Package Security Engine 1.0.0"],
+            },
+            documentDescribes: [rootSpdxId],
+            packages,
+            relationships,
+          };
+
+          if (release?.oidc_repository) {
+            spdxDoc["annotations"] = [
+              {
+                annotator: `Tool: Keyless OIDC Attestation (${release.oidc_issuer || "CI/CD"})`,
+                annotationDate: release.published_at || new Date().toISOString(),
+                annotationType: "REVIEW",
+                comment: `Verified Keyless CI build from repository ${release.oidc_repository} (workflow: ${release.oidc_workflow_ref || "CI"}, run: ${release.oidc_run_id || "ambient"})`,
+              },
+            ];
+          }
+
+          if (isExport) {
+            res.setHeader(
+              "Content-Disposition",
+              `attachment; filename="${name.replace(/\//g, "-")}-${version}.spdx.json"`,
+            );
+          }
+          res.json(spdxDoc);
+          return;
+        }
+
+        // Default: CycloneDX 1.6 JSON
+        const components: Record<string, unknown>[] = [];
+        const dependencies: Record<string, unknown>[] = [];
+        const rootDependsOn: string[] = [];
+
+        for (const [depKey, dep] of Object.entries(lockfile.packages)) {
+          const lastAt = depKey.lastIndexOf("@");
+          const depName = lastAt > 0 ? depKey.slice(0, lastAt) : depKey;
+          const depVer = dep.version || (lastAt > 0 ? depKey.slice(lastAt + 1) : "1.0.0");
+          if (depName === name && depVer === version) continue;
+          const purl = `pkg:modelscript/${depName}@${depVer}`;
+          rootDependsOn.push(purl);
+
+          components.push({
+            type: "library",
+            "bom-ref": purl,
+            name: depName,
+            version: depVer,
+            purl,
+            hashes: dep.integrity
+              ? [
+                  {
+                    alg: "SHA-256",
+                    content: dep.integrity.replace(/^sha256:/i, ""),
+                  },
+                ]
+              : undefined,
+          });
+
+          if (dep.dependencies && Object.keys(dep.dependencies).length > 0) {
+            dependencies.push({
+              ref: purl,
+              dependsOn: Object.keys(dep.dependencies).map((child) => {
+                const childEntry =
+                  lockfile.packages[child] ??
+                  Object.entries(lockfile.packages).find(([k]) => k.startsWith(`${child}@`))?.[1];
+                const childVer = childEntry?.version || "*";
+                return `pkg:modelscript/${child}@${childVer}`;
+              }),
+            });
+          }
+        }
+
+        const rootPurl = `pkg:modelscript/${name}@${version}`;
+        dependencies.unshift({
+          ref: rootPurl,
+          dependsOn: rootDependsOn,
+        });
+
+        const allAdvisories: Array<{ advisory: any; purl: string }> = [];
+        for (const adv of rootOsvScan.vulnerabilities) {
+          allAdvisories.push({ advisory: adv, purl: rootPurl });
+        }
+        for (const [depKey, advs] of depOsvMap.entries()) {
+          const depPurl = `pkg:modelscript/${depKey}`;
+          for (const adv of advs) {
+            allAdvisories.push({ advisory: adv, purl: depPurl });
+          }
+        }
+        const cyclonedxVulns: Record<string, unknown>[] = [];
+        for (const item of allAdvisories) {
+          cyclonedxVulns.push(...formatCycloneDxVulnerabilities([item.advisory], item.purl));
+        }
+
+        const cycloneDxDoc = {
+          $schema: "http://cyclonedx.org/schema/bom-1.6.schema.json",
+          bomFormat: "CycloneDX",
+          specVersion: "1.6",
+          serialNumber: `urn:uuid:${crypto.randomUUID()}`,
+          version: 1,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            tools: {
+              components: [
+                {
+                  type: "application",
+                  name: "ModelScript Hardened Package Engine",
+                  version: "1.0.0",
+                },
+              ],
+            },
+            component: {
+              type: "library",
+              "bom-ref": rootPurl,
+              name,
+              version,
+              description: manifest.description || pkgRecord?.description,
+              licenses: manifest.license ? [{ license: { id: manifest.license } }] : undefined,
+              purl: rootPurl,
+              hashes: contentHash
+                ? [
+                    {
+                      alg: "SHA-256",
+                      content: contentHash.replace(/^sha256:/i, ""),
+                    },
+                  ]
+                : undefined,
+              evidence: release?.oidc_repository
+                ? {
+                    identity: {
+                      field: "purl",
+                      confidence: 1.0,
+                      methods: [{ technique: "oidc-keyless-ci", value: release.oidc_repository }],
+                    },
+                  }
+                : undefined,
+            },
+          },
+          components,
+          dependencies,
+          vulnerabilities: cyclonedxVulns.length > 0 ? cyclonedxVulns : undefined,
+        };
+
+        if (isExport) {
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${name.replace(/\//g, "-")}-${version}.cyclonedx.json"`,
+          );
+        }
+        res.json(cycloneDxDoc);
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/provenance.json
+   * GET /api/v1/libraries/:scope/:name/:version/provenance.json
+   * GET /api/v1/libraries/:name/:version/provenance.intoto.jsonl
+   * GET /api/v1/libraries/:scope/:name/:version/provenance.intoto.jsonl
+   *
+   * Generate an in-toto v1 Statement with SLSA v1.0 Provenance predicate (SLSA Build Level 3).
+   * Query params: `format` ("statement" | "dsse" | "full", default: "statement"), `export` (boolean).
+   */
+  router.get(
+    [
+      "/:name/:version/provenance.json",
+      "/:scope/:name/:version/provenance.json",
+      "/:name/:version/provenance.intoto.jsonl",
+      "/:scope/:name/:version/provenance.intoto.jsonl",
+    ],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const isJsonl = req.path.endsWith(".jsonl") || req.query["format"] === "jsonl";
+      const format = (req.query["format"] as string | undefined)?.toLowerCase() || (isJsonl ? "jsonl" : "statement");
+      const isExport = req.query["export"] === "true" || req.query["export"] === "1";
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const { manifest } = await resolveCanonicalManifest(storage, database, name, version);
+        const lockfile = resolveDataPackageLockfile(storage, database, name, version);
+        const release = database.getLibraryRelease(name, version);
+        const contentHash = release?.content_hash || storage.getContentHash(name, version);
+        const pkgRecord = database.getPackage(name);
+
+        const provenance = generateSlsaProvenance({
+          packageName: name,
+          version,
+          contentHash: contentHash || undefined,
+          manifest: manifest as unknown as Record<string, unknown>,
+          release: release || undefined,
+          packageRecord: pkgRecord || undefined,
+          dependencies: lockfile.packages,
+        });
+
+        const cleanName = name.replace(/^@/, "").replace(/\//g, "-");
+
+        if (isJsonl) {
+          if (isExport) {
+            res.setHeader(
+              "Content-Disposition",
+              `attachment; filename="${cleanName}-${version}.provenance.intoto.jsonl"`,
+            );
+          }
+          res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+          res.send(JSON.stringify(provenance.statement) + "\n");
+          return;
+        }
+
+        if (isExport) {
+          res.setHeader("Content-Disposition", `attachment; filename="${cleanName}-${version}.provenance.json"`);
+        }
+
+        if (format === "dsse") {
+          if (!provenance.dsseEnvelope) {
+            res.status(404).json({ error: `No cryptographic signature envelope available for ${name}@${version}` });
+            return;
+          }
+          res.json(provenance.dsseEnvelope);
+          return;
+        }
+
+        if (format === "full") {
+          res.json(provenance);
+          return;
+        }
+
+        res.json(provenance.statement);
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/audit
+   * GET /api/v1/libraries/:scope/:name/:version/audit
+   *
+   * Perform an OSV vulnerability audit for a library and its transitive dependencies.
+   */
+  router.get(
+    ["/:name/:version/audit", "/:scope/:name/:version/audit"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+      try {
+        const lockfile = resolveDataPackageLockfile(storage, database, name, version);
+        const rootScan = await scanPackageVulnerabilities(name, version, { allowRemote: true });
+        const depMap = await scanDependenciesVulnerabilities(lockfile.packages);
+        const depVulns = Object.fromEntries(depMap);
+
+        const totalVulns =
+          rootScan.vulnerabilities.length + Array.from(depMap.values()).reduce((a, b) => a + b.length, 0);
+
+        res.json({
+          package: name,
+          version,
+          rootVulnerabilities: rootScan.vulnerabilities,
+          dependencyVulnerabilities: depVulns,
+          summary: {
+            ...rootScan.summary,
+            total: totalVulns,
+          },
+          clean: totalVulns === 0,
+        });
+      } catch (err) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
    * POST /api/v1/libraries/resolve-lockfile
    * Resolve a deterministic datapackage.lock.json from an ad-hoc workspace manifest or cloud simulation job spec.
    */
@@ -2060,6 +2687,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const safeFileBase = `${name}-${version}`.replace(/[^a-zA-Z0-9._-]/g, "_");
       res.setHeader("Content-Type", "application/vnd.sqlite3");
       res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}-salsa-index.db"`);
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       res.sendFile(path.resolve(indexPath));
     },
   );
@@ -2565,10 +3193,18 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      const svgEtag = `"${crypto.createHash("sha256").update(svg).digest("hex").slice(0, 16)}"`;
       res.setHeader("Content-Type", "image/svg+xml");
       res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Cache-Control", "no-cache, must-revalidate");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.setHeader("ETag", svgEtag);
+
+      if (req.headers["if-none-match"] === svgEtag) {
+        res.status(304).end();
+        return;
+      }
+
       res.send(svg);
     },
   );

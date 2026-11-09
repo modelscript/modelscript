@@ -508,10 +508,14 @@ export class MultiPoly {
   }
 
   /**
-   * Projects critical roots of a bivariate constraint onto `targetVar` by computing the discriminant
-   * with respect to `futureVar` (for quadratic in `futureVar`) or the leading coefficient (for linear).
+   * Helper extracting univariate polynomials A(x), B(x), C(x) in targetVar such that
+   * P(x, y) = A(x) * y^2 + B(x) * y + C(x) + O(y^3).
    */
-  public projectQuadraticRoots(assignment: Map<string, number>, targetVar: string, futureVar: string): number[] {
+  public getBivariateCoeffs(
+    assignment: Map<string, number>,
+    targetVar: string,
+    futureVar: string,
+  ): { a2: UnivariatePoly; a1: UnivariatePoly; a0: UnivariatePoly } {
     const yCoeffs = new Map<number, Map<number, number>>();
 
     for (const t of this.terms) {
@@ -553,9 +557,19 @@ export class MultiPoly {
       return new UnivariatePoly(arr);
     };
 
-    const A = toUni(yCoeffs.get(2));
-    const B = toUni(yCoeffs.get(1));
-    const C = toUni(yCoeffs.get(0));
+    return {
+      a2: toUni(yCoeffs.get(2)),
+      a1: toUni(yCoeffs.get(1)),
+      a0: toUni(yCoeffs.get(0)),
+    };
+  }
+
+  /**
+   * Projects critical roots of a bivariate constraint onto `targetVar` by computing the discriminant
+   * with respect to `futureVar` (for quadratic in `futureVar`) or the leading coefficient (for linear).
+   */
+  public projectQuadraticRoots(assignment: Map<string, number>, targetVar: string, futureVar: string): number[] {
+    const { a2: A, a1: B, a0: C } = this.getBivariateCoeffs(assignment, targetVar, futureVar);
 
     const roots: number[] = [];
     if (!A.isZero()) {
@@ -570,6 +584,54 @@ export class MultiPoly {
     }
 
     return roots;
+  }
+
+  /**
+   * Projects pairwise intersection roots of two coupled constraints onto `targetVar`
+   * by computing the Sylvester / Bezoutian resultant res_{futureVar}(P1, P2)(targetVar).
+   */
+  public projectPairwiseResultant(
+    assignment: Map<string, number>,
+    targetVar: string,
+    futureVar: string,
+    other: MultiPoly,
+  ): number[] {
+    const p1 = this.getBivariateCoeffs(assignment, targetVar, futureVar);
+    const p2 = other.getBivariateCoeffs(assignment, targetVar, futureVar);
+
+    let res: UnivariatePoly | null = null;
+    const deg1 = !p1.a2.isZero() ? 2 : !p1.a1.isZero() ? 1 : 0;
+    const deg2 = !p2.a2.isZero() ? 2 : !p2.a1.isZero() ? 1 : 0;
+
+    if (deg1 === 1 && deg2 === 1) {
+      // Linear-linear resultant: a1 * b0 - a0 * b1
+      res = p1.a1.mul(p2.a0).sub(p1.a0.mul(p2.a1));
+    } else if (deg1 === 2 && deg2 === 1) {
+      // Quadratic-linear resultant: a2 * b0^2 - a1 * b1 * b0 + a0 * b1^2
+      const b0Sqr = p2.a0.mul(p2.a0);
+      const b1Sqr = p2.a1.mul(p2.a1);
+      const b0b1 = p2.a0.mul(p2.a1);
+      res = p1.a2.mul(b0Sqr).sub(p1.a1.mul(b0b1)).add(p1.a0.mul(b1Sqr));
+    } else if (deg1 === 1 && deg2 === 2) {
+      // Linear-quadratic resultant: b2 * a0^2 - b1 * a1 * a0 + b0 * a1^2
+      const a0Sqr = p1.a0.mul(p1.a0);
+      const a1Sqr = p1.a1.mul(p1.a1);
+      const a0a1 = p1.a0.mul(p1.a1);
+      res = p2.a2.mul(a0Sqr).sub(p2.a1.mul(a0a1)).add(p2.a0.mul(a1Sqr));
+    } else if (deg1 === 2 && deg2 === 2) {
+      // Quadratic-quadratic Bezoutian resultant determinant:
+      // M11 = a2 * b1 - a1 * b2
+      // M12 = a2 * b0 - a0 * b2
+      // M22 = a1 * b0 - a0 * b1
+      // res = M11 * M22 - M12^2
+      const m11 = p1.a2.mul(p2.a1).sub(p1.a1.mul(p2.a2));
+      const m12 = p1.a2.mul(p2.a0).sub(p1.a0.mul(p2.a2));
+      const m22 = p1.a1.mul(p2.a0).sub(p1.a0.mul(p2.a1));
+      res = m11.mul(m22).sub(m12.mul(m12));
+    }
+
+    if (!res || res.isZero() || res.degree() === 0) return [];
+    return isolateRealRoots(res);
   }
 
   /**
@@ -887,13 +949,24 @@ export class NlsatSolver {
         // Project critical roots of coupled constraints mentioning future variables
         const futureVars = this.variableOrder.slice(currentVarIdx + 1);
         for (const fv of futureVars) {
-          for (const c of this.constraints) {
-            if (c.vars.includes(varName) && c.vars.includes(fv)) {
-              const otherAssigned = c.vars.every((v) => v === varName || v === fv || assignment.has(v));
-              if (otherAssigned) {
-                const projRoots = c.poly.projectQuadraticRoots(assignment, varName, fv);
-                allRoots.push(...projRoots);
-              }
+          const coupled = this.constraints.filter(
+            (c) =>
+              c.vars.includes(varName) &&
+              c.vars.includes(fv) &&
+              c.vars.every((v) => v === varName || v === fv || assignment.has(v)),
+          );
+
+          // 1. Single constraint discriminants & leading coefficients
+          for (const c of coupled) {
+            const projRoots = c.poly.projectQuadraticRoots(assignment, varName, fv);
+            allRoots.push(...projRoots);
+          }
+
+          // 2. Pairwise Sylvester/Bezoutian resultants between coupled constraints
+          for (let i = 0; i < coupled.length; i++) {
+            for (let j = i + 1; j < coupled.length; j++) {
+              const resRoots = coupled[i]!.poly.projectPairwiseResultant(assignment, varName, fv, coupled[j]!.poly);
+              allRoots.push(...resRoots);
             }
           }
         }

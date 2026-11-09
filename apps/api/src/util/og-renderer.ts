@@ -507,3 +507,89 @@ export function renderClassOgSvg(
 </svg>
 `;
 }
+
+export function renderBrandOgSvg(host: string = "https://ansatz.social", brandName: string = "Ansatz"): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <title>${escapeXml(brandName)} | The Federated Scientific &amp; Engineering Network</title>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080c16" />
+      <stop offset="50%" stop-color="#0e1726" />
+      <stop offset="100%" stop-color="#1e1840" />
+    </linearGradient>
+    <linearGradient id="neonAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M 36 0 L 0 0 0 36" fill="none" stroke="rgba(56, 189, 248, 0.04)" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="url(#grid)" />
+
+  <!-- Outer Card Frame & Neon Accent -->
+  <rect x="36" y="36" width="1128" height="558" rx="24" fill="none" stroke="#1e293b" stroke-width="2" />
+  <rect x="36" y="36" width="1128" height="5" rx="2.5" fill="url(#neonAccent)" />
+
+  <!-- Top Bar -->
+  <g transform="translate(76, 76)">
+    <text x="0" y="20" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="16" font-weight="800" letter-spacing="3">THE FEDERATED SCIENTIFIC &amp; ENGINEERING NETWORK</text>
+    
+    <rect x="740" y="0" width="280" height="32" rx="16" fill="rgba(56, 189, 248, 0.12)" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="880" y="21" text-anchor="middle" fill="#7dd3fc" font-family="ui-monospace, monospace" font-size="13" font-weight="700">POWERED BY MODELSCRIPT</text>
+  </g>
+
+  <!-- Central Hero Content -->
+  <g transform="translate(76, 170)">
+    <!-- Brand Mark (Kuwayama K3-D Sharp Mitre Fold in cyan/indigo) -->
+    <g transform="translate(0, 10)">
+      <polygon points="0,0 70,0 70,70 0,70" fill="#0284c7" />
+      <polygon points="70,0 140,0 140,70 70,70" fill="#38bdf8" />
+      <polygon points="0,70 70,70 70,140 0,140" fill="#6366f1" />
+      <polygon points="70,70 140,70 140,140 70,140" fill="#818cf8" />
+      <!-- Sharp diagonal facets -->
+      <polygon points="35,0 105,0 70,70" fill="#e0f2fe" opacity="0.9" />
+      <polygon points="70,70 140,70 105,140" fill="#c7d2fe" opacity="0.9" />
+    </g>
+
+    <!-- Brand Name and Taglines -->
+    <text x="180" y="75" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="900" letter-spacing="-1">${escapeXml(brandName)}</text>
+    <text x="180" y="125" fill="#38bdf8" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="600">Executable Engineering &amp; Computational Physics</text>
+
+    <!-- Description -->
+    <text x="0" y="210" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="22" font-weight="400">
+      <tspan x="0" dy="0">Simulate, publish, and peer-review executable Modelica, SysML v2, and cyber-physical</tspan>
+      <tspan x="0" dy="32">models directly in your browser with zero installation.</tspan>
+    </text>
+
+    <!-- Technology badges -->
+    <g transform="translate(0, 275)">
+      <rect x="0" y="0" width="130" height="36" rx="8" fill="#161e2e" stroke="#1f2937"/>
+      <text x="65" y="23" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace, monospace" font-size="13" font-weight="700">MODELICA</text>
+
+      <rect x="146" y="0" width="130" height="36" rx="8" fill="#161e2e" stroke="#1f2937"/>
+      <text x="211" y="23" text-anchor="middle" fill="#818cf8" font-family="ui-monospace, monospace" font-size="13" font-weight="700">SYSML v2</text>
+
+      <rect x="292" y="0" width="120" height="36" rx="8" fill="#161e2e" stroke="#1f2937"/>
+      <text x="352" y="23" text-anchor="middle" fill="#10b981" font-family="ui-monospace, monospace" font-size="13" font-weight="700">FMI 3.0</text>
+
+      <rect x="428" y="0" width="160" height="36" rx="8" fill="#161e2e" stroke="#1f2937"/>
+      <text x="508" y="23" text-anchor="middle" fill="#f43f5e" font-family="ui-monospace, monospace" font-size="13" font-weight="700">WASM ARENA</text>
+
+      <rect x="604" y="0" width="160" height="36" rx="8" fill="#161e2e" stroke="#1f2937"/>
+      <text x="684" y="23" text-anchor="middle" fill="#eab308" font-family="ui-monospace, monospace" font-size="13" font-weight="700">CLOUD HPC</text>
+    </g>
+  </g>
+
+  <!-- Bottom Footer -->
+  <g transform="translate(76, 552)">
+    <text x="0" y="0" fill="#64748b" font-family="ui-monospace, monospace" font-size="15">${escapeXml(host)}</text>
+    <text x="1048" y="0" text-anchor="end" fill="#64748b" font-family="system-ui, sans-serif" font-size="14">Open-Core Scientific Registry &amp; Simulation Workbench</text>
+  </g>
+</svg>
+`;
+}

@@ -391,6 +391,7 @@ export function startNodeServer(input?: any, output?: any) {
         full: true,
       },
       documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
       colorProvider: true,
       documentSymbolProvider: true,
       definitionProvider: true,

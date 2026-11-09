@@ -894,8 +894,6 @@ export class Context {
     try {
       unified = await this.#workspaceIndex.toUnifiedAsync();
     } finally {
-      this.#trees.clear();
-      this.pruneCaches();
       if (facade?.exports?.lsp_setConfigEnableMultiFile) {
         facade.exports.lsp_setConfigEnableMultiFile(prevMultiFile !== 0);
       }
@@ -953,8 +951,6 @@ export class Context {
     try {
       unified = await this.#workspaceIndex.toUnifiedAsync();
     } finally {
-      this.#trees.clear();
-      this.pruneCaches();
       if (facade?.exports?.lsp_setConfigEnableMultiFile) {
         facade.exports.lsp_setConfigEnableMultiFile(prevMultiFile !== 0);
       }

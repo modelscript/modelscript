@@ -182,10 +182,40 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         default: "csv",
       })
       .option("solver", {
-        description: "ODE solver to use",
+        description: "ODE/DAE/Symplectic/QSS solver to use",
         type: "string",
-        choices: ["euler", "rk4", "dopri5", "tsit5", "trbdf2", "rodas4p", "bdf", "auto", "cvode", "webgpu"],
+        choices: [
+          "euler",
+          "rk4",
+          "dopri5",
+          "tsit5",
+          "vern7",
+          "vern9",
+          "trbdf2",
+          "rodas4p",
+          "kencarp4",
+          "radau5",
+          "radau9",
+          "verlet",
+          "yoshida4",
+          "yoshida6",
+          "yoshida8",
+          "qss1",
+          "qss2",
+          "qss3",
+          "liqss2",
+          "bdf",
+          "auto",
+          "cvode",
+          "webgpu",
+        ],
         default: "dopri5",
+      })
+      .option("linear-solver", {
+        description: "Linear system solver for implicit/stiff steps",
+        type: "string",
+        choices: ["dense-lu", "klu", "gmres", "bicgstab", "distributed-ras"],
+        default: "klu",
       })
       .option("interface-type", {
         description: "FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'",
@@ -382,17 +412,37 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
     if (isSysml) {
       profiler.start("parsing");
-      let combinedSource = "";
+      const { createSysML2WorkspaceIndex, createSysML2QueryEngine, getSysmlParser, SysML2DaeLowerer } =
+        await import("@modelscript/sysml2");
+      const ws = createSysML2WorkspaceIndex();
+      const parser = getSysmlParser();
+      let primarySource = "";
       for (const p of paths) {
         if (p.endsWith(".sysml") || p.endsWith(".kerml")) {
-          combinedSource += fs.readFileSync(p, "utf-8") + "\n";
+          const content = fs.readFileSync(p, "utf-8");
+          const uri = "file://" + path.resolve(p);
+          if (parser) {
+            ws.register(uri, () => {
+              const tree = parser.parse(content);
+              return (tree?.rootNode ?? tree) as any;
+            });
+          }
+          if (!primarySource || (args.name && content.includes(args.name))) {
+            primarySource = content;
+          }
         }
       }
+      const unified = ws.toUnifiedAsync ? await ws.toUnifiedAsync() : ws.toUnified();
+      const qe = createSysML2QueryEngine(unified);
+      const queryDb = qe.toQueryDB();
       profiler.end("parsing");
 
       profiler.start("flattening");
-      const { SysML2DaeLowerer } = await import("@modelscript/sysml2");
-      arena = await SysML2DaeLowerer.lowerSystem(combinedSource);
+      arena = await SysML2DaeLowerer.lowerSystem(primarySource, undefined, {
+        queryDb,
+        workspaceIndex: ws,
+        rootComponentName: args.model || args.name,
+      });
       profiler.end("flattening");
     } else {
       const { parser } = await createWasmParser(modelicaWasmPath);

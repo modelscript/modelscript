@@ -455,6 +455,33 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     group: "electronics",
     tier: "preview",
   },
+  {
+    slug: "optical",
+    name: "OpenROADM & Telcordia .sor",
+    sidebar: "Optical & DWDM (.sor)",
+    ext: ".sor",
+    role: "OTDR trace analytics & DWDM transmission",
+    group: "electronics",
+    tier: "preview",
+  },
+  {
+    slug: "ran",
+    name: "NSMA WG16 & Planet Antenna",
+    sidebar: "RAN & Microwave (.adf)",
+    ext: ".adf, .pat",
+    role: "Antenna 3D patterns & microwave link budgets",
+    group: "electronics",
+    tier: "preview",
+  },
+  {
+    slug: "fiber",
+    name: "TIA-598-D Outside Plant",
+    sidebar: "Fiber OSP Cadastre",
+    ext: ".geojson",
+    role: "Fiber strand tracing & physical SRLG diversity",
+    group: "electronics",
+    tier: "preview",
+  },
 
   // ── Robotics & industrial automation ────────────────────────────────────
   {

@@ -298,8 +298,9 @@ describe("Spaces UI/UX Layout & Polish Invariants", () => {
         spaceSettingsSrc.includes('activeSection === "git"') &&
         spaceSettingsSrc.includes('activeSection === "plm"') &&
         spaceSettingsSrc.includes('activeSection === "features"') &&
+        spaceSettingsSrc.includes('activeSection === "integrations"') &&
         spaceSettingsSrc.includes('activeSection === "danger"'),
-      "SpaceSettingsTab must provide General, Access, Git, PLM, Features, and Danger sections",
+      "SpaceSettingsTab must provide General, Access, Git, PLM, Features, Integrations, and Danger sections",
     );
 
     // 4. General section includes profile identity, domain taxonomy, and branding
@@ -321,7 +322,16 @@ describe("Spaces UI/UX Layout & Polish Invariants", () => {
       "Access section must provide member filtering, role management, and RBAC matrix",
     );
 
-    // 6. Danger zone includes visibility change, transfer container ownership, and delete space dialogs
+    // 6. Integrations section supports Atlassian Jira credentials, custom field mapping, and simulation gate writeback
+    assert.ok(
+      spaceSettingsSrc.includes("Integrations & Jira") &&
+        spaceSettingsSrc.includes("Atlassian Jira Cloud & Data Center") &&
+        spaceSettingsSrc.includes("Automated Simulation Gate Writeback") &&
+        spaceSettingsSrc.includes("handleSaveJiraIntegration"),
+      "SpaceSettingsTab must provide Integrations section for Jira credentials and simulation writeback",
+    );
+
+    // 7. Danger zone includes visibility change, transfer container ownership, and delete space dialogs
     assert.ok(
       spaceSettingsSrc.includes("DangerCard") &&
         spaceSettingsSrc.includes("showVisibilityModal") &&
@@ -577,6 +587,39 @@ describe("Spaces UI/UX Layout & Polish Invariants", () => {
         spaceIssuesSrc.includes("handleToggleIssueStatus") &&
         spaceIssuesSrc.includes("commentInput"),
       "SpaceIssuesTab must provide discussion thread and one-click Close/Reopen state transitions",
+    );
+  });
+
+  it("verifies Issues tab supports Jira bi-directional synchronization, external badges, and JQL sync modal", () => {
+    // 1. API client provides syncSpaceJiraIssues
+    assert.ok(apiSpacesSrc.includes("syncSpaceJiraIssues"), "spaces API client must export syncSpaceJiraIssues");
+
+    // 2. SpaceIssuesTab includes Sync Jira action button and modal state
+    assert.ok(
+      spaceIssuesSrc.includes("Sync Jira") &&
+        spaceIssuesSrc.includes("showJiraModal") &&
+        spaceIssuesSrc.includes("handleSyncJira"),
+      "SpaceIssuesTab must render Sync Jira button and manage modal state",
+    );
+
+    // 3. IssueTableRow renders Jira external badge and direct link
+    assert.ok(
+      spaceIssuesSrc.includes('issue.external_source === "jira"') &&
+        spaceIssuesSrc.includes("issue.external_key") &&
+        spaceIssuesSrc.includes("issue.external_url"),
+      "IssueTableRow must display external Jira key badge and direct link",
+    );
+
+    // 4. Detail view renders Jira External Sync banner
+    assert.ok(
+      spaceIssuesSrc.includes("Synchronized with Atlassian Jira") && spaceIssuesSrc.includes("Open in Jira"),
+      "Detail view must render Jira external sync HUD banner",
+    );
+
+    // 5. Search filter supports external_key and is:jira
+    assert.ok(
+      spaceIssuesSrc.includes('q === "is:jira"') && spaceIssuesSrc.includes('(issue.external_key || "").toLowerCase()'),
+      "Search filter must support filtering by is:jira and Jira issue key",
     );
   });
 });

@@ -20,6 +20,7 @@ export interface IStringInterner {
   tryGet(s: string): StringId;
   lookup(s: string): StringId | undefined;
   internPath(prefixId: StringId, nameId: StringId): StringId;
+  getDerStringId?(innerNameId: StringId): StringId;
   readonly size: number;
   estimateMemoryBytes(): number;
 }
@@ -57,6 +58,7 @@ export class WasmStringPool implements IStringInterner {
   // Reusable WASM scratch buffer pointer for string transfer
   private scratchPtr = 0;
   private scratchCapacity = 0;
+  private _scratchView: Uint8Array | null = null;
 
   constructor(wasmExports?: any, poolPtr?: number) {
     if (wasmExports && (wasmExports.stringPool_internUtf8 || wasmExports.dae_createBuilder)) {
@@ -195,12 +197,19 @@ export class WasmStringPool implements IStringInterner {
       this.wasmExports?.atomicChunkAlloc ??
       (typeof this.wasmExports?.__new === "function" ? (n: number) => this.wasmExports.__new(n, 0) : undefined);
     if (!allocFn || !this.wasmExports?.memory) return 0;
-    if (this.scratchCapacity < size) {
-      if (this.scratchPtr && this.wasmExports.free) {
-        this.wasmExports.free(this.scratchPtr);
+    if (
+      this.scratchCapacity < size ||
+      !this._scratchView ||
+      this._scratchView.buffer !== this.wasmExports.memory.buffer
+    ) {
+      if (this.scratchCapacity < size) {
+        if (this.scratchPtr && this.wasmExports.free) {
+          this.wasmExports.free(this.scratchPtr);
+        }
+        this.scratchCapacity = Math.max(size, 256);
+        this.scratchPtr = allocFn(this.scratchCapacity);
       }
-      this.scratchCapacity = Math.max(size, 256);
-      this.scratchPtr = allocFn(this.scratchCapacity);
+      this._scratchView = new Uint8Array(this.wasmExports.memory.buffer, this.scratchPtr, this.scratchCapacity);
     }
     return this.scratchPtr;
   }
@@ -222,13 +231,19 @@ export class WasmStringPool implements IStringInterner {
 
     // WASM path if active
     if (this.wasmExports?.stringPool_internUtf8 && this.poolPtr && this.wasmExports?.memory) {
-      const encoded = this.utf8Encoder.encode(s);
-      const len = encoded.length;
-      const ptr = this._ensureScratch(len);
-      if (ptr) {
-        const memView = new Uint8Array(this.wasmExports.memory.buffer);
-        memView.set(encoded, ptr);
-        const id = this.wasmExports.stringPool_internUtf8(this.poolPtr, ptr, len);
+      const maxLen = s.length * 3 + 1;
+      const ptr = this._ensureScratch(maxLen);
+      if (ptr && this._scratchView) {
+        let written: number;
+        if (this.utf8Encoder.encodeInto) {
+          const res = this.utf8Encoder.encodeInto(s, this._scratchView);
+          written = res.written;
+        } else {
+          const encoded = this.utf8Encoder.encode(s);
+          written = encoded.length;
+          this._scratchView.set(encoded, 0);
+        }
+        const id = this.wasmExports.stringPool_internUtf8(this.poolPtr, ptr, written);
         this.table.set(s, id);
         if (s.length < 16) this.shortTable.set(s, id);
         this.reverse[id] = s;
@@ -286,9 +301,9 @@ export class WasmStringPool implements IStringInterner {
       const len = this.wasmExports.stringPool_getLength(this.poolPtr, id);
       if (len > 0 && this.wasmExports.stringPool_copyOut) {
         const scratch = this._ensureScratch(len);
-        if (scratch) {
+        if (scratch && this._scratchView) {
           this.wasmExports.stringPool_copyOut(this.poolPtr, id, scratch);
-          const mem = new Uint8Array(this.wasmExports.memory.buffer, scratch, len);
+          const mem = this._scratchView.subarray(0, len);
           const str = this.utf8Decoder.decode(mem);
           this.reverse[id] = str;
           this.table.set(str, id);
@@ -330,10 +345,26 @@ export class WasmStringPool implements IStringInterner {
     return id;
   }
 
+  private derTable = new Map<StringId, StringId>();
+
+  /**
+   * Retrieves the interned StringId for der(<innerName>), caching the mapping to eliminate
+   * runtime string allocations during symbolic derivative matching.
+   */
+  public getDerStringId(innerNameId: StringId): StringId {
+    const cached = this.derTable.get(innerNameId);
+    if (cached !== undefined) return cached;
+    const str = this.resolve(innerNameId);
+    if (!str) return 0;
+    const derId = this.intern(`der(${str})`);
+    this.derTable.set(innerNameId, derId);
+    return derId;
+  }
+
   /** The number of unique strings currently interned. */
   get size(): number {
     if (this.wasmExports?.stringPool_getSize && this.poolPtr) {
-      return this.wasmExports.stringPool_getSize(this.poolPtr);
+      return Math.max(this.reverse.length, this.wasmExports.stringPool_getSize(this.poolPtr));
     }
     return this.reverse.length;
   }
@@ -350,6 +381,63 @@ export class WasmStringPool implements IStringInterner {
     const arrayBytes = this.reverse.length * 8;
     return strBytes + mapBytes + arrayBytes;
   }
+
+  /**
+   * Synchronizes all interned strings into a target WebAssembly ArenaStringPool instance.
+   * Ensures that string IDs in linear memory match the host-side StringInterner IDs.
+   */
+  public syncToWasmPool(exports: any, targetPoolPtr: number): void {
+    if (!exports?.stringPool_internUtf8 || !targetPoolPtr || !exports.memory) return;
+    const synced = this.syncedCountByPool.get(targetPoolPtr) ?? 0;
+    const startId = synced + 1;
+
+    let totalCount = this.reverse.length;
+    if (this.wasmExports?.stringPool_getSize && this.poolPtr) {
+      const wasmCount = this.wasmExports.stringPool_getSize(this.poolPtr);
+      if (wasmCount > totalCount) totalCount = wasmCount;
+    }
+    if (startId >= totalCount) return;
+
+    const allocFn =
+      exports.alloc ??
+      exports.dae_alloc ??
+      exports.arena_alloc ??
+      exports.atomicChunkAlloc ??
+      (typeof exports.__new === "function" ? (n: number) => exports.__new(n, 0) : undefined);
+    if (!allocFn) return;
+
+    let scratchCap = 1024;
+    let scratchPtr = allocFn(scratchCap);
+    let scratchView = new Uint8Array(exports.memory.buffer, scratchPtr, scratchCap);
+
+    for (let id = startId; id < totalCount; id++) {
+      let s = this.reverse[id];
+      if (s === undefined) {
+        s = this.resolve(id);
+      }
+      if (s === undefined) continue;
+      const maxLen = s.length * 3 + 1;
+      if (maxLen > scratchCap || scratchView.buffer !== exports.memory.buffer) {
+        if (exports.free) exports.free(scratchPtr);
+        scratchCap = Math.max(maxLen, scratchCap * 2);
+        scratchPtr = allocFn(scratchCap);
+        scratchView = new Uint8Array(exports.memory.buffer, scratchPtr, scratchCap);
+      }
+      let written: number;
+      if (this.utf8Encoder.encodeInto) {
+        written = this.utf8Encoder.encodeInto(s, scratchView).written;
+      } else {
+        const encoded = this.utf8Encoder.encode(s);
+        written = encoded.length;
+        scratchView.set(encoded, 0);
+      }
+      exports.stringPool_internUtf8(targetPoolPtr, scratchPtr, written);
+    }
+    if (exports.free) exports.free(scratchPtr);
+    this.syncedCountByPool.set(targetPoolPtr, totalCount - 1);
+  }
+
+  private syncedCountByPool = new Map<number, number>();
 }
 
 export { WasmStringPool as StringInterner };

@@ -2,11 +2,23 @@
 
 import semver from "semver";
 
+export interface PackageReleaseMetadata {
+  version: string;
+  isYanked?: boolean | undefined;
+  yankReason?: string | null | undefined;
+  isDeprecated?: boolean | undefined;
+  deprecationReason?: string | null | undefined;
+}
+
 export interface PackageManifest {
   name: string;
   version: string;
   dependencies?: Record<string, string> | undefined;
   peerDependencies?: Record<string, string> | undefined;
+  isYanked?: boolean | undefined;
+  yankReason?: string | null | undefined;
+  isDeprecated?: boolean | undefined;
+  deprecationReason?: string | null | undefined;
 }
 
 export interface DependencyRequirement {
@@ -18,6 +30,7 @@ export interface DependencyRequirement {
 export interface PackageVersionProvider {
   getVersions(packageName: string): Promise<string[]>;
   getManifest(packageName: string, version: string): Promise<PackageManifest | null>;
+  getReleases?(packageName: string): Promise<PackageReleaseMetadata[]>;
 }
 
 export interface ResolutionResult {
@@ -30,7 +43,13 @@ export interface ResolutionResult {
     }
   >;
   order: string[]; // Topological installation order
+  deprecated?: Record<string, { version: string; reason: string }> | undefined;
+  yanked?: Record<string, { version: string; reason: string }> | undefined;
   error?: string | undefined;
+}
+
+export interface SolveOptions {
+  allowYanked?: boolean | undefined;
 }
 
 /**
@@ -42,6 +61,7 @@ export class DependencySolver {
   readonly #provider: PackageVersionProvider;
   readonly #packumentCache = new Map<string, string[]>();
   readonly #manifestCache = new Map<string, PackageManifest | null>();
+  readonly #releasesCache = new Map<string, PackageReleaseMetadata[]>();
 
   constructor(provider: PackageVersionProvider) {
     this.#provider = provider;
@@ -66,25 +86,62 @@ export class DependencySolver {
   /**
    * Solve all transitive dependencies starting from the root requirements.
    */
-  async solve(rootRequirements: DependencyRequirement[]): Promise<ResolutionResult> {
-    const selected = new Map<string, string>(); // pkg -> version
-    const constraints = new Map<string, { range: string; source: string }[]>();
+  async solve(rootRequirements: DependencyRequirement[], options?: SolveOptions): Promise<ResolutionResult> {
+    const selected = new Map<string, string>(); // pkg -> chosen version
+    // Track dependencies introduced by each selected package version: sourcePkg -> Map<depPkg, depRange>
+    const outgoingDeps = new Map<string, Map<string, string>>();
 
+    // Initial root requirements
+    const rootConstraints = new Map<string, { range: string; source: string }[]>();
     for (const req of rootRequirements) {
-      if (!constraints.has(req.name)) {
-        constraints.set(req.name, []);
+      if (!rootConstraints.has(req.name)) {
+        rootConstraints.set(req.name, []);
       }
-      constraints.get(req.name)!.push({ range: req.range, source: req.source || "root" });
+      rootConstraints.get(req.name)!.push({ range: req.range, source: req.source || "root" });
     }
 
     const queue: string[] = rootRequirements.map((r) => r.name);
-    const visited = new Set<string>();
+    const MAX_ITERATIONS = 1000;
+    let iterations = 0;
 
     while (queue.length > 0) {
-      const pkgName = queue.shift()!;
-      const reqList = constraints.get(pkgName) || [];
+      iterations++;
+      if (iterations > MAX_ITERATIONS) {
+        return {
+          success: false,
+          packages: {},
+          order: [],
+          error: "Dependency resolution exceeded maximum iteration limit (circular dependency or infinite loop).",
+        };
+      }
 
-      // Intersect / validate all ranges for this package
+      const pkgName = queue.shift()!;
+
+      // Gather all active constraints on pkgName from root + currently selected packages
+      const activeConstraints: { range: string; source: string }[] = [];
+      const rootList = rootConstraints.get(pkgName);
+      if (rootList) {
+        activeConstraints.push(...rootList);
+      }
+
+      for (const [sourcePkg, depMap] of outgoingDeps.entries()) {
+        const depRange = depMap.get(pkgName);
+        if (depRange) {
+          const sourceVer = selected.get(sourcePkg);
+          activeConstraints.push({
+            range: depRange,
+            source: sourceVer ? `${sourcePkg}@${sourceVer}` : sourcePkg,
+          });
+        }
+      }
+
+      // If no constraints exist on this package anymore (e.g. its parent was removed), deselect it
+      if (activeConstraints.length === 0) {
+        selected.delete(pkgName);
+        outgoingDeps.delete(pkgName);
+        continue;
+      }
+
       const candidateVersions = await this.#fetchSortedVersions(pkgName);
       if (candidateVersions.length === 0) {
         return {
@@ -95,13 +152,30 @@ export class DependencySolver {
         };
       }
 
-      // Filter versions that satisfy ALL constraints for this package
-      const matchingVersions = candidateVersions.filter((v) =>
-        reqList.every((req) => semver.satisfies(v, req.range || "*", { loose: true })),
+      // Filter versions satisfying ALL active constraints for this package
+      let matchingVersions = candidateVersions.filter((v) =>
+        activeConstraints.every((req) => semver.satisfies(v, req.range || "*", { loose: true })),
       );
 
+      // Yanked filtering: exclude yanked candidate versions unless explicitly pinned or allowed
+      if (!options?.allowYanked && this.#provider.getReleases) {
+        const releases = await this.#fetchReleases(pkgName);
+        const yankedSet = new Set(releases.filter((r) => r.isYanked).map((r) => r.version));
+        if (yankedSet.size > 0) {
+          matchingVersions = matchingVersions.filter((v) => {
+            if (!yankedSet.has(v)) return true;
+            // Allow yanked version only if explicitly pinned by an exact constraint (e.g. "1.0.0" or "=1.0.0")
+            return activeConstraints.some((c) => {
+              const trimmed = c.range.trim();
+              const cleaned = semver.clean(trimmed);
+              return semver.valid(trimmed) === v || cleaned === v;
+            });
+          });
+        }
+      }
+
       if (matchingVersions.length === 0) {
-        const conflictReasons = reqList.map((r) => `requires '${r.range}' (from ${r.source})`).join(" but ");
+        const conflictReasons = activeConstraints.map((r) => `requires '${r.range}' (from ${r.source})`).join(" but ");
         return {
           success: false,
           packages: {},
@@ -110,34 +184,34 @@ export class DependencySolver {
         };
       }
 
-      // Highest compatible version (first in sorted desc)
+      // Highest compatible version
       const chosenVersion = matchingVersions[0]!;
-      selected.set(pkgName, chosenVersion);
+      const previousVersion = selected.get(pkgName);
 
-      // Fetch chosen package manifest and queue transitive dependencies
-      const cacheKey = `${pkgName}@${chosenVersion}`;
-      if (!visited.has(cacheKey)) {
-        visited.add(cacheKey);
+      if (previousVersion !== chosenVersion) {
+        selected.set(pkgName, chosenVersion);
+
+        // Fetch manifest and update outgoing dependencies
         const manifest = await this.#fetchManifest(pkgName, chosenVersion);
+        const newDepMap = new Map<string, string>();
+
         if (manifest && manifest.dependencies) {
           for (const [depName, depRange] of Object.entries(manifest.dependencies)) {
-            if (!constraints.has(depName)) {
-              constraints.set(depName, []);
-            }
-            constraints.get(depName)!.push({
-              range: depRange,
-              source: `${pkgName}@${chosenVersion}`,
-            });
-
-            // If already selected, check if current choice satisfies new constraint
-            const currentSelectedVer = selected.get(depName);
-            if (currentSelectedVer) {
-              if (!semver.satisfies(currentSelectedVer, depRange, { loose: true })) {
-                // Must re-evaluate package
-                queue.push(depName);
-              }
-            } else if (!queue.includes(depName)) {
+            newDepMap.set(depName, depRange);
+            if (!queue.includes(depName)) {
               queue.push(depName);
+            }
+          }
+        }
+
+        // Check if any old dependencies were removed or changed
+        const oldDepMap = outgoingDeps.get(pkgName);
+        outgoingDeps.set(pkgName, newDepMap);
+
+        if (oldDepMap) {
+          for (const oldDepName of oldDepMap.keys()) {
+            if (!newDepMap.has(oldDepName) && !queue.includes(oldDepName)) {
+              queue.push(oldDepName);
             }
           }
         }
@@ -154,13 +228,48 @@ export class DependencySolver {
       };
     }
 
+    const deprecatedMap: Record<string, { version: string; reason: string }> = {};
+    const yankedMap: Record<string, { version: string; reason: string }> = {};
+
+    for (const [pkg, ver] of selected.entries()) {
+      const manifest = await this.#fetchManifest(pkg, ver);
+      const releases = await this.#fetchReleases(pkg);
+      const rel = releases.find((r) => r.version === ver);
+      const isDep = Boolean(manifest?.isDeprecated || rel?.isDeprecated);
+      const isYk = Boolean(manifest?.isYanked || rel?.isYanked);
+      if (isDep) {
+        deprecatedMap[pkg] = {
+          version: ver,
+          reason:
+            manifest?.deprecationReason || rel?.deprecationReason || "This version has been deprecated by the author.",
+        };
+      }
+      if (isYk) {
+        yankedMap[pkg] = {
+          version: ver,
+          reason: manifest?.yankReason || rel?.yankReason || "This release has been yanked by the maintainer.",
+        };
+      }
+    }
+
     const topologicalOrder = this.#computeTopologicalOrder(packageMap);
 
     return {
       success: true,
       packages: packageMap,
       order: topologicalOrder,
+      ...(Object.keys(deprecatedMap).length > 0 ? { deprecated: deprecatedMap } : {}),
+      ...(Object.keys(yankedMap).length > 0 ? { yanked: yankedMap } : {}),
     };
+  }
+
+  async #fetchReleases(pkgName: string): Promise<PackageReleaseMetadata[]> {
+    if (this.#releasesCache.has(pkgName)) {
+      return this.#releasesCache.get(pkgName)!;
+    }
+    const releases = this.#provider.getReleases ? await this.#provider.getReleases(pkgName) : [];
+    this.#releasesCache.set(pkgName, releases);
+    return releases;
   }
 
   async #fetchSortedVersions(pkgName: string): Promise<string[]> {

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertIcon,
   CheckCircleFillIcon,
   CopyIcon,
   FileZipIcon,
   KeyIcon,
   PackageIcon,
+  ShieldCheckIcon,
   TerminalIcon,
   UploadIcon,
   VerifiedIcon,
@@ -16,7 +18,12 @@ import { useDropzone } from "react-dropzone";
 import { Link, useNavigate } from "react-router-dom";
 import { publishPackageArchive } from "../api";
 import { useAuth } from "../AuthContext";
-import { inspectPackageZip, isValidSemver } from "../util/package-helpers";
+import {
+  inspectPackageZip,
+  isValidSemver,
+  suggestNextSemVer,
+  type PreFlightCheckResult,
+} from "../util/package-helpers";
 import Box from "./Box";
 import Spinner from "./Spinner";
 
@@ -49,12 +56,18 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
   const [extractedFilesCount, setExtractedFilesCount] = useState<number>(0);
   const [hasManifest, setHasManifest] = useState<boolean>(false);
   const [contentHash, setContentHash] = useState<string>("");
+  const [preFlight, setPreFlight] = useState<PreFlightCheckResult | null>(null);
 
   const [packageName, setPackageName] = useState(defaultPackageName);
   const [version, setVersion] = useState(defaultVersion || "1.0.0");
   const [tag, setTag] = useState("latest");
   const [description, setDescription] = useState("");
   const [license, setLicense] = useState("MIT");
+
+  // WebCrypto signing
+  const [signingEnabled, setSigningEnabled] = useState(false);
+  const [signature, setSignature] = useState("");
+  const [publicKey, setPublicKey] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +105,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
         const meta = inspectPackageZip(new Uint8Array(buffer));
         setExtractedFilesCount(meta.files.length);
         setHasManifest(meta.hasManifest);
+        setPreFlight(meta.preFlight || null);
 
         if (meta.name && !defaultPackageName) {
           if (meta.name.startsWith("@") || user?.isAdmin) {
@@ -166,6 +180,8 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
         description: description.trim() || undefined,
         license: license.trim() || undefined,
         contentHash: contentHash || undefined,
+        signature: signingEnabled && signature.trim() ? signature.trim() : undefined,
+        publicKey: signingEnabled && publicKey.trim() ? publicKey.trim() : undefined,
       });
       onPublished?.(trimmedName, trimmedVersion);
       onClose();
@@ -294,6 +310,69 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
               )}
             </div>
 
+            {/* Pre-Flight Release Verification Checklist */}
+            {preFlight && (
+              <Box
+                p={3}
+                style={{
+                  borderRadius: 8,
+                  background: "var(--ms-surface-hover, var(--color-canvas-subtle))",
+                  border: "1px solid var(--ms-border, var(--color-border))",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  Pre-Flight Verification
+                </Text>
+                <Box display="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <CheckCircleFillIcon size={14} fill="var(--color-success-fg, #2da44e)" />
+                    <Text style={{ fontSize: 12 }}>
+                      ZIP archive valid ({preFlight.fileCount} files, {(preFlight.totalSizeBytes / 1024).toFixed(1)} KB)
+                    </Text>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    {preFlight.hasManifest ? (
+                      <CheckCircleFillIcon size={14} fill="var(--color-success-fg, #2da44e)" />
+                    ) : (
+                      <AlertIcon size={14} fill="var(--color-danger-fg, #cf222e)" />
+                    )}
+                    <Text style={{ fontSize: 12 }}>Manifest: {preFlight.manifestType || "No recognized manifest"}</Text>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    {preFlight.pathSafety.valid ? (
+                      <CheckCircleFillIcon size={14} fill="var(--color-success-fg, #2da44e)" />
+                    ) : (
+                      <AlertIcon size={14} fill="var(--color-danger-fg, #cf222e)" />
+                    )}
+                    <Text style={{ fontSize: 12 }}>
+                      {preFlight.pathSafety.valid ? "Path traversal safe (0 hazards)" : "Unsafe paths detected"}
+                    </Text>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    {isValidSemver(version) ? (
+                      <CheckCircleFillIcon size={14} fill="var(--color-success-fg, #2da44e)" />
+                    ) : (
+                      <AlertIcon size={14} fill="var(--color-danger-fg, #cf222e)" />
+                    )}
+                    <Text style={{ fontSize: 12 }}>
+                      SemVer: {isValidSemver(version) ? `v${version}` : "Invalid format"}
+                    </Text>
+                  </Box>
+                </Box>
+              </Box>
+            )}
+
             <Box display="grid" style={{ gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
               <FormControl required>
                 <FormControl.Label>Package Name</FormControl.Label>
@@ -309,6 +388,38 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
               <FormControl required>
                 <FormControl.Label>Version (SemVer)</FormControl.Label>
                 <TextInput block placeholder="1.0.0" value={version} onChange={(e) => setVersion(e.target.value)} />
+                <Box display="flex" gap={1} mt={1}>
+                  <Button
+                    size="small"
+                    type="button"
+                    variant="invisible"
+                    style={{ fontSize: 11, padding: "1px 6px", height: 20 }}
+                    onClick={() => setVersion((v) => suggestNextSemVer(v, "patch"))}
+                    title="Bump Patch version (+0.0.1)"
+                  >
+                    +patch
+                  </Button>
+                  <Button
+                    size="small"
+                    type="button"
+                    variant="invisible"
+                    style={{ fontSize: 11, padding: "1px 6px", height: 20 }}
+                    onClick={() => setVersion((v) => suggestNextSemVer(v, "minor"))}
+                    title="Bump Minor version (+0.1.0)"
+                  >
+                    +minor
+                  </Button>
+                  <Button
+                    size="small"
+                    type="button"
+                    variant="invisible"
+                    style={{ fontSize: 11, padding: "1px 6px", height: 20 }}
+                    onClick={() => setVersion((v) => suggestNextSemVer(v, "major"))}
+                    title="Bump Major version (+1.0.0)"
+                  >
+                    +major
+                  </Button>
+                </Box>
               </FormControl>
 
               <FormControl>
@@ -342,6 +453,74 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
                   onChange={(e) => setLicense(e.target.value)}
                 />
               </FormControl>
+            </Box>
+
+            {/* Cryptographic Ed25519 Signing Card */}
+            <Box
+              p={3}
+              style={{
+                borderRadius: 8,
+                background: "var(--ms-surface-hover, var(--color-canvas-subtle))",
+                border: "1px solid var(--ms-border, var(--color-border))",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Box display="flex" alignItems="center" gap={2}>
+                  <ShieldCheckIcon size={16} fill="var(--color-accent-cyan, #06b6d4)" />
+                  <Text style={{ fontSize: 13, fontWeight: 600 }}>Cryptographic Ed25519 Signing</Text>
+                </Box>
+                <Button
+                  size="small"
+                  type="button"
+                  variant={signingEnabled ? "primary" : "default"}
+                  onClick={() => setSigningEnabled(!signingEnabled)}
+                >
+                  {signingEnabled ? "Signing Enabled" : "Enable Signing"}
+                </Button>
+              </Box>
+
+              {signingEnabled && (
+                <Box display="flex" flexDirection="column" gap={2} mt={1}>
+                  <Text style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                    Attach a detached Ed25519 signature over the archive's SHA-256 CAS digest (
+                    <code>sha256:{contentHash ? contentHash.slice(0, 12) : "..."}…</code>).
+                  </Text>
+                  <FormControl>
+                    <FormControl.Label style={{ fontSize: 12 }}>Ed25519 Signature (Base64)</FormControl.Label>
+                    <TextInput
+                      block
+                      placeholder="e.g. 84-character base64 detached signature string"
+                      value={signature}
+                      onChange={(e) => setSignature(e.target.value)}
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormControl.Label style={{ fontSize: 12 }}>
+                      Publisher Public Key (SPKI PEM / multibase / OpenSSH)
+                    </FormControl.Label>
+                    <TextInput
+                      block
+                      placeholder="e.g. ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... or did:key:z6Mku..."
+                      value={publicKey}
+                      onChange={(e) => setPublicKey(e.target.value)}
+                    />
+                    <FormControl.Caption style={{ fontSize: 11 }}>
+                      Optional if using your account's primary registered public key.
+                    </FormControl.Caption>
+                  </FormControl>
+                  {signature && (
+                    <Box display="flex" alignItems="center" gap={1} mt={1}>
+                      <VerifiedIcon size={14} fill="var(--color-success-fg, #2da44e)" />
+                      <Text style={{ fontSize: 11, color: "var(--color-success-fg, #2da44e)", fontWeight: 600 }}>
+                        Detached Ed25519 signature attached ({signature.slice(0, 16)}...)
+                      </Text>
+                    </Box>
+                  )}
+                </Box>
+              )}
             </Box>
 
             {manifestWarning && <Flash variant="warning">{manifestWarning}</Flash>}

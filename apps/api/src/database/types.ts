@@ -445,6 +445,11 @@ export interface LibraryReleaseRow {
   is_yanked?: number | null | undefined;
   yank_reason?: string | null | undefined;
   yanked_at?: string | null | undefined;
+  oidc_issuer?: string | null | undefined;
+  oidc_subject?: string | null | undefined;
+  oidc_repository?: string | null | undefined;
+  oidc_workflow_ref?: string | null | undefined;
+  oidc_run_id?: string | null | undefined;
 }
 
 export interface PackageTransferRow {

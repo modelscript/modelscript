@@ -3,9 +3,12 @@
 import bcrypt from "bcryptjs";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import type { LibraryDatabase, SpaceOwnerType, SpaceRole, SpaceVisibility } from "../database.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
+import { JiraConnector, postAutomatedSimulationCommentsIfConfigured } from "../services/integrations/jira-connector.js";
 import { getSpaceDomainPreset, listSpaceDomainPresets } from "../services/spaces/domain-presets.js";
 import {
   commitFilesToBareGitVault,
@@ -13,8 +16,10 @@ import {
   generateStarterFilesForSpace,
   resolveSpaceGitRepoPath,
 } from "../services/spaces/space-git-vault.js";
+import { discoverWorkflowsInRepo, type WorkflowJob, type WorkflowManifest } from "../services/workflows/index.js";
 import { LocalGitProvider } from "../util/local-git.js";
 import { broadcastSpaceChatEvent } from "./collab-ws.js";
+import { createSpaceSysml2Router } from "./spaces-sysml2.js";
 
 function isValidSlug(slug: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$/.test(slug);
@@ -877,6 +882,279 @@ export function spacesRouter(database: LibraryDatabase): Router {
     res.status(201).json({ comment, issue: refreshed });
   });
 
+  // ── Jira Integration Configuration & Persistence ────────────────────────────
+
+  router.get("/:namespace/:slug/integrations/jira", requireAuth, (req: Request, res: Response): void => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+
+    const saved = (space.settings?.["jira"] as Record<string, unknown> | undefined) || {};
+    const baseUrl = String(saved["baseUrl"] ?? saved["jiraBaseUrl"] ?? "");
+    const email = String(saved["email"] ?? "");
+    const jql = String(saved["jql"] ?? "");
+    const modelCustomField = String(saved["modelCustomField"] ?? "");
+    const autoCommentOnSimulation = saved["autoCommentOnSimulation"] !== false;
+    const hasApiToken = Boolean(saved["apiToken"]);
+
+    res.json({
+      configured: Boolean(baseUrl && hasApiToken),
+      baseUrl,
+      email,
+      jql,
+      modelCustomField,
+      autoCommentOnSimulation,
+      hasApiToken,
+    });
+  });
+
+  router.put("/:namespace/:slug/integrations/jira", requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+
+    if (!database.canUserAdminSpace(space, req.user!.id, isCallerAdmin(req))) {
+      res
+        .status(403)
+        .json({ error: "Only Space owners, lead engineers, or org admins can configure Jira integrations" });
+      return;
+    }
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const saved = (space.settings?.["jira"] as Record<string, unknown> | undefined) || {};
+
+    const baseUrl = String(
+      body["baseUrl"] ?? body["jiraBaseUrl"] ?? saved["baseUrl"] ?? saved["jiraBaseUrl"] ?? "",
+    ).trim();
+    const email =
+      body["email"] !== undefined ? String(body["email"]).trim() : saved["email"] ? String(saved["email"]).trim() : "";
+    const apiToken = body["apiToken"]
+      ? String(body["apiToken"]).trim()
+      : saved["apiToken"]
+        ? String(saved["apiToken"]).trim()
+        : "";
+    const jql =
+      body["jql"] !== undefined ? String(body["jql"]).trim() : saved["jql"] ? String(saved["jql"]).trim() : "";
+    const modelCustomField =
+      body["modelCustomField"] !== undefined
+        ? String(body["modelCustomField"]).trim()
+        : saved["modelCustomField"]
+          ? String(saved["modelCustomField"]).trim()
+          : "";
+    const autoCommentOnSimulation =
+      body["autoCommentOnSimulation"] !== undefined
+        ? Boolean(body["autoCommentOnSimulation"])
+        : saved["autoCommentOnSimulation"] !== false;
+
+    // Optional test connection if requested or when saving new token
+    if (body["testConnection"] && baseUrl && apiToken) {
+      try {
+        const connector = new JiraConnector({
+          baseUrl,
+          auth: { email: email || undefined, apiToken },
+          timeoutMs: 5000,
+        });
+        await connector.searchIssues({ maxResults: 1 });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(400).json({ error: `Jira connection verification failed: ${msg}` });
+        return;
+      }
+    }
+
+    const updatedSettings = {
+      ...(space.settings || {}),
+      jira: {
+        baseUrl,
+        email,
+        apiToken,
+        jql,
+        modelCustomField,
+        autoCommentOnSimulation,
+      },
+    };
+
+    const updated = database.updateSpace(space.id, {
+      settings: updatedSettings,
+    });
+
+    res.json({
+      success: true,
+      integration: {
+        configured: Boolean(baseUrl && apiToken),
+        baseUrl,
+        email,
+        jql,
+        modelCustomField,
+        autoCommentOnSimulation,
+        hasApiToken: Boolean(apiToken),
+      },
+      space: updated,
+    });
+  });
+
+  // ── Jira Issue Ingestion & Bi-Directional Synchronization ──────────────────
+
+  router.post(
+    "/:namespace/:slug/integrations/jira/sync",
+    requireAuth,
+    async (req: Request, res: Response): Promise<void> => {
+      const namespace = String(req.params["namespace"] ?? "");
+      const slug = String(req.params["slug"] ?? "");
+      const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+      if (!space) {
+        res.status(404).json({ error: "Space not found" });
+        return;
+      }
+
+      // Check write permissions
+      const memberRole = database.getSpaceMemberRole(space.id, req.user!.id);
+      const isOwner = space.owner_namespace === req.user!.username;
+      const isAdmin = isCallerAdmin(req);
+      const canWrite =
+        isOwner ||
+        isAdmin ||
+        Boolean(memberRole && ["owner", "lead_engineer", "approver", "contributor"].includes(memberRole));
+
+      if (!canWrite) {
+        res.status(403).json({ error: "Forbidden: insufficient permissions to sync issues for this space" });
+        return;
+      }
+
+      const savedJira = (space.settings?.["jira"] as Record<string, unknown> | undefined) || {};
+      const jiraBaseUrl = String(
+        req.body?.jiraBaseUrl ?? req.body?.baseUrl ?? savedJira["baseUrl"] ?? savedJira["jiraBaseUrl"] ?? "",
+      ).trim();
+      const apiToken = String(req.body?.apiToken ?? req.body?.auth?.apiToken ?? savedJira["apiToken"] ?? "").trim();
+      const email =
+        req.body?.email || req.body?.auth?.email || savedJira["email"]
+          ? String(req.body?.email || req.body?.auth?.email || savedJira["email"]).trim()
+          : undefined;
+      const jql = req.body?.jql
+        ? String(req.body.jql).trim()
+        : savedJira["jql"]
+          ? String(savedJira["jql"]).trim()
+          : undefined;
+      const maxResults = req.body?.maxResults != null ? Math.min(Math.max(Number(req.body.maxResults), 1), 100) : 50;
+      const modelCustomField = req.body?.modelCustomField
+        ? String(req.body.modelCustomField).trim()
+        : savedJira["modelCustomField"]
+          ? String(savedJira["modelCustomField"]).trim()
+          : undefined;
+
+      if (!jiraBaseUrl) {
+        res.status(400).json({ error: "jiraBaseUrl is required or configure Jira in Space settings" });
+        return;
+      }
+      if (!apiToken) {
+        res.status(400).json({ error: "apiToken is required or configure Jira in Space settings" });
+        return;
+      }
+
+      try {
+        const connector = new JiraConnector({
+          baseUrl: jiraBaseUrl,
+          auth: { email, apiToken },
+        });
+
+        const searchRes = await connector.searchIssues({
+          jql,
+          maxResults,
+          modelCustomField,
+        });
+
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        for (const jiraIssue of searchRes.issues) {
+          const result = database.upsertSpaceIssueFromExternal({
+            spaceId: space.id,
+            externalSource: "jira",
+            externalKey: jiraIssue.key,
+            externalUrl: jiraIssue.browseUrl,
+            externalUpdatedAt: jiraIssue.updatedAt,
+            title: jiraIssue.title,
+            description: jiraIssue.description,
+            status: jiraIssue.status,
+            severity: jiraIssue.severity,
+            authorId: req.user!.id,
+            impactedModels: jiraIssue.impactedModels,
+            labels: jiraIssue.labels,
+            syncStatus: "synced",
+          });
+
+          if (result.isNew) createdCount++;
+          else updatedCount++;
+        }
+
+        res.json({
+          success: true,
+          synced: searchRes.issues.length,
+          created: createdCount,
+          updated: updatedCount,
+          issues: database.getSpaceIssues(space.id),
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(502).json({ error: `Jira synchronization failed: ${msg}` });
+      }
+    },
+  );
+
+  router.post(
+    "/:namespace/:slug/integrations/jira/issues/:key/verify",
+    requireAuth,
+    async (req: Request, res: Response): Promise<void> => {
+      const namespace = String(req.params["namespace"] ?? "");
+      const slug = String(req.params["slug"] ?? "");
+      const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+      if (!space) {
+        res.status(404).json({ error: "Space not found" });
+        return;
+      }
+
+      const savedJira = (space.settings?.["jira"] as Record<string, unknown> | undefined) || {};
+      const jiraBaseUrl = String(
+        req.body?.jiraBaseUrl ?? req.body?.baseUrl ?? savedJira["baseUrl"] ?? savedJira["jiraBaseUrl"] ?? "",
+      ).trim();
+      const apiToken = String(req.body?.apiToken ?? req.body?.auth?.apiToken ?? savedJira["apiToken"] ?? "").trim();
+      const email =
+        req.body?.email || req.body?.auth?.email || savedJira["email"]
+          ? String(req.body?.email || req.body?.auth?.email || savedJira["email"]).trim()
+          : undefined;
+      const comment = String(req.body?.comment ?? "").trim();
+      const key = String(req.params["key"] ?? "");
+
+      if (!jiraBaseUrl || !apiToken || !comment) {
+        res
+          .status(400)
+          .json({ error: "jiraBaseUrl, apiToken, and comment are required (or configure Jira in Space settings)" });
+        return;
+      }
+
+      try {
+        const connector = new JiraConnector({
+          baseUrl: jiraBaseUrl,
+          auth: { email, apiToken },
+        });
+
+        const feedback = await connector.postVerificationComment(key, comment);
+        res.json({ success: true, commentId: feedback.id });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(502).json({ error: `Failed to post verification to Jira: ${msg}` });
+      }
+    },
+  );
+
   // ── PLM Engineering Change Orders (ECOs) ────────────────────────────────────
 
   router.get("/:namespace/:slug/ecos", optionalAuth, (req: Request, res: Response): void => {
@@ -1023,7 +1301,298 @@ export function spacesRouter(database: LibraryDatabase): Router {
     res.json({ eco: result.eco, simulation: result.simulation, ecos: database.getSpaceEcoProposals(space.id) });
   });
 
-  router.get("/:namespace/:slug/ecos/:ecoId/impact", optionalAuth, (req: Request, res: Response): void => {
+  router.get("/:namespace/:slug/ecos/:ecoId/workflows", optionalAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const ecoId = String(req.params["ecoId"] ?? "");
+    const eco = database.getSpaceEcoProposals(space.id).find((e) => e.id === ecoId);
+    if (!eco) {
+      res.status(404).json({ error: "ECO proposal not found" });
+      return;
+    }
+
+    let manifests =
+      space.git_repo_path && fs.existsSync(space.git_repo_path)
+        ? discoverWorkflowsInRepo({
+            repoPath: space.git_repo_path,
+            ref: eco.source_branch,
+          })
+        : [];
+
+    if (manifests.length === 0 && space.git_repo_path && fs.existsSync(space.git_repo_path)) {
+      manifests = discoverWorkflowsInRepo({
+        repoPath: space.git_repo_path,
+        ref: eco.target_branch,
+      });
+    }
+
+    const runs = database.getSpaceWorkflowRuns(space.id, eco.id);
+    res.json({
+      manifests: manifests.map((m: WorkflowManifest) => ({
+        provider: m.provider,
+        name: m.name,
+        filePath: m.filePath,
+        jobs: Array.from(m.jobs.values()).map((j: WorkflowJob) => ({
+          id: j.id,
+          name: j.name,
+          needs: j.needs,
+          runsOn: j.runsOn,
+          stepsCount: j.steps.length,
+        })),
+      })),
+      runs,
+    });
+  });
+
+  router.post("/:namespace/:slug/ecos/:ecoId/workflows/run", requireAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const ecoId = String(req.params["ecoId"] ?? "");
+    const workflowFile = typeof req.body?.workflowFile === "string" ? req.body.workflowFile : undefined;
+    const result = database.runSpaceWorkflows(space.id, ecoId, workflowFile);
+    if (!result) {
+      res.status(404).json({ error: "ECO proposal or repository not found" });
+      return;
+    }
+    if (result.simulation) {
+      void postAutomatedSimulationCommentsIfConfigured({
+        space,
+        eco: result.eco,
+        simulation: result.simulation,
+        issues: database.getSpaceIssues(space.id),
+      });
+    }
+
+    res.json({
+      eco: result.eco,
+      runs: result.runs,
+      simulation: result.simulation,
+      ecos: database.getSpaceEcoProposals(space.id),
+    });
+  });
+
+  router.post("/:namespace/:slug/ecos/:ecoId/workflows/external-report", (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const ecoId = String(req.params["ecoId"] ?? "");
+    const eco = database.getSpaceEcoProposals(space.id).find((e) => e.id === ecoId);
+    if (!eco) {
+      res.status(404).json({ error: "ECO proposal not found" });
+      return;
+    }
+
+    const body = (req.body || {}) as Record<string, unknown>;
+    const provider = String(body["provider"] || "github") as "github" | "gitlab" | "ansatz";
+    const status = body["status"] === "failed" ? "failed" : "passed";
+    const workflowName = String(body["workflowName"] || "External CI Pipeline");
+    const workflowFile = String(
+      body["workflowFile"] || (provider === "gitlab" ? ".gitlab-ci.yml" : ".github/workflows/ci.yml"),
+    );
+    const commitSha = body["commitSha"] ? String(body["commitSha"]) : null;
+    const ref = body["ref"] ? String(body["ref"]) : eco.source_branch;
+    const jobs = Array.isArray(body["jobs"]) ? body["jobs"] : [];
+    const artifacts = Array.isArray(body["artifacts"]) ? body["artifacts"] : [];
+    const simulationSummary = (body["simulationSummary"] as Record<string, unknown> | undefined) || {
+      status,
+      checkedAt: new Date().toISOString(),
+      solver: "External CI Runner",
+    };
+    const logs = String(body["logs"] || "");
+
+    const run = database.createSpaceWorkflowRun({
+      spaceId: space.id,
+      ecoId: eco.id,
+      provider,
+      workflowFile,
+      workflowName,
+      triggerEvent: "external_report",
+      commitSha: commitSha ?? null,
+      ref,
+      status,
+      conclusion: status === "passed" ? "success" : "failure",
+      jobs,
+      artifacts,
+      summary: simulationSummary,
+      logs,
+    });
+
+    // Update ECO simulation gate from external report
+    database.db
+      .prepare(
+        `UPDATE space_eco_proposals
+         SET simulation_gate_status = ?,
+             simulation_summary_json = ?,
+             updated_at = datetime('now')
+         WHERE id = ? AND space_id = ?`,
+      )
+      .run(status, JSON.stringify(simulationSummary), eco.id, space.id);
+
+    const updatedEco = database.getSpaceEcoProposals(space.id).find((e) => e.id === eco.id)!;
+    const simulation = database.getSpaceEcoSimulation(space.id, eco.id);
+
+    if (simulation) {
+      void postAutomatedSimulationCommentsIfConfigured({
+        space,
+        eco: updatedEco,
+        simulation,
+        issues: database.getSpaceIssues(space.id),
+      });
+    }
+
+    res.json({
+      success: true,
+      runId: run.id,
+      simulationGateStatus: status,
+      eco: updatedEco,
+      simulation,
+    });
+  });
+
+  router.post("/:namespace/:slug/webhooks/:provider", (req: Request, res: Response): void => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const provider = String(req.params["provider"] ?? "").toLowerCase();
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+
+    const githubEvent = req.headers["x-github-event"] as string | undefined;
+    const gitlabEvent = (req.headers["x-gitlab-event"] as string | undefined) || "";
+
+    let eventType = githubEvent || gitlabEvent || String(req.body?.event || "push");
+    let commitSha: string | null = null;
+    let ref: string | null = null;
+    let ciStatus: "pending" | "running" | "passed" | "failed" = "passed";
+    let workflowName = "CI Pipeline";
+    let summary: Record<string, unknown> = {};
+
+    if (provider === "github") {
+      if (githubEvent === "check_run") {
+        const cr = (req.body?.check_run || {}) as Record<string, unknown>;
+        commitSha = cr["head_sha"] ? String(cr["head_sha"]) : null;
+        const cs = (cr["check_suite"] || {}) as Record<string, unknown>;
+        ref = cs["head_branch"] ? String(cs["head_branch"]) : null;
+        workflowName = String(cr["name"] || "GitHub Check Run");
+
+        const conclusion = String(cr["conclusion"] || "");
+        const status = String(cr["status"] || "");
+        if (status === "in_progress" || status === "queued") {
+          ciStatus = "running";
+        } else if (conclusion === "success") {
+          ciStatus = "passed";
+        } else {
+          ciStatus = "failed";
+        }
+
+        const output = (cr["output"] || {}) as Record<string, unknown>;
+        summary = {
+          title: output["title"],
+          summary: output["summary"],
+          text: output["text"],
+          conclusion,
+        };
+      } else if (githubEvent === "workflow_run") {
+        const wr = (req.body?.workflow_run || {}) as Record<string, unknown>;
+        commitSha = wr["head_sha"] ? String(wr["head_sha"]) : null;
+        ref = wr["head_branch"] ? String(wr["head_branch"]) : null;
+        workflowName = String(wr["name"] || "GitHub Workflow");
+        const conclusion = String(wr["conclusion"] || "");
+        const status = String(wr["status"] || "");
+        if (status === "in_progress" || status === "queued") {
+          ciStatus = "running";
+        } else if (conclusion === "success") {
+          ciStatus = "passed";
+        } else {
+          ciStatus = "failed";
+        }
+        summary = { conclusion, status };
+      } else {
+        ref = String(req.body?.ref || "").replace(/^refs\/heads\//, "");
+        commitSha = req.body?.after ? String(req.body.after) : null;
+      }
+    } else if (provider === "gitlab") {
+      if (gitlabEvent.includes("Pipeline") || req.body?.object_attributes) {
+        const attrs = (req.body?.object_attributes || {}) as Record<string, unknown>;
+        ref = attrs["ref"] ? String(attrs["ref"]) : null;
+        commitSha = attrs["sha"] ? String(attrs["sha"]) : null;
+        const st = String(attrs["status"] || "");
+        if (st === "running" || st === "pending") {
+          ciStatus = "running";
+        } else if (st === "success") {
+          ciStatus = "passed";
+        } else {
+          ciStatus = "failed";
+        }
+        workflowName = "GitLab CI Pipeline";
+        summary = { status: st, stages: attrs["stages"] };
+      } else {
+        ref = String(req.body?.ref || "").replace(/^refs\/heads\//, "");
+        commitSha = req.body?.checkout_sha ? String(req.body.checkout_sha) : null;
+      }
+    }
+
+    // Match active ECO proposal for this ref or commit
+    const eco = ref || commitSha ? database.findEcoByCommitOrBranch(space.id, ref || commitSha || "") : null;
+    let runId: string | null = null;
+
+    if (eco) {
+      const run = database.createSpaceWorkflowRun({
+        spaceId: space.id,
+        ecoId: eco.id,
+        provider: provider === "gitlab" ? "gitlab" : "github",
+        workflowFile: provider === "gitlab" ? ".gitlab-ci.yml" : ".github/workflows/ci.yml",
+        workflowName,
+        triggerEvent: eventType,
+        commitSha,
+        ref: ref || eco.source_branch,
+        status: ciStatus,
+        conclusion: ciStatus === "passed" ? "success" : ciStatus === "failed" ? "failure" : null,
+        summary,
+      });
+      runId = run.id;
+
+      database.db
+        .prepare(
+          `UPDATE space_eco_proposals
+           SET simulation_gate_status = ?,
+               simulation_summary_json = ?,
+               updated_at = datetime('now')
+           WHERE id = ? AND space_id = ?`,
+        )
+        .run(ciStatus, JSON.stringify(summary), eco.id, space.id);
+    }
+
+    res.status(202).json({
+      success: true,
+      spaceId: space.id,
+      ecoId: eco?.id || null,
+      eventType,
+      ciStatus,
+      runId,
+    });
+  });
+
+  const handleEcoBlastRadius = (req: Request, res: Response): void => {
     const space = database.getSpaceByNamespaceAndSlug(
       String(req.params["namespace"] ?? ""),
       String(req.params["slug"] ?? ""),
@@ -1037,8 +1606,11 @@ export function spacesRouter(database: LibraryDatabase): Router {
       res.status(404).json({ error: "ECO proposal not found" });
       return;
     }
-    res.json({ impact });
-  });
+    res.json({ impact, blastRadius: impact });
+  };
+
+  router.get("/:namespace/:slug/ecos/:ecoId/impact", optionalAuth, handleEcoBlastRadius);
+  router.get("/:namespace/:slug/ecos/:ecoId/blast-radius", optionalAuth, handleEcoBlastRadius);
 
   router.get("/:namespace/:slug/ecos/:ecoId/bom", optionalAuth, (req: Request, res: Response): void => {
     const space = database.getSpaceByNamespaceAndSlug(
@@ -1275,6 +1847,37 @@ export function spacesRouter(database: LibraryDatabase): Router {
 
     res.json({ ok: true, commitSha, branch });
   });
+
+  /**
+   * GET /api/v1/spaces/:namespace/:slug/packages/:filename
+   * Download a generated PLM package (AASX, ProSTEP DDP, or FMU) for a Space.
+   */
+  router.get("/:namespace/:slug/packages/:filename", optionalAuth, (req: Request, res: Response): void => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const filename = String(req.params["filename"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const isAdmin = isCallerAdmin(req);
+    if (!database.canUserViewSpace(space, req.user?.id, isAdmin)) {
+      res.status(403).json({ error: "You do not have permission to view this Space" });
+      return;
+    }
+
+    const cleanFilename = path.basename(filename);
+    const filePath = path.join(database.dbDir, "packages", space.id, cleanFilename);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Package file not found" });
+      return;
+    }
+    res.download(filePath, cleanFilename);
+  });
+
+  // Space-Scoped OMG SysML v2 API Bridge
+  router.use("/:namespace/:slug/sysml2", createSpaceSysml2Router(database));
 
   return router;
 }

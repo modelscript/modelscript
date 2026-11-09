@@ -278,7 +278,7 @@ export interface SwitchedShuntRecord {
 /**
  * Standard PSS/E Dynamic Model Categories in `.dyr` files.
  */
-export type PsseDyrCategory = "generator" | "exciter" | "governor" | "stabilizer" | "user";
+export type PsseDyrCategory = "generator" | "exciter" | "governor" | "stabilizer" | "load" | "facts" | "hvdc" | "user";
 
 /**
  * Parsed PSS/E `.dyr` Dynamic Model Record.
@@ -305,6 +305,93 @@ export interface PsseDyrCase {
   excitersByBusId: Map<string, PsseDyrRecord>;
   governorsByBusId: Map<string, PsseDyrRecord>;
   stabilizersByBusId: Map<string, PsseDyrRecord>;
+  loadsByBusId?: Map<string, PsseDyrRecord> | undefined;
+  factsByBusId?: Map<string, PsseDyrRecord> | undefined;
+}
+
+/**
+ * Generator positive, negative, and zero-sequence impedance record in a PSS/E `.seq` file.
+ */
+export interface SeqGeneratorRecord {
+  i: number;
+  id: string;
+  zrpos: number;
+  zxpos: number;
+  zrneg: number;
+  zxneg: number;
+  zr0: number;
+  zx0: number;
+  zrg: number;
+  zxg: number;
+}
+
+/**
+ * Non-transformer AC branch zero-sequence record in a PSS/E `.seq` file.
+ */
+export interface SeqBranchRecord {
+  i: number;
+  j: number;
+  ckt: string;
+  r0: number;
+  x0: number;
+  b0: number;
+  gi0: number;
+  bi0: number;
+  gj0: number;
+  bj0: number;
+}
+
+/**
+ * Mutual zero-sequence coupling between two transmission lines in a PSS/E `.seq` file.
+ */
+export interface SeqMutualRecord {
+  i1: number;
+  j1: number;
+  ckt1: string;
+  i2: number;
+  j2: number;
+  ckt2: string;
+  rm: number;
+  xm: number;
+}
+
+/**
+ * Two-winding transformer zero-sequence grounding and leakage record in a PSS/E `.seq` file.
+ */
+export interface SeqTransformerRecord {
+  i: number;
+  j: number;
+  ckt: string;
+  /** Connection code (1 = Yg-Yg, 2 = Yg-D, 3 = D-Yg, 4 = D-D, 5 = Y-Y ungrounded). */
+  cc: number;
+  rg1: number;
+  xg1: number;
+  r01: number;
+  x01: number;
+  rg2: number;
+  xg2: number;
+  r02: number;
+  x02: number;
+}
+
+/**
+ * Zero-sequence fixed/switched shunt admittance record in a PSS/E `.seq` file.
+ */
+export interface SeqShuntRecord {
+  i: number;
+  g0: number;
+  b0: number;
+}
+
+/**
+ * Parsed PSS/E Sequence Data (`.seq`) Collection.
+ */
+export interface PsseSeqCase {
+  generators: SeqGeneratorRecord[];
+  branches: SeqBranchRecord[];
+  mutuals: SeqMutualRecord[];
+  transformers: SeqTransformerRecord[];
+  shunts: SeqShuntRecord[];
 }
 
 /**
@@ -326,6 +413,7 @@ export interface PsseCase {
   switchedShunts: SwitchedShuntRecord[];
   dyr?: PsseDyrCase | undefined;
   con?: PsseConCase | undefined;
+  seq?: PsseSeqCase | undefined;
 }
 
 /**

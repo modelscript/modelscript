@@ -118,8 +118,17 @@ export function verifyTemporalContract(
       }
       if (!gEval.satisfied && violationTime === undefined) {
         violationTime = t;
-        const firstSignalVal = Object.values(signals)[0]?.[i];
-        counterexample = firstSignalVal;
+        let violatingVal: number | undefined;
+        for (const atom of gEval.violatedAtoms) {
+          for (const [sigName, vals] of Object.entries(signals)) {
+            if (atom.includes(sigName)) {
+              violatingVal = vals[i];
+              break;
+            }
+          }
+          if (violatingVal !== undefined) break;
+        }
+        counterexample = violatingVal ?? Object.values(signals)[0]?.[i];
         violationReason = `At t = ${t.toFixed(4)}s: assumption '${contract.assumption}' held, but guarantee '${contract.guarantee}' violated (${gEval.violatedAtoms.join(", ")})`;
       }
       continue;

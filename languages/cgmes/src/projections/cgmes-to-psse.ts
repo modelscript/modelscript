@@ -41,13 +41,30 @@ export function cgmesToPsse(model: CgmesModel, options: CgmesToPsseOptions = {})
 
   // 1. Assign bus numbers to TopologicalNodes
   let busCounter = 1;
+  const usedBuses = new Set<number>();
+
+  const svByNodeId = new Map<string, { vPu: number; angleDeg: number }>();
+  for (const sv of topo.model.svVoltages.values()) {
+    if (sv.topologicalNodeId) {
+      svByNodeId.set(sv.topologicalNodeId, sv);
+    }
+  }
+
   for (const [nodeId, node] of topo.model.nodes.entries()) {
-    const busNum = busCounter++;
+    let busNum: number;
+    const match = nodeId.match(/_node_(\d+)$/) || node.name?.match(/BUS_?(\d+)$/i);
+    if (match) {
+      busNum = parseInt(match[1]!, 10);
+    } else {
+      while (usedBuses.has(busCounter)) busCounter++;
+      busNum = busCounter++;
+    }
+    usedBuses.add(busNum);
     nodeToBusNum.set(nodeId, busNum);
     busNumToNode.set(busNum, nodeId);
 
     // Check if voltage is given in SV
-    const sv = topo.model.svVoltages.get(nodeId);
+    const sv = svByNodeId.get(nodeId) ?? topo.model.svVoltages.get(nodeId);
     const vm = sv ? sv.vPu : 1.0;
     const va = sv ? sv.angleDeg : 0.0;
 

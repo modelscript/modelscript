@@ -82,6 +82,7 @@
     "@modelscript/swmm": "*",
     "@modelscript/sysml2": "*",
     "@modelscript/touchstone": "*",
+    "@resvg/resvg-js": "^2.6.2",
     "@svgdotjs/svg.js": "^3.2.5",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",

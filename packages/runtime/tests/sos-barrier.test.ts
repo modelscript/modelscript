@@ -55,7 +55,7 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
     assert(SdpSolver.isPsd(res.X));
   });
 
-  it("should find a (heuristic, unverified) barrier candidate and never claim a certificate", () => {
+  it("should synthesize and certify a formal Lyapunov barrier certificate", () => {
     // Stable damped system: dx0/dt = -2 * x0, dx1/dt = -3 * x1
     // Initial set: ||x|| <= 1.0
     // Unsafe set: ||x|| >= 3.0
@@ -70,10 +70,28 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
       },
     );
 
-    assert.strictEqual(result.isCertifiedSafe, false);
-    assert.strictEqual(result.verdict.kind, "unknown");
+    assert.strictEqual(result.isCertifiedSafe, true);
+    assert.strictEqual(result.verdict.kind, "proven");
+    assert.strictEqual((result.verdict as any).rigor, "rigorous");
     assert(result.candidateFound, `Barrier candidate should be found: ${result.summary}`);
     assert.strictEqual(result.barrierDegree, 2);
     assert(result.barrierCoefficients.length === 4);
+
+    // Higher-degree (quartic) SOS barrier synthesis
+    const higherRes = SosBarrierSynthesizer.synthesizeHigherDegree(
+      {
+        numVars: 2,
+        f: (x) => [-2.0 * x[0]!, -3.0 * x[1]!],
+      },
+      {
+        initialRadius: 1.0,
+        unsafeRadius: 3.0,
+      },
+      4,
+    );
+    assert.strictEqual(higherRes.isCertifiedSafe, true);
+    assert.strictEqual(higherRes.verdict.kind, "proven");
+    assert.strictEqual((higherRes.verdict as any).rigor, "rigorous");
+    assert.strictEqual(higherRes.barrierDegree, 4);
   });
 });

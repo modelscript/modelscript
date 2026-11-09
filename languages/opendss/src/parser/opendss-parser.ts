@@ -1,17 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type {
   DssCapacitor,
+  DssCapControl,
   DssCircuit,
+  DssCNData,
   DssDeck,
+  DssFuse,
+  DssGenerator,
+  DssInvControl,
   DssLine,
   DssLineCode,
+  DssLineGeometry,
+  DssLineSpacing,
   DssLoad,
   DssLoadShape,
   DssPVSystem,
   DssRange,
+  DssRecloser,
+  DssRegControl,
+  DssRelay,
   DssStorage,
+  DssSwtControl,
+  DssTccCurve,
   DssTransformer,
+  DssTSData,
+  DssWireData,
 } from "../types.js";
 
 function isWhitespace(ch: string): boolean {
@@ -30,7 +46,7 @@ export function extractBaseBusName(rawBus: string): string {
 }
 
 /**
- * Extract explicit phase numbers (1=A, 2=B, 3=C) from bus specification (e.g. "Bus2.1" -> [1], "Bus2.2.3" -> [2, 3]).
+ * Extract explicit phase/node numbers (1=A, 2=B, 3=C, 0=neutral/ground) from bus specification (e.g. "Bus2.1" -> [1], "Bus2.1.2.3.0" -> [1, 2, 3, 0]).
  * Falls back to 1..phases when no explicit suffix is present.
  */
 export function extractPhaseNodes(rawBus: string, defaultPhases: number): number[] {
@@ -41,7 +57,7 @@ export function extractPhaseNodes(rawBus: string, defaultPhases: number): number
     const nodes: number[] = [];
     for (const p of parts) {
       const n = parseInt(p.trim(), 10);
-      if (n >= 1 && n <= 3) {
+      if (!isNaN(n) && n >= 0) {
         nodes.push(n);
       }
     }
@@ -146,6 +162,20 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
   const pvSystems = new Map<string, DssPVSystem>();
   const storages = new Map<string, DssStorage>();
   const capacitors = new Map<string, DssCapacitor>();
+  const generators = new Map<string, DssGenerator>();
+  const regControls = new Map<string, DssRegControl>();
+  const capControls = new Map<string, DssCapControl>();
+  const tccCurves = new Map<string, DssTccCurve>();
+  const relays = new Map<string, DssRelay>();
+  const fuses = new Map<string, DssFuse>();
+  const reclosers = new Map<string, DssRecloser>();
+  const invControls = new Map<string, DssInvControl>();
+  const swtControls = new Map<string, DssSwtControl>();
+  const wireData = new Map<string, DssWireData>();
+  const cnData = new Map<string, DssCNData>();
+  const tsData = new Map<string, DssTSData>();
+  const lineSpacings = new Map<string, DssLineSpacing>();
+  const lineGeometries = new Map<string, DssLineGeometry>();
   const lineCodes = new Map<string, DssLineCode>();
   const loadShapes = new Map<string, DssLoadShape>();
   const voltageBases: number[] = [];
@@ -236,6 +266,57 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
       endCol: lineText.length + 1,
     };
 
+    if (firstWord === "redirect" || firstWord === "compile") {
+      const includeFile = tokens
+        .slice(1)
+        .join(" ")
+        .trim()
+        .replace(/^["']|["']$/g, "");
+      if (includeFile) {
+        let resolvedPath = includeFile;
+        if (filename) {
+          resolvedPath = path.isAbsolute(includeFile) ? includeFile : path.resolve(path.dirname(filename), includeFile);
+        }
+        try {
+          if (fs.existsSync(resolvedPath)) {
+            const fileContent = fs.readFileSync(resolvedPath, "utf-8");
+            const subDeck = parseOpenDss(fileContent, resolvedPath);
+            for (const [k, v] of subDeck.lines) linesMap.set(k, v);
+            for (const [k, v] of subDeck.transformers) transformers.set(k, v);
+            for (const [k, v] of subDeck.loads) loads.set(k, v);
+            for (const [k, v] of subDeck.pvSystems) pvSystems.set(k, v);
+            for (const [k, v] of subDeck.storages) storages.set(k, v);
+            for (const [k, v] of subDeck.capacitors) capacitors.set(k, v);
+            for (const [k, v] of subDeck.generators) generators.set(k, v);
+            for (const [k, v] of subDeck.regControls) regControls.set(k, v);
+            for (const [k, v] of subDeck.capControls) capControls.set(k, v);
+            for (const [k, v] of subDeck.tccCurves) tccCurves.set(k, v);
+            for (const [k, v] of subDeck.relays) relays.set(k, v);
+            for (const [k, v] of subDeck.fuses) fuses.set(k, v);
+            for (const [k, v] of subDeck.reclosers) reclosers.set(k, v);
+            for (const [k, v] of subDeck.invControls) invControls.set(k, v);
+            for (const [k, v] of subDeck.swtControls) swtControls.set(k, v);
+            for (const [k, v] of subDeck.wireData) wireData.set(k, v);
+            for (const [k, v] of subDeck.cnData) cnData.set(k, v);
+            for (const [k, v] of subDeck.tsData) tsData.set(k, v);
+            for (const [k, v] of subDeck.lineSpacings) lineSpacings.set(k, v);
+            for (const [k, v] of subDeck.lineGeometries) lineGeometries.set(k, v);
+            for (const [k, v] of subDeck.lineCodes) lineCodes.set(k, v);
+            if (subDeck.loadShapes) {
+              for (const [k, v] of subDeck.loadShapes) loadShapes.set(k, v);
+            }
+            for (const vb of subDeck.voltageBases) {
+              if (!voltageBases.includes(vb)) voltageBases.push(vb);
+            }
+            if (subDeck.circuit && !circuit) circuit = subDeck.circuit;
+          }
+        } catch {
+          // Gracefully continue in environments where filesystem read is disallowed
+        }
+      }
+      continue;
+    }
+
     if (firstWord === "new" || firstWord === "edit") {
       const target = tokens[1];
       if (!target) continue;
@@ -283,6 +364,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const xmatrixRaw = props.get("xmatrix");
         const rmatrix = rmatrixRaw !== undefined ? parseMatrixValues(rmatrixRaw) : undefined;
         const xmatrix = xmatrixRaw !== undefined ? parseMatrixValues(xmatrixRaw) : undefined;
+        const geometry = props.get("geometry");
 
         linesMap.set(elemName, {
           name: elemName,
@@ -302,6 +384,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           c0,
           rmatrix,
           xmatrix,
+          geometry,
           range,
         });
       } else if (elemClass === "transformer") {
@@ -315,6 +398,20 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const kvas = parseArrayValues(rawKvas).map((v) => parseFloat(v) || 1000);
         const pctLoadLossRaw = props.get("%loadloss");
         const xhlRaw = props.get("xhl");
+        const tapsRaw = props.get("taps");
+        const taps = tapsRaw ? parseArrayValues(tapsRaw).map((v) => parseFloat(v) || 1.0) : undefined;
+        const numTapsRaw = props.get("numtaps");
+        const minTapRaw = props.get("mintap");
+        const maxTapRaw = props.get("maxtap");
+        const connsRaw = props.get("conns") ?? props.get("conn");
+        const conn = connsRaw ? parseArrayValues(connsRaw) : undefined;
+        const leadLagRaw = props.get("leadlag");
+        const leadLag =
+          leadLagRaw?.toLowerCase() === "lead"
+            ? ("lead" as const)
+            : leadLagRaw?.toLowerCase() === "lag"
+              ? ("lag" as const)
+              : undefined;
 
         transformers.set(elemName, {
           name: elemName,
@@ -325,6 +422,12 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           kvas: kvas.length > 0 ? kvas : [10000.0, 10000.0],
           pctLoadLoss: pctLoadLossRaw !== undefined ? parseFloat(pctLoadLossRaw) : undefined,
           xhl: xhlRaw !== undefined ? parseFloat(xhlRaw) : undefined,
+          taps,
+          numTaps: numTapsRaw !== undefined ? parseInt(numTapsRaw, 10) : undefined,
+          minTap: minTapRaw !== undefined ? parseFloat(minTapRaw) : undefined,
+          maxTap: maxTapRaw !== undefined ? parseFloat(maxTapRaw) : undefined,
+          conn,
+          leadLag,
           range,
         });
       } else if (elemClass === "load") {
@@ -464,6 +567,390 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           qmult,
           range,
         });
+      } else if (elemClass === "generator") {
+        const rawBus1 = props.get("bus1") ?? "Bus1";
+        const bus1 = extractBaseBusName(rawBus1);
+        const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
+        const phaseNodes = extractPhaseNodes(rawBus1, phases);
+        const kv = parseFloat(props.get("kv") ?? "12.47") || 12.47;
+        const kw = parseFloat(props.get("kw") ?? "500.0") || 500.0;
+        const kvarRaw = props.get("kvar");
+        const kvar = kvarRaw !== undefined ? parseFloat(kvarRaw) : 0.0;
+        const pfRaw = props.get("pf");
+        const pf = pfRaw !== undefined ? parseFloat(pfRaw) : undefined;
+        const modelRaw = props.get("model");
+        const model = modelRaw !== undefined ? parseInt(modelRaw, 10) : 1;
+        const vpuRaw = props.get("vpu");
+        const vpu = vpuRaw !== undefined ? parseFloat(vpuRaw) : 1.0;
+        const maxKvarRaw = props.get("maxkvar");
+        const minKvarRaw = props.get("minkvar");
+        const daily = props.get("daily");
+        const yearly = props.get("yearly");
+        const duty = props.get("duty");
+
+        generators.set(elemName, {
+          name: elemName,
+          bus1,
+          phases,
+          phaseNodes,
+          kv,
+          kw,
+          kvar,
+          pf,
+          model,
+          vpu,
+          maxKvar: maxKvarRaw !== undefined ? parseFloat(maxKvarRaw) : undefined,
+          minKvar: minKvarRaw !== undefined ? parseFloat(minKvarRaw) : undefined,
+          daily,
+          yearly,
+          duty,
+          range,
+        });
+      } else if (elemClass === "regcontrol") {
+        const xfmr = props.get("transformer") ?? elemName;
+        const winding = parseInt(props.get("winding") ?? "2", 10) || 2;
+        const vreg = parseFloat(props.get("vreg") ?? "120.0") || 120.0;
+        const band = parseFloat(props.get("band") ?? "2.0") || 2.0;
+        const ptRatio = parseFloat(props.get("ptratio") ?? "60.0") || 60.0;
+        const ctPrimRaw = props.get("ctprim");
+        const ctPrim = ctPrimRaw !== undefined ? parseFloat(ctPrimRaw) : undefined;
+        const rRaw = props.get("r");
+        const r = rRaw !== undefined ? parseFloat(rRaw) : 0.0;
+        const xRaw = props.get("x");
+        const x = xRaw !== undefined ? parseFloat(xRaw) : 0.0;
+        const rawBus = props.get("bus");
+        const bus = rawBus ? extractBaseBusName(rawBus) : undefined;
+        const tapNumRaw = props.get("tapnum");
+        const tapNum = tapNumRaw !== undefined ? parseInt(tapNumRaw, 10) : 0;
+        const maxTapChangeRaw = props.get("maxtapchange");
+        const maxTapChange = maxTapChangeRaw !== undefined ? parseInt(maxTapChangeRaw, 10) : 16;
+
+        regControls.set(elemName, {
+          name: elemName,
+          transformer: xfmr,
+          winding,
+          vreg,
+          band,
+          ptRatio,
+          ctPrim,
+          r,
+          x,
+          bus,
+          tapNum,
+          maxTapChange,
+          range,
+        });
+      } else if (elemClass === "capcontrol") {
+        const capacitor = props.get("capacitor") ?? elemName;
+        const element = props.get("element");
+        const termRaw = props.get("terminal");
+        const terminal = termRaw !== undefined ? parseInt(termRaw, 10) : 1;
+        const typeStr = (props.get("type") ?? "voltage").toLowerCase();
+        const type: "voltage" | "kvar" | "current" | "time" =
+          typeStr === "kvar" || typeStr === "current" || typeStr === "time" ? typeStr : "voltage";
+        const onSetting = parseFloat(props.get("onset") ?? props.get("onsetting") ?? "118.0") || 118.0;
+        const offSetting = parseFloat(props.get("offset") ?? props.get("offsetting") ?? "124.0") || 124.0;
+        const delayRaw = props.get("delay");
+        const delay = delayRaw !== undefined ? parseFloat(delayRaw) : 15.0;
+        const ptRatioRaw = props.get("ptratio");
+        const ptRatio = ptRatioRaw !== undefined ? parseFloat(ptRatioRaw) : 60.0;
+        const ctRatioRaw = props.get("ctratio");
+        const ctRatio = ctRatioRaw !== undefined ? parseFloat(ctRatioRaw) : undefined;
+
+        capControls.set(elemName, {
+          name: elemName,
+          capacitor,
+          element,
+          terminal,
+          type,
+          onSetting,
+          offSetting,
+          delay,
+          ptRatio,
+          ctRatio,
+          range,
+        });
+      } else if (elemClass === "tcc_curve") {
+        const npts = parseInt(props.get("npts") ?? "0", 10);
+        const cRaw = props.get("c_array") ?? "";
+        const tRaw = props.get("t_array") ?? "";
+        const c_array = parseArrayValues(cRaw)
+          .map((v) => parseFloat(v))
+          .filter((v) => !isNaN(v));
+        const t_array = parseArrayValues(tRaw)
+          .map((v) => parseFloat(v))
+          .filter((v) => !isNaN(v));
+
+        tccCurves.set(elemName, {
+          name: elemName,
+          npts: npts > 0 ? npts : c_array.length,
+          c_array,
+          t_array,
+          range,
+        });
+      } else if (elemClass === "relay") {
+        const monitoredElement = props.get("monitoredobj") ?? props.get("element") ?? "";
+        const termRaw = props.get("monitoredterm") ?? props.get("terminal");
+        const monitoredTerminal = termRaw !== undefined ? parseInt(termRaw, 10) : 1;
+        const typeStr = (props.get("type") ?? "current").toLowerCase();
+        const type = typeStr === "voltage" ? "voltage" : "current";
+        const phaseCurve = props.get("phasecurve");
+        const groundCurve = props.get("groundcurve");
+        const ptRaw = props.get("phasetrip");
+        const gtRaw = props.get("groundtrip");
+        const phaseTrip = ptRaw !== undefined ? parseFloat(ptRaw) : undefined;
+        const groundTrip = gtRaw !== undefined ? parseFloat(gtRaw) : undefined;
+        const tdPhaseRaw = props.get("tdphase");
+        const tdGroundRaw = props.get("tdground");
+        const tdPhase = tdPhaseRaw !== undefined ? parseFloat(tdPhaseRaw) : 1.0;
+        const tdGround = tdGroundRaw !== undefined ? parseFloat(tdGroundRaw) : 1.0;
+
+        relays.set(elemName, {
+          name: elemName,
+          monitoredElement,
+          monitoredTerminal,
+          type,
+          phaseCurve,
+          groundCurve,
+          phaseTrip,
+          groundTrip,
+          tdPhase,
+          tdGround,
+          range,
+        });
+      } else if (elemClass === "fuse") {
+        const monitoredElement = props.get("monitoredobj") ?? props.get("element") ?? "";
+        const termRaw = props.get("monitoredterm") ?? props.get("terminal");
+        const monitoredTerminal = termRaw !== undefined ? parseInt(termRaw, 10) : 1;
+        const fuseCurve = props.get("fusecurve") ?? "";
+        const ratedCurrent = parseFloat(props.get("ratedcurrent") ?? props.get("amps") ?? "100.0") || 100.0;
+
+        fuses.set(elemName, {
+          name: elemName,
+          monitoredElement,
+          monitoredTerminal,
+          fuseCurve,
+          ratedCurrent,
+          range,
+        });
+      } else if (elemClass === "wiredata") {
+        const diam = parseFloat(props.get("diam") ?? props.get("dia") ?? "0.5") || 0.5;
+        const rdac = parseFloat(props.get("rdac") ?? props.get("rac") ?? props.get("r") ?? "0.1") || 0.1;
+        const gmrac = parseFloat(props.get("gmrac") ?? props.get("gmr") ?? "0.01") || 0.01;
+        const normAmpsRaw = props.get("normamps");
+        const emergAmpsRaw = props.get("emergamps");
+        const normAmps = normAmpsRaw !== undefined ? parseFloat(normAmpsRaw) : undefined;
+        const emergAmps = emergAmpsRaw !== undefined ? parseFloat(emergAmpsRaw) : undefined;
+        const units = props.get("units");
+
+        wireData.set(elemName, {
+          name: elemName,
+          diam,
+          rdac,
+          gmrac,
+          normAmps,
+          emergAmps,
+          units,
+          range,
+        });
+      } else if (elemClass === "cndata") {
+        const diam = parseFloat(props.get("diam") ?? props.get("dia") ?? "0.5") || 0.5;
+        const rdac = parseFloat(props.get("rdac") ?? props.get("rac") ?? props.get("r") ?? "0.1") || 0.1;
+        const gmrac = parseFloat(props.get("gmrac") ?? props.get("gmr") ?? "0.01") || 0.01;
+        const k = parseInt(props.get("k") ?? "6", 10) || 6;
+        const diaStrand = parseFloat(props.get("diastrand") ?? "0.05") || 0.05;
+        const gmrStrand = parseFloat(props.get("gmrstrand") ?? "0.01") || 0.01;
+        const rStrand = parseFloat(props.get("rstrand") ?? "0.5") || 0.5;
+        const epsRRaw = props.get("epsr");
+        const insLayerRaw = props.get("inslayer");
+        const diaInsRaw = props.get("diains");
+        const diaCableRaw = props.get("diacable");
+
+        cnData.set(elemName, {
+          name: elemName,
+          diam,
+          rdac,
+          gmrac,
+          k,
+          diaStrand,
+          gmrStrand,
+          rStrand,
+          epsR: epsRRaw !== undefined ? parseFloat(epsRRaw) : undefined,
+          insLayer: insLayerRaw !== undefined ? parseFloat(insLayerRaw) : undefined,
+          diaIns: diaInsRaw !== undefined ? parseFloat(diaInsRaw) : undefined,
+          diaCable: diaCableRaw !== undefined ? parseFloat(diaCableRaw) : undefined,
+          range,
+        });
+      } else if (elemClass === "tsdata") {
+        const diam = parseFloat(props.get("diam") ?? props.get("dia") ?? "0.5") || 0.5;
+        const rdac = parseFloat(props.get("rdac") ?? props.get("rac") ?? props.get("r") ?? "0.1") || 0.1;
+        const gmrac = parseFloat(props.get("gmrac") ?? props.get("gmr") ?? "0.01") || 0.01;
+        const diaShield = parseFloat(props.get("diashield") ?? "0.6") || 0.6;
+        const tapeLayer = parseFloat(props.get("tapelayer") ?? "0.005") || 0.005;
+        const tapeLap = parseFloat(props.get("tapelap") ?? "20.0") || 20.0;
+        const epsRRaw = props.get("epsr");
+        const diaInsRaw = props.get("diains");
+        const diaCableRaw = props.get("diacable");
+
+        tsData.set(elemName, {
+          name: elemName,
+          diam,
+          rdac,
+          gmrac,
+          diaShield,
+          tapeLayer,
+          tapeLap,
+          epsR: epsRRaw !== undefined ? parseFloat(epsRRaw) : undefined,
+          diaIns: diaInsRaw !== undefined ? parseFloat(diaInsRaw) : undefined,
+          diaCable: diaCableRaw !== undefined ? parseFloat(diaCableRaw) : undefined,
+          range,
+        });
+      } else if (elemClass === "linespacing") {
+        const nconds = parseInt(props.get("nconds") ?? "3", 10) || 3;
+        const nphases = parseInt(props.get("nphases") ?? props.get("phases") ?? "3", 10) || 3;
+        const rawX = props.get("x") ?? "";
+        const rawY = props.get("y") ?? props.get("h") ?? "";
+        const x = parseArrayValues(rawX)
+          .map((v) => parseFloat(v))
+          .filter((v) => !isNaN(v));
+        const y = parseArrayValues(rawY)
+          .map((v) => parseFloat(v))
+          .filter((v) => !isNaN(v));
+        const units = props.get("units");
+
+        lineSpacings.set(elemName, {
+          name: elemName,
+          nconds,
+          nphases,
+          x,
+          y,
+          units,
+          range,
+        });
+      } else if (elemClass === "linegeometry") {
+        const nconds = parseInt(props.get("nconds") ?? "3", 10) || 3;
+        const nphases = parseInt(props.get("nphases") ?? "3", 10) || 3;
+        const rawWires = props.get("wires") ?? "";
+        const wires = parseArrayValues(rawWires);
+        const spacing = props.get("spacing") ?? "";
+        const rawCn = props.get("cncables");
+        const cncables = rawCn ? parseArrayValues(rawCn) : undefined;
+        const rawTs = props.get("tscables");
+        const tscables = rawTs ? parseArrayValues(rawTs) : undefined;
+        const reduce = (props.get("reduce") ?? "yes").toLowerCase() !== "no";
+
+        lineGeometries.set(elemName, {
+          name: elemName,
+          nconds,
+          nphases,
+          wires,
+          spacing,
+          cncables,
+          tscables,
+          reduce,
+          range,
+        });
+      } else if (elemClass === "invcontrol") {
+        const rawDerList = props.get("derlist") ?? "";
+        const derList = parseArrayValues(rawDerList);
+        const modeRaw = (props.get("mode") ?? "VOLTVAR").toUpperCase();
+        const mode: "VOLTVAR" | "VOLTWATT" | "DYNAMIC_REACTIVE_CURRENT" | "COMBINED" =
+          modeRaw === "VOLTWATT" || modeRaw === "DYNAMIC_REACTIVE_CURRENT" || modeRaw === "COMBINED"
+            ? modeRaw
+            : "VOLTVAR";
+        const rawVx = props.get("voltagecurvex");
+        const voltageCurveX = rawVx
+          ? parseArrayValues(rawVx)
+              .map((v) => parseFloat(v))
+              .filter((v) => !isNaN(v))
+          : undefined;
+        const rawQy = props.get("reactivecurvey");
+        const reactiveCurveY = rawQy
+          ? parseArrayValues(rawQy)
+              .map((v) => parseFloat(v))
+              .filter((v) => !isNaN(v))
+          : undefined;
+        const rawPy = props.get("activecurvey");
+        const activeCurveY = rawPy
+          ? parseArrayValues(rawPy)
+              .map((v) => parseFloat(v))
+              .filter((v) => !isNaN(v))
+          : undefined;
+        const vvcCurve = props.get("vvccurve");
+        const vwcCurve = props.get("vwccurve");
+        const lowRaw = props.get("voltagelowpu");
+        const highRaw = props.get("voltagehighpu");
+        const voltageLowPu = lowRaw !== undefined ? parseFloat(lowRaw) : undefined;
+        const voltageHighPu = highRaw !== undefined ? parseFloat(highRaw) : undefined;
+
+        invControls.set(elemName, {
+          name: elemName,
+          derList,
+          mode,
+          voltageCurveX,
+          reactiveCurveY,
+          activeCurveY,
+          vvcCurve,
+          vwcCurve,
+          voltageLowPu,
+          voltageHighPu,
+          range,
+        });
+      } else if (elemClass === "recloser") {
+        const monitoredElement = props.get("monitoredobj") ?? props.get("element") ?? "";
+        const termRaw = props.get("monitoredterm") ?? props.get("terminal");
+        const monitoredTerminal = termRaw !== undefined ? parseInt(termRaw, 10) : 1;
+        const numFastShots = parseInt(props.get("numfastshots") ?? props.get("shots") ?? "2", 10) || 2;
+        const numSlowShots = parseInt(props.get("numslowshots") ?? "2", 10) || 2;
+        const fastCurve = props.get("fastcurve") ?? props.get("phasefast");
+        const slowCurve = props.get("slowcurve") ?? props.get("phaseslow");
+        const phaseTrip = parseFloat(props.get("phasetrip") ?? "100.0") || 100.0;
+        const gtRaw = props.get("groundtrip");
+        const groundTrip = gtRaw !== undefined ? parseFloat(gtRaw) : undefined;
+        const tdPhaseRaw = props.get("tdphase");
+        const tdPhase = tdPhaseRaw !== undefined ? parseFloat(tdPhaseRaw) : 1.0;
+        const tdGroundRaw = props.get("tdground");
+        const tdGround = tdGroundRaw !== undefined ? parseFloat(tdGroundRaw) : 1.0;
+        const resetTimeSeconds = parseFloat(props.get("resettime") ?? props.get("reset") ?? "15.0") || 15.0;
+        const rawIntervals = props.get("intervals");
+        const intervalSeconds = rawIntervals
+          ? parseArrayValues(rawIntervals)
+              .map((v) => parseFloat(v))
+              .filter((v) => !isNaN(v))
+          : [2.0, 2.0];
+
+        reclosers.set(elemName, {
+          name: elemName,
+          monitoredElement,
+          monitoredTerminal,
+          numFastShots,
+          numSlowShots,
+          fastCurve,
+          slowCurve,
+          phaseTrip,
+          groundTrip,
+          tdPhase,
+          tdGround,
+          resetTimeSeconds,
+          intervalSeconds,
+          range,
+        });
+      } else if (elemClass === "swtcontrol") {
+        const switchedObj = props.get("switchedobj") ?? props.get("element") ?? "";
+        const termRaw = props.get("switchedterm") ?? props.get("terminal");
+        const switchedTerm = termRaw !== undefined ? parseInt(termRaw, 10) : 1;
+        const actionStr = (props.get("action") ?? "open").toLowerCase();
+        const action: "open" | "close" = actionStr === "close" ? "close" : "open";
+        const lock = (props.get("lock") ?? "no").toLowerCase() === "yes";
+
+        swtControls.set(elemName, {
+          name: elemName,
+          switchedObj,
+          switchedTerm,
+          action,
+          lock,
+          range,
+        });
       }
     } else if (firstWord === "set") {
       const rest = tokens.slice(1).join(" ");
@@ -490,6 +977,20 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
     pvSystems,
     storages,
     capacitors,
+    generators,
+    regControls,
+    capControls,
+    tccCurves,
+    relays,
+    fuses,
+    reclosers,
+    invControls,
+    swtControls,
+    wireData,
+    cnData,
+    tsData,
+    lineSpacings,
+    lineGeometries,
     lineCodes,
     loadShapes,
     voltageBases,
@@ -516,19 +1017,62 @@ export function serializeOpenDss(deck: DssDeck): string {
     lines.push(`New Circuit.${c.name} basekv=${c.baseKv} pu=${c.pu} phases=${c.phases} bus1=${c.bus1}`);
   }
 
+  if (deck.wireData) {
+    for (const [, w] of deck.wireData) {
+      let s = `New WireData.${w.name} diam=${w.diam} rdac=${w.rdac} gmrac=${w.gmrac}`;
+      if (w.units) s += ` units=${w.units}`;
+      lines.push(s);
+    }
+  }
+
+  if (deck.cnData) {
+    for (const [, cn] of deck.cnData) {
+      lines.push(
+        `New CNData.${cn.name} diam=${cn.diam} rdac=${cn.rdac} gmrac=${cn.gmrac} k=${cn.k} diastrand=${cn.diaStrand} gmrstrand=${cn.gmrStrand} rstrand=${cn.rStrand}`,
+      );
+    }
+  }
+
+  if (deck.tsData) {
+    for (const [, ts] of deck.tsData) {
+      lines.push(
+        `New TSData.${ts.name} diam=${ts.diam} rdac=${ts.rdac} gmrac=${ts.gmrac} diashield=${ts.diaShield} tapelayer=${ts.tapeLayer} tapelap=${ts.tapeLap}`,
+      );
+    }
+  }
+
+  if (deck.lineSpacings) {
+    for (const [, ls] of deck.lineSpacings) {
+      lines.push(
+        `New LineSpacing.${ls.name} nconds=${ls.nconds} nphases=${ls.nphases} x=[${ls.x.join(", ")}] y=[${ls.y.join(", ")}]`,
+      );
+    }
+  }
+
+  if (deck.lineGeometries) {
+    for (const [, lg] of deck.lineGeometries) {
+      let s = `New LineGeometry.${lg.name} nconds=${lg.nconds} nphases=${lg.nphases} wires=[${lg.wires.join(", ")}] spacing=${lg.spacing} reduce=${lg.reduce ? "yes" : "no"}`;
+      if (lg.cncables) s += ` cncables=[${lg.cncables.join(", ")}]`;
+      if (lg.tscables) s += ` tscables=[${lg.tscables.join(", ")}]`;
+      lines.push(s);
+    }
+  }
+
   for (const [, lc] of deck.lineCodes) {
     lines.push(`New LineCode.${lc.name} nphases=${lc.nphases} r1=${lc.r1} x1=${lc.x1}`);
   }
 
   for (const [, xfmr] of deck.transformers) {
-    lines.push(
-      `New Transformer.${xfmr.name} phases=${xfmr.phases} windings=${xfmr.windings} buses=[${xfmr.buses.join(", ")}] kvs=[${xfmr.kvs.join(", ")}] kvas=[${xfmr.kvas.join(", ")}]`,
-    );
+    let s = `New Transformer.${xfmr.name} phases=${xfmr.phases} windings=${xfmr.windings} buses=[${xfmr.buses.join(", ")}] kvs=[${xfmr.kvs.join(", ")}] kvas=[${xfmr.kvas.join(", ")}]`;
+    if (xfmr.conn) s += ` conns=[${xfmr.conn.join(", ")}]`;
+    if (xfmr.leadLag) s += ` leadlag=${xfmr.leadLag}`;
+    lines.push(s);
   }
 
   for (const [, line] of deck.lines) {
     let s = `New Line.${line.name} bus1=${line.bus1} bus2=${line.bus2} phases=${line.phases} length=${line.length}`;
     if (line.lineCode) s += ` linecode=${line.lineCode}`;
+    if (line.geometry) s += ` geometry=${line.geometry}`;
     if (line.r1 !== undefined) s += ` r1=${line.r1}`;
     if (line.x1 !== undefined) s += ` x1=${line.x1}`;
     lines.push(s);
@@ -552,6 +1096,86 @@ export function serializeOpenDss(deck: DssDeck): string {
     lines.push(
       `New Storage.${st.name} bus1=${st.bus1} phases=${st.phases} kv=${st.kv} kwrated=${st.kwRated} kwhrated=${st.kwhRated}`,
     );
+  }
+
+  if (deck.generators) {
+    for (const [, gen] of deck.generators) {
+      let s = `New Generator.${gen.name} bus1=${gen.bus1} phases=${gen.phases} kv=${gen.kv} kw=${gen.kw}`;
+      if (gen.kvar !== undefined) s += ` kvar=${gen.kvar}`;
+      if (gen.model !== undefined) s += ` model=${gen.model}`;
+      if (gen.vpu !== undefined) s += ` vpu=${gen.vpu}`;
+      lines.push(s);
+    }
+  }
+
+  if (deck.regControls) {
+    for (const [, rc] of deck.regControls) {
+      let s = `New RegControl.${rc.name} transformer=${rc.transformer} winding=${rc.winding} vreg=${rc.vreg} band=${rc.band} ptratio=${rc.ptRatio}`;
+      if (rc.r !== undefined) s += ` r=${rc.r}`;
+      if (rc.x !== undefined) s += ` x=${rc.x}`;
+      if (rc.ctPrim !== undefined) s += ` ctprim=${rc.ctPrim}`;
+      lines.push(s);
+    }
+  }
+
+  if (deck.capControls) {
+    for (const [, cc] of deck.capControls) {
+      lines.push(
+        `New CapControl.${cc.name} capacitor=${cc.capacitor} type=${cc.type} onsetting=${cc.onSetting} offsetting=${cc.offSetting}`,
+      );
+    }
+  }
+
+  if (deck.invControls) {
+    for (const [, inv] of deck.invControls) {
+      let s = `New InvControl.${inv.name} derlist=[${inv.derList.join(", ")}] mode=${inv.mode}`;
+      if (inv.voltageCurveX && inv.reactiveCurveY) {
+        s += ` voltagecurvex=[${inv.voltageCurveX.join(", ")}] reactivecurvey=[${inv.reactiveCurveY.join(", ")}]`;
+      }
+      lines.push(s);
+    }
+  }
+
+  if (deck.tccCurves) {
+    for (const [, tcc] of deck.tccCurves) {
+      lines.push(
+        `New TCC_Curve.${tcc.name} npts=${tcc.npts} c_array=[${tcc.c_array.join(", ")}] t_array=[${tcc.t_array.join(", ")}]`,
+      );
+    }
+  }
+
+  if (deck.relays) {
+    for (const [, rel] of deck.relays) {
+      let s = `New Relay.${rel.name} monitoredobj=${rel.monitoredElement} type=${rel.type}`;
+      if (rel.phaseCurve) s += ` phasecurve=${rel.phaseCurve}`;
+      if (rel.phaseTrip !== undefined) s += ` phasetrip=${rel.phaseTrip}`;
+      lines.push(s);
+    }
+  }
+
+  if (deck.reclosers) {
+    for (const [, rec] of deck.reclosers) {
+      let s = `New Recloser.${rec.name} monitoredobj=${rec.monitoredElement} shots=${rec.numFastShots} phasetrip=${rec.phaseTrip}`;
+      if (rec.fastCurve) s += ` fastcurve=${rec.fastCurve}`;
+      if (rec.slowCurve) s += ` slowcurve=${rec.slowCurve}`;
+      lines.push(s);
+    }
+  }
+
+  if (deck.fuses) {
+    for (const [, f] of deck.fuses) {
+      lines.push(
+        `New Fuse.${f.name} monitoredobj=${f.monitoredElement} fusecurve=${f.fuseCurve} ratedcurrent=${f.ratedCurrent}`,
+      );
+    }
+  }
+
+  if (deck.swtControls) {
+    for (const [, swt] of deck.swtControls) {
+      lines.push(
+        `New SwtControl.${swt.name} switchedobj=${swt.switchedObj} action=${swt.action} lock=${swt.lock ? "yes" : "no"}`,
+      );
+    }
   }
 
   if (deck.voltageBases.length > 0) {

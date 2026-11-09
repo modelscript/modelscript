@@ -26,6 +26,7 @@ const STABLE_LANGUAGES = new Set([
   "owl2",
   "csv",
   "pscad",
+  "psse",
   "spice",
   "olga",
   "lps",

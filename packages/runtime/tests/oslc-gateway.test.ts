@@ -41,6 +41,18 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
       satisfiedRequirements: ["http://localhost:8080/oslc/rm/requirements/REQ-TORQUE-01"],
     });
 
+    gateway.registerChangeRequest({
+      identifier: "AERO-1042",
+      title: "Turbine Blade Flutter Under High Pressure Ratio",
+      description: "Flutter oscillations detected in ball valve downstream section",
+      status: "open",
+      severity: "safety_critical",
+      affectsModel: ["http://localhost:8080/oslc/am/elements/CAD_Motor_01"],
+      tracksRequirement: ["http://localhost:8080/oslc/rm/requirements/REQ-TORQUE-01"],
+      externalKey: "AERO-1042",
+      externalUrl: "https://company.atlassian.net/browse/AERO-1042",
+    });
+
     serverPort = await gateway.startServer(0, "127.0.0.1");
   });
 
@@ -55,6 +67,7 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
     assert.ok(turtle.includes("@prefix oslc_rm: <http://open-services.net/ns/rm#> ."));
     assert.ok(turtle.includes("@prefix oslc_qm: <http://open-services.net/ns/qm#> ."));
     assert.ok(turtle.includes("@prefix oslc_am: <http://open-services.net/ns/am#> ."));
+    assert.ok(turtle.includes("@prefix oslc_cm: <http://open-services.net/ns/cm#> ."));
     assert.ok(turtle.includes("@prefix dcterms: <http://purl.org/dc/terms/> ."));
 
     // Check RM Requirement
@@ -70,6 +83,12 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
     // Check AM Architecture Element
     assert.ok(turtle.includes("a oslc_am:Resource, oslc:Resource ;"));
     assert.ok(turtle.includes('dcterms:identifier "CAD_Motor_01" ;'));
+
+    // Check CM ChangeRequest
+    assert.ok(turtle.includes("a oslc_cm:ChangeRequest, oslc:Resource ;"));
+    assert.ok(turtle.includes('dcterms:identifier "AERO-1042" ;'));
+    assert.ok(turtle.includes('oslc_cm:status "open" ;'));
+    assert.ok(turtle.includes('oslc_cm:severity "safety_critical" ;'));
   });
 
   it("should export JSON-LD serialization with proper @context and @graph", () => {
@@ -78,8 +97,9 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
     assert.ok(jsonLd["@context"]);
     assert.strictEqual(jsonLd["@context"].oslc_rm, "http://open-services.net/ns/rm#");
     assert.strictEqual(jsonLd["@context"].oslc_qm, "http://open-services.net/ns/qm#");
+    assert.strictEqual(jsonLd["@context"].oslc_cm, "http://open-services.net/ns/cm#");
     assert.ok(Array.isArray(jsonLd["@graph"]));
-    assert.strictEqual(jsonLd["@graph"].length, 3);
+    assert.strictEqual(jsonLd["@graph"].length, 4);
 
     const req = jsonLd["@graph"].find((x: any) => x["dcterms:identifier"] === "REQ-TORQUE-01");
     assert.ok(req);
@@ -88,6 +108,11 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
     const tr = jsonLd["@graph"].find((x: any) => x["dcterms:identifier"] === "TR-TORQUE-01");
     assert.ok(tr);
     assert.strictEqual(tr["oslc_qm:status"], "Passed");
+
+    const cr = jsonLd["@graph"].find((x: any) => x["dcterms:identifier"] === "AERO-1042");
+    assert.ok(cr);
+    assert.ok(cr["@type"].includes("oslc_cm:ChangeRequest"));
+    assert.strictEqual(cr["oslc_cm:severity"], "safety_critical");
   });
 
   it("should import ReqIF specifications into OSLC-RM requirements", () => {
@@ -153,7 +178,11 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
     const data = await res.json();
     assert.ok(data["@id"].includes("/oslc/catalog"));
     assert.ok(Array.isArray(data["oslc:serviceProvider"]));
-    assert.strictEqual(data["oslc:serviceProvider"].length, 3);
+    assert.strictEqual(data["oslc:serviceProvider"].length, 4);
+
+    const cmProvider = data["oslc:serviceProvider"].find((p: any) => p["@id"].includes("/oslc/cm/provider"));
+    assert.ok(cmProvider);
+    assert.ok(cmProvider["dcterms:title"].includes("OSLC-CM"));
   });
 
   it("should support content negotiation (Turtle vs JSON-LD) on HTTP REST endpoints", async () => {
@@ -176,5 +205,46 @@ describe("OSLC Core 3.0 Linked Data Gateway (RM, QM, AM)", () => {
     const jsonLdBody = await resJsonLd.json();
     assert.ok(jsonLdBody["@context"]);
     assert.ok(Array.isArray(jsonLdBody["@graph"]));
+  });
+
+  it("should serve OSLC-CM Change Requests over HTTP REST endpoint", async () => {
+    // 1. Fetch CM list
+    const res = await fetch(`http://127.0.0.1:${serverPort}/oslc/cm/changerequests`);
+    assert.strictEqual(res.status, 200);
+    const crs = await res.json();
+    assert.ok(Array.isArray(crs));
+    assert.strictEqual(crs.length, 1);
+    assert.strictEqual(crs[0].identifier, "AERO-1042");
+
+    // 2. Fetch single CM resource
+    const resSingle = await fetch(`http://127.0.0.1:${serverPort}/oslc/cm/changerequests/AERO-1042`);
+    assert.strictEqual(resSingle.status, 200);
+    const single = await resSingle.json();
+    assert.strictEqual(single.identifier, "AERO-1042");
+    assert.strictEqual(single.severity, "safety_critical");
+    assert.strictEqual(single.externalKey, "AERO-1042");
+  });
+
+  it("should import Ansatz space issues into OSLC-CM Change Requests", () => {
+    gateway.importSpaceIssues([
+      {
+        issue_number: 14,
+        title: "Cavitation risk in hydraulic circuit",
+        description: "Pressure drops below vapor pressure in pump suction",
+        status: "open",
+        severity: "major",
+        impacted_models: ["Modelica.Fluid.Pumps.Pump", "HydraulicSystem.mo"],
+        external_source: "jira",
+        external_key: "HYD-55",
+        external_url: "https://jira.acme.com/browse/HYD-55",
+      },
+    ]);
+
+    const cr = gateway.getChangeRequest("HYD-55");
+    assert.ok(cr);
+    assert.strictEqual(cr!.title, "Cavitation risk in hydraulic circuit");
+    assert.strictEqual(cr!.severity, "major");
+    assert.strictEqual(cr!.externalKey, "HYD-55");
+    assert.strictEqual(cr!.affectsModel.length, 2);
   });
 });

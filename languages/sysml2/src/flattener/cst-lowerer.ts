@@ -14,7 +14,20 @@
  *   5. Hierarchical component elaboration and parameter overrides.
  */
 
-import { BinOp, Causality, DAEBuilder, EqKind, UnaryOp, VarAttrKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  type LanguageWorkspaceIndex,
+  type QueryDB,
+  UnaryOp,
+  VarAttrKind,
+  Variability,
+  VarType,
+  type WorkspaceIndex,
+} from "@modelscript/runtime";
+import { lowerDirectCstExpression } from "./expression-lowerer.js";
 
 /**
  * Result produced by lowering a SysML v2 CST into a `DAEBuilder` arena.
@@ -46,6 +59,10 @@ export interface CstFlattenerOptions {
   rootComponentName?: string | undefined;
   /** Raw SysML v2 source text for experiment configuration extraction. */
   sourceText?: string | undefined;
+  /** Optional Salsa QueryDB for cross-file multi-package symbol and CST resolution. */
+  queryDb?: QueryDB | undefined;
+  /** Optional multi-file workspace index for cross-document resolution. */
+  workspaceIndex?: WorkspaceIndex | LanguageWorkspaceIndex | undefined;
 }
 
 /**
@@ -405,404 +422,19 @@ export function lowerCstExpression(
   prefix = "",
   localNames?: Set<string>,
 ): number {
-  if (!node) return arena.addRealLiteral(0.0);
-  const text = node.text?.trim() || "";
-  if (!text) return arena.addRealLiteral(0.0);
-  const prefixed = prefixSysmlExpression(text, prefix, localNames ?? new Set<string>());
-  return lowerSysmlExpr(prefixed, arena);
+  return lowerDirectCstExpression(node, arena, prefix, localNames ?? new Set<string>());
 }
 
-/**
- * Lexical token produced by `tokenizeSysml` for lightweight expression/statement parsing.
- */
-export interface SysML2Token {
-  /** Token classification (`num`, `ident`, `op`, `paren`, `semi`, or `kw`). */
-  type: "num" | "ident" | "op" | "paren" | "semi" | "kw";
-  /** Raw token lexeme string. */
-  val: string;
-}
+import {
+  lowerSysmlExpr,
+  prefixSysmlExpression,
+  type SysML2Token,
+  SYSML_KEYWORDS,
+  SysmlExprParser,
+  tokenizeSysml,
+} from "./string-expr-parser.js";
 
-const SYSML_KEYWORDS = new Set([
-  "action",
-  "calc",
-  "def",
-  "in",
-  "out",
-  "item",
-  "attribute",
-  "assign",
-  "return",
-  "if",
-  "else",
-  "while",
-  "loop",
-  "true",
-  "false",
-  "and",
-  "or",
-  "not",
-]);
-
-/**
- * Tokenizes simple SysML v2 calculation expressions and statements without regular expressions.
- */
-export function tokenizeSysml(input: string): SysML2Token[] {
-  const tokens: SysML2Token[] = [];
-  let i = 0;
-  const len = input.length;
-
-  while (i < len) {
-    const ch = input[i]!;
-
-    // Skip whitespace
-    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
-      i++;
-      continue;
-    }
-
-    // Skip single-line comments //
-    if (ch === "/" && i + 1 < len && input[i + 1] === "/") {
-      i += 2;
-      while (i < len && input[i] !== "\n") i++;
-      continue;
-    }
-
-    // Skip block comments /* ... */
-    if (ch === "/" && i + 1 < len && input[i + 1] === "*") {
-      i += 2;
-      while (i + 1 < len && !(input[i] === "*" && input[i + 1] === "/")) i++;
-      if (i + 1 < len) i += 2;
-      continue;
-    }
-
-    // Number: \d+(?:\.\d+)?(?:[eE][+-]?\d+)?
-    if (ch >= "0" && ch <= "9") {
-      const start = i;
-      i++;
-      let hasDot = false;
-      let hasExp = false;
-      while (i < len) {
-        const c = input[i]!;
-        if (c >= "0" && c <= "9") {
-          i++;
-        } else if (c === "." && !hasDot && !hasExp && i + 1 < len && input[i + 1]! >= "0" && input[i + 1]! <= "9") {
-          hasDot = true;
-          i++;
-        } else if ((c === "e" || c === "E") && !hasExp) {
-          hasExp = true;
-          i++;
-          if (i < len && (input[i] === "+" || input[i] === "-")) {
-            i++;
-          }
-        } else {
-          break;
-        }
-      }
-      tokens.push({ type: "num", val: input.slice(start, i) });
-      continue;
-    }
-
-    // Ident / Keyword: [A-Za-z_][A-Za-z0-9_.]*
-    if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
-      const start = i;
-      i++;
-      while (i < len) {
-        const c = input[i]!;
-        if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".") {
-          i++;
-        } else {
-          break;
-        }
-      }
-      const val = input.slice(start, i);
-      if (SYSML_KEYWORDS.has(val)) {
-        tokens.push({ type: "kw", val });
-      } else {
-        tokens.push({ type: "ident", val });
-      }
-      continue;
-    }
-
-    // Two-character operators: ==, !=, <=, >=, :=, &&, ||, **
-    if (i + 1 < len) {
-      const next = input[i + 1]!;
-      if (
-        (ch === "=" && next === "=") ||
-        (ch === "!" && next === "=") ||
-        (ch === "<" && next === "=") ||
-        (ch === ">" && next === "=") ||
-        (ch === ":" && next === "=") ||
-        (ch === "&" && next === "&") ||
-        (ch === "|" && next === "|") ||
-        (ch === "*" && next === "*")
-      ) {
-        tokens.push({ type: "op", val: ch + next });
-        i += 2;
-        continue;
-      }
-    }
-
-    // Single-character punctuation: [();{},]
-    if (ch === "(" || ch === ")" || ch === "{" || ch === "}" || ch === ",") {
-      tokens.push({ type: "paren", val: ch });
-      i++;
-      continue;
-    }
-    if (ch === ";") {
-      tokens.push({ type: "semi", val: ch });
-      i++;
-      continue;
-    }
-
-    // Single-character operators: ^, +, -, *, /, %, =, <, >, !, :
-    if (
-      ch === "^" ||
-      ch === "+" ||
-      ch === "-" ||
-      ch === "*" ||
-      ch === "/" ||
-      ch === "%" ||
-      ch === "=" ||
-      ch === "<" ||
-      ch === ">" ||
-      ch === "!" ||
-      ch === ":"
-    ) {
-      tokens.push({ type: "op", val: ch });
-      i++;
-      continue;
-    }
-
-    // Any other character: skip
-    i++;
-  }
-
-  return tokens;
-}
-
-/**
- * Pratt / recursive-descent expression parser generating linear-memory `DAEBuilder` `ExprId`s directly.
- */
-export class SysmlExprParser {
-  private pos = 0;
-
-  /**
-   * @param tokens - Token stream produced by `tokenizeSysml`.
-   * @param arena - Target `DAEBuilder` arena to allocate expression nodes in.
-   */
-  constructor(
-    private tokens: SysML2Token[],
-    private arena: DAEBuilder,
-  ) {}
-
-  /**
-   * Parses the token stream and returns the root `ExprId` in `this.arena`.
-   */
-  public parse(): number {
-    return this.parseLogicalOr();
-  }
-
-  private peek(): SysML2Token | undefined {
-    return this.tokens[this.pos];
-  }
-
-  private next(): SysML2Token {
-    return this.tokens[this.pos++]!;
-  }
-
-  private matchOp(...ops: string[]): string | null {
-    const t = this.peek();
-    if (t && (t.type === "op" || (t.type === "kw" && (t.val === "and" || t.val === "or"))) && ops.includes(t.val)) {
-      this.pos++;
-      return t.val;
-    }
-    return null;
-  }
-
-  private parseLogicalOr(): number {
-    let left = this.parseLogicalAnd();
-    while (this.matchOp("||", "or")) {
-      const right = this.parseLogicalAnd();
-      left = this.arena.addBinaryExpr(BinOp.Or, left, right);
-    }
-    return left;
-  }
-
-  private parseLogicalAnd(): number {
-    let left = this.parseEquality();
-    while (this.matchOp("&&", "and")) {
-      const right = this.parseEquality();
-      left = this.arena.addBinaryExpr(BinOp.And, left, right);
-    }
-    return left;
-  }
-
-  private parseEquality(): number {
-    let left = this.parseRelational();
-    let op: string | null;
-    while ((op = this.matchOp("==", "!="))) {
-      const right = this.parseRelational();
-      left = this.arena.addBinaryExpr(op === "==" ? BinOp.Eq : BinOp.Neq, left, right);
-    }
-    return left;
-  }
-
-  private parseRelational(): number {
-    let left = this.parseAdditive();
-    let op: string | null;
-    while ((op = this.matchOp("<", "<=", ">", ">="))) {
-      const right = this.parseAdditive();
-      const binOp = op === "<" ? BinOp.Lt : op === "<=" ? BinOp.Lte : op === ">" ? BinOp.Gt : BinOp.Gte;
-      left = this.arena.addBinaryExpr(binOp, left, right);
-    }
-    return left;
-  }
-
-  private parseAdditive(): number {
-    let left = this.parseMultiplicative();
-    let op: string | null;
-    while ((op = this.matchOp("+", "-"))) {
-      const right = this.parseMultiplicative();
-      left = this.arena.addBinaryExpr(op === "+" ? BinOp.Add : BinOp.Sub, left, right);
-    }
-    return left;
-  }
-
-  private parseMultiplicative(): number {
-    let left = this.parsePower();
-    let op: string | null;
-    while ((op = this.matchOp("*", "/", "%"))) {
-      const right = this.parsePower();
-      if (op === "%") {
-        left = this.arena.addCallExpr("mod", [left, right]);
-      } else {
-        left = this.arena.addBinaryExpr(op === "*" ? BinOp.Mul : BinOp.Div, left, right);
-      }
-    }
-    return left;
-  }
-
-  private parsePower(): number {
-    let left = this.parseUnary();
-    while (this.matchOp("^", "**")) {
-      const right = this.parseUnary();
-      left = this.arena.addBinaryExpr(BinOp.Pow, left, right);
-    }
-    return left;
-  }
-
-  private parseUnary(): number {
-    const t = this.peek();
-    if (
-      t &&
-      (t.type === "op" || t.type === "kw") &&
-      (t.val === "-" || t.val === "+" || t.val === "!" || t.val === "not")
-    ) {
-      this.pos++;
-      const operand = this.parseUnary();
-      if (t.val === "-") {
-        return this.arena.addUnaryExpr(UnaryOp.Negate, operand);
-      } else if (t.val === "+") {
-        return operand;
-      } else {
-        return this.arena.addUnaryExpr(UnaryOp.Not, operand);
-      }
-    }
-    return this.parsePrimary();
-  }
-
-  private parsePrimary(): number {
-    const t = this.next();
-    if (!t) return this.arena.addRealLiteral(0);
-
-    if (t.type === "num") {
-      const val = parseFloat(t.val);
-      return this.arena.addRealLiteral(val);
-    }
-    if (t.type === "kw") {
-      if (t.val === "true") return this.arena.addBoolLiteral(true);
-      if (t.val === "false") return this.arena.addBoolLiteral(false);
-    }
-    if (t.type === "ident") {
-      let varName = t.val;
-      while (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "[") {
-        this.next(); // consume '['
-        const idx = this.peek()?.val ?? "";
-        this.next(); // consume index/num
-        if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "]") {
-          this.next(); // consume ']'
-        }
-        varName += `[${idx}]`;
-        if (this.peek() && this.peek()!.type === "ident" && this.peek()!.val.startsWith(".")) {
-          varName += this.next().val;
-        }
-      }
-      if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === "(") {
-        this.next(); // consume '('
-        const args: number[] = [];
-        if (!(this.peek() && this.peek()!.type === "paren" && this.peek()!.val === ")")) {
-          while (true) {
-            args.push(this.parse());
-            if (this.peek() && this.peek()!.val === ",") {
-              this.next(); // consume ','
-              continue;
-            }
-            break;
-          }
-        }
-        if (this.peek() && this.peek()!.type === "paren" && this.peek()!.val === ")") {
-          this.next(); // consume ')'
-        }
-        if (varName === "der" && args.length === 1) {
-          return this.arena.addDerExpr(args[0]!);
-        }
-        return this.arena.addCallExpr(varName, args);
-      }
-      const nameId = this.arena.interner.intern(varName);
-      return this.arena.addName(nameId);
-    }
-    if (t.type === "paren" && t.val === "(") {
-      const expr = this.parse();
-      if (this.peek() && this.peek()!.val === ")") {
-        this.next();
-      }
-      return expr;
-    }
-
-    return this.arena.addRealLiteral(0);
-  }
-}
-
-/**
- * Lowers an expression string into an arena ExprId.
- */
-export function lowerSysmlExpr(exprText: string, arena: DAEBuilder): number {
-  const tokens = tokenizeSysml(exprText);
-  const parser = new SysmlExprParser(tokens, arena);
-  return parser.parse();
-}
-
-/**
- * Prefixes local variable and port identifiers in an equation or expression string.
- */
-export function prefixSysmlExpression(exprText: string, prefix: string, localNames: Set<string>): string {
-  if (!prefix || localNames.size === 0) return exprText;
-  const tokens = tokenizeSysml(exprText);
-  const result: string[] = [];
-  for (const t of tokens) {
-    if (t.type === "ident") {
-      const root = t.val.split(".")[0]!;
-      if (localNames.has(root)) {
-        result.push(prefix + t.val);
-      } else {
-        result.push(t.val);
-      }
-    } else {
-      result.push(t.val);
-    }
-  }
-  return result.join(" ");
-}
+export { lowerSysmlExpr, prefixSysmlExpression, SYSML_KEYWORDS, SysmlExprParser, tokenizeSysml, type SysML2Token };
 
 /**
  * Compiles a parsed SysML v2 CST tree directly into a `DAEBuilder` arena.
@@ -819,6 +451,8 @@ export class SysML2CstFlattener {
   private overrides: Record<string, number>;
   private rootCompName: string;
   private sourceText?: string | undefined;
+  private queryDb?: QueryDB | undefined;
+  private workspaceIndex?: WorkspaceIndex | LanguageWorkspaceIndex | undefined;
 
   /**
    * @param options - Arena instance, parameter overrides, and target root component configuration.
@@ -828,6 +462,17 @@ export class SysML2CstFlattener {
     this.overrides = options.overrides ?? {};
     this.rootCompName = options.rootComponentName ?? "";
     this.sourceText = options.sourceText;
+    this.queryDb = options.queryDb;
+    this.workspaceIndex = options.workspaceIndex;
+    if (!this.queryDb && this.workspaceIndex) {
+      const idx = this.workspaceIndex as any;
+      if (typeof idx.toUnified === "function") {
+        const unified = idx.toUnified();
+        if (typeof unified.toQueryDB === "function") {
+          this.queryDb = unified.toQueryDB();
+        }
+      }
+    }
   }
 
   /**
@@ -924,37 +569,44 @@ export class SysML2CstFlattener {
       });
     }
 
-    if (this.portDefs.size === 0) {
-      const cleanSource = this.sourceText || rootNode?.text || "";
-      const portDefRegex = /\bport\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
-      let pdm: RegExpExecArray | null;
-      while ((pdm = portDefRegex.exec(cleanSource)) !== null) {
-        const portName = pdm[1]!;
-        const openBrace = cleanSource.indexOf("{", pdm.index);
-        let depth = 1;
-        let i = openBrace + 1;
-        while (i < cleanSource.length && depth > 0) {
-          if (cleanSource[i] === "{") depth++;
-          else if (cleanSource[i] === "}") depth--;
-          i++;
+    if (this.queryDb) {
+      const allEntries = Array.from(this.queryDb.allEntries());
+      const portEntries = allEntries.filter(
+        (e) => e.ruleName === "PortDefinition" || (e.metadata && e.metadata["defKind"] === "port"),
+      );
+      for (const pe of portEntries) {
+        if (!this.portDefs.has(pe.name)) {
+          const cstNode = this.queryDb.cstNode(pe.id) as SysmlCstNode | null;
+          if (cstNode) {
+            const potentialAttrs: string[] = [];
+            const flowAttrs: string[] = [];
+
+            const attrNodes = findCstDescendants(cstNode, "AttributeUsage");
+            for (const an of attrNodes) {
+              const attrNameNode = findFirstDescendant(an, "Name") || findFirstDescendant(an, "ID");
+              const attrName = attrNameNode?.text?.trim();
+              if (!attrName) continue;
+              if (an.text.includes("flow")) {
+                flowAttrs.push(attrName);
+              } else {
+                potentialAttrs.push(attrName);
+              }
+            }
+
+            const flowUsageNodes = findCstDescendants(cstNode, "FlowUsage");
+            for (const fn of flowUsageNodes) {
+              const flowNameNode = findFirstDescendant(fn, "Name") || findFirstDescendant(fn, "ID");
+              const flowName = flowNameNode?.text?.trim();
+              if (flowName) flowAttrs.push(flowName);
+            }
+
+            this.portDefs.set(pe.name, {
+              name: pe.name,
+              potentialAttrs: potentialAttrs.length > 0 ? potentialAttrs : ["v"],
+              flowAttrs: flowAttrs.length > 0 ? flowAttrs : ["i"],
+            });
+          }
         }
-        const body = cleanSource.slice(openBrace + 1, i - 1);
-        const potentialAttrs: string[] = [];
-        const flowAttrs: string[] = [];
-        const attrLineRegex =
-          /\b(?:(in|out|inout)\s+)?(?:(flow)\s+)?attribute\s+(?:item\s+)?(?:(flow)\s+)?([A-Za-z_][A-Za-z0-9_]*)/g;
-        let am: RegExpExecArray | null;
-        while ((am = attrLineRegex.exec(body)) !== null) {
-          const isFlow = Boolean(am[2] || am[3] || /\bflow\b/.test(am[0]));
-          const attrName = am[4]!;
-          if (isFlow) flowAttrs.push(attrName);
-          else potentialAttrs.push(attrName);
-        }
-        this.portDefs.set(portName, {
-          name: portName,
-          potentialAttrs: potentialAttrs.length > 0 ? potentialAttrs : ["v"],
-          flowAttrs: flowAttrs.length > 0 ? flowAttrs : ["i"],
-        });
       }
     }
   }
@@ -974,26 +626,21 @@ export class SysML2CstFlattener {
       }
     }
 
-    const cleanSource = this.sourceText || rootNode?.text || "";
-    if (this.compDefs.size === 0 && cleanSource) {
-      const compRegex = /\b(part|constraint|model|package)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
-      let cdm: RegExpExecArray | null;
-      while ((cdm = compRegex.exec(cleanSource)) !== null) {
-        const cName = cdm[2]!;
-        const openBrace = cleanSource.indexOf("{", cdm.index);
-        let depth = 1;
-        let i = openBrace + 1;
-        while (i < cleanSource.length && depth > 0) {
-          if (cleanSource[i] === "{") depth++;
-          else if (cleanSource[i] === "}") depth--;
-          i++;
+    if (this.queryDb) {
+      const allEntries = Array.from(this.queryDb.allEntries());
+      const compEntries = allEntries.filter(
+        (e) =>
+          e.ruleName === "PartDefinition" ||
+          e.ruleName === "ConstraintDefinition" ||
+          (e.metadata && (e.metadata["defKind"] === "part" || e.metadata["defKind"] === "constraint")),
+      );
+      for (const ce of compEntries) {
+        if (!this.compDefs.has(ce.name)) {
+          const cstNode = this.queryDb.cstNode(ce.id) as SysmlCstNode | null;
+          if (cstNode) {
+            this.compDefs.set(ce.name, cstNode);
+          }
         }
-        const fullDefText = cleanSource.slice(cdm.index, i);
-        this.compDefs.set(cName, {
-          type: cdm[1] === "constraint" ? "ConstraintDefinition" : "PartDefinition",
-          text: fullDefText,
-          name: cName,
-        });
       }
     }
   }
@@ -1004,9 +651,6 @@ export class SysML2CstFlattener {
    */
   private determineRootComponent(rootNode?: SysmlCstNode | null): string {
     if (this.compDefs.size === 0) {
-      const cleanSource = this.sourceText || rootNode?.text || "";
-      const nameMatch = /(?:constraint|part|package|model)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(cleanSource);
-      if (nameMatch) return nameMatch[1]!;
       const nameNode = findFirstDescendant(rootNode, "Name") || findFirstDescendant(rootNode, "ID");
       return nameNode?.text?.trim() || "SysmlModel";
     }
@@ -1019,15 +663,9 @@ export class SysML2CstFlattener {
     for (const compNode of this.compDefs.values()) {
       const partUsages = findCstDescendants(compNode, "PartUsage");
       for (const pu of partUsages) {
-        const typeNode = findFirstDescendant(pu, "FeatureTyping");
+        const typeNode = findFirstDescendant(pu, "FeatureTyping") || findFirstDescendant(pu, "OwnedFeatureTyping");
         const typeName = typeNode?.text?.replace(/^[:\s]+/, "").trim();
         if (typeName) instantiatedTypes.add(typeName);
-      }
-      const subpartMatch = /\bpart\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([A-Za-z_][A-Za-z0-9_]*)/g;
-      let sm: RegExpExecArray | null;
-      const compText = compNode.text || "";
-      while ((sm = subpartMatch.exec(compText)) !== null) {
-        instantiatedTypes.add(sm[1]!);
       }
 
       const subclassificationNodes = findCstDescendants(compNode, "OwnedSubclassification");
@@ -1103,9 +741,13 @@ export class SysML2CstFlattener {
     const invNodes = findCstDescendants(compNode, "InvocationExpression");
     for (const inv of invNodes) {
       const fnNode = findFirstDescendant(inv, "ID") || inv.childForFieldName?.("instantiatedType");
-      if (fnNode?.text?.trim() === "der") {
+      if (fnNode?.text?.trim() === "der" || inv.text?.trim().startsWith("der(")) {
         const argNode = findFirstDescendant(inv, "Argument") || findFirstDescendant(inv, "FeatureReferenceExpression");
-        const argText = argNode?.text?.trim();
+        let argText = argNode?.text?.trim();
+        if (!argText) {
+          const match = /^der\s*\(\s*([^()]+)\s*\)/.exec(inv.text?.trim() || "");
+          if (match) argText = match[1]?.trim();
+        }
         if (argText) {
           const dotIdx = argText.indexOf(".");
           const baseName = dotIdx === -1 ? argText : argText.slice(0, dotIdx);
@@ -1113,22 +755,28 @@ export class SysML2CstFlattener {
         }
       }
     }
-    // Also scan compNode text for der(varName) to cover bare equations when syntax recovery occurs
-    const compText = this.getCompText(compNode);
-    const derMatchRegex = /\bder\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)/g;
-    let dm: RegExpExecArray | null;
-    while ((dm = derMatchRegex.exec(compText)) !== null) {
-      const arg = dm[1]!;
-      const dotIdx = arg.indexOf(".");
-      const baseName = dotIdx === -1 ? arg : arg.slice(0, dotIdx);
-      derStateNames.add(baseName);
-    }
 
     // 1. Process Inheritance (:>)
     const subclassificationNodes = findCstChildren(compNode, "OwnedSubclassification");
     for (const sc of subclassificationNodes) {
       const superName = sc.text.replace(/^[:>\s]+/, "").trim();
-      const superDefNode = this.compDefs.get(superName);
+      let superDefNode = this.compDefs.get(superName);
+      if (!superDefNode && this.queryDb) {
+        const matches = this.queryDb.byName(superName);
+        const match = matches.find(
+          (m) =>
+            m.ruleName === "PartDefinition" ||
+            m.ruleName === "ConstraintDefinition" ||
+            (m.metadata && (m.metadata["defKind"] === "part" || m.metadata["defKind"] === "constraint")),
+        );
+        if (match) {
+          const node = this.queryDb.cstNode(match.id) as SysmlCstNode | null;
+          if (node) {
+            this.compDefs.set(superName, node);
+            superDefNode = node;
+          }
+        }
+      }
       if (superDefNode && superDefNode !== compNode) {
         // Inherit members of superclass first with cycle guard
         this.elaborateComponent(superDefNode, prefix, overrides, visitedDefs);
@@ -1148,16 +796,55 @@ export class SysML2CstFlattener {
       localNames.add(portName);
       const portFullName = prefix + portName;
 
-      const typeNode = findFirstDescendant(pu, "FeatureTyping");
+      const typeNode = findFirstDescendant(pu, "FeatureTyping") || findFirstDescendant(pu, "OwnedFeatureTyping");
       const rawType = typeNode?.text?.replace(/^[:\s]+/, "").trim() || "";
       const isConjugated = pu.text.includes("~") || rawType.startsWith("~");
       const cleanType = rawType.replace(/^~\s*/, "");
 
-      const pDef = this.portDefs.get(cleanType) ?? {
-        name: cleanType,
-        potentialAttrs: ["v"],
-        flowAttrs: ["i"],
-      };
+      let pDef = this.portDefs.get(cleanType);
+      if (!pDef && this.queryDb) {
+        const matches = this.queryDb.byName(cleanType);
+        const match = matches.find(
+          (m) => m.ruleName === "PortDefinition" || (m.metadata && m.metadata["defKind"] === "port"),
+        );
+        if (match) {
+          const pNode = this.queryDb.cstNode(match.id) as SysmlCstNode | null;
+          if (pNode) {
+            const potentialAttrs: string[] = [];
+            const flowAttrs: string[] = [];
+
+            const attrNodes = findCstDescendants(pNode, "AttributeUsage");
+            for (const an of attrNodes) {
+              const attrNameNode = findFirstDescendant(an, "Name") || findFirstDescendant(an, "ID");
+              const attrName = attrNameNode?.text?.trim();
+              if (!attrName) continue;
+              if (an.text.includes("flow")) flowAttrs.push(attrName);
+              else potentialAttrs.push(attrName);
+            }
+
+            const flowUsageNodes = findCstDescendants(pNode, "FlowUsage");
+            for (const fn of flowUsageNodes) {
+              const flowNameNode = findFirstDescendant(fn, "Name") || findFirstDescendant(fn, "ID");
+              const flowName = flowNameNode?.text?.trim();
+              if (flowName) flowAttrs.push(flowName);
+            }
+
+            pDef = {
+              name: cleanType,
+              potentialAttrs: potentialAttrs.length > 0 ? potentialAttrs : ["v"],
+              flowAttrs: flowAttrs.length > 0 ? flowAttrs : ["i"],
+            };
+            this.portDefs.set(cleanType, pDef);
+          }
+        }
+      }
+      if (!pDef) {
+        pDef = {
+          name: cleanType,
+          potentialAttrs: ["v"],
+          flowAttrs: ["i"],
+        };
+      }
 
       for (const pot of pDef.potentialAttrs) {
         const varName = `${portFullName}.${pot}`;
@@ -1175,45 +862,6 @@ export class SysML2CstFlattener {
         potentialAttrs: pDef.potentialAttrs,
         flowAttrs: pDef.flowAttrs,
       });
-    }
-
-    // Fallback port scanning for flattened/recovered CST nodes
-    if (portUsages.length === 0) {
-      const portInstRegex =
-        /\b(?:(in|out)\s+)?port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:(~\s*)?)([A-Za-z_][A-Za-z0-9_.]*)/g;
-      let pm: RegExpExecArray | null;
-      while ((pm = portInstRegex.exec(compText)) !== null) {
-        const portName = pm[2]!;
-        if (localNames.has(portName)) continue;
-        localNames.add(portName);
-        const portFullName = prefix + portName;
-
-        const isConjugated = Boolean(pm[3]);
-        const cleanType = pm[4]!.trim();
-
-        const pDef = this.portDefs.get(cleanType) ?? {
-          name: cleanType,
-          potentialAttrs: ["v"],
-          flowAttrs: ["i"],
-        };
-
-        for (const pot of pDef.potentialAttrs) {
-          const varName = `${portFullName}.${pot}`;
-          this.arena.addVariable(varName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
-        }
-        for (const fl of pDef.flowAttrs) {
-          const varName = `${portFullName}.${fl}`;
-          this.arena.addVariable(varName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
-        }
-
-        this.activePorts.set(portFullName, {
-          fullName: portFullName,
-          portType: cleanType,
-          isConjugated,
-          potentialAttrs: pDef.potentialAttrs,
-          flowAttrs: pDef.flowAttrs,
-        });
-      }
     }
 
     // 3. Process Attributes
@@ -1274,7 +922,7 @@ export class SysML2CstFlattener {
 
     // Fallback attribute scanning for flattened/recovered CST nodes
     if (attrUsages.length === 0) {
-      let localBody = compText;
+      let localBody = this.getCompText(compNode);
       // Strip subpart blocks with { ... } so inline attribute overrides aren't treated as parent attributes
       const subpartBraceRegex = /\bpart\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Za-z_][A-Za-z0-9_]*\s*\{/g;
       let sbm: RegExpExecArray | null;
@@ -1367,7 +1015,7 @@ export class SysML2CstFlattener {
 
       localNames.add(partName);
 
-      const typeNode = findFirstDescendant(pu, "FeatureTyping");
+      const typeNode = findFirstDescendant(pu, "FeatureTyping") || findFirstDescendant(pu, "OwnedFeatureTyping");
       const subTypeName = typeNode?.text?.replace(/^[:\s]+/, "").trim() || "";
 
       // Extract multiplicity: e.g. [4], [1..4], [0..4]
@@ -1410,7 +1058,23 @@ export class SysML2CstFlattener {
           }
         }
       }
-      const subCompDef = this.compDefs.get(subTypeName);
+      let subCompDef = this.compDefs.get(subTypeName);
+      if (!subCompDef && this.queryDb) {
+        const matches = this.queryDb.byName(subTypeName);
+        const match = matches.find(
+          (m) =>
+            m.ruleName === "PartDefinition" ||
+            m.ruleName === "ConstraintDefinition" ||
+            (m.metadata && (m.metadata["defKind"] === "part" || m.metadata["defKind"] === "constraint")),
+        );
+        if (match) {
+          const node = this.queryDb.cstNode(match.id) as SysmlCstNode | null;
+          if (node) {
+            this.compDefs.set(subTypeName, node);
+            subCompDef = node;
+          }
+        }
+      }
 
       if (subCompDef) {
         if (multiplicity > 1) {
@@ -1426,43 +1090,6 @@ export class SysML2CstFlattener {
       }
     }
 
-    // Fallback subpart scanning for flattened/recovered CST nodes
-    if (partUsages.length === 0) {
-      const subpartRegex =
-        /\bpart\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_]*)(?:\[\s*(?:\d+\s*\.\.\s*)?(\d+)\s*\])?(?:\s*\{([^}]*)\})?/g;
-      let sm: RegExpExecArray | null;
-      while ((sm = subpartRegex.exec(compText)) !== null) {
-        const partName = sm[1]!;
-        if (localNames.has(partName)) continue;
-        localNames.add(partName);
-
-        const subTypeName = sm[2]!;
-        const multStr = sm[3];
-        const multiplicity = multStr ? parseInt(multStr, 10) : 1;
-        const inlineBody = sm[4] || "";
-
-        const subOverrides: Record<string, number> = {};
-        const overrideRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([0-9.eE+-]+)/g;
-        let om: RegExpExecArray | null;
-        while ((om = overrideRegex.exec(inlineBody)) !== null) {
-          subOverrides[om[1]!] = parseFloat(om[2]!);
-        }
-
-        const subCompDef = this.compDefs.get(subTypeName);
-        if (subCompDef) {
-          if (multiplicity > 1) {
-            for (let i = 1; i <= multiplicity; i++) {
-              const subPrefix = `${prefix}${partName}[${i}].`;
-              this.elaborateComponent(subCompDef, subPrefix, subOverrides, new Set<string>());
-            }
-          } else {
-            const subPrefix = `${prefix}${partName}.`;
-            this.elaborateComponent(subCompDef, subPrefix, subOverrides, new Set<string>());
-          }
-        }
-      }
-    }
-
     // 5. Process Equations & Assert Constraints
     this.elaborateEquations(compNode, prefix, localNames);
 
@@ -1471,6 +1098,13 @@ export class SysML2CstFlattener {
 
     // 6. Collect Connections
     this.elaborateConnections(compNode, prefix);
+  }
+
+  private getNodeSpan(node: SysmlCstNode): [number, number] {
+    const start = node.startOffset ?? node.startIndex ?? node._startOffset ?? 0;
+    const len = node._cachedLen ?? (node.endOffset !== undefined ? node.endOffset - start : 0);
+    const end = node.endOffset ?? node.endIndex ?? start + (node._cachedPad ?? 0) + len;
+    return [start, end];
   }
 
   /**
@@ -1482,6 +1116,18 @@ export class SysML2CstFlattener {
     while (p && p !== currentComp) {
       if (p.type === "PartUsage") return true;
       p = p.parent;
+    }
+    const [nStart, nEnd] = this.getNodeSpan(node);
+    if (nEnd > nStart) {
+      const partUsages = findCstDescendants(currentComp, "PartUsage");
+      for (const pu of partUsages) {
+        if (pu === node || (pu.ptr && node.ptr && pu.ptr === node.ptr)) continue;
+        const [puStart, puEnd] = this.getNodeSpan(pu);
+        const isStrictDescendant = (nStart > puStart && nEnd <= puEnd) || (nStart >= puStart && nEnd < puEnd);
+        if (isStrictDescendant) {
+          return true;
+        }
+      }
     }
     return false;
   }
@@ -1498,6 +1144,23 @@ export class SysML2CstFlattener {
         return true;
       }
       p = p.parent;
+    }
+    const [nStart, nEnd] = this.getNodeSpan(node);
+    if (nEnd > nStart) {
+      const actionNodes = [
+        ...findCstDescendants(currentComp, "ActionDefinition"),
+        ...findCstDescendants(currentComp, "ActionUsage"),
+        ...findCstDescendants(currentComp, "CalculationDefinition"),
+        ...findCstDescendants(currentComp, "CalculationUsage"),
+      ];
+      for (const an of actionNodes) {
+        if (an === node || (an.ptr && node.ptr && an.ptr === node.ptr)) continue;
+        const [anStart, anEnd] = this.getNodeSpan(an);
+        const isStrictDescendant = (nStart > anStart && nEnd <= anEnd) || (nStart >= anStart && nEnd < anEnd);
+        if (isStrictDescendant) {
+          return true;
+        }
+      }
     }
     return false;
   }
@@ -1571,27 +1234,25 @@ export class SysML2CstFlattener {
       if (assertUsages.some((au) => this.isDescendantOf(re, au) || (au.text && re.text && au.text.includes(re.text))))
         continue;
 
-      const dblEqIdx = trimmedText.indexOf("==");
-      if (dblEqIdx !== -1) {
+      const eqNode = findFirstDescendant(re, "EqualityExpression");
+      if (eqNode && (eqNode.childCount ?? 0) >= 3) {
+        const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children?.[0];
+        const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children?.[2];
+
+        const lhsId = lowerCstExpression(lhsNode, this.arena, prefix, localNames);
+        const rhsId = lowerCstExpression(rhsNode, this.arena, prefix, localNames);
+        this.arena.addEquation(EqKind.Simple, lhsId, rhsId);
+      } else if (trimmedText.includes("==")) {
+        const dblEqIdx = trimmedText.indexOf("==");
         const lhs = trimmedText.slice(0, dblEqIdx).trim();
         const rhs = trimmedText.slice(dblEqIdx + 2).trim();
         const lhsId = lowerSysmlExpr(prefixSysmlExpression(lhs, prefix, localNames), this.arena);
         const rhsId = lowerSysmlExpr(prefixSysmlExpression(rhs, prefix, localNames), this.arena);
         this.arena.addEquation(EqKind.Simple, lhsId, rhsId);
       } else {
-        const eqNode = findFirstDescendant(re, "EqualityExpression");
-        if (eqNode && (eqNode.childCount ?? 0) >= 3) {
-          const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children?.[0];
-          const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children?.[2];
-
-          const lhsId = lowerCstExpression(lhsNode, this.arena, prefix, localNames);
-          const rhsId = lowerCstExpression(rhsNode, this.arena, prefix, localNames);
-          this.arena.addEquation(EqKind.Simple, lhsId, rhsId);
-        } else {
-          const exprId = lowerCstExpression(re, this.arena, prefix, localNames);
-          const trueId = this.arena.addBoolLiteral(true);
-          this.arena.addEquation(EqKind.Simple, exprId, trueId);
-        }
+        const exprId = lowerCstExpression(re, this.arena, prefix, localNames);
+        const trueId = this.arena.addBoolLiteral(true);
+        this.arena.addEquation(EqKind.Simple, exprId, trueId);
       }
     }
 

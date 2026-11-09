@@ -11,10 +11,12 @@ import { PostMarkdownContent } from "./PostMarkdownContent";
 
 const PsseSldViewer = React.lazy(() => import("../artifacts/PsseSldViewer"));
 const PsoutViewer = React.lazy(() => import("../artifacts/PsoutViewer"));
+const EpanetViewer = React.lazy(() => import("../artifacts/EpanetViewer"));
+const SwmmViewer = React.lazy(() => import("../artifacts/SwmmViewer"));
 
 export interface PostSlideItem {
   id: string | number;
-  type: "code" | "artifact" | "powerflow" | "waveform";
+  type: "code" | "artifact" | "powerflow" | "waveform" | "waterflow" | "hgl";
   lang?: string | undefined;
   code?: string | undefined;
   rawBlock?: string | undefined;
@@ -319,6 +321,34 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
           <Suspense fallback={<Spinner />}>
             <PsoutViewer viewConfig={{ code: single.code, title: single.caption }} isFullScreen={false} />
           </Suspense>
+        ) : single.type === "waterflow" ? (
+          <Suspense fallback={<Spinner />}>
+            {(single.lang || "").toLowerCase().includes("swmm") ? (
+              <SwmmViewer
+                viewConfig={{ code: single.code, title: single.caption, mode: "plan" }}
+                isFullScreen={false}
+              />
+            ) : (
+              <EpanetViewer
+                viewConfig={{ code: single.code, title: single.caption, mode: "plan" }}
+                isFullScreen={false}
+              />
+            )}
+          </Suspense>
+        ) : single.type === "hgl" ? (
+          <Suspense fallback={<Spinner />}>
+            {(single.lang || "").toLowerCase().includes("swmm") ? (
+              <SwmmViewer
+                viewConfig={{ code: single.code, title: single.caption, mode: "profile" }}
+                isFullScreen={false}
+              />
+            ) : (
+              <EpanetViewer
+                viewConfig={{ code: single.code, title: single.caption, mode: "hgl" }}
+                isFullScreen={false}
+              />
+            )}
+          </Suspense>
         ) : (
           <ArtifactViewCard
             artifactId={single.artifactId!}
@@ -395,6 +425,34 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
                   <Suspense fallback={<Spinner />}>
                     <PsoutViewer viewConfig={{ code: slide.code, title: slide.caption }} isFullScreen={false} />
                   </Suspense>
+                ) : slide.type === "waterflow" ? (
+                  <Suspense fallback={<Spinner />}>
+                    {(slide.lang || "").toLowerCase().includes("swmm") ? (
+                      <SwmmViewer
+                        viewConfig={{ code: slide.code, title: slide.caption, mode: "plan" }}
+                        isFullScreen={false}
+                      />
+                    ) : (
+                      <EpanetViewer
+                        viewConfig={{ code: slide.code, title: slide.caption, mode: "plan" }}
+                        isFullScreen={false}
+                      />
+                    )}
+                  </Suspense>
+                ) : slide.type === "hgl" ? (
+                  <Suspense fallback={<Spinner />}>
+                    {(slide.lang || "").toLowerCase().includes("swmm") ? (
+                      <SwmmViewer
+                        viewConfig={{ code: slide.code, title: slide.caption, mode: "profile" }}
+                        isFullScreen={false}
+                      />
+                    ) : (
+                      <EpanetViewer
+                        viewConfig={{ code: slide.code, title: slide.caption, mode: "hgl" }}
+                        isFullScreen={false}
+                      />
+                    )}
+                  </Suspense>
                 ) : (
                   <ArtifactViewCard
                     artifactId={slide.artifactId!}
@@ -457,6 +515,16 @@ export function isPowerFlowCode(lang?: string): boolean {
 export function isWaveformCode(lang?: string): boolean {
   const l = (lang || "").toLowerCase().trim();
   return l === "comtrade" || l === "psout" || l === "oscillography";
+}
+
+export function isWaterFlowCode(lang?: string): boolean {
+  const l = (lang || "").toLowerCase().trim();
+  return l === "epanet" || l === "swmm" || l === "inp" || l === "water" || l === "waterflow";
+}
+
+export function isHglCode(lang?: string): boolean {
+  const l = (lang || "").toLowerCase().trim();
+  return l === "hgl" || l === "surge" || l === "waterhammer" || l === "transient";
 }
 
 /**
@@ -592,7 +660,11 @@ export function extractShortPostSlides(
         ? "powerflow"
         : isWaveformCode(cb.lang)
           ? "waveform"
-          : "code";
+          : isWaterFlowCode(cb.lang)
+            ? "waterflow"
+            : isHglCode(cb.lang)
+              ? "hgl"
+              : "code";
       slides.push({
         id: `code-${i}`,
         type: slideType,
@@ -675,6 +747,36 @@ export function extractShortPostSlides(
           {
             id: `waveform-${cb.index}`,
             type: "waveform",
+            lang: cb.lang,
+            code: cb.code,
+            rawBlock: cb.raw,
+          },
+        ],
+      };
+    }
+    if (isWaterFlowCode(cb.lang)) {
+      return {
+        isShortPost: true,
+        proseText: rawContent.replace(FENCED_CODE_REGEX, "").trim(),
+        slides: [
+          {
+            id: `waterflow-${cb.index}`,
+            type: "waterflow",
+            lang: cb.lang,
+            code: cb.code,
+            rawBlock: cb.raw,
+          },
+        ],
+      };
+    }
+    if (isHglCode(cb.lang)) {
+      return {
+        isShortPost: true,
+        proseText: rawContent.replace(FENCED_CODE_REGEX, "").trim(),
+        slides: [
+          {
+            id: `hgl-${cb.index}`,
+            type: "hgl",
             lang: cb.lang,
             code: cb.code,
             rawBlock: cb.raw,

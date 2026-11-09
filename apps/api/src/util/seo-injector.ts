@@ -87,7 +87,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
     ogTitle: `${brandName} | The Federated Scientific & Engineering Network`,
     ogDescription:
       "Simulate, publish, and peer-review executable Modelica, SysML v2, and cyber-physical models directly in your browser.",
-    ogImage: `${host}/ansatz-logo.svg`,
+    ogImage: `${host}/ansatz-social-card.png`,
     ogType: "website",
     twitterCard: "summary_large_image",
     oembedUrl: `${host}/api/v1/oembed?url=${encodeURIComponent(host + path)}&format=json`,
@@ -108,7 +108,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
             .slice(0, 200)
         : defaultMeta.description;
       const canonical = `${host}/posts/${postId}`;
-      const ogImg = `${host}/api/v1/og/post/${postId}`;
+      const ogImg = `${host}/api/v1/og/post/${postId}.png`;
       const oembed = `${host}/api/v1/oembed?url=${encodeURIComponent(canonical)}&format=json`;
       const markdown = `${host}/posts/${postId}.md`;
 
@@ -183,7 +183,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
       cls?.documentation?.slice(0, 200) ||
       `${shortName} ${stereotype} specification in ${fullPkgName}.`;
     const canonical = `${host}/package/${fullPkgName}/classes/${className}`;
-    const ogImg = `${host}/api/v1/og/class/${fullPkgName}/${version}/${className}`;
+    const ogImg = `${host}/api/v1/og/class/${fullPkgName}/${version}/${className}.png`;
     const markdown = `${host}/package/${fullPkgName}/classes/${className}.md`;
 
     const jsonLd = {
@@ -258,7 +258,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
     const desc = pkg?.description || `${fullPkgName} computational engineering package on ${brandName}.`;
     const license = pkg?.license || "AGPL-3.0-or-later";
     const canonical = `${host}/package/${fullPkgName}`;
-    const ogImg = `${host}/api/v1/og/package/${fullPkgName}`;
+    const ogImg = `${host}/api/v1/og/package/${fullPkgName}.png`;
     const markdown = `${host}/package/${fullPkgName}.md`;
 
     const jsonLd = {
@@ -337,11 +337,15 @@ export function injectSeoIntoHtml(baseHtml: string, meta: SeoPageMetadata): stri
     /<meta\s+property=["']og:title["'][^>]*>/gi,
     /<meta\s+property=["']og:description["'][^>]*>/gi,
     /<meta\s+property=["']og:image["'][^>]*>/gi,
+    /<meta\s+property=["']og:image:[^"']+["'][^>]*>/gi,
+    /<meta\s+property=["']og:site_name["'][^>]*>/gi,
     /<meta\s+property=["']og:url["'][^>]*>/gi,
     /<meta\s+property=["']og:type["'][^>]*>/gi,
     /<meta\s+name=["']twitter:title["'][^>]*>/gi,
     /<meta\s+name=["']twitter:description["'][^>]*>/gi,
     /<meta\s+name=["']twitter:image["'][^>]*>/gi,
+    /<meta\s+name=["']twitter:image:[^"']+["'][^>]*>/gi,
+    /<meta\s+name=["']twitter:site["'][^>]*>/gi,
     /<meta\s+name=["']twitter:card["'][^>]*>/gi,
     /<link\s+rel=["']canonical["'][^>]*>/gi,
     /<link\s+rel=["']alternate["']\s+type=["']application\/json\+oembed["'][^>]*>/gi,
@@ -355,17 +359,22 @@ export function injectSeoIntoHtml(baseHtml: string, meta: SeoPageMetadata): stri
   const headElements: string[] = [
     `<meta name="description" content="${escapeHtml(meta.description)}" />`,
     `<link rel="canonical" href="${escapeHtml(meta.canonicalUrl)}" />`,
+    `<meta property="og:site_name" content="Ansatz" />`,
     `<meta property="og:title" content="${escapeHtml(meta.ogTitle)}" />`,
     `<meta property="og:description" content="${escapeHtml(meta.ogDescription)}" />`,
     `<meta property="og:image" content="${escapeHtml(meta.ogImage)}" />`,
+    `<meta property="og:image:type" content="image/png" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:image:alt" content="${escapeHtml(meta.ogTitle)}" />`,
     `<meta property="og:url" content="${escapeHtml(meta.canonicalUrl)}" />`,
     `<meta property="og:type" content="${escapeHtml(meta.ogType)}" />`,
     `<meta name="twitter:card" content="${escapeHtml(meta.twitterCard)}" />`,
+    `<meta name="twitter:site" content="@ansatz" />`,
     `<meta name="twitter:title" content="${escapeHtml(meta.ogTitle)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(meta.ogDescription)}" />`,
     `<meta name="twitter:image" content="${escapeHtml(meta.ogImage)}" />`,
+    `<meta name="twitter:image:alt" content="${escapeHtml(meta.ogTitle)}" />`,
   ];
 
   if (meta.oembedUrl) {

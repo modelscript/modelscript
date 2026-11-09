@@ -19,7 +19,9 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { optionalAuth } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
+import { sysml2EventBus } from "../services/sysml2-event-bus.js";
 import { OMG_SYSML2_CONTEXT, SysML2OmgService } from "../services/sysml2-omg-service.js";
+import { sysml2GraphQLRouter } from "./sysml2-graphql.js";
 
 function getParam(val: string | string[] | undefined): string {
   if (Array.isArray(val)) return val[0] || "";
@@ -28,6 +30,8 @@ function getParam(val: string | string[] | undefined): string {
 
 export function sysml2OmgRouter(service?: SysML2OmgService): Router {
   const router = createRouter();
+  const omgService = service || new SysML2OmgService();
+  router.use("/graphql", sysml2GraphQLRouter(omgService));
   const projectOwners = new Map<string, number>();
   router.use("/projects", defaultApiLimiter);
   router.use("/projects", optionalAuth);
@@ -64,7 +68,6 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
     }
     next();
   });
-  const omgService = service || new SysML2OmgService();
 
   // Helper to set standard OMG JSON-LD headers
   function sendJsonLd(req: Request, res: Response, payload: unknown, status = 200): void {
@@ -114,6 +117,12 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
     if (req.user?.id) {
       projectOwners.set(project["@id"], req.user.id);
     }
+    sysml2EventBus.emitEvent({
+      type: "commit.created",
+      projectId: project["@id"],
+      timestamp: new Date().toISOString(),
+      data: { name: project.name, defaultBranch: project.defaultBranch },
+    });
     sendJsonLd(req, res, project, 201);
   });
 
@@ -128,6 +137,38 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
       return;
     }
     sendJsonLd(req, res, project);
+  });
+
+  /**
+   * GET /projects/:projectId/events: Real-time Server-Sent Events stream for model changes
+   */
+  router.get("/projects/:projectId/events", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const project = omgService.getProject(projectId);
+    if (!project) {
+      res.status(404).json({ error: `Project '${projectId}' not found.` });
+      return;
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    res.write(`event: connected\ndata: ${JSON.stringify({ projectId, timestamp: new Date().toISOString() })}\n\n`);
+
+    const unsubscribe = sysml2EventBus.onProjectEvent(projectId, (event) => {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    });
+
+    const heartbeatTimer = setInterval(() => {
+      res.write(": heartbeat\n\n");
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(heartbeatTimer);
+      unsubscribe();
+    });
   });
 
   /**
@@ -184,6 +225,12 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
         Array.isArray(relationships) ? relationships : [],
         typeof branch === "string" ? branch : undefined,
       );
+      sysml2EventBus.emitEvent({
+        type: "commit.created",
+        projectId,
+        timestamp: new Date().toISOString(),
+        data: { commitId: commit["@id"], description: commit.description },
+      });
       sendJsonLd(req, res, commit, 201);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -326,6 +373,12 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
         uri,
         resolvedBranch,
       );
+      sysml2EventBus.emitEvent({
+        type: "commit.created",
+        projectId,
+        timestamp: new Date().toISOString(),
+        data: { commitId: commit["@id"], description: commit.description },
+      });
       sendJsonLd(req, res, commit, 201);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -369,6 +422,12 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
         name,
         typeof headCommitId === "string" ? headCommitId : undefined,
       );
+      sysml2EventBus.emitEvent({
+        type: "branch.created",
+        projectId,
+        timestamp: new Date().toISOString(),
+        data: { branchId: branch["@id"], name: branch.name, headCommitId: branch.headCommitId },
+      });
       sendJsonLd(req, res, branch, 201);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -489,6 +548,18 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
         strategy,
         description,
         bounds,
+      });
+      sysml2EventBus.emitEvent({
+        type: "merge.completed",
+        projectId,
+        timestamp: new Date().toISOString(),
+        data: {
+          status: result.status,
+          hasConflicts: result.hasConflicts,
+          sourceBranch,
+          targetBranch,
+          mergeCommitId: result.mergeCommit ? result.mergeCommit["@id"] : undefined,
+        },
       });
       sendJsonLd(req, res, { "@type": "BranchMergeResult", ...result }, result.hasConflicts ? 409 : 200);
     } catch (err: unknown) {

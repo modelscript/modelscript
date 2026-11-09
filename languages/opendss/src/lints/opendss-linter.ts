@@ -102,7 +102,8 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
     let hasNonPositiveRMatrix = false;
     if (line.rmatrix && line.rmatrix.length > 0) {
       for (let rIdx = 0; rIdx < line.rmatrix.length; rIdx++) {
-        const row = line.rmatrix[rIdx]!;
+        const row = line.rmatrix[rIdx];
+        if (!row) continue;
         const diagVal = row[Math.min(rIdx, row.length - 1)];
         if (diagVal !== undefined && diagVal <= 0) {
           hasNonPositiveRMatrix = true;
@@ -249,7 +250,8 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
       }
     }
     while (queue.length > 0) {
-      const curr = queue.shift()!;
+      const curr = queue.shift();
+      if (!curr) break;
       const neighbors = adj.get(curr);
       if (!neighbors) continue;
       for (const nb of neighbors) {

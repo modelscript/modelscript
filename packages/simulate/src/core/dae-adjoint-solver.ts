@@ -15,6 +15,7 @@
 
 import type { DAEBuilder } from "@modelscript/runtime";
 import { Dual, evaluateArenaDualExpression } from "@modelscript/runtime";
+import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
 import { DenseHermiteCheckpointTape } from "./dense-checkpoint-tape.js";
 import type { ArenaSimulationResult } from "./simulate-arena.js";
 import { ArenaSimulator, initializeArenaEnvironment } from "./simulate-arena.js";
@@ -56,6 +57,10 @@ export interface DaeAdjointSolverOptions {
   initialStateOverrides?: Map<string, number> | undefined;
   /** Parameter names to compute sensitivities for. */
   parametersToDifferentiate: string[];
+  /** Backward adjoint integration scheme (default: "auto", which uses implicit-trapezoidal for stiff systems). */
+  adjointMethod?: "auto" | "implicit-trapezoidal" | "tr-bdf2" | "explicit-heun" | undefined;
+  /** Forward simulation integrator (default: "rk4"). */
+  forwardIntegrator?: "rk4" | "tr-bdf2" | undefined;
   /** Terminal cost Phi(x(T), y(T), p). */
   terminalLoss?:
     | ((
@@ -239,8 +244,12 @@ export class DaeAdjointSolver {
         const prevDx = new Float64Array(currDx);
         const prevY = new Float64Array(currY);
 
-        // Perform RK4 forward step
-        this.sim.rk4Step(h, valuesByStringId, this.stateNameIds, this.derivNameIds, timeId, currentTime);
+        // Perform forward step (TR-BDF2 for stiff systems, or RK4)
+        if (options.forwardIntegrator === "tr-bdf2") {
+          this.trbdf2Step(h, valuesByStringId, this.stateNameIds, this.derivNameIds, timeId, currentTime);
+        } else {
+          this.sim.rk4Step(h, valuesByStringId, this.stateNameIds, this.derivNameIds, timeId, currentTime);
+        }
 
         currentTime = tNext;
         valuesByStringId[timeId] = currentTime;
@@ -473,46 +482,199 @@ export class DaeAdjointSolver {
 
       const lambdaNext = new Map(lambda);
 
-      // Heun (RK2) backward step for lambda:
-      // k1 = - J_x(tNext)^T lambdaNext - grad_x L(tNext)
-      const k1 = new Map<string, number>();
-      for (const xName of this.stateNames) {
-        let vjpX = 0;
-        for (const [fName, fJac] of jacNext.J) {
-          const lambda_f = lambdaNext.get(fName) ?? 0;
-          const df_dx = fJac.get(xName) ?? 0;
-          vjpX += lambda_f * df_dx;
+      // Estimate stiffness norm: ||J||_F and max diagonal entry of J
+      let jNormSq = 0;
+      let maxDiag = 0;
+      for (let i = 0; i < nStates; i++) {
+        const sNameI = this.stateNames[i]!;
+        for (let j = 0; j < nStates; j++) {
+          const sNameJ = this.stateNames[j]!;
+          const df_dx = jacCurr.J.get(sNameI)?.get(sNameJ) ?? 0;
+          jNormSq += df_dx * df_dx;
+          if (i === j) {
+            maxDiag = Math.max(maxDiag, Math.abs(df_dx));
+          }
         }
-        const gX = stageGradXNext.get(xName) ?? 0;
-        k1.set(xName, -vjpX - gX);
       }
+      const isStiff = dt * Math.sqrt(jNormSq) > 1.0 || dt * maxDiag > 1.5;
+      const adjointScheme =
+        options.adjointMethod && options.adjointMethod !== "auto"
+          ? options.adjointMethod
+          : isStiff
+            ? "implicit-trapezoidal"
+            : "explicit-heun";
 
-      // Predictor lambda at tCurr
-      const lambdaPred = new Map<string, number>();
-      for (const xName of this.stateNames) {
-        lambdaPred.set(xName, (lambdaNext.get(xName) ?? 0) - dt * (k1.get(xName) ?? 0));
-      }
+      if (adjointScheme === "implicit-trapezoidal" && nStates > 0) {
+        // Unconditionally A-stable Implicit Trapezoidal (Crank-Nicolson) backward step:
+        // (I - (dt/2) * J(tCurr)^T) * lambda(tCurr) = lambda(tNext) + (dt/2) * (J(tNext)^T * lambda(tNext) + g(tNext) + g(tCurr))
+        const n = nStates;
+        const M_flat = new Float64Array(n * n);
+        const b = new Float64Array(n);
 
-      // k2 = - J_x(tCurr)^T lambdaPred - grad_x L(tCurr)
-      const k2 = new Map<string, number>();
-      for (const xName of this.stateNames) {
-        let vjpX = 0;
-        for (const [fName, fJac] of jacCurr.J) {
-          const lambda_f = lambdaPred.get(fName) ?? 0;
-          const df_dx = fJac.get(xName) ?? 0;
-          vjpX += lambda_f * df_dx;
+        // Compute vjpNext = J(tNext)^T * lambda(tNext)
+        const vjpNext = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          const xName = this.stateNames[i]!;
+          let sum = 0;
+          for (let j = 0; j < n; j++) {
+            const fName = this.stateNames[j]!;
+            const df_dx = jacNext.J.get(fName)?.get(xName) ?? 0;
+            const lambda_f = lambdaNext.get(fName) ?? 0;
+            sum += df_dx * lambda_f;
+          }
+          vjpNext[i] = sum;
         }
-        const gX = stageGradXCurr.get(xName) ?? 0;
-        k2.set(xName, -vjpX - gX);
-      }
 
-      // Corrector: lambda(tCurr) = lambda(tNext) + (dt/2) * (k1 + k2) (moving backward in time)
-      for (const xName of this.stateNames) {
-        const nextVal = lambdaNext.get(xName) ?? 0;
-        const slope = 0.5 * ((k1.get(xName) ?? 0) + (k2.get(xName) ?? 0));
-        const updated = nextVal - slope * dt;
-        lambda.set(xName, updated);
-        adjointTrajectoryMap.get(xName)?.push(updated);
+        // Construct RHS vector b and Matrix M = I - (dt/2) * J(tCurr)^T
+        for (let i = 0; i < n; i++) {
+          const xNameI = this.stateNames[i]!;
+          const gNextI = stageGradXNext.get(xNameI) ?? 0;
+          const gCurrI = stageGradXCurr.get(xNameI) ?? 0;
+          const lamNextI = lambdaNext.get(xNameI) ?? 0;
+          b[i] = lamNextI + 0.5 * dt * (vjpNext[i]! + gNextI + gCurrI);
+
+          for (let j = 0; j < n; j++) {
+            const xNameJ = this.stateNames[j]!;
+            // J(tCurr)^T[i, j] = J(tCurr)[j, i] = d f_j / d x_i
+            const df_dx = jacCurr.J.get(xNameJ)?.get(xNameI) ?? 0;
+            const identity = i === j ? 1.0 : 0.0;
+            M_flat[i * n + j] = identity - 0.5 * dt * df_dx;
+          }
+        }
+
+        const fact = luFactor(M_flat, n);
+        const lambdaSol = new Float64Array(b);
+        luSolve(fact, lambdaSol);
+
+        for (let i = 0; i < n; i++) {
+          const xName = this.stateNames[i]!;
+          const updated = lambdaSol[i]!;
+          lambda.set(xName, updated);
+          adjointTrajectoryMap.get(xName)?.push(updated);
+        }
+      } else if (adjointScheme === "tr-bdf2" && nStates > 0) {
+        // L-stable TR-BDF2 backward step for ultra-stiff systems
+        const n = nStates;
+        const gamma = 2.0 - Math.SQRT2; // ≈ 0.585786
+        const d = gamma / 2.0; // ≈ 0.292893
+        const h1 = gamma * dt;
+        const tMid = tNext - h1;
+
+        const stateMid = tape.getStateMap(tMid);
+        const jacMid = this.sim.evaluateRHSWithJacobian(tMid, stateMid, undefined, seedVars);
+
+        let stageGradXMid = new Map<string, number>();
+        if (options.stageLoss) {
+          const algMid = tape.getAlgebraicMap(tMid);
+          const evalMid = options.stageLoss(tMid, stateMid, algMid, currentParams);
+          stageGradXMid = evalMid.gradState ?? new Map();
+        }
+
+        // Stage 1: Trapezoidal half-step to tMid
+        const M1_flat = new Float64Array(n * n);
+        const b1 = new Float64Array(n);
+
+        const vjpNext = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          const xName = this.stateNames[i]!;
+          let sum = 0;
+          for (let j = 0; j < n; j++) {
+            const fName = this.stateNames[j]!;
+            const df_dx = jacNext.J.get(fName)?.get(xName) ?? 0;
+            const lambda_f = lambdaNext.get(fName) ?? 0;
+            sum += df_dx * lambda_f;
+          }
+          vjpNext[i] = sum;
+        }
+
+        for (let i = 0; i < n; i++) {
+          const xNameI = this.stateNames[i]!;
+          const gNextI = stageGradXNext.get(xNameI) ?? 0;
+          const gMidI = stageGradXMid.get(xNameI) ?? 0;
+          const lamNextI = lambdaNext.get(xNameI) ?? 0;
+          b1[i] = lamNextI + 0.5 * h1 * (vjpNext[i]! + gNextI + gMidI);
+
+          for (let j = 0; j < n; j++) {
+            const xNameJ = this.stateNames[j]!;
+            const df_dx = jacMid.J.get(xNameJ)?.get(xNameI) ?? 0;
+            const identity = i === j ? 1.0 : 0.0;
+            M1_flat[i * n + j] = identity - 0.5 * h1 * df_dx;
+          }
+        }
+
+        const fact1 = luFactor(M1_flat, n);
+        const lambdaMid = new Float64Array(b1);
+        luSolve(fact1, lambdaMid);
+
+        // Stage 2: BDF2 step to tCurr
+        const w1 = 1.0 / (gamma * (2.0 - gamma));
+        const w2 = Math.pow(1.0 - gamma, 2) / (gamma * (2.0 - gamma));
+
+        const M2_flat = new Float64Array(n * n);
+        const b2 = new Float64Array(n);
+
+        for (let i = 0; i < n; i++) {
+          const xNameI = this.stateNames[i]!;
+          const gCurrI = stageGradXCurr.get(xNameI) ?? 0;
+          const lamNextI = lambdaNext.get(xNameI) ?? 0;
+          b2[i] = w1 * lambdaMid[i]! - w2 * lamNextI + d * dt * gCurrI;
+
+          for (let j = 0; j < n; j++) {
+            const xNameJ = this.stateNames[j]!;
+            const df_dx = jacCurr.J.get(xNameJ)?.get(xNameI) ?? 0;
+            const identity = i === j ? 1.0 : 0.0;
+            M2_flat[i * n + j] = identity - d * dt * df_dx;
+          }
+        }
+
+        const fact2 = luFactor(M2_flat, n);
+        const lambdaSol = new Float64Array(b2);
+        luSolve(fact2, lambdaSol);
+
+        for (let i = 0; i < n; i++) {
+          const xName = this.stateNames[i]!;
+          const updated = lambdaSol[i]!;
+          lambda.set(xName, updated);
+          adjointTrajectoryMap.get(xName)?.push(updated);
+        }
+      } else {
+        // Explicit Heun (RK2) backward step for lambda
+        const k1 = new Map<string, number>();
+        for (const xName of this.stateNames) {
+          let vjpX = 0;
+          for (const [fName, fJac] of jacNext.J) {
+            const lambda_f = lambdaNext.get(fName) ?? 0;
+            const df_dx = fJac.get(xName) ?? 0;
+            vjpX += lambda_f * df_dx;
+          }
+          const gX = stageGradXNext.get(xName) ?? 0;
+          k1.set(xName, -vjpX - gX);
+        }
+
+        const lambdaPred = new Map<string, number>();
+        for (const xName of this.stateNames) {
+          lambdaPred.set(xName, (lambdaNext.get(xName) ?? 0) - dt * (k1.get(xName) ?? 0));
+        }
+
+        const k2 = new Map<string, number>();
+        for (const xName of this.stateNames) {
+          let vjpX = 0;
+          for (const [fName, fJac] of jacCurr.J) {
+            const lambda_f = lambdaPred.get(fName) ?? 0;
+            const df_dx = fJac.get(xName) ?? 0;
+            vjpX += lambda_f * df_dx;
+          }
+          const gX = stageGradXCurr.get(xName) ?? 0;
+          k2.set(xName, -vjpX - gX);
+        }
+
+        for (const xName of this.stateNames) {
+          const nextVal = lambdaNext.get(xName) ?? 0;
+          const slope = 0.5 * ((k1.get(xName) ?? 0) + (k2.get(xName) ?? 0));
+          const updated = nextVal - slope * dt;
+          lambda.set(xName, updated);
+          adjointTrajectoryMap.get(xName)?.push(updated);
+        }
       }
 
       // Accumulate parameter sensitivity integral over [tCurr, tNext]
@@ -613,6 +775,142 @@ export class DaeAdjointSolver {
     }
 
     return result;
+  }
+
+  /**
+   * Performs an L-stable composite TR-BDF2 step for stiff forward DAE integration.
+   */
+  public trbdf2Step(
+    h: number,
+    vals: Float64Array,
+    stateIds: number[],
+    derivIds: number[],
+    timeId: number,
+    t: number,
+  ): void {
+    const n = stateIds.length;
+    if (n === 0) return;
+
+    const gamma = 2.0 - Math.SQRT2; // ≈ 0.585786
+    const d = gamma / 2.0;
+
+    // Save initial states y0 and derivatives f0
+    const y0 = new Float64Array(n);
+    const f0 = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      y0[i] = vals[stateIds[i]!] ?? 0;
+      f0[i] = vals[derivIds[i]!] ?? 0;
+    }
+
+    const h1 = gamma * h;
+    const tGamma = t + h1;
+
+    // Helper to evaluate f(tEval, yEval) and state Jacobian J
+    const evalAt = (tEval: number, yEval: Float64Array): { f: Float64Array; J: Float64Array } => {
+      for (let i = 0; i < n; i++) vals[stateIds[i]!] = yEval[i]!;
+      vals[timeId] = tEval;
+      this.sim.evaluateBlocks(vals);
+      this.sim.evaluateDerivativeEquations(vals);
+
+      const fVec = new Float64Array(n);
+      for (let i = 0; i < n; i++) fVec[i] = vals[derivIds[i]!] ?? 0;
+
+      // Numerical finite difference Jacobian for states
+      const J_flat = new Float64Array(n * n);
+      const eps = 1e-7;
+      const yPert = new Float64Array(yEval);
+      for (let j = 0; j < n; j++) {
+        const orig = yPert[j]!;
+        const delta = Math.max(eps, eps * Math.abs(orig));
+        yPert[j] = orig + delta;
+
+        for (let i = 0; i < n; i++) vals[stateIds[i]!] = yPert[i]!;
+        this.sim.evaluateBlocks(vals);
+        this.sim.evaluateDerivativeEquations(vals);
+
+        for (let i = 0; i < n; i++) {
+          const fPert = vals[derivIds[i]!] ?? 0;
+          J_flat[i * n + j] = (fPert - fVec[i]!) / delta;
+        }
+
+        yPert[j] = orig;
+      }
+
+      // Restore
+      for (let i = 0; i < n; i++) vals[stateIds[i]!] = yEval[i]!;
+      this.sim.evaluateBlocks(vals);
+      this.sim.evaluateDerivativeEquations(vals);
+
+      return { f: fVec, J: J_flat };
+    };
+
+    // Stage 1: Trapezoidal solve for yGamma
+    // Residual: R1 = yGamma - y0 - 0.5 * h1 * (f0 + f(tGamma, yGamma)) = 0
+    const yGamma = new Float64Array(y0);
+    for (let i = 0; i < n; i++) yGamma[i] = yGamma[i]! + h1 * f0[i]!;
+
+    for (let iter = 0; iter < 5; iter++) {
+      const { f: fGamma, J: JGamma } = evalAt(tGamma, yGamma);
+      const R1 = new Float64Array(n);
+      let rNorm = 0;
+      for (let i = 0; i < n; i++) {
+        R1[i] = yGamma[i]! - y0[i]! - 0.5 * h1 * (f0[i]! + fGamma[i]!);
+        rNorm += R1[i]! * R1[i]!;
+      }
+      if (Math.sqrt(rNorm) < 1e-11) break;
+
+      // M1 = I - 0.5 * h1 * JGamma
+      const M1 = new Float64Array(n * n);
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          M1[i * n + j] = (i === j ? 1.0 : 0.0) - 0.5 * h1 * JGamma[i * n + j]!;
+        }
+      }
+
+      const fact1 = luFactor(M1, n);
+      const deltaY = new Float64Array(R1);
+      luSolve(fact1, deltaY);
+
+      for (let i = 0; i < n; i++) yGamma[i] = yGamma[i]! - deltaY[i]!;
+    }
+
+    // Stage 2: BDF2 solve for y1
+    // y1 - w1 * yGamma + w2 * y0 - d * h * f(t + h, y1) = 0
+    const w1 = 1.0 / (gamma * (2.0 - gamma));
+    const w2 = Math.pow(1.0 - gamma, 2) / (gamma * (2.0 - gamma));
+    const tNext = t + h;
+
+    const y1 = new Float64Array(yGamma);
+    for (let iter = 0; iter < 5; iter++) {
+      const { f: f1, J: J1 } = evalAt(tNext, y1);
+      const R2 = new Float64Array(n);
+      let rNorm = 0;
+      for (let i = 0; i < n; i++) {
+        R2[i] = y1[i]! - w1 * yGamma[i]! + w2 * y0[i]! - d * h * f1[i]!;
+        rNorm += R2[i]! * R2[i]!;
+      }
+      if (Math.sqrt(rNorm) < 1e-11) break;
+
+      // M2 = I - d * h * J1
+      const M2 = new Float64Array(n * n);
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          M2[i * n + j] = (i === j ? 1.0 : 0.0) - d * h * J1[i * n + j]!;
+        }
+      }
+
+      const fact2 = luFactor(M2, n);
+      const deltaY = new Float64Array(R2);
+      luSolve(fact2, deltaY);
+
+      for (let i = 0; i < n; i++) y1[i] = y1[i]! - deltaY[i]!;
+    }
+
+    // Update vals with final state y1 at tNext
+    for (let i = 0; i < n; i++) vals[stateIds[i]!] = y1[i]!;
+    vals[timeId] = tNext;
+    this.sim.evaluateBlocks(vals);
+    this.sim.evaluateDerivativeEquations(vals);
   }
 }
 

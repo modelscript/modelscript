@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@modelscript/dsl": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/runtime": "*"
   },
   "devDependencies": {
@@ -65,7 +66,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "preview",
+    "tier": "stable",
     "category": "language"
   }
 }

@@ -15,7 +15,7 @@
  *  - **Load Factor Threshold**: Automatically resizes (doubles capacity) when `size * 2 >= capacity` (50% load factor).
  *  - **Reserved Null Slot**: Key `0` is reserved for empty/unoccupied slots. Input key `0` is mapped to `1`.
  */
-import { atomicChunkAlloc } from "./array";
+import { atomicChunkAlloc, atomicChunkFree } from "./array";
 
 /**
  * Unmanaged 64-bit Hash Set using open addressing and linear probing.
@@ -139,6 +139,7 @@ export class UnmanagedSet64 {
             }
         }
         
+        atomicChunkFree(oldKeys);
         this.capacity = newCap;
         this.keys = newKeys;
     }
@@ -150,6 +151,7 @@ export class UnmanagedSet64 {
         if (!this.isActive) return; // Prevent double release
         this.isActive = false;
         if (this.capacity > 1024) {
+            atomicChunkFree(this.keys);
             this.keys = 0;
             this.capacity = 0;
         }
@@ -333,6 +335,8 @@ export class UnmanagedMap64 {
             }
         }
         
+        atomicChunkFree(oldKeys);
+        atomicChunkFree(oldValues);
         this.capacity = newCap;
         this.keys = newKeys;
         this.values = newValues;
@@ -345,6 +349,8 @@ export class UnmanagedMap64 {
         if (!this.isActive) return;
         this.isActive = false;
         if (this.capacity > 1024) {
+            atomicChunkFree(this.keys);
+            atomicChunkFree(this.values);
             this.keys = 0;
             this.values = 0;
             this.capacity = 0;
@@ -495,6 +501,8 @@ export class UnmanagedMap64To64 {
             }
         }
         
+        atomicChunkFree(oldKeys);
+        atomicChunkFree(oldValues);
         this.capacity = newCap;
         this.keys = newKeys;
         this.values = newValues;
@@ -504,6 +512,8 @@ export class UnmanagedMap64To64 {
         if (!this.isActive) return;
         this.isActive = false;
         if (this.capacity > 1024) {
+            atomicChunkFree(this.keys);
+            atomicChunkFree(this.values);
             this.keys = 0;
             this.values = 0;
             this.capacity = 0;

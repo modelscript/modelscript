@@ -578,6 +578,9 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
       }
     } else if (kind !== EqKind.When) {
       if (kind === EqKind.Array || kind === EqKind.Simple) {
+        // Skip continuous ODE evolution equations der(x) = rhs — they define rates of change during integration,
+        // not initial state constraints at t=0.
+        if (dae.getExprKind(lhs) === ExprKind.Der) continue;
         const lhsElems = flatElements(lhs, dae);
         const rhsElems = flatElements(rhs, dae);
         const n = Math.max(lhsElems.length, rhsElems.length);
@@ -1523,6 +1526,9 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
         result.converged = true;
         return result;
       }
+    } else if (initBlt.unknowns.size === 0) {
+      result.converged = true;
+      return result;
     }
   } catch {
     // If BLT encounters an unsupported structure, fall back to monolithic solver below
@@ -1535,7 +1541,9 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
     const kind = arena.getEqKind(i);
     const isInit = kind === EqKind.InitialSimple || kind === EqKind.InitialFor || isEqInitialFlag(arena, i);
     if (kind === EqKind.InitialSimple || kind === EqKind.Simple || kind === EqKind.Array) {
-      const lhsElems = flatElements(arena.getEqLhs(i), arena);
+      const eqLhs = arena.getEqLhs(i);
+      if (!isInit && arena.getExprKind(eqLhs) === ExprKind.Der) continue;
+      const lhsElems = flatElements(eqLhs, arena);
       const rhsElems = flatElements(arena.getEqRhs(i), arena);
       const n = Math.max(lhsElems.length, rhsElems.length);
       for (let j = 0; j < n; j++) {

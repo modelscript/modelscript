@@ -48,4 +48,7 @@ export interface ObjectStager {
     inputFiles: Record<string, string>, // { "deck.inp": "/local/path/deck.inp" }
     expectedOutputs: string[], // ["result.vtu", "scalars.json", "output.log"]
   ): Promise<JobStagingManifest>;
+
+  /** Reads an incremental log chunk starting at byteOffset from remote object storage */
+  readLogChunk?(remoteKey: string, startByte: number): Promise<{ chunk: string; totalBytes: number } | null>;
 }

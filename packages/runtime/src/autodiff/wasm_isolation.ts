@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { collectArenaExprDeps, isZeroExpr } from "../analysis/wasm_blt.js";
+import { type BltBlockTearing, collectArenaExprDeps, isZeroExpr } from "../analysis/wasm_blt.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
 import { Polynomial, Term, computeGroebnerBasis } from "../solvers/wasm_groebner.js";
 
@@ -8,7 +8,7 @@ import { Polynomial, Term, computeGroebnerBasis } from "../solvers/wasm_groebner
  */
 export type ArenaExecutionBlock =
   | { type: "single"; varIdx: number; exprId: number }
-  | { type: "system"; eqIdxs: number[]; vars: number[] }
+  | { type: "system"; eqIdxs: number[]; vars: number[]; tearing?: BltBlockTearing | undefined }
   | { type: "algorithm"; stmtIdxs: number[] };
 
 /**
@@ -87,13 +87,18 @@ export function isolateSymbolicallyArena(arena: DAEBuilder, eqIdx: number, targe
 export function isTargetVar(arena: DAEBuilder, exprId: number, targetVarIdx: number): boolean {
   if (exprId < 0) return false;
   const kind = arena.getExprKind(exprId);
+  const targetNameId = arena.getVarNameId(targetVarIdx);
   if (kind === ExprKind.Name) {
-    return arena.getVarNameId(targetVarIdx) === arena.getExprData1(exprId);
+    return targetNameId === arena.getExprData1(exprId);
   }
   if (kind === ExprKind.Der) {
     const argId = arena.getExprData1(exprId);
     if (arena.getExprKind(argId) === ExprKind.Name) {
       const innerNameId = arena.getExprData1(argId);
+      const interner = arena.interner as any;
+      if (interner && typeof interner.getDerStringId === "function") {
+        return targetNameId === interner.getDerStringId(innerNameId);
+      }
       const innerName = arena.interner.resolve(innerNameId);
       const targetName = arena.getVarName(targetVarIdx);
       if (targetName === `der(${innerName})`) return true;

@@ -114,6 +114,15 @@ ide.modelscript.org {
         respond "Not Found" 404
     }
 
+    # Route crawler / social bot previews to API service for server-side OpenGraph / SEO injection
+    @crawler {
+        header_regexp User-Agent "(?i)(twitterbot|facebookexternalhit|linkedinbot|slackbot|discordbot|whatsapp|telegrambot|bingpreview|googlebot|yandex|baiduspider|applebot)"
+        path /packages/* /package/* /posts/* /p/* /@*
+    }
+    handle @crawler {
+        reverse_proxy api:3000
+    }
+
     # Route Unified Web SPA, IDE Shell & Documentation Portal (all other requests)
     handle {
         reverse_proxy web:80

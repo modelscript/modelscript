@@ -278,6 +278,11 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
                 <AlertIcon size={14} /> {diff.parityDrift.length} unit shifts
               </MetricBadge>
             )}
+            {diff.breakingChanges && diff.breakingChanges.length > 0 && (
+              <MetricBadge $color="#cf222e" $bg="rgba(207, 34, 46, 0.15)">
+                <AlertIcon size={14} /> {diff.breakingChanges.length} breaking changes
+              </MetricBadge>
+            )}
           </MetricsRow>
         )}
       </HeaderCard>
@@ -303,22 +308,87 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
       {/* ── Error state ── */}
       {error && <Flash variant="danger">{error}</Flash>}
 
-      {/* ── Parity Drift Warnings ── */}
-      {diff && diff.parityDrift.length > 0 && (
-        <Flash variant="warning">
-          <strong>Physical Unit Parity Drift Detected!</strong> The following parameters changed their dimensional unit
-          type between v{baseVersion} and v{headVersion}:
-          <ul style={{ margin: "8px 0 0 20px" }}>
-            {diff.parityDrift.map((p, idx) => (
-              <li key={idx}>
-                <code>
-                  {p.className}.{p.parameter}
-                </code>
-                : changed from <OldValue>{p.oldUnit}</OldValue> to <NewValue>{p.newUnit}</NewValue>
-              </li>
+      {/* ── Breaking Changes & Plug-Compatibility Inspector ── */}
+      {diff && diff.breakingChanges && diff.breakingChanges.length > 0 && (
+        <SectionCard style={{ borderColor: "rgba(207, 34, 46, 0.4)" }}>
+          <SectionHeader style={{ background: "rgba(207, 34, 46, 0.1)", color: "var(--color-danger-fg, #cf222e)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertIcon size={16} fill="var(--color-danger-fg, #cf222e)" />
+              <span style={{ fontWeight: 700 }}>Breaking Changes &amp; Plug-Compatibility Delta</span>
+            </div>
+            <Label variant="danger">{diff.breakingChanges.length} breaking</Label>
+          </SectionHeader>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {diff.breakingChanges.map((bc, idx) => (
+              <DiffItemRow key={idx} style={{ background: "rgba(207, 34, 46, 0.03)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Label
+                    variant={bc.category === "connector_incompatible" ? "danger" : "attention"}
+                    style={{ textTransform: "uppercase", fontSize: 10 }}
+                  >
+                    {bc.category === "connector_incompatible"
+                      ? "Connector Incompatible"
+                      : bc.category === "causality_drift"
+                        ? "Causality Inverted"
+                        : "Class Removed"}
+                  </Label>
+                  <code style={{ fontWeight: 600, fontSize: 13, color: "var(--color-text-heading)" }}>
+                    {bc.className}
+                    {bc.componentName ? `.${bc.componentName}` : ""}
+                  </code>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--color-text-secondary)", marginTop: 2 }}>{bc.message}</div>
+              </DiffItemRow>
             ))}
-          </ul>
-        </Flash>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── Physical Parameter Unit Drift Matrix ── */}
+      {diff && diff.parityDrift.length > 0 && (
+        <SectionCard style={{ borderColor: "rgba(217, 119, 6, 0.4)" }}>
+          <SectionHeader style={{ background: "rgba(217, 119, 6, 0.1)", color: "#d97706" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertIcon size={16} fill="#d97706" />
+              <span style={{ fontWeight: 700 }}>Physical Parameter Unit Drift Matrix</span>
+            </div>
+            <Label variant="attention">{diff.parityDrift.length} parameter shifts</Label>
+          </SectionHeader>
+          <ParamChangeTable>
+            <thead>
+              <tr>
+                <th>Component / Parameter</th>
+                <th>Base Release (v{baseVersion})</th>
+                <th>Head Release (v{headVersion})</th>
+                <th>Dimensional Conversion Guidance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diff.parityDrift.map((p, idx) => (
+                <tr key={idx}>
+                  <td>
+                    <code>
+                      {p.className}.{p.parameter}
+                    </code>
+                  </td>
+                  <td>
+                    <OldValue>{p.oldUnit}</OldValue>
+                  </td>
+                  <td>
+                    <NewValue>{p.newUnit}</NewValue>
+                  </td>
+                  <td style={{ color: "var(--color-text-secondary)", fontSize: 11.5 }}>
+                    {p.conversionHint ? (
+                      <span style={{ color: "#d97706", fontWeight: 600 }}>{p.conversionHint}</span>
+                    ) : (
+                      "Verify dimensional balance in connecting equations"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </ParamChangeTable>
+        </SectionCard>
       )}
 
       {/* ── Physical Classes & Parameter Drift ── */}

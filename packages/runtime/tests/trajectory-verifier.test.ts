@@ -33,6 +33,11 @@ describe("Closed-Loop V&V Trajectory Evaluator & Reporter", () => {
       // Monotonic step (no overshoot)
       const monotonic = [0, 20, 50, 80, 95, 100];
       assert.strictEqual(computeOvershoot(monotonic, 100), 0);
+
+      // Negative step response: stepping from 0 down to -100 with undershoot/peak at -125 (25% overshoot)
+      const negStepResponse = [0, -50, -90, -125, -110, -98, -102, -100];
+      const negOs = computeOvershoot(negStepResponse, -100);
+      assert.strictEqual(Math.round(negOs), 25);
     });
 
     it("should compute steady-state value from final window fraction", () => {

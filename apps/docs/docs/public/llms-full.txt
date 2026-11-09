@@ -1700,6 +1700,56 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   --env-file .env.production --profile flagship up -d --wait
 ```
 
+---
+
+## 10. Production Security Hardening & Pre-Flight Verification
+
+For commercial paid deployments (`modelscript.org`, `ansatz.social`, and customer VPC appliances), ModelScript applies a defense-in-depth security model designed to safeguard compute infrastructure, proprietary models, and billing ledgers.
+
+### 10.1 Automated Pre-Flight Sentinel (`npm run preflight:prod`)
+
+Before launching containers or opening public ingress, execute the pre-flight sentinel to audit host permissions, kernel sandboxing capabilities, and secret entropy:
+
+```bash
+# Run security pre-flight sentinel
+npm run preflight:prod
+```
+
+The sentinel audits five core hardening areas:
+
+- **Sandbox Isolation**: Verifies Bubblewrap (`bwrap`) is installed and rootless unprivileged user namespaces (`--unshare-net`) function on the host kernel.
+- **Cryptographic Secrets**: Checks `JWT_SECRET` for $\ge 32$ characters and entropy (rejects dictionary words), validates `STRIPE_WEBHOOK_SECRET` format (`whsec_...`), and verifies `AUDIT_HMAC_SECRET`.
+- **Storage & Registry Permissions**: Validates that local package stores and S3/MinIO CAS buckets are accessible and writable under unprivileged UID 1000.
+- **Network & Reverse-Proxy**: Ensures `TRUST_PROXY=true` behind reverse proxies (Caddy/Cloudflare) to prevent rate-limit bypass via header spoofing.
+- **Regulatory Licensing**: Validates offline Ed25519 `MSX_LICENSE_KEY` signatures in Enterprise mode.
+
+> [!TIP]
+> The automated rollout script ([`scripts/ops/deploy.sh`](https://github.com/modelscript/modelscript/blob/main/scripts/ops/deploy.sh)) executes this sentinel as **Step 2c**. If any critical (P0) security check fails, the deployment halts automatically before modifying active containers.
+
+### 10.2 Worker Sandboxing & Execution Isolation
+
+Native C simulation models and external FMU binaries execute within a multi-layered sandbox:
+
+- **Bubblewrap (`bwrap`) Containerization**: Worker processes run with `--unshare-net` (no outbound network access), `--ro-bind / /` (read-only root filesystem), `/tmp` mounted on memory tmpfs (`size=512m`), `--cap-drop ALL`, and bind mounts strictly restricted to the job's working directory.
+- **Watchdogs & Quotas**: Simulation execution is bound to wall-clock timeouts (`15 min` default) and memory watchdogs that terminate runaway processes without stalling the API event loop.
+
+### 10.3 Ingress DoS Defense & Distributed Rate Limiting
+
+- **Pre-Buffering Ingress Gate**: Incoming request bodies are inspected before memory allocation: strict **256KB** limits on `/api/v1/auth/*` and **2MB** limits on standard JSON API endpoints (exempting streaming CAS package tarballs and admin migration bundles).
+- **Distributed Redis Rate Limiter**: When `REDIS_URL` is set, rate-limiting counters are synchronized across all cluster replicas via atomic `INCR` + `PEXPIRE` commands, with automatic fallback to local memory maps if Redis becomes unreachable.
+- **Content Security Policy (CSP)**: Default CSP headers enforce `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, and `frame-ancestors 'self'` across all API and web routes, with support for custom environment policies via `CUSTOM_CSP`.
+
+### 10.4 Financial Escrow & Dispute Kill-Switches
+
+- **Two-Phase Credit Escrow**: Simulation job dispatch pre-authorizes maximum estimated compute credits before worker execution begins; upon completion or cancellation, exact seconds are settled and unused funds are refunded.
+- **Active Job Kill-Switch**: If an account receives a payment dispute or chargeback, all running and queued Slurm or local worker jobs for that user are immediately canceled via `scancel` and `SIGKILL`.
+
+### 10.5 Package Immutability & Regulatory Non-Repudiation
+
+- **CAS Immutability Early Guard**: Publishing an existing package version (`name@version`) immediately fast-fails with `409 Conflict` before archive extraction or AST parsing.
+- **DHF Merkle Hash Chaining**: FDA 21 CFR Part 11 and ISO 13485 compliance dossiers link consecutive attestations in an unbroken SHA-256 Merkle chain (`previousAttestationHash`) verified via `verifyComplianceAttestationChain()`.
+- **Clock Rollback Protection**: Monotonic timestamp checks reject system clock manipulation attempts to extend expired offline licenses.
+
 ================================================================================
 DOCUMENT: Ansatz Platform Overview
 CANONICAL URL: https://modelscript.org/ansatz/overview
@@ -2603,7 +2653,7 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                   |
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)                               |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                                              |
-| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                    |
+| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                                                     |
 | `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL  |
 
 ================================================================================
@@ -18512,11 +18562,11 @@ If your product embeds the optional 3D CAD/STEP geometry engine (`@modelscript/c
 
 ### How is the Commercial SDK priced?
 
-It is priced per product per year. If you ship several distinct products, or have a large user base, [contact us](mailto:sales@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) for a quote.
+Commercial SDK pricing is customized based on your product architecture, distribution model, and support requirements. Please [contact us](mailto:sales@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) at sales@modelscript.org for a quote.
 
 ### How is the Enterprise Appliance priced?
 
-The listed price is a starting point. The final price depends on the number of sites and seats and on the support level. We quote it after a short scoping call.
+Enterprise Appliance pricing is customized based on the number of sites and seats, deployment environment (air-gapped, on-premise HPC clusters), and support level. Please [contact us](mailto:sales@modelscript.org?subject=%5BEnterprise%20Appliance%20Inquiry%5D%20Pricing) at sales@modelscript.org for a custom quote after a short scoping call.
 
 ### I'm a large company using ModelScript internally. Do I need the Commercial SDK?
 

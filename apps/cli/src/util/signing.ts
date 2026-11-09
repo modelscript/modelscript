@@ -311,3 +311,21 @@ function decodeBase58(str: string): Uint8Array {
   }
   return out;
 }
+
+export function signPackageContentHash(
+  contentHash: string,
+  privateKeyInput: string,
+): { signature: string; publicKeySpki?: string | undefined } {
+  const privKey = readPrivateKey(privateKeyInput);
+  const formattedHash = contentHash.startsWith("sha256:") ? contentHash : `sha256:${contentHash}`;
+  const sig = crypto.sign(null, Buffer.from(formattedHash, "utf8"), privKey);
+  let publicKeySpki: string | undefined;
+  try {
+    const pubKey = crypto.createPublicKey(privKey);
+    publicKeySpki = pubKey.export({ format: "pem", type: "spki" }) as string;
+  } catch {}
+  return {
+    signature: sig.toString("base64"),
+    publicKeySpki,
+  };
+}

@@ -19,7 +19,7 @@ export const MODELICA_INF = 1e60;
 export const MODELICA_INTEGER_INF = 2147483647;
 
 /** Maximum allowed dimension length or unrolled array expansion count. */
-export const MAX_ARRAY_EXPANSION_LENGTH = 100000;
+export const MAX_ARRAY_EXPANSION_LENGTH = 2000000;
 
 /** Machine epsilon used for floating-point tolerance in Modelica evaluation. */
 export const MODELICA_EPS = 1e-15;

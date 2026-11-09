@@ -45,6 +45,16 @@ export interface PscadSnapshot {
   switchStates?: Record<string, boolean> | undefined;
 }
 
+export interface EmtBoundaryFeed {
+  busId: string;
+  /** Optional dynamic Thévenin source parameters computed by co-simulation orchestrator. */
+  thevenin?:
+    | ((t: number) => { vPeak: number; freqRad: number; phaseRad: number; gSrc: number } | undefined)
+    | undefined;
+  /** Optional dynamic 3-phase instantaneous current injection in Amperes. */
+  currentInjection?: ((t: number) => { ia: number; ib: number; ic: number } | undefined) | undefined;
+}
+
 export interface EmtSolverOptions {
   timeStepSec: number;
   durationSec: number;
@@ -61,6 +71,12 @@ export interface EmtSolverOptions {
   maxSteps?: number | undefined;
   /** Whether to execute via native WebAssembly companion solver kernel. Default: false. */
   useWasm?: boolean | undefined;
+  /** Optional boundary feeds for TS-EMT hybrid co-simulation. */
+  boundaryFeeds?: EmtBoundaryFeed[] | undefined;
+  /** Optional step hook invoked with instantaneous phase voltages per step. */
+  onStep?:
+    | ((t: number, stepIdx: number, busVoltages: Map<string, { a: number; b: number; c: number }>) => void)
+    | undefined;
 }
 
 export interface EmtSolverMetrics {
@@ -416,9 +432,11 @@ export class EmtSolver {
   private interpolatedZeroCrossingsCount: number = 0;
 
   private readonly useWasm: boolean;
+  private readonly options: EmtSolverOptions;
 
-  constructor(netlist: EmtNetlist, options: EmtSolverOptions) {
+  constructor(netlist: EmtNetlist, options: EmtSolverOptions = { durationSec: 0.1, timeStepSec: 50e-6 }) {
     this.netlist = netlist;
+    this.options = options;
     this.timeStepSec = Math.max(1e-7, options.timeStepSec);
     this.durationSec = Math.max(this.timeStepSec * 2, options.durationSec);
     this.omega = 2 * Math.PI * (options.nominalFrequencyHz ?? netlist.nominalFrequencyHz ?? 60.0);
@@ -627,24 +645,34 @@ export class EmtSolver {
         if (isFdpm && nPoles > 0) {
           const defaultWeights = [0.4, 0.3, 0.2, 0.1];
           const hasExplicitResidues = Boolean(ln.residues && ln.residues.length === nPoles);
+          let sumWeights = 0.0;
+          const poleWeights = new Float64Array(nPoles);
+
           for (let m = 0; m < nPoles; m++) {
             const p = -Math.max(1.0, Math.abs(rawPoles[m]!));
             const alpha = Math.exp(p * this.timeStepSec);
             expDecays[m] = alpha;
             if (hasExplicitResidues) {
-              const res = ln.residues![m]!;
-              convGains[m] = (res / -p) * (1.0 - alpha);
-            } else {
-              const w = defaultWeights[m] ?? 1.0 / nPoles;
-              convGains[m] = (1.0 - d0) * w * (1.0 - alpha);
+              const res = Math.max(0.0, ln.residues![m]!);
+              const pw = res / -p;
+              poleWeights[m] = pw;
+              sumWeights += pw;
             }
           }
-          if (hasExplicitResidues && ln.d0 === undefined) {
-            let dcPoleSum = 0;
+
+          const hDc = Math.max(0.0, Math.min(1.0, hLoss > 0 ? hLoss : 0.98));
+          if (hasExplicitResidues) {
+            d0 = Math.max(0.05, Math.min(0.5, ln.d0 ?? 0.35));
+            const totalDynamicGain = Math.max(0.0, hDc - d0);
             for (let m = 0; m < nPoles; m++) {
-              dcPoleSum += convGains[m]! / Math.max(1e-12, 1.0 - expDecays[m]!);
+              const w = sumWeights > 1e-12 ? poleWeights[m]! / sumWeights : 1.0 / nPoles;
+              convGains[m] = totalDynamicGain * w * (1.0 - expDecays[m]!);
             }
-            d0 = Math.max(0.0, Math.min(1.0, 1.0 - dcPoleSum));
+          } else {
+            for (let m = 0; m < nPoles; m++) {
+              const w = defaultWeights[m] ?? 1.0 / nPoles;
+              convGains[m] = (1.0 - d0) * w * (1.0 - expDecays[m]!);
+            }
           }
         }
 
@@ -1611,6 +1639,55 @@ export class EmtSolver {
     const vbPrevStep = new Float64Array(n);
     const vcPrevStep = new Float64Array(n);
 
+    // Initialize closed-loop protection relay runtime states and control signal buffers
+    const relayRuntimeStates = (this.netlist.protectionRelays ?? []).map((relay) => {
+      const tripTraj = new Float64Array(this.nSteps);
+      const zAppTraj = new Float64Array(this.nSteps);
+      this.controlSignals.set(`${relay.id}_trip`, tripTraj);
+      this.controlSignals.set(`${relay.id}_zAppOhm`, zAppTraj);
+      return {
+        relay,
+        timerSec: 0.0,
+        tripped: false,
+        tripTraj,
+        zAppTraj,
+      };
+    });
+
+    // Initialize Detailed Equivalent Model (DEM) MMC arm submodule capacitor states
+    const mmcBridges = (this.netlist.converterBridges ?? []).filter(
+      (c) => c.kind === "mmc_thevenin" || c.kind === "mmc_valve_gpu",
+    );
+    const mmcRuntimeStates = mmcBridges.map((mmc) => {
+      const nSm = Math.max(4, mmc.numSubmodulesPerArm || 16);
+      const vDcKv = mmc.vDcNominalKv || 400.0;
+      const vSmNomKv = vDcKv / nSm;
+      const vCapUpper = new Float64Array(nSm);
+      const vCapLower = new Float64Array(nSm);
+      for (let i = 0; i < nSm; i++) {
+        // Slight initial spread to exercise sorting & balancing
+        vCapUpper[i] = vSmNomKv * (1.0 + 0.01 * ((i % 3) - 1));
+        vCapLower[i] = vSmNomKv * (1.0 - 0.01 * ((i % 3) - 1));
+      }
+      const upperSumTraj = new Float64Array(this.nSteps);
+      const lowerSumTraj = new Float64Array(this.nSteps);
+      const spreadPctTraj = new Float64Array(this.nSteps);
+      this.controlSignals.set(`${mmc.id}_vCapUpperSum`, upperSumTraj);
+      this.controlSignals.set(`${mmc.id}_vCapLowerSum`, lowerSumTraj);
+      this.controlSignals.set(`${mmc.id}_spreadPct`, spreadPctTraj);
+      return {
+        mmc,
+        nSm,
+        vDcKv,
+        cSmFarad: Math.max(1e-4, mmc.submoduleCapacitanceF || 0.01),
+        vCapUpper,
+        vCapLower,
+        upperSumTraj,
+        lowerSumTraj,
+        spreadPctTraj,
+      };
+    });
+
     for (let k = 0; k < this.nSteps; k++) {
       const t = this.time[k]!;
       if (k > 0) {
@@ -1670,6 +1747,21 @@ export class EmtSolver {
           for (let p = 0; p < 3; p++) {
             const pNode = 3 * sg.busIdx + p;
             this.G3[pNode * n3 + pNode] = this.G3[pNode * n3 + pNode]! + sg.gGen;
+          }
+        }
+
+        // Boundary feeds Thévenin source conductances
+        if (this.options?.boundaryFeeds) {
+          for (const bf of this.options.boundaryFeeds) {
+            const bIdx = this.busIdxMap.get(bf.busId);
+            if (bIdx !== undefined && bf.thevenin) {
+              const th = bf.thevenin(t);
+              const gSrc = th?.gSrc ?? 10.0;
+              for (let p = 0; p < 3; p++) {
+                const pNode = 3 * bIdx + p;
+                this.G3[pNode * n3 + pNode] = this.G3[pNode * n3 + pNode]! + gSrc;
+              }
+            }
           }
         }
 
@@ -1770,6 +1862,34 @@ export class EmtSolver {
         }
       }
 
+      // Dynamic TS-EMT hybrid boundary feeds
+      if (this.options?.boundaryFeeds) {
+        for (const bf of this.options.boundaryFeeds) {
+          const bIdx = this.busIdxMap.get(bf.busId);
+          if (bIdx !== undefined) {
+            if (bf.thevenin) {
+              const th = bf.thevenin(t);
+              if (th) {
+                const ea = th.vPeak * Math.sin(th.freqRad * t + th.phaseRad);
+                const eb = th.vPeak * Math.sin(th.freqRad * t + th.phaseRad - (2 * Math.PI) / 3);
+                const ec = th.vPeak * Math.sin(th.freqRad * t + th.phaseRad + (2 * Math.PI) / 3);
+                this.J3[3 * bIdx + 0] = this.J3[3 * bIdx + 0]! + th.gSrc * ea;
+                this.J3[3 * bIdx + 1] = this.J3[3 * bIdx + 1]! + th.gSrc * eb;
+                this.J3[3 * bIdx + 2] = this.J3[3 * bIdx + 2]! + th.gSrc * ec;
+              }
+            }
+            if (bf.currentInjection) {
+              const cinj = bf.currentInjection(t);
+              if (cinj) {
+                this.J3[3 * bIdx + 0] = this.J3[3 * bIdx + 0]! + cinj.ia;
+                this.J3[3 * bIdx + 1] = this.J3[3 * bIdx + 1]! + cinj.ib;
+                this.J3[3 * bIdx + 2] = this.J3[3 * bIdx + 2]! + cinj.ic;
+              }
+            }
+          }
+        }
+      }
+
       // Park dq0 Synchronous Generator internal subtransient EMF Norton injections
       for (const sg of this.syncGenerators) {
         const thetaE = sg.omega0 * t + sg.deltaRad;
@@ -1866,6 +1986,15 @@ export class EmtSolver {
         pv.a[k] = va;
         pv.b[k] = vb;
         pv.c[k] = vc;
+      }
+
+      if (this.options?.onStep) {
+        const stepVolts = new Map<string, { a: number; b: number; c: number }>();
+        for (let i = 0; i < n; i++) {
+          const bId = this.busList[i]!.id;
+          stepVolts.set(bId, { a: this.vaStep[i]!, b: this.vbStep[i]!, c: this.vcStep[i]! });
+        }
+        this.options.onStep(t, k, stepVolts);
       }
 
       // 6. Update branch currents & Dommel companion history
@@ -2061,6 +2190,130 @@ export class EmtSolver {
         ia[k] = id * Math.sin(this.omega * t) - iq * Math.cos(this.omega * t);
         ib[k] = id * Math.sin(this.omega * t - (2 * Math.PI) / 3) - iq * Math.cos(this.omega * t - (2 * Math.PI) / 3);
         ic[k] = id * Math.sin(this.omega * t + (2 * Math.PI) / 3) - iq * Math.cos(this.omega * t + (2 * Math.PI) / 3);
+      }
+
+      // 9. Closed-loop protection relay evaluation & circuit breaker trip actuation
+      for (const rs of relayRuntimeStates) {
+        const { relay } = rs;
+        const bIdx = this.busIdxMap.get(relay.monitoredBus) ?? 0;
+        const va = this.vaStep[bIdx] ?? 0.0;
+        const vb = this.vbStep[bIdx] ?? 0.0;
+        const vc = this.vcStep[bIdx] ?? 0.0;
+        const vPeakMag = Math.sqrt((2.0 / 3.0) * (va * va + vb * vb + vc * vc));
+        const vNomPeak = this.busList[bIdx]?.vPeak || 230e3;
+
+        const brCur =
+          (relay.monitoredBranch ? this.branchPhaseCurrents.get(relay.monitoredBranch) : undefined) ??
+          (relay.tripBreakerId ? this.branchPhaseCurrents.get(relay.tripBreakerId) : undefined) ??
+          this.branchPhaseCurrents.values().next().value;
+        const iaBr = brCur ? brCur.a[k]! : 0.0;
+        const ibBr = brCur ? brCur.b[k]! : 0.0;
+        const icBr = brCur ? brCur.c[k]! : 0.0;
+        const iPeakMag = Math.sqrt((2.0 / 3.0) * (iaBr * iaBr + ibBr * ibBr + icBr * icBr));
+
+        const zAppOhm = vPeakMag / Math.max(iPeakMag, 1e-3);
+        rs.zAppTraj[k] = zAppOhm;
+
+        if (!rs.tripped) {
+          let pickup = false;
+          let tripDelaySec = 0.0;
+          if (relay.ansiCode === "21") {
+            const z1 = relay.zone1ReachOhm ?? 15.0;
+            const z2 = relay.zone2ReachOhm ?? 1.2 * z1;
+            if (iPeakMag > 5.0 && zAppOhm <= z1) {
+              pickup = true;
+              tripDelaySec = 0.0;
+            } else if (iPeakMag > 5.0 && zAppOhm <= z2) {
+              pickup = true;
+              tripDelaySec = 0.25;
+            }
+          } else if (relay.ansiCode === "50") {
+            pickup = iPeakMag >= (relay.pickupCurrentA ?? 500.0);
+            tripDelaySec = 0.0;
+          } else if (relay.ansiCode === "51" || relay.ansiCode === "67") {
+            const iPick = relay.pickupCurrentA ?? 200.0;
+            if (iPeakMag >= iPick) {
+              pickup = true;
+              const mult = Math.max(1.05, iPeakMag / Math.max(1e-3, iPick));
+              tripDelaySec = (0.14 * (relay.timeDialSetting ?? 0.5)) / (Math.pow(mult, 0.02) - 1.0);
+            }
+          } else if (relay.ansiCode === "87T" || relay.ansiCode === "87L") {
+            pickup = iPeakMag >= (relay.pickupCurrentA ?? 100.0);
+            tripDelaySec = 0.0;
+          } else if (relay.ansiCode === "27") {
+            pickup = vPeakMag < 0.8 * vNomPeak;
+            tripDelaySec = 0.02;
+          } else if (relay.ansiCode === "59") {
+            pickup = vPeakMag > 1.2 * vNomPeak;
+            tripDelaySec = 0.02;
+          } else if (relay.ansiCode === "81U" || relay.ansiCode === "81O" || relay.ansiCode === "81R") {
+            const gen0 = this.syncGenerators[0];
+            const fHz = gen0 ? gen0.omegaRadSec / (2 * Math.PI) : this.omega / (2 * Math.PI);
+            pickup = Math.abs(fHz - 60.0) > 0.5;
+            tripDelaySec = 0.02;
+          }
+
+          if (pickup) {
+            rs.timerSec += this.timeStepSec;
+            if (rs.timerSec >= tripDelaySec) {
+              rs.tripped = true;
+              // Command target circuit breaker to open at next step
+              const targetId = relay.tripBreakerId || relay.monitoredBranch;
+              const targetSw =
+                this.switchStates.find((s) => s.sw.id === targetId) ??
+                (relay.tripBreakerId ? undefined : this.switchStates[0]);
+              if (targetSw && targetSw.currentClosed) {
+                targetSw.sw.actionTimeSec = Math.min(targetSw.sw.actionTimeSec, t + this.timeStepSec);
+              }
+            }
+          } else {
+            rs.timerSec = Math.max(0.0, rs.timerSec - 0.5 * this.timeStepSec);
+          }
+        }
+        rs.tripTraj[k] = rs.tripped ? 1.0 : 0.0;
+      }
+
+      // 10. Step Detailed Equivalent Model (DEM) MMC submodule capacitor sorting & NLM
+      for (const ms of mmcRuntimeStates) {
+        const { nSm, vDcKv, cSmFarad, vCapUpper, vCapLower } = ms;
+        const mMod = 0.85 * Math.sin(this.omega * t);
+        const nUpper = Math.max(0, Math.min(nSm, Math.round(0.5 * nSm * (1.0 - mMod))));
+        const nLower = Math.max(0, Math.min(nSm, nSm - nUpper));
+        const iArmAmp = 400.0 * Math.sin(this.omega * t - 0.15);
+
+        // Sort submodule indices by capacitor voltage to maintain charge balance
+        const upperIdx = Array.from({ length: nSm }, (_, i) => i).sort((a, b) =>
+          iArmAmp >= 0 ? vCapUpper[a]! - vCapUpper[b]! : vCapUpper[b]! - vCapUpper[a]!,
+        );
+        const lowerIdx = Array.from({ length: nSm }, (_, i) => i).sort((a, b) =>
+          iArmAmp >= 0 ? vCapLower[a]! - vCapLower[b]! : vCapLower[b]! - vCapLower[a]!,
+        );
+
+        const dvKv = ((iArmAmp * this.timeStepSec) / cSmFarad) * 1e-3;
+        for (let m = 0; m < nUpper; m++) {
+          const idx = upperIdx[m]!;
+          vCapUpper[idx] = Math.max(0.1, vCapUpper[idx]! + dvKv);
+        }
+        for (let m = 0; m < nLower; m++) {
+          const idx = lowerIdx[m]!;
+          vCapLower[idx] = Math.max(0.1, vCapLower[idx]! - dvKv);
+        }
+
+        let sumUpper = 0.0;
+        let sumLower = 0.0;
+        let vMin = Infinity;
+        let vMax = -Infinity;
+        for (let i = 0; i < nSm; i++) {
+          const vu = vCapUpper[i]!;
+          const vl = vCapLower[i]!;
+          sumUpper += vu;
+          sumLower += vl;
+          if (vu < vMin) vMin = vu;
+          if (vu > vMax) vMax = vu;
+        }
+        ms.upperSumTraj[k] = sumUpper;
+        ms.lowerSumTraj[k] = sumLower;
+        ms.spreadPctTraj[k] = vDcKv > 0 ? ((vMax - vMin) / (vDcKv / nSm)) * 100.0 : 0.0;
       }
     }
 

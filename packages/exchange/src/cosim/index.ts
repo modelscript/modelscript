@@ -29,6 +29,8 @@ export * from "./participant.js";
 export * from "./realtime.js";
 export * from "./session.js";
 export * from "./stateless-predictor.js";
+export * from "./ts-emt-orchestrator.js";
+export * from "./water-energy-orchestrator.js";
 
 // ── Participants ──
 export * from "./audio-worklet-clock.js";

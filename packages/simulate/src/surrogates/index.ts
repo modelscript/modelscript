@@ -12,6 +12,8 @@ export * from "./dynamic-rom.js";
 export * from "./modelica-surrogate-emitter.js";
 export * from "./multivariate-bounds.js";
 export * from "./onnx-importer.js";
+export * from "./pinn-collocation.js";
+export * from "./pinn-trainer.js";
 export * from "./rom-trainer.js";
 export * from "./surrogate-continuum-participant.js";
 export * from "./surrogate-pipeline.js";

@@ -77,6 +77,7 @@ export {
   invertSingleOccurrence,
   isolateSymbolically,
   dae_isolateEquation,
+  dae_batchIsolate1x1Blocks,
   inverseSinh,
   inverseCosh,
   inverseTanh,

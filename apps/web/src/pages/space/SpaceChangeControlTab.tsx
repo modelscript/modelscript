@@ -1710,6 +1710,29 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                           >
                             {gateBadge.fullLabel}
                           </span>
+
+                          {simResult?.latestWorkflowRun && (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "3px 10px",
+                                borderRadius: "2em",
+                                fontSize: "11.5px",
+                                fontWeight: 500,
+                                background: "var(--color-neutral-subtle, rgba(127,127,127,0.1))",
+                                color: "var(--color-fg-muted)",
+                                border: "1px solid var(--color-border-subtle, var(--color-border))",
+                              }}
+                            >
+                              <WorkflowIcon size={12} />
+                              <span>
+                                {simResult.latestWorkflowRun.provider === "gitlab" ? "GitLab CI" : "GitHub Actions"}:{" "}
+                                {simResult.latestWorkflowRun.workflowName} ({simResult.latestWorkflowRun.durationMs}ms)
+                              </span>
+                            </span>
+                          )}
                         </div>
 
                         {viewerState.canWrite && (

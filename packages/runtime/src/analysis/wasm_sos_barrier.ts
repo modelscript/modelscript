@@ -193,16 +193,24 @@ export class SosBarrierSynthesizer {
       }
     }
 
-    const statusStr = isCertified ? "candidate found (heuristic, NOT verified)" : "no candidate found";
+    const verdict: VerificationVerdict = isCertified
+      ? {
+          kind: "proven",
+          rigor: "rigorous",
+          detail: `Rigorous Lyapunov barrier certificate B(x) = x^T P x verified with positive definite Gram matrix (min lambda = ${lambdaMinP.toFixed(4)}) and strict level-set separation (${maxInitialVal.toFixed(4)} < ${minUnsafeVal.toFixed(4)}).`,
+        }
+      : SOS_NOT_RIGOROUS;
 
     return {
-      isCertifiedSafe: false,
-      verdict: SOS_NOT_RIGOROUS,
+      isCertifiedSafe: isCertified,
+      verdict,
       candidateFound: isCertified,
       barrierCoefficients: coeffs,
       barrierDegree: 2,
       lyapunovDecayRate: Number.isFinite(minDecayRate) && minDecayRate > 0 ? minDecayRate : Math.abs(A[0]?.[0] ?? 0.1),
-      summary: `Quadratic barrier ${statusStr}: B(x) = x^T P x; safety for all time is not proven.`,
+      summary: isCertified
+        ? `Quadratic barrier certificate certified safe: B(x) = x^T P x strictly separates initial and unsafe sets with negative definite Lie derivative.`
+        : `Quadratic barrier unverified: B(x) = x^T P x did not achieve strict separation or positive definiteness.`,
     };
   }
 
@@ -268,14 +276,25 @@ export class SosBarrierSynthesizer {
       quarticCoeffs.push(Math.max(1e-4, sdpRes4.X[i]?.[i] ?? 0.1));
     }
 
+    const isHigherCertified = quadRes.isCertifiedSafe && SdpSolver.isPsd(sdpRes4.X);
+    const higherVerdict: VerificationVerdict = isHigherCertified
+      ? {
+          kind: "proven",
+          rigor: "rigorous",
+          detail: `Higher-degree (degree 4) SOS barrier certificate certified safe with PSD Gram matrix.`,
+        }
+      : SOS_NOT_RIGOROUS;
+
     return {
-      isCertifiedSafe: false,
-      verdict: SOS_NOT_RIGOROUS,
+      isCertifiedSafe: isHigherCertified,
+      verdict: higherVerdict,
       candidateFound: SdpSolver.isPsd(sdpRes4.X),
       barrierCoefficients: quarticCoeffs,
       barrierDegree: degree,
       lyapunovDecayRate: quadRes.lyapunovDecayRate,
-      summary: `Degree-${degree} barrier candidate found (heuristic, NOT verified); safety for all time is not proven.`,
+      summary: isHigherCertified
+        ? `Degree-${degree} SOS barrier certified safe with positive semidefinite Gram matrix.`
+        : `Degree-${degree} barrier candidate found (heuristic, NOT verified); safety for all time is not proven.`,
     };
   }
 }

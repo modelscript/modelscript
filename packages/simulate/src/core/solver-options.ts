@@ -31,6 +31,10 @@ export type IntegratorMethod =
   | "rodas4p"
   /** 2nd-order L-stable composite Trapezoidal-BDF2 method (robust stiff solver for switching circuits). */
   | "trbdf2"
+  /** High-order 5th-order fully implicit Runge-Kutta Radau IIA (stiff DAEs, symplectic). */
+  | "radau5"
+  /** Ultra high-order 9th-order fully implicit Runge-Kutta Radau IIA. */
+  | "radau9"
   /** Euler-Maruyama 1st-order stochastic differential equation integrator. */
   | "euler-maruyama"
   /** SRIW1 adaptive stochastic Runge-Kutta integrator (order 1.5/2.0). */
@@ -51,6 +55,24 @@ export type IntegratorMethod =
   | "qss3"
   /** Second-order Linearly Implicit Quantized State System stiff integrator (LIQSS2). */
   | "liqss2"
+  /** Symplectic Partitioned Runge-Kutta default (Forest-Ruth 4th order). */
+  | "sprk"
+  /** Velocity Verlet / Störmer-Verlet 2nd-order symplectic integrator. */
+  | "verlet"
+  /** Ruth 3rd-order symplectic partitioned Runge-Kutta integrator. */
+  | "ruth3"
+  /** Forest-Ruth / Candy-Rozmus 4th-order symplectic partitioned Runge-Kutta integrator. */
+  | "forest-ruth4"
+  /** Yoshida 6th-order symplectic composition integrator. */
+  | "yoshida6"
+  /** Yoshida 8th-order symplectic composition integrator. */
+  | "yoshida8"
+  /** Verner 7(6) ultra-high-order explicit adaptive Runge-Kutta integrator. */
+  | "vern7"
+  /** Verner 9(8) ultra-high-order explicit adaptive Runge-Kutta integrator. */
+  | "vern9"
+  /** Kennedy-Carpenter 4th-order 6-stage Additive IMEX Runge-Kutta integrator. */
+  | "kencarp4"
   /** Arena-native DoD pipeline (RK4, Newton algebraic loops, event handling). */
   | "arena";
 
@@ -63,7 +85,9 @@ export type NonlinearMethod =
   /** SUNDIALS KINSOL via WASM (globalized Newton with line search). */
   | "kinsol"
   /** Try Newton first, fall back to KINSOL on failure. */
-  | "hybrid";
+  | "hybrid"
+  /** Matrix-free Jacobian-Free Newton-Krylov (GMRES directional derivatives). */
+  | "jfnk";
 
 // ── Linear Solver ──
 
@@ -74,7 +98,11 @@ export type LinearMethod =
   /** LAPACK-based dense solver (via WASM, more robust pivoting). */
   | "lapack"
   /** KLU sparse direct solver (via SUNDIALS WASM, for large sparse systems). */
-  | "klu-sparse";
+  | "klu-sparse"
+  /** Restarted Right-Preconditioned GMRES(m) Krylov subspace solver. */
+  | "gmres"
+  /** Right-Preconditioned BiCGStab Krylov subspace solver. */
+  | "bicgstab";
 
 // ── Jacobian Computation ──
 

@@ -8,6 +8,7 @@ import {
   GitBranchIcon,
   LawIcon,
   PeopleIcon,
+  PlugIcon,
   SearchIcon,
   SlidersIcon,
 } from "@primer/octicons-react";
@@ -22,6 +23,7 @@ import {
   removeSpaceMember,
   transferSpace,
   updateSpace,
+  updateSpaceJiraIntegration,
   type Organization,
   type SpaceDetailResponse,
   type SpaceDomainPreset,
@@ -49,7 +51,7 @@ export interface SpaceSettingsTabProps {
   onRefresh?: (() => Promise<void>) | undefined;
 }
 
-type SettingsSection = "general" | "access" | "git" | "plm" | "features" | "danger";
+type SettingsSection = "general" | "access" | "git" | "plm" | "features" | "integrations" | "danger";
 
 const SettingsLayout = styled.div`
   display: grid;
@@ -204,6 +206,48 @@ export const SpaceSettingsTab: React.FC<SpaceSettingsTabProps> = ({
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState("");
+
+  // Integrations & Jira State
+  const savedJira = (space.settings?.["jira"] as Record<string, unknown> | undefined) || {};
+  const [jiraBaseUrl, setJiraBaseUrl] = useState(String(savedJira["baseUrl"] ?? savedJira["jiraBaseUrl"] ?? ""));
+  const [jiraEmail, setJiraEmail] = useState(String(savedJira["email"] ?? ""));
+  const [jiraApiToken, setJiraApiToken] = useState(String(savedJira["apiToken"] ?? ""));
+  const [jiraJql, setJiraJql] = useState(String(savedJira["jql"] ?? ""));
+  const [jiraModelField, setJiraModelField] = useState(String(savedJira["modelCustomField"] ?? ""));
+  const [jiraAutoComment, setJiraAutoComment] = useState(savedJira["autoCommentOnSimulation"] !== false);
+  const [testingJira, setTestingJira] = useState(false);
+  const [savingJira, setSavingJira] = useState(false);
+
+  const handleSaveJiraIntegration = async (testConnection: boolean = false) => {
+    if (testConnection) setTestingJira(true);
+    else setSavingJira(true);
+
+    try {
+      const res = await updateSpaceJiraIntegration(space.owner_namespace, space.slug, {
+        baseUrl: jiraBaseUrl.trim(),
+        email: jiraEmail.trim(),
+        apiToken: jiraApiToken.trim(),
+        jql: jiraJql.trim(),
+        modelCustomField: jiraModelField.trim(),
+        autoCommentOnSimulation: jiraAutoComment,
+        testConnection,
+      });
+
+      if (res.success) {
+        showSuccess(
+          testConnection
+            ? "Jira connection verified and settings saved successfully!"
+            : "Jira integration configuration updated.",
+        );
+        onRefresh?.();
+      }
+    } catch (err: any) {
+      showError(err?.response?.data?.error || err?.message || "Failed to update Jira integration.");
+    } finally {
+      setTestingJira(false);
+      setSavingJira(false);
+    }
+  };
 
   const gitCloneUrl = `${
     typeof window !== "undefined" ? window.location.origin : "https://ansatz.social"
@@ -431,6 +475,16 @@ export const SpaceSettingsTab: React.FC<SpaceSettingsTabProps> = ({
                 <SlidersIcon />
               </ActionList.LeadingVisual>
               Modules & Tabs
+            </ActionList.Item>
+
+            <ActionList.Item
+              selected={activeSection === "integrations"}
+              onClick={() => setActiveSection("integrations")}
+            >
+              <ActionList.LeadingVisual>
+                <PlugIcon />
+              </ActionList.LeadingVisual>
+              Integrations & Jira
             </ActionList.Item>
 
             <ActionList.Divider />
@@ -1517,6 +1571,176 @@ export const SpaceSettingsTab: React.FC<SpaceSettingsTabProps> = ({
                 )}
               </StyledBox>
             </Box>
+          </Box>
+        )}
+
+        {/* ── Integrations & Jira Section ── */}
+        {activeSection === "integrations" && (
+          <Box display="flex" flexDirection="column" gap={4}>
+            <Box>
+              <Heading
+                as="h2"
+                style={{
+                  fontSize: "24px",
+                  fontWeight: 600,
+                  color: "var(--color-fg-default)",
+                  marginBottom: "4px",
+                }}
+              >
+                Integrations & External Tracking
+              </Heading>
+              <Text style={{ fontSize: "14px", color: "var(--color-fg-muted)" }}>
+                Connect this Space to external engineering trackers (Atlassian Jira, GitHub, Siemens Polarion) for
+                model-aware issue synchronization and automated simulation verification writebacks.
+              </Text>
+            </Box>
+
+            <StyledBox p={4} display="flex" flexDirection="column" gap={4}>
+              <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#0052cc">
+                    <path d="M11.53 2c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V2h-10.56zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V6.35H7.14zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V10.7H2.75z" />
+                  </svg>
+                  <Text style={{ fontWeight: 600, fontSize: "16px", color: "var(--color-fg-default)" }}>
+                    Atlassian Jira Cloud & Data Center
+                  </Text>
+                </Box>
+                {savedJira["baseUrl"] && savedJira["apiToken"] ? (
+                  <Label variant="success" style={{ fontSize: "12px" }}>
+                    Configured & Active
+                  </Label>
+                ) : (
+                  <Label variant="secondary" style={{ fontSize: "12px" }}>
+                    Not Configured
+                  </Label>
+                )}
+              </Box>
+
+              <FormRow>
+                <FieldLabel>Jira Instance Base URL</FieldLabel>
+                <FieldDescription>
+                  Full URL to your Jira instance (e.g., https://your-organization.atlassian.net).
+                </FieldDescription>
+                <TextInput
+                  value={jiraBaseUrl}
+                  placeholder="https://company.atlassian.net"
+                  onChange={(e) => setJiraBaseUrl(e.target.value)}
+                  style={{ width: "100%" }}
+                  disabled={!viewerState.canAdmin}
+                />
+              </FormRow>
+
+              <FormRow>
+                <FieldLabel>Service Account Email / Username</FieldLabel>
+                <FieldDescription>
+                  Atlassian account email for basic auth (required for Jira Cloud; leave empty if using Data Center
+                  PAT).
+                </FieldDescription>
+                <TextInput
+                  value={jiraEmail}
+                  placeholder="engineer@company.com"
+                  onChange={(e) => setJiraEmail(e.target.value)}
+                  style={{ width: "100%" }}
+                  disabled={!viewerState.canAdmin}
+                />
+              </FormRow>
+
+              <FormRow>
+                <FieldLabel>API Token / Personal Access Token</FieldLabel>
+                <FieldDescription>
+                  Atlassian API token (Cloud) or Bearer Personal Access Token (Server/DC).
+                </FieldDescription>
+                <TextInput
+                  type="password"
+                  value={jiraApiToken}
+                  placeholder={
+                    savedJira["apiToken"] ? "•••••••••••••••• (Leave blank to keep existing token)" : "Enter API token"
+                  }
+                  onChange={(e) => setJiraApiToken(e.target.value)}
+                  style={{ width: "100%" }}
+                  disabled={!viewerState.canAdmin}
+                />
+              </FormRow>
+
+              <FormRow>
+                <FieldLabel>Default JQL Query</FieldLabel>
+                <FieldDescription>
+                  JQL query used for automated ticket synchronization and default pull filter.
+                </FieldDescription>
+                <TextInput
+                  value={jiraJql}
+                  placeholder="project = 'PROP' AND statusCategory != Done ORDER BY updated DESC"
+                  onChange={(e) => setJiraJql(e.target.value)}
+                  style={{ width: "100%" }}
+                  disabled={!viewerState.canAdmin}
+                />
+              </FormRow>
+
+              <FormRow>
+                <FieldLabel>Custom Field ID for Model Tagging (Optional)</FieldLabel>
+                <FieldDescription>
+                  Jira custom field containing Modelica/SysML model FQN (e.g., customfield_10042).
+                </FieldDescription>
+                <TextInput
+                  value={jiraModelField}
+                  placeholder="customfield_10042"
+                  onChange={(e) => setJiraModelField(e.target.value)}
+                  style={{ width: "100%" }}
+                  disabled={!viewerState.canAdmin}
+                />
+              </FormRow>
+
+              <Box
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "6px",
+                  background: "var(--color-canvas-subtle)",
+                  border: "1px solid var(--color-border-default)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                }}
+              >
+                <Box>
+                  <Text
+                    style={{ fontWeight: 600, fontSize: "13.5px", color: "var(--color-fg-default)", display: "block" }}
+                  >
+                    Automated Simulation Gate Writeback
+                  </Text>
+                  <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)", display: "block" }}>
+                    Automatically post physics verification evidence and gate pass/fail telemetry back to linked Jira
+                    tickets when an ECO simulation completes.
+                  </Text>
+                </Box>
+                <input
+                  type="checkbox"
+                  checked={jiraAutoComment}
+                  onChange={(e) => setJiraAutoComment(e.target.checked)}
+                  disabled={!viewerState.canAdmin}
+                  style={{ width: "18px", height: "18px", cursor: viewerState.canAdmin ? "pointer" : "default" }}
+                />
+              </Box>
+
+              {viewerState.canAdmin && (
+                <Box display="flex" gap={3} mt={2}>
+                  <Button
+                    variant="primary"
+                    disabled={savingJira || testingJira}
+                    onClick={() => handleSaveJiraIntegration(false)}
+                  >
+                    {savingJira ? "Saving Settings..." : "Save Jira Configuration"}
+                  </Button>
+                  <Button
+                    variant="default"
+                    disabled={savingJira || testingJira || !jiraBaseUrl.trim()}
+                    onClick={() => handleSaveJiraIntegration(true)}
+                  >
+                    {testingJira ? "Testing Connection..." : "Test Connection & Save"}
+                  </Button>
+                </Box>
+              )}
+            </StyledBox>
           </Box>
         )}
 

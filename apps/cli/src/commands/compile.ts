@@ -205,6 +205,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         const fileUri = "file://" + path.resolve(p);
 
         sysmlIndex?.register(fileUri, () => tree?.rootNode as unknown as RegisterAstReturn);
+        (sysmlIndex as any)?.indexCst?.(fileUri, tree?.rootNode ?? tree);
       } else if (p.endsWith(".mo")) {
         await context.addLibrary(p);
         if (hasSysML && mIdx) {
@@ -287,9 +288,26 @@ export const Compile: CommandModule<{}, CompileArgs> = {
 
     // Flatten the model using Arena
     profiler.start("flattening");
-    const arena = context.flattenArena(args.name, undefined, undefined, {
-      backend: args.flattener,
-    });
+    let arena: import("@modelscript/runtime").DAEBuilder | null = null;
+    if (hasSysML && !paths.some((p) => p.endsWith(".mo"))) {
+      const { createSysML2QueryEngine, SysML2DaeLowerer } = await import("@modelscript/sysml2");
+      const unified = (sysmlIndex as any).toUnifiedAsync
+        ? await (sysmlIndex as any).toUnifiedAsync()
+        : (sysmlIndex as any).toUnified();
+      const qe = createSysML2QueryEngine(unified);
+      const queryDb = qe.toQueryDB();
+      const primaryPath = paths.find((p) => p.endsWith(".sysml")) ?? paths[0]!;
+      const primarySource = fs.readFileSync(primaryPath, "utf-8");
+      arena = await SysML2DaeLowerer.lowerSystem(primarySource, undefined, {
+        queryDb,
+        workspaceIndex: sysmlIndex as any,
+        rootComponentName: args.model || args.name,
+      });
+    } else {
+      arena = context.flattenArena(args.name, undefined, undefined, {
+        backend: args.flattener,
+      });
+    }
     profiler.end("flattening");
 
     Context.gcBetweenPhases();

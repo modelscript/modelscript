@@ -49,11 +49,13 @@ import { ogRouter } from "./routes/og.js";
 import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
+import { provisioningRouter } from "./routes/provisioning.js";
 import { publishRouter } from "./routes/publish.js";
 import { pushRouter } from "./routes/push.js";
 import { rdfRouter } from "./routes/rdf.js";
 import { referencesRouter } from "./routes/references.js";
 import { reposRouter } from "./routes/repos.js";
+import { rfqRouter } from "./routes/rfq.js";
 import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
 import { createPostEvidenceRouter, createSigningKeysRouter } from "./routes/signing-keys.js";
@@ -64,6 +66,7 @@ import { renderSolutionBundleHtml, solutionsRouter } from "./routes/solutions.js
 import { spacesRouter } from "./routes/spaces.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
+import { supplyChainRouter } from "./routes/supply-chain.js";
 import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
 import { threadRouter } from "./routes/thread.js";
 import { twinsRouter } from "./routes/twins.js";
@@ -693,6 +696,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/posts", createPostEvidenceRouter(database));
   app.use("/api/v1/solutions", solutionsRouter(database));
   app.use("/api/v1/spaces", spacesRouter(database));
+  app.use("/api/v1/spaces", rfqRouter());
+  app.use("/api/v1/supply-chain", supplyChainRouter());
+  app.use("/api/v1/provisioning", provisioningRouter());
   app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
   const mountedReferencesRouter = referencesRouter(database);
   app.use("/api/v1/references", mountedReferencesRouter);
@@ -1125,7 +1131,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       if (
         /^\/(?:posts|p)\/\d+/.test(safePath) ||
         /^\/packages?\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)/.test(safePath) ||
-        /^\/(?:@|u\/)[a-zA-Z0-9_.-]+/.test(safePath)
+        /^\/(?:@|u\/)[a-zA-Z0-9_.-]+/.test(safePath) ||
+        safePath === "/" ||
+        safePath === ""
       ) {
         try {
           const meta = resolveSeoMetadata(req, database);

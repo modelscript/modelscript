@@ -63,36 +63,40 @@ export function toNonlinearConstraint(g: GuardConstraint): NonlinearConstraint {
 /**
  * Negates a single constraint into an array of equivalent non-linear inequalities.
  */
-function negateNlConstraint(c: NonlinearConstraint, eps = 1e-5): NonlinearConstraint[] {
+function negateNlConstraint(c: NonlinearConstraint): NonlinearConstraint[] {
   if (c.rel === "<=") {
-    return [{ expr: c.expr, rel: ">=", rhs: c.rhs + eps }];
+    return [{ expr: c.expr, rel: ">", rhs: c.rhs }];
+  } else if (c.rel === "<") {
+    return [{ expr: c.expr, rel: ">=", rhs: c.rhs }];
   } else if (c.rel === ">=") {
-    return [{ expr: c.expr, rel: "<=", rhs: c.rhs - eps }];
+    return [{ expr: c.expr, rel: "<", rhs: c.rhs }];
+  } else if (c.rel === ">") {
+    return [{ expr: c.expr, rel: "<=", rhs: c.rhs }];
   } else {
     return [
-      { expr: c.expr, rel: "<=", rhs: c.rhs - eps },
-      { expr: c.expr, rel: ">=", rhs: c.rhs + eps },
+      { expr: c.expr, rel: "<", rhs: c.rhs },
+      { expr: c.expr, rel: ">", rhs: c.rhs },
     ];
   }
 }
 
-function negateGuard(g: GuardConstraint, eps = 1e-5): NonlinearConstraint[] {
+function negateGuard(g: GuardConstraint): NonlinearConstraint[] {
   if (g.nonlinear) {
-    return negateNlConstraint(g.nonlinear, eps);
+    return negateNlConstraint(g.nonlinear);
   }
   const varName = g.variable;
   if (g.operator === "<") {
     return [{ expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value }];
   } else if (g.operator === "<=") {
-    return [{ expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value + eps }];
+    return [{ expr: { kind: "var", name: varName }, rel: ">", rhs: g.value }];
   } else if (g.operator === ">") {
     return [{ expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value }];
   } else if (g.operator === ">=") {
-    return [{ expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value - eps }];
+    return [{ expr: { kind: "var", name: varName }, rel: "<", rhs: g.value }];
   } else {
     return [
-      { expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value - eps },
-      { expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value + eps },
+      { expr: { kind: "var", name: varName }, rel: "<", rhs: g.value },
+      { expr: { kind: "var", name: varName }, rel: ">", rhs: g.value },
     ];
   }
 }

@@ -3,7 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getComputeProfile } from "./compute-profiles.js";
+import { KubeRayDriver } from "./drivers/kuberay-driver.js";
 import { LocalProcessDriver, type LocalDriverOptions } from "./drivers/local-driver.js";
+import { PbsDriver } from "./drivers/pbs-driver.js";
 import { SlurmDriver } from "./drivers/slurm-driver.js";
 import { SlurmRestDriver } from "./drivers/slurm-rest-driver.js";
 import type { ComputeProfile, HpcDriver, HpcJobSpec, HpcSubmissionResult, HpcUsageMetrics } from "./hpc-types.js";
@@ -13,7 +15,7 @@ import { getObjectStager, type ObjectStager } from "./staging/index.js";
 export interface HpcEngineOptions {
   driver?: HpcDriver | undefined;
   stager?: ObjectStager | undefined;
-  defaultBackend?: "local" | "slurm" | "slurm-rest" | "mock" | undefined;
+  defaultBackend?: "local" | "slurm" | "slurm-rest" | "pbs" | "kuberay" | "mock" | undefined;
   localOptions?: LocalDriverOptions | undefined;
 }
 
@@ -38,6 +40,13 @@ export class HpcEngine {
         });
       } else if (backend === "slurm") {
         this.driver = new SlurmDriver();
+      } else if (backend === "pbs") {
+        this.driver = new PbsDriver();
+      } else if (backend === "kuberay" || process.env["RAY_DASHBOARD_URL"]) {
+        this.driver = new KubeRayDriver({
+          baseUrl: process.env["RAY_DASHBOARD_URL"] || "http://localhost:8265",
+          token: process.env["RAY_TOKEN"],
+        });
       } else {
         this.driver = new LocalProcessDriver(options.localOptions);
       }
@@ -135,27 +144,9 @@ export class HpcEngine {
 
     // Polling loop
     while (true) {
-      // 1. Read any new log content
-      if (onLogChunk && fs.existsSync(logPath)) {
-        try {
-          const stats = fs.statSync(logPath);
-          if (stats.size > bytesRead) {
-            const stream = fs.createReadStream(logPath, { start: bytesRead, end: stats.size });
-            for await (const chunk of stream) {
-              onLogChunk(chunk.toString("utf8"));
-            }
-            bytesRead = stats.size;
-          }
-        } catch {
-          // File may be temporarily locked
-        }
-      }
-
-      // 2. Check job status
-      const status = await this.driver.pollStatus(nativeJobId);
-      if (status.state === "COMPLETED" || status.state === "FAILED" || status.state === "CANCELLED") {
-        // Read any final log trailing bytes
-        if (onLogChunk && fs.existsSync(logPath)) {
+      // 1. Read any new log content (local or remote in-flight)
+      if (onLogChunk) {
+        if (fs.existsSync(logPath)) {
           try {
             const stats = fs.statSync(logPath);
             if (stats.size > bytesRead) {
@@ -166,12 +157,62 @@ export class HpcEngine {
               bytesRead = stats.size;
             }
           } catch {
-            // ignore
+            // File may be temporarily locked
+          }
+        } else if (this.stager.readLogChunk) {
+          const logicalJobId = this.nativeToLogicalJobId.get(nativeJobId) ?? nativeJobId;
+          const candidateKeys = [`jobs/${logicalJobId}/outputs/output.log`, `jobs/${nativeJobId}/outputs/output.log`];
+          for (const key of candidateKeys) {
+            try {
+              const res = await this.stager.readLogChunk(key, bytesRead);
+              if (res && res.chunk.length > 0) {
+                onLogChunk(res.chunk);
+                bytesRead = res.totalBytes;
+                break;
+              }
+            } catch {
+              // Remote file not ready
+            }
+          }
+        }
+      }
+
+      // 2. Check job status
+      const status = await this.driver.pollStatus(nativeJobId);
+      if (status.state === "COMPLETED" || status.state === "FAILED" || status.state === "CANCELLED") {
+        const logicalJobId = this.nativeToLogicalJobId.get(nativeJobId) ?? nativeJobId;
+
+        // Read any final log trailing bytes
+        if (onLogChunk) {
+          if (fs.existsSync(logPath)) {
+            try {
+              const stats = fs.statSync(logPath);
+              if (stats.size > bytesRead) {
+                const stream = fs.createReadStream(logPath, { start: bytesRead, end: stats.size });
+                for await (const chunk of stream) {
+                  onLogChunk(chunk.toString("utf8"));
+                }
+                bytesRead = stats.size;
+              }
+            } catch {
+              // ignore
+            }
+          } else if (this.stager.readLogChunk) {
+            const candidateKeys = [`jobs/${logicalJobId}/outputs/output.log`, `jobs/${nativeJobId}/outputs/output.log`];
+            for (const key of candidateKeys) {
+              try {
+                const res = await this.stager.readLogChunk(key, bytesRead);
+                if (res && res.chunk.length > 0) {
+                  onLogChunk(res.chunk);
+                  bytesRead = res.totalBytes;
+                  break;
+                }
+              } catch {}
+            }
           }
         }
 
         // If remote S3 staging was active, pull back remote outputs to workingDir
-        const logicalJobId = this.nativeToLogicalJobId.get(nativeJobId) ?? nativeJobId;
         this.nativeToLogicalJobId.delete(nativeJobId);
 
         if (this.stager.type === "s3") {

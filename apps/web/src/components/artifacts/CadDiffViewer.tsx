@@ -173,6 +173,7 @@ function CadMeshModels({
   blendRatio,
   clippingPlane,
   assemblySpan,
+  wireframe,
 }: {
   baseGeometries: THREE.BufferGeometry[];
   headGeometries: THREE.BufferGeometry[];
@@ -180,11 +181,12 @@ function CadMeshModels({
   blendRatio: number;
   clippingPlane: THREE.Plane | null;
   assemblySpan: number;
+  wireframe?: boolean | undefined;
 }) {
   const tokens = useThemeTokens();
   const clippingPlanes = useMemo(() => (clippingPlane ? [clippingPlane] : []), [clippingPlane]);
 
-  // Base Material (Status fail color for removed / base geometry)
+  // Base Material (Status fail color for removed / base geometry with Z-fighting mitigation)
   const baseMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(tokens.status.fail.fg),
@@ -196,8 +198,12 @@ function CadMeshModels({
       side: THREE.DoubleSide,
       clippingPlanes,
       clipShadows: true,
+      wireframe: !!wireframe,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
-  }, [mode, blendRatio, clippingPlanes, tokens.status.fail.fg]);
+  }, [mode, blendRatio, clippingPlanes, tokens.status.fail.fg, wireframe]);
 
   // Head Material (Status pass color for new / added geometry)
   const headMaterial = useMemo(() => {
@@ -211,8 +217,9 @@ function CadMeshModels({
       side: THREE.DoubleSide,
       clippingPlanes,
       clipShadows: true,
+      wireframe: !!wireframe,
     });
-  }, [mode, blendRatio, clippingPlanes, tokens.status.pass.fg]);
+  }, [mode, blendRatio, clippingPlanes, tokens.status.pass.fg, wireframe]);
 
   useEffect(() => {
     return () => {
@@ -273,6 +280,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
   const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
   const [clipOffset, setClipOffset] = useState(0);
   const [clipInvert, setClipInvert] = useState(false);
+  const [showWireframe, setShowWireframe] = useState(false);
 
   const controlsRef = useRef<any>(null);
 
@@ -281,10 +289,14 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
     setLoading(true);
     setError(null);
 
-    async function loadMesh(url: string, isHead: boolean): Promise<THREE.BufferGeometry[]> {
+    async function loadMesh(url: string, _isHead: boolean): Promise<THREE.BufferGeometry[]> {
       // 1. Try direct fetch for pre-tessellated mesh JSON
       try {
         const res = await fetch(url);
+        if (res.status === 404) {
+          // Model does not exist in this revision (added or removed)
+          return [];
+        }
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.meshes) && data.meshes.length > 0) {
@@ -305,14 +317,26 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
         // Fallback below
       }
 
-      throw new Error(`Failed to load CAD geometry meshes for ${isHead ? "head revision" : "base revision"}`);
+      return [];
     }
 
     Promise.all([loadMesh(baseMeshUrl, false), loadMesh(headMeshUrl, true)])
       .then(([baseGeos, headGeos]) => {
         if (!active) return;
+        if (baseGeos.length === 0 && headGeos.length === 0) {
+          setError("No 3D CAD mesh geometry found for either revision");
+          setLoading(false);
+          return;
+        }
         setBaseGeometries(baseGeos);
         setHeadGeometries(headGeos);
+        if (baseGeos.length === 0) {
+          setMode("head");
+        } else if (headGeos.length === 0) {
+          setMode("base");
+        } else {
+          setMode("diff");
+        }
         setLoading(false);
       })
       .catch((err) => {
@@ -344,31 +368,54 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
     };
   }, [headGeometries]);
 
-  // Combined Bounding Box & Span
-  const { combinedSpan, baseStats, headStats } = useMemo(() => {
-    if (!baseGeometries || !headGeometries) {
+  // Combined Bounding Box, Span & Packaging Envelope Delta
+  const { combinedSpan, baseStats, headStats, baseSize, headSize, deltaSize } = useMemo(() => {
+    const hasBase = Boolean(baseGeometries && baseGeometries.length > 0);
+    const hasHead = Boolean(headGeometries && headGeometries.length > 0);
+
+    if (!hasBase && !hasHead) {
       return {
         combinedSpan: 50,
         baseStats: null,
         headStats: null,
+        baseSize: null,
+        headSize: null,
+        deltaSize: null,
       };
     }
 
-    const bStats = computeStats(baseGeometries);
-    const hStats = computeStats(headGeometries);
+    const bStats = hasBase ? computeStats(baseGeometries!) : null;
+    const hStats = hasHead ? computeStats(headGeometries!) : null;
 
     const totalBox = new THREE.Box3();
-    totalBox.union(bStats.boundingBox);
-    totalBox.union(hStats.boundingBox);
+    if (bStats) totalBox.union(bStats.boundingBox);
+    if (hStats) totalBox.union(hStats.boundingBox);
 
     const size = new THREE.Vector3();
     totalBox.getSize(size);
     const span = Math.max(size.x, size.y, size.z, 20);
 
+    const bSize = new THREE.Vector3();
+    bStats?.boundingBox.getSize(bSize);
+    const hSize = new THREE.Vector3();
+    hStats?.boundingBox.getSize(hSize);
+
+    const dSize =
+      bStats && hStats
+        ? {
+            x: Number((hSize.x - bSize.x).toFixed(1)),
+            y: Number((hSize.y - bSize.y).toFixed(1)),
+            z: Number((hSize.z - bSize.z).toFixed(1)),
+          }
+        : null;
+
     return {
       combinedSpan: span,
       baseStats: bStats,
       headStats: hStats,
+      baseSize: bStats ? bSize : null,
+      headSize: hStats ? hSize : null,
+      deltaSize: dSize,
     };
   }, [baseGeometries, headGeometries]);
 
@@ -394,7 +441,9 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
     }
   };
 
-  const triangleDelta = headStats && baseStats ? headStats.triangles - baseStats.triangles : 0;
+  const hasBase = Boolean(baseGeometries && baseGeometries.length > 0);
+  const hasHead = Boolean(headGeometries && headGeometries.length > 0);
+  const hasBoth = hasBase && hasHead;
 
   return (
     <ViewerContainer $height={height}>
@@ -407,24 +456,32 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
           </div>
 
           <SegmentedControl aria-label="Diff Display Mode">
-            <SegmentedControl.Button selected={mode === "diff"} onClick={() => setMode("diff")}>
-              Overlay Diff
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={mode === "side-by-side"} onClick={() => setMode("side-by-side")}>
-              Side-by-Side
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={mode === "base"} onClick={() => setMode("base")}>
-              {`v${baseVersion} (Base)`}
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={mode === "head"} onClick={() => setMode("head")}>
-              {`v${headVersion} (Head)`}
-            </SegmentedControl.Button>
+            {hasBoth && (
+              <SegmentedControl.Button selected={mode === "diff"} onClick={() => setMode("diff")}>
+                Overlay Diff
+              </SegmentedControl.Button>
+            )}
+            {hasBoth && (
+              <SegmentedControl.Button selected={mode === "side-by-side"} onClick={() => setMode("side-by-side")}>
+                Side-by-Side
+              </SegmentedControl.Button>
+            )}
+            {hasBase && (
+              <SegmentedControl.Button selected={mode === "base"} onClick={() => setMode("base")}>
+                {`v${baseVersion} (Base)`}
+              </SegmentedControl.Button>
+            )}
+            {hasHead && (
+              <SegmentedControl.Button selected={mode === "head"} onClick={() => setMode("head")}>
+                {`v${headVersion} (Head)`}
+              </SegmentedControl.Button>
+            )}
           </SegmentedControl>
         </ToolbarGroup>
 
         <ToolbarGroup>
           {/* Opacity slider for Overlay Diff */}
-          {mode === "diff" && (
+          {mode === "diff" && hasBoth && (
             <ControlPill>
               <SlidersIcon size={14} />
               <span>Balance:</span>
@@ -486,6 +543,15 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
             )}
           </ControlPill>
 
+          <Button
+            size="small"
+            variant={showWireframe ? "primary" : "default"}
+            onClick={() => setShowWireframe(!showWireframe)}
+            sx={{ fontSize: 12 }}
+          >
+            Wireframe
+          </Button>
+
           <Button size="small" onClick={resetCamera} sx={{ fontSize: 12 }}>
             <SyncIcon size={12} /> Reset View
           </Button>
@@ -542,7 +608,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
           </div>
         )}
 
-        {baseGeometries && headGeometries && (
+        {(hasBase || hasHead) && (
           <Canvas
             camera={{
               position: [combinedSpan * 1.2, combinedSpan * 0.9, combinedSpan * 1.5],
@@ -560,12 +626,13 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
 
             <Suspense fallback={null}>
               <CadMeshModels
-                baseGeometries={baseGeometries}
-                headGeometries={headGeometries}
+                baseGeometries={baseGeometries || []}
+                headGeometries={headGeometries || []}
                 mode={mode}
                 blendRatio={blendRatio}
                 clippingPlane={clippingPlane}
                 assemblySpan={combinedSpan}
+                wireframe={showWireframe}
               />
             </Suspense>
 
@@ -576,10 +643,46 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
         {/* ── Floating Metrics & Legend ── */}
         <FloatingMetricsBar>
           <MetricsCard>
-            <LegendItem $color={tokens.status.fail.fg}>v{baseVersion} (Removed)</LegendItem>
-            <LegendItem $color={tokens.status.pass.fg}>v{headVersion} (Added)</LegendItem>
-            {mode === "diff" && <LegendItem $color={tokens.status.warn.fg}>Intersection (Overlapping)</LegendItem>}
+            {hasBoth ? (
+              <>
+                <LegendItem $color={tokens.status.fail.fg}>v{baseVersion} (Removed)</LegendItem>
+                <LegendItem $color={tokens.status.pass.fg}>v{headVersion} (Added)</LegendItem>
+                {mode === "diff" && <LegendItem $color={tokens.status.warn.fg}>Intersection (Overlapping)</LegendItem>}
+              </>
+            ) : hasHead ? (
+              <LegendItem $color={tokens.status.pass.fg}>New CAD Model (v{headVersion})</LegendItem>
+            ) : (
+              <LegendItem $color={tokens.status.fail.fg}>Deleted CAD Model (v{baseVersion})</LegendItem>
+            )}
           </MetricsCard>
+
+          {(baseSize || headSize) && (
+            <MetricsCard>
+              <span>
+                Envelope:{" "}
+                <strong>
+                  {headSize
+                    ? `${headSize.x} × ${headSize.y} × ${headSize.z} mm`
+                    : `${baseSize?.x} × ${baseSize?.y} × ${baseSize?.z} mm`}
+                </strong>
+              </span>
+              {deltaSize && (
+                <span
+                  style={{
+                    color:
+                      deltaSize.x !== 0 || deltaSize.y !== 0 || deltaSize.z !== 0
+                        ? tokens.status.warn.fg
+                        : tokens.status.pass.fg,
+                    fontWeight: 600,
+                  }}
+                >
+                  Δ ({deltaSize.x >= 0 ? `+${deltaSize.x}` : deltaSize.x},{" "}
+                  {deltaSize.y >= 0 ? `+${deltaSize.y}` : deltaSize.y},{" "}
+                  {deltaSize.z >= 0 ? `+${deltaSize.z}` : deltaSize.z}) mm
+                </span>
+              )}
+            </MetricsCard>
+          )}
 
           {baseStats && headStats && (
             <MetricsCard>

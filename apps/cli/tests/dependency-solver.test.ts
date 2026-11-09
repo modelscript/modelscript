@@ -131,4 +131,54 @@ test("DependencySolver (PubGrub / SemVer Diamond Resolution & Modelica Parity)",
     assert.strictEqual(DependencySolver.normalizeModelicaVersion("4.0.0"), "^4.0.0");
     assert.strictEqual(DependencySolver.normalizeModelicaVersion("^3.2.0"), "^3.2.0");
   });
+
+  await t.test("Re-evaluates packages dynamically without retaining obsolete transitive constraints", async () => {
+    // Dynamic registry where App requires LibA and LibB.
+    // LibA@2.0.0 requires Common@^2.0.0
+    // LibB requires Common@^1.0.0
+    // If App allows LibA@^1.0.0 (which requires Common@^1.0.0), both can resolve to Common@1.x
+    const reg: Record<string, { versions: string[]; manifests: Record<string, PackageManifest> }> = {
+      LibA: {
+        versions: ["1.0.0", "2.0.0"],
+        manifests: {
+          "2.0.0": { name: "LibA", version: "2.0.0", dependencies: { Common: "^2.0.0" } },
+          "1.0.0": { name: "LibA", version: "1.0.0", dependencies: { Common: "^1.0.0" } },
+        },
+      },
+      LibB: {
+        versions: ["1.0.0"],
+        manifests: {
+          "1.0.0": { name: "LibB", version: "1.0.0", dependencies: { Common: "^1.0.0" } },
+        },
+      },
+      Common: {
+        versions: ["1.0.0", "1.5.0", "2.0.0"],
+        manifests: {
+          "1.0.0": { name: "Common", version: "1.0.0", dependencies: {} },
+          "1.5.0": { name: "Common", version: "1.5.0", dependencies: {} },
+          "2.0.0": { name: "Common", version: "2.0.0", dependencies: {} },
+        },
+      },
+    };
+
+    const prov: PackageVersionProvider = {
+      async getVersions(name: string): Promise<string[]> {
+        return reg[name]?.versions || [];
+      },
+      async getManifest(name: string, ver: string): Promise<PackageManifest | null> {
+        return reg[name]?.manifests[ver] || { name, version: ver };
+      },
+    };
+
+    const solver = new DependencySolver(prov);
+    const result = await solver.solve([
+      { name: "LibA", range: "1.0.0" },
+      { name: "LibB", range: "^1.0.0" },
+    ]);
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.packages["LibA"]?.version, "1.0.0");
+    assert.strictEqual(result.packages["LibB"]?.version, "1.0.0");
+    assert.strictEqual(result.packages["Common"]?.version, "1.5.0");
+  });
 });

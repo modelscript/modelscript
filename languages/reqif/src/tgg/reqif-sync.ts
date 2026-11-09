@@ -41,11 +41,7 @@ export interface ReqIfSyncResult {
 }
 
 function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function findXmlElements(el: XmlElement | null, tagName: string, out: XmlElement[] = []): XmlElement[] {
@@ -70,9 +66,7 @@ export function projectReqIfViaTgg(
   options?: ProjectReqIfViaTggOptions,
 ): { sysmlText: string; transformer: PolyglotTransformer; doc: ReqIfDocument } {
   const isRawString = typeof reqifXmlOrDoc === "string";
-  const doc = isRawString
-    ? parseReqIf(reqifXmlOrDoc, { contractPolicy: options?.contractPolicy })
-    : reqifXmlOrDoc;
+  const doc = isRawString ? parseReqIf(reqifXmlOrDoc, { contractPolicy: options?.contractPolicy }) : reqifXmlOrDoc;
   const transformer = options?.transformer ?? new PolyglotTransformer(reqifPolyglotConfig);
 
   const isStandaloneSnippet =
@@ -188,13 +182,12 @@ export function synchronizeSysml2ToReqIf(
   const renderedFallbackObjects: string[] = [];
 
   for (let idx = 0; idx < sysmlCst.requirementDefs.length; idx++) {
-    const reqNode = sysmlCst.requirementDefs[idx]!;
+    const reqNode = sysmlCst.requirementDefs[idx];
+    if (!reqNode) continue;
     const rawDefId = reqNode.id.endsWith("_Def") ? reqNode.id.slice(0, -4) : reqNode.id;
 
     // Resolve original SpecObject by ID, normalized ID, or positional fallback (rename resilience)
-    let origObj =
-      originalDoc.specObjects.get(rawDefId) ??
-      originalDoc.specObjects.get(rawDefId.replace(/_/g, "-"));
+    let origObj = originalDoc.specObjects.get(rawDefId) ?? originalDoc.specObjects.get(rawDefId.replace(/_/g, "-"));
     if (!origObj) {
       for (const candidate of origSpecEntries) {
         if (candidate.identifier.replace(/[^a-zA-Z0-9_]/g, "_") === rawDefId) {
@@ -310,7 +303,7 @@ export function synchronizeSysml2ToReqIf(
       let resolvedAsil = newAsil;
       if (oldAsil && oldAsil !== newAsil) {
         const conflictId = `${resolvedReqId}.asilLevel`;
-        transformer.recordConflict(conflictId, oldAsil, newAsil, reqifTggRules[0]!.name);
+        transformer.recordConflict(conflictId, oldAsil, newAsil, reqifTggRules[0]?.name ?? "ReqIF-SysML-Sync");
         transformer.resolveConflict(conflictId, strategy === "source-wins" ? "source" : "target");
         resolvedAsil = strategy === "source-wins" ? oldAsil : newAsil;
         changes.push({
@@ -333,7 +326,9 @@ export function synchronizeSysml2ToReqIf(
     // Locate corresponding <SPEC-OBJECT> in the lossless XML CST and apply surgical splices
     const xmlEl =
       specObjElements.find(
-        (el) => el.attributes.find((a: any) => a.name.toUpperCase() === "IDENTIFIER")?.value === (origObj?.identifier ?? resolvedReqId),
+        (el) =>
+          el.attributes.find((a: any) => a.name.toUpperCase() === "IDENTIFIER")?.value ===
+          (origObj?.identifier ?? resolvedReqId),
       ) ?? specObjElements[idx];
 
     if (xmlEl) {

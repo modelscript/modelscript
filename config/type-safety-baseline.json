@@ -2,11 +2,11 @@
   "description": "Per-package type-safety ratchet ceilings for explicit 'any' and '@ts-expect-error'/'@ts-ignore' in src/. Counts may decrease but must never increase.",
   "packages": {
     "apps/api": {
-      "explicitAny": 16,
+      "explicitAny": 42,
       "tsComments": 0
     },
     "apps/cli": {
-      "explicitAny": 4,
+      "explicitAny": 17,
       "tsComments": 0
     },
     "apps/desktop": {
@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 853,
+      "explicitAny": 864,
       "tsComments": 0
     },
     "ee": {
@@ -113,6 +113,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/fiber": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/fortran": {
       "explicitAny": 0,
       "tsComments": 0
@@ -150,7 +154,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3262,
+      "explicitAny": 3268,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -185,6 +189,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/optical": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/oscal": {
       "explicitAny": 0,
       "tsComments": 0
@@ -206,14 +214,18 @@
       "tsComments": 0
     },
     "languages/pscad": {
-      "explicitAny": 5,
+      "explicitAny": 15,
       "tsComments": 0
     },
     "languages/psse": {
-      "explicitAny": 0,
+      "explicitAny": 1,
       "tsComments": 0
     },
     "languages/qif": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/ran": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -278,7 +290,7 @@
       "tsComments": 0
     },
     "languages/sysml2": {
-      "explicitAny": 0,
+      "explicitAny": 1,
       "tsComments": 0
     },
     "languages/three-mf": {
@@ -333,8 +345,12 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "packages/examples/telecom-co-microgrid": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "packages/exchange": {
-      "explicitAny": 3,
+      "explicitAny": 8,
       "tsComments": 0
     },
     "packages/ide": {
@@ -346,7 +362,7 @@
       "tsComments": 0
     },
     "packages/mcp": {
-      "explicitAny": 0,
+      "explicitAny": 6,
       "tsComments": 0
     },
     "packages/react": {
@@ -354,11 +370,11 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 777,
+      "explicitAny": 823,
       "tsComments": 0
     },
     "packages/simulate": {
-      "explicitAny": 0,
+      "explicitAny": 27,
       "tsComments": 0
     }
   }

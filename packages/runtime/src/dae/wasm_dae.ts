@@ -230,6 +230,26 @@ export enum ExprKind {
   PartialFunc = 19,
   /** Object/record constructor. */
   Object = 20,
+  /** Tensor slice: data1 = base ExprId, left = slice range ExprId, right = axis index. */
+  TensorSlice = 21,
+  /** Tensor broadcast: data1 = target shape info, left = operand ExprId, right = axis flags. */
+  TensorBroadcast = 22,
+  /** Tensor matrix multiplication: data1 = flags, left = lhs ExprId, right = rhs ExprId. */
+  TensorMatMul = 23,
+  /** Tensor reduction: data1 = TensorReduceOp, left = operand ExprId, right = axis index. */
+  TensorReduce = 24,
+  /** Tensor elementwise map: data1 = operator ID, left = operand ExprId, right = aux. */
+  TensorMap = 25,
+}
+
+/** Reduction operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.TensorReduce`. */
+export enum TensorReduceOp {
+  Sum = 0,
+  Product = 1,
+  Max = 2,
+  Min = 3,
+  Mean = 4,
+  Norm2 = 5,
 }
 
 /** Binary operator tag. */
@@ -704,6 +724,10 @@ export class WasmDaeBridge implements IDaeBuilder {
   public namedArrayShapes = new Map<string, number[]>();
   /** Map from unsubscripted array base prefix to the list of scalarized element variable indices. */
   public baseArrayIndices = new Map<string, number[]>();
+  /** Map from expression ID to tensor shape dimensions. */
+  public exprTensorShapes = new Map<number, number[]>();
+  /** Map from equation index to preserved array equation shape dimensions. */
+  public equationShapes = new Map<number, number[]>();
   /** Map from variable index to overridden/renamed variable name. */
   public _renamedVars = new Map<number, string>();
   /** Reverse lookup map from overridden/renamed variable name to variable index. */
@@ -723,7 +747,9 @@ export class WasmDaeBridge implements IDaeBuilder {
         list = [];
         this.baseArrayIndices.set(base, list);
       }
-      if (!list.includes(varIdx)) {
+      if (list.length === 0 || varIdx > list[list.length - 1]!) {
+        list.push(varIdx);
+      } else if (!list.includes(varIdx)) {
         list.push(varIdx);
       }
       pos++;
@@ -870,6 +896,23 @@ export class WasmDaeBridge implements IDaeBuilder {
 
     if (this.ptr && daeFinalizationRegistry) {
       daeFinalizationRegistry.register(this, { exports: this.exports, ptr: this.ptr }, this);
+    }
+
+    if (this.ptr && this.interner) {
+      this.syncWasmStringPool();
+    }
+  }
+
+  /**
+   * Synchronizes all strings from this arena's `StringInterner` into the underlying
+   * WebAssembly linear memory string pool.
+   */
+  public syncWasmStringPool(): void {
+    if (!this.ptr || !this.exports?.dae_getStringPool) return;
+    const spPtr = this.exports.dae_getStringPool(this.ptr);
+    if (!spPtr) return;
+    if (this.interner && typeof (this.interner as any).syncToWasmPool === "function") {
+      (this.interner as any).syncToWasmPool(this.exports, spPtr);
     }
   }
 
@@ -2691,6 +2734,77 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   addIfElseExpr(condExpr: number, trueExpr: number, falseExpr: number): number {
     return this.addIfElse(condExpr, trueExpr, falseExpr);
+  }
+
+  /**
+   * Sets the tensor shape dimensions for expression at `exprId`.
+   */
+  setExprTensorShape(exprId: number, shape: number[]): void {
+    this.exprTensorShapes.set(exprId, [...shape]);
+  }
+
+  /**
+   * Returns the tensor shape dimensions for expression at `exprId`, if set.
+   */
+  getExprTensorShape(exprId: number): number[] | undefined {
+    return this.exprTensorShapes.get(exprId);
+  }
+
+  /**
+   * Returns the shape dimensions for preserved array equation at `eqIdx`, if set.
+   */
+  getEquationShape(eqIdx: number): number[] | undefined {
+    return this.equationShapes.get(eqIdx);
+  }
+
+  /**
+   * Appends a multidimensional tensor slice expression (`baseExpr[sliceExpr]` along `axis`) to the arena.
+   */
+  addTensorSlice(baseExpr: number, sliceExpr: number, axis = 0): number {
+    return this.addExpression(ExprKind.TensorSlice, baseExpr, sliceExpr, axis);
+  }
+
+  /**
+   * Appends a tensor broadcast expression (broadcasting `operandExpr` to `targetShape`) to the arena.
+   */
+  addTensorBroadcast(operandExpr: number, targetShape: number[], axis = 0): number {
+    const exprId = this.addExpression(ExprKind.TensorBroadcast, axis, operandExpr, targetShape.length);
+    this.setExprTensorShape(exprId, targetShape);
+    return exprId;
+  }
+
+  /**
+   * Appends a tensor contraction / matrix multiplication expression (`lhs %*% rhs`) to the arena.
+   */
+  addTensorMatMul(lhsExpr: number, rhsExpr: number, flags = 0): number {
+    return this.addExpression(ExprKind.TensorMatMul, flags, lhsExpr, rhsExpr);
+  }
+
+  /**
+   * Appends a tensor reduction expression (sum, product, max, min, mean along `axis`) to the arena.
+   */
+  addTensorReduce(operandExpr: number, op: TensorReduceOp = TensorReduceOp.Sum, axis = -1): number {
+    return this.addExpression(ExprKind.TensorReduce, op, operandExpr, axis);
+  }
+
+  /**
+   * Appends an elementwise tensor mapping or unary transformation to the arena.
+   */
+  addTensorMap(operandExpr: number, opId: number, aux = 0): number {
+    return this.addExpression(ExprKind.TensorMap, opId, operandExpr, aux);
+  }
+
+  /**
+   * Preserves an array / tensor equation (`lhs = rhs` where lhs and rhs are vectors/tensors)
+   * without unrolling into individual scalar equations.
+   */
+  addArrayEquation(lhsExprId: number, rhsExprId: number, shape?: number[]): number {
+    const elementCount = shape ? shape.reduce((a, b) => a * b, 1) : 0;
+    const eqIdx = this.addEquation(EqKind.Array, lhsExprId, rhsExprId, elementCount);
+    if (shape && eqIdx >= 0) {
+      this.equationShapes.set(eqIdx, [...shape]);
+    }
+    return eqIdx;
   }
 
   /**
@@ -4781,6 +4895,49 @@ export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: nu
       return arena.addTupleExpr(elems);
     }
 
+    case ExprKind.TensorSlice: {
+      const base = arena.getExprData1(exprId);
+      const slice = arena.getExprLeft(exprId);
+      const axis = arena.getExprRight(exprId);
+      const dBase = differentiateArenaExpressionWrt(arena, base, wrtVarId);
+      return arena.addTensorSlice(dBase, slice, axis);
+    }
+
+    case ExprKind.TensorBroadcast: {
+      const op = arena.getExprLeft(exprId);
+      const axis = arena.getExprData1(exprId);
+      const shape = arena.getExprTensorShape(exprId) ?? [];
+      const dOp = differentiateArenaExpressionWrt(arena, op, wrtVarId);
+      return arena.addTensorBroadcast(dOp, shape, axis);
+    }
+
+    case ExprKind.TensorMatMul: {
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+      const flags = arena.getExprData1(exprId);
+      const dLeft = differentiateArenaExpressionWrt(arena, left, wrtVarId);
+      const dRight = differentiateArenaExpressionWrt(arena, right, wrtVarId);
+      const term1 = arena.addTensorMatMul(dLeft, right, flags);
+      const term2 = arena.addTensorMatMul(left, dRight, flags);
+      return arena.addBinaryExpr(BinOp.Add, term1, term2);
+    }
+
+    case ExprKind.TensorReduce: {
+      const op = arena.getExprLeft(exprId);
+      const redOp = arena.getExprData1(exprId);
+      const axis = arena.getExprRight(exprId);
+      const dOp = differentiateArenaExpressionWrt(arena, op, wrtVarId);
+      return arena.addTensorReduce(dOp, redOp, axis);
+    }
+
+    case ExprKind.TensorMap: {
+      const op = arena.getExprLeft(exprId);
+      const opId = arena.getExprData1(exprId);
+      const aux = arena.getExprRight(exprId);
+      const dOp = differentiateArenaExpressionWrt(arena, op, wrtVarId);
+      return arena.addTensorMap(dOp, opId, aux);
+    }
+
     default:
       return arena.addRealLiteral(0.0);
   }
@@ -4948,6 +5105,49 @@ function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number
         elems.push(differentiateArenaExpressionWrtSet(arena, arena.getExprLeft(exprId + i), wrtVarIds));
       }
       return arena.addTupleExpr(elems);
+    }
+
+    case ExprKind.TensorSlice: {
+      const base = arena.getExprData1(exprId);
+      const slice = arena.getExprLeft(exprId);
+      const axis = arena.getExprRight(exprId);
+      const dBase = differentiateArenaExpressionWrtSet(arena, base, wrtVarIds);
+      return arena.addTensorSlice(dBase, slice, axis);
+    }
+
+    case ExprKind.TensorBroadcast: {
+      const op = arena.getExprLeft(exprId);
+      const axis = arena.getExprData1(exprId);
+      const shape = arena.getExprTensorShape(exprId) ?? [];
+      const dOp = differentiateArenaExpressionWrtSet(arena, op, wrtVarIds);
+      return arena.addTensorBroadcast(dOp, shape, axis);
+    }
+
+    case ExprKind.TensorMatMul: {
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+      const flags = arena.getExprData1(exprId);
+      const dLeft = differentiateArenaExpressionWrtSet(arena, left, wrtVarIds);
+      const dRight = differentiateArenaExpressionWrtSet(arena, right, wrtVarIds);
+      const term1 = arena.addTensorMatMul(dLeft, right, flags);
+      const term2 = arena.addTensorMatMul(left, dRight, flags);
+      return arena.addBinaryExpr(BinOp.Add, term1, term2);
+    }
+
+    case ExprKind.TensorReduce: {
+      const op = arena.getExprLeft(exprId);
+      const redOp = arena.getExprData1(exprId);
+      const axis = arena.getExprRight(exprId);
+      const dOp = differentiateArenaExpressionWrtSet(arena, op, wrtVarIds);
+      return arena.addTensorReduce(dOp, redOp, axis);
+    }
+
+    case ExprKind.TensorMap: {
+      const op = arena.getExprLeft(exprId);
+      const opId = arena.getExprData1(exprId);
+      const aux = arena.getExprRight(exprId);
+      const dOp = differentiateArenaExpressionWrtSet(arena, op, wrtVarIds);
+      return arena.addTensorMap(dOp, opId, aux);
     }
 
     default:

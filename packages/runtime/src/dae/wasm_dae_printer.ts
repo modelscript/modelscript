@@ -1100,6 +1100,58 @@ export class ArenaDAEPrinter {
         break;
       }
 
+      case ExprKind.TensorSlice: {
+        const baseId = a.getExprData1(id);
+        const sliceId = a.getExprLeft(id);
+        const axis = a.getExprRight(id);
+        this.printExpr(baseId);
+        this.out.write("[");
+        this.printExpr(sliceId);
+        if (axis > 0) this.out.write(`, axis=${axis}`);
+        this.out.write("]");
+        break;
+      }
+
+      case ExprKind.TensorBroadcast: {
+        const operandId = a.getExprLeft(id);
+        const shape = a.getExprTensorShape?.(id);
+        this.out.write("broadcast(");
+        this.printExpr(operandId);
+        if (shape && shape.length > 0) {
+          this.out.write(`, shape=[${shape.join(", ")}]`);
+        }
+        this.out.write(")");
+        break;
+      }
+
+      case ExprKind.TensorMatMul: {
+        this.printExpr(a.getExprLeft(id));
+        this.out.write(" * ");
+        this.printExpr(a.getExprRight(id));
+        break;
+      }
+
+      case ExprKind.TensorReduce: {
+        const op = a.getExprData1(id);
+        const operandId = a.getExprLeft(id);
+        const axis = a.getExprRight(id);
+        const opName =
+          op === 0 ? "sum" : op === 1 ? "product" : op === 2 ? "max" : op === 3 ? "min" : op === 4 ? "mean" : "norm";
+        this.out.write(`${opName}(`);
+        this.printExpr(operandId);
+        if (axis >= 0) this.out.write(`, axis=${axis}`);
+        this.out.write(")");
+        break;
+      }
+
+      case ExprKind.TensorMap: {
+        const operandId = a.getExprLeft(id);
+        this.out.write("map(");
+        this.printExpr(operandId);
+        this.out.write(")");
+        break;
+      }
+
       default:
         this.out.write("?");
     }

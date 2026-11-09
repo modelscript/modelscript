@@ -215,6 +215,9 @@ export class S3ObjectStager implements ObjectStager {
       });
     }
 
+    const logSpec = outputUploads.find((o) => o.targetFilename === "output.log");
+    const logUploadUrl = logSpec?.uploadUrl;
+
     // 3. Generate prologue bash snippet
     const prologueLines = [
       `# --- MODELScript HPC Prologue (Input Staging) ---`,
@@ -223,11 +226,30 @@ export class S3ObjectStager implements ObjectStager {
       `echo "[HPC-Prologue] All inputs staged successfully."`,
     ];
 
+    if (logUploadUrl) {
+      prologueLines.push(
+        `# --- MODELScript HPC Background In-Flight Log Sync ---`,
+        `(`,
+        `  while true; do`,
+        `    sleep 2`,
+        `    for logfile in slurm-*.out pbs-*.out output.log; do`,
+        `      if [ -f "$logfile" ] && [ -s "$logfile" ]; then`,
+        `        curl -s -f -X PUT --data-binary @"$logfile" "${logUploadUrl}" 2>/dev/null || true`,
+        `        break`,
+        `      fi`,
+        `    done`,
+        `  done`,
+        `) &`,
+        `MSX_LOG_SYNC_PID=$!`,
+      );
+    }
+
     // 4. Generate epilogue bash snippet
     const epilogueLines = [
       `# --- MODELScript HPC Epilogue (Output Publishing) ---`,
+      `if [ -n "\${MSX_LOG_SYNC_PID:-}" ]; then kill $MSX_LOG_SYNC_PID 2>/dev/null || true; wait $MSX_LOG_SYNC_PID 2>/dev/null || true; fi`,
       `echo "[HPC-Epilogue] Publishing results for Job #${safeJobId}..."`,
-      `for f in slurm-*.out; do if [ -f "$f" ] && [ ! -f "output.log" ]; then cp "$f" "output.log"; break; fi; done`,
+      `for f in slurm-*.out pbs-*.out; do if [ -f "$f" ] && [ ! -f "output.log" ]; then cp "$f" "output.log"; break; fi; done`,
       ...outputUploads.map(
         (outSpec) =>
           `if [ -f "${outSpec.targetFilename}" ]; then curl -s -f -X PUT --data-binary @"${outSpec.targetFilename}" "${outSpec.uploadUrl}"; fi`,
@@ -242,5 +264,35 @@ export class S3ObjectStager implements ObjectStager {
       prologueScript: prologueLines.join("\n"),
       epilogueScript: epilogueLines.join("\n"),
     };
+  }
+
+  public async readLogChunk(
+    remoteKey: string,
+    startByte: number,
+  ): Promise<{ chunk: string; totalBytes: number } | null> {
+    try {
+      const getUrl = await this.getDownloadUrl(remoteKey);
+      const headers: Record<string, string> = {};
+      if (startByte > 0) {
+        headers["Range"] = `bytes=${startByte}-`;
+      }
+      const res = await this.fetchFn(getUrl, { method: "GET", headers });
+      if (res.status === 416) {
+        return null;
+      }
+      if (!res.ok) {
+        return null;
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      const chunkBuf = Buffer.from(arrayBuffer);
+      if (chunkBuf.byteLength === 0) {
+        return null;
+      }
+      const chunk = chunkBuf.toString("utf8");
+      const totalBytes = startByte + chunkBuf.byteLength;
+      return { chunk, totalBytes };
+    } catch {
+      return null;
+    }
   }
 }

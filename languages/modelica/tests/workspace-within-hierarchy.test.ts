@@ -55,7 +55,7 @@ end Child;`;
   const flattener = new ModelicaFlattener(qdb);
   const arena = flattener.flatten(childSym.id);
   const daeText = printArenaDAE(arena);
-  assert.ok(daeText.includes("Real s;"), "Flattened DAE should include resolved Sibling component");
+  assert.ok(daeText.includes("s.x"), "Flattened DAE should include resolved Sibling component");
 
   // Verify reindexing upon editor changes maintains within hierarchy
   const updatedChildCode = `within MyPackage;

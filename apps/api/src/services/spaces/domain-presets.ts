@@ -7,7 +7,8 @@ export type SpaceDomainPresetId =
   | "automotive_robotics"
   | "aerospace_cad"
   | "pharma_chem_bio"
-  | "med_radiology";
+  | "med_radiology"
+  | "fabless_electronics";
 
 export interface SpacePresetChannelSpec {
   slug: string;
@@ -631,6 +632,77 @@ end ArterialWindkessel;
 equation
   C * der(P) = 90.0 * max(0.0, sin(6.28 * time)) - P / R;
 end Windkessel;`,
+    },
+  },
+  fabless_electronics: {
+    id: "fabless_electronics",
+    name: "Fabless OEM Electronics & Contract Manufacturing (EMS)",
+    shortLabel: "Fabless Electronics",
+    icon: "circuit-board",
+    accentColor: "#10b981",
+    description:
+      "Digital handoff between fabless hardware OEMs and contract manufacturers (CMs): IPC-2581C, ODB++, live multi-tier distributor BOM scrubbing, DFM/DFA review, and spatial pin-annotated Engineering Queries.",
+    replacesTools: ["Altium 365", "Arena PLM", "MacroFab Portal", "Excel BOM Redlines", "Email DFM Review"],
+    complianceStandards: ["IPC-2581C (DPMX)", "ODB++ v8.1", "IPC-A-600 / IPC-A-610 Class 2/3", "RoHS 3 / REACH SVHC"],
+    languages: ["spice", "ibis", "verilog-a", "touchstone", "step", "qif", "modelica", "modelscript"],
+    enabledTabs: ["feed", "chat", "docs", "articles", "repos", "packages", "plm", "twins"],
+    defaultChannels: [
+      {
+        slug: "general",
+        name: "general",
+        topic: "Production scheduling, EMS coordination, and general hardware release updates",
+        kind: "text",
+      },
+      {
+        slug: "dfm-review",
+        name: "dfm-review",
+        topic: "Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) reviews",
+        kind: "ecr_review",
+      },
+      {
+        slug: "engineering-queries",
+        name: "engineering-queries",
+        topic: "Pin-annotated Engineering Queries (EQs) on PCB coordinates and deviation sign-offs",
+        kind: "ecr_review",
+      },
+      {
+        slug: "production-releases",
+        name: "production-releases",
+        topic: "Frozen release packages, IPC-2581C/ODB++ manufacturing archives, and Smart RFQ bundles",
+        kind: "announcement",
+      },
+      {
+        slug: "telemetry-qc",
+        name: "telemetry-qc",
+        topic: "In-Circuit Test (ICT), AOI defect maps, and functional test pass/fail telemetry",
+        kind: "telemetry",
+      },
+    ],
+    starterDocs: [
+      {
+        slug: "manufacturing-handbook",
+        title: "PCBA Manufacturing & Sourcing Specification",
+        summary: "Fabrication rules, stackup guidelines, approved vendor lists (AVL), and deviation workflows.",
+        pathInGit: "docs/manufacturing-handbook.md",
+        contentMarkdown: `# PCBA Manufacturing & Sourcing Specification
+
+## 1. Scope & Handoff Standard
+This Space manages production release bundles under strict **IPC-2581C** and **ODB++ v8.1** digital container formats.
+
+## 2. Engineering Query (EQ) Policy
+All component substitutions, clearance deviations, or solder mask adjustments must be submitted via spatial pin annotations in the **#engineering-queries** channel.
+`,
+      },
+    ],
+    sampleCodeSnippet: {
+      language: "modelscript",
+      title: "Manufacturing Specification & Stackup",
+      code: `manufacturing TitanBoard {
+  layer_count: 6;
+  board_thickness: 1.6 mm;
+  surface_finish: SurfaceFinish.ENIG;
+  ipc_class: IPCClass.Class2;
+}`,
     },
   },
 };

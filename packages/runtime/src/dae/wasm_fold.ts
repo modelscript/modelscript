@@ -3996,6 +3996,36 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
         const pathStr = dae.interner.resolve(pathId) || "";
         return out.addEnumLiteral(ordinal, pathStr);
       }
+      case ExprKind.TensorSlice: {
+        const base = cloneExpr(dae.getExprData1(exprId), indexSuffix, currentShape);
+        const slice = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        const axis = dae.getExprRight(exprId);
+        return out.addTensorSlice(base, slice, axis);
+      }
+      case ExprKind.TensorBroadcast: {
+        const op = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        const axis = dae.getExprData1(exprId);
+        const shape = dae.getExprTensorShape(exprId) ?? [];
+        return out.addTensorBroadcast(op, shape, axis);
+      }
+      case ExprKind.TensorMatMul: {
+        const left = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        const right = cloneExpr(dae.getExprRight(exprId), indexSuffix, currentShape);
+        const flags = dae.getExprData1(exprId);
+        return out.addTensorMatMul(left, right, flags);
+      }
+      case ExprKind.TensorReduce: {
+        const op = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        const redOp = dae.getExprData1(exprId);
+        const axis = dae.getExprRight(exprId);
+        return out.addTensorReduce(op, redOp, axis);
+      }
+      case ExprKind.TensorMap: {
+        const op = cloneExpr(dae.getExprLeft(exprId), indexSuffix, currentShape);
+        const opId = dae.getExprData1(exprId);
+        const aux = dae.getExprRight(exprId);
+        return out.addTensorMap(op, opId, aux);
+      }
       default:
         return exprId;
     }
@@ -5073,5 +5103,6 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
   });
   out.stateMachines = dae.stateMachines.map(cloneStateMachine);
 
+  out.syncWasmStringPool();
   return out;
 }

@@ -6,7 +6,10 @@ import {
   DatabaseIcon,
   DependabotIcon,
   DownloadIcon,
+  GraphIcon,
+  ListUnorderedIcon,
   PackageIcon,
+  SearchIcon,
   ShieldCheckIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
@@ -114,6 +117,447 @@ function renderDepRow(dep: string, range: string, kindLabel: string) {
   );
 }
 
+interface DagNode {
+  id: string;
+  name: string;
+  scope: string | null;
+  baseName: string;
+  version?: string | undefined;
+  range?: string | undefined;
+  level: number;
+  isRoot: boolean;
+  isDirect: boolean;
+  domains?: string[] | undefined;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface DagEdge {
+  id: string;
+  from: string;
+  to: string;
+  range?: string | undefined;
+  isDirect: boolean;
+}
+
+const DependencyDagExplorer: React.FC<{
+  rootName: string;
+  rootVersion: string;
+  dependencies: Record<string, string>;
+  devDependencies?: Record<string, string> | undefined;
+  lockfile: DataPackageLockJsonSummary | null;
+}> = ({ rootName, rootVersion, dependencies, devDependencies: _devDependencies, lockfile }) => {
+  const [search, setSearch] = useState("");
+  const [zoom, setZoom] = useState(1);
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+
+  const nodes: DagNode[] = [];
+  const edges: DagEdge[] = [];
+  const nodeMap = new Map<string, DagNode>();
+
+  const splitScope = (fullName: string): { scope: string | null; baseName: string } => {
+    if (fullName.startsWith("@") && fullName.includes("/")) {
+      const parts = fullName.split("/", 2);
+      return { scope: parts[0]!, baseName: parts[1]! };
+    }
+    return { scope: null, baseName: fullName };
+  };
+
+  // 1. Root node
+  const rootSplit = splitScope(rootName);
+  const rootNode: DagNode = {
+    id: rootName,
+    name: rootName,
+    scope: rootSplit.scope,
+    baseName: rootSplit.baseName,
+    version: rootVersion,
+    level: 0,
+    isRoot: true,
+    isDirect: true,
+    x: 40,
+    y: 0,
+    width: 210,
+    height: 56,
+  };
+  nodes.push(rootNode);
+  nodeMap.set(rootName, rootNode);
+
+  // 2. Direct dependencies (Level 1)
+  const directEntries = Object.entries(dependencies);
+  directEntries.forEach(([dep, range]) => {
+    const s = splitScope(dep);
+    const locked = lockfile?.packages?.[dep];
+    const n: DagNode = {
+      id: dep,
+      name: dep,
+      scope: s.scope,
+      baseName: s.baseName,
+      range,
+      version: locked?.version,
+      level: 1,
+      isRoot: false,
+      isDirect: true,
+      domains: locked?.domains ? Object.keys(locked.domains) : undefined,
+      x: 320,
+      y: 0,
+      width: 210,
+      height: 56,
+    };
+    nodes.push(n);
+    nodeMap.set(dep, n);
+    edges.push({
+      id: `${rootName}->${dep}`,
+      from: rootName,
+      to: dep,
+      range,
+      isDirect: true,
+    });
+  });
+
+  // 3. Transitive dependencies (Level 2)
+  if (lockfile?.packages) {
+    for (const [depName] of directEntries) {
+      const locked = lockfile.packages[depName];
+      if (locked && locked.dependencies) {
+        for (const [transDep, transRange] of Object.entries(locked.dependencies)) {
+          if (!nodeMap.has(transDep)) {
+            const s = splitScope(transDep);
+            const subLocked = lockfile.packages[transDep];
+            const tn: DagNode = {
+              id: transDep,
+              name: transDep,
+              scope: s.scope,
+              baseName: s.baseName,
+              range: transRange,
+              version: subLocked?.version,
+              level: 2,
+              isRoot: false,
+              isDirect: false,
+              domains: subLocked?.domains ? Object.keys(subLocked.domains) : undefined,
+              x: 600,
+              y: 0,
+              width: 210,
+              height: 56,
+            };
+            nodes.push(tn);
+            nodeMap.set(transDep, tn);
+          }
+          edges.push({
+            id: `${depName}->${transDep}`,
+            from: depName,
+            to: transDep,
+            range: transRange,
+            isDirect: false,
+          });
+        }
+      }
+    }
+  }
+
+  // Layout positions: Group by level
+  const levelGroups = new Map<number, DagNode[]>();
+  for (const n of nodes) {
+    if (!levelGroups.has(n.level)) levelGroups.set(n.level, []);
+    levelGroups.get(n.level)!.push(n);
+  }
+
+  const maxLevelCount = Math.max(...Array.from(levelGroups.values()).map((g) => g.length), 1);
+  const totalSvgHeight = Math.max(340, maxLevelCount * 76 + 50);
+  const totalSvgWidth = Math.max(860, (levelGroups.size || 1) * 280 + 80);
+
+  levelGroups.forEach((group) => {
+    const colHeight = group.length * 76;
+    const startY = (totalSvgHeight - colHeight) / 2 + 10;
+    group.forEach((node, i) => {
+      node.y = Math.round(startY + i * 76);
+    });
+  });
+
+  const isMatched = (n: DagNode) => {
+    if (!search.trim()) return true;
+    return n.name.toLowerCase().includes(search.toLowerCase());
+  };
+
+  return (
+    <GlassCard style={{ padding: 16, overflow: "hidden" }}>
+      {/* Controls Bar */}
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={3} gap={2} flexWrap="wrap">
+        <div style={{ position: "relative", minWidth: 240, maxWidth: 360, flex: 1 }}>
+          <SearchIcon size={14} style={{ position: "absolute", left: 10, top: 10, color: "var(--color-text-muted)" }} />
+          <input
+            type="text"
+            placeholder="Search dependency by name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "6px 12px 6px 32px",
+              borderRadius: 6,
+              background: "var(--color-canvas-subtle)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-primary)",
+              fontSize: 12.5,
+              outline: "none",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+            {nodes.length} nodes · {edges.length} edges
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            <Button size="small" onClick={() => setZoom((z) => Math.max(0.6, z - 0.15))}>
+              -
+            </Button>
+            <Button size="small" onClick={() => setZoom(1)}>
+              {Math.round(zoom * 100)}%
+            </Button>
+            <Button size="small" onClick={() => setZoom((z) => Math.min(1.8, z + 0.15))}>
+              +
+            </Button>
+          </div>
+        </div>
+      </Box>
+
+      {/* SVG Canvas */}
+      <div
+        style={{
+          width: "100%",
+          height: 420,
+          overflow: "auto",
+          background: "radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.03) 0%, transparent 80%)",
+          borderRadius: 8,
+          border: "1px solid var(--color-border-subtle, rgba(255,255,255,0.06))",
+          position: "relative",
+        }}
+      >
+        <svg
+          width={totalSvgWidth * zoom}
+          height={totalSvgHeight * zoom}
+          viewBox={`0 0 ${totalSvgWidth} ${totalSvgHeight}`}
+          style={{ display: "block" }}
+        >
+          <defs>
+            <marker
+              id="dag-arrow-solid"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--color-accent-cyan, #06b6d4)" />
+            </marker>
+            <marker
+              id="dag-arrow-dashed"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--color-text-muted, #8b949e)" />
+            </marker>
+          </defs>
+
+          {/* Render Edges */}
+          {edges.map((edge) => {
+            const from = nodeMap.get(edge.from);
+            const to = nodeMap.get(edge.to);
+            if (!from || !to) return null;
+
+            const x1 = from.x + from.width;
+            const y1 = from.y + from.height / 2;
+            const x2 = to.x;
+            const y2 = to.y + to.height / 2;
+            const dx = Math.max(30, (x2 - x1) / 2);
+
+            const isEdgeHovered = hoveredNode === edge.from || hoveredNode === edge.to;
+            const strokeColor = isEdgeHovered
+              ? "var(--color-accent-cyan, #06b6d4)"
+              : edge.isDirect
+                ? "rgba(6, 182, 212, 0.4)"
+                : "rgba(139, 148, 158, 0.35)";
+
+            return (
+              <g key={edge.id}>
+                <path
+                  d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={isEdgeHovered ? 2.5 : edge.isDirect ? 1.75 : 1.25}
+                  strokeDasharray={edge.isDirect ? undefined : "4,4"}
+                  markerEnd={edge.isDirect ? "url(#dag-arrow-solid)" : "url(#dag-arrow-dashed)"}
+                />
+              </g>
+            );
+          })}
+
+          {/* Render Nodes */}
+          {nodes.map((node) => {
+            const matched = isMatched(node);
+            const isHovered = hoveredNode === node.id;
+
+            return (
+              <foreignObject
+                key={node.id}
+                x={node.x}
+                y={node.y}
+                width={node.width}
+                height={node.height}
+                onMouseEnter={() => setHoveredNode(node.id)}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: 8,
+                    background: node.isRoot
+                      ? "linear-gradient(135deg, rgba(6, 182, 212, 0.16) 0%, rgba(59, 130, 246, 0.12) 100%)"
+                      : "var(--color-canvas-default, rgba(22, 27, 34, 0.85))",
+                    backdropFilter: "blur(12px)",
+                    border: isHovered
+                      ? "1.5px solid var(--color-accent-cyan, #06b6d4)"
+                      : matched
+                        ? node.isRoot
+                          ? "1.5px solid rgba(6, 182, 212, 0.6)"
+                          : "1px solid var(--color-border, rgba(255,255,255,0.12))"
+                        : "1px dashed rgba(139, 148, 158, 0.2)",
+                    opacity: matched ? 1 : 0.35,
+                    boxShadow: isHovered
+                      ? "0 0 16px rgba(6, 182, 212, 0.35)"
+                      : node.isRoot
+                        ? "0 2px 8px rgba(6, 182, 212, 0.15)"
+                        : "none",
+                    padding: "6px 10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    boxSizing: "border-box",
+                    cursor: node.isRoot ? "default" : "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <Link
+                      to={node.isRoot ? "#" : `/packages/${encodeURIComponent(node.id)}`}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        fontFamily: "var(--font-mono, monospace)",
+                        color: node.isRoot ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-primary)",
+                        textDecoration: "none",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flex: 1,
+                      }}
+                      title={node.name}
+                    >
+                      {node.scope && <span style={{ opacity: 0.6 }}>{node.scope}/</span>}
+                      <span>{node.baseName}</span>
+                    </Link>
+                    {node.version && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "1px 5px",
+                          borderRadius: 4,
+                          background: node.isRoot ? "rgba(6, 182, 212, 0.2)" : "var(--color-canvas-subtle)",
+                          border: "1px solid var(--color-border)",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontWeight: 600,
+                          color: "var(--color-text-secondary)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        v{node.version}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        color: node.isRoot ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {node.isRoot ? "Root Package" : node.isDirect ? "Direct" : "Transitive"}
+                    </span>
+                    {node.range && (
+                      <span style={{ fontSize: 9.5, color: "var(--color-text-muted)", fontFamily: "monospace" }}>
+                        ({node.range})
+                      </span>
+                    )}
+                    {node.domains && node.domains.length > 0 && (
+                      <span
+                        style={{
+                          marginLeft: "auto",
+                          fontSize: 9,
+                          padding: "0 4px",
+                          borderRadius: 3,
+                          background: "rgba(59, 130, 246, 0.15)",
+                          color: "#60a5fa",
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {node.domains[0]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </foreignObject>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Legend */}
+      <Box
+        display="flex"
+        alignItems="center"
+        gap={16}
+        mt={2}
+        flexWrap="wrap"
+        style={{ fontSize: 11, color: "var(--color-text-muted)" }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span
+            style={{ width: 14, height: 2, background: "var(--color-accent-cyan, #06b6d4)", display: "inline-block" }}
+          />
+          Direct Dependency
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span
+            style={{ width: 14, height: 2, borderTop: "2px dashed var(--color-text-muted)", display: "inline-block" }}
+          />
+          Transitive Dependency
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 2,
+              background: "rgba(6, 182, 212, 0.25)",
+              border: "1px solid var(--color-accent-cyan)",
+              display: "inline-block",
+            }}
+          />
+          Root Package
+        </span>
+      </Box>
+    </GlassCard>
+  );
+};
+
 export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
   name,
   version,
@@ -123,6 +567,7 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
   dependents,
 }) => {
   const hasAdvancedExports = useFeatureFlag("package_advanced_exports");
+  const [viewMode, setViewMode] = useState<"list" | "dag">("list");
   const [lockfile, setLockfile] = useState<DataPackageLockJsonSummary | null>(null);
   const [copiedLockfile, setCopiedLockfile] = useState(false);
 
@@ -153,59 +598,89 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
         <Box display="flex" alignItems="center" gap="8px">
           <DependabotIcon size={16} fill="var(--color-text-muted)" />
           <SectionTitle as="h3" style={{ margin: 0 }}>
-            Runtime Dependencies
+            Dependencies
           </SectionTitle>
           <Label variant="secondary" style={{ fontSize: 11, padding: "0 6px" }}>
             {depEntries.length}
           </Label>
         </Box>
+        <div style={{ display: "flex", gap: 4 }}>
+          <Button
+            size="small"
+            variant={viewMode === "list" ? "primary" : "invisible"}
+            leadingVisual={ListUnorderedIcon}
+            onClick={() => setViewMode("list")}
+          >
+            List
+          </Button>
+          <Button
+            size="small"
+            variant={viewMode === "dag" ? "primary" : "invisible"}
+            leadingVisual={GraphIcon}
+            onClick={() => setViewMode("dag")}
+          >
+            DAG Explorer
+          </Button>
+        </div>
       </Box>
 
-      <GlassCard style={{ padding: depEntries.length > 0 ? "6px 20px" : "24px 20px" }}>
-        {depEntries.length > 0 ? (
-          depEntries.map(([dep, range]) => renderDepRow(dep, range, "Required package dependency"))
-        ) : (
-          <Box display="flex" alignItems="center" gap="12px">
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: "rgba(45, 164, 78, 0.1)",
-                border: "1px solid rgba(45, 164, 78, 0.25)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <ShieldCheckIcon size={18} fill="var(--color-success-fg, #2da44e)" />
-            </div>
-            <Box>
-              <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-heading)", display: "block" }}>
-                Zero Runtime Dependencies
-              </Text>
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 13, margin: "2px 0 0" }}>
-                This package is self-contained and requires no external libraries.
-              </Text>
-            </Box>
-          </Box>
-        )}
-      </GlassCard>
-
-      {devDepEntries.length > 0 && (
+      {viewMode === "dag" ? (
+        <DependencyDagExplorer
+          rootName={name || "root"}
+          rootVersion={version || "latest"}
+          dependencies={dependencies}
+          devDependencies={devDependencies}
+          lockfile={lockfile}
+        />
+      ) : (
         <>
-          <Box display="flex" alignItems="center" gap="8px" mt={4} mb={3}>
-            <SectionTitle as="h3" style={{ margin: 0 }}>
-              Development Dependencies
-            </SectionTitle>
-            <Label variant="secondary" style={{ fontSize: 11, padding: "0 6px" }}>
-              {devDepEntries.length}
-            </Label>
-          </Box>
-          <GlassCard style={{ padding: "6px 20px" }}>
-            {devDepEntries.map(([dep, range]) => renderDepRow(dep, range, "Development & verification dependency"))}
+          <GlassCard style={{ padding: depEntries.length > 0 ? "6px 20px" : "24px 20px" }}>
+            {depEntries.length > 0 ? (
+              depEntries.map(([dep, range]) => renderDepRow(dep, range, "Required package dependency"))
+            ) : (
+              <Box display="flex" alignItems="center" gap="12px">
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    background: "rgba(45, 164, 78, 0.1)",
+                    border: "1px solid rgba(45, 164, 78, 0.25)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <ShieldCheckIcon size={18} fill="var(--color-success-fg, #2da44e)" />
+                </div>
+                <Box>
+                  <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-heading)", display: "block" }}>
+                    Zero Runtime Dependencies
+                  </Text>
+                  <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 13, margin: "2px 0 0" }}>
+                    This package is self-contained and requires no external libraries.
+                  </Text>
+                </Box>
+              </Box>
+            )}
           </GlassCard>
+
+          {devDepEntries.length > 0 && (
+            <>
+              <Box display="flex" alignItems="center" gap="8px" mt={4} mb={3}>
+                <SectionTitle as="h3" style={{ margin: 0 }}>
+                  Development Dependencies
+                </SectionTitle>
+                <Label variant="secondary" style={{ fontSize: 11, padding: "0 6px" }}>
+                  {devDepEntries.length}
+                </Label>
+              </Box>
+              <GlassCard style={{ padding: "6px 20px" }}>
+                {devDepEntries.map(([dep, range]) => renderDepRow(dep, range, "Development & verification dependency"))}
+              </GlassCard>
+            </>
+          )}
         </>
       )}
 

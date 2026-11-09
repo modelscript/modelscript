@@ -7,15 +7,23 @@ import {
   GitPullRequestIcon,
   IssueClosedIcon,
   IssueOpenedIcon,
+  LinkExternalIcon,
   PlusIcon,
   SearchIcon,
+  SyncIcon,
   XIcon,
 } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import type { SpaceDetailResponse, SpaceIssueCommentRecord, SpaceIssueRecord } from "../../api/spaces.js";
-import { addSpaceIssueComment, createSpaceIssue, getSpaceIssueDetail, updateSpaceIssue } from "../../api/spaces.js";
+import {
+  addSpaceIssueComment,
+  createSpaceIssue,
+  getSpaceIssueDetail,
+  syncSpaceJiraIssues,
+  updateSpaceIssue,
+} from "../../api/spaces.js";
 import { useToast } from "../../components/ToastContext.js";
 
 // ── Styled Components (Adhering to @primer/style & Spaces Cockpit) ───────────
@@ -140,6 +148,19 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
   const [newIssueLinkedPr, setNewIssueLinkedPr] = useState("");
   const [submittingNewIssue, setSubmittingNewIssue] = useState(false);
 
+  // Jira Sync Modal state
+  const savedJira = (detail?.space?.settings?.["jira"] as Record<string, unknown> | undefined) || {};
+  const [showJiraModal, setShowJiraModal] = useState(false);
+  const [jiraBaseUrl, setJiraBaseUrl] = useState(
+    String(savedJira["baseUrl"] ?? savedJira["jiraBaseUrl"] ?? "https://"),
+  );
+  const [jiraEmail, setJiraEmail] = useState(String(savedJira["email"] ?? ""));
+  const [jiraApiToken, setJiraApiToken] = useState("");
+  const [jiraJql, setJiraJql] = useState(String(savedJira["jql"] || "ORDER BY updated DESC"));
+  const [jiraMaxResults, setJiraMaxResults] = useState(50);
+  const [jiraCustomField, setJiraCustomField] = useState(String(savedJira["modelCustomField"] ?? ""));
+  const [isSyncingJira, setIsSyncingJira] = useState(false);
+
   const issuesList = detail?.issues || [];
   const ecosList = detail?.ecos || [];
 
@@ -156,12 +177,14 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
       if (issueSeverityFilter !== "all" && issue.severity !== issueSeverityFilter) return false;
       if (issueSearchQuery.trim()) {
         const q = issueSearchQuery.toLowerCase().trim();
+        if (q === "is:jira") return issue.external_source === "jira";
         const matchTitle = issue.title.toLowerCase().includes(q);
         const matchDesc = issue.description.toLowerCase().includes(q);
         const matchNumber = `#${issue.issue_number}` === q || `${issue.issue_number}` === q;
         const matchAuthor = (issue.author_username || "").toLowerCase().includes(q);
         const matchModels = issue.impacted_models.some((m) => m.toLowerCase().includes(q));
-        if (!matchTitle && !matchDesc && !matchNumber && !matchAuthor && !matchModels) {
+        const matchExternalKey = (issue.external_key || "").toLowerCase().includes(q);
+        if (!matchTitle && !matchDesc && !matchNumber && !matchAuthor && !matchModels && !matchExternalKey) {
           return false;
         }
       }
@@ -254,6 +277,37 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
       toast.error(err?.response?.data?.error || "Failed to create issue");
     } finally {
       setSubmittingNewIssue(false);
+    }
+  };
+
+  const handleSyncJira = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detail) return;
+    const effectiveBaseUrl = jiraBaseUrl.trim() || String(savedJira["baseUrl"] ?? savedJira["jiraBaseUrl"] ?? "");
+    const effectiveToken = jiraApiToken.trim() || String(savedJira["apiToken"] ?? "");
+    if (!effectiveBaseUrl || !effectiveToken) return;
+
+    try {
+      setIsSyncingJira(true);
+      const res = await syncSpaceJiraIssues(detail.space.owner_namespace, detail.space.slug, {
+        jiraBaseUrl: jiraBaseUrl.trim() || undefined,
+        email: jiraEmail.trim() || undefined,
+        apiToken: jiraApiToken.trim() || undefined,
+        jql: jiraJql.trim() || undefined,
+        maxResults: Number(jiraMaxResults) || 50,
+        modelCustomField: jiraCustomField.trim() || undefined,
+      });
+
+      if (res.issues && res.issues.length > 0) {
+        onIssueUpdated?.(res.issues[0]!, res.issues);
+      }
+      toast.success(`Synchronized ${res.synced} Jira tickets (${res.created} new, ${res.updated} updated)!`);
+      setShowJiraModal(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || (err instanceof Error ? err.message : String(err));
+      toast.error(`Jira synchronization failed: ${msg}`);
+    } finally {
+      setIsSyncingJira(false);
     }
   };
 
@@ -385,30 +439,57 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                 />
               </div>
 
-              {/* Action Button: New Issue */}
+              {/* Action Buttons: Sync Jira & New Issue */}
               {viewerState.canWrite && (
-                <button
-                  type="button"
-                  onClick={() => setShowNewIssueModal(true)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "6px 16px",
-                    borderRadius: "6px",
-                    border: "1px solid rgba(27, 31, 36, 0.15)",
-                    background: "#1f883d",
-                    color: "#ffffff",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    boxShadow: "0 1px 0 rgba(27, 31, 36, 0.1)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <PlusIcon size={14} />
-                  <span>New issue</span>
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowJiraModal(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 14px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--color-canvas-subtle)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Pull and synchronize tickets from Atlassian Jira into this space"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#0052cc">
+                      <path d="M11.53 2c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V2h-10.56zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V6.35H7.14zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V10.7H2.75z" />
+                    </svg>
+                    <span>Sync Jira</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowNewIssueModal(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 16px",
+                      borderRadius: "6px",
+                      border: "1px solid rgba(27, 31, 36, 0.15)",
+                      background: "#1f883d",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: "0 1px 0 rgba(27, 31, 36, 0.1)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <PlusIcon size={14} />
+                    <span>New issue</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -650,6 +731,36 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                                   <span>#{linkedPr.eco_number}</span>
                                 </span>
                               )}
+
+                              {issue.external_source === "jira" && (
+                                <a
+                                  href={issue.external_url || undefined}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    fontFamily: "var(--font-mono)",
+                                    padding: "1px 7px",
+                                    borderRadius: "4px",
+                                    background: "rgba(0, 82, 204, 0.12)",
+                                    color: "#0052cc",
+                                    border: "1px solid rgba(0, 82, 204, 0.3)",
+                                    textDecoration: "none",
+                                  }}
+                                  title={`Open ${issue.external_key || "ticket"} in Atlassian Jira`}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#0052cc">
+                                    <path d="M11.53 2c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V2h-10.56zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V6.35H7.14zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V10.7H2.75z" />
+                                  </svg>
+                                  <span>{issue.external_key || "Jira"}</span>
+                                  <LinkExternalIcon size={10} />
+                                </a>
+                              )}
                             </div>
 
                             <div
@@ -810,6 +921,61 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {/* Jira External Sync HUD */}
+                {activeIssueDetail.external_source === "jira" && (
+                  <div
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: "6px",
+                      background: "rgba(0, 82, 204, 0.08)",
+                      border: "1px solid rgba(0, 82, 204, 0.25)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#0052cc">
+                        <path d="M11.53 2c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V2h-10.56zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V6.35H7.14zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V10.7H2.75z" />
+                      </svg>
+                      <span style={{ fontSize: "13.5px", color: "var(--color-fg-default)" }}>
+                        Synchronized with Atlassian Jira ticket{" "}
+                        <strong style={{ fontFamily: "var(--font-mono)", color: "#0052cc" }}>
+                          {activeIssueDetail.external_key}
+                        </strong>
+                        {activeIssueDetail.external_updated_at && (
+                          <span style={{ color: "var(--color-fg-muted)", fontSize: "12.5px" }}>
+                            {" "}
+                            • Last updated in Jira {new Date(activeIssueDetail.external_updated_at).toLocaleString()}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+
+                    {activeIssueDetail.external_url && (
+                      <a
+                        href={activeIssueDetail.external_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          fontSize: "12.5px",
+                          fontWeight: 600,
+                          color: "#0052cc",
+                          textDecoration: "none",
+                        }}
+                      >
+                        <span>Open in Jira</span>
+                        <LinkExternalIcon size={12} />
+                      </a>
+                    )}
+                  </div>
+                )}
 
                 {/* 2-Column Split: Conversation + Sidebar */}
                 <IssueSplitLayout>
@@ -1407,6 +1573,318 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                   }}
                 >
                   {submittingNewIssue ? "Creating..." : "Submit new issue"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL: Sync Atlassian Jira Tickets
+         ═══════════════════════════════════════════════════════════════════════ */}
+      {showJiraModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.65)",
+            backdropFilter: "blur(2px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "580px",
+              background: "var(--color-canvas-default)",
+              borderRadius: "6px",
+              border: "1px solid var(--color-border-default)",
+              boxShadow: "0 16px 36px rgba(0, 0, 0, 0.35)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px 20px",
+                background: "var(--color-canvas-subtle)",
+                borderBottom: "1px solid var(--color-border-default)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#0052cc">
+                  <path d="M11.53 2c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V2h-10.56zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V6.35H7.14zm-4.39 4.35c0 2.4 1.97 4.35 4.39 4.35h1.78v1.74c0 2.4 1.97 4.35 4.39 4.35V10.7H2.75z" />
+                </svg>
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600, color: "var(--color-fg-default)" }}>
+                  Sync Atlassian Jira Tickets
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowJiraModal(false)}
+                style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--color-fg-muted)" }}
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSyncJira}
+              style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12.5px",
+                    fontWeight: 600,
+                    color: "var(--color-fg-default)",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Jira Base URL *
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://your-company.atlassian.net"
+                  value={jiraBaseUrl}
+                  onChange={(e) => setJiraBaseUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "var(--color-canvas-subtle)",
+                    color: "var(--color-fg-default)",
+                    fontSize: "13px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      color: "var(--color-fg-default)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Email (for Jira Cloud)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="engineer@company.com"
+                    value={jiraEmail}
+                    onChange={(e) => setJiraEmail(e.target.value)}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--color-canvas-subtle)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      color: "var(--color-fg-default)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    API Token or PAT *
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={
+                      savedJira["apiToken"]
+                        ? "•••••••••••••••• (using saved token from Space Settings)"
+                        : "Atlassian API token / PAT"
+                    }
+                    value={jiraApiToken}
+                    onChange={(e) => setJiraApiToken(e.target.value)}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--color-canvas-subtle)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12.5px",
+                    fontWeight: 600,
+                    color: "var(--color-fg-default)",
+                    marginBottom: "6px",
+                  }}
+                >
+                  JQL Filter Query
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. project = 'AERO' AND status != 'Done' ORDER BY updated DESC"
+                  value={jiraJql}
+                  onChange={(e) => setJiraJql(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "var(--color-canvas-subtle)",
+                    color: "var(--color-fg-default)",
+                    fontSize: "13px",
+                    fontFamily: "var(--font-mono)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      color: "var(--color-fg-default)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Max Tickets to Pull
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={jiraMaxResults}
+                    onChange={(e) => setJiraMaxResults(Number(e.target.value) || 50)}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--color-canvas-subtle)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      color: "var(--color-fg-default)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Model Custom Field (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. customfield_10034"
+                    value={jiraCustomField}
+                    onChange={(e) => setJiraCustomField(e.target.value)}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--color-canvas-subtle)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <p style={{ margin: 0, fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                Tip: The connector automatically detects model references in ticket summaries and descriptions (e.g.{" "}
+                <code>model: Package.Class</code> or <code>@model:...</code>).
+              </p>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowJiraModal(false)}
+                  style={{
+                    padding: "7px 16px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "transparent",
+                    color: "var(--color-fg-default)",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isSyncingJira ||
+                    (!jiraBaseUrl.trim() && !savedJira["baseUrl"] && !savedJira["jiraBaseUrl"]) ||
+                    (!jiraApiToken.trim() && !savedJira["apiToken"])
+                  }
+                  style={{
+                    padding: "7px 18px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: "#0052cc",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {isSyncingJira ? <SyncIcon size={14} className="anim-rotate" /> : null}
+                  <span>{isSyncingJira ? "Synchronizing..." : "Start Synchronization"}</span>
                 </button>
               </div>
             </form>

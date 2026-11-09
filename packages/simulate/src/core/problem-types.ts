@@ -156,24 +156,41 @@ export interface SDEEnsembleResult {
 
 // ── 4. DDE Problem ──
 
+export type DDEHistoryFunction = ((t: number) => number[]) & {
+  /** Evaluates the delayed derivative dy/dt at past time t <= current_t for Neutral DDEs. */
+  derivative: (t: number) => number[];
+};
+
 /**
- * Delay Differential Equation (DDE) initial value problem with constant or state-dependent delays:
- * $$\frac{dy}{dt} = f(t, y(t), y(t - \tau_1), \dots, p)$$
+ * Delay Differential Equation (DDE) and Neutral DDE (NDDE) initial value problem
+ * with constant, time-dependent, or state-dependent delays:
+ * $$\frac{dy}{dt} = f\bigl(t, y(t), y(t - \tau(t, y)), \dot{y}(t - \gamma(t, y)), p\bigr)$$
  */
 export interface DDEProblem<P = Record<string, number> | number[]> {
   /**
-   * Vector field with delay: dy/dt = f(t, y, history, p)
-   * The history function h(t) returns the state vector at past time t <= current_t.
+   * Vector field with delay: dy/dt = f(t, y, history, p, derivHistory).
+   * - `history(t)` returns the state vector at past time `t <= current_t` (and also exposes `history.derivative(t)`).
+   * - `derivHistory(t)` (5th argument) returns the derivative vector `dy/dt` at past time `t <= current_t` for Neutral DDEs.
    */
-  f: (t: number, y: number[], history: (t: number) => number[], p?: P) => number[];
-  /** History function defined for t <= tSpan[0] */
+  f: (t: number, y: number[], history: DDEHistoryFunction, p?: P, derivHistory?: (t: number) => number[]) => number[];
+  /**History function defined for t <= tSpan[0] */
   h: (t: number, p?: P) => number[];
+  /**
+   * Optional initial derivative history dh/dt defined for t <= tSpan[0] (used by Neutral DDEs).
+   * If omitted, centered finite differences of `h(t)` are used for `t <= tSpan[0]`.
+   */
+  hPrime?: ((t: number, p?: P) => number[]) | undefined;
   /** Initial state vector at tSpan[0] (typically equals h(tSpan[0])) */
   y0: number[];
   /** Time span [t0, tEnd] */
   tSpan: [number, number];
   /** Known constant delays tau_i to track for breaking point discontinuity propagation */
   constantDelays?: number[] | undefined;
+  /**
+   * State-dependent delay functions $\tau_k(t, y(t), p) \ge 0$.
+   * The solver tracks lag zero-crossings $t - \tau_k(t, y(t)) = \xi_j$ against breaking points $\xi_j$.
+   */
+  stateDependentDelays?: ((t: number, y: number[], p?: P) => number)[] | undefined;
   /** Optional parameter object or vector */
   p?: P | undefined;
 }

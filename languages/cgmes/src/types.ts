@@ -123,4 +123,5 @@ export interface CgmesModel {
   shunts: Map<string, CgmesLinearShuntCompensator>;
   svVoltages: Map<string, CgmesSvVoltage>;
   svFlows: Map<string, CgmesSvPowerFlow>;
+  baseVoltages: Map<string, number>;
 }

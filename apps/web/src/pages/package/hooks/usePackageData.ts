@@ -217,6 +217,11 @@ export function usePackageData(
   const contentHash = libraryDetail?.contentHash ?? currentManifest?.dist?.shasum ?? null;
   const packageSignature = libraryDetail?.signature ?? null;
   const packageOwner = libraryDetail?.author ?? (name?.startsWith("@") ? name.split("/")[0]?.slice(1) : null);
+  const oidcRepository = (libraryDetail as any)?.oidcRepository ?? null;
+  const oidcWorkflow = (libraryDetail as any)?.oidcWorkflowRef ?? null;
+  const oidcIssuer = (libraryDetail as any)?.oidcIssuer ?? null;
+  const vulnerabilityCount = (libraryDetail as any)?.vulnerabilitiesCount ?? 0;
+  const vulnerabilities = (libraryDetail as any)?.vulnerabilities ?? [];
 
   const canManage = useMemo(() => {
     if (!user) return false;
@@ -381,6 +386,11 @@ export function usePackageData(
     packageOwner,
     canManage,
     installCmd,
+    oidcRepository,
+    oidcWorkflow,
+    oidcIssuer,
+    vulnerabilityCount,
+    vulnerabilities,
     tree,
     filteredTree,
     filteredSysml,

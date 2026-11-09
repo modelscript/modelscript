@@ -3,18 +3,81 @@
 /**
  * Dynamic OpenGraph Preview Image Route
  *
- * Provides real-time, deterministic 1200x630 vector preview cards for:
- *   - /api/v1/og/post/:id
- *   - /api/v1/og/package/:scope?/:name
- *   - /api/v1/og/class/:scope?/:name/:version/:className
+ * Provides real-time, deterministic 1200x630 vector preview cards and raster PNGs for:
+ *   - /api/v1/og/post/:id(.png)?
+ *   - /api/v1/og/package/:scope?/:name(.png)?
+ *   - /api/v1/og/class/:scope?/:name/:version/:className(.png)?
+ *   - /api/v1/og/brand(.png)?
  */
 
+import { Resvg } from "@resvg/resvg-js";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
-import { renderClassOgSvg, renderPackageOgSvg, renderPostOgSvg } from "../util/og-renderer.js";
+import { renderBrandOgSvg, renderClassOgSvg, renderPackageOgSvg, renderPostOgSvg } from "../util/og-renderer.js";
 import { resolveRequestHost } from "../util/seo-injector.js";
 import { isCorporateOrAirgapTier } from "../util/tier-presets.js";
+
+const pngCache = new Map<string, Buffer>();
+const MAX_PNG_CACHE = 250;
+
+function convertSvgToPng(svg: string): Buffer {
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: 1200 },
+    font: { loadSystemFonts: false },
+  });
+  return resvg.render().asPng();
+}
+
+function sendOgResponse(
+  _req: Request,
+  res: Response,
+  svg: string,
+  cacheKey: string,
+  isPngRequested: boolean,
+  isCorporate: boolean,
+): void {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader(
+    "Cache-Control",
+    isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",
+  );
+
+  if (isPngRequested) {
+    let png = pngCache.get(cacheKey);
+    if (!png) {
+      try {
+        png = convertSvgToPng(svg);
+        if (pngCache.size >= MAX_PNG_CACHE) {
+          const firstKey = pngCache.keys().next().value;
+          if (firstKey) pngCache.delete(firstKey);
+        }
+        pngCache.set(cacheKey, png);
+      } catch (err) {
+        console.error("[OG] Failed to render SVG to PNG:", err);
+      }
+    }
+
+    if (png) {
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Length", String(png.length));
+      res.send(png);
+      return;
+    }
+  }
+
+  res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+  res.send(svg);
+}
+
+function isPngTarget(paramName: string, req: Request): boolean {
+  if (paramName.endsWith(".png")) return true;
+  if (req.query["format"] === "png") return true;
+  const accept = req.headers["accept"] || "";
+  if (accept.includes("image/png") && !accept.includes("image/svg+xml")) return true;
+  return false;
+}
 
 export function ogRouter(database: LibraryDatabase): Router {
   const router = createRouter();
@@ -32,10 +95,22 @@ export function ogRouter(database: LibraryDatabase): Router {
     return { brandName, host, isCorporate };
   }
 
-  // ── Post OpenGraph Card ──
+  // ── Brand OpenGraph Card ──
+  const handleBrandOg = (req: Request, res: Response): void => {
+    const { brandName, host, isCorporate } = getBaseContext(req);
+    const isPng = req.path.endsWith(".png") || req.query["format"] === "png";
+    const svg = renderBrandOgSvg(host, brandName);
+    sendOgResponse(req, res, svg, `brand:${brandName}`, isPng, isCorporate);
+  };
+
+  router.get("/brand", handleBrandOg);
+  router.get("/brand.png", handleBrandOg);
+
   // ── Post OpenGraph Card ──
   const handlePostOg = (req: Request, res: Response): void => {
-    const rawId = getParam(req.params["id"]).replace(/\.(svg|png)$/, "");
+    const rawParam = getParam(req.params["id"]);
+    const isPng = isPngTarget(rawParam, req);
+    const rawId = rawParam.replace(/\.(svg|png)$/, "");
     if (!rawId || !/^[a-zA-Z0-9_-]+$/.test(rawId.trim())) {
       res.status(400).send("Invalid post ID");
       return;
@@ -82,14 +157,7 @@ export function ogRouter(database: LibraryDatabase): Router {
       brandName,
     );
 
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader(
-      "Cache-Control",
-      isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",
-    );
-    res.send(svg);
+    sendOgResponse(req, res, svg, `post:${postId}`, isPng, isCorporate);
   };
 
   router.get("/post/:id", handlePostOg);
@@ -97,7 +165,9 @@ export function ogRouter(database: LibraryDatabase): Router {
   // ── Package OpenGraph Card ──
   const handlePackageOg = (req: Request, res: Response): void => {
     const scope = getParam(req.params["scope"]);
-    let name = getParam(req.params["name"]).replace(/\.(svg|png)$/, "");
+    const rawParam = getParam(req.params["name"]);
+    const isPng = isPngTarget(rawParam, req);
+    const name = rawParam.replace(/\.(svg|png)$/, "");
     if (!name) {
       res.status(400).send("Missing package name");
       return;
@@ -124,14 +194,7 @@ export function ogRouter(database: LibraryDatabase): Router {
       brandName,
     );
 
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader(
-      "Cache-Control",
-      isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",
-    );
-    res.send(svg);
+    sendOgResponse(req, res, svg, `package:${fullPkgName}`, isPng, isCorporate);
   };
 
   router.get("/package/:scope/:name", handlePackageOg);
@@ -142,7 +205,9 @@ export function ogRouter(database: LibraryDatabase): Router {
     const scope = getParam(req.params["scope"]);
     const rawName = getParam(req.params["name"]);
     const version = getParam(req.params["version"]);
-    let className = getParam(req.params["className"]).replace(/\.(svg|png)$/, "");
+    const rawClassParam = getParam(req.params["className"]);
+    const isPng = isPngTarget(rawClassParam, req);
+    const className = rawClassParam.replace(/\.(svg|png)$/, "");
 
     if (!rawName || !version || !className) {
       res.status(400).send("Missing package name, version, or class name");
@@ -168,14 +233,7 @@ export function ogRouter(database: LibraryDatabase): Router {
       brandName,
     );
 
-    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader(
-      "Cache-Control",
-      isCorporate ? "private, no-store" : "public, max-age=86400, stale-while-revalidate=604800",
-    );
-    res.send(svg);
+    sendOgResponse(req, res, svg, `class:${fullPkgName}:${version}:${className}`, isPng, isCorporate);
   };
 
   router.get("/class/:scope/:name/:version/:className", handleClassOg);

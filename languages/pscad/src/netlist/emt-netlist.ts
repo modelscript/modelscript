@@ -21,6 +21,7 @@ import type {
   EmtFmuInstance,
   EmtInductionMachine,
   EmtNetlist,
+  EmtProtectionRelay,
   EmtSource,
   EmtSurgeArrester,
   EmtSynchronousMachine,
@@ -142,6 +143,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const synchronousMachines: EmtSynchronousMachine[] = [];
   const inductionMachines: EmtInductionMachine[] = [];
   const converterBridges: EmtConverterBridge[] = [];
+  const protectionRelays: EmtProtectionRelay[] = [];
   const controlBlocks: EmtControlBlock[] = [];
   const currentSources: EmtCurrentSource[] = [];
   const customFortranBlocks: EmtCustomFortranBlock[] = [];
@@ -669,6 +671,16 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const depthM = parseFloat(String(p["depth"] ?? p["burial_depth"] ?? "1.2"));
         const rhoSoil = parseFloat(String(p["rho_soil"] ?? p["soil_resistivity"] ?? "100.0"));
 
+        // Overhead tower geometry parameters (Carson / Deri-Semlyen LCP)
+        const towerHeightRaw = parseFloat(
+          String(p["tower_height"] ?? p["conductor_height"] ?? p["height"] ?? p["H_tower"] ?? ""),
+        );
+        const phaseSpacingRaw = parseFloat(String(p["phase_spacing"] ?? p["spacing"] ?? p["D_ab"] ?? ""));
+        const condRadiusRaw = parseFloat(String(p["conductor_radius"] ?? p["r_cond"] ?? ""));
+        const bundleCountRaw = parseInt(String(p["bundle_count"] ?? p["N_bundle"] ?? "1"), 10);
+        const bundleSpacingRaw = parseFloat(String(p["bundle_spacing"] ?? p["d_bundle"] ?? "0.45"));
+        const hasTowerGeometry = !isCable && (!isNaN(towerHeightRaw) || !isNaN(phaseSpacingRaw));
+
         const r1 = !isNaN(coreRadiusM) && coreRadiusM > 0 ? coreRadiusM : 0.02;
         const r2 = !isNaN(insRadiusM) && insRadiusM > r1 ? insRadiusM : Math.max(r1 * 2.0, 0.045);
         const er = !isNaN(epsR) && epsR >= 1.0 ? epsR : 2.3;
@@ -677,10 +689,79 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const defaultCableL = ((4 * Math.PI * 1e-7) / (2 * Math.PI)) * Math.log(r2 / r1) * 1000.0;
         const defaultCableC = ((2 * Math.PI * 8.854187817e-12 * er) / Math.log(r2 / r1)) * 1000.0;
 
-        const r = parseFloat(String(p["R"] ?? p["r"] ?? p["r_per_km"] ?? (isCable ? defaultCableR : 0.03)));
-        const l = parseFloat(String(p["L"] ?? p["l"] ?? p["l_per_km"] ?? (isCable ? defaultCableL : 0.001)));
-        const c = parseFloat(String(p["C"] ?? p["c"] ?? p["c_per_km"] ?? (isCable ? defaultCableC : 1.1e-8)));
-        const rawModel = String(p["model"] ?? p["modelType"] ?? p["model_type"] ?? "bergeron").toLowerCase();
+        let defaultOverheadR = 0.03;
+        let defaultOverheadL = 0.001;
+        let defaultOverheadC = 1.1e-8;
+        let computedR0: number | undefined;
+        let computedL0: number | undefined;
+        let computedC0: number | undefined;
+        let computedPoles: number[] | undefined;
+        let computedResidues: number[] | undefined;
+        let computedD0: number | undefined;
+
+        const hTower = !isNaN(towerHeightRaw) && towerHeightRaw > 1.0 ? towerHeightRaw : 22.0;
+        const dSpace = !isNaN(phaseSpacingRaw) && phaseSpacingRaw > 0.2 ? phaseSpacingRaw : 8.0;
+        const rCond = !isNaN(condRadiusRaw) && condRadiusRaw > 0.001 ? condRadiusRaw : 0.015;
+        const nBundle = !isNaN(bundleCountRaw) && bundleCountRaw >= 1 ? Math.min(4, bundleCountRaw) : 1;
+        const dBundle = !isNaN(bundleSpacingRaw) && bundleSpacingRaw > 0.05 ? bundleSpacingRaw : 0.45;
+        const rhoGnd = !isNaN(rhoSoil) && rhoSoil > 0 ? rhoSoil : 100.0;
+
+        if (hasTowerGeometry) {
+          // Bundle equivalent GMR and electrostatic radius
+          const rGmrSub = 0.7788 * rCond;
+          const rEqCap =
+            nBundle === 1
+              ? rCond
+              : nBundle === 2
+                ? Math.sqrt(rCond * dBundle)
+                : nBundle === 3
+                  ? Math.cbrt(rCond * dBundle * dBundle)
+                  : Math.pow(Math.SQRT2 * rCond * dBundle * dBundle * dBundle, 0.25);
+          const gmrBundle =
+            nBundle === 1
+              ? rGmrSub
+              : nBundle === 2
+                ? Math.sqrt(rGmrSub * dBundle)
+                : nBundle === 3
+                  ? Math.cbrt(rGmrSub * dBundle * dBundle)
+                  : Math.pow(Math.SQRT2 * rGmrSub * dBundle * dBundle * dBundle, 0.25);
+
+          const freqHz = project.settings.frequencyHz || 60.0;
+          const omega = 2.0 * Math.PI * freqHz;
+          const mu0 = 4.0 * Math.PI * 1e-7;
+          const eps0 = 8.854187817e-12;
+          // Geometric Mean Distance (GMD) for horizontal 3-phase configuration: (D * D * 2D)^(1/3) = 2^(1/3) * D
+          const gmd = Math.cbrt(2.0) * dSpace;
+          // Deri-Semlyen complex ground return depth p = 1 / sqrt(j * omega * mu0 / rho)
+          const pMag = Math.sqrt(rhoGnd / (omega * mu0));
+          const rDcPerKm = (2.82e-8 / (Math.PI * rCond * rCond * nBundle)) * 1000.0;
+          // Carson earth return resistance at fundamental frequency: R_earth ≈ pi * f * 1e-4 Ohm/km
+          const rEarthPerKm = Math.PI * freqHz * 1e-4 * 3.0;
+          defaultOverheadR = rDcPerKm * 1.05;
+          defaultOverheadL = (mu0 / (2.0 * Math.PI)) * Math.log(gmd / gmrBundle) * 1000.0;
+          defaultOverheadC = ((2.0 * Math.PI * eps0) / Math.log(gmd / rEqCap)) * 1000.0;
+
+          const dImg0 = Math.hypot(2.0 * hTower + Math.SQRT2 * pMag, Math.SQRT2 * pMag);
+          const gmd0 = Math.cbrt(gmrBundle * gmd * gmd);
+          computedR0 = defaultOverheadR + rEarthPerKm;
+          computedL0 = (mu0 / (2.0 * Math.PI)) * Math.log((dImg0 * dImg0 * dImg0) / (gmd0 * gmd0 * gmd0)) * 1000.0;
+          const pSelf = Math.log((2.0 * hTower) / rEqCap);
+          const pMut = Math.log(Math.hypot(gmd, 2.0 * hTower) / gmd);
+          computedC0 = ((2.0 * Math.PI * eps0) / (pSelf + 2.0 * pMut)) * 1000.0;
+          computedPoles = [-120.0, -1200.0, -12000.0, -90000.0];
+          computedResidues = [22.0, 180.0, 1400.0, 9500.0];
+          computedD0 = 0.38;
+        }
+
+        const r = parseFloat(String(p["R"] ?? p["r"] ?? p["r_per_km"] ?? (isCable ? defaultCableR : defaultOverheadR)));
+        const l = parseFloat(String(p["L"] ?? p["l"] ?? p["l_per_km"] ?? (isCable ? defaultCableL : defaultOverheadL)));
+        const c = parseFloat(String(p["C"] ?? p["c"] ?? p["c_per_km"] ?? (isCable ? defaultCableC : defaultOverheadC)));
+        const r0Raw = parseFloat(String(p["R0"] ?? p["r0"] ?? p["r0_per_km"] ?? ""));
+        const l0Raw = parseFloat(String(p["L0"] ?? p["l0"] ?? p["l0_per_km"] ?? ""));
+        const c0Raw = parseFloat(String(p["C0"] ?? p["c0"] ?? p["c0_per_km"] ?? ""));
+        const rawModel = String(
+          p["model"] ?? p["modelType"] ?? p["model_type"] ?? (hasTowerGeometry ? "fdpm" : "bergeron"),
+        ).toLowerCase();
         const modelType = rawModel === "fdpm" || rawModel === "fd" ? "fdpm" : rawModel === "pi" ? "pi" : "bergeron";
 
         const line: EmtTransmissionLine = {
@@ -688,16 +769,27 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           fromBus: bus1,
           toBus: bus2,
           lengthKm: isNaN(len) ? 50.0 : len,
-          rPerKm: isNaN(r) ? (isCable ? defaultCableR : 0.03) : r,
-          lPerKm: isNaN(l) ? (isCable ? defaultCableL : 0.001) : l,
-          cPerKm: isNaN(c) ? (isCable ? defaultCableC : 1.1e-8) : c,
+          rPerKm: isNaN(r) ? (isCable ? defaultCableR : defaultOverheadR) : r,
+          lPerKm: isNaN(l) ? (isCable ? defaultCableL : defaultOverheadL) : l,
+          cPerKm: isNaN(c) ? (isCable ? defaultCableC : defaultOverheadC) : c,
+          r0PerKm: !isNaN(r0Raw) ? r0Raw : computedR0,
+          l0PerKm: !isNaN(l0Raw) ? l0Raw : computedL0,
+          c0PerKm: !isNaN(c0Raw) ? c0Raw : computedC0,
           modelType,
           isCable: isCable || undefined,
           coreRadiusM: isCable ? r1 : undefined,
           insulationRadiusM: isCable ? r2 : undefined,
+          towerHeightM: hasTowerGeometry ? hTower : undefined,
+          phaseSpacingM: hasTowerGeometry ? dSpace : undefined,
+          conductorRadiusM: hasTowerGeometry ? rCond : undefined,
+          bundleCount: hasTowerGeometry ? nBundle : undefined,
+          bundleSpacingM: hasTowerGeometry ? dBundle : undefined,
+          poles: computedPoles,
+          residues: computedResidues,
+          d0: computedD0,
           insulationEpsR: isCable ? er : undefined,
           burialDepthM: isCable && !isNaN(depthM) ? depthM : undefined,
-          soilResistivityOhmM: isCable && !isNaN(rhoSoil) ? rhoSoil : undefined,
+          soilResistivityOhmM: (isCable || hasTowerGeometry) && !isNaN(rhoSoil) ? rhoSoil : undefined,
         };
         transmissionLines.push(line);
 
@@ -849,6 +941,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         lowerClean === "vsc_pwm" ||
         lowerClean === "lcc_6pulse" ||
         lowerClean === "mmc_thevenin" ||
+        lowerClean === "mmc_valve_gpu" ||
         lowerClean === "mmc" ||
         defn.includes("vsc_pwm") ||
         defn.includes("lcc_6pulse") ||
@@ -856,19 +949,30 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       ) {
         const p1 = cmp.ports[0]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_AC`, qCmpId);
-        const kind: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" = defn.includes("mmc")
-          ? "mmc_thevenin"
-          : defn.includes("lcc")
-            ? "lcc_6pulse"
-            : "vsc_pwm";
+        const isGpuValve =
+          lowerClean === "mmc_valve_gpu" ||
+          defn.includes("mmc_valve") ||
+          String(p["topology"] ?? p["kind"] ?? "").toLowerCase() === "mmc_valve_gpu";
+        const kind: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | "mmc_valve_gpu" = isGpuValve
+          ? "mmc_valve_gpu"
+          : defn.includes("mmc")
+            ? "mmc_thevenin"
+            : defn.includes("lcc")
+              ? "lcc_6pulse"
+              : "vsc_pwm";
         const mva = parseFloat(String(p["MVA"] ?? p["mva"] ?? "100.0"));
         const kv = parseFloat(String(p["V"] ?? p["v"] ?? p["Vac"] ?? "230.0"));
         const vdc = parseFloat(String(p["Vdc"] ?? p["vdc"] ?? "400.0"));
         const fc = parseFloat(String(p["f_carrier"] ?? p["fc"] ?? "1980.0"));
         const alpha = parseFloat(String(p["alpha_deg"] ?? p["alpha"] ?? "15.0"));
-        const nSm = parseInt(String(p["N_sm"] ?? p["num_submodules"] ?? p["numSubmodulesPerArm"] ?? "32"), 10);
-        const cSm = parseFloat(String(p["C_sm"] ?? p["submoduleCapacitanceF"] ?? "0.01"));
-        const lArm = parseFloat(String(p["L_arm"] ?? p["armInductanceH"] ?? "0.01"));
+        const nSm = parseInt(
+          String(p["N_sm"] ?? p["N_SM"] ?? p["num_submodules"] ?? p["numSubmodulesPerArm"] ?? "32"),
+          10,
+        );
+        const cSmRaw = parseFloat(String(p["C_sm"] ?? p["C_SM"] ?? p["submoduleCapacitanceF"] ?? "0.01"));
+        const cSm = !isNaN(cSmRaw) && cSmRaw > 1.0 ? cSmRaw * 1e-6 : cSmRaw;
+        const lArm = parseFloat(String(p["L_arm"] ?? p["L_ARM"] ?? p["armInductanceH"] ?? "0.01"));
+        const isMmc = kind === "mmc_thevenin" || kind === "mmc_valve_gpu";
 
         converterBridges.push({
           id: qCmpId,
@@ -879,9 +983,76 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           vDcNominalKv: isNaN(vdc) ? undefined : vdc,
           carrierFreqHz: isNaN(fc) ? undefined : fc,
           firingAngleDeg: isNaN(alpha) ? undefined : alpha,
-          numSubmodulesPerArm: kind === "mmc_thevenin" && !isNaN(nSm) ? nSm : undefined,
-          submoduleCapacitanceF: kind === "mmc_thevenin" && !isNaN(cSm) ? cSm : undefined,
-          armInductanceH: kind === "mmc_thevenin" && !isNaN(lArm) ? lArm : undefined,
+          numSubmodulesPerArm: isMmc && !isNaN(nSm) ? nSm : undefined,
+          submoduleCapacitanceF: isMmc && !isNaN(cSm) ? cSm : undefined,
+          armInductanceH: isMmc && !isNaN(lArm) ? lArm : undefined,
+        });
+        buses.get(bus1)?.connectedBranchIds.push(qCmpId);
+      } else if (
+        lowerClean.includes("relay") ||
+        lowerClean.startsWith("ansi_") ||
+        defn.includes("distance_relay") ||
+        defn.includes("mho_relay") ||
+        defn.includes("diff_relay") ||
+        defn.includes("oc_relay") ||
+        defn.includes("freq_relay")
+      ) {
+        const p1 = cmp.ports[0]?.id;
+        const bus1 =
+          p["Bus"] || p["bus"] ? String(p["Bus"] ?? p["bus"]) : getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
+        const rawCode = String(
+          p["ansi"] ??
+            p["ansi_code"] ??
+            (defn.includes("87") || defn.includes("diff")
+              ? "87T"
+              : defn.includes("51") || defn.includes("oc")
+                ? "51"
+                : defn.includes("50")
+                  ? "50"
+                  : defn.includes("67")
+                    ? "67"
+                    : defn.includes("81r") || defn.includes("rocof")
+                      ? "81R"
+                      : defn.includes("81") || defn.includes("freq")
+                        ? "81U"
+                        : defn.includes("27")
+                          ? "27"
+                          : defn.includes("59")
+                            ? "59"
+                            : "21"),
+        ).toUpperCase() as EmtProtectionRelay["ansiCode"];
+
+        const z1 = parseFloat(String(p["Z1"] ?? p["zone1_reach"] ?? "10.0"));
+        const z2 = parseFloat(String(p["Z2"] ?? p["zone2_reach"] ?? "15.0"));
+        const z3 = parseFloat(String(p["Z3"] ?? p["zone3_reach"] ?? "22.0"));
+        const lineAng = parseFloat(String(p["line_angle"] ?? p["theta_line"] ?? "75.0"));
+        const pickupA = parseFloat(String(p["I_pickup"] ?? p["pickup_current"] ?? "400.0"));
+        const tds = parseFloat(String(p["TDS"] ?? p["time_dial"] ?? "1.0"));
+        const slope1 = parseFloat(String(p["slope1"] ?? "25.0"));
+        const slope2 = parseFloat(String(p["slope2"] ?? "50.0"));
+        const harm2 = parseFloat(String(p["harmonic_block_2nd"] ?? p["i2_block"] ?? "15.0"));
+        const monBr = p["branch"] ?? p["Branch"];
+        const secBr = p["branch2"] ?? p["Branch2"];
+        const tripBrk = p["breaker"] ?? p["Breaker"];
+
+        protectionRelays.push({
+          id: qCmpId,
+          ansiCode: rawCode,
+          monitoredBus: bus1,
+          monitoredBranch: monBr ? String(monBr) : undefined,
+          secondaryBranch: secBr ? String(secBr) : undefined,
+          tripBreakerId: tripBrk ? String(tripBrk) : undefined,
+          characteristic:
+            String(p["characteristic"] ?? "mho").toLowerCase() === "quadrilateral" ? "quadrilateral" : "mho",
+          zone1ReachOhm: isNaN(z1) ? undefined : z1,
+          zone2ReachOhm: isNaN(z2) ? undefined : z2,
+          zone3ReachOhm: isNaN(z3) ? undefined : z3,
+          lineAngleDeg: isNaN(lineAng) ? undefined : lineAng,
+          pickupCurrentA: isNaN(pickupA) ? undefined : pickupA,
+          timeDialSetting: isNaN(tds) ? undefined : tds,
+          slope1Percent: isNaN(slope1) ? undefined : slope1,
+          slope2Percent: isNaN(slope2) ? undefined : slope2,
+          secondHarmonicBlockPercent: isNaN(harm2) ? undefined : harm2,
         });
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
@@ -1583,6 +1754,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     synchronousMachines: synchronousMachines.length > 0 ? synchronousMachines : undefined,
     inductionMachines: inductionMachines.length > 0 ? inductionMachines : undefined,
     converterBridges: converterBridges.length > 0 ? converterBridges : undefined,
+    protectionRelays: protectionRelays.length > 0 ? protectionRelays : undefined,
     controlBlocks: controlBlocks.length > 0 ? controlBlocks : undefined,
     customFortranBlocks: customFortranBlocks.length > 0 ? customFortranBlocks : undefined,
     assumptions: assumptions.length > 0 ? assumptions : undefined,
@@ -1701,10 +1873,21 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     rPerKm: l.rPerKm,
     lPerKm: l.lPerKm,
     cPerKm: l.cPerKm,
+    r0PerKm: l.r0PerKm,
+    l0PerKm: l.l0PerKm,
+    c0PerKm: l.c0PerKm,
     modelType: l.modelType,
     isCable: l.isCable,
     coreRadiusM: l.coreRadiusM,
     insulationRadiusM: l.insulationRadiusM,
+    towerHeightM: l.towerHeightM,
+    phaseSpacingM: l.phaseSpacingM,
+    conductorRadiusM: l.conductorRadiusM,
+    bundleCount: l.bundleCount,
+    bundleSpacingM: l.bundleSpacingM,
+    poles: l.poles,
+    residues: l.residues,
+    d0: l.d0,
     insulationEpsR: l.insulationEpsR,
     burialDepthM: l.burialDepthM,
     soilResistivityOhmM: l.soilResistivityOhmM,
@@ -1835,6 +2018,10 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     armInductanceH: cb.armInductanceH,
   }));
 
+  const protectionRelays = netlist.protectionRelays?.map((pr) => ({
+    ...pr,
+  }));
+
   // 6. Map Continuous System Modeling Functions (CSMF) signal-flow control blocks
   const csmfBlocks = netlist.controlBlocks?.map((cb) => ({
     id: cb.id,
@@ -1873,6 +2060,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     synchronousMachines: synchronousMachines && synchronousMachines.length > 0 ? synchronousMachines : undefined,
     inductionMachines: inductionMachines && inductionMachines.length > 0 ? inductionMachines : undefined,
     converterBridges: converterBridges && converterBridges.length > 0 ? converterBridges : undefined,
+    protectionRelays: protectionRelays && protectionRelays.length > 0 ? protectionRelays : undefined,
     csmfBlocks: csmfBlocks && csmfBlocks.length > 0 ? csmfBlocks : undefined,
     customFortranBlocks: customFortranBlocks && customFortranBlocks.length > 0 ? customFortranBlocks : undefined,
   };

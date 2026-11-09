@@ -244,10 +244,26 @@ export interface EmtTransmissionLine {
   rPerKm: number;
   lPerKm: number;
   cPerKm: number;
+  /** Zero-sequence series resistance in Ohm/km (computed from Carson earth return or specified). */
+  r0PerKm?: number | undefined;
+  /** Zero-sequence series inductance in H/km (computed from Carson earth return or specified). */
+  l0PerKm?: number | undefined;
+  /** Zero-sequence shunt capacitance in F/km (computed from Maxwell potential matrix or specified). */
+  c0PerKm?: number | undefined;
   modelType: "bergeron" | "pi" | "fdpm";
   isCable?: boolean | undefined;
   coreRadiusM?: number | undefined;
   insulationRadiusM?: number | undefined;
+  /** Overhead tower conductor height above ground in meters. */
+  towerHeightM?: number | undefined;
+  /** Horizontal phase-to-phase spacing in meters. */
+  phaseSpacingM?: number | undefined;
+  /** Outer radius of each sub-conductor in meters. */
+  conductorRadiusM?: number | undefined;
+  /** Number of sub-conductors per phase bundle (1, 2, 3, or 4). */
+  bundleCount?: number | undefined;
+  /** Bundle spacing between adjacent sub-conductors in meters. */
+  bundleSpacingM?: number | undefined;
   /** Optional ULM / J. Marti rational approximation real negative poles (rad/s) for frequency-dependent lines. */
   poles?: number[] | undefined;
   /** Optional ULM / J. Marti rational approximation residues corresponding to `poles`. */
@@ -356,7 +372,7 @@ export interface EmtInductionMachine {
 export interface EmtConverterBridge {
   id: string;
   acBus: string;
-  kind: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin";
+  kind: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | "mmc_valve_gpu";
   ratedKvLL: number;
   ratedMva: number;
   vDcNominalKv?: number | undefined;
@@ -365,6 +381,29 @@ export interface EmtConverterBridge {
   numSubmodulesPerArm?: number | undefined;
   submoduleCapacitanceF?: number | undefined;
   armInductanceH?: number | undefined;
+}
+
+export interface EmtProtectionRelay {
+  id: string;
+  ansiCode: "21" | "87T" | "87L" | "50" | "51" | "67" | "27" | "59" | "81U" | "81O" | "81R";
+  monitoredBus: string;
+  monitoredBranch?: string | undefined;
+  secondaryBranch?: string | undefined;
+  tripBreakerId?: string | undefined;
+  characteristic?: "mho" | "quadrilateral" | undefined;
+  zone1ReachOhm?: number | undefined;
+  zone2ReachOhm?: number | undefined;
+  zone3ReachOhm?: number | undefined;
+  lineAngleDeg?: number | undefined;
+  pickupCurrentA?: number | undefined;
+  timeDialSetting?: number | undefined;
+  curveType?: "IEEE_MI" | "IEEE_VI" | "IEEE_EI" | "IEC_SI" | "IEC_VI" | "IEC_EI" | undefined;
+  slope1Percent?: number | undefined;
+  slope2Percent?: number | undefined;
+  secondHarmonicBlockPercent?: number | undefined;
+  underFrequencyHz?: number | undefined;
+  overFrequencyHz?: number | undefined;
+  rocofLimitHzPerSec?: number | undefined;
 }
 
 export interface EmtControlBlock {
@@ -430,6 +469,7 @@ export interface EmtNetlist {
   synchronousMachines?: EmtSynchronousMachine[] | undefined;
   inductionMachines?: EmtInductionMachine[] | undefined;
   converterBridges?: EmtConverterBridge[] | undefined;
+  protectionRelays?: EmtProtectionRelay[] | undefined;
   controlBlocks?: EmtControlBlock[] | undefined;
   customFortranBlocks?: EmtCustomFortranBlock[] | undefined;
   /** Defaults the extractor had to assume because a parameter was missing or unrecognised. */

@@ -8,6 +8,8 @@ interface TokenCreateArgs {
   scope?: string | string[] | undefined;
   pattern?: string | undefined;
   expires?: number | undefined;
+  cidr?: string | undefined;
+  ipAllowlist?: string | undefined;
   registry?: string | undefined;
   json?: boolean | undefined;
 }
@@ -30,6 +32,7 @@ interface TokenCreateResponse {
   prefix?: string | undefined;
   scopes?: string[] | undefined;
   packagePattern?: string | undefined;
+  ipAllowlist?: string | null | undefined;
   expiresAt?: string | null | undefined;
   token?: string | undefined;
 }
@@ -84,6 +87,11 @@ export const Token: CommandModule = {
               alias: "e",
               describe: "Expiration period in days (e.g. 30, 90). Default: never expires",
               type: "number",
+            })
+            .option("cidr", {
+              alias: ["c", "ip-allowlist"],
+              describe: "IP address or CIDR subnet restriction (e.g. '192.168.1.0/24', '10.0.0.1')",
+              type: "string",
             })
             .option("registry", {
               alias: "r",
@@ -168,6 +176,7 @@ async function handleCreateToken(args: TokenCreateArgs): Promise<void> {
         name: args.name,
         scopes,
         packagePattern: args.pattern || "*",
+        ipAllowlist: args.cidr || args.ipAllowlist || undefined,
         expiresInDays: args.expires,
       }),
     });
@@ -187,6 +196,9 @@ async function handleCreateToken(args: TokenCreateArgs): Promise<void> {
       console.log(`  Prefix:          ${data.prefix}`);
       console.log(`  Scopes:          ${(data.scopes ?? []).join(", ")}`);
       console.log(`  Package Pattern: ${data.packagePattern}`);
+      if (data.ipAllowlist) {
+        console.log(`  IP / CIDR Mask:  ${data.ipAllowlist}`);
+      }
       console.log(`  Expires:         ${data.expiresAt || "Never"}`);
       console.log(`\n  Plaintext Secret:\n  \x1b[32m${data.token}\x1b[0m\n`);
       console.log("  ⚠️  Save this token now; you will NOT be able to view it again.\n");

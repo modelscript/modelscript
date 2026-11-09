@@ -30,6 +30,13 @@ export async function resolve(specifier, context, nextResolve) {
       url: "data:text/javascript," + encodeURIComponent(shimCode),
     };
   }
+  if (specifier.startsWith("@antv/")) {
+    const shimCode = "export class Graph {}; export const Cell = {}; export const Node = {}; export const Edge = {}; export default { Graph, Cell, Node, Edge };";
+    return {
+      shortCircuit: true,
+      url: "data:text/javascript," + encodeURIComponent(shimCode),
+    };
+  }
   return nextResolve(specifier, context);
 }
 

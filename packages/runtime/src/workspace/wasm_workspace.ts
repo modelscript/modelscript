@@ -272,6 +272,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     byName: new Map<string, SymbolId[]>(),
     childrenOf: new Map<SymbolId | null, SymbolId[]>(),
   };
+  /** Map from document URI to parsed CST records ({ uri, tree }). */
+  public documents = new Map<string, any>();
 
   /**
    * Creates a new `LanguageWorkspaceIndex` from either an array of grammar `IndexerHook`s
@@ -683,6 +685,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
     // Step 1: Resolve enclosing package scope from top-level `within <package>;` declaration.
     if (rootNode) {
+      this.documents.set(uri, {
+        uri,
+        tree: rootNode.tree ?? { rootNode },
+      });
       const declared = this.extractDeclaredWithin(rootNode);
       if (declared !== null) {
         if (declared.length > 0) {
@@ -1444,6 +1450,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.ensureIndexed(uri);
       }
     }
+    (this.unifiedIndex as any).documents = this.documents;
     (this.unifiedIndex as any).workspace = this;
     (this.unifiedIndex as any).workspaceIndex = this;
     return this.unifiedIndex;
@@ -1466,6 +1473,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
   /** Returns the currently materialized `SymbolIndex` with `workspace` back-references attached. */
   toUnifiedPartial(): SymbolIndex {
+    (this.unifiedIndex as any).documents = this.documents;
     (this.unifiedIndex as any).workspace = this;
     (this.unifiedIndex as any).workspaceIndex = this;
     return this.unifiedIndex;

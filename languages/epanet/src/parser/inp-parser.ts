@@ -7,7 +7,14 @@
  * whitespace tokenization, inline comment stripping, and line/col tracking.
  */
 
-import type { EpanetFlowUnits, EpanetHeadLossModel, EpanetNetwork, EpanetRange, EpanetValveType } from "../types.js";
+import type {
+  EpanetControl,
+  EpanetFlowUnits,
+  EpanetHeadLossModel,
+  EpanetNetwork,
+  EpanetRange,
+  EpanetValveType,
+} from "../types.js";
 
 export function parseInp(source: string, filename?: string): EpanetNetwork {
   const lines = source.split(/\r?\n/);
@@ -21,6 +28,8 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
     valves: [],
     curves: [],
     patterns: [],
+    controls: [],
+    rules: [],
     options: {
       units: "LPS",
       headloss: "H-W",
@@ -256,6 +265,65 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
         break;
       }
 
+      case "CONTROLS": {
+        const linkKeyword = tokens[0]?.toUpperCase();
+        if (linkKeyword === "LINK" && tokens.length >= 3) {
+          const linkId = tokens[1]!;
+          const status = tokens[2]!.toUpperCase() === "CLOSED" ? "CLOSED" : "OPEN";
+          let conditionType: EpanetControl["conditionType"] = "NODE_HEAD";
+          let nodeId: string | undefined;
+          let operator: "ABOVE" | "BELOW" | undefined;
+          let value = 0;
+
+          if (tokens[3]?.toUpperCase() === "IF" && tokens[4]?.toUpperCase() === "NODE" && tokens.length >= 8) {
+            nodeId = tokens[5]!;
+            operator = tokens[6]!.toUpperCase() === "BELOW" ? "BELOW" : "ABOVE";
+            value = parseFloat(tokens[7]!) || 0;
+            conditionType = "TANK_LEVEL";
+          } else if (tokens[3]?.toUpperCase() === "AT" && tokens[4]?.toUpperCase() === "TIME") {
+            conditionType = "TIME";
+            value = parseFloat(tokens[5]!) || 0;
+          }
+
+          net.controls ??= [];
+          net.controls.push({
+            linkId,
+            status,
+            conditionType,
+            nodeId,
+            operator,
+            value,
+            range,
+          });
+        }
+        break;
+      }
+
+      case "RULES": {
+        const ruleId = tokens[0] ?? `Rule_${(net.rules?.length ?? 0) + 1}`;
+        net.rules ??= [];
+        net.rules.push({
+          id: ruleId,
+          condition: tokens.slice(1).join(" "),
+          action: "",
+          range,
+        });
+        break;
+      }
+
+      case "TIMES": {
+        const key = tokens[0]?.toUpperCase();
+        const val = tokens[1];
+        if (key === "DURATION" && val) {
+          net.options.durationHours = parseFloat(val) || 24;
+        } else if (key === "HYDRAULIC" && tokens[1]?.toUpperCase() === "TIMESTEP" && tokens[2]) {
+          net.options.hydraulicStepHours = parseFloat(tokens[2]) || 1;
+        } else if (key === "PATTERN" && tokens[1]?.toUpperCase() === "TIMESTEP" && tokens[2]) {
+          net.options.patternStepHours = parseFloat(tokens[2]) || 1;
+        }
+        break;
+      }
+
       case "OPTIONS": {
         const key = tokens[0]?.toUpperCase();
         const val = tokens[1];
@@ -267,6 +335,14 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           net.options.accuracy = parseFloat(val) || 0.001;
         } else if (key === "TRIALS" && val) {
           net.options.trials = parseInt(val, 10) || 40;
+        } else if (key === "DEMAND" && tokens[1]?.toUpperCase() === "MODEL" && tokens[2]) {
+          net.options.demandModel = tokens[2].toUpperCase() === "PDD" ? "PDD" : "DDA";
+        } else if (key === "MINIMUM" && tokens[1]?.toUpperCase() === "PRESSURE" && tokens[2]) {
+          net.options.pddMinPressure = parseFloat(tokens[2]) || 0;
+        } else if (key === "REQUIRED" && tokens[1]?.toUpperCase() === "PRESSURE" && tokens[2]) {
+          net.options.pddReqPressure = parseFloat(tokens[2]) || 20;
+        } else if (key === "PRESSURE" && tokens[1]?.toUpperCase() === "EXPONENT" && tokens[2]) {
+          net.options.pddPressureExponent = parseFloat(tokens[2]) || 0.5;
         }
         break;
       }

@@ -30,6 +30,7 @@ export function createEmptyCgmesModel(): CgmesModel {
     shunts: new Map(),
     svVoltages: new Map(),
     svFlows: new Map(),
+    baseVoltages: new Map(),
   };
 }
 
@@ -114,9 +115,6 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
   const doc = parseXml(xmlSource);
   if (!doc.root) return model;
 
-  // Intermediate BaseVoltage lookup: mRID -> nominalVoltage (kV)
-  const baseVoltages = new Map<string, number>();
-
   // Process root children (the CIM entities)
   const entities = doc.root.children;
 
@@ -127,7 +125,7 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
       const id = extractMRid(el);
       if (id) {
         const nomU = getPropertyFloat(el, "nominalVoltage", 400.0);
-        baseVoltages.set(id, nomU);
+        model.baseVoltages.set(id, nomU);
       }
     }
   }
@@ -151,9 +149,10 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
       case "VoltageLevel": {
         const subId = getResourceRef(el, "Substation");
         const bvRef = getResourceRef(el, "BaseVoltage");
-        const baseKv = bvRef && baseVoltages.has(bvRef)
-          ? (baseVoltages.get(bvRef) ?? 400.0)
-          : getPropertyFloat(el, "nominalVoltage", 400.0);
+        const baseKv =
+          bvRef && model.baseVoltages.has(bvRef)
+            ? (model.baseVoltages.get(bvRef) ?? 400.0)
+            : getPropertyFloat(el, "nominalVoltage", 400.0);
         const lowVoltageLimit = getPropertyFloat(el, "lowVoltageLimit", baseKv * 0.9);
         const highVoltageLimit = getPropertyFloat(el, "highVoltageLimit", baseKv * 1.1);
 
@@ -177,9 +176,10 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
 
       case "TopologicalNode": {
         const bvRef = getResourceRef(el, "BaseVoltage");
-        const baseKv = bvRef && baseVoltages.has(bvRef)
-          ? (baseVoltages.get(bvRef) ?? 400.0)
-          : getPropertyFloat(el, "nominalVoltage", 400.0);
+        const baseKv =
+          bvRef && model.baseVoltages.has(bvRef)
+            ? (model.baseVoltages.get(bvRef) ?? 400.0)
+            : getPropertyFloat(el, "nominalVoltage", 400.0);
         const vlId = getResourceRef(el, "ConnectivityNodeContainer") ?? getResourceRef(el, "VoltageLevel");
 
         model.nodes.set(mRID, {
@@ -199,15 +199,19 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
       }
 
       case "Terminal": {
-        const ceId = getResourceRef(el, "ConductingEquipment") ?? "";
-        const cnId = getResourceRef(el, "ConnectivityNode");
-        const tnId = getResourceRef(el, "TopologicalNode");
-        const seq = Math.floor(getPropertyFloat(el, "sequenceNumber", 1));
+        const existing = model.terminals.get(mRID);
+        const ceRef = getResourceRef(el, "ConductingEquipment");
+        const ceId = ceRef ?? existing?.conductingEquipmentId ?? "";
+        const cnId = getResourceRef(el, "ConnectivityNode") ?? existing?.connectivityNodeId;
+        const tnId = getResourceRef(el, "TopologicalNode") ?? existing?.topologicalNodeId;
+        const seq = el.children.some((c) => localName(c.name).toLowerCase().endsWith("sequencenumber"))
+          ? Math.floor(getPropertyFloat(el, "sequenceNumber", 1))
+          : (existing?.sequenceNumber ?? 1);
 
         model.terminals.set(mRID, {
           mRID,
-          name,
-          description,
+          name: existing?.name ?? name,
+          description: existing?.description ?? description,
           conductingEquipmentId: ceId,
           connectivityNodeId: cnId,
           topologicalNodeId: tnId,

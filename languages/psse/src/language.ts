@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, def, language, repeat, type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/dsl";
+import { auditNercCompliance } from "./compliance/nerc-auditor.js";
 import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
+import { executeIdv } from "./parser/idv-interpreter.js";
 import { parseRaw } from "./parser/raw-parser.js";
+import { parsePsseOut, serializePsseSav } from "./parser/sav-parser.js";
 import { psseToModelica } from "./projections/psse-to-modelica.js";
 import { psseToEmtNetlist } from "./projections/psse-to-pscad.js";
+import { executePythonPsspyScript } from "./psspy-shim.js";
 import {
   analyzeN1Contingencies,
   calculateShortCircuit,
@@ -13,19 +17,20 @@ import {
   simulatePsseTransient,
   solvePowerFlow,
 } from "./solver/ac-powerflow.js";
+import { calculateGic } from "./solver/gic-solver.js";
 
 /**
- * ModelScript PSS/E RAW (`.raw`) & DYR (`.dyr`) Language Definition.
+ * ModelScript PSS/E RAW (`.raw`), DYR (`.dyr`), SEQ (`.seq`), CON/MON/SUB & SAV/OUT Language Definition.
  *
  * Provides declarative grammar, linear CST queries, pre-flight grid linter,
  * AC power flow, multi-machine transient stability simulation, and Ybus netlist extraction.
  */
 export const psseLanguage = language({
   name: "psse",
-  fileExtensions: [".raw", ".dyr"],
-  maturity: "beta",
+  fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
+  maturity: "stable",
   lsp: {
-    fileExtensions: [".raw", ".dyr"],
+    fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
     icons: {
       light: "./assets/psse/icon-light.png",
       dark: "./assets/psse/icon-dark.png",
@@ -221,6 +226,105 @@ export const psseLanguage = language({
         if (!text) return null;
         const parsed = parseRaw(text);
         return psseToEmtNetlist(parsed);
+      },
+    },
+    {
+      id: "run_psspy_script",
+      title: "Execute Python psspy Automation Script",
+      description: "Executes a PSS/E Python psspy automation script against a virtual fileset.",
+      category: "simulate",
+      execute: async (
+        ctx,
+        params: {
+          script?: string | undefined;
+          documentText?: string | undefined;
+          files?: Record<string, string | Uint8Array> | undefined;
+        },
+      ) => {
+        const script = params?.script ?? params?.documentText ?? ctx?.documentText ?? "";
+        const session = executePythonPsspyScript(script, params?.files ?? {});
+        return {
+          messages: session.getMessages(),
+          lastPowerFlow: session.getLastPowerFlow(),
+          lastTransient: session.getLastTransient(),
+          virtualFiles: Array.from(session.virtualFiles.keys()),
+        };
+      },
+    },
+    {
+      id: "export_sav_binary",
+      title: "Export Binary .sav Case Snapshot",
+      description: "Serializes the solved PSS/E power flow case into a binary .sav snapshot buffer.",
+      category: "export",
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const parsed = parseRaw(text);
+        return serializePsseSav(parsed);
+      },
+    },
+    {
+      id: "inspect_out_channels",
+      title: "Inspect Binary .out Dynamic Channels",
+      description: "Parses a binary PSS/E .out dynamic simulation file (native or v33/v34 Fortran unformatted).",
+      category: "query",
+      execute: async (_ctx, params: { binaryBuffer?: Uint8Array | undefined }) => {
+        if (!params?.binaryBuffer) return null;
+        return parsePsseOut(params.binaryBuffer);
+      },
+    },
+    {
+      id: "calculate_gic_tpl007",
+      title: "Calculate Geomagnetically Induced Currents (GIC) & NERC TPL-007 Compliance",
+      description:
+        "Solves quasi-DC earth network under geoelectric field (Ex, Ey) and evaluates transformer Mvar losses and thermal limits.",
+      category: "simulate",
+      execute: async (
+        ctx: { documentText?: string | undefined },
+        params?: { documentText?: string | undefined; eEastVPerKm?: number; eNorthVPerKm?: number },
+      ) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const parsed = parseRaw(text);
+        return calculateGic(parsed, {
+          eEastVPerKm: params?.eEastVPerKm ?? 1.0,
+          eNorthVPerKm: params?.eNorthVPerKm ?? 0.0,
+        });
+      },
+    },
+    {
+      id: "execute_idv_script",
+      title: "Execute PSS/E .idv Macro Script",
+      description: "Executes a legacy PSS/E .idv batch command file against the active case.",
+      category: "simulate",
+      execute: async (
+        ctx: { documentText?: string | undefined },
+        params?: { script?: string | undefined; documentText?: string | undefined; rawCase?: string | undefined },
+      ) => {
+        const script = params?.script ?? params?.documentText ?? ctx?.documentText ?? "";
+        let initialCase = undefined;
+        if (params?.rawCase) {
+          initialCase = parseRaw(params.rawCase);
+        }
+        return executeIdv(script, undefined, { initialCase });
+      },
+    },
+    {
+      id: "audit_nerc_compliance",
+      title: "Audit NERC Reliability Compliance (MOD-025/026/027 & TPL-001)",
+      description:
+        "Executes automated validation for generator capability, dynamic exciters/governors, and transmission planning.",
+      category: "query",
+      execute: async (
+        ctx: { documentText?: string | undefined },
+        params?: { documentText?: string | undefined; includeContingencies?: boolean | undefined },
+      ) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const parsed = parseRaw(text);
+        return auditNercCompliance(parsed, {
+          includeContingencies: params?.includeContingencies ?? true,
+        });
       },
     },
   ],

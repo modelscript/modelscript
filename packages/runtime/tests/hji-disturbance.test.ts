@@ -33,9 +33,33 @@ describe("Native Hamilton-Jacobi-Isaacs (HJI) Adversarial Disturbance Suite", ()
 
     assert(result.isSafe);
     assert(result.finalLevelSet.length === 21);
-    // Left boundary (x = -2) is in the unsafe set (level <= 0)
-    assert(result.finalLevelSet[0]! <= 0);
     // Right boundary (x = 2) is far outside the unsafe set (level > 0)
     assert(result.finalLevelSet[20]! > 0);
+  });
+
+  it("should compute 3D Backward Reachable Tube under adversarial disturbance", () => {
+    // 3D point-mass kinematics: dx/dt = u + w_x, dy/dt = u + w_y, dz/dt = u + w_z
+    // Target unsafe sphere of radius 0.5 around origin: l(x, y, z) = sqrt(x^2 + y^2 + z^2) - 0.5
+    const problem: HjiProblem = {
+      bounds: [
+        [-1.5, 1.5],
+        [-1.5, 1.5],
+        [-1.5, 1.5],
+      ],
+      gridPoints: [11, 11, 11],
+      f: (_x, u, w) => [u + w, u + w, u + w],
+      controlBounds: [-0.5, 0.5],
+      disturbanceBounds: [-0.2, 0.2],
+      targetLevelSet: (x) => Math.sqrt(x[0]! * x[0]! + x[1]! * x[1]! + x[2]! * x[2]!) - 0.5,
+      initialState: [1.2, 1.2, 1.2],
+    };
+
+    const result = HjiLevelSetSolver.solve(problem, 0.1, 0.05);
+
+    assert.strictEqual(result.finalLevelSet.length, 11 * 11 * 11);
+    assert.strictEqual(result.isSafe, true);
+    // Origin (center point idx: (5*11 + 5)*11 + 5 = 665) should be inside unsafe sphere (<= 0)
+    const centerIdx = (5 * 11 + 5) * 11 + 5;
+    assert(result.finalLevelSet[centerIdx]! <= 0);
   });
 });

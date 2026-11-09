@@ -449,6 +449,7 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
               publishedAt={pkg.publishedAt}
               license={pkg.libraryDetail?.license || pkg.packument?.license}
               classCount={pkg.classes.length}
+              classes={pkg.classes}
               canManage={pkg.canManage}
               isCurrentYanked={pkg.isCurrentYanked}
               currentYankReason={pkg.currentYankReason}
@@ -480,6 +481,11 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
                 pkg.packument?.author?.name || pkg.collaborators.find((c) => c.permission === "owner")?.username
               }
               modelicaVersion={pkg.currentManifest?.modelscript?.modelicaVersion}
+              oidcRepository={pkg.oidcRepository}
+              oidcWorkflow={pkg.oidcWorkflow}
+              oidcIssuer={pkg.oidcIssuer}
+              vulnerabilityCount={pkg.vulnerabilityCount}
+              vulnerabilities={pkg.vulnerabilities}
             />
 
             {/* ── Tab Bar ── */}

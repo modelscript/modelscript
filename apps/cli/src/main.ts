@@ -244,6 +244,15 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      ["bifurcation <name>", "bif <name>"],
+      "Trace nonlinear steady-state equilibrium curves and detect Fold (LP), Hopf (HB), and Branch (BP) bifurcations",
+      () => import("./commands/bifurcation.js"),
+      "Bifurcation",
+      ["bif"],
+    ),
+  )
+  .command(
+    lazy(
       "surrogate <name> [paths..]",
       "Train or import an AI surrogate model (ROM) and generate C, ONNX, or Modelica code",
       () => import("./commands/surrogate.js"),
@@ -578,6 +587,22 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "vendor [path]",
+      "Vendor all workspace dependencies into a local directory for offline air-gap execution",
+      () => import("./commands/vendor.js"),
+      "Vendor",
+    ),
+  )
+  .command(
+    lazy(
+      "mirror [packages..]",
+      "Mirror packages to an air-gap directory or bundle, or import an air-gap bundle into local store",
+      () => import("./commands/mirror.js"),
+      "Mirror",
+    ),
+  )
+  .command(
+    lazy(
       "stdlib [action] [pack]",
       "Manage, list, and synchronize polyglot standard libraries across 68 languages",
       () => import("./commands/stdlib.js"),
@@ -590,6 +615,24 @@ await yargs(rawArgs)
       "Remove a published library version from the Ansatz Package Registry",
       () => import("./commands/unpublish.js"),
       "Unpublish",
+    ),
+  )
+  .command(
+    lazy(
+      ["deprecate <package> [reason]", "undeprecate <package>"],
+      "Deprecate or un-deprecate a package release in the registry",
+      () => import("./commands/deprecate.js"),
+      "Deprecate",
+      ["undeprecate"],
+    ),
+  )
+  .command(
+    lazy(
+      ["yank <package> [reason]", "unyank <package>"],
+      "Yank (tombstone) or restore a package release in the registry",
+      () => import("./commands/yank.js"),
+      "Yank",
+      ["unyank"],
     ),
   )
   .command(
@@ -696,6 +739,30 @@ await yargs(rawArgs)
       "Inspect, lint, convert and solve ENTSO-E CIM / CGMES European grid models",
       () => import("./commands/cgmes.js"),
       "CgmesCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "optical <action> [files..]",
+      "Inspect Telcordia .sor OTDR traces, solve DWDM GSNR transmission budgets, and lint optical networks",
+      () => import("./commands/optical.js"),
+      "OpticalCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "ran <action> [files..]",
+      "Solve microwave link budgets, parse NSMA/Planet antenna patterns, and compute Fresnel clearance",
+      () => import("./commands/ran.js"),
+      "RanCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "fiber <action> [files..]",
+      "Locate OTDR faults along GIS cable paths, trace strand continuity, and audit SRLG diversity",
+      () => import("./commands/fiber.js"),
+      "FiberCommand",
     ),
   )
   .command(

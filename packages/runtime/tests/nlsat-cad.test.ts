@@ -225,6 +225,38 @@ describe("Native NLSAT Non-Linear CAD Real Arithmetic Suite (T_NRA)", () => {
       assert.ok(Math.abs(y - 1.0) < 1e-4);
       assert.ok(Math.abs(z - 1.0) < 1e-4);
     });
+
+    it("should isolate intersection roots of intersecting parabolas via pairwise CAD resultants", () => {
+      // System:
+      // y - x^2 + 1 >= 0  (y >= x^2 - 1)
+      // 2 - x^2 - y >= 0  (y <= 2 - x^2)
+      // Intersection: x^2 - 1 = 2 - x^2 => 2x^2 = 3 => x = +-sqrt(1.5) approx +-1.2247
+      // Feasible region exists for x in [-sqrt(1.5), sqrt(1.5)].
+      const p1 = new MultiPoly([
+        { deg: new Map([["y", 1]]), coeff: 1 },
+        { deg: new Map([["x", 2]]), coeff: -1 },
+        { deg: new Map(), coeff: 1 },
+      ]);
+      const p2 = new MultiPoly([
+        { deg: new Map(), coeff: 2 },
+        { deg: new Map([["x", 2]]), coeff: -1 },
+        { deg: new Map([["y", 1]]), coeff: -1 },
+      ]);
+
+      const solver = new NlsatSolver([
+        { id: 1, poly: p1, op: ">=", vars: ["x", "y"] },
+        { id: 2, poly: p2, op: ">=", vars: ["x", "y"] },
+      ]);
+
+      const res = solver.solve();
+      assert.strictEqual(res.status, "SAT");
+      assert.ok(res.model);
+      const x = res.model.get("x")!;
+      const y = res.model.get("y")!;
+      // Model must satisfy both constraints
+      assert.ok(y >= x * x - 1 - 1e-6);
+      assert.ok(y <= 2 - x * x + 1e-6);
+    });
   });
 
   describe("Integration with DpllTSolver (DPLL(T) + NLSAT)", () => {

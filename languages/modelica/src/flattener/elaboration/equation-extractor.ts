@@ -2693,7 +2693,34 @@ export function extractClassEquations(
                 if (isRealExpr(finalLhs, dae) && !isRealExpr(finalRhs, dae)) {
                   finalRhs = castToRealExpr(finalRhs, dae);
                 }
-                const eqIdx = dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Array, finalLhs, finalRhs);
+                const shape = effectiveLhsDims && effectiveLhsDims.length > 0 ? effectiveLhsDims : [1];
+                const eqIdx =
+                  !isInitial && typeof dae.addArrayEquation === "function"
+                    ? dae.addArrayEquation(finalLhs, finalRhs, shape)
+                    : dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Array, finalLhs, finalRhs);
+                if (eqIdx >= 0) emittedEqIndices.push(eqIdx);
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
+                if (startB != null && endB != null && eqIdx >= 0) {
+                  dae.setEqSourceRange(eqIdx, startB, endB);
+                }
+              } else if (
+                flattener.options.arrayMode === "preserve" &&
+                hasLeftDims &&
+                hasRightDims &&
+                !dimsMismatch &&
+                dae.getExprKind(expandedRhs) !== ExprKind.ArrayCtor
+              ) {
+                let finalLhs = lhsExprId;
+                let finalRhs = rhsExprId;
+                if (isRealExpr(finalLhs, dae) && !isRealExpr(finalRhs, dae)) {
+                  finalRhs = castToRealExpr(finalRhs, dae);
+                }
+                const shape = effectiveLhsDims && effectiveLhsDims.length > 0 ? effectiveLhsDims : [1];
+                const eqIdx =
+                  !isInitial && typeof dae.addArrayEquation === "function"
+                    ? dae.addArrayEquation(finalLhs, finalRhs, shape)
+                    : dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Array, finalLhs, finalRhs);
                 if (eqIdx >= 0) emittedEqIndices.push(eqIdx);
                 const startB = node.startIndex ?? node.startOffset;
                 const endB = node.endIndex ?? node.endOffset;
@@ -4784,24 +4811,35 @@ export function extractClassEquations(
  * @returns Ordered list of scalarized connector endpoint strings (or `[refStr]` if scalar).
  */
 export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
+  let cache = (dae as any)._expandConnectorRefCache as Map<string, string[]> | undefined;
+  if (!cache) {
+    cache = new Map<string, string[]>();
+    (dae as any)._expandConnectorRefCache = cache;
+  }
+  const cached = cache.get(refStr);
+  if (cached !== undefined) return cached;
+
   // 1. Direct scalar or exact variable reference
   if (dae.getVarIdxByName(refStr) >= 0) {
-    return [refStr];
+    const res = [refStr];
+    cache.set(refStr, res);
+    return res;
   }
   // 2. Direct shape lookup for array connector
   const namedShape = getNamedArrayShape(dae, refStr);
   if (namedShape && namedShape.length > 0) {
-    return generateArrayIndices(namedShape).map((idx) => `${refStr}${idx}`);
+    const res = generateArrayIndices(namedShape).map((idx) => `${refStr}${idx}`);
+    cache.set(refStr, res);
+    return res;
   }
   // 3. Fallback: regex scan when array elements exist in prefixes
   const prefixSet = getVarPrefixSet(dae);
   const parts = refStr.split(".");
   const firstPart = parts[0]!;
-  const hasArrayPrefix = Array.from(prefixSet).some(
-    (p) => p.startsWith(`${firstPart}[`) || p.startsWith(`${firstPart}.`),
-  );
-  if (!prefixSet.has(refStr) && !hasArrayPrefix) {
-    return [refStr];
+  if (!prefixSet.has(refStr) && !prefixSet.has(firstPart)) {
+    const res = [refStr];
+    cache.set(refStr, res);
+    return res;
   }
   const pattern = new RegExp(
     "^(" +
@@ -4817,6 +4855,8 @@ export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
       found.add(m[1]!);
     }
   }
-  if (found.size === 0) return [refStr];
-  return Array.from(found).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const res =
+    found.size === 0 ? [refStr] : Array.from(found).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  cache.set(refStr, res);
+  return res;
 }

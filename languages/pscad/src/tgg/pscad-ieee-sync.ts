@@ -247,7 +247,9 @@ export function synchronizeIeee2800ToPscad(
   const changes: PscadIeeeSyncChange[] = [];
 
   if (!/IEEE\s*2800/i.test(modifiedReportText) && !/Clause\s+5\./i.test(modifiedReportText)) {
-    throw new Error("Expected an IEEE 2800-2022 Interconnection Verification Report with Clause 5.3.2 / 5.4.1 / 7.2.2 entries.");
+    throw new Error(
+      "Expected an IEEE 2800-2022 Interconnection Verification Report with Clause 5.3.2 / 5.4.1 / 7.2.2 entries.",
+    );
   }
 
   const xmlDoc = xml.parseXml(originalPscadXml);
@@ -316,13 +318,12 @@ export function synchronizeIeee2800ToPscad(
   };
 
   // 2. Parse and reconcile Clause 5.3.2 LVRT behavior via Rule #2
-  const clause532Match = /•\s*\[(PASS|FAIL)\]\s*Clause\s+5\.3\.2[^:]*:\s*([^\[\n]+)/i.exec(modifiedReportText);
+  const clause532Match = /•\s*\[(PASS|FAIL)\]\s*Clause\s+5\.3\.2[^:]*:\s*([^[\n]+)/i.exec(modifiedReportText);
   if (clause532Match && ibrCompEl) {
     const status532 = clause532Match[1]!.toUpperCase();
     const desc532 = clause532Match[2]!.trim();
     const wantsTrip =
-      status532 === "FAIL" ||
-      (/trip|cessation|disconnect/i.test(desc532) && !/^no\s+trip/i.test(desc532));
+      status532 === "FAIL" || (/trip|cessation|disconnect/i.test(desc532) && !/^no\s+trip/i.test(desc532));
     const targetLvrtBehavior = wantsTrip ? "Trip or momentary cessation" : "No trip or cessation";
 
     const lvrtBack = transformer.evaluateRuleBackward(
@@ -396,8 +397,9 @@ export function synchronizeIeee2800ToPscad(
   }
 
   // 4. Parse and reconcile Clause 7.2.2.3.5 Active Power Recovery (%) via Rule #4 (tggInvertible + tggReconcilePhysics)
-  const clause722Match =
-    /Clause\s+7\.2\.2\.3\.5[^:]*:\s*I_post\s*\/\s*I_pre\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*%/i.exec(modifiedReportText);
+  const clause722Match = /Clause\s+7\.2\.2\.3\.5[^:]*:\s*I_post\s*\/\s*I_pre\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*%/i.exec(
+    modifiedReportText,
+  );
   if (clause722Match && clause722Match[1] && ibrCompEl) {
     const targetRecovPct = Number(clause722Match[1]);
     if (!Number.isNaN(targetRecovPct) && (targetRecovPct !== 100.0 || origKiV !== 40.0)) {

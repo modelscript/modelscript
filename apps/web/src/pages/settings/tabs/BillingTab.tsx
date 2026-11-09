@@ -937,8 +937,31 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
 
           <CommercialPillarsGrid>
             <CommercialPillar>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                Commercial SDK ($12k/yr)
+              <div
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "var(--color-text-primary)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "6px",
+                }}
+              >
+                <span>Commercial SDK</span>
+                <a
+                  href="mailto:sales@modelscript.org?subject=Commercial%20SDK%20Inquiry"
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "var(--color-accent-purple, #a855f7)",
+                    textDecoration: "underline",
+                    textUnderlineOffset: "2px",
+                  }}
+                >
+                  Contact us at sales@modelscript.org
+                </a>
               </div>
               <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
                 Dual-license exemption from AGPL §13 network copyleft for proprietary SaaS or closed desktop software,
@@ -947,8 +970,31 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
             </CommercialPillar>
 
             <CommercialPillar>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                Enterprise Appliance ($18k/yr)
+              <div
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "var(--color-text-primary)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "6px",
+                }}
+              >
+                <span>Enterprise Appliance</span>
+                <a
+                  href="mailto:sales@modelscript.org?subject=Enterprise%20Appliance%20Inquiry"
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "var(--color-accent-purple, #a855f7)",
+                    textDecoration: "underline",
+                    textUnderlineOffset: "2px",
+                  }}
+                >
+                  Contact us at sales@modelscript.org
+                </a>
               </div>
               <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
                 Pre-hardened, zero-internet on-premise container deployment meeting FERC CEII and NERC CIP-005/007/010

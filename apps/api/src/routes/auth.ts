@@ -13,6 +13,7 @@ import { defaultRegistrationLimiter } from "../middleware/registration-limiter.j
 import { defaultMailer } from "../services/mailer.js";
 import { defaultOidcService } from "../services/oidc.js";
 import { verifyCaptchaToken } from "../util/captcha.js";
+import { isValidIpOrCidr, parseIpAllowlist } from "../util/cidr-matcher.js";
 import { getClientIp } from "../util/client-ip.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { isDisposableEmail } from "../util/email-filter.js";
@@ -2810,7 +2811,7 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(403).json({ error: "Personal access tokens cannot mint new API tokens without admin scope" });
       return;
     }
-    const { name, scopes, packagePattern, expiresInDays } = req.body || {};
+    const { name, scopes, packagePattern, expiresInDays, ipAllowlist, cidr } = req.body || {};
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       res.status(400).json({ error: "Token name is required" });
@@ -2820,6 +2821,21 @@ export function authRouter(database: LibraryDatabase): Router {
     if (!Array.isArray(scopes) || scopes.length === 0) {
       res.status(400).json({ error: "At least one scope is required in the 'scopes' array" });
       return;
+    }
+
+    const rawAllowlist = ipAllowlist ?? cidr;
+    let normalizedAllowlist: string | null = null;
+    if (rawAllowlist) {
+      const parts = parseIpAllowlist(rawAllowlist);
+      for (const entry of parts) {
+        if (!isValidIpOrCidr(entry)) {
+          res.status(400).json({ error: `Invalid IP address or CIDR mask: '${entry}'` });
+          return;
+        }
+      }
+      if (parts.length > 0) {
+        normalizedAllowlist = parts.join(", ");
+      }
     }
 
     const validScopes = new Set([
@@ -2880,6 +2896,7 @@ export function authRouter(database: LibraryDatabase): Router {
         tokenHash,
         scopes,
         packagePattern: typeof packagePattern === "string" ? packagePattern.trim() : "*",
+        ipAllowlist: normalizedAllowlist,
         expiresAt,
       });
       const tokenId = Number(tokenRowId);
@@ -2891,12 +2908,12 @@ export function authRouter(database: LibraryDatabase): Router {
         resourceType: "api_token",
         resourceId: auditResourceId,
         ipAddress: getClientIp(req),
-        details: { name: name.trim(), scopes, packagePattern, expiresAt },
+        details: { name: name.trim(), scopes, packagePattern, ipAllowlist: normalizedAllowlist, expiresAt },
       });
 
       database.createNotification(req.user!.id, req.user!.id, "security_alert", null, {
         title: "New Personal Access Token Created",
-        description: `A new API token '${name.trim()}' (${tokenPrefix}...) was created with scopes: ${scopes.join(", ")}.`,
+        description: `A new API token '${name.trim()}' (${tokenPrefix}...) was created with scopes: ${scopes.join(", ")}${normalizedAllowlist ? ` (CIDR: ${normalizedAllowlist})` : ""}.`,
         skipEmail: true,
       });
 
@@ -2907,6 +2924,7 @@ export function authRouter(database: LibraryDatabase): Router {
         prefix: tokenPrefix,
         scopes,
         packagePattern: packagePattern || "*",
+        ipAllowlist: normalizedAllowlist,
         expiresAt,
         message: "Save this token now; you will not be able to see it again.",
       });

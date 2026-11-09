@@ -120,6 +120,28 @@ export interface EpanetPattern {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Operational Controls & Logical Rules
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface EpanetControl {
+  linkId: string;
+  status: "OPEN" | "CLOSED";
+  setting?: number | undefined;
+  conditionType: "NODE_HEAD" | "NODE_PRESSURE" | "TANK_LEVEL" | "TIME" | "CLOCKTIME";
+  nodeId?: string | undefined;
+  operator?: "ABOVE" | "BELOW" | undefined;
+  value: number; // Head (m), pressure (m), level (m), or time (hours)
+  range?: EpanetRange | undefined;
+}
+
+export interface EpanetRule {
+  id: string;
+  condition: string;
+  action: string;
+  range?: EpanetRange | undefined;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Network Options & Root Document
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -135,6 +157,13 @@ export interface EpanetOptions {
   trials: number;
   accuracy: number;
   flowChange: number;
+  durationHours?: number | undefined; // EPS total duration, default 24h
+  hydraulicStepHours?: number | undefined; // EPS time step, default 1h
+  patternStepHours?: number | undefined; // Demand pattern interval, default 1h
+  demandModel?: "DDA" | "PDD" | undefined; // Demand-Driven vs Pressure-Dependent
+  pddMinPressure?: number | undefined; // Minimum pressure for zero flow, default 0 m
+  pddReqPressure?: number | undefined; // Required service pressure, default 20 m
+  pddPressureExponent?: number | undefined; // Pressure exponent alpha, default 0.5
 }
 
 export interface EpanetNetwork {
@@ -147,6 +176,8 @@ export interface EpanetNetwork {
   valves: EpanetValve[];
   curves: EpanetCurve[];
   patterns: EpanetPattern[];
+  controls?: EpanetControl[] | undefined;
+  rules?: EpanetRule[] | undefined;
   options: EpanetOptions;
   filename?: string | undefined;
 }

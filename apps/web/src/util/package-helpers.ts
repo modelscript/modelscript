@@ -3,6 +3,16 @@
 import { inflateRaw } from "pako";
 import type { LibraryListItem } from "../api";
 
+export interface PreFlightCheckResult {
+  archiveValid: boolean;
+  fileCount: number;
+  totalSizeBytes: number;
+  hasManifest: boolean;
+  manifestType?: "package.json" | "package.mo" | "modelscript.json" | "other" | undefined;
+  pathSafety: { valid: boolean; violations: string[] };
+  syntaxWarnings: string[];
+}
+
 export interface ExtractedZipMetadata {
   name?: string | undefined;
   version?: string | undefined;
@@ -10,12 +20,28 @@ export interface ExtractedZipMetadata {
   license?: string | undefined;
   files: string[];
   hasManifest: boolean;
+  preFlight?: PreFlightCheckResult | undefined;
 }
 
 const SEMVER_REGEX = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export function isValidSemver(version: string): boolean {
   return SEMVER_REGEX.test(version.trim());
+}
+
+export function suggestNextSemVer(currentVersion: string, bumpType: "patch" | "minor" | "major"): string {
+  const match = currentVersion.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return "1.0.0";
+  const major = parseInt(match[1]!, 10);
+  const minor = parseInt(match[2]!, 10);
+  const patch = parseInt(match[3]!, 10);
+  if (bumpType === "major") {
+    return `${major + 1}.0.0`;
+  }
+  if (bumpType === "minor") {
+    return `${major}.${minor + 1}.0`;
+  }
+  return `${major}.${minor}.${patch + 1}`;
 }
 
 /**
@@ -194,6 +220,36 @@ export function inspectPackageZip(zipData: Uint8Array): ExtractedZipMetadata {
     if (descMatch?.[1]) result.description = descMatch[1].trim();
     if (licMatch?.[1]) result.license = licMatch[1].trim();
   }
+
+  const pathViolations: string[] = [];
+  for (const f of result.files) {
+    if (f.startsWith("/") || f.startsWith("\\") || f.includes("../") || f.includes("..\\")) {
+      pathViolations.push(f);
+    }
+  }
+
+  let manifestType: PreFlightCheckResult["manifestType"] = undefined;
+  if (packageJsonText) manifestType = "package.json";
+  else if (packageMoText) manifestType = "package.mo";
+  else if (result.hasManifest) manifestType = "other";
+
+  const syntaxWarnings: string[] = [];
+  if (packageMoText && !packageMoText.includes("end ")) {
+    syntaxWarnings.push("Root package.mo missing canonical 'end <identifier>;' termination.");
+  }
+
+  result.preFlight = {
+    archiveValid: true,
+    fileCount: result.files.length,
+    totalSizeBytes: zipData.byteLength,
+    hasManifest: result.hasManifest,
+    manifestType,
+    pathSafety: {
+      valid: pathViolations.length === 0,
+      violations: pathViolations,
+    },
+    syntaxWarnings,
+  };
 
   return result;
 }

@@ -80,15 +80,17 @@ export interface HpcUsageMetrics {
   sandboxRuntime?: string | undefined;
 }
 
+export type HpcDriverType = "local" | "slurm" | "slurm-rest" | "pbs" | "kuberay" | "mock";
+
 export interface HpcSubmissionResult {
   nativeJobId: string;
-  driverType: "local" | "slurm" | "slurm-rest" | "mock";
+  driverType: HpcDriverType;
   allocatedResources: HpcResourceSpec;
   estimatedCreditsPerHour: number;
 }
 
 export interface HpcDriver {
-  readonly type: "local" | "slurm" | "slurm-rest" | "mock";
+  readonly type: HpcDriverType;
   submit(spec: HpcJobSpec): Promise<HpcSubmissionResult>;
   pollStatus(nativeJobId: string): Promise<{ state: HpcJobState; exitCode?: number | undefined }>;
   cancel(nativeJobId: string): Promise<boolean>;

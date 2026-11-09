@@ -26,26 +26,43 @@ import { UnmanagedMap64To64 } from "../core/hashmap";
  */
 @inline
 export function isTargetVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): boolean {
-  if (exprId >= dae.exprCount) return false;
+  if (exprId >= dae.exprCount || targetVarId >= dae.varCount) return false;
   let offset = exprId * EXPR_STRIDE;
   let kind = dae.getExprData().get(offset + EXPR_KIND);
+  let targetNameId = dae.getVarNameId(targetVarId);
 
   if (kind == ExprKind.Name) {
     let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (rawId == targetNameId) return true;
     let resolved = dae.resolveExprVarId(rawId);
     if (resolved >= 0 && (resolved as u32) == targetVarId) return true;
     return rawId == targetVarId;
   }
   if (kind == ExprKind.Der) {
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (inner >= dae.exprCount || dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) != ExprKind.Name) {
+      inner = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    }
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
       let rawId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      let sp = dae.stringPool;
+      if (changetype<usize>(sp) != 0) {
+        let unwrappedTarget = sp.unwrapDerSingle(targetNameId);
+        if (unwrappedTarget != 0 && unwrappedTarget == rawId) return true;
+        let derOfRaw = sp.lookupDerOf(rawId);
+        if (derOfRaw != 0 && derOfRaw == targetNameId) return true;
+      }
       let resolved = dae.resolveExprVarId(rawId);
       if (resolved >= 0 && (resolved as u32) == targetVarId) return true;
       return rawId == targetVarId;
     }
   }
   return false;
+}
+
+@inline
+export function containsVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): bool {
+  return countVarOccurrences(dae, exprId, targetVarId) > 0;
 }
 
 /**
@@ -304,6 +321,122 @@ export function invertSingleOccurrence(
 }
 
 /**
+ * Extract linear coefficients A, B such that `expr = A*x + B`.
+ * Returns packed u64: ((aId as u64) << 32) | (bId as u64), or u64.MAX_VALUE if not linear.
+ */
+function extractLinearCoeffsRec(
+  dae: DaeBuilder,
+  exprId: u32,
+  targetVarId: u32,
+  depth: i32
+): u64 {
+  if (exprId >= dae.exprCount || depth > 32) return 0xffffffffffffffff;
+
+  if (!containsVar(dae, exprId, targetVarId)) {
+    let zero = dae.addRealLiteral(0.0);
+    return ((zero as u64) << 32) | (exprId as u64);
+  }
+
+  if (isTargetVar(dae, exprId, targetVarId)) {
+    let one = dae.addRealLiteral(1.0);
+    let zero = dae.addRealLiteral(0.0);
+    return ((one as u64) << 32) | (zero as u64);
+  }
+
+  let offset = exprId * EXPR_STRIDE;
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
+
+  if (kind == ExprKind.Negate) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let innerRes = extractLinearCoeffsRec(dae, left, targetVarId, depth + 1);
+    if (innerRes == 0xffffffffffffffff) return 0xffffffffffffffff;
+    let ia = (innerRes >> 32) as u32;
+    let ib = (innerRes & 0xffffffff) as u32;
+    let negOne = dae.addRealLiteral(-1.0);
+    let aId = dae.addBinaryExpr(BinOp.Mul as u16, negOne, ia);
+    let bId = dae.addBinaryExpr(BinOp.Mul as u16, negOne, ib);
+    return ((aId as u64) << 32) | (bId as u64);
+  }
+
+  if (kind == ExprKind.Unary) {
+    let op = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (op == UnaryOp.Negate) {
+      let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+      let innerRes = extractLinearCoeffsRec(dae, left, targetVarId, depth + 1);
+      if (innerRes == 0xffffffffffffffff) return 0xffffffffffffffff;
+      let ia = (innerRes >> 32) as u32;
+      let ib = (innerRes & 0xffffffff) as u32;
+      let negOne = dae.addRealLiteral(-1.0);
+      let aId = dae.addBinaryExpr(BinOp.Mul as u16, negOne, ia);
+      let bId = dae.addBinaryExpr(BinOp.Mul as u16, negOne, ib);
+      return ((aId as u64) << 32) | (bId as u64);
+    }
+  }
+
+  if (kind == ExprKind.Binary) {
+    let op = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    let leftHasVar = containsVar(dae, left, targetVarId);
+    let rightHasVar = containsVar(dae, right, targetVarId);
+
+    if (op == BinOp.Add || op == BinOp.ElemAdd) {
+      let lc = extractLinearCoeffsRec(dae, left, targetVarId, depth + 1);
+      let rc = extractLinearCoeffsRec(dae, right, targetVarId, depth + 1);
+      if (lc == 0xffffffffffffffff || rc == 0xffffffffffffffff) return 0xffffffffffffffff;
+      let la = (lc >> 32) as u32; let lb = (lc & 0xffffffff) as u32;
+      let ra = (rc >> 32) as u32; let rb = (rc & 0xffffffff) as u32;
+      let aId = dae.addBinaryExpr(BinOp.Add as u16, la, ra);
+      let bId = dae.addBinaryExpr(BinOp.Add as u16, lb, rb);
+      return ((aId as u64) << 32) | (bId as u64);
+    }
+
+    if (op == BinOp.Sub || op == BinOp.ElemSub) {
+      let lc = extractLinearCoeffsRec(dae, left, targetVarId, depth + 1);
+      let rc = extractLinearCoeffsRec(dae, right, targetVarId, depth + 1);
+      if (lc == 0xffffffffffffffff || rc == 0xffffffffffffffff) return 0xffffffffffffffff;
+      let la = (lc >> 32) as u32; let lb = (lc & 0xffffffff) as u32;
+      let ra = (rc >> 32) as u32; let rb = (rc & 0xffffffff) as u32;
+      let aId = dae.addBinaryExpr(BinOp.Sub as u16, la, ra);
+      let bId = dae.addBinaryExpr(BinOp.Sub as u16, lb, rb);
+      return ((aId as u64) << 32) | (bId as u64);
+    }
+
+    if (op == BinOp.Mul || op == BinOp.ElemMul) {
+      if (!leftHasVar) {
+        let rc = extractLinearCoeffsRec(dae, right, targetVarId, depth + 1);
+        if (rc == 0xffffffffffffffff) return 0xffffffffffffffff;
+        let ra = (rc >> 32) as u32; let rb = (rc & 0xffffffff) as u32;
+        let aId = dae.addBinaryExpr(BinOp.Mul as u16, left, ra);
+        let bId = dae.addBinaryExpr(BinOp.Mul as u16, left, rb);
+        return ((aId as u64) << 32) | (bId as u64);
+      }
+      if (!rightHasVar) {
+        let lc = extractLinearCoeffsRec(dae, left, targetVarId, depth + 1);
+        if (lc == 0xffffffffffffffff) return 0xffffffffffffffff;
+        let la = (lc >> 32) as u32; let lb = (lc & 0xffffffff) as u32;
+        let aId = dae.addBinaryExpr(BinOp.Mul as u16, la, right);
+        let bId = dae.addBinaryExpr(BinOp.Mul as u16, lb, right);
+        return ((aId as u64) << 32) | (bId as u64);
+      }
+    }
+
+    if (op == BinOp.Div || op == BinOp.ElemDiv) {
+      if (!rightHasVar) {
+        let lc = extractLinearCoeffsRec(dae, left, targetVarId, depth + 1);
+        if (lc == 0xffffffffffffffff) return 0xffffffffffffffff;
+        let la = (lc >> 32) as u32; let lb = (lc & 0xffffffff) as u32;
+        let aId = dae.addBinaryExpr(BinOp.Div as u16, la, right);
+        let bId = dae.addBinaryExpr(BinOp.Div as u16, lb, right);
+        return ((aId as u64) << 32) | (bId as u64);
+      }
+    }
+  }
+
+  return 0xffffffffffffffff;
+}
+
+/**
  * Attempts multi-strategy symbolic equation inversion to isolate targetVarId in eqIdx.
  * Returns the isolated ExprId or 0xffffffff if symbolic isolation fails.
  */
@@ -317,6 +450,20 @@ export function isolateSymbolically(dae: DaeBuilder, eqIdx: u32, targetVarId: u3
   let offset = eqIdx * EQ_STRIDE;
   let lhs = dae.getEqData().get(offset + EQ_LHS) as u32;
   let rhs = dae.getEqData().get(offset + EQ_RHS) as u32;
+
+  // Strategy 1: Linear isolation on residual (lhs - rhs = 0 -> A*x + B = 0 -> x = -B / A)
+  let residualId = dae.addBinaryExpr(BinOp.Sub as u16, lhs, rhs);
+  let linearRes = extractLinearCoeffsRec(dae, residualId, targetVarId, 0);
+  if (linearRes != 0xffffffffffffffff) {
+    let aId = (linearRes >> 32) as u32;
+    let bId = (linearRes & 0xffffffff) as u32;
+    if (!cas_isZero(dae, aId)) {
+      let negOne = dae.addRealLiteral(-1.0);
+      let negB = dae.addBinaryExpr(BinOp.Mul as u16, negOne, bId);
+      let divExpr = dae.addBinaryExpr(BinOp.Div as u16, negB, aId);
+      return cas_simplify(dae, divExpr);
+    }
+  }
 
   // Strategy 2: Single-occurrence peeling
   let lhsCount = countVarOccurrences(dae, lhs, targetVarId);
@@ -332,6 +479,14 @@ export function isolateSymbolically(dae: DaeBuilder, eqIdx: u32, targetVarId: u3
     if (res != 0xffffffff) return cas_simplify(dae, res);
   }
 
+  // Also try single-occurrence peeling on residual = 0
+  let totalCount = countVarOccurrences(dae, residualId, targetVarId);
+  if (totalCount == 1) {
+    let zeroId = dae.addRealLiteral(0.0);
+    let res = invertSingleOccurrence(dae, residualId, targetVarId, zeroId);
+    if (res != 0xffffffff) return cas_simplify(dae, res);
+  }
+
   return 0xffffffff;
 }
 
@@ -343,6 +498,40 @@ export function dae_isolateEquation(daePtr: u32, eqId: u32, targetVarId: u32): u
   if (daePtr == 0) return 0xffffffff;
   let dae = changetype<DaeBuilder>(daePtr);
   return isolateSymbolically(dae, eqId, targetVarId);
+}
+
+/**
+ * Batch-isolates 1x1 BLT blocks in WebAssembly linear memory.
+ *
+ * @param daePtr Pointer to DaeBuilder in linear memory
+ * @param eqIndicesPtr Pointer to u32 array of equation indices (length = count)
+ * @param varIndicesPtr Pointer to u32 array of target variable indices (length = count)
+ * @param count Number of 1x1 blocks to isolate
+ * @param outExprIdsPtr Pointer to output u32 array of isolated ExprIds (length = count)
+ * @returns Number of successfully isolated equations (exprId != 0xffffffff)
+ */
+export function dae_batchIsolate1x1Blocks(
+  daePtr: u32,
+  eqIndicesPtr: usize,
+  varIndicesPtr: usize,
+  count: i32,
+  outExprIdsPtr: usize
+): i32 {
+  if (daePtr == 0 || count <= 0) return 0;
+  let dae = changetype<DaeBuilder>(daePtr as usize);
+  let isolatedCount: i32 = 0;
+
+  for (let i: i32 = 0; i < count; ++i) {
+    let eqIdx = load<u32>(eqIndicesPtr + ((i as usize) << 2));
+    let varIdx = load<u32>(varIndicesPtr + ((i as usize) << 2));
+    let exprId = isolateSymbolically(dae, eqIdx, varIdx);
+    store<u32>(outExprIdsPtr + ((i as usize) << 2), exprId);
+    if (exprId != 0xffffffff) {
+      isolatedCount++;
+    }
+  }
+
+  return isolatedCount;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

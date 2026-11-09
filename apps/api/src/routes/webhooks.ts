@@ -7,6 +7,12 @@ import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
+import {
+  extractImpactedModels,
+  mapJiraPriorityToSeverity,
+  mapJiraStatusToState,
+  parseAdfToMarkdown,
+} from "../services/integrations/jira-connector.js";
 import type { LibraryStorage } from "../storage.js";
 
 function verifyGitHubSignature(secret: string, signature: string | undefined, payload: string): boolean {
@@ -26,6 +32,128 @@ function verifyGitHubSignature(secret: string, signature: string | undefined, pa
 export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, storage?: LibraryStorage): Router {
   const router = createRouter();
   router.use(defaultApiLimiter);
+
+  /**
+   * POST /api/v1/webhooks/incoming/jira
+   * Real-time webhook receiver for Atlassian Jira issue events.
+   * Supports ?space=namespace/slug or ?spaceId=...
+   */
+  router.post("/incoming/jira", (req: Request, res: Response): void => {
+    // 1. Verify webhook secret if configured
+    const expectedSecret = process.env["JIRA_WEBHOOK_SECRET"];
+    if (expectedSecret) {
+      const providedSecret =
+        (req.headers["x-webhook-secret"] as string) ||
+        (req.headers["authorization"]?.replace(/^Bearer\s+/i, "") as string) ||
+        (req.query["secret"] as string);
+      if (!providedSecret || providedSecret !== expectedSecret) {
+        res.status(401).json({ error: "Invalid webhook secret" });
+        return;
+      }
+    }
+
+    // 2. Identify target Space
+    let space = null;
+    const spaceQuery = String(req.query["space"] ?? "").trim();
+    const spaceIdQuery = String(req.query["spaceId"] ?? req.query["space_id"] ?? "").trim();
+
+    if (spaceQuery.includes("/")) {
+      const [ns, sl] = spaceQuery.split("/");
+      space = database.getSpaceByNamespaceAndSlug(ns!, sl!);
+    } else if (spaceIdQuery) {
+      space = database.getSpaceById(spaceIdQuery);
+    }
+
+    const body = req.body as Record<string, unknown> | undefined;
+    const issueRaw = body?.["issue"] as Record<string, unknown> | undefined;
+    const webhookEvent = String(body?.["webhookEvent"] || "jira:issue_updated");
+
+    if (!issueRaw) {
+      res.status(400).json({ error: "Missing 'issue' payload in Jira webhook body" });
+      return;
+    }
+
+    const fields = (issueRaw["fields"] as Record<string, unknown>) || {};
+    const key = String(issueRaw["key"] || "");
+
+    // Fallback space discovery by Jira project key matching space slug
+    if (!space) {
+      const projectObj = fields["project"] as Record<string, unknown> | undefined;
+      const projectKey = String(projectObj?.["key"] || "").toLowerCase();
+      if (projectKey) {
+        const spaces = database.listSpaces({ limit: 100 });
+        space = spaces.find((s) => s.slug.toLowerCase() === projectKey) || null;
+      }
+    }
+
+    if (!space) {
+      res.status(404).json({
+        error: "Target space could not be resolved from query parameter or Jira project key",
+      });
+      return;
+    }
+
+    const summary = String(fields["summary"] || `Jira Issue ${key}`);
+    const rawDesc = fields["description"];
+    const description = parseAdfToMarkdown(rawDesc);
+
+    const statusObj = (fields["status"] as Record<string, unknown>) || {};
+    const rawStatus = String(statusObj["name"] || "Open");
+    const statusCategoryObj = (statusObj["statusCategory"] as Record<string, unknown>) || {};
+    const statusCategory = String(statusCategoryObj["key"] || "");
+    const status = mapJiraStatusToState(statusCategory, rawStatus);
+
+    const priorityObj = (fields["priority"] as Record<string, unknown>) || {};
+    const rawPriority = String(priorityObj["name"] || "Medium");
+    const severity = mapJiraPriorityToSeverity(rawPriority);
+
+    const rawLabels = fields["labels"];
+    const labels: string[] = Array.isArray(rawLabels) ? rawLabels.map(String) : [];
+
+    const impactedModels = extractImpactedModels(`${summary}\n${description}`);
+
+    const jiraBase =
+      String(req.query["jiraBaseUrl"] || "").replace(/\/+$/, "") ||
+      (issueRaw["self"] ? String(issueRaw["self"]).replace(/\/rest\/api\/.*$/, "") : "");
+    const browseUrl = jiraBase ? `${jiraBase}/browse/${key}` : null;
+    const updatedAt = String(fields["updated"] || new Date().toISOString());
+
+    if (webhookEvent === "jira:issue_deleted") {
+      const existing = database.getSpaceIssues(space.id).find((i) => i.external_key === key);
+      if (existing) {
+        database.updateSpaceIssue({
+          spaceId: space.id,
+          issueId: existing.id,
+          status: "closed",
+        });
+      }
+      res.status(200).json({ success: true, event: webhookEvent, key, closed: Boolean(existing) });
+      return;
+    }
+
+    const result = database.upsertSpaceIssueFromExternal({
+      spaceId: space.id,
+      externalSource: "jira",
+      externalKey: key,
+      externalUrl: browseUrl,
+      externalUpdatedAt: updatedAt,
+      title: summary,
+      description,
+      status,
+      severity,
+      impactedModels,
+      labels,
+      syncStatus: "synced",
+    });
+
+    res.status(200).json({
+      success: true,
+      event: webhookEvent,
+      key,
+      isNew: result.isNew,
+      issue: result.issue,
+    });
+  });
 
   /**
    * POST /api/v1/webhooks/incoming/:provider
@@ -259,6 +387,98 @@ export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, s
       }
     }
 
+    // 7. Check for CI/CD status updates (GitHub check_run / workflow_run or GitLab Pipeline) for Spaces
+    let spaceEcoUpdated = false;
+    let spaceEcoId: string | null = null;
+    const matchingSpace = database.getSpaceByNamespaceAndSlug(namespace, project);
+    if (matchingSpace) {
+      let ref: string | null = null;
+      let commitSha: string | null = null;
+      let ciStatus: "passed" | "failed" | "running" = "passed";
+      let wfName = "External CI";
+      let summaryData: Record<string, unknown> = {};
+
+      if (provider === "github") {
+        if (eventType === "check_run") {
+          const cr = (req.body?.check_run || {}) as Record<string, unknown>;
+          commitSha = cr["head_sha"] ? String(cr["head_sha"]) : null;
+          const cs = (cr["check_suite"] || {}) as Record<string, unknown>;
+          ref = cs["head_branch"] ? String(cs["head_branch"]) : null;
+          wfName = String(cr["name"] || "GitHub Check Run");
+          const conclusion = String(cr["conclusion"] || "");
+          const status = String(cr["status"] || "");
+          if (status === "in_progress" || status === "queued") {
+            ciStatus = "running";
+          } else if (conclusion === "success") {
+            ciStatus = "passed";
+          } else {
+            ciStatus = "failed";
+          }
+          summaryData = { conclusion, status, output: cr["output"] };
+        } else if (eventType === "workflow_run") {
+          const wr = (req.body?.workflow_run || {}) as Record<string, unknown>;
+          commitSha = wr["head_sha"] ? String(wr["head_sha"]) : null;
+          ref = wr["head_branch"] ? String(wr["head_branch"]) : null;
+          wfName = String(wr["name"] || "GitHub Workflow");
+          const conclusion = String(wr["conclusion"] || "");
+          const status = String(wr["status"] || "");
+          if (status === "in_progress" || status === "queued") {
+            ciStatus = "running";
+          } else if (conclusion === "success") {
+            ciStatus = "passed";
+          } else {
+            ciStatus = "failed";
+          }
+          summaryData = { conclusion, status };
+        }
+      } else if (provider === "gitlab") {
+        if (eventType.includes("Pipeline") || req.body?.object_attributes) {
+          const attrs = (req.body?.object_attributes || {}) as Record<string, unknown>;
+          ref = attrs["ref"] ? String(attrs["ref"]) : null;
+          commitSha = attrs["sha"] ? String(attrs["sha"]) : null;
+          const st = String(attrs["status"] || "");
+          if (st === "running" || st === "pending") {
+            ciStatus = "running";
+          } else if (st === "success") {
+            ciStatus = "passed";
+          } else {
+            ciStatus = "failed";
+          }
+          wfName = "GitLab CI Pipeline";
+          summaryData = { status: st, stages: attrs["stages"] };
+        }
+      }
+
+      const eco = ref || commitSha ? database.findEcoByCommitOrBranch(matchingSpace.id, ref || commitSha || "") : null;
+      if (eco) {
+        spaceEcoUpdated = true;
+        spaceEcoId = eco.id;
+        database.createSpaceWorkflowRun({
+          spaceId: matchingSpace.id,
+          ecoId: eco.id,
+          provider: provider === "gitlab" ? "gitlab" : "github",
+          workflowFile: provider === "gitlab" ? ".gitlab-ci.yml" : ".github/workflows/ci.yml",
+          workflowName: wfName,
+          triggerEvent: eventType,
+          commitSha,
+          ref: ref || eco.source_branch,
+          status: ciStatus,
+          conclusion: ciStatus === "passed" ? "success" : ciStatus === "failed" ? "failure" : null,
+          summary: summaryData,
+        });
+
+        database.db
+          .prepare(
+            `UPDATE space_eco_proposals
+             SET simulation_gate_status = ?,
+                 simulation_summary_json = ?,
+                 updated_at = datetime('now')
+             WHERE id = ? AND space_id = ?`,
+          )
+          .run(ciStatus, JSON.stringify(summaryData), eco.id, matchingSpace.id);
+      }
+    }
+
     res.status(202).json({
       success: true,
       deliveryId,
@@ -271,6 +491,8 @@ export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, s
       autoPublish: Boolean(authenticatedWebhook.auto_publish && versionMatched),
       publishJobId,
       reviewTriggered,
+      spaceEcoUpdated,
+      spaceEcoId,
     });
   });
 

@@ -148,12 +148,20 @@ class DisjointSet {
 
   find(v: u32): u32 {
     this.ensureCapacity(v);
-    let p = this.parent.get(v);
-    if (p != v) {
-      p = this.find(p);
-      this.parent.set(v, p);
+    let root = v;
+    let p = this.parent.get(root);
+    while (p != root) {
+      this.ensureCapacity(p);
+      root = p;
+      p = this.parent.get(root);
     }
-    return p;
+    let curr = v;
+    while (curr != root) {
+      let next = this.parent.get(curr);
+      this.parent.set(curr, root);
+      curr = next;
+    }
+    return root;
   }
 
   union(v1: u32, v2: u32): void {

@@ -15,5 +15,7 @@ export {
   solveSwmmHydraulics,
   routeNetworkFlow as solveSwmmNetworkFlow,
 } from "./solver/hydraulic-solver.js";
+export * from "./solver/swmm-quality.js";
+export * from "./solver/swmm-rtc.js";
 export * from "./types.js";
 export * from "./workspace-index.js";
