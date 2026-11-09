@@ -72,7 +72,9 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
   await t.test(
     "Admin S3 Partition Manager syncs manifest (unloaded by default) and selectively loads partitions into openalex.db + FTS5",
     async () => {
-      const { parseOpenAlexS3Manifest, s3UriToHttpsUrl } = await import("../src/services/openalex.js");
+      const { parseOpenAlexS3Manifest, s3UriToHttpsUrl, getOpenAlexCacheDirectory } = await import(
+        "../src/services/openalex.js"
+      );
 
       assert.equal(
         s3UriToHttpsUrl("s3://openalex/data/works/updated_date=2025-01-15/part_000.gz"),
@@ -249,7 +251,9 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
         },
       ];
 
-      const gzPath = path.join(tmpDir, "part_000.gz");
+      const cacheDir = getOpenAlexCacheDirectory(db);
+      fs.mkdirSync(cacheDir, { recursive: true });
+      const gzPath = path.join(cacheDir, "part_000.gz");
       const jsonlPayload = partitionWorks.map((w) => JSON.stringify(w)).join("\n") + "\n";
       fs.writeFileSync(gzPath, zlib.gzipSync(jsonlPayload));
 

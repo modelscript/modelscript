@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
@@ -2136,6 +2135,20 @@ export function buildSampleJsonlForPartition(s3Url: string): string {
 }
 
 /**
+ * Confines and verifies that a local OpenAlex file path resides strictly within the allowed cache directory.
+ * Returns the normalized absolute path if safe, or null otherwise.
+ */
+export function getSafeOpenAlexFilePath(filePath: string | undefined, cacheDir: string): string | null {
+  if (!filePath || typeof filePath !== "string") return null;
+  const resolvedCacheDir = path.resolve(cacheDir);
+  const resolvedPath = path.resolve(filePath.trim());
+  if (!resolvedPath.startsWith(resolvedCacheDir + path.sep)) {
+    return null;
+  }
+  return resolvedPath;
+}
+
+/**
  * Ingests OpenAlex works directly from either:
  * 1. A local `.jsonl` or `.gz` partition file downloaded from `s3://openalex/data/works/...`
  * 2. A remote OpenAlex AWS S3 partition URL (`s3://openalex/data/jsonl/works/updated_date=.../part_0000.gz`
@@ -2145,41 +2158,29 @@ export function buildSampleJsonlForPartition(s3Url: string): string {
 export async function ingestOpenAlexFromS3OrFile(
   database: LibraryDatabase,
   options: OpenAlexSnapshotFilterOptions & {
-    localFilePath?: string | undefined;
     s3PartitionUrl?: string | undefined;
+    localFilePath?: string | undefined;
     partitionUrl?: string | undefined;
     cacheDir?: string | undefined;
     useCache?: boolean | undefined;
   },
 ): Promise<OpenAlexSnapshotIngestResult> {
   if (options.localFilePath) {
-    const rawPath = options.localFilePath.trim();
     const cacheDir = path.resolve(options.cacheDir || getOpenAlexCacheDirectory(database));
-    const tmpDir = path.resolve(os.tmpdir());
-    const resolvedPath = path.resolve(rawPath);
-    if (
-      !resolvedPath.startsWith(cacheDir + path.sep) &&
-      !resolvedPath.startsWith(tmpDir + path.sep) &&
-      resolvedPath !== cacheDir &&
-      resolvedPath !== tmpDir
-    ) {
-      throw new Error(`Access denied: local file path outside allowed directory: ${rawPath}`);
+    const safePath = getSafeOpenAlexFilePath(options.localFilePath, cacheDir);
+    if (!safePath) {
+      throw new Error(`Access denied: local file path outside allowed cache directory: ${options.localFilePath}`);
     }
 
     let realPath: string;
     try {
-      realPath = fs.realpathSync(resolvedPath);
+      realPath = fs.realpathSync(safePath);
     } catch {
-      throw new Error(`Local OpenAlex snapshot file not found: ${resolvedPath}`);
+      throw new Error(`Local OpenAlex snapshot file not found: ${safePath}`);
     }
 
-    if (
-      !realPath.startsWith(cacheDir + path.sep) &&
-      !realPath.startsWith(tmpDir + path.sep) &&
-      realPath !== cacheDir &&
-      realPath !== tmpDir
-    ) {
-      throw new Error(`Access denied: resolved symlink points outside allowed directory: ${rawPath}`);
+    if (!realPath.startsWith(cacheDir + path.sep)) {
+      throw new Error(`Access denied: resolved symlink points outside allowed cache directory: ${options.localFilePath}`);
     }
     const isGzipped = realPath.endsWith(".gz");
     const fileStream = fs.createReadStream(realPath);

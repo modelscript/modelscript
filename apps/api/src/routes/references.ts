@@ -3,7 +3,6 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { LibraryDatabase } from "../database.js";
@@ -18,6 +17,7 @@ import {
   fetchSingleOpenAlexWorkLive,
   formatScholarlyCitation,
   getOpenAlexCacheDirectory,
+  getSafeOpenAlexFilePath,
   ingestOpenAlexFromS3OrFile,
   ingestOpenAlexJsonlStream,
   isOnlineOpenAlexAllowed,
@@ -2128,20 +2128,15 @@ export function referencesRouter(database: LibraryDatabase): Router {
             partitionUrl: rawTargetUrl,
           });
         } else if (typeof localFilePath === "string" && localFilePath.trim()) {
-          const raw = localFilePath.trim();
           const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
-          const tmpDir = path.resolve(os.tmpdir());
-          const allowTmp = process.env["NODE_ENV"] === "test";
-          const resolved = path.resolve(raw);
-          const inCache = resolved.startsWith(cacheDir + path.sep);
-          const inTmp = allowTmp && resolved.startsWith(tmpDir + path.sep);
-          if (!inCache && !inTmp) {
-            res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
+          const safeLocalPath = getSafeOpenAlexFilePath(localFilePath, cacheDir);
+          if (!safeLocalPath) {
+            res.status(400).json({ error: "Access denied: localFilePath is outside allowed cache directory." });
             return;
           }
           ingestRes = await ingestOpenAlexFromS3OrFile(database, {
             ...filterOpts,
-            localFilePath: resolved,
+            localFilePath: safeLocalPath,
             partitionUrl: rawTargetUrl,
           });
         } else {
@@ -2370,18 +2365,13 @@ export function referencesRouter(database: LibraryDatabase): Router {
       if (s3PartitionUrl || localFilePath) {
         let safeLocalPath: string | undefined;
         if (localFilePath) {
-          const raw = String(localFilePath).trim();
           const cacheDir = path.resolve(getOpenAlexCacheDirectory(database));
-          const tmpDir = path.resolve(os.tmpdir());
-          const allowTmp = process.env["NODE_ENV"] === "test";
-          const resolved = path.resolve(raw);
-          const inCache = resolved.startsWith(cacheDir + path.sep);
-          const inTmp = allowTmp && resolved.startsWith(tmpDir + path.sep);
-          if (!inCache && !inTmp) {
-            res.status(400).json({ error: "Access denied: localFilePath is outside allowed directories." });
+          const safe = getSafeOpenAlexFilePath(String(localFilePath), cacheDir);
+          if (!safe) {
+            res.status(400).json({ error: "Access denied: localFilePath is outside allowed cache directory." });
             return;
           }
-          safeLocalPath = resolved;
+          safeLocalPath = safe;
         }
         const result = await ingestOpenAlexFromS3OrFile(database, {
           ...filterOpts,

@@ -71,14 +71,17 @@ export class LocalGitProvider implements IGitProvider {
     candidateDirs.push(path.resolve(import.meta.dirname, "../../data/git-repos"));
 
     if (path.isAbsolute(idOrUrl)) {
-      const normalized = path.normalize(idOrUrl);
-      const isAllowed = candidateDirs.some((dir) => normalized === dir || normalized.startsWith(dir + path.sep));
-      if (isAllowed) {
+      const resolved = path.resolve(idOrUrl);
+      for (const reposDir of candidateDirs) {
+        const allowedPrefix = reposDir + path.sep;
+        if (!resolved.startsWith(allowedPrefix)) {
+          continue;
+        }
         try {
-          await fs.access(normalized);
-          return normalized;
+          await fs.access(resolved);
+          return resolved;
         } catch {
-          // Fall through
+          // Try next candidate directory
         }
       }
       return null;
