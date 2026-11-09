@@ -26,9 +26,12 @@ import {
   type EnterpriseComplianceContext,
 } from "./compliance/airgap.js";
 import {
+  computeAttestationDigest,
   createDhfAttestationRouter,
   signComplianceAttestation,
   verifyComplianceAttestation,
+  verifyComplianceAttestationChain,
+  type AttestationChainVerificationResult,
   type ComplianceAttestationPayload,
   type RegulatoryStandard,
   type SignedComplianceAttestation,
@@ -134,6 +137,7 @@ export function mountEnterpriseEdition(ctx: EnterprisePluginHostContext): void {
 export {
   ALL_ENTERPRISE_FEATURES,
   checkEnterpriseDesktopAirgapCompliance,
+  computeAttestationDigest,
   createAirgapSecurityHeadersMiddleware,
   createDhfAttestationRouter,
   createEnterpriseComplianceRouter,
@@ -169,10 +173,12 @@ export {
   signEnterpriseLicense,
   verifyBlackboxFmuEntitlement,
   verifyComplianceAttestation,
+  verifyComplianceAttestationChain,
   verifyEnterpriseCliCommand,
   verifyEnterpriseCollabSession,
   verifyEnterpriseLicense,
   verifyPrivateVisibilityEntitlement,
+  type AttestationChainVerificationResult,
   type BlackboxFmuEntitlementResult,
   type CliEntitlementCheckResult,
   type ComplianceAttestationPayload,

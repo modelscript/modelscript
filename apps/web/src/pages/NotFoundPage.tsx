@@ -60,8 +60,8 @@ export default function NotFoundPage() {
           <Button leadingVisual={TelescopeIcon} onClick={() => navigate("/explore")}>
             Explore
           </Button>
-          <Button leadingVisual={CodeIcon} onClick={() => navigate("/playground")}>
-            Playground
+          <Button leadingVisual={CodeIcon} onClick={() => navigate("/morsel")}>
+            Morsel
           </Button>
         </Box>
       </NotFoundCard>

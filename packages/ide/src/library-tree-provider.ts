@@ -79,8 +79,36 @@ function classKindToIcon(kind: string): vscode.ThemeIcon {
   return new vscode.ThemeIcon("circuit-board");
 }
 
+function padIconViewBox(svg: string): string {
+  if (!svg || !svg.includes("<svg") || svg.includes('data-viewbox-padded="true"')) return svg;
+  const vbMatch = svg.match(/viewBox\s*=\s*(["'])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\1/);
+  if (!vbMatch) return svg;
+
+  const quote = vbMatch[1];
+  const vx = parseFloat(vbMatch[2]!);
+  const vy = parseFloat(vbMatch[3]!);
+  const vw = parseFloat(vbMatch[4]!);
+  const vh = parseFloat(vbMatch[5]!);
+
+  if (isNaN(vx) || isNaN(vy) || isNaN(vw) || isNaN(vh) || vw <= 0 || vh <= 0) return svg;
+  if (vx >= 0 && vy >= 0) return svg;
+
+  const padX = vw * 0.025;
+  const padY = vh * 0.025;
+  const newVx = +(vx - padX).toFixed(2);
+  const newVy = +(vy - padY).toFixed(2);
+  const newVw = +(vw + padX * 2).toFixed(2);
+  const newVh = +(vh + padY * 2).toFixed(2);
+
+  return svg.replace(
+    vbMatch[0],
+    `data-viewbox-padded="true" viewBox=${quote}${newVx} ${newVy} ${newVw} ${newVh}${quote}`,
+  );
+}
+
 // Convert raw SVG string to a data URI that VS Code can use as an icon
 function svgToIconUri(svg: string): vscode.Uri {
+  svg = padIconViewBox(svg);
   const bytes = new TextEncoder().encode(svg);
   let binary = "";
   const len = bytes.byteLength;

@@ -144,6 +144,12 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
     }
   }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const parsedModel = useMemo(() => {
     const blocks: SimulinkBlockLike[] = [];
     const lines: SimulinkLineLike[] = [];

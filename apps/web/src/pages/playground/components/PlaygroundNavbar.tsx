@@ -168,7 +168,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           target="_blank"
           rel="noopener noreferrer"
           title="Ansatz Morsel"
-          aria-label="ModelScript Morsel"
+          aria-label="Ansatz Morsel"
         >
           <img
             src={customLogoSrc || (theme === "dark" ? "/brand-dark.png" : "/brand.png")}
@@ -705,7 +705,13 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         {/* Publish / Save Edit / Reply / Fork to Feed & Ansatz Profile Menu */}
         {user ? (
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <Button size="small" variant="default" leadingVisual={ZapIcon} onClick={onPublishToFeed} style={{ height: 30, borderRadius: 6, fontWeight: 600 }}>
+            <Button
+              size="small"
+              variant="default"
+              leadingVisual={ZapIcon}
+              onClick={onPublishToFeed}
+              style={{ height: 30, borderRadius: 6, fontWeight: 600 }}
+            >
               {effectivePublishLabel}
             </Button>
             <ActionMenu>

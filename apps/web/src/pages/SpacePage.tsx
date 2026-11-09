@@ -1,23 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  BookIcon,
+  CheckIcon,
+  CodeIcon,
+  CommentDiscussionIcon,
+  CopyIcon,
+  FileCodeIcon,
+  GearIcon,
+  GitBranchIcon,
+  GitPullRequestIcon,
+  IssueOpenedIcon,
+  LinkExternalIcon,
+  PackageIcon,
+  PlayIcon,
+  PlusIcon,
+  StarFillIcon,
+  StarIcon,
+} from "@primer/octicons-react";
+import { Button, CounterLabel, Label } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import {
-  addSpaceMember,
   autocompleteSpaceEntities,
   createSpaceChannel,
-  createSpaceEco,
   followSpace,
   getMyOrganizations,
   getSpaceChannelMessages,
   getSpaceDetail,
   promoteSpaceMessage,
-  removeSpaceMember,
-  reviewSpaceEco,
   sendSpaceChannelMessage,
   toggleSpaceMessageReaction,
-  transferSpace,
   unfollowSpace,
   upsertSpaceDoc,
   type Organization,
@@ -25,17 +39,21 @@ import {
   type SpaceDetailResponse,
   type SpaceEcoProposalRecord,
   type SpaceMessageRecord,
-  type SpaceOwnerType,
   type SpacePageRecord,
-  type SpaceRole,
 } from "../api";
 import { useAuth } from "../AuthContext";
+import Box from "../components/Box";
 import { PostMarkdownContent } from "../components/post/PostMarkdownContent";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { usePageTitle } from "../util/title";
+import { SpaceChangeControlTab } from "./space/SpaceChangeControlTab";
+import { SpaceCodeTab } from "./space/SpaceCodeTab";
+import { SpaceIssuesTab } from "./space/SpaceIssuesTab";
+import { SpacePackagesTab } from "./space/SpacePackagesTab";
+import { SpaceSettingsTab } from "./space/SpaceSettingsTab";
 
-type SpaceTab = "overview" | "chat" | "docs" | "plm" | "repos" | "settings";
+type SpaceTab = "overview" | "code" | "issues" | "chat" | "docs" | "changes" | "plm" | "repos" | "settings";
 
 const SpaceCockpitGrid = styled.div`
   display: grid;
@@ -59,61 +77,106 @@ const SpaceInspectorPanel = styled.aside`
 `;
 
 const SpaceCardPanel = styled.div`
-  padding: 18px;
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-  background: var(--ms-bg-elv, rgba(15, 23, 42, 0.55));
+  border-radius: 6px;
+  border: 1px solid var(--color-border-default, var(--color-border));
+  background: var(--color-canvas-default, var(--color-bg-primary));
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+`;
+
+const CockpitBox = styled.div`
+  border-radius: 6px;
+  border: 1px solid var(--color-border-default, var(--color-border));
+  background: var(--color-canvas-default, var(--color-bg-primary));
+  overflow: hidden;
+`;
+
+const CockpitBoxHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--color-canvas-subtle, var(--ms-surface-hover));
+  border-bottom: 1px solid var(--color-border-default, var(--color-border));
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-fg-default, var(--color-text-primary));
+`;
+
+const CockpitBoxBody = styled.div`
+  padding: 16px;
 `;
 
 const SpaceTabsNav = styled.nav`
   display: flex;
-  gap: 6px;
-  margin-top: 18px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  width: 100%;
+  padding: 0 24px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-default, var(--color-border));
   overflow-x: auto;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 0px;
+  overflow-y: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
 
   &::-webkit-scrollbar {
     display: none;
   }
-`;
 
-const SpaceTabButton = styled.button<{ $active?: boolean; $accentColor?: string }>`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 14px;
-  border: none;
-  border-bottom: 2px solid
-    ${(props) => (props.$active ? props.$accentColor || "var(--ms-brand, #3b82f6)" : "transparent")};
-  background: transparent;
-  color: ${(props) => (props.$active ? "var(--color-text-primary)" : "var(--color-text-muted)")};
-  font-weight: ${(props) => (props.$active ? 700 : 500)};
-  font-size: 13.5px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.12s ease;
-  margin-bottom: -1px;
-
-  &:hover {
-    color: var(--color-text-primary);
+  @media (max-width: 768px) {
+    padding: 0 16px;
+    gap: 4px;
   }
 `;
 
-const TabPillBadge = styled.span<{ $active?: boolean }>`
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  margin-left: 5px;
-  background: ${(props) => (props.$active ? "rgba(59, 130, 246, 0.2)" : "rgba(148, 163, 184, 0.12)")};
-  color: ${(props) => (props.$active ? "var(--color-accent-cyan, #38bdf8)" : "var(--color-text-muted)")};
+const SpaceTabButton = styled.button<{ $active?: boolean; $accentColor?: string }>`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 16px;
+  border: none;
+  border-bottom: 2px solid
+    ${(props) => (props.$active ? "var(--ms-brand, var(--color-accent-emphasis, #3b82f6))" : "transparent")};
+  background: transparent;
+  color: ${(props) =>
+    props.$active
+      ? "var(--color-fg-default, var(--color-text-primary))"
+      : "var(--color-fg-muted, var(--color-text-muted))"};
+  font-weight: ${(props) => (props.$active ? 600 : 500)};
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  margin-bottom: -1px;
+  z-index: ${(props) => (props.$active ? 2 : 1)};
+  border-radius: 6px 6px 0 0;
+
+  &:hover {
+    color: var(--color-fg-default, var(--color-text-primary));
+    background: ${(props) => (props.$active ? "transparent" : "var(--color-canvas-subtle, var(--ms-surface-hover))")};
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ms-brand, #3b82f6);
+    outline-offset: -2px;
+  }
+
+  @media (max-width: 768px) {
+    padding: 0 12px;
+    height: 44px;
+    font-size: 13.5px;
+    gap: 6px;
+  }
 `;
 
 export const SpacePage: React.FC = () => {
@@ -131,8 +194,19 @@ export const SpacePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const tabParam = (searchParams.get("tab") || "overview").toLowerCase() as SpaceTab;
-  const activeTab: SpaceTab = ["overview", "chat", "docs", "plm", "repos", "settings"].includes(tabParam)
+  const rawTabParam = (searchParams.get("tab") || "overview").toLowerCase();
+  const tabParam: SpaceTab = rawTabParam === "plm" || rawTabParam === "pulls" ? "changes" : (rawTabParam as SpaceTab);
+  const activeTab: SpaceTab = [
+    "overview",
+    "code",
+    "issues",
+    "chat",
+    "docs",
+    "changes",
+    "plm",
+    "repos",
+    "settings",
+  ].includes(tabParam)
     ? tabParam
     : "overview";
 
@@ -169,19 +243,11 @@ export const SpacePage: React.FC = () => {
   const [editDocSummary, setEditDocSummary] = useState("");
   const [editDocContent, setEditDocContent] = useState("");
 
-  // PLM ECO state
-  const [showNewEcoForm, setShowNewEcoForm] = useState(false);
-  const [newEcoTitle, setNewEcoTitle] = useState("");
-  const [newEcoDesc, setNewEcoDesc] = useState("");
-  const [newEcoSeverity, setNewEcoSeverity] = useState<"minor" | "standard" | "major" | "safety_critical">("standard");
-  const [newEcoModels, setNewEcoModels] = useState("docs/overview.md");
+  // Packages tab state
+  const [packagesCount, setPackagesCount] = useState<number>(1);
 
-  // Settings & Transfer state
+  // Settings & Organizations state
   const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
-  const [newMemberUsername, setNewMemberUsername] = useState("");
-  const [newMemberRole, setNewMemberRole] = useState<SpaceRole>("contributor");
-  const [transferTargetType, setTransferTargetType] = useState<SpaceOwnerType>("organization");
-  const [transferTargetSlug, setTransferTargetSlug] = useState("");
   const [showNewMenu, setShowNewMenu] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -222,9 +288,6 @@ export const SpacePage: React.FC = () => {
       void getMyOrganizations()
         .then((orgs) => {
           setMyOrgs(orgs);
-          if (orgs.length > 0 && !transferTargetSlug) {
-            setTransferTargetSlug(orgs[0]!.slug);
-          }
         })
         .catch(() => {});
     }
@@ -449,55 +512,6 @@ export const SpacePage: React.FC = () => {
     }
   };
 
-  const handleCreateEco = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!detail || !newEcoTitle.trim()) return;
-    try {
-      const res = await createSpaceEco(detail.space.owner_namespace, detail.space.slug, {
-        title: newEcoTitle.trim(),
-        description: newEcoDesc.trim(),
-        severity: newEcoSeverity,
-        impactedModels: newEcoModels
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-      });
-      setDetail((prev) => (prev ? { ...prev, ecos: res.ecos } : prev));
-      setShowNewEcoForm(false);
-      setNewEcoTitle("");
-      setNewEcoDesc("");
-      toast.success(`Created Engineering Change Order ECO-${res.eco.eco_number}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to create ECO");
-    }
-  };
-
-  const handleReviewEco = async (ecoId: string, decision: "approved" | "changes_requested" | "rejected") => {
-    if (!detail) return;
-    try {
-      const res = await reviewSpaceEco(detail.space.owner_namespace, detail.space.slug, ecoId, decision);
-      setDetail((prev) => (prev ? { ...prev, ecos: res.ecos } : prev));
-      toast.success(`Recorded cryptographic ${decision.toUpperCase()} signature on ECO-${res.eco.eco_number}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to review ECO");
-    }
-  };
-
-  const handleTransferOwnership = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!detail || !transferTargetSlug.trim()) return;
-    try {
-      const updated = await transferSpace(detail.space.owner_namespace, detail.space.slug, {
-        targetOwnerType: transferTargetType,
-        targetSlug: transferTargetSlug.trim(),
-      });
-      toast.success(`Transferred Space to @${updated.owner_namespace}/${updated.slug}`);
-      navigate(`/@${updated.owner_namespace}/${updated.slug}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to transfer Space");
-    }
-  };
-
   if (loading) {
     return (
       <div style={{ padding: "48px", display: "flex", justifyContent: "center" }}>
@@ -541,237 +555,160 @@ export const SpacePage: React.FC = () => {
       {/* ── Space Header & Container Breadcrumb ── */}
       <div
         style={{
-          padding: "20px 28px 0 28px",
-          background: `linear-gradient(180deg, ${preset.accentColor}12 0%, transparent 100%)`,
-          borderBottom: "1px solid var(--color-border, #1e293b)",
+          background: "var(--color-canvas-default, var(--color-bg-primary))",
         }}
       >
+        {/* Top Header Row: Identity Breadcrumb & Badges on Left, Actions on Right */}
         <div
           style={{
+            padding: "16px 24px 0",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             gap: "16px",
-            flexWrap: "wrap",
+            minHeight: "36px",
           }}
         >
-          <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+          {/* Left: Avatar + Namespace / Slug + Badges */}
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", minWidth: 0, flex: 1 }}>
             <div
               style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "12px",
-                background: `${preset.accentColor}20`,
-                border: `1.5px solid ${preset.accentColor}66`,
-                color: preset.accentColor,
+                width: "34px",
+                height: "34px",
+                borderRadius: "6px",
+                background: "var(--color-canvas-subtle, var(--ms-surface-hover))",
+                border: "1px solid var(--color-border-default, var(--color-border))",
+                color: "var(--color-fg-default, var(--color-text-primary))",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontWeight: 800,
-                fontSize: "19px",
-                boxShadow: `0 2px 10px ${preset.accentColor}20`,
+                fontWeight: 700,
+                fontSize: "13px",
                 flexShrink: 0,
               }}
             >
               {space.name.slice(0, 2).toUpperCase()}
             </div>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <Link
-                  to={`/@${space.owner_namespace}`}
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    color: "var(--color-text-secondary)",
-                    textDecoration: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                  }}
-                >
-                  <span>{space.owner_type === "organization" ? "🏢" : "👤"}</span>
-                  <span>@{space.owner_namespace}</span>
-                </Link>
-                <span style={{ color: "var(--color-text-muted)" }}>/</span>
-                <span
-                  style={{
-                    fontSize: "13.5px",
-                    fontFamily: "monospace",
-                    fontWeight: 700,
-                    color: "var(--color-text-primary)",
-                  }}
-                >
-                  {space.slug}
-                </span>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    padding: "1px 8px",
-                    borderRadius: "999px",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    background: `${preset.accentColor}18`,
-                    color: preset.accentColor,
-                    border: `1px solid ${preset.accentColor}44`,
-                  }}
-                >
-                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: preset.accentColor }} />
-                  {preset.shortLabel}
-                </span>
-                <span
-                  style={{
-                    padding: "1px 8px",
-                    borderRadius: "999px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    background: "rgba(148, 163, 184, 0.12)",
-                    color: "var(--color-text-muted)",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {space.visibility === "public" ? "🌐 Public" : "🔒 Private"}
-                </span>
-                <span
-                  style={{
-                    padding: "1px 8px",
-                    borderRadius: "999px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    background: "rgba(16, 185, 129, 0.1)",
-                    color: "#34d399",
-                    border: "1px solid rgba(16, 185, 129, 0.22)",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  git: main
-                </span>
-              </div>
 
-              <h1 style={{ margin: "4px 0 2px", fontSize: "22px", fontWeight: 800, letterSpacing: "-0.02em" }}>
-                {space.name}
-              </h1>
-              {space.tagline && (
-                <p style={{ margin: 0, fontSize: "13px", color: "var(--color-text-secondary)" }}>{space.tagline}</p>
-              )}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", minWidth: 0 }}>
+              <Link
+                to={`/@${space.owner_namespace}`}
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: "var(--color-accent-fg, var(--ms-link))",
+                  textDecoration: "none",
+                }}
+              >
+                @{space.owner_namespace}
+              </Link>
+              <span style={{ color: "var(--color-fg-muted, var(--color-text-muted))" }}>/</span>
+              <span
+                style={{
+                  fontSize: "15px",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: 600,
+                  color: "var(--color-fg-default, var(--color-text-primary))",
+                }}
+              >
+                {space.slug}
+              </span>
+              <Label variant="accent" sx={{ ml: 1 }}>
+                {preset.shortLabel}
+              </Label>
+              <Label variant="secondary">{space.visibility === "public" ? "Public" : "Private"}</Label>
+              <Label variant="secondary" sx={{ fontFamily: "var(--font-mono, monospace)" }}>
+                <GitBranchIcon size={12} style={{ marginRight: 4, verticalAlign: "text-bottom" }} />
+                main
+              </Label>
             </div>
           </div>
 
-          {/* Unified Action Toolbar */}
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Right: Unified Action Toolbar (Always docked top-right, aligned with breadcrumb) */}
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
             {/* Follow Button */}
-            <button
-              type="button"
+            <Button
+              size="small"
+              variant="default"
               onClick={handleFollowToggle}
+              leadingVisual={() =>
+                viewerState.isFollowing ? <StarFillIcon size={14} fill="#eab308" /> : <StarIcon size={14} />
+              }
+              trailingVisual={() => <CounterLabel>{space.follower_count}</CounterLabel>}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 12px",
-                borderRadius: "7px",
-                border: "1px solid var(--color-border)",
-                background: viewerState.isFollowing ? "rgba(59, 130, 246, 0.12)" : "rgba(15, 23, 42, 0.5)",
-                color: viewerState.isFollowing ? "var(--ms-brand, #3b82f6)" : "var(--color-text-secondary)",
-                fontSize: "12.5px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
+                borderColor: viewerState.isFollowing ? "rgba(234, 179, 8, 0.4)" : undefined,
               }}
             >
-              <span>{viewerState.isFollowing ? "★" : "☆"}</span>
-              <span>{viewerState.isFollowing ? "Following" : "Follow"}</span>
-              <span style={{ opacity: 0.65, fontSize: "11px", fontFamily: "monospace" }}>({space.follower_count})</span>
-            </button>
+              {viewerState.isFollowing ? "Following" : "Follow"}
+            </Button>
 
             {/* Quick Clone Button */}
-            <button
-              type="button"
+            <Button
+              size="small"
+              variant="default"
+              leadingVisual={CopyIcon}
               onClick={() => {
                 void navigator.clipboard?.writeText(`git clone ${gitCloneUrl}`);
                 toast.info(`Copied clone command: git clone ${gitCloneUrl}`);
               }}
               title={`git clone @${space.owner_namespace}/${space.slug}.git`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 12px",
-                borderRadius: "7px",
-                border: "1px solid var(--color-border)",
-                background: "rgba(15, 23, 42, 0.5)",
-                color: "var(--color-text-secondary)",
-                fontSize: "12.5px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
             >
-              <span>📋</span>
-              <span>Clone</span>
-            </button>
+              Clone
+            </Button>
 
             {/* Direct Chat / Sidenav Link */}
             <Link
               to={`/chat?space=${encodeURIComponent(`${space.owner_namespace}/${space.slug}`)}`}
               title="⚡ Dock in Chat Sidenav"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 12px",
-                borderRadius: "7px",
-                border: "1px solid var(--color-border)",
-                background: "rgba(15, 23, 42, 0.5)",
-                color: "var(--color-text-secondary)",
-                textDecoration: "none",
-                fontSize: "12.5px",
-                fontWeight: 600,
-                transition: "all 0.15s ease",
-              }}
+              style={{ textDecoration: "none" }}
             >
-              <span>💬</span>
-              <span>Chat</span>
+              <Button size="small" variant="default" leadingVisual={CommentDiscussionIcon}>
+                Chat
+              </Button>
             </Link>
+
+            {/* Direct VS Code Web Workbench / Studio Launcher */}
+            <Button
+              size="small"
+              variant="default"
+              leadingVisual={CodeIcon}
+              onClick={() => {
+                const branch = space.default_branch || "main";
+                const url = `/vscode/workbench#${space.owner_namespace}/${space.slug}@${branch}`;
+                window.open(url, "_blank", "noopener,noreferrer");
+              }}
+              title="Launch Studio workbench connected to this Space Git Vault"
+            >
+              Open Studio
+            </Button>
 
             {/* Single Unified Primary + New Dropdown */}
             {viewerState.canWrite && (
               <div style={{ position: "relative" }}>
-                <button
-                  type="button"
+                <Button
+                  size="small"
+                  variant="primary"
+                  leadingVisual={PlusIcon}
                   onClick={() => setShowNewMenu((prev) => !prev)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    padding: "6px 14px",
-                    borderRadius: "7px",
-                    border: "none",
-                    background: "var(--ms-brand, #2563eb)",
-                    color: "#ffffff",
-                    fontSize: "12.5px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 8px rgba(37, 99, 235, 0.25)",
-                    transition: "all 0.15s ease",
-                  }}
+                  title="+ New"
+                  aria-label="+ New"
                 >
-                  <span>+ New</span>
-                  <span style={{ fontSize: "10px", marginLeft: "2px" }}>▾</span>
-                </button>
+                  <span>New</span>
+                  <span style={{ fontSize: "10px", marginLeft: "4px" }}>▾</span>
+                </Button>
                 {showNewMenu && (
                   <div
                     style={{
                       position: "absolute",
-                      top: "calc(100% + 6px)",
+                      top: "calc(100% + 4px)",
                       right: 0,
                       zIndex: 50,
-                      minWidth: "175px",
-                      padding: "5px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--color-border)",
-                      background: "var(--ms-bg-elv, #0f172a)",
-                      boxShadow: "0 10px 25px rgba(0, 0, 0, 0.45)",
+                      minWidth: "185px",
+                      padding: "4px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default, var(--color-border))",
+                      background: "var(--color-canvas-overlay, var(--color-bg-primary))",
+                      boxShadow: "var(--color-overlay-shadow, 0 4px 12px rgba(0, 0, 0, 0.15))",
                       display: "flex",
                       flexDirection: "column",
                       gap: "2px",
@@ -792,50 +729,82 @@ export const SpacePage: React.FC = () => {
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        padding: "8px 10px",
-                        borderRadius: "6px",
+                        padding: "7px 10px",
+                        borderRadius: "4px",
                         border: "none",
                         background: "transparent",
-                        color: "var(--color-text-primary)",
+                        color: "var(--color-fg-default, var(--color-text-primary))",
                         fontSize: "12.5px",
                         fontWeight: 500,
                         cursor: "pointer",
                         textAlign: "left",
                         width: "100%",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)")}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "var(--color-canvas-subtle, var(--ms-surface-hover))")
+                      }
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <span>📄</span>
+                      <FileCodeIcon size={14} />
                       <span>New Living Doc</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         setShowNewMenu(false);
-                        setShowNewEcoForm(true);
-                        setActiveTab("plm");
+                        setActiveTab("issues");
                       }}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        padding: "8px 10px",
-                        borderRadius: "6px",
+                        padding: "7px 10px",
+                        borderRadius: "4px",
                         border: "none",
                         background: "transparent",
-                        color: "var(--color-text-primary)",
+                        color: "var(--color-fg-default, var(--color-text-primary))",
                         fontSize: "12.5px",
                         fontWeight: 500,
                         cursor: "pointer",
                         textAlign: "left",
                         width: "100%",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)")}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "var(--color-canvas-subtle, var(--ms-surface-hover))")
+                      }
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <span>🔗</span>
-                      <span>Propose ECO</span>
+                      <IssueOpenedIcon size={14} />
+                      <span>New Issue</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewMenu(false);
+                        setActiveTab("changes");
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "7px 10px",
+                        borderRadius: "4px",
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--color-fg-default, var(--color-text-primary))",
+                        fontSize: "12.5px",
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        width: "100%",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "var(--color-canvas-subtle, var(--ms-surface-hover))")
+                      }
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <GitPullRequestIcon size={14} />
+                      <span>New Pull Request</span>
                     </button>
                     <button
                       type="button"
@@ -848,22 +817,53 @@ export const SpacePage: React.FC = () => {
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        padding: "8px 10px",
-                        borderRadius: "6px",
+                        padding: "7px 10px",
+                        borderRadius: "4px",
                         border: "none",
                         background: "transparent",
-                        color: "var(--color-text-primary)",
+                        color: "var(--color-fg-default, var(--color-text-primary))",
                         fontSize: "12.5px",
                         fontWeight: 500,
                         cursor: "pointer",
                         textAlign: "left",
                         width: "100%",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)")}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "var(--color-canvas-subtle, var(--ms-surface-hover))")
+                      }
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <span>💬</span>
+                      <CommentDiscussionIcon size={14} />
                       <span>New Channel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewMenu(false);
+                        setActiveTab("repos");
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "7px 10px",
+                        borderRadius: "4px",
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--color-fg-default, var(--color-text-primary))",
+                        fontSize: "12.5px",
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        width: "100%",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "var(--color-canvas-subtle, var(--ms-surface-hover))")
+                      }
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <PackageIcon size={14} />
+                      <span>Publish Package</span>
                     </button>
                   </div>
                 )}
@@ -872,30 +872,60 @@ export const SpacePage: React.FC = () => {
           </div>
         </div>
 
+        {/* Title and Tagline Row (cleanly positioned under breadcrumb) */}
+        <div style={{ marginTop: "6px", marginBottom: "14px", padding: "0 24px 0 68px" }}>
+          <h1
+            style={{
+              margin: "0 0 4px",
+              fontSize: "18px",
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              color: "var(--color-fg-default, var(--color-text-primary))",
+            }}
+          >
+            {space.name}
+          </h1>
+          {space.tagline && (
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                color: "var(--color-fg-muted, var(--color-text-muted))",
+                lineHeight: 1.45,
+                maxWidth: "1000px",
+              }}
+            >
+              {space.tagline}
+            </p>
+          )}
+        </div>
+
         {/* Navigation Tabs */}
         <SpaceTabsNav>
           {(
             [
-              { id: "overview", label: "Overview", icon: "🧭" },
-              { id: "chat", label: "Channels", icon: "💬", count: channels.length },
-              { id: "docs", label: "Docs", icon: "📄", count: pages.length },
-              { id: "plm", label: "PLM", icon: "🔗", count: ecos.length },
-              { id: "repos", label: "Packages", icon: "📦" },
-              { id: "settings", label: "Settings", icon: "⚙️", count: members.length },
-            ] as { id: SpaceTab; label: string; icon: string; count?: number }[]
+              { id: "overview", label: "Overview", icon: BookIcon },
+              { id: "code", label: "Code", icon: CodeIcon },
+              {
+                id: "issues",
+                label: "Issues",
+                icon: IssueOpenedIcon,
+                count: (detail?.issues || []).filter((i) => i.status === "open").length,
+              },
+              { id: "changes", label: "Pull Requests", icon: GitPullRequestIcon, count: ecos.length },
+              { id: "chat", label: "Channels", icon: CommentDiscussionIcon, count: channels.length },
+              { id: "docs", label: "Docs", icon: FileCodeIcon, count: pages.length },
+              { id: "repos", label: "Packages", icon: PackageIcon, count: packagesCount },
+              { id: "settings", label: "Settings", icon: GearIcon, count: members.length },
+            ] as { id: SpaceTab; label: string; icon: React.ComponentType<{ size?: number }>; count?: number }[]
           ).map((t) => {
-            const isActive = activeTab === t.id;
+            const isActive = activeTab === t.id || (t.id === "changes" && activeTab === "plm");
+            const Icon = t.icon;
             return (
-              <SpaceTabButton
-                key={t.id}
-                type="button"
-                onClick={() => setActiveTab(t.id)}
-                $active={isActive}
-                $accentColor={preset.accentColor}
-              >
-                <span>{t.icon}</span>
+              <SpaceTabButton key={t.id} type="button" onClick={() => setActiveTab(t.id)} $active={isActive}>
+                <Icon size={16} />
                 <span>{t.label}</span>
-                {typeof t.count === "number" && <TabPillBadge $active={isActive}>{t.count}</TabPillBadge>}
+                {typeof t.count === "number" && <CounterLabel>{t.count}</CounterLabel>}
               </SpaceTabButton>
             );
           })}
@@ -904,199 +934,166 @@ export const SpacePage: React.FC = () => {
 
       {/* ── Tab 1: Overview & Activity Stream ── */}
       {activeTab === "overview" && (
-        <div style={{ padding: "24px 28px", width: "100%", boxSizing: "border-box" }}>
+        <div
+          style={{
+            maxWidth: "1280px",
+            margin: "0 auto",
+            padding: "24px 20px 48px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
           <SpaceCockpitGrid>
             {/* Primary Left Cockpit Column */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px", minWidth: 0 }}>
-              {/* Domain Blueprint Banner */}
-              <div
-                style={{
-                  padding: "18px 20px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--ms-bg-elv, rgba(15, 23, 42, 0.5))",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                  boxShadow: "0 2px 12px rgba(0, 0, 0, 0.15)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                  }}
-                >
-                  <div style={{ fontWeight: 800, fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ color: "var(--color-text-secondary)" }}>Industry Blueprint:</span>
-                    <span style={{ color: preset.accentColor }}>{preset.name}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {preset.complianceStandards.map((std) => (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 }}>
+              {/* Primary Living Specification / System Overview */}
+              <CockpitBox>
+                <CockpitBoxHeader>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                    <BookIcon size={16} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {activeDoc?.title || "Living Specification"}
+                    </span>
+                    {activeDoc?.slug && (
                       <span
-                        key={std}
                         style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          padding: "2px 8px",
-                          borderRadius: "999px",
                           fontSize: "11px",
-                          fontWeight: 700,
-                          background: "rgba(16, 185, 129, 0.12)",
-                          color: "#34d399",
-                          border: "1px solid rgba(16, 185, 129, 0.25)",
+                          color: "var(--color-fg-muted)",
+                          fontFamily: "var(--font-mono)",
+                          flexShrink: 0,
                         }}
                       >
-                        ✓ {std}
+                        ({activeDoc.slug})
                       </span>
-                    ))}
+                    )}
                   </div>
-                </div>
-                <p style={{ margin: 0, fontSize: "13.5px", color: "var(--color-text-secondary)", lineHeight: 1.55 }}>
-                  {space.description || preset.description}
-                </p>
-                <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                  <strong style={{ color: "var(--color-text-primary)" }}>Replaces & Consolidates:</strong>{" "}
-                  {preset.replacesTools.join(" • ")}
-                </div>
-              </div>
-
-              {/* Executable Domain Baseline Preview */}
-              <div
-                style={{
-                  padding: "18px 20px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--ms-bg-elv, rgba(15, 23, 42, 0.5))",
-                  boxShadow: "0 2px 12px rgba(0, 0, 0, 0.15)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "12px",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                  }}
-                >
-                  <div>
-                    <span style={{ fontWeight: 800, fontSize: "14px" }}>
-                      ⚡ Baseline Verification Model: {preset.sampleCodeSnippet.title}
-                    </span>
-                    <span
+                  {activeDoc && (
+                    <Button
+                      size="small"
+                      variant="invisible"
+                      onClick={() => {
+                        setSelectedDocSlug(activeDoc.slug);
+                        setActiveTab("docs");
+                      }}
+                      trailingAction={LinkExternalIcon}
+                    >
+                      Open in Docs
+                    </Button>
+                  )}
+                </CockpitBoxHeader>
+                <CockpitBoxBody>
+                  {activeDoc?.content_markdown ? (
+                    <PostMarkdownContent text={activeDoc.content_markdown} />
+                  ) : (
+                    <div
                       style={{
-                        marginLeft: "8px",
-                        fontSize: "11.5px",
-                        fontFamily: "monospace",
-                        color: preset.accentColor,
-                        fontWeight: 700,
+                        padding: "20px 0",
+                        color: "var(--color-fg-muted)",
+                        textAlign: "center",
+                        fontSize: "13px",
                       }}
                     >
-                      ({preset.sampleCodeSnippet.language})
-                    </span>
+                      <p style={{ margin: "0 0 10px" }}>No living specifications created for this Space yet.</p>
+                      {viewerState.canWrite && (
+                        <Button
+                          size="small"
+                          variant="default"
+                          leadingVisual={PlusIcon}
+                          onClick={() => {
+                            setEditDocSlug("");
+                            setEditDocTitle("");
+                            setEditDocSummary("");
+                            setEditDocContent("# New Specification\n\nWrite Markdown and embed live models here.");
+                            setIsEditingDoc(true);
+                            setActiveTab("docs");
+                          }}
+                        >
+                          Create Specification
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </CockpitBoxBody>
+              </CockpitBox>
+
+              {/* Baseline Verification Model Preview */}
+              <CockpitBox>
+                <CockpitBoxHeader>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <CodeIcon size={16} />
+                    <span>Baseline Verification Model: {preset.sampleCodeSnippet.title}</span>
+                    <Label variant="secondary" sx={{ fontFamily: "var(--font-mono)" }}>
+                      {preset.sampleCodeSnippet.language}
+                    </Label>
                   </div>
                   <Link
                     to={`/morsel?code=${encodeURIComponent(preset.sampleCodeSnippet.code)}`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <Button size="small" variant="default" leadingVisual={PlayIcon}>
+                      Simulate in Morsel
+                    </Button>
+                  </Link>
+                </CockpitBoxHeader>
+                <div style={{ padding: "12px 16px" }}>
+                  <pre
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "6px 13px",
+                      margin: 0,
+                      padding: "12px 14px",
                       borderRadius: "6px",
-                      background: "var(--ms-brand, #2563eb)",
-                      color: "#fff",
-                      textDecoration: "none",
+                      background: "var(--color-canvas-subtle, var(--color-code-bg))",
+                      border: "1px solid var(--color-border-default)",
                       fontSize: "12px",
-                      fontWeight: 700,
-                      boxShadow: "0 2px 8px rgba(37, 99, 235, 0.3)",
+                      fontFamily: "var(--font-mono, monospace)",
+                      overflowX: "auto",
+                      color: "var(--color-fg-default)",
+                      lineHeight: 1.5,
                     }}
                   >
-                    <span>▶ Simulate in WASM Playground</span>
-                  </Link>
+                    {preset.sampleCodeSnippet.code}
+                  </pre>
                 </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    padding: "14px 16px",
-                    borderRadius: "8px",
-                    background: "#020617",
-                    border: "1px solid #1e293b",
-                    fontSize: "12px",
-                    fontFamily: "monospace",
-                    overflowX: "auto",
-                    color: "#e2e8f0",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {preset.sampleCodeSnippet.code}
-                </pre>
-              </div>
+              </CockpitBox>
 
               {/* Space Event Stream / Activity Timeline */}
-              <div
-                style={{
-                  padding: "18px 20px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--ms-bg-elv, rgba(15, 23, 42, 0.5))",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "14px",
-                  boxShadow: "0 2px 12px rgba(0, 0, 0, 0.15)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontWeight: 800, fontSize: "14px" }}>Recent Space Activity Stream</span>
-                  <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>Live Real-Time Feed</span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0px", position: "relative" }}>
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: "14px",
-                      top: "14px",
-                      bottom: "14px",
-                      width: "1.5px",
-                      background: "var(--color-border, #1e293b)",
-                      zIndex: 0,
-                    }}
-                  />
-
+              <CockpitBox>
+                <CockpitBoxHeader>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <CommentDiscussionIcon size={16} />
+                    <span>Recent Space Activity Stream</span>
+                  </div>
+                  <span style={{ fontSize: "11.5px", color: "var(--color-fg-muted)" }}>Live Real-Time Feed</span>
+                </CockpitBoxHeader>
+                <div>
                   {messages.slice(0, 3).map((m) => (
                     <div
                       key={`act-${m.id}`}
                       style={{
-                        position: "relative",
-                        zIndex: 1,
                         display: "flex",
                         alignItems: "flex-start",
                         gap: "12px",
-                        padding: "9px 0",
+                        padding: "12px 16px",
+                        borderBottom: "1px solid var(--color-border-muted)",
                       }}
                     >
                       <div
                         style={{
-                          width: "30px",
-                          height: "30px",
+                          width: "28px",
+                          height: "28px",
                           borderRadius: "50%",
-                          background: "var(--ms-bg-elv, #0f172a)",
-                          border: "1.5px solid var(--color-border)",
+                          background: "var(--color-canvas-subtle)",
+                          border: "1px solid var(--color-border-default)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           fontSize: "12px",
                           flexShrink: 0,
+                          color: "var(--color-fg-muted)",
                         }}
                       >
-                        💬
+                        <CommentDiscussionIcon size={14} />
                       </div>
-                      <div style={{ flex: 1, minWidth: 0, paddingTop: "2px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
                             display: "flex",
@@ -1105,19 +1102,35 @@ export const SpacePage: React.FC = () => {
                             gap: "8px",
                           }}
                         >
-                          <div style={{ fontSize: "13px", color: "var(--color-text-primary)", lineHeight: 1.4 }}>
+                          <div style={{ fontSize: "13px", color: "var(--color-fg-default)", lineHeight: 1.4 }}>
                             <strong>{m.sender_name || `@${m.author_username || "engineer"}`}</strong>{" "}
-                            <span style={{ color: "var(--color-text-secondary)" }}>posted in</span>{" "}
-                            <span style={{ fontFamily: "monospace", color: preset.accentColor, fontWeight: 600 }}>
-                              #{activeChannelSlug}
-                            </span>
+                            <span style={{ color: "var(--color-fg-muted)" }}>posted in</span>{" "}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveChannelSlug(m.channel_slug || activeChannelSlug);
+                                setActiveTab("chat");
+                              }}
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                color: "var(--color-accent-fg)",
+                                fontWeight: 600,
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                cursor: "pointer",
+                                fontSize: "inherit",
+                              }}
+                            >
+                              #{m.channel_slug || activeChannelSlug}
+                            </button>
                             :{" "}
-                            <span style={{ color: "var(--color-text-muted)" }}>
-                              "{m.content.slice(0, 70)}
-                              {m.content.length > 70 ? "..." : ""}"
+                            <span style={{ color: "var(--color-fg-muted)" }}>
+                              "{m.content.slice(0, 75)}
+                              {m.content.length > 75 ? "..." : ""}"
                             </span>
                           </div>
-                          <span style={{ fontSize: "11px", color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: "11px", color: "var(--color-fg-muted)", whiteSpace: "nowrap" }}>
                             {m.created_at}
                           </span>
                         </div>
@@ -1129,32 +1142,31 @@ export const SpacePage: React.FC = () => {
                     <div
                       key={`act-eco-${eco.id}`}
                       style={{
-                        position: "relative",
-                        zIndex: 1,
                         display: "flex",
                         alignItems: "flex-start",
                         gap: "12px",
-                        padding: "9px 0",
+                        padding: "12px 16px",
+                        borderBottom: "1px solid var(--color-border-muted)",
                       }}
                     >
                       <div
                         style={{
-                          width: "30px",
-                          height: "30px",
+                          width: "28px",
+                          height: "28px",
                           borderRadius: "50%",
-                          background: "var(--ms-bg-elv, #0f172a)",
-                          border: "1.5px solid rgba(16, 185, 129, 0.4)",
+                          background: "var(--color-canvas-subtle)",
+                          border: "1px solid var(--color-border-default)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           fontSize: "12px",
                           flexShrink: 0,
-                          color: "#34d399",
+                          color: "var(--color-success-fg)",
                         }}
                       >
-                        🔗
+                        <GitPullRequestIcon size={14} />
                       </div>
-                      <div style={{ flex: 1, minWidth: 0, paddingTop: "2px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
                             display: "flex",
@@ -1163,27 +1175,40 @@ export const SpacePage: React.FC = () => {
                             gap: "8px",
                           }}
                         >
-                          <div style={{ fontSize: "13px", color: "var(--color-text-primary)", lineHeight: 1.4 }}>
-                            <strong style={{ color: "#34d399", fontFamily: "monospace" }}>ECO-{eco.eco_number}</strong>{" "}
+                          <div style={{ fontSize: "13px", color: "var(--color-fg-default)", lineHeight: 1.4 }}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab("changes")}
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                color: "var(--color-accent-fg)",
+                                fontWeight: 700,
+                                background: "none",
+                                border: "none",
+                                padding: 0,
+                                cursor: "pointer",
+                                fontSize: "inherit",
+                              }}
+                            >
+                              ECO-{eco.eco_number}
+                            </button>{" "}
                             <span>{eco.title}</span>{" "}
-                            <span style={{ fontSize: "11.5px", color: "var(--color-text-muted)" }}>
-                              (Simulation Gate: {eco.simulation_gate_status})
+                            <span style={{ fontSize: "11.5px", color: "var(--color-fg-muted)" }}>
+                              (Gate: {eco.simulation_gate_status})
                             </span>
                           </div>
-                          <span
-                            style={{
-                              padding: "2px 7px",
-                              borderRadius: "999px",
-                              fontSize: "10.5px",
-                              fontWeight: 700,
-                              background: "rgba(16, 185, 129, 0.14)",
-                              color: "#34d399",
-                              textTransform: "uppercase",
-                              whiteSpace: "nowrap",
-                            }}
+                          <Label
+                            variant={
+                              eco.status === "approved"
+                                ? "success"
+                                : eco.status === "in_review"
+                                  ? "attention"
+                                  : "secondary"
+                            }
+                            sx={{ textTransform: "uppercase" }}
                           >
                             {eco.status}
-                          </span>
+                          </Label>
                         </div>
                       </div>
                     </div>
@@ -1192,24 +1217,75 @@ export const SpacePage: React.FC = () => {
                   {messages.length === 0 && ecos.length === 0 && (
                     <div
                       style={{
-                        padding: "16px 0",
+                        padding: "20px 16px",
                         textAlign: "center",
-                        color: "var(--color-text-muted)",
-                        fontSize: "12.5px",
+                        color: "var(--color-fg-muted)",
+                        fontSize: "13px",
                       }}
                     >
                       No recent activity in this Space yet.
                     </div>
                   )}
                 </div>
-              </div>
+              </CockpitBox>
             </div>
 
             {/* Contextual Space Inspector Column */}
             <SpaceInspectorPanel>
               <SpaceCardPanel style={{ padding: 0, gap: 0, overflow: "hidden" }}>
-                {/* Section 1: Space Git Vault */}
-                <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--color-border)" }}>
+                {/* Section 1: About Space & Blueprint */}
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border-default)" }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "12px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      color: "var(--color-fg-muted)",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    About Space
+                  </div>
+                  <p
+                    style={{
+                      margin: "0 0 10px",
+                      fontSize: "12.5px",
+                      color: "var(--color-fg-default)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {space.description || preset.description}
+                  </p>
+                  <div style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginBottom: "8px" }}>
+                    <span style={{ fontWeight: 600, color: "var(--color-fg-default)" }}>Blueprint: </span>
+                    <span style={{ color: "var(--color-accent-fg)", fontWeight: 500 }}>{preset.name}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                    {preset.complianceStandards.map((std) => (
+                      <span
+                        key={std}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "3px",
+                          padding: "1px 7px",
+                          borderRadius: "999px",
+                          fontSize: "10.5px",
+                          fontWeight: 500,
+                          border: "1px solid var(--color-border-default)",
+                          background: "var(--color-canvas-subtle)",
+                          color: "var(--color-fg-muted)",
+                        }}
+                      >
+                        ✓ {std}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 2: Space Git Vault */}
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border-default)" }}>
                   <div
                     style={{
                       display: "flex",
@@ -1220,68 +1296,85 @@ export const SpacePage: React.FC = () => {
                   >
                     <span
                       style={{
-                        fontWeight: 800,
+                        fontWeight: 600,
                         fontSize: "12px",
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
-                        color: "var(--color-text-muted)",
+                        color: "var(--color-fg-muted)",
                       }}
                     >
                       Space Git Vault
                     </span>
-                    <span
-                      style={{
-                        padding: "2px 7px",
-                        borderRadius: "999px",
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        background: "rgba(16, 185, 129, 0.16)",
-                        color: "#34d399",
-                      }}
-                    >
-                      SYNCED
-                    </span>
+                    <Label variant="success">SYNCED</Label>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12.5px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "var(--color-text-muted)" }}>Default Branch:</span>
-                      <strong style={{ fontFamily: "monospace" }}>main</strong>
+                      <span style={{ color: "var(--color-fg-muted)" }}>Default Branch:</span>
+                      <strong style={{ fontFamily: "var(--font-mono)" }}>main</strong>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "var(--color-text-muted)" }}>Visibility:</span>
+                      <span style={{ color: "var(--color-fg-muted)" }}>Visibility:</span>
                       <span style={{ textTransform: "capitalize" }}>{space.visibility}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "var(--color-text-muted)" }}>Protocols:</span>
-                      <span style={{ fontFamily: "monospace" }}>HTTPS, SSH</span>
+                      <span style={{ color: "var(--color-fg-muted)" }}>Protocols:</span>
+                      <span style={{ fontFamily: "var(--font-mono)" }}>HTTPS, SSH</span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(gitCloneUrl);
-                      toast.info("Copied Git clone URL");
-                    }}
+                  <Box
+                    display="flex"
+                    alignItems="center"
                     style={{
-                      marginTop: "12px",
-                      width: "100%",
-                      padding: "7px 10px",
+                      border: "1px solid var(--color-border-default)",
                       borderRadius: "6px",
-                      border: "1px solid var(--color-border)",
-                      background: "rgba(15, 23, 42, 0.6)",
-                      color: "var(--color-text-primary)",
-                      fontSize: "11.5px",
-                      fontFamily: "monospace",
-                      cursor: "pointer",
-                      textAlign: "center",
+                      background: "var(--color-canvas-subtle)",
+                      overflow: "hidden",
+                      marginTop: "10px",
                     }}
                   >
-                    git clone {space.owner_namespace}/{space.slug}.git 📋
-                  </button>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`git clone @${space.owner_namespace}/${space.slug}.git`}
+                      aria-label="Git clone command"
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: "transparent",
+                        border: "none",
+                        padding: "5px 8px",
+                        fontSize: "11px",
+                        fontFamily: "var(--font-mono, monospace)",
+                        color: "var(--color-fg-default)",
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(`git clone ${gitCloneUrl}`);
+                        toast.info("Copied Git clone command");
+                      }}
+                      title="Copy clone command"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        borderLeft: "1px solid var(--color-border-default)",
+                        padding: "5px 8px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        color: "var(--color-fg-muted)",
+                      }}
+                    >
+                      <CopyIcon size={12} />
+                    </button>
+                  </Box>
                 </div>
 
-                {/* Section 2: Standards & Verification Gates */}
-                <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--color-border)" }}>
+                {/* Section 3: Standards & Verification Gates */}
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border-default)" }}>
                   <div
                     style={{
                       display: "flex",
@@ -1292,46 +1385,37 @@ export const SpacePage: React.FC = () => {
                   >
                     <span
                       style={{
-                        fontWeight: 800,
+                        fontWeight: 600,
                         fontSize: "12px",
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
-                        color: "var(--color-text-muted)",
+                        color: "var(--color-fg-muted)",
                       }}
                     >
                       Compliance & Gates
                     </span>
-                    <span
-                      style={{
-                        padding: "2px 7px",
-                        borderRadius: "999px",
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        background: "rgba(59, 130, 246, 0.16)",
-                        color: "#60a5fa",
-                      }}
-                    >
-                      DAE ACTIVE
-                    </span>
+                    <Label variant="accent">DAE ACTIVE</Label>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ color: "#34d399", fontWeight: 800 }}>✓</span>
-                      <span>Automated Simulation Verification Gate</span>
+                      <CheckIcon size={14} fill="var(--color-success-fg)" />
+                      <span style={{ color: "var(--color-fg-default)" }}>Automated Simulation Verification Gate</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ color: "#34d399", fontWeight: 800 }}>✓</span>
-                      <span>Ed25519 Cryptographic Signatures</span>
+                      <CheckIcon size={14} fill="var(--color-success-fg)" />
+                      <span style={{ color: "var(--color-fg-default)" }}>Ed25519 Cryptographic Signatures</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ color: "#34d399", fontWeight: 800 }}>✓</span>
-                      <span>{preset.complianceStandards.join(", ")} Enforcement</span>
+                      <CheckIcon size={14} fill="var(--color-success-fg)" />
+                      <span style={{ color: "var(--color-fg-default)" }}>
+                        {preset.complianceStandards.join(", ")} Enforcement
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Section 3: Space Team & Signatories */}
-                <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--color-border)" }}>
+                {/* Section 4: Space Team & Signatories */}
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border-default)" }}>
                   <div
                     style={{
                       display: "flex",
@@ -1342,11 +1426,11 @@ export const SpacePage: React.FC = () => {
                   >
                     <span
                       style={{
-                        fontWeight: 800,
+                        fontWeight: 600,
                         fontSize: "12px",
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
-                        color: "var(--color-text-muted)",
+                        color: "var(--color-fg-muted)",
                       }}
                     >
                       Team & Signatories ({members.length})
@@ -1358,84 +1442,82 @@ export const SpacePage: React.FC = () => {
                         style={{
                           background: "transparent",
                           border: "none",
-                          color: "var(--ms-brand, #3b82f6)",
+                          color: "var(--color-accent-fg)",
                           fontSize: "12px",
-                          fontWeight: 700,
+                          fontWeight: 600,
                           cursor: "pointer",
+                          padding: 0,
                         }}
                       >
                         Manage
                       </button>
                     )}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {members.map((m) => (
                       <div
                         key={m.user_id}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "2px 0",
+                        }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                           <div
                             style={{
-                              width: "26px",
-                              height: "26px",
+                              width: "22px",
+                              height: "22px",
                               borderRadius: "50%",
-                              background: "rgba(59, 130, 246, 0.18)",
-                              color: "var(--ms-brand, #3b82f6)",
+                              background: "var(--color-canvas-subtle)",
+                              border: "1px solid var(--color-border-default)",
+                              color: "var(--color-fg-muted)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              fontSize: "11px",
-                              fontWeight: 800,
+                              fontSize: "10px",
+                              fontWeight: 700,
                             }}
                           >
                             {m.username.charAt(0).toUpperCase()}
                           </div>
-                          <span style={{ fontSize: "12.5px", fontWeight: 600 }}>@{m.username}</span>
+                          <span style={{ fontSize: "12.5px", fontWeight: 500, color: "var(--color-fg-default)" }}>
+                            @{m.username}
+                          </span>
                         </div>
-                        <span
-                          style={{
-                            padding: "2px 7px",
-                            borderRadius: "999px",
-                            fontSize: "10.5px",
-                            fontWeight: 700,
-                            background:
-                              m.role === "owner"
-                                ? "rgba(239, 68, 68, 0.14)"
-                                : m.role === "maintainer"
-                                  ? "rgba(245, 158, 11, 0.14)"
-                                  : "rgba(148, 163, 184, 0.12)",
-                            color:
-                              m.role === "owner"
-                                ? "#f87171"
-                                : m.role === "maintainer"
-                                  ? "#fbbf24"
-                                  : "var(--color-text-muted)",
-                            textTransform: "uppercase",
-                          }}
+                        <Label
+                          variant={
+                            m.role === "owner"
+                              ? "danger"
+                              : m.role === "maintainer" || m.role === "lead_engineer"
+                                ? "attention"
+                                : "secondary"
+                          }
+                          sx={{ textTransform: "capitalize", fontSize: "10.5px" }}
                         >
-                          {m.role}
-                        </span>
+                          {m.role.replace("_", " ")}
+                        </Label>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Section 4: Quick Living Docs Shortcuts */}
-                <div style={{ padding: "16px 18px" }}>
+                {/* Section 5: Quick Living Docs Shortcuts */}
+                <div style={{ padding: "14px 16px" }}>
                   <div
                     style={{
-                      fontWeight: 800,
+                      fontWeight: 600,
                       fontSize: "12px",
                       textTransform: "uppercase",
                       letterSpacing: "0.04em",
-                      color: "var(--color-text-muted)",
-                      marginBottom: "10px",
+                      color: "var(--color-fg-muted)",
+                      marginBottom: "8px",
                     }}
                   >
                     Key Living Specs
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                     {pages.map((p) => (
                       <button
                         key={`shortcut-${p.id}`}
@@ -1448,19 +1530,38 @@ export const SpacePage: React.FC = () => {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
-                          padding: "7px 10px",
+                          padding: "6px 8px",
                           borderRadius: "6px",
-                          border: "1px solid var(--color-border)",
-                          background: "rgba(15, 23, 42, 0.4)",
-                          color: "var(--color-text-primary)",
+                          border: "1px solid var(--color-border-default)",
+                          background: "var(--color-canvas-subtle)",
+                          color: "var(--color-fg-default)",
                           fontSize: "12px",
-                          fontWeight: 600,
+                          fontWeight: 500,
                           cursor: "pointer",
                           textAlign: "left",
+                          gap: "8px",
+                          transition: "background 0.12s ease",
                         }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "var(--surface-row-hover, rgba(125,125,125,0.1))")
+                        }
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-canvas-subtle)")}
                       >
-                        <span>📄 {p.title}</span>
-                        <span style={{ fontSize: "10.5px", fontFamily: "monospace", color: "var(--color-text-muted)" }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <FileCodeIcon
+                            size={13}
+                            style={{ marginRight: 6, verticalAlign: "middle", color: "var(--color-fg-muted)" }}
+                          />
+                          {p.title}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--color-fg-muted)",
+                            flexShrink: 0,
+                          }}
+                        >
                           {p.slug}
                         </span>
                       </button>
@@ -1491,7 +1592,7 @@ export const SpacePage: React.FC = () => {
               display: "flex",
               flexDirection: "column",
               justifyContent: "space-between",
-              background: "rgba(15, 23, 42, 0.35)",
+              background: "var(--color-canvas-subtle, var(--ms-surface-hover))",
             }}
           >
             <div>
@@ -1777,9 +1878,9 @@ export const SpacePage: React.FC = () => {
                           style={{
                             padding: "4px 10px",
                             borderRadius: "6px",
-                            border: "1px solid rgba(59, 130, 246, 0.4)",
-                            background: "rgba(59, 130, 246, 0.15)",
-                            color: "#60a5fa",
+                            border: "1px solid var(--color-accent-muted, rgba(59, 130, 246, 0.4))",
+                            background: "var(--color-accent-subtle, rgba(59, 130, 246, 0.15))",
+                            color: "var(--color-accent-fg, #0969da)",
                             fontSize: "11.5px",
                             fontWeight: 700,
                             cursor: "pointer",
@@ -1799,7 +1900,7 @@ export const SpacePage: React.FC = () => {
                             fontWeight: 700,
                           }}
                         >
-                          ▶ Run in WASM Playground
+                          ▶ Run in Morsel
                         </Link>
                       </div>
                     )}
@@ -1810,9 +1911,9 @@ export const SpacePage: React.FC = () => {
                           marginTop: "8px",
                           padding: "5px 10px",
                           borderRadius: "6px",
-                          background: "rgba(16, 185, 129, 0.12)",
-                          border: "1px solid rgba(16, 185, 129, 0.35)",
-                          color: "#34d399",
+                          background: "var(--color-success-subtle, rgba(16, 185, 129, 0.12))",
+                          border: "1px solid var(--color-success-muted, rgba(16, 185, 129, 0.35))",
+                          color: "var(--color-success-fg, #1a7f37)",
                           fontSize: "12px",
                           fontWeight: 600,
                         }}
@@ -1862,11 +1963,11 @@ export const SpacePage: React.FC = () => {
                     bottom: "64px",
                     left: "16px",
                     right: "16px",
-                    background: "var(--ms-bg-elv, #0f172a)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "8px",
+                    background: "var(--color-canvas-overlay, var(--color-canvas-default))",
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "6px",
                     padding: "6px",
-                    boxShadow: "0 12px 24px rgba(0,0,0,0.45)",
+                    boxShadow: "var(--color-overlay-shadow, 0 4px 12px rgba(0,0,0,0.15))",
                     zIndex: 30,
                   }}
                 >
@@ -1945,7 +2046,7 @@ export const SpacePage: React.FC = () => {
               style={{
                 borderLeft: "1px solid var(--color-border)",
                 padding: "14px",
-                background: "rgba(15, 23, 42, 0.5)",
+                background: "var(--color-canvas-subtle, var(--ms-surface-hover))",
                 display: "flex",
                 flexDirection: "column",
                 gap: "10px",
@@ -2020,7 +2121,7 @@ export const SpacePage: React.FC = () => {
                   <h4 style={{ margin: "0 0 4px" }}>
                     ECO-{inspectorTarget.eco.eco_number}: {inspectorTarget.eco.title}
                   </h4>
-                  <div style={{ fontSize: "12px", color: "#34d399", marginBottom: "8px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--color-success-fg, #1a7f37)", marginBottom: "8px" }}>
                     Status: {inspectorTarget.eco.status.toUpperCase()} • Gate:{" "}
                     {inspectorTarget.eco.simulation_gate_status}
                   </div>
@@ -2036,8 +2137,10 @@ export const SpacePage: React.FC = () => {
                   <pre
                     style={{
                       padding: "10px",
-                      borderRadius: "8px",
-                      background: "#020617",
+                      borderRadius: "6px",
+                      background: "var(--color-canvas-subtle)",
+                      border: "1px solid var(--color-border-default)",
+                      color: "var(--color-fg-default)",
                       fontSize: "11.5px",
                       overflowX: "auto",
                     }}
@@ -2074,7 +2177,7 @@ export const SpacePage: React.FC = () => {
             style={{
               borderRight: "1px solid var(--color-border)",
               padding: "16px 12px",
-              background: "rgba(15, 23, 42, 0.3)",
+              background: "var(--color-canvas-subtle, var(--ms-surface-hover))",
             }}
           >
             <div
@@ -2278,10 +2381,9 @@ export const SpacePage: React.FC = () => {
                 <div
                   style={{
                     padding: "24px 28px",
-                    borderRadius: "14px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg-elv, rgba(15, 23, 42, 0.45))",
-                    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.15)",
+                    borderRadius: "6px",
+                    border: "1px solid var(--color-border-default, var(--color-border))",
+                    background: "var(--color-canvas-default, var(--color-bg-primary))",
                   }}
                 >
                   <PostMarkdownContent text={activeDoc.content_markdown} isLongForm={true} />
@@ -2294,516 +2396,89 @@ export const SpacePage: React.FC = () => {
         </div>
       )}
 
-      {/* ── Tab 4: PLM & Engineering Change Orders (Teamcenter / Windchill Replacement) ── */}
-      {activeTab === "plm" && (
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h3 style={{ margin: 0 }}>PLM Engineering Change Orders (ECOs) & Digital Thread</h3>
-              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--color-text-muted)" }}>
-                Git-backed change proposals gated by automated DAE simulation verification and cryptographic sign-offs.
-              </p>
-            </div>
-            {user && (
-              <button
-                type="button"
-                onClick={() => setShowNewEcoForm((prev) => !prev)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: "var(--ms-brand, #2563eb)",
-                  color: "#fff",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                + Propose New ECO
-              </button>
-            )}
-          </div>
+      {/* ── Tab: Issues & Problem Reports (ECR) ── */}
+      {activeTab === "issues" && (
+        <SpaceIssuesTab
+          detail={detail}
+          viewerState={viewerState}
+          user={user}
+          onIssueCreated={(_issue, issues) => {
+            setDetail((prev) => (prev ? { ...prev, issues } : prev));
+          }}
+          onIssueUpdated={(_issue, issues) => {
+            setDetail((prev) => (prev ? { ...prev, issues } : prev));
+          }}
+        />
+      )}
 
-          {showNewEcoForm && (
-            <form
-              onSubmit={handleCreateEco}
-              style={{
-                padding: "16px",
-                borderRadius: "12px",
-                border: "1px solid var(--color-border)",
-                background: "rgba(15, 23, 42, 0.6)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-              }}
-            >
-              <input
-                type="text"
-                required
-                placeholder="ECO Title (e.g. Increase Suspension Damper Rate by 12% for Bump-Steer Margin)"
-                value={newEcoTitle}
-                onChange={(e) => setNewEcoTitle(e.target.value)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--ms-bg)",
-                  color: "inherit",
-                }}
-              />
-              <textarea
-                rows={3}
-                placeholder="Engineering rationale, requirements impacted, and verification summary..."
-                value={newEcoDesc}
-                onChange={(e) => setNewEcoDesc(e.target.value)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--ms-bg)",
-                  color: "inherit",
-                }}
-              />
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <select
-                  value={newEcoSeverity}
-                  onChange={(e) => setNewEcoSeverity(e.target.value as any)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg)",
-                    color: "inherit",
-                  }}
-                >
-                  <option value="minor">Minor Change</option>
-                  <option value="standard">Standard Change</option>
-                  <option value="major">Major Architecture Change</option>
-                  <option value="safety_critical">Safety-Critical (ISO 26262 / SIL / 21 CFR 11)</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Impacted models (comma-separated)"
-                  value={newEcoModels}
-                  onChange={(e) => setNewEcoModels(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg)",
-                    color: "inherit",
-                  }}
-                />
-                <button
-                  type="submit"
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: "#2563eb",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Submit ECO
-                </button>
-              </div>
-            </form>
-          )}
+      {/* ── Tab 4: Change Control & Pull Requests (Formerly PLM) ── */}
+      {(activeTab === "changes" || activeTab === "plm") && (
+        <SpaceChangeControlTab
+          detail={detail}
+          viewerState={viewerState}
+          user={user}
+          onEcoCreated={(_eco, ecos) => {
+            setDetail((prev) => (prev ? { ...prev, ecos } : prev));
+          }}
+          onEcoReviewed={(_eco, ecos) => {
+            setDetail((prev) => (prev ? { ...prev, ecos } : prev));
+          }}
+        />
+      )}
 
-          {ecos.map((eco) => (
-            <div
-              key={eco.id}
-              style={{
-                padding: "16px",
-                borderRadius: "12px",
-                border: "1px solid var(--color-border)",
-                background: "rgba(15, 23, 42, 0.45)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "8px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      fontFamily: "monospace",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      background: "rgba(59, 130, 246, 0.16)",
-                      color: "#60a5fa",
-                    }}
-                  >
-                    ECO-{eco.eco_number}
-                  </span>
-                  <span style={{ fontWeight: 700, fontSize: "15px" }}>{eco.title}</span>
-                </div>
-
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <span
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "999px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      background: "rgba(16, 185, 129, 0.16)",
-                      color: "#34d399",
-                    }}
-                  >
-                    ✓ Simulation Gate: {eco.simulation_gate_status.toUpperCase()}
-                  </span>
-                  <span
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "999px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      background: "rgba(148, 163, 184, 0.16)",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {eco.status}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", whiteSpace: "pre-wrap" }}>
-                {eco.description}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "8px",
-                }}
-              >
-                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", fontFamily: "monospace" }}>
-                  Branch: {eco.source_branch} → {eco.target_branch} • Impacted:{" "}
-                  {eco.impacted_models.join(", ") || "none"}
-                </div>
-
-                {user && (
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button
-                      type="button"
-                      onClick={() => handleReviewEco(eco.id, "approved")}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid rgba(16, 185, 129, 0.4)",
-                        background: "rgba(16, 185, 129, 0.15)",
-                        color: "#34d399",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      ✍️ Approve & Sign ECO
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleReviewEco(eco.id, "changes_requested")}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid var(--color-border)",
-                        background: "transparent",
-                        color: "var(--color-text-secondary)",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Request Changes
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {eco.approvals.length > 0 && (
-                <div
-                  style={{
-                    marginTop: "6px",
-                    paddingTop: "8px",
-                    borderTop: "1px solid var(--color-border)",
-                    fontSize: "12px",
-                    color: "var(--color-text-muted)",
-                  }}
-                >
-                  <strong>Cryptographic Sign-Offs:</strong>{" "}
-                  {eco.approvals.map((a) => (
-                    <span key={a.user_id} style={{ marginRight: "12px" }}>
-                      @{a.username} ({a.role}): <strong>{a.decision.toUpperCase()}</strong> [sig:{" "}
-                      <code>{(a.signature_hex || "").slice(0, 10)}</code>]
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+      {/* ── Tab: Code & Git Vault Explorer ── */}
+      {activeTab === "code" && (
+        <div
+          style={{
+            maxWidth: "1520px",
+            margin: "0 auto",
+            padding: "0 20px 48px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          <SpaceCodeTab detail={detail} viewerState={viewerState} />
         </div>
       )}
 
       {/* ── Tab 5: Repositories, PDM & Packages ── */}
       {activeTab === "repos" && (
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div
-            style={{
-              padding: "18px",
-              borderRadius: "12px",
-              border: "1px solid var(--color-border)",
-              background: "rgba(15, 23, 42, 0.45)",
-            }}
-          >
-            <h3 style={{ margin: "0 0 6px" }}>Backing Git Vault & Multi-Model PDM Repository</h3>
-            <p style={{ margin: "0 0 12px", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-              Clone this Space's Git Vault to manage <code>docs/</code>, <code>articles/</code>, and domain models (
-              {preset.languages.map((l) => `.${l}`).join(", ")}) with full Git LFS and 3D CAD / DAE semantic diffing.
-            </p>
-            <div
-              style={{
-                padding: "10px 14px",
-                borderRadius: "8px",
-                background: "#020617",
-                border: "1px solid #1e293b",
-                fontFamily: "monospace",
-                fontSize: "13px",
-              }}
-            >
-              git clone {gitCloneUrl}
-            </div>
-          </div>
+        <div
+          style={{
+            maxWidth: "1280px",
+            margin: "0 auto",
+            padding: "0 0 48px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          <SpacePackagesTab detail={detail} viewerState={viewerState} onCountUpdated={(c) => setPackagesCount(c)} />
         </div>
       )}
 
-      {/* ── Tab 6: Members, Governance & Container Ownership Transfer ── */}
+      {/* ── Tab 6: Space Settings (Two-Column Layout) ── */}
       {activeTab === "settings" && (
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Space Members & Engineering RBAC */}
-          <div
-            style={{
-              padding: "18px",
-              borderRadius: "12px",
-              border: "1px solid var(--color-border)",
-              background: "rgba(15, 23, 42, 0.45)",
+        <div
+          style={{
+            padding: "24px 28px 48px",
+            width: "100%",
+            maxWidth: "1280px",
+            margin: "0 auto",
+            boxSizing: "border-box",
+          }}
+        >
+          <SpaceSettingsTab
+            detail={detail}
+            viewerState={viewerState}
+            myOrgs={myOrgs}
+            onSpaceUpdated={(updated) => {
+              setDetail((prev) => (prev ? { ...prev, space: updated } : prev));
             }}
-          >
-            <h3 style={{ margin: "0 0 12px" }}>Space Engineering Members & Roles ({members.length})</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "14px" }}>
-              {members.map((m) => (
-                <div
-                  key={m.user_id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    background: "rgba(30, 41, 59, 0.4)",
-                  }}
-                >
-                  <div>
-                    <Link
-                      to={`/@${m.username}`}
-                      style={{ fontWeight: 700, color: "var(--color-text-primary)", textDecoration: "none" }}
-                    >
-                      @{m.username}
-                    </Link>
-                    {m.display_name && (
-                      <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        ({m.display_name})
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: "999px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: "rgba(59, 130, 246, 0.16)",
-                        color: "#60a5fa",
-                      }}
-                    >
-                      {m.role}
-                    </span>
-                    {viewerState.canAdmin && m.role !== "owner" && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const list = await removeSpaceMember(space.owner_namespace, space.slug, m.user_id);
-                          setDetail((prev) => (prev ? { ...prev, members: list } : prev));
-                        }}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "#f87171",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {viewerState.canAdmin && (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!newMemberUsername.trim()) return;
-                  try {
-                    const list = await addSpaceMember(
-                      space.owner_namespace,
-                      space.slug,
-                      newMemberUsername.trim(),
-                      newMemberRole,
-                    );
-                    setDetail((prev) => (prev ? { ...prev, members: list } : prev));
-                    setNewMemberUsername("");
-                    toast.success("Updated Space member role");
-                  } catch (err: any) {
-                    toast.error(err?.response?.data?.error || "Failed to add member");
-                  }
-                }}
-                style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}
-              >
-                <input
-                  type="text"
-                  placeholder="username"
-                  value={newMemberUsername}
-                  onChange={(e) => setNewMemberUsername(e.target.value)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg)",
-                    color: "inherit",
-                  }}
-                />
-                <select
-                  value={newMemberRole}
-                  onChange={(e) => setNewMemberRole(e.target.value as SpaceRole)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg)",
-                    color: "inherit",
-                  }}
-                >
-                  <option value="lead_engineer">Lead Engineer</option>
-                  <option value="approver">PLM Approver</option>
-                  <option value="contributor">Contributor</option>
-                  <option value="reviewer">Reviewer</option>
-                  <option value="viewer">Viewer</option>
-                </select>
-                <button
-                  type="submit"
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: "#2563eb",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Add / Update Member
-                </button>
-              </form>
-            )}
-          </div>
-
-          {/* Transfer Space Ownership between User Profile and Organization */}
-          {viewerState.canAdmin && (
-            <div
-              style={{
-                padding: "18px",
-                borderRadius: "12px",
-                border: "1px solid rgba(245, 158, 11, 0.35)",
-                background: "rgba(245, 158, 11, 0.06)",
-              }}
-            >
-              <h3 style={{ margin: "0 0 6px" }}>Transfer Container Ownership (Personal Profile ↔ Organization)</h3>
-              <p style={{ margin: "0 0 12px", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                Graduate a personal R&D Space into an Organization container, or move an Organization Space to another
-                namespace. The backing Git Vault is relocated automatically.
-              </p>
-              <form onSubmit={handleTransferOwnership} style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                <select
-                  value={transferTargetType}
-                  onChange={(e) => {
-                    const nextType = e.target.value as SpaceOwnerType;
-                    setTransferTargetType(nextType);
-                    if (nextType === "user" && user) {
-                      setTransferTargetSlug(user.username);
-                    } else if (nextType === "organization" && myOrgs[0]) {
-                      setTransferTargetSlug(myOrgs[0].slug);
-                    }
-                  }}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg)",
-                    color: "inherit",
-                  }}
-                >
-                  <option value="organization">🏢 Transfer to Organization</option>
-                  <option value="user">👤 Transfer to Personal Profile</option>
-                </select>
-
-                <input
-                  type="text"
-                  placeholder="Target @slug (e.g. ford or username)"
-                  value={transferTargetSlug}
-                  onChange={(e) => setTransferTargetSlug(e.target.value)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border)",
-                    background: "var(--ms-bg)",
-                    color: "inherit",
-                  }}
-                />
-                <button
-                  type="submit"
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: "#d97706",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Transfer Space →
-                </button>
-              </form>
-            </div>
-          )}
+            onMembersUpdated={(updatedMembers) => {
+              setDetail((prev) => (prev ? { ...prev, members: updatedMembers } : prev));
+            }}
+            onRefresh={loadSpace}
+          />
         </div>
       )}
     </div>

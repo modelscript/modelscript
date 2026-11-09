@@ -461,6 +461,12 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     return undefined;
   }, [viewConfig?.code, viewConfig?.url, fetchRetryToken]);
 
+  useEffect(() => {
+    if (!isLoadingUrl && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [isLoadingUrl, xmlText]);
+
   // Execute the ReqIF Tabular DSL sheet
   const tabularPayload: CompiledTabularPayload = useMemo(
     () => executeReqIfTabular(xmlText, activeSheet),

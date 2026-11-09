@@ -144,7 +144,7 @@ const { cfg, dat } = writeComtrade({
 
 ## 7. PSCAD V5+ Binary Waveform Container (`.psout`)
 
-PSCAD V5+ replaces legacy ASCII `.out` files with `.psout`, a high-performance slotted-page binary container format. ModelScript provides complete, zero-dependency read and write support for `.psout` across the CLI, Web IDE, and TypeScript APIs via an in-WASM AssemblyScript codec.
+PSCAD V5+ replaces legacy ASCII `.out` files with `.psout`, a high-performance slotted-page binary container format. ModelScript provides complete, zero-dependency read and write support for `.psout` across the CLI, Studio, and TypeScript APIs via an in-WASM AssemblyScript codec.
 
 ### Slotted-Page Binary Architecture
 
@@ -216,9 +216,9 @@ msx pscad psout results.psout --out=telemetry.csv
 msx pscad psout results.psout --format=comtrade
 ```
 
-### Web IDE Waveform Studio (`modelscript.psoutViewer`)
+### Studio & VS Code Waveform Viewer (`modelscript.psoutViewer`)
 
-When opening any `*.psout` file in the ModelScript Web IDE, the custom editor provides a dark-mode waveform analysis studio:
+When opening any `*.psout` file in Studio or VS Code, the custom editor provides a dark-mode waveform analysis viewport:
 
 1. **Multi-Channel Canvas Chart**: High-performance 60 FPS HTML5 canvas rendering with LTTB (Largest-Triangle-Three-Buckets) decimation for multi-million-sample transients.
 2. **Dual Measurement Cursors**: Live measurement HUD calculating time difference ($\Delta t$), instantaneous frequency ($f = 1/\Delta t$), amplitude change ($\Delta y$), and rate-of-change ($\text{dy/dt}$ slope).

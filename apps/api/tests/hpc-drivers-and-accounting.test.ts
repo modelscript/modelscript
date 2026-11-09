@@ -313,6 +313,31 @@ test("HPC Drivers & Cost Accounting", async (t) => {
     }
   });
 
+  await t.test("LocalProcessDriver resolves sandboxed bwrap filesystem and network isolation", () => {
+    const driver = new LocalProcessDriver();
+    const spec: HpcJobSpec = {
+      jobId: "sandbox-job-bwrap",
+      name: "BwrapJob",
+      command: "ccx",
+      args: ["-i", "mesh"],
+      workingDir: "/tmp/ccx-sandbox",
+      resources: {},
+      sandbox: {
+        runtime: "bwrap",
+        networkIsolation: true,
+      },
+    };
+
+    const resolved = driver.resolveSandboxCommand(spec);
+    if (process.platform === "linux") {
+      assert.strictEqual(resolved.runtime, "bwrap");
+      assert.strictEqual(resolved.execCmd, "bwrap");
+      assert.ok(resolved.execArgs.includes("--unshare-net"));
+      assert.ok(resolved.execArgs.includes("--ro-bind"));
+      assert.strictEqual(resolved.networkIsolation, true);
+    }
+  });
+
   await t.test("LocalProcessDriver wall-clock timeout watchdog terminates runaway jobs", async () => {
     const driver = new LocalProcessDriver({ defaultMaxWallClockMinutes: 30 });
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hpc-test-timeout-"));

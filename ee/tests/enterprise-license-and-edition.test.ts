@@ -16,6 +16,7 @@ import { OidcService as BridgeOidcService } from "../../apps/api/src/services/oi
 import {
   ALL_ENTERPRISE_FEATURES,
   checkEnterpriseDesktopAirgapCompliance,
+  computeAttestationDigest,
   ENTERPRISE_HIL_TARGETS,
   ENTERPRISE_PLM_CONNECTORS,
   generateLicenseKeyPair,
@@ -26,6 +27,7 @@ import {
   signEnterpriseLicense,
   verifyBlackboxFmuEntitlement,
   verifyComplianceAttestation,
+  verifyComplianceAttestationChain,
   verifyEnterpriseCliCommand,
   verifyEnterpriseCollabSession,
   verifyEnterpriseLicense,
@@ -102,6 +104,23 @@ describe("Enterprise Edition (ee/) Subsystems (Batches A–I) & CE/EE Isolation"
     const expiredRes = verifyEnterpriseLicense(expiredToken);
     assert.equal(expiredRes.valid, false);
     assert.equal(expiredRes.mode, "expired");
+
+    // Clock rollback detection check
+    const rollbackRes = verifyEnterpriseLicense(token, {
+      nowSeconds: nowSec - 100,
+      lastKnownTimestampSeconds: nowSec,
+    });
+    assert.equal(rollbackRes.valid, false);
+    assert.equal(rollbackRes.mode, "invalid");
+    assert.match(rollbackRes.reason ?? "", /System clock rollback detected/);
+
+    // Future issuance / tampering check
+    const futureTamperRes = verifyEnterpriseLicense(token, {
+      nowSeconds: nowSec - 3600,
+    });
+    assert.equal(futureTamperRes.valid, false);
+    assert.equal(futureTamperRes.mode, "invalid");
+    assert.match(futureTamperRes.reason ?? "", /System clock tampering detected/);
 
     // Revoked license JTI check (previously committed example key)
     const revokedToken = signEnterpriseLicense({
@@ -324,6 +343,75 @@ describe("Enterprise Edition (ee/) Subsystems (Batches A–I) & CE/EE Isolation"
     const verified = verifyComplianceAttestation(signed.bundleToken);
     assert.equal(verified.valid, true);
     assert.equal(verified.payload?.standard, "IEEE-2800-2022");
+
+    // Verify DHF Attestation Merkle Hash Chaining (FDA 21 CFR Part 11 / ISO 13485)
+    const digest1 = crypto.createHash("sha256").update("dhf-requirement-spec-v1").digest("hex");
+    const att1 = signComplianceAttestation({
+      organization: "MedTech Robotics",
+      standard: "FDA-21-CFR-Part-11",
+      workspaceId: "surgical-arm-control",
+      artifactSha256: digest1,
+      sequenceNumber: 1,
+    });
+    const hash1 = computeAttestationDigest(att1.payload);
+
+    const digest2 = crypto.createHash("sha256").update("dhf-verification-report-v1").digest("hex");
+    const att2 = signComplianceAttestation({
+      organization: "MedTech Robotics",
+      standard: "FDA-21-CFR-Part-11",
+      workspaceId: "surgical-arm-control",
+      artifactSha256: digest2,
+      previousAttestationHash: hash1,
+      sequenceNumber: 2,
+    });
+    const hash2 = computeAttestationDigest(att2.payload);
+
+    const digest3 = crypto.createHash("sha256").update("dhf-validation-release-v1").digest("hex");
+    const att3 = signComplianceAttestation({
+      organization: "MedTech Robotics",
+      standard: "FDA-21-CFR-Part-11",
+      workspaceId: "surgical-arm-control",
+      artifactSha256: digest3,
+      previousAttestationHash: hash2,
+      sequenceNumber: 3,
+    });
+
+    // Valid chain verification
+    const chainResult = verifyComplianceAttestationChain([att1.bundleToken, att2.bundleToken, att3.bundleToken]);
+    assert.equal(chainResult.valid, true);
+    assert.equal(chainResult.chainLength, 3);
+    assert.equal(chainResult.genesisAttestationId, att1.payload.attestationId);
+    assert.equal(chainResult.headAttestationId, att3.payload.attestationId);
+
+    // Broken Merkle link detection (e.g. att3 linked to tampered hash)
+    const tamperedAtt3 = signComplianceAttestation({
+      organization: "MedTech Robotics",
+      standard: "FDA-21-CFR-Part-11",
+      workspaceId: "surgical-arm-control",
+      artifactSha256: digest3,
+      previousAttestationHash: "0000000000000000000000000000000000000000000000000000000000000000",
+      sequenceNumber: 3,
+    });
+    const brokenChainResult = verifyComplianceAttestationChain([
+      att1.bundleToken,
+      att2.bundleToken,
+      tamperedAtt3.bundleToken,
+    ]);
+    assert.equal(brokenChainResult.valid, false);
+    assert.match(brokenChainResult.reason!, /Merkle digest mismatch/i);
+
+    // Cross-organization chain injection detection
+    const wrongOrgAtt2 = signComplianceAttestation({
+      organization: "Attacker Medical Inc",
+      standard: "FDA-21-CFR-Part-11",
+      workspaceId: "surgical-arm-control",
+      artifactSha256: digest2,
+      previousAttestationHash: hash1,
+      sequenceNumber: 2,
+    });
+    const wrongOrgResult = verifyComplianceAttestationChain([att1.bundleToken, wrongOrgAtt2.bundleToken]);
+    assert.equal(wrongOrgResult.valid, false);
+    assert.match(wrongOrgResult.reason!, /Organization mismatch/i);
 
     // Verify ITAR/EAR/OFAC export control lookup in ee/src/compliance/export-control.ts
     assert.equal(isOfacSanctioned("IR"), true);

@@ -11,12 +11,12 @@ ModelScript runs from the same WebAssembly compiler core across browsers, deskto
 
 ## For Users & Engineers
 
-### 1. Zero-Install Ansatz Morsel & Web IDE
+### 1. Zero-Install Morsel & Studio
 
 To explore ModelScript without installing anything locally:
 
-- **[Ansatz Morsel (`/morsel`)](https://modelscript.org/morsel)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
-- **Studio (`https://ansatz.social/studio`)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
+- **[Morsel (`/morsel`)](https://ansatz.social/morsel)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
+- **[Studio (`/studio`)](https://ansatz.social/studio)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
 
 ### 2. Command-Line Interface (`msx`)
 
@@ -100,7 +100,7 @@ docker pull ghcr.io/modelscript/web:latest
 docker pull ghcr.io/modelscript/api-ee:latest
 docker pull ghcr.io/modelscript/appliance:latest
 
-# Launch backend simulation cluster and web IDE
+# Launch backend simulation cluster and Studio
 docker compose up -d
 ```
 
@@ -132,7 +132,7 @@ npm run build         # Build all monorepo packages and applications
 ### 3. Launch Local Development Servers
 
 ```bash
-npm run dev           # Start API backend, LSP workers, and Web IDE
+npm run dev           # Start API backend, LSP workers, and Studio
 ```
 
 ---

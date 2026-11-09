@@ -484,6 +484,12 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
     return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const olgaAnalysis = useMemo(() => {
     let parsedModel: OlgaModel | null = null;
     let simResult: OlgaSimulationResult | null = null;

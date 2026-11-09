@@ -1813,6 +1813,12 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const ontology = useMemo(
     () => parseOwl2Source(rawText, viewConfig.ontologyIri || ""),
     [rawText, viewConfig.ontologyIri],

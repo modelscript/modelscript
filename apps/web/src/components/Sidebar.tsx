@@ -133,9 +133,9 @@ const NavItem = styled(Link)<{ $active?: boolean | undefined; $compact?: boolean
   text-decoration: none;
   color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-primary)")};
   font-family: var(--ms-font-sans);
-  font-size: ${(props) => (props.$compact ? "14.5px" : "16.5px")};
+  font-size: ${(props) => (props.$compact ? "14px" : "16px")};
   line-height: ${(props) => (props.$compact ? "20px" : "22px")};
-  font-weight: ${(props) => (props.$active ? "650" : "500")};
+  font-weight: ${(props) => (props.$active ? "650" : props.$compact ? "550" : "600")};
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-synthesis: none;
@@ -215,8 +215,8 @@ const NavPill = styled.div<{ $active?: boolean | undefined; $compact?: boolean |
   display: inline-flex;
   align-items: center;
   gap: ${(props) => (props.$compact ? "10px" : "12px")};
-  padding: ${(props) => (props.$compact ? "6px 12px" : "8px 12px")};
-  border-radius: 10px;
+  padding: ${(props) => (props.$compact ? "7px 12px" : "9px 14px")};
+  border-radius: ${(props) => (props.$compact ? "10px" : "12px")};
   width: 100%;
   border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
   background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
@@ -235,9 +235,9 @@ const NavPill = styled.div<{ $active?: boolean | undefined; $compact?: boolean |
 
 const AdminNavBadge = styled.span`
   margin-left: auto;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
-  padding: 1px 7px;
+  padding: 1.5px 8px;
   border-radius: 999px;
   background: var(--color-attention-subtle);
   color: var(--color-attention-fg);
@@ -1415,8 +1415,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                   <Text
                     style={{
                       fontWeight: 700,
-                      fontSize: "13.5px",
-                      lineHeight: "18px",
+                      fontSize: "14px",
+                      lineHeight: "19px",
                       display: "block",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -1428,8 +1428,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                   <Text
                     className="handle-text"
                     style={{
-                      fontSize: "12px",
-                      lineHeight: "15px",
+                      fontSize: "12.5px",
+                      lineHeight: "17px",
                       display: "block",
                       overflow: "hidden",
                       textOverflow: "ellipsis",

@@ -548,6 +548,24 @@ export function matchVarPath(vn: string, baseName: string, labelMaps?: Map<strin
   return indices;
 }
 
+interface DaeCleanupPayload {
+  exports: any;
+  ptr: number;
+}
+
+const daeFinalizationRegistry =
+  typeof FinalizationRegistry !== "undefined"
+    ? new FinalizationRegistry<DaeCleanupPayload>((heldValue) => {
+        if (heldValue.ptr && heldValue.exports?.dae_free) {
+          try {
+            heldValue.exports.dae_free(heldValue.ptr);
+          } catch {
+            // ignore
+          }
+        }
+      })
+    : null;
+
 /**
  * Universal DAE Builder (`DAEBuilder`) backed directly by the WebAssembly `DaeBuilder`
  * struct-of-arrays arena in linear memory, augmented with host-side metadata tables for
@@ -849,6 +867,10 @@ export class WasmDaeBridge implements IDaeBuilder {
         }
       }
     }
+
+    if (this.ptr && daeFinalizationRegistry) {
+      daeFinalizationRegistry.register(this, { exports: this.exports, ptr: this.ptr }, this);
+    }
   }
 
   /** Resolved name of the flattened model or function. */
@@ -1007,6 +1029,12 @@ export class WasmDaeBridge implements IDaeBuilder {
    * @returns 0-based variable index, or `-1` if not found.
    */
   lookupVariable(nameOrId: string | StringId): number {
+    if (typeof nameOrId === "number" && this._renamedVars.size === 0) {
+      if (nameOrId !== 0 && this.exports?.dae_lookupVariable) {
+        return this.exports.dae_lookupVariable(this.ptr, nameOrId);
+      }
+      return -1;
+    }
     const targetName = typeof nameOrId === "string" ? nameOrId : this.interner.resolve(nameOrId);
     const nId = typeof nameOrId === "string" ? this.interner.lookup(nameOrId) : nameOrId;
     if (nId !== undefined && nId !== 0 && this.exports?.dae_lookupVariable) {
@@ -1588,14 +1616,19 @@ export class WasmDaeBridge implements IDaeBuilder {
    * Releases the underlying WebAssembly `DaeBuilder` allocation and clears all host-side metadata maps.
    */
   free(): void {
-    if (this.ptr && this.exports?.dae_free) {
-      try {
-        this.exports.dae_free(this.ptr);
-      } catch {
-        // ignore
+    if (this.ptr) {
+      if (daeFinalizationRegistry) {
+        daeFinalizationRegistry.unregister(this);
       }
+      if (this.exports?.dae_free) {
+        try {
+          this.exports.dae_free(this.ptr);
+        } catch {
+          // ignore
+        }
+      }
+      this.ptr = 0;
     }
-    this.ptr = 0;
     this.baseArrayIndices.clear();
     this._renamedVars.clear();
     this._renamedVarsReverse.clear();
@@ -2386,7 +2419,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    * @param eqIdx - 0-based equation index.
    */
   isEqRemoved(eqIdx: number): boolean {
-    return this.removedEquations.has(eqIdx);
+    if (this.removedEquations.has(eqIdx)) return true;
+    const flags = this.getEqFlags(eqIdx);
+    return flags !== -1 && flags >>> 0 !== 0xffffffff && (flags & 16) /* FLAG_EQ_REMOVED */ !== 0;
   }
 
   /**
@@ -2396,6 +2431,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   markEqRemoved(eqIdx: number): void {
     this.removedEquations.add(eqIdx);
+    if (this.exports?.dae_setEqRemoved) {
+      this.exports.dae_setEqRemoved(this.ptr, eqIdx, true);
+    }
   }
 
   /**
@@ -2405,6 +2443,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   removeEquation(eqIdx: number): void {
     this.removedEquations.add(eqIdx);
+    if (this.exports?.dae_setEqRemoved) {
+      this.exports.dae_setEqRemoved(this.ptr, eqIdx, true);
+    }
   }
 
   /**
@@ -5049,6 +5090,12 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     while (aliasMap.has(curr)) {
       curr = aliasMap.get(curr)!;
     }
+    let p = id;
+    while (p !== curr && aliasMap.has(p)) {
+      const next = aliasMap.get(p)!;
+      aliasMap.set(p, curr);
+      p = next;
+    }
     return curr;
   }
 
@@ -5063,7 +5110,11 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     }
   }
 
+  const scoreCache = new Map<number, number>();
   function getVarScore(nameId: number): number {
+    const cached = scoreCache.get(nameId);
+    if (cached !== undefined) return cached;
+
     const vIdx = dae.lookupVariable(nameId);
     const name = dae.interner.resolve(nameId) || "";
     let score = 0;
@@ -5083,6 +5134,7 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     const dotCount = (name.match(/\./g) || []).length;
     score -= dotCount * 10;
     score -= name.length;
+    scoreCache.set(nameId, score);
     return score;
   }
 

@@ -9,11 +9,12 @@ import { getLsp } from "../morsel/util/lsp-worker";
 export interface ZeroCopyWebGPUViewerProps {
   // If runner is provided, run in main thread (for VS Code Webview fallback)
   runner?: WebGPUSimulationRunner | undefined;
-  // If uri and className are provided, run via OffscreenCanvas in the LSP worker (for Morsel Web IDE)
+  // If uri and className are provided, run via OffscreenCanvas in the LSP worker (for Morsel / Studio)
   uri?: string | undefined;
   className?: string | undefined;
   width?: string | undefined;
   height?: string | undefined;
+  isFullScreen?: boolean | undefined;
   // Static or recorded tensor field data for inspection when no live WebGPUSimulationRunner is attached
   initialFieldData?: Float32Array | number[] | undefined;
   viewConfig?:
@@ -21,6 +22,7 @@ export interface ZeroCopyWebGPUViewerProps {
         initialFieldData?: Float32Array | number[] | undefined;
         uri?: string | undefined;
         className?: string | undefined;
+        height?: string | undefined;
         [key: string]: unknown;
       }
     | undefined;
@@ -93,13 +95,24 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
   uri: propUri,
   className: propClassName,
   width = "100%",
-  height = "400px",
+  height: propHeight,
+  isFullScreen = false,
   initialFieldData: propFieldData,
   viewConfig,
 }) => {
+  const height = isFullScreen
+    ? "100%"
+    : (propHeight ?? (typeof viewConfig?.height === "string" ? viewConfig.height : "100%"));
   const uri = propUri ?? (typeof viewConfig?.uri === "string" ? viewConfig.uri : undefined);
   const className = propClassName ?? (typeof viewConfig?.className === "string" ? viewConfig.className : undefined);
   const rawFieldData = propFieldData ?? viewConfig?.initialFieldData;
+
+  useEffect(() => {
+    const readyTimer = setTimeout(() => {
+      (window as any).__ARTIFACT_READY = true;
+    }, 400);
+    return () => clearTimeout(readyTimer);
+  }, [runner, uri, rawFieldData]);
 
   const staticTensor = useMemo<Float32Array | null>(() => {
     if (!rawFieldData) return null;

@@ -211,12 +211,15 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
         return dae.addRealLiteral(0.0);
       }
       if (stateVars.length > 0) {
-        let isState = false;
-        for (let s: u32 = 0; s < stateVars.length; s++) {
-          let sv = stateVars.get(s);
-          if (sv == (varId as i32) || sv == (rawId as i32)) {
-            isState = true;
-            break;
+        let flags = dae.getVarData().get(varId * VAR_STRIDE + VAR_FLAGS);
+        let isState = (flags & FLAG_VAR_STATE) != 0;
+        if (!isState) {
+          for (let s: u32 = 0; s < stateVars.length; s++) {
+            let sv = stateVars.get(s);
+            if (sv == (varId as i32) || sv == (rawId as i32)) {
+              isState = true;
+              break;
+            }
           }
         }
         if (!isState) {
@@ -592,10 +595,10 @@ export class PantelidesEngine {
   matchVarToEq: ChunkedInt32Array; // var -> eq
 
   // Alternating path search markers
-  /** Visited flags for equations during DFS augmenting path search (colored by equation subset). */
-  visitedEq: ChunkedUint8Array;
-  /** Visited flags for variables during DFS augmenting path search (colored by variable subset). */
-  visitedVar: ChunkedUint8Array;
+  /** Visited generation tokens for equations during DFS augmenting path search. */
+  visitedEq: ChunkedInt32Array;
+  /** Visited generation tokens for variables during DFS augmenting path search. */
+  visitedVar: ChunkedInt32Array;
 
   // Differentiation tracking
   /** Tracks how many times each equation has been differentiated during Pantelides reduction. */
@@ -631,8 +634,8 @@ export class PantelidesEngine {
     this.eqDepVars = createChunkedInt32Array(4096);
     this.matchEqToVar = createChunkedInt32Array(1024);
     this.matchVarToEq = createChunkedInt32Array(1024);
-    this.visitedEq = createChunkedUint8Array(1024);
-    this.visitedVar = createChunkedUint8Array(1024);
+    this.visitedEq = createChunkedInt32Array(1024);
+    this.visitedVar = createChunkedInt32Array(1024);
     this.eqDiffLevel = createChunkedInt32Array(1024);
     this.varDiffLevel = createChunkedInt32Array(1024);
     this.varDerivativeOf = createChunkedInt32Array(1024);
@@ -883,20 +886,20 @@ export class PantelidesEngine {
   /**
    * Performs an augmenting path search from equation `eqIdx`.
    */
-  private augment(eqIdx: u32): boolean {
-    if (this.visitedEq.get(eqIdx) == 1) return false;
-    this.visitedEq.set(eqIdx, 1);
+  private augment(eqIdx: u32, token: i32): boolean {
+    if (this.visitedEq.get(eqIdx) == token) return false;
+    this.visitedEq.set(eqIdx, token);
 
     let start = this.eqDepPtrs.get(eqIdx) as u32;
     let end = this.eqDepPtrs.get(eqIdx + 1) as u32;
 
     for (let i: u32 = start; i < end; i++) {
       let varIdx = this.eqDepVars.get(i) as u32;
-      if (this.visitedVar.get(varIdx) == 0) {
-        this.visitedVar.set(varIdx, 1);
+      if (this.visitedVar.get(varIdx) != token) {
+        this.visitedVar.set(varIdx, token);
         let prevEq = this.matchVarToEq.get(varIdx);
 
-        if (prevEq == -1 || this.augment(prevEq as u32)) {
+        if (prevEq == -1 || this.augment(prevEq as u32, token)) {
           this.matchVarToEq.set(varIdx, eqIdx as i32);
           this.matchEqToVar.set(eqIdx, varIdx as i32);
           return true;
@@ -955,18 +958,39 @@ export class PantelidesEngine {
       while (this.visitedVar.length < currentVarCount) this.visitedVar.push(0);
       while (this.visitedEq.length < currentEqCount) this.visitedEq.push(0);
 
-      for (let i: u32 = 0; i < currentVarCount; i++) this.matchVarToEq.set(i, -1);
-      for (let i: u32 = 0; i < currentEqCount; i++) this.matchEqToVar.set(i, -1);
+      for (let i: u32 = 0; i < currentVarCount; i++) {
+        this.matchVarToEq.set(i, -1);
+        this.visitedVar.set(i, 0);
+      }
+      for (let i: u32 = 0; i < currentEqCount; i++) {
+        this.matchEqToVar.set(i, -1);
+        this.visitedEq.set(i, 0);
+      }
+
+      // Fast O(E) greedy matching pass
+      for (let a: u32 = 0; a < initialEqCount; a++) {
+        let eqIdx = activeEqs.get(a) as u32;
+        let start = this.eqDepPtrs.get(eqIdx) as u32;
+        let end = this.eqDepPtrs.get(eqIdx + 1) as u32;
+        for (let k: u32 = start; k < end; k++) {
+          let varIdx = this.eqDepVars.get(k) as u32;
+          if (this.matchVarToEq.get(varIdx) == -1) {
+            this.matchVarToEq.set(varIdx, eqIdx as i32);
+            this.matchEqToVar.set(eqIdx, varIdx as i32);
+            break;
+          }
+        }
+      }
 
       let allMatched = true;
       let unmatchedActive = createChunkedInt32Array(64);
+      let token: i32 = 1;
 
       for (let a: u32 = 0; a < initialEqCount; a++) {
         let eqIdx = activeEqs.get(a) as u32;
-        for (let v: u32 = 0; v < currentVarCount; v++) this.visitedVar.set(v, 0);
-        for (let e: u32 = 0; e < currentEqCount; e++) this.visitedEq.set(e, 0);
+        if (this.matchEqToVar.get(eqIdx) != -1) continue;
 
-        if (!this.augment(eqIdx)) {
+        if (!this.augment(eqIdx, token++)) {
           allMatched = false;
           unmatchedActive.push(a as i32);
         }
@@ -979,14 +1003,13 @@ export class PantelidesEngine {
       this.diffRounds++;
 
       // Collect all equations in the alternating search tree for unmatched active equations
-      for (let v: u32 = 0; v < currentVarCount; v++) this.visitedVar.set(v, 0);
-      for (let e: u32 = 0; e < currentEqCount; e++) this.visitedEq.set(e, 0);
+      let treeToken = token++;
 
       let queue = createChunkedInt32Array(64);
       for (let u: u32 = 0; u < unmatchedActive.length; u++) {
         let a = unmatchedActive.get(u) as u32;
         let eqIdx = activeEqs.get(a) as u32;
-        this.visitedEq.set(eqIdx, 1);
+        this.visitedEq.set(eqIdx, treeToken);
         queue.push(eqIdx as i32);
       }
 
@@ -998,12 +1021,12 @@ export class PantelidesEngine {
 
         for (let i: u32 = start; i < end; i++) {
           let varIdx = this.eqDepVars.get(i) as u32;
-          if (this.visitedVar.get(varIdx) == 0) {
-            this.visitedVar.set(varIdx, 1);
+          if (this.visitedVar.get(varIdx) != treeToken) {
+            this.visitedVar.set(varIdx, treeToken);
             let matchedEq = this.matchVarToEq.get(varIdx);
             if (matchedEq != -1 && (matchedEq as u32) < currentEqCount) {
-              if (this.visitedEq.get(matchedEq as u32) == 0) {
-                this.visitedEq.set(matchedEq as u32, 1);
+              if (this.visitedEq.get(matchedEq as u32) != treeToken) {
+                this.visitedEq.set(matchedEq as u32, treeToken);
                 queue.push(matchedEq);
               }
             }
@@ -1014,7 +1037,7 @@ export class PantelidesEngine {
       // Differentiate the visited active equations
       for (let a: u32 = 0; a < initialEqCount; a++) {
         let eqIdx = activeEqs.get(a) as u32;
-        if (this.visitedEq.get(eqIdx) == 1) {
+        if (this.visitedEq.get(eqIdx) == treeToken) {
           let offset = eqIdx * EQ_STRIDE;
           let lhsId = this.dae.getEqData().get(offset + EQ_LHS) as u32;
           let rhsId = this.dae.getEqData().get(offset + EQ_RHS) as u32;
@@ -1252,5 +1275,262 @@ export function dae_swapDynamicState(pantPtr: u32, oldVar: u32, newVar: u32): bo
   if (pantPtr == 0) return false;
   return changetype<PantelidesEngine>(pantPtr).swapDynamicState(oldVar, newVar);
 }
+
+@inline
+function isPantStructuralZero(dae: DaeBuilder, exprId: u32): boolean {
+  if (exprId >= dae.exprCount) return false;
+  let k = dae.getExprKind(exprId);
+  if (k == ExprKind.RealLiteral) return dae.getExprRealValue(exprId) == 0.0;
+  if (k == ExprKind.IntLiteral) return (dae.getExprData1(exprId) as i32) == 0;
+  if (k == ExprKind.Negate) {
+    let l = dae.getExprLeft(exprId);
+    return isPantStructuralZero(dae, l != 0xffffffff ? l : dae.getExprData1(exprId));
+  }
+  return false;
+}
+
+/**
+ * Zero-GC in-WASM Pryce / Pantelides Index-1 fast-path verifier.
+ *
+ * Scans variables and equations directly in WebAssembly linear memory without crossing
+ * the JS boundary or allocating strings:
+ *   - Classifies states (`varMask == 1` or base of `"der(...)"`), derivative variables
+ *     (`varMask == 2` or `"der(...)"`), parameters/constants (`varMask == 3`), and
+ *     algebraic continuous variables.
+ *   - Checks whether any active `EqKind.Simple` equation is a pure holonomic state
+ *     constraint (`!containsDerivative && hasState && !hasAlgebraic`).
+ *   - Returns `1` if the system is confirmed Index-1 (`!hasStateConstraints && (M > 200 || N > 200)`
+ *     or `M == 0 || N == 0`), or `0` if full Pryce/Pantelides analysis is required.
+ */
+export function dae_checkPantelidesIndex1(daePtr: u32, varMaskPtr: usize): i32 {
+  if (daePtr == 0) return 0;
+  let dae = changetype<DaeBuilder>(daePtr);
+  let varCount = dae.varCount;
+  let eqCount = dae.eqCount;
+  if (varCount == 0 || eqCount == 0) return 1;
+
+  // varKind: 0 = ignored (removed/param/const/discrete), 1 = algebraic continuous, 2 = state, 3 = derivative var
+  let varKindPtr = heap.alloc(varCount as usize);
+  let vData = dae.getVarData();
+
+  for (let v: u32 = 0; v < varCount; v++) {
+    if (dae.isVarRemoved(v)) {
+      store<u8>(varKindPtr + (v as usize), 0);
+      continue;
+    }
+    let maskVal: u8 = varMaskPtr != 0 ? load<u8>(varMaskPtr + (v as usize)) : 0;
+    let variability = vData.get(v * VAR_STRIDE + VAR_VARIABILITY);
+    if (maskVal == 3 || variability == Variability.Parameter || variability == Variability.Constant) {
+      store<u8>(varKindPtr + (v as usize), 0);
+      continue;
+    }
+    if (maskVal == 2) {
+      store<u8>(varKindPtr + (v as usize), 3);
+      continue;
+    }
+    if (maskVal == 1) {
+      store<u8>(varKindPtr + (v as usize), 2);
+      continue;
+    }
+    store<u8>(varKindPtr + (v as usize), variability == Variability.Continuous ? 1 : 0);
+  }
+
+  // Unwrap any "der(...)" variables directly in ArenaStringPool (1-byte fast rejection for non-'d' names)
+  if (changetype<usize>(dae.stringPool) != 0) {
+    let pool = dae.stringPool;
+    for (let v: u32 = 0; v < varCount; v++) {
+      if (dae.isVarRemoved(v)) continue;
+      let nameId = vData.get(v * VAR_STRIDE + VAR_NAME) as u32;
+      let baseNameId = pool.unwrapDerBase(nameId);
+      if (baseNameId != 0) {
+        let baseIdx = dae.lookupVariableByName(baseNameId);
+        if (baseIdx >= 0 && (baseIdx as u32) < varCount) {
+          store<u8>(varKindPtr + (v as usize), 3);
+          if (load<u8>(varKindPtr + (baseIdx as usize)) != 0) {
+            store<u8>(varKindPtr + (baseIdx as usize), 2);
+          }
+        }
+      }
+    }
+  }
+
+  let activeVarCount: u32 = 0;
+  for (let v: u32 = 0; v < varCount; v++) {
+    let vk = load<u8>(varKindPtr + (v as usize));
+    if (vk == 1 || vk == 2) {
+      activeVarCount++;
+    } else if (vk == 0 && !dae.isVarRemoved(v)) {
+      let maskVal: u8 = varMaskPtr != 0 ? load<u8>(varMaskPtr + (v as usize)) : 0;
+      let variability = vData.get(v * VAR_STRIDE + VAR_VARIABILITY);
+      if (maskVal != 3 && variability != Variability.Parameter && variability != Variability.Constant) {
+        activeVarCount++;
+      }
+    }
+  }
+
+  let stackCap: u32 = 1024;
+  let exprStackPtr = heap.alloc((stackCap as usize) << 2);
+  let activeEqCount: u32 = 0;
+  let hasStateConstraints = false;
+  let exprCount = dae.exprCount;
+
+  for (let i: u32 = 0; i < eqCount; i++) {
+    if (dae.isEqRemoved(i) || dae.isEqInitial(i)) continue;
+    let eqOffset = i * EQ_STRIDE;
+    if (dae.getEqData().get(eqOffset + EQ_KIND) != EqKind.Simple) continue;
+    let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
+    let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
+    if (lhs == rhs) continue;
+    if (
+      lhs < exprCount &&
+      rhs < exprCount &&
+      dae.getExprKind(lhs) == ExprKind.Name &&
+      dae.getExprKind(rhs) == ExprKind.Name &&
+      dae.getExprData1(lhs) == dae.getExprData1(rhs)
+    ) {
+      continue;
+    }
+    activeEqCount++;
+
+    if (hasStateConstraints) continue;
+
+    let stackTop: u32 = 0;
+    if (rhs < exprCount) {
+      store<u32>(exprStackPtr + ((stackTop++) << 2), rhs);
+    }
+    if (lhs < exprCount) {
+      store<u32>(exprStackPtr + ((stackTop++) << 2), lhs);
+    }
+
+    let hasDerOp = false;
+    let hasState = false;
+    let hasAlgebraic = false;
+
+    while (stackTop > 0) {
+      let exprId = load<u32>(exprStackPtr + ((--stackTop) << 2));
+      if (exprId >= exprCount) continue;
+
+      let kind = dae.getExprKind(exprId);
+      if (kind == ExprKind.Der) {
+        hasDerOp = true;
+        break;
+      }
+      if (kind == ExprKind.Name) {
+        let nameId = dae.getExprData1(exprId);
+        let vIdx = dae.lookupVariableByName(nameId);
+        if (vIdx >= 0 && (vIdx as u32) < varCount) {
+          let vk = load<u8>(varKindPtr + (vIdx as usize));
+          if (vk == 2) {
+            hasState = true;
+          } else if (vk == 1 || vk == 3) {
+            hasAlgebraic = true;
+            break;
+          }
+        }
+        continue;
+      }
+      if (
+        kind == ExprKind.IntLiteral ||
+        kind == ExprKind.RealLiteral ||
+        kind == ExprKind.BoolLiteral ||
+        kind == ExprKind.StringLiteral ||
+        kind == ExprKind.EnumLiteral ||
+        kind == ExprKind.Colon
+      ) {
+        continue;
+      }
+
+      // Ensure stack capacity for children
+      if (stackTop + 16 >= stackCap) {
+        let nextCap = stackCap * 2;
+        let nextPtr = heap.alloc((nextCap as usize) << 2);
+        memory.copy(nextPtr, exprStackPtr, (stackTop as usize) << 2);
+        heap.free(exprStackPtr);
+        exprStackPtr = nextPtr;
+        stackCap = nextCap;
+      }
+
+      if (kind == ExprKind.Binary) {
+        let op = dae.getExprData1(exprId);
+        let l = dae.getExprLeft(exprId);
+        let r = dae.getExprRight(exprId);
+        if ((op == BinOp.Mul || op == BinOp.ElemMul) && (isPantStructuralZero(dae, l) || isPantStructuralZero(dae, r))) {
+          continue;
+        }
+        if (r < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), r);
+        if (l < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), l);
+        continue;
+      }
+      if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+        let l = dae.getExprLeft(exprId);
+        let inner = l < exprCount ? l : dae.getExprData1(exprId);
+        if (inner < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), inner);
+        continue;
+      }
+      if (kind == ExprKind.Pre) {
+        let inner = dae.getExprData1(exprId);
+        if (inner < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), inner);
+        continue;
+      }
+      if (kind == ExprKind.IfElse || kind == ExprKind.Range) {
+        let d1 = dae.getExprData1(exprId);
+        let l = dae.getExprLeft(exprId);
+        let r = dae.getExprRight(exprId);
+        if (r < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), r);
+        if (l < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), l);
+        if (d1 < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), d1);
+        continue;
+      }
+      if (kind == ExprKind.Call || kind == ExprKind.Subscript || kind == ExprKind.ArrayCtor || kind == ExprKind.Tuple) {
+        let rightVal = dae.getExprRight(exprId);
+        let data1Val = dae.getExprData1(exprId);
+        let count: u32 =
+          kind == ExprKind.Call
+            ? rightVal
+            : kind == ExprKind.Subscript
+              ? max<u32>(1, rightVal)
+              : data1Val;
+        let first = dae.getExprLeft(exprId);
+        if (stackTop + count + 2 >= stackCap) {
+          let nextCap = max<u32>(stackCap * 2, stackTop + count + 16);
+          let nextPtr = heap.alloc((nextCap as usize) << 2);
+          memory.copy(nextPtr, exprStackPtr, (stackTop as usize) << 2);
+          heap.free(exprStackPtr);
+          exprStackPtr = nextPtr;
+          stackCap = nextCap;
+        }
+        for (let j: i32 = (count as i32) - 1; j >= 0; j--) {
+          let slotIdx = exprId + (j as u32);
+          let argExpr: u32 =
+            j == 0
+              ? first
+              : slotIdx < exprCount && dae.getExprKind(slotIdx) == ExprKind.Tuple
+                ? dae.getExprLeft(slotIdx)
+                : first + (j as u32);
+          if (argExpr < exprCount) store<u32>(exprStackPtr + ((stackTop++) << 2), argExpr);
+        }
+        if (kind == ExprKind.Subscript && data1Val < exprCount) {
+          store<u32>(exprStackPtr + ((stackTop++) << 2), data1Val);
+        }
+        continue;
+      }
+    }
+
+    if (!hasDerOp && hasState && !hasAlgebraic) {
+      hasStateConstraints = true;
+      break;
+    }
+  }
+
+  heap.free(exprStackPtr);
+  heap.free(varKindPtr);
+
+  if (activeEqCount == 0 || activeVarCount == 0) return 1;
+  if (!hasStateConstraints && (activeEqCount > 200 || activeVarCount > 200)) {
+    return 1;
+  }
+  return 0;
+}
+
 
 

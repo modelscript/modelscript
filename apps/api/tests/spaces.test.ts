@@ -18,6 +18,7 @@ import { JWT_SECRET, setAuthDatabase } from "../src/middleware/auth-middleware.j
 import { attachCollabWebSocket } from "../src/routes/collab-ws.js";
 import { organizationsRouter } from "../src/routes/organizations.js";
 import { spacesRouter } from "../src/routes/spaces.js";
+import { seedPolyglotSpaces } from "../src/seed/spaces.js";
 
 test("Ansatz Spaces, Polymorphic Containers, Living Docs, PLM ECOs & Slack-Style Chat", async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ms-spaces-test-"));
@@ -298,19 +299,75 @@ test("Ansatz Spaces, Polymorphic Containers, Living Docs, PLM ECOs & Slack-Style
     const ecoId = createEcoRes.body.eco.id as string;
     assert.equal(createEcoRes.body.eco.status, "open");
 
-    // Approve ECO with cryptographic SHA-256 sign-off
+    // Approve ECO with formal 21 CFR Part 11 role, intent, and cryptographic sign-off
     const approveRes = await request(app)
       .post(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/review`)
       .set("Authorization", `Bearer ${engineerToken}`)
       .send({
         decision: "approved",
+        role: "Lead Systems Architect",
+        intent: "I verify that simulation results satisfy ISO 26262 ASIL-D safety margins.",
         comment: "Verified transient stability margin >= 15% across N-1 contingencies.",
       })
       .expect(200);
 
     assert.equal(approveRes.body.eco.status, "approved");
     assert.equal(approveRes.body.eco.approvals.length, 1);
+    assert.equal(approveRes.body.eco.approvals[0].role, "Lead Systems Architect");
+    assert.ok(approveRes.body.eco.approvals[0].comment.includes("ISO 26262 ASIL-D"));
     assert.ok(approveRes.body.eco.approvals[0].signature_hex.length >= 32);
+
+    // Verify ECO Diff endpoint
+    const diffRes = await request(app).get(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/diff`).expect(200);
+    assert.equal(diffRes.body.diff.sourceBranch, "eco/exciter-ka-250");
+    assert.ok(diffRes.body.diff.files.length >= 1);
+    assert.ok(diffRes.body.diff.files[0].newContent.includes("Change Order"));
+
+    // Verify ECO Simulation endpoint & Trajectory Curves
+    const simRes = await request(app).get(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/simulation`).expect(200);
+    assert.equal(simRes.body.simulation.gateStatus, "passed");
+    assert.ok(simRes.body.simulation.trajectories.length > 20);
+    assert.ok(simRes.body.simulation.checks.length >= 3);
+
+    // Verify ECO Simulate on-demand re-verification
+    const reSimRes = await request(app)
+      .post(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/simulate`)
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .expect(200);
+    assert.equal(reSimRes.body.eco.simulation_gate_status, "passed");
+    assert.ok(reSimRes.body.simulation.trajectories.length > 20);
+
+    // Verify ECO Blast Radius / Impact endpoint
+    const impactRes = await request(app).get(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/impact`).expect(200);
+    assert.ok(impactRes.body.impact.directModels.includes("IEEE39Bus.Generators.Gen10"));
+    assert.ok(impactRes.body.impact.downstreamDependencies.length >= 1);
+    assert.ok(impactRes.body.impact.allocatedRequirements.length >= 1);
+    assert.equal(impactRes.body.impact.riskScore, "safety_critical");
+
+    // Verify Declarative BOM Redline endpoint (Phase 3.2)
+    const bomRes = await request(app).get(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/bom`).expect(200);
+    assert.ok(bomRes.body.bom.parts.length >= 4);
+    assert.equal(typeof bomRes.body.bom.summary.totalPartsDelta, "number");
+    assert.equal(typeof bomRes.body.bom.summary.costDeltaUsd, "number");
+    assert.ok(bomRes.body.bom.parts.some((p: any) => p.changeStatus === "added"));
+    assert.ok(bomRes.body.bom.parts.some((p: any) => p.changeStatus === "modified"));
+
+    // Verify One-Click Merge & Release Workflow (Phase 3.3)
+    const mergeRes = await request(app)
+      .post(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/merge`)
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .expect(200);
+    assert.equal(mergeRes.body.eco.status, "merged");
+    assert.ok(mergeRes.body.releaseTag.startsWith("v1.0."));
+    assert.ok(mergeRes.body.commitSha.length >= 20);
+    assert.ok(mergeRes.body.aasxPackage.filename.endsWith(".aasx"));
+    assert.ok(mergeRes.body.ddpContainer.filename.endsWith(".zip"));
+
+    // Verify duplicate merge attempt is rejected
+    await request(app)
+      .post(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/merge`)
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .expect(400);
   });
 
   await t.test("7. Transfer Space Ownership from User Profile to Organization Container", async () => {
@@ -333,5 +390,197 @@ test("Ansatz Spaces, Polymorphic Containers, Living Docs, PLM ECOs & Slack-Style
     // Verify Git Vault was relocated on disk
     const newRepoDir = path.join(gitDir, "acme-power", "evtol-lab.git");
     assert.ok(fs.existsSync(newRepoDir), "Bare Git vault should be relocated to new owner namespace");
+  });
+
+  await t.test("8. Native Git Vault Inspection: Branches, Tree & Commits", async () => {
+    // Verify branches endpoint returns default branch
+    const branchesRes = await request(app).get("/api/v1/spaces/acme-power/ieee-39-bus/branches").expect(200);
+    assert.ok(Array.isArray(branchesRes.body.branches));
+    assert.ok(branchesRes.body.branches.length > 0);
+
+    // Verify tree endpoint returns directory listing structure
+    const treeRes = await request(app).get("/api/v1/spaces/acme-power/ieee-39-bus/tree").expect(200);
+    assert.ok(Array.isArray(treeRes.body.tree));
+
+    // Verify commits endpoint returns commits list
+    const commitsRes = await request(app).get("/api/v1/spaces/acme-power/ieee-39-bus/commits").expect(200);
+    assert.ok(Array.isArray(commitsRes.body.commits));
+  });
+
+  await t.test("9. Seed Polyglot Spaces: Populates Git Vault with commits, branches, and domain models", async () => {
+    // Insert mock seed users into users table
+    const seedUsernames = [
+      "elena_vance",
+      "vikram_patel",
+      "claire_dubois",
+      "omar",
+      "kenji_takahashi",
+      "marcus_chen",
+      "astrid_solberg",
+      "henrik_lindqvist",
+      "priya_nair",
+    ];
+    const userIds = new Map<string, number>();
+    for (let i = 0; i < seedUsernames.length; i++) {
+      const u = seedUsernames[i]!;
+      const existing = db.getUserByUsername(u);
+      if (existing) {
+        userIds.set(u, existing.id);
+      } else {
+        const created = db.createUser(u, `${u}@modelscript.org`, "hash", {
+          emailVerified: true,
+          initialCredits: 1000,
+          accountType: "user",
+          status: "active",
+        });
+        userIds.set(u, created.id);
+      }
+    }
+
+    const summary = seedPolyglotSpaces(db, userIds);
+    assert.ok(summary.spacesSeeded > 0 || summary.organizationsSeeded > 0);
+    assert.ok(summary.gitCommitsSeeded > 0, "Expected git commits to be seeded into Space vaults");
+
+    // 1. Verify eVTOL Space branches
+    const evtolBranchesRes = await request(app)
+      .get("/api/v1/spaces/aether-dynamics/evtol-flight-dynamics/branches")
+      .expect(200);
+    const branchNames = evtolBranchesRes.body.branches.map((b: { name: string }) => b.name);
+    assert.ok(branchNames.includes("main"), "Expected main branch in eVTOL space");
+    assert.ok(
+      branchNames.includes("eco/gust-alleviation-actuator"),
+      "Expected eco/gust-alleviation-actuator branch in eVTOL space",
+    );
+
+    // 2. Verify eVTOL Space tree has models, control, architecture, cad, README
+    const evtolTreeRes = await request(app)
+      .get("/api/v1/spaces/aether-dynamics/evtol-flight-dynamics/tree?ref=main")
+      .expect(200);
+    const treePaths = evtolTreeRes.body.tree.map((t: { path: string }) => t.path);
+    assert.ok(treePaths.includes("README.md"), "Tree should contain README.md");
+    assert.ok(treePaths.includes("package.mo"), "Tree should contain package.mo");
+    assert.ok(treePaths.includes("models"), "Tree should contain models directory");
+    assert.ok(treePaths.includes("control"), "Tree should contain control directory");
+    assert.ok(treePaths.includes("architecture"), "Tree should contain architecture directory");
+    assert.ok(treePaths.includes("cad"), "Tree should contain cad directory");
+
+    // 3. Verify raw file retrieval for Modelica model
+    const rawModelRes = await request(app)
+      .get("/api/v1/spaces/aether-dynamics/evtol-flight-dynamics/files/raw?path=models/FlightDynamics6DOF.mo&ref=main")
+      .expect(200);
+    assert.ok(
+      rawModelRes.text.includes("model FlightDynamics6DOF"),
+      "Should return raw Modelica code for FlightDynamics6DOF",
+    );
+
+    // 4. Verify commits endpoint returns author and message
+    const evtolCommitsRes = await request(app)
+      .get("/api/v1/spaces/aether-dynamics/evtol-flight-dynamics/commits?ref=main")
+      .expect(200);
+    assert.ok(evtolCommitsRes.body.commits.length >= 1);
+    assert.ok(
+      evtolCommitsRes.body.commits[0].message.includes("feat(aero)"),
+      "Commit message should match seeded message",
+    );
+
+    // 5. Verify HVDC Space raw SPICE netlist
+    const rawSpiceRes = await request(app)
+      .get("/api/v1/spaces/terragrid/hvdc-interconnection/files/raw?path=circuits/InverterBridge.sp&ref=main")
+      .expect(200);
+    assert.ok(rawSpiceRes.text.includes(".subckt MMC_SUBMODULE"), "Should return raw SPICE netlist for MMC submodule");
+  });
+
+  await t.test("10. Problem Reports & Engineering Issues: Create, Comment, Auto-Close on PR Merge", async () => {
+    // 1. Verify seeded issues exist for Aether Dynamics eVTOL space
+    const evtolIssuesRes = await request(app)
+      .get("/api/v1/spaces/aether-dynamics/evtol-flight-dynamics/issues")
+      .expect(200);
+    assert.ok(Array.isArray(evtolIssuesRes.body.issues));
+    assert.ok(evtolIssuesRes.body.issues.length >= 2, "Expected at least 2 seeded issues in eVTOL space");
+    const issue1 = evtolIssuesRes.body.issues.find((i: { issue_number: number }) => i.issue_number === 1);
+    assert.ok(issue1);
+    assert.equal(issue1.status, "closed");
+    assert.equal(issue1.linked_pr_number, 1);
+
+    // Detail view with comments
+    const issue1Detail = await request(app)
+      .get(`/api/v1/spaces/aether-dynamics/evtol-flight-dynamics/issues/${issue1.id}`)
+      .expect(200);
+    assert.ok(issue1Detail.body.issue.comments.length >= 1);
+
+    // 2. Create a new Problem Report (Issue) in acme-power/ieee-39-bus
+    const createIssueRes = await request(app)
+      .post("/api/v1/spaces/acme-power/ieee-39-bus/issues")
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .send({
+        title: "Exciter Over-Voltage Trip on Bus 14 Transient",
+        description:
+          "Dynamic voltage sag recovery exceeds 1.15 p.u. threshold, causing premature trip. Fixes #1 needed.",
+        severity: "major",
+        impactedModels: ["IEEE39Bus.Generators.Gen10"],
+      })
+      .expect(201);
+
+    const newIssue = createIssueRes.body.issue;
+    assert.ok(newIssue.id);
+    assert.equal(newIssue.status, "open");
+    assert.equal(newIssue.issue_number, 1);
+
+    // 3. Add comment to issue
+    const commentRes = await request(app)
+      .post(`/api/v1/spaces/acme-power/ieee-39-bus/issues/${newIssue.id}/comments`)
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .send({
+        content: "Root cause identified in AVR amplifier gain. PR will follow shortly.",
+      })
+      .expect(201);
+    assert.equal(
+      commentRes.body.comment.content,
+      "Root cause identified in AVR amplifier gain. PR will follow shortly.",
+    );
+
+    // 4. Create an ECO / Pull Request that references 'Fixes #1'
+    const createEcoRes = await request(app)
+      .post("/api/v1/spaces/acme-power/ieee-39-bus/ecos")
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .send({
+        title: "AVR Gain Tuning to Prevent Over-Voltage Trip",
+        description: "Fixes #1: Reduce exciter amplifier gain Ka from 40 to 25 to prevent Bus 14 trip.",
+        severity: "major",
+        sourceBranch: "fix/avr-gain-tuning",
+        targetBranch: "main",
+        impactedModels: ["IEEE39Bus.Generators.Gen10"],
+      })
+      .expect(201);
+
+    const ecoId = createEcoRes.body.eco.id;
+
+    // Approve the ECO
+    await request(app)
+      .post(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/review`)
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .send({
+        decision: "approved",
+        role: "Lead Systems Architect",
+        intent: "Verified simulation gate.",
+        comment: "Simulation gate passed and gain validated.",
+      })
+      .expect(200);
+
+    // Merge the ECO — this should auto-close Issue #1
+    await request(app)
+      .post(`/api/v1/spaces/acme-power/ieee-39-bus/ecos/${ecoId}/merge`)
+      .set("Authorization", `Bearer ${engineerToken}`)
+      .expect(200);
+
+    // Verify Issue #1 is now closed
+    const updatedIssueRes = await request(app)
+      .get(`/api/v1/spaces/acme-power/ieee-39-bus/issues/${newIssue.id}`)
+      .expect(200);
+    assert.equal(
+      updatedIssueRes.body.issue.status,
+      "closed",
+      "Issue should be auto-closed after PR merge with 'Fixes #1'",
+    );
   });
 });

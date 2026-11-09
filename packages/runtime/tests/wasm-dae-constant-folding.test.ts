@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { describe, it, before as beforeAll, after as afterAll } from "node:test";
+import assert from "node:assert";
+import { expect } from "expect";
 import { buildParser, language, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
 import * as fs from "fs";

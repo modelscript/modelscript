@@ -1149,6 +1149,12 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, []);
+
   const sourceCode = inlineCode || fetchedCode || "";
   const format = viewConfig.format || "SysML2";
   const parsedModel = useMemo(() => parseSysmlSource(sourceCode), [sourceCode]);

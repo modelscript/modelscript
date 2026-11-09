@@ -82,7 +82,7 @@ Cross-domain verification is orchestrated by a $\text{CDCL}(\mathcal{T})$ Nelson
 
 ### 5. Unified Multi-Language LSP & Incrementally Memoized Salsa Engine
 
-A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces through an incremental Salsa query engine (`fetch → deep_verify → execute → backdate`). Engineers get cross-language go-to-definition, hover equations, unit checking, schematic rendering, and suspect-link diagnostics in VS Code, the browser IDE, and the native Tauri desktop studio.
+A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces through an incremental Salsa query engine (`fetch → deep_verify → execute → backdate`). Engineers get cross-language go-to-definition, hover equations, unit checking, schematic rendering, and suspect-link diagnostics in VS Code, Studio, and the native Tauri desktop app.
 
 ### 6. AI-Native Closed-Loop Engineering (`@modelscript/mcp`)
 
@@ -92,7 +92,7 @@ Large language models struggle with physical engineering when left to guess diff
 
 ## Ready to Get Started?
 
-- **[Installation](./installation.md)** — Set up the zero-install Ansatz Morsel, VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
+- **[Installation](./installation.md)** — Explore zero-install Morsel and Studio, or set up the VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
 - **[Getting Started Tutorial](./getting-started.md)** — Build, verify, bind to 3D CAD, simulate, and export your first end-to-end computable digital thread.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Connect Claude Code, Cursor, or custom LLM orchestrators to the deterministic compiler and solver loop.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with polyglot linting, SARIF formal verification reports, visual schematic diffs, and FDA/ISO compliance dossiers.

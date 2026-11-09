@@ -347,4 +347,117 @@ describe("Platform Engineering & Notifications Hub", () => {
     assert.ok(inboxPageSrc.includes("<InboxSplitLayout"), "NotificationsPage must render InboxSplitLayout");
     assert.ok(inboxPageSrc.includes("<InboxReadingPane"), "NotificationsPage must render InboxReadingPane");
   });
+
+  it("renders the full post in detail with all comments and discussion thread in InboxReadingPane", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const readingPaneSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/pages/notifications/components/InboxReadingPane.tsx"),
+      "utf-8",
+    );
+    const threadViewSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/pages/post-detail/components/PostDetailThreadView.tsx"),
+      "utf-8",
+    );
+
+    // Verifies full post thread rendering via PostDetailThreadView matching original post page
+    assert.ok(
+      readingPaneSrc.includes("<PostDetailThreadView"),
+      "InboxReadingPane must render target post via PostDetailThreadView",
+    );
+
+    // Verifies PostDetailThreadView renders target post in full detail (isDetail={true})
+    assert.ok(
+      threadViewSrc.includes("<Post post={post} isDetail={true} />"),
+      "PostDetailThreadView must render target post in full detail (isDetail={true})",
+    );
+
+    // Verifies comments container and replies mapping
+    assert.ok(
+      threadViewSrc.includes('id="article-discussion"'),
+      "PostDetailThreadView must include discussion comments section",
+    );
+    assert.ok(
+      threadViewSrc.includes("replies.map("),
+      "PostDetailThreadView must iterate through and display all comments/replies",
+    );
+
+    // Verifies API endpoints for loading full post thread and comments
+    assert.ok(readingPaneSrc.includes("getPost(targetPostId)"), "InboxReadingPane must fetch the complete target post");
+    assert.ok(
+      readingPaneSrc.includes("getPostReplies(targetPostId)"),
+      "InboxReadingPane must fetch all replies/comments for the post",
+    );
+
+    // Verifies inline comment creation
+    assert.ok(
+      threadViewSrc.includes("<ComposeBox replyToPost={post}"),
+      "PostDetailThreadView must provide inline ComposeBox for direct commenting",
+    );
+  });
+
+  it("supports Outlook-style compact density, collapsible sections, and stream layout placement toggles", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const headerSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/pages/notifications/components/NotificationsHeader.tsx"),
+      "utf-8",
+    );
+    assert.ok(
+      headerSrc.includes("onToggleLayoutPlacement"),
+      "NotificationsHeader must accept onToggleLayoutPlacement prop",
+    );
+    assert.ok(headerSrc.includes("onToggleDensity"), "NotificationsHeader must accept onToggleDensity prop");
+    assert.ok(
+      headerSrc.includes("SidebarCollapseIcon") && headerSrc.includes("SidebarExpandIcon"),
+      "NotificationsHeader must render layout toggle icons",
+    );
+    assert.ok(headerSrc.includes("RowsIcon"), "NotificationsHeader must render density toggle icon");
+
+    const pageSrc = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/NotificationsPage.tsx"), "utf-8");
+    assert.ok(
+      pageSrc.includes("layoutPlacement") && pageSrc.includes("setLayoutPlacement"),
+      "NotificationsPage must manage layoutPlacement state",
+    );
+    assert.ok(
+      pageSrc.includes("density") && pageSrc.includes("setDensity"),
+      "NotificationsPage must manage density state",
+    );
+    assert.ok(
+      pageSrc.includes("ChevronDownIcon") && pageSrc.includes("ChevronRightIcon"),
+      "NotificationsPage must render collapsible chevron indicators on section dividers",
+    );
+    assert.ok(
+      pageSrc.includes("$layoutPlacement={layoutPlacement}"),
+      "NotificationsPage must pass $layoutPlacement to InboxSplitLayout",
+    );
+
+    const formattersSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/pages/notifications/formatters.tsx"),
+      "utf-8",
+    );
+    assert.ok(
+      formattersSrc.includes("getActionVerbForType"),
+      "formatters must export getActionVerbForType for Outlook-style subject lines",
+    );
+    assert.ok(
+      formattersSrc.includes("getMicroBadgeConfig"),
+      "formatters must export getMicroBadgeConfig for micro reaction badges",
+    );
+
+    const stylesSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/pages/notifications/styles.ts"),
+      "utf-8",
+    );
+    assert.ok(
+      stylesSrc.includes('$layoutPlacement === "right" ? "740px 350px" : "350px 740px"'),
+      "InboxSplitLayout must support right-docked stream grid layout",
+    );
+    assert.ok(
+      stylesSrc.includes(".notif-hover-actions"),
+      "styles must include hover triage actions overlaying timestamp",
+    );
+  });
 });

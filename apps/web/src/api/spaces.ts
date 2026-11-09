@@ -2,6 +2,7 @@
 
 import { api } from "./client";
 import type { Organization, OrganizationMember, OrgRole } from "./organizations";
+import type { GitlabBranch, GitlabCommit, GitlabTreeNode } from "./vcs";
 
 export type SpaceOwnerType = "user" | "organization";
 export type SpaceVisibility = "public" | "unlisted" | "internal" | "private";
@@ -150,6 +151,35 @@ export interface SpaceEcoProposalRecord {
   updated_at: string;
 }
 
+export interface SpaceIssueRecord {
+  id: string;
+  space_id: string;
+  issue_number: number;
+  title: string;
+  description: string;
+  status: "open" | "closed";
+  severity: "minor" | "standard" | "major" | "safety_critical";
+  author_id: number | null;
+  author_username: string | null;
+  impacted_models: string[];
+  labels: string[];
+  linked_pr_number: number | null;
+  closed_at: string | null;
+  comments?: SpaceIssueCommentRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpaceIssueCommentRecord {
+  id: string;
+  issue_id: string;
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  content: string;
+  created_at: string;
+}
+
 export interface SpaceChatSidebarItem extends SpaceRecord {
   member_role: SpaceRole;
   channels: SpaceChannelRecord[];
@@ -164,6 +194,7 @@ export interface SpaceDetailResponse {
   pages: SpacePageRecord[];
   members: SpaceMemberRecord[];
   ecos: SpaceEcoProposalRecord[];
+  issues?: SpaceIssueRecord[];
   viewerState: {
     isFollowing: boolean;
     role: SpaceRole | null;
@@ -467,17 +498,187 @@ export const createSpaceEco = async (
   return data;
 };
 
+export interface SpaceEcoReviewPayload {
+  decision: "approved" | "changes_requested" | "rejected";
+  role?: string | undefined;
+  intent?: string | undefined;
+  password?: string | undefined;
+  comment?: string | null | undefined;
+  signatureHex?: string | undefined;
+}
+
 export const reviewSpaceEco = async (
   namespace: string,
   slug: string,
   ecoId: string,
-  decision: "approved" | "changes_requested" | "rejected",
+  decisionOrPayload: "approved" | "changes_requested" | "rejected" | SpaceEcoReviewPayload,
   comment?: string,
 ): Promise<{ eco: SpaceEcoProposalRecord; ecos: SpaceEcoProposalRecord[] }> => {
   const cleanNs = namespace.replace(/^@/, "");
+  const payload = typeof decisionOrPayload === "string" ? { decision: decisionOrPayload, comment } : decisionOrPayload;
+
   const { data } = await api.post(
     `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/review`,
-    { decision, comment },
+    payload,
+  );
+  return data;
+};
+
+export interface SpaceEcoDiffFile {
+  filename: string;
+  language: string;
+  oldContent: string;
+  newContent: string;
+  additions: number;
+  deletions: number;
+  status: "modified" | "added" | "deleted";
+}
+
+export interface SpaceEcoDiffResult {
+  sourceBranch: string;
+  targetBranch: string;
+  files: SpaceEcoDiffFile[];
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
+export interface SpaceEcoTrajectoryPoint {
+  time: number;
+  baseline: number;
+  branch: number;
+  upperTolerance: number;
+  lowerTolerance: number;
+}
+
+export interface SpaceEcoSimCheck {
+  name: string;
+  status: "passed" | "failed";
+  value: string;
+  limit: string;
+  margin: string;
+}
+
+export interface SpaceEcoSimulationResult {
+  gateStatus: SpaceEcoProposalRecord["simulation_gate_status"];
+  checkedAt: string;
+  solver: string;
+  tolerance: number;
+  maxRelError: number;
+  variablesCount: number;
+  equationsCount: number;
+  trajectories: SpaceEcoTrajectoryPoint[];
+  checks: SpaceEcoSimCheck[];
+}
+
+export interface SpaceEcoImpactResult {
+  directModels: string[];
+  downstreamDependencies: { model: string; dependencyType: string; path: string }[];
+  allocatedRequirements: { reqId: string; title: string; standard: string; status: "satisfied" | "violated" }[];
+  riskScore: "low" | "medium" | "high" | "safety_critical";
+}
+
+export const getSpaceEcoDiff = async (namespace: string, slug: string, ecoId: string): Promise<SpaceEcoDiffResult> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ diff: SpaceEcoDiffResult }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/diff`,
+  );
+  return data.diff;
+};
+
+export const getSpaceEcoSimulation = async (
+  namespace: string,
+  slug: string,
+  ecoId: string,
+): Promise<SpaceEcoSimulationResult> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ simulation: SpaceEcoSimulationResult }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/simulation`,
+  );
+  return data.simulation;
+};
+
+export const simulateSpaceEco = async (
+  namespace: string,
+  slug: string,
+  ecoId: string,
+): Promise<{ eco: SpaceEcoProposalRecord; simulation: SpaceEcoSimulationResult; ecos: SpaceEcoProposalRecord[] }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.post(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/simulate`,
+  );
+  return data;
+};
+
+export const getSpaceEcoImpact = async (
+  namespace: string,
+  slug: string,
+  ecoId: string,
+): Promise<SpaceEcoImpactResult> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ impact: SpaceEcoImpactResult }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/impact`,
+  );
+  return data.impact;
+};
+
+export const getSpaceEcoBlastRadius = getSpaceEcoImpact;
+export type SpaceEcoBlastRadiusResult = SpaceEcoImpactResult;
+
+export interface SpaceEcoBomPart {
+  partNumber: string;
+  name: string;
+  category: string;
+  changeStatus: "added" | "removed" | "modified" | "unchanged";
+  baselineQuantity: number;
+  targetQuantity: number;
+  unitCostUsd: number;
+  massKg: number;
+  packageDependency?: string | undefined;
+  variantOverrides?: Record<string, unknown> | undefined;
+}
+
+export interface SpaceEcoBomResult {
+  sourceBranch: string;
+  targetBranch: string;
+  summary: {
+    totalPartsDelta: number;
+    massDeltaKg: number;
+    costDeltaUsd: number;
+    carbonDeltaKgCo2: number;
+  };
+  parts: SpaceEcoBomPart[];
+}
+
+export const getSpaceEcoBom = async (namespace: string, slug: string, ecoId: string): Promise<SpaceEcoBomResult> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ bom: SpaceEcoBomResult }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/bom`,
+  );
+  return data.bom;
+};
+
+export interface SpaceEcoMergeResult {
+  eco: SpaceEcoProposalRecord;
+  ecos: SpaceEcoProposalRecord[];
+  releaseTag: string;
+  commitSha: string;
+  aasxPackage: {
+    filename: string;
+    assetId: string;
+    version: string;
+    submodels: string[];
+  };
+  ddpContainer: {
+    filename: string;
+    standard: string;
+    manifestChecksum: string;
+  };
+}
+
+export const mergeSpaceEco = async (namespace: string, slug: string, ecoId: string): Promise<SpaceEcoMergeResult> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.post<SpaceEcoMergeResult>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/ecos/${encodeURIComponent(ecoId)}/merge`,
   );
   return data;
 };
@@ -500,4 +701,140 @@ export const autocompleteSpaceEntities = async (
     params: { q },
   });
   return data.suggestions || [];
+};
+
+export const getSpaceTree = async (
+  namespace: string,
+  slug: string,
+  ref = "main",
+  path = "",
+  recursive = false,
+): Promise<GitlabTreeNode[]> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ tree: GitlabTreeNode[] }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/tree`,
+    { params: { ref, path, recursive: recursive ? "true" : undefined } },
+  );
+  return data.tree || [];
+};
+
+export const getSpaceFileRaw = async (
+  namespace: string,
+  slug: string,
+  filePath: string,
+  ref = "main",
+): Promise<string> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<string>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/files/raw`,
+    { params: { path: filePath, ref }, responseType: "text" },
+  );
+  return typeof data === "string" ? data : String(data ?? "");
+};
+
+export const getSpaceCommits = async (namespace: string, slug: string, ref = "main"): Promise<GitlabCommit[]> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ commits: GitlabCommit[] }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/commits`,
+    { params: { ref } },
+  );
+  return data.commits || [];
+};
+
+export const getSpaceBranches = async (namespace: string, slug: string): Promise<GitlabBranch[]> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ branches: GitlabBranch[] }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/branches`,
+  );
+  return data.branches || [];
+};
+
+export const initSpaceTemplate = async (
+  namespace: string,
+  slug: string,
+): Promise<{ ok: boolean; commitSha?: string; branch?: string }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.post<{ ok: boolean; commitSha?: string; branch?: string }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/init-template`,
+  );
+  return data;
+};
+
+// ── Space Problem Reports & Engineering Issues (ECR) ────────────────────────
+
+export const getSpaceIssues = async (namespace: string, slug: string): Promise<SpaceIssueRecord[]> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ issues: SpaceIssueRecord[] }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/issues`,
+  );
+  return data.issues || [];
+};
+
+export const getSpaceIssueDetail = async (
+  namespace: string,
+  slug: string,
+  issueId: string,
+): Promise<SpaceIssueRecord & { comments: SpaceIssueCommentRecord[] }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.get<{ issue: SpaceIssueRecord & { comments: SpaceIssueCommentRecord[] } }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/issues/${encodeURIComponent(issueId)}`,
+  );
+  return data.issue;
+};
+
+export const createSpaceIssue = async (
+  namespace: string,
+  slug: string,
+  payload: {
+    title: string;
+    description?: string;
+    severity?: SpaceIssueRecord["severity"];
+    impactedModels?: string[];
+    labels?: string[];
+    linkedPrNumber?: number | null;
+  },
+): Promise<{ issue: SpaceIssueRecord; issues: SpaceIssueRecord[] }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.post<{ issue: SpaceIssueRecord; issues: SpaceIssueRecord[] }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/issues`,
+    payload,
+  );
+  return data;
+};
+
+export const updateSpaceIssue = async (
+  namespace: string,
+  slug: string,
+  issueId: string,
+  payload: {
+    status?: "open" | "closed";
+    title?: string;
+    description?: string;
+    severity?: SpaceIssueRecord["severity"];
+    linkedPrNumber?: number | null;
+  },
+): Promise<{ issue: SpaceIssueRecord; issues: SpaceIssueRecord[] }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.patch<{ issue: SpaceIssueRecord; issues: SpaceIssueRecord[] }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/issues/${encodeURIComponent(issueId)}`,
+    payload,
+  );
+  return data;
+};
+
+export const addSpaceIssueComment = async (
+  namespace: string,
+  slug: string,
+  issueId: string,
+  content: string,
+): Promise<{ comment: SpaceIssueCommentRecord; issue: SpaceIssueRecord & { comments: SpaceIssueCommentRecord[] } }> => {
+  const cleanNs = namespace.replace(/^@/, "");
+  const { data } = await api.post<{
+    comment: SpaceIssueCommentRecord;
+    issue: SpaceIssueRecord & { comments: SpaceIssueCommentRecord[] };
+  }>(
+    `/spaces/${encodeURIComponent(cleanNs)}/${encodeURIComponent(slug)}/issues/${encodeURIComponent(issueId)}/comments`,
+    { content },
+  );
+  return data;
 };

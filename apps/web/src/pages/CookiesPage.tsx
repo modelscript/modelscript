@@ -378,7 +378,7 @@ export default function CookiesPage() {
               </td>
               <td>Local Drafts</td>
               <td>User Controlled</td>
-              <td>Preserves unsaved Modelica/SysML/ModelScript code drafts in the playground and workbench.</td>
+              <td>Preserves unsaved Modelica/SysML/ModelScript code drafts in Morsel and Studio.</td>
             </tr>
             <tr>
               <td>
@@ -435,7 +435,7 @@ export default function CookiesPage() {
                 <InlineCode>modelscript.initialAnchor</InlineCode>
               </td>
               <td>Current Tab Only</td>
-              <td>Passes deep-linked symbol or line numbers when opening a model in the full IDE workbench.</td>
+              <td>Passes deep-linked symbol or line numbers when opening a model in the Studio workbench.</td>
             </tr>
             <tr>
               <td>

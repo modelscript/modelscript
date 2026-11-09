@@ -101,7 +101,7 @@ export const ModelingPreferencesTab: React.FC = () => {
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
           Configure the Monaco code editor, select the default ModelScript compiler flattener backend, and tune
-          numerical simulation solver tolerances across the Playground and Web IDE.
+          numerical simulation solver tolerances across Morsel and Studio.
         </DetailSubtitle>
 
         {/* Monaco Editor Preferences */}

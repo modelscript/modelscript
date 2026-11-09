@@ -581,8 +581,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
               display="flex"
               alignItems="center"
               gap={2}
-              style={{ color: "var(--color-fg-muted)", lineHeight: "16px", fontWeight: 700 }}
-              fontSize="13px"
+              style={{ color: "var(--color-fg-muted)", lineHeight: "18px", fontWeight: 700 }}
+              fontSize="13.5px"
               mb={1}
               aria-label="Pinned Post"
             >
@@ -627,8 +627,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
                 display="flex"
                 alignItems="center"
                 gap={3}
-                style={{ color: "var(--color-fg-muted)", lineHeight: "16px", fontWeight: 700 }}
-                fontSize="13px"
+                style={{ color: "var(--color-fg-muted)", lineHeight: "18px", fontWeight: 700 }}
+                fontSize="13.5px"
                 mb={0.5}
                 aria-label="Pinned Post"
               >
@@ -650,8 +650,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
                 display="flex"
                 alignItems="center"
                 gap={3}
-                style={{ color: "var(--color-fg-muted)", lineHeight: "16px", fontWeight: 700 }}
-                fontSize="13px"
+                style={{ color: "var(--color-fg-muted)", lineHeight: "18px", fontWeight: 700 }}
+                fontSize="13.5px"
                 mb={0.5}
               >
                 <Box

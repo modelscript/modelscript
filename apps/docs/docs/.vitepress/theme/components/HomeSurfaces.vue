@@ -129,7 +129,7 @@ const surfaces = computed<Surface[]>(() => [
                 <circle class="sx-ad sx-glow" cx="254" cy="46" r="2.6" />
               </template>
 
-              <!-- 2. Web IDE: activity bar, block diagram, debugger console, plot -->
+              <!-- 2. Studio: activity bar, block diagram, debugger console, plot -->
               <template v-else-if="s.id === 'webide'">
                 <rect class="sx-ink-f" x="16" y="10" width="248" height="80" rx="7" />
                 <path class="sx-ink" d="M40 10 V90 M176 10 V90" />

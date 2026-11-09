@@ -388,4 +388,62 @@ test("User Credit Wallet, Quotas & Billing Ledger", async (t) => {
     assert.strictEqual(txReleaseC.amount, 30.0);
     assert.strictEqual(txReleaseC.balance_after, 73.5);
   });
+
+  await t.test("Organization Credit Escrow System: hold, settlement with refund, overage, and release", () => {
+    const org = db.createOrganization({ name: "Escrow Org", slug: "escrow-org", createdBy: testUserId });
+    db.grantOrgCredits(org.id, 200.0, testUserId, "Seed Org Balance");
+    assert.strictEqual(db.getOrgBalance(org.id), 200.0);
+
+    // 1. Hold 50 credits for Org Job 1
+    const job1 = db.createJob("Org Escrow Job 1", "RUNNING", "ADHOC", "ide", null, {}, testUserId);
+    const hold1 = db.holdOrgCredits(org.id, 50.0, testUserId, job1, "Org Escrow Hold Job 1");
+    assert.strictEqual(hold1.success, true);
+    assert.strictEqual(hold1.heldAmount, 50.0);
+    assert.strictEqual(hold1.newBalance, 150.0);
+    assert.strictEqual(db.getOrgBalance(org.id), 150.0);
+
+    // 2. Settle Job 1 with partial usage (actual 20.0 -> refund 30.0)
+    const settle1 = db.settleOrgEscrow(org.id, job1, 20.0, testUserId, "Org Job 1 Settlement");
+    assert.strictEqual(settle1.success, true);
+    assert.strictEqual(settle1.settledAmount, 20.0);
+    assert.strictEqual(settle1.refundedAmount, 30.0);
+    assert.strictEqual(settle1.newBalance, 180.0);
+    assert.strictEqual(db.getOrgBalance(org.id), 180.0);
+
+    // 3. Hold 30 credits for Org Job 2, settle with overage (actual 45.0 -> extra charge 15.0)
+    const job2 = db.createJob("Org Escrow Job 2", "RUNNING", "ADHOC", "ide", null, {}, testUserId);
+    db.holdOrgCredits(org.id, 30.0, testUserId, job2, "Org Escrow Hold Job 2");
+    assert.strictEqual(db.getOrgBalance(org.id), 150.0);
+
+    const settle2 = db.settleOrgEscrow(org.id, job2, 45.0, testUserId, "Org Job 2 Overage");
+    assert.strictEqual(settle2.success, true);
+    assert.strictEqual(settle2.settledAmount, 45.0);
+    assert.strictEqual(settle2.refundedAmount, 0);
+    assert.strictEqual(settle2.newBalance, 135.0);
+    assert.strictEqual(db.getOrgBalance(org.id), 135.0);
+
+    // 4. Hold 25 credits for Org Job 3, cancel and release (refund 25.0)
+    const job3 = db.createJob("Org Escrow Job 3", "RUNNING", "ADHOC", "ide", null, {}, testUserId);
+    db.holdOrgCredits(org.id, 25.0, testUserId, job3, "Org Escrow Hold Job 3");
+    assert.strictEqual(db.getOrgBalance(org.id), 110.0);
+
+    const release3 = db.releaseOrgEscrow(org.id, job3, "Simulation aborted");
+    assert.strictEqual(release3.success, true);
+    assert.strictEqual(release3.refundedAmount, 25.0);
+    assert.strictEqual(release3.newBalance, 135.0);
+    assert.strictEqual(db.getOrgBalance(org.id), 135.0);
+  });
+
+  await t.test("Account freeze on dispute cancels active user jobs", () => {
+    const disputeUser = db.createUser("dispute_target", "dispute@example.com", "Password123!");
+    const pendingJob = db.createJob("Active Job 1", "PENDING", "ADHOC", "ide", null, {}, disputeUser.id);
+    const runningJob = db.createJob("Active Job 2", "RUNNING", "ADHOC", "ide", null, {}, disputeUser.id);
+
+    db.freezeUserForDispute(disputeUser.id, "Stripe Chargeback Dispute");
+
+    const job1 = db.getJob(pendingJob);
+    const job2 = db.getJob(runningJob);
+    assert.strictEqual(job1?.status, "CANCELLED", "Pending job should be cancelled on account freeze");
+    assert.strictEqual(job2?.status, "CANCELLED", "Running job should be cancelled on account freeze");
+  });
 });

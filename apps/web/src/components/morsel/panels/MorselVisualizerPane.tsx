@@ -581,7 +581,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     setShowCadView,
   ]);
 
+  const hasUserCode = useMemo(() => {
+    if (!editorValue) return false;
+    const stripped = editorValue.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "").trim();
+    return stripped.length > 0;
+  }, [editorValue]);
+
   const showEmptyState =
+    !hideCenterFloatingToolbar &&
+    !hasUserCode &&
     !isEmptyStateDismissed &&
     (loadingProgress === undefined || loadingProgress >= 100) &&
     (!diagramData?.nodes || diagramData.nodes.length === 0) &&
@@ -1063,59 +1071,6 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-      {/* Compact corner Diagram/Icon switcher when center floating HUD is hidden (e.g. inline artifact card) */}
-      {hideCenterFloatingToolbar &&
-        !isPlaygroundRoute &&
-        !showResultsView &&
-        !showCadView &&
-        !showAnalysisView &&
-        activeLangInfo.diagramTypes &&
-        activeLangInfo.diagramTypes.length > 1 &&
-        setDiagramType && (
-          <div
-            style={{
-              position: "absolute",
-              top: nestedModels.length > 1 ? 44 : 10,
-              right: 10,
-              zIndex: 90,
-              display: "flex",
-              alignItems: "center",
-              gap: 2,
-              padding: 2,
-              borderRadius: 8,
-              backgroundColor: colorMode === "dark" ? "rgba(13, 17, 23, 0.85)" : "rgba(255, 255, 255, 0.88)",
-              backdropFilter: "blur(8px)",
-              border: colorMode === "dark" ? "1px solid rgba(148, 163, 184, 0.18)" : "1px solid rgba(15, 23, 42, 0.1)",
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.25)",
-            }}
-          >
-            {activeLangInfo.diagramTypes.map((dt) => {
-              const isSelected = effectiveDiagramType === dt.id;
-              return (
-                <button
-                  key={dt.id}
-                  type="button"
-                  onClick={() => setDiagramType(dt.id)}
-                  style={{
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "2px 8px",
-                    fontSize: 11,
-                    fontWeight: isSelected ? 600 : 400,
-                    cursor: "pointer",
-                    backgroundColor: isSelected ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))" : "transparent",
-                    color: isSelected
-                      ? "var(--ms-brand, var(--color-accent-fg))"
-                      : "var(--ms-text-2, var(--color-fg-muted))",
-                  }}
-                >
-                  {dt.label}
-                </button>
-              );
-            })}
           </div>
         )}
 
@@ -2159,6 +2114,40 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   onAutoLayout={onAutoLayout}
                 />
               </Suspense>
+
+              {hasUserCode &&
+                (!diagramData?.nodes || diagramData.nodes.length === 0) &&
+                !isDiagramLoading &&
+                !showResultsView &&
+                !showCadView &&
+                !showAnalysisView && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 24,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      pointerEvents: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 14px",
+                      borderRadius: "999px",
+                      background: colorMode === "dark" ? "rgba(22, 27, 34, 0.78)" : "rgba(255, 255, 255, 0.82)",
+                      backdropFilter: "blur(8px)",
+                      border:
+                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.08)",
+                      color: "var(--color-fg-muted, #8b949e)",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      zIndex: 5,
+                      userSelect: "none",
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)",
+                    }}
+                  >
+                    <span>Equation-based model · No schematic components declared</span>
+                  </div>
+                )}
 
               {showEmptyState && (
                 <div

@@ -5,6 +5,33 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
+function padIconViewBox(svg: string): string {
+  if (!svg || !svg.includes("<svg") || svg.includes('data-viewbox-padded="true"')) return svg;
+  const vbMatch = svg.match(/viewBox\s*=\s*(["'])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\1/);
+  if (!vbMatch) return svg;
+
+  const quote = vbMatch[1];
+  const vx = parseFloat(vbMatch[2]!);
+  const vy = parseFloat(vbMatch[3]!);
+  const vw = parseFloat(vbMatch[4]!);
+  const vh = parseFloat(vbMatch[5]!);
+
+  if (isNaN(vx) || isNaN(vy) || isNaN(vw) || isNaN(vh) || vw <= 0 || vh <= 0) return svg;
+  if (vx >= 0 && vy >= 0) return svg;
+
+  const padX = vw * 0.025;
+  const padY = vh * 0.025;
+  const newVx = +(vx - padX).toFixed(2);
+  const newVy = +(vy - padY).toFixed(2);
+  const newVw = +(vw + padX * 2).toFixed(2);
+  const newVh = +(vh + padY * 2).toFixed(2);
+
+  return svg.replace(
+    vbMatch[0],
+    `data-viewbox-padded="true" viewBox=${quote}${newVx} ${newVy} ${newVw} ${newVh}${quote}`,
+  );
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
@@ -30,14 +57,22 @@ async function main() {
   }
 
   const jsonStr = strFromU8(iconsData);
-  const parsed = JSON.parse(jsonStr);
+  const parsed = JSON.parse(jsonStr) as Record<string, string>;
   const iconCount = Object.keys(parsed).length;
   console.log(`Found ${iconCount} pre-rendered icons in icons.json.`);
 
+  for (const [key, svg] of Object.entries(parsed)) {
+    if (svg) {
+      parsed[key] = padIconViewBox(svg);
+    }
+  }
+
+  const processedData = new TextEncoder().encode(JSON.stringify(parsed));
+
   // Compress using gzip (level 9 for maximum compression)
-  const gzipped = gzipSync(iconsData, { level: 9 });
+  const gzipped = gzipSync(processedData, { level: 9 });
   console.log(
-    `Original size: ${(iconsData.byteLength / 1024).toFixed(1)} KB, Compressed: ${(gzipped.byteLength / 1024).toFixed(1)} KB`,
+    `Original size: ${(processedData.byteLength / 1024).toFixed(1)} KB, Compressed: ${(gzipped.byteLength / 1024).toFixed(1)} KB`,
   );
 
   if (!existsSync(assetsDir)) {

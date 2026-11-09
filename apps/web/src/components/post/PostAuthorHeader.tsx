@@ -92,8 +92,8 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
                 <Text
                   style={{
                     fontWeight: 700,
-                    fontSize: "15px",
-                    lineHeight: "20px",
+                    fontSize: "16.5px",
+                    lineHeight: "24px",
                     display: "flex",
                     alignItems: "center",
                     gap: "4px",
@@ -127,7 +127,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
               to={`/@${displayPost.username}`}
               className="handle-text"
               style={{
-                fontSize: "15px",
+                fontSize: "14.5px",
                 lineHeight: "20px",
                 textDecoration: "none",
                 overflow: "hidden",
@@ -200,9 +200,9 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
     <Box
       display="flex"
       alignItems="center"
-      gap={1}
+      gap={1.5}
       flexWrap="nowrap"
-      style={{ minWidth: 0, lineHeight: "20px", marginBottom: "2px" }}
+      style={{ minWidth: 0, lineHeight: "22px", marginBottom: "3px" }}
     >
       <ProfileHoverCard username={displayPost.username}>
         <ProfileNameLink
@@ -213,8 +213,8 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           <Text
             style={{
               fontWeight: 700,
-              fontSize: "15px",
-              lineHeight: "20px",
+              fontSize: "15.5px",
+              lineHeight: "22px",
               display: "inline-flex",
               alignItems: "center",
               gap: "4px",
@@ -242,7 +242,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
         to={`/@${displayPost.username}`}
         className="handle-text"
         style={{
-          fontSize: "15px",
+          fontSize: "13.5px",
           lineHeight: "20px",
           textDecoration: "none",
           overflow: "hidden",
@@ -272,7 +272,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           </SignatureBadge>
         </Tooltip>
       )}
-      <Text className="handle-text" style={{ fontSize: "15px", lineHeight: "20px", flexShrink: 0 }}>
+      <Text className="handle-text" style={{ fontSize: "13.5px", lineHeight: "20px", flexShrink: 0 }}>
         ·
       </Text>
       <Tooltip text={formatFullTimestamp(displayPost.created_at)} direction="s">
@@ -285,7 +285,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             padding: 0,
             color: "inherit",
             cursor: "pointer",
-            fontSize: "15px",
+            fontSize: "13.5px",
             lineHeight: "20px",
             display: "inline-flex",
             alignItems: "center",
@@ -294,7 +294,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
         >
           <Text
             className="handle-text"
-            style={{ fontSize: "15px", lineHeight: "20px", flexShrink: 0, whiteSpace: "nowrap" }}
+            style={{ fontSize: "13.5px", lineHeight: "20px", flexShrink: 0, whiteSpace: "nowrap" }}
           >
             {formatRelativeTime(displayPost.created_at)}
           </Text>
@@ -315,7 +315,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             }}
             className="handle-text"
             style={{
-              fontSize: "13px",
+              fontSize: "12px",
               lineHeight: "20px",
               color: "var(--color-fg-muted)",
               cursor: onOpenRevisionModal ? "pointer" : "default",
@@ -326,7 +326,6 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
               flexShrink: 0,
               background: "none",
               border: "none",
-              padding: 0,
               textDecoration: onOpenRevisionModal ? "underline" : "none",
               textDecorationStyle: "dotted",
             }}

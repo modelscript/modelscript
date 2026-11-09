@@ -110,7 +110,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
       </div>
       <HeroGrid>
         {orderedHeroCards.map((card) => (
-          <HeroCard key={card.id} onClick={() => navigate(`/playground?model=${card.id}`)}>
+          <HeroCard key={card.id} onClick={() => navigate(`/morsel?model=${card.id}`)}>
             <div style={{ fontSize: "24px" }}>{card.emoji}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>{card.title}</div>

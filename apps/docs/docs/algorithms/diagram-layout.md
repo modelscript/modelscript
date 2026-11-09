@@ -74,7 +74,7 @@ flowchart TD
     INPUT["Modelica Connects / SysML v2 Item Flows"] --> PORT_OPT["Phase 1: Port Constraint Optimization<br/>(Face Assignment & Cross-Free Ordering)"]
     PORT_OPT --> TSM["Phase 2: Topology-Shape-Metrics (TSM)<br/>1. Planarization & Crossing Minimization<br/>2. Orthogonal Shape via Network Flow<br/>3. Metric Coordinate Compaction"]
     TSM --> ROUTER["Phase 3: Orthogonal Channel Routing<br/>1. Normal Outward Port Stubs<br/>2. Obstacle-Avoiding Bend-Penalized A*<br/>3. Staggered Parallel Dogleg Offsets"]
-    ROUTER --> RENDER["SVG / Canvas / Web IDE Viewport"]
+    ROUTER --> RENDER["SVG / Canvas / Studio Viewport"]
 ```
 
 ### 1. Port Constraint & Continuous Alignment Solver

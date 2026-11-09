@@ -251,6 +251,12 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
     return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const lpsAnalysis = useMemo(() => {
     let parsedModel: LpsModel | null = null;
     let steadyResult: LpsSteadyResult | null = null;

@@ -415,13 +415,32 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     }
   }
 
-  // Reject oversized payloads on auth endpoints before body buffering to prevent unauthenticated JSON DOS
+  // Reject oversized payloads before body buffering to prevent unauthenticated JSON DOS
   app.use((req, res, next) => {
-    if (req.path.startsWith("/api/v1/auth") || req.path.startsWith("/auth")) {
-      const cl = req.headers["content-length"];
-      if (cl && parseInt(cl, 10) > 256 * 1024) {
-        res.status(413).json({ error: "Payload too large for authentication endpoint (max 256KB)" });
-        return;
+    const cl = req.headers["content-length"];
+    if (cl) {
+      const length = parseInt(cl, 10);
+      if (req.path.startsWith("/api/v1/auth") || req.path.startsWith("/auth")) {
+        if (length > 256 * 1024) {
+          res.status(413).json({ error: "Payload too large for authentication endpoint (max 256KB)" });
+          return;
+        }
+      } else {
+        const isExcluded =
+          req.path.includes("/admin/") ||
+          req.path.includes("/backups") ||
+          req.path.includes("/bundle/import") ||
+          req.path.startsWith("/api/v1/libraries") ||
+          req.path.startsWith("/libraries") ||
+          req.path.startsWith("/api/v1/storage") ||
+          req.path.startsWith("/storage") ||
+          req.path.startsWith("/api/v1/npm") ||
+          req.path.startsWith("/npm");
+
+        if (!isExcluded && length > 2 * 1024 * 1024) {
+          res.status(413).json({ error: "Payload too large for API endpoint (max 2MB)" });
+          return;
+        }
       }
     }
     next();
@@ -533,6 +552,16 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       : "frame-ancestors 'self';";
     if (isEmbedRoute) {
       res.header("Content-Security-Policy", frameAncestorsDirective);
+    } else if (!res.getHeader("Content-Security-Policy")) {
+      const customCsp = process.env["CUSTOM_CSP"];
+      if (customCsp) {
+        res.header("Content-Security-Policy", customCsp);
+      } else {
+        res.header(
+          "Content-Security-Policy",
+          "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self';",
+        );
+      }
     }
 
     if (req.method === "OPTIONS") {

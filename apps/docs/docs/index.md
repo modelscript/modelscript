@@ -20,7 +20,7 @@ hero:
       link: /morsel
       target: _self
     - theme: alt
-      text: Launch ModelScript Studio
+      text: Launch Studio
       link: /studio
       target: _self
 ---

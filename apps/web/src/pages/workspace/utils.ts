@@ -79,7 +79,6 @@ export function getLanguageFromFileName(fileName: string): string {
     case "c":
     case "h":
     case "hpp":
-    case "scad":
       return "cpp";
     case "cs":
       return "csharp";
@@ -104,10 +103,34 @@ export function getLanguageFromFileName(fileName: string): string {
     case "pslx":
       return "xml";
     case "mo":
+    case "mos":
       return "modelica";
     case "sysml":
     case "kerml":
-      return "kotlin";
+      return "sysml2";
+    case "scad":
+      return "scad";
+    case "step":
+    case "stp":
+      return "step";
+    case "sp":
+    case "cir":
+    case "net":
+      return "spice";
+    case "owl":
+    case "ofn":
+      return "owl2";
+    case "f":
+    case "for":
+    case "f90":
+    case "f95":
+    case "f03":
+    case "f08":
+      return "fortran";
+    case "va":
+    case "vams":
+      return "verilog-a";
+    case "raw":
     case "cfg":
     case "inp":
     case "spck":
@@ -118,6 +141,47 @@ export function getLanguageFromFileName(fileName: string): string {
       return "cmake";
     default:
       return "plaintext";
+  }
+}
+
+export function formatLanguageLabel(lang: string, fileName?: string): string {
+  const ext = fileName?.split(".").pop()?.toLowerCase();
+  if (ext === "raw") return "PSS/E Raw";
+  if (ext === "mo" || ext === "mos") return "Modelica";
+  if (ext === "sysml") return "SysML v2";
+  if (ext === "kerml") return "KerML";
+  if (ext === "scad") return "OpenSCAD";
+  if (ext === "sp" || ext === "cir" || ext === "net") return "SPICE";
+  if (ext === "step" || ext === "stp") return "STEP CAD";
+  if (ext === "reqif") return "ReqIF";
+  if (ext === "ssp") return "SSP Archive";
+  if (ext === "fmu") return "FMU Model";
+
+  switch (lang.toLowerCase()) {
+    case "modelica":
+      return "Modelica";
+    case "sysml2":
+      return "SysML v2";
+    case "scad":
+      return "OpenSCAD";
+    case "spice":
+      return "SPICE";
+    case "step":
+      return "STEP CAD";
+    case "fortran":
+      return "Fortran";
+    case "verilog-a":
+      return "Verilog-A";
+    case "typescript":
+      return "TypeScript";
+    case "javascript":
+      return "JavaScript";
+    case "markdown":
+      return "Markdown";
+    case "ini":
+      return "Config / Raw";
+    default:
+      return lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : "Plaintext";
   }
 }
 
@@ -451,4 +515,63 @@ export function parseStudioGitTarget(
     workbenchUrl,
     repoPageUrl,
   };
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: "tree" | "blob";
+  children?: FileTreeNode[];
+  size?: number;
+}
+
+export function buildFileTree(files: { path: string; name?: string; type?: string; size?: number }[]): FileTreeNode[] {
+  const rootMap = new Map<string, any>();
+
+  for (const f of files) {
+    const parts = f.path.split("/").filter(Boolean);
+    let currentMap = rootMap;
+    let currentPath = "";
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      const isFile = i === parts.length - 1 && (f.type === "blob" || !f.type);
+
+      if (!currentMap.has(part)) {
+        currentMap.set(part, {
+          name: part,
+          path: currentPath,
+          type: isFile ? "blob" : "tree",
+          size: isFile ? f.size : undefined,
+          children: isFile ? undefined : new Map<string, any>(),
+        });
+      }
+
+      const node = currentMap.get(part);
+      if (!isFile && node.children) {
+        currentMap = node.children;
+      }
+    }
+  }
+
+  function convertMap(map: Map<string, any>): FileTreeNode[] {
+    const list: FileTreeNode[] = [];
+    for (const item of map.values()) {
+      const children = item.children ? convertMap(item.children) : undefined;
+      list.push({
+        name: item.name,
+        path: item.path,
+        type: item.type,
+        size: item.size,
+        children: children && children.length > 0 ? children : undefined,
+      });
+    }
+    return list.sort((a, b) => {
+      if (a.type === b.type) return a.name.localeCompare(b.name);
+      return a.type === "tree" ? -1 : 1;
+    });
+  }
+
+  return convertMap(rootMap);
 }

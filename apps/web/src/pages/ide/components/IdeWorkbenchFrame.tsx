@@ -47,7 +47,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
       {isLoading && (
         <LoadingOverlay>
           <Spinner size="large" />
-          <Text>Initializing {brandName} IDE &amp; ModelScript WebAssembly Solvers...</Text>
+          <Text>Initializing {brandName} Studio &amp; ModelScript WebAssembly Solvers...</Text>
           {isSlowLoad && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", marginTop: 8 }}>
               <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
@@ -61,7 +61,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
                 )}
                 {onOpenInPlayground && (
                   <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={onOpenInPlayground}>
-                    Open in Playground
+                    Open in Morsel
                   </Button>
                 )}
               </div>
@@ -73,7 +73,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
         key={reloadKey}
         ref={iframeRef}
         src={workbenchUrl}
-        title={`${brandName} IDE Workbench`}
+        title={`${brandName} Studio Workbench`}
         allow="clipboard-read; clipboard-write"
         onLoad={onIframeLoad}
       />

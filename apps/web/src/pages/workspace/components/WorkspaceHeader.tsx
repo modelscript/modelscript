@@ -196,10 +196,10 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
               <Button
                 leadingVisual={CodeIcon}
                 size="small"
-                onClick={() => navigate(`${basePath}/ide?ref=${encodeURIComponent(repo?.default_branch || "main")}`)}
-                title={`Open repository in ${brandName} Web IDE`}
+                onClick={() => navigate(`${basePath}/studio?ref=${encodeURIComponent(repo?.default_branch || "main")}`)}
+                title={`Open repository in ${brandName} Studio`}
               >
-                Web IDE
+                Studio
               </Button>
 
               {openCompose && (

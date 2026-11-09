@@ -12,8 +12,11 @@ import {
   PackageIcon,
   PaperAirplaneIcon,
   RocketIcon,
+  RowsIcon,
   SearchIcon,
   ShieldIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
   XIcon,
 } from "@primer/octicons-react";
 import { Button } from "@primer/react";
@@ -27,11 +30,12 @@ import {
   FilterPill,
   FilterPillGroup,
   FilterStrip,
+  NotificationsHeaderContainer,
   TabBar,
   TabButton,
   UnreadPill,
 } from "../styles";
-import type { InboxView, NotificationCategory } from "../types";
+import type { InboxDensity, InboxLayoutPlacement, InboxView, NotificationCategory } from "../types";
 
 export interface NotificationsHeaderProps {
   activeView?: InboxView | undefined;
@@ -47,6 +51,10 @@ export interface NotificationsHeaderProps {
   onArchiveAll?: (() => void) | undefined;
   searchQuery?: string | undefined;
   setSearchQuery?: ((q: string) => void) | undefined;
+  layoutPlacement?: InboxLayoutPlacement | undefined;
+  onToggleLayoutPlacement?: (() => void) | undefined;
+  density?: InboxDensity | undefined;
+  onToggleDensity?: (() => void) | undefined;
 }
 
 export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
@@ -63,6 +71,10 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
   onArchiveAll,
   searchQuery = "",
   setSearchQuery,
+  layoutPlacement = "left",
+  onToggleLayoutPlacement,
+  density = "compact",
+  onToggleDensity,
 }) => {
   const navigate = useNavigate();
 
@@ -85,7 +97,7 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
   };
 
   return (
-    <>
+    <NotificationsHeaderContainer>
       <PageHeader
         title="Inbox"
         divider={false}
@@ -108,6 +120,28 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
             {activeView === "inbox" && viewCounts.inbox > 0 && onArchiveAll && (
               <Button size="small" variant="invisible" leadingVisual={ArchiveIcon} onClick={onArchiveAll}>
                 Archive view
+              </Button>
+            )}
+            {onToggleLayoutPlacement && (
+              <Button
+                size="small"
+                variant={layoutPlacement === "right" ? "primary" : "invisible"}
+                leadingVisual={layoutPlacement === "right" ? SidebarCollapseIcon : SidebarExpandIcon}
+                title={layoutPlacement === "right" ? "Dock list to left" : "Dock list to right"}
+                onClick={onToggleLayoutPlacement}
+              >
+                {layoutPlacement === "right" ? "List: Right" : "List: Left"}
+              </Button>
+            )}
+            {onToggleDensity && (
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={RowsIcon}
+                title={density === "compact" ? "Switch to comfortable view" : "Switch to compact Outlook view"}
+                onClick={onToggleDensity}
+              >
+                {density === "compact" ? "Compact" : "Comfortable"}
               </Button>
             )}
             <Button
@@ -244,6 +278,6 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
           </CompactSearchBox>
         )}
       </FilterStrip>
-    </>
+    </NotificationsHeaderContainer>
   );
 };

@@ -143,6 +143,12 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
     }
   }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const parsedEngine = useMemo(() => {
     const cylMatches = rawText ? Array.from(rawText.matchAll(/\b(EngCylinder|Cylinder)\b/gi)) : [];
     const compMatches = rawText

@@ -1,3 +1,5 @@
+@import "katex/dist/katex.min.css";
+
 /*
  * Shared ModelScript design tokens (also consumed by apps/docs).
  * App-level --color-* variables below are aliases onto --ms-* so that existing
@@ -388,8 +390,8 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
   --fontStack-SansSerif: var(--ms-font-sans);
   --fontStack-monospace: var(--ms-font-mono);
   --BaseStyles-fontFamily: var(--ms-font-sans);
-  --BaseStyles-lineHeight: var(--leading-md);
-  --body-font-size: var(--text-md);
+  --BaseStyles-lineHeight: var(--leading-base, 23px);
+  --body-font-size: var(--text-base, 15.5px);
 }
 
 #__primerPortalRoot__,
@@ -422,29 +424,42 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
 }
 
 :root {
-  /* Scales (theme independent, matched to X/Twitter web typography) */
+  /* Scales (Option A: Slack/X Hybrid normalized typography and modular spacing) */
+  --space-05: 2px;
   --space-1: 4px;
+  --space-15: 6px;
   --space-2: 8px;
+  --space-25: 10px;
   --space-3: 12px;
+  --space-35: 14px;
   --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
+  --space-45: 18px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-pill: 9999px;
-  --text-xs: 11px;
-  --text-sm: 13px;
-  --text-md: 15px;
-  --text-lg: 17px;
-  --text-xl: 20px;
-  --text-2xl: 23px;
-  --leading-xs: 14px;
-  --leading-sm: 16px;
-  --leading-md: 20px;
-  --leading-lg: 24px;
-  --leading-xl: 24px;
-  --leading-2xl: 28px;
+  --text-2xs: 11px;
+  --text-xs: 12.5px;
+  --text-sm: 13.5px;
+  --text-base: 15.5px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-3xl: 34px;
+  --leading-2xs: 16px;
+  --leading-xs: 18px;
+  --leading-sm: 20px;
+  --leading-base: 23px;
+  --leading-md: 24px;
+  --leading-lg: 26px;
+  --leading-xl: 30px;
+  --leading-2xl: 36px;
+  --leading-3xl: 44px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -478,8 +493,8 @@ body {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   font-family: var(--ms-font-sans);
-  font-size: var(--text-md);
-  line-height: var(--leading-md);
+  font-size: var(--text-base, 15.5px);
+  line-height: var(--leading-base, 23px);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
@@ -571,10 +586,10 @@ body {
 
 .handle-text {
   color: var(--color-text-muted) !important;
-  font-size: var(--text-md);
+  font-size: var(--text-sm, 13.5px);
   font-weight: 400;
   font-family: inherit;
-  line-height: var(--leading-md);
+  line-height: var(--leading-sm, 20px);
   text-decoration: none !important;
 }
 

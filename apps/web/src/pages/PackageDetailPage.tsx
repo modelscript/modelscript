@@ -170,32 +170,62 @@ const PackageDetailSkeleton: React.FC = () => (
     </TreeSidebar>
     <MainContentWrap>
       <HeaderBar>
+        {/* Top Strip Skeleton: Breadcrumb on Left, Actions on Right */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "16px",
+            marginBottom: "16px",
+          }}
+        >
+          <div className="skeleton" style={{ width: "220px", height: "18px", borderRadius: "4px" }} />
+          <div style={{ display: "flex", gap: "8px" }}>
+            <div className="skeleton" style={{ width: "130px", height: "32px", borderRadius: "8px" }} />
+            <div className="skeleton" style={{ width: "80px", height: "32px", borderRadius: "8px" }} />
+            <div className="skeleton" style={{ width: "60px", height: "32px", borderRadius: "8px" }} />
+          </div>
+        </div>
+
+        {/* Hero Row Skeleton: 52px Icon + Title */}
         <div
           style={{
             display: "flex",
             alignItems: "flex-start",
-            gap: "20px",
-            marginBottom: "16px",
+            gap: "16px",
+            marginBottom: "14px",
           }}
         >
-          <div className="skeleton" style={{ width: "100px", height: "100px", borderRadius: "18px", flexShrink: 0 }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
-            <div className="skeleton" style={{ width: "240px", height: "28px" }} />
-            <div className="skeleton" style={{ width: "420px", height: "16px" }} />
-            <div className="skeleton" style={{ width: "320px", height: "14px" }} />
+          <div className="skeleton" style={{ width: "52px", height: "52px", borderRadius: "12px", flexShrink: 0 }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div className="skeleton" style={{ width: "280px", height: "26px", borderRadius: "6px" }} />
+              <div className="skeleton" style={{ width: "56px", height: "22px", borderRadius: "6px" }} />
+              <div className="skeleton" style={{ width: "48px", height: "20px", borderRadius: "9999px" }} />
+            </div>
+            <div className="skeleton" style={{ width: "480px", height: "15px", borderRadius: "4px" }} />
           </div>
         </div>
+
+        {/* Utility Row Skeleton: Meta Strip + Install Pill */}
         <div
           style={{
             display: "flex",
-            gap: "12px",
-            borderBottom: "1px solid var(--ms-divider, var(--color-border))",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "16px",
+            paddingTop: "10px",
+            borderTop: "1px solid var(--ms-divider, var(--color-border))",
             paddingBottom: "12px",
           }}
         >
-          <div className="skeleton" style={{ width: "80px", height: "20px" }} />
-          <div className="skeleton" style={{ width: "80px", height: "20px" }} />
-          <div className="skeleton" style={{ width: "80px", height: "20px" }} />
+          <div style={{ display: "flex", gap: "12px" }}>
+            <div className="skeleton" style={{ width: "90px", height: "14px", borderRadius: "4px" }} />
+            <div className="skeleton" style={{ width: "50px", height: "14px", borderRadius: "4px" }} />
+            <div className="skeleton" style={{ width: "70px", height: "14px", borderRadius: "4px" }} />
+          </div>
+          <div className="skeleton" style={{ width: "240px", height: "30px", borderRadius: "8px" }} />
         </div>
       </HeaderBar>
       <ContentWrap style={{ marginTop: "24px" }}>

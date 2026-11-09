@@ -364,6 +364,12 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     return undefined;
   }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   // Parse the SIMA model & run live catenary / DNV-OS-E301 / offset verification directly from source
   const analysis = useMemo<{
     model: SimaModel | null;

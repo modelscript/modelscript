@@ -158,6 +158,12 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, waveformData]);
+
   const { waveformData, channels, timeKey } = useMemo(() => {
     if (viewConfig.data && Array.isArray(viewConfig.data) && viewConfig.data.length > 0) {
       const keys = Object.keys(viewConfig.data[0] || {});
@@ -255,34 +261,50 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
           <Box display="flex" justifyContent="center" alignItems="center" height="100%">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "plot" && waveformData.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={waveformData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
-              <XAxis dataKey={timeKey} stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
-              <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "var(--ms-bg-alt)",
-                  borderColor: "var(--ms-border)",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: "12px" }} />
-              {channels.slice(0, 6).map((ch, idx) => (
-                <Line
-                  key={ch}
-                  type="monotone"
-                  dataKey={ch}
-                  stroke={LINE_COLORS[idx % LINE_COLORS.length] || "#38bdf8"}
-                  dot={false}
-                  strokeWidth={1.8}
-                  name={ch}
+        ) : viewMode === "plot" ? (
+          waveformData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={waveformData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
+                <XAxis dataKey={timeKey} stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
+                <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "var(--ms-bg-alt)",
+                    borderColor: "var(--ms-border)",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                  }}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+                <Legend wrapperStyle={{ fontSize: "12px" }} />
+                {channels.slice(0, 6).map((ch, idx) => (
+                  <Line
+                    key={ch}
+                    type="monotone"
+                    dataKey={ch}
+                    stroke={LINE_COLORS[idx % LINE_COLORS.length] || "#38bdf8"}
+                    dot={false}
+                    strokeWidth={1.8}
+                    name={ch}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <Box
+              display="flex"
+              flexDirection="column"
+              justifyContent="center"
+              alignItems="center"
+              height="100%"
+              color="var(--color-fg-muted)"
+              textAlign="center"
+              p={4}
+            >
+              <PulseIcon size={24} style={{ opacity: 0.5, marginBottom: 8 }} />
+              <Text style={{ fontSize: "12px" }}>No waveform channels or time series points found in PSOUT data.</Text>
+            </Box>
+          )
         ) : (
           <Box
             height="100%"

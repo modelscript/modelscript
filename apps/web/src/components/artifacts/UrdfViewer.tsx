@@ -522,6 +522,12 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
     }
   }, [rawDeck]);
 
+  useEffect(() => {
+    if (!isLoading && robot) {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [isLoading, robot]);
+
   const modelName =
     viewConfig.modelName || robot?.name || viewConfig.robotName || viewConfig.title || "URDF Robot Mechanism";
 
@@ -1163,7 +1169,9 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                           key={step.id}
                           $isActive={isActive}
                           onClick={() => {
-                            setPlaybackTime(step.startTime + 0.05);
+                            const targetT = step.startTime + 0.05;
+                            playbackTimeRef.current = targetT;
+                            setPlaybackTime(targetT);
                           }}
                         >
                           <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>

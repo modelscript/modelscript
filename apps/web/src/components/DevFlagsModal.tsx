@@ -38,9 +38,9 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     description: "Enables the Cloud Jobs tab (/jobs), remote SLURM execution, and cluster solver queues.",
   },
   heavy_vscode_ide: {
-    title: "Full VS Code Web IDE",
+    title: "Studio Workspace",
     category: "Core",
-    description: "Enables the full Monaco/VSCode workspace IDE (/ide) in the main navigation.",
+    description: "Enables the multi-file Studio workspace (/studio) in the main navigation.",
   },
   billing_stripe_live: {
     title: "Stripe Billing & Token Top-Up",

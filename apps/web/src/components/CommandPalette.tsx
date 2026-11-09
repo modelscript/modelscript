@@ -372,7 +372,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       {
         id: "nav-morsel",
         category: "Navigation",
-        title: "Ansatz Morsel",
+        title: "Morsel",
         subtitle: "Draft, simulate, and visualize engineering models in the browser",
         icon: <MorselIcon size={16} />,
         action: () => {

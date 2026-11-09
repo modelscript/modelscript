@@ -259,6 +259,7 @@ export interface SeedPolyglotSummary {
   messagesSeeded?: number | undefined;
   docsSeeded?: number | undefined;
   ecosSeeded?: number | undefined;
+  issuesSeeded?: number | undefined;
   notificationsSeeded?: number | undefined;
   bookmarksSeeded?: number | undefined;
   outboxJobsSeeded?: number | undefined;
@@ -710,6 +711,7 @@ export async function seedPolyglotSocialData(
     messagesSeeded: spacesSummary.messagesSeeded,
     docsSeeded: spacesSummary.docsSeeded,
     ecosSeeded: spacesSummary.ecosSeeded,
+    issuesSeeded: spacesSummary.issuesSeeded,
     notificationsSeeded: inboxSummary.notificationsSeeded,
     bookmarksSeeded: inboxSummary.bookmarksSeeded,
     outboxJobsSeeded: inboxSummary.outboxJobsSeeded,

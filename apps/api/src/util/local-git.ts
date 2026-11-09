@@ -6,6 +6,7 @@ import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import type {
   CreateGitMergeRequestInput,
+  GitBranchItem,
   GitCommitItem,
   GitIssueItem,
   GitJobItem,
@@ -61,20 +62,36 @@ export class LocalGitProvider implements IGitProvider {
   private readonly mergeRequestsByProject = new Map<string, GitMergeRequestItem[]>();
 
   private async resolveHostedBareRepoPath(idOrUrl: string): Promise<string | null> {
-    const reposDir = process.env["GIT_REPOS_DIR"] || path.resolve(process.cwd(), "data", "git-repos");
+    if (path.isAbsolute(idOrUrl)) {
+      try {
+        await fs.access(idOrUrl);
+        return idOrUrl;
+      } catch {
+        // Fall through
+      }
+    }
+
+    const candidateDirs: string[] = [];
+    if (process.env["GIT_REPOS_DIR"]) {
+      candidateDirs.push(process.env["GIT_REPOS_DIR"]);
+    }
+    candidateDirs.push(path.resolve(process.cwd(), "data", "git-repos"));
+    candidateDirs.push(path.resolve(import.meta.dirname, "../../../../data/git-repos"));
+    candidateDirs.push(path.resolve(import.meta.dirname, "../../data/git-repos"));
+
     const trimmed = trimSlashes(idOrUrl.trim());
     const parts = trimmed.split("/");
     if (parts.length === 2 && parts[0] && parts[1] && !parts[0].includes("..") && !parts[1].includes("..")) {
       const cleanNs = parts[0].replace(/[^a-zA-Z0-9_.-]/g, "");
       const cleanProj = parts[1].replace(/\.git$/i, "").replace(/[^a-zA-Z0-9_.-]/g, "");
       if (cleanNs && cleanProj) {
-        const candidate = path.resolve(reposDir, cleanNs, `${cleanProj}.git`);
-        if (candidate.startsWith(path.resolve(reposDir) + path.sep)) {
+        for (const reposDir of candidateDirs) {
+          const candidate = path.resolve(reposDir, cleanNs, `${cleanProj}.git`);
           try {
             await fs.access(candidate);
             return candidate;
           } catch {
-            // Fall through to standard cache resolution
+            // Try next candidate directory
           }
         }
       }
@@ -232,7 +249,7 @@ export class LocalGitProvider implements IGitProvider {
     };
   }
 
-  async getRepositoryTree(idOrUrl: string, ref = "HEAD", treePath = ""): Promise<GitTreeItem[]> {
+  async getRepositoryTree(idOrUrl: string, ref = "HEAD", treePath = "", recursive = false): Promise<GitTreeItem[]> {
     const safeRef = sanitizeGitRef(ref);
     const safeTreePath = sanitizeGitSubpath(treePath);
     const repoPath = await this.getRepoPath(idOrUrl);
@@ -240,7 +257,12 @@ export class LocalGitProvider implements IGitProvider {
 
     // Use ls-tree
     const targetPath = safeTreePath ? `${safeRef}:${safeTreePath}` : safeRef;
-    const output = await git.raw(["ls-tree", targetPath]);
+    const args = ["ls-tree"];
+    if (recursive) {
+      args.push("-r");
+    }
+    args.push(targetPath);
+    const output = await git.raw(args);
 
     const items: GitTreeItem[] = [];
     if (!output.trim()) return items;
@@ -252,9 +274,15 @@ export class LocalGitProvider implements IGitProvider {
         if (id && name) {
           items.push({
             id,
-            name,
+            name: recursive ? name.split("/").pop() || name : name,
             type: type as "tree" | "blob" | "commit",
-            path: safeTreePath ? `${safeTreePath}/${name}` : name,
+            path: recursive
+              ? safeTreePath
+                ? `${safeTreePath}/${name}`
+                : name
+              : safeTreePath
+                ? `${safeTreePath}/${name}`
+                : name,
             mode: mode as string,
           });
         }
@@ -286,7 +314,7 @@ export class LocalGitProvider implements IGitProvider {
       created_at: new Date(c.date).toISOString(),
       author_name: c.author_name,
       author_email: c.author_email,
-      message: c.body,
+      message: c.body ? `${c.message}\n\n${c.body}` : c.message,
     }));
   }
 
@@ -306,6 +334,24 @@ export class LocalGitProvider implements IGitProvider {
 
   async createIssue(_idOrUrl: string, _body: unknown): Promise<GitIssueItem> {
     throw new Error("Issues are not supported by local git provider");
+  }
+
+  async getBranches(idOrUrl: string): Promise<GitBranchItem[]> {
+    try {
+      const repoPath = await this.getRepoPath(idOrUrl);
+      const git = simpleGit(repoPath);
+      const branchSummary = await git.branchLocal().catch(() => null);
+      if (!branchSummary || Object.keys(branchSummary.branches).length === 0) {
+        return [{ name: "main", default: true }];
+      }
+      return Object.values(branchSummary.branches).map((b) => ({
+        name: b.name,
+        default: b.current,
+        commit: { id: b.commit },
+      }));
+    } catch {
+      return [{ name: "main", default: true }];
+    }
   }
 
   async getMergeRequests(idOrUrl: string): Promise<GitMergeRequestItem[]> {

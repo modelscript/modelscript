@@ -3,11 +3,19 @@
 import styled from "styled-components";
 import { safeCssImageUrl } from "../../util/url";
 
-export const NotificationWrapper = styled.div<{ $unread: boolean; $selected?: boolean | undefined }>`
+export const NotificationWrapper = styled.div<{
+  $unread: boolean;
+  $selected?: boolean | undefined;
+  $density?: "compact" | "comfortable" | undefined;
+}>`
   position: relative;
   display: flex;
-  gap: 12px;
-  padding: 14px 16px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: ${(props) => (props.$density === "comfortable" ? "12px 14px" : "9px 12px")};
+  ${(props) =>
+    props.$density === "comfortable" ? "min-height: 76px;" : "height: 64px; min-height: 64px; max-height: 64px;"};
+  box-sizing: border-box;
   border-bottom: 1px solid var(--color-border-default);
   border-left: 3px solid
     ${(props) =>
@@ -20,23 +28,35 @@ export const NotificationWrapper = styled.div<{ $unread: boolean; $selected?: bo
     props.$selected
       ? "var(--surface-selected, rgba(56, 139, 253, 0.14))"
       : props.$unread
-        ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.075))"
+        ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.05))"
         : "transparent"};
   cursor: pointer;
   transition:
-    background-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    border-left-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    background-color 0.15s ease,
+    border-left-color 0.15s ease;
+  overflow: hidden;
 
   &:hover {
     background-color: ${(props) =>
-      props.$selected
-        ? "var(--surface-selected, rgba(56, 139, 253, 0.16))"
-        : props.$unread
-          ? "var(--surface-selected, rgba(56, 139, 253, 0.12))"
-          : "var(--color-canvas-subtle)"};
-    transition:
-      background-color 0.15s ease,
-      border-left-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      props.$selected ? "var(--surface-selected, rgba(56, 139, 253, 0.18))" : "var(--color-canvas-subtle)"};
+  }
+
+  .notif-hover-actions {
+    display: none;
+    height: 18px;
+    align-items: center;
+  }
+
+  &:hover .notif-hover-actions,
+  &:focus-within .notif-hover-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  &:hover .notif-row-time,
+  &:focus-within .notif-row-time {
+    display: none;
   }
 `;
 
@@ -92,9 +112,9 @@ export const MetricChip = styled.span`
   border: 1px solid var(--color-border-default);
 `;
 
-export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string | undefined }>`
-  width: 36px;
-  height: 36px;
+export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string | undefined; $size?: number }>`
+  width: ${(props) => (props.$size ? `${props.$size}px` : "28px")};
+  height: ${(props) => (props.$size ? `${props.$size}px` : "28px")};
   border-radius: 50%;
   background: var(--gradient-ai, linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%));
   background-image: ${(props) => safeCssImageUrl(props.$url)};
@@ -105,10 +125,69 @@ export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string |
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 14px;
+  font-size: ${(props) => (props.$size && props.$size > 30 ? "13px" : "11px")};
   color: #ffffff;
   &::before {
     content: "${(props) => (!props.$url && props.$letter ? props.$letter : "")}";
+  }
+`;
+
+export const AvatarContainer = styled.div`
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+`;
+
+export const MicroReactionBadge = styled.span<{ $color?: string; $bg?: string }>`
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: ${(props) => props.$bg || "var(--color-canvas-default)"};
+  border: 1.5px solid var(--color-canvas-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  color: ${(props) => props.$color || "#ffffff"};
+  z-index: 2;
+
+  & > svg {
+    width: 9px;
+    height: 9px;
+  }
+`;
+
+export const CompactAvatarsGroup = styled.div`
+  position: relative;
+  width: 32px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+
+  & > *:nth-child(1) {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+  }
+
+  & > *:nth-child(2) {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+    border: 1.5px solid var(--color-canvas-default);
   }
 `;
 
@@ -135,8 +214,8 @@ export const AvatarOverflowPill = styled.span`
 `;
 
 export const UnreadDotButton = styled.button`
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: none;
   background: transparent;
@@ -146,29 +225,29 @@ export const UnreadDotButton = styled.button`
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.12s ease;
 
   &::after {
     content: "";
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--color-accent-fg);
-    transition: transform 0.15s ease;
+    transition: transform 0.12s ease;
   }
 
   &:hover {
     background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
     &::after {
-      transform: scale(1.25);
+      transform: scale(1.2);
     }
   }
 `;
 
 export const QuickActionIconButton = styled.button<{ $active?: boolean | undefined }>`
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
   color: ${(props) => (props.$active ? "var(--color-attention-fg, #d29922)" : "var(--color-fg-muted)")};
@@ -178,12 +257,25 @@ export const QuickActionIconButton = styled.button<{ $active?: boolean | undefin
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 
   &:hover {
     color: ${(props) => (props.$active ? "var(--color-attention-fg, #d29922)" : "var(--color-fg-default)")};
-    background: var(--color-neutral-muted, rgba(175, 184, 193, 0.18));
+    background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
     border-color: var(--color-border-default);
+  }
+`;
+
+export const NotificationsHeaderContainer = styled.div`
+  position: sticky;
+  top: var(--dev-header-height, 0px);
+  z-index: 45;
+  background: var(--surface-sticky, var(--color-canvas-default));
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+
+  & > header {
+    position: static;
   }
 `;
 
@@ -207,7 +299,7 @@ export const TabBar = styled.div`
 export const TabButton = styled.button<{ $active: boolean }>`
   flex: 1;
   min-width: 90px;
-  height: 53px;
+  height: 44px;
   padding: 0 10px;
   background: none;
   border: none;
@@ -215,7 +307,7 @@ export const TabButton = styled.button<{ $active: boolean }>`
   color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
   font-weight: ${(props) => (props.$active ? 700 : 500)};
   cursor: pointer;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 20px;
   display: flex;
   align-items: center;
@@ -235,7 +327,7 @@ export const FilterStrip = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 6px 16px;
   border-bottom: 1px solid var(--color-border-default);
   background: var(--color-canvas-subtle);
   flex-wrap: wrap;
@@ -314,41 +406,95 @@ export const CompactSearchBox = styled.div`
   }
 `;
 
-export const InboxSplitLayout = styled.div`
+export const InboxSplitLayout = styled.div<{ $layoutPlacement?: "left" | "right" }>`
   display: grid;
-  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
-  align-items: start;
-  min-height: calc(100vh - var(--dev-header-height, 0px) - 148px);
+  grid-template-columns: ${(props) => (props.$layoutPlacement === "right" ? "740px 350px" : "350px 740px")};
+  align-items: stretch;
+  height: calc(100vh - var(--dev-header-height, 0px) - 138px);
+  max-height: calc(100vh - var(--dev-header-height, 0px) - 138px);
+  overflow: hidden;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: ${(props) =>
+      props.$layoutPlacement === "right" ? "minmax(0, 1fr) 350px" : "350px minmax(0, 1fr)"};
+  }
 
   @media (max-width: 960px) {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
 `;
 
-export const StreamPane = styled.div`
-  border-right: 1px solid var(--color-border-default);
+export const StreamPane = styled.div<{ $placement?: "left" | "right" }>`
+  width: 350px;
+  max-width: 350px;
   min-width: 0;
-  min-height: calc(100vh - var(--dev-header-height, 0px) - 148px);
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: ${(props) => (props.$placement === "right" ? "none" : "1px solid var(--color-border-default)")};
+  border-left: ${(props) => (props.$placement === "right" ? "1px solid var(--color-border-default)" : "none")};
+  box-sizing: border-box;
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-default) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-default);
+    border-radius: 3px;
+  }
 
   @media (max-width: 960px) {
     border-right: none;
+    border-left: none;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    overflow-y: visible;
+    order: 1;
   }
 `;
 
-export const ReadingPaneWrapper = styled.aside`
-  position: sticky;
-  top: calc(var(--dev-header-height, 0px) + 106px);
-  max-height: calc(100vh - var(--dev-header-height, 0px) - 106px);
+export const ReadingPaneWrapper = styled.aside<{ $placement?: "left" | "right" }>`
+  height: 100%;
   overflow-y: auto;
-  padding: 20px 24px;
+  overflow-x: hidden;
+  padding: 0;
+  width: 100%;
+  max-width: 740px;
   min-width: 0;
   box-sizing: border-box;
 
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-default) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-default);
+    border-radius: 3px;
+  }
+
   @media (max-width: 960px) {
     position: static;
-    max-height: none;
+    height: auto;
+    overflow-y: visible;
     border-top: 1px solid var(--color-border-default);
-    padding: 16px;
+    padding: 0;
+    order: 2;
   }
 `;
 

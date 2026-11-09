@@ -161,7 +161,7 @@ export function createStarterNotebookCells(): {
 In this article, we'll explore how to build, parameterize, and simulate a continuous-time physical system in **ModelScript**. We'll start from the governing differential equations, implement the acausal model, and inspect its step response.
 
 > [!TIP]
-> Every code block in this article can be copied or opened directly in the **ModelScript Web IDE** for live interactive simulation.`,
+> Every code block in this article can be copied or opened directly in **Studio** for live interactive simulation.`,
       },
       {
         id: createCellId("md"),

@@ -327,6 +327,12 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
   }, [baseMeshUrl, headMeshUrl]);
 
   useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading]);
+
+  useEffect(() => {
     return () => {
       baseGeometries?.forEach((g) => g.dispose());
     };

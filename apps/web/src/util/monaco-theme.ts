@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Monaco } from "@monaco-editor/react";
+import { registerAllModelscriptLanguages } from "../components/morsel/util/monaco-lsp-adapter";
 
 export const MONACO_THEME_DARK = "vs-dark";
 export const MONACO_THEME_LIGHT = "vs";
@@ -8,10 +9,18 @@ export const MONACO_THEME_LIGHT = "vs";
 let themesDefined = false;
 
 /**
- * Ensures Monaco editor uses the standard default VS Code themes ("vs-dark" and "vs").
- * Registers aliases for backward compatibility without overriding syntax token colors or font weights.
+ * Ensures Monaco editor uses the standard default VS Code themes ("vs-dark" and "vs")
+ * and registers all 44 ModelScript polyglot engineering language Monarch tokenizers.
  */
 export function ensureMonacoThemesDefined(monaco: Monaco | typeof import("monaco-editor")): void {
+  if (!monaco) return;
+
+  try {
+    registerAllModelscriptLanguages(monaco as any);
+  } catch {
+    // Ignore language registration errors in test environments
+  }
+
   if (themesDefined || !monaco?.editor?.defineTheme) return;
 
   try {

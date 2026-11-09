@@ -75,8 +75,8 @@ export const PageTab = styled.button<{ $active?: boolean | undefined }>`
   background: none;
   border: none;
   font: inherit;
-  font-size: var(--text-md, 15px);
-  line-height: var(--leading-md, 20px);
+  font-size: var(--text-base, 15.5px);
+  line-height: var(--leading-base, 23px);
   color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
   font-weight: ${(props) => (props.$active ? 700 : 500)};
   cursor: pointer;

@@ -75,7 +75,7 @@ for (const decl of comp) {
 
 ## Incremental Re-Parsing
 
-When editing code in the Language Server Protocol (LSP) or Web IDE, the GLR parser performs incremental tree re-use:
+When editing code in the Language Server Protocol (LSP) or Studio, the GLR parser performs incremental tree re-use:
 
 - Text edits pass line and character delta offsets.
 - Unaffected subtrees in linear memory remain unchanged and are spliced into the new parse tree.

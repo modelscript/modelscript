@@ -494,6 +494,12 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const psseAnalysis = useMemo(() => {
     let parsedCase: PsseCase | null = null;
     let powerflow: PowerFlowResult | null = null;

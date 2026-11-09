@@ -21,10 +21,7 @@ describe("Morsel General Component & Library Icon Resolution", () => {
     // Simulate setting into cache
     globalClassIconCache.set("TestClass", "<svg id='test'/>");
 
-    const [res1, res2] = await Promise.all([
-      getClassIcon("TestClass"),
-      getClassIcon("TestClass"),
-    ]);
+    const [res1, res2] = await Promise.all([getClassIcon("TestClass"), getClassIcon("TestClass")]);
 
     assert.strictEqual(res1, res2);
     assert.strictEqual(res1, "<svg id='test'/>");
@@ -84,7 +81,10 @@ describe("Morsel General Component & Library Icon Resolution", () => {
 
     const normalized = normalizeSvgForIcon(sampleSineVoltage);
     assert.ok(normalized.startsWith('<svg width="100%" height="100%"'), "Root svg must have width and height 100%");
-    assert.ok(normalized.includes('stroke-width="1"'), "Must preserve inner stroke-width='1' and not replace it with 100%");
+    assert.ok(
+      normalized.includes('stroke-width="1"'),
+      "Must preserve inner stroke-width='1' and not replace it with 100%",
+    );
     assert.ok(!normalized.includes('stroke-width="100%"'), "Must never produce stroke-width='100%'");
 
     const sampleResistor = `<svg viewBox="-100 -100 200 200"><rect width="140" height="60" x="-70" y="-30" fill="#ffffff" stroke="#0000ff" stroke-width="1"/></svg>`;
@@ -92,6 +92,13 @@ describe("Morsel General Component & Library Icon Resolution", () => {
     assert.ok(normalizedResistor.includes('width="140"'), "Must preserve inner rect width");
     assert.ok(normalizedResistor.includes('height="60"'), "Must preserve inner rect height");
     assert.ok(normalizedResistor.includes('stroke-width="1"'), "Must preserve inner rect stroke-width");
+
+    const samplePackage = `<svg viewBox="-100 -100 200 200"><rect width="200" height="200" x="-100" y="-100" rx="25" ry="25"/></svg>`;
+    const normalizedPackage = normalizeSvgForIcon(samplePackage);
+    assert.ok(
+      normalizedPackage.includes('viewBox="-105 -105 210 210"'),
+      "Must pad viewBox so rounded corners are not clipped",
+    );
+    assert.ok(normalizedPackage.includes('rx="25"'), "Must preserve corner radius");
   });
 });
-

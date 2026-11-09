@@ -183,7 +183,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
                 style={{
                   fontWeight: 700,
                   fontSize: "15px",
-                  lineHeight: "20px",
+                  lineHeight: "21px",
                   display: "flex",
                   alignItems: "center",
                   gap: "4px",
@@ -199,7 +199,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
             style={{
               fontWeight: 700,
               fontSize: "15px",
-              lineHeight: "20px",
+              lineHeight: "21px",
               display: "flex",
               alignItems: "center",
               gap: "4px",
@@ -215,7 +215,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
               to={`/@${cleanUsername}`}
               onClick={(e) => e.stopPropagation()}
               className="handle-text"
-              style={{ fontSize: "15px", lineHeight: "20px", textDecoration: "none" }}
+              style={{ fontSize: "13.5px", lineHeight: "20px", textDecoration: "none" }}
             >
               @{parsedQuoteAuthor?.localUsername || cleanUsername}
             </Link>
@@ -223,7 +223,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
         )}
         {quotePost.created_at && (
           <>
-            <span style={{ color: "var(--color-fg-muted)", fontSize: "14px", margin: "0 2px" }}>·</span>
+            <span style={{ color: "var(--color-fg-muted)", fontSize: "13.5px", margin: "0 2px" }}>·</span>
             <Tooltip text={formatFullTimestamp(quotePost.created_at)} direction="s">
               <TimestampButton
                 data-timestamp="true"
@@ -236,7 +236,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
               >
                 <Text
                   className="handle-text"
-                  style={{ fontSize: "14px", lineHeight: "20px", flexShrink: 0, whiteSpace: "nowrap" }}
+                  style={{ fontSize: "13.5px", lineHeight: "20px", flexShrink: 0, whiteSpace: "nowrap" }}
                 >
                   {formatRelativeTime(quotePost.created_at)}
                 </Text>
@@ -263,7 +263,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
           <FederatedDomainPill domain={parsedQuoteAuthor.remoteDomain} />
         )}
       </Box>
-      <Box style={{ fontSize: "15px", lineHeight: "20px", wordBreak: "break-word" }}>
+      <Box style={{ fontSize: "15px", lineHeight: "22px", wordBreak: "break-word" }}>
         <PostMarkdownContent text={quotePost.content} />
       </Box>
       {quotePost.artifact_view_id &&

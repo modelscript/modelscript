@@ -75,6 +75,19 @@ sha256sum "${HOST_BACKUP_PATH}" | awk '{print $1}' > "${HOST_BACKUP_PATH}.sha256
 FILE_SIZE="$(du -h "${HOST_BACKUP_PATH}" | cut -f1)"
 echo "✓ Snapshot created successfully: ${HOST_BACKUP_PATH} (${FILE_SIZE})"
 
+# Optional offsite replication to S3-compatible storage
+if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+  S3_PREFIX="${BACKUP_S3_PREFIX:-database-backups}"
+  echo "==> Replicating snapshot to offsite S3 storage (s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/${FILENAME})..."
+  if command -v aws >/dev/null 2>&1; then
+    aws s3 cp "${HOST_BACKUP_PATH}" "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/${FILENAME}" --quiet
+    aws s3 cp "${HOST_BACKUP_PATH}.sha256" "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}/${FILENAME}.sha256" --quiet
+    echo "✓ Offsite S3 replication completed successfully."
+  else
+    echo "⚠️  aws CLI not found; skipping automated offsite S3 upload."
+  fi
+fi
+
 # Prune historical snapshots beyond RETENTION_COUNT
 EXISTING_COUNT="$(ls -1t "${BACKUP_DIR}"/snapshot-*.db 2>/dev/null | wc -l || echo 0)"
 if [ "${EXISTING_COUNT}" -gt "${RETENTION_COUNT}" ]; then

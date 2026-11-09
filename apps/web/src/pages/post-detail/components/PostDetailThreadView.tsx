@@ -15,10 +15,11 @@ export interface PostDetailThreadViewProps {
   parents: PostItem[];
   replies: PostItem[];
   user: any;
-  mainPostRef: React.RefObject<HTMLDivElement | null>;
+  mainPostRef?: React.RefObject<HTMLDivElement | null> | undefined;
   parentsContainerRef?: React.RefObject<HTMLDivElement | null> | undefined;
-  activeBotTyping: ActiveBotTypingState | null;
+  activeBotTyping?: ActiveBotTypingState | null | undefined;
   onReplyCreated: (reply: PostItem) => void;
+  disableMinHeight?: boolean | undefined;
 }
 
 export const PostDetailThreadView: React.FC<PostDetailThreadViewProps> = ({
@@ -28,8 +29,9 @@ export const PostDetailThreadView: React.FC<PostDetailThreadViewProps> = ({
   user,
   mainPostRef,
   parentsContainerRef,
-  activeBotTyping,
+  activeBotTyping = null,
   onReplyCreated,
+  disableMinHeight = false,
 }) => {
   return (
     <>
@@ -42,7 +44,8 @@ export const PostDetailThreadView: React.FC<PostDetailThreadViewProps> = ({
       <div
         data-thread-target-container="true"
         style={{
-          minHeight: parents.length > 0 ? "calc(100dvh - var(--dev-header-height, 0px) - 54px)" : undefined,
+          minHeight:
+            parents.length > 0 && !disableMinHeight ? "calc(100dvh - var(--dev-header-height, 0px) - 54px)" : undefined,
         }}
       >
         <div ref={mainPostRef} data-thread-target-post="true">

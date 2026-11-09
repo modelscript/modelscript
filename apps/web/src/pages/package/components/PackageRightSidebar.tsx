@@ -381,7 +381,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
             <button
               type="button"
               onClick={handleAddToActiveIde}
-              title={`Hot-mount ${name}@${version} into active VS Code workspace (${activeIdeTitle || "Active Workspace"})`}
+              title={`Hot-mount ${name}@${version} into active Studio workspace (${activeIdeTitle || "Active Workspace"})`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -402,12 +402,12 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
               }}
             >
               {addedToIde ? <CheckIcon size={16} /> : <PlusIcon size={16} />}
-              {addedToIde ? `Added ${name}@${version} to Libraries!` : `Add to Active VS Code (${activeIdeTitle})`}
+              {addedToIde ? `Added ${name}@${version} to Libraries!` : `Add to Active Studio (${activeIdeTitle})`}
             </button>
           )}
 
           <ActionPrimaryLink
-            to={`/ide#memfs:package-${name || "model"}?libs=${encodeURIComponent(`${name}@${version || "latest"}`)}`}
+            to={`/studio#memfs:package-${name || "model"}?libs=${encodeURIComponent(`${name}@${version || "latest"}`)}`}
             style={
               activeIdeTitle || addedToIde
                 ? {
@@ -420,7 +420,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
             }
           >
             <CodeIcon size={15} />
-            Open in Web IDE Workspace
+            Open in Studio Workspace
           </ActionPrimaryLink>
 
           <div

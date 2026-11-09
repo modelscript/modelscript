@@ -66,7 +66,7 @@ const Toolbar = styled.div<{ $isFullScreen?: boolean | undefined }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: ${(props) => (props.$isFullScreen ? "0 12px" : "0 114px 0 12px")};
+  padding: 0 12px;
   gap: 8px;
   z-index: 10;
   overflow: hidden;
@@ -180,6 +180,12 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
+
+  useEffect(() => {
+    if (!loading) {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading]);
 
   const parsedCfg = useMemo(() => parseSu2Client(rawText), [rawText]);
 

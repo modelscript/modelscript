@@ -26,11 +26,12 @@ import {
   QuickActionIconButton,
   UnreadDotButton,
 } from "../styles";
-import type { NotificationItem } from "../types";
+import type { InboxDensity, NotificationItem } from "../types";
 
 export interface EngineeringNotificationCardProps {
   notif: NotificationItem;
   selected?: boolean | undefined;
+  density?: InboxDensity | undefined;
   onSelect?: ((notif: NotificationItem) => void) | undefined;
   onMarkRead?: ((id: string | number) => void) | undefined;
   onToggleStar?: ((notif: NotificationItem) => void) | undefined;
@@ -40,6 +41,7 @@ export interface EngineeringNotificationCardProps {
 export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardProps> = ({
   notif,
   selected,
+  density = "compact",
   onSelect,
   onMarkRead,
   onToggleStar,
@@ -119,10 +121,219 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
     }
   };
 
+  const relativeTime = formatRelativeTime(notif.created_at || new Date().toISOString());
+  const jobOrModelTitle =
+    (meta.name as string | undefined) ||
+    (notif.package_name as string | undefined) ||
+    (meta.packageName as string | undefined) ||
+    (notif.isOutboxJob ? `Job #${meta.jobId || notif.job_id}` : meta.jobId ? `Job #${meta.jobId}` : "Engineering Run");
+
+  const statusHeadline = isSimulation
+    ? notif.isOutboxJob
+      ? "Dispatched Run"
+      : "Simulation Completed"
+    : isSimFailed
+      ? "Simulation Failed"
+      : isPackage && !isPackageYanked
+        ? "Package Release"
+        : isPackageYanked
+          ? "Package Yanked"
+          : isSecurity
+            ? isModerationNotice
+              ? meta["moderationAction"] === "restore_user"
+                ? "Account Restored"
+                : "Moderation Notice"
+              : "Security Advisory"
+            : isCredit
+              ? "Compute Quota Alert"
+              : "Engineering Update";
+
+  const snippet =
+    (meta.error as string | undefined) ||
+    (meta.reason as string | undefined) ||
+    (meta.message as string | undefined) ||
+    (meta.packageName ? `Package ${meta.packageName} ${meta.packageVersion ? `v${meta.packageVersion}` : ""}` : "") ||
+    (meta.profile ? `Executed on ${meta.profile} in ${meta.duration || "0.0"}s` : "") ||
+    "View full trace and artifacts in reading pane";
+
+  const renderTriageButtons = () => (
+    <>
+      {onToggleStar && !notif.isOutboxJob && (
+        <QuickActionIconButton
+          type="button"
+          $active={Boolean(notif.starred)}
+          title={notif.starred ? "Remove from Saved (S)" : "Save for later (S)"}
+          aria-label={notif.starred ? "Remove from Saved" : "Save for later"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleStar(notif);
+          }}
+        >
+          {notif.starred ? <StarFillIcon size={13} /> : <StarIcon size={13} />}
+        </QuickActionIconButton>
+      )}
+      {onToggleArchive && !notif.isOutboxJob && (
+        <QuickActionIconButton
+          type="button"
+          $active={Boolean(notif.archived)}
+          title={notif.archived ? "Move back to Inbox (E)" : "Archive / Mark Done (E)"}
+          aria-label={notif.archived ? "Move back to Inbox" : "Archive notification"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleArchive(notif);
+          }}
+        >
+          <ArchiveIcon size={13} />
+        </QuickActionIconButton>
+      )}
+      {!notif.read && (
+        <UnreadDotButton
+          type="button"
+          title="Mark as read (U)"
+          aria-label="Mark notification as read"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkRead?.(notif.id);
+          }}
+        />
+      )}
+    </>
+  );
+
+  if (density === "compact" && !showAppealForm) {
+    return (
+      <NotificationWrapper
+        key={notif.id}
+        $unread={!notif.read}
+        $selected={selected}
+        $density="compact"
+        data-notification-id={String(notif.id)}
+        data-unread={!notif.read ? "true" : "false"}
+        onClick={handleCardClick}
+      >
+        <Box width={28} display="flex" justifyContent="center" pt={1}>
+          {getIconForType(notif.type)}
+        </Box>
+        <Box flex={1} style={{ minWidth: 0 }}>
+          {/* Line 1: Title & Time / Hover Triage */}
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            gap="6px"
+            style={{ height: "18px", minHeight: "18px", maxHeight: "18px" }}
+          >
+            <Box
+              style={{
+                fontWeight: notif.read ? 600 : 700,
+                fontSize: "13px",
+                lineHeight: "18px",
+                color: "var(--color-fg-default)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {jobOrModelTitle}
+            </Box>
+
+            <Box
+              display="flex"
+              alignItems="center"
+              gap="4px"
+              flexShrink={0}
+              style={{ height: "18px", minHeight: "18px", maxHeight: "18px" }}
+            >
+              <span
+                className="notif-row-time"
+                style={{
+                  fontSize: "11.5px",
+                  lineHeight: "18px",
+                  color: notif.read ? "var(--color-fg-muted)" : "var(--color-accent-fg)",
+                  fontWeight: notif.read ? 400 : 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {relativeTime}
+              </span>
+              <div className="notif-hover-actions">{renderTriageButtons()}</div>
+            </Box>
+          </Box>
+
+          {/* Line 2: Status & Quick Metric */}
+          <Box
+            mt="2px"
+            display="flex"
+            alignItems="center"
+            gap="6px"
+            style={{
+              height: "16px",
+              minHeight: "16px",
+              maxHeight: "16px",
+              fontSize: "12px",
+              lineHeight: "16px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            <span
+              style={{
+                color:
+                  cardStatus === "completed"
+                    ? "var(--color-success-fg)"
+                    : cardStatus === "failed"
+                      ? "var(--color-danger-fg)"
+                      : cardStatus === "security"
+                        ? "var(--color-danger-fg)"
+                        : cardStatus === "credit"
+                          ? "var(--color-attention-fg)"
+                          : "var(--color-accent-fg)",
+              }}
+            >
+              {statusHeadline}
+            </span>
+            {meta.duration && (
+              <span style={{ color: "var(--color-fg-muted)", fontSize: "11px", fontWeight: 400 }}>
+                · {meta.duration}s
+              </span>
+            )}
+            {meta.profile && (
+              <span style={{ color: "var(--color-fg-muted)", fontSize: "11px", fontWeight: 400 }}>
+                · {meta.profile}
+              </span>
+            )}
+          </Box>
+
+          {/* Line 3: Snippet Preview */}
+          <Box
+            mt="2px"
+            style={{
+              height: density === "comfortable" ? undefined : "15px",
+              minHeight: density === "comfortable" ? undefined : "15px",
+              maxHeight: density === "comfortable" ? undefined : "15px",
+              fontSize: "11.5px",
+              lineHeight: "15px",
+              color: isSimFailed ? "var(--color-danger-fg)" : "var(--color-fg-muted)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {snippet}
+          </Box>
+        </Box>
+      </NotificationWrapper>
+    );
+  }
+
   return (
     <NotificationWrapper
+      key={notif.id}
       $unread={!notif.read}
       $selected={selected}
+      $density="comfortable"
       data-notification-id={String(notif.id)}
       data-unread={!notif.read ? "true" : "false"}
       onClick={handleCardClick}
@@ -165,45 +376,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
               <Text style={{ fontSize: "12px", lineHeight: "16px" }} color="var(--color-fg-muted)">
                 {formatRelativeTime(notif.created_at || new Date().toISOString())}
               </Text>
-              {onToggleStar && !notif.isOutboxJob && (
-                <QuickActionIconButton
-                  type="button"
-                  $active={Boolean(notif.starred)}
-                  title={notif.starred ? "Remove from Saved (S)" : "Save for later (S)"}
-                  aria-label={notif.starred ? "Remove from Saved" : "Save for later"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleStar(notif);
-                  }}
-                >
-                  {notif.starred ? <StarFillIcon size={14} /> : <StarIcon size={14} />}
-                </QuickActionIconButton>
-              )}
-              {onToggleArchive && !notif.isOutboxJob && (
-                <QuickActionIconButton
-                  type="button"
-                  $active={Boolean(notif.archived)}
-                  title={notif.archived ? "Move back to Inbox (E)" : "Archive / Mark Done (E)"}
-                  aria-label={notif.archived ? "Move back to Inbox" : "Archive notification"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleArchive(notif);
-                  }}
-                >
-                  <ArchiveIcon size={14} />
-                </QuickActionIconButton>
-              )}
-              {!notif.read && (
-                <UnreadDotButton
-                  type="button"
-                  title="Mark as read"
-                  aria-label="Mark notification as read"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMarkRead?.(notif.id);
-                  }}
-                />
-              )}
+              {renderTriageButtons()}
             </Box>
           </Box>
 

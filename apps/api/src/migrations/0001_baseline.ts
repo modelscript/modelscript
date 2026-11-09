@@ -918,6 +918,35 @@ export const baselineMigration: Migration = {
         PRIMARY KEY (eco_id, user_id)
       );
 
+      -- ── Space Problem Reports & Engineering Issues (ECR) ──────────────────────
+      CREATE TABLE IF NOT EXISTS space_issues (
+        id                   TEXT PRIMARY KEY,
+        space_id             TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+        issue_number         INTEGER NOT NULL,
+        title                TEXT NOT NULL,
+        description          TEXT NOT NULL DEFAULT '',
+        status               TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'closed')),
+        severity             TEXT NOT NULL DEFAULT 'standard' CHECK(severity IN ('minor', 'standard', 'major', 'safety_critical')),
+        author_id            INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        impacted_models_json TEXT NOT NULL DEFAULT '[]',
+        labels_json          TEXT NOT NULL DEFAULT '[]',
+        linked_pr_number     INTEGER,
+        closed_at            TEXT,
+        created_at           TEXT DEFAULT (datetime('now')),
+        updated_at           TEXT DEFAULT (datetime('now')),
+        CONSTRAINT uq_space_issue_num UNIQUE(space_id, issue_number)
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_issues_space ON space_issues(space_id, status);
+
+      CREATE TABLE IF NOT EXISTS space_issue_comments (
+        id         TEXT PRIMARY KEY,
+        issue_id   TEXT NOT NULL REFERENCES space_issues(id) ON DELETE CASCADE,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content    TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_space_issue_comments_issue ON space_issue_comments(issue_id);
+
       CREATE TABLE IF NOT EXISTS package_collaborators (
         library_name TEXT NOT NULL,
         user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

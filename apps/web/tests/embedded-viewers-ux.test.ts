@@ -1354,4 +1354,131 @@ end DoublePendulum3D;
       );
     });
   });
+
+  describe("14. Individual Artifact Viewers UI/UX Polish, Fullscreen Responsiveness & Readiness Probes", () => {
+    const viewersDir = path.resolve(import.meta.dirname, "../src/components/artifacts");
+
+    it("verifies ZeroCopyWebGPUViewer supports isFullScreen and unclamps height", () => {
+      const src = fs.readFileSync(path.join(viewersDir, "ZeroCopyWebGPUViewer.tsx"), "utf8");
+      assert.ok(src.includes("isFullScreen?: boolean"), "ZeroCopyWebGPUViewer must accept isFullScreen prop");
+      assert.ok(
+        src.includes("isFullScreen") && src.includes('"100%"'),
+        "ZeroCopyWebGPUViewer must unclamp 400px height when isFullScreen is true",
+      );
+      assert.ok(
+        src.includes("__ARTIFACT_READY"),
+        "ZeroCopyWebGPUViewer must signal __ARTIFACT_READY on data initialization",
+      );
+    });
+
+    it("verifies GCodeViewer playback rewind, cycle speeds, and readiness signaling", () => {
+      const src = fs.readFileSync(path.join(viewersDir, "GCodeViewer.tsx"), "utf8");
+      assert.ok(
+        src.includes("progressRef.current = 0") && src.includes("setSliderValue(0)"),
+        "GCodeViewer must reset playback and slider when user replays after reaching completion",
+      );
+      assert.ok(
+        src.includes("0.5") && src.includes("2") && src.includes("5"),
+        "GCodeViewer must provide multi-tier playback speed multipliers (0.5x, 1x, 2x, 5x)",
+      );
+      assert.ok(src.includes("__ARTIFACT_READY"), "GCodeViewer must signal __ARTIFACT_READY");
+    });
+
+    it("verifies CfdConfigViewer and FeaDeckViewer toolbar padding cleanliness", () => {
+      const cfdSrc = fs.readFileSync(path.join(viewersDir, "CfdConfigViewer.tsx"), "utf8");
+      const feaSrc = fs.readFileSync(path.join(viewersDir, "FeaDeckViewer.tsx"), "utf8");
+
+      assert.ok(!cfdSrc.includes("0 114px 0 12px"), "CfdConfigViewer toolbar must not have squishing 114px padding");
+      assert.ok(!feaSrc.includes("0 114px 0 12px"), "FeaDeckViewer toolbar must not have squishing 114px padding");
+      assert.ok(cfdSrc.includes("__ARTIFACT_READY"), "CfdConfigViewer must signal __ARTIFACT_READY");
+      assert.ok(feaSrc.includes("__ARTIFACT_READY"), "FeaDeckViewer must signal __ARTIFACT_READY");
+    });
+
+    it("verifies AasPackageViewer CAD tab fallback and effective CAD URL resolution", () => {
+      const src = fs.readFileSync(path.join(viewersDir, "AasPackageViewer.tsx"), "utf8");
+      assert.ok(
+        src.includes("effectiveCadUrl") && src.includes("cadUrl") && src.includes("stepUrl"),
+        "AasPackageViewer must resolve cadUrl, stepUrl, or cad viewConfig properties",
+      );
+      assert.ok(
+        src.includes("No 3D CAD or STEP model asset attached to this AAS package"),
+        "AasPackageViewer must provide an informative fallback empty card instead of blank void",
+      );
+      assert.ok(src.includes("__ARTIFACT_READY"), "AasPackageViewer must signal __ARTIFACT_READY");
+    });
+
+    it("verifies UrdfViewer step seeking synchronizes playbackTimeRef.current", () => {
+      const src = fs.readFileSync(path.join(viewersDir, "UrdfViewer.tsx"), "utf8");
+      assert.ok(
+        src.includes("playbackTimeRef.current = targetT"),
+        "UrdfViewer must update playbackTimeRef.current on step click so animation loop does not overwrite seek",
+      );
+      assert.ok(src.includes("__ARTIFACT_READY"), "UrdfViewer must signal __ARTIFACT_READY");
+    });
+
+    it("verifies PsoutViewer displays clean empty state card on channel-free data", () => {
+      const src = fs.readFileSync(path.join(viewersDir, "PsoutViewer.tsx"), "utf8");
+      assert.ok(
+        src.includes("No waveform channels or time series points found in PSOUT data"),
+        "PsoutViewer must render empty state card when waveformData is empty in plot mode",
+      );
+      assert.ok(src.includes("__ARTIFACT_READY"), "PsoutViewer must signal __ARTIFACT_READY");
+    });
+
+    it("verifies SimpackViewer and GensysViewer 3D tab flex containers and readiness signaling", () => {
+      const simpackSrc = fs.readFileSync(path.join(viewersDir, "SimpackViewer.tsx"), "utf8");
+      const gensysSrc = fs.readFileSync(path.join(viewersDir, "GensysViewer.tsx"), "utf8");
+
+      assert.ok(
+        simpackSrc.includes('height={isFullScreen ? "100%" : "320px"}') &&
+          simpackSrc.includes("isFullScreen={isFullScreen}"),
+        "SimpackViewer must adapt 3D viewport height and pass isFullScreen to MultibodyViewport3D",
+      );
+      assert.ok(
+        gensysSrc.includes('height={isFullScreen ? "100%" : "320px"}') &&
+          gensysSrc.includes("isFullScreen={isFullScreen}"),
+        "GensysViewer must adapt 3D viewport height and pass isFullScreen to MultibodyViewport3D",
+      );
+      assert.ok(simpackSrc.includes("__ARTIFACT_READY"), "SimpackViewer must signal __ARTIFACT_READY");
+      assert.ok(gensysSrc.includes("__ARTIFACT_READY"), "GensysViewer must signal __ARTIFACT_READY");
+    });
+
+    it("verifies universal deterministic readiness signaling (__ARTIFACT_READY) across all individual artifact viewers", () => {
+      const viewers = [
+        "Easy5Viewer.tsx",
+        "GtSuiteViewer.tsx",
+        "RocetsViewer.tsx",
+        "PipelineLpsViewer.tsx",
+        "OlgaFlowViewer.tsx",
+        "PsseSldViewer.tsx",
+        "SimaViewer.tsx",
+        "LinkPreviewViewer.tsx",
+        "PolyglotArtifactViewer.tsx",
+        "ModelicaDiagramViewer.tsx",
+        "ModelicaCodeViewer.tsx",
+        "PscadViewer.tsx",
+        "SspViewer.tsx",
+        "ReqifViewer.tsx",
+        "Owl2Viewer.tsx",
+        "CadDiffViewer.tsx",
+        "SimulationPlotViewer.tsx",
+        "CsvViewer.tsx",
+        "FmuViewer.tsx",
+        "MermaidViewer.tsx",
+        "SysmlViewer.tsx",
+        "UsdViewer.tsx",
+        "TeiViewer.tsx",
+      ];
+
+      for (const viewerFile of viewers) {
+        const fullPath = path.join(viewersDir, viewerFile);
+        assert.ok(fs.existsSync(fullPath), `Viewer file ${viewerFile} must exist`);
+        const src = fs.readFileSync(fullPath, "utf8");
+        assert.ok(
+          src.includes("__ARTIFACT_READY"),
+          `Viewer ${viewerFile} must signal __ARTIFACT_READY for headless thumbnail captures and test probes`,
+        );
+      }
+    });
+  });
 });

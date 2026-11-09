@@ -18,6 +18,12 @@ export interface GitCommitItem {
   message: string;
 }
 
+export interface GitBranchItem {
+  name: string;
+  default: boolean;
+  commit?: { id: string } | undefined;
+}
+
 export interface GitPipelineItem {
   id: number;
   iid: number;
@@ -92,7 +98,7 @@ export interface CreateGitMergeRequestInput {
 
 export interface IGitProvider {
   getProject(idOrUrl: string): Promise<unknown>;
-  getRepositoryTree(idOrUrl: string, ref: string, path: string): Promise<GitTreeItem[]>;
+  getRepositoryTree(idOrUrl: string, ref: string, path: string, recursive?: boolean): Promise<GitTreeItem[]>;
   getRepositoryFileRaw(idOrUrl: string, filePath: string, ref: string): Promise<string>;
   getCommits(idOrUrl: string, refName: string): Promise<GitCommitItem[]>;
   getPipelines(idOrUrl: string, refName: string): Promise<GitPipelineItem[]>;
@@ -101,4 +107,5 @@ export interface IGitProvider {
   createIssue(idOrUrl: string, body: unknown): Promise<GitIssueItem>;
   getMergeRequests(idOrUrl: string): Promise<GitMergeRequestItem[]>;
   createMergeRequest?(idOrUrl: string, body: CreateGitMergeRequestInput): Promise<GitMergeRequestItem>;
+  getBranches?(idOrUrl: string): Promise<GitBranchItem[]>;
 }

@@ -548,6 +548,12 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const parsedClient = useMemo(() => (rawText ? parsePscadClient(rawText) : undefined), [rawText]);
 
   const clientComps: PscadComponentLike[] = useMemo(() => {

@@ -480,7 +480,7 @@ export function billingRouter(database: LibraryDatabase): Router {
 
   // ── POST /api/v1/billing/webhook ──
   // Handles Stripe webhook events: instant chargeback/dispute quarantine & settlement
-  router.post("/billing/webhook", express.json(), (req, res) => {
+  router.post("/billing/webhook", (req, res) => {
     try {
       const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
       const isProd = process.env["NODE_ENV"] === "production";
@@ -514,8 +514,12 @@ export function billingRouter(database: LibraryDatabase): Router {
           }
         }
         const rawPayload =
-          (req as express.Request & { rawBody?: string | Buffer | undefined }).rawBody ?? JSON.stringify(req.body);
-        const payloadStr = Buffer.isBuffer(rawPayload) ? rawPayload.toString("utf-8") : String(rawPayload);
+          (req as express.Request & { rawBody?: string | Buffer | undefined }).rawBody ??
+          (isProd ? undefined : JSON.stringify(req.body));
+        if (isProd && !rawPayload) {
+          return res.status(400).json({ error: "Missing raw request body for cryptographic webhook verification" });
+        }
+        const payloadStr = Buffer.isBuffer(rawPayload) ? rawPayload.toString("utf-8") : String(rawPayload || "");
         const expectedDated = timestamp
           ? crypto.createHmac("sha256", webhookSecret).update(`${timestamp}.${payloadStr}`).digest("hex")
           : "";

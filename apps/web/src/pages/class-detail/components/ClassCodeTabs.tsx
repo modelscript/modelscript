@@ -372,13 +372,13 @@ export const ClassEquationsTab: React.FC<ClassEquationsTabProps> = ({ equations,
             <Box display="flex" alignItems="center" gap="6px">
               <Button
                 as={Link}
-                to={`/playground?source=${encodeURIComponent(playgroundSnippet)}&title=${encodeURIComponent(className || "Equations")}`}
+                to={`/morsel?source=${encodeURIComponent(playgroundSnippet)}&title=${encodeURIComponent(className || "Equations")}`}
                 size="small"
                 variant="invisible"
                 leadingVisual={PlayIcon}
                 style={{ textDecoration: "none" }}
               >
-                Open in Playground
+                Open in Morsel
               </Button>
               <Button
                 size="small"
@@ -442,13 +442,13 @@ export const ClassSourceTab: React.FC<ClassSourceTabProps> = ({ sourceCode, sour
             <Box display="flex" alignItems="center" gap="6px">
               <Button
                 as={Link}
-                to={`/playground?source=${encodeURIComponent(sourceCode)}&title=${encodeURIComponent(className)}`}
+                to={`/morsel?source=${encodeURIComponent(sourceCode)}&title=${encodeURIComponent(className)}`}
                 size="small"
                 variant="invisible"
                 leadingVisual={PlayIcon}
                 style={{ textDecoration: "none" }}
               >
-                Open in Playground
+                Open in Morsel
               </Button>
               <Button
                 size="small"

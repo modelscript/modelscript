@@ -402,7 +402,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                   external: false,
                 },
                 {
-                  title: "ModelScript Package Registry",
+                  title: `${brandName} Package Registry`,
                   desc: isModelScriptEnabled
                     ? "Browse reusable .msx and .mo Modelica libraries, SysML v2 packages, and FMI 2.0/3.0 FMUs."
                     : "Browse reusable .mo Modelica libraries, SysML v2 packages, and FMI 2.0/3.0 FMUs.",

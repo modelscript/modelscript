@@ -193,6 +193,12 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!isLoading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [isLoading]);
+
   const rawDeck = viewConfig.code || fetchedCode || "";
   const modelName = viewConfig.modelName || viewConfig.title || "SIMPACK Multibody Assembly";
 
@@ -374,19 +380,17 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
             </Box>
           )
         ) : tabIndex === 1 ? (
-          <div>
-            <Box mb={2} display="flex" justifyContent="space-between" alignItems="center">
+          <Box display="flex" flexDirection="column" flex={1} height="100%">
+            <Box mb={2} display="flex" justifyContent="space-between" alignItems="center" flexShrink={0}>
               <Text style={{ fontSize: "12px", fontWeight: "bold" }}>3D Multibody Mechanism Viewport</Text>
               <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
                 {nodes3D.length} bodies/markers • {links3D.length} joints
               </Text>
             </Box>
-            <MultibodyViewport3D
-              nodes={nodes3D}
-              links={links3D}
-              height={isFullScreen ? "calc(100vh - 140px)" : "320px"}
-            />
-          </div>
+            <Box flex={1} minHeight={0} height={isFullScreen ? "100%" : "320px"}>
+              <MultibodyViewport3D nodes={nodes3D} links={links3D} isFullScreen={isFullScreen} height="100%" />
+            </Box>
+          </Box>
         ) : (
           <Box
             py={2}

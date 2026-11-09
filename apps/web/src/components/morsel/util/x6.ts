@@ -11,6 +11,39 @@ import {
 export { adaptColorForDarkMode, adaptSvgColors, adaptX6Markup, invertColorHelmlab, invertSvgColors };
 
 /**
+ * Pads the viewBox of an SVG icon by 2.5% if it has a non-padded coordinate system
+ * (e.g. standard Modelica extents like [-100, -100, 100, 100]), ensuring that outer
+ * boundary strokes and rounded rectangle corner arcs (like Modelica.Icons.Package rx=25)
+ * are never clipped by the SVG viewport boundary.
+ */
+export function padIconViewBox(svg: string): string {
+  if (!svg || !svg.includes("<svg") || svg.includes('data-viewbox-padded="true"')) return svg;
+  const vbMatch = svg.match(/viewBox\s*=\s*(["'])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\1/);
+  if (!vbMatch) return svg;
+
+  const quote = vbMatch[1];
+  const vx = parseFloat(vbMatch[2]!);
+  const vy = parseFloat(vbMatch[3]!);
+  const vw = parseFloat(vbMatch[4]!);
+  const vh = parseFloat(vbMatch[5]!);
+
+  if (isNaN(vx) || isNaN(vy) || isNaN(vw) || isNaN(vh) || vw <= 0 || vh <= 0) return svg;
+  if (vx >= 0 && vy >= 0) return svg;
+
+  const padX = vw * 0.025;
+  const padY = vh * 0.025;
+  const newVx = +(vx - padX).toFixed(2);
+  const newVy = +(vy - padY).toFixed(2);
+  const newVw = +(vw + padX * 2).toFixed(2);
+  const newVh = +(vh + padY * 2).toFixed(2);
+
+  return svg.replace(
+    vbMatch[0],
+    `data-viewbox-padded="true" viewBox=${quote}${newVx} ${newVy} ${newVw} ${newVh}${quote}`,
+  );
+}
+
+/**
  * Normalizes an SVG string for rendering inside an icon container (e.g. ComponentList, Tree):
  * - Uses standard DOMParser / XMLSerializer when available (in all browsers)
  * - Directly sets width="100%", height="100%", and overflow/sizing styles on the SVGSVGElement DOM node
@@ -18,6 +51,7 @@ export { adaptColorForDarkMode, adaptSvgColors, adaptX6Markup, invertColorHelmla
  */
 export function normalizeSvgForIcon(svgStr: string): string {
   if (!svgStr || !svgStr.includes("<svg")) return svgStr;
+  svgStr = padIconViewBox(svgStr);
 
   let DOMParserCtor: typeof DOMParser | undefined = typeof DOMParser !== "undefined" ? DOMParser : undefined;
   let XMLSerializerCtor: typeof XMLSerializer | undefined =

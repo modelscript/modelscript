@@ -191,4 +191,136 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
   }
 };
 
+export function getActionVerbForType(type: string): string {
+  switch (type) {
+    case "like":
+      return "Liked your post";
+    case "mention":
+      return "Mentioned you in a comment";
+    case "reply":
+      return "Replied to your post";
+    case "repost":
+      return "Reposted your post";
+    case "quote":
+      return "Quoted your post";
+    case "follow":
+      return "Started following you";
+    case "follow_request":
+      return "Requested to follow you";
+    case "follow_accepted":
+      return "Accepted your follow request";
+    case "bookmark":
+      return "Saved post to bookmarks";
+    case "simulation":
+    case "simulation_completed":
+    case "cae_completed":
+      return "Simulation Completed";
+    case "simulation_failed":
+    case "cae_failed":
+      return "Simulation Failed";
+    case "package":
+    case "package_published":
+      return "Package Published";
+    case "package_yanked":
+      return "Package Yanked";
+    case "security_alert":
+      return "Security Advisory";
+    case "credit_warning":
+      return "Compute Quota Alert";
+    default:
+      return "Sent a notification";
+  }
+}
+
+export function getMicroBadgeConfig(type: string): { icon: React.ReactNode; bg: string; color: string } | null {
+  switch (type) {
+    case "like":
+      return {
+        icon: <HeartFillIcon size={9} />,
+        bg: "var(--color-danger-emphasis, #da3633)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "mention":
+      return {
+        icon: <MentionIcon size={9} />,
+        bg: "var(--color-done-emphasis, #8957e5)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "reply":
+      return {
+        icon: <ReplyIcon size={9} />,
+        bg: "var(--color-accent-emphasis, #0969da)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "repost":
+      return {
+        icon: <SyncIcon size={9} />,
+        bg: "var(--color-success-emphasis, #238636)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "quote":
+      return {
+        icon: <QuoteIcon size={9} />,
+        bg: "var(--color-accent-emphasis, #0969da)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "follow":
+    case "follow_request":
+    case "follow_accepted":
+      return {
+        icon: <PersonIcon size={9} />,
+        bg: "var(--color-accent-emphasis, #0969da)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "bookmark":
+      return {
+        icon: <BookmarkFillIcon size={9} />,
+        bg: "var(--color-attention-emphasis, #d29922)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "simulation":
+    case "simulation_completed":
+    case "cae_completed":
+      return {
+        icon: <RocketIcon size={9} />,
+        bg: "var(--color-success-emphasis, #238636)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "simulation_failed":
+    case "cae_failed":
+      return {
+        icon: <AlertIcon size={9} />,
+        bg: "var(--color-danger-emphasis, #da3633)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "package":
+    case "package_published":
+      return {
+        icon: <PackageIcon size={9} />,
+        bg: "var(--color-accent-emphasis, #0969da)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "package_yanked":
+      return {
+        icon: <PackageIcon size={9} />,
+        bg: "var(--color-danger-emphasis, #da3633)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "security_alert":
+      return {
+        icon: <ShieldIcon size={9} />,
+        bg: "var(--color-danger-emphasis, #da3633)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    case "credit_warning":
+      return {
+        icon: <CreditCardIcon size={9} />,
+        bg: "var(--color-attention-emphasis, #d29922)",
+        color: "var(--color-fg-on-emphasis, #ffffff)",
+      };
+    default:
+      return null;
+  }
+}
+
 export { groupNotifications } from "./types";

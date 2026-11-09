@@ -91,7 +91,7 @@ Cross-domain verification is orchestrated by a $\text{CDCL}(\mathcal{T})$ Nelson
 
 ### 5. Unified Multi-Language LSP & Incrementally Memoized Salsa Engine
 
-A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces through an incremental Salsa query engine (`fetch → deep_verify → execute → backdate`). Engineers get cross-language go-to-definition, hover equations, unit checking, schematic rendering, and suspect-link diagnostics in VS Code, the browser IDE, and the native Tauri desktop studio.
+A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces through an incremental Salsa query engine (`fetch → deep_verify → execute → backdate`). Engineers get cross-language go-to-definition, hover equations, unit checking, schematic rendering, and suspect-link diagnostics in VS Code, Studio, and the native Tauri desktop app.
 
 ### 6. AI-Native Closed-Loop Engineering (`@modelscript/mcp`)
 
@@ -101,7 +101,7 @@ Large language models struggle with physical engineering when left to guess diff
 
 ## Ready to Get Started?
 
-- **[Installation](./installation.md)** — Set up the zero-install Ansatz Morsel, VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
+- **[Installation](./installation.md)** — Explore zero-install Morsel and Studio, or set up the VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
 - **[Getting Started Tutorial](./getting-started.md)** — Build, verify, bind to 3D CAD, simulate, and export your first end-to-end computable digital thread.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Connect Claude Code, Cursor, or custom LLM orchestrators to the deterministic compiler and solver loop.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with polyglot linting, SARIF formal verification reports, visual schematic diffs, and FDA/ISO compliance dossiers.
@@ -119,12 +119,12 @@ ModelScript runs from the same WebAssembly compiler core across browsers, deskto
 
 ## For Users & Engineers
 
-### 1. Zero-Install Ansatz Morsel & Web IDE
+### 1. Zero-Install Morsel & Studio
 
 To explore ModelScript without installing anything locally:
 
-- **[Ansatz Morsel (`/morsel`)](https://modelscript.org/morsel)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
-- **Studio (`https://ansatz.social/studio`)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
+- **[Morsel (`/morsel`)](https://ansatz.social/morsel)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
+- **[Studio (`/studio`)](https://ansatz.social/studio)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
 
 ### 2. Command-Line Interface (`msx`)
 
@@ -208,7 +208,7 @@ docker pull ghcr.io/modelscript/web:latest
 docker pull ghcr.io/modelscript/api-ee:latest
 docker pull ghcr.io/modelscript/appliance:latest
 
-# Launch backend simulation cluster and web IDE
+# Launch backend simulation cluster and Studio
 docker compose up -d
 ```
 
@@ -240,7 +240,7 @@ npm run build         # Build all monorepo packages and applications
 ### 3. Launch Local Development Servers
 
 ```bash
-npm run dev           # Start API backend, LSP workers, and Web IDE
+npm run dev           # Start API backend, LSP workers, and Studio
 ```
 
 ---
@@ -962,7 +962,7 @@ end RLC;"
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
 | `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Morsel.                                                             |
-| `artifact-id` | `undefined`    | Numerical ID of a published artifact on the ModelScript Hub.                                                                                   |
+| `artifact-id` | `undefined`    | Numerical ID of a published artifact on Ansatz.                                                                                                |
 
 ---
 
@@ -1483,7 +1483,7 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
 
 - Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
-- Includes the full 68-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Web IDE, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
+- Includes the full 68-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Studio workbench, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
 - Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/stats`, `/api/v1/admin/ee/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
 
 ```bash
@@ -1510,7 +1510,7 @@ For regulated utilities, civil aerospace manufacturers, medical device companies
 
 #### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for Isolated Enclaves / NERC CIP / Cleanrooms)
 
-Bundles the API server, `@modelscript/ee`, Web SPA, Unified Documentation Portal (`/docs`), and Web IDE into a single hardened container on port `8080` with zero outbound network dependencies:
+Bundles the API server, `@modelscript/ee`, Web SPA (Morsel & Studio), Unified Documentation Portal (`/docs`), and Studio into a single hardened container on port `8080` with zero outbound network dependencies:
 
 ```bash
 # 1. On an internet-connected bastion, pull and export the appliance image for offline transfer
@@ -1584,7 +1584,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/morsel`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/morsel`) on `ansatz.social`, alongside Studio (`/studio`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -2208,7 +2208,7 @@ While interactive 1D DAE and multibody simulations execute directly in the brows
 
 ```mermaid
 flowchart LR
-    A["Web Studio / Morsel / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
+    A["Studio / Morsel / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
     B -->|"Deterministic .zip Bundle"| C["Slurm Controller (slurmctld / sbatch)"]
     C -->|"MPI / CUDA Allocation"| D["Compute Nodes (CPU / A100 / H100)"]
     D -->|"Zero-Copy RingBuffer Logs"| B
@@ -2603,7 +2603,7 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                   |
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)                               |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                                              |
-| `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Ansatz Morsel and visual modeling environment                                                                                    |
+| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                    |
 | `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL  |
 
 ================================================================================
@@ -2630,7 +2630,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 │   • ansatz.social, package registry, ActivityPub, Cloud HPC, billing   │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Layer 2: Developer Tooling & Surfaces (apps/cli, desktop, ide, docs)   │
-│   • msx CLI, VS Code Web extension, Tauri studio, VitePress portal     │
+│   • msx CLI, VS Code Web extension, Tauri desktop app, VitePress portal │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Layer 1: Core Engine & Languages (languages/*, packages/{dsl,runtime…})│
 │   • WASM GLR parsers, CST arena, DAEBuilder, solvers, TGG, CAD, FMI    │
@@ -2857,7 +2857,7 @@ for (const decl of comp) {
 
 ## Incremental Re-Parsing
 
-When editing code in the Language Server Protocol (LSP) or Web IDE, the GLR parser performs incremental tree re-use:
+When editing code in the Language Server Protocol (LSP) or Studio, the GLR parser performs incremental tree re-use:
 
 - Text edits pass line and character delta offsets.
 - Unaffected subtrees in linear memory remain unchanged and are spliced into the new parse tree.
@@ -3812,7 +3812,7 @@ Implemented in `TaylorModel` (`packages/runtime/src/analysis/wasm_taylor_model.t
   - DAE blocks partitioned and torn by [`BltEngine`](./blt.md) and [`TornBlock`](./tearing.md).
   - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./surrogates-linear-algebra.md).
 - **Downstream Consumers**:
-  - Powers `msx simulate`, `msx optimize`, and the Web IDE charting canvas.
+  - Powers `msx simulate`, `msx optimize`, and the Studio charting canvas.
   - Feeds state trajectories and validated flowpipes into [`Signal Temporal Logic (STL) Monitor & Theory Coordinator`](./theory-coordinator.md) and formal verification oracles.
 
 ================================================================================
@@ -5250,7 +5250,7 @@ flowchart TD
     INPUT["Modelica Connects / SysML v2 Item Flows"] --> PORT_OPT["Phase 1: Port Constraint Optimization<br/>(Face Assignment & Cross-Free Ordering)"]
     PORT_OPT --> TSM["Phase 2: Topology-Shape-Metrics (TSM)<br/>1. Planarization & Crossing Minimization<br/>2. Orthogonal Shape via Network Flow<br/>3. Metric Coordinate Compaction"]
     TSM --> ROUTER["Phase 3: Orthogonal Channel Routing<br/>1. Normal Outward Port Stubs<br/>2. Obstacle-Avoiding Bend-Penalized A*<br/>3. Staggered Parallel Dogleg Offsets"]
-    ROUTER --> RENDER["SVG / Canvas / Web IDE Viewport"]
+    ROUTER --> RENDER["SVG / Canvas / Studio Viewport"]
 ```
 
 ### 1. Port Constraint & Continuous Alignment Solver
@@ -6011,6 +6011,7 @@ Options:
   - `--engine <string>`: simulation backend: wasm or js (default: "wasm")
   - `--timing <boolean>`: output timing JSON to stderr (default: false)
   - `--update-hypergraph <boolean>`: synchronize verification verdicts directly into digital thread hypergraph (default: false)
+  - `--coordinator <boolean>`: execute 4-language SemanticTheoryCoordinator & DigitalThreadHypergraph verification across SysML v2, Modelica, OpenSCAD/URDF, and FEA/CFD/STEP (default: false)
 
 ```bash
 # Verify a controller and emit a GitHub Code Scanning SARIF report
@@ -7513,7 +7514,7 @@ Every language plugin implements the `LanguageDefinition` interface (`packages/d
 1. **Grammar DSL (`defineGrammar`)**: Compiled Ahead-of-Time into a compact `.wasm` binary parser table.
 2. **Symbol Indexer (`SymbolIndexer`)**: Walks the linear-memory CST and populates `SymbolEntry` declarations into the global `WorkspaceIndex`.
 3. **Salsa Queries (`queries`)**: Memoized semantic analyses (type resolution, unit inference, structural validation).
-4. **Compiler Lints (`lints`)**: Real-time diagnostics surfaced identically in the CLI (`msx lint`), LSP server, and Web IDE.
+4. **Compiler Lints (`lints`)**: Real-time diagnostics surfaced identically in the CLI (`msx lint`), LSP server, and Studio.
 5. **TGG Rules (`tggRules`)**: Declarative bidirectional synchronization rules linking AST nodes across languages (e.g., `SysMLv2 PartUsage` $\leftrightarrow$ `Modelica Component` $\leftrightarrow$ `STEP Product` $\leftrightarrow$ `ModelScript Struct`).
 
 ================================================================================
@@ -9459,7 +9460,7 @@ flowchart TD
 
     subgraph Presentation["User Experience & Toolchain"]
         PID["Vector P&ID Flow Diagram (AntV X6 & SVG)"]
-        IDE["Visual Custom Editor (VS Code / Web IDE)"]
+        IDE["Visual Custom Editor (VS Code / Studio)"]
         CLI["CLI Toolchain (msx rocets, msx lint)"]
         LSP["Language Server Protocol Services"]
     end
@@ -9598,7 +9599,7 @@ msx rocets diagram engine.roc --out=pid.svg
 
 ---
 
-## VS Code & Web IDE Custom Editor
+## VS Code & Studio Custom Editor
 
 The `@modelscript/ide-client` package provides a dedicated dual-mode custom editor (`modelscript.rocetsEditor`):
 
@@ -10755,7 +10756,7 @@ const { cfg, dat } = writeComtrade({
 
 ## 7. PSCAD V5+ Binary Waveform Container (`.psout`)
 
-PSCAD V5+ replaces legacy ASCII `.out` files with `.psout`, a high-performance slotted-page binary container format. ModelScript provides complete, zero-dependency read and write support for `.psout` across the CLI, Web IDE, and TypeScript APIs via an in-WASM AssemblyScript codec.
+PSCAD V5+ replaces legacy ASCII `.out` files with `.psout`, a high-performance slotted-page binary container format. ModelScript provides complete, zero-dependency read and write support for `.psout` across the CLI, Studio, and TypeScript APIs via an in-WASM AssemblyScript codec.
 
 ### Slotted-Page Binary Architecture
 
@@ -10827,9 +10828,9 @@ msx pscad psout results.psout --out=telemetry.csv
 msx pscad psout results.psout --format=comtrade
 ```
 
-### Web IDE Waveform Studio (`modelscript.psoutViewer`)
+### Studio & VS Code Waveform Viewer (`modelscript.psoutViewer`)
 
-When opening any `*.psout` file in the ModelScript Web IDE, the custom editor provides a dark-mode waveform analysis studio:
+When opening any `*.psout` file in Studio or VS Code, the custom editor provides a dark-mode waveform analysis viewport:
 
 1. **Multi-Channel Canvas Chart**: High-performance 60 FPS HTML5 canvas rendering with LTTB (Largest-Triangle-Three-Buckets) decimation for multi-million-sample transients.
 2. **Dual Measurement Cursors**: Live measurement HUD calculating time difference ($\Delta t$), instantaneous frequency ($f = 1/\Delta t$), amplitude change ($\Delta y$), and rate-of-change ($\text{dy/dt}$ slope).
@@ -12171,7 +12172,7 @@ flowchart TD
     subgraph Presentation["User Experience & Toolchain"]
         CLI["CLI Toolchain (msx sima lint | verify | offset | to-modelica | to-ssp | to-sysml2)"]
         DIAG["Vector Diagram Builder (Catenary Profile & Polar Spread SVG)"]
-        IDE["VS Code / Web IDE Custom Editor (SimaEditorProvider)"]
+        IDE["VS Code / Studio Custom Editor (SimaEditorProvider)"]
         LSP["Language Server Protocol Services"]
     end
 
@@ -12713,7 +12714,7 @@ On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts rend
 - **Kinematic Tree View**: High-resolution vector schematic visualizing parent/child links and joint types with pan-and-zoom controls.
 - **3D Pose View**: Real-time WebGPU/Three.js multibody viewport with forward kinematics joint angle sliders ($q_i \in [q_{\text{min}}, q_{\text{max}}]$).
 - **Dynamics & Linter**: Pre-flight verification results (`M7501`–`M7508`) paired with an **RNEA Gravity Hold Torques** calculator reporting static equilibrium torques ($\tau_i \text{ [N}\cdot\text{m]}$).
-- **Polyglot Projections**: One-click translation to Modelica 3.x or SIMPACK JSON, with direct export to the Ansatz Morsel visual playground.
+- **Polyglot Projections**: One-click translation to Modelica 3.x or SIMPACK JSON, with direct export to the Ansatz Morsel visual simulator.
 
 ---
 
@@ -15892,7 +15893,7 @@ ModelScript ships **1046 diagnostic rules** across **68 languages**. This page i
 
 ## Running the linters
 
-Diagnostics appear as you type in VS Code and the web IDE through the language server. From the command line:
+Diagnostics appear as you type in VS Code and Studio through the language server. From the command line:
 
 ```bash
 # Languages handled by the unified linter (detected by file extension)
@@ -17774,7 +17775,7 @@ npx msx simulate DC_Motor motor.mo --stop-time 5.0 --format json > trajectory.js
 
 | Artifact                                              | Producer                                                                | Description                                                                                                                                                                                            |
 | :---------------------------------------------------- | :---------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ModelScript Notebook (`.monb`)**                    | VS Code / Web IDE (`modelscript.monbNotebook`)                          | JSON document format interleaving GitHub-Flavored Markdown + KaTeX cells with executable `.mo`, `.sysml`, and `.msx` cells and inline interactive Plotly/SVG simulation outputs.                       |
+| **ModelScript Notebook (`.monb`)**                    | VS Code / Studio (`modelscript.monbNotebook`)                           | JSON document format interleaving GitHub-Flavored Markdown + KaTeX cells with executable `.mo`, `.sysml`, and `.msx` cells and inline interactive Plotly/SVG simulation outputs.                       |
 | **Vector Diagrams (`.svg`)**                          | `msx render`, `msx pscad diagram`, `msx pr-diff --format visual-svg`    | Standalone, CSS-styled SVG schematics with ELK orthogonal port routing, Modelica `Icon`/`Diagram` coordinate graphics, SysML v2 BDD/IBD/State/Activity compartments, and dark/blueprint theme support. |
 | **Interactive Diff & Benchmark Dashboards (`.html`)** | `msx pr-diff --format visual-html`, `npm run test:msl -- --report-html` | Self-contained, dark-mode HTML reports with pan/zoom SVG diff overlays and interactive trajectory error charts.                                                                                        |
 
@@ -17785,7 +17786,7 @@ CANONICAL URL: https://modelscript.org/reference/mcp-and-ide
 
 # MCP Server & IDE Workbench Reference
 
-ModelScript provides first-class AI agent integration via the **Model Context Protocol (`@modelscript/mcp`)** alongside a comprehensive polyglot **VS Code Extension & Web IDE (`@modelscript/ide-client`, `@modelscript/lsp`)**. Both surfaces share the same zero-allocation WebAssembly GLR parsers, Salsa `QueryEngine`, and linear-memory `DAEBuilder`.
+ModelScript provides first-class AI agent integration via the **Model Context Protocol (`@modelscript/mcp`)** alongside a comprehensive polyglot **VS Code Extension & Studio Workbench (`@modelscript/ide-client`, `@modelscript/lsp`)**. Both surfaces share the same zero-allocation WebAssembly GLR parsers, Salsa `QueryEngine`, and linear-memory `DAEBuilder`.
 
 ---
 
@@ -17995,7 +17996,7 @@ The MCP server exposes live workspace state as URI-addressable resources (`packa
 
 ---
 
-## Part II: VS Code Extension & Web IDE Workbench
+## Part II: VS Code Extension & Studio Workbench
 
 The official ModelScript extension (`modelscript.modelscript`, source in `apps/ide/` and `packages/lsp/`) runs both in **VS Code Desktop** (Node.js extension host) and **VS Code for the Web / Studio (`https://ansatz.social/studio`)** (100% browser WebWorker host).
 
@@ -18704,3 +18705,61 @@ If you have questions regarding this policy, wish to request written permission 
 
 - **Email:** `contact@modelscript.org` or `omar@modelscript.org`
 - **Project Repository:** [github.com/modelscript/modelscript](https://github.com/modelscript/modelscript)
+
+---
+
+## 8. Third-Party Trademarks & Nominative Fair Use
+
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 66 engineering domains, modeling formats, and file standards.
+
+### Non-Affiliation & Disclaimers
+
+All third-party product names, software titles, logos, and registered trademarks referenced throughout ModelScript, the `msx` command-line interface, documentation, and `@modelscript/*` packages are the property of their respective trademark owners, including but not limited to:
+
+- **Simulink®** and **MATLAB®** are registered trademarks of The MathWorks, Inc.
+- **MSC Adams®** is a registered trademark of MSC Software Corporation / Hexagon AB.
+- **SIMPACK®** is a registered trademark of Dassault Systèmes SE.
+- **GT-SUITE®** and **GT-POWER®** are registered trademarks of Gamma Technologies LLC.
+- **Aspen Plus®** and **Aspen HYSYS®** are registered trademarks of Aspen Technology, Inc.
+- **OLGA®** and **ECLIPSE®** are registered trademarks of Schlumberger Technology Corporation / SLB.
+- **PSS®E** is a registered trademark of Siemens AG.
+- **PSCAD®** is a registered trademark of Manitoba Hydro International Ltd.
+- **EASY5®** is a registered trademark of The Boeing Company / MSC Software.
+- **PipelineStudio®** is a registered trademark of Energy Solutions International / Emerson Electric Co.
+- **GENSYS®** is a registered trademark of AB GENSYS.
+- **gPROMS®** is a registered trademark of Siemens Process Systems Engineering Limited (formerly Process Systems Enterprise Ltd).
+- **RELAP5®** and **RELAP5-3D®** are registered or licensed trademarks of the Idaho National Laboratory / US Department of Energy.
+- **SIMO®** and **RIFLEX®** are software products and marks of SINTEF Ocean AS.
+- **Cameo®**, **MagicDraw®**, **Dymola®**, and **CATIA®** are registered trademarks of Dassault Systèmes SE / No Magic, Inc.
+- **Teamcenter®** and **Polarion®** are registered trademarks of Siemens AG.
+- **Windchill®** is a registered trademark of PTC Inc.
+- **IBM®** and **DOORS®** are registered trademarks of International Business Machines Corporation.
+- **AUTOSAR®** is a registered trademark of the AUTOSAR development partnership (Automotive Open System Architecture GbR).
+- **OpenDRIVE®** and **OpenSCENARIO®** are registered trademarks of ASAM e.V.
+- **PLCopen®** is a registered trademark of the PLCopen association.
+- **AutomationML®** is a registered trademark of AutomationML e.V.
+- **SysML®** is a registered trademark of the Object Management Group, Inc. (OMG).
+- **FMI®** and **Modelica®** are registered trademarks of the Modelica Association.
+- **DICOM®** is a registered trademark of the National Electrical Manufacturers Association (NEMA).
+- **3MF®** is a registered trademark of the 3MF Consortium.
+- **ANSYS®**, **Fluent®**, and **Twin Builder®** are registered trademarks of ANSYS, Inc.
+- **Abaqus®** is a registered trademark of Dassault Systèmes Simulia Corp.
+- **NASTRAN®** is a registered trademark of the National Aeronautics and Space Administration (NASA) and Hexagon AB / MSC Software Corporation.
+- **OpenFOAM®** is a registered trademark of OpenCFD Limited (an ESI Group company).
+- **SU2** is an open-source suite developed by the SU2 Foundation and Stanford University.
+- **NONMEM®** is a registered trademark of ICON plc.
+- **Pirana®** is a trademark or software product of Certara, L.P.
+- **CarSim®** is a registered trademark of Mechanical Simulation Corporation.
+- **Simcenter Amesim®** and **Amesim®** are registered trademarks of Siemens Industry Software NV.
+- **LabVIEW®** is a registered trademark of National Instruments Corporation / NI.
+- **COMSOL®** and **COMSOL Multiphysics®** are registered trademarks of COMSOL AB.
+- **Wolfram SystemModeler®** and **SystemModeler®** are registered trademarks of Wolfram Research, Inc.
+- **ParaView®** is a registered trademark of Kitware, Inc.
+- **Jama Connect®** is a registered trademark of Jama Software, Inc.
+- **CFrac®** is a registered trademark licensed to Odin Ai Inc. (ModelScript provides independent, generic fracture compliance and Nolte-Smith screen-out analytics and does not offer or implement CFrac®).
+
+### Purpose of Use
+
+The use of these third-party trademarks in ModelScript is strictly for **nominative fair use** to describe file format compatibility, data interchange, translation, and interoperability (e.g., indicating that a ModelScript parser or bridge ingests or generates files compatible with that standard or software).
+
+**ModelScript is an independent open-core project. ModelScript, its contributors, and maintainers are not affiliated with, endorsed by, sponsored by, or associated with any of the trademark owners listed above.**

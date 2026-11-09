@@ -100,7 +100,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
       code,
       title,
     });
-    return `${window.location.protocol}//${window.location.host}/playground#m=${encoded}`;
+    return `${window.location.protocol}//${window.location.host}/morsel#m=${encoded}`;
   };
 
   const resolvedOverridesObj =
@@ -165,7 +165,9 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                   await navigator.clipboard.writeText(snippet);
                   toast.success("Copied <modelscript-morsel> intranet embed snippet!");
                 } catch {
-                  const fallbackSrc = buildShareUrl().replace("/playground", "/embed/playground");
+                  const fallbackSrc = buildShareUrl()
+                    .replace("/playground", "/embed/morsel")
+                    .replace("/morsel", "/embed/morsel");
                   const snippet = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel src="${fallbackSrc}" height="480px"></modelscript-morsel>`;
                   await navigator.clipboard.writeText(snippet);
                   toast.success("Copied <modelscript-morsel> embed snippet!");

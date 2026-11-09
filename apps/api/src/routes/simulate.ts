@@ -288,6 +288,20 @@ getErrorString();
 
           const isNative = prep !== null;
 
+          const isSandboxEnabled =
+            process.env["HPC_SANDBOX_ENABLED"] === "true" ||
+            (process.env["NODE_ENV"] === "production" && process.env["HPC_SANDBOX_ENABLED"] !== "false");
+
+          const defaultSandbox = isSandboxEnabled
+            ? {
+                enabled: true,
+                networkIsolation: true,
+                readOnlyRoot: true,
+                dropCapabilities: true,
+                tmpfsSizeMb: 512,
+              }
+            : undefined;
+
           let hpcSpec: HpcJobSpec;
           if (isNative && prep) {
             hpcSpec = {
@@ -301,11 +315,13 @@ getErrorString();
               },
               profileId: profile.id,
               ...(userId ? { userId } : {}),
+              sandbox: defaultSandbox,
               resources: {
                 cpusPerTask: profile.cpus,
                 memoryMb: profile.memoryMb,
                 partition: profile.partition,
                 gpus: profile.gpus,
+                networkIsolation: isSandboxEnabled,
               },
             };
           } else {
@@ -321,11 +337,13 @@ getErrorString();
               },
               profileId: profile.id,
               ...(userId ? { userId } : {}),
+              sandbox: defaultSandbox,
               resources: {
                 cpusPerTask: profile.cpus,
                 memoryMb: profile.memoryMb,
                 partition: profile.partition,
                 gpus: profile.gpus,
+                networkIsolation: isSandboxEnabled,
               },
             };
           }

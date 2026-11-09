@@ -231,10 +231,7 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
  * Note: DAEBuilder should ideally have a Map<StringId, number> for O(1) lookup.
  */
 function resolveArenaVarIdx(arena: DAEBuilder, nameId: number): number {
-  // O(1): resolve StringId → name string → VarIdx via name index
-  const name = arena.interner.resolve(nameId);
-  if (!name) return -1;
-  return arena.getVarIdxByName(name);
+  return arena.lookupVariable(nameId);
 }
 
 export interface BltCausalAssignment {
@@ -606,6 +603,26 @@ export function tearBltBlocksArena(arena: DAEBuilder, blocks: ArenaBltBlock[]): 
   return blocks;
 }
 
+function hashVarSet(set?: Set<string | number>): string {
+  if (!set || set.size === 0) return "";
+  let xorHash = 0;
+  let sumHash = 0;
+  for (const item of set) {
+    let v = 0;
+    if (typeof item === "number") {
+      v = item | 0;
+    } else {
+      for (let i = 0; i < item.length; i++) {
+        v = Math.imul(v ^ item.charCodeAt(i), 16777619) | 0;
+      }
+    }
+    const mixed = Math.imul(v ^ (v >>> 16), 0x45d9f3b) | 0;
+    xorHash ^= mixed;
+    sumHash = (sumHash + mixed) | 0;
+  }
+  return `${set.size}:${xorHash >>> 0}:${sumHash >>> 0}`;
+}
+
 /**
  * Performs Block Lower Triangular (BLT) transformation natively on the DAEBuilder
  * by constructing adjacency matrices directly from arena expression graphs.
@@ -616,8 +633,8 @@ export function performBltTransformationArena(
   dummyDerivatives?: Set<string | number>,
   parameterVars?: Set<number>,
 ): ArenaBltResult {
-  const stateKey = stateVars ? Array.from(stateVars).sort().join(",") : "";
-  const dummyKey = dummyDerivatives ? Array.from(dummyDerivatives).sort().join(",") : "";
+  const stateKey = hashVarSet(stateVars);
+  const dummyKey = hashVarSet(dummyDerivatives);
   const cached = (arena as any).cachedBlt;
   if (
     cached &&
@@ -633,10 +650,6 @@ export function performBltTransformationArena(
     throw new Error("BLT WASM engine not initialized. Call initBltWasm() first.");
   }
 
-  // 1. Identify active continuous/discrete variables and non-binding equations
-  const activeVarIndices: number[] = [];
-  const varToActiveMap = new Map<number, number>();
-
   // Identify variables produced by FMU subsystems (known at each step, solved outside Modelica algebraic loops)
   const fmuOutputVarIndices = new Set<number>();
   const fmuInstances = arena.extensionMetadata?.fmuInstances as any[] | undefined;
@@ -649,6 +662,135 @@ export function performBltTransformationArena(
       }
     }
   }
+
+  // Zero-crossing in-WASM CSR + BLT path operating directly on `arena.ptr`
+  if (
+    arena.ptr !== 0 &&
+    (arena as any)._renamedVars?.size === 0 &&
+    (arena as any).forMeta?.size === 0 &&
+    typeof arena.exports?.computeBltFromArena === "function"
+  ) {
+    const totalVars = arena.varCount;
+    const totalEqs = arena.eqCount;
+    if (totalVars === 0 || totalEqs === 0) {
+      return { sortedEquations: [], blocks: [] };
+    }
+
+    if ((arena as any).removedEquations?.size > 0 && typeof arena.exports?.dae_setEqRemoved === "function") {
+      for (const remEq of (arena as any).removedEquations as Set<number>) {
+        arena.exports.dae_setEqRemoved(arena.ptr, remEq, true);
+      }
+    }
+
+    let maskPtr = 0;
+    let resPtr = 0;
+    const sortedEquations: number[] = [];
+    const blocks: ArenaBltBlock[] = [];
+
+    try {
+      const hasVarExpressions = !parameterVars && (arena as any).varExpressions?.size > 0;
+      const needsMask =
+        fmuOutputVarIndices.size > 0 ||
+        (stateVars && stateVars.size > 0) ||
+        (dummyDerivatives && dummyDerivatives.size > 0) ||
+        (parameterVars && parameterVars.size > 0) ||
+        hasVarExpressions;
+
+      if (needsMask) {
+        maskPtr = arena.exports.alloc(totalVars);
+        const maskView = new Uint8Array(arena.exports.memory.buffer, maskPtr, totalVars);
+        maskView.fill(0);
+        if (stateVars) {
+          for (const sv of stateVars) {
+            const idx = typeof sv === "number" ? sv : arena.getVarIdxByName(sv);
+            if (idx >= 0 && idx < totalVars) maskView[idx]! |= 1;
+          }
+        }
+        if (dummyDerivatives) {
+          for (const dd of dummyDerivatives) {
+            const idx = typeof dd === "number" ? dd : arena.getVarIdxByName(dd);
+            if (idx >= 0 && idx < totalVars) maskView[idx]! |= 2;
+          }
+        }
+        for (const fmuVar of fmuOutputVarIndices) {
+          if (fmuVar >= 0 && fmuVar < totalVars) maskView[fmuVar]! |= 4;
+        }
+        if (parameterVars) {
+          for (const pVar of parameterVars) {
+            if (pVar >= 0 && pVar < totalVars) maskView[pVar]! |= 4;
+          }
+        } else if (hasVarExpressions) {
+          for (const vIdx of (arena as any).varExpressions.keys() as Iterable<number>) {
+            if (vIdx >= 0 && vIdx < totalVars && (maskView[vIdx]! & 1) === 0) {
+              maskView[vIdx]! |= 4;
+            }
+          }
+        }
+      }
+
+      resPtr = arena.exports.computeBltFromArena(arena.ptr, maskPtr, parameterVars ? 1 : 0, stateVars ? 1 : 0);
+
+      if (resPtr !== 0) {
+        const headerView = new Int32Array(arena.exports.memory.buffer, resPtr, 3);
+        const numBlocks = headerView[0]!;
+        const activeEqCount = headerView[1]!;
+        const blocksWordsWritten = headerView[2]!;
+
+        if (activeEqCount > 0) {
+          const outEqsView = new Int32Array(arena.exports.memory.buffer, resPtr + 12, activeEqCount);
+          for (let i = 0; i < activeEqCount; i++) {
+            sortedEquations.push(outEqsView[i]!);
+          }
+
+          const outBlocksView = new Int32Array(
+            arena.exports.memory.buffer,
+            resPtr + 12 + activeEqCount * 4,
+            blocksWordsWritten,
+          );
+          let blocksCursor = 1;
+          for (let b = 0; b < numBlocks; b++) {
+            const bEqCount = outBlocksView[blocksCursor++] ?? 0;
+            const bVarCount = outBlocksView[blocksCursor++] ?? 0;
+            const bEqs: number[] = [];
+            for (let k = 0; k < bEqCount; k++) {
+              bEqs.push(outBlocksView[blocksCursor++] ?? 0);
+            }
+            const bVars: number[] = [];
+            for (let k = 0; k < bVarCount; k++) {
+              bVars.push(outBlocksView[blocksCursor++] ?? 0);
+            }
+            blocks.push({ eqIdxs: bEqs, vars: bVars });
+          }
+        }
+      }
+    } finally {
+      if (typeof arena.exports?.free === "function") {
+        if (resPtr !== 0) arena.exports.free(resPtr);
+        if (maskPtr !== 0) arena.exports.free(maskPtr);
+      }
+    }
+
+    tearBltBlocksArena(arena, blocks);
+
+    const result: ArenaBltResult = {
+      sortedEquations,
+      blocks,
+    };
+
+    (arena as any).cachedBlt = {
+      ...result,
+      varCount: arena.varCount,
+      eqCount: arena.eqCount,
+      stateKey,
+      dummyKey,
+    };
+
+    return result;
+  }
+
+  // 1. Identify active continuous/discrete variables and non-binding equations
+  const activeVarIndices: number[] = [];
+  const varToActiveMap = new Map<number, number>();
 
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
@@ -705,14 +847,16 @@ export function performBltTransformationArena(
     return { sortedEquations: [], blocks: [] };
   }
 
-  // 2. Build Adjacency List (CSR format expected by computeBlt)
-  const eqActiveDeps: number[][] = [];
-  let totalInts = 0;
+  // 2. Build Adjacency List (CSR format directly via flat Int32Array without intermediate JS arrays)
+  const reusableDeps = new Set<number>();
+  let flatCapacity = Math.max(1024, eqCount * 6);
+  let flatAdj = new Int32Array(flatCapacity);
+  let cursor = 0;
 
   for (let e = 0; e < eqCount; e++) {
     const eqIdx = activeEqIndices[e]!;
     const kind = arena.getEqKind(eqIdx);
-    const deps = new Set<number>();
+    reusableDeps.clear();
 
     if (kind === EqKind.For) {
       const meta = arena.getForEquationMeta?.(eqIdx);
@@ -721,28 +865,37 @@ export function performBltTransformationArena(
         for (const bEq of bodyEqs) {
           const bLhs = "lhs" in bEq ? bEq.lhs : (bEq as { lhsExprId: number }).lhsExprId;
           const bRhs = "rhs" in bEq ? bEq.rhs : (bEq as { rhsExprId: number }).rhsExprId;
-          collectArenaExprDeps(arena, bLhs, deps, true);
-          collectArenaExprDeps(arena, bRhs, deps, true);
+          collectArenaExprDeps(arena, bLhs, reusableDeps, true);
+          collectArenaExprDeps(arena, bRhs, reusableDeps, true);
         }
       }
     } else {
       const lhs = arena.getEqLhs(eqIdx);
       const rhs = arena.getEqRhs(eqIdx);
-      collectArenaExprDeps(arena, lhs, deps, true);
-      collectArenaExprDeps(arena, rhs, deps, true);
+      collectArenaExprDeps(arena, lhs, reusableDeps, true);
+      collectArenaExprDeps(arena, rhs, reusableDeps, true);
     }
 
-    const activeList: number[] = [];
-    for (const varIdx of deps) {
+    if (cursor + 1 + reusableDeps.size > flatAdj.length) {
+      const newCapacity = Math.max(flatAdj.length * 2, cursor + 1 + reusableDeps.size);
+      const newBuf = new Int32Array(newCapacity);
+      newBuf.set(flatAdj);
+      flatAdj = newBuf;
+    }
+
+    const countSlot = cursor++;
+    let activeCount = 0;
+    for (const varIdx of reusableDeps) {
       const activeIdx = varToActiveMap.get(varIdx);
       if (activeIdx !== undefined) {
-        activeList.push(activeIdx);
+        flatAdj[cursor++] = activeIdx;
+        activeCount++;
       }
     }
-    eqActiveDeps.push(activeList);
-    totalInts += 1 + activeList.length;
+    flatAdj[countSlot] = activeCount;
   }
 
+  const totalInts = cursor;
   let adjPtr = 0;
   let outEqsPtr = 0;
   let outBlocksPtr = 0;
@@ -751,15 +904,7 @@ export function performBltTransformationArena(
 
   try {
     adjPtr = alloc(totalInts * 4);
-    const adjView = new Int32Array(memory.buffer, adjPtr, totalInts);
-    let cursor = 0;
-    for (let e = 0; e < eqCount; e++) {
-      const list = eqActiveDeps[e]!;
-      adjView[cursor++] = list.length;
-      for (const activeIdx of list) {
-        adjView[cursor++] = activeIdx;
-      }
-    }
+    new Int32Array(memory.buffer, adjPtr, totalInts).set(flatAdj.subarray(0, totalInts));
 
     // 3. Allocate outputs
     // outEqs: i32[eqCount]

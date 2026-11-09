@@ -50,7 +50,7 @@ flowchart TD
     subgraph Presentation["User Experience & Toolchain"]
         CLI["CLI Toolchain (msx sima lint | verify | offset | to-modelica | to-ssp | to-sysml2)"]
         DIAG["Vector Diagram Builder (Catenary Profile & Polar Spread SVG)"]
-        IDE["VS Code / Web IDE Custom Editor (SimaEditorProvider)"]
+        IDE["VS Code / Studio Custom Editor (SimaEditorProvider)"]
         LSP["Language Server Protocol Services"]
     end
 

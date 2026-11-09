@@ -930,7 +930,7 @@ export const IdeWorkspacePage: React.FC = () => {
                   }}
                 >
                   <PlayIcon size={13} />
-                  <span>Open in Playground</span>
+                  <span>Open in Morsel</span>
                 </button>
               )}
 

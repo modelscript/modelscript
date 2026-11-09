@@ -98,6 +98,7 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
   // We'll sync this state occasionally so the slider can update, but we won't do it every frame
   const [sliderValue, setSliderValue] = useState(0);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
+  const [speed, setSpeed] = useState<number>(1);
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
@@ -292,8 +293,10 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           <AnimatedGCode
             object={object}
             isPlaying={isPlaying}
+            speed={speed}
             progressRef={progressRef}
             onProgressUpdate={setSliderValue}
+            onCompleted={() => setIsPlaying(false)}
           />
           <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
         </Suspense>
@@ -315,14 +318,20 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
         py={2}
         gap={3}
         width="80%"
-        maxWidth="400px"
+        maxWidth="440px"
       >
         <IconButton
           icon={isPlaying ? SquareFillIcon : PlayIcon}
           aria-label={isPlaying ? "Pause" : "Play"}
           variant="invisible"
           size="small"
-          onClick={() => setIsPlaying(!isPlaying)}
+          onClick={() => {
+            if (!isPlaying && progressRef.current >= 1) {
+              progressRef.current = 0;
+              setSliderValue(0);
+            }
+            setIsPlaying(!isPlaying);
+          }}
         />
         <input
           type="range"
@@ -337,6 +346,29 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           }}
           style={{ flexGrow: 1, cursor: "pointer" }}
         />
+        <button
+          type="button"
+          onClick={() => {
+            const speeds = [0.5, 1, 2, 5];
+            const nextIdx = (speeds.indexOf(speed) + 1) % speeds.length;
+            setSpeed(speeds[nextIdx]!);
+          }}
+          style={{
+            background: "rgba(6, 182, 212, 0.15)",
+            border: "1px solid rgba(6, 182, 212, 0.35)",
+            borderRadius: "4px",
+            color: "var(--color-accent-cyan, #06b6d4)",
+            fontSize: "10.5px",
+            fontWeight: 700,
+            fontFamily: "var(--font-mono, monospace)",
+            padding: "2px 6px",
+            cursor: "pointer",
+          }}
+          title="Cycle playback speed"
+          aria-label={`Playback speed: ${speed}x`}
+        >
+          {speed}×
+        </button>
         <span
           style={{
             fontSize: "11px",
@@ -358,13 +390,17 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
 function AnimatedGCode({
   object,
   isPlaying,
+  speed = 1,
   progressRef,
   onProgressUpdate,
+  onCompleted,
 }: {
   object: THREE.Group;
   isPlaying: boolean;
+  speed?: number;
   progressRef: React.MutableRefObject<number>;
   onProgressUpdate: (val: number) => void;
+  onCompleted?: () => void;
 }) {
   const lastUpdateRef = useRef(0);
   const spindleRef = useRef<THREE.Group>(null);
@@ -372,10 +408,11 @@ function AnimatedGCode({
 
   useFrame((_state, delta) => {
     if (isPlaying) {
-      // 20 seconds for full animation
-      progressRef.current += delta * 0.05;
+      // 20 seconds for full animation at 1x
+      progressRef.current += delta * 0.05 * speed;
       if (progressRef.current >= 1) {
         progressRef.current = 1;
+        onCompleted?.();
       }
 
       // Throttle state updates to avoid excessive re-renders (e.g., 10 times a second)

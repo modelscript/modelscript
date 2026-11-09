@@ -1411,6 +1411,12 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
     }
   }, [isFullScreen]);
 
+  useEffect(() => {
+    if (!loadingText && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loadingText]);
+
   // Hibernate heavy Monaco editor when scrolled out of view in feed mode
   useEffect(() => {
     if (!interactive || isFullScreen) return;

@@ -967,12 +967,16 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   };
 
   // ── Minimap HUD ──
-  const minimapHud = ensureMinimapHud(container, (worldX, worldY) => {
-    const graphWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
-    if (typeof graphWithCenter.centerPoint === "function") {
-      graphWithCenter.centerPoint(worldX, worldY);
-    }
-  });
+  const minimapHud = ensureMinimapHud(
+    container,
+    (worldX, worldY) => {
+      const graphWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
+      if (typeof graphWithCenter.centerPoint === "function") {
+        graphWithCenter.centerPoint(worldX, worldY);
+      }
+    },
+    container?.getAttribute("data-show-minimap") === "true",
+  );
 
   let triggerInlineNodeEdit: ((node: Node) => void) | null = null;
 

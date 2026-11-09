@@ -664,14 +664,14 @@ git push -u origin ${defaultBranch}`}
                     <ActionList.Item
                       onSelect={() => {
                         navigate(
-                          `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(activeRef)}`,
+                          `/repos/${provider}/${repo.path_with_namespace || repo.name}/studio?ref=${encodeURIComponent(activeRef)}`,
                         );
                       }}
                     >
                       <ActionList.LeadingVisual>
                         <CodeIcon size={14} />
                       </ActionList.LeadingVisual>
-                      Create new file in Web IDE
+                      Create new file in Studio
                     </ActionList.Item>
                   </ActionList>
                 </ActionMenu.Overlay>
@@ -697,11 +697,11 @@ git push -u origin ${defaultBranch}`}
               style={{ height: "32px", gap: "6px" }}
               onClick={() => {
                 navigate(
-                  `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(activeRef)}`,
+                  `/repos/${provider}/${repo.path_with_namespace || repo.name}/studio?ref=${encodeURIComponent(activeRef)}`,
                 );
               }}
             >
-              Open in IDE
+              Open in Studio
             </Button>
 
             <ActionMenu>
@@ -723,11 +723,11 @@ git push -u origin ${defaultBranch}`}
                   <ActionList.Item
                     onSelect={() => {
                       navigate(
-                        `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(activeRef)}`,
+                        `/repos/${provider}/${repo.path_with_namespace || repo.name}/studio?ref=${encodeURIComponent(activeRef)}`,
                       );
                     }}
                   >
-                    Open in {brandName} IDE (Web VS Code)
+                    Open in {brandName} Studio
                   </ActionList.Item>
                   <ActionList.Item
                     onSelect={() => {
@@ -938,11 +938,11 @@ git push -u origin ${defaultBranch}`}
                       leadingVisual={CodeIcon}
                       onClick={() => {
                         navigate(
-                          `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(activeRef)}`,
+                          `/repos/${provider}/${repo.path_with_namespace || repo.name}/studio?ref=${encodeURIComponent(activeRef)}`,
                         );
                       }}
                     >
-                      Web IDE
+                      Studio
                     </Button>
                   </Box>
                 </Box>

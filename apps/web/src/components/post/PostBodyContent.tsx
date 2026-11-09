@@ -298,7 +298,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           </button>
         )}
 
-        {/* Companion Code & Web IDE Footer on Detail View (only when article has code blocks, artifacts, or companionRepo) */}
+        {/* Companion Code & Studio Footer on Detail View (only when article has code blocks, artifacts, or companionRepo) */}
         {isDetailView &&
           Boolean(
             notebookData.companionRepo?.trim() ||
@@ -410,7 +410,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                   }}
                 >
                   {isMultiFileArticle ? (
-                    "▶ Open in Web IDE"
+                    "▶ Open in Studio"
                   ) : (
                     <>
                       <DraftingTriangleIcon size={13} />
@@ -447,8 +447,8 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           mt={0}
           style={{
             wordBreak: "break-word",
-            lineHeight: isDetailView ? "24px" : "20px",
-            fontSize: isDetailView ? "17px" : "15px",
+            lineHeight: isDetailView ? "26px" : "23px",
+            fontSize: isDetailView ? "18px" : "15.5px",
           }}
         >
           <PostMarkdownContent text={proseText} />

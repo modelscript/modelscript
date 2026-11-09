@@ -164,9 +164,9 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
             variant="default"
             leadingVisual={CodeIcon}
             onClick={onOpenInPlayground}
-            title="Open in Playground"
+            title="Open in Morsel"
           >
-            <ToolbarText>Open in Playground</ToolbarText>
+            <ToolbarText>Open in Morsel</ToolbarText>
           </Button>
         )}
 

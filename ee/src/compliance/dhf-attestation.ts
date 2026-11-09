@@ -31,6 +31,10 @@ export interface ComplianceAttestationPayload {
   v: 1;
   /** Unique attestation ID */
   attestationId: string;
+  /** Sequence number in an attestation chain (1-indexed) */
+  sequenceNumber?: number | undefined;
+  /** SHA-256 digest of the immediately preceding attestation payload in the chain */
+  previousAttestationHash?: string | undefined;
   /** Customer organization name from Enterprise license */
   organization: string;
   /** Target regulatory standard */
@@ -53,6 +57,15 @@ export interface SignedComplianceAttestation {
   bundleToken: string;
 }
 
+export interface AttestationChainVerificationResult {
+  valid: boolean;
+  chainLength: number;
+  genesisAttestationId?: string | undefined;
+  headAttestationId?: string | undefined;
+  headAttestationDigest?: string | undefined;
+  reason?: string | undefined;
+}
+
 const DEFAULT_ATTESTATION_SEED = crypto.createHash("sha256").update("modelscript-ee-ed25519-root-seed-v1").digest();
 
 function getDefaultAttestationPrivateKeyPem(): string {
@@ -70,6 +83,40 @@ function getDefaultAttestationPublicKeyPem(): string {
 }
 
 /**
+ * Computes a deterministic SHA-256 hex digest of a canonical compliance attestation payload.
+ */
+export function computeAttestationDigest(target: ComplianceAttestationPayload | string): string {
+  let payload: ComplianceAttestationPayload;
+  if (typeof target === "string") {
+    const trimmed = target.trim();
+    if (trimmed.startsWith("msx_att_")) {
+      const body = trimmed.slice("msx_att_".length);
+      const dotIdx = body.indexOf(".");
+      const b64 = dotIdx > 0 ? body.slice(0, dotIdx) : body;
+      payload = JSON.parse(Buffer.from(b64, "base64url").toString("utf-8"));
+    } else {
+      payload = JSON.parse(target);
+    }
+  } else {
+    payload = target;
+  }
+
+  const canonical = JSON.stringify({
+    v: payload.v,
+    attestationId: payload.attestationId,
+    sequenceNumber: payload.sequenceNumber ?? null,
+    previousAttestationHash: payload.previousAttestationHash ?? null,
+    organization: payload.organization,
+    standard: payload.standard,
+    workspaceId: payload.workspaceId,
+    artifactSha256: payload.artifactSha256.toLowerCase().trim(),
+    auditLedgerHeadHash: payload.auditLedgerHeadHash ?? null,
+    issuedAt: payload.issuedAt,
+  });
+  return crypto.createHash("sha256").update(canonical, "utf-8").digest("hex");
+}
+
+/**
  * Cryptographically signs a regulatory compliance attestation dossier (FDA 21 CFR Part 11 DHF,
  * NERC CIP, FERC CEII, IEEE 2800, EN 14363) using Ed25519.
  */
@@ -80,6 +127,8 @@ export function signComplianceAttestation(
     workspaceId: string;
     artifactSha256: string;
     auditLedgerHeadHash?: string | undefined;
+    previousAttestationHash?: string | undefined;
+    sequenceNumber?: number | undefined;
   },
   privateKeyPem?: string,
 ): SignedComplianceAttestation {
@@ -96,6 +145,8 @@ export function signComplianceAttestation(
   const payload: ComplianceAttestationPayload = {
     v: 1,
     attestationId: `att_${crypto.randomBytes(8).toString("hex")}`,
+    sequenceNumber: input.sequenceNumber,
+    previousAttestationHash: input.previousAttestationHash,
     organization: input.organization,
     standard: input.standard,
     workspaceId: input.workspaceId,
@@ -169,8 +220,117 @@ export function verifyComplianceAttestation(
 }
 
 /**
- * Router exposing `/api/v1/ee/compliance/attest` and `/api/v1/ee/compliance/verify-attestation`,
- * gated by the `dhf_attestation` Enterprise license entitlement.
+ * Cryptographically verifies an ordered chain of compliance attestation tokens.
+ * Verifies that signatures are authentic, timestamps are monotonic, and each link
+ * contains a valid SHA-256 Merkle reference to its preceding attestation.
+ */
+export function verifyComplianceAttestationChain(
+  tokens: string[],
+  publicKeyPem?: string,
+): AttestationChainVerificationResult {
+  if (!Array.isArray(tokens) || tokens.length === 0) {
+    return { valid: false, chainLength: 0, reason: "Attestation chain must contain at least one token." };
+  }
+
+  let prevDigest: string | null = null;
+  let prevTimestamp = 0;
+  let prevSeq: number | null = null;
+  let genesisId: string | undefined;
+  let headId: string | undefined;
+  let headDigest: string | undefined;
+  let expectedOrg: string | undefined;
+  let expectedWorkspace: string | undefined;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (!token) continue;
+    const verified = verifyComplianceAttestation(token, publicKeyPem);
+    if (!verified.valid || !verified.payload) {
+      return {
+        valid: false,
+        chainLength: i,
+        reason: `Invalid attestation signature at index ${i}: ${verified.reason ?? "Verification failed"}`,
+      };
+    }
+
+    const payload = verified.payload;
+    if (i === 0) {
+      genesisId = payload.attestationId;
+      expectedOrg = payload.organization;
+      expectedWorkspace = payload.workspaceId;
+    } else {
+      if (payload.organization !== expectedOrg) {
+        return {
+          valid: false,
+          chainLength: i,
+          reason: `Organization mismatch at index ${i}: expected '${expectedOrg}', got '${payload.organization}'`,
+        };
+      }
+      if (payload.workspaceId !== expectedWorkspace) {
+        return {
+          valid: false,
+          chainLength: i,
+          reason: `Workspace mismatch at index ${i}: expected '${expectedWorkspace}', got '${payload.workspaceId}'`,
+        };
+      }
+      if (!payload.previousAttestationHash) {
+        return {
+          valid: false,
+          chainLength: i,
+          reason: `Broken chain at index ${i}: missing previousAttestationHash`,
+        };
+      }
+      if (payload.previousAttestationHash !== prevDigest) {
+        return {
+          valid: false,
+          chainLength: i,
+          reason: `Merkle digest mismatch at index ${i}: declared previousAttestationHash '${payload.previousAttestationHash}' does not match computed preceding digest '${prevDigest}'`,
+        };
+      }
+    }
+
+    const currentTimestamp = new Date(payload.issuedAt).getTime();
+    if (isNaN(currentTimestamp)) {
+      return { valid: false, chainLength: i, reason: `Malformed issuedAt timestamp at index ${i}` };
+    }
+    if (i > 0 && currentTimestamp < prevTimestamp) {
+      return {
+        valid: false,
+        chainLength: i,
+        reason: `Non-monotonic timestamp rollback detected at index ${i}: ${payload.issuedAt} < previous ${new Date(prevTimestamp).toISOString()}`,
+      };
+    }
+
+    if (typeof payload.sequenceNumber === "number") {
+      if (prevSeq !== null && payload.sequenceNumber !== prevSeq + 1) {
+        return {
+          valid: false,
+          chainLength: i,
+          reason: `Non-consecutive sequence number at index ${i}: expected ${prevSeq + 1}, got ${payload.sequenceNumber}`,
+        };
+      }
+      prevSeq = payload.sequenceNumber;
+    }
+
+    prevDigest = computeAttestationDigest(payload);
+    prevTimestamp = currentTimestamp;
+    headId = payload.attestationId;
+    headDigest = prevDigest;
+  }
+
+  return {
+    valid: true,
+    chainLength: tokens.length,
+    genesisAttestationId: genesisId,
+    headAttestationId: headId,
+    headAttestationDigest: headDigest,
+  };
+}
+
+/**
+ * Router exposing `/api/v1/ee/compliance/attest`, `/api/v1/ee/compliance/verify-attestation`,
+ * and `/api/v1/ee/compliance/verify-attestation-chain`, gated by the `dhf_attestation`
+ * Enterprise license entitlement.
  */
 export function createDhfAttestationRouter(): Router {
   const router = express.Router();
@@ -189,6 +349,12 @@ export function createDhfAttestationRouter(): Router {
       ) as RegulatoryStandard;
       const auditLedgerHeadHash =
         typeof body["auditLedgerHeadHash"] === "string" ? body["auditLedgerHeadHash"].trim() : undefined;
+      const previousAttestationHash =
+        typeof body["previousAttestationHash"] === "string" ? body["previousAttestationHash"].trim() : undefined;
+      const sequenceNumber =
+        typeof body["sequenceNumber"] === "number" && Number.isInteger(body["sequenceNumber"])
+          ? body["sequenceNumber"]
+          : undefined;
 
       if (!workspaceId || !/^[a-fA-F0-9]{64}$/.test(artifactSha256)) {
         res.status(400).json({
@@ -206,6 +372,8 @@ export function createDhfAttestationRouter(): Router {
         workspaceId,
         artifactSha256,
         auditLedgerHeadHash,
+        previousAttestationHash,
+        sequenceNumber,
       });
 
       res.status(201).json(attestation);
@@ -216,6 +384,13 @@ export function createDhfAttestationRouter(): Router {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const bundleToken = typeof body["bundleToken"] === "string" ? body["bundleToken"] : "";
     const result = verifyComplianceAttestation(bundleToken);
+    res.status(result.valid ? 200 : 400).json(result);
+  });
+
+  router.post("/ee/compliance/verify-attestation-chain", express.json(), (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const bundleTokens = Array.isArray(body["bundleTokens"]) ? (body["bundleTokens"] as string[]) : [];
+    const result = verifyComplianceAttestationChain(bundleTokens);
     res.status(result.valid ? 200 : 400).json(result);
   });
 

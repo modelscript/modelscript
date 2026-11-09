@@ -54,8 +54,8 @@ export class BltEngine {
   matchVarToEq: ChunkedInt32Array;
   /** Maps each equation index to its matched variable ID (-1 if unmatched). */
   matchEqToVar: ChunkedInt32Array;
-  /** Visited marker array for variables during DFS augmenting-path bipartite matching. */
-  visitedVar: ChunkedUint8Array;
+  /** Generation token array for variables during DFS augmenting-path bipartite matching. */
+  visitedVar: ChunkedInt32Array;
 
   // Tarjan SCC
   /** Discovery timestamp index for each variable in Tarjan's SCC depth-first traversal. */
@@ -83,7 +83,7 @@ export class BltEngine {
 
     this.matchVarToEq = createChunkedInt32Array(1024);
     this.matchEqToVar = createChunkedInt32Array(1024);
-    this.visitedVar = createChunkedUint8Array(1024);
+    this.visitedVar = createChunkedInt32Array(1024);
 
     this.indexMap = createChunkedInt32Array(1024);
     this.lowlinkMap = createChunkedInt32Array(1024);
@@ -97,6 +97,7 @@ export class BltEngine {
     for (let i: u32 = 0; i < 1024; i++) {
       this.matchVarToEq.push(-1);
       this.matchEqToVar.push(-1);
+      this.visitedVar.push(0);
     }
   }
 
@@ -312,7 +313,7 @@ export class BltEngine {
   /**
    * Performs DFS augmenting path search for bipartite matching up to a maximum priority weight.
    */
-  private dfsMatch(eqIdx: u32, maxPriority: u8): boolean {
+  private dfsMatch(eqIdx: u32, maxPriority: u8, token: i32): boolean {
     let start = this.eqDepPtrs.get(eqIdx);
     let end = this.eqDepPtrs.get(eqIdx + 1);
 
@@ -321,12 +322,12 @@ export class BltEngine {
       let priority = this.eqDepWeights.length > i ? this.eqDepWeights.get(i) : (0 as u8);
       if (priority > maxPriority) continue;
 
-      if (this.visitedVar.get(varIdx) == 0) {
-        this.visitedVar.set(varIdx, 1);
-        let prevEq = this.matchVarToEq.get(varIdx);
+      if (this.visitedVar.get(varIdx as u32) != token) {
+        this.visitedVar.set(varIdx as u32, token);
+        let prevEq = this.matchVarToEq.get(varIdx as u32);
         
-        if (prevEq == -1 || this.dfsMatch(prevEq as u32, maxPriority)) {
-          this.matchVarToEq.set(varIdx, eqIdx);
+        if (prevEq == -1 || this.dfsMatch(prevEq as u32, maxPriority, token)) {
+          this.matchVarToEq.set(varIdx as u32, eqIdx);
           this.matchEqToVar.set(eqIdx, varIdx);
           return true;
         }
@@ -347,22 +348,38 @@ export class BltEngine {
     while (this.matchVarToEq.length < varCount) this.matchVarToEq.push(-1);
     while (this.matchEqToVar.length < eqCount) this.matchEqToVar.push(-1);
     while (this.visitedVar.length < varCount) this.visitedVar.push(0);
+    for (let v: u32 = 0; v < varCount; v++) {
+      this.visitedVar.set(v, 0);
+    }
+
+    let token: i32 = 1;
 
     // Multi-pass isolatability-aware matching:
     // Pass 0: Priority 0 (Explicit / Linear)
     // Pass 1: Priority <= 1 (Symbolically Isolatable)
     // Pass 2: Priority <= 2 (Fallback / Non-isolatable)
     for (let priorityPass: u8 = 0; priorityPass <= 2; priorityPass++) {
+      // Fast O(E) greedy pass for free variables at current priority
+      for (let i: u32 = 0; i < eqCount; i++) {
+        if (this.matchEqToVar.get(i) != -1) continue;
+        let start = this.eqDepPtrs.get(i) as u32;
+        let end = this.eqDepPtrs.get(i + 1) as u32;
+        for (let k: u32 = start; k < end; k++) {
+          let priority = this.eqDepWeights.length > k ? this.eqDepWeights.get(k) : (0 as u8);
+          if (priority > priorityPass) continue;
+          let varIdx = this.eqDepVars.get(k);
+          if (varIdx >= 0 && this.matchVarToEq.get(varIdx as u32) == -1) {
+            this.matchVarToEq.set(varIdx as u32, i as i32);
+            this.matchEqToVar.set(i, varIdx);
+            break;
+          }
+        }
+      }
+
       for (let i: u32 = 0; i < eqCount; i++) {
         // Warm start: skip equations that are already matched!
         if (this.matchEqToVar.get(i) != -1) continue;
-
-        // Clear visited array
-        for (let v: u32 = 0; v < varCount; v++) {
-          this.visitedVar.set(v, 0);
-        }
-
-        this.dfsMatch(i, priorityPass);
+        this.dfsMatch(i, priorityPass, token++);
       }
     }
   }
@@ -373,63 +390,101 @@ export class BltEngine {
   private sccCount: u32;
 
   /**
-   * Recursive Tarjan SCC helper for strongly connected component decomposition.
+   * Iterative Tarjan SCC helper for strongly connected component decomposition.
+   * Avoids overflowing the 64 KB WebAssembly call stack on deep dependency chains.
    */
-  private strongConnect(varIdx: u32): void {
-    this.indexMap.set(varIdx, this.indexCounter);
-    this.lowlinkMap.set(varIdx, this.indexCounter);
+  private strongConnect(startVar: u32): void {
+    let callStackV = createChunkedInt32Array(64);
+    let callStackEdge = createChunkedInt32Array(64);
+
+    this.indexMap.set(startVar, this.indexCounter);
+    this.lowlinkMap.set(startVar, this.indexCounter);
     this.indexCounter++;
-    this.stack.push(varIdx);
-    this.onStack.set(varIdx, 1);
+    this.stack.push(startVar as i32);
+    this.onStack.set(startVar, 1);
 
-    let eqIdx = this.matchVarToEq.get(varIdx);
-    if (eqIdx != -1) {
-      let start = this.eqDepPtrs.get(eqIdx as u32);
-      let end = this.eqDepPtrs.get((eqIdx as u32) + 1);
+    let startEq = this.matchVarToEq.get(startVar);
+    let startEdge = startEq != -1 ? this.eqDepPtrs.get(startEq as u32) : 0;
+    callStackV.push(startVar as i32);
+    callStackEdge.push(startEdge);
 
-      for (let i: u32 = start as u32; i < (end as u32); i++) {
-        let w = this.eqDepVars.get(i);
-        if (w == (varIdx as i32)) continue; // ignore self-dependency in graph traversal
-        if (this.matchVarToEq.get(w) < 0) continue; // skip unmatched variables
+    while (callStackV.length > 0) {
+      let topIdx = callStackV.length - 1;
+      let varIdx = callStackV.get(topIdx) as u32;
+      let edgeIdx = callStackEdge.get(topIdx) as u32;
+      let eqIdx = this.matchVarToEq.get(varIdx);
+      let advanced = false;
 
-        if (this.indexMap.get(w) == -1) {
-          this.strongConnect(w);
-          let currentLowV = this.lowlinkMap.get(varIdx);
-          let lowW = this.lowlinkMap.get(w);
-          this.lowlinkMap.set(varIdx, Math.min(currentLowV, lowW) as i32);
-        } else if (this.onStack.get(w) == 1) {
-          let currentLowV = this.lowlinkMap.get(varIdx);
-          let indexW = this.indexMap.get(w);
-          this.lowlinkMap.set(varIdx, Math.min(currentLowV, indexW) as i32);
+      if (eqIdx != -1) {
+        let end = this.eqDepPtrs.get((eqIdx as u32) + 1) as u32;
+        while (edgeIdx < end) {
+          let w = this.eqDepVars.get(edgeIdx);
+          edgeIdx++;
+          if (w == (varIdx as i32)) continue;
+          if (w < 0 || this.matchVarToEq.get(w as u32) < 0) continue;
+
+          let wu = w as u32;
+          if (this.indexMap.get(wu) == -1) {
+            callStackEdge.set(topIdx, edgeIdx as i32);
+
+            this.indexMap.set(wu, this.indexCounter);
+            this.lowlinkMap.set(wu, this.indexCounter);
+            this.indexCounter++;
+            this.stack.push(w);
+            this.onStack.set(wu, 1);
+
+            let wEq = this.matchVarToEq.get(wu);
+            let wStart = wEq != -1 ? this.eqDepPtrs.get(wEq as u32) : 0;
+            callStackV.push(w);
+            callStackEdge.push(wStart);
+            advanced = true;
+            break;
+          } else if (this.onStack.get(wu) == 1) {
+            let currentLowV = this.lowlinkMap.get(varIdx);
+            let indexW = this.indexMap.get(wu);
+            if (indexW < currentLowV) {
+              this.lowlinkMap.set(varIdx, indexW);
+            }
+          }
         }
       }
-    }
 
-    if (this.lowlinkMap.get(varIdx) == this.indexMap.get(varIdx)) {
-      let blockStart = this.sccBlockEqs.length;
+      if (advanced) continue;
 
-      let w: i32;
-      let blockSize = 0;
-      do {
-        w = this.stack.pop();
-        this.onStack.set(w, 0);
-        let matchedEq = this.matchVarToEq.get(w);
-        if (matchedEq != -1) {
-          this.sccBlockEqs.push(matchedEq);
-          blockSize++;
+      callStackV.pop();
+      callStackEdge.pop();
+
+      if (callStackV.length > 0) {
+        let parentVar = callStackV.get(callStackV.length - 1) as u32;
+        let pLow = this.lowlinkMap.get(parentVar);
+        let vLow = this.lowlinkMap.get(varIdx);
+        if (vLow < pLow) {
+          this.lowlinkMap.set(parentVar, vLow);
         }
-      } while (w != (varIdx as i32));
+      }
 
-      if (blockSize > 0) {
-        this.sccBlockPtrs.push(this.sccBlockEqs.length);
-        this.sccCount++;
+      if (this.lowlinkMap.get(varIdx) == this.indexMap.get(varIdx)) {
+        let blockStart = this.sccBlockEqs.length;
 
-        // Phase 3: 1x1 Scalar Equation Block
-        if (blockSize == 1) {
-          // 1x1 scalar block is matched to varIdx; equations remain in original form
-        } else if (blockSize > 1) {
-          // Phase 4: Algebraic Loop Tearing for non-linear coupled systems
-          this.tearAlgebraicLoop(blockStart, blockSize);
+        let w: i32;
+        let blockSize = 0;
+        do {
+          w = this.stack.pop();
+          this.onStack.set(w as u32, 0);
+          let matchedEq = this.matchVarToEq.get(w as u32);
+          if (matchedEq != -1) {
+            this.sccBlockEqs.push(matchedEq);
+            blockSize++;
+          }
+        } while (w != (varIdx as i32));
+
+        if (blockSize > 0) {
+          this.sccBlockPtrs.push(this.sccBlockEqs.length);
+          this.sccCount++;
+
+          if (blockSize > 1) {
+            this.tearAlgebraicLoop(blockStart, blockSize);
+          }
         }
       }
     }

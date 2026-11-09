@@ -133,7 +133,7 @@ export const MorselMobileTabBar: React.FC<MorselMobileTabBarProps> = ({
     <>
       <div
         role="tablist"
-        aria-label="Playground view"
+        aria-label="Morsel view"
         style={{
           display: "flex",
           alignItems: "center",

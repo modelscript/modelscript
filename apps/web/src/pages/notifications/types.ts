@@ -2,6 +2,8 @@
 
 export type NotificationCategory = "all" | "engineering" | "packages" | "mentions" | "system";
 export type InboxView = "inbox" | "saved" | "outbox" | "archive";
+export type InboxLayoutPlacement = "left" | "right";
+export type InboxDensity = "compact" | "comfortable";
 
 export interface NotificationActor {
   username?: string | undefined;

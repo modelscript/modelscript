@@ -161,7 +161,7 @@ export async function getCachedTimelinePosts(): Promise<any[]> {
 }
 
 /**
- * Save an active model draft from the Playground to persistent IndexedDB.
+ * Save an active model draft from Morsel to persistent IndexedDB.
  */
 export async function savePlaygroundDraft(id: string, code: string, title: string): Promise<void> {
   try {

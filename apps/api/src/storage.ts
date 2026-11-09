@@ -311,6 +311,9 @@ export class LibraryStorage {
 
     if (this.#driver.driverName === "s3") {
       const s3Key = `${this.#safe(name)}/${this.#safe(version)}.zip`;
+      if (await this.#driver.exists(s3Key)) {
+        throw new ConflictError(`Library ${name}@${version} already exists in S3 storage`);
+      }
       await this.#driver.write(s3Key, buffer, { contentType: "application/zip" });
     }
 

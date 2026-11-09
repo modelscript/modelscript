@@ -52,6 +52,7 @@ export interface MinimapGraph {
 export function ensureMinimapHud(
   container: HTMLElement,
   onCenterGraph: (worldX: number, worldY: number) => void,
+  initiallyVisible = true,
 ): HTMLElement | null {
   if (typeof document === "undefined" || !container) return null;
   let hud = container.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
@@ -72,7 +73,7 @@ export function ensureMinimapHud(
   hud.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.35)";
   hud.style.zIndex = "990";
   hud.style.overflow = "hidden";
-  hud.style.display = "flex";
+  hud.style.display = initiallyVisible ? "flex" : "none";
   hud.style.flexDirection = "column";
   hud.style.userSelect = "none";
 

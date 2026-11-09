@@ -15,8 +15,8 @@ export const PostWrapper = styled.div<{
 }>`
   display: flex;
   flex-direction: ${(props) => (props.$isDetail ? "column" : "row")};
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 14px;
+  padding: 16px 18px;
   margin: 0;
   border-radius: 0;
   background: transparent;
@@ -64,14 +64,14 @@ export const HoverAvatar = styled(Avatar)`
 
 export const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warning" | undefined }>`
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  line-height: 1.4;
+  line-height: 1.45;
   background: var(--status-${(props) => props.$variant ?? "warning"}-bg);
   border: 1px solid var(--status-${(props) => props.$variant ?? "warning"}-border);
   color: var(--color-status-${(props) => props.$variant ?? "warning"});
@@ -86,7 +86,7 @@ export const ModelSpecTag = styled.div`
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--color-border-glass);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--color-text-muted);
   user-select: none;
 
@@ -101,14 +101,14 @@ export const ModelSpecTag = styled.div`
 
 export const AiBadge = styled.span<{ $variant?: "generated" | "verified" | "reviewed" | undefined }>`
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 1px 6px;
+  padding: 1.5px 7px;
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  line-height: 1.4;
+  line-height: 1.45;
   flex-shrink: 0;
   vertical-align: middle;
   ${(props) =>
@@ -135,9 +135,9 @@ export const AiInsightRibbon = styled.div`
   background: var(--ms-brand-soft);
   border: 1px solid var(--color-accent-blue-border);
   border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12.5px;
-  line-height: 1.5;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -157,10 +157,10 @@ export const AiInsightRibbon = styled.div`
 
 export const EngActionButton = styled.button`
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  height: 28px;
-  padding: 0 12px;
+  height: 30px;
+  padding: 0 14px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--color-border-default);
   background: transparent;
@@ -199,10 +199,10 @@ export const SignatureBadge = styled.button.attrs({ type: "button" })`
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 9999px;
   font-family: var(--font-mono, monospace);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--color-status-verified, #3fb950);
   background: rgba(63, 185, 80, 0.1);
@@ -323,8 +323,8 @@ export const ActionButton = styled.button<{
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     transition: background-color 0.2s;
   }
@@ -333,8 +333,8 @@ export const ActionButton = styled.button<{
     min-height: 44px;
 
     .icon-wrapper {
-      width: 38px;
-      height: 38px;
+      width: 40px;
+      height: 40px;
     }
   }
 
@@ -349,8 +349,8 @@ export const ActionButton = styled.button<{
 
   /* Counts flow inline after the icon so they can never overlap the next action. */
   .action-count {
-    font-size: 13px;
-    line-height: 16px;
+    font-size: 13.5px;
+    line-height: 20px;
     min-width: 1.5ch;
     padding-right: 4px;
     color: inherit;

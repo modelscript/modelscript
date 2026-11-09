@@ -816,8 +816,11 @@ export class DaeBuilder {
   @inline
   resolveExprVarId(nameOrVarId: u32): i32 {
     if (nameOrVarId == 0xffffffff) return -1;
+    let varIdx = this.lookupVariableByName(nameOrVarId);
+    if (varIdx >= 0) return varIdx;
+    if (changetype<usize>(this.stringPool) != 0 && this.stringPool.isTime(nameOrVarId)) return -1;
     if (nameOrVarId < this.varCount) return nameOrVarId as i32;
-    return this.lookupVariableByName(nameOrVarId);
+    return -1;
   }
 
   /**
@@ -1540,6 +1543,14 @@ export function dae_setEqLhs(ptr: u32, eqId: u32, lhsId: u32): void {
 
 export function dae_setEqRhs(ptr: u32, eqId: u32, rhsId: u32): void {
   changetype<DaeBuilder>(ptr).getEqData().set(eqId * EQ_STRIDE + EQ_RHS, rhsId as i32);
+}
+
+export function dae_setEqRemoved(ptr: u32, eqId: u32, removed: bool): void {
+  changetype<DaeBuilder>(ptr).setEqRemoved(eqId, removed);
+}
+
+export function dae_isEqRemoved(ptr: u32, eqId: u32): bool {
+  return changetype<DaeBuilder>(ptr).isEqRemoved(eqId);
 }
 
 export function dae_setMemF64(ptr: u32, val: f64): void {

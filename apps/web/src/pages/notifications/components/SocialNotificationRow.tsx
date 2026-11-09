@@ -6,33 +6,34 @@ import { Link, useNavigate } from "react-router-dom";
 import Box from "../../../components/Box";
 import ProfileHoverCard from "../../../components/ProfileHoverCard";
 import { safeJsonParse } from "../../../util/json";
-import { formatPostContent, formatRelativeTime, getIconForType, getMessageForType } from "../formatters";
+import { formatPostContent, formatRelativeTime, getActionVerbForType, getMicroBadgeConfig } from "../formatters";
 import {
   Avatar,
-  AvatarOverflowPill,
-  AvatarsRow,
+  AvatarContainer,
+  CompactAvatarsGroup,
+  MicroReactionBadge,
   NotificationWrapper,
   QuickActionIconButton,
   UnreadDotButton,
 } from "../styles";
-import type { NotificationItem } from "../types";
+import type { InboxDensity, NotificationItem } from "../types";
 
 export interface SocialNotificationRowProps {
   notif: NotificationItem;
   currentUsername?: string | undefined;
   selected?: boolean | undefined;
+  density?: InboxDensity | undefined;
   onSelect?: ((notif: NotificationItem) => void) | undefined;
   onMarkRead?: ((id: string | number) => void) | undefined;
   onToggleStar?: ((notif: NotificationItem) => void) | undefined;
   onToggleArchive?: ((notif: NotificationItem) => void) | undefined;
 }
 
-const MAX_VISIBLE_AVATARS = 8;
-
 export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({
   notif,
   currentUsername,
   selected,
+  density = "compact",
   onSelect,
   onMarkRead,
   onToggleStar,
@@ -77,8 +78,18 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({
   };
 
   const relativeTime = formatRelativeTime(notif.created_at || new Date().toISOString());
-  const visibleActors = notif.actors?.slice(0, MAX_VISIBLE_AVATARS) || [];
-  const overflowCount = Math.max(0, (notif.actors?.length || 0) - MAX_VISIBLE_AVATARS);
+  const actorsCount = notif.actors?.length || 1;
+  const secondaryActor = notif.actors?.[1];
+
+  let actorNamesText = primaryActor.display_name || primaryActor.username || "Someone";
+  if (actorsCount === 2 && secondaryActor) {
+    actorNamesText = `${primaryActor.display_name || primaryActor.username} and ${secondaryActor.display_name || secondaryActor.username}`;
+  } else if (actorsCount > 2) {
+    actorNamesText = `${primaryActor.display_name || primaryActor.username} + ${actorsCount - 1} others`;
+  }
+
+  const actionVerb = getActionVerbForType(notif.type);
+  const microBadge = getMicroBadgeConfig(notif.type);
 
   const renderTriageButtons = () => (
     <>
@@ -94,11 +105,11 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({
           }}
         >
           {notif.isBookmark ? (
-            <BookmarkFillIcon size={14} />
+            <BookmarkFillIcon size={13} />
           ) : notif.starred ? (
-            <StarFillIcon size={14} />
+            <StarFillIcon size={13} />
           ) : (
-            <StarIcon size={14} />
+            <StarIcon size={13} />
           )}
         </QuickActionIconButton>
       )}
@@ -113,13 +124,13 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({
             onToggleArchive(notif);
           }}
         >
-          <ArchiveIcon size={14} />
+          <ArchiveIcon size={13} />
         </QuickActionIconButton>
       )}
       {!notif.read && (
         <UnreadDotButton
           type="button"
-          title="Mark as read"
+          title="Mark as read (U)"
           aria-label="Mark notification as read"
           onClick={(e) => {
             e.stopPropagation();
@@ -135,125 +146,163 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({
       key={notif.id}
       $unread={!notif.read}
       $selected={selected}
+      $density={density}
       data-notification-id={String(notif.id)}
       data-unread={!notif.read ? "true" : "false"}
       onClick={handleRowClick}
     >
-      {notif.type === "mention" || notif.type === "reply" || notif.type === "bookmark" ? (
-        <>
-          <Box width={36} display="flex" justifyContent="flex-end" pt={1}>
-            <ProfileHoverCard username={primaryActor.username || ""}>
-              <Link
-                to={primaryActor.username ? `/@${primaryActor.username}` : "/home"}
-                style={{ textDecoration: "none" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Avatar
-                  $url={primaryActor.avatar_url}
-                  $letter={((primaryActor?.display_name || primaryActor?.username || "?")[0] || "?").toUpperCase()}
-                  style={{ width: 36, height: 36 }}
-                />
-              </Link>
-            </ProfileHoverCard>
-          </Box>
-          <Box flex={1} display="flex" flexDirection="row" style={{ minWidth: 0 }}>
-            <Box flex={1} style={{ minWidth: 0 }}>
-              <Box
-                display="flex"
-                alignItems="center"
-                justifyContent="space-between"
-                gap="8px"
-                mb="4px"
-                style={{ fontSize: "14px", lineHeight: "20px" }}
-              >
-                <Box display="flex" alignItems="center" gap="4px" flexWrap="wrap">
-                  <ProfileHoverCard username={primaryActor.username || ""}>
-                    <Link
-                      to={`/@${primaryActor.username}`}
-                      style={{
-                        fontWeight: 700,
-                        color: "var(--color-fg-default)",
-                        textDecoration: "none",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {primaryActor.display_name || primaryActor.username}
-                    </Link>
-                  </ProfileHoverCard>
-                  <span style={{ color: "var(--color-fg-muted)" }}>@{primaryActor.username}</span>
-                  <span style={{ color: "var(--color-fg-muted)" }}>·</span>
-                  <span style={{ color: "var(--color-fg-muted)", fontSize: "12px" }}>{relativeTime}</span>
-                </Box>
-                <Box display="flex" alignItems="center" gap="4px" flexShrink={0}>
-                  {renderTriageButtons()}
-                </Box>
-              </Box>
-              {notif.post_content && (
-                <Box style={{ fontSize: "14px", lineHeight: "20px" }} color="var(--color-fg-muted)">
-                  {formatPostContent(notif.post_content)}
-                </Box>
-              )}
-            </Box>
-            {thumbnail && (
-              <Box width="56px" height="56px" borderRadius="8px" overflow="hidden" ml={2} flexShrink={0}>
-                <img
-                  src={thumbnail}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  alt="attachment thumbnail"
-                />
-              </Box>
-            )}
-          </Box>
-        </>
+      {/* ── Left Indicator / Micro Avatars Group ── */}
+      {actorsCount >= 2 && secondaryActor ? (
+        <CompactAvatarsGroup>
+          <Avatar
+            $size={20}
+            $url={primaryActor.avatar_url}
+            $letter={((primaryActor?.display_name || primaryActor?.username || "?")[0] || "?").toUpperCase()}
+          />
+          <Avatar
+            $size={20}
+            $url={secondaryActor.avatar_url}
+            $letter={((secondaryActor?.display_name || secondaryActor?.username || "?")[0] || "?").toUpperCase()}
+          />
+          {microBadge && (
+            <MicroReactionBadge $bg={microBadge.bg} $color={microBadge.color}>
+              {microBadge.icon}
+            </MicroReactionBadge>
+          )}
+        </CompactAvatarsGroup>
       ) : (
-        <>
-          <Box width={28} display="flex" justifyContent="center" pt={1}>
-            {getIconForType(notif.type)}
-          </Box>
-          <Box flex={1} style={{ minWidth: 0 }}>
-            <Box display="flex" alignItems="center" justifyContent="space-between" gap="8px">
-              <AvatarsRow>
-                {visibleActors.map((a) => {
-                  const avatarEl = (
-                    <Avatar
-                      key={a.username || a.display_name}
-                      $url={a.avatar_url}
-                      $letter={((a?.display_name || a?.username || "?")[0] || "?").toUpperCase()}
-                      title={a.display_name || a.username || ""}
-                    />
-                  );
-                  if (!a.username) return avatarEl;
-                  return (
-                    <ProfileHoverCard key={a.username} username={a.username}>
-                      <Link
-                        to={`/@${a.username}`}
-                        style={{ textDecoration: "none" }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {avatarEl}
-                      </Link>
-                    </ProfileHoverCard>
-                  );
-                })}
-                {overflowCount > 0 && <AvatarOverflowPill>+{overflowCount}</AvatarOverflowPill>}
-              </AvatarsRow>
-              <Box display="flex" alignItems="center" gap="4px" flexShrink={0}>
-                <span style={{ fontSize: "12px", lineHeight: "16px", color: "var(--color-fg-muted)" }}>
-                  {relativeTime}
-                </span>
-                {renderTriageButtons()}
-              </Box>
-            </Box>
-            <Box mt={1} style={{ fontSize: "14px", lineHeight: "20px" }}>
-              {getMessageForType(notif.type, notif.actors, currentUsername)}
-            </Box>
-            {notif.post_content && (
-              <Box mt={1} color="var(--color-fg-muted)" style={{ fontSize: "14px", lineHeight: "20px" }}>
-                {formatPostContent(notif.post_content)}
-              </Box>
+        <AvatarContainer>
+          <ProfileHoverCard username={primaryActor.username || ""}>
+            <Link
+              to={primaryActor.username ? `/@${primaryActor.username}` : "/home"}
+              style={{ textDecoration: "none" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Avatar
+                $size={28}
+                $url={primaryActor.avatar_url}
+                $letter={((primaryActor?.display_name || primaryActor?.username || "?")[0] || "?").toUpperCase()}
+              />
+            </Link>
+          </ProfileHoverCard>
+          {microBadge && (
+            <MicroReactionBadge $bg={microBadge.bg} $color={microBadge.color}>
+              {microBadge.icon}
+            </MicroReactionBadge>
+          )}
+        </AvatarContainer>
+      )}
+
+      {/* ── Right Content: 3-Tier Outlook Hierarchy ── */}
+      <Box flex={1} style={{ minWidth: 0 }}>
+        {/* Line 1: Actors & Time / Hover Triage */}
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          gap="6px"
+          style={{ height: "18px", minHeight: "18px", maxHeight: "18px" }}
+        >
+          <Box
+            style={{
+              fontWeight: notif.read ? 600 : 700,
+              fontSize: "13px",
+              lineHeight: "18px",
+              color: "var(--color-fg-default)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {primaryActor.username ? (
+              <ProfileHoverCard username={primaryActor.username}>
+                <Link
+                  to={`/@${primaryActor.username}`}
+                  style={{
+                    color: "inherit",
+                    textDecoration: "none",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {actorNamesText}
+                </Link>
+              </ProfileHoverCard>
+            ) : (
+              actorNamesText
             )}
           </Box>
-        </>
+
+          <Box
+            display="flex"
+            alignItems="center"
+            gap="4px"
+            flexShrink={0}
+            style={{ height: "18px", minHeight: "18px", maxHeight: "18px" }}
+          >
+            <span
+              className="notif-row-time"
+              style={{
+                fontSize: "11.5px",
+                lineHeight: "18px",
+                color: notif.read ? "var(--color-fg-muted)" : "var(--color-accent-fg)",
+                fontWeight: notif.read ? 400 : 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {relativeTime}
+            </span>
+            <div className="notif-hover-actions">{renderTriageButtons()}</div>
+          </Box>
+        </Box>
+
+        {/* Line 2: Subject / Action Verb */}
+        <Box
+          mt="2px"
+          style={{
+            height: "16px",
+            minHeight: "16px",
+            maxHeight: "16px",
+            fontSize: "12px",
+            lineHeight: "16px",
+            fontWeight: notif.read ? 500 : 600,
+            color: notif.read ? "var(--color-fg-muted)" : "var(--color-fg-default)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {actionVerb}
+        </Box>
+
+        {/* Line 3: Snippet Preview */}
+        {notif.post_content && (
+          <Box
+            mt="2px"
+            color="var(--color-fg-muted)"
+            style={{
+              height: density === "comfortable" ? undefined : "15px",
+              minHeight: density === "comfortable" ? undefined : "15px",
+              maxHeight: density === "comfortable" ? undefined : "15px",
+              fontSize: "11.5px",
+              lineHeight: "15px",
+              whiteSpace: density === "comfortable" ? "normal" : "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              display: density === "comfortable" ? "-webkit-box" : "block",
+              WebkitLineClamp: density === "comfortable" ? 2 : 1,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            {formatPostContent(notif.post_content)}
+          </Box>
+        )}
+      </Box>
+
+      {/* Thumbnail preview if present */}
+      {thumbnail && (
+        <Box width="36px" height="36px" borderRadius="6px" overflow="hidden" ml={1} flexShrink={0} mt="2px">
+          <img src={thumbnail} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="attachment preview" />
+        </Box>
       )}
     </NotificationWrapper>
   );

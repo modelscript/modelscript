@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Text } from "@primer/react";
+import { CheckIcon, CopyIcon } from "@primer/octicons-react";
+import { Button, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
@@ -70,11 +71,14 @@ interface TeiViewerProps {
 
 const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
   const [teiData, setTeiData] = useState<Document | null>(null);
+  const [rawXml, setRawXml] = useState<string>(() => viewConfig.data || viewConfig.code || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const parseTei = (text: string) => {
     try {
+      setRawXml(text);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(text, "text/xml");
       if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
@@ -87,8 +91,15 @@ const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
   };
 
   useEffect(() => {
-    if (viewConfig.data) {
-      parseTei(viewConfig.data);
+    if (teiData || error) {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [teiData, error]);
+
+  useEffect(() => {
+    const inline = viewConfig.data || viewConfig.code;
+    if (inline) {
+      parseTei(inline);
     } else if (viewConfig.url) {
       setLoading(true);
       const fetchUrl = viewConfig.url.startsWith("/") ? `/api${viewConfig.url}` : viewConfig.url;
@@ -185,12 +196,28 @@ const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
 
   return (
     <TeiContainer $isFullScreen={isFullScreen}>
-      {(title || author) && (
-        <div className="tei-header">
+      <div
+        className="tei-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}
+      >
+        <div>
           {title && <div className="tei-title">{title}</div>}
           {author && <div className="tei-author">{author}</div>}
         </div>
-      )}
+        {rawXml && (
+          <Button
+            size="small"
+            leadingVisual={copied ? CheckIcon : CopyIcon}
+            onClick={() => {
+              navigator.clipboard?.writeText(rawXml).catch(() => {});
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+          >
+            {copied ? "Copied" : "Copy XML"}
+          </Button>
+        )}
+      </div>
       {bodyNode ? (
         <div className="tei-body">{Array.from(bodyNode.childNodes).map((child, i) => renderNode(child, i))}</div>
       ) : (

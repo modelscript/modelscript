@@ -1034,6 +1034,7 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
             const cleanProjLower = repoParam.replace(/\.git$/i, "").toLowerCase();
             const ownerUser = database.getUserByUsername(ownerParam);
             const org = database.getOrganizationBySlug(cleanNsLower);
+            const space = database.getSpaceByNamespaceAndSlug(cleanNsLower, cleanProjLower);
             let matchedRepo = ownerUser
               ? database.getUserRepos(ownerUser.id).find((r) => {
                   const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
@@ -1044,7 +1045,9 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
             if (!matchedRepo) {
               matchedRepo = database.getLinkedRepoById(`${cleanNsLower}/${cleanProjLower}`);
             }
-            const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
+            const vis = space
+              ? space.visibility
+              : (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
             if (vis === "private" || vis === "internal") {
               res.setHeader("Cache-Control", "private, no-store, max-age=0");
               if (!req.user) {
@@ -1054,15 +1057,27 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
               const isAdmin =
                 req.user.account_type === "admin" || (req.user as { role?: string | undefined }).role === "admin";
               if (!isAdmin) {
+                const isSpaceMember =
+                  space && req.user ? Boolean(database.getSpaceMemberRole(space.id, req.user.id)) : false;
                 const isOwner =
+                  (space &&
+                    req.user &&
+                    (space.owner_namespace.toLowerCase() === (req.user.username || "").toLowerCase() ||
+                      space.user_id === req.user.id)) ||
                   (ownerUser !== undefined && req.user.id === ownerUser.id) ||
                   (matchedRepo !== undefined && req.user.id === matchedRepo.user_id);
                 const isOrgMember = org != null && Boolean(database.getOrganizationMemberRole(org.id, req.user.id));
-                if (vis === "private" && !isOwner && !isOrgMember) {
+                if (vis === "private" && !isOwner && !isOrgMember && !isSpaceMember) {
                   res.status(403).json({ message: "Forbidden: This repository is private." });
                   return;
                 }
-                if (vis === "internal" && req.user.account_type === "community_federated" && !isOwner && !isOrgMember) {
+                if (
+                  vis === "internal" &&
+                  req.user.account_type === "community_federated" &&
+                  !isOwner &&
+                  !isOrgMember &&
+                  !isSpaceMember
+                ) {
                   res.status(403).json({
                     message: "Forbidden: Internal repository is restricted to organization and instance members.",
                   });

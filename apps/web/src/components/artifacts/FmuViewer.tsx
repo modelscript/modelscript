@@ -364,6 +364,12 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, []);
+
   // Collect and deduplicate all scalar variables
   const allVariables = useMemo(() => {
     const list: FmuScalarVariable[] = [];

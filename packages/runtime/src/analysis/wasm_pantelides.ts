@@ -420,7 +420,20 @@ function substituteAlgebraicDefinitions(
 function isSkipArenaEq(arena: DAEBuilder, eqIdx: number): boolean {
   if (arena.isEqRemoved?.(eqIdx) || arena.isEqInitial?.(eqIdx)) return true;
   const eqFlags = arena.getEqFlags?.(eqIdx) ?? 0;
-  return eqFlags !== -1 && eqFlags >>> 0 !== 0xffffffff && (eqFlags & 1) /* FLAG_EQ_INITIAL */ !== 0;
+  if (eqFlags !== -1 && eqFlags >>> 0 !== 0xffffffff && (eqFlags & 1) /* FLAG_EQ_INITIAL */ !== 0) return true;
+  const lhs = arena.getEqLhs(eqIdx);
+  const rhs = arena.getEqRhs(eqIdx);
+  if (lhs === rhs) return true;
+  if (
+    lhs >= 0 &&
+    rhs >= 0 &&
+    arena.getExprKind(lhs) === ExprKind.Name &&
+    arena.getExprKind(rhs) === ExprKind.Name &&
+    arena.getExprData1(lhs) === arena.getExprData1(rhs)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function containsTargetExpr(arena: DAEBuilder, exprId: number, matchFn: (id: number) => boolean): boolean {
@@ -720,7 +733,6 @@ export function computePryceSignatureMatrix(
   }
 
   const varIdxs: number[] = [];
-  const varToCol = new Map<number, number>();
   for (let v = 0; v < arena.varCount; v++) {
     if (arena.isVarRemoved(v)) continue;
     if (derVarToBase.has(v) || derivativeVars?.has(v)) continue;
@@ -728,13 +740,81 @@ export function computePryceSignatureMatrix(
     if (variability === Variability.Parameter || variability === Variability.Constant || parameters?.has(v)) {
       continue;
     }
-    varToCol.set(v, varIdxs.length);
     varIdxs.push(v);
   }
 
   const M = eqIdxs.length;
   const N = varIdxs.length;
-  const sigma: number[][] = Array.from({ length: M }, () => Array(N).fill(-Infinity));
+
+  if (M === 0 || N === 0) {
+    return {
+      eqIdxs,
+      varIdxs,
+      sigma: [],
+      c: [],
+      d: [],
+      rowMatch: [],
+      colMatch: [],
+      structuralIndex: 1,
+    };
+  }
+
+  // Fast-Path for Index-1 ODE/DAE: if no derivative-free equation touches continuous states
+  // without also involving algebraic variables, the system is an ordinary semi-explicit Index-1 DAE
+  // (c_i = 0, d_j = 1 for states, 0 for algebraic).
+  let hasStateConstraints = false;
+  const checkDeps = new Set<number>();
+  for (let i = 0; i < M; i++) {
+    const eqIdx = eqIdxs[i]!;
+    const lhs = arena.getEqLhs(eqIdx);
+    const rhs = arena.getEqRhs(eqIdx);
+    if (!containsDerivative(arena, lhs) && !containsDerivative(arena, rhs)) {
+      checkDeps.clear();
+      collectArenaExprDeps(arena, lhs, checkDeps);
+      collectArenaExprDeps(arena, rhs, checkDeps);
+      let hasState = false;
+      let hasAlgebraic = false;
+      for (const v of checkDeps) {
+        if (inferredStates.has(v)) {
+          hasState = true;
+        } else if (arena.getVarVariability(v) === Variability.Continuous && !parameters?.has(v)) {
+          hasAlgebraic = true;
+        }
+      }
+      if (hasState && !hasAlgebraic) {
+        hasStateConstraints = true;
+        break;
+      }
+    }
+  }
+
+  if (!hasStateConstraints && (M > 200 || N > 200)) {
+    const c = new Array<number>(M).fill(0);
+    const d = new Array<number>(N);
+    for (let j = 0; j < N; j++) {
+      d[j] = inferredStates.has(varIdxs[j]!) ? 1 : 0;
+    }
+    return {
+      eqIdxs,
+      varIdxs,
+      sigma: [],
+      c,
+      d,
+      rowMatch: new Array<number>(M).fill(-1),
+      colMatch: new Array<number>(N).fill(-1),
+      structuralIndex: 1,
+    };
+  }
+
+  const varToCol = new Map<number, number>();
+  for (let j = 0; j < N; j++) {
+    varToCol.set(varIdxs[j]!, j);
+  }
+
+  const isSmallMatrix = M * N <= 100000;
+  const sigma: number[][] = isSmallMatrix ? Array.from({ length: M }, () => Array(N).fill(-Infinity)) : [];
+  const rowOrders: Map<number, number>[] = Array.from({ length: M }, () => new Map<number, number>());
+  const colOrders: Map<number, number>[] = Array.from({ length: N }, () => new Map<number, number>());
 
   const collectOrders = (exprId: number, curOrder: number, row: number): void => {
     if (exprId < 0) return;
@@ -753,12 +833,22 @@ export function computePryceSignatureMatrix(
             const col = varToCol.get(derInfo.baseVarIdx);
             if (col !== undefined) {
               const totalOrd = curOrder + derInfo.order;
-              if (totalOrd > sigma[row]![col]!) sigma[row]![col] = totalOrd;
+              const prev = rowOrders[row]!.get(col) ?? -Infinity;
+              if (totalOrd > prev) {
+                rowOrders[row]!.set(col, totalOrd);
+                colOrders[col]!.set(row, totalOrd);
+                if (isSmallMatrix) sigma[row]![col] = totalOrd;
+              }
             }
           } else {
             const col = varToCol.get(vIdx);
             if (col !== undefined) {
-              if (curOrder > sigma[row]![col]!) sigma[row]![col] = curOrder;
+              const prev = rowOrders[row]!.get(col) ?? -Infinity;
+              if (curOrder > prev) {
+                rowOrders[row]!.set(col, curOrder);
+                colOrders[col]!.set(row, curOrder);
+                if (isSmallMatrix) sigma[row]![col] = curOrder;
+              }
               if (curOrder > 0) inferredStates.add(vIdx);
             }
           }
@@ -833,12 +923,37 @@ export function computePryceSignatureMatrix(
     collectOrders(arena.getEqRhs(eqIdx), 0, i);
   }
 
-  // Maximum-cardinality, maximum-weight bipartite matching via Bellman-Ford augmenting paths
+  // Maximum-cardinality, maximum-weight bipartite matching
   const rowMatch = new Array<number>(M).fill(-1);
   const colMatch = new Array<number>(N).fill(-1);
   const W_MAX = 1000;
 
-  while (true) {
+  // 1. Greedy match highest-order edges first (O(E))
+  for (let i = 0; i < M; i++) {
+    const colMap = rowOrders[i]!;
+    let bestCol = -1;
+    let bestOrder = -Infinity;
+    for (const [col, order] of colMap) {
+      if (colMatch[col] === -1 && order > bestOrder) {
+        bestOrder = order;
+        bestCol = col;
+      }
+    }
+    if (bestCol !== -1) {
+      rowMatch[i] = bestCol;
+      colMatch[bestCol] = i;
+    }
+  }
+
+  let hasUnmatched = false;
+  for (let i = 0; i < M; i++) {
+    if (rowMatch[i] === -1) {
+      hasUnmatched = true;
+      break;
+    }
+  }
+
+  while (hasUnmatched) {
     // Nodes: 0..M-1 (rows), M..M+N-1 (cols), M+N (sink)
     const totalNodes = M + N + 1;
     const SINK = M + N;
@@ -857,9 +972,9 @@ export function computePryceSignatureMatrix(
       // Forward edges: row i -> col j (unmatched edge)
       for (let i = 0; i < M; i++) {
         if (dist[i] === Infinity) continue;
-        for (let j = 0; j < N; j++) {
+        const colMap = rowOrders[i]!;
+        for (const [j, s] of colMap) {
           if (rowMatch[i] === j) continue;
-          const s = sigma[i]![j]!;
           if (s < 0) continue;
           const cost = W_MAX - s;
           if (dist[i]! + cost < dist[M + j]!) {
@@ -881,12 +996,14 @@ export function computePryceSignatureMatrix(
             updated = true;
           }
         } else {
-          const s = sigma[mRow]![j]!;
-          const revCost = -(W_MAX - s);
-          if (dCol + revCost < dist[mRow]!) {
-            dist[mRow] = dCol + revCost;
-            parent[mRow] = M + j;
-            updated = true;
+          const s = rowOrders[mRow]?.get(j) ?? -Infinity;
+          if (s >= 0) {
+            const revCost = -(W_MAX - s);
+            if (dCol + revCost < dist[mRow]!) {
+              dist[mRow] = dCol + revCost;
+              parent[mRow] = M + j;
+              updated = true;
+            }
           }
         }
       }
@@ -904,20 +1021,28 @@ export function computePryceSignatureMatrix(
       colMatch[col] = row;
       cur = prevColNode;
     }
+
+    hasUnmatched = false;
+    for (let i = 0; i < M; i++) {
+      if (rowMatch[i] === -1) {
+        hasUnmatched = true;
+        break;
+      }
+    }
   }
 
   // Pryce's Fixed-Point Iteration for dual offsets c_i >= 0 and d_j >= 0
   const c = new Array<number>(M).fill(0);
   const d = new Array<number>(N).fill(0);
-  const maxIter = M * N + 10;
+  const maxIter = Math.min(M * N + 10, 100);
 
   for (let iter = 0; iter < maxIter; iter++) {
     let changed = false;
     for (let j = 0; j < N; j++) {
       const vIdx = varIdxs[j]!;
       let maxVal = inferredStates.has(vIdx) ? 1 : 0;
-      for (let i = 0; i < M; i++) {
-        const s = sigma[i]![j]!;
+      const eqMap = colOrders[j]!;
+      for (const [i, s] of eqMap) {
         if (s >= 0 && s + c[i]! > maxVal) {
           maxVal = s + c[i]!;
         }
@@ -931,7 +1056,7 @@ export function computePryceSignatureMatrix(
     for (let i = 0; i < M; i++) {
       const mCol = rowMatch[i]!;
       if (mCol >= 0) {
-        const s = sigma[i]![mCol]!;
+        const s = rowOrders[i]!.get(mCol) ?? -Infinity;
         if (s >= 0) {
           const reqC = d[mCol]! - s;
           if (reqC > c[i]!) {
@@ -943,8 +1068,8 @@ export function computePryceSignatureMatrix(
         // Unmatched equation in a structurally singular subset:
         // must be differentiated at least enough to reach the highest derivative order of its variables
         let reqC = c[i]!;
-        for (let j = 0; j < N; j++) {
-          const s = sigma[i]![j]!;
+        const colMap = rowOrders[i]!;
+        for (const [j, s] of colMap) {
           if (s >= 0 && d[j]! - s > reqC) {
             reqC = d[j]! - s;
           }
@@ -1003,6 +1128,17 @@ export function analyzeStructuralDaeIndex(
   // to identify Hall / KönigMinimal Structurally Singular (MSS) subsets
   const M = sig.eqIdxs.length;
   const N = sig.varIdxs.length;
+
+  if (sig.sigma.length === 0 || M === 0 || N === 0) {
+    return {
+      structuralIndex: sig.structuralIndex,
+      signatureMatrix: sig,
+      singularSubsets,
+      equationDiffOrders,
+      variableOrders,
+    };
+  }
+
   const colMaxSigma = new Array<number>(N).fill(0);
   for (let j = 0; j < N; j++) {
     const vIdx = sig.varIdxs[j]!;
@@ -1072,35 +1208,123 @@ export function pantelidesIndexReductionArena(
   const generatedEquations: number[] = [];
   const stateSelectionMap = new Map<number, number>();
 
+  // In-WASM zero-allocation Index-1 verification fast-path
+  if (
+    arena.ptr !== 0 &&
+    (arena as any)._renamedVars?.size === 0 &&
+    typeof arena.exports?.dae_checkPantelidesIndex1 === "function" &&
+    (arena.eqCount > 200 || arena.varCount > 200)
+  ) {
+    const varCount = arena.varCount;
+    let maskPtr = 0;
+    try {
+      if (varCount > 0 && (stateVars.size > 0 || derivativeVars.size > 0 || parameters.size > 0)) {
+        maskPtr = arena.exports.alloc(varCount);
+        const maskView = new Uint8Array(arena.exports.memory.buffer, maskPtr, varCount);
+        maskView.fill(0);
+        for (const s of stateVars) {
+          if (s >= 0 && s < varCount) maskView[s] = 1;
+        }
+        for (const d of derivativeVars) {
+          if (d >= 0 && d < varCount) maskView[d] = 2;
+        }
+        for (const p of parameters) {
+          if (p >= 0 && p < varCount) maskView[p] = 3;
+        }
+      }
+      if (arena.exports.dae_checkPantelidesIndex1(arena.ptr, maskPtr) === 1) {
+        return {
+          dummyDerivatives,
+          generatedEquations,
+          structuralIndex: 1,
+          stateSelectionMap,
+          pryceOffsets: { c: new Map(), d: new Map() },
+        };
+      }
+    } finally {
+      if (maskPtr !== 0 && typeof arena.exports?.free === "function") {
+        arena.exports.free(maskPtr);
+      }
+    }
+  }
+
   // Compute initial Pryce signature matrix before mutations for reference offsets
   const initialSig = computePryceSignatureMatrix(arena, stateVars, derivativeVars, parameters);
   const pryceC = new Map<number, number>();
   const pryceD = new Map<number, number>();
-  for (let i = 0; i < initialSig.eqIdxs.length; i++) {
-    pryceC.set(initialSig.eqIdxs[i]!, initialSig.c[i]!);
+  if (initialSig.structuralIndex > 1 || initialSig.eqIdxs.length + initialSig.varIdxs.length <= 1000) {
+    for (let i = 0; i < initialSig.eqIdxs.length; i++) {
+      pryceC.set(initialSig.eqIdxs[i]!, initialSig.c[i]!);
+    }
+    for (let j = 0; j < initialSig.varIdxs.length; j++) {
+      pryceD.set(initialSig.varIdxs[j]!, initialSig.d[j]!);
+    }
   }
-  for (let j = 0; j < initialSig.varIdxs.length; j++) {
-    pryceD.set(initialSig.varIdxs[j]!, initialSig.d[j]!);
+
+  // Fast-path: Index-1 systems require zero reduction passes or dummy derivatives
+  if (initialSig.structuralIndex === 1) {
+    return {
+      dummyDerivatives,
+      generatedEquations,
+      structuralIndex: 1,
+      stateSelectionMap,
+      pryceOffsets: { c: pryceC, d: pryceD },
+    };
   }
 
   // We need the string IDs for state vars for the CAS differentiator
   const stateVarStringIds = new Set<StringId>();
+  const stateNameIdToIdx = new Map<number, number>();
   for (const sv of stateVars) {
-    stateVarStringIds.add(arena.getVarNameId(sv));
+    const nid = arena.getVarNameId(sv);
+    stateVarStringIds.add(nid);
+    stateNameIdToIdx.set(nid, sv);
   }
 
+  const collectDerStateNameIds = (exprId: number, out: Set<number>): void => {
+    if (exprId < 0) return;
+    const k = arena.getExprKind(exprId);
+    if (k === ExprKind.Der) {
+      const argId = arena.getExprData1(exprId);
+      if (argId >= 0 && arena.getExprKind(argId) === ExprKind.Name) {
+        const nid = arena.getExprData1(argId);
+        if (stateNameIdToIdx.has(nid)) {
+          out.add(nid);
+        }
+      }
+      return;
+    }
+    if (k === ExprKind.Binary) {
+      collectDerStateNameIds(arena.getExprLeft(exprId), out);
+      collectDerStateNameIds(arena.getExprRight(exprId), out);
+    } else if (k === ExprKind.Unary || k === ExprKind.Negate) {
+      const inner = arena.getExprLeft(exprId) >= 0 ? arena.getExprLeft(exprId) : arena.getExprData1(exprId);
+      collectDerStateNameIds(inner, out);
+    } else if (k === ExprKind.IfElse) {
+      collectDerStateNameIds(arena.getExprData1(exprId), out);
+      collectDerStateNameIds(arena.getExprLeft(exprId), out);
+      collectDerStateNameIds(arena.getExprRight(exprId), out);
+    }
+  };
+
   // Identify explicit or residual kinematic state-derivative definitions `der(q) = v` or `der(q) - v = 0`
-  // where both q, v ∈ stateVars
+  // where both q, v ∈ stateVars in O(E) time
   const derToStateNameId = new Map<number, number>();
   const velocityStates = new Set<number>();
+  const eqDerStateNameIds = new Set<number>();
   for (let i = 0; i < arena.eqCount; i++) {
     if (isSkipArenaEq(arena, i)) continue;
     if (arena.getEqKind(i) !== EqKind.Simple) continue;
     const lhs = arena.getEqLhs(i);
     const rhs = arena.getEqRhs(i);
 
-    for (const qIdx of stateVars) {
-      const qNameId = arena.getVarNameId(qIdx);
+    eqDerStateNameIds.clear();
+    collectDerStateNameIds(lhs, eqDerStateNameIds);
+    collectDerStateNameIds(rhs, eqDerStateNameIds);
+    if (eqDerStateNameIds.size === 0) continue;
+
+    for (const qNameId of eqDerStateNameIds) {
+      const qIdx = stateNameIdToIdx.get(qNameId)!;
       const isDerOfQ = (id: number): boolean => {
         if (id < 0 || arena.getExprKind(id) !== ExprKind.Der) return false;
         const argId = arena.getExprData1(id);

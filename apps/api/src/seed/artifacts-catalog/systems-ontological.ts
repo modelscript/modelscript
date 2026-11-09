@@ -64,7 +64,7 @@ end ElectroHydrostaticActuator;`,
     extraViewConfig: {
       dialect: "modelica",
       standalone: true,
-      previewMode: "diagram",
+      previewMode: "simulation",
     },
     comments: [
       {
@@ -157,7 +157,7 @@ equation
     extraViewConfig: {
       dialect: "msx",
       standalone: true,
-      previewMode: "diagram",
+      previewMode: "simulation",
     },
     comments: [
       {

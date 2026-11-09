@@ -26,7 +26,9 @@
     "languages/*"
   ],
   "scripts": {
+    "bench:dae-scale": "npx tsx scripts/benchmark-dae-scale.ts",
     "bench:parser": "npm run bench:parser --workspace=@modelscript/modelica",
+    "bench:polyglot": "npx tsx scripts/benchmark-polyglot-runner.ts",
     "bench:triplestore": "npx tsx scripts/benchmark-triplestore.ts",
     "prebuild": "mkdir -p data",
     "build": "nx run-many --target=build --parallel=8",
@@ -84,6 +86,7 @@
     "package:desktop": "npx nx build @modelscript/web && npm run build:tauri --workspace=@modelscript/desktop",
     "package:desktop:portable": "npx nx build @modelscript/web && npm run build:portable --workspace=@modelscript/desktop",
     "package:ide:extension": "npm run build-extension --workspace=@modelscript/ide && (cd apps/ide/dist/extension && npx --yes @vscode/vsce package --no-dependencies --allow-star-activation --out ../)",
+    "preflight:prod": "npx tsx scripts/ops/preflight-audit.ts",
     "prepare": "husky",
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
     "release": "NODE_OPTIONS='--require ./scripts/nx-minimatch-shim.cjs' nx release",

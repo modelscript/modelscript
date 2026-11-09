@@ -86,6 +86,12 @@ const LinkPreviewViewer: React.FC<LinkPreviewViewerProps> = ({ viewConfig }) => 
     setImageError(false);
   }, [safeImageSrc]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, []);
+
   return (
     <LinkCard
       href={safeHref || "#"}

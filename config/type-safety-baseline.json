@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 798,
+      "explicitAny": 853,
       "tsComments": 0
     },
     "ee": {
@@ -354,7 +354,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 769,
+      "explicitAny": 777,
       "tsComments": 0
     },
     "packages/simulate": {

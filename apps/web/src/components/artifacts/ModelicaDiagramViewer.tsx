@@ -22,11 +22,31 @@ import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { useToast } from "../ToastContext";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
+import type { ModelicaPreviewMetadata, ModelicaPreviewMode } from "./modelica-preview-mode.js";
+import {
+  hasModelica3dVisualizers as hasModelica3dVisualizersHelper,
+  inferModelicaPreviewMode as inferModelicaPreviewModeHelper,
+} from "./modelica-preview-mode.js";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
 
-export type ModelicaPreviewMode = "diagram" | "icon" | "simulation" | "3d" | "code";
+export type { ModelicaPreviewMetadata, ModelicaPreviewMode } from "./modelica-preview-mode.js";
+
+export function hasModelica3dVisualizers(code: string): boolean {
+  return hasModelica3dVisualizersHelper(code);
+}
+
+export function inferModelicaPreviewMode(
+  code: string,
+  explicitMode?: string | undefined,
+  svg?: string | undefined,
+  thumbUrl?: string | undefined,
+  modelMetadata?: ModelicaPreviewMetadata | undefined,
+): ModelicaPreviewMode {
+  return inferModelicaPreviewModeHelper(code, explicitMode, svg, thumbUrl, modelMetadata);
+}
+
 type CardTabMode = "diagram" | "simulation" | "3d" | "inspector" | "code";
 
 interface ModelicaDiagramViewerProps {
@@ -142,100 +162,6 @@ const EditorContainer = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   overflow: hidden;
 `;
-
-export function hasModelica3dVisualizers(code: string): boolean {
-  if (!code || typeof code !== "string") return false;
-  return (
-    /\b(?:Modelica\.Mechanics\.MultiBody\.)?Visualizers\./.test(code) ||
-    /\bModelica\.Mechanics\.MultiBody\.(?:Parts|Joints|Forces|World)\b/.test(code) ||
-    /\bannotation\s*\([\s\S]*?\b(?:CAD|cad|CADPort)\s*\(/.test(code)
-  );
-}
-
-export interface ModelicaPreviewMetadata {
-  isPartial?: boolean | undefined;
-  hasIcon?: boolean | undefined;
-  hasDiagram?: boolean | undefined;
-  has3d?: boolean | undefined;
-  hasEquations?: boolean | undefined;
-  hasConnect?: boolean | undefined;
-  kind?: string | undefined;
-}
-
-export function inferModelicaPreviewMode(
-  code: string,
-  explicitMode?: string | undefined,
-  svg?: string | undefined,
-  thumbUrl?: string | undefined,
-  modelMetadata?: ModelicaPreviewMetadata | undefined,
-): ModelicaPreviewMode {
-  if (
-    explicitMode === "diagram" ||
-    explicitMode === "icon" ||
-    explicitMode === "simulation" ||
-    explicitMode === "3d" ||
-    explicitMode === "code"
-  ) {
-    return explicitMode;
-  }
-  if (explicitMode === "cad" || explicitMode === "animation" || explicitMode === "3d-animation") {
-    return "3d";
-  }
-  if (svg) {
-    const modeMatch = svg.match(/data-preview-mode=["'](diagram|icon|simulation|3d|code)["']/i);
-    if (modeMatch && modeMatch[1]) {
-      return modeMatch[1].toLowerCase() as ModelicaPreviewMode;
-    }
-  }
-  if (thumbUrl) {
-    const thumbMatch = thumbUrl.match(/[._-](diagram|icon|simulation|3d|code)(?:\.thumb)?\.svg/i);
-    if (thumbMatch && thumbMatch[1]) {
-      return thumbMatch[1].toLowerCase() as ModelicaPreviewMode;
-    }
-  }
-  const has3d = modelMetadata?.has3d !== undefined ? modelMetadata.has3d : hasModelica3dVisualizers(code);
-  const hasDiagram =
-    modelMetadata?.hasDiagram !== undefined
-      ? modelMetadata.hasDiagram
-      : /\bPlacement\s*\(/i.test(code) || /\bDiagram\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code);
-  if (has3d && !hasDiagram) return "3d";
-  if (hasDiagram) return "diagram";
-
-  const hasIcon =
-    modelMetadata?.hasIcon !== undefined
-      ? modelMetadata.hasIcon
-      : /\bIcon\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code) ||
-        /\bextends\s+[A-Za-z0-9_.]*(?:Icon|OnePort|TwoPin|TwoPort|SISO|SO|MI|MO|Interfaces\.)/i.test(code);
-  if (hasIcon) return "icon";
-
-  if (has3d) return "3d";
-
-  const isPartial =
-    modelMetadata?.isPartial !== undefined
-      ? modelMetadata.isPartial
-      : /\bpartial\s+(?:encapsulated\s+|expandable\s+)*(?:model|class|block|connector|record|function|package|type|operator)\b/.test(
-          code,
-        );
-  const codeWithoutWithin = code.replace(/^\s*within\b[^;]*;/gm, "");
-  const isNonSimKind =
-    modelMetadata?.kind !== undefined
-      ? ["package", "connector", "record", "function", "type", "operator"].includes(modelMetadata.kind.toLowerCase())
-      : /^\s*(?:encapsulated\s+)?(?:package|connector|record|function|type|operator)\b/m.test(codeWithoutWithin);
-  const hasEquations =
-    modelMetadata?.hasEquations !== undefined
-      ? modelMetadata.hasEquations
-      : /\b(?:equation|algorithm)\b/.test(code) &&
-        (/\bder\s*\(/.test(code) || /(?:^|\n)\s*[A-Za-z0-9_.(),\s+-/*]+\s*:?=\s*[^;=]+;/m.test(code));
-
-  if (!isPartial && !isNonSimKind && hasEquations) {
-    return "simulation";
-  }
-  const hasConnect = modelMetadata?.hasConnect !== undefined ? modelMetadata.hasConnect : /\bconnect\s*\(/i.test(code);
-  if (hasConnect) {
-    return "diagram";
-  }
-  return "code";
-}
 
 export function isLegacyBogusModelicaSvg(svg: string, inferredMode: ModelicaPreviewMode): boolean {
   if (!svg) return false;
@@ -476,6 +402,12 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
     }
   }, [isFullScreen]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [validInlineSvg, previewMode]);
+
   // Hibernate heavy Morsel runtime when scrolled out of view in feed mode
   useEffect(() => {
     if (!interactive || isFullScreen) return;
@@ -636,8 +568,38 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
               }))}
             />
           </FooterTabs>
-          <FloatingTools>
-            {(hasUnsavedChanges || saveSuccess) && targetArtifactId && (
+          {(!interactive || viewMode === "code") && (
+            <FloatingTools>
+              {(hasUnsavedChanges || saveSuccess) && targetArtifactId && (
+                <FloatingToolBtn
+                  type="button"
+                  $success={saveSuccess}
+                  disabled={isSaving}
+                  title={saveSuccess ? "Saved!" : isSaving ? "Saving…" : "Save changes to artifact"}
+                  aria-label="Save changes to artifact"
+                  onClick={handleSave}
+                >
+                  {saveSuccess ? <CheckIcon size={14} /> : <SyncIcon size={14} />}
+                </FloatingToolBtn>
+              )}
+              {viewMode === "diagram" && (
+                <FloatingToolBtn type="button" title="Download SVG" aria-label="Download SVG" onClick={handleExportSvg}>
+                  {copiedSvg ? <CheckIcon size={14} /> : <DownloadIcon size={14} />}
+                </FloatingToolBtn>
+              )}
+              <FloatingToolBtn
+                type="button"
+                $success={copied}
+                title={copied ? "Copied" : "Copy source code"}
+                aria-label="Copy source code"
+                onClick={handleCopy}
+              >
+                {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+              </FloatingToolBtn>
+            </FloatingTools>
+          )}
+          {interactive && viewMode !== "code" && (hasUnsavedChanges || saveSuccess) && targetArtifactId && (
+            <FloatingTools style={{ top: "auto", bottom: "12px", right: "12px", zIndex: 95, opacity: 1 }}>
               <FloatingToolBtn
                 type="button"
                 $success={saveSuccess}
@@ -645,25 +607,20 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
                 title={saveSuccess ? "Saved!" : isSaving ? "Saving…" : "Save changes to artifact"}
                 aria-label="Save changes to artifact"
                 onClick={handleSave}
+                style={{
+                  background: saveSuccess ? "rgba(16, 185, 129, 0.9)" : "var(--ms-brand, #0e7490)",
+                  color: "#ffffff",
+                  borderColor: "rgba(255, 255, 255, 0.2)",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.35)",
+                }}
               >
                 {saveSuccess ? <CheckIcon size={14} /> : <SyncIcon size={14} />}
+                <span style={{ fontSize: "11px", fontWeight: 600, paddingRight: 2 }}>
+                  {saveSuccess ? "Saved" : isSaving ? "Saving…" : "Save Artifact"}
+                </span>
               </FloatingToolBtn>
-            )}
-            {viewMode === "diagram" && (
-              <FloatingToolBtn type="button" title="Download SVG" aria-label="Download SVG" onClick={handleExportSvg}>
-                {copiedSvg ? <CheckIcon size={14} /> : <DownloadIcon size={14} />}
-              </FloatingToolBtn>
-            )}
-            <FloatingToolBtn
-              type="button"
-              $success={copied}
-              title={copied ? "Copied" : "Copy source code"}
-              aria-label="Copy source code"
-              onClick={handleCopy}
-            >
-              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-            </FloatingToolBtn>
-          </FloatingTools>
+            </FloatingTools>
+          )}
         </>
       )}
       {!isFullScreen && !hasFooter && (

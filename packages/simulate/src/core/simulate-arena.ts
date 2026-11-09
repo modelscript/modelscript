@@ -532,6 +532,7 @@ export class ArenaSimulator {
     };
 
     const simArena = this.arena as SimDAEBuilder;
+    let existingBindingEqs: Map<number, Set<number>> | null = null;
     for (let i = 0; i < this.arena.varCount; i++) {
       if (this.arena.isVarRemoved(i)) continue;
       const variability = this.arena.getVarVariability(i);
@@ -545,25 +546,34 @@ export class ArenaSimulator {
       if (!isParam && typeof exprId === "number" && exprId >= 0 && exprReferencesContinuous(exprId)) {
         // Continuous/discrete variable with a continuous binding expression (e.g. from omcCompatibility: true).
         // Ensure its binding equation is present in the DAE arena rather than treating it as a static parameter.
-        let hasEq = false;
-        const varNameId = this.arena.getVarNameId(i);
-        for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
-          if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
-          const lhs = this.arena.getEqLhs(eqIdx);
-          const rhs = this.arena.getEqRhs(eqIdx);
-          if (
-            rhs === exprId &&
-            lhs >= 0 &&
-            this.arena.getExprKind(lhs) === ExprKind.Name &&
-            this.arena.getExprData1(lhs) === varNameId
-          ) {
-            hasEq = true;
-            break;
+        if (existingBindingEqs === null) {
+          existingBindingEqs = new Map<number, Set<number>>();
+          for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+            if (this.arena.isEqRemoved(eqIdx) || this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+            const lhs = this.arena.getEqLhs(eqIdx);
+            const rhs = this.arena.getEqRhs(eqIdx);
+            if (lhs >= 0 && this.arena.getExprKind(lhs) === ExprKind.Name) {
+              const nid = this.arena.getExprData1(lhs);
+              let s = existingBindingEqs.get(nid);
+              if (!s) {
+                s = new Set<number>();
+                existingBindingEqs.set(nid, s);
+              }
+              s.add(rhs);
+            }
           }
         }
+        const varNameId = this.arena.getVarNameId(i);
+        const hasEq = existingBindingEqs.get(varNameId)?.has(exprId) ?? false;
         if (!hasEq) {
           const lhsExprId = this.arena.addExpression(ExprKind.Name, varNameId);
           this.arena.addEquation(EqKind.Simple, lhsExprId, exprId);
+          let s = existingBindingEqs.get(varNameId);
+          if (!s) {
+            s = new Set<number>();
+            existingBindingEqs.set(varNameId, s);
+          }
+          s.add(exprId);
         }
         continue;
       }
@@ -657,6 +667,7 @@ export class ArenaSimulator {
     }
 
     for (let i = 0; i < this.arena.eqCount; i++) {
+      if (this.arena.isEqRemoved(i) || this.arena.isEqInitial(i)) continue;
       if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
       const lhs = this.arena.getEqLhs(i);
       const rhs = this.arena.getEqRhs(i);
@@ -1189,6 +1200,7 @@ export class ArenaSimulator {
       if (exprId < 0) return;
       const kind = this.arena.getExprKind(exprId);
       if (kind === ExprKind.Der) {
+        currentEqHasDerOrNonAffine = true;
         const argId = this.arena.getExprData1(exprId);
         if (this.arena.getExprKind(argId) === ExprKind.Name) {
           const vIdx = this.arena.lookupVariable(this.arena.getExprData1(argId));
@@ -1208,11 +1220,13 @@ export class ArenaSimulator {
           scanDerExpr(this.arena.getExprLeft(exprId));
           break;
         case ExprKind.IfElse:
+          currentEqHasDerOrNonAffine = true;
           scanDerExpr(this.arena.getExprData1(exprId));
           scanDerExpr(this.arena.getExprLeft(exprId));
           scanDerExpr(this.arena.getExprRight(exprId));
           break;
         case ExprKind.Call: {
+          currentEqHasDerOrNonAffine = true;
           const argCount = this.arena.getExprRight(exprId);
           if (argCount > 0) {
             const firstArg = this.arena.getExprLeft(exprId);
@@ -1224,6 +1238,7 @@ export class ArenaSimulator {
         }
         case ExprKind.Tuple:
         case ExprKind.ArrayCtor: {
+          currentEqHasDerOrNonAffine = true;
           const count = this.arena.getExprData1(exprId);
           if (count > 0) {
             const firstElem = this.arena.getExprLeft(exprId);
@@ -1236,13 +1251,21 @@ export class ArenaSimulator {
       }
     };
 
+    let currentEqHasDerOrNonAffine = false;
+    const affineCandidateEqs: number[] = [];
+
     // Also record direct velocity/angular-velocity alias equations `w = der(x)`
     for (let i = 0; i < this.arena.eqCount; i++) {
+      if (this.arena.isEqRemoved(i) || this.arena.isEqInitial(i)) continue;
       if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
       const lhs = this.arena.getEqLhs(i);
       const rhs = this.arena.getEqRhs(i);
+      currentEqHasDerOrNonAffine = false;
       scanDerExpr(lhs);
       scanDerExpr(rhs);
+      if (!currentEqHasDerOrNonAffine) {
+        affineCandidateEqs.push(i);
+      }
 
       if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(rhs) === ExprKind.Der) {
         const derArg = this.arena.getExprData1(rhs);
@@ -1267,16 +1290,17 @@ export class ArenaSimulator {
       }
     }
 
-    if (allDerVars.size === 0) return;
+    if (allDerVars.size === 0 || affineCandidateEqs.length === 0) return;
 
-    // Identify flow-coupled generalized force/torque variables structurally from connector flow flags
-    // and multi-term non-state force/torque balances (e.g. tau = tau_c + tau_d)
-    const flowCoupledVars = new Set<number>();
-    for (let v = 0; v < this.arena.varCount; v++) {
-      if (!this.arena.isVarRemoved(v) && this.arena.isVarFlow(v)) {
-        flowCoupledVars.add(v);
+    // 2. Seed primary candidate states (excluding derivative alias targets `w` where `w = der(phi)`)
+    const activeCandidateStates = new Set<number>();
+    for (const v of allDerVars) {
+      if (!isDerAliasTarget.has(v)) {
+        activeCandidateStates.add(v);
       }
     }
+    if (activeCandidateStates.size === 0) return;
+
     const collectExprNonParamVars = (exprId: number, out: Set<number>): void => {
       if (exprId < 0) return;
       const k = this.arena.getExprKind(exprId);
@@ -1298,22 +1322,62 @@ export class ArenaSimulator {
         collectExprNonParamVars(this.arena.getExprRight(exprId), out);
       }
     };
-    let flowChanged = true;
+
+    // Fast structural pre-check: an affine state constraint can only arise if either
+    // (a) some derivative-free equation references ONLY candidate states (0 non-state variables), or
+    // (b) some non-state variable appears in >= 2 derivative-free equations.
+    const eqVarsScratch = new Set<number>();
+    const nonStateDegree = new Map<number, number>();
+    let canHaveAffineStateConstraint = false;
+    for (let idx = 0; idx < affineCandidateEqs.length; idx++) {
+      const eqIdx = affineCandidateEqs[idx]!;
+      eqVarsScratch.clear();
+      collectExprNonParamVars(this.arena.getEqLhs(eqIdx), eqVarsScratch);
+      collectExprNonParamVars(this.arena.getEqRhs(eqIdx), eqVarsScratch);
+      let stateCount = 0;
+      let nonStateCount = 0;
+      for (const v of eqVarsScratch) {
+        if (activeCandidateStates.has(v)) {
+          stateCount++;
+        } else {
+          nonStateCount++;
+          const deg = (nonStateDegree.get(v) ?? 0) + 1;
+          nonStateDegree.set(v, deg);
+          if (deg >= 2) {
+            canHaveAffineStateConstraint = true;
+          }
+        }
+      }
+      if (stateCount > 0 && nonStateCount === 0) {
+        canHaveAffineStateConstraint = true;
+      }
+    }
+    if (!canHaveAffineStateConstraint) return;
+
+    // Identify flow-coupled generalized force/torque variables structurally from connector flow flags
+    // and multi-term non-state force/torque balances (e.g. tau = tau_c + tau_d)
+    const flowCoupledVars = new Set<number>();
+    for (let v = 0; v < this.arena.varCount; v++) {
+      if (!this.arena.isVarRemoved(v) && this.arena.isVarFlow(v)) {
+        flowCoupledVars.add(v);
+      }
+    }
+    let flowChanged = flowCoupledVars.size > 0;
     while (flowChanged) {
       flowChanged = false;
-      for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
-        if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
-        const eqVars = new Set<number>();
-        collectExprNonParamVars(this.arena.getEqLhs(eqIdx), eqVars);
-        collectExprNonParamVars(this.arena.getEqRhs(eqIdx), eqVars);
+      for (let idx = 0; idx < affineCandidateEqs.length; idx++) {
+        const eqIdx = affineCandidateEqs[idx]!;
+        eqVarsScratch.clear();
+        collectExprNonParamVars(this.arena.getEqLhs(eqIdx), eqVarsScratch);
+        collectExprNonParamVars(this.arena.getEqRhs(eqIdx), eqVarsScratch);
         let touchesState = false;
         let touchesFlow = false;
-        for (const v of eqVars) {
+        for (const v of eqVarsScratch) {
           if (allDerVars.has(v)) touchesState = true;
           if (flowCoupledVars.has(v)) touchesFlow = true;
         }
         if (!touchesState && touchesFlow) {
-          for (const v of eqVars) {
+          for (const v of eqVarsScratch) {
             if (!flowCoupledVars.has(v)) {
               flowCoupledVars.add(v);
               flowChanged = true;
@@ -1322,15 +1386,6 @@ export class ArenaSimulator {
         }
       }
     }
-
-    // 2. Seed primary candidate states (excluding derivative alias targets `w` where `w = der(phi)`)
-    const activeCandidateStates = new Set<number>();
-    for (const v of allDerVars) {
-      if (!isDerAliasTarget.has(v)) {
-        activeCandidateStates.add(v);
-      }
-    }
-    if (activeCandidateStates.size === 0) return;
 
     interface AffineComb {
       constant: number;
@@ -1453,9 +1508,9 @@ export class ArenaSimulator {
     let changed = true;
     while (changed) {
       changed = false;
-      for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      for (let idx = 0; idx < affineCandidateEqs.length; idx++) {
+        const eqIdx = affineCandidateEqs[idx]!;
         if (usedEqs.has(eqIdx)) continue;
-        if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
         const lhs = this.arena.getEqLhs(eqIdx);
         const rhs = this.arena.getEqRhs(eqIdx);
         const lComb = evalAffine(lhs);

@@ -6383,6 +6383,24 @@
             ],
             "type": "string",
             "description": "Output .sysml file path"
+          },
+          {
+            "name": "contract-policy",
+            "aliases": [],
+            "description": "Policy for extracting formal contracts into 'require constraint' ('strict' = only explicit @contract tags, 'ears' = explicit + EARS templates, 'permissive' = all including prose heuristics)",
+            "choices": [
+              "strict",
+              "ears",
+              "permissive"
+            ],
+            "default": "permissive"
+          },
+          {
+            "name": "strict",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Strict mode: keep legacy ALM prose as doc comments only, requiring explicit @contract for constraints",
+            "default": false
           }
         ],
         "subcommands": []
@@ -8746,6 +8764,13 @@
         "aliases": [],
         "type": "boolean",
         "description": "synchronize verification verdicts directly into digital thread hypergraph",
+        "default": false
+      },
+      {
+        "name": "coordinator",
+        "aliases": [],
+        "type": "boolean",
+        "description": "execute 4-language SemanticTheoryCoordinator & DigitalThreadHypergraph verification across SysML v2, Modelica, OpenSCAD/URDF, and FEA/CFD/STEP",
         "default": false
       }
     ],

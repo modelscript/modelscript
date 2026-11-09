@@ -406,8 +406,8 @@ function unwrapViewConfig(artifactOrConfig: any): { viewType: string; viewConfig
 
 /**
  * Determines whether an artifact or its viewConfig represents a multi-file workspace
- * that should open in the full VS Code Workbench (/ide) rather than the single-file
- * Simulation Playground (/playground).
+ * that should open in the full Studio Workbench (/studio) rather than the single-file
+ * interactive Morsel (/morsel).
  */
 export function isMultiFileArtifact(artifactOrConfig: any): boolean {
   const { viewType, viewConfig } = unwrapViewConfig(artifactOrConfig);
@@ -450,7 +450,7 @@ export const NON_EDITABLE_MEDIA_VIEW_TYPES = new Set([
 
 /**
  * Determines whether an artifact represents an editable/simulatable engineering model,
- * code snippet, dataset, or workspace that makes sense to open in Playground or VS Code,
+ * code snippet, dataset, or workspace that makes sense to open in Morsel or Studio,
  * vs. static media/document assets (PDFs, images, videos, audio, link previews).
  */
 export function isEditableCodeOrModelArtifact(artifactOrConfig: unknown): boolean {

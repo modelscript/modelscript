@@ -46,7 +46,7 @@ flowchart TD
 
     subgraph Presentation["User Experience & Toolchain"]
         PID["Vector P&ID Flow Diagram (AntV X6 & SVG)"]
-        IDE["Visual Custom Editor (VS Code / Web IDE)"]
+        IDE["Visual Custom Editor (VS Code / Studio)"]
         CLI["CLI Toolchain (msx rocets, msx lint)"]
         LSP["Language Server Protocol Services"]
     end
@@ -169,7 +169,7 @@ msx rocets diagram engine.roc --out=pid.svg
 
 ---
 
-## VS Code & Web IDE Custom Editor
+## VS Code & Studio Custom Editor
 
 The `@modelscript/ide-client` package provides a dedicated dual-mode custom editor (`modelscript.rocetsEditor`):
 

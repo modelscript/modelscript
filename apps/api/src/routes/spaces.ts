@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import bcrypt from "bcryptjs";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase, SpaceOwnerType, SpaceRole, SpaceVisibility } from "../database.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { getSpaceDomainPreset, listSpaceDomainPresets } from "../services/spaces/domain-presets.js";
+import {
+  commitFilesToBareGitVault,
+  ensureSpaceGitVaultInitialized,
+  generateStarterFilesForSpace,
+  resolveSpaceGitRepoPath,
+} from "../services/spaces/space-git-vault.js";
+import { LocalGitProvider } from "../util/local-git.js";
 import { broadcastSpaceChatEvent } from "./collab-ws.js";
 
 function isValidSlug(slug: string): boolean {
@@ -31,6 +39,7 @@ function isCallerAdmin(req: Request): boolean {
 
 export function spacesRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+  const localGitProvider = new LocalGitProvider();
   router.use(defaultApiLimiter);
 
   /**
@@ -200,6 +209,7 @@ export function spacesRouter(database: LibraryDatabase): Router {
     const pages = database.getSpacePages(space.id);
     const members = database.getSpaceMembers(space.id);
     const ecos = database.getSpaceEcoProposals(space.id);
+    const issues = database.getSpaceIssues(space.id);
     const preset = getSpaceDomainPreset(space.domain_preset);
     const isFollowing = req.user ? database.isFollowingSpace(space.id, req.user.id) : false;
     const viewerRole = req.user ? database.getSpaceMemberRole(space.id, req.user.id) : null;
@@ -213,6 +223,7 @@ export function spacesRouter(database: LibraryDatabase): Router {
       pages,
       members,
       ecos,
+      issues,
       viewerState: {
         isFollowing,
         role: viewerRole,
@@ -752,6 +763,120 @@ export function spacesRouter(database: LibraryDatabase): Router {
     },
   );
 
+  // ── Space Problem Reports & Engineering Issues (ECR) ──────────────────────
+
+  router.get("/:namespace/:slug/issues", optionalAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    res.json({ issues: database.getSpaceIssues(space.id) });
+  });
+
+  router.post("/:namespace/:slug/issues", requireAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const title = String(req.body?.title ?? "").trim();
+    const description = String(req.body?.description ?? "").trim();
+    if (!title) {
+      res.status(400).json({ error: "Issue title is required" });
+      return;
+    }
+
+    const issue = database.createSpaceIssue({
+      spaceId: space.id,
+      title,
+      description,
+      severity: req.body?.severity || "standard",
+      authorId: req.user!.id,
+      impactedModels: Array.isArray(req.body?.impactedModels) ? req.body.impactedModels.map(String) : [],
+      labels: Array.isArray(req.body?.labels) ? req.body.labels.map(String) : [],
+      linkedPrNumber: req.body?.linkedPrNumber != null ? Number(req.body.linkedPrNumber) : null,
+    });
+
+    res.status(201).json({ issue, issues: database.getSpaceIssues(space.id) });
+  });
+
+  router.get("/:namespace/:slug/issues/:issueId", optionalAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const issue = database.getSpaceIssueById(space.id, String(req.params["issueId"] ?? ""));
+    if (!issue) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+    res.json({ issue });
+  });
+
+  router.patch("/:namespace/:slug/issues/:issueId", requireAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const updated = database.updateSpaceIssue({
+      spaceId: space.id,
+      issueId: String(req.params["issueId"] ?? ""),
+      status: req.body?.status === "closed" ? "closed" : req.body?.status === "open" ? "open" : undefined,
+      title: req.body?.title,
+      description: req.body?.description,
+      severity: req.body?.severity,
+      linkedPrNumber: req.body?.linkedPrNumber != null ? Number(req.body.linkedPrNumber) : undefined,
+    });
+    if (!updated) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+    res.json({ issue: updated, issues: database.getSpaceIssues(space.id) });
+  });
+
+  router.post("/:namespace/:slug/issues/:issueId/comments", requireAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const content = String(req.body?.content ?? "").trim();
+    if (!content) {
+      res.status(400).json({ error: "Comment content is required" });
+      return;
+    }
+    const issue = database.getSpaceIssueById(space.id, String(req.params["issueId"] ?? ""));
+    if (!issue) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+    const comment = database.addSpaceIssueComment({
+      issueId: issue.id,
+      userId: req.user!.id,
+      content,
+    });
+    const refreshed = database.getSpaceIssueById(space.id, issue.id)!;
+    res.status(201).json({ comment, issue: refreshed });
+  });
+
   // ── PLM Engineering Change Orders (ECOs) ────────────────────────────────────
 
   router.get("/:namespace/:slug/ecos", optionalAuth, (req: Request, res: Response): void => {
@@ -796,7 +921,58 @@ export function spacesRouter(database: LibraryDatabase): Router {
     res.status(201).json({ eco, ecos: database.getSpaceEcoProposals(space.id) });
   });
 
-  router.post("/:namespace/:slug/ecos/:ecoId/review", requireAuth, (req: Request, res: Response): void => {
+  router.post(
+    "/:namespace/:slug/ecos/:ecoId/review",
+    requireAuth,
+    async (req: Request, res: Response): Promise<void> => {
+      const space = database.getSpaceByNamespaceAndSlug(
+        String(req.params["namespace"] ?? ""),
+        String(req.params["slug"] ?? ""),
+      );
+      if (!space) {
+        res.status(404).json({ error: "Space not found" });
+        return;
+      }
+
+      // 21 CFR Part 11 §11.200 dual-component identification: verify account password if supplied
+      if (req.body?.password) {
+        const hash = database.getPasswordHash(req.user!.id);
+        if (hash) {
+          const validPassword = await bcrypt.compare(String(req.body.password), hash);
+          if (!validPassword) {
+            res.status(401).json({ error: "Invalid password for 21 CFR Part 11 electronic signature" });
+            return;
+          }
+        }
+      }
+
+      const decisionRaw = String(req.body?.decision ?? "approved");
+      const decision: "approved" | "changes_requested" | "rejected" =
+        decisionRaw === "rejected"
+          ? "rejected"
+          : decisionRaw === "changes_requested"
+            ? "changes_requested"
+            : "approved";
+
+      const updated = database.reviewSpaceEcoProposal({
+        ecoId: String(req.params["ecoId"] ?? ""),
+        spaceId: space.id,
+        userId: req.user!.id,
+        decision,
+        role: req.body?.role ? String(req.body.role) : undefined,
+        intent: req.body?.intent ? String(req.body.intent) : undefined,
+        signatureHex: req.body?.signatureHex ? String(req.body.signatureHex) : undefined,
+        comment: req.body?.comment ? String(req.body.comment) : null,
+      });
+      if (!updated) {
+        res.status(404).json({ error: "ECO proposal not found" });
+        return;
+      }
+      res.json({ eco: updated, ecos: database.getSpaceEcoProposals(space.id) });
+    },
+  );
+
+  router.get("/:namespace/:slug/ecos/:ecoId/diff", optionalAuth, (req: Request, res: Response): void => {
     const space = database.getSpaceByNamespaceAndSlug(
       String(req.params["namespace"] ?? ""),
       String(req.params["slug"] ?? ""),
@@ -805,22 +981,114 @@ export function spacesRouter(database: LibraryDatabase): Router {
       res.status(404).json({ error: "Space not found" });
       return;
     }
-    const decisionRaw = String(req.body?.decision ?? "approved");
-    const decision: "approved" | "changes_requested" | "rejected" =
-      decisionRaw === "rejected" ? "rejected" : decisionRaw === "changes_requested" ? "changes_requested" : "approved";
-
-    const updated = database.reviewSpaceEcoProposal({
-      ecoId: String(req.params["ecoId"] ?? ""),
-      spaceId: space.id,
-      userId: req.user!.id,
-      decision,
-      comment: req.body?.comment ? String(req.body.comment) : null,
-    });
-    if (!updated) {
+    const diff = database.getSpaceEcoDiff(space.id, String(req.params["ecoId"] ?? ""));
+    if (!diff) {
       res.status(404).json({ error: "ECO proposal not found" });
       return;
     }
-    res.json({ eco: updated, ecos: database.getSpaceEcoProposals(space.id) });
+    res.json({ diff });
+  });
+
+  router.get("/:namespace/:slug/ecos/:ecoId/simulation", optionalAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const simulation = database.getSpaceEcoSimulation(space.id, String(req.params["ecoId"] ?? ""));
+    if (!simulation) {
+      res.status(404).json({ error: "ECO proposal not found" });
+      return;
+    }
+    res.json({ simulation });
+  });
+
+  router.post("/:namespace/:slug/ecos/:ecoId/simulate", requireAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const result = database.reverifySpaceEcoSimulation(space.id, String(req.params["ecoId"] ?? ""));
+    if (!result) {
+      res.status(404).json({ error: "ECO proposal not found" });
+      return;
+    }
+    res.json({ eco: result.eco, simulation: result.simulation, ecos: database.getSpaceEcoProposals(space.id) });
+  });
+
+  router.get("/:namespace/:slug/ecos/:ecoId/impact", optionalAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const impact = database.getSpaceEcoBlastRadius(space.id, String(req.params["ecoId"] ?? ""));
+    if (!impact) {
+      res.status(404).json({ error: "ECO proposal not found" });
+      return;
+    }
+    res.json({ impact });
+  });
+
+  router.get("/:namespace/:slug/ecos/:ecoId/bom", optionalAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const bom = database.getSpaceEcoBom(space.id, String(req.params["ecoId"] ?? ""));
+    if (!bom) {
+      res.status(404).json({ error: "ECO proposal not found" });
+      return;
+    }
+    res.json({ bom });
+  });
+
+  router.post("/:namespace/:slug/ecos/:ecoId/merge", requireAuth, (req: Request, res: Response): void => {
+    const space = database.getSpaceByNamespaceAndSlug(
+      String(req.params["namespace"] ?? ""),
+      String(req.params["slug"] ?? ""),
+    );
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const memberRole = database.getSpaceMemberRole(space.id, req.user!.id);
+    const canWrite =
+      memberRole === "owner" ||
+      memberRole === "lead_engineer" ||
+      memberRole === "approver" ||
+      memberRole === "contributor" ||
+      isCallerAdmin(req);
+    if (!canWrite) {
+      res.status(403).json({ error: "Forbidden: Write permission required to merge change order" });
+      return;
+    }
+
+    try {
+      const result = database.mergeSpaceEcoProposal({
+        spaceId: space.id,
+        ecoId: String(req.params["ecoId"] ?? ""),
+        userId: req.user!.id,
+      });
+      res.json({ ...result, ecos: database.getSpaceEcoProposals(space.id) });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err || "Failed to merge ECO");
+      res.status(400).json({ error: message });
+    }
   });
 
   // ── Semantic Autocomplete (`#doc:`, `#eco:`, `#channel`, `@member`) ─────────
@@ -836,6 +1104,176 @@ export function spacesRouter(database: LibraryDatabase): Router {
     }
     const q = typeof req.query["q"] === "string" ? req.query["q"] : "";
     res.json({ suggestions: database.autocompleteSpaceEntities(space.id, q) });
+  });
+
+  // ── Native Git Vault Inspection (Code, Tree, Files, Commits, Branches) ──────
+
+  router.get("/:namespace/:slug/tree", optionalAuth, async (req: Request, res: Response): Promise<void> => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const isAdmin = isCallerAdmin(req);
+    if (!database.canUserViewSpace(space, req.user?.id, isAdmin)) {
+      res.status(403).json({ error: "You do not have permission to view this Space" });
+      return;
+    }
+
+    const ref = typeof req.query["ref"] === "string" ? req.query["ref"] : space.default_branch || "main";
+    const subpath = typeof req.query["path"] === "string" ? req.query["path"] : "";
+    const recursive = req.query["recursive"] === "true";
+    try {
+      const targetId =
+        space.git_repo_path ||
+        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
+        `${space.owner_namespace}/${space.slug}`;
+      const tree = await localGitProvider.getRepositoryTree(targetId, ref, subpath, recursive);
+      res.json({ tree, ref, path: subpath });
+    } catch {
+      // Empty or newly initialized repository with no commits yet
+      res.json({ tree: [], ref, path: subpath, empty: true });
+    }
+  });
+
+  router.get("/:namespace/:slug/files/raw", optionalAuth, async (req: Request, res: Response): Promise<void> => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const isAdmin = isCallerAdmin(req);
+    if (!database.canUserViewSpace(space, req.user?.id, isAdmin)) {
+      res.status(403).json({ error: "You do not have permission to view this Space" });
+      return;
+    }
+
+    const filePath = typeof req.query["path"] === "string" ? req.query["path"] : "";
+    if (!filePath) {
+      res.status(400).json({ error: "Missing file path query parameter" });
+      return;
+    }
+    const ref = typeof req.query["ref"] === "string" ? req.query["ref"] : space.default_branch || "main";
+    try {
+      const targetId =
+        space.git_repo_path ||
+        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
+        `${space.owner_namespace}/${space.slug}`;
+      const content = await localGitProvider.getRepositoryFileRaw(targetId, filePath, ref);
+      res.type("text/plain").send(content);
+    } catch (err: unknown) {
+      res.status(404).json({ error: err instanceof Error ? err.message : "File not found" });
+    }
+  });
+
+  router.get("/:namespace/:slug/commits", optionalAuth, async (req: Request, res: Response): Promise<void> => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const isAdmin = isCallerAdmin(req);
+    if (!database.canUserViewSpace(space, req.user?.id, isAdmin)) {
+      res.status(403).json({ error: "You do not have permission to view this Space" });
+      return;
+    }
+
+    const ref = typeof req.query["ref"] === "string" ? req.query["ref"] : space.default_branch || "main";
+    try {
+      const targetId =
+        space.git_repo_path ||
+        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
+        `${space.owner_namespace}/${space.slug}`;
+      const commits = await localGitProvider.getCommits(targetId, ref);
+      res.json({ commits });
+    } catch {
+      res.json({ commits: [] });
+    }
+  });
+
+  router.get("/:namespace/:slug/branches", optionalAuth, async (req: Request, res: Response): Promise<void> => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const isAdmin = isCallerAdmin(req);
+    if (!database.canUserViewSpace(space, req.user?.id, isAdmin)) {
+      res.status(403).json({ error: "You do not have permission to view this Space" });
+      return;
+    }
+
+    try {
+      const targetId =
+        space.git_repo_path ||
+        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
+        `${space.owner_namespace}/${space.slug}`;
+      const branches = await localGitProvider.getBranches(targetId);
+      res.json({
+        branches: branches.length > 0 ? branches : [{ name: space.default_branch || "main", default: true }],
+      });
+    } catch {
+      res.json({ branches: [{ name: space.default_branch || "main", default: true }] });
+    }
+  });
+
+  /**
+   * POST /api/v1/spaces/:namespace/:slug/init-template
+   * Populates starter domain models, package.mo, and README.md into the Space's Git Vault.
+   */
+  router.post("/:namespace/:slug/init-template", optionalAuth, async (req: Request, res: Response): Promise<void> => {
+    const namespace = String(req.params["namespace"] ?? "");
+    const slug = String(req.params["slug"] ?? "");
+    const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+    if (!space) {
+      res.status(404).json({ error: "Space not found" });
+      return;
+    }
+    const isAdmin = isCallerAdmin(req);
+    if (!database.canUserWriteSpace(space, req.user?.id, isAdmin)) {
+      res.status(403).json({ error: "You do not have permission to modify this Space" });
+      return;
+    }
+
+    const vault = ensureSpaceGitVaultInitialized({
+      dbDir: database.dbDir,
+      namespace: space.owner_namespace,
+      slug: space.slug,
+      name: space.name,
+      domainPreset: space.domain_preset,
+      defaultBranch: space.default_branch || "main",
+    });
+    const repoPath = vault.repoPath;
+    if (!repoPath) {
+      res.status(500).json({ error: "Unable to resolve space Git repository path" });
+      return;
+    }
+
+    const starterFiles = generateStarterFilesForSpace(
+      space.name,
+      space.owner_namespace,
+      space.slug,
+      space.domain_preset,
+    );
+    const branch = space.default_branch || "main";
+    const commitSha = commitFilesToBareGitVault({
+      repoPath,
+      branch,
+      message: "feat: initialize Space Git Vault with starter domain models and README",
+      authorName: req.user?.username || "Ansatz Space Engineer",
+      authorEmail: req.user?.email || "engineer@modelscript.org",
+      files: starterFiles,
+    });
+
+    res.json({ ok: true, commitSha, branch });
   });
 
   return router;

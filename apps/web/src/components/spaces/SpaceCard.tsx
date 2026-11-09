@@ -1,112 +1,134 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import type { SpaceRecord } from "../../api";
-
-const PRESET_BADGES: Record<string, { label: string; color: string }> = {
-  systems_general: { label: "Systems & DAE", color: "#3b82f6" },
-  oil_gas_process: { label: "Oil, Gas & Process", color: "#f59e0b" },
-  power_rf_grid: { label: "Power Grids & RF", color: "#10b981" },
-  automotive_robotics: { label: "Automotive & Robotics", color: "#ef4444" },
-  aerospace_cad: { label: "3D CAD & Aerospace", color: "#8b5cf6" },
-  pharma_chem_bio: { label: "Pharma & Bio", color: "#ec4899" },
-  med_radiology: { label: "Medical & Biomech", color: "#06b6d4" },
-};
+import { PRESET_BADGES } from "./presetBadges";
 
 export const SpaceCard: React.FC<{ space: SpaceRecord }> = ({ space }) => {
+  const navigate = useNavigate();
+  const [isHovered, setIsHovered] = useState(false);
+
   const badge = PRESET_BADGES[space.domain_preset] ?? { label: "Systems & DAE", color: "#3b82f6" };
   const languages = Array.isArray(space.settings?.["languages"])
     ? (space.settings["languages"] as string[])
     : ["modelica", "sysml2", "step"];
 
+  const spaceUrl = `/@${space.owner_namespace}/${space.slug}`;
+
+  const handleCardClick = () => {
+    navigate(spaceUrl);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      navigate(spaceUrl);
+    }
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
-        padding: "16px",
-        borderRadius: "12px",
-        border: "1px solid var(--color-border, #1e293b)",
-        background: "var(--ms-bg-elv, rgba(15, 23, 42, 0.55))",
-        gap: "12px",
-        transition: "border-color 0.15s ease, transform 0.15s ease",
+        padding: "18px",
+        borderRadius: "6px",
+        border: isHovered
+          ? "1px solid var(--color-accent-emphasis, var(--ms-brand, #0969da))"
+          : "1px solid var(--color-border-default)",
+        background: "var(--color-canvas-default)",
+        gap: "14px",
+        transition: "border-color 0.15s ease",
+        cursor: "pointer",
+        outline: "none",
+        position: "relative",
       }}
     >
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-            <div
-              style={{
-                width: "38px",
-                height: "38px",
-                borderRadius: "10px",
-                background: `${badge.color}22`,
-                border: `1px solid ${badge.color}55`,
-                color: badge.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 800,
-                fontSize: "15px",
-                flexShrink: 0,
-              }}
-            >
-              {space.name.slice(0, 2).toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                <Link
-                  to={`/@${space.owner_namespace}`}
-                  style={{ color: "var(--color-text-secondary)", textDecoration: "none", fontWeight: 600 }}
-                >
-                  {space.owner_type === "organization" ? "🏢 " : "👤 "}@{space.owner_namespace}
-                </Link>{" "}
-                / <span style={{ fontFamily: "monospace" }}>{space.slug}</span>
-              </div>
-              <Link
-                to={`/@${space.owner_namespace}/${space.slug}`}
-                style={{
-                  display: "block",
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "var(--color-text-primary)",
-                  textDecoration: "none",
-                  marginTop: "2px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {space.name}
-              </Link>
-            </div>
-          </div>
-
-          <span
+        {/* Top Header: Avatar + Namespace + Full-Width Title (Category label moved to footer to let title breathe) */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+          <div
             style={{
-              padding: "3px 8px",
-              borderRadius: "999px",
-              fontSize: "11px",
-              fontWeight: 700,
-              background: `${badge.color}20`,
+              width: "40px",
+              height: "40px",
+              borderRadius: "6px",
+              background: `color-mix(in srgb, ${badge.color} 14%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${badge.color} 30%, transparent)`,
               color: badge.color,
-              border: `1px solid ${badge.color}44`,
-              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: "15px",
+              flexShrink: 0,
             }}
           >
-            {badge.label}
-          </span>
+            {space.name.slice(0, 2).toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--color-text-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Link
+                to={`/@${space.owner_namespace}`}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  color: "var(--color-text-secondary)",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+              >
+                {space.owner_type === "organization" ? "🏢 " : "👤 "}@{space.owner_namespace}
+              </Link>{" "}
+              / <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{space.slug}</span>
+            </div>
+            <div
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                lineHeight: 1.3,
+                color: isHovered ? "var(--ms-brand, #3b82f6)" : "var(--color-text-heading, var(--color-text-primary))",
+                marginTop: "3px",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                transition: "color 0.15s ease",
+              }}
+            >
+              {space.name}
+            </div>
+          </div>
         </div>
 
+        {/* Tagline */}
         {space.tagline && (
           <p
             style={{
-              margin: "10px 0 0",
+              margin: "12px 0 0",
               fontSize: "13px",
               color: "var(--color-text-secondary)",
               lineHeight: 1.45,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
             }}
           >
             {space.tagline}
@@ -115,6 +137,7 @@ export const SpaceCard: React.FC<{ space: SpaceRecord }> = ({ space }) => {
       </div>
 
       <div>
+        {/* Language Pills */}
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
           {languages.slice(0, 5).map((lang) => (
             <span
@@ -123,8 +146,9 @@ export const SpaceCard: React.FC<{ space: SpaceRecord }> = ({ space }) => {
                 padding: "2px 7px",
                 borderRadius: "5px",
                 fontSize: "11px",
-                fontFamily: "monospace",
-                background: "rgba(148, 163, 184, 0.1)",
+                fontFamily: "var(--font-mono, monospace)",
+                background: "var(--color-code-bg, var(--ms-surface-hover))",
+                border: "1px solid var(--color-border)",
                 color: "var(--color-text-muted)",
               }}
             >
@@ -133,52 +157,38 @@ export const SpaceCard: React.FC<{ space: SpaceRecord }> = ({ space }) => {
           ))}
         </div>
 
+        {/* Card Footer: Telemetry on Left, Category Pill on Right (No redundant Chat/Open Space buttons) */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            paddingTop: "10px",
-            borderTop: "1px solid var(--color-border, #1e293b)",
+            paddingTop: "12px",
+            borderTop: "1px solid var(--color-border)",
             fontSize: "12px",
             color: "var(--color-text-muted)",
           }}
         >
-          <div style={{ display: "flex", gap: "12px" }}>
-            <span>👥 {space.member_count} members</span>
-            <span>★ {space.follower_count} followers</span>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <span>👥 {space.member_count}</span>
+            <span>★ {space.follower_count}</span>
           </div>
 
-          <div style={{ display: "flex", gap: "8px" }}>
-            <Link
-              to={`/@${space.owner_namespace}/${space.slug}?tab=chat`}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text-primary)",
-                textDecoration: "none",
-                fontWeight: 600,
-                fontSize: "12px",
-              }}
-            >
-              💬 Chat
-            </Link>
-            <Link
-              to={`/@${space.owner_namespace}/${space.slug}`}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                background: "rgba(59, 130, 246, 0.15)",
-                color: "var(--ms-brand, #3b82f6)",
-                textDecoration: "none",
-                fontWeight: 700,
-                fontSize: "12px",
-              }}
-            >
-              Open Space →
-            </Link>
-          </div>
+          <span
+            style={{
+              padding: "3px 9px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: 600,
+              background: `color-mix(in srgb, ${badge.color} 12%, transparent)`,
+              color: badge.color,
+              border: `1px solid color-mix(in srgb, ${badge.color} 28%, transparent)`,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {badge.label}
+          </span>
         </div>
       </div>
     </div>

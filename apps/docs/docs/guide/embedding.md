@@ -40,7 +40,7 @@ end RLC;"
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
 | `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Morsel.                                                             |
-| `artifact-id` | `undefined`    | Numerical ID of a published artifact on the ModelScript Hub.                                                                                   |
+| `artifact-id` | `undefined`    | Numerical ID of a published artifact on Ansatz.                                                                                                |
 
 ---
 

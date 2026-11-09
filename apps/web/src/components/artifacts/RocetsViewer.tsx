@@ -192,6 +192,12 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText]);
+
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });

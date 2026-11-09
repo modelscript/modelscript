@@ -81,6 +81,12 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
   }, [inlineCode, viewConfig?.url]);
 
   useEffect(() => {
+    if (!isFetchingCode && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [isFetchingCode, code]);
+
+  useEffect(() => {
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };

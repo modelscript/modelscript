@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArchiveIcon, BellIcon, BookmarkIcon, InboxIcon, PaperAirplaneIcon } from "@primer/octicons-react";
+import {
+  ArchiveIcon,
+  BellIcon,
+  BookmarkIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  InboxIcon,
+  PaperAirplaneIcon,
+} from "@primer/octicons-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -15,7 +23,13 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import EmptyState from "../components/EmptyState";
 import { usePageTitle } from "../util/title";
-import type { InboxView, NotificationCategory, NotificationItem } from "./notifications";
+import type {
+  InboxDensity,
+  InboxLayoutPlacement,
+  InboxView,
+  NotificationCategory,
+  NotificationItem,
+} from "./notifications";
 import {
   bookmarkPostToNotificationItem,
   computeCategoryUnreadCounts,
@@ -38,7 +52,7 @@ import {
   StreamPane,
 } from "./notifications";
 
-export type { InboxView, NotificationCategory };
+export type { InboxDensity, InboxLayoutPlacement, InboxView, NotificationCategory };
 
 const VIEWPORT_DWELL_MS = 1500;
 const BATCH_FLUSH_DELAY_MS = 120;
@@ -70,6 +84,45 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
+
+  const [layoutPlacement, setLayoutPlacement] = useState<InboxLayoutPlacement>(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("modelscript:inbox-layout");
+      if (saved === "right" || saved === "left") return saved;
+    }
+    return "left";
+  });
+
+  const handleToggleLayoutPlacement = useCallback(() => {
+    setLayoutPlacement((prev) => {
+      const next = prev === "left" ? "right" : "left";
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem("modelscript:inbox-layout", next);
+      }
+      return next;
+    });
+  }, []);
+
+  const [density, setDensity] = useState<InboxDensity>(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("modelscript:inbox-density");
+      if (saved === "comfortable" || saved === "compact") return saved;
+    }
+    return "compact";
+  });
+
+  const handleToggleDensity = useCallback(() => {
+    setDensity((prev) => {
+      const next = prev === "compact" ? "comfortable" : "compact";
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem("modelscript:inbox-density", next);
+      }
+      return next;
+    });
+  }, []);
+
+  const [newSectionCollapsed, setNewSectionCollapsed] = useState(false);
+  const [earlierSectionCollapsed, setEarlierSectionCollapsed] = useState(false);
 
   useEffect(() => {
     setActiveViewState(resolvedInitialView);
@@ -561,7 +614,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
             }
           }
         },
-        { threshold: 0.35 },
+        { root: container, threshold: 0.35 },
       );
 
       const unreadEls = container.querySelectorAll<HTMLElement>('[data-notification-id][data-unread="true"]');
@@ -571,12 +624,12 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
     const fallbackTimer = setTimeout(() => {
       if (container && typeof window !== "undefined") {
         const unreadEls = container.querySelectorAll<HTMLElement>('[data-notification-id][data-unread="true"]');
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+        const containerRect = container.getBoundingClientRect();
         unreadEls.forEach((el) => {
           const rowId = el.getAttribute("data-notification-id");
           if (!rowId || timers.has(rowId)) return;
           const rect = el.getBoundingClientRect();
-          if (rect.bottom > 0 && rect.top < viewportHeight) {
+          if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
             queueDwellRead(rowId);
           }
         });
@@ -642,6 +695,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
           key={notif.id}
           notif={notif}
           selected={isSelected}
+          density={density}
           onSelect={handleSelectItem}
           onMarkRead={markSingleRead}
           onToggleStar={handleToggleStar}
@@ -656,6 +710,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
         notif={notif}
         currentUsername={user?.username}
         selected={isSelected}
+        density={density}
         onSelect={handleSelectItem}
         onMarkRead={markSingleRead}
         onToggleStar={handleToggleStar}
@@ -730,6 +785,10 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
         onArchiveAll={handleArchiveAll}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        layoutPlacement={layoutPlacement}
+        onToggleLayoutPlacement={handleToggleLayoutPlacement}
+        density={density}
+        onToggleDensity={handleToggleDensity}
       />
 
       {loading ? (
@@ -753,52 +812,129 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
       ) : filteredNotifications.length === 0 ? (
         renderEmptyState()
       ) : (
-        <InboxSplitLayout data-testid="inbox-split-layout">
-          <StreamPane ref={feedContainerRef} data-testid="inbox-stream-pane">
-            {newNotifications.length > 0 && (
-              <Box>
-                <NotificationSectionDivider
-                  data-testid="notifications-new-divider"
-                  $variant="new"
-                  $hasActiveUnread={activeNewUnreadCount > 0}
-                >
-                  <SectionDividerBadge $variant="new" $hasActiveUnread={activeNewUnreadCount > 0}>
-                    <SectionDividerDot $active={activeNewUnreadCount > 0} />
-                    New
-                  </SectionDividerBadge>
-                  <SectionDividerMeta>
-                    {activeNewUnreadCount > 0 ? `${activeNewUnreadCount} unread` : "Just viewed"}
-                  </SectionDividerMeta>
-                </NotificationSectionDivider>
-                {newNotifications.map(renderNotificationItem)}
-              </Box>
-            )}
-
-            {earlierNotifications.length > 0 && (
-              <Box>
+        <InboxSplitLayout data-testid="inbox-split-layout" $layoutPlacement={layoutPlacement}>
+          {layoutPlacement === "right" ? (
+            <>
+              <InboxReadingPane
+                selectedItem={selectedItem}
+                activeView={activeView}
+                currentUsername={user?.username}
+                onToggleArchive={handleToggleArchive}
+                onToggleStar={handleToggleStar}
+                onToggleRead={handleToggleRead}
+                onOpenPrimaryTarget={handleOpenPrimaryTarget}
+              />
+              <StreamPane ref={feedContainerRef} data-testid="inbox-stream-pane" $placement="right">
                 {newNotifications.length > 0 && (
-                  <NotificationSectionDivider data-testid="notifications-earlier-divider" $variant="earlier">
-                    <SectionDividerBadge $variant="earlier">Earlier</SectionDividerBadge>
-                    <SectionDividerMeta>
-                      {earlierNotifications.length}{" "}
-                      {earlierNotifications.length === 1 ? "notification" : "notifications"}
-                    </SectionDividerMeta>
-                  </NotificationSectionDivider>
+                  <Box>
+                    <NotificationSectionDivider
+                      data-testid="notifications-new-divider"
+                      $variant="new"
+                      $hasActiveUnread={activeNewUnreadCount > 0}
+                      onClick={() => setNewSectionCollapsed((prev) => !prev)}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                    >
+                      <Box display="flex" alignItems="center" gap="6px">
+                        {newSectionCollapsed ? <ChevronRightIcon size={12} /> : <ChevronDownIcon size={12} />}
+                        <SectionDividerBadge $variant="new" $hasActiveUnread={activeNewUnreadCount > 0}>
+                          <SectionDividerDot $active={activeNewUnreadCount > 0} />
+                          New
+                        </SectionDividerBadge>
+                      </Box>
+                      <SectionDividerMeta>
+                        {activeNewUnreadCount > 0
+                          ? `${activeNewUnreadCount} unread`
+                          : `${newNotifications.length} items`}
+                      </SectionDividerMeta>
+                    </NotificationSectionDivider>
+                    {!newSectionCollapsed && newNotifications.map(renderNotificationItem)}
+                  </Box>
                 )}
-                {earlierNotifications.map(renderNotificationItem)}
-              </Box>
-            )}
-          </StreamPane>
 
-          <InboxReadingPane
-            selectedItem={selectedItem}
-            activeView={activeView}
-            currentUsername={user?.username}
-            onToggleArchive={handleToggleArchive}
-            onToggleStar={handleToggleStar}
-            onToggleRead={handleToggleRead}
-            onOpenPrimaryTarget={handleOpenPrimaryTarget}
-          />
+                {earlierNotifications.length > 0 && (
+                  <Box>
+                    <NotificationSectionDivider
+                      data-testid="notifications-earlier-divider"
+                      $variant="earlier"
+                      onClick={() => setEarlierSectionCollapsed((prev) => !prev)}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                    >
+                      <Box display="flex" alignItems="center" gap="6px">
+                        {earlierSectionCollapsed ? <ChevronRightIcon size={12} /> : <ChevronDownIcon size={12} />}
+                        <SectionDividerBadge $variant="earlier">Earlier</SectionDividerBadge>
+                      </Box>
+                      <SectionDividerMeta>
+                        {earlierNotifications.length}{" "}
+                        {earlierNotifications.length === 1 ? "notification" : "notifications"}
+                      </SectionDividerMeta>
+                    </NotificationSectionDivider>
+                    {!earlierSectionCollapsed && earlierNotifications.map(renderNotificationItem)}
+                  </Box>
+                )}
+              </StreamPane>
+            </>
+          ) : (
+            <>
+              <StreamPane ref={feedContainerRef} data-testid="inbox-stream-pane" $placement="left">
+                {newNotifications.length > 0 && (
+                  <Box>
+                    <NotificationSectionDivider
+                      data-testid="notifications-new-divider"
+                      $variant="new"
+                      $hasActiveUnread={activeNewUnreadCount > 0}
+                      onClick={() => setNewSectionCollapsed((prev) => !prev)}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                    >
+                      <Box display="flex" alignItems="center" gap="6px">
+                        {newSectionCollapsed ? <ChevronRightIcon size={12} /> : <ChevronDownIcon size={12} />}
+                        <SectionDividerBadge $variant="new" $hasActiveUnread={activeNewUnreadCount > 0}>
+                          <SectionDividerDot $active={activeNewUnreadCount > 0} />
+                          New
+                        </SectionDividerBadge>
+                      </Box>
+                      <SectionDividerMeta>
+                        {activeNewUnreadCount > 0
+                          ? `${activeNewUnreadCount} unread`
+                          : `${newNotifications.length} items`}
+                      </SectionDividerMeta>
+                    </NotificationSectionDivider>
+                    {!newSectionCollapsed && newNotifications.map(renderNotificationItem)}
+                  </Box>
+                )}
+
+                {earlierNotifications.length > 0 && (
+                  <Box>
+                    <NotificationSectionDivider
+                      data-testid="notifications-earlier-divider"
+                      $variant="earlier"
+                      onClick={() => setEarlierSectionCollapsed((prev) => !prev)}
+                      style={{ cursor: "pointer", userSelect: "none" }}
+                    >
+                      <Box display="flex" alignItems="center" gap="6px">
+                        {earlierSectionCollapsed ? <ChevronRightIcon size={12} /> : <ChevronDownIcon size={12} />}
+                        <SectionDividerBadge $variant="earlier">Earlier</SectionDividerBadge>
+                      </Box>
+                      <SectionDividerMeta>
+                        {earlierNotifications.length}{" "}
+                        {earlierNotifications.length === 1 ? "notification" : "notifications"}
+                      </SectionDividerMeta>
+                    </NotificationSectionDivider>
+                    {!earlierSectionCollapsed && earlierNotifications.map(renderNotificationItem)}
+                  </Box>
+                )}
+              </StreamPane>
+
+              <InboxReadingPane
+                selectedItem={selectedItem}
+                activeView={activeView}
+                currentUsername={user?.username}
+                onToggleArchive={handleToggleArchive}
+                onToggleStar={handleToggleStar}
+                onToggleRead={handleToggleRead}
+                onOpenPrimaryTarget={handleOpenPrimaryTarget}
+              />
+            </>
+          )}
         </InboxSplitLayout>
       )}
     </Box>

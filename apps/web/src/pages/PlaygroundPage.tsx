@@ -6,8 +6,8 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createArtifactView, getArtifactView, getPost } from "../api";
 import { useAuth } from "../AuthContext";
-import { ComposeContext } from "../components/ComposeContext";
 import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
+import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
@@ -144,7 +144,7 @@ export const PlaygroundPage: React.FC = () => {
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
 
-  usePageTitle(currentTitle ? `${currentTitle} — Ansatz Morsel` : "Ansatz Morsel — ModelScript Playground");
+  usePageTitle(currentTitle ? `${currentTitle} — Ansatz Morsel` : "Ansatz Morsel");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isCreateRepoModalOpen, setIsCreateRepoModalOpen] = useState(false);
@@ -883,7 +883,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const getMarkdownBadge = () => {
     const url = getShareUrl();
-    return `[![Open in ModelScript Playground](https://img.shields.io/badge/ModelScript-Playground-0284c7?style=flat&logo=codefactor)](${url})`;
+    return `[![Open in Ansatz Morsel](https://img.shields.io/badge/Ansatz-Morsel-0284c7?style=flat&logo=codefactor)](${url})`;
   };
 
   const handleCopy = async (text: string, label: string) => {
@@ -979,7 +979,7 @@ export const PlaygroundPage: React.FC = () => {
           message: `Saved "${currentTitle}" as Ansatz Artifact #${created.id}.`,
           action: {
             label: "Open Artifact",
-            onClick: () => navigate(`/playground?fromArtifact=${created.id}`),
+            onClick: () => navigate(`/morsel?fromArtifact=${created.id}`),
           },
         });
       }

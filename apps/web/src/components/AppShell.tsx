@@ -43,12 +43,22 @@ import ProductTourOverlay from "./ProductTourOverlay";
 const ComposeModal = React.lazy(() => import("./ComposeModal"));
 const DevFlagsModal = React.lazy(() => import("./DevFlagsModal").then((m) => ({ default: m.DevFlagsModal })));
 
-const ShellContainer = styled.div<{ $hasGuestBanner?: boolean | undefined }>`
+const ShellContainer = styled.div<{ $hasGuestBanner?: boolean | undefined; $isChatLayout?: boolean | undefined }>`
   display: flex;
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
   min-height: 100dvh;
+  ${(props) =>
+    props.$isChatLayout
+      ? `
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    overflow: hidden;
+  `
+      : ""}
   background-color: transparent;
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
@@ -64,11 +74,21 @@ const ShellContainer = styled.div<{ $hasGuestBanner?: boolean | undefined }>`
   }
 `;
 
-const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean | undefined }>`
+const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean | undefined; $isChatLayout?: boolean | undefined }>`
   display: flex;
   width: 100%;
   max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1410px")};
   justify-content: center;
+  ${(props) =>
+    props.$isChatLayout
+      ? `
+    height: calc(100vh - var(--dev-header-height, 0px));
+    height: calc(100dvh - var(--dev-header-height, 0px));
+    max-height: calc(100vh - var(--dev-header-height, 0px));
+    max-height: calc(100dvh - var(--dev-header-height, 0px));
+    overflow: hidden;
+  `
+      : ""}
 `;
 
 /* Fixed basis (not flex: 1) so the sidebar sits at the same x-position on every
@@ -106,30 +126,69 @@ const MainColumn = styled.main<{
   $isWideLayout?: boolean | undefined;
   $isFullScreenLayout?: boolean | undefined;
   $isInspectorLayout?: boolean | undefined;
+  $isChatLayout?: boolean | undefined;
 }>`
   flex: ${(props) =>
-    props.$isWideLayout || props.$isFullScreenLayout || props.$isInspectorLayout ? "1" : "0 1 740px"};
+    props.$isWideLayout || props.$isFullScreenLayout || props.$isInspectorLayout || props.$isChatLayout
+      ? "1"
+      : "0 1 740px"};
   width: 100%;
   max-width: ${(props) =>
-    props.$isFullScreenLayout ? "100%" : props.$isInspectorLayout || props.$isWideLayout ? "1066px" : "740px"};
-  margin-right: ${(props) =>
-    (props.$isWideLayout || props.$isInspectorLayout) && !props.$isFullScreenLayout ? "24px" : "0px"};
+    props.$isFullScreenLayout
+      ? "100%"
+      : props.$isInspectorLayout
+        ? "1066px"
+        : props.$isWideLayout
+          ? "1091px"
+          : "740px"};
+  margin-right: ${(props) => (props.$isInspectorLayout && !props.$isFullScreenLayout ? "24px" : "0px")};
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
   min-height: calc(100vh - var(--dev-header-height, 0px));
   min-height: calc(100dvh - var(--dev-header-height, 0px));
+  height: ${(props) =>
+    props.$isChatLayout ? "calc(100vh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px))" : "auto"};
+  height: ${(props) =>
+    props.$isChatLayout ? "calc(100dvh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px))" : "auto"};
+  max-height: ${(props) =>
+    props.$isChatLayout ? "calc(100vh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px))" : "none"};
+  max-height: ${(props) =>
+    props.$isChatLayout ? "calc(100dvh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px))" : "none"};
+  overflow: ${(props) => (props.$isChatLayout ? "hidden" : "visible")};
   padding-bottom: ${(props) =>
-    props.$isFullScreenLayout ? "var(--guest-banner-height, 0px)" : "calc(80px + var(--guest-banner-height, 0px))"};
+    props.$isChatLayout
+      ? "0px"
+      : props.$isFullScreenLayout
+        ? "var(--guest-banner-height, 0px)"
+        : "calc(80px + var(--guest-banner-height, 0px))"};
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
 
   @media (max-width: 767px) {
+    height: ${(props) =>
+      props.$isChatLayout
+        ? "calc(100vh - var(--dev-header-height, 0px) - 60px - env(safe-area-inset-bottom, 0px))"
+        : "auto"};
+    height: ${(props) =>
+      props.$isChatLayout
+        ? "calc(100dvh - var(--dev-header-height, 0px) - 60px - env(safe-area-inset-bottom, 0px))"
+        : "auto"};
+    max-height: ${(props) =>
+      props.$isChatLayout
+        ? "calc(100vh - var(--dev-header-height, 0px) - 60px - env(safe-area-inset-bottom, 0px))"
+        : "none"};
+    max-height: ${(props) =>
+      props.$isChatLayout
+        ? "calc(100dvh - var(--dev-header-height, 0px) - 60px - env(safe-area-inset-bottom, 0px))"
+        : "none"};
     padding-bottom: ${(props) =>
-      props.$isFullScreenLayout
+      props.$isChatLayout
         ? "0px"
-        : "calc(120px + env(safe-area-inset-bottom, 0px))"}; /* Leave space for bottom bar + banner */
+        : props.$isFullScreenLayout
+          ? "0px"
+          : "calc(120px + env(safe-area-inset-bottom, 0px))"}; /* Leave space for bottom bar + banner */
     border-left: none;
     border-right: none;
     margin-right: 0px;
@@ -210,7 +269,7 @@ const MoreSheet = styled.div`
     background: none;
     color: var(--ms-text-1);
     font-family: inherit;
-    font-size: 15px;
+    font-size: 15.5px;
     font-weight: 550;
     text-decoration: none;
     cursor: pointer;
@@ -481,6 +540,8 @@ const AppShell: React.FC = () => {
   const isFullScreenLayout =
     location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/";
 
+  const isChatLayout = location.pathname.startsWith("/chat");
+
   const showsRightPanel = !isStandaloneRoute && !isWideLayout && !isFullScreenLayout && !isInspectorLayout;
 
   React.useEffect(() => {
@@ -652,8 +713,8 @@ const AppShell: React.FC = () => {
           </ErrorBoundary>
         ) : (
           <>
-            <ShellContainer $hasGuestBanner={hasGuestBanner}>
-              <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
+            <ShellContainer $hasGuestBanner={hasGuestBanner} $isChatLayout={isChatLayout}>
+              <ContentWrapper $isFullScreenLayout={isFullScreenLayout} $isChatLayout={isChatLayout}>
                 <SidebarWrapper>
                   <Sidebar onPostClick={() => setIsComposeOpen(true)} />
                 </SidebarWrapper>
@@ -661,6 +722,7 @@ const AppShell: React.FC = () => {
                   $isWideLayout={isWideLayout}
                   $isFullScreenLayout={isFullScreenLayout}
                   $isInspectorLayout={isInspectorLayout}
+                  $isChatLayout={isChatLayout}
                 >
                   <ErrorBoundary>
                     <Outlet context={{ openCompose: handleOpenComposeContext }} />
@@ -851,7 +913,7 @@ const AppShell: React.FC = () => {
                     </>
                   )}
                   <Link to="/morsel" onClick={() => handleMoreLinkClick("/morsel")}>
-                    <MorselIcon size={20} /> Ansatz Morsel
+                    <MorselIcon size={20} /> Morsel
                   </Link>
                   {hasPackages && (
                     <Link to="/packages" onClick={() => handleMoreLinkClick("/packages")}>

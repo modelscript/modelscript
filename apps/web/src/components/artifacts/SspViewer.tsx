@@ -825,6 +825,12 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
     return undefined;
   }, [viewConfig.code, viewConfig.url]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, rawText, sanitizedSvg]);
+
   const ssdModel = useMemo(() => parseSsdClientModel(rawText, viewConfig), [rawText, viewConfig]);
 
   const sanitizedSvg = useMemo(() => {

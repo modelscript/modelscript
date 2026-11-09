@@ -224,6 +224,9 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
             ar
             ar-modes="webxr scene-viewer quick-look"
             shadow-intensity="1"
+            onLoad={() => {
+              (window as any).__ARTIFACT_READY = true;
+            }}
             style={{ width: "100%", height: "100%", backgroundColor: "var(--color-canvas-default)" }}
           ></model-viewer>
         </Box>
@@ -232,7 +235,7 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
   );
 };
 
-// Add to TypeScript JSX intrinsic elements
+// Add to TypeScript JSX intrinsic elements for modern React 18+ and global JSX
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -244,6 +247,21 @@ declare global {
         ar?: boolean | undefined;
         "ar-modes"?: string | undefined;
         "shadow-intensity"?: string | undefined;
+        onLoad?: (() => void) | undefined;
+      };
+    }
+  }
+  namespace React.JSX {
+    interface IntrinsicElements {
+      "model-viewer": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        src?: string | undefined;
+        alt?: string | undefined;
+        "auto-rotate"?: boolean | undefined;
+        "camera-controls"?: boolean | undefined;
+        ar?: boolean | undefined;
+        "ar-modes"?: string | undefined;
+        "shadow-intensity"?: string | undefined;
+        onLoad?: (() => void) | undefined;
       };
     }
   }

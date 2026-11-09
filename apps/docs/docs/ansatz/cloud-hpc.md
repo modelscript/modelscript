@@ -13,7 +13,7 @@ While interactive 1D DAE and multibody simulations execute directly in the brows
 
 ```mermaid
 flowchart LR
-    A["Web Studio / Morsel / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
+    A["Studio / Morsel / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
     B -->|"Deterministic .zip Bundle"| C["Slurm Controller (slurmctld / sbatch)"]
     C -->|"MPI / CUDA Allocation"| D["Compute Nodes (CPU / A100 / H100)"]
     D -->|"Zero-Copy RingBuffer Logs"| B

@@ -129,7 +129,7 @@ export class LocalProcessDriver implements HpcDriver {
 
     const requestedRuntime =
       sandboxConfig?.runtime ||
-      (process.env["HPC_SANDBOX_RUNTIME"] as "auto" | "docker" | "podman" | "unshare" | "none") ||
+      (process.env["HPC_SANDBOX_RUNTIME"] as "auto" | "docker" | "podman" | "unshare" | "bwrap" | "none") ||
       "auto";
 
     const isSandboxRequested =
@@ -144,6 +144,8 @@ export class LocalProcessDriver implements HpcDriver {
           effectiveRuntime = "podman";
         } else if (this.isExecutableInPath("docker")) {
           effectiveRuntime = "docker";
+        } else if (process.platform === "linux" && this.isExecutableInPath("bwrap")) {
+          effectiveRuntime = "bwrap";
         } else if (process.platform === "linux" && this.isExecutableInPath("unshare")) {
           effectiveRuntime = "unshare";
         } else {
@@ -186,6 +188,32 @@ export class LocalProcessDriver implements HpcDriver {
       containerArgs.push(image, execCmd, ...execArgs);
       execCmd = effectiveRuntime;
       execArgs = containerArgs;
+    } else if (effectiveRuntime === "bwrap" && process.platform === "linux") {
+      runtime = "bwrap";
+      networkIsolation = sandboxConfig?.networkIsolation !== false;
+      const absWorkingDir = path.resolve(spec.workingDir);
+      const bwrapArgs: string[] = [
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+        "--bind",
+        absWorkingDir,
+        absWorkingDir,
+        "--chdir",
+        absWorkingDir,
+      ];
+      if (networkIsolation) {
+        bwrapArgs.push("--unshare-net");
+      }
+      bwrapArgs.push("--", execCmd, ...execArgs);
+      execCmd = "bwrap";
+      execArgs = bwrapArgs;
     } else if (effectiveRuntime === "unshare" && process.platform === "linux") {
       runtime = "unshare";
       networkIsolation = true;

@@ -42,7 +42,7 @@ export const SearchContainer = styled.div<{ $scrolled?: boolean | undefined }>`
 
 export const AiSearchBar = styled.div`
   width: 100%;
-  height: 38px;
+  height: 40px;
   background: color-mix(in srgb, var(--color-bg-primary) 85%, var(--color-search-bg, rgba(255, 255, 255, 0.04)));
   border: 1px solid var(--color-search-border, var(--color-border-glass));
   border-radius: 9999px;
@@ -51,8 +51,8 @@ export const AiSearchBar = styled.div`
   padding: 0 14px;
   gap: 8px;
   color: var(--color-text-muted);
-  font-size: 13.5px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
@@ -103,7 +103,7 @@ export const Card = styled.div`
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--color-border-glass);
   border-radius: 16px;
-  padding: 16px;
+  padding: 18px 20px;
   margin-bottom: 16px;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -134,8 +134,9 @@ export const TopUpButton = styled.button`
   border: 1px solid var(--color-accent-purple-border);
   color: var(--color-accent-purple);
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 11px;
+  padding: 5px 12px;
+  min-height: 30px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
@@ -163,7 +164,8 @@ export const CloudRunButton = styled.button`
   color: var(--color-accent-cyan);
   border-radius: 6px;
   padding: 5px 12px;
-  font-size: 11px;
+  min-height: 30px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
@@ -241,12 +243,12 @@ export const ProviderButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 36px;
+  height: 38px;
   background: var(--color-btn-secondary-bg);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-glass);
   border-radius: 9999px;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -267,8 +269,8 @@ export const CardHeader = styled.div`
 `;
 
 export const CardTitle = styled.h2`
-  font-size: 16.5px;
-  line-height: 22px;
+  font-size: 17px;
+  line-height: 24px;
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
@@ -320,10 +322,10 @@ export const PanelIconBox = styled.div`
 `;
 
 export const PanelBadge = styled.span`
-  font-size: 10px;
-  line-height: 14px;
+  font-size: 11.5px;
+  line-height: 16px;
   font-family: var(--font-mono);
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
   background-color: var(--ms-brand-soft);
   color: var(--ms-brand);
@@ -335,9 +337,9 @@ export const PanelBadge = styled.span`
 export const ShowMoreLink = styled(Link)`
   color: var(--ms-brand);
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 20px;
   padding: 6px 8px;
   margin: 4px -8px -4px -8px;
   border-radius: 8px;

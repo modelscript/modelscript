@@ -605,4 +605,78 @@ test("Launch Hardening Regression Test Suite", async (t) => {
       assert.ok(!snippet.envText.includes("eyJhIjoisecret-cloudflare-token-value"));
     },
   );
+
+  await t.test("23. Pre-buffering payload cap rejects oversized standard API bodies (> 2MB) with 413", async () => {
+    const res = await request(app)
+      .post("/api/v1/spaces")
+      .set("Content-Type", "application/json")
+      .set("Content-Length", String(3 * 1024 * 1024))
+      .send({ name: "oversized-space" });
+
+    assert.strictEqual(res.status, 413);
+    assert.match(res.body.error, /Payload too large/i);
+  });
+
+  await t.test("24. Standard API endpoints and web routes emit comprehensive Content-Security-Policy", async () => {
+    const res = await request(app).get("/health");
+    assert.strictEqual(res.status, 200);
+
+    const csp = res.headers["content-security-policy"];
+    assert.ok(csp, "Content-Security-Policy header must be present on standard routes");
+    assert.ok(csp.includes("default-src 'self'"), "CSP must include default-src 'self'");
+    assert.ok(csp.includes("'wasm-unsafe-eval'"), "CSP must allow wasm-unsafe-eval for compiler runtime");
+    assert.ok(csp.includes("object-src 'none'"), "CSP must forbid object-src");
+    assert.ok(csp.includes("base-uri 'self'"), "CSP must lock base-uri to 'self'");
+    assert.ok(csp.includes("frame-ancestors 'self'"), "CSP must restrict frame-ancestors to 'self'");
+  });
+
+  await t.test(
+    "25. RedisRateLimitStore operates with transparent memory fallback and accurately tracks hit counts",
+    async () => {
+      const { RedisRateLimitStore } = await import("../src/middleware/redis-store.js");
+      const store = new RedisRateLimitStore({ prefix: "test:rl:" });
+      store.init({ windowMs: 5000 } as any);
+
+      const hit1 = await store.increment("client-123");
+      assert.strictEqual(hit1.totalHits, 1);
+      assert.ok(hit1.resetTime instanceof Date);
+
+      const hit2 = await store.increment("client-123");
+      assert.strictEqual(hit2.totalHits, 2);
+
+      await store.decrement("client-123");
+      const hit3 = await store.increment("client-123");
+      assert.strictEqual(hit3.totalHits, 2);
+
+      await store.resetKey("client-123");
+      const hit4 = await store.increment("client-123");
+      assert.strictEqual(hit4.totalHits, 1);
+
+      store.shutdown();
+    },
+  );
+
+  await t.test(
+    "26. Package publish fast-fails with 409 Conflict when publishing an existing immutable release",
+    async () => {
+      const currentVersion = db.getUserById(testUser.id)?.token_version ?? 1;
+      const token = makeUserToken(currentVersion);
+
+      // Save a release in database
+      db.saveLibraryRelease({
+        libraryName: "@hardening_user/test-pkg",
+        libraryVersion: "1.0.0",
+        contentHash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        publishedBy: testUser.id,
+      });
+
+      const res = await request(app)
+        .post("/api/v1/libraries/@hardening_user/test-pkg/1.0.0")
+        .set("Authorization", `Bearer ${token}`)
+        .attach("file", Buffer.from("dummy-zip"), "package.zip");
+
+      assert.strictEqual(res.status, 409);
+      assert.match(res.body.error, /already exists and is immutable/i);
+    },
+  );
 });

@@ -1993,9 +1993,24 @@ export function foldArenaConstants(
   }
 
   const nameToIdx = new Map<string, number>();
+  const bindingIndices: number[] = [];
+  const attrVarIndices: number[] = [];
   for (let i = 0; i < arena.varCount; i++) {
     if (!arena.isVarRemoved(i)) {
-      nameToIdx.set(arena.getVarName(i), i);
+      const name = arena.getVarName(i);
+      nameToIdx.set(name, i);
+      const v = arena.getVarVariability(i);
+      const exprId = arena.getVarExpression(i);
+      if (
+        v === Variability.Constant ||
+        v === Variability.Parameter ||
+        (omcCompatibility && exprId !== undefined && exprId >= 0)
+      ) {
+        bindingIndices.push(i);
+      }
+      if (arena.getVarAttrExprIds(i) !== undefined) {
+        attrVarIndices.push(i);
+      }
     }
   }
 
@@ -2014,7 +2029,7 @@ export function foldArenaConstants(
     paramMap.clear();
     constMap.clear();
     finalParamOrConstMap.clear();
-    for (let i = 0; i < arena.varCount; i++) {
+    for (const i of bindingIndices) {
       if (arena.isVarRemoved(i)) continue;
       const v = arena.getVarVariability(i);
       if (v === Variability.Constant || v === Variability.Parameter) {
@@ -2097,7 +2112,7 @@ export function foldArenaConstants(
     }
 
     // 2. Fold variable binding expressions
-    for (let i = 0; i < arena.varCount; i++) {
+    for (const i of bindingIndices) {
       if (arena.isVarRemoved(i)) continue;
       const v = arena.getVarVariability(i);
       if (v !== Variability.Constant && v !== Variability.Parameter && !omcCompatibility) continue;
@@ -2170,7 +2185,7 @@ export function foldArenaConstants(
 
     // Fold variable attributes (e.g. start = x0[1])
     const isOldFrontend = Boolean((arena as any).extensionMetadata?.isOldFrontend);
-    for (let i = 0; i < arena.varCount; i++) {
+    for (const i of attrVarIndices) {
       if (arena.isVarRemoved(i)) continue;
       const attrs = arena.getVarAttrExprIds(i);
       if (!attrs) continue;
@@ -2354,14 +2369,16 @@ export function foldArenaConstants(
         if (constSubRhs !== rhsExpr) {
           arena.setEqRhs(eq, constSubRhs);
         }
-        const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, ifElseFoldMap, nameToIdx);
-        if (simplifiedLhs !== lhsExpr) {
-          arena.setEqLhs(eq, simplifiedLhs);
-          lhsExpr = simplifiedLhs;
-        }
-        const constSubLhs = substituteArenaConstants(arena, lhsExpr, constMap, nameToIdx);
-        if (constSubLhs !== lhsExpr) {
-          arena.setEqLhs(eq, constSubLhs);
+        if (lhsKind !== ExprKind.Name && lhsKind !== ExprKind.Der) {
+          const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, ifElseFoldMap, nameToIdx);
+          if (simplifiedLhs !== lhsExpr) {
+            arena.setEqLhs(eq, simplifiedLhs);
+            lhsExpr = simplifiedLhs;
+          }
+          const constSubLhs = substituteArenaConstants(arena, lhsExpr, constMap, nameToIdx);
+          if (constSubLhs !== lhsExpr) {
+            arena.setEqLhs(eq, constSubLhs);
+          }
         }
       }
     } else if (eqKind === EqKind.When) {

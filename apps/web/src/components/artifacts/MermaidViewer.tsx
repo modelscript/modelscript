@@ -239,11 +239,17 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
           ADD_ATTR: ["style", "class", "id", "xmlns"],
         });
         setSvgString(cleanSvg);
+        if (typeof window !== "undefined") {
+          (window as any).__ARTIFACT_READY = true;
+        }
       } catch (err: any) {
         cleanupOrphanedNode(id);
         if (cancelled) return;
         console.error("Mermaid rendering failed:", err);
         setError(err.message || "Failed to render Mermaid diagram");
+        if (typeof window !== "undefined") {
+          (window as any).__ARTIFACT_READY = true;
+        }
       }
     };
 

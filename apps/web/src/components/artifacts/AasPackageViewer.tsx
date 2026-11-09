@@ -33,6 +33,15 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
   const [selectedVariant, setSelectedVariant] = useState<string>(viewConfig.variants?.[0] || "default");
   const [copiedNpm, setCopiedNpm] = useState(false);
 
+  const effectiveCadUrl =
+    viewConfig.cadUrl ||
+    (viewConfig as any).stepUrl ||
+    (typeof (viewConfig as any).cad === "string" ? (viewConfig as any).cad : undefined);
+
+  useEffect(() => {
+    (window as any).__ARTIFACT_READY = true;
+  }, []);
+
   const manifest = viewConfig.manifest || {};
   const bom = manifest.bom || [];
   const instructions = manifest.makingInstructions || [];
@@ -165,7 +174,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
         <TabButton active={activeTab === "bom"} onClick={() => setActiveTab("bom")}>
           📋 Bill of Materials ({bom.length})
         </TabButton>
-        {viewConfig.cadUrl && (
+        {effectiveCadUrl && (
           <TabButton active={activeTab === "cad"} onClick={() => setActiveTab("cad")}>
             📐 3D CAD & Geometry
           </TabButton>
@@ -272,11 +281,18 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
           </SectionCard>
         )}
 
-        {activeTab === "cad" && viewConfig.cadUrl && (
-          <Box height="100%" minHeight="450px">
-            <CadStepViewer viewConfig={{ url: viewConfig.cadUrl }} isFullScreen={isFullScreen} />
-          </Box>
-        )}
+        {activeTab === "cad" &&
+          (effectiveCadUrl ? (
+            <Box height="100%" minHeight="450px">
+              <CadStepViewer viewConfig={{ url: effectiveCadUrl }} isFullScreen={isFullScreen} />
+            </Box>
+          ) : (
+            <SectionCard title="3D CAD & Geometry">
+              <Box p={4} textAlign="center" color="var(--color-fg-muted)">
+                <Text>No 3D CAD or STEP model asset attached to this AAS package.</Text>
+              </Box>
+            </SectionCard>
+          ))}
 
         {activeTab === "instructions" && (
           <SectionCard title="Assembly & Making Instructions (DIN SPEC 3105)">

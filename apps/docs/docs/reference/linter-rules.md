@@ -13,7 +13,7 @@ ModelScript ships **1046 diagnostic rules** across **68 languages**. This page i
 
 ## Running the linters
 
-Diagnostics appear as you type in VS Code and the web IDE through the language server. From the command line:
+Diagnostics appear as you type in VS Code and Studio through the language server. From the command line:
 
 ```bash
 # Languages handled by the unified linter (detected by file extension)

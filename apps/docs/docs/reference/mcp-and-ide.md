@@ -1,11 +1,11 @@
 ---
 title: MCP Server & IDE Workbench Reference
-description: Complete reference for all 60 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Web IDE workbench.
+description: Complete reference for all 60 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Studio workbench.
 ---
 
 # MCP Server & IDE Workbench Reference
 
-ModelScript provides first-class AI agent integration via the **Model Context Protocol (`@modelscript/mcp`)** alongside a comprehensive polyglot **VS Code Extension & Web IDE (`@modelscript/ide-client`, `@modelscript/lsp`)**. Both surfaces share the same zero-allocation WebAssembly GLR parsers, Salsa `QueryEngine`, and linear-memory `DAEBuilder`.
+ModelScript provides first-class AI agent integration via the **Model Context Protocol (`@modelscript/mcp`)** alongside a comprehensive polyglot **VS Code Extension & Studio Workbench (`@modelscript/ide-client`, `@modelscript/lsp`)**. Both surfaces share the same zero-allocation WebAssembly GLR parsers, Salsa `QueryEngine`, and linear-memory `DAEBuilder`.
 
 ---
 
@@ -215,7 +215,7 @@ The MCP server exposes live workspace state as URI-addressable resources (`packa
 
 ---
 
-## Part II: VS Code Extension & Web IDE Workbench
+## Part II: VS Code Extension & Studio Workbench
 
 The official ModelScript extension (`modelscript.modelscript`, source in `apps/ide/` and `packages/lsp/`) runs both in **VS Code Desktop** (Node.js extension host) and **VS Code for the Web / Studio (`https://ansatz.social/studio`)** (100% browser WebWorker host).
 

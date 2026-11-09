@@ -167,6 +167,7 @@ export function verifyEnterpriseLicense(
   options?: {
     publicKeyPem?: string | undefined;
     nowSeconds?: number | undefined;
+    lastKnownTimestampSeconds?: number | undefined;
   },
 ): LicenseVerificationResult {
   const trimmed = token.trim();
@@ -261,6 +262,26 @@ export function verifyEnterpriseLicense(
     }
 
     const nowSec = options?.nowSeconds ?? Math.floor(Date.now() / 1000);
+
+    // Monotonic clock tampering protection: ensure system time has not rolled back
+    if (claims.iat && nowSec < claims.iat - 300) {
+      return {
+        valid: false,
+        mode: "invalid",
+        claims,
+        reason: `System clock tampering detected: current time (${new Date(nowSec * 1000).toISOString()}) is earlier than license issuance time (${new Date(claims.iat * 1000).toISOString()}).`,
+      };
+    }
+
+    if (options?.lastKnownTimestampSeconds && nowSec < options.lastKnownTimestampSeconds) {
+      return {
+        valid: false,
+        mode: "invalid",
+        claims,
+        reason: `System clock rollback detected: current time (${new Date(nowSec * 1000).toISOString()}) is earlier than recorded system operations (${new Date(options.lastKnownTimestampSeconds * 1000).toISOString()}).`,
+      };
+    }
+
     if (claims.exp <= nowSec) {
       return {
         valid: false,

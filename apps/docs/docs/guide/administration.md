@@ -222,7 +222,7 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
 
 - Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
-- Includes the full 68-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Web IDE, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
+- Includes the full 68-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Studio workbench, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
 - Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/stats`, `/api/v1/admin/ee/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
 
 ```bash
@@ -249,7 +249,7 @@ For regulated utilities, civil aerospace manufacturers, medical device companies
 
 #### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for Isolated Enclaves / NERC CIP / Cleanrooms)
 
-Bundles the API server, `@modelscript/ee`, Web SPA, Unified Documentation Portal (`/docs`), and Web IDE into a single hardened container on port `8080` with zero outbound network dependencies:
+Bundles the API server, `@modelscript/ee`, Web SPA (Morsel & Studio), Unified Documentation Portal (`/docs`), and Studio into a single hardened container on port `8080` with zero outbound network dependencies:
 
 ```bash
 # 1. On an internet-connected bastion, pull and export the appliance image for offline transfer
@@ -323,7 +323,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/morsel`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/morsel`) on `ansatz.social`, alongside Studio (`/studio`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -438,3 +438,53 @@ msx db restore --file modelscript-backup-pre-upgrade.db
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   --env-file .env.production --profile flagship up -d --wait
 ```
+
+---
+
+## 10. Production Security Hardening & Pre-Flight Verification
+
+For commercial paid deployments (`modelscript.org`, `ansatz.social`, and customer VPC appliances), ModelScript applies a defense-in-depth security model designed to safeguard compute infrastructure, proprietary models, and billing ledgers.
+
+### 10.1 Automated Pre-Flight Sentinel (`npm run preflight:prod`)
+
+Before launching containers or opening public ingress, execute the pre-flight sentinel to audit host permissions, kernel sandboxing capabilities, and secret entropy:
+
+```bash
+# Run security pre-flight sentinel
+npm run preflight:prod
+```
+
+The sentinel audits five core hardening areas:
+
+- **Sandbox Isolation**: Verifies Bubblewrap (`bwrap`) is installed and rootless unprivileged user namespaces (`--unshare-net`) function on the host kernel.
+- **Cryptographic Secrets**: Checks `JWT_SECRET` for $\ge 32$ characters and entropy (rejects dictionary words), validates `STRIPE_WEBHOOK_SECRET` format (`whsec_...`), and verifies `AUDIT_HMAC_SECRET`.
+- **Storage & Registry Permissions**: Validates that local package stores and S3/MinIO CAS buckets are accessible and writable under unprivileged UID 1000.
+- **Network & Reverse-Proxy**: Ensures `TRUST_PROXY=true` behind reverse proxies (Caddy/Cloudflare) to prevent rate-limit bypass via header spoofing.
+- **Regulatory Licensing**: Validates offline Ed25519 `MSX_LICENSE_KEY` signatures in Enterprise mode.
+
+> [!TIP]
+> The automated rollout script ([`scripts/ops/deploy.sh`](https://github.com/modelscript/modelscript/blob/main/scripts/ops/deploy.sh)) executes this sentinel as **Step 2c**. If any critical (P0) security check fails, the deployment halts automatically before modifying active containers.
+
+### 10.2 Worker Sandboxing & Execution Isolation
+
+Native C simulation models and external FMU binaries execute within a multi-layered sandbox:
+
+- **Bubblewrap (`bwrap`) Containerization**: Worker processes run with `--unshare-net` (no outbound network access), `--ro-bind / /` (read-only root filesystem), `/tmp` mounted on memory tmpfs (`size=512m`), `--cap-drop ALL`, and bind mounts strictly restricted to the job's working directory.
+- **Watchdogs & Quotas**: Simulation execution is bound to wall-clock timeouts (`15 min` default) and memory watchdogs that terminate runaway processes without stalling the API event loop.
+
+### 10.3 Ingress DoS Defense & Distributed Rate Limiting
+
+- **Pre-Buffering Ingress Gate**: Incoming request bodies are inspected before memory allocation: strict **256KB** limits on `/api/v1/auth/*` and **2MB** limits on standard JSON API endpoints (exempting streaming CAS package tarballs and admin migration bundles).
+- **Distributed Redis Rate Limiter**: When `REDIS_URL` is set, rate-limiting counters are synchronized across all cluster replicas via atomic `INCR` + `PEXPIRE` commands, with automatic fallback to local memory maps if Redis becomes unreachable.
+- **Content Security Policy (CSP)**: Default CSP headers enforce `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, and `frame-ancestors 'self'` across all API and web routes, with support for custom environment policies via `CUSTOM_CSP`.
+
+### 10.4 Financial Escrow & Dispute Kill-Switches
+
+- **Two-Phase Credit Escrow**: Simulation job dispatch pre-authorizes maximum estimated compute credits before worker execution begins; upon completion or cancellation, exact seconds are settled and unused funds are refunded.
+- **Active Job Kill-Switch**: If an account receives a payment dispute or chargeback, all running and queued Slurm or local worker jobs for that user are immediately canceled via `scancel` and `SIGKILL`.
+
+### 10.5 Package Immutability & Regulatory Non-Repudiation
+
+- **CAS Immutability Early Guard**: Publishing an existing package version (`name@version`) immediately fast-fails with `409 Conflict` before archive extraction or AST parsing.
+- **DHF Merkle Hash Chaining**: FDA 21 CFR Part 11 and ISO 13485 compliance dossiers link consecutive attestations in an unbroken SHA-256 Merkle chain (`previousAttestationHash`) verified via `verifyComplianceAttestationChain()`.
+- **Clock Rollback Protection**: Monotonic timestamp checks reject system clock manipulation attempts to extend expired offline licenses.

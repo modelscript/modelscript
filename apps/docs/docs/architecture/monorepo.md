@@ -22,7 +22,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 │   • ansatz.social, package registry, ActivityPub, Cloud HPC, billing   │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Layer 2: Developer Tooling & Surfaces (apps/cli, desktop, ide, docs)   │
-│   • msx CLI, VS Code Web extension, Tauri studio, VitePress portal     │
+│   • msx CLI, VS Code Web extension, Tauri desktop app, VitePress portal │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Layer 1: Core Engine & Languages (languages/*, packages/{dsl,runtime…})│
 │   • WASM GLR parsers, CST arena, DAEBuilder, solvers, TGG, CAD, FMI    │

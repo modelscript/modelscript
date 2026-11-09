@@ -6,6 +6,33 @@ import fs from "node:fs";
 import path from "node:path";
 import { ZipFile } from "yazl";
 
+function padIconViewBox(svg: string): string {
+  if (!svg || !svg.includes("<svg") || svg.includes('data-viewbox-padded="true"')) return svg;
+  const vbMatch = svg.match(/viewBox\s*=\s*(["'])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\1/);
+  if (!vbMatch) return svg;
+
+  const quote = vbMatch[1];
+  const vx = parseFloat(vbMatch[2]!);
+  const vy = parseFloat(vbMatch[3]!);
+  const vw = parseFloat(vbMatch[4]!);
+  const vh = parseFloat(vbMatch[5]!);
+
+  if (isNaN(vx) || isNaN(vy) || isNaN(vw) || isNaN(vh) || vw <= 0 || vh <= 0) return svg;
+  if (vx >= 0 && vy >= 0) return svg;
+
+  const padX = vw * 0.025;
+  const padY = vh * 0.025;
+  const newVx = +(vx - padX).toFixed(2);
+  const newVy = +(vy - padY).toFixed(2);
+  const newVw = +(vw + padX * 2).toFixed(2);
+  const newVh = +(vh + padY * 2).toFixed(2);
+
+  return svg.replace(
+    vbMatch[0],
+    `data-viewbox-padded="true" viewBox=${quote}${newVx} ${newVy} ${newVw} ${newVh}${quote}`,
+  );
+}
+
 export async function exportLspBundle(
   engine: QueryEngine,
   libraryPath: string,
@@ -80,7 +107,11 @@ export async function exportLspBundle(
     zipfile.addBuffer(Buffer.from(indexJson, "utf-8"), "index.json");
 
     // 2. Serialize icons
-    const iconsJson = JSON.stringify(svgs);
+    const paddedSvgs: Record<string, string> = {};
+    for (const [k, v] of Object.entries(svgs)) {
+      if (v) paddedSvgs[k] = padIconViewBox(v);
+    }
+    const iconsJson = JSON.stringify(paddedSvgs);
     zipfile.addBuffer(Buffer.from(iconsJson, "utf-8"), "icons.json");
 
     // 3. Add source files across all 44 languages

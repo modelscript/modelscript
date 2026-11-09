@@ -69,15 +69,19 @@ export class EvalResult {
 
 let staticResult: EvalResult = new EvalResult();
 
+let g_daeUsesVarIds: bool = false;
+
 @inline
 function daeUsesVarIds(dae: DaeBuilder): bool {
-  for (let i: u32 = 0; i < dae.exprCount; i++) {
+  let count: u32 = dae.exprCount < 256 ? dae.exprCount : 256;
+  for (let i: u32 = 0; i < count; i++) {
     let e = ExprAccessor.at(dae.getExprData(), i);
     if (e.kind == ExprKind.Name) {
       let id = e.data1u;
       if (id < dae.varCount && dae.lookupVariableByName(id) < 0) {
         return true;
       }
+      return false;
     }
   }
   return false;
@@ -130,7 +134,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
   if (useVarIds < 0) {
-    useVarIds = daeUsesVarIds(dae) ? 1 : 0;
+    useVarIds = g_daeUsesVarIds ? 1 : 0;
   }
 
   let e = ExprAccessor.at(dae.getExprData(), exprId);
@@ -175,21 +179,35 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
       let varId = resolved as u32;
       let v = VarAccessor.at(dae.getVarData(), varId);
       if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
-        let startVal = dae.getVarStartValue(varId);
-        // If startVal is still 0.0, check if an explicit binding expression is present
-        if (startVal == 0.0 && visitedDepth < 50) {
-          let bindingExpr = dae.getVarAttrExpr(varId, VarAttrKind.Binding as u32);
-          if (bindingExpr == 0xffffffff) {
-            bindingExpr = dae.getVarAttrExpr(varId, VarAttrKind.Start as u32);
-          }
-          if (bindingExpr != 0xffffffff && bindingExpr != exprId) {
+        let bindingExpr = dae.getVarAttrExpr(varId, VarAttrKind.Binding as u32);
+        if (bindingExpr == 0xffffffff) {
+          bindingExpr = dae.getVarAttrExpr(varId, VarAttrKind.Start as u32);
+        }
+        if (bindingExpr != 0xffffffff && bindingExpr != exprId && bindingExpr < dae.exprCount) {
+          let be = ExprAccessor.at(dae.getExprData(), bindingExpr);
+          if (!be.isLiteral) {
+            if (visitedDepth >= 50) {
+              staticResult.isConstant = false;
+              return staticResult;
+            }
             let bRes = evalConstantExpr(dae, bindingExpr, visitedDepth + 1, useVarIds);
             if (bRes.isConstant) {
               dae.setVarStartValue(varId, bRes.valReal);
+              let litId: u32 = bRes.valType == 1
+                ? dae.addIntLiteral(bRes.valInt)
+                : bRes.valType == 2
+                  ? dae.addBoolLiteral(bRes.valBool)
+                  : dae.addRealLiteral(bRes.valReal);
+              dae.setVarAttrExpr(varId, VarAttrKind.Binding as u32, litId);
+              dae.setVarAttrExpr(varId, VarAttrKind.Start as u32, litId);
               return bRes;
+            } else {
+              staticResult.isConstant = false;
+              return staticResult;
             }
           }
         }
+        let startVal = dae.getVarStartValue(varId);
         staticResult.isConstant = true;
         staticResult.valReal    = startVal;
         staticResult.valInt     = startVal as i32;
@@ -373,17 +391,9 @@ export function simplifyAlgebraicExpr(dae: DaeBuilder, exprId: u32, onlyConstant
   // 1. Literal nodes are already maximally simplified
   if (e.isLiteral) return exprId;
 
-  // 2. Fast-path: try constant evaluation on the whole subexpression
-  let constRes = evalConstantExpr(dae, exprId, depth);
-  if (constRes.isConstant) {
-    if (constRes.valType == 1) return dae.addIntLiteral(constRes.valInt);
-    if (constRes.valType == 2) return dae.addBoolLiteral(constRes.valBool);
-    return dae.addRealLiteral(constRes.valReal);
-  }
-
-  // 3. Name expression substitution
+  // 2. Name expression substitution (single-pass bottom-up, respecting onlyConstants)
   if (kind == ExprKind.Name) {
-    let resolved = resolveNameExprToVarId(dae, e.data1u, daeUsesVarIds(dae));
+    let resolved = resolveNameExprToVarId(dae, e.data1u, g_daeUsesVarIds);
     if (resolved >= 0 && (resolved as u32) < dae.varCount) {
       let varId = resolved as u32;
       let v = VarAccessor.at(dae.getVarData(), varId);
@@ -407,10 +417,13 @@ export function simplifyAlgebraicExpr(dae: DaeBuilder, exprId: u32, onlyConstant
   // 4. Negate / Unary Negate
   if (kind == ExprKind.Negate || (kind == ExprKind.Unary && e.unaryOp == UnaryOp.Negate)) {
     let leftSub = simplifyAlgebraicExpr(dae, e.left, onlyConstants, depth + 1);
+    let leftAcc = ExprAccessor.at(dae.getExprData(), leftSub);
+    if (leftAcc.kind == ExprKind.IntLiteral) {
+      return dae.addIntLiteral(-leftAcc.intValue);
+    }
     if (cas_isConstant(dae, leftSub)) {
       return dae.addRealLiteral(-cas_getRealValue(dae, leftSub));
     }
-    let leftAcc = ExprAccessor.at(dae.getExprData(), leftSub);
     if (leftAcc.kind == ExprKind.Negate || (leftAcc.kind == ExprKind.Unary && leftAcc.unaryOp == UnaryOp.Negate)) {
       return leftAcc.left; // -(-x) -> x
     }
@@ -557,7 +570,7 @@ export function simplifyAlgebraicExpr(dae: DaeBuilder, exprId: u32, onlyConstant
     let aAcc = ExprAccessor.at(dae.getExprData(), argSub);
     if (aAcc.isNumericLiteral) return dae.addRealLiteral(0.0);
     if (aAcc.kind == ExprKind.Name) {
-      let resolved = resolveNameExprToVarId(dae, aAcc.data1u, daeUsesVarIds(dae));
+      let resolved = resolveNameExprToVarId(dae, aAcc.data1u, g_daeUsesVarIds);
       if (resolved >= 0 && (resolved as u32) < dae.varCount) {
         let v = VarAccessor.at(dae.getVarData(), resolved as u32);
         if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
@@ -577,14 +590,54 @@ export function simplifyAlgebraicExpr(dae: DaeBuilder, exprId: u32, onlyConstant
     return exprId;
   }
 
-  // 10. Call: simplify arguments
+  // 10. Call: simplify arguments and fold constant builtin math calls bottom-up
   if (kind == ExprKind.Call) {
     let argCount = e.right;
+    let rawFuncId = e.data1;
     if (argCount == 1) {
       let arg0 = dae.getCallArgExprId(exprId, 0);
       let simpArg0 = simplifyAlgebraicExpr(dae, arg0, onlyConstants, depth + 1);
+      if (cas_isConstant(dae, simpArg0)) {
+        let funcId = dae.resolveBuiltinMathFunc(rawFuncId);
+        if (funcId >= 0) {
+          let arg0Val = cas_getRealValue(dae, simpArg0);
+          let val = (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy)
+            ? arg0Val
+            : evalMathBuiltin(funcId, arg0Val, 0.0);
+          if (!isNaN(val)) {
+            if (funcId == BuiltinMathFunc.Sign) {
+              return dae.addIntLiteral(val as i32);
+            }
+            return dae.addRealLiteral(val);
+          }
+        }
+      }
       if (simpArg0 != arg0) {
-        return dae.addCall(e.data1, simpArg0, 1);
+        return dae.addCall(rawFuncId, simpArg0, 1);
+      }
+    } else if (argCount == 2) {
+      let arg0 = dae.getCallArgExprId(exprId, 0);
+      let arg1 = dae.getCallArgExprId(exprId, 1);
+      let simpArg0 = simplifyAlgebraicExpr(dae, arg0, onlyConstants, depth + 1);
+      let simpArg1 = simplifyAlgebraicExpr(dae, arg1, onlyConstants, depth + 1);
+      if (cas_isConstant(dae, simpArg0) && cas_isConstant(dae, simpArg1)) {
+        let funcId = dae.resolveBuiltinMathFunc(rawFuncId);
+        if (funcId >= 0) {
+          let arg0Val = cas_getRealValue(dae, simpArg0);
+          let arg1Val = cas_getRealValue(dae, simpArg1);
+          let val = funcId == BuiltinMathFunc.Smooth
+            ? arg1Val
+            : (funcId == BuiltinMathFunc.Homotopy ? arg0Val : evalMathBuiltin(funcId, arg0Val, arg1Val));
+          if (!isNaN(val)) {
+            let a0Acc = ExprAccessor.at(dae.getExprData(), simpArg0);
+            let a1Acc = ExprAccessor.at(dae.getExprData(), simpArg1);
+            if ((funcId == BuiltinMathFunc.Min || funcId == BuiltinMathFunc.Max || funcId == BuiltinMathFunc.Fmod) &&
+                a0Acc.kind == ExprKind.IntLiteral && a1Acc.kind == ExprKind.IntLiteral) {
+              return dae.addIntLiteral(val as i32);
+            }
+            return dae.addRealLiteral(val);
+          }
+        }
       }
     }
     return exprId;
@@ -605,18 +658,48 @@ export function simplifyAlgebraicExpr(dae: DaeBuilder, exprId: u32, onlyConstant
 export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcCompatibility: bool = false): u32 {
   let changed    = true;
   let iterations: u32 = 0;
-  let useVarIds  = daeUsesVarIds(dae);
+  g_daeUsesVarIds = daeUsesVarIds(dae);
+  let useVarIds = g_daeUsesVarIds;
   let useVarIdsFlag: i32 = useVarIds ? 1 : 0;
+
+  // Pre-filter candidate parameter and constant variable indices (avoids full O(V) scans in while loop)
+  let paramVarIndices: Array<u32> = new Array<u32>();
+  for (let varIdx: u32 = 0; varIdx < dae.varCount; varIdx++) {
+    if (dae.isVarRemoved(varIdx)) continue;
+    let v = VarAccessor.at(dae.getVarData(), varIdx);
+    if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
+      paramVarIndices.push(varIdx);
+    }
+  }
+
+  // Pre-filter candidate parameter binding equations (avoids full O(E) scans in while loop)
+  let paramEqIndices: Array<u32> = new Array<u32>();
+  for (let eqIdx: u32 = 0; eqIdx < dae.eqCount; eqIdx++) {
+    let eq = EqAccessor.at(dae.getEqData(), eqIdx);
+    if (!eq.isSimple) continue;
+    let lhsId = eq.lhs;
+    if (lhsId < dae.exprCount) {
+      let lhsExpr = ExprAccessor.at(dae.getExprData(), lhsId);
+      if (lhsExpr.isName) {
+        let targetVar = resolveNameExprToVarId(dae, lhsExpr.varId, useVarIds);
+        if (targetVar >= 0 && (targetVar as u32) < dae.varCount) {
+          let v = VarAccessor.at(dae.getVarData(), targetVar as u32);
+          if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
+            paramEqIndices.push(eqIdx);
+          }
+        }
+      }
+    }
+  }
 
   while (changed && iterations < maxIterations) {
     changed = false;
     iterations++;
 
     // Pass 1: Propagate constant/parameter start values from binding attributes
-    for (let varIdx: u32 = 0; varIdx < dae.varCount; varIdx++) {
+    for (let p: i32 = 0; p < paramVarIndices.length; p++) {
+      let varIdx = unchecked(paramVarIndices[p]);
       if (dae.isVarRemoved(varIdx)) continue;
-      let v = VarAccessor.at(dae.getVarData(), varIdx);
-      if (v.variability != Variability.Constant && v.variability != Variability.Parameter) continue;
 
       let bindingExpr = dae.getVarAttrExpr(varIdx, VarAttrKind.Binding as u32);
       if (bindingExpr == 0xffffffff) {
@@ -630,12 +713,21 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
             dae.setVarStartValue(varIdx, evalRes.valReal);
             changed = true;
           }
-          let litId: u32 = evalRes.valType == 1
-            ? dae.addIntLiteral(evalRes.valInt)
-            : evalRes.valType == 2
-              ? dae.addBoolLiteral(evalRes.valBool)
-              : dae.addRealLiteral(evalRes.valReal);
-          if (litId != bindingExpr) {
+          let be = ExprAccessor.at(dae.getExprData(), bindingExpr);
+          let isAlreadyLit: bool = false;
+          if (evalRes.valType == 1 && be.kind == ExprKind.IntLiteral && be.intValue == evalRes.valInt) {
+            isAlreadyLit = true;
+          } else if (evalRes.valType == 2 && be.kind == ExprKind.BoolLiteral && (be.intValue != 0) == evalRes.valBool) {
+            isAlreadyLit = true;
+          } else if (evalRes.valType == 0 && be.kind == ExprKind.RealLiteral && be.realValue == evalRes.valReal) {
+            isAlreadyLit = true;
+          }
+          if (!isAlreadyLit) {
+            let litId: u32 = evalRes.valType == 1
+              ? dae.addIntLiteral(evalRes.valInt)
+              : evalRes.valType == 2
+                ? dae.addBoolLiteral(evalRes.valBool)
+                : dae.addRealLiteral(evalRes.valReal);
             dae.setVarAttrExpr(varIdx, VarAttrKind.Binding as u32, litId);
             dae.setVarAttrExpr(varIdx, VarAttrKind.Start as u32, litId);
             changed = true;
@@ -645,7 +737,8 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
     }
 
     // Pass 2: Propagate constant/parameter start values from simple binding equations
-    for (let eqIdx: u32 = 0; eqIdx < dae.eqCount; eqIdx++) {
+    for (let e: i32 = 0; e < paramEqIndices.length; e++) {
+      let eqIdx = unchecked(paramEqIndices[e]);
       let eq = EqAccessor.at(dae.getEqData(), eqIdx);
       if (!eq.isSimple) continue;
 
@@ -657,15 +750,12 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
           let targetVar = resolveNameExprToVarId(dae, lhsExpr.varId, useVarIds);
           if (targetVar >= 0 && (targetVar as u32) < dae.varCount) {
             let vIdx = targetVar as u32;
-            let v = VarAccessor.at(dae.getVarData(), vIdx);
-            if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
-              let evalRes = evalConstantExpr(dae, rhsId, 0, useVarIdsFlag);
-              if (evalRes.isConstant) {
-                let oldStart = dae.getVarStartValue(vIdx);
-                if (oldStart != evalRes.valReal) {
-                  dae.setVarStartValue(vIdx, evalRes.valReal);
-                  changed = true;
-                }
+            let evalRes = evalConstantExpr(dae, rhsId, 0, useVarIdsFlag);
+            if (evalRes.isConstant) {
+              let oldStart = dae.getVarStartValue(vIdx);
+              if (oldStart != evalRes.valReal) {
+                dae.setVarStartValue(vIdx, evalRes.valReal);
+                changed = true;
               }
             }
           }
@@ -692,9 +782,12 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
     }
 
     if (lhsId < dae.exprCount) {
-      let simpLhs = simplifyAlgebraicExpr(dae, lhsId, onlyConstants);
-      if (simpLhs != lhsId) {
-        EqAccessor.at(dae.getEqData(), eqIdx).lhs = simpLhs;
+      let lhsKind = ExprAccessor.at(dae.getExprData(), lhsId).kind;
+      if (lhsKind != ExprKind.Name && lhsKind != ExprKind.Der) {
+        let simpLhs = simplifyAlgebraicExpr(dae, lhsId, onlyConstants);
+        if (simpLhs != lhsId) {
+          EqAccessor.at(dae.getEqData(), eqIdx).lhs = simpLhs;
+        }
       }
     }
 

@@ -81,6 +81,15 @@ if [ "${AVAIL_KB:-0}" -lt 4194304 ]; then
   docker system prune -af --volumes=false >/dev/null 2>&1 || true
 fi
 
+# Step 2c: Execute Production Hardening Pre-Flight Sentinel
+if [ -f "${TARGET_DIR}/scripts/ops/preflight-audit.ts" ]; then
+  echo "==> Executing Production Hardening Pre-Flight Sentinel..."
+  npx tsx "${TARGET_DIR}/scripts/ops/preflight-audit.ts" || {
+    echo "🚨 ERROR: Production Hardening Pre-Flight Sentinel reported critical security failures!"
+    exit 1
+  }
+fi
+
 # Step 3: Pull target Docker images
 echo "==> Pulling target Docker images (IMAGE_TAG=${IMAGE_TAG})..."
 IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile federated pull

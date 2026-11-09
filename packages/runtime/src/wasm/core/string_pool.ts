@@ -498,6 +498,109 @@ export class ArenaStringPool {
            this.charBuffer.get(off + 3) == 101;   // 'e'
   }
 
+  /**
+   * If `id` is of the form `"der(X)"`, returns the interned `StringId` of `"X"` in O(1)
+   * without allocating or copying bytes, or `0` if `id` is not a `"der(...)"` string.
+   */
+  @inline
+  unwrapDerSingle(id: u32): u32 {
+    if (id == 0 || id >= this.stringCount) return 0;
+    let len = this.stringLengths.get(id);
+    if (len <= 5) return 0;
+    let off = this.stringOffsets.get(id);
+    if (
+      this.charBuffer.get(off) != 100 || // 'd'
+      this.charBuffer.get(off + 1) != 101 || // 'e'
+      this.charBuffer.get(off + 2) != 114 || // 'r'
+      this.charBuffer.get(off + 3) != 40 || // '('
+      this.charBuffer.get(off + len - 1) != 41 // ')'
+    ) {
+      return 0;
+    }
+    let innerStart = off + 4;
+    let innerLen = len - 5;
+    let h = hashChunkedBytes64(this.charBuffer, innerStart, innerLen);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, innerStart, innerLen)) {
+      return existingId;
+    }
+    return 0;
+  }
+
+  /**
+   * Unwraps one or more nested `"der(...)"` layers from `id` and returns the interned
+   * `StringId` of the innermost base variable (or `0` if `id` does not start with `"der("`).
+   */
+  @inline
+  unwrapDerBase(id: u32): u32 {
+    if (id == 0 || id >= this.stringCount) return 0;
+    let len = this.stringLengths.get(id);
+    if (len <= 5) return 0;
+    let off = this.stringOffsets.get(id);
+    let order: u32 = 0;
+    while (
+      len > 5 &&
+      this.charBuffer.get(off) == 100 && // 'd'
+      this.charBuffer.get(off + 1) == 101 && // 'e'
+      this.charBuffer.get(off + 2) == 114 && // 'r'
+      this.charBuffer.get(off + 3) == 40 && // '('
+      this.charBuffer.get(off + len - 1) == 41 // ')'
+    ) {
+      off += 4;
+      len -= 5;
+      order++;
+    }
+    if (order == 0) return 0;
+    let h = hashChunkedBytes64(this.charBuffer, off, len);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, off, len)) {
+      return existingId;
+    }
+    return 0;
+  }
+
+  /**
+   * Given the interned `StringId` of `baseId` (e.g. `"x"`), looks up the interned `StringId`
+   * of `"der(x)"` without allocating or copying any bytes, or returns `0` if not interned.
+   */
+  @inline
+  lookupDerOf(baseId: u32): u32 {
+    if (baseId == 0 || baseId >= this.stringCount) return 0;
+    let baseLen = this.stringLengths.get(baseId);
+    if (baseLen == 0) return 0;
+    let baseStart = this.stringOffsets.get(baseId);
+    let h: u64 = 0xcbf29ce484222325;
+    // Hash "der("
+    h ^= 100; h = h * 0x100000001b3; // 'd'
+    h ^= 101; h = h * 0x100000001b3; // 'e'
+    h ^= 114; h = h * 0x100000001b3; // 'r'
+    h ^= 40;  h = h * 0x100000001b3; // '('
+    for (let i: u32 = 0; i < baseLen; i++) {
+      h ^= this.charBuffer.get(baseStart + i) as u64;
+      h = h * 0x100000001b3;
+    }
+    // Hash ")"
+    h ^= 41;  h = h * 0x100000001b3; // ')'
+    if (h == 0) h = 1;
+    let candId = this.getStringMap().get(h);
+    if (candId == 0 || candId >= this.stringCount) return 0;
+    if (this.stringLengths.get(candId) != baseLen + 5) return 0;
+    let candOff = this.stringOffsets.get(candId);
+    if (
+      this.charBuffer.get(candOff) != 100 ||
+      this.charBuffer.get(candOff + 1) != 101 ||
+      this.charBuffer.get(candOff + 2) != 114 ||
+      this.charBuffer.get(candOff + 3) != 40 ||
+      this.charBuffer.get(candOff + baseLen + 4) != 41
+    ) {
+      return 0;
+    }
+    for (let i: u32 = 0; i < baseLen; i++) {
+      if (this.charBuffer.get(candOff + 4 + i) != this.charBuffer.get(baseStart + i)) return 0;
+    }
+    return candId;
+  }
+
   hasDot(id: u32): boolean {
     if (id >= this.stringCount) return false;
     let len = this.stringLengths.get(id);

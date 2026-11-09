@@ -142,5 +142,5 @@ Implemented in `TaylorModel` (`packages/runtime/src/analysis/wasm_taylor_model.t
   - DAE blocks partitioned and torn by [`BltEngine`](./blt.md) and [`TornBlock`](./tearing.md).
   - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./surrogates-linear-algebra.md).
 - **Downstream Consumers**:
-  - Powers `msx simulate`, `msx optimize`, and the Web IDE charting canvas.
+  - Powers `msx simulate`, `msx optimize`, and the Studio charting canvas.
   - Feeds state trajectories and validated flowpipes into [`Signal Temporal Logic (STL) Monitor & Theory Coordinator`](./theory-coordinator.md) and formal verification oracles.

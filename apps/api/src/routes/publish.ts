@@ -75,6 +75,14 @@ export function publishRouter(
         return;
       }
 
+      // 1.1 Strict Package Immutability Check: Fast-fail early if version already exists
+      if (storage.exists(name, version) || database.getLibraryRelease(name, version)) {
+        res.status(409).json({
+          error: `Package version '${name}@${version}' already exists and is immutable (M4009). Published package versions cannot be modified or re-published.`,
+        });
+        return;
+      }
+
       // Check token scope & package pattern if using an API token
       if (req.tokenScopes) {
         if (

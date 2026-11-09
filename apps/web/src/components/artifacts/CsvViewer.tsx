@@ -444,6 +444,12 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen, 
     setCsvData([]);
   }, [viewConfig, parseCsvText]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, csvData]);
+
   const hasExplicitColumns = Boolean(viewConfig?.columns && (viewConfig.previewRows || viewConfig.rows));
   const hasHeader = hasExplicitColumns ? true : viewConfig?.hasHeader !== false;
 

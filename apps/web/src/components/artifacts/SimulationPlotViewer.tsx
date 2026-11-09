@@ -285,6 +285,12 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     };
   }, [viewConfig]);
 
+  useEffect(() => {
+    if (!loading && typeof window !== "undefined") {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [loading, data]);
+
   // Auto-detect time column key ('time' or 't')
   const timeKey = useMemo(
     () =>
