@@ -2156,15 +2156,12 @@ export async function ingestOpenAlexFromS3OrFile(
     const rawPath = options.localFilePath.trim();
     const cacheDir = path.resolve(options.cacheDir || getOpenAlexCacheDirectory(database));
     const tmpDir = path.resolve(os.tmpdir());
-    const cwdDir = path.resolve(process.cwd());
     const resolvedPath = path.resolve(rawPath);
     if (
       !resolvedPath.startsWith(cacheDir + path.sep) &&
       !resolvedPath.startsWith(tmpDir + path.sep) &&
-      !resolvedPath.startsWith(cwdDir + path.sep) &&
       resolvedPath !== cacheDir &&
-      resolvedPath !== tmpDir &&
-      resolvedPath !== cwdDir
+      resolvedPath !== tmpDir
     ) {
       throw new Error(`Access denied: local file path outside allowed directory: ${rawPath}`);
     }
@@ -2179,10 +2176,8 @@ export async function ingestOpenAlexFromS3OrFile(
     if (
       !realPath.startsWith(cacheDir + path.sep) &&
       !realPath.startsWith(tmpDir + path.sep) &&
-      !realPath.startsWith(cwdDir + path.sep) &&
       realPath !== cacheDir &&
-      realPath !== tmpDir &&
-      realPath !== cwdDir
+      realPath !== tmpDir
     ) {
       throw new Error(`Access denied: resolved symlink points outside allowed directory: ${rawPath}`);
     }

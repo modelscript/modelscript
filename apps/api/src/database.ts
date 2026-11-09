@@ -14945,21 +14945,43 @@ export class LibraryDatabase {
 
     if (this.#auditDb) {
       try {
-        const auditFileName = fileName.replace("modelscript-backup-", "audit-backup-");
+        const auditFileName = path.basename(fileName.replace("modelscript-backup-", "audit-backup-"));
         const auditBackupPath = path.resolve(backupDir, auditFileName);
-        this.#auditDb.prepare("VACUUM INTO ?").run(auditBackupPath);
-        const auditSha = crypto.createHash("sha256").update(fs.readFileSync(auditBackupPath)).digest("hex");
-        fs.writeFileSync(`${auditBackupPath}.sha256`, auditSha, "utf8");
+        const auditRel = path.relative(backupDir, auditBackupPath);
+        if (
+          auditRel &&
+          !auditRel.startsWith("..") &&
+          !path.isAbsolute(auditRel) &&
+          auditBackupPath.startsWith(backupDir + path.sep)
+        ) {
+          this.#auditDb.prepare("VACUUM INTO ?").run(auditBackupPath);
+          const auditSha = crypto.createHash("sha256").update(fs.readFileSync(auditBackupPath)).digest("hex");
+          const auditShaPath = `${auditBackupPath}.sha256`;
+          if (auditShaPath.startsWith(backupDir + path.sep)) {
+            fs.writeFileSync(auditShaPath, auditSha, "utf8");
+          }
+        }
       } catch {}
     }
 
     if (this.#analyticsDb) {
       try {
-        const analyticsFileName = fileName.replace("modelscript-backup-", "analytics-backup-");
+        const analyticsFileName = path.basename(fileName.replace("modelscript-backup-", "analytics-backup-"));
         const analyticsBackupPath = path.resolve(backupDir, analyticsFileName);
-        this.#analyticsDb.prepare("VACUUM INTO ?").run(analyticsBackupPath);
-        const analyticsSha = crypto.createHash("sha256").update(fs.readFileSync(analyticsBackupPath)).digest("hex");
-        fs.writeFileSync(`${analyticsBackupPath}.sha256`, analyticsSha, "utf8");
+        const analyticsRel = path.relative(backupDir, analyticsBackupPath);
+        if (
+          analyticsRel &&
+          !analyticsRel.startsWith("..") &&
+          !path.isAbsolute(analyticsRel) &&
+          analyticsBackupPath.startsWith(backupDir + path.sep)
+        ) {
+          this.#analyticsDb.prepare("VACUUM INTO ?").run(analyticsBackupPath);
+          const analyticsSha = crypto.createHash("sha256").update(fs.readFileSync(analyticsBackupPath)).digest("hex");
+          const analyticsShaPath = `${analyticsBackupPath}.sha256`;
+          if (analyticsShaPath.startsWith(backupDir + path.sep)) {
+            fs.writeFileSync(analyticsShaPath, analyticsSha, "utf8");
+          }
+        }
       } catch {}
     }
 
@@ -19499,7 +19521,7 @@ export class LibraryDatabase {
       .replace(/[^a-z0-9/_-]+/g, "-");
     const pathInGit = `docs/${cleanSlug}.md`;
     const commitSha = crypto
-      .createHash("sha1")
+      .createHash("sha256")
       .update(`${params.spaceId}:${cleanSlug}:${params.contentMarkdown}:${Date.now()}`)
       .digest("hex");
 

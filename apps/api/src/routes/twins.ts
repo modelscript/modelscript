@@ -4,17 +4,19 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { twinManager } from "../services/twin/index.js";
 
 export function twinsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+  router.use(defaultApiLimiter);
   router.use(optionalAuth);
 
   /**
    * POST /api/v1/twins
    * Deploy a new operational digital twin instance bound to a hardware serial number.
    */
-  router.post("/", async (req: Request, res: Response): Promise<void> => {
+  router.post("/", defaultApiLimiter, async (req: Request, res: Response): Promise<void> => {
     const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       res.status(401).json({ error: "Authentication required" });

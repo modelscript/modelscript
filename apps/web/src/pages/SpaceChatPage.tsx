@@ -42,6 +42,8 @@ import { useAuth } from "../AuthContext";
 import CreateSpaceModal from "../components/spaces/CreateSpaceModal";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
+import DOMPurify from "dompurify";
+import { safeCssImageUrl } from "../util/url";
 import { usePageTitle } from "../util/title";
 
 /**
@@ -145,12 +147,13 @@ function getInitials(name: string): string {
  */
 function renderLatex(expr: string, displayMode = false): string {
   try {
-    return katex.renderToString(expr.trim(), {
+    const rendered = katex.renderToString(expr.trim(), {
       throwOnError: false,
       displayMode,
     });
+    return DOMPurify.sanitize(rendered);
   } catch {
-    return expr;
+    return DOMPurify.sanitize(expr);
   }
 }
 
@@ -332,7 +335,7 @@ const SimulationTelemetryCard: React.FC<{ data: SimulationTelemetryData }> = ({ 
             Solver: <strong>{data.solver}</strong>
             {data.tolerance && (
               <span style={{ marginLeft: "4px" }}>
-                (tol: <span dangerouslySetInnerHTML={{ __html: renderLatex(data.tolerance) }} />)
+                (tol: <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderLatex(data.tolerance)) }} />)
               </span>
             )}
           </span>
@@ -524,7 +527,7 @@ const InlineRichText: React.FC<{
             <span
               key={idx}
               style={{ margin: "0 2px" }}
-              dangerouslySetInnerHTML={{ __html: renderLatex(token.value, false) }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderLatex(token.value, false)) }}
             />
           );
         }
@@ -1717,11 +1720,18 @@ export const SpaceChatPage: React.FC = () => {
                     >
                       {/* Left: Avatar (Slack-style squircle) */}
                       <div style={{ flexShrink: 0, marginTop: "2px" }}>
-                        {m.author_avatar_url ? (
-                          <img
-                            src={m.author_avatar_url}
-                            alt={authorName}
-                            style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover" }}
+                        {safeCssImageUrl(m.author_avatar_url) ? (
+                          <div
+                            role="img"
+                            aria-label={authorName}
+                            style={{
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "8px",
+                              backgroundImage: safeCssImageUrl(m.author_avatar_url),
+                              backgroundSize: "cover",
+                              backgroundPosition: "center",
+                            }}
                           />
                         ) : isBot ? (
                           <div
@@ -2641,11 +2651,18 @@ export const SpaceChatPage: React.FC = () => {
               >
                 {/* Avatar */}
                 <div style={{ flexShrink: 0, marginTop: "2px" }}>
-                  {activeThreadMessage.author_avatar_url ? (
-                    <img
-                      src={activeThreadMessage.author_avatar_url}
-                      alt={activeThreadMessage.sender_name || activeThreadMessage.author_username || "Author"}
-                      style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover" }}
+                  {safeCssImageUrl(activeThreadMessage.author_avatar_url) ? (
+                    <div
+                      role="img"
+                      aria-label={activeThreadMessage.sender_name || activeThreadMessage.author_username || "Author"}
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "8px",
+                        backgroundImage: safeCssImageUrl(activeThreadMessage.author_avatar_url),
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }}
                     />
                   ) : (
                     <div
@@ -2795,11 +2812,18 @@ export const SpaceChatPage: React.FC = () => {
                     }}
                   >
                     <div style={{ flexShrink: 0, marginTop: "2px" }}>
-                      {r.author_avatar_url ? (
-                        <img
-                          src={r.author_avatar_url}
-                          alt={rAuthor}
-                          style={{ width: "32px", height: "32px", borderRadius: "7px", objectFit: "cover" }}
+                      {safeCssImageUrl(r.author_avatar_url) ? (
+                        <div
+                          role="img"
+                          aria-label={rAuthor}
+                          style={{
+                            width: "32px",
+                            height: "32px",
+                            borderRadius: "7px",
+                            backgroundImage: safeCssImageUrl(r.author_avatar_url),
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                          }}
                         />
                       ) : (
                         <div

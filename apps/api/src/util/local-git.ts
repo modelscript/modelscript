@@ -62,22 +62,27 @@ export class LocalGitProvider implements IGitProvider {
   private readonly mergeRequestsByProject = new Map<string, GitMergeRequestItem[]>();
 
   private async resolveHostedBareRepoPath(idOrUrl: string): Promise<string | null> {
-    if (path.isAbsolute(idOrUrl)) {
-      try {
-        await fs.access(idOrUrl);
-        return idOrUrl;
-      } catch {
-        // Fall through
-      }
-    }
-
     const candidateDirs: string[] = [];
     if (process.env["GIT_REPOS_DIR"]) {
-      candidateDirs.push(process.env["GIT_REPOS_DIR"]);
+      candidateDirs.push(path.resolve(process.env["GIT_REPOS_DIR"]));
     }
     candidateDirs.push(path.resolve(process.cwd(), "data", "git-repos"));
     candidateDirs.push(path.resolve(import.meta.dirname, "../../../../data/git-repos"));
     candidateDirs.push(path.resolve(import.meta.dirname, "../../data/git-repos"));
+
+    if (path.isAbsolute(idOrUrl)) {
+      const normalized = path.normalize(idOrUrl);
+      const isAllowed = candidateDirs.some((dir) => normalized === dir || normalized.startsWith(dir + path.sep));
+      if (isAllowed) {
+        try {
+          await fs.access(normalized);
+          return normalized;
+        } catch {
+          // Fall through
+        }
+      }
+      return null;
+    }
 
     const trimmed = trimSlashes(idOrUrl.trim());
     const parts = trimmed.split("/");
@@ -87,6 +92,7 @@ export class LocalGitProvider implements IGitProvider {
       if (cleanNs && cleanProj) {
         for (const reposDir of candidateDirs) {
           const candidate = path.resolve(reposDir, cleanNs, `${cleanProj}.git`);
+          if (!candidate.startsWith(reposDir + path.sep)) continue;
           try {
             await fs.access(candidate);
             return candidate;

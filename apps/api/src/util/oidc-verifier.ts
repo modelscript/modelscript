@@ -131,7 +131,14 @@ async function fetchJwks(issuerUrl: string): Promise<JwksCacheEntry["keys"]> {
 
   const normalizedIssuer = issuerUrl.replace(/\/+$/, "");
   let jwksUrl = `${normalizedIssuer}/.well-known/jwks.json`;
-  if (issuerUrl.includes("gitlab.com")) {
+  let isGitLab = false;
+  try {
+    const parsed = new URL(issuerUrl);
+    isGitLab = parsed.hostname === "gitlab.com" || parsed.hostname.endsWith(".gitlab.com");
+  } catch {
+    // If not a valid absolute URL, ignore
+  }
+  if (isGitLab) {
     jwksUrl = `${normalizedIssuer}/-/jwks`;
   }
 

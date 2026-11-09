@@ -4,7 +4,6 @@ import express, { type Router } from "express";
 import multer from "multer";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
@@ -21,10 +20,14 @@ import { enforceExportCompliance } from "../util/compliance.js";
 import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 
 const CAE_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
+const CAE_UPLOAD_DIR = path.join(CAE_CACHE_DIR, "uploads");
 
 function ensureCaeDir(): void {
   if (!fs.existsSync(CAE_CACHE_DIR)) {
     fs.mkdirSync(CAE_CACHE_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(CAE_UPLOAD_DIR)) {
+    fs.mkdirSync(CAE_UPLOAD_DIR, { recursive: true });
   }
 }
 
@@ -42,11 +45,24 @@ function sanitizeHash(hash: string): string {
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
-    filename: (_req, _file, cb) => cb(null, `msx-cae-upload-${crypto.randomBytes(8).toString("hex")}.tmp`),
+    destination: (_req, _file, cb) => {
+      ensureCaeDir();
+      cb(null, CAE_UPLOAD_DIR);
+    },
+    filename: (_req, _file, cb) => cb(null, `msx-cae-upload-${crypto.randomBytes(16).toString("hex")}.tmp`),
   }),
   limits: { fileSize: 250 * 1024 * 1024 }, // 250 MB
 });
+
+function getSafeCaeUploadPath(filePath: string | undefined): string | null {
+  if (!filePath || typeof filePath !== "string") return null;
+  const resolvedDir = path.resolve(CAE_UPLOAD_DIR);
+  const resolvedPath = path.resolve(filePath);
+  if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
+    return null;
+  }
+  return resolvedPath;
+}
 
 export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
@@ -86,14 +102,14 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 1. Upload Mesh or CAD Geometry with CAS deduplication
   router.post("/cae/upload", upload.single("file"), (req, res) => {
-    const tmpPath = req.file?.path;
+    const tmpPath = getSafeCaeUploadPath(req.file?.path);
     try {
       const userId = resolveRequestUserId(req, database);
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded." });
+      if (!req.file || (req.file.path && !tmpPath)) {
+        return res.status(400).json({ error: "No file uploaded or invalid file path." });
       }
 
       const fileBuffer = req.file.buffer ?? (tmpPath ? fs.readFileSync(tmpPath) : Buffer.alloc(0));

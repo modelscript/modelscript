@@ -119,8 +119,15 @@ function parseAdfNode(node: AdfNode): string {
     case "paragraph":
       return children.join("");
     case "heading": {
-      const level = Math.min(Math.max(Number(node.attrs?.["level"] || 1), 1), 6);
-      return `${"#".repeat(level)} ${children.join("")}`;
+      const level = Number(node.attrs?.["level"]);
+      const prefix =
+        level === 1 ? "#" :
+        level === 2 ? "##" :
+        level === 3 ? "###" :
+        level === 4 ? "####" :
+        level === 5 ? "#####" :
+        level === 6 ? "######" : "#";
+      return `${prefix} ${children.join("")}`;
     }
     case "bulletList":
       return children.map((c) => `* ${c}`).join("\n");

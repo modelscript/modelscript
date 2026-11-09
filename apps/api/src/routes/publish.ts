@@ -31,13 +31,23 @@ try {
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadDir),
-    filename: (_req, file, cb) => {
-      const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}`;
-      cb(null, `upload-${uniqueSuffix}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
+    filename: (_req, _file, cb) => {
+      const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(16).toString("hex")}.tmp`;
+      cb(null, `upload-${uniqueSuffix}`);
     },
   }),
   limits: { fileSize: 100 * 1024 * 1024 },
 });
+
+function getSafeUploadPath(filePath: string | undefined): string | null {
+  if (!filePath || typeof filePath !== "string") return null;
+  const resolvedDir = path.resolve(uploadDir);
+  const resolvedPath = path.resolve(filePath);
+  if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
+    return null;
+  }
+  return resolvedPath;
+}
 
 function isValidPackageName(name: string): boolean {
   return /^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name);
@@ -299,7 +309,7 @@ export function publishRouter(
         return;
       }
 
-      const tempUploadPath = req.file.path;
+      const tempUploadPath = getSafeUploadPath(req.file.path);
       try {
         const fileBuffer = req.file.buffer || (tempUploadPath ? await fs.promises.readFile(tempUploadPath) : null);
         if (!fileBuffer) {

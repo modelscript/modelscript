@@ -24,11 +24,15 @@ import { enforceExportCompliance } from "../util/compliance.js";
 import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 
 const PHYSICS_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
+const PHYSICS_UPLOAD_DIR = path.join(PHYSICS_CACHE_DIR, "uploads");
 
 /** Ensure cache directories exist. */
 function ensureCacheDir(): void {
   if (!fs.existsSync(PHYSICS_CACHE_DIR)) {
     fs.mkdirSync(PHYSICS_CACHE_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(PHYSICS_UPLOAD_DIR)) {
+    fs.mkdirSync(PHYSICS_UPLOAD_DIR, { recursive: true });
   }
 }
 
@@ -59,11 +63,24 @@ function geometryCachePath(hash: string): string {
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
-    filename: (_req, _file, cb) => cb(null, `msx-physics-upload-${crypto.randomBytes(8).toString("hex")}.tmp`),
+    destination: (_req, _file, cb) => {
+      ensureCacheDir();
+      cb(null, PHYSICS_UPLOAD_DIR);
+    },
+    filename: (_req, _file, cb) => cb(null, `msx-physics-upload-${crypto.randomBytes(16).toString("hex")}.tmp`),
   }),
   limits: { fileSize: 200 * 1024 * 1024 },
 });
+
+function getSafePhysicsUploadPath(filePath: string | undefined): string | null {
+  if (!filePath || typeof filePath !== "string") return null;
+  const resolvedDir = path.resolve(PHYSICS_UPLOAD_DIR);
+  const resolvedPath = path.resolve(filePath);
+  if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
+    return null;
+  }
+  return resolvedPath;
+}
 
 export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
@@ -74,13 +91,13 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   // ── Upload .step geometry with CAS deduplication ──
 
   router.post("/physics/upload", upload.single("file"), (req, res) => {
-    const tmpPath = req.file?.path;
+    const tmpPath = getSafePhysicsUploadPath(req.file?.path);
     try {
       if (process.env["NODE_ENV"] === "production" && !req.user) {
         return res.status(401).json({ error: "Authentication required to upload geometry." });
       }
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded." });
+      if (!req.file || (req.file.path && !tmpPath)) {
+        return res.status(400).json({ error: "No file uploaded or invalid file path." });
       }
 
       const fileBuffer = req.file.buffer ?? (tmpPath ? fs.readFileSync(tmpPath) : Buffer.alloc(0));

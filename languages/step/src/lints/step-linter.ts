@@ -248,7 +248,7 @@ export function lintStepContent(content: string): StepDiagnostic[] {
 
   const extractNumericTuple = (argsText: string): number[] | undefined => {
     // Match inner parenthesized coordinate/direction tuple e.g. ('name', (x, y, z))
-    const tupleMatch = /\(\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)+)\s*\)/.exec(
+    const tupleMatch = /\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)+)\s*\)/.exec(
       argsText,
     );
     if (!tupleMatch?.[1]) return undefined;
@@ -303,7 +303,7 @@ export function lintStepContent(content: string): StepDiagnostic[] {
         }
       }
     } else if (info.entityName === "UNCERTAINTY_MEASURE_WITH_UNIT") {
-      const m = /LENGTH_MEASURE\s*\(\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\)/i.exec(info.argsText);
+      const m = /LENGTH_MEASURE\s*\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*\)/i.exec(info.argsText);
       if (m?.[1]) {
         const val = Number.parseFloat(m[1]);
         if (!Number.isNaN(val) && val > 0) uncertaintyTol = val;

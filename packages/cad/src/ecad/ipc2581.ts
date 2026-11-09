@@ -183,9 +183,10 @@ export function compileToIPC2581(layout: PCBLayout, options?: IPC2581CompileOpti
     lines.push(`        <Outline>`);
     lines.push(`          <Rect width="2.000" height="1.200"/>`);
     lines.push(`        </Outline>`);
-    for (let i = 0; i < comp.pins.length; i++) {
-      const pinId = comp.pins[i]!;
-      lines.push(`        <Pin pinNum="${escapeXml(pinId)}" padstackRef="VIA_DEFAULT"/>`);
+    if (Array.isArray(comp.pins)) {
+      for (const pinId of comp.pins.slice(0, 10_000)) {
+        lines.push(`        <Pin pinNum="${escapeXml(String(pinId))}" padstackRef="VIA_DEFAULT"/>`);
+      }
     }
     lines.push(`      </Package>`);
   }

@@ -99,7 +99,7 @@ export function ensureSpaceGitVaultInitialized(opts: SpaceGitVaultInitOptions): 
 } {
   const repoPath = resolveSpaceGitRepoPath(opts.dbDir, opts.namespace, opts.slug);
   const fallbackSha = crypto
-    .createHash("sha1")
+    .createHash("sha256")
     .update(`space:${opts.namespace}/${opts.slug}:${Date.now()}`)
     .digest("hex");
 

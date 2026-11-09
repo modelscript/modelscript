@@ -561,6 +561,7 @@ export function cosimRouter(
  */
 export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): express.Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
 
   // GET /api/v1/mqtt/participants — List all active MQTT participants
   router.get("/", (_req, res) => {
@@ -634,7 +635,7 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
   });
 
   // POST /api/v1/mqtt/participants/:id/variables — Set input variable values
-  router.post("/:id/variables", optionalAuth, (req, res) => {
+  router.post("/:id/variables", defaultApiLimiter, optionalAuth, (req, res) => {
     if (process.env["NODE_ENV"] === "production") {
       const user = (req as express.Request & { user?: { id?: number | undefined } | undefined }).user;
       if (!user?.id) {
