@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mlc-ai/web-llm": "^0.2.85",
+    "@mlc-ai/web-llm": "^0.2.87",
     "@modelscript/automationml": "*",
     "@modelscript/c": "*",
     "@modelscript/cad": "*",
@@ -41,12 +41,12 @@
     "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
     "@vscode/debugadapter": "^1.68.0",
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^11.0.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.72.0",
     "esbuild": "^0.28.1",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "modelscript": {
     "tier": "stable",

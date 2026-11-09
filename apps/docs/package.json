@@ -25,11 +25,11 @@
   },
   "devDependencies": {
     "@modelscript/design-tokens": "*",
-    "@types/three": "^0.184.0",
+    "@types/three": "^0.187.0",
     "markdown-it-mathjax3": "^4.3.2",
-    "mermaid": "^11.16.1",
-    "monaco-editor": "^0.55.1",
-    "three": "^0.184.0",
+    "mermaid": "^12.3.0",
+    "monaco-editor": "^0.57.0",
+    "three": "^0.187.0",
     "vitepress": "^1.1.4"
   },
   "modelscript": {

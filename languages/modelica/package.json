@@ -168,7 +168,7 @@
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
-    "vscode-languageserver": "^9.0.1"
+    "vscode-languageserver": "^11.0.0"
   },
   "modelscript": {
     "tier": "stable",
