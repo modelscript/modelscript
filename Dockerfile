@@ -11,7 +11,7 @@
 ARG PREBUILT=false
 
 # ---- Shared Alpine base with native build tools ----
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 RUN apk add --no-cache python3 make g++ zip unzip
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 WORKDIR /app
@@ -131,7 +131,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild 
 # ==============================================================================
 # IDE Assets & WebLLM Weights (bundled into API & Appliance images)
 # ==============================================================================
-FROM node:24-alpine AS download-model
+FROM node:26-alpine AS download-model
 RUN apk add --no-cache curl bash
 WORKDIR /app/apps/ide
 COPY apps/ide/scripts/download-model.sh scripts/download-model.sh
@@ -174,7 +174,7 @@ COPY apps/api apps/api
 FROM build-api-${PREBUILT} AS build-api
 
 # ---- Community Edition API (physically excludes proprietary /app/ee) ----
-FROM node:24-alpine AS api-ce
+FROM node:26-alpine AS api-ce
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/data/uploads /app/apps/api/uploads /app/data/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
@@ -204,7 +204,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
 CMD ["node", "apps/api/dist/main.js"]
 
 # ---- Enterprise Edition API (bundles /app/ee with Ed25519 license enforcement) ----
-FROM node:24-alpine AS api-ee
+FROM node:26-alpine AS api-ee
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/data/uploads /app/apps/api/uploads /app/data/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
@@ -284,7 +284,7 @@ COPY apps/cli apps/cli
 FROM build-cli-${PREBUILT} AS build-cli
 
 # ---- Community Edition CLI (physically excludes proprietary /app/ee) ----
-FROM node:24-alpine AS cli-ce
+FROM node:26-alpine AS cli-ce
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
@@ -297,7 +297,7 @@ ENV NODE_ENV=production \
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
 
 # ---- Enterprise Edition CLI (bundles /app/ee with Ed25519 license enforcement) ----
-FROM node:24-alpine AS cli-ee
+FROM node:26-alpine AS cli-ee
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
@@ -315,7 +315,7 @@ FROM cli-ee AS cli
 # ==============================================================================
 # Hardened Enterprise Intranet Appliance (Single Container for Regulated Utilities)
 # ==============================================================================
-FROM node:24-alpine AS appliance
+FROM node:26-alpine AS appliance
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 
