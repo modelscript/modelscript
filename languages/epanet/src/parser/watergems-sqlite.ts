@@ -121,8 +121,8 @@ export function parseWaterGemsDatabase(
 
   for (const raw of elementRows) {
     const row = normalizeRow(raw);
-    const id = row.id ?? row.elementid ?? row.modelingelementid;
-    const label = row.label ?? row.name ?? row.elementlabel;
+    const id = getVal(row, "id", "elementid", "modelingelementid");
+    const label = getVal(row, "label", "name", "elementlabel");
     if (id !== undefined && label !== undefined) {
       labelMap.set(id as number | string, String(label));
       labelMap.set(String(id), String(label));
