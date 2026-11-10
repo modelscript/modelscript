@@ -9,9 +9,9 @@ import type { Migration, MigrationContext } from "./types.js";
 export const spaceIssuesExternalMigration: Migration = {
   id: "0002_space_issues_external",
   name: "0002_space_issues_external",
-  async up(ctx: MigrationContext) {
-    const rawCols = await ctx.query<{ name: string }>("PRAGMA table_info(space_issues)");
-    const cols = rawCols.map((c) => c.name);
+  up(ctx: MigrationContext) {
+    const rawCols = ctx.query<{ name: string }>("PRAGMA table_info(space_issues)");
+    const cols = Array.isArray(rawCols) ? rawCols.map((c) => c.name) : [];
     if (!cols.includes("external_source")) {
       ctx.execute("ALTER TABLE space_issues ADD COLUMN external_source TEXT DEFAULT NULL;");
     }
@@ -30,5 +30,15 @@ export const spaceIssuesExternalMigration: Migration = {
     ctx.execute(
       "CREATE INDEX IF NOT EXISTS idx_space_issues_external ON space_issues(space_id, external_source, external_key);",
     );
+  },
+  down(ctx: MigrationContext) {
+    ctx.execute("DROP INDEX IF EXISTS idx_space_issues_external;");
+    const rawCols = ctx.query<{ name: string }>("PRAGMA table_info(space_issues)");
+    const cols = Array.isArray(rawCols) ? rawCols.map((c) => c.name) : [];
+    for (const col of ["sync_status", "external_updated_at", "external_url", "external_key", "external_source"]) {
+      if (cols.includes(col)) {
+        ctx.execute(`ALTER TABLE space_issues DROP COLUMN ${col};`);
+      }
+    }
   },
 };

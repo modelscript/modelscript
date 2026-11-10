@@ -85,7 +85,7 @@ export function symbolEntryToLocation(
   }
 
   // If the file is open, we already have a PositionIndex in its LSPBridge
-  if (bridge) {
+  if (bridge && typeof (bridge as any).positions?.rangeFromOffsets === "function") {
     const range = (bridge as any).positions.rangeFromOffsets(startOff, endOff);
     return { uri, range };
   }

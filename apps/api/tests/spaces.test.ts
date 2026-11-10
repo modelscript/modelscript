@@ -67,10 +67,10 @@ test("Ansatz Spaces, Polymorphic Containers, Living Docs, PLM ECOs & Slack-Style
     } catch {}
   });
 
-  await t.test("1. Domain Blueprints: returns all 7 industry domain presets covering 68 languages", async () => {
+  await t.test("1. Domain Blueprints: returns all 8 industry domain presets covering 68 languages", async () => {
     const res = await request(app).get("/api/v1/spaces/presets").expect(200);
     assert.ok(Array.isArray(res.body.presets));
-    assert.equal(res.body.presets.length, 7);
+    assert.equal(res.body.presets.length, 8);
 
     const allLangs = new Set<string>();
     for (const preset of res.body.presets) {

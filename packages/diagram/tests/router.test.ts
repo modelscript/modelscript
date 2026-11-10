@@ -15,6 +15,7 @@ import {
   getPortOutwardNormal,
   healOrthogonalVertices,
   portOrthogonalRouter,
+  pruneOrthogonalLoops,
   regularizeOrthogonalPolyline,
   resolveNodePortWorldPoint,
   routeOrthogonalGridAStar,
@@ -995,5 +996,117 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     translateConnectedEdgeStubs(mockGraph as any, nodeL as any, 0, -30);
     assert.deepStrictEqual(vbToLVerts, [{ x: -70, y: -40 }]);
     assert.deepStrictEqual(lToCVerts, [{ x: 20, y: -40 }]);
+  });
+
+  it("pruneOrthogonalLoops eliminates redundant loops/reversals while preserving obstacle detours", () => {
+    // 1. Redundant 5-bend S-hook/loop is pruned into fewer segments
+    const convolutedPath: PointLike[] = [
+      { x: 151, y: 225 },
+      { x: 199, y: 225 },
+      { x: 199, y: 121 },
+      { x: 143, y: 121 },
+      { x: 143, y: 192 },
+      { x: 267, y: 192 },
+      { x: 267, y: 128 },
+      { x: 275, y: 128 },
+    ];
+    const pruned = pruneOrthogonalLoops(convolutedPath, {
+      sourceNormal: { nx: 1, ny: 0, side: "right" },
+      targetNormal: { nx: -1, ny: 0, side: "left" },
+    });
+    assert.ok(pruned.length < convolutedPath.length, "Convoluted path must have fewer vertices after pruning");
+    assert.strictEqual(pruned[0]!.x, 151);
+    assert.strictEqual(pruned[0]!.y, 225);
+    assert.strictEqual(pruned[pruned.length - 1]!.x, 275);
+    assert.strictEqual(pruned[pruned.length - 1]!.y, 128);
+
+    // 2. Legitimate detour around an intermediate obstacle is NOT shortcut
+    const obstacleRoute: PointLike[] = [
+      { x: 0, y: 50 },
+      { x: 30, y: 50 },
+      { x: 30, y: 10 },
+      { x: 70, y: 10 },
+      { x: 70, y: 50 },
+      { x: 100, y: 50 },
+    ];
+    const obstacle: RectLike = { x: 40, y: 30, width: 20, height: 40 };
+    const preserved = pruneOrthogonalLoops(obstacleRoute, { obstacles: [obstacle] });
+    assert.deepStrictEqual(preserved, obstacleRoute, "Detour around obstacle must not be shortcut through obstacle");
+  });
+
+  it("connecting CriticalDamping1 to Derivative1 generates a clean 2-bend orthogonal route without loops", () => {
+    const sourcePoint: PointLike = { x: 151, y: 225 };
+    const targetPoint: PointLike = { x: 275, y: 134 };
+
+    const sourceBox: RectLike = { x: 71, y: 184, width: 80, height: 80 };
+    const targetBox: RectLike = { x: 275, y: 88, width: 80, height: 80 };
+
+    const route = computeOrthogonalRoute(sourcePoint, targetPoint, [], {
+      sourceSide: "right",
+      targetSide: "left",
+      sourceBox,
+      targetBox,
+    });
+
+    // Must be a standard 2-bend orthogonal Z-step (at most 2 intermediate vertices)
+    assert.ok(route.length <= 2, `Expected at most 2 bends, got ${route.length}: ${JSON.stringify(route)}`);
+    assert.strictEqual(route.length, 2);
+
+    // First bend departs horizontally to the right from source port (x > 151, y = 225)
+    assert.ok(route[0]!.x > sourcePoint.x, "First bend must step right out of source port");
+    assert.strictEqual(route[0]!.y, sourcePoint.y, "First bend must match source Y");
+
+    // Second bend arrives horizontally into target port from the left (x < 275, y = 134)
+    assert.strictEqual(route[1]!.x, route[0]!.x, "Intermediate vertical trunk must connect both bends");
+    assert.strictEqual(route[1]!.y, targetPoint.y, "Second bend must match target Y");
+
+    // The intermediate vertical trunk MUST be centered in the corridor (midX = 210)
+    // rather than hugging the target port at x = 265 (which would slice through input port arrowheads)
+    assert.strictEqual(route[0]!.x, 210, "Trunk must be centered at midX = 210 between stubs");
+  });
+
+  it("opposing vertical ports generate a centered horizontal trunk without hugging port edges", () => {
+    const sourcePoint: PointLike = { x: 100, y: 150 };
+    const targetPoint: PointLike = { x: 250, y: 350 };
+    const sourceBox: RectLike = { x: 60, y: 70, width: 80, height: 80 };
+    const targetBox: RectLike = { x: 210, y: 350, width: 80, height: 80 };
+
+    const route = computeOrthogonalRoute(sourcePoint, targetPoint, [], {
+      sourceSide: "bottom",
+      targetSide: "top",
+      sourceBox,
+      targetBox,
+    });
+
+    assert.strictEqual(route.length, 2, "Must be a 2-bend orthogonal route");
+    assert.strictEqual(route[0]!.x, sourcePoint.x, "First bend drops down from source port");
+    assert.strictEqual(route[1]!.x, targetPoint.x, "Second bend aligns with target port X");
+    assert.strictEqual(route[0]!.y, route[1]!.y, "Horizontal trunk must connect both bends");
+    // Midpoint Y = (160 + 340) / 2 = 250
+    assert.strictEqual(route[0]!.y, 250, "Horizontal trunk must be centered at midY = 250");
+  });
+
+  it("parallel edge staggering offsets trunk routes between the same component pair", () => {
+    const sourcePoint: PointLike = { x: 100, y: 100 };
+    const targetPoint: PointLike = { x: 300, y: 200 };
+
+    const route0 = computeOrthogonalRoute(sourcePoint, targetPoint, [], {
+      sourceSide: "right",
+      targetSide: "left",
+      parallelIndex: 0,
+      parallelCount: 2,
+    });
+
+    const route1 = computeOrthogonalRoute(sourcePoint, targetPoint, [], {
+      sourceSide: "right",
+      targetSide: "left",
+      parallelIndex: 1,
+      parallelCount: 2,
+    });
+
+    assert.strictEqual(route0.length, 2);
+    assert.strictEqual(route1.length, 2);
+    // Parallel index 0 vs 1 should have different trunk X coordinates to prevent wire overlap
+    assert.notStrictEqual(route0[0]!.x, route1[0]!.x, "Parallel edges must not share the exact same trunk coordinate");
   });
 });

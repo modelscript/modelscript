@@ -18,7 +18,7 @@ console.log("Testing Pantelides Index Reduction & WASM Runtime...");
   const x = arena.addVariable("x", VarType.Real, Variability.Continuous);
   const derX = arena.addVariable("der(x)", VarType.Real, Variability.Continuous);
 
-  const nameExpr = arena.addNameExpr(arena.getVarNameId(x));
+  const nameExpr = arena.addNameExpr(arena.getVarName(x));
   const derExpr = arena.addDerExpr(nameExpr);
   const sumExpr = arena.addBinaryExpr(BinOp.Add, nameExpr, derExpr);
   const constExpr = arena.addRealLiteral(10.0);

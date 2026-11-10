@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 80 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 90 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -57,10 +57,10 @@
 
 ## Command-Line Interface (`msx`)
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
-- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 126 CLI commands and subcommands.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 138 CLI commands and subcommands.
 
-## Polyglot Languages (80 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 80 formats.
+## Polyglot Languages (90 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 90 formats.
 - [Modelica (.mo) [stable]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [AMPL (.mod, .dat, .run, .nl, .mps) [stable]](https://modelscript.org/languages/ampl): Mathematical programming & optimization (LP, MILP, NLP).
 - [SysML v2 / KerML (.sysml) [stable]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
@@ -98,6 +98,13 @@
 - [OCPP (.ocpp, .json) [beta]](https://modelscript.org/languages/ocpp): EV smart charging & transformer load management.
 - [OpenADR (.oadr, .xml, .json) [beta]](https://modelscript.org/languages/openadr): Automated demand response & peak shaving.
 - [LBNL TOUGH (.tgh, .dat) [beta]](https://modelscript.org/languages/tough): Geothermal reservoir & wellbore flashing thermodynamics.
+- [MATPOWER (.m) [beta]](https://modelscript.org/languages/matpower): Power flow & optimal power flow (OPF).
+- [IEEE COMTRADE (.cfg, .dat, .cff) [beta]](https://modelscript.org/languages/comtrade): Digital fault recorder & transient disturbance analysis.
+- [IEC 61850 SCL (.scd, .cid, .ssd, .xml) [beta]](https://modelscript.org/languages/scl): Substation automation, GOOSE & Sampled Values dataflow.
+- [ATP-EMTP (.atp, .dat) [beta]](https://modelscript.org/languages/atp): Electromagnetic transient program card decks.
+- [IEEE 1815 / DNP3 (.xml, .json, .dnp3) [beta]](https://modelscript.org/languages/dnp3): Utility digital twin & SCADA deadband telemetry.
+- [ASPEN OneLiner / CAPE (.olx, .dxt) [beta]](https://modelscript.org/languages/oneliner): Short-circuit fault currents & TOC protection coordination.
+- [SEL Relay Settings (.rdb, .rcf, .sel, .txt) [beta]](https://modelscript.org/languages/sel): Schweitzer relay settings, SELogic & 50/51/21 protection.
 - [OLGA (.genkey) [stable]](https://modelscript.org/languages/olga): Transient multiphase flow assurance.
 - [PipelineStudio (.lps) [stable]](https://modelscript.org/languages/lps): Gas & liquid pipeline hydraulics.
 - [ECLIPSE (.data) [beta]](https://modelscript.org/languages/eclipse): Reservoir engineering.
@@ -120,6 +127,9 @@
 - [USACE HEC-RAS (.g01, .g02, .rasgeo) [beta]](https://modelscript.org/languages/hec-ras): River basin & open-channel hydraulics.
 - [USGS MODFLOW (.dis, .dis6, .npf, .wel) [beta]](https://modelscript.org/languages/modflow): Regional groundwater aquifers & 3D Darcy flow.
 - [EPA LandGEM (.landgem, .lfg, .biogas) [beta]](https://modelscript.org/languages/landgem): Solid waste methane decay & landfill biogas CHP.
+- [USACE HEC-HMS (.basin, .hms) [beta]](https://modelscript.org/languages/hec-hms): Precipitation runoff, SCS-CN excess & Muskingum routing.
+- [OGC WaterML 2.0 (.waterml, .wml2, .xml) [beta]](https://modelscript.org/languages/waterml): Streamflow telemetry & stage-discharge rating curves.
+- [IWA Activated Sludge Models (.asm, .bsm, .wrrf) [beta]](https://modelscript.org/languages/asm): Biokinetics, Petersen matrix & Takács clarifier settling.
 - [Aspen Plus / HYSYS (.bkp) [beta]](https://modelscript.org/languages/aspen): Chemical process flowsheets.
 - [gPROMS / PML (.gproms) [beta]](https://modelscript.org/languages/gproms): Equation-oriented dynamic process & distributed PDEs.
 - [Cantera (.yaml) [beta]](https://modelscript.org/languages/cantera): Gas-phase chemical kinetics & NASA-7 thermochemistry.

@@ -135,7 +135,7 @@ describe("Reply Scroll Alignment (X/Twitter Pixel-Perfect Behavior)", () => {
     );
 
     assert.ok(
-      content.includes("minHeight: parents.length > 0"),
+      /minHeight:\s*parents\.length > 0/.test(content),
       "PostDetailThreadView must guarantee min-height when parents exist so reply can scroll to top even with 0 replies",
     );
   });

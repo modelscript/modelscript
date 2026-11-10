@@ -41,8 +41,10 @@ import {
   getPortOutwardNormal,
   healOrthogonalVertices,
   portOrthogonalRouter,
+  pruneOrthogonalLoops,
   regularizeOrthogonalPolyline,
   resolveNodePortWorldPoint,
+  sideToNormal,
   simplifyCollinearPoints,
   translateConnectedEdgeStubs,
   type JumpoverOptions,
@@ -608,6 +610,31 @@ export { translateConnectedEdgeStubs };
 
 export { applyNodeFlipVisuals } from "./alignment.js";
 
+function computeParallelEdgeIndices(
+  graph: Graph,
+  currentEdge: Edge,
+  sourceCellId: string,
+  targetCellId: string,
+): { parallelIndex: number; parallelCount: number } {
+  if (typeof graph.getEdges !== "function") return { parallelIndex: 0, parallelCount: 1 };
+  const allEdges = graph.getEdges();
+  const parallelEdges = allEdges.filter((e) => {
+    const rawSrc = e.getSource?.() as { cell?: string } | undefined;
+    const rawTgt = e.getTarget?.() as { cell?: string } | undefined;
+    const s = e.getSourceCell?.()?.id ?? rawSrc?.cell;
+    const t = e.getTargetCell?.()?.id ?? rawTgt?.cell;
+    return (s === sourceCellId && t === targetCellId) || (s === targetCellId && t === sourceCellId);
+  });
+  if (parallelEdges.length > 1) {
+    const idx = parallelEdges.findIndex((e) => e.id === currentEdge.id);
+    return {
+      parallelCount: parallelEdges.length,
+      parallelIndex: idx !== -1 ? idx : 0,
+    };
+  }
+  return { parallelIndex: 0, parallelCount: 1 };
+}
+
 /**
  * Automatically re-routes an edge with clean, obstacle-avoiding Manhattan A* paths
  * that respect port outward normals and avoid component self-impalement.
@@ -641,11 +668,20 @@ export function rerouteEdgeOrthogonal(
     }
   }
 
+  const { parallelIndex, parallelCount } = computeParallelEdgeIndices(
+    g,
+    edge,
+    String(source?.cell ?? ""),
+    String(target?.cell ?? ""),
+  );
+
   const rawRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
     sourceSide,
     targetSide,
     sourceBox,
     targetBox,
+    parallelIndex,
+    parallelCount,
   });
   const intermediateVertices = simplifyCollinearPoints(rawRoute);
   edge.setVertices(intermediateVertices, { ignoreSnap: true });
@@ -822,7 +858,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       snap: { radius: 24 },
       allowBlank: false,
       allowMulti: () => !isCurrentDiagramReadOnly,
-      allowLoop: false,
+      allowLoop: () => !isCurrentDiagramReadOnly,
       allowNode: () => !isCurrentDiagramReadOnly && (currentOptions?.allowNodeConnection ?? true),
       allowEdge: false,
       allowPort: () => !isCurrentDiagramReadOnly,
@@ -854,15 +890,23 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         if (cell && isEphemeralDiagramNode(cell.id)) return false;
         return true;
       },
-      validateConnection: ({
-        sourceCell,
-        targetCell,
-      }: {
-        sourceCell?: { id: string } | null | undefined;
-        targetCell?: { id: string } | null | undefined;
-      }) => {
+      validateConnection: (
+        args: {
+          sourceCell?: { id: string } | null | undefined;
+          targetCell?: { id: string } | null | undefined;
+          sourceMagnet?: Element | null | undefined;
+          targetMagnet?: Element | null | undefined;
+          sourcePort?: string | null | undefined;
+          targetPort?: string | null | undefined;
+        } = {},
+      ) => {
+        const { sourceCell, targetCell, sourceMagnet, targetMagnet, sourcePort, targetPort } = args;
         if (!sourceCell || !targetCell) return false;
-        if (sourceCell.id === targetCell.id) return false;
+        if (sourceCell.id === targetCell.id) {
+          const sPort = sourcePort ?? sourceMagnet?.getAttribute("port") ?? sourceMagnet?.getAttribute("port-id");
+          const tPort = targetPort ?? targetMagnet?.getAttribute("port") ?? targetMagnet?.getAttribute("port-id");
+          if (!sPort || !tPort || sPort === tPort) return false;
+        }
         if (isEphemeralDiagramNode(sourceCell.id) || isEphemeralDiagramNode(targetCell.id)) return false;
         return true;
       },
@@ -2167,12 +2211,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const snappedSrcPort = resolveNearestNodePortId(sourceCell, edge.getSourcePoint());
       if (snappedSrcPort !== undefined) {
         sourcePortId = snappedSrcPort;
+        edge.setSource({ cell: source.cell, port: sourcePortId });
       }
     }
     if (targetPortId === undefined && targetCell?.isNode()) {
       const snappedTgtPort = resolveNearestNodePortId(targetCell, edge.getTargetPoint());
       if (snappedTgtPort !== undefined) {
         targetPortId = snappedTgtPort;
+        edge.setTarget({ cell: target.cell, port: targetPortId });
       }
     }
 
@@ -2208,7 +2254,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       tgtStr = String(target.cell);
     }
 
-    if (!srcStr || !tgtStr) return;
+    if (!srcStr || !tgtStr || srcStr === tgtStr) return;
 
     const vertices = edge.getVertices() || [];
     const sourcePoint =
@@ -2227,38 +2273,74 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
     let intermediateVertices = vertices;
     if (vertices.length === 0 && sourcePoint && targetPoint) {
-      const edgeView = g.findViewByCell(edge);
-      if (edgeView?.routePoints && edgeView.routePoints.length > 0) {
-        intermediateVertices = healOrthogonalVertices(sourcePoint, targetPoint, edgeView.routePoints);
-      } else {
-        const obstacles: RectLike[] = [];
-        for (const node of g.getNodes()) {
-          if (node.id === source.cell || node.id === target.cell) continue;
-          if (isEphemeralDiagramNode(node.id)) continue;
-          const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
-          if (bbox) {
-            obstacles.push({
-              x: bbox.x,
-              y: bbox.y,
-              width: bbox.width,
-              height: bbox.height,
-            });
-          }
+      const obstacles: RectLike[] = [];
+      for (const node of g.getNodes()) {
+        if (node.id === source.cell || node.id === target.cell) continue;
+        if (isEphemeralDiagramNode(node.id)) continue;
+        const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
+        if (bbox) {
+          obstacles.push({
+            x: bbox.x,
+            y: bbox.y,
+            width: bbox.width,
+            height: bbox.height,
+          });
         }
-        intermediateVertices = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
-          sourceSide,
-          targetSide,
-          sourceBox,
-          targetBox,
-        });
+      }
+      const { parallelIndex, parallelCount } = computeParallelEdgeIndices(
+        g,
+        edge,
+        String(source.cell),
+        String(target.cell),
+      );
+
+      const directRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
+        sourceSide,
+        targetSide,
+        sourceBox,
+        targetBox,
+        parallelIndex,
+        parallelCount,
+      });
+
+      const edgeView = g.findViewByCell(edge);
+      const viewRoute =
+        edgeView?.routePoints && edgeView.routePoints.length > 0
+          ? pruneOrthogonalLoops(healOrthogonalVertices(sourcePoint, targetPoint, edgeView.routePoints), {
+              obstacles,
+              sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
+              targetNormal: targetSide ? sideToNormal(targetSide) : null,
+              sourceBox: sourceBox ?? null,
+              targetBox: targetBox ?? null,
+            })
+          : [];
+
+      // If viewRoute has strictly fewer bends than directRoute, use viewRoute; otherwise use directRoute
+      if (viewRoute.length > 0 && viewRoute.length < directRoute.length) {
+        intermediateVertices = viewRoute;
+      } else {
+        intermediateVertices = directRoute;
       }
     } else if (vertices.length > 0 && sourcePoint && targetPoint) {
-      intermediateVertices = healOrthogonalVertices(sourcePoint, targetPoint, vertices);
+      intermediateVertices = pruneOrthogonalLoops(healOrthogonalVertices(sourcePoint, targetPoint, vertices), {
+        sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
+        targetNormal: targetSide ? sideToNormal(targetSide) : null,
+        sourceBox: sourceBox ?? null,
+        targetBox: targetBox ?? null,
+      });
     }
 
     const simplifiedVertices =
       sourcePoint && targetPoint
-        ? healOrthogonalVertices(sourcePoint, targetPoint, simplifyCollinearPoints(intermediateVertices, 0.05))
+        ? pruneOrthogonalLoops(
+            healOrthogonalVertices(sourcePoint, targetPoint, simplifyCollinearPoints(intermediateVertices, 0.05)),
+            {
+              sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
+              targetNormal: targetSide ? sideToNormal(targetSide) : null,
+              sourceBox: sourceBox ?? null,
+              targetBox: targetBox ?? null,
+            },
+          )
         : simplifyCollinearPoints(intermediateVertices, 0.05);
 
     if (typeof edge.setVertices === "function") {
@@ -2267,13 +2349,15 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
     const roundedSrc = { x: Math.round(sourcePoint.x), y: Math.round(-sourcePoint.y) };
     const roundedTgt = { x: Math.round(targetPoint.x), y: Math.round(-targetPoint.y) };
-    const roundedIntermediate = healOrthogonalVertices(
-      roundedSrc,
-      roundedTgt,
-      simplifiedVertices.map((p: { x: number; y: number }) => ({
-        x: Math.round(p.x),
-        y: Math.round(-p.y),
-      })),
+    const roundedIntermediate = pruneOrthogonalLoops(
+      healOrthogonalVertices(
+        roundedSrc,
+        roundedTgt,
+        simplifiedVertices.map((p: { x: number; y: number }) => ({
+          x: Math.round(p.x),
+          y: Math.round(-p.y),
+        })),
+      ),
     );
     const points = [roundedSrc, ...roundedIntermediate, roundedTgt];
 

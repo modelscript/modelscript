@@ -8,9 +8,9 @@ import type { Migration, MigrationContext } from "./types.js";
 export const oidcReleaseAttestationsMigration: Migration = {
   id: "0003_oidc_release_attestations",
   name: "0003_oidc_release_attestations",
-  async up(ctx: MigrationContext) {
-    const rawCols = await ctx.query<{ name: string }>("PRAGMA table_info(library_releases)");
-    const cols = rawCols.map((c) => c.name);
+  up(ctx: MigrationContext) {
+    const rawCols = ctx.query<{ name: string }>("PRAGMA table_info(library_releases)");
+    const cols = Array.isArray(rawCols) ? rawCols.map((c) => c.name) : [];
     if (!cols.includes("oidc_issuer")) {
       ctx.execute("ALTER TABLE library_releases ADD COLUMN oidc_issuer TEXT DEFAULT NULL;");
     }
@@ -27,5 +27,15 @@ export const oidcReleaseAttestationsMigration: Migration = {
       ctx.execute("ALTER TABLE library_releases ADD COLUMN oidc_run_id TEXT DEFAULT NULL;");
     }
     ctx.execute("CREATE INDEX IF NOT EXISTS idx_library_releases_oidc_repo ON library_releases(oidc_repository);");
+  },
+  down(ctx: MigrationContext) {
+    ctx.execute("DROP INDEX IF EXISTS idx_library_releases_oidc_repo;");
+    const rawCols = ctx.query<{ name: string }>("PRAGMA table_info(library_releases)");
+    const cols = Array.isArray(rawCols) ? rawCols.map((c) => c.name) : [];
+    for (const col of ["oidc_run_id", "oidc_workflow_ref", "oidc_repository", "oidc_subject", "oidc_issuer"]) {
+      if (cols.includes(col)) {
+        ctx.execute(`ALTER TABLE library_releases DROP COLUMN ${col};`);
+      }
+    }
   },
 };

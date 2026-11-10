@@ -860,7 +860,8 @@
       "to-modelica",
       "export-ssp",
       "to-ssp",
-      "psout"
+      "psout",
+      "benchmark"
     ],
     "capabilities": {
       "parse": true,
@@ -946,6 +947,9 @@
       "harmonics",
       "qdsl",
       "opf",
+      "cable",
+      "reliability",
+      "scl",
       "gridcode",
       "to-psse",
       "to-modelica"
@@ -1158,6 +1162,197 @@
       ]
     },
     "ruleCount": 5
+  },
+  {
+    "slug": "matpower",
+    "name": "MATPOWER",
+    "sidebar": "MATPOWER Grid (.m)",
+    "ext": ".m",
+    "role": "Power flow & optimal power flow (OPF)",
+    "group": "power",
+    "pkgName": "@modelscript/matpower",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx matpower",
+    "actions": [
+      "lint",
+      "summary",
+      "solve",
+      "to-psse",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "PSS/E"
+      ]
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "comtrade",
+    "name": "IEEE COMTRADE",
+    "sidebar": "COMTRADE Fault Transients",
+    "ext": ".cfg, .dat, .cff",
+    "role": "Digital fault recorder & transient disturbance analysis",
+    "group": "power",
+    "pkgName": "@modelscript/comtrade",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx comtrade",
+    "actions": [
+      "lint",
+      "summary",
+      "extract-phasor",
+      "to-dae",
+      "to-cff"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "scl",
+    "name": "IEC 61850 SCL",
+    "sidebar": "IEC 61850 Substation SCL",
+    "ext": ".scd, .cid, .ssd, .xml",
+    "role": "Substation automation, GOOSE & Sampled Values dataflow",
+    "group": "power",
+    "pkgName": "@modelscript/scl",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx scl",
+    "actions": [
+      "lint",
+      "summary",
+      "validate-goose",
+      "to-sld",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "atp",
+    "name": "ATP-EMTP",
+    "sidebar": "ATP-EMTP Transients",
+    "ext": ".atp, .dat",
+    "role": "Electromagnetic transient program card decks",
+    "group": "power",
+    "pkgName": "@modelscript/atp",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx atp",
+    "actions": [
+      "lint",
+      "summary",
+      "simulate",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "dnp3",
+    "name": "IEEE 1815 / DNP3",
+    "sidebar": "DNP3 SCADA Telemetry",
+    "ext": ".xml, .json, .dnp3",
+    "role": "Utility digital twin & SCADA deadband telemetry",
+    "group": "power",
+    "pkgName": "@modelscript/dnp3",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx dnp3",
+    "actions": [
+      "lint",
+      "summary",
+      "process-telemetry",
+      "to-xml",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "oneliner",
+    "name": "ASPEN OneLiner / CAPE",
+    "sidebar": "ASPEN OneLiner Protection",
+    "ext": ".olx, .dxt",
+    "role": "Short-circuit fault currents & TOC protection coordination",
+    "group": "power",
+    "pkgName": "@modelscript/oneliner",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx oneliner",
+    "actions": [
+      "lint",
+      "summary",
+      "solve-fault",
+      "to-dxt",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "sel",
+    "name": "SEL Relay Settings",
+    "sidebar": "SEL Protection Settings",
+    "ext": ".rdb, .rcf, .sel, .txt",
+    "role": "Schweitzer relay settings, SELogic & 50/51/21 protection",
+    "group": "power",
+    "pkgName": "@modelscript/sel",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx sel",
+    "actions": [
+      "lint",
+      "summary",
+      "evaluate-protection",
+      "to-ascii",
+      "to-json",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
   },
   {
     "slug": "olga",
@@ -1738,6 +1933,8 @@
       "quality",
       "diff",
       "from-gis",
+      "convert",
+      "screen-contingencies",
       "to-modelica",
       "to-dae"
     ],
@@ -1773,7 +1970,9 @@
       "rtc",
       "quality",
       "diff",
-      "from-gis"
+      "from-gis",
+      "convert",
+      "inundate-2d"
     ],
     "capabilities": {
       "parse": true,
@@ -1879,6 +2078,87 @@
       ]
     },
     "ruleCount": 6
+  },
+  {
+    "slug": "hec-hms",
+    "name": "USACE HEC-HMS",
+    "sidebar": "HEC-HMS Watershed Hydrology",
+    "ext": ".basin, .hms",
+    "role": "Precipitation runoff, SCS-CN excess & Muskingum routing",
+    "group": "buildings",
+    "pkgName": "@modelscript/hec-hms",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx hec-hms",
+    "actions": [
+      "lint",
+      "summary",
+      "simulate-runoff",
+      "to-ras",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "waterml",
+    "name": "OGC WaterML 2.0",
+    "sidebar": "WaterML Hydrologic Telemetry",
+    "ext": ".waterml, .wml2, .xml",
+    "role": "Streamflow telemetry & stage-discharge rating curves",
+    "group": "buildings",
+    "pkgName": "@modelscript/waterml",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx waterml",
+    "actions": [
+      "lint",
+      "summary",
+      "fit-rating",
+      "to-hec-ras",
+      "to-epanet",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "asm",
+    "name": "IWA Activated Sludge Models",
+    "sidebar": "IWA ASM Wastewater",
+    "ext": ".asm, .bsm, .wrrf",
+    "role": "Biokinetics, Petersen matrix & Takács clarifier settling",
+    "group": "buildings",
+    "pkgName": "@modelscript/asm",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx asm",
+    "actions": [
+      "lint",
+      "summary",
+      "simulate-biokinetics",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
   },
   {
     "slug": "aspen",

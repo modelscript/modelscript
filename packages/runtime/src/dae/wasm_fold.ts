@@ -1482,7 +1482,7 @@ export function evaluateConstantArenaExpression(
             visitedDepth + 1,
             db,
             scopeId,
-            false,
+            onlyConstants,
           );
           if (val === null) {
             allOk = false;
@@ -2253,10 +2253,7 @@ export function foldArenaConstants(
       if (arena.isVarRemoved(i)) continue;
       const v = arena.getVarVariability(i);
       const name = arena.getVarName(i);
-      if (
-        v === Variability.Discrete ||
-        (arena.getVarCausality(i) === Causality.Input && !name.includes("."))
-      ) {
+      if (v === Variability.Discrete || (arena.getVarCausality(i) === Causality.Input && !name.includes("."))) {
         continue;
       }
       if (v === Variability.Parameter && !arena.isVarFixed(i)) {

@@ -142,6 +142,8 @@ export interface RouterEdgeLike {
   getTargetPortId?: (() => string | undefined) | undefined;
   getSourceCell?: (() => RouterNodeLike | null | undefined) | undefined;
   getTargetCell?: (() => RouterNodeLike | null | undefined) | undefined;
+  getSource?: (() => { cell?: string | undefined; port?: string | undefined } | null | undefined) | undefined;
+  getTarget?: (() => { cell?: string | undefined; port?: string | undefined } | null | undefined) | undefined;
   getSourcePoint?: (() => PointLike | null | undefined) | undefined;
   getTargetPoint?: (() => PointLike | null | undefined) | undefined;
   getVertices?: (() => PointLike[] | null | undefined) | undefined;
@@ -468,7 +470,7 @@ function shrinkRect(rect: RectLike, inset: number): RectLike {
  * Checks whether an edge polyline violates port outward normals, contains diagonal segments,
  * or impales its source/target component bounding boxes.
  */
-function doesPolylineViolatePortOrBox(
+export function doesPolylineViolatePortOrBox(
   srcPt: PointLike,
   tgtPt: PointLike,
   vertices: PointLike[],
@@ -831,6 +833,163 @@ export function healOrthogonalVertices(
   return simplifyCollinearPoints(full, 0.05).slice(1, -1);
 }
 
+/** Configuration options for orthogonal loop and self-reversal pruning. */
+export interface PruneOptions {
+  /** Obstacle bounding boxes to avoid clipping through. */
+  obstacles?: RectLike[] | undefined;
+  /** Minimum clearance padding around obstacle bounding boxes (default: `4`). */
+  padding?: number | undefined;
+  /** Outward normal of the departure source port. */
+  sourceNormal?: PortNormal | null | undefined;
+  /** Outward normal of the arrival target port. */
+  targetNormal?: PortNormal | null | undefined;
+  /** Bounding box of the source component node. */
+  sourceBox?: RectLike | null | undefined;
+  /** Bounding box of the target component node. */
+  targetBox?: RectLike | null | undefined;
+}
+
+/**
+ * Eliminates redundant orthogonal loops, self-reversals, and U-turns from an orthogonal polyline.
+ *
+ * For any pair of non-adjacent parallel segments whose spans overlap along the perpendicular axis,
+ * evaluates collision-free bridge candidates to shortcut the loop directly, strictly reducing bend count
+ * and path length while respecting obstacles and outward port normals.
+ */
+export function pruneOrthogonalLoops(points: PointLike[], options: PruneOptions | RectLike[] = {}): PointLike[] {
+  const opts: PruneOptions = Array.isArray(options) ? { obstacles: options } : options;
+  const obstacles = opts.obstacles ?? [];
+  const padding = opts.padding ?? 4;
+  const srcNormal = opts.sourceNormal ?? null;
+  const tgtNormal = opts.targetNormal ?? null;
+  const srcBox = opts.sourceBox ?? null;
+  const tgtBox = opts.targetBox ?? null;
+
+  let pts = simplifyCollinearPoints(points, 0.05);
+  let changed = true;
+  let iterations = 0;
+
+  const segmentIntersectsAnyObstacle = (p1: PointLike, p2: PointLike): boolean => {
+    if (obstacles.length === 0) return false;
+    for (const obs of obstacles) {
+      if (segmentIntersectsRect(p1, p2, obs, padding)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  while (changed && iterations++ < 10) {
+    changed = false;
+    if (pts.length < 5) break;
+
+    outer: for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      const isH1 = Math.abs(a.y - b.y) <= 0.05;
+      const isV1 = Math.abs(a.x - b.x) <= 0.05;
+      if (!isH1 && !isV1) continue;
+
+      for (let j = i + 2; j < pts.length - 1; j++) {
+        const c = pts[j]!;
+        const d = pts[j + 1]!;
+        const isH2 = Math.abs(c.y - d.y) <= 0.05;
+        const isV2 = Math.abs(c.x - d.x) <= 0.05;
+
+        if (isH1 && isH2) {
+          const minX1 = Math.min(a.x, b.x);
+          const maxX1 = Math.max(a.x, b.x);
+          const minX2 = Math.min(c.x, d.x);
+          const maxX2 = Math.max(c.x, d.x);
+          const overlapMin = Math.max(minX1, minX2);
+          const overlapMax = Math.min(maxX1, maxX2);
+
+          if (overlapMin <= overlapMax + 0.05) {
+            const candidates = [b.x, c.x, (overlapMin + overlapMax) / 2, overlapMin, overlapMax].filter(
+              (x) => x >= overlapMin - 0.05 && x <= overlapMax + 0.05,
+            );
+            for (const xCut of candidates) {
+              const pStart = { x: xCut, y: a.y };
+              const pEnd = { x: xCut, y: c.y };
+              if (!segmentIntersectsAnyObstacle(pStart, pEnd)) {
+                const candidatePath = simplifyCollinearPoints(
+                  [...pts.slice(0, i + 1), pStart, pEnd, ...pts.slice(j + 1)],
+                  0.05,
+                );
+                if (candidatePath.length < pts.length) {
+                  if (srcNormal || tgtNormal || srcBox || tgtBox) {
+                    if (
+                      doesPolylineViolatePortOrBox(
+                        candidatePath[0]!,
+                        candidatePath[candidatePath.length - 1]!,
+                        candidatePath.slice(1, -1),
+                        srcNormal,
+                        tgtNormal,
+                        srcBox,
+                        tgtBox,
+                      )
+                    ) {
+                      continue;
+                    }
+                  }
+                  pts = candidatePath;
+                  changed = true;
+                  break outer;
+                }
+              }
+            }
+          }
+        } else if (isV1 && isV2) {
+          const minY1 = Math.min(a.y, b.y);
+          const maxY1 = Math.max(a.y, b.y);
+          const minY2 = Math.min(c.y, d.y);
+          const maxY2 = Math.max(c.y, d.y);
+          const overlapMin = Math.max(minY1, minY2);
+          const overlapMax = Math.min(maxY1, maxY2);
+
+          if (overlapMin <= overlapMax + 0.05) {
+            const candidates = [b.y, c.y, (overlapMin + overlapMax) / 2, overlapMin, overlapMax].filter(
+              (y) => y >= overlapMin - 0.05 && y <= overlapMax + 0.05,
+            );
+            for (const yCut of candidates) {
+              const pStart = { x: a.x, y: yCut };
+              const pEnd = { x: c.x, y: yCut };
+              if (!segmentIntersectsAnyObstacle(pStart, pEnd)) {
+                const candidatePath = simplifyCollinearPoints(
+                  [...pts.slice(0, i + 1), pStart, pEnd, ...pts.slice(j + 1)],
+                  0.05,
+                );
+                if (candidatePath.length < pts.length) {
+                  if (srcNormal || tgtNormal || srcBox || tgtBox) {
+                    if (
+                      doesPolylineViolatePortOrBox(
+                        candidatePath[0]!,
+                        candidatePath[candidatePath.length - 1]!,
+                        candidatePath.slice(1, -1),
+                        srcNormal,
+                        tgtNormal,
+                        srcBox,
+                        tgtBox,
+                      )
+                    ) {
+                      continue;
+                    }
+                  }
+                  pts = candidatePath;
+                  changed = true;
+                  break outer;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return pts;
+}
+
 /**
  * Pushes coincident trunk segments on peer edges sharing the same electrical net so shared
  * schematic buses (such as ground rails) slide together as a unified corridor.
@@ -1063,8 +1222,7 @@ export function translateConnectedEdgeStubs(
 
         // 0a. If outward port normals are perpendicular, try a clean 1-bend L-corner first
         if (srcNormal && tgtNormal) {
-          const perpNormals =
-            (srcNormal.nx !== 0 && tgtNormal.ny !== 0) || (srcNormal.ny !== 0 && tgtNormal.nx !== 0);
+          const perpNormals = (srcNormal.nx !== 0 && tgtNormal.ny !== 0) || (srcNormal.ny !== 0 && tgtNormal.nx !== 0);
           if (perpNormals) {
             const lCorner: PointLike[] =
               srcNormal.nx !== 0 ? [{ x: tgtPt.x, y: srcPt.y }] : [{ x: srcPt.x, y: tgtPt.y }];
@@ -1095,12 +1253,7 @@ export function translateConnectedEdgeStubs(
                 { x: Math.round((srcPt.x + tgtPt.x) / 2), y: srcPt.y },
                 { x: Math.round((srcPt.x + tgtPt.x) / 2), y: tgtPt.y },
               ];
-          if (
-            !srcNormal &&
-            !tgtNormal &&
-            !srcBox &&
-            !tgtBox
-          ) {
+          if (!srcNormal && !tgtNormal && !srcBox && !tgtBox) {
             injected = zCandidate;
           } else if (
             !doesPolylineViolatePortOrBox(srcPt, tgtPt, zCandidate, srcNormal, tgtNormal, srcBox, tgtBox, {
@@ -1371,10 +1524,8 @@ export function translateConnectedEdgeStubs(
     // When two connected ports align horizontally or vertically and all intermediate vertices lie
     // along that same axis without impaling any component body, collapse the jog into a 0-bend wire.
     if (srcPt && tgtPt && (newVertices.length >= 2 || (newVertices.length === 1 && Boolean(srcNormal || tgtNormal)))) {
-      const alignedH =
-        Math.abs(srcPt.y - tgtPt.y) <= 0.5 && newVertices.every((v) => Math.abs(v.y - srcPt.y) <= 1.5);
-      const alignedV =
-        Math.abs(srcPt.x - tgtPt.x) <= 0.5 && newVertices.every((v) => Math.abs(v.x - srcPt.x) <= 1.5);
+      const alignedH = Math.abs(srcPt.y - tgtPt.y) <= 0.5 && newVertices.every((v) => Math.abs(v.y - srcPt.y) <= 1.5);
+      const alignedV = Math.abs(srcPt.x - tgtPt.x) <= 0.5 && newVertices.every((v) => Math.abs(v.x - srcPt.x) <= 1.5);
 
       let canCollapse = false;
       if (newVertices.length >= 2) {
@@ -1384,9 +1535,7 @@ export function translateConnectedEdgeStubs(
         // If the moving port crosses the perpendicular leg's coordinate, the attached stub simply
         // crosses through 0 length and reverses direction without collapsing the L-bend.
         const v0 = newVertices[0]!;
-        const attachedIsHorizontal = isSource
-          ? Math.abs(srcPt.y - v0.y) <= 1.5
-          : Math.abs(tgtPt.y - v0.y) <= 1.5;
+        const attachedIsHorizontal = isSource ? Math.abs(srcPt.y - v0.y) <= 1.5 : Math.abs(tgtPt.y - v0.y) <= 1.5;
         canCollapse = (alignedH && attachedIsHorizontal) || (alignedV && !attachedIsHorizontal);
       }
 
@@ -2247,13 +2396,7 @@ export function computeOrthogonalRoute(
     if (isCandidateValid(directStub)) stubCandidates.push(directStub);
   }
 
-  // 3b. 1-bend between sStub and tStub
-  const stubHV = buildStubCandidate([{ x: tStub.x, y: sStub.y }]);
-  const stubVH = buildStubCandidate([{ x: sStub.x, y: tStub.y }]);
-  if (isCandidateValid(stubHV)) stubCandidates.push(stubHV);
-  if (isCandidateValid(stubVH)) stubCandidates.push(stubVH);
-
-  // 3c. 2-bend Z-step between sStub and tStub (midpoint X or midpoint Y)
+  // 3b. 2-bend Z-step between sStub and tStub (midpoint X or midpoint Y)
   const step = options.step ?? 10;
   const midX = Math.round(((sStub.x + tStub.x) / 2 + parallelOffset) / step) * step;
   const midY = Math.round(((sStub.y + tStub.y) / 2 + parallelOffset) / step) * step;
@@ -2265,13 +2408,45 @@ export function computeOrthogonalRoute(
     { x: sStub.x, y: midY },
     { x: tStub.x, y: midY },
   ]);
-  if (isCandidateValid(stubZ_H)) stubCandidates.push(stubZ_H);
-  if (isCandidateValid(stubZ_V)) stubCandidates.push(stubZ_V);
+
+  // If ports oppose each other along X or Y axis, prioritize the symmetric centered Z-step
+  const isOpposingX = Boolean(srcNormal?.nx && tgtNormal?.nx && srcNormal.nx === -tgtNormal.nx);
+  const isOpposingY = Boolean(srcNormal?.ny && tgtNormal?.ny && srcNormal.ny === -tgtNormal.ny);
+
+  if (isOpposingX && isCandidateValid(stubZ_H)) stubCandidates.push(stubZ_H);
+  if (isOpposingY && isCandidateValid(stubZ_V)) stubCandidates.push(stubZ_V);
+
+  // 3c. 1-bend L-shape between sStub and tStub
+  const stubHV = buildStubCandidate([{ x: tStub.x, y: sStub.y }]);
+  const stubVH = buildStubCandidate([{ x: sStub.x, y: tStub.y }]);
+  if (isCandidateValid(stubHV)) stubCandidates.push(stubHV);
+  if (isCandidateValid(stubVH)) stubCandidates.push(stubVH);
+
+  if (!isOpposingX && isCandidateValid(stubZ_H)) stubCandidates.push(stubZ_H);
+  if (!isOpposingY && isCandidateValid(stubZ_V)) stubCandidates.push(stubZ_V);
 
   if (stubCandidates.length > 0) {
+    // Scoring function:
+    // 1. Minimum number of bends (a.length)
+    // 2. Minimum Manhattan path length
+    // 3. Maximum distance of intermediate corners from endpoints (tie-breaker to keep trunks centered in corridors away from port glyphs)
+    const minBendEndpointDistance = (pts: PointLike[]): number => {
+      if (pts.length === 0) return Infinity;
+      let minD = Infinity;
+      for (const p of pts) {
+        const ds = Math.hypot(p.x - source.x, p.y - source.y);
+        const dt = Math.hypot(p.x - target.x, p.y - target.y);
+        minD = Math.min(minD, ds, dt);
+      }
+      return minD;
+    };
+
     stubCandidates.sort((a, b) => {
       if (a.length !== b.length) return a.length - b.length;
-      return pathLength(a) - pathLength(b);
+      const lenA = pathLength(a);
+      const lenB = pathLength(b);
+      if (Math.abs(lenA - lenB) > 0.05) return lenA - lenB;
+      return minBendEndpointDistance(b) - minBendEndpointDistance(a);
     });
     return stubCandidates[0]!;
   }
@@ -2299,9 +2474,9 @@ export function portOrthogonalRouter(
   // If manual vertices are explicitly specified, preserve them while healing any terminal/interior orthogonality drift
   if (vertices && vertices.length > 0) {
     if (edgeView?.sourcePoint && edgeView?.targetPoint) {
-      return healOrthogonalVertices(edgeView.sourcePoint, edgeView.targetPoint, vertices);
+      return pruneOrthogonalLoops(healOrthogonalVertices(edgeView.sourcePoint, edgeView.targetPoint, vertices));
     }
-    return vertices;
+    return pruneOrthogonalLoops(vertices);
   }
 
   if (!edgeView) return [];
@@ -2321,10 +2496,24 @@ export function portOrthogonalRouter(
   let targetBox: RectLike | undefined;
 
   if (graph && typeof graph.getNodes === "function") {
-    const sourceCell = edgeView.cell?.getSourceCell?.();
-    const targetCell = edgeView.cell?.getTargetCell?.();
-    const sourcePortId = edgeView.cell?.getSourcePortId?.() ?? edgeView.cell?.source?.port;
-    const targetPortId = edgeView.cell?.getTargetPortId?.() ?? edgeView.cell?.target?.port;
+    const rawSource =
+      typeof edgeView.cell?.getSource === "function" ? edgeView.cell.getSource() : edgeView.cell?.source;
+    const rawTarget =
+      typeof edgeView.cell?.getTarget === "function" ? edgeView.cell.getTarget() : edgeView.cell?.target;
+
+    const sourceCell =
+      edgeView.cell?.getSourceCell?.() ??
+      (rawSource?.cell && typeof graph.getCellById === "function" ? graph.getCellById(rawSource.cell) : null);
+    const targetCell =
+      edgeView.cell?.getTargetCell?.() ??
+      (rawTarget?.cell && typeof graph.getCellById === "function" ? graph.getCellById(rawTarget.cell) : null);
+
+    const sourcePortId =
+      (typeof edgeView.cell?.getSourcePortId === "function" ? edgeView.cell.getSourcePortId() : null) ??
+      rawSource?.port;
+    const targetPortId =
+      (typeof edgeView.cell?.getTargetPortId === "function" ? edgeView.cell.getTargetPortId() : null) ??
+      rawTarget?.port;
 
     if (sourceCell) {
       sourceSide = getPortOutwardNormal(sourceCell, sourcePortId, source)?.side;
@@ -2350,6 +2539,19 @@ export function portOrthogonalRouter(
 
       const bbox = getNodeBBox(node);
       if (bbox) {
+        // When targetCell is not yet bound (live drag before magnet adsorption),
+        // do not treat a candidate target node under or adjacent to the cursor as an obstacle.
+        if (!targetCell) {
+          const pad = 20;
+          if (
+            target.x >= bbox.x - pad &&
+            target.x <= bbox.x + bbox.width + pad &&
+            target.y >= bbox.y - pad &&
+            target.y <= bbox.y + bbox.height + pad
+          ) {
+            continue;
+          }
+        }
         obstacles.push(bbox);
       }
     }
@@ -2381,7 +2583,16 @@ export function portOrthogonalRouter(
     parallelCount,
   };
 
-  return computeOrthogonalRoute(source, target, obstacles, routerArgs);
+  const rawRoute = computeOrthogonalRoute(source, target, obstacles, routerArgs);
+  const fullPolyline = [source, ...rawRoute, target];
+  const pruned = pruneOrthogonalLoops(fullPolyline, {
+    obstacles,
+    sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
+    targetNormal: targetSide ? sideToNormal(targetSide) : null,
+    sourceBox,
+    targetBox,
+  });
+  return healOrthogonalVertices(source, target, pruned.slice(1, -1));
 }
 
 /** Orthogonal boundary stem line projecting an internal port pad to its closest exterior node face. */

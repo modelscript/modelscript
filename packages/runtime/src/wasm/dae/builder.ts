@@ -816,11 +816,9 @@ export class DaeBuilder {
   @inline
   resolveExprVarId(nameOrVarId: u32): i32 {
     if (nameOrVarId == 0xffffffff) return -1;
-    let varIdx = this.lookupVariableByName(nameOrVarId);
-    if (varIdx >= 0) return varIdx;
     if (changetype<usize>(this.stringPool) != 0 && this.stringPool.isTime(nameOrVarId)) return -1;
     if (nameOrVarId < this.varCount) return nameOrVarId as i32;
-    return -1;
+    return this.lookupVariableByName(nameOrVarId);
   }
 
   /**

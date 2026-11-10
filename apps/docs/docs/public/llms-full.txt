@@ -5696,62 +5696,64 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 
 ### 4. Polyglot Digital Thread, Co-Simulation & Domain Solvers
 
-| Command                                        | Aliases                | Summary                                                                                                                         |
-| :--------------------------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| [`render`](./commands.md#render)               | —                      | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.                  |
-| [`fmu`](./commands.md#fmu)                     | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
-| [`import-fmu`](./commands.md#import-fmu)       | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
-| [`cosim`](./commands.md#cosim)                 | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
-| [`polyglot`](./commands.md#polyglot)           | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 81 languages. |
-| [`align`](./commands.md#align)                 | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
-| [`sysml`](./commands.md#sysml)                 | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
-| [`oslc`](./commands.md#oslc)                   | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
-| [`reqif`](./commands.md#reqif)                 | —                      | Import and export OMG ReqIF 1.2 (`.reqif` / `.reqifz`) requirements exchange archives.                                          |
-| [`ddp`](./commands.md#ddp)                     | —                      | Inspect, pack, and convert ISO/PAS 81346 Digital Data Packages (`.ddp`) and Asset Administration Shells (`.aasx`).              |
-| [`dhf`](./commands.md#dhf)                     | —                      | Generate, audit, and inspect FDA 21 CFR Part 820 / ISO 13485 Design History File (DHF) compliance dossiers.                     |
-| [`ampl`](./commands.md#ampl)                   | —                      | Parse, lint (`M9801`–`M9810`), solve LP/MILP/NLP via COIN-OR CLP/CBC, export ASL `.nl`, and lower AMPL (`.mod`, `.dat`) models. |
-| [`pscad`](./commands.md#pscad)                 | —                      | Lint, render SLDs, diff, simulate EMT transients, verify IEEE 2800 ride-through, and export `.pscx`/`.pswx` projects.           |
-| [`psse`](./commands.md#psse)                   | —                      | Inspect, lint, solve AC power flow ($\mathbf{Y}_{\text{bus}}$), short-circuit, and project Siemens PSS/E (`.raw`, `.dyr`).      |
-| [`powerfactory`](./commands.md#powerfactory)   | `pf`, `digsilent`      | Parse, lint (`PF1001`–`PF1008`), compile DSL blocks, solve DGS power flow, and project DIgSILENT PowerFactory (`.dsl`, `.dgs`). |
-| [`pslf`](./commands.md#pslf)                   | —                      | Parse, lint (`PSLF-E001`–`PSLF-W003`), solve power flow, and project GE PSLF (`.epc`, `.dyd`) transmission decks.               |
-| [`cgmes`](./commands.md#cgmes)                 | —                      | Inspect, lint (`C1001`–`C1010`), solve AC/DC OPF, and convert ENTSO-E CIM / CGMES (`.xml`, `.rdf`) grid profiles.               |
-| [`opendss`](./commands.md#opendss)             | —                      | Solve unbalanced 3-phase power flow, harmonics, QSTS, IEEE 1547 hosting capacity, and FLISR on OpenDSS (`.dss`) feeders.        |
-| [`ocpp`](./commands.md#ocpp)                   | —                      | Validate, simulate smart-charging sessions, and lower OCPP 1.6J / 2.0.1 (`.ocpp`) EV charging transcripts.                      |
-| [`openadr`](./commands.md#openadr)             | —                      | Validate, simulate demand-response curtailment events, and lower OpenADR 2.0b / 3.0 (`.openadr`) payloads.                      |
-| [`optical`](./commands.md#optical)             | —                      | Compute ITU-T G.694.1 DWDM OSNR/GSNR link budgets and analyze Telcordia SR-4731 OTDR (`.sor`) traces.                           |
-| [`ran`](./commands.md#ran)                     | —                      | Compute 3GPP TR 38.901 5G NR / LTE RF link budgets, SINR coverage grids, and parse NSMA (`.adf`, `.msi`) antennas.              |
-| [`fiber`](./commands.md#fiber)                 | —                      | Resolve TIA-598-D fiber color codes, trace splice enclosures, and audit SRLG diversity on `.fiber` outside-plant cables.        |
-| [`spice`](./commands.md#spice)                 | —                      | Simulate DC operating point, transient, and AC frequency sweeps on SPICE (`.cir`, `.sp`, `.net`) netlists.                      |
-| [`olga`](./commands.md#olga)                   | —                      | Simulate 1D drift-flux multiphase flow, severe slugging, PVT flash, and verify flow assurance on OLGA (`.opi`, `.key`) decks.   |
-| [`lps`](./commands.md#lps)                     | —                      | Simulate transient gas/liquid networks, line pack, and hydrogen blends in PipelineStudio (`.lps`, `.tgx`, `.tlx`) models.       |
-| [`epanet`](./commands.md#epanet)               | —                      | Solve Global Gradient hydraulics, WQ chlorine decay, fire-flow, pump energy, and AWWA M36 audits on EPANET (`.inp`) networks.   |
-| [`swmm`](./commands.md#swmm)                   | —                      | Solve 1D Saint-Venant dynamic wave stormwater routing, detention pond sizing, and LID controls on EPA SWMM (`.inp`) models.     |
-| [`hec-ras`](./commands.md#hec-ras)             | `hecras`               | Solve 1D standard-step steady water surface profiles and floodplains on USACE HEC-RAS (`.prj`, `.g01`) river geometries.        |
-| [`tough`](./commands.md#tough)                 | `tough2`               | Parse, lint, and simulate non-isothermal multiphase subsurface & geothermal reservoirs on TOUGH2/TOUGH3 (`.tough`) decks.       |
-| [`modflow`](./commands.md#modflow)             | `mf6`                  | Solve 3D Darcy finite-difference groundwater head and pumping drawdowns on USGS MODFLOW 6 (`.nam`, `.dis`) models.              |
-| [`landgem`](./commands.md#landgem)             | —                      | Compute first-order landfill methane generation kinetics and biogas CHP energy yield on US EPA LandGEM (`.landgem`) decks.      |
-| [`gtfs`](./commands.md#gtfs)                   | —                      | Validate transit feeds, headways, and lower electric bus/rail fleet schedules to DAE on GTFS (`.gtfs`) datasets.                |
-| [`simulink`](./commands.md#simulink)           | —                      | Inspect, lint, lower to DAE, and project MATLAB Simulink (`.slx`, `.mdl`) control block diagrams to Modelica.                   |
-| [`autosar`](./commands.md#autosar)             | —                      | Inspect, lint, simulate the discrete Virtual RTE scheduler, and project AUTOSAR (`.arxml`) architectures.                       |
-| [`urdf`](./commands.md#urdf)                   | —                      | Validate kinematic trees, evaluate Featherstone RNEA inverse dynamics, and project ROS URDF/Xacro (`.urdf`, `.xacro`) robots.   |
-| [`simpack`](./commands.md#simpack)             | —                      | Analyze Grübler spatial mobility, lint markers/joints, and simulate SIMPACK (`.spck`, `.sim`) multibody systems.                |
-| [`gensys`](./commands.md#gensys)               | —                      | Verify EN 14363 derailment safety ($Y/Q \le 0.80$), FASTSIM contact, and simulate GENSYS (`.calc`) rail vehicles.               |
-| [`adams`](./commands.md#adams)                 | —                      | Analyze spatial mobility, lint markers, and project MSC Adams (`.adm`, `.cmd`) multibody mechanisms.                            |
-| [`easy5`](./commands.md#easy5)                 | —                      | Inspect, lint, linearize, and project EASY5 (`.ez5`, `.ezm`) aerospace and fluid-thermal schematics.                            |
-| [`gtsuite`](./commands.md#gtsuite)             | —                      | Inspect, lint compressor surge/CFL bounds, and simulate GT-SUITE (`.gtm`, `.gtd`) engine and powertrain models.                 |
-| [`sima`](./commands.md#sima)                   | —                      | Verify DNV-OS-E301 mooring tension safety factors and vessel offsets on SIMA (`.sima`, `.inp`) offshore models.                 |
-| [`rocets`](./commands.md#rocets)               | —                      | Balance turbopump flows, check chamber mixture ratios, and simulate NASA ROCETS (`.roc`, `.deck`) propulsion decks.             |
-| [`qif`](./commands.md#qif)                     | —                      | Validate ASME Y14.5 GD&T rules, compute SPC capability ($C_p, C_{pk}$, TUR), and reconcile STEP AP242 with ISO 23952 `.qif`.    |
-| [`oscal`](./commands.md#oscal)                 | —                      | Resolve control baselines, audit NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL security models.             |
-| [`aml`](./commands.md#aml)                     | `automationml`, `caex` | Validate IEC 62714 CAEX hierarchies, run closed-loop Virtual PLC commissioning, and project `.aml` workcells.                   |
-| [`opensim`](./commands.md#opensim)             | —                      | Validate musculoskeletal kinematics & Hill-type muscles (`M9101`–`M9110`), simulate activation, and project `.osim` models.     |
-| [`dicom-rt`](./commands.md#dicom-rt)           | —                      | Verify QUANTEC OAR dose limits & MLC kinematics (`M9201`–`M9210`), compute DVH/BED/$\text{EQD}_2$, and project `.rtplan`.       |
-| [`cellml`](./commands.md#cellml)               | —                      | Validate SI dimensional consistency (`M9301`–`M9310`), integrate electrophysiology ODEs, and project `.cellml` models.          |
-| [`febio`](./commands.md#febio)                 | `sofa`                 | Validate hyperelastic/biphasic tissue mechanics (`M9401`–`M9410`), solve strain energy, and project `.feb`/`.scn` scenes.       |
-| [`nifti`](./commands.md#nifti)                 | `nrrd`                 | Validate `qform`/`sform` RAS affine transforms (`M9501`–`M9510`), extract iso-surface meshes, and project `.nii`/`.nrrd`.       |
-| [`topas`](./commands.md#topas)                 | `gate`                 | Validate hadrontherapy beamlines (`M9601`–`M9610`), compute analytical Bragg peak depth-dose curves, and project `.topas`.      |
-| [`three-mf`](./commands.md#three-mf)           | `3mf`                  | Verify 2-manifold watertightness, wall thickness & osteotomy guides (`M9701`–`M9710`), and project `.3mf` surgical guides.      |
-| [`igtl`](./commands.md#igtl)                   | `openigtlink`          | Validate $SE(3)$ transforms (`M9801`–`M9810`), solve stylus pivot calibration & TRE, and project `.igtl`/`.plus.xml`.           |
+| Command                                      | Aliases                | Summary                                                                                                                         |
+| :------------------------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| [`render`](./commands.md#render)             | —                      | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.                  |
+| [`fmu`](./commands.md#fmu)                   | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
+| [`import-fmu`](./commands.md#import-fmu)     | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
+| [`cosim`](./commands.md#cosim)               | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
+| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 81 languages. |
+| [`align`](./commands.md#align)               | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
+| [`sysml`](./commands.md#sysml)               | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
+| [`oslc`](./commands.md#oslc)                 | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
+| [`reqif`](./commands.md#reqif)               | —                      | Import and export OMG ReqIF 1.2 (`.reqif` / `.reqifz`) requirements exchange archives.                                          |
+| [`ddp`](./commands.md#ddp)                   | —                      | Inspect, pack, and convert ISO/PAS 81346 Digital Data Packages (`.ddp`) and Asset Administration Shells (`.aasx`).              |
+| [`dhf`](./commands.md#dhf)                   | —                      | Generate, audit, and inspect FDA 21 CFR Part 820 / ISO 13485 Design History File (DHF) compliance dossiers.                     |
+| [`ampl`](./commands.md#ampl)                 | —                      | Parse, lint (`M9801`–`M9810`), solve LP/MILP/NLP via COIN-OR CLP/CBC, export ASL `.nl`, and lower AMPL (`.mod`, `.dat`) models. |
+| [`pscad`](./commands.md#pscad)               | —                      | Lint, render SLDs, diff, simulate EMT transients, verify IEEE 2800 ride-through, and export `.pscx`/`.pswx` projects.           |
+| [`psse`](./commands.md#psse)                 | —                      | Inspect, lint, solve AC power flow ($\mathbf{Y}_{\text{bus}}$), short-circuit, and project Siemens PSS/E (`.raw`, `.dyr`).      |
+| [`matpower`](./commands.md#matpower)         | —                      | Inspect, lint (`MP2001`–`MP4001`), solve OPF, and project MATPOWER (`.m`) transmission cases to PSS/E and DAE arenas.           |
+| [`opf`](./opf.md)                            | —                      | Solve DC/AC Optimal Power Flow, export to AMPL or PNNL ExaGO, solve Unit Commitment, and evaluate N-1 contingency redispatch.   |
+| [`powerfactory`](./commands.md#powerfactory) | `pf`, `digsilent`      | Parse, lint (`PF1001`–`PF1008`), compile DSL blocks, solve DGS power flow, and project DIgSILENT PowerFactory (`.dsl`, `.dgs`). |
+| [`pslf`](./commands.md#pslf)                 | —                      | Parse, lint (`PSLF-E001`–`PSLF-W003`), solve power flow, and project GE PSLF (`.epc`, `.dyd`) transmission decks.               |
+| [`cgmes`](./commands.md#cgmes)               | —                      | Inspect, lint (`C1001`–`C1010`), solve AC/DC OPF, and convert ENTSO-E CIM / CGMES (`.xml`, `.rdf`) grid profiles.               |
+| [`opendss`](./commands.md#opendss)           | —                      | Solve unbalanced 3-phase power flow, harmonics, QSTS, IEEE 1547 hosting capacity, and FLISR on OpenDSS (`.dss`) feeders.        |
+| [`ocpp`](./commands.md#ocpp)                 | —                      | Validate, simulate smart-charging sessions, and lower OCPP 1.6J / 2.0.1 (`.ocpp`) EV charging transcripts.                      |
+| [`openadr`](./commands.md#openadr)           | —                      | Validate, simulate demand-response curtailment events, and lower OpenADR 2.0b / 3.0 (`.openadr`) payloads.                      |
+| [`optical`](./commands.md#optical)           | —                      | Compute ITU-T G.694.1 DWDM OSNR/GSNR link budgets and analyze Telcordia SR-4731 OTDR (`.sor`) traces.                           |
+| [`ran`](./commands.md#ran)                   | —                      | Compute 3GPP TR 38.901 5G NR / LTE RF link budgets, SINR coverage grids, and parse NSMA (`.adf`, `.msi`) antennas.              |
+| [`fiber`](./commands.md#fiber)               | —                      | Resolve TIA-598-D fiber color codes, trace splice enclosures, and audit SRLG diversity on `.fiber` outside-plant cables.        |
+| [`spice`](./commands.md#spice)               | —                      | Simulate DC operating point, transient, and AC frequency sweeps on SPICE (`.cir`, `.sp`, `.net`) netlists.                      |
+| [`olga`](./commands.md#olga)                 | —                      | Simulate 1D drift-flux multiphase flow, severe slugging, PVT flash, and verify flow assurance on OLGA (`.opi`, `.key`) decks.   |
+| [`lps`](./commands.md#lps)                   | —                      | Simulate transient gas/liquid networks, line pack, and hydrogen blends in PipelineStudio (`.lps`, `.tgx`, `.tlx`) models.       |
+| [`epanet`](./commands.md#epanet)             | —                      | Solve Global Gradient hydraulics, WQ chlorine decay, fire-flow, pump energy, and AWWA M36 audits on EPANET (`.inp`) networks.   |
+| [`swmm`](./commands.md#swmm)                 | —                      | Solve 1D Saint-Venant dynamic wave stormwater routing, detention pond sizing, and LID controls on EPA SWMM (`.inp`) models.     |
+| [`hec-ras`](./commands.md#hec-ras)           | `hecras`               | Solve 1D standard-step steady water surface profiles and floodplains on USACE HEC-RAS (`.prj`, `.g01`) river geometries.        |
+| [`tough`](./commands.md#tough)               | `tough2`               | Parse, lint, and simulate non-isothermal multiphase subsurface & geothermal reservoirs on TOUGH2/TOUGH3 (`.tough`) decks.       |
+| [`modflow`](./commands.md#modflow)           | `mf6`                  | Solve 3D Darcy finite-difference groundwater head and pumping drawdowns on USGS MODFLOW 6 (`.nam`, `.dis`) models.              |
+| [`landgem`](./commands.md#landgem)           | —                      | Compute first-order landfill methane generation kinetics and biogas CHP energy yield on US EPA LandGEM (`.landgem`) decks.      |
+| [`gtfs`](./commands.md#gtfs)                 | —                      | Validate transit feeds, headways, and lower electric bus/rail fleet schedules to DAE on GTFS (`.gtfs`) datasets.                |
+| [`simulink`](./commands.md#simulink)         | —                      | Inspect, lint, lower to DAE, and project MATLAB Simulink (`.slx`, `.mdl`) control block diagrams to Modelica.                   |
+| [`autosar`](./commands.md#autosar)           | —                      | Inspect, lint, simulate the discrete Virtual RTE scheduler, and project AUTOSAR (`.arxml`) architectures.                       |
+| [`urdf`](./commands.md#urdf)                 | —                      | Validate kinematic trees, evaluate Featherstone RNEA inverse dynamics, and project ROS URDF/Xacro (`.urdf`, `.xacro`) robots.   |
+| [`simpack`](./commands.md#simpack)           | —                      | Analyze Grübler spatial mobility, lint markers/joints, and simulate SIMPACK (`.spck`, `.sim`) multibody systems.                |
+| [`gensys`](./commands.md#gensys)             | —                      | Verify EN 14363 derailment safety ($Y/Q \le 0.80$), FASTSIM contact, and simulate GENSYS (`.calc`) rail vehicles.               |
+| [`adams`](./commands.md#adams)               | —                      | Analyze spatial mobility, lint markers, and project MSC Adams (`.adm`, `.cmd`) multibody mechanisms.                            |
+| [`easy5`](./commands.md#easy5)               | —                      | Inspect, lint, linearize, and project EASY5 (`.ez5`, `.ezm`) aerospace and fluid-thermal schematics.                            |
+| [`gtsuite`](./commands.md#gtsuite)           | —                      | Inspect, lint compressor surge/CFL bounds, and simulate GT-SUITE (`.gtm`, `.gtd`) engine and powertrain models.                 |
+| [`sima`](./commands.md#sima)                 | —                      | Verify DNV-OS-E301 mooring tension safety factors and vessel offsets on SIMA (`.sima`, `.inp`) offshore models.                 |
+| [`rocets`](./commands.md#rocets)             | —                      | Balance turbopump flows, check chamber mixture ratios, and simulate NASA ROCETS (`.roc`, `.deck`) propulsion decks.             |
+| [`qif`](./commands.md#qif)                   | —                      | Validate ASME Y14.5 GD&T rules, compute SPC capability ($C_p, C_{pk}$, TUR), and reconcile STEP AP242 with ISO 23952 `.qif`.    |
+| [`oscal`](./commands.md#oscal)               | —                      | Resolve control baselines, audit NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL security models.             |
+| [`aml`](./commands.md#aml)                   | `automationml`, `caex` | Validate IEC 62714 CAEX hierarchies, run closed-loop Virtual PLC commissioning, and project `.aml` workcells.                   |
+| [`opensim`](./commands.md#opensim)           | —                      | Validate musculoskeletal kinematics & Hill-type muscles (`M9101`–`M9110`), simulate activation, and project `.osim` models.     |
+| [`dicom-rt`](./commands.md#dicom-rt)         | —                      | Verify QUANTEC OAR dose limits & MLC kinematics (`M9201`–`M9210`), compute DVH/BED/$\text{EQD}_2$, and project `.rtplan`.       |
+| [`cellml`](./commands.md#cellml)             | —                      | Validate SI dimensional consistency (`M9301`–`M9310`), integrate electrophysiology ODEs, and project `.cellml` models.          |
+| [`febio`](./commands.md#febio)               | `sofa`                 | Validate hyperelastic/biphasic tissue mechanics (`M9401`–`M9410`), solve strain energy, and project `.feb`/`.scn` scenes.       |
+| [`nifti`](./commands.md#nifti)               | `nrrd`                 | Validate `qform`/`sform` RAS affine transforms (`M9501`–`M9510`), extract iso-surface meshes, and project `.nii`/`.nrrd`.       |
+| [`topas`](./commands.md#topas)               | `gate`                 | Validate hadrontherapy beamlines (`M9601`–`M9610`), compute analytical Bragg peak depth-dose curves, and project `.topas`.      |
+| [`three-mf`](./commands.md#three-mf)         | `3mf`                  | Verify 2-manifold watertightness, wall thickness & osteotomy guides (`M9701`–`M9710`), and project `.3mf` surgical guides.      |
+| [`igtl`](./commands.md#igtl)                 | `openigtlink`          | Validate $SE(3)$ transforms (`M9801`–`M9810`), solve stylus pivot calibration & TRE, and project `.igtl`/`.plus.xml`.           |
 
 ### 5. Language Workbench, Daemon & IDE Tooling
 
@@ -7365,6 +7367,64 @@ Options:
 
 ---
 
+### `matpower`
+
+Tooling for **MATPOWER** transmission power flow and optimal power flow cases (`.m`), including pre-flight electrical and topological linting (`MP2001`–`MP4001`), DC and AC Optimal Power Flow dispatch, Siemens PSS/E (`.raw`) projection, and linear WebAssembly DAE lowering.
+
+### CLI Command: `matpower <action> [files..]`
+Inspect, lint, solve, and convert MATPOWER power network cases (.m)
+
+Options:
+  - `--formulation <string>`: OPF formulation for solve action: 'dc' or 'ac' (default: "dc")
+  - `--tier <string>`: Solver tier for solve action: 'direct' (Tier 2) or 'ampl' (Tier 1) (default: "direct")
+  - `--out, -o <string>`: Output destination path
+
+```bash
+# Print network summary of buses, lines, generators, and demand
+msx matpower summary case14.m
+
+# Run pre-flight lint diagnostics
+msx matpower lint case14.m
+
+# Solve DC Optimal Power Flow
+msx matpower solve case14.m --formulation=dc
+
+# Convert to Siemens PSS/E RAW
+msx matpower to-psse case14.m --out=case14.raw
+```
+
+---
+
+### `opf`
+
+Two-tier **Optimal Power Flow (OPF)** solver and exascale export engine supporting MATPOWER (`.m`), Siemens PSS/E (`.raw`), and JSON power network cases. See the complete [Optimal Power Flow Manual](./opf.md) for mathematical formulation details.
+
+### CLI Command: `opf <action> [files..]`
+Optimal Power Flow: solve DC/AC OPF, export to AMPL or ExaGO, and compute LMPs
+
+Options:
+  - `--tier <string>`: Solver tier: 'direct' (Tier 2 Zero-GC CLP/Simplex/IPOPT) or 'ampl' (Tier 1 algebraic) (default: "direct")
+  - `--formulation <string>`: OPF formulation: 'dc' (linearized active power) or 'ac' (full nonlinear) (default: "dc")
+  - `--solver <string>`: Optimizer name ('simplex', 'clp', 'cbc', 'ipopt', 'highs')
+  - `--thermal-limits <boolean>`: Enforce transmission branch thermal flow limits (rateA) (default: true)
+  - `--format <string>`: Result presentation format (default: "report")
+  - `--out, -o <string>`: Output destination path or directory
+  - `--app <string>`: ExaGO optimization application (default: "scopflow")
+  - `--mpi-ranks <number>`: MPI rank count for ExaGO execution script (default: 4)
+
+```bash
+# Solve DC-OPF using Tier 2 Direct Zero-GC solver
+msx opf solve case14.m --formulation=dc
+
+# Export algebraic AMPL model and data files
+msx opf to-ampl case14.m --formulation=dc --out=./case14_ampl
+
+# Export PNNL ExaGO exascale HPC optimization bundle
+msx opf to-exago case14.m --app=scopflow --mpi-ranks=16 --out=./case14_exago
+```
+
+---
+
 ### `powerfactory`
 
 Tooling for **DIgSILENT PowerFactory** control block definitions (`.dsl`) and DGS grid exchange schemas (`.dgs`), including DSL static linting (`PF1001`–`PF1008`), composite frame binding, Newton-Raphson AC power flow, and projections to Siemens PSS/E and Modelica (`pf` and `digsilent` are aliases for `powerfactory`).
@@ -7502,6 +7562,11 @@ Civil & municipal water network commands for **US EPA EPANET 2.2** pressurized w
 Inspect, validate, solve hydraulics, lower to DAE, and project US EPA EPANET water networks (.inp)
 
 Options:
+  - `--screening-mode <string>`: Parallel screening mode: ALL_N1_OUTAGES | ALL_FIRE_HYDRANTS | COMBINED (default: "COMBINED")
+  - `--residual-pressure <number>`: Minimum residual pressure in meters (default: 14.06m = 20 psi) (default: 14.06)
+  - `--max-velocity <number>`: Maximum pipe velocity limit in m/s (default: 2.5) (default: 2.5)
+  - `--fire-flow <number>`: Standard test fire flow in L/s (default: 63.09 L/s = 1000 gpm) (default: 63.09)
+  - `--prefer-cpu <boolean>`: Prefer CPU SIMD execution over WebGPU (default: true) (default: true)
   - `--out, -o, --output <string>`: Output file path for generated Modelica code or compiled network .inp
   - `--nodes <string>`: Optional GeoJSON file containing node/junction/reservoir assets
   - `--dem <string>`: Optional digital elevation model raster (.asc, .grd)
@@ -7946,19 +8011,19 @@ CANONICAL URL: https://modelscript.org/languages/overview
 
 # Polyglot Language Ecosystem
 
-ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **81 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **91 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 
 ## Language Maturity Tiers
 
-Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**24 Stable**, **57 Beta**, **0 Preview**):
+Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**24 Stable**, **67 Beta**, **0 Preview**):
 
-| Tier        |   Badge   | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                       |
-| :---------- | :-------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stable**  | `Stable`  | Production-ready (**24 languages**) with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (including ModelScript, Modelica, AMPL, SysML v2, ReqIF, SSP, OWL 2, CSV, C, PSCAD, PSS/E, OpenDSS, SPICE, OLGA, PipelineStudio, EPANET, SWMM, EnergyPlus, GENSYS, URDF, PLCopen, STEP, OpenSCAD, and OpenUSD). |
-| **Beta**    |  `Beta`   | Domain-complete (**57 languages**) with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including DIgSILENT PowerFactory, GE PSLF, CIM/CGMES, OCPP, OpenADR, Optical/DWDM, 5G/6G RAN, Fiber OSP, HEC-RAS, TOUGH, MODFLOW 6, LandGEM, GTFS, AUTOSAR, Simulink, SIMPACK, ADAMS, AutomationML, NIST OSCAL, ISO 23952 QIF, CFD, FEA, Chemical/Bio, and the Radiology / Oncology / Surgical CAS suite). |
-| **Preview** | `Preview` | Early-access tier (**0 languages currently in Preview** — all 81 language packages meet or exceed `Beta` or `Stable` verification requirements).                                                                                                                                                                                                            |
+| Tier        |   Badge   | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| :---------- | :-------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stable**  | `Stable`  | Production-ready (**24 languages**) with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (including ModelScript, Modelica, AMPL, SysML v2, ReqIF, SSP, OWL 2, CSV, C, PSCAD, PSS/E, OpenDSS, SPICE, OLGA, PipelineStudio, EPANET, SWMM, EnergyPlus, GENSYS, URDF, PLCopen, STEP, OpenSCAD, and OpenUSD).                                                                                                                                                                                           |
+| **Beta**    |  `Beta`   | Domain-complete (**67 languages**) with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including MATPOWER, IEEE COMTRADE, IEC 61850 SCL, IWA ASM, OGC WaterML 2.0, ATP-EMTP, IEEE 1815 DNP3, ASPEN OneLiner, SEL Settings, USACE HEC-HMS, DIgSILENT PowerFactory, GE PSLF, CIM/CGMES, OCPP, OpenADR, Optical/DWDM, 5G/6G RAN, Fiber OSP, HEC-RAS, TOUGH, MODFLOW 6, LandGEM, GTFS, AUTOSAR, Simulink, SIMPACK, ADAMS, AutomationML, NIST OSCAL, ISO 23952 QIF, CFD, FEA, Chemical/Bio, and the Radiology / Oncology / Surgical CAS suite). |
+| **Preview** | `Preview` | Early-access tier (**0 languages currently in Preview** — all 91 language packages meet or exceed `Beta` or `Stable` verification requirements).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ---
 
@@ -7971,7 +8036,7 @@ Search by name, file extension, maturity tier, or engineering domain, or filter 
 Filter by platform group, maturity tier (`Stable`, `Beta`, `Preview`), industry, or capability across all engineering languages to inspect simulation engines, linear-memory DAE lowering, and polyglot projections:
 
 ### Polyglot Language Capability Matrix
-ModelScript supports 80 modeling, simulation, and engineering formats across 5 pipeline capabilities:
+ModelScript supports 90 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Tier | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | Modelica | `stable` | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -8011,6 +8076,13 @@ ModelScript supports 80 modeling, simulation, and engineering formats across 5 p
 | OCPP | `beta` | `.ocpp, .json` | EV smart charging & transformer load management | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OpenADR | `beta` | `.oadr, .xml, .json` | Automated demand response & peak shaving | ✓ | ✓ | ✓ | ✓ | ✓ |
 | LBNL TOUGH | `beta` | `.tgh, .dat` | Geothermal reservoir & wellbore flashing thermodynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| MATPOWER | `beta` | `.m` | Power flow & optimal power flow (OPF) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| IEEE COMTRADE | `beta` | `.cfg, .dat, .cff` | Digital fault recorder & transient disturbance analysis | ✓ | ✓ | ✓ | — | — |
+| IEC 61850 SCL | `beta` | `.scd, .cid, .ssd, .xml` | Substation automation, GOOSE & Sampled Values dataflow | ✓ | ✓ | ✓ | — | — |
+| ATP-EMTP | `beta` | `.atp, .dat` | Electromagnetic transient program card decks | ✓ | ✓ | ✓ | ✓ | — |
+| IEEE 1815 / DNP3 | `beta` | `.xml, .json, .dnp3` | Utility digital twin & SCADA deadband telemetry | ✓ | ✓ | ✓ | — | — |
+| ASPEN OneLiner / CAPE | `beta` | `.olx, .dxt` | Short-circuit fault currents & TOC protection coordination | ✓ | ✓ | ✓ | — | — |
+| SEL Relay Settings | `beta` | `.rdb, .rcf, .sel, .txt` | Schweitzer relay settings, SELogic & 50/51/21 protection | ✓ | ✓ | ✓ | — | — |
 | OLGA | `stable` | `.genkey` | Transient multiphase flow assurance | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PipelineStudio | `stable` | `.lps` | Gas & liquid pipeline hydraulics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | ECLIPSE | `beta` | `.data` | Reservoir engineering | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -8033,6 +8105,9 @@ ModelScript supports 80 modeling, simulation, and engineering formats across 5 p
 | USACE HEC-RAS | `beta` | `.g01, .g02, .rasgeo` | River basin & open-channel hydraulics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | USGS MODFLOW | `beta` | `.dis, .dis6, .npf, .wel` | Regional groundwater aquifers & 3D Darcy flow | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EPA LandGEM | `beta` | `.landgem, .lfg, .biogas` | Solid waste methane decay & landfill biogas CHP | ✓ | ✓ | ✓ | ✓ | ✓ |
+| USACE HEC-HMS | `beta` | `.basin, .hms` | Precipitation runoff, SCS-CN excess & Muskingum routing | ✓ | ✓ | ✓ | — | — |
+| OGC WaterML 2.0 | `beta` | `.waterml, .wml2, .xml` | Streamflow telemetry & stage-discharge rating curves | ✓ | ✓ | ✓ | — | — |
+| IWA Activated Sludge Models | `beta` | `.asm, .bsm, .wrrf` | Biokinetics, Petersen matrix & Takács clarifier settling | ✓ | ✓ | ✓ | — | — |
 | Aspen Plus / HYSYS | `beta` | `.bkp` | Chemical process flowsheets | ✓ | ✓ | ✓ | ✓ | ✓ |
 | gPROMS / PML | `beta` | `.gproms` | Equation-oriented dynamic process & distributed PDEs | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Cantera | `beta` | `.yaml` | Gas-phase chemical kinetics & NASA-7 thermochemistry | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -12702,6 +12777,618 @@ msx tough to-dae GeysersReservoir.tgh --out=geothermal.dae
 ```
 
 ================================================================================
+DOCUMENT: MATPOWER (.m) Language Reference
+CANONICAL URL: https://modelscript.org/languages/matpower
+================================================================================
+
+# MATPOWER Power System Simulation Cases (`.m`)
+
+The `@modelscript/matpower` package (`languages/matpower`) provides native support for **MATPOWER** power flow and optimal power flow network definitions (`.m`). MATPOWER is the gold-standard open-source electric power system simulation package widely used in academic research, ISO market design, and industrial grid benchmarking.
+
+ModelScript provides Ahead-of-Time WASM parsing, zero-GC linear memory DAE lowering, pre-flight topological and parameter integrity diagnostics (`MP2001`–`MP4001`), bi-directional projections with **Siemens PSS/E (`.raw`)**, and direct integration with the **Two-Tier Optimal Power Flow (OPF)** solver engine.
+
+---
+
+## Supported Case Structures
+
+MATPOWER models are structured around the standard `mpc` struct containing tabular matrix data:
+
+| Matrix / Struct   | Dimension                       | Description & Key Columns                                                                                                                                                                                                                       |
+| :---------------- | :------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`mpc.bus`**     | $N_{\text{bus}} \times 13+$     | Bus number, type (1: PQ, 2: PV, 3: Slack, 4: Isolated), active load ($P_d$), reactive load ($Q_d$), shunt conductance/susceptance ($G_s, B_s$), voltage magnitude ($V_m$), angle ($V_a$), base kV, and voltage limits ($V_{\min}, V_{\max}$).   |
+| **`mpc.gen`**     | $N_{\text{gen}} \times 10+$     | Generator bus index, active generation ($P_g$), reactive generation ($Q_g$), reactive bounds ($Q_{\min}, Q_{\max}$), voltage setpoint ($V_g$), MVA base ($m_{\text{base}}$), in-service status, and active power bounds ($P_{\min}, P_{\max}$). |
+| **`mpc.branch`**  | $N_{\text{branch}} \times 11+$  | From-bus, to-bus, series resistance ($r$), series reactance ($x$), total line charging susceptance ($b$), MVA thermal ratings (`rateA`, `rateB`, `rateC`), transformer off-nominal turns ratio, phase shift angle, and in-service status.       |
+| **`mpc.gencost`** | $N_{\text{gen}} \times (4+N_c)$ | Generator fuel and operating cost functions: polynomial ($c_2 P_g^2 + c_1 P_g + c_0$) or piecewise linear, including startup and shutdown costs.                                                                                                |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    M[".m MATPOWER Case File"] --> P["GLR Matrix Parser (parseMatpowerCase)"]
+    P --> AST["Typed MatpowerCase AST"]
+    AST --> LINT["Static Diagnostic Linter (lintMatpowerCase)"]
+    AST --> DAE["Zero-GC DAE Lowering (lowerMatpowerToDae)"]
+    AST --> PSSE["PSS/E Projection (matpowerToPsseRaw)"]
+    AST --> OPF["Two-Tier OPF Engine (msx opf solve)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena (DAEBuilder)"]
+    PSSE --> RAW["Siemens PSS/E RAW (.raw)"]
+    OPF --> SOL["LMPs, Thermal Flows & Dispatches"]
+```
+
+---
+
+## Pre-Flight Grid Diagnostics (`MP2001`–`MP4001`)
+
+The `@modelscript/matpower` diagnostic linter validates electrical sanity, topology, and numeric consistency prior to solver dispatch:
+
+| Error Code | Rule Name                 |  Severity   | Description                                                             |
+| :--------- | :------------------------ | :---------: | :---------------------------------------------------------------------- |
+| `MP2001`   | `duplicate-bus`           |  **Error**  | Duplicate bus number detected in `mpc.bus`.                             |
+| `MP2002`   | `branch-unknown-bus`      |  **Error**  | Transmission branch connects to non-existent from/to bus ID.            |
+| `MP2003`   | `gen-unknown-bus`         |  **Error**  | Generator attached to a bus number not defined in `mpc.bus`.            |
+| `MP3001`   | `no-slack-bus`            |  **Error**  | No swing/slack bus (`type = 3`) present in network definition.          |
+| `MP3002`   | `multiple-slack-buses`    | **Warning** | Multiple slack buses detected (distributed slack mode required).        |
+| `MP3003`   | `zero-impedance`          |  **Error**  | Transmission branch has zero series impedance ($r = 0, x = 0$).         |
+| `MP3004`   | `voltage-limits-inverted` |  **Error**  | Bus voltage minimum exceeds maximum ($V_{\min} > V_{\max}$).            |
+| `MP3005`   | `gen-plimits-inverted`    |  **Error**  | Generator active capability inverted ($P_{\min} > P_{\max}$).           |
+| `MP3006`   | `gen-qlimits-inverted`    |  **Error**  | Generator reactive capability inverted ($Q_{\min} > Q_{\max}$).         |
+| `MP4001`   | `isolated-bus`            | **Warning** | Bus is electrically isolated without any in-service branch connections. |
+
+---
+
+## Bi-Directional Conversion & Projections
+
+### MATPOWER to PSS/E (`matpowerToPsseRaw`)
+
+Projects MATPOWER cases to standard Siemens PTI PSS/E v33 `.raw` files:
+
+- Converts bus voltage angles from degrees to radians and back.
+- Splits combined generation/load buses into distinct PSS/E generator and load records.
+- Preserves transformer off-nominal turns ratio and complex phase shift angles.
+- Maps branch thermal `rateA` ratings to PSS/E MVA ratings.
+
+### Lowering to Linear WebAssembly DAE
+
+Lowers power balance equations into ModelScript's zero-GC WebAssembly `DAEBuilder` linear arena (`lowerMatpowerToDae`):
+
+- Voltage magnitudes $V_i$ and phase angles $\theta_i$ registered as continuous algebraic variables.
+- Active and reactive nodal power injection mismatch equations:
+  $$P_i(\theta, V) - P_{g,i} + P_{d,i} = 0$$
+  $$Q_i(\theta, V) - Q_{g,i} + Q_{d,i} = 0$$
+- Ready for Block Lower Triangular (BLT) decomposition, Newton-Raphson power flow, and continuous dynamic simulation.
+
+---
+
+## Command-Line Interface (`msx matpower`)
+
+The `modelscript` / `msx` CLI includes dedicated tools for inspecting, linting, solving, and transforming MATPOWER cases:
+
+```bash
+# Print a tabular network summary (buses, lines, generators, generation & load capacity)
+msx matpower summary case14.m
+
+# Run pre-flight electrical and topological integrity lint checks
+msx matpower lint case14.m
+
+# Solve DC Optimal Power Flow using Tier 2 Direct Zero-GC solver
+msx matpower solve case14.m --formulation=dc
+
+# Solve non-linear AC Optimal Power Flow
+msx matpower solve case14.m --formulation=ac
+
+# Convert MATPOWER case to Siemens PSS/E RAW format
+msx matpower to-psse case14.m --out=case14.raw
+
+# Lower directly into zero-GC WebAssembly DAE arena text format
+msx matpower to-dae case14.m --out=case14_dae.txt
+```
+
+---
+
+## Programmatic TypeScript API
+
+```typescript
+import { parseMatpowerCase, lintMatpowerCase, matpowerToPsseRaw, lowerMatpowerToDae } from "@modelscript/matpower";
+import { solveDcOpfAsync } from "@modelscript/simulate/opf";
+import fs from "node:fs";
+
+// 1. Parse MATPOWER .m case file
+const mCode = fs.readFileSync("case14.m", "utf-8");
+const mpc = parseMatpowerCase(mCode);
+
+// 2. Validate topological sanity
+const diagnostics = lintMatpowerCase(mpc);
+if (diagnostics.length > 0) {
+  console.warn("Diagnostics found:", diagnostics);
+}
+
+// 3. Lower to linear memory DAE arena
+const arena = lowerMatpowerToDae(mpc);
+console.log(`DAE Variables: ${arena.getVarCount()}, Equations: ${arena.getEqCount()}`);
+
+// 4. Export to PSS/E RAW
+const psseCase = matpowerToPsseRaw(mpc);
+```
+
+================================================================================
+DOCUMENT: IEEE COMTRADE (.cfg, .dat, .cff) Language Reference
+CANONICAL URL: https://modelscript.org/languages/comtrade
+================================================================================
+
+# IEEE COMTRADE Fault Transients (`.cfg`, `.dat`, `.cff`)
+
+The `@modelscript/comtrade` package (`languages/comtrade`) provides native support for **IEEE C37.111** and **IEC 60255-24 COMTRADE (Common Format for Transient Data Exchange)** files. COMTRADE is the universal industry standard for transient fault recordings captured by digital protective relays, disturbance fault recorders (DFRs), digital fault locators, and power quality meters.
+
+ModelScript reads and writes COMTRADE 1991, 1999, and 2013 standards across ASCII, binary 16-bit, and single-file container (`.cff`) formats, extracts sliding-window dynamic Discrete Fourier Transform (DFT) RMS phasors, and replays recorded fault trajectories in linear-memory WebAssembly DAE arenas.
+
+---
+
+## Supported File Formats & Schemas
+
+| Format / Extension  | Specification                 | Description                                                                                                                                                    |
+| :------------------ | :---------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`.cfg`**          | IEEE C37.111 Configuration    | Station name, recording device ID, channel roster, scaling multipliers ($a, b$), channel phase identifiers, line frequency, sampling rates, timestamp headers. |
+| **`.dat` (ASCII)**  | Comma-delimited text          | Sample number, timestamp in microseconds ($t_{\mu s}$), analog values, digital boolean status words.                                                           |
+| **`.dat` (Binary)** | 16-bit / 32-bit signed binary | Little-endian packed binary samples with high-density storage for high-frequency transients.                                                                   |
+| **`.cff`**          | Single-file container         | Standard XML/MIME container packaging configuration, data, header (`.hdr`), and information (`.inf`) blocks into a single file.                                |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    C[".cfg + .dat or .cff"] --> P["COMTRADE Reader (parseComtradeCfg / parseComtradeDatAscii)"]
+    P --> REC["Typed ComtradeRecord"]
+    REC --> LINT["Signal & Scaling Linter (lintComtradeRecord)"]
+    REC --> DFT["Sliding-Window DFT Phasor Extractor (extractPhasorSeries)"]
+    REC --> DAE["Zero-GC DAE Arena Lowering (lowerComtradeToDae)"]
+    REC --> W["COMTRADE Writer (writeComtradeCff)"]
+
+    DAE --> ARENA["Linear Memory DAE Playback Arena"]
+    W --> CFF["Bundled COMTRADE Container (.cff)"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`COM1001`–`COM4001`)
+
+The `@modelscript/comtrade` linter audits signal completeness and data format integrity:
+
+| Code      |  Severity   | Description                                                               |
+| :-------- | :---------: | :------------------------------------------------------------------------ |
+| `COM1001` |  **Error**  | Configuration header syntax error or missing mandatory fields.            |
+| `COM1002` |  **Error**  | Channel count mismatch between `.cfg` header and `.dat` columns.          |
+| `COM2001` |  **Error**  | Non-monotonic timestamps or backwards time jumps in data stream.          |
+| `COM3001` | **Warning** | Analog sample clipping beyond analog channel $A_{\min} / A_{\max}$ scale. |
+| `COM4001` | **Warning** | Missing or irregular sampling rate declaration in multi-rate records.     |
+
+---
+
+## Command-Line Interface (`msx comtrade`)
+
+```bash
+# Print recording header summary, channel roster, and sampling rates
+msx comtrade summary fault_record.cfg
+
+# Lint recording for channel mismatches and timestamp monotonicity
+msx comtrade lint fault_record.cfg
+
+# Extract dynamic DFT RMS phasor series for analog channel 0
+msx comtrade extract-phasor fault_record.cfg --channel=0
+
+# Bundle split .cfg and .dat files into single-file .cff container
+msx comtrade to-cff fault_record.cfg -o bundled_fault.cff
+
+# Lower recording into WebAssembly DAE linear arena for solver playback
+msx comtrade to-dae fault_record.cfg
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`comtrade_extract_phasor`**: Performs sliding-window 1-cycle Discrete Fourier Transform (DFT) phasor estimation (RMS magnitude, phase angle in degrees, nominal frequency) from COMTRADE records for protective relaying evaluation.
+
+================================================================================
+DOCUMENT: IEC 61850 SCL (.scd, .cid, .ssd, .xml) Language Reference
+CANONICAL URL: https://modelscript.org/languages/scl
+================================================================================
+
+# IEC 61850 Substation Configuration Language (`.scd`, `.cid`, `.ssd`)
+
+The `@modelscript/scl` package (`languages/scl`) provides native support for **IEC 61850 Substation Configuration Language (SCL)** files. IEC 61850 is the international gold standard for electrical substation automation, digital control architectures, protective relay communications, and smart grid interoperability.
+
+ModelScript parses SCL XML files across Edition 1 and Edition 2 revisions (`.scd`, `.cid`, `.ssd`, `.sed`, `.icd`), audits real-time Ethernet GOOSE and Sampled Values (SV) publisher-subscriber communication latency against IEC 61850-5 Type 1A fast-trip performance classes ($\le 4\text{ ms}$), synthesizes node-breaker Single-Line Diagram (SLD) grid topologies, and lowers automation logic to WebAssembly DAE arenas.
+
+---
+
+## Supported SCL XML Schema Elements
+
+| SCL Section             | Schema Tag            | Description                                                                                                                                       |
+| :---------------------- | :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Header**              | `<Header>`            | Substation configuration ID, version, revision, tooling vendor metadata.                                                                          |
+| **Substation**          | `<Substation>`        | Primary physical equipment: `<VoltageLevel>`, `<Bay>`, `<ConductingEquipment>` (circuit breakers `CBR`, disconnectors `DIS`, transformers `PTR`). |
+| **Communication**       | `<Communication>`     | Subnetwork addressing: `<SubNetwork>`, `<ConnectedAP>`, GSE (GOOSE), and SMV (Sampled Values) multicast MAC/IP and APPID allocations.             |
+| **IED**                 | `<IED>`               | Intelligent Electronic Device definitions: Access points, Logical Devices (`LDevice`), Logical Nodes (`LN0`, `XCBR`, `CSWI`, `PTOC`, `PDIS`).     |
+| **Data Type Templates** | `<DataTypeTemplates>` | Standard and custom LNodeType, DOType, DAType, and EnumType structures.                                                                           |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    S[".scd / .cid / .ssd SCL XML"] --> P["SCL Parser (parseSclXml)"]
+    P --> DOC["Typed SclDocument AST"]
+    DOC --> LINT["Engineering Rule Linter (lintSclDocument)"]
+    DOC --> GOOSE["GOOSE & SV Latency Auditor (validateGooseStreams)"]
+    DOC --> SLD["Node-Breaker SLD Synthesizer (sclToGridTopology)"]
+    DOC --> DAE["Zero-GC DAE Lowering (lowerSclToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    SLD --> TOP["Substation Bus-Branch / Node-Breaker Graph"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`SCL1001`–`SCL4001`)
+
+The `@modelscript/scl` linter verifies schema compliance and automation engineering rules:
+
+| Code      |  Severity   | Description                                                              |
+| :-------- | :---------: | :----------------------------------------------------------------------- |
+| `SCL1001` |  **Error**  | XML syntax error or missing mandatory `<Header>` element.                |
+| `SCL2001` |  **Error**  | Duplicate IED name, VoltageLevel, or Bay identifier in substation scope. |
+| `SCL3001` |  **Error**  | GSEControl or SampledValueControl references non-existent Dataset.       |
+| `SCL3002` | **Warning** | GOOSE trip signal exceeds Type 1A 4ms latency boundary requirement.      |
+| `SCL4001` | **Warning** | Conducting equipment terminal references unknown ConnectivityNode.       |
+
+---
+
+## Command-Line Interface (`msx scl`)
+
+```bash
+# Print substation voltage levels, bays, configured IEDs, and subnetworks
+msx scl summary substation.scd
+
+# Audit GOOSE communication streams and check Type 1A trip latency compliance
+msx scl validate-goose substation.scd
+
+# Lint SCL engineering rules and data binding references
+msx scl lint substation.scd
+
+# Export synthesized node-breaker Single-Line Diagram topology to JSON
+msx scl to-sld substation.scd -o topology.json
+
+# Lower substation logical node interlocks to WebAssembly DAE arena
+msx scl to-dae substation.scd
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`scl_validate_goose`**: Inspects GOOSE publisher/subscriber bindings, validates dataset FCDA references against ExtRef subscribers, and reports Type 1A/1B communication health directly to AI agents.
+
+================================================================================
+DOCUMENT: ATP-EMTP (.atp, .dat) Language Reference
+CANONICAL URL: https://modelscript.org/languages/atp
+================================================================================
+
+# ATP-EMTP Electromagnetic Transients (`.atp`, `.dat`)
+
+The `@modelscript/atp` package (`languages/atp`) provides native support for **Alternative Transients Program (ATP-EMTP)** card decks. ATP-EMTP is the venerable open-source electromagnetic transient program used globally for simulating high-frequency power system phenomena, lightning surge propagation, switching overvoltages, insulation coordination, and power electronics interactions.
+
+ModelScript compiles 80-column ATP fixed-column and free-format card decks into zero-GC WebAssembly DAE linear arenas, verifies branch connectivity and time step stability (`ATP1001`–`ATP4001`), and simulates nodal transient voltages using **Dommel's companion-matrix trapezoidal integration rule**.
+
+---
+
+## Supported ATP-EMTP Deck Cards
+
+| Card Type             | Column Format                                       | Description                                                                                          |
+| :-------------------- | :-------------------------------------------------- | :--------------------------------------------------------------------------------------------------- |
+| **Control Card**      | `DELTA T, TMAX, XOPT, COPT`                         | Simulation time step ($\Delta t$), maximum stop time ($t_{\max}$), frequency options, plot controls. |
+| **RLC Branch**        | Columns 1–2: Node 1, Node 2, $R, L, C$              | Lumped series and parallel branch impedances ($R$ in $\Omega$, $L$ in mH, $C$ in $\mu\text{F}$).     |
+| **Transmission Line** | Berger/Clarke/JMarti card                           | Distributed parameter transmission lines with surge impedance ($Z_c$) and propagation speed ($v$).   |
+| **Switch Card**       | Node 1, Node 2, $T_{\text{close}}, T_{\text{open}}$ | Time-controlled circuit breakers, closing resistor insertion, current-zero opening.                  |
+| **Source Card**       | Type 14 / Type 11 AC/DC sources                     | Sinusoidal AC voltage and current sources with amplitude, frequency, and phase angle.                |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    A[".atp / .dat Card Deck"] --> P["ATP Deck Parser (parseAtp)"]
+    P --> AST["Typed AtpCase AST"]
+    AST --> LINT["Circuit Integrity Linter (lintAtpCase)"]
+    AST --> SOLVE["Dommel Trapezoidal Solver (simulateAtpCase)"]
+    AST --> DAE["Zero-GC DAE Lowering (lowerAtpToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    SOLVE --> PLOT["Nodal Voltage Trajectories & Transients"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`ATP1001`–`ATP4001`)
+
+The `@modelscript/atp` linter audits card deck formatting and electrical topology:
+
+| Code      |  Severity   | Description                                                                          |
+| :-------- | :---------: | :----------------------------------------------------------------------------------- |
+| `ATP1001` |  **Error**  | Syntax error in card formatting or missing mandatory control card.                   |
+| `ATP2001` |  **Error**  | Non-positive simulation time step ($\Delta t \le 0$) or duration ($t_{\max} \le 0$). |
+| `ATP3001` | **Warning** | Isolated circuit node detected with no ground reference or source path.              |
+| `ATP4001` |  **Error**  | Branch parameters are invalid (negative resistance or non-physical inductance).      |
+
+---
+
+## Command-Line Interface (`msx atp`)
+
+```bash
+# Print summary of branches, switches, sources, and time step parameters
+msx atp summary lightning_surge.atp
+
+# Run pre-flight lint diagnostics for isolated nodes and card formatting
+msx atp lint lightning_surge.atp
+
+# Simulate electromagnetic transient response using Dommel companion matrix
+msx atp simulate lightning_surge.atp
+
+# Lower circuit deck into WebAssembly DAE arena
+msx atp to-dae lightning_surge.atp
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`atp_simulate_transient`**: Executes Dommel companion-matrix trapezoidal transient simulation for fast electromagnetic pulse, switching surge, and RLC oscillatory analysis directly in AI agent pipelines.
+
+================================================================================
+DOCUMENT: IEEE 1815 / DNP3 (.xml, .json, .dnp3) Language Reference
+CANONICAL URL: https://modelscript.org/languages/dnp3
+================================================================================
+
+# IEEE 1815 / DNP3 SCADA Telemetry (`.xml`, `.json`, `.dnp3`)
+
+The `@modelscript/dnp3` package (`languages/dnp3`) provides native support for the **IEEE 1815 / DNP3 (Distributed Network Protocol)** standard. DNP3 is the prevailing communications protocol for SCADA (Supervisory Control and Data Acquisition), remote terminal units (RTUs), programmable logic controllers (PLCs), and intelligent substation devices across North American and international electric and water utilities.
+
+ModelScript parses standard DNP3 Device Profile XML and JSON documents, implements DNP3 analog deadband event filtering, engineering unit scaling transformations ($y = mx + b$), signal reconstruction verification, and lowers SCADA point databases to zero-GC WebAssembly DAE linear arenas for utility digital twins.
+
+---
+
+## Supported DNP3 Point Objects
+
+| Group             | Object Type    | Representation & Parameters                                                                                                                                      |
+| :---------------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Group 1 / 2**   | Binary Inputs  | Digital breaker status, alarm contacts, latch flags, event class assignment (Class 1, 2, 3).                                                                     |
+| **Group 10 / 12** | Binary Outputs | Remote control relays, trip/close commands, pulse/latch directives (`Select-Before-Operate`).                                                                    |
+| **Group 30 / 32** | Analog Inputs  | Continuous measurements (bus voltage, MW/MVAR flow, water tank level, pipe pressure), deadband threshold, scaling multiplier ($m$), scaling offset ($b$), units. |
+| **Group 40 / 41** | Analog Outputs | Generation dispatch setpoints, voltage regulator targets, valve position setpoints.                                                                              |
+| **Group 20 / 22** | Counters       | Energy accumulation (MWh), totalized pumped water volume, rollover boundaries.                                                                                   |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    D[".xml / .json DNP3 Profile"] --> P["DNP3 Profile Parser (parseDnp3ProfileXml)"]
+    P --> PROF["Typed Dnp3DeviceProfile AST"]
+    PROF --> LINT["SCADA Profile Linter (lintDnp3Profile)"]
+    PROF --> TEL["Deadband Telemetry Filter (processTelemetryStream)"]
+    PROF --> DAE["Zero-GC DAE Lowering (lowerDnp3ToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    TEL --> EVT["Filtered Events, Compression Ratio & RMSE"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`DNP1001`–`DNP4001`)
+
+The `@modelscript/dnp3` linter audits point mapping and scaling configuration:
+
+| Code      |  Severity   | Description                                                          |
+| :-------- | :---------: | :------------------------------------------------------------------- |
+| `DNP1001` |  **Error**  | XML/JSON profile syntax error or missing device name.                |
+| `DNP2001` |  **Error**  | Duplicate point index within the same point object group.            |
+| `DNP3001` | **Warning** | Negative or non-physical deadband threshold on analog input.         |
+| `DNP4001` | **Warning** | Zero scaling multiplier on analog channel prevents signal inversion. |
+
+---
+
+## Command-Line Interface (`msx dnp3`)
+
+```bash
+# Print SCADA point roster (binary inputs, analog inputs, controls, counters)
+msx dnp3 summary rtu_substation_profile.xml
+
+# Lint profile for duplicate point indices and invalid scaling
+msx dnp3 lint rtu_substation_profile.xml
+
+# Filter noisy telemetry stream using DNP3 deadband thresholding
+msx dnp3 process-telemetry rtu_substation_profile.xml --deadband=0.5
+
+# Lower SCADA device database into WebAssembly DAE arena for digital twin emulation
+msx dnp3 to-dae rtu_substation_profile.xml
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`dnp3_process_telemetry`**: Filters high-frequency telemetry readings via DNP3 deadband thresholding and evaluates signal reconstruction accuracy (compression ratio, residual max, and RMSE) for agent-driven SCADA compression.
+
+================================================================================
+DOCUMENT: ASPEN OneLiner / CAPE (.olx, .dxt) Language Reference
+CANONICAL URL: https://modelscript.org/languages/oneliner
+================================================================================
+
+# ASPEN OneLiner / CAPE Protection (`.olx`, `.dxt`)
+
+The `@modelscript/oneliner` package (`languages/oneliner`) provides native support for **ASPEN OneLiner** and **Siemens CAPE (Computer-Aided Protection Engineering)** short-circuit and relay coordination cases (`.olx`, `.dxt`). OneLiner and CAPE are the premier protection engineering tools used across electric utilities and ISOs for fault calculations, breaker rating evaluations, and NERC PRC-027 protection coordination studies.
+
+ModelScript parses `.dxt` ASCII and JSON cases, compiles symmetrical component sequence networks (positive sequence $Z_1$, zero sequence $Z_0$, and mutual zero-sequence couplings $Z_{0m}$), calculates 3-phase and single line-to-ground (SLG) fault currents, evaluates **IEEE C37.112 Standard Time-Overcurrent (TOC)** trip times, and lowers protection models into zero-GC WebAssembly DAE linear arenas.
+
+---
+
+## Supported Protection Elements & Sequence Networks
+
+| Network Element       | Data Fields                                                    | Description                                                                                                         |
+| :-------------------- | :------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| **Bus**               | `id`, `name`, `baseKv`, `area`, `zone`                         | Substation bus node with nominal voltage rating.                                                                    |
+| **Branch / Line**     | `bus1`, `bus2`, $Z_1 (R + jX)$, $Z_0 (R_0 + jX_0)$, $B_1, B_0$ | Transmission lines and cables with positive and zero sequence series impedances and line charging.                  |
+| **Mutual Coupling**   | `branch1`, `branch2`, $Z_{0m} (R_{0m} + jX_{0m})$              | Zero-sequence electromagnetic mutual coupling between parallel transmission circuits on shared rights-of-way.       |
+| **Generator**         | $X''_d + jR$, $Z_0$                                            | Synchronous and inverter-based resource subtransient short-circuit contributions.                                   |
+| **Overcurrent Relay** | `pickupA`, `ctRatio`, `timeDial`, `curve`                      | ANSI 50 instantaneous and ANSI 51 time-overcurrent curves (IEEE Moderately, Very, Extremely Inverse, US CO-8, IEC). |
+| **Distance Relay**    | ANSI 21 Zone 1, 2, 3 reach ($\Omega$)                          | Mho and quadrilateral distance protection zones with reach impedances and directional time delays.                  |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    O[".olx / .dxt OneLiner Case"] --> P["OneLiner Parser (parseOneLiner)"]
+    P --> CASE["Typed OneLinerCase AST"]
+    CASE --> LINT["Coordination Linter (lintOneLinerCase)"]
+    CASE --> FLT["Symmetrical Fault Solver (calculateBusFaultCurrents)"]
+    CASE --> TOC["IEEE C37.112 Curve Engine (calculateOvercurrentTripTime)"]
+    CASE --> DAE["Zero-GC DAE Lowering (lowerOneLinerToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    FLT --> CURR["3-Phase & SLG Thevenin Currents"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`OLX1001`–`OLX4001`)
+
+The `@modelscript/oneliner` linter audits electrical validity and protection settings:
+
+| Code      |  Severity   | Description                                                                                 |
+| :-------- | :---------: | :------------------------------------------------------------------------------------------ |
+| `OLX1001` |  **Error**  | Branch references undefined from/to bus ID.                                                 |
+| `OLX2001` |  **Error**  | Mutual coupling references unknown branch identifier.                                       |
+| `OLX3001` | **Warning** | Relay pickup current ($I_{\text{pickup}} \le 0$) or time dial ($TD \le 0$) is non-positive. |
+| `OLX4001` | **Warning** | Zone 2 distance reach is smaller than Zone 1 reach ($Z_2 \le Z_1$).                         |
+
+---
+
+## Command-Line Interface (`msx oneliner`)
+
+```bash
+# Print summary of buses, lines, mutuals, generators, and protective relays
+msx oneliner summary utility_transmission.dxt
+
+# Lint case for missing bus references and invalid relay settings
+msx oneliner lint utility_transmission.dxt
+
+# Calculate 3-phase and SLG short-circuit fault currents at Bus 101
+msx oneliner solve-fault utility_transmission.dxt --bus=101
+
+# Export case to formatted OneLiner DXT text
+msx oneliner to-dxt utility_transmission.dxt -o exported.dxt
+
+# Lower short-circuit network into WebAssembly DAE arena
+msx oneliner to-dae utility_transmission.dxt
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`oneliner_calculate_fault`**: Computes Thevenin sequence impedances ($Z_1, Z_0$), 3-phase short-circuit current ($I_{\text{3ph}} = \frac{V_{\text{LN}}}{Z_1}$), SLG fault current ($I_{\text{slg}} = \frac{3 V_{\text{LN}}}{2 Z_1 + Z_0}$), and $X/R$ ratios directly for AI protective coordination agents.
+
+================================================================================
+DOCUMENT: SEL Relay Settings (.rdb, .rcf, .sel, .txt) Language Reference
+CANONICAL URL: https://modelscript.org/languages/sel
+================================================================================
+
+# SEL Relay Protection Settings (`.rdb`, `.rcf`, `.sel`, `.txt`)
+
+The `@modelscript/sel` package (`languages/sel`) provides native support for **Schweitzer Engineering Laboratories (SEL)** protective relay settings across the SEL-300, SEL-400, SEL-700, and modern Axion series (`.rdb`, `.rcf`, `.sel`, `.txt`). SEL relays are the dominant numerical protection platform across North American and global utility substations, generation plants, and industrial switchgear.
+
+ModelScript parses SEL ASCII and JSON settings decks, compiles **SELogic boolean control equations** (including nested parentheses, AND/OR/NOT operators, and recursive cross-variable dependencies), solves **IEEE Standard C37.112** inverse-time overcurrent curves (U1–U5, C1–C5), and lowers protection state machines into zero-GC WebAssembly DAE linear arenas.
+
+---
+
+## Supported Protection Elements & SELogic
+
+| Protection Element                      | Setting Tags              | Description                                                                                 |
+| :-------------------------------------- | :------------------------ | :------------------------------------------------------------------------------------------ |
+| **Instantaneous Overcurrent (50P/50G)** | `50P1P, 50P2P, 50G1P`     | High-speed instantaneous trip pickups for phase and ground faults.                          |
+| **Time-Overcurrent (51P/51G)**          | `51P1P, 51P1C, 51P1TD`    | Inverse-time curve family selection (U1–U5, C1–C5), pickup current, and time dial settings. |
+| **Distance Protection (21P/21G)**       | `Z1P, Z2P, Z3P, Z1D, Z2D` | Phase and ground distance reaches in secondary ohms and timer delay cycles.                 |
+| **Undervoltage / Overvoltage (27/59)**  | `27P, 59P`                | Bus undervoltage and line overvoltage threshold triggers.                                   |
+| **Frequency Elements (81U/81O)**        | `81U, 81O`                | Underfrequency load shedding and overfrequency generation tripping thresholds.              |
+| **SELogic Control Equations**           | `TRIP, CLOSE, SV1, SV2`   | Boolean logic expressions combining relay words (e.g. `TRIP = 50P1 OR 51P1T OR Z1P`).       |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    S[".sel / .txt / .rdb Settings"] --> P["SEL Settings Parser (parseSELSettings)"]
+    P --> SET["Typed SELRelaySettings AST"]
+    SET --> LINT["Relay Settings Linter (lintSelSettings)"]
+    SET --> LOG["SELogic Evaluator (evaluateRelayProtection)"]
+    SET --> TOC["IEEE C37.112 TOC Solver (calculateOvercurrentTime)"]
+    SET --> DAE["Zero-GC DAE Lowering (lowerSelToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    LOG --> TRIP["Relay Trip/Close Decisions & Elements"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`SEL1001`–`SEL4001`)
+
+The `@modelscript/sel` linter audits relay configuration consistency:
+
+| Code      |  Severity   | Description                                                                       |
+| :-------- | :---------: | :-------------------------------------------------------------------------------- |
+| `SEL1001` |  **Error**  | Relay model identifier or active settings group is missing.                       |
+| `SEL2001` |  **Error**  | SELogic expression syntax error (mismatched parentheses or invalid operator).     |
+| `SEL3001` | **Warning** | Relay word referenced in SELogic equation is undefined.                           |
+| `SEL4001` |  **Error**  | Instrument transformer ratio (CT or PT) is non-positive ($CTR \le 0, PTR \le 0$). |
+
+---
+
+## Command-Line Interface (`msx sel`)
+
+```bash
+# Print summary of relay model, active group, CT/PT ratios, and protection elements
+msx sel summary sel421_line_protection.txt
+
+# Run pre-flight lint diagnostics for SELogic syntax and transformer ratios
+msx sel lint sel421_line_protection.txt
+
+# Evaluate relay protection trip decisions given measured phase current
+msx sel evaluate-protection sel421_line_protection.txt --current=1250.0
+
+# Export settings to canonical SEL ASCII format
+msx sel to-ascii sel421_line_protection.txt -o exported.sel
+
+# Lower relay trip logic and TOC curves to WebAssembly DAE arena
+msx sel to-dae sel421_line_protection.txt
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`sel_evaluate_protection`**: Evaluates SEL relay 50P/51P/Z1P elements, calculates inverse-time overcurrent trip durations under IEEE C37.112 curves, and iteratively resolves SELogic boolean equations for agent-driven protection analysis.
+
+================================================================================
 DOCUMENT: OLGA (.genkey) Language Reference
 CANONICAL URL: https://modelscript.org/languages/olga
 ================================================================================
@@ -15114,6 +15801,250 @@ msx landgem biogas MetroLandfill.landgem
 # Lower methane decay dynamics into ModelScript DAE arena
 msx landgem to-dae MetroLandfill.landgem --out=biogas.dae
 ```
+
+================================================================================
+DOCUMENT: USACE HEC-HMS (.basin, .hms) Language Reference
+CANONICAL URL: https://modelscript.org/languages/hec-hms
+================================================================================
+
+# USACE HEC-HMS Watershed Hydrology (`.basin`, `.hms`)
+
+The `@modelscript/hec-hms` package (`languages/hec-hms`) provides native support for the **US Army Corps of Engineers Hydrologic Engineering Center's Hydrologic Modeling System (HEC-HMS)** basin and meteorological models. HEC-HMS is the global industry standard for watershed rainfall-runoff simulation, flood forecasting, urban drainage master planning, and reservoir inflow modeling.
+
+ModelScript compiles HEC-HMS basin decks (`.basin`) into zero-GC WebAssembly DAE linear arenas, verifies topological drainage networks with pre-flight diagnostics (`HMS1001`–`HMS3003`), simulates SCS Dimensionless Unit Hydrograph convolution, routes reaches via the Muskingum method, and directly projects peak flows to **HEC-RAS unsteady flow decks (`.u01`)**.
+
+---
+
+## Supported Hydrologic Model Elements
+
+| Basin Element | Representation                       | Hydrologic & Hydraulic Properties                                                                                              |
+| :------------ | :----------------------------------- | :----------------------------------------------------------------------------------------------------------------------------- |
+| **Subbasin**  | Watershed drainage sub-catchment     | Drainage area ($A$), SCS Curve Number ($CN$), initial abstraction ($I_a$), lag time ($T_{\text{lag}}$), impervious percentage. |
+| **Reach**     | River / stream channel segment       | Routing method, Muskingum travel time parameter $K$ (hours), weighting factor $X$ ($0.0 \le X \le 0.5$), subreaches.           |
+| **Junction**  | Confluence of subbasins/reaches      | Conservation of mass $\sum Q_{\text{in}} = Q_{\text{out}}$, topological routing node.                                          |
+| **Reservoir** | Detention pond / storage impoundment | Elevation-storage-outflow discharge rating curves, spillways, gated orifices.                                                  |
+| **Sink**      | Watershed outlet / terminal boundary | Terminal drainage point with aggregated hydrograph reporting.                                                                  |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    H[".basin / .hms Basin Deck"] --> P["HEC-HMS Parser (parseHmsBasin)"]
+    P --> AST["Typed HmsBasinModel AST"]
+    AST --> LINT["Topological & Parameter Linter (lintHmsBasin)"]
+    AST --> SIM["SCS-CN & Muskingum Solver (simulateSubbasinRunoff / routeMuskingum)"]
+    AST --> DAE["Zero-GC DAE Lowering (lowerHmsToDae)"]
+    SIM --> RAS["HEC-RAS Boundary Projection (hmsHydrographToHecRasU01)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena (DAEBuilder)"]
+    RAS --> U01["HEC-RAS Unsteady Deck (.u01)"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`HMS1001`–`HMS3003`)
+
+The HEC-HMS diagnostic suite validates watershed topology and hydrologic parameters before simulation:
+
+| Code      | Severity  | Description                                                                                |
+| :-------- | :-------: | :----------------------------------------------------------------------------------------- |
+| `HMS1001` | **Error** | Non-positive subbasin drainage area ($A \le 0$).                                           |
+| `HMS2001` | **Error** | Element references unknown or non-existent downstream element.                             |
+| `HMS2002` | **Error** | Directed cycle detected in watershed drainage connectivity graph.                          |
+| `HMS3001` | **Error** | SCS Curve Number outside physically valid bounds ($CN \le 0$ or $CN > 100$).               |
+| `HMS3002` | **Error** | Muskingum weighting factor $X$ outside numerical stability range ($X < 0.0$ or $X > 0.5$). |
+| `HMS3003` | **Error** | Muskingum travel time parameter $K \le 0$.                                                 |
+
+---
+
+## Command-Line Interface (`msx hec-hms`)
+
+```bash
+# Print summary of subbasins, reaches, junctions, and drainage area
+msx hec-hms summary CastroValley.basin
+
+# Run pre-flight topological and hydrologic parameter validation
+msx hec-hms lint CastroValley.basin
+
+# Simulate 24-hour SCS-CN rainfall runoff event (50mm storm)
+msx hec-hms simulate-runoff CastroValley.basin --rain=75.0
+
+# Project simulated peak hydrograph to HEC-RAS unsteady flow boundary (.u01)
+msx hec-hms to-ras CastroValley.basin -o boundary.u01
+
+# Lower basin model into WebAssembly DAE arena
+msx hec-hms to-dae CastroValley.basin
+```
+
+---
+
+## MCP Agent Tool Integration
+
+AI agents connect to `@modelscript/hec-hms` through dedicated MCP tools:
+
+- **`hec_hms_simulate_runoff`**: Evaluates SCS Curve Number excess precipitation, dimensionless unit hydrograph convolution, and Muskingum channel routing directly within agent reasoning workflows.
+
+================================================================================
+DOCUMENT: OGC WaterML 2.0 (.waterml, .wml2, .xml) Language Reference
+CANONICAL URL: https://modelscript.org/languages/waterml
+================================================================================
+
+# OGC WaterML 2.0 Hydrologic Telemetry (`.waterml`, `.wml2`, `.xml`)
+
+The `@modelscript/waterml` package (`languages/waterml`) provides native support for the **Open Geospatial Consortium (OGC) WaterML 2.0 / TimeseriesML (OGC 12-031r4 / WMO 1083)** international standard. WaterML 2.0 is the official standard for exchanging water observations, river gauging station telemetry, streamflow timeseries, and water quality observations across agencies such as the USGS (National Water Information System / NWIS), BOM Australia, and Environment Canada.
+
+ModelScript ingests XML/JSON WaterML timeseries, validates sensor metadata and timestamp monotonicity (`WML1001`–`WML3001`), fits non-linear power-law stage-discharge rating curves ($Q = a(h - h_0)^b$), and projects streamflow observations directly into **HEC-RAS unsteady flow (`.u01`)** and **EPANET demand pattern (`[PATTERNS]`)** boundary decks.
+
+---
+
+## Supported WaterML 2.0 Structures
+
+| Structure              | XML Schema Element        | Description                                                                                                                         |
+| :--------------------- | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------- |
+| **Observation Series** | `<MeasurementTimeseries>` | Monotonically timestamped hydrologic observations with measurement units, default interpolation, and monitoring point metadata.     |
+| **Data Points**        | `<MeasurementTVP>`        | Time-Value Pairs (`<time>`, `<value>`) with observation quality codes and sensor metadata.                                          |
+| **Monitoring Point**   | `<MonitoringPoint>`       | Station ID, geographic coordinates (latitude, longitude, elevation), river reach name, datum metadata.                              |
+| **Observed Property**  | `<observedProperty>`      | Streamflow discharge (`m³/s` or `cfs`), stage / gauge height (`m` or `ft`), reservoir storage, water temperature, dissolved oxygen. |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    W[".waterml / .wml2 XML or JSON"] --> P["WaterML Parser (parseWaterMl)"]
+    P --> DOC["Typed WaterMlDocument"]
+    DOC --> LINT["Telemetry Integrity Linter (lintWaterMlDocument)"]
+    DOC --> FIT["Power-Law Rating Curve Fitter (fitRatingCurve)"]
+    DOC --> RAS["HEC-RAS Projection (projectWaterMlToHecRas)"]
+    DOC --> EPA["EPANET Pattern Projection (projectWaterMlToEpanet)"]
+    DOC --> DAE["Zero-GC DAE Arena Lowering (lowerWaterMlToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    FIT --> CURVE["Q = a*(h-h0)^b Parameters & RMSE"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`WML1001`–`WML3001`)
+
+The `@modelscript/waterml` linter verifies data quality and monotonicity:
+
+| Code      |  Severity   | Description                                                                    |
+| :-------- | :---------: | :----------------------------------------------------------------------------- |
+| `WML1001` |  **Error**  | XML syntax error or missing mandatory `<MeasurementTimeseries>` container.     |
+| `WML2001` |  **Error**  | Non-monotonic or duplicate observation timestamps detected.                    |
+| `WML2002` | **Warning** | Missing physical measurement unit or observed property declaration.            |
+| `WML3001` | **Warning** | Physical observation out of bounds (negative discharge or extreme stage jump). |
+
+---
+
+## Command-Line Interface (`msx waterml`)
+
+```bash
+# Print summary of timeseries, observation counts, monitoring stations, and units
+msx waterml summary usgs_gauge_01646500.xml
+
+# Lint timeseries for timestamp monotonicity and missing units
+msx waterml lint usgs_gauge_01646500.xml
+
+# Fit non-linear stage-discharge power-law rating curve Q = a*(h-h0)^b
+msx waterml fit-rating usgs_gauge_01646500.xml
+
+# Project streamflow observations to HEC-RAS unsteady flow hydrograph (.u01)
+msx waterml to-hec-ras usgs_gauge_01646500.xml -o river_inflow.u01
+
+# Project flow timeseries to EPANET diurnal demand pattern (.inp)
+msx waterml to-epanet usgs_gauge_01646500.xml -o network_pattern.inp
+
+# Lower telemetry timeseries into WebAssembly DAE arena
+msx waterml to-dae usgs_gauge_01646500.xml
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`waterml_fit_rating_curve`**: Solves non-linear power-law rating curves from observed hydrologic stage and discharge pairs, reporting equation coefficients ($a, b, h_0$), residual tracking, and RMSE convergence to AI agents.
+
+================================================================================
+DOCUMENT: IWA Activated Sludge Models (.asm, .bsm, .wrrf) Language Reference
+CANONICAL URL: https://modelscript.org/languages/asm
+================================================================================
+
+# IWA Activated Sludge Models (`.asm`, `.bsm`, `.wrrf`)
+
+The `@modelscript/asm` package (`languages/asm`) provides native support for the **International Water Association (IWA) Activated Sludge Models (ASM1, ASM2d, ASM3, ADM1)**. The IWA ASM family is the universal benchmark for biochemical process modeling in municipal and industrial wastewater treatment plants (WWTP / WRRF).
+
+ModelScript compiles wastewater treatment plant flowsheets into Petersen stoichiometric and kinetic matrices, solves multi-component nitrification, denitrification, carbon oxidation, and phosphorus removal biokinetics, simulates secondary clarification via the **Takács 10-layer dynamic double-exponential settling model**, and lowers biokinetic mass-balance ODEs into zero-GC WebAssembly DAE linear arenas.
+
+---
+
+## Supported ASM Model Families
+
+| Model Family         | Target Processes                                  | Key State Components                                                                                                                                                                        |
+| :------------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **ASM1**             | Carbon oxidation, nitrification & denitrification | Soluble/particulate COD ($S_S, S_I, X_S, X_I$), active biomass ($X_{BH}, X_{BA}$), nitrogen fractions ($S_{NO}, S_{NH}, S_{ND}, X_{ND}$), dissolved oxygen ($S_O$), alkalinity ($S_{ALK}$). |
+| **ASM2d**            | Enhanced Biological Phosphorus Removal (EBPR)     | Polyphosphate-accumulating organisms (PAOs), volatile fatty acids (VFAs), phosphate ($S_{PO4}$), stored polyhydroxyalkanoates ($X_{PHA}$).                                                  |
+| **ASM3**             | Internal storage-mediated heterotrophic growth    | Decoupled aerobic/anoxic storage of organic substrate ($X_{STO}$) prior to growth.                                                                                                          |
+| **Takács Clarifier** | 10-layer dynamic thickening and clarification     | Hindered and flocculant Vesilind double-exponential settling velocity $v_s(X)$, feed layer inlet, effluent TSS, and underflow RAS/WAS recycle.                                              |
+
+---
+
+## Architecture & Compilation Pipeline
+
+```mermaid
+flowchart TD
+    A[".asm / .bsm WRRF Description"] --> P["ASM Plant Parser (parseAsmPlant)"]
+    P --> AST["Typed AsmPlantModel AST"]
+    AST --> LINT["Stoichiometry & Plant Linter (lintAsmPlant)"]
+    AST --> PET["Petersen Matrix Compiler (computeAsm1ConversionRates)"]
+    AST --> CLAR["Takács Clarifier Solver (evaluateTakacsClarifierDerivatives)"]
+    AST --> DAE["Zero-GC DAE Lowering (lowerAsmToDae)"]
+
+    DAE --> ARENA["Linear Memory DAE Arena"]
+    PET --> ODE["Bioreactor Dynamic Mass Balance dC/dt"]
+```
+
+---
+
+## Pre-Flight Diagnostics (`ASM1001`–`ASM4001`)
+
+The `@modelscript/asm` linter audits biological and hydraulic plant consistency:
+
+| Code      |  Severity   | Description                                                                     |
+| :-------- | :---------: | :------------------------------------------------------------------------------ |
+| `ASM1001` |  **Error**  | Missing or empty wastewater plant model identifier.                             |
+| `ASM2001` |  **Error**  | Bioreactor has non-positive volume ($V \le 0\text{ m}^3$).                      |
+| `ASM2002` | **Warning** | Aerobic bioreactor lacks positive aeration ($k_L a \le 0$ or setpoint $\le 0$). |
+| `ASM3001` |  **Error**  | Influent component concentration is negative.                                   |
+| `ASM4001` |  **Error**  | Secondary clarifier surface area or height is non-positive.                     |
+
+---
+
+## Command-Line Interface (`msx asm`)
+
+```bash
+# Print plant summary, bioreactors, clarifiers, and influent flow rates
+msx asm summary bsm1_plant.asm
+
+# Check plant for stoichiometric consistency and hydraulic parameters
+msx asm lint bsm1_plant.asm
+
+# Simulate biokinetic reaction rates and effluent concentrations
+msx asm simulate-biokinetics bsm1_plant.asm
+
+# Lower plant flowsheet to WebAssembly DAE arena
+msx asm to-dae bsm1_plant.asm
+```
+
+---
+
+## MCP Agent Tool Integration
+
+- **`asm_evaluate_biokinetics`**: Computes ASM1 biological process rates (aerobic growth, denitrification, autotrophic nitrification, decay, hydrolysis) and net soluble/particulate component conversion rates ($r_i$) for environmental engineering optimization.
 
 ================================================================================
 DOCUMENT: Aspen Plus / HYSYS (.bkp) Language Reference
@@ -17876,6 +18807,10 @@ The **CLI** column below shows which command reports each language's rules.
 | [3MF Medical](#three-mf)                  | `@modelscript/three-mf`     |    10 | Language server / API   |
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    11 | Language server / API   |
+
+::: info Not yet listed
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [ASPEN OneLiner / CAPE](../languages/oneliner.md), [ATP-EMTP](../languages/atp.md), [IEC 61850 SCL](../languages/scl.md), [IEEE 1815 / DNP3](../languages/dnp3.md), [IEEE COMTRADE](../languages/comtrade.md), [IWA Activated Sludge Models](../languages/asm.md), [MATPOWER](../languages/matpower.md), [OGC WaterML 2.0](../languages/waterml.md), [SEL Relay Settings](../languages/sel.md), [USACE HEC-HMS](../languages/hec-hms.md). See each language guide for details.
+:::
 
 ## Modelica {#modelica}
 

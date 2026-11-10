@@ -30,7 +30,7 @@ const touchstoneExtensions = [
  */
 export const touchstoneLanguage = language({
   name: "touchstone",
-  maturity: "experimental",
+  maturity: "beta",
   fileExtensions: touchstoneExtensions,
   lsp: {
     fileExtensions: touchstoneExtensions,

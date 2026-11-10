@@ -116,10 +116,16 @@ export function registerMiscEndpoints(context: LspContext) {
         context.validationService.documentViewports.delete(params.uri);
         return;
       }
-      // Use the bridge's PositionIndex to convert lines → character offsets
+      // Use the bridge's PositionIndex to convert lines → character offsets,
+      // falling back to DocumentManager's PositionIndex if bridge is not yet ready.
       const bridge = context.validationService.documentLSPBridges.get(params.uri);
-      if (bridge && (bridge as any).positions) {
-        const positions = (bridge as any).positions;
+      const bridgePositions = (bridge as any)?.positions;
+      const positions =
+        bridgePositions && typeof bridgePositions.positionToCharOffset === "function"
+          ? bridgePositions
+          : context.documentManager?.getLineIndexForDoc?.(params.uri);
+
+      if (positions && typeof positions.positionToCharOffset === "function") {
         // Merge all visible ranges into one encompassing offset range
         let minOffset = Infinity;
         let maxOffset = 0;

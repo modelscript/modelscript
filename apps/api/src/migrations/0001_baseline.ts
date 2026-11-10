@@ -138,11 +138,6 @@ export const baselineMigration: Migration = {
         is_yanked          INTEGER DEFAULT 0,
         yank_reason        TEXT,
         yanked_at          TEXT,
-        oidc_issuer        TEXT,
-        oidc_subject       TEXT,
-        oidc_repository    TEXT,
-        oidc_workflow_ref  TEXT,
-        oidc_run_id        TEXT,
         UNIQUE(library_name, library_version)
       );
 
@@ -962,17 +957,11 @@ export const baselineMigration: Migration = {
         labels_json          TEXT NOT NULL DEFAULT '[]',
         linked_pr_number     INTEGER,
         closed_at            TEXT,
-        external_source      TEXT DEFAULT NULL,
-        external_key         TEXT DEFAULT NULL,
-        external_url         TEXT DEFAULT NULL,
-        external_updated_at  TEXT DEFAULT NULL,
-        sync_status          TEXT DEFAULT 'synced',
         created_at           TEXT DEFAULT (datetime('now')),
         updated_at           TEXT DEFAULT (datetime('now')),
         CONSTRAINT uq_space_issue_num UNIQUE(space_id, issue_number)
       );
       CREATE INDEX IF NOT EXISTS idx_space_issues_space ON space_issues(space_id, status);
-      CREATE INDEX IF NOT EXISTS idx_space_issues_external ON space_issues(space_id, external_source, external_key);
 
       CREATE TABLE IF NOT EXISTS space_issue_comments (
         id         TEXT PRIMARY KEY,
@@ -1595,11 +1584,6 @@ export const baselineMigration: Migration = {
       "ALTER TABLE library_releases ADD COLUMN is_yanked INTEGER DEFAULT 0",
       "ALTER TABLE library_releases ADD COLUMN yank_reason TEXT",
       "ALTER TABLE library_releases ADD COLUMN yanked_at TEXT",
-      "ALTER TABLE library_releases ADD COLUMN oidc_issuer TEXT",
-      "ALTER TABLE library_releases ADD COLUMN oidc_subject TEXT",
-      "ALTER TABLE library_releases ADD COLUMN oidc_repository TEXT",
-      "ALTER TABLE library_releases ADD COLUMN oidc_workflow_ref TEXT",
-      "ALTER TABLE library_releases ADD COLUMN oidc_run_id TEXT",
       "ALTER TABLE notifications ADD COLUMN metadata TEXT",
       "ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{}'",
       "ALTER TABLE users ADD COLUMN credit_balance REAL DEFAULT 100.0",

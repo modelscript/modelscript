@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DiffIcon, DownloadIcon, EyeIcon, TableIcon, XIcon } from "@primer/octicons-react";
-import { Button, IconButton, SegmentedControl, Text } from "@primer/react";
-import React, { useMemo, useState } from "react";
-import styled from "styled-components";
-import { parseInp } from "@modelscript/epanet";
-import { parseSwmm } from "@modelscript/swmm";
 import {
   diffEpanetNetworks,
   diffSwmmNetworks,
   renderEpanetDiffSvg,
   type EpanetNetworkDiff,
-  type SwmmNetworkDiff,
 } from "@modelscript/diagram/water-network-diff";
+import { parseInp } from "@modelscript/epanet";
+import { parseSwmm } from "@modelscript/swmm";
+import { DiffIcon, DownloadIcon, EyeIcon, TableIcon, XIcon } from "@primer/octicons-react";
+import { Button, IconButton, SegmentedControl, Text } from "@primer/react";
+import React, { useMemo, useState } from "react";
+import styled from "styled-components";
 import { useThemeTokens } from "../../theme-tokens";
 
 export interface WaterDiffViewerProps {
@@ -103,7 +102,8 @@ const Table = styled.table`
   font-size: 12px;
   font-family: var(--fontStack-monospace, monospace);
 
-  th, td {
+  th,
+  td {
     padding: 8px 12px;
     border: 1px solid var(--color-border-default, #30363d);
     text-align: left;

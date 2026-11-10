@@ -1,9 +1,6 @@
 {
+  "extends": "../tsconfig.json",
   "compilerOptions": {
-    "module": "nodenext",
-    "target": "esnext",
-    "lib": ["esnext", "dom"],
-    "types": ["node"],
     "skipLibCheck": true,
     "noEmit": true
   },

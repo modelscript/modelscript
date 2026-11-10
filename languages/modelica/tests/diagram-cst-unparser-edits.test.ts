@@ -926,5 +926,33 @@ end ConnectedModel;`;
       assert.strictEqual(editsC1.length, 1);
       assert.ok(editsC1[0]!.newText.includes("annotation(Placement"));
     });
+
+    it("computeConnectInsert targets equation section and skips preceding initial equation section", () => {
+      const doc = `model InitialAndRegularEq
+  Modelica.Electrical.Analog.Basic.Resistor R1;
+  Modelica.Electrical.Analog.Basic.Capacitor C1;
+initial equation
+  C1.v = 0;
+equation
+  R1.p.v = 10;
+end InitialAndRegularEq;`;
+      const tree = parser.parse(doc);
+      const classInstance = {
+        name: "InitialAndRegularEq",
+        cstNode: tree.rootNode,
+        components: [
+          { name: "R1", typeName: "Modelica.Electrical.Analog.Basic.Resistor" },
+          { name: "C1", typeName: "Modelica.Electrical.Analog.Basic.Capacitor" },
+        ],
+        connectEquations: [],
+      };
+
+      const edits = computeConnectInsert(doc, classInstance as any, "R1.n", "C1.p");
+      assert.strictEqual(edits.length, 1);
+      const edit = edits[0]!;
+      // Must be inserted after or inside the regular 'equation' section (line 6 onwards), NOT in 'initial equation' (lines 3-5)
+      assert.ok(edit.range.start.line >= 6, `Expected insertion at or after line 6, got line ${edit.range.start.line}`);
+      assert.ok(edit.newText.includes("connect(R1.n, C1.p)"));
+    });
   });
 });

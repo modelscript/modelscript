@@ -6821,7 +6821,7 @@ export function instantiateElements(
           parentMods?.parentVariability !== Variability.Constant &&
           flattener.currentClassId &&
           elemParentId !== flattener.currentClassId &&
-          (isElemParentPackage || Boolean(dae.extensionMetadata?.["isOldFrontend"]))
+          isElemParentPackage
         ) {
           continue;
         }
@@ -10390,7 +10390,7 @@ export function instantiateElements(
             dae.setVarFinal(varIdx, true);
           }
           applyModifiers(varIdx, []);
-          const ownerClassId = flattener.db.symbol(elemId)?.parentId ?? flattener.currentClassId;
+          const rootClassId = flattener.currentRootClassId ?? flattener.currentClassId;
           const rawConstBindText = String(effectiveBinding?.text ?? "")
             .replace(/^=/, "")
             .trim();
@@ -10404,14 +10404,26 @@ export function instantiateElements(
             !parentMods?.isRecord &&
             parentMods?.parentVariability !== Variability.Constant &&
             isNumericLiteralConst &&
-            ownerClassId != null
+            rootClassId != null
           ) {
-            const clsCst = flattener.db.cstNode(ownerClassId) as { text?: string } | undefined;
+            const clsCst = flattener.db.cstNode(rootClassId) as { text?: string } | undefined;
             const clsText = String(clsCst?.text ?? "").replace(/"(?:\\.|[^"\\])*"|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
-            const escapedName = compInst.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const identRe = new RegExp(`\\b${escapedName}\\b`, "g");
-            const matches = clsText.match(identRe);
-            if (!matches || matches.length <= 1) {
+            const fullName = `${prefix}.${compInst.name}`;
+            const escapedFullName = fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const isUsedInOwner = new RegExp(`\\b${escapedFullName}\\b`).test(clsText);
+            const declaringClassId = flattener.db.symbol(elemId)?.parentId;
+            const declCst =
+              declaringClassId != null
+                ? (flattener.db.cstNode(declaringClassId) as { text?: string } | undefined)
+                : null;
+            const declText = String(declCst?.text ?? "").replace(
+              /"(?:\\.|[^"\\])*"|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
+              " ",
+            );
+            const escapedShortName = compInst.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const declMatches = declText.match(new RegExp(`\\b${escapedShortName}\\b`, "g"));
+            const isUsedInDecl = Boolean(declMatches && declMatches.length > 1);
+            if (!isUsedInOwner && !isUsedInDecl) {
               dae.removeVariable(varIdx);
             }
           }

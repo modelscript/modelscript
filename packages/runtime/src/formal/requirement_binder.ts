@@ -7,7 +7,7 @@
  * GLR Concrete Syntax Tree (CST) traversal (`@modelscript/dsl`).
  */
 
-import { createWasmParserSync, type TreeSitterParser, type SyntaxNode } from "@modelscript/dsl/bindings";
+import { createWasmParserSync, type SyntaxNode, type TreeSitterParser } from "@modelscript/dsl/bindings";
 import type { BoundRequirement } from "../analysis/wasm_zonotope_reach.js";
 import { SemanticTheoryCoordinator } from "./theory_coordinator.js";
 
@@ -52,10 +52,7 @@ export function registerRequirementBinderParsers(parsers: {
 function loadWasmLanguageParserNodeSync(langDirName: "sysml2" | "modelica"): TreeSitterParser | null {
   try {
     const wasmUrl = new URL(`../../../../languages/${langDirName}/dist/parser.wasm`, import.meta.url);
-    const bindingsUrl = new URL(
-      `../../../../languages/${langDirName}/src-gen/bindings.js`,
-      import.meta.url,
-    );
+    const bindingsUrl = new URL(`../../../../languages/${langDirName}/src-gen/bindings.js`, import.meta.url);
     const wasmPath = decodeURIComponent(wasmUrl.pathname);
     const bindingsPath = decodeURIComponent(bindingsUrl.pathname);
 
@@ -93,10 +90,7 @@ function loadWasmLanguageParserNodeSync(langDirName: "sysml2" | "modelica"): Tre
           const objStart = bindingsSrc.indexOf("{", fieldAnchor);
           const objEnd = bindingsSrc.indexOf('} !== "undefined"', objStart);
           if (objStart !== -1 && objEnd !== -1) {
-            fieldNames = JSON.parse(bindingsSrc.slice(objStart, objEnd + 1)) as Record<
-              string,
-              number
-            >;
+            fieldNames = JSON.parse(bindingsSrc.slice(objStart, objEnd + 1)) as Record<string, number>;
           }
         }
 
@@ -125,10 +119,7 @@ export function getModelicaWasmParser(): TreeSitterParser | null {
 
 function unquoteSysmlName(raw: string): string {
   const trimmed = raw.trim();
-  if (
-    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-    (trimmed.startsWith('"') && trimmed.endsWith('"'))
-  ) {
+  if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
     return trimmed.slice(1, -1).trim();
   }
   return trimmed;
@@ -155,13 +146,7 @@ function extractSysmlIdentification(node: SyntaxNode): {
     const ch = node.child(i);
     if (!ch) continue;
     const t = ch.type;
-    if (
-      t === "{" ||
-      t === ";" ||
-      t === "PackageBody" ||
-      t === "_RequirementBody" ||
-      t === "_DefinitionBody"
-    ) {
+    if (t === "{" || t === ";" || t === "PackageBody" || t === "_RequirementBody" || t === "_DefinitionBody") {
       break;
     }
     if (t === "<" || ch.text === "<") {
@@ -218,19 +203,14 @@ export function evaluateSysmlCstNumericExpr(
 
   if (type === "UnaryExpression") {
     const opNode = node.childForFieldName("operator") ?? node.firstChild;
-    const operandNode =
-      node.childForFieldName("operand") ?? node.namedChild(node.namedChildCount - 1);
+    const operandNode = node.childForFieldName("operand") ?? node.namedChild(node.namedChildCount - 1);
     const val = evaluateSysmlCstNumericExpr(operandNode, attrMap);
     const op = opNode?.text.trim();
     if (op === "-") return -val;
     return val;
   }
 
-  if (
-    type === "AdditiveExpression" ||
-    type === "MultiplicativeExpression" ||
-    type === "ExponentiationExpression"
-  ) {
+  if (type === "AdditiveExpression" || type === "MultiplicativeExpression" || type === "ExponentiationExpression") {
     const operands = node.childrenForFieldName("operand");
     const operators = node.childrenForFieldName("operator");
     if (operands.length >= 2 && operators.length >= 1) {
@@ -291,11 +271,7 @@ export function evaluateSysmlCstNumericExpr(
   return Number.isFinite(fallback) ? fallback : NaN;
 }
 
-function collectAttributeUsagesFromCst(
-  scopeNode: SyntaxNode,
-  attrMap: Map<string, number>,
-  prefix?: string,
-): void {
+function collectAttributeUsagesFromCst(scopeNode: SyntaxNode, attrMap: Map<string, number>, prefix?: string): void {
   const attrNodes = scopeNode.descendantsOfType(["AttributeUsage"]);
   for (const attrNode of attrNodes) {
     const { declaredName } = extractSysmlIdentification(attrNode);
@@ -317,10 +293,7 @@ function collectAttributeUsagesFromCst(
  * native WebAssembly GLR parser (`languages/sysml2/dist/parser.wasm`) to extract
  * numerical safety and operational bounds from the Concrete Syntax Tree (CST).
  */
-export function parseSysmlRequirements(
-  sysmlText: string,
-  cstRoot?: SyntaxNode | null,
-): SysmlRequirement[] {
+export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode | null): SysmlRequirement[] {
   const rootNode = cstRoot ?? getSysmlWasmParser()?.parse(sysmlText)?.rootNode ?? null;
   if (!rootNode) {
     return [];
@@ -408,7 +381,7 @@ export function parseSysmlRequirements(
           const opNode =
             cur.childForFieldName("operator") ??
             cur.children.find(
-              (c) =>
+              (c: SyntaxNode) =>
                 c.type === "RelationalOperator" ||
                 c.text === "<=" ||
                 c.text === ">=" ||
@@ -418,14 +391,10 @@ export function parseSysmlRequirements(
           const lhsNode = operands[0] ?? cur.namedChild(0);
           const rhsNode = operands[1] ?? cur.namedChild(cur.namedChildCount - 1);
           const opText = opNode?.text.trim();
-          if (
-            lhsNode &&
-            rhsNode &&
-            (opText === "<=" || opText === ">=" || opText === "<" || opText === ">")
-          ) {
+          if (lhsNode && rhsNode && (opText === "<=" || opText === ">=" || opText === "<" || opText === ">")) {
             const lhsNames = lhsNode
               .descendantsOfType(["Name"])
-              .map((n) => unquoteSysmlName(n.text))
+              .map((n: SyntaxNode) => unquoteSysmlName(n.text))
               .filter(Boolean);
             const targetAttribute =
               lhsNames.length > 0
@@ -460,7 +429,7 @@ export function parseSysmlRequirements(
         if (cur.type === "OwnedFeatureChain") {
           const parentErr = cur.parent?.parent;
           if (!parentErr || parentErr.type !== "ERROR") continue;
-          const opTokenNode = parentErr.children.find((c) => {
+          const opTokenNode = parentErr.children.find((c: SyntaxNode) => {
             const t = c.text.trim();
             return t === "<=" || t === ">=" || t === "<" || t === ">";
           });
@@ -469,7 +438,7 @@ export function parseSysmlRequirements(
 
           const lhsNames = cur
             .descendantsOfType(["Name"])
-            .map((n) => unquoteSysmlName(n.text))
+            .map((n: SyntaxNode) => unquoteSysmlName(n.text))
             .filter(Boolean);
           const targetAttribute = lhsNames.length > 0 ? lhsNames[lhsNames.length - 1]! : "";
           if (!targetAttribute) continue;
@@ -525,20 +494,14 @@ export function parseSysmlRequirements(
  * by traversing its native WebAssembly GLR Concrete Syntax Tree (CST).
  * Returns a map from Modelica variable name -> target path.
  */
-export function extractModelicaTwinAnnotations(
-  moText: string,
-  cstRoot?: SyntaxNode | null,
-): Map<string, string> {
+export function extractModelicaTwinAnnotations(moText: string, cstRoot?: SyntaxNode | null): Map<string, string> {
   const result = new Map<string, string>();
   const rootNode = cstRoot ?? getModelicaWasmParser()?.parse(moText)?.rootNode ?? null;
   if (!rootNode) {
     return result;
   }
 
-  const compNodes = rootNode.descendantsOfType([
-    "component_declaration",
-    "component_declaration1",
-  ]);
+  const compNodes = rootNode.descendantsOfType(["component_declaration", "component_declaration1"]);
   for (const compNode of compNodes) {
     const declNode =
       compNode.childForFieldName("declaration") ??
@@ -558,8 +521,7 @@ export function extractModelicaTwinAnnotations(
         if (strNodes.length > 0) {
           const rawStr = strNodes[0]!.text.trim();
           const unquoted =
-            (rawStr.startsWith('"') && rawStr.endsWith('"')) ||
-            (rawStr.startsWith("'") && rawStr.endsWith("'"))
+            (rawStr.startsWith('"') && rawStr.endsWith('"')) || (rawStr.startsWith("'") && rawStr.endsWith("'"))
               ? rawStr.slice(1, -1)
               : rawStr;
           if (unquoted) {
@@ -615,8 +577,7 @@ export function bindRequirementsToModelica(
         if (
           sName === req.targetAttribute ||
           sName.endsWith(`.${req.targetAttribute}`) ||
-          (req.subjectName &&
-            sName.toLowerCase() === `${req.subjectName}.${req.targetAttribute}`.toLowerCase())
+          (req.subjectName && sName.toLowerCase() === `${req.subjectName}.${req.targetAttribute}`.toLowerCase())
         ) {
           matchedIndex = i;
           break;
@@ -648,13 +609,9 @@ export function assertRequirementsToTheoryCoordinator(
 ): void {
   let litId = baseLiteralId;
   for (const req of requirements) {
-    const varName = req.subjectName
-      ? `${req.subjectName}.${req.targetAttribute}`
-      : req.targetAttribute;
+    const varName = req.subjectName ? `${req.subjectName}.${req.targetAttribute}` : req.targetAttribute;
     const bounds: [number, number] =
-      req.operator === "<=" || req.operator === "<"
-        ? [-Infinity, req.limitValue]
-        : [req.limitValue, Infinity];
+      req.operator === "<=" || req.operator === "<" ? [-Infinity, req.limitValue] : [req.limitValue, Infinity];
 
     coordinator.assertLiteral({
       id: litId++,

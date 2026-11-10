@@ -289,7 +289,7 @@ export interface LSPBridgeEnv {
 
 export class LSPBridge {
   /** Line/character position converter for the bound document. */
-  private positions: PositionIndex;
+  public positions: PositionIndex;
   /** Canonical URI of the bound document. */
   private documentUri: string;
   /** Injected environment dependencies for cross-document and VFS resolution. */
@@ -298,7 +298,8 @@ export class LSPBridge {
   /**
    * Creates a new `LSPBridge` for a document.
    * Supports both 4-argument `(index, engine, positions, documentUri)` and legacy
-   * 5-argument `(index, engine, resolver, positions, documentUri)` signatures.
+   * 5-argument `(index, engine, resolver, positions, documentUri)` signatures,
+   * as well as 5-argument `(index, engine, positions, documentUri, env)`.
    */
   constructor(
     private index: SymbolIndex,
@@ -308,19 +309,35 @@ export class LSPBridge {
     arg5?: any,
     arg6?: any,
   ) {
-    if (arg5 !== undefined) {
-      // (index, engine, resolver, positions, documentUri, env?)
-      this.positions = arg4;
-      this.documentUri = arg5;
-      this.env = arg6;
-    } else if (arg4 !== undefined) {
+    if (typeof arg4 === "string") {
       // (index, engine, positions, documentUri, env?)
-      this.positions = arg3;
+      this.positions =
+        arg3 instanceof PositionIndex
+          ? arg3
+          : arg3 && typeof arg3.positionToCharOffset === "function"
+            ? arg3
+            : new PositionIndex(typeof arg3?.sourceText === "string" ? arg3.sourceText : "");
       this.documentUri = arg4;
-      this.env = typeof arg5 === "object" && !("lineStarts" in arg5) ? arg5 : undefined;
+      this.env = typeof arg5 === "object" && arg5 !== null && !("lineStarts" in arg5) ? arg5 : undefined;
+    } else if (typeof arg5 === "string") {
+      // Legacy: (index, engine, resolver, positions, documentUri, env?)
+      this.positions =
+        arg4 instanceof PositionIndex
+          ? arg4
+          : arg4 && typeof arg4.positionToCharOffset === "function"
+            ? arg4
+            : new PositionIndex(typeof arg4?.sourceText === "string" ? arg4.sourceText : "");
+      this.documentUri = arg5;
+      this.env = typeof arg6 === "object" && arg6 !== null ? arg6 : undefined;
     } else {
-      this.positions = arg3 ?? ({} as any);
-      this.documentUri = "";
+      this.positions =
+        arg3 instanceof PositionIndex
+          ? arg3
+          : arg3 && typeof arg3.positionToCharOffset === "function"
+            ? arg3
+            : new PositionIndex(typeof arg3?.sourceText === "string" ? arg3.sourceText : "");
+      this.documentUri = typeof arg4 === "string" ? arg4 : "";
+      this.env = typeof arg5 === "object" && arg5 !== null ? arg5 : undefined;
     }
   }
 

@@ -33,10 +33,25 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
     {
       get:
         (_, prop: string) =>
-        (bindings: Record<string, any> = {}) => ({
-          nodeType: prop,
-          bindings,
-        }),
+        (...args: unknown[]) => {
+          let bindings: Record<string, unknown> = {};
+          if (args.length === 1 && typeof args[0] === "object" && args[0] !== null) {
+            bindings = args[0] as Record<string, unknown>;
+          } else if (
+            args.length >= 2 &&
+            typeof args[0] === "string" &&
+            typeof args[1] === "object" &&
+            args[1] !== null
+          ) {
+            bindings = { predicate: args[0], ...(args[1] as Record<string, unknown>) };
+          } else if (args.length === 1 && typeof args[0] === "string") {
+            bindings = { predicate: args[0] };
+          }
+          return {
+            nodeType: prop,
+            bindings,
+          };
+        },
     },
   );
 
@@ -49,8 +64,10 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
   const sourceType = evaluatedSource?.nodeType || "UnknownSource";
   const targetType = evaluatedTarget?.nodeType || "UnknownTarget";
 
-  const srcBindings = evaluatedSource?.bindings || {};
-  const tgtBindings = evaluatedTarget?.bindings || {};
+  const srcBindings =
+    typeof evaluatedSource?.bindings === "object" && evaluatedSource?.bindings !== null ? evaluatedSource.bindings : {};
+  const tgtBindings =
+    typeof evaluatedTarget?.bindings === "object" && evaluatedTarget?.bindings !== null ? evaluatedTarget.bindings : {};
 
   // Extract declared complement fields
   const complementConstraint = constraints.find((c: any) => c.kind === "complement");
@@ -72,6 +89,7 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
     // 0. Constant literal discriminator in source pattern (e.g., `type: "Gain"`, `causality: "parameter"`)
     if (
       usesExplicitVarFactory &&
+      typeof srcBindings === "object" &&
       attr in srcBindings &&
       (typeof srcVar !== "string" || !srcVar.startsWith("__var_"))
     ) {
@@ -79,7 +97,7 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
     }
 
     // 1. Direct mapping in target bindings
-    if (attr in tgtBindings) {
+    if (typeof tgtBindings === "object" && attr in tgtBindings) {
       isMapped = true;
     }
 

@@ -621,26 +621,6 @@ export function computeConnectInsert(
   const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
 
   if (astNode) {
-    const findEquationSection = (node: any): any => {
-      if (!node) return null;
-      if (Cst.EquationSection.is(node)) {
-        return node;
-      }
-      for (const child of node.children || []) {
-        const found = findEquationSection(child);
-        if (found) return found;
-      }
-      return null;
-    };
-
-    const eqSection = findEquationSection(astNode);
-    if (eqSection) {
-      const eqRange = getNodeRange(eqSection);
-      if (eqRange) {
-        return [computeEquationSectionInsertEdit(lines, eqRange, connectEq)];
-      }
-    }
-
     const classSpecifier =
       astNode.classOrInheritanceModification?.classSpecifier ||
       astNode.classSpecifier ||
@@ -652,21 +632,60 @@ export function computeConnectInsert(
     let lastEquationSection: any = null;
     let baseEquationSection: any = null;
 
+    const isInitialSection = (sec: any): boolean => {
+      if (sec.initial === true || sec.type === "initial_equation_section") return true;
+      const startRow = sec.startPosition?.row;
+      if (typeof startRow === "number" && lines[startRow]) {
+        return lines[startRow]!.trim().startsWith("initial");
+      }
+      return false;
+    };
+
     for (const section of sections) {
-      // Find the last equation section
-      if (section.equations !== undefined && section.initial !== true) {
+      if (section.equations !== undefined && !isInitialSection(section)) {
         lastEquationSection = section;
-        // The first equation section without 'initial' is typically the base equation section
         if (!baseEquationSection) {
           baseEquationSection = section;
         }
       }
     }
 
-    const targetSection = lastEquationSection || baseEquationSection;
-    const targetRange = getNodeRange(targetSection);
-    if (targetRange) {
-      return [computeEquationSectionInsertEdit(lines, targetRange, connectEq)];
+    let targetSection = lastEquationSection || baseEquationSection;
+
+    // If not found in classSpecifier.sections, search direct non-nested children of astNode
+    if (!targetSection) {
+      const searchQueue: any[] = [...(astNode.children || [])];
+      while (searchQueue.length > 0) {
+        const child = searchQueue.shift();
+        if (!child) continue;
+        // Do NOT recurse into nested class definitions
+        if (Cst.ClassDefinition.is(child) || child.type === "class_definition" || child.type === "ClassDefinition") {
+          continue;
+        }
+
+        if (
+          (Cst.EquationSection.is(child) || child.type === "equation_section" || child.type === "EquationSection") &&
+          !isInitialSection(child)
+        ) {
+          targetSection = child;
+          break;
+        }
+        if (
+          Cst.ClassSpecifier.is(child) ||
+          Cst.LongClassSpecifier.is(child) ||
+          child.type === "composition" ||
+          child.type === "ClassSpecifier"
+        ) {
+          searchQueue.push(...(child.children || []));
+        }
+      }
+    }
+
+    if (targetSection) {
+      const targetRange = getNodeRange(targetSection);
+      if (targetRange) {
+        return [computeEquationSectionInsertEdit(lines, targetRange, connectEq)];
+      }
     }
 
     // No equation section exists. Insert before class-level annotation or 'end'.

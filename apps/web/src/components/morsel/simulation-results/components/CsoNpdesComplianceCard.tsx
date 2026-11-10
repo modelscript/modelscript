@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { exportNetDmrCsv, exportNetDmrXml } from "@modelscript/swmm";
+import { exportNetDmrXml } from "@modelscript/swmm";
 import { CheckCircleFillIcon, DownloadIcon, WorkflowIcon, XCircleFillIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import styled from "styled-components";

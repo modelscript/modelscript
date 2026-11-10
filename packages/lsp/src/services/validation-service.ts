@@ -1849,11 +1849,12 @@ export class ValidationService {
         const engineDiags = await (engine as any).runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
         if (isStale()) return;
 
+        const posIdx = (bridge as any)?.positions ?? this.documentManager.getLineIndexForDoc(uri);
         for (const d of engineDiags) {
           const startOff = d.startOffset;
           const endOff = d.endOffset;
-          const start = (bridge as any).positions.charOffsetToPosition(startOff);
-          const end = (bridge as any).positions.charOffsetToPosition(endOff);
+          const start = posIdx?.charOffsetToPosition?.(startOff) ?? { line: 0, character: 0 };
+          const end = posIdx?.charOffsetToPosition?.(endOff) ?? start;
           let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
           if (d.severity === "error") severity = DiagnosticSeverity.Error;
           if (d.severity === "info") severity = DiagnosticSeverity.Information;
@@ -3463,7 +3464,11 @@ export class ValidationService {
       const sIndex = this.workspaceManager.getWorkspaceIndex?.("sysml2");
       if (sIndex) versions.set("sysml2", sIndex.version);
 
-      if (!this.reasonerService?.updateAndReason && store?.axioms && typeof this.reasonerService?.reasoner?.loadOntology === "function") {
+      if (
+        !this.reasonerService?.updateAndReason &&
+        store?.axioms &&
+        typeof this.reasonerService?.reasoner?.loadOntology === "function"
+      ) {
         this.reasonerService.reasoner.loadOntology(store.axioms);
       }
 
@@ -3522,11 +3527,7 @@ export class ValidationService {
    * Updates the ontological reasoner after polyglot document validation across any of the 68 languages.
    * Projects the file's SymbolIndex into BFO/IOF OWL2 axioms and triggers incremental reasoning.
    */
-  private postValidatePolyglotReasoner(
-    effectiveUri: string,
-    langId: string,
-    diagnostics: Diagnostic[],
-  ): void {
+  private postValidatePolyglotReasoner(effectiveUri: string, langId: string, diagnostics: Diagnostic[]): void {
     try {
       const wsIdx = this.workspaceManager.getWorkspaceIndex?.(langId);
       const fileIdx = wsIdx?.getFileIndex?.(effectiveUri);
@@ -3535,13 +3536,14 @@ export class ValidationService {
       const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
       if (!store) return;
 
-      const axioms = fileIdx.symbols && fileIdx.symbols.size > 0
-        ? SemanticAxiomProjector.projectSymbolIndex(fileIdx, {
-            sourceLang: langId,
-            sourceUri: effectiveUri,
-            basePrefix: `${langId}:`,
-          })
-        : [];
+      const axioms =
+        fileIdx.symbols && fileIdx.symbols.size > 0
+          ? SemanticAxiomProjector.projectSymbolIndex(fileIdx, {
+              sourceLang: langId,
+              sourceUri: effectiveUri,
+              basePrefix: `${langId}:`,
+            })
+          : [];
 
       let delta: any = undefined;
       const key = `${langId}:${effectiveUri}`;
@@ -3566,11 +3568,7 @@ export class ValidationService {
    * Scans cross-language workspace indices for parameter drift and model divergence.
    * Emits M5104 diagnostics with clickable relatedInformation links to counterpart declarations.
    */
-  private postValidatePolyglotDrift(
-    effectiveUri: string,
-    _langId: string,
-    diagnostics: Diagnostic[],
-  ): void {
+  private postValidatePolyglotDrift(effectiveUri: string, _langId: string, diagnostics: Diagnostic[]): void {
     try {
       const sources: PolyglotModelSource[] = [];
       const plugins = globalLanguageRegistry.getAllPlugins();
@@ -3594,7 +3592,11 @@ export class ValidationService {
                   : undefined);
               if (val !== undefined && typeof val === "number" && Number.isFinite(val)) {
                 const parent = sym.parentId ? fIdx.symbols.get(sym.parentId) : undefined;
-                const fileBase = fUri.split("/").pop()?.replace(/\.[^.]+$/, "") || sym.name;
+                const fileBase =
+                  fUri
+                    .split("/")
+                    .pop()
+                    ?.replace(/\.[^.]+$/, "") || sym.name;
                 const compName = parent ? parent.name : fileBase;
                 sources.push({
                   lang: pId,

@@ -251,10 +251,25 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
     {
       get:
         (_, prop: string) =>
-        (bindings: Record<string, any> = {}) => ({
-          nodeType: prop,
-          bindings,
-        }),
+        (...args: unknown[]) => {
+          let bindings: Record<string, unknown> = {};
+          if (args.length === 1 && typeof args[0] === "object" && args[0] !== null) {
+            bindings = args[0] as Record<string, unknown>;
+          } else if (
+            args.length >= 2 &&
+            typeof args[0] === "string" &&
+            typeof args[1] === "object" &&
+            args[1] !== null
+          ) {
+            bindings = { predicate: args[0], ...(args[1] as Record<string, unknown>) };
+          } else if (args.length === 1 && typeof args[0] === "string") {
+            bindings = { predicate: args[0] };
+          }
+          return {
+            nodeType: prop,
+            bindings,
+          };
+        },
     },
   );
 

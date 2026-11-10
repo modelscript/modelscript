@@ -1,5 +1,5 @@
 {
-  "toolCount": 92,
+  "toolCount": 105,
   "tools": [
     {
       "name": "modelica_load",
@@ -352,8 +352,13 @@
       "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
     },
     {
+      "name": "epanet_screen_contingencies_webgpu",
+      "description": "Parallelizes thousands of N-1 pipe break isolations and hydrant fire flow capacity tests simultaneously using WebGPU compute shaders with CPU SIMD fallback.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
       "name": "epanet_water_hammer_surge",
-      "description": "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, and cavitation risk via the Method of Characteristics (MOC).",
+      "description": "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, column separation (DVCM), and 4-quadrant pump trip dynamics via the Method of Characteristics (MOC).",
       "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
     },
     {
@@ -389,6 +394,21 @@
     {
       "name": "swmm_gis_to_model",
       "description": "Ingests municipal GIS stormwater/wastewater conduits, manholes, catchment polygon boundaries, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (.inp).",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_convert_watergems",
+      "description": "Extracts water distribution and surge models directly from Bentley WaterGEMS / HAMMER (.wtg.sqlite) or InfoWater databases into native EPANET AST and .inp deck.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "swmm_convert_infoworks",
+      "description": "Extracts collection system models directly from Autodesk / Innovyze InfoWorks ICM database tables into a native SWMM network AST and .inp deck.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "swmm_inundation_2d",
+      "description": "Simulates 2D shallow water surface inundation and street overland flooding coupled dynamically to 1D SWMM surcharged manholes (InfoWorks ICM Parity).",
       "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
     },
     {
@@ -460,6 +480,51 @@
       "name": "modelscript_stochastic_jump",
       "description": "Executes discrete-state stochastic chemical/epidemiological jump simulations using Gillespie Direct SSA, First-Reaction SSA, or Cao-Gillespie-Petzold Adaptive Tau-Leaping.",
       "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "comtrade_extract_phasor",
+      "description": "Extract dynamic discrete Fourier transform (DFT) RMS phasors from IEEE C37.111 COMTRADE records.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "scl_validate_goose",
+      "description": "Validate IEC 61850 GOOSE and Sampled Values publisher/subscriber communication stream latency and dataflow.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "waterml_fit_rating_curve",
+      "description": "Fit a non-linear stage-discharge power-law rating curve Q = a * (h - h0)^b from hydrologic stage/discharge pairs.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "atp_simulate_transient",
+      "description": "Simulate electromagnetic transient companion-matrix trapezoidal response from an ATP-EMTP card deck.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "dnp3_process_telemetry",
+      "description": "Filter telemetry analog stream using IEEE 1815 / DNP3 deadband thresholding and evaluate signal reconstruction.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "oneliner_calculate_fault",
+      "description": "Calculate symmetrical components 3-phase and SLG short-circuit fault currents from ASPEN OneLiner (.olx/.dxt) cases.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "sel_evaluate_protection",
+      "description": "Evaluate Schweitzer Engineering Laboratories (SEL) relay trip logic, 50P instantaneous, and 51P TOC curves.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "hec_hms_simulate_runoff",
+      "description": "Simulate SCS Runoff Curve Number (CN) excess precipitation and unit hydrograph outflow from HEC-HMS basin models.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "asm_evaluate_biokinetics",
+      "description": "Evaluate IWA Activated Sludge Model (ASM1) biological process rates and net substrate/biomass conversion rates.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
     }
   ]
 }

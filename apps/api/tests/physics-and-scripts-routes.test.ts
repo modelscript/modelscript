@@ -86,7 +86,7 @@ test("Physics, Scripts, and Instance Lifecycle REST Routes", async (t) => {
   await t.test("Physics: POST /api/v1/physics/upload rejects missing file", async () => {
     const res = await request(app).post("/api/v1/physics/upload");
     assert.strictEqual(res.status, 400);
-    assert.strictEqual(res.body.error, "No file uploaded.");
+    assert.strictEqual(res.body.error, "No file uploaded or invalid file path.");
   });
 
   await t.test("Physics: POST /api/v1/physics/upload accepts STEP buffer and deduplicates", async () => {

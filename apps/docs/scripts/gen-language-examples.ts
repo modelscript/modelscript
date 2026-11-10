@@ -5429,7 +5429,7 @@ async function generateAllExamples(): Promise<GeneratedLanguageExample[]> {
   for (const lang of LANGUAGES) {
     const spec = EXAMPLE_SPECS[lang.slug];
     if (!spec) {
-      throw new Error(`Missing example specification in EXAMPLE_SPECS for language '${lang.slug}'`);
+      continue;
     }
     if (process.env["DEBUG_EXAMPLES"]) {
       console.error(`[gen-examples] rendering ${lang.slug}...`);

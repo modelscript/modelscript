@@ -232,24 +232,26 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
     try {
       const runner = freshDb.migrationRunner;
 
-      assert.equal(allMigrations.length, 1);
+      assert.ok(allMigrations.length >= 1);
       assert.equal(allMigrations[0]!.name, "0001_baseline_schema");
 
-      const rollResult = runner.rollbackLastSync(allMigrations, { silent: true });
-      assert.equal(rollResult.rolledBack, "0001_baseline_schema");
+      for (let i = allMigrations.length - 1; i >= 0; i--) {
+        const rollResult = runner.rollbackLastSync(allMigrations, { silent: true });
+        assert.equal(rollResult.rolledBack, allMigrations[i]!.name);
+      }
 
       const statusAfterDown = runner.getStatus(allMigrations);
       assert.equal(statusAfterDown.currentVersion, null);
       assert.equal(statusAfterDown.applied.length, 0);
-      assert.equal(statusAfterDown.pendingCount, 1);
+      assert.equal(statusAfterDown.pendingCount, allMigrations.length);
 
-      // Re-apply consolidated baseline up to HEAD
+      // Re-apply consolidated baseline and subsequent migrations up to HEAD
       const upResult = await runner.runPending(allMigrations, { skipBackup: true, silent: true });
-      assert.equal(upResult.appliedCount, 1);
+      assert.equal(upResult.appliedCount, allMigrations.length);
 
       const statusAfterUp = runner.getStatus(allMigrations);
       assert.equal(statusAfterUp.pendingCount, 0);
-      assert.equal(statusAfterUp.currentVersion, "0001_baseline_schema");
+      assert.equal(statusAfterUp.currentVersion, allMigrations[allMigrations.length - 1]!.name);
       assert.equal(statusAfterUp.checksumMatch, true);
 
       // Physical & relational integrity check

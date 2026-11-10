@@ -29,8 +29,8 @@ describe("WebAssembly Arena-Native DAE Interval & Singularity Evaluator", () => 
     const daePtr = wasm.dae_createBuilder();
 
     // Add variables: x (id 0), y (id 1)
-    const xVar = wasm.dae_addVariable(daePtr, 1, 0, 0, 0, 0.0, 0);
-    const yVar = wasm.dae_addVariable(daePtr, 2, 0, 0, 0, 0.0, 0);
+    const xVar = wasm.dae_addVariable(daePtr, 100, 0, 0, 0, 0.0, 0);
+    const yVar = wasm.dae_addVariable(daePtr, 101, 0, 0, 0, 0.0, 0);
 
     const xExpr = wasm.dae_addName(daePtr, xVar);
     const yExpr = wasm.dae_addName(daePtr, yVar);

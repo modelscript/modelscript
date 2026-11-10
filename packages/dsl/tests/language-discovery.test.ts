@@ -97,8 +97,8 @@ describe("Workspace Language Discovery & Extension Generator", () => {
       "FEA should be labeled 🟡 Beta",
     );
     assert.ok(
-      langProps["modelscript.languages.touchstone.enabled"].markdownDescription.includes("🧪 Experimental"),
-      "Touchstone should be labeled 🧪 Experimental",
+      langProps["modelscript.languages.touchstone.enabled"].markdownDescription.includes("🟡 Beta"),
+      "Touchstone should be labeled 🟡 Beta",
     );
   });
 
