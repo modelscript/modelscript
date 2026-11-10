@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 1046 rules across 68 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 1127 rules across 80 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **1046 diagnostic rules** across **68 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1127 diagnostic rules** across **80 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -31,6 +31,7 @@ The **CLI** column below shows which command reports each language's rules.
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   226 | `msx lint`              |
+| [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    55 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
 | [NIST OSCAL](#oscal)                      | `@modelscript/oscal`        |    13 | Language server / API   |
@@ -54,12 +55,18 @@ The **CLI** column below shows which command reports each language's rules.
 | [GT-SUITE](#gtsuite)                      | `@modelscript/gtsuite`      |    15 | `msx lint`              |
 | [ASAM OpenDRIVE](#opendrive)              | `@modelscript/opendrive`    |    11 | `msx opendrive lint`    |
 | [ASAM OpenSCENARIO](#openscenario)        | `@modelscript/openscenario` |    13 | `msx openscenario lint` |
+| [GTFS](#gtfs)                             | `@modelscript/gtfs`         |     7 | `msx lint`              |
 | [GENSYS](#gensys)                         | `@modelscript/gensys`       |    10 | `msx gensys lint`       |
 | [SIMPACK](#simpack)                       | `@modelscript/simpack`      |    10 | `msx simpack lint`      |
 | [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    17 | `msx lint`              |
 | [PSS/E](#psse)                            | `@modelscript/psse`         |    16 | `msx psse lint`         |
+| [DIgSILENT PowerFactory](#powerfactory)   | `@modelscript/powerfactory` |     6 | Language server / API   |
+| [GE Vernova PSLF](#pslf)                  | `@modelscript/pslf`         |    10 | `msx pslf lint`         |
 | [CIM / CGMES](#cgmes)                     | `@modelscript/cgmes`        |    10 | `msx cgmes lint`        |
 | [OpenDSS](#opendss)                       | `@modelscript/opendss`      |    13 | `msx opendss lint`      |
+| [OCPP](#ocpp)                             | `@modelscript/ocpp`         |     5 | `msx lint`              |
+| [OpenADR](#openadr)                       | `@modelscript/openadr`      |     4 | `msx lint`              |
+| [LBNL TOUGH](#tough)                      | `@modelscript/tough`        |     5 | `msx lint`              |
 | [OLGA](#olga)                             | `@modelscript/olga`         |    13 | `msx olga lint`         |
 | [PipelineStudio](#lps)                    | `@modelscript/lps`          |    12 | `msx lint`              |
 | [ECLIPSE](#eclipse)                       | `@modelscript/eclipse`      |    10 | `msx eclipse lint`      |
@@ -69,6 +76,8 @@ The **CLI** column below shows which command reports each language's rules.
 | [Verilog-A / AMS](#verilog-a)             | `@modelscript/verilog-a`    |    10 | `msx verilog-a lint`    |
 | [IBIS](#ibis)                             | `@modelscript/ibis`         |     9 | `msx ibis lint`         |
 | [Touchstone](#touchstone)                 | `@modelscript/touchstone`   |    10 | `msx touchstone lint`   |
+| [OpenROADM & Telcordia .sor](#optical)    | `@modelscript/optical`      |     7 | `msx optical lint`      |
+| [NSMA WG16 & Planet Antenna](#ran)        | `@modelscript/ran`          |     5 | Language server / API   |
 | [URDF / Xacro](#urdf)                     | `@modelscript/urdf`         |    14 | `msx lint`              |
 | [PLCopen / IEC 61131-3](#plcopen)         | `@modelscript/plcopen`      |    13 | `msx plcopen lint`      |
 | [AutomationML (IEC 62714)](#automationml) | `@modelscript/automationml` |    12 | Language server / API   |
@@ -76,6 +85,9 @@ The **CLI** column below shows which command reports each language's rules.
 | [EnergyPlus](#energyplus)                 | `@modelscript/energyplus`   |     8 | `msx energyplus lint`   |
 | [EPANET](#epanet)                         | `@modelscript/epanet`       |     8 | `msx epanet lint`       |
 | [EPA SWMM](#swmm)                         | `@modelscript/swmm`         |    13 | `msx swmm lint`         |
+| [USACE HEC-RAS](#hec-ras)                 | `@modelscript/hec-ras`      |     8 | `msx lint`              |
+| [USGS MODFLOW](#modflow)                  | `@modelscript/modflow`      |     6 | `msx lint`              |
+| [EPA LandGEM](#landgem)                   | `@modelscript/landgem`      |     6 | `msx lint`              |
 | [Aspen Plus / HYSYS](#aspen)              | `@modelscript/aspen`        |    18 | `msx aspen lint`        |
 | [gPROMS / PML](#gproms)                   | `@modelscript/gproms`       |    10 | Language server / API   |
 | [Cantera](#cantera)                       | `@modelscript/cantera`      |    13 | Language server / API   |
@@ -358,6 +370,25 @@ Acausal multi-domain physics. **226 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m6050"></span>`M6050` | `transition-priority-invalid` | <Badge type="danger" text="error" /> | Transition priority '<code>&lt;priorityText&gt;</code>' must be a positive integer (&gt;= 1) and unique among transitions exiting the same state. |
 | <span id="modelica-m6051"></span>`M6051` | `first-tick-invalid-argument` | <Badge type="danger" text="error" /> | Operator 'firstTick(<code>&lt;argText&gt;</code>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.     |
 | <span id="modelica-m6052"></span>`M6052` | `interval-invalid-argument`   | <Badge type="danger" text="error" /> | Operator 'interval(<code>&lt;argText&gt;</code>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.      |
+
+## AMPL {#ampl}
+
+Mathematical programming & optimization (LP, MILP, NLP). **12 rules** · `@modelscript/ampl` · Source: `languages/ampl/src/errors.ts` · [Language guide](../languages/ampl.md)
+
+| Code                                 | Rule                           | Severity                                | Message                                                                                                                                                                  |
+| :----------------------------------- | :----------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="ampl-m9501"></span>`M9501` | `syntax-error`                 | <Badge type="danger" text="error" />    | Syntax error in AMPL source: <code>&lt;detail&gt;</code>.                                                                                                                |
+| <span id="ampl-m9502"></span>`M9502` | `undeclared-set`               | <Badge type="danger" text="error" />    | Reference to undeclared set '<code>&lt;setName&gt;</code>'.                                                                                                              |
+| <span id="ampl-m9503"></span>`M9503` | `undeclared-param`             | <Badge type="danger" text="error" />    | Reference to undeclared parameter '<code>&lt;paramName&gt;</code>'.                                                                                                      |
+| <span id="ampl-m9504"></span>`M9504` | `undeclared-var`               | <Badge type="danger" text="error" />    | Reference to undeclared variable '<code>&lt;varName&gt;</code>'.                                                                                                         |
+| <span id="ampl-m9505"></span>`M9505` | `dimension-mismatch`           | <Badge type="danger" text="error" />    | Dimension mismatch for '<code>&lt;name&gt;</code>': expected <code>&lt;expected&gt;</code> indices, but found <code>&lt;actual&gt;</code>.                               |
+| <span id="ampl-m9506"></span>`M9506` | `bounds-conflict`              | <Badge type="danger" text="error" />    | Variable or constraint '<code>&lt;name&gt;</code>' specifies conflicting bounds: lower bound (<code>&lt;lb&gt;</code>) exceeds upper bound (<code>&lt;ub&gt;</code>).    |
+| <span id="ampl-m9507"></span>`M9507` | `division-by-zero`             | <Badge type="danger" text="error" />    | Division by zero detected in expression '<code>&lt;context&gt;</code>'.                                                                                                  |
+| <span id="ampl-m9508"></span>`M9508` | `nonlinear-integer-constraint` | <Badge type="warning" text="warning" /> | Constraint '<code>&lt;conName&gt;</code>' contains nonlinear terms with integer/binary variable '<code>&lt;varName&gt;</code>'. Global solver (Couenne/Bonmin) required. |
+| <span id="ampl-m9509"></span>`M9509` | `empty-index-set`              | <Badge type="warning" text="warning" /> | Index set '<code>&lt;setName&gt;</code>' is empty during instantiation of '<code>&lt;context&gt;</code>'.                                                                |
+| <span id="ampl-m9510"></span>`M9510` | `duplicate-declaration`        | <Badge type="danger" text="error" />    | Duplicate declaration of <code>&lt;kind&gt;</code> '<code>&lt;name&gt;</code>'.                                                                                          |
+| <span id="ampl-m9511"></span>`M9511` | `set-arity-mismatch`           | <Badge type="danger" text="error" />    | Set '<code>&lt;setName&gt;</code>' declared with dimen <code>&lt;expected&gt;</code> contains member tuple with arity <code>&lt;actual&gt;</code>.                       |
+| <span id="ampl-m9512"></span>`M9512` | `subset-relation-violation`    | <Badge type="danger" text="error" />    | Set '<code>&lt;setName&gt;</code>' member '<code>&lt;member&gt;</code>' is not in parent set '<code>&lt;parentSet&gt;</code>' required by 'within' clause.               |
 
 ## SysML v2 / KerML {#sysml2}
 
@@ -875,6 +906,20 @@ Driving scenarios & RSS safety margins. **13 rules** · `@modelscript/openscenar
 | <span id="openscenario-m8512"></span>`M8512` | `negative-time-to-collision`       | <Badge type="danger" text="error" />    | Time-to-collision trigger on actor '<code>&lt;actor&gt;</code>' specifies negative target threshold '<code>&lt;ttc&gt;</code>' s.                               |
 | <span id="openscenario-m8513"></span>`M8513` | `conflicting-longitudinal-actions` | <Badge type="danger" text="error" />    | Actor '<code>&lt;actor&gt;</code>' is targeted by concurrent conflicting speed and distance actions.                                                            |
 
+## GTFS {#gtfs}
+
+Transit schedules & fleet electrification power. **7 rules** · `@modelscript/gtfs` · Source: `languages/gtfs/src/errors.ts` · [Language guide](../languages/gtfs.md)
+
+| Code                                 | Rule                          | Severity                                | Message                                                                                                                                    |
+| :----------------------------------- | :---------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="gtfs-m1001"></span>`M1001` | `gtfs-parse-error`            | <Badge type="danger" text="error" />    | Syntax or structure error in GTFS feed: <code>&lt;err&gt;</code>.                                                                          |
+| <span id="gtfs-m2001"></span>`M2001` | `gtfs-stop-not-found`         | <Badge type="danger" text="error" />    | Stop '<code>&lt;stopId&gt;</code>' referenced in trip '<code>&lt;tripId&gt;</code>' is not declared in stops table.                        |
+| <span id="gtfs-m2002"></span>`M2002` | `gtfs-route-not-found`        | <Badge type="danger" text="error" />    | Route '<code>&lt;routeId&gt;</code>' referenced in trip '<code>&lt;tripId&gt;</code>' is not declared in routes table.                     |
+| <span id="gtfs-m3001"></span>`M3001` | `gtfs-excessive-speed`        | <Badge type="danger" text="error" />    | Trip '<code>&lt;tripId&gt;</code>' segment speed (<code>&lt;value&gt;</code> km/h) exceeds safe urban transit threshold (120 km/h).        |
+| <span id="gtfs-m3002"></span>`M3002` | `gtfs-excessive-acceleration` | <Badge type="warning" text="warning" /> | Trip '<code>&lt;tripId&gt;</code>' segment acceleration (<code>&lt;value&gt;</code> m/s^2) exceeds passenger comfort standard (2.5 m/s^2). |
+| <span id="gtfs-m4001"></span>`M4001` | `gtfs-battery-depletion`      | <Badge type="danger" text="error" />    | Electric bus battery SOC drops to <code>&lt;value&gt;</code>% on trip '<code>&lt;tripId&gt;</code>', breaching 10% critical reserve limit. |
+| <span id="gtfs-m4002"></span>`M4002` | `gtfs-time-reversal`          | <Badge type="danger" text="error" />    | Trip '<code>&lt;tripId&gt;</code>' sequence <code>&lt;stopSeq&gt;</code> has arrival time before preceding departure time.                 |
+
 ## GENSYS {#gensys}
 
 Railway vehicle dynamics & track. **10 rules** · `@modelscript/gensys` · Source: `languages/gensys/src/errors.ts` · [Language guide](../languages/gensys.md)
@@ -935,7 +980,7 @@ Electromagnetic transients (EMT). **17 rules** · `@modelscript/pscad` · Source
 
 ## PSS/E {#psse}
 
-Transmission power flow. **16 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
+Transmission power flow & transient stability. **16 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
 
 | Code                                 | Rule                                 | Severity                                | Message                                                                                                                                                                                                        |
 | :----------------------------------- | :----------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -955,6 +1000,36 @@ Transmission power flow. **16 rules** · `@modelscript/psse` · Source: `languag
 | <span id="psse-p4002"></span>`P4002` | `branch-base-kv-mismatch`            | <Badge type="warning" text="warning" /> | Branch '<code>&lt;ckt&gt;</code>' connects bus <code>&lt;fromBus&gt;</code> (<code>&lt;fromKv&gt;</code> kV) to bus <code>&lt;toBus&gt;</code> (<code>&lt;toKv&gt;</code> kV) without a transformer.           |
 | <span id="psse-p4003"></span>`P4003` | `transformer-tap-out-of-bounds`      | <Badge type="warning" text="warning" /> | Transformer '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has off-nominal tap ratio <code>&lt;ratio&gt;</code> outside typical limits &#91;0.7, 1.3&#93;. |
 | <span id="psse-p4004"></span>`P4004` | `branch-thermal-rating-zero`         | <Badge type="warning" text="warning" /> | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero MVA thermal rating.                                                            |
+
+## DIgSILENT PowerFactory {#powerfactory}
+
+Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT. **6 rules** · `@modelscript/powerfactory` · Source: `languages/powerfactory/src/lints/index.ts` · [Language guide](../languages/powerfactory.md)
+
+| Code                                           | Rule                                | Severity                                | Message                                                                                                              |
+| :--------------------------------------------- | :---------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| <span id="powerfactory-pf1001"></span>`PF1001` | `floating-terminal`                 | <Badge type="warning" text="warning" /> | Terminal '<code>&lt;terminalName&gt;</code>' is floating and not connected to any electrical equipment.              |
+| <span id="powerfactory-pf1002"></span>`PF1002` | `invalid-line-parameters`           | <Badge type="danger" text="error" />    | Line '<code>&lt;lineName&gt;</code>' lacks explicit resistance R1/type definition or has non-positive length.        |
+| <span id="powerfactory-pf1003"></span>`PF1003` | `transformer-voltage-mismatch`      | <Badge type="warning" text="warning" /> | Transformer '<code>&lt;trafoName&gt;</code>' rated HV voltage differs by &gt;20% from connected bus nominal voltage. |
+| <span id="powerfactory-pf1004"></span>`PF1004` | `generator-voltage-setpoint-bounds` | <Badge type="warning" text="warning" /> | Generator '<code>&lt;genName&gt;</code>' voltage setpoint is outside typical operating range &#91;0.8, 1.2&#93; pu.  |
+| <span id="powerfactory-pf1005"></span>`PF1005` | `generator-power-exceeds-mbase`     | <Badge type="warning" text="warning" /> | Generator '<code>&lt;genName&gt;</code>' scheduled active power exceeds rated apparent power MVA.                    |
+| <span id="powerfactory-pf1008"></span>`PF1008` | `unresolved-terminal-reference`     | <Badge type="danger" text="error" />    | Element '<code>&lt;elementName&gt;</code>' references unknown terminal '<code>&lt;terminalId&gt;</code>'.            |
+
+## GE Vernova PSLF {#pslf}
+
+WECC bulk transmission power flow & dynamic models. **10 rules** · `@modelscript/pslf` · Source: `languages/pslf/src/lints/index.ts` · [Language guide](../languages/pslf.md)
+
+| Code                                         | Rule                                 | Severity                                | Message                                                                                                                     |
+| :------------------------------------------- | :----------------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| <span id="pslf-pslf-e001"></span>`PSLF-E001` | `missing-slack-bus`                  | <Badge type="danger" text="error" />    | No slack / swing bus (busType 3) defined in the power flow case.                                                            |
+| <span id="pslf-pslf-e002"></span>`PSLF-E002` | `dangling-branch-bus`                | <Badge type="danger" text="error" />    | Transmission line connects to non-existent bus '<code>&lt;busNumber&gt;</code>'.                                            |
+| <span id="pslf-pslf-e003"></span>`PSLF-E003` | `dangling-transformer-bus`           | <Badge type="danger" text="error" />    | Transformer connects to non-existent bus '<code>&lt;busNumber&gt;</code>'.                                                  |
+| <span id="pslf-pslf-e004"></span>`PSLF-E004` | `dangling-generator-bus`             | <Badge type="danger" text="error" />    | Generator is connected to non-existent bus '<code>&lt;busNumber&gt;</code>'.                                                |
+| <span id="pslf-pslf-e005"></span>`PSLF-E005` | `inverted-generator-reactive-limits` | <Badge type="danger" text="error" />    | Generator reactive lower limit Q_min (<code>&lt;qmin&gt;</code> Mvar) exceeds Q_max (<code>&lt;qmax&gt;</code> Mvar).       |
+| <span id="pslf-pslf-e006"></span>`PSLF-E006` | `dangling-dynamic-model-bus`         | <Badge type="danger" text="error" />    | Dynamic model '<code>&lt;modelType&gt;</code>' refers to non-existent power flow bus '<code>&lt;busNumber&gt;</code>'.      |
+| <span id="pslf-pslf-e007"></span>`PSLF-E007` | `non-positive-generator-inertia`     | <Badge type="danger" text="error" />    | Classical generator model has non-positive inertia H = '<code>&lt;inertiaH&gt;</code>'.                                     |
+| <span id="pslf-pslf-w001"></span>`PSLF-W001` | `non-positive-branch-reactance`      | <Badge type="warning" text="warning" /> | Branch series reactance X is non-positive (<code>&lt;xPu&gt;</code> pu).                                                    |
+| <span id="pslf-pslf-w002"></span>`PSLF-W002` | `transformer-ratio-out-of-bounds`    | <Badge type="warning" text="warning" /> | Transformer off-nominal turns ratio <code>&lt;ratio&gt;</code> pu is outside typical operating envelope &#91;0.8, 1.2&#93;. |
+| <span id="pslf-pslf-w003"></span>`PSLF-W003` | `isolated-bus`                       | <Badge type="warning" text="warning" /> | Bus '<code>&lt;busName&gt;</code>' is electrically isolated without any in-service branch or transformer connections.       |
 
 ## CIM / CGMES {#cgmes}
 
@@ -992,6 +1067,41 @@ Unbalanced distribution & DER hosting. **13 rules** · `@modelscript/opendss` ·
 | <span id="opendss-m8411"></span>`M8411` | `isolated-island-no-slack`      | <Badge type="danger" text="error" />    | Distribution subnetwork island has no reference slack bus or grid-forming inverter.                                                                                                              |
 | <span id="opendss-m8412"></span>`M8412` | `non-positive-definite-zmatrix` | <Badge type="danger" text="error" />    | Line '<code>&lt;lineName&gt;</code>' impedance matrix is not positive-definite.                                                                                                                  |
 | <span id="opendss-m8413"></span>`M8413` | `capacitor-overvoltage-risk`    | <Badge type="warning" text="warning" /> | Capacitor bank '<code>&lt;capName&gt;</code>' kVAR rating (<code>&lt;kvar&gt;</code>) exceeds feeder minimum load (<code>&lt;loadKvar&gt;</code>), risking overvoltage.                          |
+
+## OCPP {#ocpp}
+
+EV smart charging & transformer load management. **5 rules** · `@modelscript/ocpp` · Source: `languages/ocpp/src/errors.ts` · [Language guide](../languages/ocpp.md)
+
+| Code                                 | Rule                        | Severity                                | Message                                                                                                                                                                                                                                   |
+| :----------------------------------- | :-------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="ocpp-m1001"></span>`M1001` | `ocpp-parse-error`          | <Badge type="danger" text="error" />    | Syntax or JSON-RPC format error in OCPP deck: <code>&lt;err&gt;</code>.                                                                                                                                                                   |
+| <span id="ocpp-m3001"></span>`M3001` | `ocpp-power-limit-exceeded` | <Badge type="warning" text="warning" /> | Station '<code>&lt;stationId&gt;</code>' total peak power draw (<code>&lt;totalKw&gt;</code> kW) exceeds upstream grid transformer limit (<code>&lt;limitKw&gt;</code> kW).                                                               |
+| <span id="ocpp-m3002"></span>`M3002` | `ocpp-invalid-soc-range`    | <Badge type="danger" text="error" />    | Charging session '<code>&lt;txId&gt;</code>' has invalid SoC range: current <code>&lt;currentSoC&gt;</code>, target <code>&lt;targetSoC&gt;</code>. Values must be in &#91;0.0, 1.0&#93; with target &gt; current.                        |
+| <span id="ocpp-m4001"></span>`M4001` | `ocpp-connector-not-found`  | <Badge type="danger" text="error" />    | EVSE '<code>&lt;evseId&gt;</code>', connector '<code>&lt;connId&gt;</code>' in station '<code>&lt;stationId&gt;</code>' has invalid ID (must be positive integer).                                                                        |
+| <span id="ocpp-m5001"></span>`M5001` | `ocpp-deadline-infeasible`  | <Badge type="warning" text="warning" /> | Session '<code>&lt;txId&gt;</code>' requires <code>&lt;value&gt;</code> kWh, but connector can only deliver <code>&lt;value&gt;</code> kWh in <code>&lt;departureMinutes&gt;</code> min. Target SoC will not be reached before departure. |
+
+## OpenADR {#openadr}
+
+Automated demand response & peak shaving. **4 rules** · `@modelscript/openadr` · Source: `languages/openadr/src/errors.ts` · [Language guide](../languages/openadr.md)
+
+| Code                                    | Rule                             | Severity                                | Message                                                                                                                                              |
+| :-------------------------------------- | :------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="openadr-m1001"></span>`M1001` | `openadr-parse-error`            | <Badge type="danger" text="error" />    | Syntax or XML/JSON format error in OpenADR payload: <code>&lt;err&gt;</code>.                                                                        |
+| <span id="openadr-m3001"></span>`M3001` | `openadr-negative-duration`      | <Badge type="danger" text="error" />    | Event '<code>&lt;eventId&gt;</code>' interval has invalid non-positive duration: <code>&lt;duration&gt;</code>s. Duration must be strictly positive. |
+| <span id="openadr-m3002"></span>`M3002` | `openadr-invalid-signal-payload` | <Badge type="warning" text="warning" /> | Event '<code>&lt;eventId&gt;</code>' has negative payload (<code>&lt;payload&gt;</code>) for signalType '<code>&lt;signalType&gt;</code>'.           |
+| <span id="openadr-m4001"></span>`M4001` | `openadr-empty-intervals`        | <Badge type="danger" text="error" />    | Event '<code>&lt;eventId&gt;</code>' declared with status 'active' has zero intervals specified.                                                     |
+
+## LBNL TOUGH {#tough}
+
+Geothermal reservoir & wellbore flashing thermodynamics. **5 rules** · `@modelscript/tough` · Source: `languages/tough/src/errors.ts` · [Language guide](../languages/tough.md)
+
+| Code                                  | Rule                         | Severity                                | Message                                                                                                                                                                              |
+| :------------------------------------ | :--------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="tough-m1001"></span>`M1001` | `tough-parse-error`          | <Badge type="danger" text="error" />    | Syntax or block structure error in TOUGH deck: <code>&lt;err&gt;</code>.                                                                                                             |
+| <span id="tough-m2001"></span>`M2001` | `tough-rock-not-found`       | <Badge type="danger" text="error" />    | Element '<code>&lt;elem&gt;</code>' references rock material '<code>&lt;rock&gt;</code>', which is not defined in ROCKS block.                                                       |
+| <span id="tough-m3001"></span>`M3001` | `tough-invalid-porosity`     | <Badge type="danger" text="error" />    | Rock '<code>&lt;rock&gt;</code>' has invalid porosity <code>&lt;phi&gt;</code>. Porosity must satisfy 0.0 &lt; phi &lt; 1.0.                                                         |
+| <span id="tough-m4001"></span>`M4001` | `tough-dangling-connection`  | <Badge type="danger" text="error" />    | Connection #<code>&lt;connIndex&gt;</code> references undefined grid block '<code>&lt;elem&gt;</code>'.                                                                              |
+| <span id="tough-m5001"></span>`M5001` | `tough-negative-temperature` | <Badge type="warning" text="warning" /> | Element '<code>&lt;elem&gt;</code>' initial temperature is sub-zero (<code>&lt;tempC&gt;</code> °C). Sub-zero temperatures risk freezing phase changes not handled by standard EOS1. |
 
 ## OLGA {#olga}
 
@@ -1158,6 +1268,32 @@ RF & signal-integrity S-parameters. **10 rules** · `@modelscript/touchstone` ·
 | <span id="touchstone-m8311"></span>`M8311` | `no-frequency-points`           | <Badge type="danger" text="error" />    | Touchstone file contains no valid frequency parameter points.                                                                                                                                         |
 | <span id="touchstone-m8312"></span>`M8312` | `duplicate-frequency-point`     | <Badge type="danger" text="error" />    | Duplicate frequency sample point '<code>&lt;freq&gt;</code>' encountered in sweep.                                                                                                                    |
 
+## OpenROADM & Telcordia .sor {#optical}
+
+OTDR trace analytics & DWDM transmission. **7 rules** · `@modelscript/optical` · Source: `languages/optical/src/errors.ts` · [Language guide](../languages/optical.md)
+
+| Code                                    | Rule                                 | Severity                                | Message                                                                                                                                                                                                  |
+| :-------------------------------------- | :----------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="optical-m1001"></span>`M1001` | `osnr-margin-exhausted`              | <Badge type="danger" text="error" />    | Channel '<code>&lt;channelId&gt;</code>' GSNR (<code>&lt;gsnrDb&gt;</code> dB) is below required FEC threshold (<code>&lt;requiredDb&gt;</code> dB).                                                     |
+| <span id="optical-m1002"></span>`M1002` | `edfa-input-power-underflow`         | <Badge type="warning" text="warning" /> | Amplifier '<code>&lt;ampId&gt;</code>' input power (<code>&lt;inputDbm&gt;</code> dBm) is below operational sensitivity threshold (<code>&lt;sensitivityDbm&gt;</code> dBm).                             |
+| <span id="optical-m1003"></span>`M1003` | `nonlinear-power-threshold-exceeded` | <Badge type="warning" text="warning" /> | Span '<code>&lt;spanId&gt;</code>' total launch power (<code>&lt;powerDbm&gt;</code> dBm) exceeds non-linear Kerr threshold (<code>&lt;thresholdDbm&gt;</code> dBm).                                     |
+| <span id="optical-m1004"></span>`M1004` | `roadm-colorless-contention`         | <Badge type="danger" text="error" />    | ROADM '<code>&lt;nodeId&gt;</code>' SRG bank <code>&lt;srgNum&gt;</code> has frequency contention at <code>&lt;freqThz&gt;</code> THz between '<code>&lt;ch1&gt;</code>' and '<code>&lt;ch2&gt;</code>'. |
+| <span id="optical-m1005"></span>`M1005` | `uncompensated-chromatic-dispersion` | <Badge type="danger" text="error" />    | Channel '<code>&lt;channelId&gt;</code>' accumulated chromatic dispersion (<code>&lt;accumPsPerNm&gt;</code> ps/nm) exceeds DSP buffer limit (<code>&lt;limitPsPerNm&gt;</code> ps/nm).                  |
+| <span id="optical-m1006"></span>`M1006` | `otdr-high-loss-event`               | <Badge type="danger" text="error" />    | OTDR Event #<code>&lt;evNum&gt;</code> at NaNm specifies high loss (<code>&lt;lossDb&gt;</code> dB), exceeding max allowable (<code>&lt;maxDb&gt;</code> dB).                                            |
+| <span id="optical-m1007"></span>`M1007` | `srlg-diversity-violation`           | <Badge type="danger" text="error" />    | Protection pair '<code>&lt;ch1&gt;</code>' and '<code>&lt;ch2&gt;</code>' share common-risk conduit/trench '<code>&lt;srlgId&gt;</code>'.                                                                |
+
+## NSMA WG16 & Planet Antenna {#ran}
+
+Antenna 3D patterns, RF MPE safety & microwave links. **5 rules** · `@modelscript/ran` · Source: `languages/ran/src/errors.ts` · [Language guide](../languages/ran.md)
+
+| Code                                | Rule                               | Severity                                | Message                                                                                                                                                                                  |
+| :---------------------------------- | :--------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="ran-m2001"></span>`M2001` | `fresnel-zone-obstruction`         | <Badge type="danger" text="error" />    | Microwave link '<code>&lt;linkId&gt;</code>' has terrain obstacle at <code>&lt;distKm&gt;</code> km penetrating 1st Fresnel zone (clearance ratio <code>&lt;ratio&gt;</code> &lt; 0.60). |
+| <span id="ran-m2002"></span>`M2002` | `link-availability-sub-five-nines` | <Badge type="warning" text="warning" /> | Microwave link '<code>&lt;linkId&gt;</code>' annual availability (<code>&lt;avail&gt;</code>%) is below 99.999% SLA (<code>&lt;unavailMin&gt;</code> minutes/year outage).               |
+| <span id="ran-m2003"></span>`M2003` | `fcc-eirp-limit-exceeded`          | <Badge type="danger" text="error" />    | Microwave link '<code>&lt;linkId&gt;</code>' EIRP (<code>&lt;eirpDbm&gt;</code> dBm) exceeds regulatory FCC Part 101 ceiling (<code>&lt;maxDbm&gt;</code> dBm).                          |
+| <span id="ran-m2004"></span>`M2004` | `polarization-mismatch`            | <Badge type="danger" text="error" />    | Link '<code>&lt;linkId&gt;</code>' declares polarization '<code>&lt;txPol&gt;</code>' but antenna specifies incompatible '<code>&lt;antPol&gt;</code>'.                                  |
+| <span id="ran-m2005"></span>`M2005` | `antenna-downtilt-out-of-bounds`   | <Badge type="warning" text="warning" /> | Antenna '<code>&lt;antenna&gt;</code>' declares electrical downtilt (<code>&lt;tilt&gt;</code> deg) outside typical operational range &#91;0.0, 16.0 deg&#93;.                           |
+
 ## URDF / Xacro {#urdf}
 
 Robot kinematics & dynamics. **14 rules** · `@modelscript/urdf` · Source: `languages/urdf/src/errors.ts` · [Language guide](../languages/urdf.md)
@@ -1283,6 +1419,47 @@ Stormwater & urban drainage. **13 rules** · `@modelscript/swmm` · Source: `lan
 | <span id="swmm-m8211"></span>`M8211` | `subcatchment-outlet-not-found` | <Badge type="danger" text="error" />    | Subcatchment '<code>&lt;subId&gt;</code>' references non-existent discharge outlet '<code>&lt;outletId&gt;</code>'.                                                                         |
 | <span id="swmm-m8212"></span>`M8212` | `weir-offset-negative`          | <Badge type="danger" text="error" />    | Weir '<code>&lt;weirId&gt;</code>' specifies negative crest height offset (<code>&lt;offset&gt;</code>).                                                                                    |
 | <span id="swmm-m8213"></span>`M8213` | `invalid-discharge-coefficient` | <Badge type="danger" text="error" />    | Link '<code>&lt;linkId&gt;</code>' specifies non-positive discharge coefficient (Cd = <code>&lt;cd&gt;</code>).                                                                             |
+
+## USACE HEC-RAS {#hec-ras}
+
+River basin & open-channel hydraulics. **8 rules** · `@modelscript/hec-ras` · Source: `languages/hec-ras/src/errors.ts` · [Language guide](../languages/hec-ras.md)
+
+| Code                                    | Rule                                 | Severity                                | Message                                                                                                                                                                                                                   |
+| :-------------------------------------- | :----------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| <span id="hec-ras-m1001"></span>`M1001` | `hecras-parse-error`                 | <Badge type="danger" text="error" />    | Syntax error in HEC-RAS deck: <code>&lt;err&gt;</code>.                                                                                                                                                                   |
+| <span id="hec-ras-m2001"></span>`M2001` | `hecras-reach-not-found`             | <Badge type="danger" text="error" />    | River '<code>&lt;river&gt;</code>', reach '<code>&lt;reach&gt;</code>' was referenced but not defined in geometry.                                                                                                        |
+| <span id="hec-ras-m3001"></span>`M3001` | `hecras-station-inversion`           | <Badge type="danger" text="error" />    | Cross-section at station '<code>&lt;station&gt;</code>' has inverted station offsets: <code>&lt;currSta&gt;</code> &lt;= <code>&lt;prevSta&gt;</code>. Offsets must be strictly monotonically increasing.                 |
+| <span id="hec-ras-m3002"></span>`M3002` | `hecras-manning-out-of-bounds`       | <Badge type="warning" text="warning" /> | Manning roughness coefficient <code>&lt;n&gt;</code> at station '<code>&lt;station&gt;</code>' is outside typical physical bounds (0.01 - 0.20).                                                                          |
+| <span id="hec-ras-m3003"></span>`M3003` | `hecras-bank-station-out-of-bounds`  | <Badge type="danger" text="error" />    | Bank station <code>&lt;bank&gt;</code> at station '<code>&lt;station&gt;</code>' is outside cross-section limits &#91;<code>&lt;minSta&gt;</code>, <code>&lt;maxSta&gt;</code>&#93;.                                      |
+| <span id="hec-ras-m4001"></span>`M4001` | `hecras-disconnected-reach`          | <Badge type="danger" text="error" />    | River reach '<code>&lt;river&gt;</code>, <code>&lt;reach&gt;</code>' has fewer than 2 cross-sections and cannot form a valid conveyance profile.                                                                          |
+| <span id="hec-ras-m5001"></span>`M5001` | `hecras-adverse-slope`               | <Badge type="warning" text="warning" /> | Adverse bed slope detected between upstream station '<code>&lt;usStation&gt;</code>' (invert <code>&lt;usBed&gt;</code> m) and downstream station '<code>&lt;dsStation&gt;</code>' (invert <code>&lt;dsBed&gt;</code> m). |
+| <span id="hec-ras-m5002"></span>`M5002` | `hecras-missing-downstream-boundary` | <Badge type="danger" text="error" />    | Reach '<code>&lt;river&gt;</code>, <code>&lt;reach&gt;</code>' is missing a downstream boundary condition (Normal Depth, Known WS, or Rating Curve).                                                                      |
+
+## USGS MODFLOW {#modflow}
+
+Regional groundwater aquifers & 3D Darcy flow. **6 rules** · `@modelscript/modflow` · Source: `languages/modflow/src/errors.ts` · [Language guide](../languages/modflow.md)
+
+| Code                                    | Rule                                | Severity                             | Message                                                                                                                                                                                                            |
+| :-------------------------------------- | :---------------------------------- | :----------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="modflow-m1001"></span>`M1001` | `modflow-parse-error`               | <Badge type="danger" text="error" /> | Syntax or structure error in MODFLOW deck: <code>&lt;err&gt;</code>.                                                                                                                                               |
+| <span id="modflow-m2001"></span>`M2001` | `modflow-cell-out-of-bounds`        | <Badge type="danger" text="error" /> | Grid cell (<code>&lt;layer&gt;</code>, <code>&lt;row&gt;</code>, <code>&lt;col&gt;</code>) is out of bounds for grid dimensions (<code>&lt;maxL&gt;</code>, <code>&lt;maxR&gt;</code>, <code>&lt;maxC&gt;</code>). |
+| <span id="modflow-m3001"></span>`M3001` | `modflow-invalid-conductivity`      | <Badge type="danger" text="error" /> | Hydraulic conductivity K = <code>&lt;k&gt;</code> is invalid. K must be strictly positive (K &gt; 0).                                                                                                              |
+| <span id="modflow-m3002"></span>`M3002` | `modflow-invalid-storage`           | <Badge type="danger" text="error" /> | Aquifer storage parameter <code>&lt;param&gt;</code> = <code>&lt;val&gt;</code> is invalid. Value must be non-negative.                                                                                            |
+| <span id="modflow-m4001"></span>`M4001` | `modflow-river-stage-below-bottom`  | <Badge type="danger" text="error" /> | River stage <code>&lt;stage&gt;</code> m is lower than river bed bottom elevation <code>&lt;rbot&gt;</code> m.                                                                                                     |
+| <span id="modflow-m4002"></span>`M4002` | `modflow-layer-elevation-inversion` | <Badge type="danger" text="error" /> | Layer <code>&lt;layer&gt;</code> has bottom elevation (<code>&lt;botm&gt;</code>) higher than or equal to its top elevation (<code>&lt;top&gt;</code>).                                                            |
+
+## EPA LandGEM {#landgem}
+
+Solid waste methane decay & landfill biogas CHP. **6 rules** · `@modelscript/landgem` · Source: `languages/landgem/src/errors.ts` · [Language guide](../languages/landgem.md)
+
+| Code                                    | Rule                                | Severity                             | Message                                                                                                                                                        |
+| :-------------------------------------- | :---------------------------------- | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="landgem-m1001"></span>`M1001` | `landgem-parse-error`               | <Badge type="danger" text="error" /> | Syntax or structure error in LandGEM / Biogas deck: <code>&lt;err&gt;</code>.                                                                                  |
+| <span id="landgem-m2001"></span>`M2001` | `landgem-missing-waste-data`        | <Badge type="danger" text="error" /> | Landfill site '<code>&lt;site&gt;</code>' has no historical or projected waste acceptance cohorts.                                                             |
+| <span id="landgem-m3001"></span>`M3001` | `landgem-invalid-kinetic-parameter` | <Badge type="danger" text="error" /> | Kinetic parameter <code>&lt;param&gt;</code> = <code>&lt;val&gt;</code> is invalid. Value must be strictly positive (<code>&lt;param&gt;</code> &gt; 0).       |
+| <span id="landgem-m3002"></span>`M3002` | `landgem-digester-ph-inhibition`    | <Badge type="danger" text="error" /> | Digester '<code>&lt;digester&gt;</code>' operating pH (<code>&lt;ph&gt;</code>) causes severe methanogenic inhibition. Optimum pH is 6.8 - 7.6.                |
+| <span id="landgem-m4001"></span>`M4001` | `landgem-invalid-year-range`        | <Badge type="danger" text="error" /> | Landfill site '<code>&lt;site&gt;</code>' closing year (<code>&lt;close&gt;</code>) must be greater than or equal to opening year (<code>&lt;open&gt;</code>). |
+| <span id="landgem-m4002"></span>`M4002` | `landgem-negative-waste-mass`       | <Badge type="danger" text="error" /> | Waste acceptance in year <code>&lt;year&gt;</code> has negative mass (<code>&lt;mass&gt;</code> Mg). Waste mass must be non-negative.                          |
 
 ## Aspen Plus / HYSYS {#aspen}
 

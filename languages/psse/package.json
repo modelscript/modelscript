@@ -54,6 +54,7 @@
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
+    "bench:accc": "tsx tests/run-70k-accc.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -105,6 +105,10 @@
       "types": "./dist/code-thumbnail-builder.d.ts",
       "default": "./dist/code-thumbnail-builder.js"
     },
+    "./water-network-diff": {
+      "types": "./dist/water-network-diff.d.ts",
+      "default": "./dist/water-network-diff.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"

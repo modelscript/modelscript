@@ -353,3 +353,97 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
 
   return net;
 }
+
+/**
+ * Serializes an EpanetNetwork AST structure back into standard EPANET .inp format.
+ */
+export function serializeInp(net: EpanetNetwork): string {
+  const out: string[] = [];
+
+  if (net.title) {
+    out.push("[TITLE]");
+    out.push(net.title);
+    out.push("");
+  }
+
+  if (net.junctions.length > 0) {
+    out.push("[JUNCTIONS]");
+    out.push(";ID              Elevation   Demand      Pattern");
+    for (const j of net.junctions) {
+      const pat = j.patternId ? ` ${j.patternId}` : "";
+      out.push(`${j.id.padEnd(16, " ")} ${j.elevation.toFixed(2).padEnd(11, " ")} ${j.demand.toFixed(2)}${pat}`);
+    }
+    out.push("");
+  }
+
+  if (net.reservoirs.length > 0) {
+    out.push("[RESERVOIRS]");
+    out.push(";ID              Head        Pattern");
+    for (const r of net.reservoirs) {
+      const pat = r.patternId ? ` ${r.patternId}` : "";
+      out.push(`${r.id.padEnd(16, " ")} ${r.totalHead.toFixed(2)}${pat}`);
+    }
+    out.push("");
+  }
+
+  if (net.tanks.length > 0) {
+    out.push("[TANKS]");
+    out.push(";ID              Elevation   InitLevel   MinLevel    MaxLevel    Diameter    MinVol      VolCurve");
+    for (const t of net.tanks) {
+      out.push(
+        `${t.id.padEnd(16, " ")} ${t.elevation.toFixed(2).padEnd(11, " ")} ${t.initLevel.toFixed(2).padEnd(11, " ")} ${t.minLevel.toFixed(2).padEnd(11, " ")} ${t.maxLevel.toFixed(2).padEnd(11, " ")} ${t.diameter.toFixed(2).padEnd(11, " ")} ${(t.minVol ?? 0).toFixed(2)}`,
+      );
+    }
+    out.push("");
+  }
+
+  if (net.pipes.length > 0) {
+    out.push("[PIPES]");
+    out.push(";ID              Node1            Node2            Length      Diameter    Roughness   MinorLoss   Status");
+    for (const p of net.pipes) {
+      out.push(
+        `${p.id.padEnd(16, " ")} ${p.node1.padEnd(16, " ")} ${p.node2.padEnd(16, " ")} ${p.length.toFixed(1).padEnd(11, " ")} ${p.diameter.toFixed(1).padEnd(11, " ")} ${p.roughness.toFixed(1).padEnd(11, " ")} ${(p.minorLoss ?? 0).toFixed(2).padEnd(11, " ")} ${p.status ?? "Open"}`,
+      );
+    }
+    out.push("");
+  }
+
+  if (net.pumps.length > 0) {
+    out.push("[PUMPS]");
+    out.push(";ID              Node1            Node2            Parameters");
+    for (const pu of net.pumps) {
+      const param =
+        pu.power !== undefined
+          ? `POWER ${pu.power.toFixed(2)}`
+          : pu.headCurveId
+            ? `HEAD ${pu.headCurveId}`
+            : "POWER 50.0";
+      out.push(`${pu.id.padEnd(16, " ")} ${pu.node1.padEnd(16, " ")} ${pu.node2.padEnd(16, " ")} ${param}`);
+    }
+    out.push("");
+  }
+
+  if (net.valves.length > 0) {
+    out.push("[VALVES]");
+    out.push(";ID              Node1            Node2            Diameter    Type   Setting     MinorLoss");
+    for (const v of net.valves) {
+      out.push(
+        `${v.id.padEnd(16, " ")} ${v.node1.padEnd(16, " ")} ${v.node2.padEnd(16, " ")} ${(v.diameter ?? 200).toFixed(1).padEnd(11, " ")} ${v.type.padEnd(6, " ")} ${v.setting.toFixed(2).padEnd(11, " ")} ${(v.minorLoss ?? 0).toFixed(2)}`,
+      );
+    }
+    out.push("");
+  }
+
+  out.push("[OPTIONS]");
+  out.push(`UNITS            ${net.options.units ?? "LPS"}`);
+  out.push(`HEADLOSS         ${net.options.headloss ?? "H-W"}`);
+  if (net.options.demandModel) {
+    out.push(`DEMAND MODEL     ${net.options.demandModel}`);
+    if (net.options.pddMinPressure !== undefined) out.push(`MINIMUM PRESSURE ${net.options.pddMinPressure}`);
+    if (net.options.pddReqPressure !== undefined) out.push(`REQUIRED PRESSURE ${net.options.pddReqPressure}`);
+    if (net.options.pddPressureExponent !== undefined) out.push(`PRESSURE EXPONENT ${net.options.pddPressureExponent}`);
+  }
+  out.push("");
+
+  return out.join("\n");
+}

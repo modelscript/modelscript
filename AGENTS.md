@@ -75,17 +75,17 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
 | `ee/`                     | Enterprise Edition (`@modelscript/ee`) — Ed25519 offline license verifier, NERC CIP / FERC CEII / FDA 21 CFR Part 11 compliance, SSO/SAML, RBAC, Slurm HPC, Digital Twin    |
 
-### Polyglot Languages (`languages/` — 68 Languages)
+### Polyglot Languages (`languages/` — 81 Languages)
 
-ModelScript is a polyglot compiler supporting **68 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"stable"` [14], `"beta"` [26], or `"preview"` [28]), validated by `npm run lint:manifests`:
+ModelScript is a polyglot compiler supporting **81 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"stable"` [24], `"beta"` [57], or `"preview"` [0]), validated by `npm run lint:manifests` and `npm run audit:languages`:
 
-- **Native & Core Systems Engineering (8):** `modelscript` (`Stable`), `modelica` (`Stable`), `sysml2` (`Stable`), `ssp` (`Stable`), `reqif` (`Stable`), `oscal` (`Beta`), `owl2` (`Stable`), `csv` (`Stable`)
-- **Electrical Power Grids, RF & Electronics (8):** `pscad` (`Stable`), `psse` (`Preview`), `cgmes` (`Preview`), `opendss` (`Preview`), `spice` (`Stable`), `verilog-a` (`Beta`), `ibis` (`Preview`), `touchstone` (`Preview`)
-- **Fluid, Process, Subsurface, Civil Water & Nuclear (8):** `olga` (`Stable`), `lps` (`Stable`), `aspen` (`Preview`), `eclipse` (`Preview`), `epanet` (`Beta`), `swmm` (`Preview`), `relap5` (`Preview`), `energyplus` (`Beta`)
-- **Multibody, Automotive, Robotics, Marine & Rail (9):** `adams` (`Beta`), `simpack` (`Beta`), `gensys` (`Stable`), `gtsuite` (`Beta`), `sima` (`Preview`), `urdf` (`Beta`), `opendrive` (`Beta`), `openscenario` (`Preview`), `autosar` (`Beta`)
-- **Aerospace, Flight Dynamics, Astrodynamics & Controls (7):** `simulink` (`Beta`), `easy5` (`Beta`), `jsbsim` (`Preview`), `rocets` (`Beta`), `ccsds` (`Beta`), `plcopen` (`Beta`), `automationml` (`Beta`)
-- **3D CAD, Digital Metrology & Continuum Physics (6):** `step` (`Stable`), `qif` (`Beta`), `scad` (`Stable`), `usd` (`Preview`), `fea` (`Preview`), `cfd` (`Preview`)
-- **Chemistry, Systems/Synthetic Biology & Scientific Code (14):** `sbml` (`Preview`), `antimony` (`Preview`), `cantera` (`Preview`), `smiles` (`Preview`), `nmtran` (`Preview`), `sbol` (`Preview`), `bngl` (`Preview`), `sedml` (`Preview`), `pdb` (`Preview`), `genbank` (`Preview`), `gproms` (`Preview`), `phreeqc` (`Preview`), `fortran` (`Preview`), `c` (`Beta`)
+- **Native & Core Systems Engineering (9):** `modelscript` (`Stable`), `modelica` (`Stable`), `ampl` (`Stable`), `sysml2` (`Stable`), `ssp` (`Stable`), `reqif` (`Stable`), `oscal` (`Beta`), `owl2` (`Stable`), `csv` (`Stable`)
+- **Electrical Power Grids, RF, Telecommunications & Electronics (15):** `pscad` (`Stable`), `psse` (`Stable`), `cgmes` (`Beta`), `opendss` (`Beta`), `powerfactory` (`Beta`), `pslf` (`Beta`), `ocpp` (`Beta`), `openadr` (`Beta`), `spice` (`Stable`), `verilog-a` (`Beta`), `ibis` (`Beta`), `touchstone` (`Beta`), `optical` (`Beta`), `ran` (`Beta`), `fiber` (`Beta`)
+- **Fluid, Process, Subsurface, Civil Water & Nuclear (12):** `olga` (`Stable`), `lps` (`Stable`), `aspen` (`Beta`), `eclipse` (`Beta`), `epanet` (`Stable`), `swmm` (`Stable`), `relap5` (`Stable`), `energyplus` (`Beta`), `hec-ras` (`Beta`), `tough` (`Beta`), `modflow` (`Beta`), `landgem` (`Beta`)
+- **Multibody, Automotive, Robotics, Marine & Rail (10):** `adams` (`Stable`), `simpack` (`Beta`), `gensys` (`Stable`), `gtsuite` (`Beta`), `sima` (`Beta`), `urdf` (`Stable`), `opendrive` (`Stable`), `openscenario` (`Beta`), `autosar` (`Beta`), `gtfs` (`Beta`)
+- **Aerospace, Flight Dynamics, Astrodynamics & Controls (7):** `simulink` (`Beta`), `easy5` (`Stable`), `jsbsim` (`Beta`), `rocets` (`Stable`), `ccsds` (`Stable`), `plcopen` (`Beta`), `automationml` (`Beta`)
+- **3D CAD, Digital Metrology & Continuum Physics (6):** `step` (`Beta`), `qif` (`Beta`), `scad` (`Stable`), `usd` (`Beta`), `fea` (`Beta`), `cfd` (`Beta`)
+- **Chemistry, Systems/Synthetic Biology & Scientific Code (14):** `sbml` (`Beta`), `antimony` (`Beta`), `cantera` (`Beta`), `smiles` (`Beta`), `nmtran` (`Beta`), `sbol` (`Beta`), `bngl` (`Beta`), `sedml` (`Beta`), `pdb` (`Beta`), `genbank` (`Beta`), `gproms` (`Beta`), `phreeqc` (`Beta`), `fortran` (`Beta`), `c` (`Beta`)
 - **Radiology, Radiation Oncology & Computer-Assisted Surgery (8):** `opensim` (`Beta`), `dicom-rt` (`Beta`), `cellml` (`Beta`), `febio` (`Beta`), `nifti` (`Beta`), `topas` (`Beta`), `three-mf` (`Beta`), `igtl` (`Beta`)
 
 ### SymbolIndex Data Model

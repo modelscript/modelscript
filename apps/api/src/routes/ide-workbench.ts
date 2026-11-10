@@ -108,13 +108,27 @@ export function renderWorkbenchHtml(
   const relativeBaseUrl = "/vscode-static";
   const webEndpoint = `${protocol}://${host}/vscode-static`;
 
-  const galleryConfig = {
-    serviceUrl: "https://open-vsx.org/vscode/gallery",
-    itemUrl: "https://open-vsx.org/vscode/item",
-    resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
-    controlUrl: "",
-    mcpUrl: "",
-  };
+  const isAirgap = process.env["MODELSCRIPT_AIRGAPPED"] === "true";
+  const trustedOriginsEnv = (process.env["MODELSCRIPT_TRUSTED_ORIGINS"] || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const galleryConfig = isAirgap
+    ? {
+        serviceUrl: "",
+        itemUrl: "",
+        resourceUrlTemplate: "",
+        controlUrl: "",
+        mcpUrl: "",
+      }
+    : {
+        serviceUrl: "https://open-vsx.org/vscode/gallery",
+        itemUrl: "https://open-vsx.org/vscode/item",
+        resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
+        controlUrl: "",
+        mcpUrl: "",
+      };
 
   const productConfiguration: Record<string, unknown> = {
     enableTelemetry: false,
@@ -147,6 +161,8 @@ export function renderWorkbenchHtml(
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
       "security.workspace.trust.banner": "never",
+      "modelscript.network.airgapped": isAirgap,
+      ...(trustedOriginsEnv.length > 0 ? { "modelscript.security.trustedOrigins": trustedOriginsEnv } : {}),
       "files.associations": {
         "*.cfg": "cfd",
         "*.cfgt": "cfd",
@@ -162,6 +178,38 @@ export function renderWorkbenchHtml(
         "*.st": "plcopen",
         "*.sbml": "sbml",
         "*.r5": "relap5",
+        "*.oscal": "oscal",
+        "*.oscal.json": "oscal",
+        "*.oscal.xml": "oscal",
+        "*.oscal.yaml": "oscal",
+        "*.oscal.yml": "oscal",
+        "*.dcm.json": "dicom-rt",
+        "*.rtplan.json": "dicom-rt",
+        "*.rtdose.json": "dicom-rt",
+        "*.rtstruct.json": "dicom-rt",
+        "*.igtl": "igtl",
+        "*.igtl.json": "igtl",
+        "*.igtl.xml": "igtl",
+        "*.nii.json": "nifti",
+        "*.nrrd": "nifti",
+        "*.qif": "qif",
+        "*.qif.xml": "qif",
+        "*.qif.json": "qif",
+        "*.ocpp": "ocpp",
+        "*.ocpp.json": "ocpp",
+        "*.oadr": "openadr",
+        "*.oadr.xml": "openadr",
+        "*.oadr.json": "openadr",
+        "*.oadr.yaml": "openadr",
+        "*.aml": "automationml",
+        "*.amlx": "automationml",
+        "*.osim": "opensim",
+        "*.feb": "febio",
+        "*.cellml": "cellml",
+        "*.sedml": "sedml",
+        "*.sbol": "sbol",
+        "*.3mf": "three-mf",
+        "*.amf": "three-mf",
       },
     },
   };
@@ -335,12 +383,62 @@ export function renderWorkbenchHtml(
     }
   }
 
+  function getSafeTargetOrigin() {
+    try {
+      if (document.referrer) {
+        var refUrl = new URL(document.referrer);
+        if (checkOriginAllowed(refUrl.origin)) return refUrl.origin;
+      }
+    } catch (e) {}
+    return window.location.origin;
+  }
+
+  function checkOriginAllowed(origin) {
+    if (!origin || origin === 'null') return false;
+    if (origin === window.location.origin) return true;
+    try {
+      var parsed = new URL(origin);
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '[::1]') {
+        return true;
+      }
+      var wbElem = document.getElementById('vscode-workbench-web-configuration');
+      var cfgText = wbElem ? wbElem.getAttribute('data-settings') : null;
+      var cfg = cfgText ? JSON.parse(cfgText) : null;
+      var defaults = (cfg && cfg.configurationDefaults) || {};
+      var airgapped = Boolean(defaults['modelscript.network.airgapped']);
+      var trustedList = Array.isArray(defaults['modelscript.security.trustedOrigins'])
+        ? defaults['modelscript.security.trustedOrigins']
+        : [];
+      for (var i = 0; i < trustedList.length; i++) {
+        var entry = String(trustedList[i] || '').trim().replace(/\\/+$/, '');
+        if (!entry) continue;
+        if (entry === origin) return true;
+        if (entry.indexOf('*.') === 0 && (parsed.hostname === entry.slice(2) || parsed.hostname.endsWith('.' + entry.slice(2)))) {
+          return true;
+        }
+        if (entry.indexOf('https://*.') === 0 && parsed.protocol === 'https:' && (parsed.hostname === entry.slice(10) || parsed.hostname.endsWith('.' + entry.slice(10)))) {
+          return true;
+        }
+      }
+      if (airgapped) return false;
+      if (
+        origin === 'https://ansatz.social' ||
+        origin === 'https://modelscript.org' ||
+        (parsed.protocol === 'https:' && (parsed.hostname.endsWith('.ansatz.social') || parsed.hostname.endsWith('.modelscript.org')))
+      ) {
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
   try {
+    var targetOrigin = getSafeTargetOrigin();
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, targetOrigin);
     }
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+      window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, targetOrigin);
     }
   } catch (e) {}
 
@@ -355,7 +453,7 @@ export function renderWorkbenchHtml(
   }
 
   window.addEventListener('message', function(ev) {
-    if (ev.origin !== window.location.origin && !ev.origin.endsWith('.ansatz.social') && !ev.origin.endsWith('.modelscript.org')) return;
+    if (!checkOriginAllowed(ev.origin)) return;
     handleIncomingBridgeData(ev.data);
   });
 
@@ -441,11 +539,11 @@ export function renderWorkbenchHtml(
 }
 
 function renderWrapper(provider: string, owner: string, repo: string, ref: string): string {
-  const folderUri = `${provider}:///${owner}/${repo}?ref=${ref}`;
+  const folderUri = `github:///${owner}/${repo}?ref=${ref}`;
   const safeOwner = escapeHtml(owner);
   const safeRepo = escapeHtml(repo);
   const safeRef = escapeHtml(ref);
-  const safeProvider = escapeHtml(provider);
+  const providerDomain = provider === "ansatz" ? "ansatz.social" : `${escapeHtml(provider)}.com`;
 
   return `<!DOCTYPE html>
 <html><head>
@@ -465,7 +563,7 @@ function renderWrapper(provider: string, owner: string, repo: string, ref: strin
 <div class="header">
   <a href="/">Ansatz</a>
   <span class="sep">/</span>
-  <a href="/${safeProvider}.com/${safeOwner}/${safeRepo}">${safeOwner}<span class="sep">/</span><span class="repo">${safeRepo}</span></a>
+  <a href="/${providerDomain}/${safeOwner}/${safeRepo}">${safeOwner}<span class="sep">/</span><span class="repo">${safeRepo}</span></a>
   <span class="sep">@</span>
   <span style="color: #8b949e; font-family: monospace; font-size: 13px;">${safeRef}</span>
 </div>
@@ -790,6 +888,15 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
     return entry;
   }
 
+  function sanitizeGitRef(rawRef: unknown, fallback = "HEAD"): string {
+    if (typeof rawRef !== "string") return fallback;
+    const trimmed = decodeURIComponent(rawRef).trim();
+    if (!trimmed || trimmed.startsWith("-") || trimmed.includes("..") || !/^[a-zA-Z0-9_./-]+$/.test(trimmed)) {
+      return fallback;
+    }
+    return trimmed;
+  }
+
   function serveGitRepoApiRequest(
     req: express.Request,
     res: express.Response,
@@ -800,10 +907,28 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
     headSha = "HEAD",
   ): boolean {
     if (restPath.startsWith("git/trees/")) {
-      const out = execFileSync("git", ["ls-tree", "-r", "-t", "-l", "HEAD"], {
-        cwd: gitRepoPath,
-        encoding: "utf-8",
-      });
+      const requestedRef = sanitizeGitRef(restPath.slice("git/trees/".length).split("?")[0], headSha);
+      const candidates = Array.from(new Set([requestedRef, headSha, "HEAD", "main", "master"]));
+      let out = "";
+      let resolvedRef = headSha;
+      let succeeded = false;
+      for (const refCandidate of candidates) {
+        try {
+          out = execFileSync("git", ["ls-tree", "-r", "-t", "-l", refCandidate], {
+            cwd: gitRepoPath,
+            encoding: "utf-8",
+          });
+          resolvedRef = refCandidate;
+          succeeded = true;
+          break;
+        } catch {
+          // try next candidate ref
+        }
+      }
+      if (!succeeded) {
+        res.status(404).json({ message: `Tree '${requestedRef}' not found in ${owner}/${repo}` });
+        return true;
+      }
       const tree: Array<{
         path: string;
         mode: string;
@@ -831,8 +956,8 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
         });
       }
       res.json({
-        sha: headSha,
-        url: `${req.protocol}://${req.get("host") || "localhost"}/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${headSha}`,
+        sha: resolvedRef,
+        url: `${req.protocol}://${req.get("host") || "localhost"}/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${resolvedRef}`,
         tree,
         truncated: false,
       });
@@ -846,22 +971,28 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
         res.status(400).json({ message: "Invalid file path" });
         return true;
       }
-      try {
-        const buf = execFileSync("git", ["show", `HEAD:${normalizedPath}`], {
-          cwd: gitRepoPath,
-        });
-        res.json({
-          name: path.posix.basename(normalizedPath),
-          path: normalizedPath,
-          sha: headSha,
-          size: buf.length,
-          type: "file",
-          encoding: "base64",
-          content: buf.toString("base64"),
-        });
-      } catch {
-        res.status(404).json({ message: `File '${normalizedPath}' not found in ${owner}/${repo}` });
+      const requestedRef = sanitizeGitRef(req.query["ref"], headSha);
+      const candidates = Array.from(new Set([requestedRef, headSha, "HEAD", "main", "master"]));
+      for (const refCandidate of candidates) {
+        try {
+          const buf = execFileSync("git", ["show", `${refCandidate}:${normalizedPath}`], {
+            cwd: gitRepoPath,
+          });
+          res.json({
+            name: path.posix.basename(normalizedPath),
+            path: normalizedPath,
+            sha: refCandidate,
+            size: buf.length,
+            type: "file",
+            encoding: "base64",
+            content: buf.toString("base64"),
+          });
+          return true;
+        } catch {
+          // try next candidate ref
+        }
       }
+      res.status(404).json({ message: `File '${normalizedPath}' not found in ${owner}/${repo}` });
       return true;
     }
 
@@ -1122,15 +1253,43 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
         });
         return;
       }
+
+      if (process.env["MODELSCRIPT_AIRGAPPED"] === "true") {
+        if (repoMatch) {
+          const ownerParam = decodeURIComponent(repoMatch[1] || "").trim();
+          const repoParam = decodeURIComponent(repoMatch[2] || "").trim();
+          const restPath = repoMatch[3] || "";
+          const repoKeyLower = `${ownerParam}/${repoParam}`.toLowerCase();
+          const cacheEntry = getOrBuildLocalRepoTree(repoKeyLower);
+          if (cacheEntry && serveLocalOrShowcaseRepoRequest(req, res, ownerParam, repoParam, restPath, cacheEntry)) {
+            return;
+          }
+        }
+        res.status(403).json({
+          error: "Outbound GitHub API proxy is disabled when MODELSCRIPT_AIRGAPPED=true",
+        });
+        return;
+      }
+
       const headers: Record<string, string> = {
         "User-Agent": "ModelScript-IDE",
         Accept: (req.headers["accept"] as string) || "application/vnd.github.v3+json",
       };
-      const token = process.env["GITHUB_TOKEN"];
-      if (req.headers["authorization"]) {
-        headers["Authorization"] = req.headers["authorization"] as string;
-      } else if (token) {
-        headers["Authorization"] = `token ${token}`;
+      const serverGithubToken = process.env["GITHUB_TOKEN"];
+      const clientAuth = typeof req.headers["authorization"] === "string" ? req.headers["authorization"].trim() : "";
+      const clientTokenRaw = clientAuth.replace(/^(?:Bearer|token)\s+/i, "").trim();
+      // Never forward an internal Ansatz JWT (3-part base64url token starting with eyJ...) to api.github.com
+      const isAnsatzJwt =
+        clientTokenRaw.startsWith("eyJ") || clientTokenRaw.split(".").length === 3;
+      const isExplicitGitHubToken =
+        Boolean(clientTokenRaw) &&
+        !isAnsatzJwt &&
+        (/^(?:gh[pousr]_|github_pat_)/i.test(clientTokenRaw) || /^token\s+/i.test(clientAuth) || !clientTokenRaw.includes("."));
+
+      if (isExplicitGitHubToken) {
+        headers["Authorization"] = clientAuth;
+      } else if (serverGithubToken) {
+        headers["Authorization"] = `token ${serverGithubToken}`;
       }
 
       let response = await fetch(upstreamUrl.toString(), {
@@ -1301,7 +1460,7 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
           normalized.isWorkspace && normalized.workspaceId !== "scratch" ? normalized.workspaceId : rawTemplate;
         folderConfig = { scheme: "memfs", authority: "", path: "/" + template };
       } else {
-        const match = rawFolder.match(/^github:\/\/\/([^/]+)\/([^/?]+)(?:\?ref=(.+))?$/);
+        const match = rawFolder.match(/^(?:github|gitlab|ansatz):\/\/\/([^/]+)\/([^/?]+)(?:\?ref=(.+))?$/);
         if (!match) {
           res.status(400).send("Invalid folder URI. Expected: github:///owner/repo?ref=branch or memfs:template");
           return;
@@ -1364,6 +1523,23 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
   router.get("/gitlab.com/:owner/:repo/-/tree/:ref/*subpath", (req, res) => {
     const { owner, repo, ref } = req.params;
     res.send(renderWrapper("gitlab", owner, repo, ref));
+  });
+
+  // Direct Ansatz Space repository wrapper routes
+  router.get("/ansatz.social/:owner/:repo", (req, res) => {
+    const { owner, repo } = req.params;
+    const ref = (req.query["ref"] as string) || "main";
+    res.send(renderWrapper("ansatz", owner, repo, ref));
+  });
+
+  router.get("/ansatz.social/:owner/:repo/tree/:ref", (req, res) => {
+    const { owner, repo, ref } = req.params;
+    res.send(renderWrapper("ansatz", owner, repo, ref));
+  });
+
+  router.get("/ansatz.social/:owner/:repo/tree/:ref/*subpath", (req, res) => {
+    const { owner, repo, ref } = req.params;
+    res.send(renderWrapper("ansatz", owner, repo, ref));
   });
 
   return router;

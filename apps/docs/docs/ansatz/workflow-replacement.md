@@ -7,7 +7,7 @@ description: "Ansatz (ansatz.social) is designed to displace the fragmented, des
 
 **Ansatz** (`ansatz.social`) is designed to displace the fragmented, desktop-bound workflows of legacy first-party engineering tools—including Dassault Systèmes Dymola, Cameo / MagicDraw, MathWorks MATLAB/Simulink, Manitoba Hydro PSCAD, and SLB OLGA.
 
-Rather than functioning as a generic consumer social network, Ansatz serves as the **Collaborative Systems Engineering Cloud**: uniting the zero-install accessibility of web-native CAD/vector tools, the branching and review rigor of modern software version control, and the model distribution capabilities of contemporary package registries for 66 physical and mathematical engineering domains.
+Rather than functioning as a generic consumer social network, Ansatz serves as the **Collaborative Systems Engineering Cloud**: uniting the zero-install accessibility of web-native CAD/vector tools, the branching and review rigor of modern software version control, and the model distribution capabilities of contemporary package registries for 81 physical and mathematical engineering domains.
 
 ---
 
@@ -34,7 +34,7 @@ Practicing engineers in automotive, aerospace, energy, defense, and biomedical s
 ├────────────────────┼─────────────────────────────┼─────────────────────┤
 │ Interoperability   │ Isolated disciplinary silos │ Cross-domain Salsa  │
 │                    │ bridged only by static      │ hypergraph linking  │
-│                    │ PowerPoint screenshots      │ 66 format parsers   │
+│                    │ PowerPoint screenshots      │ 81 format parsers   │
 └────────────────────┴─────────────────────────────┴─────────────────────┘
 ```
 

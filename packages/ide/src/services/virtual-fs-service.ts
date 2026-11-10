@@ -404,10 +404,31 @@ export async function hydrateArtifactDescriptor(
     (typeof config["fileUrl"] === "string" && config["fileUrl"].trim()) ||
     (typeof config["resourceUrl"] === "string" && config["resourceUrl"].trim()) ||
     "";
-  if (
-    resourceUrl &&
-    (resourceUrl.startsWith("/") || resourceUrl.startsWith("http://") || resourceUrl.startsWith("https://"))
-  ) {
+  const isTrustedResourceUrl = (rawUrl: string): boolean => {
+    if (rawUrl.startsWith("/") && !rawUrl.startsWith("//")) return true;
+    try {
+      const parsed = new URL(rawUrl);
+      if (typeof self !== "undefined" && self.location?.origin && parsed.origin === self.location.origin) {
+        return true;
+      }
+      if (
+        parsed.protocol === "https:" &&
+        (parsed.hostname === "modelscript.org" || parsed.hostname.endsWith(".modelscript.org"))
+      ) {
+        return true;
+      }
+      if (
+        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+        (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+      ) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+  if (resourceUrl && isTrustedResourceUrl(resourceUrl)) {
     try {
       const resResp = await fetch(resourceUrl);
       if (resResp.ok) {

@@ -157,10 +157,12 @@ export class OscalEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NIST OSCAL Continuous ATO Workbench</title>
   <style>
@@ -208,7 +210,7 @@ export class OscalEditorProvider extends BaseCustomEditorProvider {
   <div id="tab-matrix" class="panel"><div id="matrixBox" class="svg-box"></div></div>
   <div id="tab-resolved" class="panel"><div id="resolvedBox" class="code-box"></div></div>
   <div id="tab-projections" class="panel"><div id="projectionsBox" class="code-box"></div></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', () => {

@@ -8,10 +8,10 @@ import {
   type SwmmModelLike,
   type SwmmOutfallLike,
 } from "@modelscript/diagram";
-import { parseSwmm, routeNetworkFlow, type SwmmDeck } from "@modelscript/swmm";
-import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon } from "@primer/octicons-react";
+import { parseSwmm, routeNetworkFlow, serializeSwmm, type SwmmDeck } from "@modelscript/swmm";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PencilIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
@@ -117,6 +117,18 @@ const StatusPill = styled.span<{ $danger?: boolean }>`
   border: 1px solid ${(p) => (p.$danger ? "rgba(218, 54, 51, 0.4)" : "rgba(35, 134, 54, 0.4)")};
 `;
 
+const EditRibbon = styled.div`
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+`;
+
 const SAMPLE_SWMM_INP = `[TITLE]
 Municipal Combined Sewer & Stormwater Collection Network
 
@@ -158,11 +170,92 @@ export const SwmmViewer: React.FC<SwmmViewerProps> = ({ viewConfig, isFullScreen
   const { colorMode } = useTheme();
   const isDark = colorMode === "dark";
 
+  const [localCode, setLocalCode] = useState<string>(viewConfig.code || SAMPLE_SWMM_INP);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [newMaxDepth, setNewMaxDepth] = useState<number>(3.0);
+  const [newDiameter, setNewDiameter] = useState<number>(1.5);
+
   const [viewMode, setViewMode] = useState<SwmmViewMode>(viewConfig.mode ?? "plan");
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const rawCode = viewConfig.code || SAMPLE_SWMM_INP;
+  useEffect(() => {
+    if (viewConfig.code) {
+      setLocalCode(viewConfig.code);
+    }
+  }, [viewConfig.code]);
+
+  const handleAddJunctionAndConduit = () => {
+    try {
+      const parsed = parseSwmm(localCode || SAMPLE_SWMM_INP);
+      const juncCount = parsed.junctions.size;
+      const newJuncId = `J${juncCount + 1}`;
+      const lastJuncId = `J${juncCount}`;
+      const conduitCount = parsed.conduits.size;
+      const newConduitId = `C${conduitCount + 1}`;
+
+      parsed.junctions.set(newJuncId, {
+        id: newJuncId,
+        elevation: Math.max(70.0, 90.0 - juncCount * 2.0),
+        maxDepth: newMaxDepth,
+        initDepth: 0.0,
+        surDepth: 0.0,
+        apond: 0.0,
+      });
+
+      parsed.conduits.set(newConduitId, {
+        id: newConduitId,
+        fromNode: lastJuncId,
+        toNode: newJuncId,
+        length: 300.0,
+        roughness: 0.013,
+        inOffset: 0.0,
+        outOffset: 0.0,
+        initFlow: 0.0,
+        maxFlow: 0.0,
+      });
+
+      parsed.crossSections.set(newConduitId, {
+        linkId: newConduitId,
+        shape: "CIRCULAR",
+        geom1: newDiameter,
+        geom2: 0,
+        geom3: 0,
+        geom4: 0,
+        barrels: 1,
+      });
+
+      const updated = serializeSwmm(parsed);
+      setLocalCode(updated);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleUndoLastConduit = () => {
+    try {
+      const parsed = parseSwmm(localCode || SAMPLE_SWMM_INP);
+      if (parsed.conduits.size > 1) {
+        const lastConduitKey = Array.from(parsed.conduits.keys()).pop();
+        if (lastConduitKey) {
+          parsed.conduits.delete(lastConduitKey);
+          parsed.crossSections.delete(lastConduitKey);
+        }
+      }
+      if (parsed.junctions.size > 1) {
+        const lastJuncKey = Array.from(parsed.junctions.keys()).pop();
+        if (lastJuncKey) {
+          parsed.junctions.delete(lastJuncKey);
+        }
+      }
+      const updated = serializeSwmm(parsed);
+      setLocalCode(updated);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const rawCode = localCode || viewConfig.code || SAMPLE_SWMM_INP;
 
   // 1. Parse SWMM input deck
   const deck = useMemo<SwmmDeck>(() => {
@@ -331,8 +424,62 @@ export const SwmmViewer: React.FC<SwmmViewerProps> = ({ viewConfig, isFullScreen
           <Button size="small" variant="invisible" onClick={handleDownload} title="Export .inp">
             <DownloadIcon />
           </Button>
+          <Button
+            size="small"
+            variant={isEditing ? "primary" : "invisible"}
+            leadingVisual={PencilIcon}
+            onClick={() => setIsEditing(!isEditing)}
+            title="Toggle Interactive Editor"
+          >
+            {isEditing ? "Editing" : "Edit Studio"}
+          </Button>
         </div>
       </Toolbar>
+
+      {/* Interactive Editing Studio Ribbon */}
+      {isEditing && (
+        <EditRibbon>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontWeight: 700, color: "var(--color-accent-fg, #1f6feb)" }}>SWMM STUDIO:</span>
+            <Button size="small" onClick={handleAddJunctionAndConduit}>
+              + Add Manhole &amp; Conduit
+            </Button>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span>Max Depth (m):</span>
+              <input
+                type="number"
+                value={newMaxDepth}
+                onChange={(e) => setNewMaxDepth(parseFloat(e.target.value) || 1)}
+                style={{
+                  width: "50px",
+                  fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--color-border-default)",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span>Diameter (m):</span>
+              <input
+                type="number"
+                value={newDiameter}
+                onChange={(e) => setNewDiameter(parseFloat(e.target.value) || 0.5)}
+                style={{
+                  width: "50px",
+                  fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--color-border-default)",
+                }}
+              />
+            </div>
+            <Button size="small" variant="danger" onClick={handleUndoLastConduit}>
+              Undo Last
+            </Button>
+          </div>
+        </EditRibbon>
+      )}
 
       {showCode && <CodeOverlay>{rawCode}</CodeOverlay>}
 

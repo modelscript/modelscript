@@ -1204,6 +1204,23 @@ export function getDaeArrayDimSize(dae: DAEBuilder, arrName: string, resolvedNam
 }
 
 const _evaluatingCSTNumbers = new Set<string>();
+const _cstNumberMemo = new Map<string, number | null>();
+let _cstCycleDetected = false;
+let _externalEvalDepth = 0;
+
+export function beginExternalCstEval(): void {
+  _externalEvalDepth++;
+}
+
+export function endExternalCstEval(): void {
+  if (--_externalEvalDepth <= 0) {
+    _externalEvalDepth = 0;
+    if (_evaluatingCSTNumbers.size === 0) {
+      _cstNumberMemo.clear();
+      _cstCycleDetected = false;
+    }
+  }
+}
 
 export function evaluateCSTNumber(
   node: SyntaxNode | string | null | undefined,
@@ -1242,13 +1259,26 @@ export function evaluateCSTNumber(
   const floatNum = parseFloat(text);
   if (!isNaN(floatNum) && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
 
-  const evalCycleKey = `${scopeId ?? 0}:${prefix}:${text}`;
-  if (_evaluatingCSTNumbers.has(evalCycleKey)) return null;
+  const evalCycleKey = `${subs?.size ? 1 : 0}:${scopeId ?? 0}:${prefix}:${text}`;
+  const cached = _cstNumberMemo.get(evalCycleKey);
+  if (cached !== undefined) return cached;
+  if (_evaluatingCSTNumbers.has(evalCycleKey)) {
+    _cstCycleDetected = true;
+    return null;
+  }
   _evaluatingCSTNumbers.add(evalCycleKey);
   try {
-    return evaluateCSTNumberInner(node, text, subs, scopeId, db, dae, prefix);
+    const res = evaluateCSTNumberInner(node, text, subs, scopeId, db, dae, prefix);
+    if (!_cstCycleDetected) {
+      _cstNumberMemo.set(evalCycleKey, res);
+    }
+    return res;
   } finally {
     _evaluatingCSTNumbers.delete(evalCycleKey);
+    if (_evaluatingCSTNumbers.size === 0 && _externalEvalDepth === 0) {
+      _cstNumberMemo.clear();
+      _cstCycleDetected = false;
+    }
   }
 }
 
@@ -3038,7 +3068,8 @@ export function expandVarToArrayCtor(baseName: string, dae: DAEBuilder): number 
   const matchingIndices: number[] = [];
   const parsedIndices: number[][] = [];
   const labelMaps: Map<string, number>[] = [];
-  for (let i = 0; i < dae.varCount; i++) {
+  const candidateIndices = dae.getArrayElementIndices ? dae.getArrayElementIndices(baseName) : [];
+  for (const i of candidateIndices) {
     if (!dae.isVarRemoved(i)) {
       const vn = dae.getVarName(i);
       const idxs = matchVarPath(vn, baseName, labelMaps);

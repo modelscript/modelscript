@@ -48,10 +48,12 @@ import {
   type SpaceRole,
   type User,
 } from "../../api";
+import { AnsatzSemanticDiffStudio } from "../../components/diff/AnsatzSemanticDiffStudio";
 import Spinner from "../../components/Spinner";
 import { useToast } from "../../components/ToastContext";
 import { useTheme } from "../../theme";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
+import type { SemanticDiffItem } from "../../util/semantic-diff-engine";
 
 export interface SpaceChangeControlTabProps {
   detail: SpaceDetailResponse;
@@ -254,6 +256,8 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [selectedDiffFileIndex, setSelectedDiffFileIndex] = useState(0);
   const [diffSideBySide, setDiffSideBySide] = useState(true);
+  const [diffStudioMode, setDiffStudioMode] = useState<"studio" | "monaco">("studio");
+  const [focusedSemanticEdit, setFocusedSemanticEdit] = useState<SemanticDiffItem | null>(null);
 
   // Phase 2: Simulation state
   const [simResult, setSimResult] = useState<SpaceEcoSimulationResult | null>(null);
@@ -1792,6 +1796,27 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                 <code style={{ fontFamily: "var(--font-mono)" }}>{activeEco.source_branch}</code> with
                                 ±5% Tolerance Envelope
                               </div>
+                              {focusedSemanticEdit && (
+                                <div
+                                  style={{
+                                    marginTop: "6px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    padding: "3px 10px",
+                                    borderRadius: "2em",
+                                    background: "var(--color-accent-subtle, rgba(9, 105, 218, 0.14))",
+                                    color: "var(--color-accent-fg, #0969da)",
+                                    fontSize: "11.5px",
+                                    fontWeight: 600,
+                                    fontFamily: "var(--font-mono, monospace)",
+                                  }}
+                                >
+                                  <span>🎯 Focused AST Symbol: {focusedSemanticEdit.symbol}</span>
+                                  <span>·</span>
+                                  <span>{focusedSemanticEdit.peekBadge}</span>
+                                </div>
+                              )}
                             </div>
                             <div
                               style={{ display: "flex", gap: "14px", fontSize: "12px", color: "var(--color-fg-muted)" }}
@@ -2024,20 +2049,49 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                           )}
                         </div>
 
-                        <div style={{ display: "flex", gap: "4px" }}>
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                           <button
                             type="button"
-                            onClick={() => setDiffSideBySide(true)}
+                            onClick={() => setDiffStudioMode("studio")}
                             style={{
                               padding: "5px 12px",
                               borderRadius: "6px",
                               border: "1px solid var(--color-border-default)",
-                              background: diffSideBySide
-                                ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
-                                : "var(--color-canvas-default)",
-                              color: diffSideBySide ? "var(--color-accent-fg, #0969da)" : "var(--color-fg-muted)",
+                              background:
+                                diffStudioMode === "studio"
+                                  ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
+                                  : "var(--color-canvas-default)",
+                              color:
+                                diffStudioMode === "studio"
+                                  ? "var(--color-accent-fg, #0969da)"
+                                  : "var(--color-fg-muted)",
                               fontSize: "12px",
-                              fontWeight: diffSideBySide ? 700 : 500,
+                              fontWeight: diffStudioMode === "studio" ? 700 : 500,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ⚡ Semantic Studio
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDiffStudioMode("monaco");
+                              setDiffSideBySide(true);
+                            }}
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: "6px",
+                              border: "1px solid var(--color-border-default)",
+                              background:
+                                diffStudioMode === "monaco" && diffSideBySide
+                                  ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
+                                  : "var(--color-canvas-default)",
+                              color:
+                                diffStudioMode === "monaco" && diffSideBySide
+                                  ? "var(--color-accent-fg, #0969da)"
+                                  : "var(--color-fg-muted)",
+                              fontSize: "12px",
+                              fontWeight: diffStudioMode === "monaco" && diffSideBySide ? 700 : 500,
                               cursor: "pointer",
                             }}
                           >
@@ -2045,17 +2099,24 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setDiffSideBySide(false)}
+                            onClick={() => {
+                              setDiffStudioMode("monaco");
+                              setDiffSideBySide(false);
+                            }}
                             style={{
                               padding: "5px 12px",
                               borderRadius: "6px",
                               border: "1px solid var(--color-border-default)",
-                              background: !diffSideBySide
-                                ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
-                                : "var(--color-canvas-default)",
-                              color: !diffSideBySide ? "var(--color-accent-fg, #0969da)" : "var(--color-fg-muted)",
+                              background:
+                                diffStudioMode === "monaco" && !diffSideBySide
+                                  ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
+                                  : "var(--color-canvas-default)",
+                              color:
+                                diffStudioMode === "monaco" && !diffSideBySide
+                                  ? "var(--color-accent-fg, #0969da)"
+                                  : "var(--color-fg-muted)",
                               fontSize: "12px",
-                              fontWeight: !diffSideBySide ? 700 : 500,
+                              fontWeight: diffStudioMode === "monaco" && !diffSideBySide ? 700 : 500,
                               cursor: "pointer",
                             }}
                           >
@@ -2070,32 +2131,79 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                             <Spinner />
                           </div>
                         ) : activeDiffFile ? (
-                          <div
-                            style={{
-                              borderRadius: "6px",
-                              border: "1px solid var(--color-border-default)",
-                              overflow: "hidden",
-                              height: "480px",
-                            }}
-                          >
-                            <DiffEditor
-                              height="480px"
+                          diffStudioMode === "studio" ? (
+                            <AnsatzSemanticDiffStudio
+                              oldCode={activeDiffFile.oldContent}
+                              newCode={activeDiffFile.newContent}
+                              ancestorCode={activeDiffFile.ancestorContent}
+                              filename={activeDiffFile.filename}
                               language={activeDiffFile.language || "modelica"}
-                              original={activeDiffFile.oldContent}
-                              modified={activeDiffFile.newContent}
-                              theme={getMonacoThemeName(theme)}
-                              beforeMount={ensureMonacoThemesDefined}
-                              options={{
-                                readOnly: true,
-                                renderSideBySide: diffSideBySide,
-                                automaticLayout: true,
-                                minimap: { enabled: false },
-                                scrollBeyondLastLine: false,
-                                fontSize: 13,
-                                lineHeight: 20,
+                              baseLabel={activeEco.target_branch}
+                              headLabel={activeEco.source_branch}
+                              defaultSideBySide={diffSideBySide}
+                              onSelectSemanticEdit={(edit) => setFocusedSemanticEdit(edit)}
+                              onResolveParameterConflict={(paramName, val, strategy) => {
+                                if (activeDiffFile && diffResult) {
+                                  const escapedParam = paramName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                                  const regexWithParam = new RegExp(`(\\b(?:parameter\\s+\\w+\\s+)?${escapedParam}\\s*=\\s*)([^;\\s,\\n)]+)`, "g");
+                                  let updated = activeDiffFile.newContent;
+                                  if (regexWithParam.test(updated)) {
+                                    updated = updated.replace(regexWithParam, `$1${val}`);
+                                  } else {
+                                    const fallbackRegex = new RegExp(`(\\b${escapedParam}\\s*=\\s*)([^;\\s,\\n)]+)`, "g");
+                                    updated = updated.replace(fallbackRegex, `$1${val}`);
+                                  }
+
+                                  const updatedFiles = [...diffResult.files];
+                                  updatedFiles[selectedDiffFileIndex] = {
+                                    ...activeDiffFile,
+                                    newContent: updated,
+                                  };
+                                  setDiffResult({
+                                    ...diffResult,
+                                    files: updatedFiles,
+                                  });
+                                }
+                                toast.showToast(
+                                  `Reconciled '${paramName}' to ${val} via ${strategy} strategy (Applied to buffer)`,
+                                  "success",
+                                );
+                              }}
+                              onOpenDiagramWorkbench={() => {
+                                toast.showToast(
+                                  `Opening Diagram Workbench for ${activeDiffFile.filename}...`,
+                                  "info",
+                                );
                               }}
                             />
-                          </div>
+                          ) : (
+                            <div
+                              style={{
+                                borderRadius: "6px",
+                                border: "1px solid var(--color-border-default)",
+                                overflow: "hidden",
+                                height: "480px",
+                              }}
+                            >
+                              <DiffEditor
+                                height="480px"
+                                language={activeDiffFile.language || "modelica"}
+                                original={activeDiffFile.oldContent}
+                                modified={activeDiffFile.newContent}
+                                theme={getMonacoThemeName(theme)}
+                                beforeMount={ensureMonacoThemesDefined}
+                                options={{
+                                  readOnly: true,
+                                  renderSideBySide: diffSideBySide,
+                                  automaticLayout: true,
+                                  minimap: { enabled: false },
+                                  scrollBeyondLastLine: false,
+                                  fontSize: 13,
+                                  lineHeight: 20,
+                                }}
+                              />
+                            </div>
+                          )
                         ) : (
                           <div style={{ padding: "36px", textAlign: "center", color: "var(--color-fg-muted)" }}>
                             No diff content available for this change request.

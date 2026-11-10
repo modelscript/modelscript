@@ -659,7 +659,13 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
               junctions: parsedClient?.junctions || [],
             },
           },
-          { theme: isDark ? "dark" : "light" },
+          {
+            theme: isDark ? "dark" : "light",
+            lodComponentThreshold: 500,
+            ...(clientComps.length > 1500
+              ? { viewport: { minX: 0, minY: 0, maxX: 4000, maxY: 3000 } }
+              : {}),
+          },
         );
         return sanitizeSvgMarkup(built, { isFullScreen, maxHeight: isFullScreen ? "none" : "370px", isDark });
       } catch {

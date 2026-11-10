@@ -182,6 +182,7 @@ function computeLineStarts(text: string): number[] {
  * Converts a character offset to 1-indexed { line, column }.
  */
 function offsetToLineCol(lineStarts: number[], offset: number): { line: number; column: number } {
+  if (lineStarts.length === 0) return { line: 1, column: 1 };
   let low = 0;
   let high = lineStarts.length - 1;
   while (low <= high) {
@@ -235,21 +236,30 @@ function attrObj(el: XmlElement, name: string): XmlAttribute | undefined {
 
 /**
  * Parses a PSCAD project using the DSL-generated lossless XML CST (@modelscript/dsl/xml).
+ * When `options.headless` is true, skips line/column offset indexing, SVG/graphics string
+ * slicing, and FlyBy/Check documentation parsing for fast simulation netlist lowering.
  */
-export function parsePscxCst(xmlContent: string, options?: { external?: ExternalDefinitions }): PscxProject {
+export function parsePscxCst(
+  xmlContent: string,
+  options?: { external?: ExternalDefinitions; headless?: boolean },
+): PscxProject {
   const doc = parseXml(xmlContent);
   if (!doc.root) {
     throw new Error("PSCAD XML has no root element");
   }
 
+  const isHeadless = Boolean(options?.headless);
+
   let modelDefs: Map<string, ModelDefinition> | undefined;
-  try {
-    modelDefs = buildProjectModel(xmlContent, options?.external ?? registeredExternalDefinitions()).definitions;
-  } catch {
-    modelDefs = undefined;
+  if (!isHeadless || xmlContent.includes("UserCmpDefn")) {
+    try {
+      modelDefs = buildProjectModel(xmlContent, options?.external ?? registeredExternalDefinitions()).definitions;
+    } catch {
+      modelDefs = undefined;
+    }
   }
 
-  const lineStarts = computeLineStarts(xmlContent);
+  const lineStarts = isHeadless ? [] : computeLineStarts(xmlContent);
   const settings: PscxProjectSettings = {
     timeStepUs: 50.0,
     durationSec: 1.0,
@@ -422,10 +432,10 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
       for (const c of defEl.children) {
         const cname = c.name.toLowerCase();
         if (cname === "svg") {
-          svgXml = xmlContent.slice(c.start, c.end);
+          if (!isHeadless) svgXml = xmlContent.slice(c.start, c.end);
         } else if (cname === "graphics") {
-          graphicsXml = xmlContent.slice(c.start, c.end);
-        } else if (cname === "paramlist") {
+          if (!isHeadless) graphicsXml = xmlContent.slice(c.start, c.end);
+        } else if (cname === "paramlist" && !isHeadless) {
           for (const p of c.children) {
             if (attr(p, "name")?.toLowerCase() === "description") {
               desc = attr(p, "value") ?? p.text.trim();
@@ -433,13 +443,15 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
           }
         } else if (cname === "script") {
           scriptSegments = parseScriptElement(c, xmlContent);
-          const flyByText = scriptSegments.get("flyby")?.content;
-          if (flyByText) {
-            flyBy = parseFlyBySegment(flyByText);
-          }
-          const checksText = scriptSegments.get("checks")?.content;
-          if (checksText) {
-            checks = parseChecksSegment(checksText);
+          if (!isHeadless) {
+            const flyByText = scriptSegments.get("flyby")?.content;
+            if (flyByText) {
+              flyBy = parseFlyBySegment(flyByText);
+            }
+            const checksText = scriptSegments.get("checks")?.content;
+            if (checksText) {
+              checks = parseChecksSegment(checksText);
+            }
           }
         }
       }
@@ -863,7 +875,10 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
  * Parses a PSCAD `.pscx` / `.pslx` / `.pswx` XML string into a structured `PscxProject`
  * using the lossless XML CST parser from `@modelscript/dsl/xml`.
  */
-export function parsePscx(xmlContent: string, options?: { external?: ExternalDefinitions }): PscxProject {
+export function parsePscx(
+  xmlContent: string,
+  options?: { external?: ExternalDefinitions; headless?: boolean },
+): PscxProject {
   return parsePscxCst(xmlContent, options);
 }
 

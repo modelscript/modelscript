@@ -6,6 +6,8 @@ import {
   auditTelecomSupplyChain,
   evaluateFccPart4Outage,
   FCC_COVERED_LIST_VENDORS,
+  generateDirsEmergencySnapshot,
+  generateNorsFilingDossier,
   type TelecomEquipmentItem,
   type TelecomOutageEvent,
 } from "../src/index.js";
@@ -104,5 +106,31 @@ describe("Enterprise Telecom Compliance: NIST SP 800-161 SCRM & FCC Part 4 NORS/
     assert.equal(psapEval.filingType, "NORS_NOTIFICATION");
     assert.equal(psapEval.reportingDeadlineHours, 2.0);
     assert.ok(psapEval.thresholdExceededReason?.includes("911 Special Facility Outage"));
+
+    // 4. Generate structured NORS filing dossier
+    const dossier = generateNorsFilingDossier(psapEvent, "notification", "FRN-0029318");
+    assert.equal(dossier.filingStage, "notification");
+    assert.equal(dossier.fccFilerId, "FRN-0029318");
+    assert.ok(dossier.regulatoryPayloadJson.includes("NORS_PART4_ELECTRONIC"));
+    assert.ok(dossier.regulatoryPayloadJson.includes("County PSAP"));
+
+    // 5. Generate DIRS daily emergency snapshot
+    const dirsReport = generateDirsEmergencySnapshot({
+      incidentName: "Hurricane Helena Response",
+      reportingDateIso: "2026-11-09T10:00:00Z",
+      totalCellSitesInDisasterArea: 250,
+      cellSitesOperational: 215,
+      cellSitesOnBackupGenerator: 45,
+      cellSitesOnBatteryOnly: 12,
+      cellSitesOutServicePower: 28,
+      cellSitesOutServiceTransport: 7,
+      cellSitesOutServiceDamage: 0,
+      minimumFuelHoursRemaining: 36.0,
+    });
+    assert.equal(dirsReport.totalSites, 250);
+    assert.equal(dirsReport.operationalPercent, 86.0);
+    assert.equal(dirsReport.criticalFuelWarning, false);
+    assert.ok(dirsReport.dirsFilingXml.includes("<dirs_daily_report>"));
+    assert.ok(dirsReport.dirsFilingXml.includes("Hurricane Helena Response"));
   });
 });

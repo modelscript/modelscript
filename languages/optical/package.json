@@ -8,6 +8,10 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
     "./types": {
       "types": "./dist/src/types.d.ts",
       "default": "./dist/src/types.js"
@@ -53,7 +57,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "preview",
+    "tier": "beta",
     "category": "language"
   }
 }

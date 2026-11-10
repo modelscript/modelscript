@@ -27,17 +27,20 @@ import {
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useMemo, useState } from "react";
-import type { GitlabBranch, GitlabMergeRequest, RepoBotReviewRecord } from "../../../api";
+import type { GitlabBranch, GitlabMergeRequest, MergeRequestFileBlobsResult, RepoBotReviewRecord } from "../../../api";
 import {
   createGitlabMergeRequest,
   getGitlabBranches,
   getGitlabMergeRequests,
+  getMergeRequestFileBlobs,
   getRepoBotReviewsApi,
   triggerRepoBotReviewApi,
   updateGitlabMergeRequestState,
 } from "../../../api";
 import Box from "../../../components/Box";
+import { AnsatzSemanticDiffStudio } from "../../../components/diff/AnsatzSemanticDiffStudio";
 import { useToast } from "../../../components/ToastContext";
+import { reconstructTextsFromUnifiedPatch } from "../../../util/semantic-diff-engine";
 import { CommitRow, MarkdownBody, StyledBox } from "../styles";
 import { getRelativeTime } from "../utils";
 
@@ -51,6 +54,9 @@ interface NormalizedPrDiffFile {
   path: string;
   old_path?: string | undefined;
   new_path?: string | undefined;
+  old_content?: string | undefined;
+  new_content?: string | undefined;
+  ancestor_content?: string | undefined;
   additions: number;
   deletions: number;
   patch: string;
@@ -70,10 +76,16 @@ function getDiffFilesForPr(mr: GitlabMergeRequest): NormalizedPrDiffFile[] {
         typeof df.deletions === "number"
           ? df.deletions
           : lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+      const old_content = (df as any).old_content ?? (df as any).base_content;
+      const new_content = (df as any).new_content ?? (df as any).head_content;
+      const ancestor_content = (df as any).ancestor_content;
       return {
         path,
         old_path: df.old_path,
         new_path: df.new_path,
+        old_content: typeof old_content === "string" ? old_content : undefined,
+        new_content: typeof new_content === "string" ? new_content : undefined,
+        ancestor_content: typeof ancestor_content === "string" ? ancestor_content : undefined,
         additions,
         deletions,
         patch,
@@ -94,10 +106,16 @@ function getDiffFilesForPr(mr: GitlabMergeRequest): NormalizedPrDiffFile[] {
         typeof ch.deletions === "number"
           ? ch.deletions
           : lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+      const old_content = (ch as any).old_content ?? (ch as any).base_content;
+      const new_content = (ch as any).new_content ?? (ch as any).head_content;
+      const ancestor_content = (ch as any).ancestor_content;
       return {
         path,
         old_path: ch.old_path,
         new_path: ch.new_path,
+        old_content: typeof old_content === "string" ? old_content : undefined,
+        new_content: typeof new_content === "string" ? new_content : undefined,
+        ancestor_content: typeof ancestor_content === "string" ? ancestor_content : undefined,
         additions,
         deletions,
         patch,
@@ -140,6 +158,7 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
 
   const [selectedMr, setSelectedMr] = useState<GitlabMergeRequest | null>(null);
   const [detailTab, setDetailTab] = useState<"overview" | "diff" | "ai">("overview");
+  const [prDiffViewMode, setPrDiffViewMode] = useState<"studio" | "patch">("studio");
   const [botReviews, setBotReviews] = useState<Record<number, RepoBotReviewRecord>>({});
   const [isRunningReview, setIsRunningReview] = useState(false);
   const [isUpdatingState, setIsUpdatingState] = useState(false);
@@ -284,7 +303,29 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
     }
   };
 
+  const [blobCache, setBlobCache] = useState<Record<string, MergeRequestFileBlobsResult>>({});
+
   const diffFiles = useMemo(() => (selectedMr ? getDiffFilesForPr(selectedMr) : []), [selectedMr]);
+
+  // Background auto-hydration: automatically fetch full file blobs from Git vault for clean AST compilation
+  useEffect(() => {
+    if (!selectedMr || prDiffViewMode !== "studio") return;
+    let isCancelled = false;
+
+    for (const file of diffFiles) {
+      if (!file.old_content && !file.new_content && !blobCache[file.path]) {
+        getMergeRequestFileBlobs(projectId, selectedMr.iid, file.path).then((res) => {
+          if (!isCancelled && res) {
+            setBlobCache((prev) => ({ ...prev, [file.path]: res }));
+          }
+        });
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedMr?.iid, prDiffViewMode, diffFiles, projectId, blobCache]);
 
   return (
     <Box>
@@ -599,11 +640,63 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
 
             {detailTab === "diff" && (
               <Box display="flex" flexDirection="column" gap={3}>
+                <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                  <Text fontSize="12px" color="var(--color-fg-muted)">
+                    Inspecting {diffFiles.length} changed file{diffFiles.length === 1 ? "" : "s"} between{" "}
+                    <code>{selectedMr.target_branch}</code> and <code>{selectedMr.source_branch}</code>
+                  </Text>
+                  <Box display="flex" gap={1}>
+                    <Button
+                      size="small"
+                      variant={prDiffViewMode === "studio" ? "primary" : "default"}
+                      onClick={() => setPrDiffViewMode("studio")}
+                    >
+                      ⚡ Semantic Diff Studio
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={prDiffViewMode === "patch" ? "primary" : "default"}
+                      onClick={() => setPrDiffViewMode("patch")}
+                    >
+                      Unified Patch
+                    </Button>
+                  </Box>
+                </Box>
+
                 {diffFiles.map((file, fileIdx) => {
                   const displayPath =
                     file.old_path && file.new_path && file.old_path !== file.new_path
                       ? `${file.old_path} → ${file.new_path}`
                       : file.path;
+
+                  if (prDiffViewMode === "studio") {
+                    const hasFullBlobs = typeof file.old_content === "string" && typeof file.new_content === "string";
+                    const { oldCode, newCode } = hasFullBlobs
+                      ? { oldCode: file.old_content!, newCode: file.new_content! }
+                      : reconstructTextsFromUnifiedPatch(file.patch);
+                    const ext = displayPath.split(".").pop()?.toLowerCase() || "";
+                    const lang =
+                      ext === "sysml" || ext === "kerml"
+                        ? "sysml2"
+                        : ext === "scad"
+                          ? "scad"
+                          : ext === "step" || ext === "stp"
+                            ? "step"
+                            : "modelica";
+                    return (
+                      <AnsatzSemanticDiffStudio
+                        key={`${file.path}-${fileIdx}`}
+                        oldCode={oldCode}
+                        newCode={newCode}
+                        ancestorCode={file.ancestor_content}
+                        filename={displayPath}
+                        language={lang}
+                        baseLabel={selectedMr.target_branch}
+                        headLabel={selectedMr.source_branch}
+                      />
+                    );
+                  }
+
                   return (
                     <Box
                       key={`${file.path}-${fileIdx}`}

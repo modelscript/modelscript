@@ -274,9 +274,17 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
         <ViewerHeaderBar vtuData={vtuData} viewConfig={viewConfig} onThreadNodeSelected={onThreadNodeSelected} />
       )}
 
-      {/* Color legend */}
+      {/* Color legend with verification threshold line */}
       {currentField && !isThumbnail && (
-        <ColorLegend preset={colormapPreset} min={legendMin} max={legendMax} fieldName={activeField} unit={fieldUnit} />
+        <ColorLegend
+          preset={colormapPreset}
+          min={legendMin}
+          max={legendMax}
+          fieldName={activeField}
+          unit={fieldUnit}
+          threshold={viewConfig?.threshold ?? viewConfig?.allowableLimit}
+          thresholdLabel={viewConfig?.thresholdLabel ?? "Allowable Limit"}
+        />
       )}
 
       {/* Viewport Camera & Render Controls */}

@@ -69,29 +69,88 @@ export function extractPhaseNodes(rawBus: string, defaultPhases: number): number
   return def;
 }
 
+function cleanValue(val: string): string {
+  let v = val.trim();
+  if (
+    (v.startsWith("[") && v.endsWith("]")) ||
+    (v.startsWith("(") && v.endsWith(")")) ||
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  // Check if v is an RPN expression e.g. "(8 1000 /)" or "8 1000 /"
+  const parts = v.split(/\s+/);
+  if (parts.length >= 3 && ["+", "-", "*", "/"].includes(parts[parts.length - 1]!)) {
+    const stack: number[] = [];
+    let isRpn = true;
+    for (const p of parts) {
+      if (p === "+" || p === "-" || p === "*" || p === "/") {
+        if (stack.length < 2) {
+          isRpn = false;
+          break;
+        }
+        const b = stack.pop()!;
+        const a = stack.pop()!;
+        if (p === "+") stack.push(a + b);
+        else if (p === "-") stack.push(a - b);
+        else if (p === "*") stack.push(a * b);
+        else if (p === "/") stack.push(b !== 0 ? a / b : 0);
+      } else {
+        const num = parseFloat(p);
+        if (isNaN(num)) {
+          isRpn = false;
+          break;
+        }
+        stack.push(num);
+      }
+    }
+    if (isRpn && stack.length === 1) {
+      return String(stack[0]);
+    }
+  }
+  return v;
+}
+
 /**
  * Split line into key-value pairs without regex:
- * e.g. "New Line.L1 Bus1=B1 Bus2=B2 Length=500 Units=m"
+ * e.g. "New Line.L1 Bus1=B1 Bus2=B2 Length=500 Units=m" or "rmatrix = (...)"
  */
 function parseKeyValuePairs(tokens: string[]): Map<string, string> {
   const pairs = new Map<string, string>();
-
-  for (const tok of tokens) {
+  let i = 0;
+  while (i < tokens.length) {
+    const tok = tokens[i]!;
     const eqIdx = tok.indexOf("=");
     if (eqIdx !== -1) {
       const key = tok.slice(0, eqIdx).trim().toLowerCase();
       let val = tok.slice(eqIdx + 1).trim();
-      // Strip brackets or quotes
-      if (
-        (val.startsWith("[") && val.endsWith("]")) ||
-        (val.startsWith("(") && val.endsWith(")")) ||
-        (val.startsWith('"') && val.endsWith('"')) ||
-        (val.startsWith("'") && val.endsWith("'"))
-      ) {
-        val = val.slice(1, -1).trim();
+      if (val.length === 0 && i + 1 < tokens.length) {
+        i++;
+        val = tokens[i]!.trim();
       }
-      pairs.set(key, val);
+      if (key.length > 0) {
+        pairs.set(key, cleanValue(val));
+      }
+    } else if (i + 1 < tokens.length) {
+      const nextTok = tokens[i + 1]!;
+      if (nextTok === "=") {
+        const key = tok.trim().toLowerCase();
+        i += 2;
+        const val = i < tokens.length ? tokens[i]!.trim() : "";
+        if (key.length > 0) {
+          pairs.set(key, cleanValue(val));
+        }
+      } else if (nextTok.startsWith("=")) {
+        const key = tok.trim().toLowerCase();
+        i++;
+        const val = nextTok.slice(1).trim();
+        if (key.length > 0) {
+          pairs.set(key, cleanValue(val));
+        }
+      }
     }
+    i++;
   }
 
   return pairs;
@@ -128,6 +187,7 @@ export function parseArrayValues(raw: string): string[] {
 
 /**
  * Parse a matrix from an OpenDSS string: e.g. "0.1 | 0.05 0.1"
+ * Automatically symmetrizes lower-triangular matrices.
  */
 export function parseMatrixValues(raw: string): number[][] {
   let s = raw.trim();
@@ -148,7 +208,70 @@ export function parseMatrixValues(raw: string): number[][] {
       rowStart = i + 1;
     }
   }
+
+  // If lower-triangular symmetric matrix, expand to full N x N
+  const n = rows.length;
+  if (n > 1) {
+    const isLowerTriangular = rows.every((r, idx) => r.length === idx + 1);
+    if (isLowerTriangular) {
+      const full: number[][] = [];
+      for (let r = 0; r < n; r++) {
+        full[r] = [];
+        for (let c = 0; c < n; c++) {
+          full[r]![c] = c <= r ? rows[r]![c]! : rows[c]![r]!;
+        }
+      }
+      return full;
+    }
+  }
+
   return rows;
+}
+
+/**
+ * Conversion factor from length unit to meters.
+ */
+export function getUnitToMeters(unit?: string): number {
+  if (!unit) return 1.0;
+  const u = unit.toLowerCase().trim();
+  switch (u) {
+    case "mi":
+    case "mile":
+    case "miles":
+      return 1609.344;
+    case "kft":
+      return 304.8;
+    case "km":
+      return 1000.0;
+    case "m":
+    case "meter":
+    case "meters":
+      return 1.0;
+    case "ft":
+    case "feet":
+    case "foot":
+      return 0.3048;
+    case "in":
+    case "inch":
+    case "inches":
+      return 0.0254;
+    case "cm":
+      return 0.01;
+    case "mm":
+      return 0.001;
+    default:
+      return 1.0;
+  }
+}
+
+/**
+ * Compute the scale factor to multiply a line's length by to convert to the impedance unit (e.g. ft -> mi).
+ */
+export function getLengthScale(lineUnits?: string, baseUnits?: string): number {
+  if (!lineUnits || !baseUnits) return 1.0;
+  const lineToM = getUnitToMeters(lineUnits);
+  const baseToM = getUnitToMeters(baseUnits);
+  return lineToM / baseToM;
 }
 
 /**
@@ -199,10 +322,48 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
     rawLines.push(content.slice(lineStart));
   }
 
-  for (let lineNum = 0; lineNum < rawLines.length; lineNum++) {
-    let lineText = rawLines[lineNum] ?? "";
+  // Pre-process raw lines:
+  // 1. Handle C-style multi-line comments: /* ... */
+  // 2. Strip single-line comments: ! and //
+  // 3. Handle continuation lines starting with ~
+  interface LogicalLine {
+    text: string;
+    startLine: number;
+    endLine: number;
+  }
+  const logicalLines: LogicalLine[] = [];
+  let inBlockComment = false;
 
-    // Strip comments: !, //
+  for (let idx = 0; idx < rawLines.length; idx++) {
+    let lineText = rawLines[idx] ?? "";
+    const lineNum = idx + 1;
+
+    // Handle block comments across lines
+    if (inBlockComment) {
+      const closeIdx = lineText.indexOf("*/");
+      if (closeIdx !== -1) {
+        lineText = lineText.slice(closeIdx + 2);
+        inBlockComment = false;
+      } else {
+        continue;
+      }
+    }
+
+    // Check for inline block comments /* ... */ on current line
+    while (true) {
+      const openIdx = lineText.indexOf("/*");
+      if (openIdx === -1) break;
+      const closeIdx = lineText.indexOf("*/", openIdx + 2);
+      if (closeIdx !== -1) {
+        lineText = lineText.slice(0, openIdx) + " " + lineText.slice(closeIdx + 2);
+      } else {
+        lineText = lineText.slice(0, openIdx);
+        inBlockComment = true;
+        break;
+      }
+    }
+
+    // Strip single-line comments: !, //
     const exclamIdx = lineText.indexOf("!");
     if (exclamIdx !== -1) {
       comments.push(lineText.slice(exclamIdx + 1).trim());
@@ -216,6 +377,27 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
 
     lineText = lineText.trim();
     if (lineText.length === 0) continue;
+
+    // OpenDSS continuation line starts with ~
+    if (lineText.startsWith("~")) {
+      const cont = lineText.slice(1).trim();
+      if (logicalLines.length > 0) {
+        const prev = logicalLines[logicalLines.length - 1]!;
+        prev.text += " " + cont;
+        prev.endLine = lineNum;
+        continue;
+      }
+    }
+
+    logicalLines.push({
+      text: lineText,
+      startLine: lineNum,
+      endLine: lineNum,
+    });
+  }
+
+  for (const logLine of logicalLines) {
+    const lineText = logLine.text;
 
     // Tokenize words, preserving brackets and quoted strings
     const tokens: string[] = [];
@@ -260,9 +442,9 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
 
     const firstWord = (tokens[0] ?? "").toLowerCase();
     const range: DssRange = {
-      startLine: lineNum + 1,
+      startLine: logLine.startLine,
       startCol: 1,
-      endLine: lineNum + 1,
+      endLine: logLine.endLine,
       endCol: lineText.length + 1,
     };
 
@@ -392,11 +574,12 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const windings = parseInt(props.get("windings") ?? "2", 10) || 2;
         const rawBuses = props.get("buses") ?? "";
         const buses = parseArrayValues(rawBuses).map(extractBaseBusName);
+        const phaseNodes: number[][] = parseArrayValues(rawBuses).map((b) => extractPhaseNodes(b, phases));
         const rawKvs = props.get("kvs") ?? "";
         const kvs = parseArrayValues(rawKvs).map((v) => parseFloat(v) || 12.47);
         const rawKvas = props.get("kvas") ?? "";
         const kvas = parseArrayValues(rawKvas).map((v) => parseFloat(v) || 1000);
-        const pctLoadLossRaw = props.get("%loadloss");
+        const pctLoadLossRaw = props.get("%loadloss") ?? props.get("%r");
         const xhlRaw = props.get("xhl");
         const tapsRaw = props.get("taps");
         const taps = tapsRaw ? parseArrayValues(tapsRaw).map((v) => parseFloat(v) || 1.0) : undefined;
@@ -404,7 +587,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const minTapRaw = props.get("mintap");
         const maxTapRaw = props.get("maxtap");
         const connsRaw = props.get("conns") ?? props.get("conn");
-        const conn = connsRaw ? parseArrayValues(connsRaw) : undefined;
+        let conn = connsRaw ? parseArrayValues(connsRaw) : undefined;
         const leadLagRaw = props.get("leadlag");
         const leadLag =
           leadLagRaw?.toLowerCase() === "lead"
@@ -413,11 +596,44 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
               ? ("lag" as const)
               : undefined;
 
+        // Parse winding-by-winding properties if wdg=1 ... wdg=2 syntax is present
+        let curWdg = 0;
+        for (let tIdx = 2; tIdx < tokens.length; tIdx++) {
+          const tok = tokens[tIdx]!;
+          const eq = tok.indexOf("=");
+          if (eq !== -1) {
+            const k = tok.slice(0, eq).trim().toLowerCase();
+            let v = tok.slice(eq + 1).trim();
+            if (v.length === 0 && tIdx + 1 < tokens.length) {
+              tIdx++;
+              v = tokens[tIdx]!.trim();
+            }
+            v = cleanValue(v);
+            if (k === "wdg" || k === "winding") {
+              const wNum = parseInt(v, 10);
+              if (!isNaN(wNum) && wNum >= 1) curWdg = wNum - 1;
+            } else if (k === "bus") {
+              buses[curWdg] = extractBaseBusName(v);
+              phaseNodes[curWdg] = extractPhaseNodes(v, phases);
+            } else if (k === "kv") {
+              const val = parseFloat(v);
+              if (!isNaN(val)) kvs[curWdg] = val;
+            } else if (k === "kva") {
+              const val = parseFloat(v);
+              if (!isNaN(val)) kvas[curWdg] = val;
+            } else if (k === "conn") {
+              if (!conn) conn = [];
+              conn[curWdg] = v;
+            }
+          }
+        }
+
         transformers.set(elemName, {
           name: elemName,
           phases,
           windings,
           buses: buses.length > 0 ? buses : ["Bus1", "Bus2"],
+          phaseNodes: phaseNodes.length > 0 ? phaseNodes : undefined,
           kvs: kvs.length > 0 ? kvs : [115.0, 12.47],
           kvas: kvas.length > 0 ? kvas : [10000.0, 10000.0],
           pctLoadLoss: pctLoadLossRaw !== undefined ? parseFloat(pctLoadLossRaw) : undefined,
@@ -523,16 +739,28 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         });
       } else if (elemClass === "linecode") {
         const nphases = parseInt(props.get("nphases") ?? "3", 10) || 3;
-        const r1 = parseFloat(props.get("r1") ?? "0.1") || 0.1;
-        const x1 = parseFloat(props.get("x1") ?? "0.4") || 0.4;
+        const r1Raw = props.get("r1");
+        const x1Raw = props.get("x1");
         const c1Raw = props.get("c1");
-        const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
         const r0Raw = props.get("r0");
         const x0Raw = props.get("x0");
         const c0Raw = props.get("c0");
+        const rmatrixRaw = props.get("rmatrix");
+        const xmatrixRaw = props.get("xmatrix");
+        const cmatrixRaw = props.get("cmatrix");
+        const units = props.get("units");
+        const baseFreqRaw = props.get("basefreq");
+
+        const rmatrix = rmatrixRaw !== undefined ? parseMatrixValues(rmatrixRaw) : undefined;
+        const xmatrix = xmatrixRaw !== undefined ? parseMatrixValues(xmatrixRaw) : undefined;
+        const cmatrix = cmatrixRaw !== undefined ? parseMatrixValues(cmatrixRaw) : undefined;
+        const r1 = r1Raw !== undefined ? parseFloat(r1Raw) : (rmatrix ? rmatrix[0]?.[0] ?? 0.1 : 0.1);
+        const x1 = x1Raw !== undefined ? parseFloat(x1Raw) : (xmatrix ? xmatrix[0]?.[0] ?? 0.4 : 0.4);
+        const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
         const r0 = r0Raw !== undefined ? parseFloat(r0Raw) : undefined;
         const x0 = x0Raw !== undefined ? parseFloat(x0Raw) : undefined;
         const c0 = c0Raw !== undefined ? parseFloat(c0Raw) : undefined;
+        const baseFreq = baseFreqRaw !== undefined ? parseFloat(baseFreqRaw) : undefined;
 
         lineCodes.set(elemName, {
           name: elemName,
@@ -543,6 +771,11 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           r0,
           x0,
           c0,
+          rmatrix,
+          xmatrix,
+          cmatrix,
+          units,
+          baseFreq,
           range,
         });
       } else if (elemClass === "loadshape") {

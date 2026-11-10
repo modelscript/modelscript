@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Point, SyntaxNode, Tree, TreeCursor } from "../utils/cst-facade.js";
-import type { XmlDocument, XmlElement } from "./types.js";
+import type { XmlAttribute, XmlDocument, XmlElement } from "./types.js";
 
 function computeLineStarts(text: string): number[] {
   const starts = [0];
@@ -164,6 +164,27 @@ export class XmlCstNode implements SyntaxNode {
   attr(name: string): string | undefined {
     const lower = name.toLowerCase();
     return this.element.attributes.find((a) => a.name.toLowerCase() === lower)?.value;
+  }
+
+  attrSpan(name: string): XmlAttribute | undefined {
+    const lower = name.toLowerCase();
+    return this.element.attributes.find((a) => a.name.toLowerCase() === lower);
+  }
+
+  get openEnd(): number {
+    return this.element.openEnd;
+  }
+
+  get closeStart(): number {
+    return this.element.closeStart;
+  }
+
+  get selfClosing(): boolean {
+    return this.element.selfClosing;
+  }
+
+  get attributes(): XmlAttribute[] {
+    return this.element.attributes;
   }
 
   child(index: number): XmlCstNode | null {

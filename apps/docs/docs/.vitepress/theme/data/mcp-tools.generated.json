@@ -1,5 +1,5 @@
 {
-  "toolCount": 60,
+  "toolCount": 92,
   "tools": [
     {
       "name": "modelica_load",
@@ -129,22 +129,22 @@
     {
       "name": "pscad_lint",
       "description": "Lint a PSCAD project (.pscx, .pslx) or workspace (.pswx) file. Performs pre-flight electrical topology, parameter bounds, floating terminal, and weak grid (SCR) checks.",
-      "category": "Power Systems & EMT (PSCAD)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
     },
     {
       "name": "pscad_simulate",
       "description": "Simulate a PSCAD electromagnetic transient (EMT) circuit using the WebAssembly Dommel companion-circuit solver. Supports Bergeron lines, CDA switch damping, and OEM Inverter-Based Resource (IBR) FMUs.",
-      "category": "Power Systems & EMT (PSCAD)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
     },
     {
       "name": "pscad_verify_ieee2800",
       "description": "Automate IEEE 2800-2022 grid code compliance testing for Inverter-Based Resources (IBRs). Assesses momentary cessation, fast reactive current injection (T_90 <= 50 ms), and overvoltage ceiling (<= 1.20 pu).",
-      "category": "Power Systems & EMT (PSCAD)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
     },
     {
       "name": "pscad_export",
       "description": "Export a PSCAD project (.pscx, .pslx) to Modelica (OpenIPSL) or FMI/SSP (SystemStructure.ssd) for cross-domain digital thread interoperability.",
-      "category": "Power Systems & EMT (PSCAD)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
     },
     {
       "name": "modelica_linearize",
@@ -264,42 +264,202 @@
     {
       "name": "qif_inspect_and_spc",
       "description": "Evaluates an ISO 23952 Quality Information Framework (QIF) document, runs NIST QIF & ASME Y14.5 GD&T lint checks, computes SPC capability (Cp/Cpk, TUR, MMC/LMC bonus tolerances), and optionally reconciles STEP AP242 entities.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Cross-Domain Certification & Digital Twin"
     },
     {
       "name": "oscal_audit_cps_compliance",
       "description": "Audits a NIST OSCAL document (Catalog, Profile, Component Definition, SSP, SAR, or POA&M) against NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS overlays, resolves profile baselines, and verifies cyber-physical architectural component coverage.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "SysML v2, AutomationML & Compliance (OSCAL)"
     },
     {
       "name": "aml_run_virtual_commissioning",
       "description": "Parses an IEC 62714 AutomationML / CAEX workcell topology, runs semantic port & PPR role verification, and executes closed-loop virtual commissioning coupling VirtualPlc logic and mechatronic plant dynamics.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "SysML v2, AutomationML & Compliance (OSCAL)"
     },
     {
       "name": "opensim_analyze",
       "description": "Parses an OpenSim (.osim) musculoskeletal biomechanics model, runs pre-flight kinematic and Hill-type muscle diagnostics (M9101–M9110), and simulates muscle activation/contraction dynamics.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Medical Physics, Biomechanics & Surgical Navigation"
     },
     {
       "name": "dicom_rt_verify_dvh",
       "description": "Evaluates a DICOM-RT treatment plan (RTPLAN, RTSTRUCT, RTDOSE), verifies QUANTEC OAR dose constraints, MLC leaf kinematics, and gantry/couch collision clearance (M9201–M9210), and computes DVH, CI, HI, BED, and EQD2 metrics.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Medical Physics, Biomechanics & Surgical Navigation"
     },
     {
       "name": "cellml_simulate",
       "description": "Parses a CellML 1.0/1.1/2.0 electrophysiology or microvascular perfusion model, verifies SI dimensional consistency and component interfaces (M9301–M9310), and integrates action potential / gating ODEs.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Medical Physics, Biomechanics & Surgical Navigation"
     },
     {
       "name": "igtl_verify_calibration",
       "description": "Parses an OpenIGTLink / PLUS surgical navigation configuration, verifies SE(3) rotation orthogonality and coordinate frame connectivity (M9801–M9810), and solves stylus pivot calibration and Fitzpatrick Target Registration Error (TRE).",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Medical Physics, Biomechanics & Surgical Navigation"
     },
     {
       "name": "three_mf_verify_guide",
       "description": "Verifies an ISO/ASTM 52915 3MF Medical patient-specific surgical cutting guide or implant mesh for 2-manifold watertightness, outward normal volume, wall thickness, osteotomy plane normals, and biocompatibility (M9701–M9710).",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Medical Physics, Biomechanics & Surgical Navigation"
+    },
+    {
+      "name": "opendss_solve_powerflow",
+      "description": "Solves multi-phase unbalanced distribution AC power flow using sparse Ybus nodal admittance matrix with RegControl tap changers and CapControl capacitor banks.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "opendss_solve_faults",
+      "description": "Computes short-circuit fault currents (3-phase symmetrical, single line-to-ground SLG, line-to-line LL) and Thevenin equivalent impedances.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "opendss_evaluate_harmonics",
+      "description": "Computes frequency-dependent harmonic voltage propagation and total harmonic distortion (THD%) across user-specified harmonic spectrum.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "opendss_analyze_reliability",
+      "description": "Evaluates predictive distribution feeder reliability indices (IEEE 1366: SAIFI, SAIDI, CAIDI, ASAI, EEN) and identifies critical risk branches.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "opendss_solve_gic",
+      "description": "Analyzes geomagnetically induced currents (GIC) from space weather events across power grid substation earth grounds and identifies transformer half-cycle saturation risks.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "opendss_hosting_capacity",
+      "description": "Calculates distribution feeder maximum Distributed Energy Resource (DER) hosting capacity limited by ANSI C84.1 voltage rise and line thermal capacity, with optional IEEE 1547 smart inverter Volt-VAR mitigation.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "opendss_simulate_flisr",
+      "description": "Simulates automated Fault Location, Isolation, and Service Restoration (FLISR) distribution grid self-healing, calculating customer interruption hours saved.",
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+    },
+    {
+      "name": "epanet_solve_hydraulics",
+      "description": "Solves steady-state or extended period hydraulics for a US EPA EPANET water distribution network (.inp).",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_fire_flow_analysis",
+      "description": "Performs fire flow capacity analysis at a municipal hydrant node, evaluating available GPM at 20 psi residual pressure.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_outage_contingency",
+      "description": "Simulates N-1 pipe break isolation and unsupplied customer demand under Pressure-Dependent Demand (PDD).",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_water_hammer_surge",
+      "description": "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, and cavitation risk via the Method of Characteristics (MOC).",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "water_audit_awwa_m36",
+      "description": "Performs standard AWWA M36 Water Audit calculating CARL, UARL, Infrastructure Leakage Index (ILI), and non-revenue water financial losses.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_optimize_cip",
+      "description": "Optimizes multi-year Capital Improvement Planning (CIP) pipe replacement and upsizing to maximize hydraulic performance under strict budget constraints.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_calibrate_scada",
+      "description": "Calibrates EPANET pipe Hazen-Williams roughness C-factors against real-world SCADA telemetry pressure observations.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "epanet_gis_to_model",
+      "description": "Ingests municipal GIS pipe centerlines, junction assets, and digital elevation models (DEM) from GeoJSON / ASCII grids into a complete, ready-to-solve EPANET network (.inp).",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "swmm_flood_routing",
+      "description": "Simulates 1D Saint-Venant dynamic wave routing in an urban stormwater or combined sewer network (.inp), reporting peak flows and flooding.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "swmm_simulate_rtc",
+      "description": "Simulates Real-Time Control (RTC) gate/weir/pump modulation for urban Combined Sewer Overflow (CSO) mitigation.",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "swmm_gis_to_model",
+      "description": "Ingests municipal GIS stormwater/wastewater conduits, manholes, catchment polygon boundaries, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (.inp).",
+      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+    },
+    {
+      "name": "ecad_dfm_audit",
+      "description": "Runs Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) design rule checks on PCB layout data.",
+      "category": "ECAD, PCB Signal Integrity & Supply-Chain BOM"
+    },
+    {
+      "name": "ecad_generate_manufacturing_bundle",
+      "description": "Generates complete, verified manufacturing files (IPC-2581C, ODB++ v8.1, Gerbers, and Centroid PnP) from PCB layout.",
+      "category": "ECAD, PCB Signal Integrity & Supply-Chain BOM"
+    },
+    {
+      "name": "supply_chain_scrub_bom",
+      "description": "Scrubs a Bill of Materials across multi-tier distributors (Nexar, Digi-Key, Mouser) to calculate extended pricing, stock availability, lead times, and obsolescence risks.",
+      "category": "ECAD, PCB Signal Integrity & Supply-Chain BOM"
+    },
+    {
+      "name": "optical_inspect_otdr",
+      "description": "Inspects a Telcordia GR-196/SR-4731 .sor Optical Time-Domain Reflectometer (OTDR) binary file or base64 data to extract fiber span attenuation, event loss, reflectance, and splice integrity.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "optical_solve_transmission",
+      "description": "Solves multi-span optical DWDM transmission performance using the Generalized Gaussian Noise (EGN) non-linear model, computing GSNR, ASE noise, NLI power, and CD accumulation.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "ran_solve_microwave_budget",
+      "description": "Solves line-of-sight microwave link budget, Free Space Path Loss (FSPL), ITU-R P.530 rain fade, Fresnel clearance, and annual availability percentage ('five-nines' verification).",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "fiber_locate_otdr_fault",
+      "description": "Pinpoints the exact physical GIS GPS latitude/longitude of an optical fiber break or event measured by OTDR, correcting for cable helix twisting and vault slack loops.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "ran_evaluate_mpe_safety",
+      "description": "Evaluates FCC OET-65, Health Canada Safety Code 6, ICNIRP 2020, EU CENELEC, Swiss NISV, and Italian CEI 211 maximum permissible exposure (MPE) for cellular and microwave base station sites. Computes power densities, exclusion boundary distances (General Population vs. Occupational), Total Exposure Ratio (TER <= 1.0), and OSHA/FCC warning signage requirements.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "ran_evaluate_faa_obstruction",
+      "description": "Evaluates FAA 14 CFR Part 77, ICAO Annex 14 Volume I, and Transport Canada CAR 601.23 airspace obstruction notice criteria for telecom towers, calculates runway slope penetrations, and generates structured filing notice data.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "fiber_evaluate_pole_loading",
+      "description": "Evaluates utility pole structural loading pursuant to US NESC Rule 250/260, Canadian CSA C22.3 No. 1, or European Eurocode EN 50341 / EN 1991-1-4. Computes bending moment capacity, conductor transverse/ice loads, and percent pole capacity utilization.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "fiber_generate_bdc_fabric",
+      "description": "Generates FCC Broadband Data Collection (BDC) and NTIA BEAD compliant spatial datasets discretized into Uber H3 Resolution 8 or 9 hexagonal bins from geographic fiber routes or service polygon points.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "telecom_evaluate_nors_outage",
+      "description": "Evaluates whether a telecom network outage meets mandatory FCC Part 4 (47 CFR § 4.9) NORS reporting thresholds (900,000 user-minutes, 911/PSAP facility impact, or major transport cut) and generates an automated electronic filing dossier.",
+      "category": "Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber"
+    },
+    {
+      "name": "modelscript_bifurcation_continuation",
+      "description": "Traces nonlinear steady-state equilibrium curves F(x, p) = 0 via Pseudo-Arclength Continuation (PALC) and detects Fold (LP), Hopf (HB), and Branch (BP) bifurcations.",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelscript_stochastic_jump",
+      "description": "Executes discrete-state stochastic chemical/epidemiological jump simulations using Gillespie Direct SSA, First-Reaction SSA, or Cao-Gillespie-Petzold Adaptive Tau-Leaping.",
+      "category": "Closed-Loop Synthesis & Workspace"
     }
   ]
 }

@@ -53,7 +53,7 @@ export class CloudStatusBar implements vscode.Disposable {
   private getConfig(): { baseUrl: string; headers: Record<string, string> } {
     const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
     const baseUrl = getCloudApiUrl() || this.apiBaseUrl;
-    const token = cfg.get<string>("authToken") || this.authToken;
+    const token = cfg.get<string>("authToken") || cfg.get<string>("apiKey") || this.authToken;
     const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;

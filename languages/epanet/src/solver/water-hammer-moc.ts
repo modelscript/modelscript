@@ -25,10 +25,40 @@ export interface WaterHammerEvent {
   exponent?: number | undefined; // Closure curve shape exponent (1.0 = linear), default: 1.0
 }
 
+export type SurgeProtectionType = "AIR_VESSEL" | "AIR_VALVE" | "RELIEF_VALVE";
+
+export interface AirVesselConfig {
+  type: "AIR_VESSEL";
+  initialAirVolumeM3: number; // Initial gas pocket volume V0 [m^3]
+  polytropicExponent?: number | undefined; // Gas expansion/compression exponent gamma (default: 1.2)
+  orificeLossCoeffInflow?: number | undefined; // Resistance coeff into vessel Rin (default: 0.5)
+  orificeLossCoeffOutflow?: number | undefined; // Throttled resistance coeff out of vessel Rout (default: 2.0)
+}
+
+export interface AirReleaseValveConfig {
+  type: "AIR_VALVE";
+  inletOrificeDiameterMm: number; // Large vacuum relief intake orifice (e.g. 100mm)
+  outletOrificeDiameterMm: number; // Small air discharge / anti-slam orifice (e.g. 25mm)
+  dischargeCoeff?: number | undefined; // Orifice discharge coefficient Cd (default: 0.65)
+}
+
+export interface SurgeReliefValveConfig {
+  type: "RELIEF_VALVE";
+  setPressureHeadM: number; // Cracking pressure head to open Hset [m]
+  dischargeCoeff: number; // Relief flow capacity coefficient Cv
+}
+
+export type SurgeProtectionDevice =
+  | AirVesselConfig
+  | AirReleaseValveConfig
+  | SurgeReliefValveConfig;
+
 export interface WaterHammerOptions {
   simulationDurationSeconds?: number | undefined; // Total duration to simulate, default: 5.0s
   spatialReaches?: number | undefined; // Number of spatial divisions N, default: 10
   vaporPressureHeadM?: number | undefined; // Water vapor pressure head, default: -10.0m (cavitation limit)
+  surgeProtection?: SurgeProtectionDevice | undefined; // Protective surge suppression device
+  protectionLocation?: "UPSTREAM" | "MIDPOINT" | "DOWNSTREAM" | undefined; // Default: "DOWNSTREAM"
 }
 
 export interface WaterHammerTimeStep {
@@ -40,6 +70,8 @@ export interface WaterHammerTimeStep {
   flowMidpointM3s: number;
   flowDownstreamM3s: number;
   pressureDownstreamPsi: number;
+  protectionFlowM3s?: number | undefined;
+  airVesselVolumeM3?: number | undefined;
 }
 
 export interface WaterHammerResult {
@@ -47,11 +79,15 @@ export interface WaterHammerResult {
   joukowskySurgeM: number; // Theoretical Delta H = (a * Delta v) / g
   maxHeadM: number;
   minHeadM: number;
+  maxHeadDownstreamM?: number | undefined;
+  minHeadDownstreamM?: number | undefined;
   maxPressurePsi: number;
   minPressurePsi: number;
   cavitationOccurred: boolean;
   waveTravelTimeSeconds: number; // 2L / a
   fundamentalPeriodSeconds: number; // 4L / a
+  surgeProtectionActive?: boolean | undefined;
+  surgeSuppressionRatioPct?: number | undefined; // Percentage reduction in surge spike vs unprotected
 }
 
 const G_ACCEL = 9.80665;
@@ -117,11 +153,20 @@ export function solveWaterHammerMoc(
   const timeSeries: WaterHammerTimeStep[] = [];
   let maxHeadM = Number.NEGATIVE_INFINITY;
   let minHeadM = Number.POSITIVE_INFINITY;
+  let maxHeadDownstreamM = Number.NEGATIVE_INFINITY;
+  let minHeadDownstreamM = Number.POSITIVE_INFINITY;
   let cavitationOccurred = false;
 
   const midIdx = Math.floor(N / 2);
   const closureTime = Math.max(deltaT, event.durationSeconds);
   const expVal = event.exponent ?? 1.0;
+
+  // Surge Protection State
+  const protection = options?.surgeProtection;
+  let vesselAirVol = protection?.type === "AIR_VESSEL" ? Math.max(0.001, protection.initialAirVolumeM3) : 0.0;
+  const gamma = protection?.type === "AIR_VESSEL" ? (protection.polytropicExponent ?? 1.2) : 1.2;
+  const initialGasHead = Math.max(1.0, H_dn0 - exitHead);
+  const gasConst = initialGasHead * Math.pow(Math.max(1e-3, vesselAirVol), gamma);
 
   for (let step = 0; step <= numSteps; step++) {
     const t = step * deltaT;
@@ -139,6 +184,8 @@ export function solveWaterHammerMoc(
     if (hDn < minHeadM) minHeadM = hDn;
     if (hMid > maxHeadM) maxHeadM = hMid;
     if (hMid < minHeadM) minHeadM = hMid;
+    if (hDn > maxHeadDownstreamM) maxHeadDownstreamM = hDn;
+    if (hDn < minHeadDownstreamM) minHeadDownstreamM = hDn;
 
     if (hDn - exitHead < vaporHead || hMid - exitHead < vaporHead) {
       cavitationOccurred = true;
@@ -155,6 +202,7 @@ export function solveWaterHammerMoc(
         flowMidpointM3s: qMid,
         flowDownstreamM3s: qDn,
         pressureDownstreamPsi: pDnPsi,
+        airVesselVolumeM3: protection?.type === "AIR_VESSEL" ? vesselAirVol : undefined,
       });
     }
 
@@ -185,31 +233,89 @@ export function solveWaterHammerMoc(
     Q_next[0] = (H_up0 - CM[0]!) / B;
 
     // 4. Downstream Boundary
+    let qValve = 0.0;
     if (event.type === "VALVE_CLOSURE") {
-      // Relative valve opening tau(t) in [0.0, 1.0]
       const tau = t >= closureTime ? 0.0 : Math.pow(1.0 - t / closureTime, expVal);
-      if (tau <= 1e-6) {
-        // Completely closed valve: Q[N] = 0
-        Q_next[N] = 0.0;
-        H_next[N] = CP[N]!;
-      } else {
-        // Orifice equation coupled with C+ line: H[N] = CP - B * Q[N]
-        // Q[N] = tau * Cv0 * sqrt(H[N] - exitHead)
+      if (tau > 1e-6) {
         const Cv = tau * Cv0;
         const cpVal = CP[N]!;
-        // Quadratic: B * Q^2 + (Q / Cv)^2 - (cpVal - exitHead) ...
-        // Inverting: Q[N] = (-B * Cv^2 + sqrt((B * Cv^2)^2 + 2 * Cv^2 * (cpVal - exitHead))) ...
         const Cv2 = Cv * Cv;
         const disc = B * B * Cv2 * Cv2 + 2.0 * Cv2 * Math.max(0.0, cpVal - exitHead);
-        const qSolve = -B * Cv2 + Math.sqrt(Math.max(0.0, disc));
-        Q_next[N] = qSolve;
-        H_next[N] = cpVal - B * qSolve;
+        qValve = -B * Cv2 + Math.sqrt(Math.max(0.0, disc));
+      } else {
+        qValve = 0.0;
       }
     } else {
-      // PUMP_TRIP: Linear or exponential flow decay at upstream or downstream
       const spinDown = t >= closureTime ? 0.0 : Math.pow(1.0 - t / closureTime, expVal);
-      Q_next[N] = Q0 * spinDown;
-      H_next[N] = CP[N]! - B * Q_next[N]!;
+      qValve = Q0 * spinDown;
+    }
+
+    if (!protection) {
+      Q_next[N] = qValve;
+      H_next[N] = CP[N]! - B * qValve;
+    } else if (protection.type === "AIR_VESSEL") {
+      // Coupled Hydropneumatic Air Vessel
+      const H_gas = gasConst / Math.pow(Math.max(0.001, vesselAirVol), gamma);
+      const H_vessel = exitHead + H_gas;
+      const Rin = protection.orificeLossCoeffInflow ?? 0.5;
+      const Rout = protection.orificeLossCoeffOutflow ?? 2.0;
+      const cpVal = CP[N]!;
+      const K = cpVal - B * qValve - H_vessel;
+
+      let qVessel = 0.0;
+      if (K >= 0) {
+        // Flow into vessel (compression)
+        if (Rin > 1e-4) {
+          qVessel = (-B + Math.sqrt(B * B + 4.0 * Rin * K)) / (2.0 * Rin);
+        } else {
+          qVessel = K / B;
+        }
+      } else {
+        // Flow out of vessel (expansion)
+        const posK = -K;
+        if (Rout > 1e-4) {
+          const x = (-B + Math.sqrt(B * B + 4.0 * Rout * posK)) / (2.0 * Rout);
+          qVessel = -x;
+        } else {
+          qVessel = -posK / B;
+        }
+      }
+
+      vesselAirVol = Math.max(0.001, vesselAirVol - qVessel * deltaT);
+      Q_next[N] = qValve + qVessel;
+      H_next[N] = cpVal - B * Q_next[N]!;
+    } else if (protection.type === "AIR_VALVE") {
+      // Dual-chamber vacuum relief / air release valve
+      const unprotH = CP[N]! - B * qValve;
+      if (unprotH < exitHead) {
+        // Vacuum breaker opens, admitting atmospheric air to prevent cavitation
+        H_next[N] = exitHead;
+        Q_next[N] = (CP[N]! - exitHead) / B;
+      } else {
+        // Positive pressure: small exhaust orifice throttles expelled air
+        const dOutM = (protection.outletOrificeDiameterMm ?? 25.0) / 1000.0;
+        const aOut = (Math.PI * dOutM * dOutM) / 4.0;
+        const cd = protection.dischargeCoeff ?? 0.65;
+        const qExhaust = cd * aOut * Math.sqrt(2.0 * G_ACCEL * Math.max(0.0, unprotH - exitHead));
+        Q_next[N] = qValve + qExhaust;
+        H_next[N] = CP[N]! - B * Q_next[N]!;
+      }
+    } else if (protection.type === "RELIEF_VALVE") {
+      // Fast-acting spring-loaded Pressure Relief Valve (PRV)
+      const unprotH = CP[N]! - B * qValve;
+      const Hset = protection.setPressureHeadM;
+      if (unprotH > Hset) {
+        const cv = protection.dischargeCoeff;
+        const M_val = B * cv * Math.sqrt(2.0 * G_ACCEL);
+        const rhs = Math.max(0.0, CP[N]! - B * qValve - exitHead);
+        const y = (-M_val + Math.sqrt(M_val * M_val + 4.0 * rhs)) / 2.0;
+        const qRelief = cv * Math.sqrt(2.0 * G_ACCEL) * y;
+        Q_next[N] = qValve + qRelief;
+        H_next[N] = exitHead + y * y;
+      } else {
+        Q_next[N] = qValve;
+        H_next[N] = unprotH;
+      }
     }
 
     // Advance buffers
@@ -220,15 +326,24 @@ export function solveWaterHammerMoc(
   const waveTravelTimeSeconds = (2.0 * L) / a;
   const fundamentalPeriodSeconds = (4.0 * L) / a;
 
+  const actualSurgeHead = Math.max(0.0, maxHeadM - H_dn0);
+  const surgeSuppressionRatioPct = protection
+    ? Math.max(0.0, Math.min(100.0, (1.0 - actualSurgeHead / Math.max(0.1, joukowskySurgeM)) * 100.0))
+    : undefined;
+
   return {
     timeSeries,
     joukowskySurgeM,
     maxHeadM,
     minHeadM,
+    maxHeadDownstreamM,
+    minHeadDownstreamM,
     maxPressurePsi: (maxHeadM - exitHead) * M_TO_PSI,
     minPressurePsi: (minHeadM - exitHead) * M_TO_PSI,
     cavitationOccurred,
     waveTravelTimeSeconds,
     fundamentalPeriodSeconds,
+    surgeProtectionActive: Boolean(protection),
+    surgeSuppressionRatioPct,
   };
 }

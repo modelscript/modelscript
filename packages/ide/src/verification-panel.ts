@@ -115,6 +115,15 @@ export class VerificationPanel extends BaseWebviewPanel {
             vscode.commands.executeCommand("modelscript.runSimulation");
             break;
 
+          case "focusViolationIn3D": {
+            vscode.commands.executeCommand("modelscript.focusViolationIn3D", {
+              contractId: msg.contractId,
+              time: msg.time,
+              lhsName: msg.lhsName,
+            });
+            break;
+          }
+
           case "goToSource": {
             const docUri = vscode.Uri.parse(msg.uri);
             const doc = await vscode.workspace.openTextDocument(docUri);

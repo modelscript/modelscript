@@ -62,7 +62,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "preview",
+    "tier": "stable",
     "category": "language"
   }
 }

@@ -25,6 +25,11 @@ const ENTERPRISE_CLI_COMMANDS = new Set([
   "relap5",
   "eclipse",
   "psse",
+  "pslf",
+  "powerfactory",
+  "pf",
+  "dossier",
+  "gatekeeper",
   "dhf",
 ]);
 
@@ -167,7 +172,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       ["inspect <files..>", "info <files..>", "summary <files..>"],
-      "Inspect and summarize engineering models across any of the 68 supported languages",
+      "Inspect and summarize engineering models across any of the 81 supported languages",
       () => import("./commands/inspect.js"),
       "Inspect",
       ["info", "summary"],
@@ -604,7 +609,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "stdlib [action] [pack]",
-      "Manage, list, and synchronize polyglot standard libraries across 68 languages",
+      "Manage, list, and synchronize polyglot standard libraries across 81 languages",
       () => import("./commands/stdlib.js"),
       "Stdlib",
     ),
@@ -659,6 +664,14 @@ await yargs(rawArgs)
       () => import("./commands/domain.js"),
       "Domain",
       ["tool"],
+    ),
+  )
+  .command(
+    lazy(
+      "ampl <action> [files..]",
+      "Inspect, lint, solve, and lower AMPL mathematical programming models (.mod, .dat)",
+      () => import("./commands/ampl.js"),
+      "AmplCommand",
     ),
   )
   .command(
@@ -735,10 +748,50 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "pslf <action> [files..]",
+      "Inspect, lint, solve, and convert GE PSLF transmission cases (.epc, .dyd)",
+      () => import("./commands/pslf.js"),
+      "PslfCommand",
+    ),
+  )
+  .command(
+    lazy(
       "cgmes <action> [files..]",
       "Inspect, lint, convert and solve ENTSO-E CIM / CGMES European grid models",
       () => import("./commands/cgmes.js"),
       "CgmesCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "powerfactory <action> [files..]",
+      "Inspect, solve, lint, and visualize DIgSILENT PowerFactory models (.dz, .pfd, .xml)",
+      () => import("./commands/powerfactory.js"),
+      "PowerFactoryCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "pf <action> [files..]",
+      "Alias for 'powerfactory' command",
+      () => import("./commands/powerfactory.js"),
+      "PowerFactoryCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "dossier <action> [files..]",
+      "Compile, watermark, and cryptographically sign NERC RSAW & NIST OSCAL compliance dossiers",
+      () => import("./commands/dossier.js"),
+      "DossierCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "gatekeeper <action> [files..]",
+      "Run automated 5-stage ISO Grid Code screening pipeline or start gatekeeper CI/CD service",
+      () => import("./commands/gatekeeper.js"),
+      "GatekeeperCommand",
     ),
   )
   .command(
@@ -1057,6 +1110,67 @@ await yargs(rawArgs)
       () => import("./commands/medical.js"),
       "IgtlCommand",
       ["openigtlink"],
+    ),
+  )
+  .command(
+    lazy(
+      "hec-ras <action> [files..]",
+      "Inspect, lint, solve 1D backwater surface profiles, and lower USACE HEC-RAS river hydraulic geometry (.g01, .g02, .rasgeo)",
+      () => import("./commands/hec-ras.js"),
+      "HecRasCommand",
+      ["ras"],
+    ),
+  )
+  .command(
+    lazy(
+      "ocpp <action> [files..]",
+      "Inspect, lint, solve priority smart charging schedules, and lower OCPP 2.0.1/1.6J EV charging networks (.ocpp)",
+      () => import("./commands/ocpp.js"),
+      "OcppCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "openadr <action> [files..]",
+      "Inspect, lint, evaluate curtailment shed, and lower OpenADR 2.0b/3.0 demand response events (.oadr, .xml, .json)",
+      () => import("./commands/openadr.js"),
+      "OpenAdrCommand",
+      ["oadr"],
+    ),
+  )
+  .command(
+    lazy(
+      "tough <action> [files..]",
+      "Inspect, lint, solve geothermal wellbore flashing thermodynamics, and lower LBNL TOUGH2/3 reservoir decks (.tgh, .dat, .tough)",
+      () => import("./commands/tough.js"),
+      "ToughCommand",
+      ["tgh"],
+    ),
+  )
+  .command(
+    lazy(
+      "modflow <action> [files..]",
+      "Inspect, lint, solve 3D Darcy groundwater balances, and lower USGS MODFLOW 6 aquifer packages (.dis, .dis6, .npf, .wel, .riv)",
+      () => import("./commands/modflow.js"),
+      "ModflowCommand",
+      ["mf6"],
+    ),
+  )
+  .command(
+    lazy(
+      "landgem <action> [files..]",
+      "Inspect, lint, solve first-order methane decay kinetics & ADM1 digestion, and lower LandGEM biogas models (.landgem, .lfg, .biogas)",
+      () => import("./commands/landgem.js"),
+      "LandgemCommand",
+      ["biogas"],
+    ),
+  )
+  .command(
+    lazy(
+      "gtfs <action> [files..]",
+      "Inspect, lint, solve electric transit kinematic traction power, depot charging, and lower GTFS feeds (.gtfs, .zip)",
+      () => import("./commands/gtfs.js"),
+      "GtfsCommand",
     ),
   )
   .strictCommands()

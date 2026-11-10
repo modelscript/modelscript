@@ -188,6 +188,10 @@ export interface EmtBranch {
   status?: "open" | "closed" | undefined;
   openTimeSec?: number | undefined;
   closeTimeSec?: number | undefined;
+  /** Independent 3-pole closing times in seconds for circuit breakers with pole scatter. */
+  poleCloseTimesSec?: { a: number; b: number; c: number } | undefined;
+  /** Independent 3-pole opening times in seconds for circuit breakers. */
+  poleOpenTimesSec?: { a: number; b: number; c: number } | undefined;
   choppingCurrentAmp?: number | undefined;
   singlePoleTripPhase?: 0 | 1 | 2 | undefined;
   /** Closed-contact resistance in ohms (switch branches). */

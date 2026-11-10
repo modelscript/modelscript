@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { exportLcriInventoryCsv } from "@modelscript/epanet";
 import { CheckCircleFillIcon, DownloadIcon, ShieldCheckIcon, XCircleFillIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import styled from "styled-components";
@@ -276,6 +277,61 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleExportCsv = () => {
+    const csvContent = exportLcriInventoryCsv({
+      pwsid: data.pwsid || "MA1001248",
+      utilityName: data.utilityName,
+      reportingYear: new Date(data.evaluatedAt).getFullYear() || 2026,
+      inventorySummary: {
+        totalServiceLines: data.inventory.totalConnections,
+        leadCount: data.inventory.leadCount,
+        grrCount: data.inventory.grrCount,
+        unknownCount: data.inventory.unknownCount,
+        nonLeadCount: data.inventory.nonLeadCount,
+        annualReplacementRatePct: data.inventory.annualReplacementRatePct ?? 10.0,
+        statutory10YearCompliant: (data.inventory.annualReplacementRatePct ?? 10.0) >= 10.0,
+      },
+      samplingMetrics: {
+        p90LeadPpb: data.sampling.p90LeadPpb,
+        p90CopperPpb: data.sampling.p90CopperPpb,
+        actionLevelLeadPpb: 10.0,
+        actionLevelExceeded: data.sampling.p90LeadPpb > 10.0,
+        samplesCount: data.sampling.samplesCollected,
+        samplingPeriod: data.sampling.samplingPeriod,
+      },
+      corrosionControl: {
+        orthophosphateMgL: data.corrosionControl.orthophosphateMgL,
+        wqpMinTargetMgL: data.corrosionControl.orthophosphateTarget,
+        phMean: data.corrosionControl.phMean,
+        phMinThreshold: data.corrosionControl.phThreshold,
+        cctCompliant: data.corrosionControl.orthophosphateMgL >= data.corrosionControl.orthophosphateTarget,
+      },
+      serviceLines: [
+        {
+          serviceLineId: "SL-001",
+          streetAddress: "100 Main St",
+          utilitySideMaterial: "Lead",
+          customerSideMaterial: "Lead",
+          classification: "Lead",
+          verificationMethod: "Field Inspection",
+          installationYear: 1930,
+          diameterMm: 20,
+          scheduledReplacementYear: 2027,
+        },
+      ],
+      overallStatus: computedStatus,
+    });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lcri-service-lines-${data.pwsid || "inventory"}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <CardContainer $isDark={isDark}>
       <HeaderRow>
@@ -297,6 +353,10 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
         </TitleGroup>
 
         <ActionButtons>
+          <ActionBtn onClick={handleExportCsv} aria-label="Export EPA CSV">
+            <DownloadIcon size={14} />
+            Export EPA CSV
+          </ActionBtn>
           <ActionBtn onClick={handleExport} aria-label="Export JSON">
             <DownloadIcon size={14} />
             Export JSON

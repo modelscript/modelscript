@@ -164,11 +164,12 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
   }
 
   protected getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ROCETS Liquid Rocket Propulsion Editor</title>
   <style>
@@ -356,17 +357,17 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
       <span class="model-badge" id="module-count">0 Modules</span>
     </div>
     <div class="nav-tabs">
-      <button class="tab-btn active" onclick="showTab('diagram')">P&amp;ID Schematic</button>
-      <button class="tab-btn" onclick="showTab('balance')">Engine Balance</button>
-      <button class="tab-btn" onclick="showTab('transient')">Start Transient</button>
-      <button class="tab-btn" onclick="showTab('components')">Module Netlist</button>
-      <button class="tab-btn" onclick="showTab('diagnostics')">Diagnostics (<span id="diag-count">0</span>)</button>
-      <button class="tab-btn" onclick="showTab('projections')">Projections</button>
+      <button class="tab-btn active" data-tab="diagram">P&amp;ID Schematic</button>
+      <button class="tab-btn" data-tab="balance">Engine Balance</button>
+      <button class="tab-btn" data-tab="transient">Start Transient</button>
+      <button class="tab-btn" data-tab="components">Module Netlist</button>
+      <button class="tab-btn" data-tab="diagnostics">Diagnostics (<span id="diag-count">0</span>)</button>
+      <button class="tab-btn" data-tab="projections">Projections</button>
     </div>
     <div class="actions">
-      <button class="action-btn" onclick="vscode.postMessage({ type: 'exportSvg' })">Export SVG</button>
-      <button class="action-btn" onclick="vscode.postMessage({ type: 'exportModelica' })">Modelica</button>
-      <button class="action-btn" onclick="vscode.postMessage({ type: 'exportSsp' })">SSP SSD</button>
+      <button class="action-btn" data-action="exportSvg">Export SVG</button>
+      <button class="action-btn" data-action="exportModelica">Modelica</button>
+      <button class="action-btn" data-action="exportSsp">SSP SSD</button>
     </div>
   </div>
 
@@ -496,7 +497,7 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let currentData = null;
 
@@ -513,11 +514,25 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
     function showTab(id) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-      const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(id));
+      const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('data-tab') === id);
       if (activeBtn) activeBtn.classList.add('active');
       const pane = document.getElementById('pane-' + id);
       if (pane) pane.classList.add('active');
     }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-tab');
+        if (id) showTab(id);
+      });
+    });
+
+    document.querySelectorAll('.action-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.getAttribute('data-action');
+        if (action) vscode.postMessage({ type: action });
+      });
+    });
 
     window.addEventListener('message', (event) => {
       const msg = event.data;

@@ -14,6 +14,11 @@ describe("Power Engineering Integration for Ansatz Social", () => {
       assert.strictEqual(isPowerFlowCode("RAW"), true);
       assert.strictEqual(isPowerFlowCode("powerflow"), true);
       assert.strictEqual(isPowerFlowCode("sld"), true);
+      assert.strictEqual(isPowerFlowCode("ocpp"), true);
+      assert.strictEqual(isPowerFlowCode("cpo"), true);
+      assert.strictEqual(isPowerFlowCode("evse"), true);
+      assert.strictEqual(isPowerFlowCode("openadr"), true);
+      assert.strictEqual(isPowerFlowCode("oadr"), true);
       assert.strictEqual(isPowerFlowCode("modelica"), false);
       assert.strictEqual(isPowerFlowCode("sysml2"), false);
     });

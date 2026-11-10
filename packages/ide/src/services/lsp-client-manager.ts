@@ -139,6 +139,20 @@ export function buildDynamicDocumentSelector(
     "mbs",
     "c",
     "h",
+    "g01",
+    "g02",
+    "rasgeo",
+    "ocpp",
+    "oadr",
+    "tgh",
+    "dis",
+    "dis6",
+    "npf",
+    "wel",
+    "landgem",
+    "lfg",
+    "biogas",
+    "gtfs",
   ];
 
   if (contributedLanguages.length > 0) {
@@ -165,6 +179,13 @@ export function buildDynamicDocumentSelector(
       { language: "cfd" },
       { language: "fea" },
       { language: "c" },
+      { language: "hec-ras" },
+      { language: "ocpp" },
+      { language: "openadr" },
+      { language: "tough" },
+      { language: "modflow" },
+      { language: "landgem" },
+      { language: "gtfs" },
     );
   }
 
@@ -434,19 +455,34 @@ export class LspClientManager implements vscode.Disposable {
 
   private async createWorkerClient(): Promise<LanguageClient> {
     let serverMain = Uri.joinPath(this.context.extensionUri, "server", "dist", "browserServerMain.js");
+    let worker: Worker | undefined;
 
     if (typeof self !== "undefined" && self.location && self.location.origin && self.location.origin !== "null") {
       try {
         const url = new URL(serverMain.toString(true));
         if (url.origin !== self.location.origin) {
-          serverMain = Uri.parse(self.location.origin + url.pathname + url.search + url.hash);
+          try {
+            const resp = await fetch(serverMain.toString(true));
+            if (resp.ok) {
+              const scriptText = await resp.text();
+              const blobUrl = URL.createObjectURL(new Blob([scriptText], { type: "application/javascript" }));
+              worker = new Worker(blobUrl);
+            }
+          } catch {
+            // Fall through to origin rewrite for static Web IDE
+          }
+          if (!worker) {
+            serverMain = Uri.parse(self.location.origin + url.pathname + url.search + url.hash);
+          }
         }
       } catch {
         // ignore url parsing failures for custom schemes
       }
     }
 
-    const worker = new Worker(serverMain.toString(true));
+    if (!worker) {
+      worker = new Worker(serverMain.toString(true));
+    }
     this._languageWorker = worker;
 
     if (!this._clientOptions) {

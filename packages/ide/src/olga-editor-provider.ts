@@ -945,11 +945,12 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OLGA Multiphase Flow Assurance Editor</title>
   <style>
@@ -1215,27 +1216,27 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
 
     <!-- View Switcher -->
     <div class="segmented-control">
-      <button class="active" onclick="switchTab('profileTab')">Bathymetry Z(X)</button>
-      <button onclick="switchTab('bathyTab')">3D Seabed</button>
-      <button onclick="switchTab('schematicTab')">Schematic P&ID</button>
-      <button onclick="switchTab('plotsTab')">Plots & Trends</button>
-      <button onclick="switchTab('pvtTab')">PVT Envelope</button>
-      <button onclick="switchTab('wellboreTab')">Wellbore & IPR</button>
-      <button onclick="switchTab('slugTab')">Slugging & Surge</button>
-      <button onclick="switchTab('verificationTab')">Flow Assurance</button>
-      <button onclick="switchTab('thermalTab')">Thermal & Dosing</button>
-      <button onclick="switchTab('tuningTab')">Tuning & Match ✨</button>
-      <button onclick="switchTab('diagnosticsTab')">Diagnostics</button>
+      <button class="active" data-tab="profileTab">Bathymetry Z(X)</button>
+      <button data-tab="bathyTab">3D Seabed</button>
+      <button data-tab="schematicTab">Schematic P&ID</button>
+      <button data-tab="plotsTab">Plots & Trends</button>
+      <button data-tab="pvtTab">PVT Envelope</button>
+      <button data-tab="wellboreTab">Wellbore & IPR</button>
+      <button data-tab="slugTab">Slugging & Surge</button>
+      <button data-tab="verificationTab">Flow Assurance</button>
+      <button data-tab="thermalTab">Thermal & Dosing</button>
+      <button data-tab="tuningTab">Tuning & Match ✨</button>
+      <button data-tab="diagnosticsTab">Diagnostics</button>
     </div>
 
     <!-- Actions -->
     <div class="header-actions">
-      <button onclick="saveCheckpointSnapshot()" title="Save simulation state checkpoint (.rst)">💾 Save Checkpoint</button>
-      <button onclick="loadCheckpointSnapshot()" title="Resume simulation from .rst checkpoint">📂 Load Checkpoint</button>
-      <button onclick="toggleWhatIfModal()" style="border-color: #f59e0b; color: #fbbf24;">⚡ What-If</button>
-      <button onclick="exportActiveSvg()">Export SVG</button>
-      <button onclick="exportTrajectoryCsv()">Export CSV</button>
-      <button class="primary" onclick="projectSysml()">To SysML v2</button>
+      <button id="btnSaveCheckpoint" title="Save simulation state checkpoint (.rst)">💾 Save Checkpoint</button>
+      <button id="btnLoadCheckpoint" title="Resume simulation from .rst checkpoint">📂 Load Checkpoint</button>
+      <button id="btnToggleWhatIf" style="border-color: #f59e0b; color: #fbbf24;">⚡ What-If</button>
+      <button id="btnExportSvg">Export SVG</button>
+      <button id="btnExportCsv">Export CSV</button>
+      <button class="primary" id="btnProjectSysml">To SysML v2</button>
     </div>
   </div>
 
@@ -1243,7 +1244,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
   <div id="whatIfModal" class="what-if-modal" style="display:none;">
     <div class="card-header">
       <span class="card-title" style="color: #fbbf24;">⚡ What-If Scratchpad</span>
-      <button onclick="toggleWhatIfModal()" style="padding: 2px 7px; font-size: 11px;">✕</button>
+      <button id="btnCloseWhatIf" style="padding: 2px 7px; font-size: 11px;">✕</button>
     </div>
     <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
       <div>
@@ -1251,22 +1252,22 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           <span style="color: var(--text-dim);">Choke Valve Opening</span>
           <span style="font-weight: 600; color: #fbbf24;" id="lblWhatIfChoke">75%</span>
         </div>
-        <input type="range" id="rngWhatIfChoke" min="0" max="100" value="75" oninput="updateWhatIfLabels()" style="width: 100%; accent-color: #f59e0b;">
+        <input type="range" id="rngWhatIfChoke" min="0" max="100" value="75" style="width: 100%; accent-color: #f59e0b;">
       </div>
       <div>
         <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px;">
           <span style="color: var(--text-dim);">Wellhead Rate Adjustment</span>
           <span style="font-weight: 600; color: #38bdf8;" id="lblWhatIfRate">0%</span>
         </div>
-        <input type="range" id="rngWhatIfRate" min="-50" max="50" value="0" oninput="updateWhatIfLabels()" style="width: 100%; accent-color: #38bdf8;">
+        <input type="range" id="rngWhatIfRate" min="-50" max="50" value="0" style="width: 100%; accent-color: #38bdf8;">
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <input type="checkbox" id="chkWhatIfPump" style="accent-color: #ef4444;">
         <span style="font-size: 11.5px; color: var(--text-main);">Trip Booster Pump (Head = 0)</span>
       </div>
       <div style="display: flex; gap: 8px; margin-top: 6px;">
-        <button class="primary" onclick="runWhatIfSimulation()" style="flex: 1; padding: 4px;">Simulate</button>
-        <button onclick="applyWhatIfToCode()" style="border-color: #10b981; color: #34d399; padding: 4px;">Apply to Code</button>
+        <button class="primary" id="btnRunWhatIf" style="flex: 1; padding: 4px;">Simulate</button>
+        <button id="btnApplyWhatIf" style="border-color: #10b981; color: #34d399; padding: 4px;">Apply to Code</button>
       </div>
     </div>
   </div>
@@ -1306,9 +1307,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
     <div id="profileTab" class="tab-view active">
       <div class="svg-container" id="profileSvgContainer">Loading Profile...</div>
       <div class="timeline-bar">
-        <button id="playBtn" onclick="togglePlayback()">▶ Play</button>
+        <button id="playBtn">▶ Play</button>
         <span class="time-badge" id="timeDisplay">t = 0.0 s</span>
-        <input type="range" class="scrubber-slider" id="scrubber" min="0" max="0" value="0" oninput="onScrub(this.value)">
+        <input type="range" class="scrubber-slider" id="scrubber" min="0" max="0" value="0">
       </div>
     </div>
 
@@ -1320,23 +1321,23 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span style="font-weight: 700; color: #38bdf8; font-size: 11px; letter-spacing: 0.05em;">3D SEABED ORBIT CANVAS</span>
             <div style="display: flex; gap: 4px;">
-              <button id="bathyModeOrbitBtn" onclick="setBathyCameraMode('orbit')" class="bathy-toolbar-btn active-bathy-btn">🎥 Orbit</button>
-              <button id="bathyModeRovBtn" onclick="setBathyCameraMode('rov')" class="bathy-toolbar-btn">🚢 ROV Fly-Through</button>
+              <button id="bathyModeOrbitBtn" class="bathy-toolbar-btn active-bathy-btn">🎥 Orbit</button>
+              <button id="bathyModeRovBtn" class="bathy-toolbar-btn">🚢 ROV Fly-Through</button>
             </div>
             <label style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 4px;">
               Colormap:
-              <select id="bathyColormapSelect" onchange="onBathyColormapChange(this.value)" style="background: #0f172a; color: #f8fafc; border: 1px solid #334155; font-size: 11px; padding: 2px 6px; border-radius: 4px; cursor: pointer;">
+              <select id="bathyColormapSelect" style="background: #0f172a; color: #f8fafc; border: 1px solid #334155; font-size: 11px; padding: 2px 6px; border-radius: 4px; cursor: pointer;">
                 <option value="holdup">Liquid Holdup (HL)</option>
                 <option value="pressure">Pressure (PT)</option>
                 <option value="temperature">Temperature (TM)</option>
               </select>
             </label>
-            <button onclick="resetBathyCamera()" class="bathy-toolbar-btn">↺ Reset Camera</button>
-            <button id="bathyRovSpeedBtn" onclick="toggleRovSpeed()" class="bathy-toolbar-btn" style="display: none;">Speed: 1x</button>
+            <button id="btnResetBathyCamera" class="bathy-toolbar-btn">↺ Reset Camera</button>
+            <button id="bathyRovSpeedBtn" class="bathy-toolbar-btn" style="display: none;">Speed: 1x</button>
           </div>
           <div style="display: flex; gap: 6px; align-items: center;">
-            <button onclick="toggleBathyRenderer()" id="bathyRendererToggle" class="bathy-toolbar-btn" style="color: #94a3b8;">Show 2D SVG</button>
-            <button onclick="toggleSurveyDrawer()" style="background:#0284c7; color:#fff; border-color:#38bdf8; font-size: 11px; border-radius:4px; padding:3px 8px; cursor:pointer;">📥 Import Survey XYZ / CSV</button>
+            <button id="bathyRendererToggle" class="bathy-toolbar-btn" style="color: #94a3b8;">Show 2D SVG</button>
+            <button id="btnOpenSurveyDrawer" style="background:#0284c7; color:#fff; border-color:#38bdf8; font-size: 11px; border-radius:4px; padding:3px 8px; cursor:pointer;">📥 Import Survey XYZ / CSV</button>
           </div>
         </div>
 
@@ -1380,15 +1381,15 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         <div id="surveyDrawer" style="display:none; position:absolute; right:20px; top:45px; width:450px; background:#0f172a; border:1px solid #38bdf8; border-radius:8px; padding:16px; box-shadow:0 12px 32px rgba(0,0,0,0.7); z-index:100;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="font-weight:bold; color:#38bdf8; font-size:12px;">📥 Ingest Offshore Seabed Survey</span>
-            <button onclick="toggleSurveyDrawer()" style="padding:2px 7px; font-size:11px;">✕</button>
+            <button id="btnCloseSurveyDrawer" style="padding:2px 7px; font-size:11px;">✕</button>
           </div>
           <div style="font-size:11px; color:#94a3b8; margin-bottom:8px;">
             Paste survey coordinates (Easting, Northing, Depth) or (KP, Elevation). Automatically discretizes pipeline into curvature-adaptive &lt;Pipe&gt; elements.
           </div>
           <textarea id="surveyInput" rows="5" style="width:100%; box-sizing:border-box; background:#070b12; border:1px solid #334155; color:#f8fafc; font-family:monospace; font-size:11px; padding:8px; border-radius:4px;" placeholder="Easting,Northing,Depth&#10;0,0,-450&#10;1500,200,-480&#10;3000,500,-420&#10;4500,750,20"></textarea>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
-            <button onclick="submitSurvey()" class="primary" style="font-size:11px;">Discretize Route</button>
-            <button id="applySurveyBtn" onclick="applySurveyToCode()" style="display:none; background:#10b981; color:#fff; border-color:#34d399; font-size:11px;">Insert &lt;Pipe&gt; Elements</button>
+            <button id="btnSubmitSurvey" class="primary" style="font-size:11px;">Discretize Route</button>
+            <button id="applySurveyBtn" style="display:none; background:#10b981; color:#fff; border-color:#34d399; font-size:11px;">Insert &lt;Pipe&gt; Elements</button>
           </div>
           <div id="surveySummary" style="font-size:11px; color:#38bdf8; margin-top:8px;"></div>
         </div>
@@ -1399,12 +1400,12 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
     <div id="schematicTab" class="tab-view">
       <div class="schematic-palette-toolbar" style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(30,41,59,0.85); border-bottom:1px solid #334155; flex-wrap:wrap;">
         <span style="font-weight:700; color:#38bdf8; font-size:11px; letter-spacing:0.05em;">COMPONENT PALETTE:</span>
-        <button onclick="promptAddComponent('Pipe')" style="background:#0284c7; color:#fff; border:1px solid #38bdf8; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Pipe</button>
-        <button onclick="promptAddComponent('Valve')" style="background:#0d9488; color:#fff; border:1px solid #2dd4bf; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Valve</button>
-        <button onclick="promptAddComponent('Pump')" style="background:#7c3aed; color:#fff; border:1px solid #a78bfa; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Pump</button>
-        <button onclick="promptAddComponent('Source')" style="background:#d97706; color:#fff; border:1px solid #fbbf24; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Source</button>
-        <button onclick="promptAddComponent('Well')" style="background:#059669; color:#fff; border:1px solid #34d399; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Wellhead</button>
-        <button onclick="promptAddComponent('Separator')" style="background:#e11d48; color:#fff; border:1px solid #fb7185; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Separator</button>
+        <button data-add-comp="Pipe" style="background:#0284c7; color:#fff; border:1px solid #38bdf8; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Pipe</button>
+        <button data-add-comp="Valve" style="background:#0d9488; color:#fff; border:1px solid #2dd4bf; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Valve</button>
+        <button data-add-comp="Pump" style="background:#7c3aed; color:#fff; border:1px solid #a78bfa; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Pump</button>
+        <button data-add-comp="Source" style="background:#d97706; color:#fff; border:1px solid #fbbf24; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Source</button>
+        <button data-add-comp="Well" style="background:#059669; color:#fff; border:1px solid #34d399; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Wellhead</button>
+        <button data-add-comp="Separator" style="background:#e11d48; color:#fff; border:1px solid #fb7185; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer;">+ Separator</button>
       </div>
       <div class="svg-container" id="schematicSvgContainer">Loading Schematic...</div>
     </div>
@@ -1414,16 +1415,16 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       <div class="plots-toolbar">
         <span style="font-weight: 600; color: #94a3b8; font-size: 11px;">VARIABLES:</span>
         <div id="plotsVariablesContainer" style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
-          <label class="plot-var-label"><input type="checkbox" id="chkInletP" checked onchange="renderTrendsPlot()"> Inlet P</label>
-          <label class="plot-var-label"><input type="checkbox" id="chkArrivalP" checked onchange="renderTrendsPlot()"> Arrival P</label>
-          <label class="plot-var-label"><input type="checkbox" id="chkArrivalT" checked onchange="renderTrendsPlot()"> Arrival T</label>
-          <label class="plot-var-label"><input type="checkbox" id="chkHoldup" onchange="renderTrendsPlot()"> Holdup α_L</label>
-          <label class="plot-var-label"><input type="checkbox" id="chkSurge" onchange="renderTrendsPlot()"> Surge Vol</label>
+          <label class="plot-var-label"><input type="checkbox" id="chkInletP" checked> Inlet P</label>
+          <label class="plot-var-label"><input type="checkbox" id="chkArrivalP" checked> Arrival P</label>
+          <label class="plot-var-label"><input type="checkbox" id="chkArrivalT" checked> Arrival T</label>
+          <label class="plot-var-label"><input type="checkbox" id="chkHoldup"> Holdup α_L</label>
+          <label class="plot-var-label"><input type="checkbox" id="chkSurge"> Surge Vol</label>
         </div>
         <div style="flex: 1;"></div>
-        <button onclick="applyPlotPreset('pressure')">Pressure Waves</button>
-        <button onclick="applyPlotPreset('hydrate')">Hydrate Margin</button>
-        <button onclick="applyPlotPreset('surge')">Surge Dynamics</button>
+        <button data-plot-preset="pressure">Pressure Waves</button>
+        <button data-plot-preset="hydrate">Hydrate Margin</button>
+        <button data-plot-preset="surge">Surge Dynamics</button>
       </div>
       <div class="svg-container" id="plotsSvgContainer">Loading Plots...</div>
     </div>
@@ -1443,7 +1444,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           <div style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 220px;">
               <label style="font-size: 11px; font-weight: 600; color: var(--text-main); display: block; margin-bottom: 4px;">Fluid Composition Preset</label>
-              <select id="pvtPresetSelect" onchange="applyPvtPreset(this.value)" style="width: 100%; padding: 6px; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 11.5px;">
+              <select id="pvtPresetSelect" style="width: 100%; padding: 6px; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 4px; font-size: 11.5px;">
                 <option value="condensate">Rich Gas Condensate (70% C1, 10% C2, 8% C3, 5% nC4, 7% C7+)</option>
                 <option value="lean_gas">Lean Gas (90% C1, 5% C2, 2% C3, 2% N2, 1% CO2)</option>
                 <option value="volatile_oil">Volatile Light Oil (50% C1, 8% C2, 7% C3, 5% nC4, 30% C7+)</option>
@@ -1472,15 +1473,15 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label style="font-size: 11px; font-weight: 600; color: var(--text-main);">Component Feed Fractions (Mole %)</label>
-              <button onclick="normalizePvtComposition()" style="font-size: 10.5px; padding: 2px 8px;">Normalize to 100%</button>
+              <button id="btnNormalizePvt" style="font-size: 10.5px; padding: 2px 8px;">Normalize to 100%</button>
             </div>
             <div id="pvtCompGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(75px, 1fr)); gap: 6px;"></div>
           </div>
 
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button id="btnRunFlash" onclick="runCompositionalFlash()" style="padding: 6px 14px; font-weight: 600; background: #0284c7; color: white;">⚡ Flash P-T</button>
-            <button id="btnTraceEnvelope" onclick="runTraceEnvelope()" style="padding: 6px 14px; font-weight: 600;">📈 Trace Phase Envelope</button>
-            <button id="btnBindPvt" onclick="runBindSynthesizedPvtTable()" style="padding: 6px 14px;">💾 Bind Synthesized Table</button>
+            <button id="btnRunFlash" style="padding: 6px 14px; font-weight: 600; background: #0284c7; color: white;">⚡ Flash P-T</button>
+            <button id="btnTraceEnvelope" style="padding: 6px 14px; font-weight: 600;">📈 Trace Phase Envelope</button>
+            <button id="btnBindPvt" style="padding: 6px 14px;">💾 Bind Synthesized Table</button>
           </div>
         </div>
 
@@ -1530,7 +1531,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           <span class="header-badge badge-pass" id="gateVerdictBadge">PASSED</span>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button onclick="downloadSafetyGateReport()" style="padding: 3px 8px; font-size: 11px;">Export Gate Report (MD)</button>
+          <button id="btnDownloadGateReport" style="padding: 3px 8px; font-size: 11px;">Export Gate Report (MD)</button>
         </div>
       </div>
       <div class="card-grid" id="verificationCards"></div>
@@ -1565,8 +1566,8 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
             <span style="font-size: 11px; color: var(--text-dim); margin-left: auto;">Max Evals: <input type="number" id="tuneMaxEvals" value="80" min="10" max="300" style="width: 50px; background: #0f172a; border: 1px solid var(--border-color); color: #fff; border-radius: 3px; padding: 2px 4px;"></span>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button class="primary" onclick="runSimplexCalibration()" id="btnRunCalibration">⚡ Run Simplex Calibration</button>
-            <button onclick="applyCalibrationToCode()" id="btnApplyCalibration" style="display: none; border-color: #10b981; color: #34d399;">✔ Apply Calibrated Parameters to Model</button>
+            <button class="primary" id="btnRunCalibration">⚡ Run Simplex Calibration</button>
+            <button id="btnApplyCalibration" style="display: none; border-color: #10b981; color: #34d399;">✔ Apply Calibrated Parameters to Model</button>
           </div>
         </div>
 
@@ -1613,7 +1614,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
 
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     function escapeHtml(str) {
@@ -1663,6 +1664,48 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         requestBathyRender();
       }
     }
+
+    document.querySelectorAll('.segmented-control button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.getAttribute('data-tab')));
+    });
+    document.getElementById('btnSaveCheckpoint')?.addEventListener('click', saveCheckpointSnapshot);
+    document.getElementById('btnLoadCheckpoint')?.addEventListener('click', loadCheckpointSnapshot);
+    document.getElementById('btnToggleWhatIf')?.addEventListener('click', toggleWhatIfModal);
+    document.getElementById('btnCloseWhatIf')?.addEventListener('click', toggleWhatIfModal);
+    document.getElementById('btnExportSvg')?.addEventListener('click', exportActiveSvg);
+    document.getElementById('btnExportCsv')?.addEventListener('click', exportTrajectoryCsv);
+    document.getElementById('btnProjectSysml')?.addEventListener('click', projectSysml);
+    document.getElementById('rngWhatIfChoke')?.addEventListener('input', updateWhatIfLabels);
+    document.getElementById('rngWhatIfRate')?.addEventListener('input', updateWhatIfLabels);
+    document.getElementById('btnRunWhatIf')?.addEventListener('click', runWhatIfSimulation);
+    document.getElementById('btnApplyWhatIf')?.addEventListener('click', applyWhatIfToCode);
+    document.getElementById('playBtn')?.addEventListener('click', togglePlayback);
+    document.getElementById('scrubber')?.addEventListener('input', (e) => onScrub(e.target.value));
+    document.getElementById('bathyModeOrbitBtn')?.addEventListener('click', () => setBathyCameraMode('orbit'));
+    document.getElementById('bathyModeRovBtn')?.addEventListener('click', () => setBathyCameraMode('rov'));
+    document.getElementById('bathyColormapSelect')?.addEventListener('change', (e) => onBathyColormapChange(e.target.value));
+    document.getElementById('btnResetBathyCamera')?.addEventListener('click', resetBathyCamera);
+    document.getElementById('bathyRovSpeedBtn')?.addEventListener('click', toggleRovSpeed);
+    document.getElementById('bathyRendererToggle')?.addEventListener('click', toggleBathyRenderer);
+    document.getElementById('btnOpenSurveyDrawer')?.addEventListener('click', toggleSurveyDrawer);
+    document.getElementById('btnCloseSurveyDrawer')?.addEventListener('click', toggleSurveyDrawer);
+    document.getElementById('btnSubmitSurvey')?.addEventListener('click', submitSurvey);
+    document.getElementById('applySurveyBtn')?.addEventListener('click', applySurveyToCode);
+    document.querySelectorAll('[data-add-comp]').forEach(btn => {
+      btn.addEventListener('click', () => promptAddComponent(btn.getAttribute('data-add-comp')));
+    });
+    document.getElementById('plotsVariablesContainer')?.addEventListener('change', () => renderTrendsPlot());
+    document.querySelectorAll('[data-plot-preset]').forEach(btn => {
+      btn.addEventListener('click', () => applyPlotPreset(btn.getAttribute('data-plot-preset')));
+    });
+    document.getElementById('pvtPresetSelect')?.addEventListener('change', (e) => applyPvtPreset(e.target.value));
+    document.getElementById('btnNormalizePvt')?.addEventListener('click', normalizePvtComposition);
+    document.getElementById('btnRunFlash')?.addEventListener('click', runCompositionalFlash);
+    document.getElementById('btnTraceEnvelope')?.addEventListener('click', runTraceEnvelope);
+    document.getElementById('btnBindPvt')?.addEventListener('click', runBindSynthesizedPvtTable);
+    document.getElementById('btnDownloadGateReport')?.addEventListener('click', downloadSafetyGateReport);
+    document.getElementById('btnRunCalibration')?.addEventListener('click', runSimplexCalibration);
+    document.getElementById('btnApplyCalibration')?.addEventListener('click', applyCalibrationToCode);
 
     const PVT_PRESETS = {
       condensate: { C1: 0.70, C2: 0.10, C3: 0.08, nC4: 0.05, C7: 0.07 },
@@ -2188,7 +2231,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           .title { font-family: Inter, sans-serif; fill: #f8fafc; font-size: 13px; font-weight: 600; }
           .grid { stroke: #1e293b; stroke-dasharray: 4,4; stroke-width: 1; }
         </style>
-        <text x="\${padL}" y="24" class="title">\${currentData.title || 'OLGA Trend Dataset (.tpl)'} — Dynamic Multi-Axis Waveforms</text>
+        <text x="\${padL}" y="24" class="title">\${escapeHtml(currentData.title || 'OLGA Trend Dataset (.tpl)')} — Dynamic Multi-Axis Waveforms</text>
       \`;
 
       // X Grid
@@ -2278,7 +2321,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           .title { font-family: Inter, sans-serif; fill: #f8fafc; font-size: 13px; font-weight: 600; }
           .grid { stroke: #1e293b; stroke-dasharray: 4,4; stroke-width: 1; }
         </style>
-        <text x="\${padL}" y="24" class="title">\${currentData.title} — Transient Dynamic Waveforms & Perturbation Overlays</text>
+        <text x="\${padL}" y="24" class="title">\${escapeHtml(currentData.title)} — Transient Dynamic Waveforms & Perturbation Overlays</text>
       \`;
 
       // X Grid
@@ -2412,7 +2455,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
             const y = res.gas.composition[idx] ?? 0;
             const kval = res.equilibriumKValues[idx] ?? (x > 0 ? y / x : 0);
             return '<tr style="border-bottom: 1px solid var(--border-color);">' +
-              '<td style="padding: 4px; font-weight: 600;">' + k + '</td>' +
+              '<td style="padding: 4px; font-weight: 600;">' + escapeHtml(k) + '</td>' +
               '<td style="padding: 4px;">' + (z * 100).toFixed(2) + ' %</td>' +
               '<td style="padding: 4px; color: #34d399;">' + (x * 100).toFixed(2) + ' %</td>' +
               '<td style="padding: 4px; color: #38bdf8;">' + (y * 100).toFixed(2) + ' %</td>' +
@@ -2461,10 +2504,10 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         lastCalibrationShifts = res.calibratedParameters || [];
         const rows = (res.calibratedParameters || []).map(p =>
           '<tr>' +
-            '<td><strong>' + p.name + '</strong></td>' +
+            '<td><strong>' + escapeHtml(p.name) + '</strong></td>' +
             '<td>' + p.initialValue.toFixed(4) + '</td>' +
             '<td style="color: #38bdf8; font-weight: 600;">' + p.calibratedValue.toFixed(4) + '</td>' +
-            '<td>' + p.unit + '</td>' +
+            '<td>' + escapeHtml(p.unit) + '</td>' +
             '<td style="color: ' + (p.shiftPercent >= 0 ? '#34d399' : '#f87171') + ';">' + (p.shiftPercent >= 0 ? '+' : '') + p.shiftPercent.toFixed(1) + '%</td>' +
           '</tr>'
         ).join('');
@@ -2509,8 +2552,8 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           if (varContainer) {
             varContainer.innerHTML = currentData.trendDataset.variables.map((v, i) => \`
               <label class="plot-var-label">
-                <input type="checkbox" id="chkTplVar_\${i}" \${i < 6 ? 'checked' : ''} onchange="renderTrendsPlot()">
-                \${v.name}\${v.unit ? ' [' + v.unit + ']' : ''}
+                <input type="checkbox" id="chkTplVar_\${i}" \${i < 6 ? 'checked' : ''}>
+                \${escapeHtml(v.name)}\${v.unit ? ' [' + escapeHtml(v.unit) + ']' : ''}
               </label>
             \`).join('');
           }
@@ -2622,7 +2665,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       return \`
         <div class="status-card">
           <div class="card-header">
-            <span class="card-title">\${title}</span>
+            <span class="card-title">\${escapeHtml(title)}</span>
             <span class="header-badge \${badgeClass}">\${badgeText}</span>
           </div>
           <div class="metric-list">\${rows}</div>

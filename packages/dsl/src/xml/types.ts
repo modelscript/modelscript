@@ -51,3 +51,22 @@ export interface Splice {
   end: number;
   text: string;
 }
+
+export interface AttributeSpan {
+  start: number;
+  end: number;
+  valueStart: number;
+  valueEnd: number;
+  name?: string;
+  value?: string;
+}
+
+export interface ElementSpan {
+  start: number;
+  end: number;
+  openEnd?: number;
+  closeStart?: number;
+  selfClosing?: boolean;
+  name?: string;
+  attributes?: XmlAttribute[];
+}

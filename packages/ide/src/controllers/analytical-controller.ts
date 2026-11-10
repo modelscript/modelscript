@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 import { AnalysisPanel } from "../analysis-panel.js";
+import { CadViewerPanel } from "../cad-viewer-panel.js";
 import { ContractHierarchyPanel } from "../contract-hierarchy-panel.js";
 import { ThreadExplorerPanel } from "../thread-explorer-panel.js";
 import { type ReplayTraceData, TraceReplayPanel } from "../trace-replay-panel.js";
@@ -275,6 +276,20 @@ export function registerAnalyticalCommands(
           }
         } catch (e) {
           vscode.window.showErrorMessage(`Writeback error for ${target}: ${String(e)}`);
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "modelscript.focusViolationIn3D",
+      async (args?: { contractId?: string; time?: number; lhsName?: string }) => {
+        if (!args) return;
+        if (!CadViewerPanel.currentPanel && client) {
+          CadViewerPanel.createOrShow(context.extensionUri, client);
+        }
+        if (CadViewerPanel.currentPanel) {
+          CadViewerPanel.currentPanel.reveal();
+          CadViewerPanel.currentPanel.focusViolationIn3D(args);
         }
       },
     ),

@@ -142,11 +142,12 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
   }
 
   protected getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIMA Offshore Custom Editor</title>
   <style>
@@ -362,12 +363,12 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
   </header>
 
   <nav class="nav-tabs">
-    <button class="tab-btn active" onclick="showTab('tab-overview')">Overview &amp; Catenary</button>
-    <button class="tab-btn" onclick="showTab('tab-spread')">Mooring Spread &amp; Excursion</button>
-    <button class="tab-btn" onclick="showTab('tab-3d')">🌊 3D Ocean &amp; 6-DOF Floater</button>
-    <button class="tab-btn" onclick="showTab('tab-vessel')">Floater &amp; Hydrodynamics</button>
-    <button class="tab-btn" onclick="showTab('tab-dnv')">DNV-OS-E301 Compliance</button>
-    <button class="tab-btn" onclick="showTab('tab-projections')">Polyglot Projections</button>
+    <button class="tab-btn active" data-tab="tab-overview">Overview &amp; Catenary</button>
+    <button class="tab-btn" data-tab="tab-spread">Mooring Spread &amp; Excursion</button>
+    <button class="tab-btn" data-tab="tab-3d">🌊 3D Ocean &amp; 6-DOF Floater</button>
+    <button class="tab-btn" data-tab="tab-vessel">Floater &amp; Hydrodynamics</button>
+    <button class="tab-btn" data-tab="tab-dnv">DNV-OS-E301 Compliance</button>
+    <button class="tab-btn" data-tab="tab-projections">Polyglot Projections</button>
   </nav>
 
   <div class="content-area">
@@ -436,12 +437,12 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
     <div id="tab-3d" class="tab-pane" style="position: relative;">
       <div style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 8px 16px; flex-wrap: wrap; gap: 10px;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <button id="btnPlayPause" class="btn-ctrl" onclick="togglePlayPause()">⏸ Pause</button>
-          <button id="btnReset" class="btn-ctrl" onclick="resetSimTime()">🔄 Reset</button>
+          <button id="btnPlayPause" class="btn-ctrl">⏸ Pause</button>
+          <button id="btnReset" class="btn-ctrl">🔄 Reset</button>
           <div class="speed-selector">
-            <button class="btn-speed active" onclick="setSpeed(1)">1x</button>
-            <button class="btn-speed" onclick="setSpeed(2)">2x</button>
-            <button class="btn-speed" onclick="setSpeed(5)">5x</button>
+            <button class="btn-speed active" data-speed="1">1x</button>
+            <button class="btn-speed" data-speed="2">2x</button>
+            <button class="btn-speed" data-speed="5">5x</button>
           </div>
           <span id="simTimeReadout" style="font-family: monospace; font-size: 12px; color: var(--text-muted); margin-left: 8px;">Time: 0.0 s</span>
         </div>
@@ -449,26 +450,26 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
         <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
           <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
             <span>Hs:</span>
-            <input type="range" id="sliderHs" min="1" max="18" step="0.5" value="8.0" oninput="updateWaveParam()" style="width: 70px;">
+            <input type="range" id="sliderHs" min="1" max="18" step="0.5" value="8.0" style="width: 70px;">
             <span id="valHs" style="font-family: monospace; color: var(--accent); width: 34px;">8.0m</span>
           </label>
           <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
             <span>Tp:</span>
-            <input type="range" id="sliderTp" min="5" max="22" step="0.5" value="12.5" oninput="updateWaveParam()" style="width: 70px;">
+            <input type="range" id="sliderTp" min="5" max="22" step="0.5" value="12.5" style="width: 70px;">
             <span id="valTp" style="font-family: monospace; color: var(--accent); width: 38px;">12.5s</span>
           </label>
           <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
             <span>Dir:</span>
-            <input type="range" id="sliderDir" min="0" max="360" step="15" value="0" oninput="updateWaveParam()" style="width: 60px;">
+            <input type="range" id="sliderDir" min="0" max="360" step="15" value="0" style="width: 60px;">
             <span id="valDir" style="font-family: monospace; color: var(--accent); width: 32px;">0°</span>
           </label>
         </div>
 
         <div style="display: flex; align-items: center; gap: 4px;">
-          <button class="btn-ctrl" onclick="setCameraPreset('orbit')">🎥 Orbit</button>
-          <button class="btn-ctrl" onclick="setCameraPreset('top')">⬇ Top</button>
-          <button class="btn-ctrl" onclick="setCameraPreset('side')">➡ Side</button>
-          <button class="btn-ctrl" onclick="setCameraPreset('bow')">⛵ Bow</button>
+          <button class="btn-ctrl" data-cam="orbit">🎥 Orbit</button>
+          <button class="btn-ctrl" data-cam="top">⬇ Top</button>
+          <button class="btn-ctrl" data-cam="side">➡ Side</button>
+          <button class="btn-ctrl" data-cam="bow">⛵ Bow</button>
         </div>
       </div>
 
@@ -573,7 +574,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     function escapeHtml(str) {
       if (str == null) return "";
       return String(str)
@@ -624,16 +625,45 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
     var seabedBuffers = { vbo: null, vertexCount: 0 };
     var mooringBuffers = { vbo: null, cbo: null };
 
-    function showTab(tabId) {
+    function showTab(tabId, activeBtn) {
       document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
       document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
-      if (window.event && window.event.target) window.event.target.classList.add('active');
+      if (activeBtn) activeBtn.classList.add('active');
       var pane = document.getElementById(tabId);
       if (pane) pane.classList.add('active');
       if (tabId === 'tab-3d') {
         onTab3dActivated();
       }
     }
+
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tabId = btn.getAttribute('data-tab');
+        if (tabId) showTab(tabId, btn);
+      });
+    });
+
+    var btnPlayPauseEl = document.getElementById('btnPlayPause');
+    if (btnPlayPauseEl) btnPlayPauseEl.addEventListener('click', togglePlayPause);
+    var btnResetEl = document.getElementById('btnReset');
+    if (btnResetEl) btnResetEl.addEventListener('click', resetSimTime);
+
+    document.querySelectorAll('.btn-speed').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setSpeed(Number(btn.getAttribute('data-speed') || '1'));
+      });
+    });
+
+    ['sliderHs', 'sliderTp', 'sliderDir'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', updateWaveParam);
+    });
+
+    document.querySelectorAll('[data-cam]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setCameraPreset(btn.getAttribute('data-cam'));
+      });
+    });
 
     function onTab3dActivated() {
       if (!glInitialized) {

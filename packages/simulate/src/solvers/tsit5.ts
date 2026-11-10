@@ -470,7 +470,7 @@ export function tsit5(
           const vCurr = currEventVals[ei] ?? 0;
           const expectedDir = effEventDirections?.[ei] ?? 0;
 
-          if (vPrev * vCurr < 0) {
+          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-9) {
             const dir: 1 | -1 = vCurr > vPrev ? 1 : -1;
             if (expectedDir === 0 || expectedDir === dir) {
               // Bisection root finding for candidate ei

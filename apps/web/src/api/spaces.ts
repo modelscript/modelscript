@@ -534,6 +534,7 @@ export interface SpaceEcoDiffFile {
   language: string;
   oldContent: string;
   newContent: string;
+  ancestorContent?: string | undefined;
   additions: number;
   deletions: number;
   status: "modified" | "added" | "deleted";
@@ -542,6 +543,7 @@ export interface SpaceEcoDiffFile {
 export interface SpaceEcoDiffResult {
   sourceBranch: string;
   targetBranch: string;
+  mergeBaseSha?: string | undefined;
   files: SpaceEcoDiffFile[];
   totalAdditions: number;
   totalDeletions: number;

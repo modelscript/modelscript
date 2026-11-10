@@ -6,6 +6,7 @@ import type {
   DigitalTwinToolpathTrace,
   UrdfVisualPose3D,
 } from "@modelscript/urdf";
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import { GizmoHelper, GizmoViewport, Grid } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef } from "react";
@@ -46,6 +47,7 @@ export interface MultibodyViewport3DProps {
   toolpath?: DigitalTwinToolpathTrace | undefined;
   toolpaths?: DigitalTwinToolpathTrace[] | undefined;
   clearance?: DigitalTwinClearanceResult | undefined;
+  verificationOverlay?: Verification3DOverlayPayload | undefined;
   tcpPosition?: [number, number, number] | null | undefined;
   gripperOpeningMm?: number | undefined;
   isFullScreen?: boolean | undefined;
@@ -179,6 +181,7 @@ const SceneContent: React.FC<{
   toolpath?: DigitalTwinToolpathTrace | undefined;
   toolpaths?: DigitalTwinToolpathTrace[] | undefined;
   clearance?: DigitalTwinClearanceResult | undefined;
+  verificationOverlay?: Verification3DOverlayPayload | undefined;
   tcpPosition?: [number, number, number] | null | undefined;
   gripperOpeningMm?: number | undefined;
   isFullScreen?: boolean | undefined;
@@ -197,6 +200,7 @@ const SceneContent: React.FC<{
   toolpath,
   toolpaths,
   clearance,
+  verificationOverlay,
   tcpPosition,
   gripperOpeningMm,
   isFullScreen,
@@ -270,6 +274,27 @@ const SceneContent: React.FC<{
     return computeSegmentTransform(clearance.fromPoint, clearance.toPoint, 0.0035);
   }, [showColliders, clearance]);
 
+  const verificationClearanceSegment = useMemo(() => {
+    if (!showColliders || !verificationOverlay?.clearanceHistory || verificationOverlay.clearanceHistory.length === 0) return null;
+    const worst = verificationOverlay.clearanceHistory.find((c) => c.isViolation) ?? verificationOverlay.clearanceHistory[0]!;
+    return computeSegmentTransform(worst.pointA, worst.pointB, 0.0035);
+  }, [showColliders, verificationOverlay]);
+
+  const flowpipeTubes = useMemo(() => {
+    if (!showPaths || !verificationOverlay?.flowpipes) return [];
+    const list: Array<{ geom: THREE.TubeGeometry; color: string }> = [];
+    for (const segments of Object.values(verificationOverlay.flowpipes)) {
+      if (segments.length < 2) continue;
+      const vectors = segments.map((s) => new THREE.Vector3(s.center[0], s.center[2], -s.center[1]));
+      const curve = new THREE.CatmullRomCurve3(vectors);
+      const geom = new THREE.TubeGeometry(curve, Math.max(32, segments.length * 4), 0.007, 8, false);
+      const worstRho = segments.reduce((min, s) => Math.min(min, s.robustness ?? 1.0), 1.0);
+      const color = worstRho < 0 ? "#ef4444" : worstRho < 0.2 ? "#f59e0b" : "#10b981";
+      list.push({ geom, color });
+    }
+    return list;
+  }, [showPaths, verificationOverlay]);
+
   useEffect(() => {
     return () => {
       if (toolpathCurve) {
@@ -278,8 +303,11 @@ const SceneContent: React.FC<{
       for (const sec of secondaryToolpathCurves) {
         sec.geom.dispose();
       }
+      for (const fp of flowpipeTubes) {
+        fp.geom.dispose();
+      }
     };
-  }, [toolpathCurve, secondaryToolpathCurves]);
+  }, [toolpathCurve, secondaryToolpathCurves, flowpipeTubes]);
 
   const { sceneScale, floorY } = useMemo(() => {
     let maxExtent = 0.45;
@@ -374,6 +402,24 @@ const SceneContent: React.FC<{
         </mesh>
       ))}
 
+      {/* Render Formal Verification Reachability Flowpipes */}
+      {showPaths &&
+        flowpipeTubes.map((tube, idx) => (
+          <mesh key={`flowpipe_${idx}`} geometry={tube.geom}>
+            <meshStandardMaterial
+              color={tube.color}
+              roughness={0.3}
+              metalness={0.2}
+              emissive={tube.color}
+              emissiveIntensity={0.4}
+              transparent
+              opacity={0.55}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        ))}
+
       {/* Render Live TCP Indicator Marker */}
       {showPaths && tcpPosition && (
         <mesh position={[tcpPosition[0], tcpPosition[2], -tcpPosition[1]]}>
@@ -412,6 +458,20 @@ const SceneContent: React.FC<{
           <mesh position={[clearance.toPoint[0], clearance.toPoint[2], -clearance.toPoint[1]]}>
             <sphereGeometry args={[0.011, 14, 14]} />
             <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.8} />
+          </mesh>
+        </group>
+      )}
+
+      {/* Render Formal Verification Clearance Segment when Colliders toggle is active */}
+      {showColliders && !clearance && verificationClearanceSegment && (
+        <group>
+          <mesh
+            position={verificationClearanceSegment.position}
+            quaternion={verificationClearanceSegment.quaternion}
+            scale={verificationClearanceSegment.scale}
+          >
+            <cylinderGeometry args={[1, 1, 1, 6]} />
+            <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.7} />
           </mesh>
         </group>
       )}
@@ -530,6 +590,7 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
             toolpath={toolpath}
             toolpaths={toolpaths}
             clearance={clearance}
+            verificationOverlay={verificationOverlay}
             tcpPosition={tcpPosition}
             gripperOpeningMm={gripperOpeningMm}
             isFullScreen={isFullScreen}

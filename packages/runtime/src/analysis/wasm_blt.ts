@@ -407,8 +407,13 @@ export function tearBltBlock(arena: DAEBuilder, eqIdxs: number[], vars: number[]
   const blockVarSet = new Set<number>(vars);
   const eqDepsMap = new Map<number, number[]>();
   const pivotScores = new Map<number, Map<number, number>>();
+  const varToEqs = new Map<number, number[]>();
+  const eqHasLowMinScore = new Set<number>();
+  const eqOrderMap = new Map<number, number>();
 
-  for (const eqIdx of eqIdxs) {
+  for (let idx = 0; idx < eqIdxs.length; idx++) {
+    const eqIdx = eqIdxs[idx]!;
+    eqOrderMap.set(eqIdx, idx);
     const kind = arena.getEqKind(eqIdx);
     const deps = new Set<number>();
     if (kind === EqKind.For) {
@@ -429,80 +434,165 @@ export function tearBltBlock(arena: DAEBuilder, eqIdxs: number[], vars: number[]
 
     const blockDeps: number[] = [];
     const scoreMap = new Map<number, number>();
+    let minS = Infinity;
     for (const v of vars) {
       if (deps.has(v)) {
         blockDeps.push(v);
-        scoreMap.set(v, computeKronPivotScore(arena, eqIdx, v, blockVarSet));
+        const s = computeKronPivotScore(arena, eqIdx, v, blockVarSet);
+        scoreMap.set(v, s);
+        if (s < minS) minS = s;
+        let vEqs = varToEqs.get(v);
+        if (!vEqs) {
+          vEqs = [];
+          varToEqs.set(v, vEqs);
+        }
+        vEqs.push(eqIdx);
       }
     }
+    if (minS <= 100) eqHasLowMinScore.add(eqIdx);
     eqDepsMap.set(eqIdx, blockDeps);
     pivotScores.set(eqIdx, scoreMap);
   }
 
-  const simulateFromTearingSet = (
-    initialTearingVars: number[],
-    minPivotScore: number,
-  ): {
+  type TearingSimState = {
     complete: boolean;
     score: number;
     causalChain: Array<{ eqIdx: number; solvedVar: number }>;
     residualEqs: number[];
     knownVars: Set<number>;
     usedEqs: Set<number>;
-  } => {
+  };
+
+  const simulateFromTearingSet = (
+    initialTearingVars: number[],
+    minPivotScore: number,
+    baseSim?: TearingSimState,
+    addedVar?: number,
+  ): TearingSimState => {
+    if (baseSim && addedVar !== undefined) {
+      const affected = varToEqs.get(addedVar) ?? [];
+      let anyTriggered = false;
+      for (const eqIdx of affected) {
+        if (baseSim.usedEqs.has(eqIdx)) continue;
+        const deps = eqDepsMap.get(eqIdx) ?? [];
+        let uCount = 0;
+        let singleU = -1;
+        for (const depV of deps) {
+          if (depV !== addedVar && !baseSim.knownVars.has(depV)) {
+            uCount++;
+            singleU = depV;
+            if (uCount > 1) break;
+          }
+        }
+        if (uCount === 0) {
+          anyTriggered = true;
+          break;
+        }
+        if (uCount === 1 && singleU !== -1) {
+          const pScore = pivotScores.get(eqIdx)?.get(singleU) ?? 10;
+          if (pScore >= minPivotScore) {
+            anyTriggered = true;
+            break;
+          }
+        }
+      }
+      if (!anyTriggered) {
+        const knownVars = new Set(baseSim.knownVars);
+        knownVars.add(addedVar);
+        return {
+          complete: knownVars.size === vars.length,
+          score: baseSim.score,
+          causalChain: baseSim.causalChain,
+          residualEqs: baseSim.residualEqs,
+          knownVars,
+          usedEqs: baseSim.usedEqs,
+        };
+      }
+    }
+
     const knownVars = new Set<number>(initialTearingVars);
     const usedEqs = new Set<number>();
     const causalChain: Array<{ eqIdx: number; solvedVar: number }> = [];
-    let score = 0;
+    let rawScore = 0;
 
-    while (knownVars.size < vars.length) {
+    // Maintain worklist of equations that currently have exactly 1 unknown variable
+    const candidateEqs = new Map<number, number>(); // eqIdx -> singleUnknownVar
+    const checkAndAddCandidate = (eqIdx: number) => {
+      if (usedEqs.has(eqIdx)) {
+        candidateEqs.delete(eqIdx);
+        return;
+      }
+      const deps = eqDepsMap.get(eqIdx) ?? [];
+      let unknownCount = 0;
+      let singleUnknown = -1;
+      for (const v of deps) {
+        if (!knownVars.has(v)) {
+          unknownCount++;
+          singleUnknown = v;
+          if (unknownCount > 1) break;
+        }
+      }
+      if (unknownCount === 1 && singleUnknown !== -1) {
+        const pScore = pivotScores.get(eqIdx)?.get(singleUnknown) ?? 10;
+        if (pScore >= minPivotScore) {
+          candidateEqs.set(eqIdx, singleUnknown);
+        } else {
+          candidateEqs.delete(eqIdx);
+        }
+      } else {
+        candidateEqs.delete(eqIdx);
+      }
+    };
+
+    for (const eqIdx of eqIdxs) {
+      checkAndAddCandidate(eqIdx);
+    }
+
+    while (knownVars.size < vars.length && candidateEqs.size > 0) {
       let bestEq = -1;
       let bestVar = -1;
       let bestPScore = -1;
       let bestDepLen = Infinity;
+      let bestEqOrder = Infinity;
 
-      for (const eqIdx of eqIdxs) {
-        if (usedEqs.has(eqIdx)) continue;
-        const deps = eqDepsMap.get(eqIdx) ?? [];
-        let unknownCount = 0;
-        let singleUnknown = -1;
-        for (const v of deps) {
-          if (!knownVars.has(v)) {
-            unknownCount++;
-            singleUnknown = v;
-            if (unknownCount > 1) break;
-          }
+      for (const [eqIdx, singleUnknown] of candidateEqs) {
+        if (usedEqs.has(eqIdx) || knownVars.has(singleUnknown)) {
+          candidateEqs.delete(eqIdx);
+          continue;
         }
-        if (unknownCount === 1 && singleUnknown !== -1) {
-          const pScore = pivotScores.get(eqIdx)?.get(singleUnknown) ?? 10;
-          if (pScore < minPivotScore) continue;
-          if (pScore > bestPScore || (pScore === bestPScore && deps.length < bestDepLen)) {
-            bestPScore = pScore;
-            bestEq = eqIdx;
-            bestVar = singleUnknown;
-            bestDepLen = deps.length;
-          }
+        const deps = eqDepsMap.get(eqIdx) ?? [];
+        const pScore = pivotScores.get(eqIdx)?.get(singleUnknown) ?? 10;
+        const eqOrder = eqOrderMap.get(eqIdx) ?? Infinity;
+        if (
+          pScore > bestPScore ||
+          (pScore === bestPScore && deps.length < bestDepLen) ||
+          (pScore === bestPScore && deps.length === bestDepLen && eqOrder < bestEqOrder)
+        ) {
+          bestPScore = pScore;
+          bestEq = eqIdx;
+          bestVar = singleUnknown;
+          bestDepLen = deps.length;
+          bestEqOrder = eqOrder;
         }
       }
 
       if (bestEq === -1 || bestVar === -1) break;
+      candidateEqs.delete(bestEq);
       causalChain.push({ eqIdx: bestEq, solvedVar: bestVar });
       usedEqs.add(bestEq);
       knownVars.add(bestVar);
-      score += bestPScore;
+      rawScore += bestPScore;
+
+      for (const eqIdx of varToEqs.get(bestVar) ?? []) {
+        checkAndAddCandidate(eqIdx);
+      }
     }
 
     const residualEqs = eqIdxs.filter((e) => !usedEqs.has(e));
+    let score = rawScore;
     // Prefer leaving nonlinear equations as residual equations
     for (const rEq of residualEqs) {
-      const sMap = pivotScores.get(rEq);
-      if (sMap) {
-        let minS = Infinity;
-        for (const s of sMap.values()) {
-          if (s < minS) minS = s;
-        }
-        if (minS <= 100) score += 25;
-      }
+      if (eqHasLowMinScore.has(rEq)) score += 25;
     }
 
     return {
@@ -517,10 +607,11 @@ export function tearBltBlock(arena: DAEBuilder, eqIdxs: number[], vars: number[]
 
   // 1. Try size-1 tearing variable sets (preferring linear/monomial occurrence-1 pivots >= 500)
   for (const minPivot of [500, 100, 10]) {
+    const emptySim = simulateFromTearingSet([], minPivot);
     let bestRes: BltBlockTearing | null = null;
     let bestScore = -Infinity;
     for (const v of vars) {
-      const sim = simulateFromTearingSet([v], minPivot);
+      const sim = simulateFromTearingSet([v], minPivot, emptySim, v);
       if (sim.complete && sim.score > bestScore) {
         bestScore = sim.score;
         bestRes = {
@@ -536,12 +627,16 @@ export function tearBltBlock(arena: DAEBuilder, eqIdxs: number[], vars: number[]
   // 2. For moderate blocks, try size-2 tearing variable sets
   if (vars.length <= 16) {
     for (const minPivot of [500, 100, 10]) {
+      const emptySim = simulateFromTearingSet([], minPivot);
       let bestRes: BltBlockTearing | null = null;
       let bestScore = -Infinity;
       for (let i = 0; i < vars.length; i++) {
+        const v1 = vars[i]!;
+        const sim1 = simulateFromTearingSet([v1], minPivot, emptySim, v1);
         for (let j = i + 1; j < vars.length; j++) {
-          const pair = [vars[i]!, vars[j]!];
-          const sim = simulateFromTearingSet(pair, minPivot);
+          const v2 = vars[j]!;
+          const pair = [v1, v2];
+          const sim = simulateFromTearingSet(pair, minPivot, sim1, v2);
           if (sim.complete && sim.score > bestScore) {
             bestScore = sim.score;
             bestRes = {
@@ -567,10 +662,10 @@ export function tearBltBlock(arena: DAEBuilder, eqIdxs: number[], vars: number[]
 
     for (const v of vars) {
       if (currentSim.knownVars.has(v)) continue;
-      const trial = simulateFromTearingSet([...tearingVars, v], 500);
+      const trial = simulateFromTearingSet([...tearingVars, v], 500, currentSim, v);
       let degree = 0;
-      for (const eqIdx of eqIdxs) {
-        if (!currentSim.usedEqs.has(eqIdx) && (eqDepsMap.get(eqIdx) ?? []).includes(v)) {
+      for (const eqIdx of varToEqs.get(v) ?? []) {
+        if (!currentSim.usedEqs.has(eqIdx)) {
           degree++;
         }
       }

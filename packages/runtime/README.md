@@ -40,6 +40,7 @@ Located under `src/analysis/` and `src/dae/`:
 - **Constant Folding & Alias Elimination (`wasm_fold.ts`)**: `foldArenaConstants` and `eliminateArenaAliases` simplify trivial equalities ($x = y$, $x = -y$, $x = c$) before structural partitioning.
 - **Pantelides Index Reduction (`wasm_pantelides.ts`)**: Detects high-index DAEs (index > 1) via bipartite matching and symbolically differentiates constraint equations to reduce the system to index-1 ODE/DAE form.
 - **Tarjan Block Lower Triangular (BLT) & Tearing (`wasm_blt.ts`)**: Computes maximum transversal variable-equation assignments, partitions equations into causal topological blocks using Tarjan's strongly connected components (SCC) algorithm, and applies tearing to minimize nonlinear algebraic loop dimensions.
+- **Implicitly Restarted Arnoldi Sparse Eigensolver (`src/solvers/sparse_arnoldi.ts`, `src/wasm/linalg/arnoldi.ts`)**: Lehoucq-Sorensen Implicitly Restarted Arnoldi Method (IRAM) with shift-invert sparse LU factorization (`computeSparseEigenvalues`, `buildSparseCscFromDense`, `computeParticipationFactors`) for large-scale small-signal modal stability and inter-area oscillation analysis.
 - **E-Graph Equality Saturation (`wasm_egraph_simplifier.ts`)**: Algebraic term rewriting and canonical expression simplification.
 
 ---
@@ -50,7 +51,7 @@ Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-d
 
 | Oracle                                              | Domain               | Responsibility                                                                                                                        |
 | --------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `OntologyTheoryOracle`                              | `ontology`           | Tableau Description Logic (DL) reasoner, OWL 2 bundle closure, concept subsumption, and scoped disjointness                           |
+| `OntologyTheoryOracle`                              | `ontology`           | Tableau Description Logic (DL) reasoner, OWL 2 bundle closure, BFO ISO/IEC 21838-2 alignment, concept subsumption, and disjointness   |
 | `ConstraintTheoryOracle`                            | `constraint`         | Non-linear interval contraction via HC4 contractor, DPLL(T) arithmetic solver, and bound propagation                                  |
 | `AbstractDomainOracle`                              | `abstract_domain`    | Octagon Difference Bound Matrices (DBM), 4D spatio-temporal intervals, and relational numerical bounds                                |
 | `ContinuousSafetyOracle` / `SafetyTheoryOracle`     | `continuous_safety`  | Reachability flowpipes, SOS barrier certificates, Fault Tree Analysis (FTA), Minimal Cut Sets (MCS), and ISO 26262 PMHF/SPFM metrics  |
@@ -66,10 +67,13 @@ Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-d
 
 ---
 
-## 5. Formal Verification & Reachability Engines
+## 5. Formal Verification, Ontological Alignment & Reachability Engines
 
-`@modelscript/runtime` provides a comprehensive suite of symbolic, reachability, and compliance verification engines under `src/formal/`, `src/analysis/`, `src/statemachine/`, and `src/simulation/`:
+`@modelscript/runtime` provides a comprehensive suite of symbolic, ontological, reachability, and compliance verification engines under `src/formal/`, `src/ontology/`, `src/analysis/`, `src/statemachine/`, and `src/simulation/`:
 
+- **Upper Ontology & Polyglot Drift Verification (`src/ontology/`, `src/formal/polyglot_drift_checker.ts`)**:
+  - **ISO/IEC 21838-2 Basic Formal Ontology (`bfo_vocabulary.ts`, `semantic_projector.ts`)**: Upper-level ontological vocabulary (`BFO_CLASSES`, `BFO_RELATIONS`, `DOMAIN_TO_BFO_MAP`) and `SemanticProjector` (`projectWorkspaceToOntology`, `verifySemanticAlignment`) projecting polyglot workspace symbols into unified OWL 2 / BFO knowledge graphs.
+  - **Cross-Domain Polyglot Drift Verifier (`polyglot_drift_checker.ts`)**: Detects parameter tolerance divergence, unit mismatches, and ontological drift across coupled polyglot models (`checkPolyglotPhysicalDrift`, `extractPolyglotBindings`, `DRIFT-001` through `DRIFT-004`).
 - **SAT, SMT & Constrained Horn Clauses (CHC)**:
   - **CDCL & DPLL(T) (`cdcl_sat.ts`, `dpll_t_solver.ts`, `nlsat_solver.ts`, `hc4_contractor.ts`)**: Conflict-Driven Clause Learning SAT solver, lazy SMT theory integration, non-linear cylindrical algebraic cell projection, and HC4 revise/contract propagation.
   - **CHC, IC3/PDR & Interpolation (`chc/`, `ic3_engine.ts`, `wasm_pdr_engine.ts`, `wasm_bmc_engine.ts`, `inductive_prover.ts`, `craig_interpolator.ts`)**: Property-Directed Reachability (IC3/PDR), Bounded Model Checking (BMC), $k$-induction, and Craig interpolation for invariant synthesis.

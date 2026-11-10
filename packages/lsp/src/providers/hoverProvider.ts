@@ -5,7 +5,7 @@ import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import type { LspContext } from "../lsp-context.js";
+import { resolveFeatureFlags, type LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 function isStepDocument(document: TextDocument): boolean {
@@ -271,6 +271,14 @@ function enhanceWithCadLink(
   return hoverContent;
 }
 
+function extractWordAtOffset(text: string, offset: number): { token: string; start: number; end: number } {
+  let start = offset;
+  while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1]!)) start--;
+  let end = offset;
+  while (end < text.length && /[a-zA-Z0-9_]/.test(text[end]!)) end++;
+  return { token: text.slice(start, end).trim(), start, end };
+}
+
 export function registerHoverProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
@@ -355,11 +363,8 @@ export function registerHoverProvider(
     // ── CFD (SU2) and FEA (CalculiX) Domain Hovers ──
     const targetUri = params.textDocument.uri;
     if (/\.(cfg|cfgt|su2|cfd)$/i.test(targetUri)) {
-      let tokenStart = offset;
-      while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
-      let tokenEnd = offset;
-      while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
-      const word = text.slice(tokenStart, tokenEnd).trim().toUpperCase();
+      const cfdWord = extractWordAtOffset(text, offset);
+      const word = cfdWord.token.toUpperCase();
       const cfdDocs: Record<string, string> = {
         SOLVER:
           "**SU2 Solver Selection**\n\nSpecifies the governing physical equations solver:\n- `INC_RANS`: Incompressible Reynolds-Averaged Navier-Stokes\n- `EULER`: Compressible Inviscid Euler equations\n- `NAVIER_STOKES`: Compressible Laminar Navier-Stokes\n- `RANS`: Compressible Reynolds-Averaged Navier-Stokes",
@@ -401,19 +406,16 @@ export function registerHoverProvider(
         return {
           contents: { kind: "markdown", value: cfdDocs[word] },
           range: {
-            start: document.positionAt(tokenStart),
-            end: document.positionAt(tokenEnd),
+            start: document.positionAt(cfdWord.start),
+            end: document.positionAt(cfdWord.end),
           },
         };
       }
     }
 
     if (/\.(inp|inpt|bdf|fea)$/i.test(targetUri)) {
-      let tokenStart = offset;
-      while (tokenStart > 0 && /[a-zA-Z0-9_*]/.test(text[tokenStart - 1]!)) tokenStart--;
-      let tokenEnd = offset;
-      while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
-      const word = text.slice(tokenStart, tokenEnd).trim().toUpperCase().replace(/^\*/, "");
+      const feaWord = extractWordAtOffset(text, offset);
+      const word = feaWord.token.toUpperCase().replace(/^\*/, "");
       const feaDocs: Record<string, string> = {
         NODE: "**CalculiX / Abaqus *NODE**\n\nDefines nodal coordinate grid (X, Y, Z) for finite element discretization.",
         ELEMENT:
@@ -441,8 +443,8 @@ export function registerHoverProvider(
         return {
           contents: { kind: "markdown", value: feaDocs[word] },
           range: {
-            start: document.positionAt(tokenStart),
-            end: document.positionAt(tokenEnd),
+            start: document.positionAt(feaWord.start),
+            end: document.positionAt(feaWord.end),
           },
         };
       }
@@ -466,40 +468,32 @@ export function registerHoverProvider(
 
     // ── Standard polyglot hover (Modelica/SysML/OWL2 — requires bridge) ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
+    let hoverContent = "";
+    let hoverRange: any = undefined;
+
     if (!bridge) {
       const plugin = pluginForHover;
-      if (plugin) {
-        if (plugin.facade?.getHover) {
-          try {
-            const hoverText = plugin.facade.getHover(0, offset);
-            if (hoverText) {
-              let tokenStart = offset;
-              while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
-              let tokenEnd = offset;
-              while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
-              const token = text.slice(tokenStart, tokenEnd).trim();
-              const activeSettings = context?.settings ?? validationService?.context?.settings;
-              const allowDemo = activeSettings?.features
-                ? Boolean(activeSettings.features.demos || activeSettings.features.channel === "dev")
-                : true;
-              const enriched = enhanceWithCadLink(hoverText, token, text, offset, allowDemo);
-              return {
-                contents: { kind: "markdown", value: enriched },
-                range: {
-                  start: document.positionAt(tokenStart),
-                  end: document.positionAt(tokenEnd),
-                },
-              };
-            }
-          } catch {}
-        }
+      if (plugin && plugin.facade?.getHover) {
+        try {
+          const hoverText = plugin.facade.getHover(0, offset);
+          if (hoverText) {
+            const word = extractWordAtOffset(text, offset);
+            const activeSettings = context?.settings ?? validationService?.context?.settings;
+            const features = resolveFeatureFlags(activeSettings);
+            const allowDemo = activeSettings ? features.demos : true;
+            hoverContent = enhanceWithCadLink(hoverText, word.token, text, offset, allowDemo);
+            hoverRange = {
+              start: document.positionAt(word.start),
+              end: document.positionAt(word.end),
+            };
+          }
+        } catch {}
       }
-      return null;
+    } else {
+      const hoverDef = bridge.hover(offset, text);
+      if (hoverDef?.contents) hoverContent = hoverDef.contents;
+      if (hoverDef?.range) hoverRange = hoverDef.range;
     }
-
-    const hoverDef = bridge.hover(offset, text);
-    let hoverContent = hoverDef?.contents;
-    let hoverRange = hoverDef?.range;
 
     if (!hoverContent) {
       // Check if cursor is over a cross-language reference, e.g. Propulsion::Motor or SysML2::Avionics::IMU
@@ -536,44 +530,78 @@ export function registerHoverProvider(
           }
         }
       }
-
-      if (!hoverContent) return null;
     }
 
-    // Enhance hover with reasoner inferences if this is SysML2 and reasonerService is available
     const plugin = globalLanguageRegistry.getPluginForUri(document.uri);
-    if (plugin?.id === "sysml2" || document.uri.endsWith(".sysml")) {
-      const bridgePos = (bridge as any).positions;
-      const resolver = (bridge as any).resolver;
-      if (resolver && bridgePos) {
-        // find symbol at offset
-        const queryEngine = plugin?.queryEngine ?? validationService?.workspaceManager?.globalSysML2QueryEngine;
-        if (queryEngine && validationService.reasonerService) {
-          const id = (resolver as any).findSymbolAtPosition(document.uri, offset);
-          if (id !== undefined) {
-            const entry = queryEngine.index.symbols.get(id);
-            if (entry) {
-              const iri = `sysml:${entry.name || `anon_${entry.id}`}`;
-              const taxonomy = validationService.reasonerService.reasoner.getTaxonomy();
-              const node = taxonomy.get(iri);
+    const activeWord = extractWordAtOffset(text, offset);
+    const token = activeWord.token;
 
-              if (node && node.superClasses.size > 0) {
-                const inferred = Array.from<string>(node.superClasses).filter(
-                  (superIri: string) => superIri !== "owl:Thing" && superIri !== iri,
-                );
-                if (inferred.length > 0) {
-                  hoverContent += `\n\n**Inferred Types (Reasoner):**\n- ${inferred.map((i: string) => i.replace("sysml:", "")).join(", ")}`;
-                }
+    // Enhance hover with reasoner inferences & BFO/IOF classification across all languages
+    if (validationService?.reasonerService?.reasoner && token) {
+      const rawTaxonomy = validationService.reasonerService.reasoner.getTaxonomy?.();
+      const taxonomyMap: Map<string, any> | null =
+        rawTaxonomy instanceof Map
+          ? rawTaxonomy
+          : Array.isArray(rawTaxonomy)
+            ? new Map(rawTaxonomy.map((n: any) => [n.iri ?? n.name ?? n.id, n]))
+            : null;
 
-                // If there are subclasses, we can show them too
-                const subclasses = Array.from<string>(node.subClasses).filter(
-                  (subIri: string) => subIri !== "owl:Nothing" && subIri !== iri,
-                );
-                if (subclasses.length > 0) {
-                  hoverContent += `\n\n**Inferred Subtypes:**\n- ${subclasses.map((i: string) => i.replace("sysml:", "")).join(", ")}`;
-                }
+      if (taxonomyMap) {
+        const docLang = (document as any).languageId;
+        const langId = plugin?.id || docLang || "polyglot";
+
+        const candidateIris: string[] = [
+          `${langId}:${token}`,
+          token,
+        ];
+        if (docLang && !candidateIris.includes(`${docLang}:${token}`)) {
+          candidateIris.push(`${docLang}:${token}`);
+        }
+        if (langId === "sysml2" || docLang === "sysml2") candidateIris.push(`sysml:${token}`);
+        if (langId === "modelica" || docLang === "modelica") candidateIris.push(`mo:${token}`);
+        for (const p of globalLanguageRegistry.getAllPlugins()) {
+          const pIri = `${p.id}:${token}`;
+          if (!candidateIris.includes(pIri)) candidateIris.push(pIri);
+        }
+
+        for (const iri of candidateIris) {
+          const node = taxonomyMap.get(iri);
+          if (node) {
+            const superClasses = Array.from<string>(node.superClasses || []).filter(
+              (s: string) => s !== "owl:Thing" && s !== iri,
+            );
+
+            const bfoCategories = superClasses.filter(
+              (s) => s.startsWith("bfo:") || s.startsWith("iof:") || s.startsWith("cco:"),
+            );
+            const domainTypes = superClasses.filter(
+              (s) => !s.startsWith("bfo:") && !s.startsWith("iof:") && !s.startsWith("cco:"),
+            );
+
+            if (bfoCategories.length > 0 || domainTypes.length > 0) {
+              if (!hoverRange) {
+                hoverRange = {
+                  start: document.positionAt(activeWord.start),
+                  end: document.positionAt(activeWord.end),
+                };
               }
             }
+
+            if (bfoCategories.length > 0) {
+              hoverContent += `\n\n**Ontological Category (BFO/IOF):**\n- ${bfoCategories.join(", ")}`;
+            }
+
+            if (domainTypes.length > 0) {
+              hoverContent += `\n\n**Inferred Types (Reasoner):**\n- ${domainTypes.map((d) => d.replace(/^[^:]+:/, "")).join(", ")}`;
+            }
+
+            const subClasses = Array.from<string>(node.subClasses || []).filter(
+              (s: string) => s !== "owl:Nothing" && s !== iri,
+            );
+            if (subClasses.length > 0) {
+              hoverContent += `\n\n**Inferred Subtypes:**\n- ${subClasses.map((s) => s.replace(/^[^:]+:/, "")).join(", ")}`;
+            }
+            break;
           }
         }
       }
@@ -640,22 +668,30 @@ export function registerHoverProvider(
           }
         }
       }
+    }
 
-      // Enhance hover with DAE reachability bounds and algebraic loop certificates
-      const daeMap = validationService.modelicaDaeVerificationResultsByUri?.get(document.uri);
-      if (daeMap) {
-        let tokenStart = offset;
-        while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
-        let tokenEnd = offset;
-        while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
-        const token = text.slice(tokenStart, tokenEnd).trim();
+    // Enhance hover with DAE reachability bounds and algebraic loop certificates across all languages
+    const daeMap =
+      validationService?.daeVerificationResultsByUri?.get(document.uri) ??
+      validationService?.modelicaDaeVerificationResultsByUri?.get(document.uri);
+    if (daeMap) {
+      let tokenStart = offset;
+      while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
+      let tokenEnd = offset;
+      while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
+      const token = text.slice(tokenStart, tokenEnd).trim();
 
-        if (token) {
-          for (const [modelName, daeProof] of daeMap.entries()) {
-            const varBound = daeProof.variableBounds?.get(token);
-            if (varBound && !varBound.isTop?.() && !varBound.isBottom?.()) {
-              hoverContent += `\n\n---\n**DAE Reachability Invariant:**\n- \`${token} \u2208 ${varBound.toString()}\` (interval enclosure from declared bounds in \`${modelName}\`)`;
+      if (token) {
+        for (const [modelName, daeProof] of daeMap.entries()) {
+          const varBound = daeProof.variableBounds?.get(token);
+          if (varBound && !varBound.isTop?.() && !varBound.isBottom?.()) {
+            if (!hoverRange) {
+              hoverRange = {
+                start: document.positionAt(tokenStart),
+                end: document.positionAt(tokenEnd),
+              };
             }
+            hoverContent += `\n\n---\n**DAE Reachability Invariant:**\n- \`${token} \u2208 ${varBound.toString()}\` (interval enclosure from declared bounds in \`${modelName}\`)`;
           }
         }
       }
@@ -669,15 +705,9 @@ export function registerHoverProvider(
     const hoveredToken = text.slice(hoveredStart, hoveredEnd).trim();
 
     const activeSettings = context?.settings ?? validationService?.context?.settings;
-    const allowDigitalThread = activeSettings?.features
-      ? Boolean(
-          activeSettings.features.digitalThread ??
-          (activeSettings.features.channel === "experimental" || activeSettings.features.channel === "dev"),
-        )
-      : true;
-    const allowDemo = activeSettings?.features
-      ? Boolean(activeSettings.features.demos || activeSettings.features.channel === "dev")
-      : true;
+    const features = resolveFeatureFlags(activeSettings);
+    const allowDigitalThread = activeSettings ? features.digitalThread : true;
+    const allowDemo = activeSettings ? features.demos : true;
 
     if (allowDigitalThread) {
       hoverContent = enhanceWithDigitalThreadTwin(
@@ -692,12 +722,14 @@ export function registerHoverProvider(
     }
     hoverContent = enhanceWithCadLink(hoverContent, hoveredToken, text, offset, allowDemo);
 
+    if (!hoverContent.trim()) return null;
+
     return {
       contents: {
         kind: "markdown" as const,
-        value: hoverContent,
+        value: hoverContent.trim(),
       },
-      range: (hoverRange ?? hoverDef?.range) as any,
+      range: hoverRange,
     };
   });
 }

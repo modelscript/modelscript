@@ -1073,6 +1073,7 @@ export function buildAdJacobian(dae: DAEBuilder): ((t: number, y: number[]) => n
   const derEqs: { state: string; rhsExprId: number }[] = [];
 
   for (let i = 0; i < dae.eqCount; i++) {
+    if (dae.isEqRemoved(i) || dae.isEqInitial(i)) continue;
     const kind = dae.getEqKind(i);
     // EqKind.Simple or EqKind.Array
     if (kind !== 0 && kind !== 4) continue;
@@ -1107,10 +1108,84 @@ export function buildAdJacobian(dae: DAEBuilder): ((t: number, y: number[]) => n
 
   const stateNames = derEqs.map((eq) => eq.state);
   const n = stateNames.length;
+  const stateNameSet = new Set<string>(stateNames);
+  const constOrParamNames = new Set<string>(["time"]);
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const v = dae.getVarVariability(i);
+    // Variability.Parameter (1) or Variability.Constant (2)
+    if (v === 1 || v === 2 || dae.getVarExpression(i) !== undefined) {
+      constOrParamNames.add(dae.getVarName(i));
+    }
+  }
+
+  const canLowerToStaticTape = (exprId: number): boolean => {
+    if (exprId < 0) return false;
+    const kind = dae.getExprKind(exprId);
+    switch (kind) {
+      case ExprKind.RealLiteral:
+      case ExprKind.IntLiteral:
+      case ExprKind.BoolLiteral:
+        return true;
+      case ExprKind.Name: {
+        const name = dae.interner.resolve(dae.getExprData1(exprId)) ?? "";
+        return stateNameSet.has(name) || constOrParamNames.has(name);
+      }
+      case ExprKind.Negate:
+        return canLowerToStaticTape(dae.getExprLeft(exprId));
+      case ExprKind.Unary:
+        return dae.getExprData1(exprId) === UnaryOp.Negate && canLowerToStaticTape(dae.getExprLeft(exprId));
+      case ExprKind.Binary: {
+        const bop = dae.getExprData1(exprId);
+        if (
+          bop !== BinOp.Add &&
+          bop !== BinOp.ElemAdd &&
+          bop !== BinOp.Sub &&
+          bop !== BinOp.ElemSub &&
+          bop !== BinOp.Mul &&
+          bop !== BinOp.ElemMul &&
+          bop !== BinOp.Div &&
+          bop !== BinOp.ElemDiv &&
+          bop !== BinOp.Pow &&
+          bop !== BinOp.ElemPow
+        ) {
+          return false;
+        }
+        return canLowerToStaticTape(dae.getExprLeft(exprId)) && canLowerToStaticTape(dae.getExprRight(exprId));
+      }
+      case ExprKind.Call: {
+        const funcName = dae.interner.resolve(dae.getExprData1(exprId)) ?? "";
+        const argCount = dae.getExprRight(exprId);
+        if (
+          argCount === 1 &&
+          (funcName === "sin" ||
+            funcName === "Modelica.Math.sin" ||
+            funcName === "cos" ||
+            funcName === "Modelica.Math.cos" ||
+            funcName === "tan" ||
+            funcName === "Modelica.Math.tan" ||
+            funcName === "exp" ||
+            funcName === "Modelica.Math.exp" ||
+            funcName === "log" ||
+            funcName === "Modelica.Math.log" ||
+            funcName === "sqrt" ||
+            funcName === "Modelica.Math.sqrt")
+        ) {
+          return canLowerToStaticTape(dae.getExprLeft(exprId));
+        }
+        return false;
+      }
+      default:
+        return false;
+    }
+  };
 
   const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of derEqs) {
-    const tape = new StaticTapeBuilder();
+    if (!canLowerToStaticTape(eq.rhsExprId)) {
+      return null;
+    }
+    const tape = new StaticTapeBuilder(dae.interner);
     const outIdx = tape.addExpression(eq.rhsExprId, dae);
     tapeData.push({ ops: tape, outputIndex: outIdx });
   }

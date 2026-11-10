@@ -207,9 +207,9 @@ export class WasmStringPool implements IStringInterner {
           this.wasmExports.free(this.scratchPtr);
         }
         this.scratchCapacity = Math.max(size, 256);
-        this.scratchPtr = allocFn(this.scratchCapacity);
+        this.scratchPtr = allocFn(this.scratchCapacity) >>> 0;
       }
-      this._scratchView = new Uint8Array(this.wasmExports.memory.buffer, this.scratchPtr, this.scratchCapacity);
+      this._scratchView = new Uint8Array(this.wasmExports.memory.buffer, this.scratchPtr >>> 0, this.scratchCapacity);
     }
     return this.scratchPtr;
   }
@@ -407,8 +407,8 @@ export class WasmStringPool implements IStringInterner {
     if (!allocFn) return;
 
     let scratchCap = 1024;
-    let scratchPtr = allocFn(scratchCap);
-    let scratchView = new Uint8Array(exports.memory.buffer, scratchPtr, scratchCap);
+    let scratchPtr = allocFn(scratchCap) >>> 0;
+    let scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
 
     for (let id = startId; id < totalCount; id++) {
       let s = this.reverse[id];
@@ -420,8 +420,8 @@ export class WasmStringPool implements IStringInterner {
       if (maxLen > scratchCap || scratchView.buffer !== exports.memory.buffer) {
         if (exports.free) exports.free(scratchPtr);
         scratchCap = Math.max(maxLen, scratchCap * 2);
-        scratchPtr = allocFn(scratchCap);
-        scratchView = new Uint8Array(exports.memory.buffer, scratchPtr, scratchCap);
+        scratchPtr = allocFn(scratchCap) >>> 0;
+        scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
       }
       let written: number;
       if (this.utf8Encoder.encodeInto) {

@@ -333,13 +333,21 @@ export function registerWorkspaceFeaturesProvider(
     const document = documents.get(params.textDocument.uri);
     if (!document) return actions;
 
+    const requestedKinds = params.context.only;
+    const isKindAllowed = (kind: string | undefined): boolean => {
+      if (!requestedKinds || requestedKinds.length === 0) return true;
+      if (!kind) return false;
+      return requestedKinds.some((req) => kind === req || kind.startsWith(`${req}.`));
+    };
+
     const docUri = params.textDocument.uri;
     const docText = document.getText();
     const docLines = docText.split(/\r?\n/);
     const cursorLine = docLines[params.range.start.line] ?? "";
 
-    // Declaration-level Lightbulb CodeActions (replaces stacked CodeLens clutter)
-    if (/\.(sysml|kerml)$/i.test(docUri)) {
+    // Declaration-level CodeActions (only evaluated when Source or Refactor kinds are requested)
+    const allowDeclarations = isKindAllowed(CodeActionKind.Source) || isKindAllowed(CodeActionKind.Refactor);
+    if (allowDeclarations && /\.(sysml|kerml)$/i.test(docUri)) {
       const partMatch = /^\s*(?:abstract\s+)?part\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
       if (partMatch) {
         const partName = partMatch[1]!;
@@ -412,7 +420,7 @@ export function registerWorkspaceFeaturesProvider(
           },
         );
       }
-    } else if (/\.mo$/i.test(docUri)) {
+    } else if (allowDeclarations && /\.mo$/i.test(docUri)) {
       const classMatch = /^\s*(?:model|block|study|process|class)\s+([A-Za-z0-9_]+)/.exec(cursorLine);
       if (classMatch) {
         const className = classMatch[1]!;
@@ -484,6 +492,9 @@ export function registerWorkspaceFeaturesProvider(
         actions.push(action);
       }
     }
+
+    const batchDriftEdits: Array<{ range: any; newText: string }> = [];
+    const batchDriftDiags: any[] = [];
 
     for (const diagnostic of params.context.diagnostics) {
       // ── Digital Thread Quick-Fixes ──────────────────────────────────
@@ -583,6 +594,341 @@ export function registerWorkspaceFeaturesProvider(
               title: "Open in Digital Thread Explorer",
               command: "modelscript.openDigitalThread",
               arguments: [{ threadId, slot }],
+            },
+          });
+        }
+
+        continue;
+      }
+
+      // ── Reasoner & Verification QuickFixes (M4101, M4102, M5101, M5102, M5103, M5104) ──
+      const isReasonerDiag =
+        diagnostic.source?.includes("reasoner") ||
+        diagnostic.source?.includes("drift-checker") ||
+        diagnostic.code === "M4101" ||
+        diagnostic.code === "M4102" ||
+        diagnostic.code === "M5101" ||
+        diagnostic.code === "M5102" ||
+        diagnostic.code === "M5103" ||
+        diagnostic.code === "M5104" ||
+        diagnostic.code === "division_by_zero" ||
+        diagnostic.code === "div_by_zero" ||
+        diagnostic.code === "min_bound_violation" ||
+        diagnostic.code === "max_bound_violation";
+
+      if (isReasonerDiag) {
+        const text = document.getText();
+        const lineStart = document.offsetAt({ line: diagnostic.range.start.line, character: 0 });
+        const lineEnd = document.offsetAt({ line: diagnostic.range.start.line + 1, character: 0 });
+        const lineContent = text.substring(lineStart, lineEnd);
+        const data = diagnostic.data as any;
+        const numMatch = lineContent.match(/(=|:=|:)\s*([0-9]+(?:\.[0-9]+)?)/);
+
+        // 0. Cross-Language Parameter Drift QuickFix (M5104)
+        if (diagnostic.code === "M5104" || diagnostic.source?.includes("drift-checker")) {
+          const suggestedVal = data?.suggestedValue;
+          const currentVal = data?.currentValue;
+          const paramName = data?.param || "parameter";
+          const counterpartLang = (data?.counterpartLang || "counterpart").toUpperCase();
+
+          if (suggestedVal !== undefined) {
+            let newRange = diagnostic.range;
+            let newText = `${suggestedVal}`;
+
+            // Match numeric literals (including signs, decimals, scientific notation, and scale suffixes)
+            const numPattern = /[-+]?\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[a-zA-Z]?\b/g;
+            const matches: RegExpExecArray[] = [];
+            let m: RegExpExecArray | null;
+            while ((m = numPattern.exec(lineContent)) !== null) {
+              matches.push(m);
+            }
+
+            let bestMatch: RegExpExecArray | undefined;
+            if (currentVal !== undefined && matches.length > 0) {
+              // Try finding the token whose numeric value matches currentVal
+              bestMatch = matches.find((cand) => {
+                const parsed = parseFloat(cand[0]);
+                return (
+                  Math.abs(parsed - currentVal) < 1e-6 ||
+                  Math.abs(parsed - currentVal) / Math.max(Math.abs(currentVal), 1) < 1e-4
+                );
+              });
+            }
+
+            // In netlists like SPICE (e.g. R1 1 2 100), the parameter value is the last numeric token, not node IDs!
+            if (!bestMatch && matches.length > 0) {
+              const eqIdx = lineContent.indexOf("=");
+              if (eqIdx !== -1) {
+                bestMatch = matches.find((cand) => cand.index >= eqIdx);
+              } else {
+                bestMatch = matches[matches.length - 1];
+              }
+            }
+
+            if (bestMatch && bestMatch.index !== undefined) {
+              const valStartChar = bestMatch.index;
+              const valEndChar = valStartChar + bestMatch[0].length;
+              newRange = {
+                start: { line: diagnostic.range.start.line, character: valStartChar },
+                end: { line: diagnostic.range.start.line, character: valEndChar },
+              };
+            }
+
+            batchDriftEdits.push({ range: newRange, newText });
+            batchDriftDiags.push(diagnostic);
+
+            actions.push({
+              title: `Synchronize '${paramName}' to ${suggestedVal} (Matches ${counterpartLang})`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: newRange,
+                      newText,
+                    },
+                  ],
+                },
+              },
+            });
+
+            // Reverse synchronization: propagate local value to counterpart document
+            const counterpartUri = data?.counterpartUri;
+            if (counterpartUri && currentVal !== undefined) {
+              const counterpartDoc = documents.get(counterpartUri);
+              const counterpartText = counterpartDoc?.getText() ?? documentTrees.get(counterpartUri)?.text;
+              const counterpartFile = counterpartUri.split("/").pop() || counterpartUri;
+
+              let cRange = data.counterpartRange;
+              if (counterpartText && cRange) {
+                const cDoc = counterpartDoc || TextDocument.create(counterpartUri, "temp", 1, counterpartText);
+                const cLineStart = cDoc.offsetAt({ line: cRange.start.line, character: 0 });
+                const cLineEnd = cDoc.offsetAt({ line: cRange.start.line + 1, character: 0 });
+                const cLineContent = counterpartText.substring(cLineStart, cLineEnd);
+
+                const cNumPattern = /[-+]?\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[a-zA-Z]?\b/g;
+                const cMatches: RegExpExecArray[] = [];
+                let cm: RegExpExecArray | null;
+                while ((cm = cNumPattern.exec(cLineContent)) !== null) {
+                  cMatches.push(cm);
+                }
+
+                let cBestMatch: RegExpExecArray | undefined;
+                if (suggestedVal !== undefined && cMatches.length > 0) {
+                  cBestMatch = cMatches.find((cand) => {
+                    const parsed = parseFloat(cand[0]);
+                    return (
+                      Math.abs(parsed - suggestedVal) < 1e-6 ||
+                      Math.abs(parsed - suggestedVal) / Math.max(Math.abs(suggestedVal), 1) < 1e-4
+                    );
+                  });
+                }
+                if (!cBestMatch && cMatches.length > 0) {
+                  const eqIdx = cLineContent.indexOf("=");
+                  if (eqIdx !== -1) {
+                    cBestMatch = cMatches.find((cand) => cand.index >= eqIdx);
+                  } else {
+                    cBestMatch = cMatches[cMatches.length - 1];
+                  }
+                }
+
+                if (cBestMatch && cBestMatch.index !== undefined) {
+                  const cValStartChar = cBestMatch.index;
+                  const cValEndChar = cValStartChar + cBestMatch[0].length;
+                  cRange = {
+                    start: { line: cRange.start.line, character: cValStartChar },
+                    end: { line: cRange.start.line, character: cValEndChar },
+                  };
+                }
+
+                actions.push({
+                  title: `Propagate local '${paramName}' (${currentVal}) to ${counterpartLang} in '${counterpartFile}'`,
+                  kind: CodeActionKind.QuickFix,
+                  diagnostics: [diagnostic],
+                  edit: {
+                    changes: {
+                      [counterpartUri]: [
+                        {
+                          range: cRange,
+                          newText: `${currentVal}`,
+                        },
+                      ],
+                    },
+                  },
+                });
+              }
+            }
+          }
+          continue;
+        }
+
+        // 1. Parameter Boundary Relaxation QuickFix (Derived from MCS or numeric literal on line)
+        if (
+          diagnostic.code === "M4101" ||
+          diagnostic.code === "M4102" ||
+          (diagnostic.source?.includes("reasoner") && !diagnostic.code?.toString().startsWith("M5"))
+        ) {
+          const suggestedVal = data?.suggestedValue;
+          if (suggestedVal !== undefined && numMatch && numMatch.index !== undefined) {
+            const valStartChar = lineContent.indexOf(numMatch[2]!, numMatch.index);
+            const valEndChar = valStartChar + numMatch[2]!.length;
+
+            actions.push({
+              title: `Relax boundary parameter to ${suggestedVal} (Restores consistency)`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: {
+                        start: { line: diagnostic.range.start.line, character: valStartChar },
+                        end: { line: diagnostic.range.start.line, character: valEndChar },
+                      },
+                      newText: `${suggestedVal}`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        }
+
+        // 2. Abstract Interpretation Division Guard QuickFix
+        if (
+          diagnostic.code === "M5101" ||
+          diagnostic.code === "division_by_zero" ||
+          diagnostic.code === "div_by_zero" ||
+          diagnostic.message.includes("division by zero")
+        ) {
+          const slashMatch = lineContent.match(/\/\s*([a-zA-Z_][a-zA-Z0-9_]*)/);
+          if (slashMatch && slashMatch[1] && slashMatch.index !== undefined) {
+            const varName = slashMatch[1];
+            const varStartChar = slashMatch.index + slashMatch[0].lastIndexOf(varName);
+            const varEndChar = varStartChar + varName.length;
+            actions.push({
+              title: `Guard against division by zero with 'max(1e-6, ${varName})'`,
+              kind: CodeActionKind.QuickFix,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: {
+                        start: { line: diagnostic.range.start.line, character: varStartChar },
+                        end: { line: diagnostic.range.start.line, character: varEndChar },
+                      },
+                      newText: `max(1e-6, ${varName})`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        }
+
+        // 4. Contract Refinement QuickFix (M5102)
+        if (diagnostic.code === "M5102" || diagnostic.message.includes("contract")) {
+          const reqLimit = data?.requiredLimit ?? data?.suggestedValue;
+          if (reqLimit !== undefined && numMatch && numMatch.index !== undefined) {
+            const valStartChar = lineContent.indexOf(numMatch[2]!, numMatch.index);
+            const valEndChar = valStartChar + numMatch[2]!.length;
+            actions.push({
+              title: `Adjust contract to satisfy parent requirement (${reqLimit})`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: {
+                        start: { line: diagnostic.range.start.line, character: valStartChar },
+                        end: { line: diagnostic.range.start.line, character: valEndChar },
+                      },
+                      newText: `${reqLimit}`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        }
+
+        // 5. Reachability Boundary Enclosure QuickFix (M5103)
+        if (
+          diagnostic.code === "M5103" ||
+          diagnostic.code === "min_bound_violation" ||
+          diagnostic.code === "max_bound_violation" ||
+          diagnostic.message.includes("boundary") ||
+          diagnostic.message.includes("flowpipe")
+        ) {
+          const provenBound = data?.provenBound ?? data?.suggestedValue;
+          if (provenBound !== undefined && numMatch && numMatch.index !== undefined) {
+            const valStartChar = lineContent.indexOf(numMatch[2]!, numMatch.index);
+            const valEndChar = valStartChar + numMatch[2]!.length;
+            actions.push({
+              title: `Enclose reachability flowpipe boundary (${provenBound})`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: {
+                        start: { line: diagnostic.range.start.line, character: valStartChar },
+                        end: { line: diagnostic.range.start.line, character: valEndChar },
+                      },
+                      newText: `${provenBound}`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        }
+
+        // 6. Comment Out Conflicting Assertion QuickFix
+        if (
+          diagnostic.code === "M4101" ||
+          diagnostic.code === "M4102" ||
+          (diagnostic.source?.includes("reasoner") && !diagnostic.code?.toString().startsWith("M5"))
+        ) {
+          const uriLower = params.textDocument.uri.toLowerCase();
+          let commentPrefix = "// ";
+          if (uriLower.endsWith(".cir") || uriLower.endsWith(".sp") || uriLower.endsWith(".spice")) {
+            commentPrefix = "* ";
+          } else if (
+            uriLower.endsWith(".py") ||
+            uriLower.endsWith(".yaml") ||
+            uriLower.endsWith(".yml") ||
+            uriLower.endsWith(".ampl")
+          ) {
+            commentPrefix = "# ";
+          } else if (uriLower.endsWith(".f") || uriLower.endsWith(".f90")) {
+            commentPrefix = "! ";
+          }
+
+          actions.push({
+            title: `Comment out conflicting assertion (Restores local consistency)`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diagnostic],
+            edit: {
+              changes: {
+                [params.textDocument.uri]: [
+                  {
+                    range: {
+                      start: { line: diagnostic.range.start.line, character: 0 },
+                      end: { line: diagnostic.range.start.line, character: 0 },
+                    },
+                    newText: commentPrefix,
+                  },
+                ],
+              },
             },
           });
         }
@@ -753,7 +1099,20 @@ export function registerWorkspaceFeaturesProvider(
       }
     }
 
-    return actions;
+    if (batchDriftEdits.length >= 2) {
+      actions.push({
+        title: `Synchronize all drifted parameters (${batchDriftEdits.length}) in this document`,
+        kind: CodeActionKind.SourceFixAll,
+        diagnostics: batchDriftDiags,
+        edit: {
+          changes: {
+            [params.textDocument.uri]: batchDriftEdits,
+          },
+        },
+      });
+    }
+
+    return actions.filter((a) => isKindAllowed(a.kind));
   });
 
   connection.onWorkspaceSymbol((params) => {

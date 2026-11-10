@@ -1247,13 +1247,18 @@ export function renderIconX6(
   const isTopLevel = !ports;
   const effectiveComponent =
     componentInstance && isTopLevel && isClassIconStatic(classInstance) ? undefined : componentInstance;
-  const ciNameObj = classInstance as { fullName?: string; entry?: { fullName?: string; name?: string } };
-  const identityKey =
-    !effectiveComponent && isTopLevel
-      ? classInstance.id !== undefined
-        ? `id:${classInstance.id}`
-        : (ciNameObj.fullName ?? ciNameObj.entry?.fullName ?? ciNameObj.entry?.name ?? classInstance.name)
-      : null;
+  const ciNameObj = classInstance as {
+    fullName?: string;
+    compositeName?: string;
+    entry?: { fullName?: string; name?: string; resourceId?: string };
+  };
+  const qualifiedName =
+    ciNameObj.compositeName ??
+    ciNameObj.fullName ??
+    ciNameObj.entry?.fullName ??
+    (ciNameObj.entry?.resourceId ? `${ciNameObj.entry.resourceId}#${classInstance.id ?? classInstance.name}` : null) ??
+    (classInstance.id !== undefined ? `id:${classInstance.id}` : classInstance.name);
+  const identityKey = !effectiveComponent && isTopLevel && qualifiedName ? qualifiedName : null;
   const cacheKey = identityKey ? `${isRoot ? "r:" : "n:"}${identityKey}` : null;
   const canCache = Boolean(cacheKey);
 
@@ -2604,13 +2609,19 @@ export function getClassIconSvg(
 ): string | undefined {
   if (!cls) return undefined;
 
-  const clsObj = cls as { fullName?: string; entry?: { fullName?: string; name?: string } };
+  const clsObj = cls as {
+    fullName?: string;
+    compositeName?: string;
+    entry?: { fullName?: string; name?: string; resourceId?: string };
+  };
+  const qualifiedName =
+    clsObj.compositeName ??
+    clsObj.fullName ??
+    clsObj.entry?.fullName ??
+    (clsObj.entry?.resourceId ? `${clsObj.entry.resourceId}#${cls.id ?? cls.name}` : null) ??
+    (cls.id !== undefined ? `id:${cls.id}` : cls.name);
   const identityKey =
-    !includePorts && !componentInstance
-      ? cls.id !== undefined
-        ? `id:${cls.id}:${size}`
-        : (clsObj.fullName ?? clsObj.entry?.fullName ?? clsObj.entry?.name ?? cls.name) + `:${size}`
-      : null;
+    !includePorts && !componentInstance && qualifiedName ? `${qualifiedName}:${size}` : null;
 
   if (identityKey && standaloneIconSvgCache.has(identityKey)) {
     return standaloneIconSvgCache.get(identityKey);

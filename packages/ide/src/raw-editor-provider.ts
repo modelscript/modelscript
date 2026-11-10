@@ -198,11 +198,12 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PSS/E Power Flow Case Editor</title>
   <style>
@@ -530,13 +531,13 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     </div>
     <div class="header-actions">
       <div class="segmented-control">
-        <button id="btn-mode-sld" class="active" onclick="switchView('sld')">⚡ SLD Diagram</button>
-        <button id="btn-mode-grid" onclick="switchView('grid')">📋 Grid Tables</button>
+        <button id="btn-mode-sld" class="active" data-view="sld">⚡ SLD Diagram</button>
+        <button id="btn-mode-grid" data-view="grid">📋 Grid Tables</button>
       </div>
-      <button onclick="exportAction('simulateTransient')" style="background:#0284c7;color:#fff;border-color:#38bdf8;">▶ Simulate Transient</button>
-      <button onclick="exportAction('exportSvg')">📥 Export SVG</button>
-      <button onclick="exportAction('exportModelica')">⚡ Modelica</button>
-      <button onclick="exportAction('exportPscad')">🌐 PSCAD</button>
+      <button data-export="simulateTransient" style="background:#0284c7;color:#fff;border-color:#38bdf8;">▶ Simulate Transient</button>
+      <button data-export="exportSvg">📥 Export SVG</button>
+      <button data-export="exportModelica">⚡ Modelica</button>
+      <button data-export="exportPscad">🌐 PSCAD</button>
     </div>
   </div>
 
@@ -561,10 +562,10 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     <!-- View 1: SLD Diagram -->
     <div id="sld-view" class="view-pane active">
       <div class="sld-toolbar">
-        <input type="text" class="sld-search-input" id="sld-search" placeholder="Search bus number or name..." oninput="searchSld()">
-        <button onclick="zoomSld(1.2)">➕ Zoom In</button>
-        <button onclick="zoomSld(0.8)">➖ Zoom Out</button>
-        <button onclick="resetSldZoom()">⛶ Fit View</button>
+        <input type="text" class="sld-search-input" id="sld-search" placeholder="Search bus number or name...">
+        <button data-zoom="1.2">➕ Zoom In</button>
+        <button data-zoom="0.8">➖ Zoom Out</button>
+        <button id="btn-zoom-reset">⛶ Fit View</button>
         <div class="legend-group">
           <span>Voltage Tiers:</span>
           <span class="legend-chip"><span class="legend-dot" style="background:#E53935;"></span> 500 kV</span>
@@ -575,7 +576,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
         </div>
       </div>
       <div class="sld-workspace">
-        <div class="svg-container" id="svg-container" onclick="handleSvgClick(event)">
+        <div class="svg-container" id="svg-container">
           <!-- SVG markup rendered here -->
         </div>
         <div class="inspector-drawer" id="substation-inspector">
@@ -584,7 +585,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
               <div class="inspector-title" id="insp-title">Substation Inspector</div>
               <div class="inspector-subtitle" id="insp-subtitle">Click a bus or transmission line</div>
             </div>
-            <button class="inspector-close" onclick="clearSelection()">✕</button>
+            <button class="inspector-close" id="btn-insp-close">✕</button>
           </div>
           <div id="insp-body" style="display: flex; flex-direction: column; gap: 12px;">
             <div style="font-size: 12px; color: #64748b; text-align: center; margin-top: 40px;">
@@ -598,12 +599,12 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     <!-- View 2: Tabular Grid -->
     <div id="grid-view" class="view-pane">
       <div class="grid-tabs-bar">
-        <button id="subtab-buses" class="active" onclick="switchGridTab('buses')">Buses</button>
-        <button id="subtab-generators" onclick="switchGridTab('generators')">Generators</button>
-        <button id="subtab-branches" onclick="switchGridTab('branches')">Branches</button>
-        <button id="subtab-transformers" onclick="switchGridTab('transformers')">Transformers</button>
-        <button id="subtab-loads" onclick="switchGridTab('loads')">Loads</button>
-        <input type="text" class="filter-input" id="table-filter" placeholder="Filter equipment..." oninput="filterTable()">
+        <button id="subtab-buses" class="active" data-gridtab="buses">Buses</button>
+        <button id="subtab-generators" data-gridtab="generators">Generators</button>
+        <button id="subtab-branches" data-gridtab="branches">Branches</button>
+        <button id="subtab-transformers" data-gridtab="transformers">Transformers</button>
+        <button id="subtab-loads" data-gridtab="loads">Loads</button>
+        <input type="text" class="filter-input" id="table-filter" placeholder="Filter equipment...">
       </div>
       <div class="table-container" id="table-container">
         <!-- Active table inserted here -->
@@ -611,7 +612,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     function escapeHtml(str) {
       if (str == null) return "";
@@ -626,6 +627,50 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     let currentGridTab = "buses";
     let sldZoom = 1.0;
     let selectedElement = null;
+
+    document.querySelectorAll("[data-view]").forEach(btn => {
+      btn.addEventListener("click", () => switchView(btn.getAttribute("data-view")));
+    });
+    document.querySelectorAll("[data-export]").forEach(btn => {
+      btn.addEventListener("click", () => exportAction(btn.getAttribute("data-export")));
+    });
+    document.getElementById("sld-search").addEventListener("input", searchSld);
+    document.querySelectorAll("[data-zoom]").forEach(btn => {
+      btn.addEventListener("click", () => zoomSld(parseFloat(btn.getAttribute("data-zoom") || "1")));
+    });
+    document.getElementById("btn-zoom-reset").addEventListener("click", resetSldZoom);
+    document.getElementById("svg-container").addEventListener("click", handleSvgClick);
+    document.getElementById("btn-insp-close").addEventListener("click", clearSelection);
+    document.querySelectorAll("[data-gridtab]").forEach(btn => {
+      btn.addEventListener("click", () => switchGridTab(btn.getAttribute("data-gridtab")));
+    });
+    document.getElementById("table-filter").addEventListener("input", filterTable);
+
+    document.getElementById("insp-body").addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      if (btn.hasAttribute("data-toggle-cell")) {
+        toggleEquipmentStatus(btn.getAttribute("data-toggle-cell"), Number(btn.getAttribute("data-next-st") || "0"));
+      } else if (btn.hasAttribute("data-select-bus")) {
+        selectBus(Number(btn.getAttribute("data-select-bus")));
+      } else if (btn.hasAttribute("data-open-grid")) {
+        openInGridTable(Number(btn.getAttribute("data-open-grid")));
+      }
+    });
+
+    document.getElementById("table-container").addEventListener("click", (e) => {
+      const target = e.target.closest("[data-table-bus], [data-table-branch-from]");
+      if (!target) return;
+      if (target.hasAttribute("data-table-bus")) {
+        selectBusFromTable(Number(target.getAttribute("data-table-bus")));
+      } else if (target.hasAttribute("data-table-branch-from")) {
+        selectBranchFromTable(
+          Number(target.getAttribute("data-table-branch-from")),
+          Number(target.getAttribute("data-table-branch-to")),
+          target.getAttribute("data-table-branch-ckt") || "1",
+        );
+      }
+    });
 
     window.addEventListener("message", (event) => {
       const msg = event.data;
@@ -861,7 +906,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
               '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#4ade80;">' +
                 "<span>Gen ID: '" + escapeHtml(g.id) + "'</span>" +
-                '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (g.stat === 1 ? '🟢 Online (Trip)' : '🔴 Offline (Close)') + '</button>' +
+                '<button style="font-size:10px; padding:2px 7px;" data-toggle-cell="' + escapeHtml(cellId) + '" data-next-st="' + nextSt + '">' + (g.stat === 1 ? '🟢 Online (Trip)' : '🔴 Offline (Close)') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
                 '<div class="telemetry-item"><span class="telemetry-label">Active Power Pg</span><span class="telemetry-val">' + g.pg.toFixed(1) + ' MW</span></div>' +
@@ -884,7 +929,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
               '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#fbbf24;">' +
                 "<span>Load ID: '" + escapeHtml(l.id) + "'</span>" +
-                '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (l.status === 1 ? '🟢 Online (Shed)' : '🔴 Shed (Restore)') + '</button>' +
+                '<button style="font-size:10px; padding:2px 7px;" data-toggle-cell="' + escapeHtml(cellId) + '" data-next-st="' + nextSt + '">' + (l.status === 1 ? '🟢 Online (Shed)' : '🔴 Shed (Restore)') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
                 '<div class="telemetry-item"><span class="telemetry-label">Active Pl</span><span class="telemetry-val">' + l.pl.toFixed(1) + ' MW</span></div>' +
@@ -905,7 +950,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
               '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#67e8f9;">' +
                 "<span>Shunt ID: '" + escapeHtml(s.id) + "'</span>" +
-                '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (s.status === 1 ? '🟢 In-Service' : '🔴 Out') + '</button>' +
+                '<button style="font-size:10px; padding:2px 7px;" data-toggle-cell="' + escapeHtml(cellId) + '" data-next-st="' + nextSt + '">' + (s.status === 1 ? '🟢 In-Service' : '🔴 Out') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
                 '<div class="telemetry-item"><span class="telemetry-label">Susceptance BL</span><span class="telemetry-val">' + s.bl.toFixed(1) + ' MVAr</span></div>' +
@@ -947,7 +992,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                 '<div style="text-align:right; font-size:10px; color:' + barColor + '; margin-top:2px;">' + loadPct.toFixed(1) + '% Capacity</div>'
                 : '') +
               '<div style="margin-top:6px;">' +
-                '<button style="font-size:10px; padding:2px 8px;" onclick="selectBus(' + remoteBusNum + ')">Jump to Bus ' + remoteBusNum + '</button>' +
+                '<button style="font-size:10px; padding:2px 8px;" data-select-bus="' + remoteBusNum + '">Jump to Bus ' + remoteBusNum + '</button>' +
               '</div>' +
             '</div>';
           }).join('') +
@@ -955,7 +1000,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
       }
 
       html += '<div style="margin-top:6px;">' +
-        '<button style="width:100%; justify-content:center;" onclick="openInGridTable(' + busNumber + ')">📋 View Bus in Grid Table</button>' +
+        '<button style="width:100%; justify-content:center;" data-open-grid="' + busNumber + '">📋 View Bus in Grid Table</button>' +
       '</div>';
 
       document.getElementById("insp-body").innerHTML = html;
@@ -1018,12 +1063,12 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             '<div class="telemetry-item"><span class="telemetry-label">Status</span><span class="telemetry-val">' + (br.st === 1 ? 'In-Service' : 'Out-of-Service') + '</span></div>' +
           '</div>' +
           '<div style="margin-top:8px;">' +
-            '<button style="width:100%; justify-content:center;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (br.st === 1 ? '⚡ Trip Branch Breaker (Open)' : '🔌 Close Branch Breaker (In-Service)') + '</button>' +
+            '<button style="width:100%; justify-content:center;" data-toggle-cell="' + escapeHtml(cellId) + '" data-next-st="' + nextSt + '">' + (br.st === 1 ? '⚡ Trip Branch Breaker (Open)' : '🔌 Close Branch Breaker (In-Service)') + '</button>' +
           '</div>' +
         '</div>' +
         '<div style="display:flex; gap:8px;">' +
-          '<button style="flex:1; justify-content:center;" onclick="selectBus(' + fromBus + ')">Jump to Bus ' + fromBus + '</button>' +
-          '<button style="flex:1; justify-content:center;" onclick="selectBus(' + toBus + ')">Jump to Bus ' + toBus + '</button>' +
+          '<button style="flex:1; justify-content:center;" data-select-bus="' + fromBus + '">Jump to Bus ' + fromBus + '</button>' +
+          '<button style="flex:1; justify-content:center;" data-select-bus="' + toBus + '">Jump to Bus ' + toBus + '</button>' +
         '</div>';
 
       document.getElementById("insp-body").innerHTML = html;
@@ -1055,12 +1100,12 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             '<div class="telemetry-item"><span class="telemetry-label">Status</span><span class="telemetry-val">' + (xfmr.stat === 1 ? 'In-Service' : 'Out') + '</span></div>' +
           '</div>' +
           '<div style="margin-top:8px;">' +
-            '<button style="width:100%; justify-content:center;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (xfmr.stat === 1 ? '⚡ Trip Transformer Breaker' : '🔌 Energize Transformer') + '</button>' +
+            '<button style="width:100%; justify-content:center;" data-toggle-cell="' + escapeHtml(cellId) + '" data-next-st="' + nextSt + '">' + (xfmr.stat === 1 ? '⚡ Trip Transformer Breaker' : '🔌 Energize Transformer') + '</button>' +
           '</div>' +
         '</div>' +
         '<div style="display:flex; gap:8px;">' +
-          '<button style="flex:1; justify-content:center;" onclick="selectBus(' + fromBus + ')">Jump to Bus ' + fromBus + '</button>' +
-          '<button style="flex:1; justify-content:center;" onclick="selectBus(' + toBus + ')">Jump to Bus ' + toBus + '</button>' +
+          '<button style="flex:1; justify-content:center;" data-select-bus="' + fromBus + '">Jump to Bus ' + fromBus + '</button>' +
+          '<button style="flex:1; justify-content:center;" data-select-bus="' + toBus + '">Jump to Bus ' + toBus + '</button>' +
         '</div>';
 
       document.getElementById("insp-body").innerHTML = html;
@@ -1112,7 +1157,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                   : '<span class="badge badge-pq">PQ (1)</span>';
                 const violationBadge = isUnder ? ' <span class="badge" style="background:#5c1d1d;color:#ff7b72;">Low V</span>'
                   : isOver ? ' <span class="badge" style="background:#5a3e1b;color:#f0883e;">High V</span>' : '';
-                return \`<tr class="clickable-row" onclick="selectBusFromTable(\${b.i})">
+                return \`<tr class="clickable-row" data-table-bus="\${b.i}">
                   <td><b>\${b.i}</b></td>
                   <td>\${escapeHtml(b.name.trim())}</td>
                   <td>\${b.baseKv.toFixed(1)} kV</td>
@@ -1121,7 +1166,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                   <td>\${va.toFixed(2)}°</td>
                   <td>\${b.area}</td>
                   <td>\${b.zone}</td>
-                  <td><button style="padding:2px 6px; font-size:11px;" onclick="event.stopPropagation(); selectBusFromTable(\${b.i});">Inspect SLD</button></td>
+                  <td><button style="padding:2px 6px; font-size:11px;" data-table-bus="\${b.i}">Inspect SLD</button></td>
                 </tr>\`;
               }).join("")}
           </tbody>
@@ -1134,7 +1179,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           <tbody>
             \${currentData.generators
               .filter(g => !filter || String(g.i).includes(filter) || g.id.toLowerCase().includes(filter))
-              .map(g => \`<tr class="clickable-row" onclick="selectBusFromTable(\${g.i})">
+              .map(g => \`<tr class="clickable-row" data-table-bus="\${g.i}">
                 <td><b>\${g.i}</b></td>
                 <td>\${escapeHtml(g.id)}</td>
                 <td>\${g.pg.toFixed(1)}</td>
@@ -1144,7 +1189,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                 <td>\${g.vs.toFixed(4)}</td>
                 <td>\${g.mbase.toFixed(1)}</td>
                 <td>\${g.stat === 1 ? 'In-Service' : 'Out-of-Service'}</td>
-                <td><button style="padding:2px 6px; font-size:11px;" onclick="event.stopPropagation(); selectBusFromTable(\${g.i});">View Bus</button></td>
+                <td><button style="padding:2px 6px; font-size:11px;" data-table-bus="\${g.i}">View Bus</button></td>
               </tr>\`).join("")}
           </tbody>
         </table>\`;
@@ -1164,7 +1209,8 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                 const loadBadge = isOverload
                   ? \`<span class="badge" style="background:#5c1d1d;color:#ff7b72;">\${loadPct.toFixed(1)}% OVERLOAD</span>\`
                   : loadPct !== null ? \`\${loadPct.toFixed(1)}%\` : '-';
-                return \`<tr class="clickable-row" onclick="selectBranchFromTable(\${br.i}, \${br.j}, '\${br.ckt.trim()}')">
+                const safeCkt = escapeHtml(br.ckt.trim());
+                return \`<tr class="clickable-row" data-table-branch-from="\${br.i}" data-table-branch-to="\${br.j}" data-table-branch-ckt="\${safeCkt}">
                   <td><b>\${br.i}</b></td>
                   <td><b>\${br.j}</b></td>
                   <td>\${escapeHtml(br.ckt)}</td>
@@ -1174,7 +1220,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                   <td>\${flow}</td>
                   <td>\${loadBadge}</td>
                   <td>\${br.st === 1 ? 'In-Service' : 'Out'}</td>
-                  <td><button style="padding:2px 6px; font-size:11px;" onclick="event.stopPropagation(); selectBranchFromTable(\${br.i}, \${br.j}, '\${br.ckt.trim()}');">Inspect</button></td>
+                  <td><button style="padding:2px 6px; font-size:11px;" data-table-branch-from="\${br.i}" data-table-branch-to="\${br.j}" data-table-branch-ckt="\${safeCkt}">Inspect</button></td>
                 </tr>\`;
               }).join("")}
           </tbody>
@@ -1187,7 +1233,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           <tbody>
             \${currentData.transformers
               .filter(t => !filter || String(t.i).includes(filter) || String(t.j).includes(filter))
-              .map(t => \`<tr class="clickable-row" onclick="selectBranchFromTable(\${t.i}, \${t.j}, '\${t.ckt.trim()}')">
+              .map(t => \`<tr class="clickable-row" data-table-branch-from="\${t.i}" data-table-branch-to="\${t.j}" data-table-branch-ckt="\${escapeHtml(t.ckt.trim())}">
                 <td><b>\${t.i}</b></td>
                 <td><b>\${t.j}</b></td>
                 <td>\${escapeHtml(t.ckt)}</td>
@@ -1208,7 +1254,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           <tbody>
             \${currentData.loads
               .filter(l => !filter || String(l.i).includes(filter) || l.id.toLowerCase().includes(filter))
-              .map(l => \`<tr class="clickable-row" onclick="selectBusFromTable(\${l.i})">
+              .map(l => \`<tr class="clickable-row" data-table-bus="\${l.i}">
                 <td><b>\${l.i}</b></td>
                 <td>\${escapeHtml(l.id)}</td>
                 <td>\${l.pl.toFixed(1)}</td>

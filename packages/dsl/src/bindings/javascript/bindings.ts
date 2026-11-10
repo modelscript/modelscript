@@ -5951,22 +5951,30 @@ export async function createWasmParser(
   let lintSeverities = options?.lintSeverities;
 
   if (typeof wasmUrlOrBytes === "string") {
-    if (
-      typeof fetch !== "undefined" &&
-      (wasmUrlOrBytes.startsWith("http://") ||
-        wasmUrlOrBytes.startsWith("https://") ||
-        wasmUrlOrBytes.startsWith("blob:") ||
-        wasmUrlOrBytes.startsWith("vscode-") ||
-        wasmUrlOrBytes.startsWith("/"))
-    ) {
+    const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+    const isUrl =
+      wasmUrlOrBytes.startsWith("http://") ||
+      wasmUrlOrBytes.startsWith("https://") ||
+      wasmUrlOrBytes.startsWith("blob:") ||
+      wasmUrlOrBytes.startsWith("vscode-") ||
+      (!isNode && wasmUrlOrBytes.startsWith("/"));
+
+    if (typeof fetch !== "undefined" && isUrl) {
       try {
         const res = await fetch(wasmUrlOrBytes);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch WASM binary from ${wasmUrlOrBytes}: HTTP ${res.status} ${res.statusText}`);
+        }
         bytes = await res.arrayBuffer();
-      } catch {
-        const modName = "node" + ":fs";
-        const fs = await import(/* @vite-ignore */ modName);
-        const buf = fs.readFileSync(wasmUrlOrBytes);
-        bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      } catch (fetchErr) {
+        if (isNode) {
+          const modName = "node" + ":fs";
+          const fs = await import(/* @vite-ignore */ modName);
+          const buf = fs.readFileSync(wasmUrlOrBytes);
+          bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        } else {
+          throw fetchErr;
+        }
       }
     } else {
       const modName = "node" + ":fs";
@@ -5975,7 +5983,7 @@ export async function createWasmParser(
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
 
-    if (!syntaxNames || !fieldNames || !lintMessages) {
+    if (!syntaxNames || !fieldNames) {
       const candidates = [
         wasmUrlOrBytes.replace(/\/dist\/parser\.wasm$/, "/src-gen/bindings.js"),
         wasmUrlOrBytes.replace(/\.wasm$/, ".bindings.js"),
@@ -5999,7 +6007,7 @@ export async function createWasmParser(
             if (!lintSeverities && mod.LINT_SEVERITIES && typeof mod.LINT_SEVERITIES === "object") {
               lintSeverities = mod.LINT_SEVERITIES;
             }
-            if (syntaxNames && fieldNames && lintMessages) break;
+            if (syntaxNames && fieldNames) break;
           }
         } catch {
           // Companion bindings optional; ignore if not present

@@ -145,32 +145,32 @@ jobs:
 
       # --- Publish VS Code Extension ---
       - name: Build VS Code Extension
-        run: npm run build:extension
+        run: npm run build:ide:extension
       - name: Sync VS Code Extension Version
         run: npm run sync:versions
       - name: Package VS Code Extension
-        run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
-        working-directory: dist/extension
+        run: npx --yes @vscode/vsce@3.3.2 package --no-dependencies -o modelscript.vsix
+        working-directory: apps/ide/dist/extension
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: modelscript-vsix
-          path: dist/extension/*.vsix
+          path: apps/ide/dist/extension/modelscript.vsix
       - name: Create or Update GitHub Release & Attach VSIX
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: .cache/release-notes.md
-          files: dist/extension/*.vsix
+          files: apps/ide/dist/extension/modelscript.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to VS Code Marketplace
-        run: npx --yes @vscode/vsce publish --skip-duplicate --no-dependencies --allow-star-activation -p ${{ secrets.VSCE_PAT }}
-        working-directory: dist/extension
+        run: npx --yes @vscode/vsce@3.3.2 publish --skip-duplicate --no-dependencies --packagePath modelscript.vsix -p ${{ secrets.VSCE_PAT }}
+        working-directory: apps/ide/dist/extension
       - name: Publish to Open VSX
-        run: npx --yes ovsx publish *.vsix --skip-duplicate -p ${{ secrets.OVSX_PAT }}
-        working-directory: dist/extension
+        run: npx --yes ovsx@0.10.1 publish modelscript.vsix --skip-duplicate -p ${{ secrets.OVSX_PAT }}
+        working-directory: apps/ide/dist/extension
 
       # --- Build Unified Site & Docs (bundled into web/appliance Docker images) ---
       - name: Build PDF Manual

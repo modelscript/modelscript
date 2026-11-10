@@ -9,7 +9,7 @@
  * @see https://ssp-standard.org/
  */
 
-import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   SspComponent,
   SspConnection,
@@ -101,7 +101,7 @@ function offsetToLine(lineStarts: number[], offset: number): number {
  * @returns Parsed SSP system structure
  */
 export function parseSsd(xml: string): SspSystem {
-  const doc = parseXmlSync(xml);
+  const doc = parseXml(xml);
   const root = doc.root;
 
   const version = root ? (getAttr(root, "version") ?? "1.0") : "1.0";
@@ -187,7 +187,7 @@ function parseSystemElement(
  * @returns Array of parameter values
  */
 export function parseSsv(xml: string, fullXml: string = xml, baseOffset: number = 0): SspParameterValue[] {
-  const doc = parseXmlSync(xml);
+  const doc = parseXml(xml);
   const values: SspParameterValue[] = [];
   if (!doc.root) return values;
 
@@ -536,7 +536,7 @@ function parseDefaultExperiment(
  * @returns Parameter mapping definition
  */
 export function parseSsm(xml: string): SspParameterMapping {
-  const doc = parseXmlSync(xml);
+  const doc = parseXml(xml);
   const root = doc.root;
   const version = root ? (getAttr(root, "version") ?? "1.0") : "1.0";
   const lineStarts = computeLineStarts(xml);
@@ -574,7 +574,7 @@ export function parseSsm(xml: string): SspParameterMapping {
  * @returns Signal dictionary definition
  */
 export function parseSsb(xml: string): SspSignalDictionary {
-  const doc = parseXmlSync(xml);
+  const doc = parseXml(xml);
   const root = doc.root;
   const version = root ? (getAttr(root, "version") ?? "1.0") : "1.0";
   const name = root ? (getAttr(root, "name") ?? "SignalDictionary") : "SignalDictionary";

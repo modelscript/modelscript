@@ -51,6 +51,8 @@ export const EXTENSION_TO_LANGUAGE_ID: Record<string, string> = {
   ".aml": "automationml",
   ".caex": "automationml",
   ".bkp": "aspen",
+  ".mod": "ampl",
+  ".ampl": "ampl",
   ".arxml": "autosar",
   ".c": "c",
   ".h": "c",

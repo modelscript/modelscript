@@ -591,3 +591,53 @@ export interface CalibrateResult {
   costHistory: number[];
   error?: string | undefined;
 }
+
+export interface FlatSemanticEdit {
+  action: "none" | "insert" | "delete" | "update" | "move";
+  description: string;
+  kind?: string | undefined;
+  oldRange?: {
+    startLine: number;
+    startCharacter: number;
+    endLine: number;
+    endCharacter: number;
+  } | undefined;
+  newRange?: {
+    startLine: number;
+    startCharacter: number;
+    endLine: number;
+    endCharacter: number;
+  } | undefined;
+  regulatoryImpact?: {
+    isSafetyCritical: boolean;
+    hazardId?: string | undefined;
+    hazardName?: string | undefined;
+    requirementId?: string | undefined;
+    riskSeverity?: number | undefined;
+    invalidatedLinks?: {
+      targetName: string;
+      targetKind: string;
+      reason: string;
+    }[] | undefined;
+  } | undefined;
+}
+
+/**
+ * Computes an AST-level semantic diff using the native WebAssembly GLR parser and Salsa query engine
+ * via the background LSP worker, returning precise character ranges and ISO 14971 regulatory impact.
+ */
+export async function getSemanticDiff(
+  uri: string,
+  oldText: string,
+  newText: string,
+): Promise<{ diffs: FlatSemanticEdit[] }> {
+  const isSysml = uri.endsWith(".sysml") || uri.endsWith(".sysml2");
+  const langId = isSysml ? "sysml2" : "modelica";
+  const c = await lsp(langId);
+  return c.sendRequest<{ diffs: FlatSemanticEdit[] }>("modelscript/getSemanticDiff", {
+    uri,
+    oldText,
+    newText,
+  });
+}
+

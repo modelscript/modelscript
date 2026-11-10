@@ -57,6 +57,7 @@ export interface DssTransformer {
   phases: number;
   windings: number;
   buses: string[];
+  phaseNodes?: number[][] | undefined; // per winding phase nodes e.g. [[1], [1]] or [[1, 2, 3], [1, 2, 3]]
   kvs: number[];
   kvas: number[];
   pctLoadLoss?: number | undefined;
@@ -148,6 +149,11 @@ export interface DssLineCode {
   r0?: number | undefined;
   x0?: number | undefined;
   c0?: number | undefined;
+  rmatrix?: number[][] | undefined;
+  xmatrix?: number[][] | undefined;
+  cmatrix?: number[][] | undefined;
+  units?: string | undefined;
+  baseFreq?: number | undefined;
   range: DssRange;
 }
 

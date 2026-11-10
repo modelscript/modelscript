@@ -3,7 +3,7 @@
 
 # @modelscript/ide-client
 
-ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) — polyglot Language Server Protocol (`vscode-languageclient`) integration across all 68 languages, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 24 custom editors, and 20+ specialized engineering webview panels.
+ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) — polyglot Language Server Protocol (`vscode-languageclient`) integration across all 81 languages, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 24 custom editors, and 20+ specialized engineering webview panels.
 
 ---
 
@@ -28,7 +28,7 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) �
 
 - **Tier 1 — In-Browser WebGPU (`@mlc-ai/web-llm`, `Qwen3-0.6B`)**: 100% local, zero-egress GPU inference inside the browser or desktop webview for air-gapped syntax assistance, equation explanation, and unit checks.
 - **Tier 2 — Local Workstation Inference (`Ollama` / `vLLM`)**: Connects to local OpenAI-compatible endpoints (`http://localhost:11434`) with tool-calling bound to the in-process `@modelscript/mcp` bridge (`registerMCPTools`).
-- **Tier 3 — Hosted MCP SSE Gateway**: Streams multi-step agentic tool calls over `/api/v1/mcp/sse`, invoking all **60 ModelScript MCP tools** (`modelscript_closed_loop_synthesize`, `modelica_diff_calibrate`, `tgg_reconcile_slot`, `pscad_verify_ieee2800`, `cad_fea_closed_loop_size`, `polyglot_migrate_and_verify_b2b`, `formal_verify_safety_and_mcdc`, `olga_verify`, `gensys_verify_en14363`, `qif_inspect_and_spc`, `oscal_audit_cps_compliance`, `aml_run_virtual_commissioning`, `opensim_analyze`, `dicom_rt_verify_dvh`, `cellml_simulate`, `igtl_verify_calibration`, `three_mf_verify_guide`, etc.).
+- **Tier 3 — Hosted MCP SSE Gateway**: Streams multi-step agentic tool calls over `/api/v1/mcp/sse`, invoking all **92 ModelScript MCP tools** (`modelscript_closed_loop_synthesize`, `modelica_diff_calibrate`, `tgg_reconcile_slot`, `pscad_verify_ieee2800`, `opendss_solve_powerflow`, `epanet_solve_hydraulics`, `optical_solve_transmission`, `ran_evaluate_mpe_safety`, `cad_fea_closed_loop_size`, `polyglot_migrate_and_verify_b2b`, `formal_verify_safety_and_mcdc`, `olga_verify`, `gensys_verify_en14363`, `qif_inspect_and_spc`, `oscal_audit_cps_compliance`, `aml_run_virtual_commissioning`, `opensim_analyze`, `dicom_rt_verify_dvh`, `cellml_simulate`, `igtl_verify_calibration`, `three_mf_verify_guide`, etc.).
 
 ### 4. Interactive `.monb` Engineering Notebooks (`src/notebook-serializer.ts`, `src/notebook-controller.ts`)
 
@@ -64,7 +64,7 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) �
 ### 6. 20+ Specialized Engineering Webview Panels & Tree Views
 
 - **Simulation & Reachability Flowpipe Studio (`src/simulation-panel.ts`)**: Multi-axis time-series oscilloscope, FFT spectrum analyzer, phase portraits, and zonotope/interval flowpipe envelope ribbons.
-- **3D CAD & Multibody Animation Viewport (`src/cad-viewer-panel.ts`, `src/multibody-animation-panel.ts`)**: Hardware-accelerated Three.js viewport with section planes, kinematic playback, and FEA/CFD field overlays.
+- **3D CAD, Verification Overlays & Multibody Animation Viewport (`src/cad-viewer-panel.ts`, `src/multibody-animation-panel.ts`, `src/webview/cad-viewer/`)**: Hardware-accelerated Three.js viewport with section planes, kinematic playback, FEA/CFD field overlays, and formal safety scene overlays (`reachability-tube-overlay.tsx`, `barrier-shell-overlay.tsx`, `dynamic-clearance-vector.tsx`, `requirement-verdict-card.tsx`).
 - **Formal Verification & Counterexample Replay (`src/verification-panel.ts`, `src/trace-replay-panel.ts`, `src/contract-hierarchy-panel.ts`)**: BMC/$k$-induction/IC3 proof dashboard, assume-guarantee contract hierarchy viewer, and step-by-step counterexample trace replay.
 - **Digital Thread & Polyglot Visualizer (`src/thread-explorer-panel.ts`, `src/polyglot-visualizer-panel.ts`)**: Cross-domain hypergraph explorer and TGG alignment inspector.
 - **Co-Simulation & MQTT Live Studio (`src/cosim-panel.ts`, `src/mqtt-tree-provider.ts`, `src/fmu-browser-participant.ts`)**: Real-time multi-FMU and HIL co-simulation dashboard.

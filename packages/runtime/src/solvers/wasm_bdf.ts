@@ -549,7 +549,9 @@ export function bdf(
         const curr = newEventValues[ei] ?? 0;
         const reqDir = effEventDirections?.[ei] ?? 0;
         const signChange =
-          prev * curr < 0 && (reqDir > 0 ? prev <= 0 && curr > 0 : reqDir < 0 ? prev >= 0 && curr < 0 : true);
+          prev * curr < 0 &&
+          Math.max(Math.abs(prev), Math.abs(curr)) > 1e-9 &&
+          (reqDir > 0 ? prev <= 0 && curr > 0 : reqDir < 0 ? prev >= 0 && curr < 0 : true);
 
         if (signChange) {
           const eventFn = eventFunctions[ei];
@@ -623,6 +625,12 @@ export function bdf(
         luMatrix = null;
         stepsSinceJac = 0;
         prevEventValues = eventFunctions.map((g) => g(t, y));
+        if (
+          prevEventValues[ei] !== undefined &&
+          (prevEventValues[ei]! * curr < 0 || Math.abs(prevEventValues[ei]!) < 1e-12)
+        ) {
+          prevEventValues[ei] = curr >= 0 ? 1e-12 : -1e-12;
+        }
       } else {
         prevEventValues = newEventValues;
       }
@@ -672,7 +680,7 @@ export function bdf(
       }
     } else {
       // Event occurred: state and history were already reinitialized to tEvent and yAfter
-      h = Math.min(h * 0.5, maxStep);
+      h = Math.max(Math.min(h * 0.5, maxStep), Math.min(1e-5, maxStep));
     }
   }
 
@@ -899,7 +907,7 @@ function bisectEvent(
     }
   }
 
-  return (lo + hi) / 2;
+  return hi;
 }
 
 function cubicHermiteInterpolate(

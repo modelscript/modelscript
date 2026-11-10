@@ -117,13 +117,31 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register URI handler for vscode://modelscript.modelscript/install?package=xyz
   context.subscriptions.push(
     vscode.window.registerUriHandler({
-      handleUri(uri: vscode.Uri) {
+      async handleUri(uri: vscode.Uri) {
         if (uri.path === "/install" || uri.path === "install") {
+          if (!vscode.workspace.isTrusted) {
+            vscode.window.showErrorMessage("Cannot install packages via URI in an untrusted workspace.");
+            return;
+          }
           const query = new URLSearchParams(uri.query);
-          const pkg = query.get("package");
-          const version = query.get("version");
-          if (pkg) {
-            vscode.commands.executeCommand("modelscript.registry.install", pkg, version || "latest");
+          const pkg = query.get("package")?.trim();
+          const version = (query.get("version") || "latest").trim();
+          if (!pkg) return;
+
+          const validPkgRe = /^(?:@[a-zA-Z0-9._-]+\/)?[a-zA-Z0-9._-]+$/;
+          const validVerRe = /^[a-zA-Z0-9.+_-]+$/;
+          if (!validPkgRe.test(pkg) || pkg.includes("..") || !validVerRe.test(version) || version.includes("..")) {
+            vscode.window.showErrorMessage(`Blocked invalid package install URI request: '${pkg}@${version}'.`);
+            return;
+          }
+
+          const choice = await vscode.window.showWarningMessage(
+            `Install ModelScript package '${pkg}@${version}' from external link?`,
+            { modal: true },
+            "Install",
+          );
+          if (choice === "Install") {
+            await vscode.commands.executeCommand("modelscript.registry.install", pkg, version);
           }
         }
       },
@@ -140,22 +158,28 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 7. AI & Chat Integration
   try {
-    registerLLMProvider(context);
+    if (typeof (vscode.lm as unknown as { registerChatModelProvider?: unknown })?.registerChatModelProvider === "function") {
+      registerLLMProvider(context);
+    }
   } catch {
     /* proposed API not available */
   }
   try {
-    registerMCPTools(context, lspManager.client);
+    if (typeof vscode.lm?.registerTool === "function") {
+      registerMCPTools(context, lspManager.client);
+    }
   } catch {
     /* proposed API not available */
   }
   try {
-    registerChatParticipant(context);
+    if (typeof vscode.chat?.createChatParticipant === "function") {
+      registerChatParticipant(context);
+    }
   } catch {
     /* ignore */
   }
 
-  const chatProvider = new ChatViewProvider(context.extensionUri, lspManager.client);
+  const chatProvider = new ChatViewProvider(context.extensionUri, lspManager.client, context.secrets);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chatProvider, {
       webviewOptions: { retainContextWhenHidden: true },

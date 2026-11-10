@@ -342,6 +342,19 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
 function canonicalizeScalarizedSubscripts(dae: DAEBuilder, exprId: number): number {
   if (exprId < 0) return exprId;
   const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.Name) {
+    const name = dae.interner.resolve(dae.getExprData1(exprId));
+    if (name && dae.getVarIdxByName(name) === -1 && name.includes("[")) {
+      const m = /^(.+)(\[[^\][]+])\.([^.[\]]+)$/.exec(name);
+      if (m) {
+        const transposed = `${m[1]}.${m[3]}${m[2]}`;
+        if (dae.getVarIdxByName(transposed) !== -1) {
+          return dae.addNameExpr(transposed);
+        }
+      }
+    }
+    return exprId;
+  }
   if (kind === ExprKind.Subscript) {
     const directSubName = resolveConstSubscriptName(exprId, dae);
     if (directSubName && dae.getVarIdxByName(directSubName) !== -1) {
@@ -519,6 +532,8 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
   const discreteVarNames = new Set<string>();
   knowns.add("time");
 
+  const paramWithExprs: { varIdx: number; varName: string; exprId: number }[] = [];
+
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
     const varName = dae.getVarName(i);
@@ -529,8 +544,14 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
       knowns.add(varName);
       continue;
     }
-    // Parameters are known unless they explicitly have fixed = false and no binding expression
+    // Parameters without a binding expression are known if fixed=true;
+    // parameters with a binding expression are checked below for dependencies on unknowns.
     if (variability === Variability.Parameter) {
+      const exprId = typeof dae.getVarExpression === "function" ? dae.getVarExpression(i) : -1;
+      if (typeof exprId === "number" && exprId >= 0) {
+        paramWithExprs.push({ varIdx: i, varName, exprId });
+        continue;
+      }
       if (dae.isVarFixed(i) || dae.hasExplicitVarExpression(i)) {
         knowns.add(varName);
         continue;
@@ -547,16 +568,112 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     }
   }
 
+  // Fixed-point propagation: a parameter with a binding expression is known only if all
+  // variables referenced in its binding expression are also known at t=0.
+  let paramKnownChanged = true;
+  while (paramKnownChanged) {
+    paramKnownChanged = false;
+    for (const p of paramWithExprs) {
+      if (knowns.has(p.varName)) continue;
+      const refs = new Set<string>();
+      collectExprVarNames(p.exprId, dae, refs);
+      let allRefsKnown = true;
+      for (const r of refs) {
+        if (knowns.has(r)) continue;
+        const rIdx = dae.getVarIdxByName(r);
+        if (rIdx >= 0) {
+          allRefsKnown = false;
+          break;
+        }
+        const bracketPos = r.indexOf("[");
+        if (bracketPos > 0) {
+          const baseName = r.slice(0, bracketPos);
+          if (dae.getVarIdxByName(baseName) >= 0 && !knowns.has(baseName)) {
+            allRefsKnown = false;
+            break;
+          }
+        }
+      }
+      if (allRefsKnown) {
+        knowns.add(p.varName);
+        paramKnownChanged = true;
+      }
+    }
+  }
+
   // 2. Collect all equations for initialization
   const initEquations: { lhs: number; rhs: number; source: "initial" | "continuous" }[] = [];
+  const allDerRefs = new Set<string>();
+  const initReferenced = new Set<string>();
+
+  // Any parameter whose binding expression depends on non-known variables (e.g. continuous
+  // variables or fixed=false parameters) is solved during initialization via varName = exprId.
+  for (const p of paramWithExprs) {
+    if (knowns.has(p.varName)) continue;
+    if (dae.getVarShape(p.varIdx).length > 0) continue;
+    const cl = dae.addNameExpr(p.varName);
+    const cr = canonicalizeScalarizedSubscripts(dae, p.exprId);
+    initEquations.push({ lhs: cl, rhs: cr, source: "initial" });
+    collectExprVarNames(cl, dae, initReferenced);
+    collectExprVarNames(cr, dae, initReferenced);
+  }
 
   for (let i = 0; i < dae.eqCount; i++) {
+    if (dae.isEqRemoved(i)) continue;
     const kind = dae.getEqKind(i);
     const lhs = dae.getEqLhs(i);
     const rhs = dae.getEqRhs(i);
     const isInit = kind === EqKind.InitialSimple || kind === EqKind.InitialFor || isEqInitialFlag(dae, i);
+    if (!isInit) continue;
 
-    if (kind === EqKind.InitialSimple || (isInit && (kind === EqKind.Simple || kind === EqKind.Array))) {
+    if (kind === EqKind.InitialSimple || kind === EqKind.Simple || kind === EqKind.Array) {
+      const lhsElems = flatElements(lhs, dae);
+      const rhsElems = flatElements(rhs, dae);
+      const n = Math.max(lhsElems.length, rhsElems.length);
+      for (let j = 0; j < n; j++) {
+        const l = lhsElems[j] ?? lhsElems[0];
+        const r = rhsElems[j] ?? rhsElems[0];
+        if (l !== undefined && r !== undefined) {
+          const cl = canonicalizeScalarizedSubscripts(dae, l);
+          const cr = canonicalizeScalarizedSubscripts(dae, r);
+          initEquations.push({ lhs: cl, rhs: cr, source: "initial" });
+          collectExprVarNames(cl, dae, initReferenced);
+          collectExprVarNames(cr, dae, initReferenced);
+        }
+      }
+    } else if (kind === EqKind.InitialFor || kind === EqKind.For) {
+      const expanded = expandForEquationArena(dae, i);
+      for (const eq of expanded) {
+        initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "initial" });
+        collectExprVarNames(eq.lhs, dae, initReferenced);
+        collectExprVarNames(eq.rhs, dae, initReferenced);
+      }
+    }
+  }
+
+  for (let i = 0; i < dae.eqCount; i++) {
+    if (dae.isEqRemoved(i)) continue;
+    const kind = dae.getEqKind(i);
+    const lhs = dae.getEqLhs(i);
+    const rhs = dae.getEqRhs(i);
+    const isInit = kind === EqKind.InitialSimple || kind === EqKind.InitialFor || isEqInitialFlag(dae, i);
+    if (isInit || kind === EqKind.When) continue;
+
+    if (kind === EqKind.Array || kind === EqKind.Simple) {
+      const eqRefs = new Set<string>();
+      collectExprVarNames(lhs, dae, eqRefs);
+      collectExprVarNames(rhs, dae, eqRefs);
+      for (const r of eqRefs) {
+        if (r.startsWith("der(") && r.endsWith(")")) allDerRefs.add(r);
+      }
+      // Skip continuous ODE evolution equations der(x) = rhs unless der(x) is explicitly
+      // constrained by an initial equation (e.g. `initial equation der(x) = 0;`).
+      if (dae.getExprKind(lhs) === ExprKind.Der) {
+        const derTarget = extractDerName(lhs, dae);
+        if (!derTarget || !initReferenced.has(`der(${derTarget})`)) {
+          continue;
+        }
+      }
       const lhsElems = flatElements(lhs, dae);
       const rhsElems = flatElements(rhs, dae);
       const n = Math.max(lhsElems.length, rhsElems.length);
@@ -567,38 +684,101 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
           initEquations.push({
             lhs: canonicalizeScalarizedSubscripts(dae, l),
             rhs: canonicalizeScalarizedSubscripts(dae, r),
-            source: "initial",
+            source: "continuous",
           });
         }
       }
-    } else if (kind === EqKind.InitialFor || (isInit && kind === EqKind.For)) {
+    } else if (kind === EqKind.For) {
       const expanded = expandForEquationArena(dae, i);
       for (const eq of expanded) {
-        initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "initial" });
-      }
-    } else if (kind !== EqKind.When) {
-      if (kind === EqKind.Array || kind === EqKind.Simple) {
-        // Skip continuous ODE evolution equations der(x) = rhs — they define rates of change during integration,
-        // not initial state constraints at t=0.
-        if (dae.getExprKind(lhs) === ExprKind.Der) continue;
-        const lhsElems = flatElements(lhs, dae);
-        const rhsElems = flatElements(rhs, dae);
-        const n = Math.max(lhsElems.length, rhsElems.length);
-        for (let j = 0; j < n; j++) {
-          const l = lhsElems[j] ?? lhsElems[0];
-          const r = rhsElems[j] ?? rhsElems[0];
-          if (l !== undefined && r !== undefined) {
-            initEquations.push({
-              lhs: canonicalizeScalarizedSubscripts(dae, l),
-              rhs: canonicalizeScalarizedSubscripts(dae, r),
-              source: "continuous",
-            });
+        const eqRefs = new Set<string>();
+        collectExprVarNames(eq.lhs, dae, eqRefs);
+        collectExprVarNames(eq.rhs, dae, eqRefs);
+        for (const r of eqRefs) {
+          if (r.startsWith("der(") && r.endsWith(")")) allDerRefs.add(r);
+        }
+        if (dae.getExprKind(eq.lhs) === ExprKind.Der) {
+          const derTarget = extractDerName(eq.lhs, dae);
+          if (!derTarget || !initReferenced.has(`der(${derTarget})`)) {
+            continue;
           }
         }
-      } else if (kind === EqKind.For) {
-        const expanded = expandForEquationArena(dae, i);
-        for (const eq of expanded) {
-          initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "continuous" });
+        initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "continuous" });
+      }
+    } else if (kind === EqKind.If) {
+      const meta = dae.getIfEquationMeta(i);
+      if (
+        meta &&
+        meta.thenEquations.length > 0 &&
+        meta.elseEquations &&
+        meta.elseEquations.length === meta.thenEquations.length
+      ) {
+        const elseIfs = meta.elseIfClauses ?? [];
+        if (elseIfs.every((c) => c.bodyEquations.length === meta.thenEquations.length)) {
+          const sameLhs = (a: number, b: number) =>
+            dae.getExprKind(a) === ExprKind.Name &&
+            dae.getExprKind(b) === ExprKind.Name &&
+            dae.getExprData1(a) === dae.getExprData1(b);
+          const toRes = (eq: { lhsExprId: number; rhsExprId: number }) =>
+            dae.addBinaryExpr(
+              BinOp.Sub,
+              canonicalizeScalarizedSubscripts(dae, eq.lhsExprId),
+              canonicalizeScalarizedSubscripts(dae, eq.rhsExprId),
+            );
+          for (let k = 0; k < meta.thenEquations.length; k++) {
+            const tEq = meta.thenEquations[k]!;
+            const eEq = meta.elseEquations[k]!;
+            if (tEq.kind !== EqKind.Simple || eEq.kind !== EqKind.Simple) continue;
+            const allSame =
+              sameLhs(tEq.lhsExprId, eEq.lhsExprId) &&
+              elseIfs.every((c) => sameLhs(tEq.lhsExprId, c.bodyEquations[k]!.lhsExprId));
+            let combinedLhs: number;
+            let combinedRhs: number;
+            if (allSame) {
+              let rhsChain = canonicalizeScalarizedSubscripts(dae, eEq.rhsExprId);
+              for (let ci = elseIfs.length - 1; ci >= 0; ci--) {
+                rhsChain = dae.addIfElseExpr(
+                  canonicalizeScalarizedSubscripts(dae, elseIfs[ci]!.conditionExprId),
+                  canonicalizeScalarizedSubscripts(dae, elseIfs[ci]!.bodyEquations[k]!.rhsExprId),
+                  rhsChain,
+                );
+              }
+              combinedLhs = canonicalizeScalarizedSubscripts(dae, tEq.lhsExprId);
+              combinedRhs = dae.addIfElseExpr(
+                canonicalizeScalarizedSubscripts(dae, meta.conditionExprId),
+                canonicalizeScalarizedSubscripts(dae, tEq.rhsExprId),
+                rhsChain,
+              );
+            } else {
+              let resChain = toRes(eEq);
+              for (let ci = elseIfs.length - 1; ci >= 0; ci--) {
+                resChain = dae.addIfElseExpr(
+                  canonicalizeScalarizedSubscripts(dae, elseIfs[ci]!.conditionExprId),
+                  toRes(elseIfs[ci]!.bodyEquations[k]!),
+                  resChain,
+                );
+              }
+              combinedLhs = dae.addRealLiteral(0.0);
+              combinedRhs = dae.addIfElseExpr(
+                canonicalizeScalarizedSubscripts(dae, meta.conditionExprId),
+                toRes(tEq),
+                resChain,
+              );
+            }
+            const eqRefs = new Set<string>();
+            collectExprVarNames(combinedLhs, dae, eqRefs);
+            collectExprVarNames(combinedRhs, dae, eqRefs);
+            for (const r of eqRefs) {
+              if (r.startsWith("der(") && r.endsWith(")")) allDerRefs.add(r);
+            }
+            if (dae.getExprKind(combinedLhs) === ExprKind.Der) {
+              const derTarget = extractDerName(combinedLhs, dae);
+              if (!derTarget || !initReferenced.has(`der(${derTarget})`)) {
+                continue;
+              }
+            }
+            initEquations.push({ lhs: combinedLhs, rhs: combinedRhs, source: "continuous" });
+          }
         }
       }
     }
@@ -613,6 +793,9 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
   for (const eq of initEquations) {
     collectExprVarNames(eq.lhs, dae, allReferenced);
     collectExprVarNames(eq.rhs, dae, allReferenced);
+  }
+  for (const r of allReferenced) {
+    if (r.startsWith("der(") && r.endsWith(")")) allDerRefs.add(r);
   }
 
   const unknowns = new Set<string>();
@@ -671,17 +854,23 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
   // If there are more unknowns than initialization equations (e.g. states without explicit
   // `fixed = true` and without corresponding `initial equation`s), fix state variables at
   // their `start` values unless they have an explicit `fixed = false` attribute.
+  // Prioritize fixing states that are NOT referenced (directly or via `der(x)`) in initial equations.
   if (unknowns.size > initEquations.length) {
-    for (const ref of allReferenced) {
-      if (unknowns.size <= initEquations.length) break;
-      if (ref.startsWith("der(") && ref.endsWith(")")) {
-        const stateName = ref.slice(4, -1);
-        if (unknowns.has(stateName)) {
-          const vIdx = dae.getVarIdxByName(stateName);
-          const hasExplicitFixedAttr = vIdx >= 0 && dae.getVarAttrExprId(vIdx, "fixed") !== undefined;
-          if (!hasExplicitFixedAttr) {
-            unknowns.delete(stateName);
-            knowns.add(stateName);
+    for (const allowInitConstrained of [false, true]) {
+      for (const ref of allDerRefs) {
+        if (unknowns.size <= initEquations.length) break;
+        if (ref.startsWith("der(") && ref.endsWith(")")) {
+          const stateName = ref.slice(4, -1);
+          if (!allowInitConstrained && (initReferenced.has(stateName) || initReferenced.has(ref))) {
+            continue;
+          }
+          if (unknowns.has(stateName)) {
+            const vIdx = dae.getVarIdxByName(stateName);
+            const hasExplicitFixedAttr = vIdx >= 0 && dae.getVarAttrExprId(vIdx, "fixed") !== undefined;
+            if (!hasExplicitFixedAttr) {
+              unknowns.delete(stateName);
+              knowns.add(stateName);
+            }
           }
         }
       }
@@ -1274,7 +1463,7 @@ function runSbbFallback(
     maxNodes: 500,
   });
 
-  if (sbbRes.objectiveValue < tol || sbbRes.optimal) {
+  if (sbbRes.objectiveValue < tol) {
     for (let i = 0; i < nSolve; i++) {
       const name = unknownNames[i]!;
       const nameId = unknownList[i]!;
@@ -1471,6 +1660,12 @@ export function solveImplicitBlock(
     }
   }
 
+  if (!converged) {
+    for (let i = 0; i < nSolve; i++) {
+      valuesByStringId[unknownList[i]!] = initialValuesSnapshot[i]!;
+    }
+  }
+
   result.converged = converged;
   return { converged, iterations: result.iterations, residualNorm: result.residualNorm };
 }
@@ -1522,8 +1717,8 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
           if (!blockRes.converged) allConverged = false;
         }
       }
-      if (allConverged) {
-        result.converged = true;
+      if (allConverged || initBlt.unknowns.size > 32) {
+        result.converged = allConverged;
         return result;
       }
     } else if (initBlt.unknowns.size === 0) {

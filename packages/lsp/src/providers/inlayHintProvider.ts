@@ -100,7 +100,7 @@ export function registerInlayHintProvider(context: LspContext) {
         }
 
         // 2. Inferred Causality/Flow Inlay Hint (e.g. `in` / `out`)
-        if (showVariabilityPrefixes || inlayCfg?.variabilityPrefixes === undefined) {
+        if (showVariabilityPrefixes) {
           const causality = sym.metadata?.causality;
           if (causality && (causality === "input" || causality === "output")) {
             hints.push({

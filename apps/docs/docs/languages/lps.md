@@ -1,11 +1,11 @@
 ---
-title: PipelineStudio (TGNET & TLNET) Simulation
-description: First-class support for Emerson PipelineStudio (.lps, .tgx, .tlx, .tgn, .tln) transient compressible gas hydraulics, line pack storage analytics, multi-product liquid batch tracking, and hydrogen blending.
+title: "PipelineStudio-Compatible Pipeline Simulation (.lps, .tgx, .tlx, .tgn, .tln)"
+description: "First-class support for Emerson PipelineStudio-compatible (.lps, .tgx, .tlx, .tgn, .tln) transient compressible gas hydraulics, line pack storage analytics, multi-product liquid batch tracking, and hydrogen blending."
 ---
 
-# PipelineStudio (LPS / TGNET & TLNET)
+# PipelineStudio-Compatible Pipeline Simulation (LPS / TGNET & TLNET)
 
-ModelScript provides first-class, polyglot support for **Emerson / Energy Solutions PipelineStudio**, including its dual simulation kernels:
+ModelScript provides first-class, polyglot support for **Emerson / Energy Solutions PipelineStudio-compatible** models, including its dual simulation kernels:
 
 - **TGNET** (_Transient Gas Network_): Compressible gas hydraulics, real-gas equations of state (AGA-8 Detailed Characterization & Peng-Robinson), line pack dynamics, compressor stations, gas heating value tracking, and hydrogen blending.
 - **TLNET** (_Transient Liquid Network_): Incompressible/liquid hydraulics, multi-product batch tracking (gasoline/diesel/jet fuel interfaces), transmix dispersion, pump stations, drag-reducing agents (DRA), and water hammer / acoustic surge analysis.

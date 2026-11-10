@@ -3,6 +3,7 @@
 // Assembles a static build of the ModelScript IDE for deployment to GitHub Pages.
 // The output directory (dist/static/) can be served by any static file server.
 
+import { createHash } from "crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { renderLandingPageHtml } from "./landing-page.js";
@@ -49,17 +50,17 @@ for (const fileName of ["index.html", "index-no-csp.html"]) {
   if (existsSync(webviewPrePath)) {
     let raw = readFileSync(webviewPrePath, "utf-8");
     raw = raw.replace(
-      /script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g,
-      "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
-    );
-    raw = raw.replace(
-      /script-src 'unsafe-inline' 'self'(?! https:\/\/static\.cloudflareinsights\.com)/g,
-      "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
-    );
-    raw = raw.replace(
       /if \((?:hostname === "localhost" \|\| hostname === "127\.0\.0\.1" \|\| )?(?:location\.origin === parentOrigin \|\| )?hostname === parentOriginHash/g,
       'if (hostname === "localhost" || hostname === "127.0.0.1" || location.origin === parentOrigin || hostname === parentOriginHash',
     );
+    const scriptMatch = raw.match(/<script\b[^>]*>([\s\S]*?)<\/script>/);
+    if (scriptMatch && scriptMatch[1]) {
+      const newHash = createHash("sha256").update(scriptMatch[1], "utf8").digest("base64");
+      raw = raw.replace(
+        /script-src (?:'sha256-[A-Za-z0-9+/=]+'|'unsafe-inline') 'self'(?: https:\/\/static\.cloudflareinsights\.com; connect-src 'self' https:\/\/cloudflareinsights\.com https:\/\/\*\.cloudflareinsights\.com)?/g,
+        `script-src 'sha256-${newHash}' 'self'`,
+      );
+    }
     writeFileSync(webviewPrePath, raw, "utf-8");
   }
 }
@@ -216,6 +217,38 @@ function renderStaticWorkbench(): string {
         "*.st": "plcopen",
         "*.sbml": "sbml",
         "*.r5": "relap5",
+        "*.oscal": "oscal",
+        "*.oscal.json": "oscal",
+        "*.oscal.xml": "oscal",
+        "*.oscal.yaml": "oscal",
+        "*.oscal.yml": "oscal",
+        "*.dcm.json": "dicom-rt",
+        "*.rtplan.json": "dicom-rt",
+        "*.rtdose.json": "dicom-rt",
+        "*.rtstruct.json": "dicom-rt",
+        "*.igtl": "igtl",
+        "*.igtl.json": "igtl",
+        "*.igtl.xml": "igtl",
+        "*.nii.json": "nifti",
+        "*.nrrd": "nifti",
+        "*.qif": "qif",
+        "*.qif.xml": "qif",
+        "*.qif.json": "qif",
+        "*.ocpp": "ocpp",
+        "*.ocpp.json": "ocpp",
+        "*.oadr": "openadr",
+        "*.oadr.xml": "openadr",
+        "*.oadr.json": "openadr",
+        "*.oadr.yaml": "openadr",
+        "*.aml": "automationml",
+        "*.amlx": "automationml",
+        "*.osim": "opensim",
+        "*.feb": "febio",
+        "*.cellml": "cellml",
+        "*.sedml": "sedml",
+        "*.sbol": "sbol",
+        "*.3mf": "three-mf",
+        "*.amf": "three-mf",
       },
     },
   };
@@ -294,7 +327,39 @@ function renderStaticWorkbench(): string {
     "*.plcopen": "plcopen",
     "*.st": "plcopen",
     "*.sbml": "sbml",
-    "*.r5": "relap5"
+    "*.r5": "relap5",
+    "*.oscal": "oscal",
+    "*.oscal.json": "oscal",
+    "*.oscal.xml": "oscal",
+    "*.oscal.yaml": "oscal",
+    "*.oscal.yml": "oscal",
+    "*.dcm.json": "dicom-rt",
+    "*.rtplan.json": "dicom-rt",
+    "*.rtdose.json": "dicom-rt",
+    "*.rtstruct.json": "dicom-rt",
+    "*.igtl": "igtl",
+    "*.igtl.json": "igtl",
+    "*.igtl.xml": "igtl",
+    "*.nii.json": "nifti",
+    "*.nrrd": "nifti",
+    "*.qif": "qif",
+    "*.qif.xml": "qif",
+    "*.qif.json": "qif",
+    "*.ocpp": "ocpp",
+    "*.ocpp.json": "ocpp",
+    "*.oadr": "openadr",
+    "*.oadr.xml": "openadr",
+    "*.oadr.json": "openadr",
+    "*.oadr.yaml": "openadr",
+    "*.aml": "automationml",
+    "*.amlx": "automationml",
+    "*.osim": "opensim",
+    "*.feb": "febio",
+    "*.cellml": "cellml",
+    "*.sedml": "sedml",
+    "*.sbol": "sbol",
+    "*.3mf": "three-mf",
+    "*.amf": "three-mf"
   };
   if (hash.startsWith('memfs')) {
     var rawSpec = hash.split(':')[1] || 'empty';
@@ -376,12 +441,46 @@ function renderStaticWorkbench(): string {
     }
   }
 
+  function checkOriginAllowed(origin) {
+    if (!origin || origin === 'null') return false;
+    try {
+      var u = new URL(origin);
+      if (u.origin === window.location.origin) return true;
+      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]') return true;
+      var defaults = (config && config.configurationDefaults) || {};
+      var airgapped = Boolean(defaults['modelscript.network.airgapped']);
+      var trustedList = Array.isArray(defaults['modelscript.security.trustedOrigins'])
+        ? defaults['modelscript.security.trustedOrigins']
+        : [];
+      for (var i = 0; i < trustedList.length; i++) {
+        var entry = String(trustedList[i] || '').trim().replace(/\\/+$/, '');
+        if (!entry) continue;
+        if (entry === u.origin) return true;
+        if (entry.indexOf('*.') === 0 && (u.hostname === entry.slice(2) || u.hostname.endsWith('.' + entry.slice(2)))) return true;
+        if (entry.indexOf('https://*.') === 0 && u.protocol === 'https:' && (u.hostname === entry.slice(10) || u.hostname.endsWith('.' + entry.slice(10)))) return true;
+      }
+      if (airgapped) return false;
+      if (u.protocol === 'https:' && (
+        u.hostname === 'modelscript.org' || u.hostname.endsWith('.modelscript.org') ||
+        u.hostname === 'ansatz.social' || u.hostname.endsWith('.ansatz.social')
+      )) return true;
+    } catch(e) {}
+    return false;
+  }
+
+  var targetOrigin = window.location.origin;
+  try {
+    if (document.referrer && checkOriginAllowed(document.referrer)) {
+      targetOrigin = new URL(document.referrer).origin;
+    }
+  } catch(e) {}
+
   try {
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, targetOrigin);
     }
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+      window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, targetOrigin);
     }
   } catch (e) {}
 
@@ -396,7 +495,7 @@ function renderStaticWorkbench(): string {
   }
 
   window.addEventListener('message', function(ev) {
-    if (ev.origin !== window.location.origin && !ev.origin.endsWith('.modelscript.org')) return;
+    if (!checkOriginAllowed(ev.origin)) return;
     handleIncomingBridgeData(ev.data);
   });
 })();
@@ -446,7 +545,7 @@ writeFileSync(
             { key: "Access-Control-Allow-Origin", value: "*" },
             { key: "Access-Control-Allow-Private-Network", value: "true" },
             { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
-            { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+            { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
             { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
           ],
         },

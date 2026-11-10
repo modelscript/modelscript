@@ -226,6 +226,38 @@ export function VerificationApp() {
           </span>
         ),
       },
+      {
+        key: "actions",
+        header: "3D Witness",
+        render: (item) =>
+          item.status === "Failed" && item.violationTime !== undefined ? (
+            <button
+              onClick={() =>
+                vscode?.postMessage({
+                  type: "focusViolationIn3D",
+                  contractId: item.id,
+                  time: item.violationTime,
+                  lhsName: item.lhsName,
+                })
+              }
+              style={{
+                background: "rgba(239, 68, 68, 0.18)",
+                color: "#f87171",
+                border: "1px solid #ef4444",
+                borderRadius: "3px",
+                padding: "2px 6px",
+                fontSize: "10px",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+              title="Focus counterexample witness in 3D viewport"
+            >
+              🎯 Focus in 3D
+            </button>
+          ) : (
+            <span style={{ opacity: 0.4 }}>—</span>
+          ),
+      },
     ];
   }, []);
 

@@ -51,3 +51,29 @@ description: "@modelscript/optical (languages/optical) provides Telcordia GR-196
 - Evaluates ITU-T G.8275.1 time error budgets ($cTE \le 5\text{ ns}$ per hop, $dTE$, MTIE, and TDEV).
 - Validates 3GPP 5G TDD base station synchronization ($\pm 1.5\ \mu\text{s}$) and intra-cluster CoMP alignment ($\le 130\text{ ns}$).
 - Models local oscillator phase drift during GNSS outages (OCXO, DOCXO, Rubidium, CSAC).
+
+---
+
+## Pre-Flight Optical Transport Lint Rules
+
+<LintRules lang="optical" />
+
+---
+
+## CLI Usage (`msx optical`)
+
+```bash
+# Inspect Telcordia .sor OTDR trace events or OpenROADM network topology
+msx optical inspect trace.sor
+msx optical otdr trace.sor
+
+# Solve multi-span DWDM GSNR, OSNR, and Shannon capacity
+msx optical gsnr --distance=320 --span-len=80 --baud=64 --power=0.0 --edfa-nf=5.5
+
+# Run static pre-flight optical transport lint rules
+msx optical lint network.json
+
+# Lower dynamic EDFA gain saturation ODEs to the linear-memory DAE arena
+msx optical to-dae network.json --out=optical.dae
+```
+

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { computeMeshVolumeAndArea, computeProjectedFrontalArea, ManifoldWorker } from "@modelscript/cad";
 import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
-import { ScadEvaluator } from "@modelscript/scad";
 import { CodeLens, Range } from "vscode-languageserver";
 import { type LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import { CadMetricsService } from "../services/cad-metrics-service.js";
 import { findCstNodesByType } from "../utils/ast-utils.js";
+
+const defaultCadMetricsService = new CadMetricsService();
 
 function resolveDigitalTwinLens(
   context: LspContext,
@@ -123,11 +124,7 @@ export function registerCodeLensProvider(context: LspContext) {
         ? "all"
         : rawVerif === "off" || rawVerif === false
           ? "off"
-          : rawVerif === "problemsOnly"
-            ? "problemsOnly"
-            : features.formalVerification
-              ? "all"
-              : "problemsOnly";
+          : "problemsOnly";
     const showVerification =
       verificationMode !== "off" && (features.formalVerification || rawVerif === true || rawVerif === "all");
     const showPolyglotLinks = (codeLensCfg?.polyglotLinks ?? features.digitalThread) && features.digitalThread;
@@ -326,7 +323,7 @@ export function registerCodeLensProvider(context: LspContext) {
                   proof.definiteBugs[0] ??
                   proof.potentialBugs[0];
 
-                let loopTitle: string;
+                let loopTitle: string | undefined;
                 if (loopBug) {
                   if (loopBug.category === "array_out_of_bounds") {
                     const w = loopBug.witnessValues;
@@ -335,20 +332,24 @@ export function registerCodeLensProvider(context: LspContext) {
                   } else {
                     loopTitle = `⚠ Formal Proof: ${loopBug.description}`;
                   }
-                } else if (proof.isCertifiedSafe) {
-                  loopTitle = "✓ Loop Formally Verified (Safe Bounds)";
-                } else {
-                  loopTitle = "✓ Loop Invariants Verified";
+                } else if (verificationMode === "all") {
+                  if (proof.isCertifiedSafe) {
+                    loopTitle = "✓ Loop Formally Verified (Safe Bounds)";
+                  } else {
+                    loopTitle = "✓ Loop Invariants Verified";
+                  }
                 }
 
-                lenses.push({
-                  range: loopRange,
-                  command: {
-                    title: loopTitle,
-                    command: "modelscript.showProofDetails",
-                    arguments: [uri, name, proof.formattedMatrix],
-                  },
-                });
+                if (loopTitle) {
+                  lenses.push({
+                    range: loopRange,
+                    command: {
+                      title: loopTitle,
+                      command: "modelscript.showProofDetails",
+                      arguments: [uri, name, proof.formattedMatrix],
+                    },
+                  });
+                }
               }
             }
 
@@ -537,7 +538,7 @@ export function registerCodeLensProvider(context: LspContext) {
                 proof.definiteBugs[0] ??
                 proof.potentialBugs[0];
 
-              let loopTitle: string;
+              let loopTitle: string | undefined;
               if (loopBug) {
                 if (loopBug.category === "array_out_of_bounds") {
                   const w = loopBug.witnessValues;
@@ -546,20 +547,24 @@ export function registerCodeLensProvider(context: LspContext) {
                 } else {
                   loopTitle = `⚠ Formal Proof: ${loopBug.description}`;
                 }
-              } else if (proof.isCertifiedSafe) {
-                loopTitle = "✓ Loop Formally Verified (Safe Bounds)";
-              } else {
-                loopTitle = "✓ Loop Invariants Verified";
+              } else if (verificationMode === "all") {
+                if (proof.isCertifiedSafe) {
+                  loopTitle = "✓ Loop Formally Verified (Safe Bounds)";
+                } else {
+                  loopTitle = "✓ Loop Invariants Verified";
+                }
               }
 
-              lenses.push({
-                range: loopRange,
-                command: {
-                  title: loopTitle,
-                  command: "modelscript.showProofDetails",
-                  arguments: [uri, currentClassName, proof.formattedMatrix],
-                },
-              });
+              if (loopTitle) {
+                lenses.push({
+                  range: loopRange,
+                  command: {
+                    title: loopTitle,
+                    command: "modelscript.showProofDetails",
+                    arguments: [uri, currentClassName, proof.formattedMatrix],
+                  },
+                });
+              }
             }
           }
 
@@ -897,34 +902,26 @@ export function registerCodeLensProvider(context: LspContext) {
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
         if (showCadMetrics) {
-          let metricsTitle: string | undefined;
           const threadEntries = context.workspaceManager?.getThreadsForUri?.(uri) ?? [];
           const threadMeta = threadEntries.find((e: any) => e.domain === "cad")?.meta ?? threadEntries[0]?.meta;
           const frontalArea = threadMeta?.properties?.["frontalArea"];
           const mass = threadMeta?.properties?.["mass"];
-          if (frontalArea !== undefined && mass !== undefined) {
-            metricsTitle = `📐 Frontal Area: A = ${Number(frontalArea).toFixed(3)} m² | Estimated Mass: ${Number(mass).toFixed(2)} kg`;
-          }
+          const threadFallback =
+            frontalArea !== undefined && mass !== undefined
+              ? { frontalArea: Number(frontalArea), mass: Number(mass) }
+              : undefined;
+
           const treeEntry = (context as any).documentManager?.documentTrees?.get(uri);
           const rootNode = treeEntry?.tree?.rootNode;
-          if (rootNode) {
-            try {
-              const evaluator = new ScadEvaluator();
-              const solid = evaluator.evaluate(rootNode);
-              if (solid) {
-                const mesh = ManifoldWorker.evaluateSolid(solid);
-                const { volume } = computeMeshVolumeAndArea(mesh);
-                const frontalAreaMm2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
-                const frontalAreaM2 = frontalAreaMm2 * 1e-6;
-                const densityMatch = /\/\/\s*@density\s*:\s*([0-9.eE+-]+)/i.exec(text);
-                const densityKgM3 = densityMatch ? parseFloat(densityMatch[1]!) : 2700;
-                const massKg = volume * 1e-9 * densityKgM3;
-                metricsTitle = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
-              }
-            } catch {
-              // Ignore live CSG evaluation failures in CodeLens
-            }
-          }
+
+          const cadService = context.cadMetricsService ?? defaultCadMetricsService;
+          const metricsTitle = cadService.getOrSchedule(
+            uri,
+            text,
+            rootNode,
+            context.connection,
+            threadFallback,
+          );
           if (metricsTitle) {
             lenses.push({
               range: headerRange,

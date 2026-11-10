@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { SimulationPanel } from "../simulation-panel.js";
+import { detectLanguageIdFromUri, extractModelNameFromText } from "./simulation-controller.js";
 
 const STATIC_ACTION_COMMANDS = new Set([
   "modelscript.modelica.simulate",
@@ -238,11 +239,12 @@ export async function registerDynamicActions(
     const actions = await client.sendRequest<DynamicActionDescriptor[]>("modelscript/listActions", {});
     if (!Array.isArray(actions)) return;
 
+    const registeredGenericActionIds = new Set<string>();
     for (const action of actions) {
       if (!action.id) continue;
       try {
         const cmdId = `modelscript.action.${action.id}`;
-        const handler = async (args?: ActionCommandArgs) => {
+        const createHandler = (forcedLanguageId?: string) => async (args?: ActionCommandArgs) => {
           const targetDoc = vscode.window.activeTextEditor?.document;
           let targetUri =
             (typeof args === "string" ? args : args instanceof vscode.Uri ? args.toString() : args?.uri) ??
@@ -273,9 +275,8 @@ export async function registerDynamicActions(
             }
           }
           if (!inputs.name && inputs.documentText) {
-            const text = inputs.documentText;
-            const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) inputs.name = m[1];
+            const extractedName = extractModelNameFromText(inputs.documentText, targetUri);
+            if (extractedName) inputs.name = extractedName;
           }
           if (action.id === "open_diagram" || action.id === "diagram" || action.id === "openDiagram") {
             return await vscode.commands.executeCommand("modelscript.openDiagram", args);
@@ -333,6 +334,20 @@ export async function registerDynamicActions(
             return await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", args);
           }
 
+          const docLang =
+            targetDoc?.languageId &&
+            targetDoc.languageId !== "plaintext" &&
+            targetDoc.languageId !== "json" &&
+            targetDoc.languageId !== "xml" &&
+            targetDoc.languageId !== "yaml"
+              ? targetDoc.languageId
+              : undefined;
+          const resolvedLangId =
+            forcedLanguageId ??
+            docLang ??
+            (targetUri ? detectLanguageIdFromUri(targetUri) : undefined) ??
+            action.languageId;
+
           return await vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.Notification,
@@ -345,7 +360,7 @@ export async function registerDynamicActions(
                 {
                   actionId: action.id,
                   uri: targetUri,
-                  languageId: action.languageId ?? targetDoc?.languageId,
+                  languageId: resolvedLangId,
                   inputs,
                 },
               );
@@ -374,7 +389,7 @@ export async function registerDynamicActions(
                     comtrade: resObj?.comtrade ?? resObj?.simulationResult?.comtrade,
                     pscadOut: resObj?.pscadOut ?? resObj?.simulationResult?.pscadOut,
                     projectName:
-                      resObj?.project ?? (inputs.name as string | undefined) ?? action.languageId ?? "simulation",
+                      resObj?.project ?? (inputs.name as string | undefined) ?? resolvedLangId ?? "simulation",
                   },
                   targetUri || "",
                   client,
@@ -387,11 +402,17 @@ export async function registerDynamicActions(
                   ? "modelica"
                   : action.id.includes("sysml")
                     ? "sysml2"
-                    : action.id.includes("ssp")
+                    : action.id.includes("ssp") || action.id.includes("sbml") || action.id.includes("reqif")
                       ? "xml"
                       : action.id.includes("spice")
                         ? "spice"
-                        : "plaintext";
+                        : action.id.includes("urdf")
+                          ? "xml"
+                          : action.id.includes("scad")
+                            ? "scad"
+                            : action.id.includes("step")
+                              ? "step"
+                              : "plaintext";
                 const doc = await vscode.workspace.openTextDocument({ content: res, language: langHint });
                 await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
                 return res;
@@ -443,6 +464,10 @@ export async function registerDynamicActions(
                   vscode.window.showInformationMessage(
                     `${action.title ?? action.id}: Lowered to DAE (${resObj.variableCount} variables, ${resObj.equationCount} equations).`,
                   );
+                } else if (typeof resObj["varCount"] === "number" && typeof resObj["eqCount"] === "number") {
+                  vscode.window.showInformationMessage(
+                    `${action.title ?? action.id}: Lowered to DAE (${resObj["varCount"]} variables, ${resObj["eqCount"]} equations).`,
+                  );
                 } else if (typeof resObj.compliant === "boolean" || typeof resObj.passed === "boolean") {
                   const ok = resObj.compliant ?? resObj.passed;
                   vscode.window.showInformationMessage(`${action.title ?? action.id}: ${ok ? "✓ PASS" : "✗ FAIL"}`);
@@ -462,13 +487,14 @@ export async function registerDynamicActions(
           );
         };
 
-        if (!STATIC_ACTION_COMMANDS.has(cmdId)) {
-          context.subscriptions.push(safeRegisterCommand(cmdId, handler));
+        if (!STATIC_ACTION_COMMANDS.has(cmdId) && !registeredGenericActionIds.has(cmdId)) {
+          registeredGenericActionIds.add(cmdId);
+          context.subscriptions.push(safeRegisterCommand(cmdId, createHandler(undefined)));
         }
         if (action.languageId) {
           const langCmdId = `modelscript.${action.languageId}.${action.id}`;
           if (!STATIC_ACTION_COMMANDS.has(langCmdId)) {
-            context.subscriptions.push(safeRegisterCommand(langCmdId, handler));
+            context.subscriptions.push(safeRegisterCommand(langCmdId, createHandler(action.languageId)));
           }
         }
       } catch (actionErr) {

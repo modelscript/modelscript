@@ -20,7 +20,7 @@ import {
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CaeCloudClient } from "./cae-cloud-client.js";
-import { isFeatureEnabled } from "./utils/config.js";
+import { getCloudApiUrl, isFeatureEnabled } from "./utils/config.js";
 import { exportCfdResultToVtu } from "./utils/vtu-exporter.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
@@ -647,7 +647,10 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
         case "runCloudCfd":
           try {
             webviewPanel.webview.postMessage({ type: "setLoading", data: true });
-            const cloudClient = new CaeCloudClient();
+            const cloudCfg = vscode.workspace.getConfiguration("modelscript.cloud");
+            const cloudUrl = getCloudApiUrl();
+            const cloudToken = cloudCfg.get<string>("authToken") || cloudCfg.get<string>("apiKey");
+            const cloudClient = new CaeCloudClient(cloudUrl, cloudToken);
             const text = document.getText();
             const fileName = document.uri.path.split("/").pop() || "config.cfg";
             const { jobId } = await cloudClient.submitJob({

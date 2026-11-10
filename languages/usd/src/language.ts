@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
+import { lowerUsdToDae } from "./dae/usd-to-dae.js";
+import { lintUsdStage } from "./lints/index.js";
+import { parseUsd } from "./parser/index.js";
 
 /**
  * DSL language specification for OpenUSD (.usd, .usda, .usdz) scene description.
@@ -12,6 +15,38 @@ export const usdLanguage = language({
   lsp: {
     fileExtensions: [".usd", ".usda", ".usdz"],
   },
+
+  actions: [
+    {
+      id: "usd_lint",
+      title: "Lint OpenUSD Stage",
+      description: "Validates OpenUSD UsdPhysics rigid bodies, joints, mass tensors, and scene hierarchy.",
+      category: "verify",
+      execute: async (ctx: { documentText?: string | undefined }, params?: { documentText?: string | undefined }) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return [];
+        const stage = parseUsd(text);
+        return lintUsdStage(stage);
+      },
+    },
+    {
+      id: "usd_to_dae",
+      title: "Lower UsdPhysics Stage to DAE",
+      description: "Lowers OpenUSD UsdPhysics rigid bodies and joints into ModelScript's linear-memory DAEBuilder arena.",
+      category: "transform",
+      execute: async (ctx: { documentText?: string | undefined }, params?: { documentText?: string | undefined }) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const stage = parseUsd(text);
+        const dae = lowerUsdToDae(stage);
+        return {
+          modelName: stage.metadata.defaultPrim || "UsdPhysicsStage",
+          variableCount: dae.variables().length,
+          equationCount: dae.equations().length,
+        };
+      },
+    },
+  ],
 
   rules: {
     Stage: ($) => seq(choice($.Header, ""), repeat(choice($.PrimDef, $.Comment, $.MetadataAssignment))),

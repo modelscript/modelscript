@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { exportAwwaM36Csv } from "@modelscript/epanet";
 import { DownloadIcon, GraphIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import styled from "styled-components";
@@ -231,6 +232,48 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleExportCsv = () => {
+    const csvContent = exportAwwaM36Csv(
+      {
+        systemInputVolumeM3Year: activeReport.systemInputVolumeM3,
+        authorizedConsumptionM3Year: activeReport.authorizedConsumptionM3,
+        waterLossesM3Year: activeReport.apparentLossesM3 + activeReport.realLossesM3,
+        apparentLossesM3Year: activeReport.apparentLossesM3,
+        realLossesM3Year: activeReport.realLossesM3,
+        nonRevenueWaterM3Year: activeReport.apparentLossesM3 + activeReport.realLossesM3,
+        nonRevenueWaterPct:
+          ((activeReport.apparentLossesM3 + activeReport.realLossesM3) / Math.max(1, activeReport.systemInputVolumeM3)) *
+          100,
+        carlM3Year: (activeReport.carlLitersPerConnDay * activeReport.serviceConnections * 365) / 1000,
+        uarlM3Year: (activeReport.uarlLitersPerConnDay * activeReport.serviceConnections * 365) / 1000,
+        ili: activeReport.ili,
+        performanceBand: activeReport.iliBand.replace("Band ", "") as "A" | "B" | "C" | "D",
+        financialImpact: {
+          realLossCostUsd: activeReport.annualLossCostUsd - activeReport.recoverableRevenueUsd,
+          apparentLossRevenueLostUsd: activeReport.recoverableRevenueUsd,
+          totalAnnualLossUsd: activeReport.annualLossCostUsd,
+        },
+        networkStats: {
+          totalMainsLengthKm: activeReport.totalMainsLengthKm,
+          avgSystemPressureM: (activeReport.averagePressurePsi * 0.7032496),
+          serviceConnectionsCount: activeReport.serviceConnections,
+        },
+      },
+      {
+        utilityName: activeReport.utilityName,
+        reportingYear: activeReport.auditYear,
+      },
+    );
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `awwa-m36-audit-${activeReport.utilityName.replace(/\s+/g, "_").toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <CardContainer $isDark={isDark} data-testid="awwa-m36-water-loss-card">
       <HeaderRow>
@@ -249,6 +292,10 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
             {activeReport.iliBand} (ILI {activeReport.ili.toFixed(2)})
           </BandBadge>
           <ActionButtons>
+            <ActionBtn type="button" onClick={handleExportCsv} title="Export AWWA CSV Audit">
+              <DownloadIcon size={14} />
+              CSV
+            </ActionBtn>
             <ActionBtn type="button" onClick={handleExport} title="Export JSON Audit">
               <DownloadIcon size={14} />
               JSON

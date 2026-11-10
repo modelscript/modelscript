@@ -8,8 +8,8 @@ export {
   type PeerPresence as CollaborationPeerPresence,
   type SymbolEditCollision,
   type SymbolSpan,
-  type TextEditOperation,
 } from "./collaboration-session.js";
+export * from "./cad-metrics-service.js";
 export * from "./diagram-service.js";
 export * from "./document-manager.js";
 export * from "./hierarchy-service.js";

@@ -342,4 +342,74 @@ COMPONENTS:
       "Expected --language cfd to only lint .cfg files",
     );
   });
+
+  it("lints utility sector files: HEC-RAS (.g01), MODFLOW (.dis), and GTFS (.gtfs)", async () => {
+    const hecFile = path.join(scratchDir, "bad_reach.g01");
+    fs.writeFileSync(
+      hecFile,
+      `Geom Title=Bad Manning
+River Reach=River1,Reach1
+Type RM CEM CS= 1 ,1000 , ,
+Station Elevation Data= 3
+0, 100 20, 90 40, 100
+Cross Section Reach Lengths and Manning Values=
+200, 200, 200, 3, 0.50, 0.03, 0.03, 0, 0
+Bank Sta=0,40
+`,
+      "utf-8",
+    );
+    const { diags: hecDiags } = await runLintJson({ path: hecFile });
+    assert.ok(
+      hecDiags.some((d) => d.code === "M3002"),
+      `Expected M3002 Manning roughness out of bounds, got ${JSON.stringify(hecDiags)}`,
+    );
+
+    const modflowFile = path.join(scratchDir, "bad_aquifer.dis");
+    fs.writeFileSync(
+      modflowFile,
+      `BEGIN DIS6
+  NLAY 1
+  NROW 2
+  NCOL 2
+  DELR 100.0
+  DELC 100.0
+  TOP 50.0
+  BOTM 20.0
+END DIS6
+BEGIN NPF6
+  K -5.0
+END NPF6
+`,
+      "utf-8",
+    );
+    const { diags: mfDiags } = await runLintJson({ path: modflowFile });
+    assert.ok(
+      mfDiags.some((d) => d.code === "M3001"),
+      `Expected M3001 invalid hydraulic conductivity, got ${JSON.stringify(mfDiags)}`,
+    );
+
+    const gtfsFile = path.join(scratchDir, "bad_transit.gtfs");
+    fs.writeFileSync(
+      gtfsFile,
+      `# STOPS
+stop_id,stop_name,stop_lat,stop_lon
+STOP_A,Station A,37.7,-122.4
+# ROUTES
+route_id,route_short_name,route_long_name,route_type
+ROUTE_1,1,Main Line,3
+# TRIPS
+route_id,service_id,trip_id,shape_id
+ROUTE_MISSING,WEEKDAY,TRIP_ERR,SHAPE_1
+# STOP_TIMES
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+TRIP_ERR,08:10:00,08:10:30,STOP_A,1
+`,
+      "utf-8",
+    );
+    const { diags: gtfsDiags } = await runLintJson({ path: gtfsFile });
+    assert.ok(
+      gtfsDiags.some((d) => d.code === "M2002"),
+      `Expected M2002 route not found in GTFS, got ${JSON.stringify(gtfsDiags)}`,
+    );
+  });
 });

@@ -136,11 +136,45 @@ Implemented in `TaylorModel` (`packages/runtime/src/analysis/wasm_taylor_model.t
 
 ---
 
+## 8. Pseudo-Arclength Continuation (PALC) & Hopf Bifurcation Analysis (`bifurcation.ts`)
+
+### Academic Citations
+
+- **Keller, H. B. (1977)**. _"Numerical solution of bifurcation and nonlinear eigenvalue problems."_  
+  In _Applications of Bifurcation Theory_, Academic Press, pp. 359–384.
+- **Kuznetsov, Y. A. (2004)**. _Elements of Applied Bifurcation Theory_ (3rd ed.).  
+  **Springer Applied Mathematical Sciences**, Vol. 112. DOI: [10.1007/978-1-4757-3978-7](https://doi.org/10.1007/978-1-4757-3978-7)
+
+### ModelScript Rationale & Modifications
+
+Implemented in `runBifurcationContinuation` (`packages/simulate/src/solvers/bifurcation.ts` and `msx bifurcation`), this engine traces nonlinear equilibrium manifolds $f(x, \mu) = 0$ past fold turning points (voltage collapse nose curves, snap-through buckling, thermal runaway) where standard parameter stepping fails due to singular $f_x$:
+
+- **Bordered Arclength Parameterization**: Augments $f(x, \mu) = 0$ with the pseudo-arclength hyperplane constraint $\dot{x}_0^T (x - x_0) + \dot{\mu}_0 (\mu - \mu_0) - \Delta s = 0$, solving the nonsingular $(n + 1) \times (n + 1)$ bordered Newton-Raphson system at each step $\Delta s$.
+- **Saddle-Node (Fold) & Hopf Bifurcation Localization**: Monitors the sign of $\dot{\mu}$ and real parts of complex-conjugate eigenvalues $\lambda = \alpha(\mu) \pm i \omega(\mu)$ of the state Jacobian $J_x = \partial f / \partial x$ (via `eigenvaluesQR`), localizing exact Saddle-Node turning points ($\det J_x = 0$) and oscillatory Hopf instability boundaries ($\alpha(\mu^*) = 0, \omega(\mu^*) > 0$).
+
+---
+
+## 9. WebGPU Batched $N-1$ Contingency & Transient Stability Screener (`contingency-screener.ts`)
+
+### Academic Citations
+
+- **Pavella, M., Ernst, D., & Ruiz-Vega, D. (2000)**. _Transient Stability of Power Systems: A Unified Approach to Assessment and Control_.  
+  **Springer**. DOI: [10.1007/978-1-4615-4319-0](https://doi.org/10.1007/978-1-4615-4319-0) _(Single Machine Equivalent — SIME)_
+
+### ModelScript Rationale & Modifications
+
+Implemented in `WebGpuContingencyScreener` (`packages/simulate/src/webgpu/contingency-screener.ts`), this engine screens hundreds of $N-1$ transmission branch outages and 3-phase fault-clearing sequences concurrently:
+
+- **WGSL Compute-Shader Parallel Rollout**: Encodes all $K$ contingency reduced admittance matrices $Y_{\text{red}}^{(k)}$ into packed `Float32Array` storage buffers and dispatches a single WGSL compute shader (`@workgroup_size(64)`) that integrates the multi-machine classical swing equations $2 H_i \ddot{\delta}_i + D_i \dot{\delta}_i = P_{m,i} - P_{e,i}^{(k)}(\boldsymbol{\delta})$ via 4th-order Runge-Kutta across pre-fault, fault-on, and post-fault stages.
+- **SIME Stability Margin & CPU Fallback**: Computes maximum Center-of-Inertia (COI) rotor angle separation $\Delta\delta_{\max}$, transient stability margin $\eta = (180^\circ - \Delta\delta_{\max}) / 180^\circ$, and minimum bus voltage dip envelopes, with an identical deterministic TypeScript CPU fallback for headless CI runners.
+
+---
+
 ## Upstream & Downstream Pipeline Connections
 
 - **Upstream Inputs**:
   - DAE blocks partitioned and torn by [`BltEngine`](./blt.md) and [`TornBlock`](./tearing.md).
   - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./surrogates-linear-algebra.md).
 - **Downstream Consumers**:
-  - Powers `msx simulate`, `msx optimize`, and the Studio charting canvas.
+  - Powers `msx simulate`, `msx bifurcation`, `msx psse contingency`, `msx optimize`, and the Studio charting canvas.
   - Feeds state trajectories and validated flowpipes into [`Signal Temporal Logic (STL) Monitor & Theory Coordinator`](./theory-coordinator.md) and formal verification oracles.

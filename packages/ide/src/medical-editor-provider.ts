@@ -471,10 +471,12 @@ export class OpenSimEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenSim Musculoskeletal Biomechanics Workbench</title>
   <style>
@@ -502,7 +504,7 @@ export class OpenSimEditorProvider extends BaseCustomEditorProvider {
   <div id="kinematicBox" class="svg-box"></div>
   <div id="muscleBox" class="svg-box"></div>
   <div id="projectionsBox" class="code-box"></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.getElementById('btnExportModelica').addEventListener('click', () => vscode.postMessage({ type: 'exportModelica' }));
     document.getElementById('btnExportUrdf').addEventListener('click', () => vscode.postMessage({ type: 'exportUrdf' }));
@@ -636,10 +638,12 @@ export class DicomRtEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DICOM-RT Radiation Oncology &amp; Dosimetry Workbench</title>
   <style>
@@ -667,7 +671,7 @@ export class DicomRtEditorProvider extends BaseCustomEditorProvider {
   <div id="dvhBox" class="svg-box"></div>
   <div id="bevBox" class="svg-box"></div>
   <div id="projectionsBox" class="code-box"></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.getElementById('btnExportScad').addEventListener('click', () => vscode.postMessage({ type: 'exportScad' }));
     document.getElementById('btnExportSysML2').addEventListener('click', () => vscode.postMessage({ type: 'exportSysML2' }));
@@ -797,10 +801,12 @@ export class IgtlEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenIGTLink &amp; PLUS Surgical Navigation Workbench</title>
   <style>
@@ -828,7 +834,7 @@ export class IgtlEditorProvider extends BaseCustomEditorProvider {
   <div id="transformBox" class="svg-box"></div>
   <div id="pivotBox" class="svg-box"></div>
   <div id="projectionsBox" class="code-box"></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.getElementById('btnExportUrdf').addEventListener('click', () => vscode.postMessage({ type: 'exportUrdf' }));
     document.getElementById('btnExportModelica').addEventListener('click', () => vscode.postMessage({ type: 'exportModelica' }));

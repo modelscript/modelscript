@@ -177,6 +177,31 @@ ModelScript provides two complementary calibration engines for offline test-stan
 - **Probabilistic RUL Quantiles**: Given current damage $D(t) \in [0, D_{\text{crit}}]$ and operational duty-cycle load variability $\sigma_{\text{load}}$, projects log-normal survival quantiles:
   $$\text{RUL}_{P50} = \frac{D_{\text{crit}} - D(t)}{\dot{D}(\sigma_{\text{duty}})}, \qquad \text{RUL}_{P10} = \text{RUL}_{P50} \exp(-1.28155 \, \sigma_{\text{load}}), \qquad \text{RUL}_{P90} = \text{RUL}_{P50} \exp(+1.28155 \, \sigma_{\text{load}})$$
 
+### 5. Subsurface PKN Hydraulic Fracturing & ISIP Real-Time Digital Twin (`hydraulic-fracturing.ts`)
+
+`HydraulicFracturingDigitalTwin` couples wellhead treating pressure, slurry flow rate, and proppant concentration telemetry with Perkins-Kern-Nordgren (PKN) fracture mechanics and Nolte $G$-function pressure falloff analysis:
+
+- **Eaton Breakdown & Fracture Gradient**: Computes formation breakdown pressure $P_{\text{bd}} = 3 \sigma_{h,\min} - \sigma_{H,\max} - P_p + T_0$ and instantaneous shut-in pressure $\text{ISIP} = P_{\text{wh,shut-in}} + P_{\text{hydrostatic}}$ (`msx frac`).
+- **PKN Fracture Aperture & Screenout Risk Index**: Tracks maximum wellbore fracture width $w_0 \propto \left(\frac{\mu Q L}{E'}\right)^{1/4}$ and evaluates real-time proppant bridging / tip screenout risk when net pressure slope $d\log(\Delta p_{\text{net}})/d\log(t) \ge 1$.
+
+---
+
+## 8. Shift-and-Invert Sparse Arnoldi Krylov Eigensolver (`sparse_arnoldi.ts`)
+
+### Academic Citations
+
+- **Lehoucq, R. B., Sorensen, D. C., & Yang, C. (1998)**. _ARPACK Users' Guide: Solution of Large-Scale Eigenvalue Problems with Implicitly Restarted Arnoldi Methods_.  
+  **SIAM**. DOI: [10.1137/1.9780898719628](https://doi.org/10.1137/1.9780898719628)
+- **Daniel, J. W., Gragg, W. B., Kaufman, L., & Stewart, G. W. (1976)**. _"Reorthogonalization and stable algorithms for updating the Gram-Schmidt QR factorization."_  
+  **Mathematics of Computation**, 30(136), pp. 772–795. DOI: [10.1090/S0025-5718-1976-0431641-8](https://doi.org/10.1090/S0025-5718-1976-0431641-8)
+
+### ModelScript Rationale & Modifications
+
+Large-scale interconnected transmission grids (10,000+ buses in PSS/E, PSLF, and PowerFactory) require extracting poorly damped inter-area electromechanical oscillation modes ($0.1\text{ Hz} \le f \le 2.0\text{ Hz}$) and participation factors without forming dense $O(N^3)$ state matrices:
+
+- **Shift-and-Invert Spectral Transformation**: Applies the spectral operator $OP = (A - \sigma I)^{-1}$ around complex target shift $\sigma \in \mathbb{C}$ using Gilbert-Peierls sparse LU factorization (`sparse_lu.ts`), mapping eigenvalues $\lambda$ near $\sigma$ to dominant Ritz values $\theta = (\lambda - \sigma)^{-1}$.
+- **DGKS Double Reorthogonalization & Hessenberg QR**: Builds an $m$-step orthonormal Krylov basis $V_m$ via Modified Gram-Schmidt with Daniel-Gragg-Kaufman-Stewart (DGKS) second-pass correction whenever $\|w\| < \frac{1}{\sqrt{2}}\|v\|$, and extracts Ritz pairs $(\lambda_i, y_i)$ from the small $m \times m$ upper Hessenberg projection $H_m = V_m^* \, OP \, V_m$ via Francis implicit double-shift QR.
+
 ---
 
 ## Upstream & Downstream Pipeline Connections
@@ -186,6 +211,6 @@ ModelScript provides two complementary calibration engines for offline test-stan
   - 3D CFD and FEA continuum field snapshots from [`CFD`](../languages/cfd.md) and [`FEA`](../languages/fea.md).
   - Live telemetry streams (CSV, ASAM MDF4, MCAP) and `DAEBuilder` adjoint sensitivities.
 - **Downstream Consumers**:
-  - Embedded into real-time Modelica plant loops via `msx surrogate` and operational digital twins.
+  - Embedded into real-time Modelica plant loops via `msx surrogate` and operational digital twins (`msx frac`).
   - Feeds calibrated posterior parameters and RUL health metrics back into the `DigitalThreadHypergraph`.
-  - Accelerates linear solves across all numerical integrators and optimal control routines.
+  - Accelerates linear solves and small-signal modal analysis across all numerical integrators, power grid eigensolvers, and optimal control routines.

@@ -21,6 +21,7 @@ IEC 61970 / IEC 61968 Common Information Model (CIM16 / CIM17) and ENTSO-E Commo
 | Path                         | Description                                                                                        |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- |
 | `src/index.ts`               | Public package exports                                                                             |
+| `src/language.ts`            | `cgmesLanguage` declarative specification, lint rules, and LSP actions                             |
 | `src/types.ts`               | `CgmesModel`, `Substation`, `VoltageLevel`, `TopologicalNode`, `ACLineSegment`, `PowerTransformer` |
 | `src/parser/rdf-parser.ts`   | `parseCgmesRdf`, `parseCgmesFiles`, and `createEmptyCgmesModel` CIM16/CIM17 RDF/XML profile parser |
 | `src/parser/topology.ts`     | `processTopology` node-breaker to bus-branch converter and island analyzer                         |

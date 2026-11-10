@@ -1,11 +1,11 @@
 ---
-title: OLGA Multiphase Dynamic Flow Simulation
-description: First-class support for OLGA (.opi, .key, .genkey) high-fidelity transient multiphase flow, mechanistic regime maps, slug tracking, and flow assurance verification in ModelScript.
+title: "OLGA-Compatible Multiphase Dynamic Flow Simulation (.opi, .key, .genkey)"
+description: "First-class support for OLGA-compatible (.opi, .key, .genkey) high-fidelity transient multiphase flow, mechanistic regime maps, slug tracking, and flow assurance verification in ModelScript."
 ---
 
-# OLGA Multiphase Flow Assurance
+# OLGA-Compatible Multiphase Flow Simulation (`.opi`, `.key`, `.genkey`)
 
-ModelScript provides first-class, polyglot support for **OLGA** (High-Fidelity Dynamic Multiphase Flow Simulation). Engineers can author, simulate, lint, formally verify, and co-simulate multiphase production flowlines, deepwater catenary risers, and slug catchers directly within ModelScript's unified digital thread.
+ModelScript provides first-class, polyglot support for **OLGA-compatible** (High-Fidelity Dynamic Multiphase Flow Simulation) models. Engineers can author, simulate, lint, formally verify, and co-simulate multiphase production flowlines, deepwater catenary risers, and slug catchers directly within ModelScript's unified digital thread.
 
 ---
 

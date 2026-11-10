@@ -50,7 +50,7 @@ export function registerAllLspProviders(context: LspContext): void {
 
   registerCompletionProvider(connection, documents, validationService.documentLSPBridges);
 
-  registerHoverProvider(connection, documents, validationService);
+  registerHoverProvider(connection, documents, validationService, context);
 
   registerDefinitionProvider(
     connection,

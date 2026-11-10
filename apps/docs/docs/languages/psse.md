@@ -143,29 +143,49 @@ end Ieee14Test;
 
 Generates multi-bus companion-circuit netlists compatible with ModelScript's Dommel EMT solver (`@modelscript/simulate`) for transient stability and electromagnetic switching studies.
 
+### Advanced Bulk Grid Studies: WebGPU $N-1$, OPF, Modes, PMU Calibration & NERC Auditing
+
+- **Batched WebGPU $N-1$ Contingency Screener & ACCC Benchmarking (`n1`, `benchmark`)**: Evaluates post-contingency thermal line loadings and bus voltage excursions across single-element outages (`webgpu-contingency-screener.ts`, `accc-benchmarker.ts`).
+- **Optimal Power Flow, Short-Circuit, Small-Signal Modes & Continuation Power Flow (`opf`, `fault`, `modes`, `cpf`)**: AC/DC OPF dispatch, IEC 60909 / ANSI fault current calculation, Sparse Arnoldi electromechanical modal analysis, and nose-curve voltage stability margin evaluation.
+- **PMU SMIB Event Playback & `.dyr` Parameter Calibration (`pmu-calibrate`)**: Replays synchrophasor voltage and frequency trajectories into a Single-Machine Infinite-Bus (SMIB) harness (`pmu-smib-harness.ts`) and calibrates `.dyr` generator/exciter/IBR parameters (`dyr-calibrator.ts`).
+- **NERC Collector Equivalencing & Protection Auditing (`collector-equiv`, `verify-nerc`, `audit-protection`)**: Aggregates radial wind/solar collector feeders into single-machine equivalents (`collector-equivalencer.ts`) and audits NERC TPL-001-5, PRC-019, PRC-024, PRC-025, and PRC-026 compliance (`protection-auditor.ts`).
+
 ---
 
 ## 5. Command-Line Interface (`msx psse`)
 
-ModelScript's CLI provides headless inspection, linting, diagram rendering, and power flow solving:
+ModelScript's CLI provides headless inspection, linting, diagram rendering, power flow solving, and compliance auditing:
 
 ```bash
 # Display summary of buses, generators, loads, branches, and MW totals
 msx psse summary case.raw
+msx psse inspect case.raw
 
 # Run pre-flight electrical topology and bounds linter
 msx psse lint case.raw
 
-# Solve non-linear AC power flow with Newton-Raphson (default)
+# Solve non-linear AC power flow with Newton-Raphson (default) or Fast Decoupled
 msx psse solve case.raw
-
-# Solve with Fast Decoupled algorithm and custom tolerance
 msx psse solve case.raw --algorithm=fdpf --tol=1e-5 --max-iter=30
 
-# Export publication-quality Single-Line Diagram SVG
-msx psse diagram case.raw --out=grid.svg
+# Run AC/DC Optimal Power Flow, short-circuit faults, small-signal modes, N-1 contingencies, and CPF
+msx psse opf case.raw
+msx psse fault case.raw
+msx psse modes case.raw
+msx psse n1 case.raw
+msx psse cpf case.raw
 
-# Inspect sparse Ybus non-zero entry metrics
+# Calibrate .dyr dynamic parameters against PMU playback, aggregate collector systems, and audit NERC compliance
+msx psse pmu-calibrate case.raw
+msx psse collector-equiv case.raw
+msx psse verify-nerc case.raw
+msx psse audit-protection case.raw
+
+# Export publication-quality Single-Line Diagram SVG, Modelica, DAE, or CGMES
+msx psse diagram case.raw --out=grid.svg
+msx psse to-modelica case.raw --out=grid.mo
+msx psse to-dae case.raw --out=grid.dae.json
+msx psse to-cgmes case.raw --out=grid.xml
 msx psse netlist case.raw
 ```
 
@@ -179,3 +199,4 @@ Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom du
 - **High-Density Tabular Grid**: Live-filterable tables for Buses, Generators, Branches, Transformers, and Loads with search.
 - **Overload & Violation Badges**: Automatic highlight of under-voltage ($V < 0.95\text{ pu}$), over-voltage ($V > 1.05\text{ pu}$), and thermal line overloads ($S_{ij} > \text{Rate A}$).
 - **Export Toolbar**: Export to SVG diagrams, Modelica `.mo` packages, and PSCAD/EMT netlists.
+

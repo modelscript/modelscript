@@ -7,10 +7,10 @@ import {
   type EpanetModelLike,
   type EpanetPipeLike,
 } from "@modelscript/diagram";
-import { parseInp, solveHydraulics } from "@modelscript/epanet";
-import { CheckIcon, CopyIcon, DownloadIcon } from "@primer/octicons-react";
+import { parseInp, serializeInp, solveHydraulics } from "@modelscript/epanet";
+import { CheckIcon, CopyIcon, DownloadIcon, PencilIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
@@ -138,17 +138,89 @@ const SegmentButton = styled.button<{ $active: boolean }>`
   }
 `;
 
+const EditRibbon = styled.div`
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+`;
+
 export const EpanetViewer: React.FC<EpanetViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const { colorMode } = useTheme();
   const isDark = colorMode === "dark";
+
+  const [localCode, setLocalCode] = useState<string>(viewConfig.code || "");
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [newJuncDemand, setNewJuncDemand] = useState<number>(25.0);
+  const [newPipeDiameter, setNewPipeDiameter] = useState<number>(200.0);
 
   const [viewMode, setViewMode] = useState<EpanetViewMode>(viewConfig.mode ?? "plan");
   const [propertyMode, setPropertyMode] = useState<EpanetPropertyMode>("pressure");
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    if (viewConfig.code) {
+      setLocalCode(viewConfig.code);
+    }
+  }, [viewConfig.code]);
+
+  // Handle adding a new junction and connecting it to the preceding node
+  const handleAddJunctionAndPipe = () => {
+    try {
+      const parsed = parseInp(localCode || viewConfig.code || "");
+      const newId = `J${parsed.junctions.length + 1}`;
+      const lastNodeId =
+        parsed.junctions.length > 0
+          ? parsed.junctions[parsed.junctions.length - 1]!.id
+          : (parsed.reservoirs[0]?.id ?? "R1");
+      const newPipeId = `P${parsed.pipes.length + 1}`;
+
+      parsed.junctions.push({
+        id: newId,
+        elevation: 15.0,
+        demand: newJuncDemand,
+      });
+
+      parsed.pipes.push({
+        id: newPipeId,
+        node1: lastNodeId,
+        node2: newId,
+        length: 400.0,
+        diameter: newPipeDiameter,
+        roughness: 110.0,
+      });
+
+      const updatedDeck = serializeInp(parsed);
+      setLocalCode(updatedDeck);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleUndoLast = () => {
+    try {
+      const parsed = parseInp(localCode || viewConfig.code || "");
+      if (parsed.pipes.length > 1) {
+        parsed.pipes.pop();
+      }
+      if (parsed.junctions.length > 1) {
+        parsed.junctions.pop();
+      }
+      const updatedDeck = serializeInp(parsed);
+      setLocalCode(updatedDeck);
+    } catch {
+      // Fallback
+    }
+  };
+
   // Parse EPANET model and solve hydraulics
   const { net, modelLike, minPressure, maxVelocity, totalDemandLps } = useMemo(() => {
-    const rawCode = viewConfig.code || "";
+    const rawCode = localCode || viewConfig.code || "";
     if (!rawCode.trim()) {
       return {
         net: null,
@@ -326,8 +398,63 @@ export const EpanetViewer: React.FC<EpanetViewerProps> = ({ viewConfig, isFullSc
             onClick={handleDownloadSvg}
             aria-label="Download SVG"
           />
+
+          <Button
+            size="small"
+            variant={isEditing ? "primary" : "invisible"}
+            leadingVisual={PencilIcon}
+            onClick={() => setIsEditing(!isEditing)}
+            aria-label="Toggle Interactive Editor"
+          >
+            {isEditing ? "Editing" : "Edit Studio"}
+          </Button>
         </Box>
       </Toolbar>
+
+      {/* Interactive Editing Studio Ribbon */}
+      {isEditing && (
+        <EditRibbon>
+          <Box display="flex" alignItems="center" gridGap={2}>
+            <span style={{ fontWeight: 700, color: "var(--color-accent-fg, #1f6feb)" }}>INTERACTIVE STUDIO:</span>
+            <Button size="small" onClick={handleAddJunctionAndPipe}>
+              + Add Node &amp; Pipe
+            </Button>
+            <Box display="flex" alignItems="center" gridGap={1}>
+              <span>Demand (L/s):</span>
+              <input
+                type="number"
+                value={newJuncDemand}
+                onChange={(e) => setNewJuncDemand(parseFloat(e.target.value) || 0)}
+                style={{
+                  width: "50px",
+                  fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--color-border-default)",
+                }}
+              />
+            </Box>
+            <Box display="flex" alignItems="center" gridGap={1}>
+              <span>Diameter (mm):</span>
+              <input
+                type="number"
+                value={newPipeDiameter}
+                onChange={(e) => setNewPipeDiameter(parseFloat(e.target.value) || 100)}
+                style={{
+                  width: "50px",
+                  fontSize: "11px",
+                  padding: "2px 4px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--color-border-default)",
+                }}
+              />
+            </Box>
+            <Button size="small" variant="danger" onClick={handleUndoLast}>
+              Undo Last
+            </Button>
+          </Box>
+        </EditRibbon>
+      )}
 
       {/* Telemetry Metrics Ribbon */}
       <TelemetryRibbon>

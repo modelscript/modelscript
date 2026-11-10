@@ -122,6 +122,41 @@ export function gitRouter(database?: LibraryDatabase): Router {
   });
 
   /**
+   * Get pre-image, post-image and ancestor blobs for a merge request file
+   * Example: GET /api/v1/git/projects/modelscript%2Fcore/merge_requests/1/file_blobs?path=models/ChuaCircuit.mo
+   */
+  router.get("/projects/:id/merge_requests/:iid/file_blobs", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const iid = Number(req.params.iid);
+      const filePath = String(req.query["path"] || "");
+      if (!filePath) {
+        res.status(400).json({ error: "path query parameter is required" });
+        return;
+      }
+      const provider = getGitProvider(projectId);
+      const mrs = await provider.getMergeRequests(projectId).catch(() => []);
+      const mr = mrs.find((m) => m.iid === iid);
+      if (!mr) {
+        res.status(404).json({ error: "Merge request not found" });
+        return;
+      }
+      const [oldContent, newContent] = await Promise.all([
+        provider.getRepositoryFileRaw(projectId, filePath, mr.target_branch).catch(() => ""),
+        provider.getRepositoryFileRaw(projectId, filePath, mr.source_branch).catch(() => ""),
+      ]);
+      res.json({
+        path: filePath,
+        oldContent,
+        newContent,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+
+  /**
    * Get commits
    * Example: GET /api/v1/git/projects/modelscript%2Fcore/repository/commits?ref_name=main
    */

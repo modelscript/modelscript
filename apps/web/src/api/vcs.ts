@@ -1791,3 +1791,28 @@ export const triggerRepoBotReviewApi = async (
   };
   return { success: true, review: record };
 };
+
+export interface MergeRequestFileBlobsResult {
+  path: string;
+  oldContent: string;
+  newContent: string;
+  ancestorContent?: string | undefined;
+}
+
+export const getMergeRequestFileBlobs = async (
+  projectId: string,
+  iid: number,
+  filePath: string,
+): Promise<MergeRequestFileBlobsResult | null> => {
+  try {
+    const encodedId = encodeURIComponent(projectId);
+    const { data } = await api.get<MergeRequestFileBlobsResult>(
+      `/git/projects/${encodedId}/merge_requests/${iid}/file_blobs`,
+      { params: { path: filePath } },
+    );
+    return data;
+  } catch {
+    return null;
+  }
+};
+

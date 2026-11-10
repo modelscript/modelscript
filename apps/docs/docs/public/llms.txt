@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 67 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 80 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -57,11 +57,12 @@
 
 ## Command-Line Interface (`msx`)
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
-- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 105 CLI commands and subcommands.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 126 CLI commands and subcommands.
 
-## Polyglot Languages (67 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 67 formats.
+## Polyglot Languages (80 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 80 formats.
 - [Modelica (.mo) [stable]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
+- [AMPL (.mod, .dat, .run, .nl, .mps) [stable]](https://modelscript.org/languages/ampl): Mathematical programming & optimization (LP, MILP, NLP).
 - [SysML v2 / KerML (.sysml) [stable]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
 - [ReqIF (.reqif) [stable]](https://modelscript.org/languages/reqif): Requirements interchange & contract entailment.
 - [NIST OSCAL (.oscal.json) [beta]](https://modelscript.org/languages/oscal): Cyber-physical security controls & SP 800-53 assessment.
@@ -70,13 +71,13 @@
 - [STEP (ISO 10303) (.step) [stable]](https://modelscript.org/languages/step): B-Rep CAD assemblies & AP242 PMI.
 - [QIF (ISO 23952) (.qif) [beta]](https://modelscript.org/languages/qif): ASME Y14.5 / ISO 1101 GD&T metrology & SPC capability.
 - [OpenSCAD (.scad) [stable]](https://modelscript.org/languages/scad): Parametric constructive solid geometry.
-- [CFD (SU2 / OpenFOAM) (.su2) [preview]](https://modelscript.org/languages/cfd): Computational fluid dynamics meshes.
-- [FEA (CalculiX / Abaqus / NASTRAN) (.inp) [preview]](https://modelscript.org/languages/fea): Finite-element structural analysis.
-- [OpenUSD (.usd / .usda / .usdz) [preview]](https://modelscript.org/languages/usd): Universal Scene Description 3D stages & UsdPhysics digital twins.
+- [CFD (SU2 / OpenFOAM) (.su2) [beta]](https://modelscript.org/languages/cfd): Computational fluid dynamics meshes.
+- [FEA (CalculiX / Abaqus / NASTRAN) (.inp) [beta]](https://modelscript.org/languages/fea): Finite-element structural analysis.
+- [OpenUSD (.usd / .usda / .usdz) [stable]](https://modelscript.org/languages/usd): Universal Scene Description 3D stages & UsdPhysics digital twins.
 - [CSV (.csv) [stable]](https://modelscript.org/languages/csv): Time-series & sensor logs.
-- [C (.c) [beta]](https://modelscript.org/languages/c): Numerical & embedded C integration.
-- [Fortran (.f90) [preview]](https://modelscript.org/languages/fortran): Legacy scientific subroutines.
-- [JSBSim (.xml) [preview]](https://modelscript.org/languages/jsbsim): 6-DOF flight dynamics.
+- [C (.c) [stable]](https://modelscript.org/languages/c): Numerical & embedded C integration.
+- [Fortran (.f90) [beta]](https://modelscript.org/languages/fortran): Legacy scientific subroutines.
+- [JSBSim (.xml) [beta]](https://modelscript.org/languages/jsbsim): 6-DOF flight dynamics.
 - [NASA ROCETS (.roc) [beta]](https://modelscript.org/languages/rocets): Liquid rocket engine transients.
 - [CCSDS (.xtce) [beta]](https://modelscript.org/languages/ccsds): Astrodynamics & spacecraft telemetry.
 - [EASY5 (.ez5) [beta]](https://modelscript.org/languages/easy5): Dynamic simulation & linear control.
@@ -84,42 +85,54 @@
 - [MATLAB Simulink (.slx) [beta]](https://modelscript.org/languages/simulink): Block diagrams & control systems.
 - [GT-SUITE (.gtm) [beta]](https://modelscript.org/languages/gtsuite): Engine, powertrain & thermal flow.
 - [ASAM OpenDRIVE (.xodr) [beta]](https://modelscript.org/languages/opendrive): Road network geometry.
-- [ASAM OpenSCENARIO (.xosc) [preview]](https://modelscript.org/languages/openscenario): Driving scenarios & RSS safety margins.
+- [ASAM OpenSCENARIO (.xosc) [beta]](https://modelscript.org/languages/openscenario): Driving scenarios & RSS safety margins.
+- [GTFS (.gtfs, .zip) [beta]](https://modelscript.org/languages/gtfs): Transit schedules & fleet electrification power.
 - [GENSYS (.calc) [stable]](https://modelscript.org/languages/gensys): Railway vehicle dynamics & track.
 - [SIMPACK (.spck) [beta]](https://modelscript.org/languages/simpack): Spatial multibody dynamics.
 - [PSCAD / EMTDC (.pscx) [stable]](https://modelscript.org/languages/pscad): Electromagnetic transients (EMT).
-- [PSS/E (.raw) [preview]](https://modelscript.org/languages/psse): Transmission power flow.
-- [CIM / CGMES (.xml, .rdf) [preview]](https://modelscript.org/languages/cgmes): ENTSO-E IEC 61970 transmission grid exchange & topology.
-- [OpenDSS (.dss) [preview]](https://modelscript.org/languages/opendss): Unbalanced distribution & DER hosting.
+- [PSS/E (.raw, .dyr) [stable]](https://modelscript.org/languages/psse): Transmission power flow & transient stability.
+- [DIgSILENT PowerFactory (.dgs, .pfd) [beta]](https://modelscript.org/languages/powerfactory): Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT.
+- [GE Vernova PSLF (.epc, .dyd) [beta]](https://modelscript.org/languages/pslf): WECC bulk transmission power flow & dynamic models.
+- [CIM / CGMES (.xml, .rdf) [beta]](https://modelscript.org/languages/cgmes): ENTSO-E IEC 61970 transmission grid exchange & topology.
+- [OpenDSS (.dss) [stable]](https://modelscript.org/languages/opendss): Unbalanced distribution & DER hosting.
+- [OCPP (.ocpp, .json) [beta]](https://modelscript.org/languages/ocpp): EV smart charging & transformer load management.
+- [OpenADR (.oadr, .xml, .json) [beta]](https://modelscript.org/languages/openadr): Automated demand response & peak shaving.
+- [LBNL TOUGH (.tgh, .dat) [beta]](https://modelscript.org/languages/tough): Geothermal reservoir & wellbore flashing thermodynamics.
 - [OLGA (.genkey) [stable]](https://modelscript.org/languages/olga): Transient multiphase flow assurance.
 - [PipelineStudio (.lps) [stable]](https://modelscript.org/languages/lps): Gas & liquid pipeline hydraulics.
-- [ECLIPSE (.data) [preview]](https://modelscript.org/languages/eclipse): Reservoir engineering.
-- [RELAP5-3D (.inp) [preview]](https://modelscript.org/languages/relap5): Reactor thermal-hydraulics & kinetics.
-- [SIMA / SIMO / RIFLEX (.sima) [preview]](https://modelscript.org/languages/sima): Marine operations & riser dynamics.
+- [ECLIPSE (.data) [beta]](https://modelscript.org/languages/eclipse): Reservoir engineering.
+- [RELAP5-3D (.inp) [beta]](https://modelscript.org/languages/relap5): Reactor thermal-hydraulics & kinetics.
+- [SIMA / SIMO / RIFLEX (.sima) [beta]](https://modelscript.org/languages/sima): Marine operations & riser dynamics.
 - [SPICE (.cir) [stable]](https://modelscript.org/languages/spice): Analog circuit simulation.
 - [Verilog-A / AMS (.va) [beta]](https://modelscript.org/languages/verilog-a): Analog compact device models.
-- [IBIS (.ibs) [preview]](https://modelscript.org/languages/ibis): I/O buffer behavioral models.
-- [Touchstone (.sNp) [preview]](https://modelscript.org/languages/touchstone): RF & signal-integrity S-parameters.
-- [URDF / Xacro (.urdf) [beta]](https://modelscript.org/languages/urdf): Robot kinematics & dynamics.
-- [PLCopen / IEC 61131-3 (.st) [beta]](https://modelscript.org/languages/plcopen): PLC control software.
+- [IBIS (.ibs) [beta]](https://modelscript.org/languages/ibis): I/O buffer behavioral models.
+- [Touchstone (.sNp) [beta]](https://modelscript.org/languages/touchstone): RF & signal-integrity S-parameters.
+- [OpenROADM & Telcordia .sor (.sor) [beta]](https://modelscript.org/languages/optical): OTDR trace analytics & DWDM transmission.
+- [NSMA WG16 & Planet Antenna (.adf, .pat) [beta]](https://modelscript.org/languages/ran): Antenna 3D patterns, RF MPE safety & microwave links.
+- [TIA-598-D Outside Plant (.geojson) [beta]](https://modelscript.org/languages/fiber): Fiber strand tracing, NESC pole loading & OTDR GIS fault location.
+- [URDF / Xacro (.urdf) [stable]](https://modelscript.org/languages/urdf): Robot kinematics & dynamics.
+- [PLCopen / IEC 61131-3 (.st) [stable]](https://modelscript.org/languages/plcopen): PLC control software.
 - [AutomationML (IEC 62714) (.aml) [beta]](https://modelscript.org/languages/automationml): CAEX mechatronic plant hierarchy & virtual commissioning.
 - [MSC Adams (.adm) [beta]](https://modelscript.org/languages/adams): Mechanical system dynamics.
-- [EnergyPlus (.idf) [beta]](https://modelscript.org/languages/energyplus): Building energy & HVAC.
-- [EPANET (.inp) [beta]](https://modelscript.org/languages/epanet): Pressurized water distribution.
-- [EPA SWMM (.inp) [preview]](https://modelscript.org/languages/swmm): Stormwater & urban drainage.
-- [Aspen Plus / HYSYS (.bkp) [preview]](https://modelscript.org/languages/aspen): Chemical process flowsheets.
-- [gPROMS / PML (.gproms) [preview]](https://modelscript.org/languages/gproms): Equation-oriented dynamic process & distributed PDEs.
-- [Cantera (.yaml) [preview]](https://modelscript.org/languages/cantera): Gas-phase chemical kinetics & NASA-7 thermochemistry.
-- [PHREEQC (.pqi) [preview]](https://modelscript.org/languages/phreeqc): Aqueous geochemistry, speciation & mineral saturation.
-- [SMILES / SDF (.smi) [preview]](https://modelscript.org/languages/smiles): Molecular graph parsing & Joback property estimation.
-- [SBML (.sbml) [preview]](https://modelscript.org/languages/sbml): Biochemical reaction networks.
-- [Antimony (.ant) [preview]](https://modelscript.org/languages/antimony): Modular human-readable systems biology models.
-- [BioNetGen (BNGL) (.bngl) [preview]](https://modelscript.org/languages/bngl): Rule-based multiprotein signaling & reaction expansion.
-- [SBOL3 (.sbol) [preview]](https://modelscript.org/languages/sbol): Synthetic biology genetic circuits & Hill kinetics.
-- [SED-ML (.sedml) [preview]](https://modelscript.org/languages/sedml): COMBINE reproducible simulation experiment protocols.
-- [NMTRAN (NONMEM) (.ctl) [preview]](https://modelscript.org/languages/nmtran): Clinical PK/PD compartmental dosing & exposure.
-- [PDB / mmCIF (.pdb) [preview]](https://modelscript.org/languages/pdb): 3D protein structures, Ramachandran & GNM dynamics.
-- [GenBank / FASTA (.gb) [preview]](https://modelscript.org/languages/genbank): Annotated nucleotide sequences, ORFs & restriction maps.
+- [EnergyPlus (.idf) [stable]](https://modelscript.org/languages/energyplus): Building energy & HVAC.
+- [EPANET (.inp) [stable]](https://modelscript.org/languages/epanet): Pressurized water distribution.
+- [EPA SWMM (.inp) [stable]](https://modelscript.org/languages/swmm): Stormwater & urban drainage.
+- [USACE HEC-RAS (.g01, .g02, .rasgeo) [beta]](https://modelscript.org/languages/hec-ras): River basin & open-channel hydraulics.
+- [USGS MODFLOW (.dis, .dis6, .npf, .wel) [beta]](https://modelscript.org/languages/modflow): Regional groundwater aquifers & 3D Darcy flow.
+- [EPA LandGEM (.landgem, .lfg, .biogas) [beta]](https://modelscript.org/languages/landgem): Solid waste methane decay & landfill biogas CHP.
+- [Aspen Plus / HYSYS (.bkp) [beta]](https://modelscript.org/languages/aspen): Chemical process flowsheets.
+- [gPROMS / PML (.gproms) [beta]](https://modelscript.org/languages/gproms): Equation-oriented dynamic process & distributed PDEs.
+- [Cantera (.yaml) [beta]](https://modelscript.org/languages/cantera): Gas-phase chemical kinetics & NASA-7 thermochemistry.
+- [PHREEQC (.pqi) [beta]](https://modelscript.org/languages/phreeqc): Aqueous geochemistry, speciation & mineral saturation.
+- [SMILES / SDF (.smi) [beta]](https://modelscript.org/languages/smiles): Molecular graph parsing & Joback property estimation.
+- [SBML (.sbml) [beta]](https://modelscript.org/languages/sbml): Biochemical reaction networks.
+- [Antimony (.ant) [beta]](https://modelscript.org/languages/antimony): Modular human-readable systems biology models.
+- [BioNetGen (BNGL) (.bngl) [beta]](https://modelscript.org/languages/bngl): Rule-based multiprotein signaling & reaction expansion.
+- [SBOL3 (.sbol) [beta]](https://modelscript.org/languages/sbol): Synthetic biology genetic circuits & Hill kinetics.
+- [SED-ML (.sedml) [beta]](https://modelscript.org/languages/sedml): COMBINE reproducible simulation experiment protocols.
+- [NMTRAN (NONMEM) (.ctl) [beta]](https://modelscript.org/languages/nmtran): Clinical PK/PD compartmental dosing & exposure.
+- [PDB / mmCIF (.pdb) [beta]](https://modelscript.org/languages/pdb): 3D protein structures, Ramachandran & GNM dynamics.
+- [GenBank / FASTA (.gb) [beta]](https://modelscript.org/languages/genbank): Annotated nucleotide sequences, ORFs & restriction maps.
 - [CellML (.cellml) [beta]](https://modelscript.org/languages/cellml): Cellular electrophysiology & Physiome ODE models.
 - [OpenSim (.osim) [beta]](https://modelscript.org/languages/opensim): Musculoskeletal multibody & Hill-type muscle dynamics.
 - [FEBio / SOFA (.feb) [beta]](https://modelscript.org/languages/febio): Hyperelastic soft-tissue biomechanics & surgical scenes.
@@ -133,19 +146,19 @@
 - [Industries Overview](https://modelscript.org/industries): Multi-domain solutions across 12 engineering sectors.
 - [Aerospace & Aviation](https://modelscript.org/industries/aerospace): Flight dynamics, propulsion & mission telemetry (SysML v2 / KerML, ReqIF, NIST OSCAL 1.1).
 - [Automotive & Mobility](https://modelscript.org/industries/automotive): AUTOSAR, powertrain & autonomous-driving scenarios (AUTOSAR Classic & Adaptive, ASAM OpenDRIVE, ASAM OpenSCENARIO).
-- [Rail](https://modelscript.org/industries/rail): Vehicle dynamics, track geometry & EN 14363 (EN 14363, UIC 518, STEP AP242).
+- [Rail](https://modelscript.org/industries/rail): Vehicle dynamics, track geometry & EN 14363 (EN 14363, UIC 518, GTFS Transit Feeds).
 - [Marine & Offshore](https://modelscript.org/industries/marine): Marine operations, risers & mooring (DNV-OS-E301, DNV-ST-0119, FMI 2.0 / 3.0).
-- [Power Systems & Grid](https://modelscript.org/industries/power-systems): EMT, power flow & grid-code compliance (IEEE 2800-2022, NERC PRC-029-1, NIST OSCAL 1.1 (NERC CIP)).
-- [Oil, Gas & Subsurface](https://modelscript.org/industries/oil-gas): Flow assurance, pipelines & reservoirs (ISO 20765-1, ISO 20765-2, USGS PHREEQC).
+- [Power Systems & Grid](https://modelscript.org/industries/power-systems): EMT, power flow & grid-code compliance (IEEE 2800-2022 & NERC PRC-029-1, ENTSO-E RfG & IEEE 1547-2018, DIgSILENT PowerFactory (.dsl / .dgs)).
+- [Oil, Gas & Subsurface](https://modelscript.org/industries/oil-gas): Flow assurance, pipelines & reservoirs (ISO 20765-1, ISO 20765-2, TOUGH2 / TOUGH3 EOS).
 - [Nuclear](https://modelscript.org/industries/nuclear): Reactor thermal-hydraulics & point kinetics (RELAP5-3D input decks, SysML v2, ReqIF).
-- [Buildings & Civil Infrastructure](https://modelscript.org/industries/buildings): Building energy, water & stormwater networks (EnergyPlus IDF / epJSON, EPANET INP, SWMM 5.x).
-- [Electronics & Semiconductors](https://modelscript.org/industries/electronics): SPICE, compact models, IBIS & S-parameters (IEEE 1857 Verilog-A / AMS, IBIS, Touchstone 1.0 / 2.0).
+- [Buildings & Civil Infrastructure](https://modelscript.org/industries/buildings): Building energy, water, river hydraulics & groundwater (EnergyPlus IDF / epJSON, EPANET INP & AWWA M36, SWMM 5.x).
+- [Electronics, RF & Telecommunications](https://modelscript.org/industries/electronics): SPICE, compact models, IBIS, S-parameters, DWDM & 5G RAN (IEEE 1857 Verilog-A / AMS, IBIS & Touchstone 1.0 / 2.0, ITU-T G.694.1 DWDM & Telcordia SR-4731 OTDR (.sor)).
 - [Robotics & Industrial Automation](https://modelscript.org/industries/robotics): URDF kinematics, AutomationML, PLCs & mechanisms (IEC 61131-3 / PLCopen XML, IEC 62714 AutomationML (CAEX), URDF / Xacro).
 - [Chemical & Process](https://modelscript.org/industries/process): Flowsheets, kinetics, geochemistry & molecular graphs (Aspen Plus / HYSYS inputs, gPROMS PML, Cantera YAML / NASA-7).
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1046 diagnostics across 68 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1127 diagnostics across 80 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

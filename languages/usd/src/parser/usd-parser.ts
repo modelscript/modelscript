@@ -210,6 +210,8 @@ export function parseUsd(content: string): UsdStage {
       else if (key === "metersPerUnit") stageMetadata.metersPerUnit = Number(val);
       else if (key === "upAxis") stageMetadata.upAxis = String(val) as "Y" | "Z";
       else if (key === "timeCodesPerSecond") stageMetadata.timeCodesPerSecond = Number(val);
+      else if (key === "startTimeCode") stageMetadata.startTimeCode = Number(val);
+      else if (key === "endTimeCode") stageMetadata.endTimeCode = Number(val);
       else if (key === "subLayers" && Array.isArray(val)) stageMetadata.subLayers = val;
     }
   }

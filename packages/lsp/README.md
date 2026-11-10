@@ -3,22 +3,22 @@
 
 # @modelscript/lsp
 
-ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 68 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
+ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 81 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
 
 ---
 
 ## Architecture & Capabilities
 
-### 1. Unified Polyglot Language Support (All 68 Languages)
+### 1. Unified Polyglot Language Support (All 81 Languages)
 
-A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **68 ModelScript engineering languages and formats** in a shared workspace:
+A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **81 ModelScript engineering languages and formats** in a shared workspace:
 
-- **Native & Core Systems Engineering (8)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), NIST OSCAL (`.oscal`, `.oscal.json`, `.oscal.xml`), OWL 2 Ontologies (`.owl`, `.ofn`), CSV Telemetry (`.csv`).
-- **Electrical Power Grids, RF & Electronics (8)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), Siemens PTI PSS/E (`.raw`), ENTSO-E CIM / CGMES (`.cgmes`, `.cim`, `.xml`), EPRI OpenDSS (`.dss`), SPICE (`.cir`, `.sp`, `.spice`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`).
-- **Fluid, Process, Subsurface, Civil Water & Nuclear (8)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus-compatible (`.in`, `.inp`, `.bkp`), ECLIPSE 100/300-compatible (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D-compatible (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`).
-- **Multibody, Automotive, Robotics, Marine & Rail (9)**: MSC Adams-compatible (`.adm`, `.cmd`, `.acf`), SIMPACK-compatible (`.spck`, `.sim`, `.fbi`), GENSYS (`.calc`, `.run`, `.trax`), GT-SUITE-compatible (`.gtm`, `.gtx`), SIMA (`.sima`, `.sys`), URDF/SDF (`.urdf`, `.sdf`), ASAM OpenDRIVE (`.xodr`), ASAM OpenSCENARIO (`.xosc`, `.osc`), AUTOSAR (`.arxml`).
+- **Native & Core Systems Engineering (9)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), AMPL (`.mod`, `.dat`, `.nl`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), NIST OSCAL (`.oscal`, `.oscal.json`, `.oscal.xml`), OWL 2 Ontologies (`.owl`, `.ofn`), CSV Telemetry (`.csv`).
+- **Electrical Power Grids, RF, Telecommunications & Electronics (15)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), Siemens PTI PSS/E (`.raw`, `.dyr`), ENTSO-E CIM / CGMES (`.cgmes`, `.cim`, `.xml`), EPRI OpenDSS (`.dss`), DIgSILENT PowerFactory (`.dz`, `.pfd`, `.dsl`), GE PSLF (`.epc`, `.dyd`), OCPP (`.ocpp`, `.cpo`), OpenADR (`.oadr`), SPICE (`.cir`, `.sp`, `.spice`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`), Optical Transport (`.sor`), RAN & Microwave (`.adf`, `.pat`, `.msi`), Fiber Outside Plant (`.geojson`, `.kml`).
+- **Fluid, Process, Subsurface, Civil Water & Nuclear (12)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus-compatible (`.in`, `.inp`, `.bkp`), ECLIPSE 100/300-compatible (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D-compatible (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`), USACE HEC-RAS (`.g01`, `.u01`, `.f01`, `.prj`), LBNL TOUGH (`.tough`, `.dat`), USGS MODFLOW 6 (`.dis`, `.npf`, `.wel`, `.nam`), US EPA LandGEM (`.landgem`, `.lfg`).
+- **Multibody, Automotive, Robotics, Marine & Rail (10)**: MSC Adams-compatible (`.adm`, `.cmd`, `.acf`), SIMPACK-compatible (`.spck`, `.sim`, `.fbi`), GENSYS (`.calc`, `.run`, `.trax`), GT-SUITE-compatible (`.gtm`, `.gtx`), SIMA (`.sima`, `.sys`), URDF/SDF (`.urdf`, `.sdf`), ASAM OpenDRIVE (`.xodr`), ASAM OpenSCENARIO (`.xosc`, `.osc`), AUTOSAR (`.arxml`), GTFS Transit (`.gtfs`, `.gtfs-rt`).
 - **Aerospace, Flight Dynamics, Astrodynamics & Controls (7)**: Simulink-compatible (`.slx`, `.mdl`), Boeing/MSC EASY5-compatible (`.ez5`, `.ezm`), JSBSim (`.xml`), NASA ROCETS (`.roc`), CCSDS / XTCE (`.oem`, `.opm`, `.omm`, `.xtce`), PLCopen IEC 61131-3 (`.st`, `.iec`, `.plcxml`), IEC 62714 AutomationML (`.aml`, `.caex`).
-- **3D CAD, Digital Metrology & Continuum Physics (6)**: ISO 10303-21 STEP (`.step`, `.stp`), ISO 23952 QIF (`.qif`), OpenSCAD CSG (`.scad`), OpenUSD Physics (`.usda`, `.usd`), CalculiX/NASTRAN-compatible FEA (`.fea`, `.inp`, `.bdf`), SU2/OpenFOAM-compatible CFD (`.cfd`, `.cfg`, `.su2`, `.foam`).
+- **3D CAD, Digital Metrology & Continuum Physics (6)**: ISO 10303-21 STEP (`.step`, `.stp`), ISO 23952 QIF (`.qif`), OpenSCAD CSG (`.scad`), OpenUSD Physics (`.usda`, `.usd`, `.usdz`), CalculiX/NASTRAN-compatible FEA (`.fea`, `.inp`, `.bdf`), SU2/OpenFOAM-compatible CFD (`.cfd`, `.cfg`, `.su2`, `.foam`).
 - **Chemistry, Systems/Synthetic Biology & Scientific Code (14)**: SBML (`.sbml`, `.xml`), Antimony (`.ant`), Cantera (`.cti`, `.yaml`), SMILES/SMIRKS (`.smi`, `.smiles`), NONMEM NM-TRAN (`.ctl`, `.mod`), SBOL 3 (`.sbol`), BioNetGen BNGL (`.bngl`), SED-ML (`.sedml`), RCSB PDB/mmCIF (`.pdb`, `.cif`), GenBank (`.gb`, `.gbk`), gPROMS (`.gproms`, `.pml`), USGS PHREEQC (`.pqi`, `.dat`), Fortran 77/90/95 (`.f`, `.for`, `.f90`), ISO C99 (`.c`, `.h`).
 - **Radiology, Radiation Oncology & Computer-Assisted Surgery (8)**: OpenSim Biomechanics (`.osim`), DICOM-RT (`.dcm`, `.rtplan`, `.rtstruct`, `.rtdose`), CellML (`.cellml`), FEBio (`.feb`), NIfTI-1/2 & BIDS (`.nii`, `.nii.gz`), TOPAS / Geant4 Monte Carlo (`.topas`, `.txt`), 3MF Medical (`.3mf`), OpenIGTLink / PLUS (`.igtl`, `.mha`).
 
@@ -27,19 +27,19 @@ Supports both Node.js IPC/stdio (`src/nodeServerMain.ts`, `@modelscript/lsp/node
 ### 2. Incremental Salsa `WorkspaceIndex` & Background Worker Pool
 
 - **Multi-File Salsa Memoization (`src/lsp-context.ts`, `src/services/`)**: Wraps `@modelscript/runtime`'s `WorkspaceIndex` and `QueryEngine` (`fetch → deep_verify → execute → backdate`), incrementally re-evaluating only the affected symbol scopes and cross-language digital thread links when a document changes.
-- **Background Worker Pool (`src/workers/worker-pool.ts`)**: Offloads CPU-intensive flattening, simulation, tetrahedral meshing, and SMT/reachability verification to background worker threads so edit-time LSP responsiveness remains sub-millisecond.
+- **Background Worker Pool & Progress Reporting (`src/workers/worker-pool.ts`, `src/utils/progress-reporter.ts`)**: Offloads CPU-intensive flattening, simulation, tetrahedral meshing, and SMT/reachability verification to background worker threads with LSP work-done progress notifications (`ProgressReporter`).
 - **Virtual FileSystem (`src/vfs/`)**: Hosts virtual `modelica://` standard library packages and in-memory workspace buffers.
 
 ### 3. Standard LSP Providers (`src/providers/`)
 
-- **Diagnostics (`src/providers/documentFeaturesProvider.ts`, `src/providers/threadDiagnosticsProvider.ts`)**: Real-time syntax errors (`M1xxx`), scope/type checking (`M2xxx`–`M5xxx`), synchronous clock & EMT checks (`M6xxx`), and cross-language Digital Thread consistency diagnostics (unit mismatches, breached requirement bounds, suspect RTM links).
+- **Diagnostics (`src/providers/documentFeaturesProvider.ts`, `src/providers/threadDiagnosticsProvider.ts`)**: Real-time syntax errors (`M1xxx`), scope/type checking (`M2xxx`–`M5xxx`), synchronous clock & EMT checks (`M6xxx`), and cross-language Digital Thread consistency diagnostics (unit mismatches, breached requirement bounds, suspect RTM links, polyglot physical drift).
 - **Completion (`src/providers/completionProvider.ts`)**: Scope-aware class, component, port, modifier, keyword, and standard library FQN auto-completion.
-- **Hover (`src/providers/hoverProvider.ts`)**: Rich Markdown hovers displaying resolved types, SI units, evaluated constant/parameter values, variability/causality prefixes, class documentation HTML, and inline SVG icon previews.
+- **Hover (`src/providers/hoverProvider.ts`)**: Rich Markdown hovers displaying resolved types, SI units, evaluated constant/parameter values, variability/causality prefixes, class documentation HTML, live 3D CAD mass/inertia/bounding-box metrics (`src/services/cad-metrics-service.ts`), and inline SVG icon previews.
 - **Go-to-Definition & Find References (`src/providers/definitionProvider.ts`)**: Navigates across inheritance chains (`extends`), component types, `connect()` endpoints, and cross-domain `@satisfies` / `@verifies` / `bind` links.
 - **Rename & Workspace Symbols (`src/providers/workspaceFeaturesProvider.ts`)**: Safe multi-file symbol renaming and fuzzy workspace symbol search.
 - **Formatting (`src/providers/formattingProvider.ts`)**: Format-preserving CST pretty-printing via `@modelscript/dsl/unparser`.
-- **Code Actions & Quick Fixes**: Automated unit conversion insertions, missing parameter binding scaffolding, and TGG conflict reconciliation quick fixes.
-- **Code Lenses (`src/providers/codeLensProvider.ts`)**: Inline equation/variable balance badges (`[Balanced: N vars / N eqs]`) and one-click `▶ Simulate`, `⚡ Verify`, and `📐 Diagram` triggers.
+- **Code Actions & Reasoner Quick Fixes (`src/services/reasoner-service.ts`)**: Automated unit conversion insertions, missing parameter binding scaffolding, OWL 2 / BFO ontological consistency quick fixes, and TGG conflict reconciliation quick fixes.
+- **Code Lenses (`src/providers/codeLensProvider.ts`, `src/services/cad-metrics-service.ts`)**: Inline equation/variable balance badges (`[Balanced: N vars / N eqs]`), live 3D CAD volume/mass/AABB badges, and one-click `▶ Simulate`, `⚡ Verify`, and `📐 Diagram` triggers.
 - **Semantic Tokens, Inlay Hints, Signature Help & Color Provider**: Full syntax highlighting (`src/providers/semanticTokensProvider.ts`), inferred unit/value inlay hints (`src/providers/inlayHintProvider.ts`), function argument signature help (`src/providers/signatureHelpProvider.ts`), and graphical annotation RGB color pickers (`src/providers/colorProvider.ts`).
 
 ### 4. Custom `modelica/*` & `modelscript/*` JSON-RPC Endpoints (`src/handlers/`)

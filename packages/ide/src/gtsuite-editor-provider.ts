@@ -201,11 +201,12 @@ export class GtSuiteEditorProvider extends BaseCustomEditorProvider {
   }
 
   protected getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GT-SUITE / GT-POWER Engine Studio</title>
   <style>
@@ -354,10 +355,10 @@ export class GtSuiteEditorProvider extends BaseCustomEditorProvider {
   </header>
 
   <nav class="nav-tabs">
-    <button class="tab-btn active" onclick="showTab('tab-schematic')">Schematic &amp; Flowpath</button>
-    <button class="tab-btn" onclick="showTab('tab-indicator')">Indicator Diagram (P-V)</button>
-    <button class="tab-btn" onclick="showTab('tab-combustion')">Combustion &amp; Emissions</button>
-    <button class="tab-btn" onclick="showTab('tab-projections')">Polyglot Projections</button>
+    <button class="tab-btn active" data-tab="tab-schematic">Schematic &amp; Flowpath</button>
+    <button class="tab-btn" data-tab="tab-indicator">Indicator Diagram (P-V)</button>
+    <button class="tab-btn" data-tab="tab-combustion">Combustion &amp; Emissions</button>
+    <button class="tab-btn" data-tab="tab-projections">Polyglot Projections</button>
   </nav>
 
   <div class="content-area">
@@ -446,14 +447,17 @@ export class GtSuiteEditorProvider extends BaseCustomEditorProvider {
     </div>
   </div>
 
-  <script>
-    function showTab(tabId) {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-      event.target.classList.add('active');
-      const pane = document.getElementById(tabId);
-      if (pane) pane.classList.add('active');
-    }
+  <script nonce="${nonce}">
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const tabId = btn.getAttribute('data-tab');
+        const pane = tabId ? document.getElementById(tabId) : null;
+        if (pane) pane.classList.add('active');
+      });
+    });
 
     window.addEventListener('message', event => {
       const msg = event.data;

@@ -29,9 +29,34 @@ export function initXmlParser(wasm: string | Uint8Array): void {
   cached = createWasmParserSync(wasm).parser;
 }
 
-/** Node-only convenience: locates the packaged `parser.wasm` and initializes once. */
+/** Initializes the shared parser directly from a Uint8Array byte buffer (suitable for in-browser / Web Worker usage). */
+export function initXmlParserFromBytes(bytes: Uint8Array): void {
+  initXmlParser(bytes);
+}
+
+/** Returns true if the WebAssembly XML parser is initialized and ready. */
+export function isXmlParserReady(): boolean {
+  return cached !== null;
+}
+
+/** Retrieves the underlying WebAssembly XML parser instance, initializing it if possible. */
+export function getXmlWasmParser(): Parser | null {
+  if (!cached) ensureXmlParser();
+  return cached;
+}
+
+/** Locates the packaged `parser.wasm` or global payload and initializes once. */
 export function ensureXmlParser(): void {
   if (cached) return;
+
+  const globalWasm = (globalThis as any).__MODEL_SCRIPT_XML_WASM__;
+  if (globalWasm) {
+    try {
+      initXmlParser(globalWasm);
+      return;
+    } catch {}
+  }
+
   if (typeof process === "undefined" || !process.versions?.node) return;
 
   let fsModule: { existsSync: (p: string) => boolean } | undefined;

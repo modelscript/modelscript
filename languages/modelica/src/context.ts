@@ -160,7 +160,7 @@ export class Context {
    * Caches a parsed CST tree with LRU eviction to prevent unbounded memory growth.
    */
   #cacheTree(uri: string, tree: Tree): void {
-    if (this.#trees.size >= 150) {
+    if (this.#trees.size >= 2000) {
       const oldestKey = this.#trees.keys().next().value;
       if (oldestKey !== undefined) this.#trees.delete(oldestKey);
     }
@@ -171,7 +171,7 @@ export class Context {
    * Caches raw source text with LRU eviction to prevent unbounded memory growth.
    */
   #cacheFileText(uri: string, text: string): void {
-    if (this.#fileTexts.size >= 150) {
+    if (this.#fileTexts.size >= 2000) {
       const oldestKey = this.#fileTexts.keys().next().value;
       if (oldestKey !== undefined) this.#fileTexts.delete(oldestKey);
     }
@@ -767,30 +767,28 @@ export class Context {
             parentFQN = undefined;
           }
 
-          // Check within clause if present (skip disk read when hydrating from pre-built index)
-          if (!options?.skipIndex) {
-            try {
-              const textHeader = this.#fs.read(dir);
-              if (textHeader) {
-                const withinMatch = textHeader.match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
-                if (withinMatch) {
-                  const declaredWithin = withinMatch[1]?.trim();
-                  if (declaredWithin) {
-                    if (parentFQN && declaredWithin !== parentFQN) {
-                      console.warn(
-                        `[modelica] Notice: ${dir} declares 'within ${declaredWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
-                      );
-                    }
-                    parentFQN = declaredWithin;
-                  } else if (basename !== "package.mo") {
-                    // 'within;' with no name means root/top-level
-                    parentFQN = undefined;
+          // Check within clause if present
+          try {
+            const textHeader = this.#fs.read(dir);
+            if (textHeader) {
+              const withinMatch = textHeader.match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
+              if (withinMatch) {
+                const declaredWithin = withinMatch[1]?.trim();
+                if (declaredWithin) {
+                  if (parentFQN && declaredWithin !== parentFQN) {
+                    console.warn(
+                      `[modelica] Notice: ${dir} declares 'within ${declaredWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
+                    );
                   }
+                  parentFQN = declaredWithin;
+                } else if (basename !== "package.mo") {
+                  // 'within;' with no name means root/top-level
+                  parentFQN = undefined;
                 }
               }
-            } catch {
-              /* ignore read errors during registration */
             }
+          } catch {
+            /* ignore read errors during registration */
           }
 
           // Register for lazy loading (tree is parsed for indexing, on-demand parsing handles flattening)
@@ -803,7 +801,7 @@ export class Context {
             },
             parentFQN,
           );
-        } else if (dir.endsWith(".csv")) {
+        } else if (dir.endsWith(".csv") && Context._parsers.has(".csv")) {
           const parentFQN = currentFQN || undefined;
           this.#workspaceIndex.register(
             dir,
@@ -894,11 +892,28 @@ export class Context {
     try {
       unified = await this.#workspaceIndex.toUnifiedAsync();
     } finally {
-      if (facade?.exports?.lsp_setConfigEnableMultiFile) {
-        facade.exports.lsp_setConfigEnableMultiFile(prevMultiFile !== 0);
+      const docs = (this.#workspaceIndex as any).documents as Map<string, any> | undefined;
+      if (docs) {
+        for (const [uri, doc] of docs.entries()) {
+          if (doc && doc.tree && !this.#trees.has(uri)) {
+            doc.tree = null;
+          }
+        }
       }
-      if (facade?.exports?.configEnableMultiFile) {
-        facade.exports.configEnableMultiFile.value = prevMultiFile ?? 1;
+      if (prevMultiFile !== undefined) {
+        if (facade?.exports?.lsp_setConfigEnableMultiFile) {
+          facade.exports.lsp_setConfigEnableMultiFile(Boolean(prevMultiFile));
+        }
+        if (facade?.exports?.configEnableMultiFile) {
+          facade.exports.configEnableMultiFile.value = prevMultiFile;
+        }
+      } else {
+        if (facade?.exports?.lsp_setConfigEnableMultiFile) {
+          facade.exports.lsp_setConfigEnableMultiFile(true);
+        }
+        if (facade?.exports?.configEnableMultiFile) {
+          facade.exports.configEnableMultiFile.value = 1;
+        }
       }
     }
     injectPredefinedTypes(unified);
@@ -939,7 +954,6 @@ export class Context {
   async finalizeLibraries(): Promise<void> {
     const parser = (Context as any)._parsers.get(".mo");
     const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
-    const prevMultiFile = facade?.exports?.configEnableMultiFile?.value;
     if (facade?.exports?.lsp_setConfigEnableMultiFile) {
       facade.exports.lsp_setConfigEnableMultiFile(false);
     }
@@ -951,11 +965,19 @@ export class Context {
     try {
       unified = await this.#workspaceIndex.toUnifiedAsync();
     } finally {
+      const docs = (this.#workspaceIndex as any).documents as Map<string, any> | undefined;
+      if (docs) {
+        for (const [uri, doc] of docs.entries()) {
+          if (doc && doc.tree && !this.#trees.has(uri)) {
+            doc.tree = null;
+          }
+        }
+      }
       if (facade?.exports?.lsp_setConfigEnableMultiFile) {
-        facade.exports.lsp_setConfigEnableMultiFile(prevMultiFile !== 0);
+        facade.exports.lsp_setConfigEnableMultiFile(true);
       }
       if (facade?.exports?.configEnableMultiFile) {
-        facade.exports.configEnableMultiFile.value = prevMultiFile ?? 1;
+        facade.exports.configEnableMultiFile.value = 1;
       }
     }
     injectPredefinedTypes(unified);

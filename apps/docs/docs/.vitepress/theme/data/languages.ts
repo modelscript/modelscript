@@ -94,6 +94,15 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     tier: "stable",
   },
   {
+    slug: "ampl",
+    name: "AMPL",
+    sidebar: "AMPL Optimization",
+    ext: ".mod, .dat, .run, .nl, .mps",
+    role: "Mathematical programming & optimization (LP, MILP, NLP)",
+    group: "core",
+    tier: "stable",
+  },
+  {
     slug: "sysml2",
     name: "SysML v2 / KerML",
     sidebar: "SysML v2 / KerML",
@@ -174,7 +183,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".su2",
     role: "Computational fluid dynamics meshes",
     group: "geometry",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "fea",
@@ -183,7 +192,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".inp",
     role: "Finite-element structural analysis",
     group: "geometry",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "usd",
@@ -192,7 +201,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".usd / .usda / .usdz",
     role: "Universal Scene Description 3D stages & UsdPhysics digital twins",
     group: "geometry",
-    tier: "preview",
+    tier: "stable",
   },
 
   // ── Data & code integration ─────────────────────────────────────────────
@@ -212,7 +221,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".c",
     role: "Numerical & embedded C integration",
     group: "integration",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "fortran",
@@ -221,7 +230,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".f90",
     role: "Legacy scientific subroutines",
     group: "integration",
-    tier: "preview",
+    tier: "beta",
   },
 
   // ── Aerospace & defense ─────────────────────────────────────────────────
@@ -232,7 +241,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xml",
     role: "6-DOF flight dynamics",
     group: "aerospace",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "rocets",
@@ -306,7 +315,16 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xosc",
     role: "Driving scenarios & RSS safety margins",
     group: "automotive",
-    tier: "preview",
+    tier: "beta",
+  },
+  {
+    slug: "gtfs",
+    name: "GTFS",
+    sidebar: "GTFS Transit Electrification",
+    ext: ".gtfs, .zip",
+    role: "Transit schedules & fleet electrification power",
+    group: "automotive",
+    tier: "beta",
   },
 
   // ── Rail ────────────────────────────────────────────────────────────────
@@ -343,10 +361,28 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     slug: "psse",
     name: "PSS/E",
     sidebar: "PSS/E Power Flow (.raw)",
-    ext: ".raw",
-    role: "Transmission power flow",
+    ext: ".raw, .dyr",
+    role: "Transmission power flow & transient stability",
     group: "power",
-    tier: "preview",
+    tier: "stable",
+  },
+  {
+    slug: "powerfactory",
+    name: "DIgSILENT PowerFactory",
+    sidebar: "DIgSILENT PowerFactory",
+    ext: ".dgs, .pfd",
+    role: "Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT",
+    group: "power",
+    tier: "beta",
+  },
+  {
+    slug: "pslf",
+    name: "GE Vernova PSLF",
+    sidebar: "GE PSLF WECC Grid",
+    ext: ".epc, .dyd",
+    role: "WECC bulk transmission power flow & dynamic models",
+    group: "power",
+    tier: "beta",
   },
   {
     slug: "cgmes",
@@ -355,7 +391,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xml, .rdf",
     role: "ENTSO-E IEC 61970 transmission grid exchange & topology",
     group: "power",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "opendss",
@@ -364,7 +400,34 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".dss",
     role: "Unbalanced distribution & DER hosting",
     group: "power",
-    tier: "preview",
+    tier: "stable",
+  },
+  {
+    slug: "ocpp",
+    name: "OCPP",
+    sidebar: "OCPP EV Smart Charging",
+    ext: ".ocpp, .json",
+    role: "EV smart charging & transformer load management",
+    group: "power",
+    tier: "beta",
+  },
+  {
+    slug: "openadr",
+    name: "OpenADR",
+    sidebar: "OpenADR Demand Response",
+    ext: ".oadr, .xml, .json",
+    role: "Automated demand response & peak shaving",
+    group: "power",
+    tier: "beta",
+  },
+  {
+    slug: "tough",
+    name: "LBNL TOUGH",
+    sidebar: "TOUGH Geothermal",
+    ext: ".tgh, .dat",
+    role: "Geothermal reservoir & wellbore flashing thermodynamics",
+    group: "power",
+    tier: "beta",
   },
 
   // ── Oil, gas & subsurface ───────────────────────────────────────────────
@@ -393,7 +456,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".data",
     role: "Reservoir engineering",
     group: "oil-gas",
-    tier: "preview",
+    tier: "beta",
   },
 
   // ── Nuclear ─────────────────────────────────────────────────────────────
@@ -404,7 +467,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".inp",
     role: "Reactor thermal-hydraulics & kinetics",
     group: "nuclear",
-    tier: "preview",
+    tier: "beta",
   },
 
   // ── Marine & offshore ───────────────────────────────────────────────────
@@ -415,7 +478,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sima",
     role: "Marine operations & riser dynamics",
     group: "marine",
-    tier: "preview",
+    tier: "beta",
   },
 
   // ── Electronics & semiconductors ────────────────────────────────────────
@@ -444,7 +507,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".ibs",
     role: "I/O buffer behavioral models",
     group: "electronics",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "touchstone",
@@ -453,7 +516,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sNp",
     role: "RF & signal-integrity S-parameters",
     group: "electronics",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "optical",
@@ -462,25 +525,25 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sor",
     role: "OTDR trace analytics & DWDM transmission",
     group: "electronics",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "ran",
     name: "NSMA WG16 & Planet Antenna",
     sidebar: "RAN & Microwave (.adf)",
     ext: ".adf, .pat",
-    role: "Antenna 3D patterns & microwave link budgets",
+    role: "Antenna 3D patterns, RF MPE safety & microwave links",
     group: "electronics",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "fiber",
     name: "TIA-598-D Outside Plant",
     sidebar: "Fiber OSP Cadastre",
     ext: ".geojson",
-    role: "Fiber strand tracing & physical SRLG diversity",
+    role: "Fiber strand tracing, NESC pole loading & OTDR GIS fault location",
     group: "electronics",
-    tier: "preview",
+    tier: "beta",
   },
 
   // ── Robotics & industrial automation ────────────────────────────────────
@@ -491,7 +554,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".urdf",
     role: "Robot kinematics & dynamics",
     group: "robotics",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "plcopen",
@@ -500,7 +563,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".st",
     role: "PLC control software",
     group: "robotics",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "automationml",
@@ -529,7 +592,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".idf",
     role: "Building energy & HVAC",
     group: "buildings",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "epanet",
@@ -538,7 +601,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".inp",
     role: "Pressurized water distribution",
     group: "buildings",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "swmm",
@@ -547,7 +610,34 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".inp",
     role: "Stormwater & urban drainage",
     group: "buildings",
-    tier: "preview",
+    tier: "stable",
+  },
+  {
+    slug: "hec-ras",
+    name: "USACE HEC-RAS",
+    sidebar: "HEC-RAS River Hydraulics",
+    ext: ".g01, .g02, .rasgeo",
+    role: "River basin & open-channel hydraulics",
+    group: "buildings",
+    tier: "beta",
+  },
+  {
+    slug: "modflow",
+    name: "USGS MODFLOW",
+    sidebar: "MODFLOW Groundwater",
+    ext: ".dis, .dis6, .npf, .wel",
+    role: "Regional groundwater aquifers & 3D Darcy flow",
+    group: "buildings",
+    tier: "beta",
+  },
+  {
+    slug: "landgem",
+    name: "EPA LandGEM",
+    sidebar: "LandGEM Biogas",
+    ext: ".landgem, .lfg, .biogas",
+    role: "Solid waste methane decay & landfill biogas CHP",
+    group: "buildings",
+    tier: "beta",
   },
 
   // ── Chemical & process ──────────────────────────────────────────────────
@@ -558,7 +648,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".bkp",
     role: "Chemical process flowsheets",
     group: "process",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "gproms",
@@ -567,7 +657,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".gproms",
     role: "Equation-oriented dynamic process & distributed PDEs",
     group: "process",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "cantera",
@@ -576,7 +666,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".yaml",
     role: "Gas-phase chemical kinetics & NASA-7 thermochemistry",
     group: "process",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "phreeqc",
@@ -585,7 +675,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".pqi",
     role: "Aqueous geochemistry, speciation & mineral saturation",
     group: "process",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "smiles",
@@ -594,7 +684,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".smi",
     role: "Molecular graph parsing & Joback property estimation",
     group: "process",
-    tier: "preview",
+    tier: "beta",
   },
 
   // ── Life sciences, healthcare & medical ─────────────────────────────────
@@ -605,7 +695,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sbml",
     role: "Biochemical reaction networks",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "antimony",
@@ -614,7 +704,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".ant",
     role: "Modular human-readable systems biology models",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "bngl",
@@ -623,7 +713,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".bngl",
     role: "Rule-based multiprotein signaling & reaction expansion",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "sbol",
@@ -632,7 +722,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sbol",
     role: "Synthetic biology genetic circuits & Hill kinetics",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "sedml",
@@ -641,7 +731,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sedml",
     role: "COMBINE reproducible simulation experiment protocols",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "nmtran",
@@ -650,7 +740,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".ctl",
     role: "Clinical PK/PD compartmental dosing & exposure",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "pdb",
@@ -659,7 +749,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".pdb",
     role: "3D protein structures, Ramachandran & GNM dynamics",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "genbank",
@@ -668,7 +758,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".gb",
     role: "Annotated nucleotide sequences, ORFs & restriction maps",
     group: "life-sciences",
-    tier: "preview",
+    tier: "beta",
   },
   {
     slug: "cellml",

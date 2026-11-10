@@ -144,7 +144,7 @@ If you have questions regarding this policy, wish to request written permission 
 
 ## 8. Third-Party Trademarks & Nominative Fair Use
 
-ModelScript supports interoperability, parsing, linting, simulation, and compilation across 66 engineering domains, modeling formats, and file standards.
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 81 engineering domains, modeling formats, and file standards.
 
 ### Non-Affiliation & Disclaimers
 
@@ -157,6 +157,8 @@ All third-party product names, software titles, logos, and registered trademarks
 - **Aspen Plus®** and **Aspen HYSYS®** are registered trademarks of Aspen Technology, Inc.
 - **OLGA®** and **ECLIPSE®** are registered trademarks of Schlumberger Technology Corporation / SLB.
 - **PSS®E** is a registered trademark of Siemens AG.
+- **DIgSILENT®** and **PowerFactory®** are registered trademarks of DIgSILENT GmbH.
+- **PSLF™** is a trademark of GE Vernova / General Electric Company.
 - **PSCAD®** is a registered trademark of Manitoba Hydro International Ltd.
 - **EASY5®** is a registered trademark of The Boeing Company / MSC Software.
 - **PipelineStudio®** is a registered trademark of Energy Solutions International / Emerson Electric Co.

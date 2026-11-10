@@ -3,7 +3,21 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { computeAABBDistance, type AABB } from "@modelscript/cad";
 import { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
-import { locateOtdrFault, type FiberCableSpan, type FiberStructureNode } from "@modelscript/fiber";
+import {
+  discretizeCoverageToH3,
+  evaluateCsaPoleStress,
+  evaluateEurocodeMastLoading,
+  evaluatePoleLoading,
+  locateOtdrFault,
+  type BdcTechnologyProfile,
+  type CsaPoleAnalysisConfig,
+  type EurocodeMastLoadingConfig,
+  type FiberCableSpan,
+  type FiberStructureNode,
+  type H3Resolution,
+  type PoleAttachmentLoad,
+  type PoleSpecification,
+} from "@modelscript/fiber";
 import { evaluateEn14363, lintGensysModel, parseGensysDeck, solveFastsim } from "@modelscript/gensys";
 import { RtmIndexEngine, runSelfHealingPipeline } from "@modelscript/lsp";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
@@ -38,9 +52,19 @@ import {
 } from "@modelscript/optical";
 import {
   computeFsplDb,
+  evaluateFaaPart77Notice,
   evaluateFresnelClearance,
+  evaluateIcaoAirspaceObstruction,
+  evaluateSiteMpe,
+  evaluateTransportCanadaAirspaceObstruction,
   solveMicrowaveLinkBudget,
+  type IcaoAerodromeConfig,
   type MicrowaveLink,
+  type MpeStandard,
+  type ProposedStructureSiting,
+  type ProposedTowerStructure,
+  type RfEmitterConfig,
+  type RunwaySpecification,
 } from "@modelscript/ran";
 import {
   B2BEquivalenceVerifier,
@@ -6089,6 +6113,353 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
   );
 
   server.tool(
+    "epanet_optimize_cip",
+    "Optimizes multi-year Capital Improvement Planning (CIP) pipe replacement and upsizing to maximize hydraulic performance under strict budget constraints.",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      budgetUsd: z.number().describe("Capital improvement project budget constraint in USD (e.g. 500000)"),
+      targetMinPressureM: z.number().optional().describe("Target minimum network service pressure in meters (default: 25.0)"),
+      candidatePipeIds: z.array(z.string()).optional().describe("Optional candidate pipe IDs for replacement (default: all pipes)"),
+      unitCostPerMeterPerMm: z.number().optional().describe("Unit cost in $/m/mm diameter (default: 0.85)"),
+      availableDiametersMm: z.array(z.number()).optional().describe("Available commercial pipe diameters in mm (default: [200, 250, 300, 350, 400, 500, 600])"),
+    },
+    async ({
+      networkContent,
+      budgetUsd,
+      targetMinPressureM = 25.0,
+      candidatePipeIds,
+      unitCostPerMeterPerMm = 0.85,
+      availableDiametersMm = [200, 250, 300, 350, 400, 500, 600],
+    }) => {
+      const { parseInp, solveHydraulics } = await import("@modelscript/epanet");
+      const net = parseInp(networkContent);
+
+      // 1. Solve baseline hydraulics
+      const baseSol = solveHydraulics(net);
+      let baseMinP = Infinity;
+      let baseMinNode = "";
+      for (const [nid, p] of baseSol.nodePressures) {
+        if (p < baseMinP) {
+          baseMinP = p;
+          baseMinNode = nid;
+        }
+      }
+
+      // 2. Rank candidate pipes by head loss gradient (hf/L)
+      const eligiblePipes = net.pipes.filter((p) => !candidatePipeIds || candidatePipeIds.includes(p.id));
+      const sortedCandidates = [...eligiblePipes].sort((a, b) => {
+        const flowA = Math.abs(baseSol.linkFlows.get(a.id) ?? 0);
+        const flowB = Math.abs(baseSol.linkFlows.get(b.id) ?? 0);
+        const hfGradA = Math.pow(flowA / Math.max(1, a.roughness), 1.852) / Math.pow(a.diameter, 4.87);
+        const hfGradB = Math.pow(flowB / Math.max(1, b.roughness), 1.852) / Math.pow(b.diameter, 4.87);
+        return hfGradB - hfGradA;
+      });
+
+      // 3. Greedy selection under budget
+      let remainingBudget = budgetUsd;
+      let totalCapex = 0;
+      const replacedPipes: {
+        pipeId: string;
+        oldDiameterMm: number;
+        newDiameterMm: number;
+        lengthM: number;
+        costUsd: number;
+        headlossReductionM: number;
+      }[] = [];
+
+      const sortedDiameters = [...availableDiametersMm].sort((a, b) => a - b);
+
+      for (const p of sortedCandidates) {
+        const nextDiams = sortedDiameters.filter((d) => d > p.diameter);
+        if (nextDiams.length === 0) continue;
+
+        let bestNewDiam = 0;
+        let bestCost = 0;
+
+        for (const candidateDiam of nextDiams) {
+          const cost = p.length * candidateDiam * unitCostPerMeterPerMm;
+          if (cost <= remainingBudget) {
+            bestNewDiam = candidateDiam;
+            bestCost = cost;
+          }
+        }
+
+        if (bestNewDiam > 0) {
+          const oldDiam = p.diameter;
+          p.diameter = bestNewDiam;
+          p.roughness = Math.max(p.roughness, 130);
+
+          remainingBudget -= bestCost;
+          totalCapex += bestCost;
+
+          replacedPipes.push({
+            pipeId: p.id,
+            oldDiameterMm: oldDiam,
+            newDiameterMm: bestNewDiam,
+            lengthM: p.length,
+            costUsd: Math.round(bestCost),
+            headlossReductionM: 0,
+          });
+        }
+      }
+
+      // 4. Re-solve optimized network
+      const optSol = solveHydraulics(net);
+      let optMinP = Infinity;
+      let optMinNode = "";
+      for (const [nid, p] of optSol.nodePressures) {
+        if (p < optMinP) {
+          optMinP = p;
+          optMinNode = nid;
+        }
+      }
+
+      for (const rep of replacedPipes) {
+        const pObj = net.pipes.find((p) => p.id === rep.pipeId)!;
+        const baseFlow = Math.abs(baseSol.linkFlows.get(rep.pipeId) ?? 1);
+        const optFlow = Math.abs(optSol.linkFlows.get(rep.pipeId) ?? 1);
+        const baseHf = (10.67 * pObj.length * Math.pow(baseFlow / 1000 / 100, 1.852)) / Math.pow(rep.oldDiameterMm / 1000, 4.87);
+        const optHf = (10.67 * pObj.length * Math.pow(optFlow / 1000 / 130, 1.852)) / Math.pow(rep.newDiameterMm / 1000, 4.87);
+        rep.headlossReductionM = Math.max(0, Math.round((baseHf - optHf) * 10) / 10);
+      }
+
+      const pImprovement = optMinP - baseMinP;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                budgetUsd,
+                totalCapexUsd: Math.round(totalCapex),
+                remainingBudgetUsd: Math.round(remainingBudget),
+                baselineMinPressureM: Math.round(baseMinP * 10) / 10,
+                baselineCriticalNode: baseMinNode,
+                optimizedMinPressureM: Math.round(optMinP * 10) / 10,
+                optimizedCriticalNode: optMinNode,
+                pressureImprovementM: Math.round(pImprovement * 10) / 10,
+                targetMet: optMinP >= targetMinPressureM,
+                replacedPipeCount: replacedPipes.length,
+                replacedPipes,
+                summary: `Capital Improvement Plan: Replaced ${replacedPipes.length} pipe(s) utilizing $${Math.round(totalCapex).toLocaleString()} of $${budgetUsd.toLocaleString()} budget. Minimum network pressure increased from ${baseMinP.toFixed(1)}m to ${optMinP.toFixed(1)}m (+${pImprovement.toFixed(1)}m improvement).`,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "epanet_calibrate_scada",
+    "Calibrates EPANET pipe Hazen-Williams roughness C-factors against real-world SCADA telemetry pressure observations.",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      observations: z
+        .array(
+          z.object({
+            nodeId: z.string().describe("Observed node ID"),
+            observedPressureM: z.number().describe("Telemetry pressure in meters"),
+            weight: z.number().optional().describe("Observation weight (default: 1.0)"),
+          }),
+        )
+        .describe("SCADA telemetry pressure observations"),
+      calibratedPipeIds: z.array(z.string()).optional().describe("Optional list of pipe IDs to tune (default: all)"),
+      maxIterations: z.number().optional().describe("Maximum calibration iterations (default: 15)"),
+    },
+    async ({ networkContent, observations, calibratedPipeIds, maxIterations = 15 }) => {
+      const { parseInp, solveHydraulics } = await import("@modelscript/epanet");
+      const net = parseInp(networkContent);
+
+      const computeRmse = (solPressures: Map<string, number>) => {
+        let sumSq = 0;
+        let count = 0;
+        for (const obs of observations) {
+          const simP = solPressures.get(obs.nodeId);
+          if (simP !== undefined) {
+            const err = simP - obs.observedPressureM;
+            sumSq += err * err * (obs.weight ?? 1.0);
+            count += obs.weight ?? 1.0;
+          }
+        }
+        return count > 0 ? Math.sqrt(sumSq / count) : 0;
+      };
+
+      const initialSol = solveHydraulics(net);
+      const initialRmse = computeRmse(initialSol.nodePressures);
+
+      const targetPipes = net.pipes.filter((p) => !calibratedPipeIds || calibratedPipeIds.includes(p.id));
+      const initialRoughnessMap = new Map<string, number>();
+      for (const p of targetPipes) {
+        initialRoughnessMap.set(p.id, p.roughness);
+      }
+
+      // Iterative sensitivity tuning
+      let currentRmse = initialRmse;
+      const alpha = 0.25;
+
+      for (let iter = 0; iter < maxIterations; iter++) {
+        const curSol = solveHydraulics(net);
+        let avgRelDiff = 0;
+        let validObs = 0;
+        for (const obs of observations) {
+          const simP = curSol.nodePressures.get(obs.nodeId);
+          if (simP !== undefined && obs.observedPressureM > 0.1) {
+            avgRelDiff += (simP - obs.observedPressureM) / obs.observedPressureM;
+            validObs++;
+          }
+        }
+        if (validObs === 0) break;
+        avgRelDiff /= validObs;
+
+        for (const p of targetPipes) {
+          const factor = 1.0 - alpha * avgRelDiff;
+          p.roughness = Math.max(50.0, Math.min(150.0, p.roughness * factor));
+        }
+
+        const nextSol = solveHydraulics(net);
+        const nextRmse = computeRmse(nextSol.nodePressures);
+        if (nextRmse < currentRmse) {
+          currentRmse = nextRmse;
+        } else {
+          for (const p of targetPipes) {
+            p.roughness = Math.max(50.0, Math.min(150.0, (p.roughness + initialRoughnessMap.get(p.id)!) / 2.0));
+          }
+          break;
+        }
+      }
+
+      const finalSol = solveHydraulics(net);
+      const finalRmse = computeRmse(finalSol.nodePressures);
+
+      const calibratedPipes = targetPipes.map((p) => {
+        const initR = initialRoughnessMap.get(p.id)!;
+        return {
+          pipeId: p.id,
+          initialRoughness: Math.round(initR * 10) / 10,
+          calibratedRoughness: Math.round(p.roughness * 10) / 10,
+          percentChange: Math.round(((p.roughness - initR) / initR) * 1000) / 10,
+        };
+      });
+
+      const observationErrors = observations.map((obs) => {
+        const sim = finalSol.nodePressures.get(obs.nodeId) ?? 0;
+        return {
+          nodeId: obs.nodeId,
+          observedM: obs.observedPressureM,
+          simulatedM: Math.round(sim * 10) / 10,
+          residualM: Math.round((sim - obs.observedPressureM) * 10) / 10,
+        };
+      });
+
+      const rmseReductionPct = initialRmse > 0 ? Math.max(0, ((initialRmse - finalRmse) / initialRmse) * 100) : 0;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                initialRmseM: Math.round(initialRmse * 100) / 100,
+                calibratedRmseM: Math.round(finalRmse * 100) / 100,
+                rmseReductionPct: Math.round(rmseReductionPct * 10) / 10,
+                calibratedPipeCount: calibratedPipes.length,
+                calibratedPipes,
+                observationErrors,
+                summary: `SCADA Telemetry Calibration: Pressure RMSE reduced from ${initialRmse.toFixed(2)}m to ${finalRmse.toFixed(2)}m (${rmseReductionPct.toFixed(1)}% error reduction) across ${calibratedPipes.length} pipe(s).`,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "epanet_gis_to_model",
+    "Ingests municipal GIS pipe centerlines, junction assets, and digital elevation models (DEM) from GeoJSON / ASCII grids into a complete, ready-to-solve EPANET network (.inp).",
+    {
+      pipesGeoJson: z.string().describe("GeoJSON string containing pipe polyline features"),
+      nodesGeoJson: z.string().optional().describe("Optional GeoJSON string containing point assets (junctions, reservoirs, tanks)"),
+      demAsciiGrid: z.string().optional().describe("Optional Esri/USGS ASCII digital elevation model grid string (.asc, .grd)"),
+      snapToleranceM: z.number().optional().describe("Topological node snap tolerance in meters (default: 1.5m)"),
+      defaultDiameterMm: z.number().optional().describe("Default pipe diameter in mm (default: 200mm)"),
+      defaultRoughness: z.number().optional().describe("Default Hazen-Williams C-factor (default: 120)"),
+      defaultDemandLps: z.number().optional().describe("Default base demand in L/s (default: 0.0)"),
+      networkTitle: z.string().optional().describe("Optional network title"),
+    },
+    async ({
+      pipesGeoJson,
+      nodesGeoJson,
+      demAsciiGrid,
+      snapToleranceM,
+      defaultDiameterMm,
+      defaultRoughness,
+      defaultDemandLps,
+      networkTitle,
+    }) => {
+      const { buildEpanetFromGis, serializeInp } = await import("@modelscript/epanet");
+      const network = buildEpanetFromGis({
+        pipesGeoJson,
+        nodesGeoJson,
+        dem: demAsciiGrid,
+        snapToleranceM,
+        defaultDiameterMm,
+        defaultRoughness,
+        defaultDemandLps,
+        networkTitle,
+      });
+
+      const inpContent = serializeInp(network);
+      let totalLengthM = 0;
+      for (const p of network.pipes) {
+        totalLengthM += p.length;
+      }
+
+      let minElev = Infinity;
+      let maxElev = -Infinity;
+      for (const j of network.junctions) {
+        if (j.elevation < minElev) minElev = j.elevation;
+        if (j.elevation > maxElev) maxElev = j.elevation;
+      }
+      if (minElev === Infinity) minElev = 0;
+      if (maxElev === -Infinity) maxElev = 0;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                title: network.title,
+                summary: {
+                  junctionsCount: network.junctions.length,
+                  reservoirsCount: network.reservoirs.length,
+                  tanksCount: network.tanks.length,
+                  pipesCount: network.pipes.length,
+                  totalPipeLengthM: Math.round(totalLengthM * 10) / 10,
+                  elevationRangeM: { min: minElev, max: maxElev },
+                },
+                inpContent,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
     "swmm_flood_routing",
     "Simulates 1D Saint-Venant dynamic wave routing in an urban stormwater or combined sewer network (.inp), reporting peak flows and flooding.",
     {
@@ -6190,6 +6561,85 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
                 baselineSpillVolumeM3: Math.round(result.baselineSpillVolumeM3 * 10) / 10,
                 spillReductionPct: Math.round(result.spillReductionPct * 10) / 10,
                 executions: result.ruleExecutions,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "swmm_gis_to_model",
+    "Ingests municipal GIS stormwater/wastewater conduits, manholes, catchment polygon boundaries, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (.inp).",
+    {
+      conduitsGeoJson: z.string().describe("GeoJSON string containing conduit polyline features"),
+      manholesGeoJson: z.string().optional().describe("Optional GeoJSON string containing manhole and outfall point features"),
+      subcatchmentsGeoJson: z.string().optional().describe("Optional GeoJSON string containing catchment polygon boundaries"),
+      demAsciiGrid: z.string().optional().describe("Optional Esri/USGS ASCII digital elevation model grid string (.asc, .grd)"),
+      snapToleranceM: z.number().optional().describe("Topological manhole snap tolerance in meters (default: 2.0m)"),
+      defaultDiameterM: z.number().optional().describe("Default conduit diameter in meters (default: 0.6m)"),
+      defaultManningN: z.number().optional().describe("Default Manning's roughness n (default: 0.013)"),
+      defaultManholeDepthM: z.number().optional().describe("Default manhole depth in meters (default: 2.5m)"),
+      defaultImpervPct: z.number().optional().describe("Default subcatchment imperviousness percentage (default: 40.0%)"),
+      title: z.string().optional().describe("Optional SWMM model title"),
+    },
+    async ({
+      conduitsGeoJson,
+      manholesGeoJson,
+      subcatchmentsGeoJson,
+      demAsciiGrid,
+      snapToleranceM,
+      defaultDiameterM,
+      defaultManningN,
+      defaultManholeDepthM,
+      defaultImpervPct,
+      title,
+    }) => {
+      const { buildSwmmFromGis, serializeSwmm } = await import("@modelscript/swmm");
+      const deck = buildSwmmFromGis({
+        conduitsGeoJson,
+        manholesGeoJson,
+        subcatchmentsGeoJson,
+        dem: demAsciiGrid,
+        snapToleranceM,
+        defaultDiameterM,
+        defaultManningN,
+        defaultManholeDepthM,
+        defaultImpervPct,
+        title,
+      });
+
+      const inpContent = serializeSwmm(deck);
+      let totalConduitLengthM = 0;
+      for (const [, c] of deck.conduits) {
+        totalConduitLengthM += c.length;
+      }
+
+      let totalCatchmentAreaHa = 0;
+      for (const [, sc] of deck.subcatchments) {
+        totalCatchmentAreaHa += sc.area;
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                title: deck.title,
+                summary: {
+                  junctionsCount: deck.junctions.size,
+                  outfallsCount: deck.outfalls.size,
+                  conduitsCount: deck.conduits.size,
+                  subcatchmentsCount: deck.subcatchments.size,
+                  totalConduitLengthM: Math.round(totalConduitLengthM * 10) / 10,
+                  totalCatchmentAreaHa: Math.round(totalCatchmentAreaHa * 100) / 100,
+                },
+                inpContent,
               },
               null,
               2,
@@ -6852,6 +7302,500 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         return {
           isError: true,
           content: [{ type: "text" as const, text: `OTDR fault locator error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── ran_evaluate_mpe_safety ─────────────────────────────────────────────
+
+  server.tool(
+    "ran_evaluate_mpe_safety",
+    "Evaluates FCC OET-65, Health Canada Safety Code 6, ICNIRP 2020, EU CENELEC, Swiss NISV, and Italian CEI 211 maximum permissible exposure (MPE) for cellular and microwave base station sites. Computes power densities, exclusion boundary distances (General Population vs. Occupational), Total Exposure Ratio (TER <= 1.0), and OSHA/FCC warning signage requirements.",
+    {
+      siteId: z.string().default("SITE-001").describe("Base station site identifier"),
+      siteName: z.string().default("Cell Site A").describe("Human-readable site name"),
+      standard: z
+        .enum(["FCC_OET65", "ICNIRP_2020", "HEALTH_CANADA_SC6", "EU_CENELEC_EN50383", "SWISS_ORNI_NISV", "ITALY_CEI_211"])
+        .default("FCC_OET65")
+        .describe("Electromagnetic safety standard"),
+      environment: z
+        .enum(["general_population", "occupational"])
+        .default("general_population")
+        .describe("Exposure tier: general_population (uncontrolled) or occupational (controlled)"),
+      emitters: z
+        .array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+            frequencyMhz: z.number().describe("Carrier frequency in MHz (e.g. 700, 1900, 3500, 28000)"),
+            eirpWatts: z.number().optional().describe("Effective Isotropic Radiated Power in Watts"),
+            txPowerWatts: z.number().optional().describe("Transmitter power in Watts (if EIRP not provided)"),
+            antennaGainDbi: z.number().optional().describe("Antenna gain in dBi (if EIRP not provided)"),
+            antennaHeightMeters: z.number().default(30.0).describe("Antenna center of radiation height AGL in meters"),
+            azimuthDeg: z.number().default(0.0).describe("Antenna boresight azimuth in degrees"),
+            downTiltDeg: z.number().default(0.0).describe("Mechanical + electrical downtilt in degrees"),
+            physicalApertureAreaM2: z
+              .number()
+              .optional()
+              .describe("Antenna physical aperture area in m² (for cylindrical near-field ceiling)"),
+          }),
+        )
+        .describe("List of RF emitters collocated on the site"),
+      studyPoints: z
+        .array(
+          z.object({
+            x: z.number(),
+            y: z.number(),
+            z: z.number(),
+          }),
+        )
+        .optional()
+        .describe("Optional 3D evaluation coordinates relative to tower base"),
+    },
+    async (args) => {
+      try {
+        const rfEmitters: RfEmitterConfig[] = args.emitters.map((e) => {
+          let powerWatts = e.txPowerWatts;
+          if (powerWatts === undefined) {
+            if (e.eirpWatts !== undefined) {
+              const gainLin = Math.pow(10, (e.antennaGainDbi ?? 15.0) / 10);
+              powerWatts = e.eirpWatts / gainLin;
+            } else {
+              powerWatts = 50.0;
+            }
+          }
+          return {
+            id: e.id,
+            name: e.name,
+            coordinates: [0, 0, e.antennaHeightMeters],
+            azimuthDeg: e.azimuthDeg,
+            mechanicalTiltDeg: e.downTiltDeg,
+            electricalDowntiltDeg: 0,
+            frequencyMhz: e.frequencyMhz,
+            inputPowerWatts: powerWatts,
+            cableLossDb: 0.5,
+            peakGainDbi: e.antennaGainDbi ?? (e.eirpWatts ? 10 * Math.log10(e.eirpWatts / powerWatts) : 15.0),
+            apertureAreaM2: e.physicalApertureAreaM2,
+          };
+        });
+
+        const studyCoords: Array<[number, number, number]> =
+          args.studyPoints?.map((p) => [p.x, p.y, p.z] as [number, number, number]) ?? [];
+        const result = evaluateSiteMpe(rfEmitters, studyCoords, { standard: args.standard as MpeStandard });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `MPE safety evaluation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── ran_evaluate_faa_obstruction ────────────────────────────────────────
+
+  server.tool(
+    "ran_evaluate_faa_obstruction",
+    "Evaluates FAA 14 CFR Part 77, ICAO Annex 14 Volume I, and Transport Canada CAR 601.23 airspace obstruction notice criteria for telecom towers, calculates runway slope penetrations, and generates structured filing notice data.",
+    {
+      latitude: z.number().describe("Structure latitude in decimal degrees"),
+      longitude: z.number().describe("Structure longitude in decimal degrees"),
+      structureHeightMeters: z.number().describe("Height of structure above ground level (AGL) in meters"),
+      groundElevationMeters: z.number().describe("Site ground elevation above mean sea level (AMSL) in meters"),
+      structureType: z.enum(["tower", "pole", "building_rooftop", "water_tank", "monopole"]).default("tower"),
+      siteName: z.string().default("Proposed Tower Site"),
+      standard: z.enum(["FAA_PART77", "ICAO_ANNEX14", "TRANSPORT_CANADA_CAR601"]).default("FAA_PART77").describe("Aviation regulatory regime"),
+      airports: z
+        .array(
+          z.object({
+            code: z.string().describe("ICAO or IATA airport identifier"),
+            name: z.string(),
+            latitude: z.number(),
+            longitude: z.number(),
+            elevationMeters: z.number(),
+            runways: z.array(
+              z.object({
+                id: z.string(),
+                lengthMeters: z.number(),
+                hasInstrumentApproach: z.boolean(),
+                end1Latitude: z.number(),
+                end1Longitude: z.number(),
+                end2Latitude: z.number(),
+                end2Longitude: z.number(),
+              }),
+            ),
+          }),
+        )
+        .optional()
+        .describe("Optional nearby airports to check for runway slope penetrations"),
+    },
+    async (args) => {
+      try {
+        if (args.standard === "ICAO_ANNEX14" || args.standard === "TRANSPORT_CANADA_CAR601") {
+          const firstAirport = args.airports?.[0];
+          const icaoAerodrome: IcaoAerodromeConfig = {
+            id: firstAirport?.code ?? "ICAO-AD",
+            name: firstAirport?.name ?? "Regional Aerodrome",
+            elevationMslMeters: firstAirport?.elevationMeters ?? args.groundElevationMeters,
+            latitude: firstAirport?.latitude ?? args.latitude + 0.05,
+            longitude: firstAirport?.longitude ?? args.longitude + 0.05,
+            runwayCode: "4",
+            runwayType: "precision-cat-II-III",
+            runwayLengthMeters: firstAirport?.runways?.[0]?.lengthMeters ?? 3000,
+          };
+
+          const proposedSiting: ProposedStructureSiting = {
+            id: "SITE-PROP",
+            name: args.siteName,
+            latitude: args.latitude,
+            longitude: args.longitude,
+            groundElevationMslMeters: args.groundElevationMeters,
+            structureHeightAglMeters: args.structureHeightMeters,
+          };
+
+          const intlReport =
+            args.standard === "ICAO_ANNEX14"
+              ? evaluateIcaoAirspaceObstruction(proposedSiting, icaoAerodrome)
+              : evaluateTransportCanadaAirspaceObstruction(proposedSiting, icaoAerodrome);
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(intlReport, null, 2),
+              },
+            ],
+          };
+        }
+
+        const runways: RunwaySpecification[] = (args.airports ?? []).flatMap((a) =>
+          a.runways.map((r) => ({
+            airportCode: a.code,
+            runwayId: r.id,
+            runwayLengthFeet: r.lengthMeters * 3.28084,
+            runwayElevationAmslFeet: a.elevationMeters * 3.28084,
+            latitude: (r.end1Latitude + r.end2Latitude) / 2,
+            longitude: (r.end1Longitude + r.end2Longitude) / 2,
+            isInstrumentRunway: r.hasInstrumentApproach,
+          })),
+        );
+
+        const structure: ProposedTowerStructure = {
+          siteId: "SITE-PROP",
+          structureName: args.siteName,
+          latitude: args.latitude,
+          longitude: args.longitude,
+          groundElevationAmslFeet: args.groundElevationMeters * 3.28084,
+          structureHeightAglFeet: args.structureHeightMeters * 3.28084,
+        };
+
+        const determination = evaluateFaaPart77Notice(structure, runways);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(determination, null, 2),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Airspace obstruction evaluation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── fiber_evaluate_pole_loading ──────────────────────────────────────────
+
+  server.tool(
+    "fiber_evaluate_pole_loading",
+    "Evaluates utility pole structural loading pursuant to US NESC Rule 250/260, Canadian CSA C22.3 No. 1, or European Eurocode EN 50341 / EN 1991-1-4. Computes bending moment capacity, conductor transverse/ice loads, and percent pole capacity utilization.",
+    {
+      standard: z.enum(["NESC", "CSA", "EUROCODE"]).default("NESC").describe("Structural design code"),
+      poleId: z.string().default("POLE-001").describe("Pole identifier"),
+      overallLengthMeters: z.number().default(12.0).describe("Overall pole length in meters"),
+      species: z.string().default("western-red-cedar").describe("Wood species or material specification"),
+      loadingDistrict: z.string().default("heavy").describe("Climatic loading zone (e.g. heavy, severe, medium, light)"),
+      attachments: z
+        .array(
+          z.object({
+            id: z.string(),
+            heightMeters: z.number().describe("Attachment height AGL in meters"),
+            bareDiameterMm: z.number().default(15.0).describe("Bare cable diameter in mm"),
+            spanLengthMeters: z.number().default(50.0).describe("Span length in meters"),
+            weightKgPerMeter: z.number().default(0.3).describe("Weight in kg/m"),
+          }),
+        )
+        .describe("Attached conductors and fiber messengers"),
+    },
+    async (args) => {
+      try {
+        if (args.standard === "CSA") {
+          const csaConfig: CsaPoleAnalysisConfig = {
+            poleId: args.poleId,
+            species: "western-red-cedar",
+            overallLengthMeters: args.overallLengthMeters,
+            circumferenceAtGroundLineMeters: 0.95,
+            circumferenceAtTopMeters: 0.55,
+            constructionGrade: "grade-2",
+            loadingDistrict: (args.loadingDistrict as any) ?? "heavy",
+            attachments: args.attachments.map((a) => ({
+              id: a.id,
+              type: "telecom-fiber",
+              attachmentHeightMeters: a.heightMeters,
+              bareCableDiameterMm: a.bareDiameterMm,
+              bareCableWeightKgPerM: a.weightKgPerMeter,
+              spanLengthMeters: a.spanLengthMeters,
+            })),
+          };
+          const report = evaluateCsaPoleStress(csaConfig);
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
+          };
+        }
+
+        if (args.standard === "EUROCODE") {
+          const euroConfig: EurocodeMastLoadingConfig = {
+            mastId: args.poleId,
+            basicWindVelocityMPerS: 25.0,
+            terrainCategory: "II",
+            iceClass: "G2",
+            overallHeightMeters: args.overallLengthMeters,
+            groundSectionModulusM3: 0.002,
+            characteristicYieldStrengthMpa: 355.0,
+            cables: args.attachments.map((a) => ({
+              id: a.id,
+              attachmentHeightMeters: a.heightMeters,
+              bareDiameterMm: a.bareDiameterMm,
+              bareWeightKgPerM: a.weightKgPerMeter,
+              spanLengthMeters: a.spanLengthMeters,
+            })),
+          };
+          const report = evaluateEurocodeMastLoading(euroConfig);
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
+          };
+        }
+
+        // Default NESC evaluation
+        const lengthFeet = args.overallLengthMeters * 3.28084;
+        const poleSpec: PoleSpecification = {
+          poleId: args.poleId,
+          species: "southern-yellow-pine",
+          poleClass: "4",
+          lengthFeet,
+        };
+        const nescAttachments: PoleAttachmentLoad[] = args.attachments.map((a) => ({
+          attachmentId: a.id,
+          description: (a as Record<string, unknown>)["description"] ? String((a as Record<string, unknown>)["description"]) : a.id,
+          heightAboveGroundFeet: a.heightMeters * 3.28084,
+          transverseWindForceLbs: 50.0,
+          tensionForceLbs: 30.0,
+        }));
+        const report = evaluatePoleLoading(poleSpec, nescAttachments, { grade: "C-elsewhere" });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Pole loading evaluation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── fiber_generate_bdc_fabric ───────────────────────────────────────────
+
+  server.tool(
+    "fiber_generate_bdc_fabric",
+    "Generates FCC Broadband Data Collection (BDC) and NTIA BEAD compliant spatial datasets discretized into Uber H3 Resolution 8 or 9 hexagonal bins from geographic fiber routes or service polygon points.",
+    {
+      sampleCoordinates: z
+        .array(z.tuple([z.number(), z.number()]))
+        .describe("Array of [longitude, latitude] coordinates along fiber route or coverage boundary"),
+      techCode: z
+        .number()
+        .default(50)
+        .describe("BDC technology code: 50 (Optical Carrier / FTTH), 70 (5G Mobile), 71 (5G Fixed Wireless)"),
+      maxDownloadMbps: z.number().default(1000).describe("Maximum advertised download speed in Mbps"),
+      maxUploadMbps: z.number().default(1000).describe("Maximum advertised upload speed in Mbps"),
+      lowLatency: z.boolean().default(true).describe("Low-latency indicator (<=100ms RTT)"),
+      resolution: z.enum(["8", "9"]).default("9").describe("H3 resolution (8: ~461m edge, 9: ~174m edge)"),
+      providerName: z.string().default("ModelScript Fiber Provider").describe("Broadband provider brand name"),
+    },
+    async (args) => {
+      try {
+        const res: H3Resolution = args.resolution === "8" ? 8 : 9;
+        const techProfile: BdcTechnologyProfile = {
+          techCode: args.techCode,
+          maxDownloadMbps: args.maxDownloadMbps,
+          maxUploadMbps: args.maxUploadMbps,
+          lowLatency: args.lowLatency,
+          providerName: args.providerName,
+        };
+
+        const dataset = discretizeCoverageToH3(args.sampleCoordinates, techProfile, res);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  totalHexagons: dataset.totalHexagons,
+                  resolution: dataset.resolution,
+                  technologyCode: dataset.technologyCode,
+                  sampleHexagons: dataset.hexagons.slice(0, 10).map((h) => ({
+                    h3Index: h.h3Index,
+                    center: h.centerCoordinates,
+                  })),
+                  csvPreview: dataset.csvSummary.split("\n").slice(0, 6).join("\n"),
+                  geojsonFeatureCount: dataset.geojson.features.length,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `BDC fabric generator error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── telecom_evaluate_nors_outage ────────────────────────────────────────
+
+  server.tool(
+    "telecom_evaluate_nors_outage",
+    "Evaluates whether a telecom network outage meets mandatory FCC Part 4 (47 CFR § 4.9) NORS reporting thresholds (900,000 user-minutes, 911/PSAP facility impact, or major transport cut) and generates an automated electronic filing dossier.",
+    {
+      outageId: z.string().describe("Carrier outage incident identifier"),
+      serviceProviderName: z.string().describe("Service provider carrier legal name"),
+      startTimeIso: z.string().describe("Outage start timestamp in ISO-8601"),
+      endTimeIso: z.string().optional().describe("Outage end timestamp in ISO-8601 (if restored)"),
+      durationMinutes: z.number().describe("Total or elapsed outage duration in minutes"),
+      affectedUsersEstimate: z.number().describe("Estimated number of impacted subscribers/users"),
+      is911Affected: z.boolean().default(false).describe("Whether 911 access, special facility, or PSAP is affected"),
+      majorTransportAffected: z
+        .boolean()
+        .default(false)
+        .describe("Whether inter-office major transport (DS3, OC3, 100G+ cut) is affected"),
+      affectedCounties: z.array(z.string()).optional().describe("Affected counties or geographic areas"),
+      rootCauseDescription: z
+        .string()
+        .describe("Root cause summary description (e.g. fiber cut, power loss, equipment failure)"),
+      filingStage: z
+        .enum(["notification", "initial", "final"])
+        .default("notification")
+        .describe("Filing stage: notification (2h), initial (72h), or final (30d)"),
+      fccFilerId: z.string().default("FCC-FILER-10023").describe("FCC Filer 499A/FRN identifier"),
+    },
+    async (args) => {
+      try {
+        let eeMod: any = null;
+        try {
+          // Dynamic import of Enterprise Edition compliance module
+          // @ts-ignore
+          eeMod = (await import("@modelscript/ee")) as any;
+        } catch {
+          eeMod = null;
+        }
+
+        const event = {
+          outageId: args.outageId,
+          serviceProviderName: args.serviceProviderName,
+          startTimeIso: args.startTimeIso,
+          endTimeIso: args.endTimeIso,
+          durationMinutes: args.durationMinutes,
+          affectedUsersEstimate: args.affectedUsersEstimate,
+          is911Affected: args.is911Affected,
+          majorTransportAffected: args.majorTransportAffected,
+          affectedCounties: args.affectedCounties,
+          rootCauseDescription: args.rootCauseDescription,
+        };
+
+        if (eeMod && typeof eeMod.generateNorsFilingDossier === "function") {
+          const dossier = eeMod.generateNorsFilingDossier(event, args.filingStage, args.fccFilerId);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(dossier, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Inline community evaluation fallback when Enterprise Edition module is not installed
+        const userMinutes = args.durationMinutes * args.affectedUsersEstimate;
+        const isDurationEligible = args.durationMinutes >= 30;
+        let isReportable = false;
+        let reason: string | undefined;
+        let deadlineHours = 0;
+        let filingType = "NONE";
+
+        if (isDurationEligible && args.is911Affected) {
+          isReportable = true;
+          reason =
+            "911 Special Facility Outage: Exceeds 30-minute threshold impacting public safety (47 CFR § 4.9(e)). 2-hour notification required.";
+          deadlineHours = 2.0;
+          filingType = "NORS_NOTIFICATION";
+        } else if (isDurationEligible && userMinutes >= 900000) {
+          isReportable = true;
+          reason = `User-Minutes Threshold Exceeded: ${userMinutes.toLocaleString()} user-minutes >= 900,000 threshold (47 CFR § 4.9).`;
+          deadlineHours = 72.0;
+          filingType = "NORS_INITIAL";
+        } else if (isDurationEligible && args.majorTransportAffected) {
+          isReportable = true;
+          reason = "Major Transport Facility Interruption: Inter-office transport cut >= 30 minutes (47 CFR § 4.9(f)).";
+          deadlineHours = 72.0;
+          filingType = "NORS_INITIAL";
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  outageId: args.outageId,
+                  serviceProviderName: args.serviceProviderName,
+                  isReportableUnderPart4: isReportable,
+                  userMinutes,
+                  thresholdExceededReason: reason,
+                  reportingDeadlineHours: deadlineHours,
+                  filingType,
+                  notice:
+                    "Basic evaluation completed. Full electronic NORS/DIRS submission packages require ModelScript Enterprise Edition (@modelscript/ee).",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `NORS outage evaluation error: ${getErrorMessage(err)}` }],
         };
       }
     },

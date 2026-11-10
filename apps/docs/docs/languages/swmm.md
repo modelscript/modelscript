@@ -44,7 +44,12 @@ description: "@modelscript/swmm (languages/swmm) provides zero-regex parsing, 1D
 - Compiles the entire stormwater collection network into `@modelscript/runtime`'s `DAEBuilder` struct-of-arrays linear memory arena.
 - Enables co-simulation of municipal drinking water networks ([`@modelscript/epanet`](./epanet.md)) and drainage networks within the same computational arena.
 
-### 4. Bidirectional Modelica 3.x Projection
+### 4. Real-Time Control (RTC), Pollutant Washoff, GIS Ingestion & EPA NetDMR
+
+- **Real-Time Control (`rtc`) & Pollutant Washoff (`quality`)**: Simulates dynamic weir/orifice/pump PID and rule-based flood gates alongside exponential land-use pollutant buildup and runoff washoff (TSS, TP, TN).
+- **GIS Ingestion (`from-gis`), Network Diff (`diff`) & EPA NetDMR Export**: Ingests GeoJSON conduits, manholes, and subcatchments (`gis-ingestor.ts`), computes topological stormwater diffs, and exports US EPA NPDES NetDMR CSO/SSO overflow monitoring tables (`netdmr-exporter.ts`).
+
+### 5. Bidirectional Modelica 3.x Projection
 
 - Projects SWMM nodes and channels into `Modelica.Fluid` open-channel tanks, flow conduits, and boundary reservoirs.
 
@@ -63,16 +68,22 @@ The SWMM linter verifies network graph integrity and hydraulic feasibility befor
 ```bash
 # Inspect junctions, conduits, outfalls, and subcatchments
 msx swmm inspect UrbanDrainage.inp
+msx swmm summary UrbanDrainage.inp
 
 # Run pre-flight semantic diagnostics
 msx swmm lint UrbanDrainage.inp
 
-# Route steady-state hydraulic flow using Manning formulation
+# Route hydraulic flow, simulate Real-Time Control (RTC), and evaluate pollutant water quality
 msx swmm route-flow UrbanDrainage.inp
+msx swmm rtc UrbanDrainage.inp
+msx swmm quality UrbanDrainage.inp
 
-# Lower network topology into ModelScript linear DAE arena
+# Compare two SWMM network revisions or build a SWMM .inp deck from GeoJSON GIS layers
+msx swmm diff Baseline.inp Proposed.inp
+msx swmm from-gis conduits.geojson --manholes=manholes.geojson --out=UrbanDrainage.inp
+
+# Lower network topology into ModelScript linear DAE arena or Modelica 3.x
 msx swmm to-dae UrbanDrainage.inp
-
-# Project into Modelica 3.x fluid network components
 msx swmm to-modelica UrbanDrainage.inp -o StormwaterNetwork.mo
 ```
+

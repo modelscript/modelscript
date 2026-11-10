@@ -167,6 +167,13 @@ export const ENTERPRISE_PLM_CONNECTORS: readonly EnterprisePlmConnectorDescripto
     feature: "plm_connectors",
     description: "Bulk power system load-flow and dynamic stability model migration.",
   },
+  {
+    id: "pslf",
+    name: "GE Vernova PSLF (.epc / .dyd) Transmission Grid Translator",
+    category: "commercial-cae-translator",
+    feature: "plm_connectors",
+    description: "WECC bulk electric system power flow and dynamic stability model migration.",
+  },
 ] as const;
 
 const CLI_COMMAND_TO_FEATURE: Readonly<Record<string, EnterpriseFeature>> = {
@@ -185,6 +192,7 @@ const CLI_COMMAND_TO_FEATURE: Readonly<Record<string, EnterpriseFeature>> = {
   relap5: "plm_connectors",
   eclipse: "plm_connectors",
   psse: "plm_connectors",
+  pslf: "plm_connectors",
   dhf: "dhf_attestation",
 };
 

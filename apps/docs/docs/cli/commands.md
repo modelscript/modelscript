@@ -1,11 +1,11 @@
 ---
 title: CLI Commands Reference
-description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 68 engineering domain formats.
+description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 81 engineering domain formats.
 ---
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **92+ commands** across **68 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **157 commands** (126 primary commands + 31 aliases) across **81 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -63,6 +63,22 @@ msx optimize EV_BatteryPack vehicle.mo \
   --num-intervals 100 \
   --format json > optimal_profile.json
 ```
+
+---
+
+### `bifurcation`
+
+Traces steady-state equilibrium curves and detects saddle-node (fold) and Hopf bifurcations using Pseudo-Arclength Continuation (PALC).
+
+<CliCommand name="bifurcation" />
+
+---
+
+### `frac`
+
+Executes the hydraulic fracturing digital twin simulator (`@modelscript/simulate`), solving coupled PKN/KGD fracture geometry, Carter leak-off, proppant slurry transport, and Nolte-Smith pressure diagnostics.
+
+<CliCommand name="frac" />
 
 ---
 
@@ -167,6 +183,14 @@ Computes a structural CST/AST and semantic DAE comparison between two files (`ol
 
 ---
 
+### `merge`
+
+Performs a 3-way semantic CST/AST merge across a common base revision and two modified branches, detecting conflicting parameter bindings or rewired acausal connections.
+
+<CliCommand name="merge" />
+
+---
+
 ### `pr-diff`
 
 Generates visual schematic/architectural diffs (highlighting added components in green, modified in amber, and deleted in red) and PR review summaries between two Git revisions.
@@ -240,6 +264,22 @@ Performs structural subsystem partitioning and Assume-Guarantee ($A/G$) contract
 Synthesizes deterministic test vectors and stimulus harnesses from model guard conditions and assertions to achieve Modified Condition/Decision Coverage (MC/DC) and boundary-value coverage.
 
 <CliCommand name="generate-tests" />
+
+---
+
+### `dossier`
+
+Generates cryptographically hashed regulatory compliance dossiers across power systems and municipal water standards (`NERC PRC-024`, `NERC PRC-029`, `IEEE 2800-2022`, `ENTSO-E RfG`, `IEEE 1547-2018`, `IEEE 519`, and `AWWA M36`).
+
+<CliCommand name="dossier" />
+
+---
+
+### `gatekeeper`
+
+Executes automated CI/CD compliance gatekeeper pipelines across power grid, water, and multi-physics workspaces, emitting SARIF 2.1.0, Markdown PR comments, and HTML summaries.
+
+<CliCommand name="gatekeeper" />
 
 ---
 
@@ -323,7 +363,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 68 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 81 supported languages.
 
 <CliCommand name="polyglot" :show-actions="false" />
 
@@ -980,6 +1020,86 @@ msx igtl calibrate StylusPivotConfig.igtl
 
 ---
 
+### `ampl`
+
+Tooling for **AMPL** algebraic mathematical programming models (`.mod`, `.dat`, `.run`), including domain linting (`M9801`–`M9810`), linear/mixed-integer/nonlinear optimization solving (`COIN-OR CLP/CBC`, interior-point NLP), Gay `.nl` / `.sol` ASL bridge, and Modelica / DAE lowering.
+
+<CliCommand name="ampl" />
+
+---
+
+### `powerfactory`
+
+Tooling for **DIgSILENT PowerFactory** control block definitions (`.dsl`) and DGS grid exchange schemas (`.dgs`), including DSL static linting (`PF1001`–`PF1008`), composite frame binding, Newton-Raphson AC power flow, and projections to Siemens PSS/E and Modelica (`pf` and `digsilent` are aliases for `powerfactory`).
+
+<CliCommand name="powerfactory" />
+
+---
+
+### `pslf`
+
+Tooling for **GE PSLF** Western Electricity Coordinating Council (WECC) power flow decks (`.epc`) and dynamic model libraries (`.dyd`), including static diagnostics (`PSLF-E001`–`PSLF-W003`), AC power flow, dynamic DAE compilation, and bidirectional PSS/E `.raw` / Modelica conversion.
+
+<CliCommand name="pslf" />
+
+---
+
+### `opendss`
+
+Tooling for **EPRI OpenDSS** unbalanced multi-phase distribution feeders (`.dss`), including Carson's equations primitive impedance, Z-Bus power flow, harmonic distortion (`IEEE 519`), Quasi-Static Time-Series (`QSTS`), `IEEE 1547-2018` volt-var/volt-watt hosting capacity, and FLISR reconfiguration.
+
+<CliCommand name="opendss" />
+
+---
+
+### `ocpp` & `openadr`
+
+Tooling for **OCPP 1.6J / 2.0.1** electric vehicle smart-charging transcripts (`.ocpp`) and **OpenADR 2.0b / 3.0** automated demand-response events (`.openadr`).
+
+<CliCommand name="ocpp" />
+
+<CliCommand name="openadr" />
+
+---
+
+### `optical`, `ran` & `fiber`
+
+Telecommunications engineering commands for **ITU-T DWDM Optical** networks & Telcordia SR-4731 OTDR traces (`.optical`, `.sor`), **3GPP 5G NR / LTE RAN** RF coverage & NSMA antenna patterns (`.ran`, `.adf`, `.msi`), and **TIA-598-D Outside-Plant Fiber** cables & splice closures (`.fiber`).
+
+<CliCommand name="optical" />
+
+<CliCommand name="ran" />
+
+<CliCommand name="fiber" />
+
+---
+
+### `epanet`, `swmm` & `hec-ras`
+
+Civil & municipal water network commands for **US EPA EPANET 2.2** pressurized water distribution & AWWA M36 audits (`.inp`), **EPA SWMM 5.x** 1D Saint-Venant dynamic wave stormwater routing (`.inp`), and **USACE HEC-RAS** 1D standard-step river hydraulics (`.prj`, `.g01`).
+
+<CliCommand name="epanet" />
+
+<CliCommand name="swmm" />
+
+<CliCommand name="hec-ras" />
+
+---
+
+### `tough`, `modflow`, `landgem` & `gtfs`
+
+Subsurface, environmental, and transit commands for **TOUGH2/TOUGH3** multiphase geothermal reservoirs (`.tough`), **USGS MODFLOW 6** 3D groundwater flow (`.nam`, `.dis`), **US EPA LandGEM** landfill methane kinetics (`.landgem`), and **GTFS** transit schedule feeds (`.gtfs`).
+
+<CliCommand name="tough" />
+
+<CliCommand name="modflow" />
+
+<CliCommand name="landgem" />
+
+<CliCommand name="gtfs" />
+
+---
+
 ## Language Workbench, Daemon & IDE Tooling
 
 ### `daemon`
@@ -1081,6 +1201,14 @@ Resolves semantic version constraints, verifies SHA-256 content-addressable dige
 
 ---
 
+### `stdlib`
+
+Browses, searches, and bootstraps official standard libraries across all 81 engineering languages.
+
+<CliCommand name="stdlib" />
+
+---
+
 ### `pack`, `publish`, `unpublish`
 
 Packages, cryptographically signs, and publishes libraries to the Ansatz Package Registry.
@@ -1090,6 +1218,20 @@ Packages, cryptographically signs, and publishes libraries to the Ansatz Package
 <CliCommand name="publish" />
 
 <CliCommand name="unpublish" />
+
+---
+
+### `deprecate`, `yank`, `vendor`, `mirror`
+
+Lifecycle governance and air-gapped supply-chain commands for deprecating or yanking registry versions, vendoring offline dependency trees, and mirroring packages into air-gapped enclaves.
+
+<CliCommand name="deprecate" />
+
+<CliCommand name="yank" />
+
+<CliCommand name="vendor" />
+
+<CliCommand name="mirror" />
 
 ---
 

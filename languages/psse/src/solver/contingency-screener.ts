@@ -17,6 +17,7 @@
  *    - Evaluates post-mitigation grid equilibrium and tracks exact overload alleviation
  */
 
+import { SparseTripletBuilder, sparseLuFactor, sparseLuSolve } from "@modelscript/runtime";
 import type { BranchRecord, BusRecord, PsseCase } from "../types.js";
 import { solvePowerFlow } from "./ac-powerflow.js";
 import { detectElectricalIslands, solveMultiIslandPowerFlow } from "./island-solver.js";
@@ -36,6 +37,8 @@ export interface PtdfOptions {
   referenceBus?: number | undefined;
   /** Subset of monitored branches. Defaults to all in-service branches. */
   monitoredBranches?: BranchIdentifier[] | undefined;
+  /** Skip building legacy 2D number[][] rows when only flatFactors / getTransferFactor are needed. */
+  skipDenseRows?: boolean | undefined;
 }
 
 export interface PtdfMatrixResult {
@@ -47,6 +50,8 @@ export interface PtdfMatrixResult {
   referenceBus: number;
   /** PTDF factors matrix [branches.length][buses.length] relative to reference bus. */
   factors: number[][];
+  /** Flat row-major PTDF buffer of length branches.length * buses.length. */
+  flatFactors?: Float64Array | undefined;
   /**
    * Helper to retrieve the linear shift factor on a branch for a transaction from injBus to wdrBus.
    */
@@ -58,6 +63,8 @@ export interface LodfOptions {
   ptdf?: PtdfMatrixResult | undefined;
   /** Monitored branches. Defaults to all in-service branches. */
   monitoredBranches?: BranchIdentifier[] | undefined;
+  /** Skip building legacy 2D number[][] rows when only flatFactors / getOutageFactor are needed. */
+  skipDenseRows?: boolean | undefined;
 }
 
 export interface LodfMatrixResult {
@@ -68,6 +75,8 @@ export interface LodfMatrixResult {
    * Represents the fraction of outaged branch flow that shifts to the monitored branch.
    */
   factors: number[][];
+  /** Flat row-major LODF buffer of length branches.length * branches.length. */
+  flatFactors?: Float64Array | undefined;
   /** Branches whose outage splits or islands the grid (where 1 - PTDF ≈ 0). */
   islandingBranches: BranchIdentifier[];
   /** Helper to query LODF factor for a pair of branches. */
@@ -210,6 +219,8 @@ export interface ContingencyEvaluationResult {
 }
 
 export interface ContingencyScreeningOptions {
+  /** Optional custom reference (slack) bus. Defaults to the case swing bus. */
+  referenceBus?: number | undefined;
   /** Maximum number of top severe contingencies to confirm with non-linear AC power flow (default: 50). */
   topKAcConfirmation?: number | undefined;
   /** Voltage low threshold in p.u. (default: 0.90). */
@@ -222,82 +233,36 @@ export interface ContingencyScreeningOptions {
   rasSchemes?: RemedialActionScheme[] | undefined;
 }
 
+export interface LinearCandidateResult {
+  id: string;
+  name?: string | undefined;
+  severityIndex: number;
+  causesIslanding: boolean;
+  linearOverloads: number;
+  maxBranchLoadingPercent: number;
+}
+
 export interface ContingencyScreeningReport {
   totalEvaluated: number;
   criticalCount: number;
   islandingCount: number;
   rankedContingencies: ContingencyEvaluationResult[];
+  screenedLinearCandidates?: LinearCandidateResult[] | undefined;
 }
 
 // ============================================================================
-// Dense Linear Solver Helper (Gaussian elimination with partial pivoting)
-// ============================================================================
-
-function solveDenseLinear(A: Float64Array, b: Float64Array, n: number): Float64Array | null {
-  const M = new Float64Array(A);
-  const x = new Float64Array(b);
-
-  for (let k = 0; k < n; k++) {
-    let maxVal = Math.abs(M[k * n + k]!);
-    let maxRow = k;
-    for (let r = k + 1; r < n; r++) {
-      const val = Math.abs(M[r * n + k]!);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = r;
-      }
-    }
-
-    if (maxVal < 1e-12) {
-      M[k * n + k] = 1e-6; // Regularization
-    }
-
-    if (maxRow !== k) {
-      for (let c = 0; c < n; c++) {
-        const tmp = M[k * n + c]!;
-        M[k * n + c] = M[maxRow * n + c]!;
-        M[maxRow * n + c] = tmp;
-      }
-      const tmpB = x[k]!;
-      x[k] = x[maxRow]!;
-      x[maxRow] = tmpB;
-    }
-
-    const diag = M[k * n + k]!;
-    for (let r = k + 1; r < n; r++) {
-      const factor = M[r * n + k]! / diag;
-      M[r * n + k] = factor;
-      for (let c = k + 1; c < n; c++) {
-        M[r * n + c] = M[r * n + c]! - factor * M[k * n + c]!;
-      }
-      x[r] = x[r]! - factor * x[k]!;
-    }
-  }
-
-  // Back-substitution
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = x[i]!;
-    for (let j = i + 1; j < n; j++) {
-      sum -= M[i * n + j]! * x[j]!;
-    }
-    const diag = M[i * n + i]!;
-    x[i] = Math.abs(diag) > 1e-14 ? sum / diag : 0.0;
-  }
-
-  return x;
-}
-
-// ============================================================================
-// DFAX Sensitivity Calculations
+// DFAX Sensitivity Calculations (Sparse B_bus LU Factorization)
 // ============================================================================
 
 /**
- * Calculates the exact Power Transfer Distribution Factors (PTDF) matrix.
+ * Calculates the exact Power Transfer Distribution Factors (PTDF) matrix
+ * using a single sparse LU factorization of B_bus and per-branch sparse forward/back-solves.
  */
 export function calculatePtdfMatrix(psCase: PsseCase, options: PtdfOptions = {}): PtdfMatrixResult {
   const allBuses = Array.from(psCase.buses.values());
   const activeBuses = allBuses.filter((b) => b.ide !== 4);
   const busNumbers = activeBuses.map((b) => b.i);
+  const nBuses = busNumbers.length;
 
   // Identify reference bus
   let refBus = options.referenceBus;
@@ -310,6 +275,7 @@ export function calculatePtdfMatrix(psCase: PsseCase, options: PtdfOptions = {})
   const inServiceBranches = psCase.branches.filter((b) => b.st !== 0 && Math.abs(b.x) > 1e-6);
   const branchList: BranchIdentifier[] =
     options.monitoredBranches ?? inServiceBranches.map((b) => ({ fromBus: b.i, toBus: b.j, ckt: b.ckt }));
+  const nBranches = branchList.length;
 
   // Non-reference buses mapping
   const nonRefBuses = activeBuses.filter((b) => b.i !== refBus);
@@ -317,45 +283,39 @@ export function calculatePtdfMatrix(psCase: PsseCase, options: PtdfOptions = {})
   const busToNrIdx = new Map<number, number>();
   nonRefBuses.forEach((b, idx) => busToNrIdx.set(b.i, idx));
 
-  // Build DC bus susceptance matrix B_bus (Nr x Nr)
-  const B = new Float64Array(nr * nr);
+  const busColMap = new Map<number, number>();
+  busNumbers.forEach((b, idx) => busColMap.set(b, idx));
+
+  // Map non-ref index r in [0, nr) to output column index in [0, nBuses)
+  const nrIdxToBusCol = new Int32Array(nr);
+  for (let r = 0; r < nr; r++) {
+    nrIdxToBusCol[r] = busColMap.get(nonRefBuses[r]!.i) ?? 0;
+  }
+
+  // Assemble sparse DC bus susceptance matrix B_bus (nr x nr)
+  const bTriplets = new SparseTripletBuilder(nr, nr, inServiceBranches.length * 4 + nr + 4);
+  for (let r = 0; r < nr; r++) {
+    bTriplets.add(r, r, 1e-9);
+  }
   for (const br of inServiceBranches) {
     const idx1 = busToNrIdx.get(br.i);
     const idx2 = busToNrIdx.get(br.j);
     const b = 1.0 / br.x;
 
     if (idx1 !== undefined && idx2 !== undefined) {
-      B[idx1 * nr + idx1] = (B[idx1 * nr + idx1] ?? 0) + b;
-      B[idx2 * nr + idx2] = (B[idx2 * nr + idx2] ?? 0) + b;
-      B[idx1 * nr + idx2] = (B[idx1 * nr + idx2] ?? 0) - b;
-      B[idx2 * nr + idx1] = (B[idx2 * nr + idx1] ?? 0) - b;
+      bTriplets.add(idx1, idx1, b);
+      bTriplets.add(idx2, idx2, b);
+      bTriplets.add(idx1, idx2, -b);
+      bTriplets.add(idx2, idx1, -b);
     } else if (idx1 !== undefined) {
-      B[idx1 * nr + idx1] = (B[idx1 * nr + idx1] ?? 0) + b;
+      bTriplets.add(idx1, idx1, b);
     } else if (idx2 !== undefined) {
-      B[idx2 * nr + idx2] = (B[idx2 * nr + idx2] ?? 0) + b;
+      bTriplets.add(idx2, idx2, b);
     }
   }
 
-  // Solve B * X = I to obtain X = B_bus^(-1)
-  const X = new Float64Array(nr * nr);
-  for (let c = 0; c < nr; c++) {
-    const e = new Float64Array(nr);
-    e[c] = 1.0;
-    const col = solveDenseLinear(B, e, nr);
-    if (col) {
-      for (let r = 0; r < nr; r++) {
-        X[r * nr + c] = col[r]!;
-      }
-    }
-  }
-
-  const getX = (busA: number, busB: number): number => {
-    if (busA === refBus || busB === refBus) return 0.0;
-    const r = busToNrIdx.get(busA);
-    const c = busToNrIdx.get(busB);
-    if (r === undefined || c === undefined) return 0.0;
-    return X[r * nr + c] ?? 0.0;
-  };
+  const bCcs = nr > 0 ? bTriplets.toCCS() : null;
+  const bLu = bCcs ? sparseLuFactor(bCcs, { allowPerturbation: true }) : null;
 
   // Branch index lookup for quick reactance retrieval
   const branchMap = new Map<string, BranchRecord>();
@@ -364,27 +324,50 @@ export function calculatePtdfMatrix(psCase: PsseCase, options: PtdfOptions = {})
     branchMap.set(`${br.j}_${br.i}_${br.ckt}`, br);
   }
 
-  // Compute bus injection shift factor Psi_l,i = (X(a, i) - X(b, i)) / x_l
+  // Solve symmetric B_bus * psi_l = (e_a - e_b) / x_l for each monitored branch l
+  const flatFactors = new Float64Array(nBranches * nBuses);
   const factors: number[][] = [];
   const branchRowMap = new Map<string, number>();
+  const rhs = new Float64Array(nr);
+  const sol = new Float64Array(nr);
+  const buildRows = !options.skipDenseRows;
 
-  for (let l = 0; l < branchList.length; l++) {
+  for (let l = 0; l < nBranches; l++) {
     const brId = branchList[l]!;
     branchRowMap.set(`${brId.fromBus}_${brId.toBus}_${brId.ckt}`, l);
     const brRec = branchMap.get(`${brId.fromBus}_${brId.toBus}_${brId.ckt}`);
     const xl = brRec ? (Math.abs(brRec.x) > 1e-6 ? brRec.x : 0.01) : 0.01;
+    const invXl = 1.0 / xl;
 
-    const row: number[] = [];
-    for (let bIdx = 0; bIdx < busNumbers.length; bIdx++) {
-      const bus = busNumbers[bIdx]!;
-      const psi = (getX(brId.fromBus, bus) - getX(brId.toBus, bus)) / xl;
-      row.push(Number(psi.toFixed(6)));
+    const idxA = busToNrIdx.get(brId.fromBus);
+    const idxB = busToNrIdx.get(brId.toBus);
+
+    if (bLu && (idxA !== undefined || idxB !== undefined)) {
+      if (idxA !== undefined) rhs[idxA] = invXl;
+      if (idxB !== undefined) rhs[idxB] = (rhs[idxB] ?? 0.0) - invXl;
+
+      sparseLuSolve(bLu, rhs, sol);
+
+      // Clean up RHS for next branch
+      if (idxA !== undefined) rhs[idxA] = 0.0;
+      if (idxB !== undefined) rhs[idxB] = 0.0;
+
+      const rowOffset = l * nBuses;
+      for (let r = 0; r < nr; r++) {
+        const colIdx = nrIdxToBusCol[r]!;
+        flatFactors[rowOffset + colIdx] = Math.round(sol[r]! * 1e6) * 1e-6;
+      }
     }
-    factors.push(row);
-  }
 
-  const busColMap = new Map<number, number>();
-  busNumbers.forEach((b, idx) => busColMap.set(b, idx));
+    if (buildRows) {
+      const rowOffset = l * nBuses;
+      const row = new Array<number>(nBuses);
+      for (let c = 0; c < nBuses; c++) {
+        row[c] = flatFactors[rowOffset + c]!;
+      }
+      factors.push(row);
+    }
+  }
 
   const getTransferFactor = (fromBus: number, toBus: number, ckt: string, injBus: number, wdrBus: number): number => {
     let rowIdx = branchRowMap.get(`${fromBus}_${toBus}_${ckt}`);
@@ -397,8 +380,9 @@ export function calculatePtdfMatrix(psCase: PsseCase, options: PtdfOptions = {})
 
     const cInj = busColMap.get(injBus);
     const cWdr = busColMap.get(wdrBus);
-    const psiInj = cInj !== undefined ? (factors[rowIdx]![cInj] ?? 0.0) : 0.0;
-    const psiWdr = cWdr !== undefined ? (factors[rowIdx]![cWdr] ?? 0.0) : 0.0;
+    const rowOffset = rowIdx * nBuses;
+    const psiInj = cInj !== undefined ? (flatFactors[rowOffset + cInj] ?? 0.0) : 0.0;
+    const psiWdr = cWdr !== undefined ? (flatFactors[rowOffset + cWdr] ?? 0.0) : 0.0;
 
     return sign * (psiInj - psiWdr);
   };
@@ -408,62 +392,123 @@ export function calculatePtdfMatrix(psCase: PsseCase, options: PtdfOptions = {})
     buses: busNumbers,
     referenceBus: refBus,
     factors,
+    flatFactors,
     getTransferFactor,
   };
 }
 
 /**
- * Calculates the exact Line Outage Distribution Factors (LODF) matrix.
+ * Calculates the exact Line Outage Distribution Factors (LODF) matrix
+ * using pre-indexed typed-array PTDF lookups with zero string allocations in the O(M^2) loop.
  */
 export function calculateLodfMatrix(psCase: PsseCase, options: LodfOptions = {}): LodfMatrixResult {
-  const ptdf = options.ptdf ?? calculatePtdfMatrix(psCase, { monitoredBranches: options.monitoredBranches });
+  const ptdf =
+    options.ptdf ??
+    calculatePtdfMatrix(psCase, {
+      monitoredBranches: options.monitoredBranches,
+      skipDenseRows: options.skipDenseRows,
+    });
   const branches = ptdf.branches;
+  const buses = ptdf.buses;
   const nBranches = branches.length;
+  const nBuses = buses.length;
 
-  const factors: number[][] = [];
-  const islandingBranches: BranchIdentifier[] = [];
+  const busColMap = new Map<number, number>();
+  for (let c = 0; c < nBuses; c++) {
+    busColMap.set(buses[c]!, c);
+  }
+
+  // Ensure we have a flat PTDF buffer even if the caller passed a custom PtdfMatrixResult without flatFactors
+  let flatPtdf = ptdf.flatFactors;
+  if (!flatPtdf) {
+    flatPtdf = new Float64Array(nBranches * nBuses);
+    for (let l = 0; l < nBranches; l++) {
+      const r = ptdf.factors[l];
+      if (!r) continue;
+      const offset = l * nBuses;
+      for (let c = 0; c < nBuses; c++) {
+        flatPtdf[offset + c] = r[c] ?? 0.0;
+      }
+    }
+  }
+
   const branchIdxMap = new Map<string, number>();
-  branches.forEach((b, idx) => branchIdxMap.set(`${b.fromBus}_${b.toBus}_${b.ckt}`, idx));
+  const fromColIdx = new Int32Array(nBranches);
+  const toColIdx = new Int32Array(nBranches);
+  const denomInv = new Float64Array(nBranches);
+  const islandingBranches: BranchIdentifier[] = [];
+
+  for (let k = 0; k < nBranches; k++) {
+    const out = branches[k]!;
+    branchIdxMap.set(`${out.fromBus}_${out.toBus}_${out.ckt}`, k);
+    const fCol = busColMap.get(out.fromBus) ?? -1;
+    const tCol = busColMap.get(out.toBus) ?? -1;
+    fromColIdx[k] = fCol;
+    toColIdx[k] = tCol;
+
+    const kOffset = k * nBuses;
+    const psiFrom = fCol >= 0 ? flatPtdf[kOffset + fCol]! : 0.0;
+    const psiTo = tCol >= 0 ? flatPtdf[kOffset + tCol]! : 0.0;
+    const ptdf_kk = psiFrom - psiTo;
+
+    if (Math.abs(1.0 - ptdf_kk) < 1e-4) {
+      islandingBranches.push(out);
+      denomInv[k] = 0.0;
+    } else {
+      denomInv[k] = 1.0 / (1.0 - ptdf_kk);
+    }
+  }
+
+  const flatFactors = new Float64Array(nBranches * nBranches);
+  const factors: number[][] = [];
+  const buildRows = !options.skipDenseRows;
 
   for (let l = 0; l < nBranches; l++) {
-    const mon = branches[l]!;
-    const row: number[] = [];
+    const ptdfRowOffset = l * nBuses;
+    const lodfRowOffset = l * nBranches;
+    const row = buildRows ? new Array<number>(nBranches) : null;
 
     for (let k = 0; k < nBranches; k++) {
-      const out = branches[k]!;
       if (l === k) {
-        row.push(-1.0); // Own line outage shifts -100% of its flow to 0
+        flatFactors[lodfRowOffset + k] = -1.0;
+        if (row) row[k] = -1.0;
         continue;
       }
 
-      // Pre-outage PTDF of outaged line k for transfer from its own fromBus to toBus
-      const ptdf_k = ptdf.getTransferFactor(out.fromBus, out.toBus, out.ckt, out.fromBus, out.toBus);
-
-      // Radial tie / islanding check
-      if (Math.abs(1.0 - ptdf_k) < 1e-4) {
-        if (l === 0) islandingBranches.push(out);
-        row.push(0.0);
+      const dInv = denomInv[k]!;
+      if (dInv === 0.0) {
+        flatFactors[lodfRowOffset + k] = 0.0;
+        if (row) row[k] = 0.0;
         continue;
       }
 
-      // Monitored line response to transfer between outaged line endpoints
-      const ptdf_l = ptdf.getTransferFactor(mon.fromBus, mon.toBus, mon.ckt, out.fromBus, out.toBus);
-      const lodf = ptdf_l / (1.0 - ptdf_k);
-      row.push(Number(lodf.toFixed(6)));
+      const fCol = fromColIdx[k]!;
+      const tCol = toColIdx[k]!;
+      const psiFrom = fCol >= 0 ? flatPtdf[ptdfRowOffset + fCol]! : 0.0;
+      const psiTo = tCol >= 0 ? flatPtdf[ptdfRowOffset + tCol]! : 0.0;
+      const ptdf_lk = psiFrom - psiTo;
+      const lodf = Math.round(ptdf_lk * dInv * 1e6) * 1e-6;
+
+      flatFactors[lodfRowOffset + k] = lodf;
+      if (row) row[k] = lodf;
     }
-    factors.push(row);
+
+    if (row) {
+      factors.push(row);
+    }
   }
 
   const getOutageFactor = (monitored: BranchIdentifier, outaged: BranchIdentifier): number => {
     const l = branchIdxMap.get(`${monitored.fromBus}_${monitored.toBus}_${monitored.ckt}`);
     const k = branchIdxMap.get(`${outaged.fromBus}_${outaged.toBus}_${outaged.ckt}`);
     if (l === undefined || k === undefined) return 0.0;
-    return factors[l]![k] ?? 0.0;
+    return flatFactors[l * nBranches + k] ?? 0.0;
   };
 
   return {
     branches,
     factors,
+    flatFactors,
     islandingBranches,
     getOutageFactor,
   };
@@ -739,46 +784,6 @@ export function applyRasActions(
 }
 
 // ============================================================================
-// Fast Linear Heuristic (LODF-based) for Initial Candidate Ranking
-// ============================================================================
-
-function estimateBranchFlowsAfterOutage(
-  baseBranches: Array<{ fromBus: number; toBus: number; ckt: string; pFlow: number; x: number; rateA: number }>,
-  trippedIndices: Set<number>,
-): Map<string, number> {
-  const result = new Map<string, number>();
-
-  let trippedPowerSum = 0;
-  for (const idx of trippedIndices) {
-    const br = baseBranches[idx];
-    if (br) {
-      trippedPowerSum += Math.abs(br.pFlow);
-    }
-  }
-
-  const remainingLines = baseBranches.filter((_, idx) => !trippedIndices.has(idx));
-  const totalRemainingWeight = remainingLines.reduce(
-    (acc, br) => acc + (br.rateA > 0 ? br.rateA : 100.0) / Math.max(br.x, 0.001),
-    0,
-  );
-
-  for (let idx = 0; idx < baseBranches.length; idx++) {
-    const br = baseBranches[idx]!;
-    const key = `${br.fromBus}_${br.toBus}_${br.ckt}`;
-    if (trippedIndices.has(idx)) {
-      result.set(key, 0.0);
-    } else {
-      const weight = (br.rateA > 0 ? br.rateA : 100.0) / Math.max(br.x, 0.001) / Math.max(totalRemainingWeight, 1e-6);
-      const deltaFlow = trippedPowerSum * weight * 0.7;
-      const postFlow = Math.abs(br.pFlow) + deltaFlow;
-      result.set(key, postFlow);
-    }
-  }
-
-  return result;
-}
-
-// ============================================================================
 // Main Contingency Screener
 // ============================================================================
 
@@ -819,12 +824,230 @@ export function screenContingencies(
   });
 
   const branchIndexMap = new Map<string, number>();
+  const nFast = branchFastList.length;
+  const basePFlows = new Float64Array(nFast);
+  const baseRatings = new Float64Array(nFast);
   branchFastList.forEach((br, idx) => {
     branchIndexMap.set(`${br.fromBus}_${br.toBus}_${br.ckt}`, idx);
     branchIndexMap.set(`${br.toBus}_${br.fromBus}_${br.ckt}`, idx);
+    basePFlows[idx] = br.pFlow;
+    baseRatings[idx] = br.rateA;
   });
 
-  // 2. Fast linear screening pass to compute Severity Index (SI)
+  // Assemble sparse B_bus once for exact linear sensitivity analysis across all grid scales
+  const allBuses = Array.from(psCase.buses.values());
+  const activeBuses = allBuses.filter((b) => b.ide !== 4);
+  let refBus = options.referenceBus;
+  if (refBus === undefined) {
+    const swingBus = activeBuses.find((b) => b.ide === 3);
+    refBus = swingBus ? swingBus.i : (activeBuses[0]?.i ?? 1);
+  }
+  const nonRefBuses = activeBuses.filter((b) => b.i !== refBus);
+  const nr = nonRefBuses.length;
+  const busToNrIdx = new Map<number, number>();
+  nonRefBuses.forEach((b, idx) => busToNrIdx.set(b.i, idx));
+
+  const bTriplets = new SparseTripletBuilder(nr, nr, inServiceBranches.length * 4 + nr + 4);
+  for (let r = 0; r < nr; r++) {
+    bTriplets.add(r, r, 1e-9);
+  }
+  for (const br of inServiceBranches) {
+    const idx1 = busToNrIdx.get(br.i);
+    const idx2 = busToNrIdx.get(br.j);
+    const b = 1.0 / (Math.abs(br.x) > 1e-6 ? br.x : 0.01);
+    if (idx1 !== undefined && idx2 !== undefined) {
+      bTriplets.add(idx1, idx1, b);
+      bTriplets.add(idx2, idx2, b);
+      bTriplets.add(idx1, idx2, -b);
+      bTriplets.add(idx2, idx1, -b);
+    } else if (idx1 !== undefined) {
+      bTriplets.add(idx1, idx1, b);
+    } else if (idx2 !== undefined) {
+      bTriplets.add(idx2, idx2, b);
+    }
+  }
+  const bCcs = nr > 0 ? bTriplets.toCCS() : null;
+  const bLu = bCcs ? sparseLuFactor(bCcs, { allowPerturbation: true }) : null;
+  const rhsVec = new Float64Array(nr);
+  const solVec = new Float64Array(nr);
+
+  // Pre-indexed typed arrays for zero-lookup linear sensitivity evaluation
+  const branchFromNrIdx = new Int32Array(nFast);
+  const branchToNrIdx = new Int32Array(nFast);
+  const branchInvX = new Float64Array(nFast);
+  for (let l = 0; l < nFast; l++) {
+    const br = branchFastList[l]!;
+    branchFromNrIdx[l] = busToNrIdx.get(br.fromBus) ?? -1;
+    branchToNrIdx[l] = busToNrIdx.get(br.toBus) ?? -1;
+    branchInvX[l] = 1.0 / (Math.abs(br.x) > 1e-6 ? br.x : 0.01);
+  }
+  const scratchPostFlows = new Float64Array(nFast);
+
+  // Exact linear sensitivity helper: calculates post-outage branch flows via sparse B_bus solve
+  const computeExactLinearOutageFlows = (trippedIndices: Set<number>): Float64Array => {
+    if (!bLu || nr === 0) {
+      for (let l = 0; l < nFast; l++) {
+        scratchPostFlows[l] = trippedIndices.has(l) ? 0.0 : basePFlows[l]!;
+      }
+      return scratchPostFlows;
+    }
+
+    if (trippedIndices.size === 1) {
+      const k = trippedIndices.values().next().value as number;
+      const pk = basePFlows[k]!;
+      const invXk = branchInvX[k]!;
+      const idxA = branchFromNrIdx[k]!;
+      const idxB = branchToNrIdx[k]!;
+
+      if (idxA >= 0) rhsVec[idxA] = invXk;
+      if (idxB >= 0) rhsVec[idxB] = (rhsVec[idxB] ?? 0.0) - invXk;
+
+      sparseLuSolve(bLu, rhsVec, solVec);
+      if (idxA >= 0) rhsVec[idxA] = 0.0;
+      if (idxB >= 0) rhsVec[idxB] = 0.0;
+
+      const ptdf_kk = (idxA >= 0 ? solVec[idxA]! : 0.0) - (idxB >= 0 ? solVec[idxB]! : 0.0);
+      const denom = Math.abs(1.0 - ptdf_kk) > 1e-4 ? 1.0 / (1.0 - ptdf_kk) : 0.0;
+
+      for (let l = 0; l < nFast; l++) {
+        if (l === k) {
+          scratchPostFlows[l] = 0.0;
+          continue;
+        }
+        if (denom === 0.0) {
+          scratchPostFlows[l] = basePFlows[l]!;
+          continue;
+        }
+        const idxAl = branchFromNrIdx[l]!;
+        const idxBl = branchToNrIdx[l]!;
+        const dTh = (idxAl >= 0 ? solVec[idxAl]! : 0.0) - (idxBl >= 0 ? solVec[idxBl]! : 0.0);
+        const lodf_lk = (dTh * branchInvX[l]!) * denom;
+        scratchPostFlows[l] = Math.abs(basePFlows[l]! + Math.abs(lodf_lk) * pk);
+      }
+      return scratchPostFlows;
+    }
+
+    // Multi-branch outage (k >= 2): exact linear injection compensation via B_bus solve
+    for (const k of trippedIndices) {
+      const pk = basePFlows[k]!;
+      const idxA = branchFromNrIdx[k]!;
+      const idxB = branchToNrIdx[k]!;
+      if (idxA >= 0) rhsVec[idxA] = (rhsVec[idxA] ?? 0.0) + pk;
+      if (idxB >= 0) rhsVec[idxB] = (rhsVec[idxB] ?? 0.0) - pk;
+    }
+
+    sparseLuSolve(bLu, rhsVec, solVec);
+    rhsVec.fill(0.0);
+
+    for (let l = 0; l < nFast; l++) {
+      if (trippedIndices.has(l)) {
+        scratchPostFlows[l] = 0.0;
+        continue;
+      }
+      const idxAl = branchFromNrIdx[l]!;
+      const idxBl = branchToNrIdx[l]!;
+      const dTh = (idxAl >= 0 ? solVec[idxAl]! : 0.0) - (idxBl >= 0 ? solVec[idxBl]! : 0.0);
+      const deltaFlow = dTh * branchInvX[l]!;
+      scratchPostFlows[l] = Math.abs(basePFlows[l]! + deltaFlow);
+    }
+    return scratchPostFlows;
+  };
+
+  // Precompute sparse LODF matrix and bridge-branch islanding set once for fast O(M) screening
+  const lodfResult =
+    contingencies.length > 0 && nFast > 0 && nFast <= 5000
+      ? calculateLodfMatrix(psCase, {
+          monitoredBranches: branchFastList.map((b) => ({ fromBus: b.fromBus, toBus: b.toBus, ckt: b.ckt })),
+          skipDenseRows: true,
+        })
+      : null;
+  const flatLodf = lodfResult?.flatFactors ?? null;
+
+  // Base islands if no branches are tripped
+  const baseIslands = detectElectricalIslands(psCase);
+  const baseIslandCount = baseIslands.length;
+
+  // Identify all bridge branches causing islanding across any network scale
+  const islandingIdxSet = new Set<number>();
+  if (lodfResult) {
+    for (const br of lodfResult.islandingBranches) {
+      const idx = branchIndexMap.get(`${br.fromBus}_${br.toBus}_${br.ckt}`);
+      if (idx !== undefined) islandingIdxSet.add(idx);
+    }
+  } else if (baseIslandCount === 1) {
+    // Fast iterative Tarjan's bridge-finding algorithm O(V + E) for arbitrary large-scale grids
+    const adj = new Map<number, Array<{ neighbor: number; edgeIdx: number }>>();
+    for (let l = 0; l < nFast; l++) {
+      const br = branchFastList[l]!;
+      let listI = adj.get(br.fromBus);
+      if (!listI) {
+        listI = [];
+        adj.set(br.fromBus, listI);
+      }
+      listI.push({ neighbor: br.toBus, edgeIdx: l });
+      let listJ = adj.get(br.toBus);
+      if (!listJ) {
+        listJ = [];
+        adj.set(br.toBus, listJ);
+      }
+      listJ.push({ neighbor: br.fromBus, edgeIdx: l });
+    }
+
+    const tin = new Map<number, number>();
+    const low = new Map<number, number>();
+    let timer = 0;
+
+    for (const b of activeBuses) {
+      const startNode = b.i;
+      if (tin.has(startNode)) continue;
+
+      const stack: Array<{ u: number; pEdge: number; nextI: number }> = [
+        { u: startNode, pEdge: -1, nextI: 0 },
+      ];
+      timer++;
+      tin.set(startNode, timer);
+      low.set(startNode, timer);
+
+      while (stack.length > 0) {
+        const top = stack[stack.length - 1]!;
+        const u = top.u;
+        const neighbors = adj.get(u) ?? [];
+
+        if (top.nextI < neighbors.length) {
+          const edge = neighbors[top.nextI]!;
+          top.nextI++;
+          if (edge.edgeIdx === top.pEdge) continue;
+
+          const v = edge.neighbor;
+          if (tin.has(v)) {
+            const curLow = low.get(u)!;
+            const targetTin = tin.get(v)!;
+            if (targetTin < curLow) low.set(u, targetTin);
+          } else {
+            timer++;
+            tin.set(v, timer);
+            low.set(v, timer);
+            stack.push({ u: v, pEdge: edge.edgeIdx, nextI: 0 });
+          }
+        } else {
+          stack.pop();
+          if (stack.length > 0) {
+            const parent = stack[stack.length - 1]!;
+            const lowU = low.get(u)!;
+            const curLowParent = low.get(parent.u)!;
+            if (lowU < curLowParent) {
+              low.set(parent.u, lowU);
+            }
+            if (lowU > tin.get(parent.u)!) {
+              islandingIdxSet.add(top.pEdge);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Fast linear DFAX (LODF) screening pass to compute Severity Index (SI)
   const screenedCandidates: Array<{
     contingency: CandidateContingency;
     severityIndex: number;
@@ -848,30 +1071,104 @@ export function screenContingencies(
       }
     }
 
-    // Topological check: does this outage cause network splitting?
-    const islands = detectElectricalIslands(psCase, (br) => {
-      const k1 = `${br.i}_${br.j}_${br.ckt}`;
-      const k2 = `${br.j}_${br.i}_${br.ckt}`;
-      return !trippedBranches.has(k1) && !trippedBranches.has(k2);
-    });
+    const trippedArr = Array.from(trippedIndices);
 
-    const causesIslanding = islands.length > 1;
-    const islandCount = islands.length;
+    // Topological check: O(1) bridge-branch lookup for single-branch outages, BFS for multi-branch
+    let causesIslanding = false;
+    let islandCount = baseIslandCount;
+    if (trippedArr.length === 0) {
+      causesIslanding = baseIslandCount > 1;
+    } else if (trippedArr.length === 1 && baseIslandCount === 1) {
+      causesIslanding = islandingIdxSet.has(trippedArr[0]!);
+      islandCount = causesIslanding ? 2 : 1;
+    } else {
+      const islands = detectElectricalIslands(psCase, (br) => {
+        const k1 = `${br.i}_${br.j}_${br.ckt}`;
+        const k2 = `${br.j}_${br.i}_${br.ckt}`;
+        return !trippedBranches.has(k1) && !trippedBranches.has(k2);
+      });
+      causesIslanding = islands.length > 1;
+      islandCount = islands.length;
+    }
 
-    // Linear flow estimation
-    const estFlows = estimateBranchFlowsAfterOutage(branchFastList, trippedIndices);
     let si = 0.0;
     let linearOverloads = 0;
+    let maxLinearLoading = 0.0;
 
-    for (const br of branchFastList) {
-      const key = `${br.fromBus}_${br.toBus}_${br.ckt}`;
-      const flow = estFlows.get(key) ?? br.pFlow;
-      const rating = br.rateA;
-      const loading = (flow / rating) * 100.0;
-      if (loading > overloadThreshold) {
-        linearOverloads++;
+    if (flatLodf && !causesIslanding && (trippedArr.length === 1 || trippedArr.length === 2)) {
+      if (trippedArr.length === 1) {
+        const k = trippedArr[0]!;
+        const pk = basePFlows[k]!;
+        for (let l = 0; l < nFast; l++) {
+          if (l === k) continue;
+          const lodf_lk = flatLodf[l * nFast + k]!;
+          const postFlow = Math.abs(basePFlows[l]! + Math.abs(lodf_lk) * pk);
+          const rating = baseRatings[l]!;
+          const ratio = postFlow / rating;
+          const loadingPct = ratio * 100.0;
+          if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
+          if (loadingPct > overloadThreshold) {
+            linearOverloads++;
+          }
+          const r2 = ratio * ratio;
+          si += r2 * r2;
+        }
+      } else {
+        // Exact N-2 double-outage Woodbury / generalized 2x2 LODF superposition
+        const k1 = trippedArr[0]!;
+        const k2 = trippedArr[1]!;
+        const lodf_12 = flatLodf[k1 * nFast + k2]!;
+        const lodf_21 = flatLodf[k2 * nFast + k1]!;
+        const det = 1.0 - lodf_12 * lodf_21;
+        if (Math.abs(det) > 1e-4) {
+          const invDet = 1.0 / det;
+          const pk1 = basePFlows[k1]!;
+          const pk2 = basePFlows[k2]!;
+          const eff1 = (pk1 + Math.abs(lodf_12) * pk2) * invDet;
+          const eff2 = (Math.abs(lodf_21) * pk1 + pk2) * invDet;
+          for (let l = 0; l < nFast; l++) {
+            if (l === k1 || l === k2) continue;
+            const lodf_l1 = Math.abs(flatLodf[l * nFast + k1]!);
+            const lodf_l2 = Math.abs(flatLodf[l * nFast + k2]!);
+            const postFlow = Math.abs(basePFlows[l]! + lodf_l1 * eff1 + lodf_l2 * eff2);
+            const rating = baseRatings[l]!;
+            const ratio = postFlow / rating;
+            const loadingPct = ratio * 100.0;
+            if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
+            if (loadingPct > overloadThreshold) {
+              linearOverloads++;
+            }
+            const r2 = ratio * ratio;
+            si += r2 * r2;
+          }
+        } else {
+          // Near-islanding N-2 pair: exact sparse injection solve
+          const exactFlows = computeExactLinearOutageFlows(trippedIndices);
+          for (let l = 0; l < nFast; l++) {
+            const flow = exactFlows[l]!;
+            const rating = baseRatings[l]!;
+            const ratio = flow / rating;
+            const loadingPct = ratio * 100.0;
+            if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
+            if (loadingPct > overloadThreshold) linearOverloads++;
+            const r2 = ratio * ratio;
+            si += r2 * r2;
+          }
+        }
       }
-      si += Math.pow(flow / rating, 4);
+    } else {
+      // Exact sparse solve for grids where flatLodf is omitted (M > 5000) or multi-branch outages (k >= 3)
+      const exactFlows = computeExactLinearOutageFlows(trippedIndices);
+      for (let l = 0; l < nFast; l++) {
+        const flow = exactFlows[l]!;
+        const rating = baseRatings[l]!;
+        const ratio = flow / rating;
+        const loadingPct = ratio * 100.0;
+        if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
+        if (loadingPct > overloadThreshold) linearOverloads++;
+        const r2 = ratio * ratio;
+        si += r2 * r2;
+      }
     }
 
     if (causesIslanding) {
@@ -884,6 +1181,7 @@ export function screenContingencies(
       causesIslanding,
       islandCount,
       linearOverloads,
+      maxLinearLoading,
       trippedBranches,
     });
   }
@@ -1063,5 +1361,13 @@ export function screenContingencies(
     criticalCount,
     islandingCount,
     rankedContingencies: evaluatedResults,
+    screenedLinearCandidates: screenedCandidates.map((c) => ({
+      id: c.contingency.id,
+      name: c.contingency.name,
+      severityIndex: Number(c.severityIndex.toFixed(2)),
+      causesIslanding: c.causesIslanding,
+      linearOverloads: c.linearOverloads,
+      maxBranchLoadingPercent: Number(c.maxLinearLoading.toFixed(1)),
+    })),
   };
 }

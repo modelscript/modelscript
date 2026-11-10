@@ -56,6 +56,7 @@ import { HierarchyService } from "./services/hierarchy-service.js";
 import { ParserService } from "./services/parser-service.js";
 import { ValidationService, deduplicateAllDiagnostics } from "./services/validation-service.js";
 import { computeTreeEdit } from "./utils/ast-utils.js";
+import { LspWorkDoneProgressReporter } from "./utils/progress-reporter.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader.js";
 
@@ -156,6 +157,7 @@ export interface CachedTree {
   tokens?: SyntaxNode[] | undefined;
 }
 
+import { CadMetricsService } from "./services/cad-metrics-service.js";
 import { DocumentManager } from "./services/document-manager.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
 
@@ -166,6 +168,7 @@ const parserService = new ParserService(connection, documentManager, workspaceMa
 const validationService = new ValidationService(connection, documentManager, workspaceManager, parserService);
 const hierarchyService = new HierarchyService(connection, documentManager, workspaceManager);
 void hierarchyService;
+const cadMetricsService = new CadMetricsService();
 
 // Expose state to globalThis for loosely-coupled extracted services
 globalThis.documents = documents;
@@ -375,16 +378,28 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
             if (resp.ok) {
               const catalog = await resp.json();
               const languages = catalog.languages || {};
-              for (const [id, entry] of Object.entries<any>(languages)) {
+              for (const [rawId, entry] of Object.entries<any>(languages)) {
+                const id = rawId.toLowerCase();
+                if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) {
+                  connection.console.warn(`[lsp-browser] Ignoring invalid custom language identifier: '${rawId}'`);
+                  continue;
+                }
                 if (globalLanguageRegistry.getPluginById(id)) continue;
-                const wasmUrl = `${origin}/api/languages/user/${id}/parser.wasm`;
+                const wasmUrl = `${origin}/api/languages/user/${encodeURIComponent(id)}/parser.wasm`;
                 try {
                   const { parser, facade } = await createWasmParser(wasmUrl);
                   parserService.registerParser(id, parser, facade);
+                  const exts = entry.extensions || [`.${id}`];
+                  if (workspaceManager?.unifiedWorkspace && parser) {
+                    for (const ext of exts) {
+                      workspaceManager.unifiedWorkspace.registerParser(ext, parser);
+                      workspaceManager.unifiedWorkspace.registerLanguageExtension(ext, id);
+                    }
+                  }
                   globalLanguageRegistry.register({
                     id,
                     name: entry.name || id,
-                    extensions: entry.extensions || [`.${id}`],
+                    extensions: exts,
                     parser,
                     facade,
                     disposables: [],
@@ -409,7 +424,13 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
   const capabilities: ServerCapabilities = {
     positionEncoding: PositionEncodingKind.UTF16,
-    textDocumentSync: TextDocumentSyncKind.Full,
+    textDocumentSync: {
+      openClose: true,
+      change: TextDocumentSyncKind.Full,
+      save: {
+        includeText: true,
+      },
+    },
     completionProvider: {
       resolveProvider: false,
       triggerCharacters: [".", ":", "$", "@"],
@@ -436,13 +457,28 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       prepareProvider: true,
     },
     codeActionProvider: {
-      codeActionKinds: [CodeActionKind.QuickFix],
+      codeActionKinds: [
+        CodeActionKind.QuickFix,
+        CodeActionKind.Refactor,
+        CodeActionKind.RefactorRewrite,
+        CodeActionKind.Source,
+        CodeActionKind.SourceFixAll,
+      ],
+    },
+    codeLensProvider: {
+      resolveProvider: false,
+    },
+    inlayHintProvider: {
+      resolveProvider: false,
     },
     workspaceSymbolProvider: true,
-    inlayHintProvider: true,
-    codeLensProvider: { resolveProvider: false },
   };
   return { capabilities };
+});
+
+connection.onInitialized(() => {
+  LspWorkDoneProgressReporter.registerCancelHandler(connection);
+  connection.console.info("ModelScript Browser Language Server initialized.");
 });
 
 // Track open, change and close text document events
@@ -508,6 +544,20 @@ documents.onDidOpen(async (event) => {
     await validationService.validateTextDocument(event.document);
   } catch (e: any) {
     connection.console.warn(`[onDidOpen] Validation error for ${event.document.uri}: ${e?.message}`);
+  }
+});
+
+documents.onDidSave(async (event) => {
+  try {
+    await validationService.validateTextDocument(event.document);
+    const progressReporter = await LspWorkDoneProgressReporter.create(
+      connection,
+      "ModelScript Formal Verification",
+      { message: "Verifying requirements & invariants..." },
+    );
+    await validationService.runVerificationForUri(event.document.uri, progressReporter);
+  } catch (e: any) {
+    connection.console.warn(`[onDidSave] Error verifying ${event.document.uri}: ${e?.message}`);
   }
 });
 
@@ -708,6 +758,7 @@ documents.onDidClose((event) => {
   lastSyntaxErrorsCount.delete(uri);
   validationService.disposeDocument(uri);
   workspaceManager.disposeDocument(uri);
+  cadMetricsService.disposeDocument(uri);
   const normUri = uri.replace(/^file:\/\/\/+/, "file:///");
   const oneSlashUri = uri.replace(/^file:\/\/\/+/, "file:/");
   for (const u of new Set([uri, normUri, oneSlashUri])) {
@@ -1101,6 +1152,7 @@ const lspContext: LspContext = {
   validationService,
   parserService,
   diagramService,
+  cadMetricsService,
   state: {
     activeValidationPromises: validationService.activeValidationPromises,
     get sharedContext() {
@@ -1121,6 +1173,29 @@ const lspContext: LspContext = {
 
 registerAllLspProviders(lspContext);
 registerAllLspEndpoints(lspContext);
+
+connection.onDidChangeConfiguration((change: any) => {
+  const raw = change?.settings?.modelscript ?? change?.settings;
+  if (raw && typeof raw === "object") {
+    lspContext.settings = {
+      ...lspContext.settings,
+      ...raw,
+    };
+    if (raw.languages) {
+      globalLanguageRegistry.setLanguageConfig(raw.languages);
+    }
+    if (raw.diagnostics && validationService) {
+      validationService.diagnosticsConfig = {
+        ...validationService.diagnosticsConfig,
+        ...raw.diagnostics,
+      };
+    }
+    for (const doc of documents.all()) {
+      validationService.validateTextDocument(doc);
+    }
+  }
+});
+
 connection.listen();
 
 let debuggerResumeCallback: (() => void) | undefined;

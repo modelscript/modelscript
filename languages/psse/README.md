@@ -25,30 +25,42 @@ PSS/E-compatible transmission grid power flow and dynamic network simulation pac
   - `psseToModelica`: Synthesizes standardized `Modelica.Electrical.Analog` AC network circuits for transient and dynamic co-simulation.
   - `psseToEmtNetlist`: Lowers PSS/E base cases into three-phase EMT netlists (`PsseEmtNetlist`) with Bergeron/$\pi$-section transmission lines, three-phase transformers, and synchronous voltage sources.
   - `lowerPsseToDae`: Lowers power flow equations directly into linear-memory `DAEBuilder`.
+- **WebGPU $N-1$ Contingency Screener & Benchmarking (`webgpu-contingency-screener.ts`, `accc-benchmarker.ts`, `ibr-cross-benchmarker.ts`)**: High-throughput batched $N-1$ AC contingency screening, ACCC overload/voltage violation benchmarking, and cross-tool Inverter-Based Resource (IBR) benchmark comparison.
+- **PMU Playback, DYR Calibration, Collector Equivalencing & Protection Auditing**:
+  - `pmu-smib-harness.ts` & `dyr-calibrator.ts`: Single-Machine Infinite-Bus (SMIB) synchrophasor playback and Nelder-Mead `.dyr` dynamic parameter calibration (`dyr-serializer.ts`).
+  - `collector-equivalencer.ts`: NERC collector system equivalencing aggregating multi-feeder wind/solar plants into single-machine equivalents.
+  - `protection-auditor.ts`: NERC PRC-019, PRC-024, PRC-025, and PRC-026 protection coordination and loadability compliance auditing.
 - **Multi-File Workspace Indexing (`PsseWorkspaceIndex`)**: Global indexing for cross-file model resolution and VS Code Library tree navigation.
 
 ---
 
 ## Package Structure
 
-| Path                                  | Description                                                                                         |
-| :------------------------------------ | :-------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                                              |
-| `src/language.ts`                     | `psseLanguage` grammar definition, LSP actions, and polyglot TGG rules                              |
-| `src/types.ts`                        | Core TypeScript interfaces (`PsseCase`, `PsseBus`, `PsseGenerator`, `PsseBranch`, `PsseLoad`, etc.) |
-| `src/errors.ts`                       | `PsseErrorCode` diagnostic registry (`P1001`–`P4001`)                                               |
-| `src/parser/raw-parser.ts`            | `parseRaw` parser for PSS/E `.raw` v30/v32/v33 base cases                                           |
-| `src/parser/wasm-loader.ts`           | WebAssembly GLR parser loader (`parser.wasm`)                                                       |
-| `src/netlist/powerflow-netlist.ts`    | `extractPowerFlowNetlist` and admittance matrix ($Y_{\text{bus}}$) builder                          |
-| `src/solver/ac-powerflow.ts`          | `solvePowerFlow` Newton-Raphson and Fast Decoupled AC power flow solver                             |
-| `src/lints/index.ts`                  | `lintPsse` pre-flight transmission grid diagnostic engine (`P1001`–`P4001`)                         |
-| `src/dae/index.ts`                    | `lowerPsseToDae` DAE arena lowering                                                                 |
-| `src/projections/psse-to-modelica.ts` | `psseToModelica` translator to `Modelica.Electrical.Analog`                                         |
-| `src/projections/psse-to-pscad.ts`    | `psseToEmtNetlist` translator to three-phase EMT netlists (`PsseEmtNetlist`)                        |
-| `src/projections/fmu-to-psse.ts`      | `fmuToPsse` bridge for FMU co-simulation integration                                                |
-| `src/workspace-index.ts`              | `PsseWorkspaceIndex` multi-file symbol indexer                                                      |
-| `src/lsp.ts`                          | LSP diagnostics, hover, and document symbols                                                        |
-| `build.js`                            | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                        |
+| Path                                       | Description                                                                                         |
+| :----------------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                             | Public package exports                                                                              |
+| `src/language.ts`                          | `psseLanguage` grammar definition, LSP actions, and polyglot TGG rules                              |
+| `src/types.ts`                             | Core TypeScript interfaces (`PsseCase`, `PsseBus`, `PsseGenerator`, `PsseBranch`, `PsseLoad`, etc.) |
+| `src/errors.ts`                            | `PsseErrorCode` diagnostic registry (`P1001`–`P4001`)                                               |
+| `src/parser/raw-parser.ts`                 | `parseRaw` parser for PSS/E `.raw` v30/v32/v33 base cases                                           |
+| `src/parser/dyr-parser.ts`                 | `parseDyr` & `serializeDyr` (`src/parser/dyr-serializer.ts`) for PSS/E `.dyr` dynamic models        |
+| `src/parser/wasm-loader.ts`                | WebAssembly GLR parser loader (`parser.wasm`)                                                       |
+| `src/netlist/powerflow-netlist.ts`         | `extractPowerFlowNetlist` and admittance matrix ($Y_{\text{bus}}$) builder                          |
+| `src/netlist/collector-equivalencer.ts`    | NERC renewable collector system radial aggregation and equivalencing                                |
+| `src/solver/ac-powerflow.ts`               | `solvePowerFlow` Newton-Raphson and Fast Decoupled AC power flow solver                             |
+| `src/solver/webgpu-contingency-screener.ts`| Batched WebGPU $N-1$ AC contingency screener                                                        |
+| `src/benchmarking/`                        | `accc-benchmarker.ts` and `ibr-cross-benchmarker.ts` verification harnesses                         |
+| `src/playback/pmu-smib-harness.ts`         | PMU Event Playback SMIB injection harness                                                           |
+| `src/calibration/dyr-calibrator.ts`        | Automated `.dyr` model parameter calibration against PMU event trajectories                         |
+| `src/compliance/protection-auditor.ts`     | NERC PRC-019 / PRC-024 / PRC-025 / PRC-026 protection compliance auditor                            |
+| `src/lints/index.ts`                       | `lintPsse` pre-flight transmission grid diagnostic engine (`P1001`–`P4001`)                         |
+| `src/dae/index.ts`                         | `lowerPsseToDae` DAE arena lowering                                                                 |
+| `src/projections/psse-to-modelica.ts`      | `psseToModelica` translator to `Modelica.Electrical.Analog`                                         |
+| `src/projections/psse-to-pscad.ts`         | `psseToEmtNetlist` translator to three-phase EMT netlists (`PsseEmtNetlist`)                        |
+| `src/projections/fmu-to-psse.ts`           | `fmuToPsse` bridge for FMU co-simulation integration                                                |
+| `src/workspace-index.ts`                   | `PsseWorkspaceIndex` multi-file symbol indexer                                                      |
+| `src/lsp.ts`                               | LSP diagnostics, hover, and document symbols                                                        |
+| `build.js`                                 | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                        |
 
 ---
 

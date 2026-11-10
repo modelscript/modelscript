@@ -12,7 +12,7 @@ import {
 } from "@modelscript/modelica/diagram";
 import assert from "assert";
 import { readFileSync } from "fs";
-import test from "node:test";
+import test, { before, describe } from "node:test";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DocumentManager } from "../src/services/document-manager.js";
@@ -24,19 +24,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "../../..");
 
-test("test-class-icon", async () => {
-  console.log("Starting test-class-icon...");
-
-  const wasmPath = resolve(repoRoot, "languages/modelica/dist/parser.wasm");
-  const wasmBytes = readFileSync(wasmPath);
-  const { parser } = await createWasmParser(wasmBytes, {
-    syntaxNames: modelicaSyntaxNames,
-    fieldNames: FIELD_NAMES,
+describe("Class Icon Tests", () => {
+  before(async () => {
+    const wasmPath = resolve(repoRoot, "languages/modelica/dist/parser.wasm");
+    const wasmBytes = readFileSync(wasmPath);
+    const { parser } = await createWasmParser(wasmBytes, {
+      syntaxNames: modelicaSyntaxNames,
+      fieldNames: FIELD_NAMES,
+    });
+    (globalThis as any).modelicaParser = parser;
   });
-  (globalThis as any).modelicaParser = parser;
 
-  const docManager = new DocumentManager();
-  const wm = new WorkspaceManager(docManager);
+  test("test-class-icon", async () => {
+    console.log("Starting test-class-icon...");
+
+    const parser = (globalThis as any).modelicaParser;
+    const docManager = new DocumentManager();
+    const wm = new WorkspaceManager(docManager);
 
   // Load Resistor.mo
   const resistorPath = resolve(
@@ -409,4 +413,5 @@ test("test-wasm-icon-kernel", async () => {
   assert(advSvg.includes('text-decoration="underline"'), "WASM SVG text must include underline decoration");
 
   console.log("test-wasm-icon-kernel passed successfully!");
+});
 });

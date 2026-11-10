@@ -39,7 +39,12 @@ description: "@modelscript/opendss (languages/opendss) provides zero-regex parsi
 - Compiles lines, transformers, and voltage-dependent loads into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
 - Enables co-simulation between distribution feeders, electromagnetic transients in inverter controllers ([`@modelscript/pscad`](./pscad.md)), and building thermal energy consumption ([`@modelscript/energyplus`](./energyplus.md)).
 
-### 4. Bidirectional Modelica 3.x Projection
+### 4. Faults, Harmonics, Protection, IEEE 1366 Reliability, GIC & FLISR
+
+- **Distribution OPF (`opf`), Short-Circuit (`fault`), and Harmonics (`harmonics`)**: Evaluates DER Volt-Var/curtailment dispatch, unbalanced phase-to-ground and 3-phase fault currents, and harmonic distortion profiles.
+- **Protection Coordination (`protection`), IEEE 1366 Reliability (`reliability`), GIC (`gic`) & FLISR (`flisr`)**: Audits fuse-recloser coordination, computes SAIDI/SAIFI/CAIDI indices, evaluates geomagnetic induced currents, and identifies optimal tie-switch sectionalizing for Fault Location, Isolation, and Service Restoration.
+
+### 5. Bidirectional Modelica 3.x Projection
 
 - Projects OpenDSS circuits into standard multi-phase Modelica or OpenIPSL electrical network models with acausal electrical pins (`v`, `i`).
 
@@ -58,16 +63,27 @@ The OpenDSS linter verifies electrical connectivity and DER operating envelopes:
 ```bash
 # Inspect distribution buses, lines, transformers, and DER units
 msx opendss inspect IEEE13NodeFeeder.dss
+msx opendss summary IEEE13NodeFeeder.dss
 
 # Run pre-flight linting and connectivity verification
 msx opendss lint IEEE13NodeFeeder.dss
 
-# Solve multi-phase AC power flow and print bus voltages
+# Solve multi-phase AC power flow (FBS or sparse Ybus) and distribution OPF
 msx opendss powerflow IEEE13NodeFeeder.dss
+msx opendss ybus IEEE13NodeFeeder.dss
+msx opendss opf IEEE13NodeFeeder.dss
 
-# Lower circuit into ModelScript linear DAE arena
+# Run fault study, harmonics, protection, IEEE 1366 reliability, GIC, hosting capacity, and FLISR
+msx opendss fault IEEE13NodeFeeder.dss --bus=671
+msx opendss harmonics IEEE13NodeFeeder.dss
+msx opendss protection IEEE13NodeFeeder.dss
+msx opendss reliability IEEE13NodeFeeder.dss
+msx opendss gic IEEE13NodeFeeder.dss
+msx opendss hosting-capacity IEEE13NodeFeeder.dss --bus=671
+msx opendss flisr IEEE13NodeFeeder.dss --bus=671
+
+# Lower circuit into ModelScript linear DAE arena or Modelica 3.x
 msx opendss to-dae IEEE13NodeFeeder.dss
-
-# Project into Modelica 3.x electrical power model
 msx opendss to-modelica IEEE13NodeFeeder.dss -o DistributionFeeder.mo
 ```
+

@@ -196,6 +196,132 @@
     "subcommands": []
   },
   {
+    "name": "ampl",
+    "specs": [
+      "ampl <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve, and lower AMPL mathematical programming models (.mod, .dat)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, solve, run, repl, to-nl, to-mps, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "solve",
+          "run",
+          "repl",
+          "to-nl",
+          "to-mps",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "AMPL model (.mod), data (.dat), script (.run), or MPS (.mps) file(s)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Output format (terminal, json)",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "solver",
+        "aliases": [],
+        "type": "string",
+        "description": "Solver engine (auto, clp, cbc, ipopt, couenne, cplex, highs, gurobi, mosek, scip, pure-js)",
+        "choices": [
+          "auto",
+          "clp",
+          "cbc",
+          "ipopt",
+          "couenne",
+          "cplex",
+          "highs",
+          "gurobi",
+          "mosek",
+          "scip",
+          "pure-js"
+        ],
+        "default": "auto"
+      },
+      {
+        "name": "tolerance",
+        "aliases": [],
+        "type": "number",
+        "description": "Solver optimality and feasibility tolerance",
+        "default": 0.000001
+      },
+      {
+        "name": "max-iterations",
+        "aliases": [
+          "max-iter"
+        ],
+        "type": "number",
+        "description": "Maximum solver iterations",
+        "default": 10000
+      },
+      {
+        "name": "presolve",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enable Fourer & Gay algebraic presolve and postsolve reconstruction",
+        "default": false
+      },
+      {
+        "name": "mpec-mode",
+        "aliases": [],
+        "type": "string",
+        "description": "MPEC complementarity reformulation mode (milp, nlp)",
+        "choices": [
+          "milp",
+          "nlp"
+        ],
+        "default": "milp"
+      },
+      {
+        "name": "all",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output all variables including zero values",
+        "default": false
+      },
+      {
+        "name": "binary",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output binary ASL format (b3) instead of ASCII (.nl)",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "archive",
     "specs": [
       "archive [action] [users..]"
@@ -372,6 +498,100 @@
         "type": "number",
         "description": "Simulation timestep for Virtual RTE [s]",
         "default": 0.01
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "bifurcation",
+    "specs": [
+      "bifurcation <name>",
+      "bif <name>"
+    ],
+    "aliases": [
+      "bif"
+    ],
+    "describe": "Trace nonlinear steady-state equilibrium curves and detect Fold (LP), Hopf (HB), and Branch (BP) bifurcations",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "Model name or built-in normal form ('saddle-node', 'hopf', 'pitchfork', 'brusselator')"
+      }
+    ],
+    "options": [
+      {
+        "name": "param",
+        "aliases": [
+          "p"
+        ],
+        "type": "string",
+        "description": "Continuation parameter name",
+        "default": "mu"
+      },
+      {
+        "name": "p0",
+        "aliases": [],
+        "type": "number",
+        "description": "Initial continuation parameter value",
+        "default": -1
+      },
+      {
+        "name": "p-min",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum continuation parameter bound",
+        "default": -2
+      },
+      {
+        "name": "p-max",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum continuation parameter bound",
+        "default": 2
+      },
+      {
+        "name": "ds",
+        "aliases": [],
+        "type": "number",
+        "description": "Initial pseudo-arclength step size",
+        "default": 0.05
+      },
+      {
+        "name": "max-steps",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum continuation steps along the branch",
+        "default": 150
+      },
+      {
+        "name": "x0",
+        "aliases": [],
+        "type": "number",
+        "description": "Initial equilibrium state guess vector",
+        "array": true
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output serialization format",
+        "choices": [
+          "json",
+          "csv"
+        ],
+        "default": "json"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path"
       }
     ],
     "subcommands": []
@@ -1045,6 +1265,141 @@
           }
         ],
         "subcommands": []
+      },
+      {
+        "name": "ts-emt",
+        "specs": [
+          "ts-emt <raw> <pscx>"
+        ],
+        "aliases": [],
+        "describe": "Run multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD",
+        "positionals": [
+          {
+            "name": "raw",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to PSS/E base case (.raw)"
+          },
+          {
+            "name": "pscx",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to PSCAD project (.pscx)"
+          }
+        ],
+        "options": [
+          {
+            "name": "boundary",
+            "aliases": [
+              "b"
+            ],
+            "type": "string",
+            "description": "Boundary bus mapping, e.g. '3:Bus3' (psseBusNumber:pscadBusId)"
+          },
+          {
+            "name": "duration",
+            "aliases": [
+              "d",
+              "tstop"
+            ],
+            "type": "number",
+            "description": "Simulation duration in seconds",
+            "default": 0.5
+          },
+          {
+            "name": "dt-ts",
+            "aliases": [],
+            "type": "number",
+            "description": "PSS/E macro time step in seconds",
+            "default": 0.005
+          },
+          {
+            "name": "dt-emt",
+            "aliases": [],
+            "type": "number",
+            "description": "PSCAD EMT micro time step in seconds",
+            "default": 0.00005
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output JSON or CSV report file path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "multi-ts-emt",
+        "specs": [
+          "multi-ts-emt <raw>"
+        ],
+        "aliases": [],
+        "describe": "Run concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
+        "positionals": [
+          {
+            "name": "raw",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to PSS/E base case (.raw)"
+          }
+        ],
+        "options": [
+          {
+            "name": "plant",
+            "aliases": [
+              "p"
+            ],
+            "type": "array",
+            "description": "Plant mapping: 'id:path.pscx:psseBus:emtBus' (can be specified multiple times)"
+          },
+          {
+            "name": "duration",
+            "aliases": [
+              "d",
+              "tstop"
+            ],
+            "type": "number",
+            "description": "Simulation duration in seconds",
+            "default": 0.5
+          },
+          {
+            "name": "dt-ts",
+            "aliases": [],
+            "type": "number",
+            "description": "PSS/E macro time step in seconds",
+            "default": 0.005
+          },
+          {
+            "name": "dt-emt",
+            "aliases": [],
+            "type": "number",
+            "description": "PSCAD EMT micro time step in seconds",
+            "default": 0.00005
+          },
+          {
+            "name": "extrapolation",
+            "aliases": [],
+            "description": "Boundary voltage extrapolation mode",
+            "choices": [
+              "constant",
+              "linear",
+              "quadratic"
+            ],
+            "default": "quadratic"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output JSON report file path"
+          }
+        ],
+        "subcommands": []
       }
     ]
   },
@@ -1334,6 +1689,48 @@
     "subcommands": []
   },
   {
+    "name": "deprecate",
+    "specs": [
+      "deprecate <package> [reason]",
+      "undeprecate <package>"
+    ],
+    "aliases": [
+      "undeprecate"
+    ],
+    "describe": "Deprecate or un-deprecate a package release in the registry",
+    "positionals": [
+      {
+        "name": "package",
+        "aliases": [],
+        "type": "string",
+        "description": "Package identifier and version (e.g. Modelica@4.0.0 or @scope/pkg@1.0.0)"
+      },
+      {
+        "name": "reason",
+        "aliases": [],
+        "type": "string",
+        "description": "Deprecation explanation message and recommended migration"
+      }
+    ],
+    "options": [
+      {
+        "name": "undo",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Clear/undo deprecation status for this release",
+        "default": false
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output result summary as JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "dhf",
     "specs": [
       "dhf <action> [paths..]"
@@ -1581,6 +1978,52 @@
         ],
         "type": "string",
         "description": "Output file path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "dossier",
+    "specs": [
+      "dossier <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Compile, watermark, and cryptographically sign NERC RSAW & NIST OSCAL compliance dossiers",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (build, compile, inspect)",
+        "choices": [
+          "build",
+          "compile",
+          "inspect"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Dossier manifest JSON file(s)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. dossier.zip, rsaw.md, or oscal.json)"
+      },
+      {
+        "name": "key",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to Ed25519 private key PEM for attestation signing"
       }
     ],
     "subcommands": []
@@ -1858,11 +2301,19 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: inspect | lint | solve | to-modelica | to-dae",
+        "description": "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | diff | to-modelica | to-dae",
         "choices": [
           "inspect",
           "lint",
           "solve",
+          "eps",
+          "pdd",
+          "surge",
+          "audit",
+          "ops",
+          "quality",
+          "diff",
+          "from-gis",
           "to-modelica",
           "to-dae"
         ]
@@ -1871,7 +2322,7 @@
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "Input EPANET network files (.inp)",
+        "description": "Input EPANET network files (.inp) or GeoJSON pipes for from-gis",
         "array": true
       }
     ],
@@ -1883,7 +2334,49 @@
           "output"
         ],
         "type": "string",
-        "description": "Output file path for generated Modelica code"
+        "description": "Output file path for generated Modelica code or compiled network .inp"
+      },
+      {
+        "name": "nodes",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional GeoJSON file containing node/junction/reservoir assets"
+      },
+      {
+        "name": "dem",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional digital elevation model raster (.asc, .grd)"
+      },
+      {
+        "name": "snap",
+        "aliases": [],
+        "type": "number",
+        "description": "Topological node snap tolerance in meters (default: 1.5m)"
+      },
+      {
+        "name": "diameter",
+        "aliases": [],
+        "type": "number",
+        "description": "Default pipe diameter in mm (default: 200mm)"
+      },
+      {
+        "name": "roughness",
+        "aliases": [],
+        "type": "number",
+        "description": "Default pipe Hazen-Williams C factor (default: 120)"
+      },
+      {
+        "name": "demand",
+        "aliases": [],
+        "type": "number",
+        "description": "Default junction base demand in L/s (default: 0.0)"
+      },
+      {
+        "name": "title",
+        "aliases": [],
+        "type": "string",
+        "description": "Network model title"
       },
       {
         "name": "max-iter",
@@ -2165,6 +2658,201 @@
       }
     ],
     "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "fiber",
+    "specs": [
+      "fiber <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Locate OTDR faults along GIS cable paths, trace strand continuity, and audit SRLG diversity",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (locate, otdr-fault, trace, srlg, color, bdc, pole-loading, make-ready)",
+        "choices": [
+          "locate",
+          "otdr-fault",
+          "trace",
+          "srlg",
+          "color",
+          "bdc",
+          "pole-loading",
+          "make-ready"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Fiber GIS route (GeoJSON) or network model files",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "distance",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Optical distance to event in meters from OTDR launch"
+      },
+      {
+        "name": "helix",
+        "aliases": [],
+        "type": "number",
+        "description": "Cable helix factor (optical length / sheath length)",
+        "default": 1.03
+      },
+      {
+        "name": "cable",
+        "aliases": [
+          "c"
+        ],
+        "type": "string",
+        "description": "Starting cable ID for strand trace"
+      },
+      {
+        "name": "strand",
+        "aliases": [
+          "s"
+        ],
+        "type": "number",
+        "description": "Strand number (1-based)"
+      },
+      {
+        "name": "tech",
+        "aliases": [],
+        "type": "number",
+        "description": "BDC Technology Code (50=FTTH, 70=5G-NR Mobile, 71=5G Fixed Wireless)",
+        "default": 50
+      },
+      {
+        "name": "down",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum advertised download speed in Mbps",
+        "default": 1000
+      },
+      {
+        "name": "up",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum advertised upload speed in Mbps",
+        "default": 1000
+      },
+      {
+        "name": "low-latency",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Low-latency service indicator (RTT <= 100ms)",
+        "default": true
+      },
+      {
+        "name": "res",
+        "aliases": [],
+        "type": "number",
+        "description": "H3 spatial resolution (8 or 9)",
+        "default": 9
+      },
+      {
+        "name": "provider",
+        "aliases": [],
+        "type": "string",
+        "description": "Broadband service provider brand name",
+        "default": "ModelScript Fiber Provider"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path to save BDC filing (GeoJSON or CSV)"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Output format for BDC filing (geojson, csv, json)",
+        "choices": [
+          "geojson",
+          "csv",
+          "json"
+        ]
+      },
+      {
+        "name": "pole-class",
+        "aliases": [],
+        "type": "string",
+        "description": "ANSI O5.1 wood pole class (1-6)",
+        "choices": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        "default": "4"
+      },
+      {
+        "name": "species",
+        "aliases": [],
+        "type": "string",
+        "description": "Wood pole species",
+        "choices": [
+          "southern-yellow-pine",
+          "douglas-fir",
+          "western-red-cedar",
+          "lodgepole-pine"
+        ],
+        "default": "southern-yellow-pine"
+      },
+      {
+        "name": "length",
+        "aliases": [],
+        "type": "number",
+        "description": "Total pole length in feet (e.g. 35, 40, 45)",
+        "default": 40
+      },
+      {
+        "name": "grade",
+        "aliases": [],
+        "type": "string",
+        "description": "NESC construction grade (B, C-crossing, C-elsewhere)",
+        "choices": [
+          "B",
+          "C-crossing",
+          "C-elsewhere"
+        ],
+        "default": "C-elsewhere"
+      },
+      {
+        "name": "district",
+        "aliases": [],
+        "type": "string",
+        "description": "NESC Rule 250 environmental loading district",
+        "choices": [
+          "heavy",
+          "medium",
+          "light",
+          "extreme-wind"
+        ],
+        "default": "heavy"
+      },
+      {
+        "name": "prop-height",
+        "aliases": [],
+        "type": "number",
+        "description": "Proposed fiber attachment height above ground in feet",
+        "default": 21
+      }
+    ],
     "subcommands": []
   },
   {
@@ -2521,6 +3209,75 @@
     "subcommands": []
   },
   {
+    "name": "gatekeeper",
+    "specs": [
+      "gatekeeper <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Run automated 5-stage ISO Grid Code screening pipeline or start gatekeeper CI/CD service",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (evaluate, screen, serve, status)",
+        "choices": [
+          "evaluate",
+          "screen",
+          "serve",
+          "status"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Interconnection submission archive or directory (.zip or folder)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path for scorecard JSON or Markdown report"
+      },
+      {
+        "name": "port",
+        "aliases": [],
+        "type": "number",
+        "description": "Port to listen on when running HTTP server (default: 8080)",
+        "default": 8080
+      },
+      {
+        "name": "interconnection",
+        "aliases": [],
+        "type": "string",
+        "description": "Target interconnection: Western, Eastern, ERCOT, or ENTSO-E (default: Western)",
+        "default": "Western"
+      },
+      {
+        "name": "mva",
+        "aliases": [],
+        "type": "number",
+        "description": "Generator plant rated capacity in MVA (default: 100)",
+        "default": 100
+      },
+      {
+        "name": "kv",
+        "aliases": [],
+        "type": "number",
+        "description": "Point of Interconnection (POI) rated voltage in kV (default: 230)",
+        "default": 230
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "generate",
     "specs": [
       "generate [target] [entries..]"
@@ -2820,6 +3577,57 @@
     "subcommands": []
   },
   {
+    "name": "gtfs",
+    "specs": [
+      "gtfs <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve electric transit kinematic traction power, depot charging, and lower GTFS feeds (.gtfs, .zip)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, traction, depot, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "traction",
+          "depot",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "GTFS feed directory, archive, or manifest file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
+      },
+      {
+        "name": "depot-limit",
+        "aliases": [],
+        "type": "number",
+        "description": "Depot transformer capacity limit in kW",
+        "default": 1500
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "gtsuite",
     "specs": [
       "gtsuite <action> [files..]"
@@ -2927,6 +3735,69 @@
           "json"
         ],
         "default": "terminal"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "hec-ras",
+    "specs": [
+      "hec-ras <action> [files..]"
+    ],
+    "aliases": [
+      "ras"
+    ],
+    "describe": "Inspect, lint, solve 1D backwater surface profiles, and lower USACE HEC-RAS river hydraulic geometry (.g01, .g02, .rasgeo)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, profile, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "profile",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "HEC-RAS geometry or flow file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
+      },
+      {
+        "name": "discharge",
+        "aliases": [
+          "q"
+        ],
+        "type": "number",
+        "description": "Discharge rate (m³/s) for profile calculation",
+        "default": 150
+      },
+      {
+        "name": "slope",
+        "aliases": [
+          "s"
+        ],
+        "type": "number",
+        "description": "Energy/bed friction slope S0 for profile calculation",
+        "default": 0.001
       }
     ],
     "subcommands": []
@@ -3545,7 +4416,7 @@
       "info",
       "summary"
     ],
-    "describe": "Inspect and summarize engineering models across any of the 68 supported languages",
+    "describe": "Inspect and summarize engineering models across any of the 81 supported languages",
     "positionals": [
       {
         "name": "files",
@@ -3643,6 +4514,38 @@
         "aliases": [],
         "type": "boolean",
         "description": "Simulate transitive dependency resolution without writing packages or lockfile to disk",
+        "default": false
+      },
+      {
+        "name": "offline",
+        "aliases": [
+          "o"
+        ],
+        "type": "boolean",
+        "description": "Install strictly from local vendor directory and global CAS store with zero network requests",
+        "default": false
+      },
+      {
+        "name": "vendor-first",
+        "aliases": [
+          "prefer-vendor"
+        ],
+        "type": "boolean",
+        "description": "Prefer locally vendored dependencies before making remote registry network requests",
+        "default": false
+      },
+      {
+        "name": "vendor-dir",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to the local vendor directory (defaults to ./vendor)",
+        "default": "vendor"
+      },
+      {
+        "name": "allow-yanked",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Allow installation of yanked (tombstoned) package releases",
         "default": false
       }
     ],
@@ -4002,6 +4905,51 @@
         "subcommands": []
       }
     ]
+  },
+  {
+    "name": "landgem",
+    "specs": [
+      "landgem <action> [files..]"
+    ],
+    "aliases": [
+      "biogas"
+    ],
+    "describe": "Inspect, lint, solve first-order methane decay kinetics & ADM1 digestion, and lower LandGEM biogas models (.landgem, .lfg, .biogas)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, biogas, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "biogas",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "LandGEM input file(s) (.landgem, .lfg, .biogas) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
+      }
+    ],
+    "subcommands": []
   },
   {
     "name": "language",
@@ -4516,6 +5464,109 @@
     "subcommands": []
   },
   {
+    "name": "mirror",
+    "specs": [
+      "mirror [packages..]"
+    ],
+    "aliases": [],
+    "describe": "Mirror packages to an air-gap directory or bundle, or import an air-gap bundle into local store",
+    "positionals": [
+      {
+        "name": "packages",
+        "aliases": [],
+        "type": "string",
+        "description": "List of package names to mirror, or 'import <bundle>' to ingest a mirror bundle",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "import",
+        "aliases": [
+          "i"
+        ],
+        "type": "string",
+        "description": "Path to an air-gap mirror bundle (.zip) or unpacked mirror directory to import into local store"
+      },
+      {
+        "name": "target-registry",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional local registry directory to populate with imported packages (for air-gapped registry mirrors)"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output directory or bundle zip archive (e.g. ./mirror or ./mirror.zip)",
+        "default": "modelscript-mirror"
+      },
+      {
+        "name": "include-salsa",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Include pre-computed Salsa memoization index databases for instant zero-recompilation loading",
+        "default": true
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output mirror result summary as JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "modflow",
+    "specs": [
+      "modflow <action> [files..]"
+    ],
+    "aliases": [
+      "mf6"
+    ],
+    "describe": "Inspect, lint, solve 3D Darcy groundwater balances, and lower USGS MODFLOW 6 aquifer packages (.dis, .dis6, .npf, .wel, .riv)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, balance, heads, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "balance",
+          "heads",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "MODFLOW input file(s) (.dis, .dis6, .npf, .wel) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "nifti",
     "specs": [
       "nifti <action> [files..]"
@@ -4548,6 +5599,56 @@
       }
     ],
     "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "ocpp",
+    "specs": [
+      "ocpp <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve priority smart charging schedules, and lower OCPP 2.0.1/1.6J EV charging networks (.ocpp)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, schedule, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "schedule",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "OCPP configuration file(s) (.ocpp) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
+      },
+      {
+        "name": "min-power",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum session charging power in kW",
+        "default": 6
+      }
+    ],
     "subcommands": []
   },
   {
@@ -4877,6 +5978,57 @@
     "subcommands": []
   },
   {
+    "name": "openadr",
+    "specs": [
+      "openadr <action> [files..]"
+    ],
+    "aliases": [
+      "oadr"
+    ],
+    "describe": "Inspect, lint, evaluate curtailment shed, and lower OpenADR 2.0b/3.0 demand response events (.oadr, .xml, .json)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, curtail, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "curtail",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "OpenADR event or program payload(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
+      },
+      {
+        "name": "ven",
+        "aliases": [],
+        "type": "string",
+        "description": "Target Virtual End Node (VEN) ID for curtailment evaluation"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "opendrive",
     "specs": [
       "opendrive <action> [files..]"
@@ -4949,14 +6101,23 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (inspect, lint, powerflow, opf, to-dae, to-modelica)",
+        "description": "Action to perform (inspect, lint, powerflow, ybus, opf, fault, harmonics, protection, reliability, gic, hca, flisr, to-dae, to-modelica)",
         "choices": [
           "inspect",
           "summary",
           "lint",
           "powerflow",
+          "ybus",
           "opf",
           "d-opf",
+          "fault",
+          "harmonics",
+          "protection",
+          "reliability",
+          "gic",
+          "hca",
+          "hosting-capacity",
+          "flisr",
           "to-dae",
           "to-modelica"
         ]
@@ -4978,6 +6139,18 @@
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "bus",
+        "aliases": [],
+        "type": "string",
+        "description": "Target bus for fault study or hosting capacity"
+      },
+      {
+        "name": "tie",
+        "aliases": [],
+        "type": "string",
+        "description": "Tie line name for FLISR back-feed restoration"
       }
     ],
     "subcommands": []
@@ -5064,6 +6237,98 @@
       }
     ],
     "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "optical",
+    "specs": [
+      "optical <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect Telcordia .sor OTDR traces, solve DWDM GSNR transmission budgets, and lint optical networks",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, otdr, gsnr, lint, to-dae)",
+        "choices": [
+          "inspect",
+          "otdr",
+          "gsnr",
+          "lint",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Optical trace (.sor) or network topology (.json) files",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "distance",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Total link distance in kilometers for GSNR solver",
+        "default": 320
+      },
+      {
+        "name": "span-len",
+        "aliases": [
+          "s"
+        ],
+        "type": "number",
+        "description": "Fiber span length in kilometers",
+        "default": 80
+      },
+      {
+        "name": "baud",
+        "aliases": [
+          "b"
+        ],
+        "type": "number",
+        "description": "Baud rate in Gbaud",
+        "default": 64
+      },
+      {
+        "name": "power",
+        "aliases": [
+          "p"
+        ],
+        "type": "number",
+        "description": "Launch power in dBm",
+        "default": 0
+      },
+      {
+        "name": "edfa-nf",
+        "aliases": [],
+        "type": "number",
+        "description": "EDFA noise figure in dB",
+        "default": 5.5
+      },
+      {
+        "name": "fiber",
+        "aliases": [],
+        "type": "string",
+        "description": "Fiber type (SSMF, LEAF, custom)",
+        "default": "SSMF"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE or summary export)"
+      }
+    ],
     "subcommands": []
   },
   {
@@ -5406,6 +6671,98 @@
     "subcommands": []
   },
   {
+    "name": "pf",
+    "specs": [
+      "pf <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Alias for 'powerfactory' command",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, diagram, solve, fault, modes, dlr, harmonics, qdsl, opf, gridcode, to-psse, to-modelica)",
+        "choices": [
+          "inspect",
+          "diagram",
+          "solve",
+          "fault",
+          "modes",
+          "dlr",
+          "harmonics",
+          "qdsl",
+          "opf",
+          "gridcode",
+          "to-psse",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "PowerFactory file(s) to process (.dz, .pfd, .xml)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for SVG diagram, PSS/E RAW, or Modelica code)"
+      },
+      {
+        "name": "formulation",
+        "aliases": [],
+        "type": "string",
+        "description": "OPF mathematical formulation: 'dc' (linearized) or 'ac' (nonlinear)",
+        "choices": [
+          "dc",
+          "ac"
+        ],
+        "default": "dc"
+      },
+      {
+        "name": "method",
+        "aliases": [],
+        "type": "string",
+        "description": "Small-signal eigensolver method: 'arnoldi' (sparse Krylov) or 'qr' (dense)",
+        "choices": [
+          "arnoldi",
+          "qr"
+        ],
+        "default": "arnoldi"
+      },
+      {
+        "name": "temp",
+        "aliases": [],
+        "type": "number",
+        "description": "Ambient temperature for Dynamic Line Rating in degrees Celsius (default: 35)",
+        "default": 35
+      },
+      {
+        "name": "wind",
+        "aliases": [],
+        "type": "number",
+        "description": "Wind speed for Dynamic Line Rating in m/s (default: 0.6)",
+        "default": 0.6
+      },
+      {
+        "name": "duration",
+        "aliases": [],
+        "type": "number",
+        "description": "Quasi-Dynamic simulation duration in hours (default: 24)",
+        "default": 24
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "playground",
     "specs": [
       "playground"
@@ -5701,6 +7058,98 @@
     ]
   },
   {
+    "name": "powerfactory",
+    "specs": [
+      "powerfactory <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, solve, lint, and visualize DIgSILENT PowerFactory models (.dz, .pfd, .xml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, diagram, solve, fault, modes, dlr, harmonics, qdsl, opf, gridcode, to-psse, to-modelica)",
+        "choices": [
+          "inspect",
+          "diagram",
+          "solve",
+          "fault",
+          "modes",
+          "dlr",
+          "harmonics",
+          "qdsl",
+          "opf",
+          "gridcode",
+          "to-psse",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "PowerFactory file(s) to process (.dz, .pfd, .xml)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for SVG diagram, PSS/E RAW, or Modelica code)"
+      },
+      {
+        "name": "formulation",
+        "aliases": [],
+        "type": "string",
+        "description": "OPF mathematical formulation: 'dc' (linearized) or 'ac' (nonlinear)",
+        "choices": [
+          "dc",
+          "ac"
+        ],
+        "default": "dc"
+      },
+      {
+        "name": "method",
+        "aliases": [],
+        "type": "string",
+        "description": "Small-signal eigensolver method: 'arnoldi' (sparse Krylov) or 'qr' (dense)",
+        "choices": [
+          "arnoldi",
+          "qr"
+        ],
+        "default": "arnoldi"
+      },
+      {
+        "name": "temp",
+        "aliases": [],
+        "type": "number",
+        "description": "Ambient temperature for Dynamic Line Rating in degrees Celsius (default: 35)",
+        "default": 35
+      },
+      {
+        "name": "wind",
+        "aliases": [],
+        "type": "number",
+        "description": "Wind speed for Dynamic Line Rating in m/s (default: 0.6)",
+        "default": 0.6
+      },
+      {
+        "name": "duration",
+        "aliases": [],
+        "type": "number",
+        "description": "Quasi-Dynamic simulation duration in hours (default: 24)",
+        "default": 24
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "pr-diff",
     "specs": [
       "pr-diff [file]"
@@ -5868,6 +7317,55 @@
     "subcommands": []
   },
   {
+    "name": "pslf",
+    "specs": [
+      "pslf <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve, and convert GE PSLF transmission cases (.epc, .dyd)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, solve, to-psse, from-psse)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "solve",
+          "to-psse",
+          "from-psse"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "PSLF file(s) to process (.epc, .dyd, .raw, .dyr)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for converted .raw or .epc)"
+      },
+      {
+        "name": "dyr",
+        "aliases": [],
+        "type": "string",
+        "description": "Associated PSS/E DYR or PSLF DYD dynamics data file"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "psse",
     "specs": [
       "psse <action> [files..]"
@@ -5879,7 +7377,7 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (lint, summary, diagram, netlist, solve, opf, fault, modes, n1)",
+        "description": "Action to perform (lint, summary, diagram, netlist, solve, opf, fault, modes, n1, sld, idv, verify-nerc)",
         "choices": [
           "inspect",
           "to-dae",
@@ -5893,14 +7391,28 @@
           "fault",
           "modes",
           "n1",
-          "cpf"
+          "cpf",
+          "sld",
+          "idv",
+          "verify-nerc",
+          "to-cgmes",
+          "from-cgmes",
+          "calibrate",
+          "pmu-calibrate",
+          "equiv",
+          "collector-equiv",
+          "benchmark",
+          "benchmark-ibr",
+          "audit-protection",
+          "dossier",
+          "gatekeeper"
         ]
       },
       {
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "PSS/E RAW file(s) to process",
+        "description": "PSS/E file(s) to process (.raw, .sld, .drw, .idv, .json, .csv, .zip)",
         "array": true
       }
     ],
@@ -5913,6 +7425,18 @@
         ],
         "type": "string",
         "description": "Output file path (e.g. for SVG diagram or report)"
+      },
+      {
+        "name": "raw",
+        "aliases": [],
+        "type": "string",
+        "description": "Associated PSS/E RAW power flow base case file"
+      },
+      {
+        "name": "dyr",
+        "aliases": [],
+        "type": "string",
+        "description": "Associated PSS/E DYR dynamic models data file"
       },
       {
         "name": "algorithm",
@@ -5954,6 +7478,45 @@
         "type": "number",
         "description": "Maximum allowable power flow iterations / HELM orders",
         "default": 25
+      },
+      {
+        "name": "pmu",
+        "aliases": [],
+        "type": "string",
+        "description": "PMU recording CSV file for MOD-026/027 dynamic calibration"
+      },
+      {
+        "name": "bus",
+        "aliases": [],
+        "type": "number",
+        "description": "Target generator bus number for calibration or audit"
+      },
+      {
+        "name": "id",
+        "aliases": [],
+        "type": "string",
+        "description": "Target machine ID for calibration or audit (default: '1')",
+        "default": "1"
+      },
+      {
+        "name": "relays",
+        "aliases": [],
+        "type": "string",
+        "description": "Protection relay settings JSON file for PRC-019/024/026 audit"
+      },
+      {
+        "name": "serve",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Start background HTTP API service (e.g. for grid gatekeeper)",
+        "default": false
+      },
+      {
+        "name": "port",
+        "aliases": [],
+        "type": "number",
+        "description": "Port to listen on when running HTTP server (default: 8080)",
+        "default": 8080
       }
     ],
     "subcommands": []
@@ -5979,6 +7542,38 @@
         "aliases": [],
         "type": "string",
         "description": "Cryptographic detached signature for supply chain verification"
+      },
+      {
+        "name": "sign",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Sign the package using an Ed25519 private key",
+        "default": false
+      },
+      {
+        "name": "key",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to Ed25519 private key used to sign the package release"
+      },
+      {
+        "name": "pubkey",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to Ed25519 public key corresponding to the signing key"
+      },
+      {
+        "name": "oidc",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enable keyless OIDC signing from ambient CI/CD environment (GitHub Actions, GitLab CI)",
+        "default": false
+      },
+      {
+        "name": "oidc-token",
+        "aliases": [],
+        "type": "string",
+        "description": "Explicit OIDC ID token JWT for keyless supply chain attestation"
       },
       {
         "name": "dry-run",
@@ -6055,6 +7650,177 @@
         ],
         "type": "string",
         "description": "Output file path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "ran",
+    "specs": [
+      "ran <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Solve microwave link budgets, parse NSMA/Planet antenna patterns, and compute Fresnel clearance",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (microwave, budget, pcn, mpe, faa, antenna, fresnel)",
+        "choices": [
+          "microwave",
+          "budget",
+          "pcn",
+          "mpe",
+          "faa",
+          "antenna",
+          "fresnel"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Antenna pattern files (.adf, .pat) or configuration files",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "freq",
+        "aliases": [
+          "f"
+        ],
+        "type": "number",
+        "description": "Carrier frequency in GHz (e.g. 6.0, 11.0, 18.0) or MHz for MPE",
+        "default": 11
+      },
+      {
+        "name": "dist",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Path length in kilometers",
+        "default": 15
+      },
+      {
+        "name": "tx-power",
+        "aliases": [],
+        "type": "number",
+        "description": "Tx transmitter power in dBm",
+        "default": 20
+      },
+      {
+        "name": "power-watts",
+        "aliases": [],
+        "type": "number",
+        "description": "Transmitter power in Watts (for MPE evaluation)",
+        "default": 40
+      },
+      {
+        "name": "tx-gain",
+        "aliases": [],
+        "type": "number",
+        "description": "Tx antenna gain in dBi",
+        "default": 38
+      },
+      {
+        "name": "rx-gain",
+        "aliases": [],
+        "type": "number",
+        "description": "Rx antenna gain in dBi",
+        "default": 38
+      },
+      {
+        "name": "tx-site",
+        "aliases": [],
+        "type": "string",
+        "description": "Transmitter site name",
+        "default": "Site-Alpha"
+      },
+      {
+        "name": "rx-site",
+        "aliases": [],
+        "type": "string",
+        "description": "Receiver site name",
+        "default": "Site-Bravo"
+      },
+      {
+        "name": "rain-rate",
+        "aliases": [],
+        "type": "number",
+        "description": "ITU-R P.837 rain rate at 0.01% of year in mm/hr",
+        "default": 42
+      },
+      {
+        "name": "rx-threshold",
+        "aliases": [],
+        "type": "number",
+        "description": "Receiver sensitivity threshold in dBm",
+        "default": -72
+      },
+      {
+        "name": "polarization",
+        "aliases": [],
+        "type": "string",
+        "description": "Polarization (H or V)",
+        "default": "V"
+      },
+      {
+        "name": "tx-height",
+        "aliases": [],
+        "type": "number",
+        "description": "Tx tower antenna center of radiation height in meters",
+        "default": 45
+      },
+      {
+        "name": "rx-height",
+        "aliases": [],
+        "type": "number",
+        "description": "Rx tower antenna center of radiation height in meters",
+        "default": 35
+      },
+      {
+        "name": "obstacle-dist",
+        "aliases": [],
+        "type": "number",
+        "description": "Distance from Tx to midpoint obstacle in km"
+      },
+      {
+        "name": "obstacle-elev",
+        "aliases": [],
+        "type": "number",
+        "description": "Obstacle elevation in meters above sea level",
+        "default": 0
+      },
+      {
+        "name": "height",
+        "aliases": [],
+        "type": "number",
+        "description": "Structure height AGL in feet (for FAA evaluation)",
+        "default": 195
+      },
+      {
+        "name": "elev",
+        "aliases": [],
+        "type": "number",
+        "description": "Ground elevation AMSL in feet (for FAA evaluation)",
+        "default": 150
+      },
+      {
+        "name": "lat",
+        "aliases": [],
+        "type": "number",
+        "description": "Latitude in decimal degrees",
+        "default": 40.7128
+      },
+      {
+        "name": "lon",
+        "aliases": [],
+        "type": "number",
+        "description": "Longitude in decimal degrees",
+        "default": -74.006
       }
     ],
     "subcommands": []
@@ -6900,20 +8666,47 @@
         "name": "solver",
         "aliases": [],
         "type": "string",
-        "description": "ODE solver to use",
+        "description": "ODE/DAE/Symplectic/QSS solver to use",
         "choices": [
           "euler",
           "rk4",
           "dopri5",
           "tsit5",
+          "vern7",
+          "vern9",
           "trbdf2",
           "rodas4p",
+          "kencarp4",
+          "radau5",
+          "radau9",
+          "verlet",
+          "yoshida4",
+          "yoshida6",
+          "yoshida8",
+          "qss1",
+          "qss2",
+          "qss3",
+          "liqss2",
           "bdf",
           "auto",
           "cvode",
           "webgpu"
         ],
         "default": "dopri5"
+      },
+      {
+        "name": "linear-solver",
+        "aliases": [],
+        "type": "string",
+        "description": "Linear system solver for implicit/stiff steps",
+        "choices": [
+          "dense-lu",
+          "klu",
+          "gmres",
+          "bicgstab",
+          "distributed-ras"
+        ],
+        "default": "klu"
       },
       {
         "name": "interface-type",
@@ -7492,7 +9285,7 @@
       "stdlib [action] [pack]"
     ],
     "aliases": [],
-    "describe": "Manage, list, and synchronize polyglot standard libraries across 68 languages",
+    "describe": "Manage, list, and synchronize polyglot standard libraries across 81 languages",
     "positionals": [
       {
         "name": "action",
@@ -7741,21 +9534,25 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (inspect, lint, to-dae, to-modelica, route-flow)",
+        "description": "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality, diff, from-gis)",
         "choices": [
           "inspect",
           "summary",
           "lint",
           "to-dae",
           "to-modelica",
-          "route-flow"
+          "route-flow",
+          "rtc",
+          "quality",
+          "diff",
+          "from-gis"
         ]
       },
       {
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "SWMM input deck (.inp) file(s) to process",
+        "description": "SWMM input deck (.inp) file(s) or conduits GeoJSON for from-gis",
         "array": true
       }
     ],
@@ -7767,7 +9564,61 @@
           "output"
         ],
         "type": "string",
-        "description": "Output file path (e.g. for Modelica export)"
+        "description": "Output file path (e.g. for Modelica export or compiled network .inp)"
+      },
+      {
+        "name": "manholes",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional GeoJSON file containing manholes / outfalls"
+      },
+      {
+        "name": "subcatchments",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional GeoJSON file containing catchment polygon boundaries"
+      },
+      {
+        "name": "dem",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional digital elevation model raster (.asc, .grd)"
+      },
+      {
+        "name": "snap",
+        "aliases": [],
+        "type": "number",
+        "description": "Topological manhole snap tolerance in meters (default: 2.0m)"
+      },
+      {
+        "name": "diameter",
+        "aliases": [],
+        "type": "number",
+        "description": "Default conduit diameter in meters (default: 0.6m)"
+      },
+      {
+        "name": "manning",
+        "aliases": [],
+        "type": "number",
+        "description": "Default Manning's roughness n (default: 0.013)"
+      },
+      {
+        "name": "depth",
+        "aliases": [],
+        "type": "number",
+        "description": "Default manhole depth in meters (default: 2.5m)"
+      },
+      {
+        "name": "imperv",
+        "aliases": [],
+        "type": "number",
+        "description": "Default subcatchment imperviousness % (default: 40.0%)"
+      },
+      {
+        "name": "title",
+        "aliases": [],
+        "type": "string",
+        "description": "Model deck title"
       }
     ],
     "subcommands": []
@@ -8198,6 +10049,15 @@
             "description": "Expiration period in days (e.g. 30, 90). Default: never expires"
           },
           {
+            "name": "cidr",
+            "aliases": [
+              "c",
+              "ip-allowlist"
+            ],
+            "type": "string",
+            "description": "IP address or CIDR subnet restriction (e.g. '192.168.1.0/24', '10.0.0.1')"
+          },
+          {
             "name": "registry",
             "aliases": [
               "r"
@@ -8360,6 +10220,51 @@
         "type": "number",
         "description": "Rational macromodel order for vector fitting",
         "default": 2
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "tough",
+    "specs": [
+      "tough <action> [files..]"
+    ],
+    "aliases": [
+      "tgh"
+    ],
+    "describe": "Inspect, lint, solve geothermal wellbore flashing thermodynamics, and lower LBNL TOUGH2/3 reservoir decks (.tgh, .dat, .tough)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, flash, solve, to-dae)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "flash",
+          "solve",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "TOUGH input deck(s) (.tgh, .dat) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for DAE dump)"
       }
     ],
     "subcommands": []
@@ -8528,6 +10433,49 @@
         "type": "number",
         "description": "Gravitational acceleration [m/s^2]",
         "default": 9.80665
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "vendor",
+    "specs": [
+      "vendor [path]"
+    ],
+    "aliases": [],
+    "describe": "Vendor all workspace dependencies into a local directory for offline air-gap execution",
+    "positionals": [
+      {
+        "name": "path",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to the workspace or package directory (defaults to current working directory)",
+        "default": "."
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Target vendor directory (defaults to ./vendor)",
+        "default": "vendor"
+      },
+      {
+        "name": "cache",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Store raw .zip distribution archives alongside extracted files in vendor directory",
+        "default": true
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output vendoring result summary as JSON",
+        "default": false
       }
     ],
     "subcommands": []
@@ -8867,6 +10815,48 @@
         "aliases": [],
         "type": "boolean",
         "description": "Output in JSON format",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "yank",
+    "specs": [
+      "yank <package> [reason]",
+      "unyank <package>"
+    ],
+    "aliases": [
+      "unyank"
+    ],
+    "describe": "Yank (tombstone) or restore a package release in the registry",
+    "positionals": [
+      {
+        "name": "package",
+        "aliases": [],
+        "type": "string",
+        "description": "Package identifier and version to yank (e.g. Modelica@4.0.0 or @scope/pkg@1.0.0)"
+      },
+      {
+        "name": "reason",
+        "aliases": [],
+        "type": "string",
+        "description": "Yank explanation message (security vulnerability, defect, broken release)"
+      }
+    ],
+    "options": [
+      {
+        "name": "undo",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Restore/unyank a previously yanked release",
+        "default": false
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output result summary as JSON",
         "default": false
       }
     ],

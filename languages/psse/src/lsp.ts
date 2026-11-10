@@ -1621,6 +1621,9 @@ export function applyPsseDiagramWriteback(
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
+  let targetSpan: SourceSpan | undefined;
+  let formattedLine: string | undefined;
+
   if (cellId.startsWith("bus_")) {
     const busId = parseInt(cellId.slice(4), 10);
     const bus = psseCase.buses.get(busId);
@@ -1630,6 +1633,10 @@ export function applyPsseDiagramWriteback(
       if ("baseKv" in changes) bus.baseKv = num(changes["baseKv"], bus.baseKv);
       if ("ide" in changes) bus.ide = Math.round(num(changes["ide"], bus.ide)) as 1 | 2 | 3 | 4;
       if (typeof changes["name"] === "string") bus.name = changes["name"];
+      if (bus.span && bus.span.startOffset !== undefined && bus.span.endOffset !== undefined) {
+        targetSpan = bus.span;
+        formattedLine = `${bus.i}, '${bus.name.padEnd(12)}', ${bus.baseKv.toFixed(3)}, ${bus.ide}, ${bus.area}, ${bus.zone}, ${bus.owner}, ${bus.vm.toFixed(4)}, ${bus.va.toFixed(4)}${bus.nvhi !== undefined ? `, ${bus.nvhi.toFixed(4)}, ${bus.nvlo?.toFixed(4)}, ${bus.evhi?.toFixed(4)}, ${bus.evlo?.toFixed(4)}` : ""}`;
+      }
     }
   } else if (cellId.startsWith("gen_")) {
     const parts = cellId.split("_");
@@ -1645,6 +1652,10 @@ export function applyPsseDiagramWriteback(
       if ("mbase" in changes) gen.mbase = num(changes["mbase"], gen.mbase);
       const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
       if (stVal !== undefined) gen.stat = Math.round(num(stVal, gen.stat)) as 0 | 1;
+      if (gen.span && gen.span.startOffset !== undefined && gen.span.endOffset !== undefined) {
+        targetSpan = gen.span;
+        formattedLine = `${gen.i}, '${gen.id}', ${gen.pg.toFixed(3)}, ${gen.qg.toFixed(3)}, ${gen.qt.toFixed(3)}, ${gen.qb.toFixed(3)}, ${gen.vs.toFixed(4)}, ${gen.ireg}, ${gen.mbase.toFixed(2)}, ${gen.zr.toFixed(5)}, ${gen.zx.toFixed(5)}, ${gen.rt.toFixed(5)}, ${gen.xt.toFixed(5)}, ${gen.gtap.toFixed(4)}, ${gen.stat}, ${gen.rmpct.toFixed(1)}, ${gen.pt.toFixed(3)}, ${gen.pb.toFixed(3)}`;
+      }
     }
   } else if (cellId.startsWith("load_")) {
     const parts = cellId.split("_");
@@ -1660,6 +1671,10 @@ export function applyPsseDiagramWriteback(
       if ("yq" in changes) load.yq = num(changes["yq"], load.yq);
       const stVal = changes["status"] ?? changes["stat"] ?? changes["st"];
       if (stVal !== undefined) load.status = Math.round(num(stVal, load.status)) as 0 | 1;
+      if (load.span && load.span.startOffset !== undefined && load.span.endOffset !== undefined) {
+        targetSpan = load.span;
+        formattedLine = `${load.i}, '${load.id}', ${load.status}, ${load.area}, ${load.zone}, ${load.pl.toFixed(3)}, ${load.ql.toFixed(3)}, ${load.ip.toFixed(3)}, ${load.iq.toFixed(3)}, ${load.yp.toFixed(3)}, ${load.yq.toFixed(3)}, ${load.owner}, ${load.scale}, ${load.intrct}`;
+      }
     }
   } else if (cellId.startsWith("shunt_")) {
     const parts = cellId.split("_");
@@ -1672,6 +1687,10 @@ export function applyPsseDiagramWriteback(
       if ("bMvar" in changes) shunt.bl = num(changes["bMvar"], shunt.bl);
       const stVal = changes["status"] ?? changes["stat"] ?? changes["st"];
       if (stVal !== undefined) shunt.status = Math.round(num(stVal, shunt.status)) as 0 | 1;
+      if (shunt.span && shunt.span.startOffset !== undefined && shunt.span.endOffset !== undefined) {
+        targetSpan = shunt.span;
+        formattedLine = `${shunt.i}, '${shunt.id}', ${shunt.status}, ${shunt.gl.toFixed(3)}, ${shunt.bl.toFixed(3)}`;
+      }
     }
   } else if (cellId.startsWith("swshunt_")) {
     const parts = cellId.split("_");
@@ -1684,6 +1703,10 @@ export function applyPsseDiagramWriteback(
       if ("vswlo" in changes) sw.vswlo = num(changes["vswlo"], sw.vswlo);
       const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
       if (stVal !== undefined) sw.stat = Math.round(num(stVal, sw.stat)) as 0 | 1;
+      if (sw.span && sw.span.startOffset !== undefined && sw.span.endOffset !== undefined) {
+        targetSpan = sw.span;
+        formattedLine = `${sw.i}, ${sw.modsw}, ${sw.adjm}, ${sw.stat}, ${sw.vswhi.toFixed(4)}, ${sw.vswlo.toFixed(4)}, ${sw.swrem}, ${sw.rmpct.toFixed(1)}, '${sw.rmidnt}', ${sw.binit.toFixed(3)}, ${sw.n1}, ${sw.b1.toFixed(3)}`;
+      }
     }
   } else if (cellId.startsWith("line_") || cellId.startsWith("branch_")) {
     const parts = cellId.split("_");
@@ -1700,6 +1723,10 @@ export function applyPsseDiagramWriteback(
       if ("rateC" in changes) br.rateC = num(changes["rateC"], br.rateC);
       const stVal = changes["st"] ?? changes["status"] ?? changes["stat"];
       if (stVal !== undefined) br.st = Math.round(num(stVal, br.st)) as 0 | 1;
+      if (br.span && br.span.startOffset !== undefined && br.span.endOffset !== undefined) {
+        targetSpan = br.span;
+        formattedLine = `${br.i}, ${br.j}, '${br.ckt}', ${br.r.toFixed(5)}, ${br.x.toFixed(5)}, ${br.b.toFixed(5)}, ${br.rateA.toFixed(2)}, ${br.rateB.toFixed(2)}, ${br.rateC.toFixed(2)}, ${br.gi.toFixed(5)}, ${br.bi.toFixed(5)}, ${br.gj.toFixed(5)}, ${br.bj.toFixed(5)}, ${br.st}, ${br.met}, ${br.len.toFixed(2)}`;
+      }
     }
   } else if (cellId.startsWith("xfmr_")) {
     const parts = cellId.split("_");
@@ -1717,6 +1744,10 @@ export function applyPsseDiagramWriteback(
       const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
       if (stVal !== undefined) xf.stat = Math.round(num(stVal, xf.stat)) as 0 | 1;
     }
+  }
+
+  if (targetSpan && targetSpan.startOffset !== undefined && targetSpan.endOffset !== undefined && formattedLine !== undefined) {
+    return sourceText.slice(0, targetSpan.startOffset) + formattedLine + sourceText.slice(targetSpan.endOffset);
   }
 
   return writeRaw(psseCase);

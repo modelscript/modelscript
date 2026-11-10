@@ -11,6 +11,7 @@ export function registerCloudCommands(
   client?: LanguageClient,
   experimentsTreeProvider?: ExperimentsTreeProvider,
 ): vscode.Disposable[] {
+  CloudJobPanel.setSecretStorage(context.secrets);
   return [
     vscode.commands.registerCommand("modelscript.openCloudPanel", (uri?: string) => {
       if (!isFeatureEnabled("cloudCompute")) {

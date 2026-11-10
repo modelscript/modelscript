@@ -8,3 +8,5 @@ export { CaeContinuumInspector } from "./CaeContinuumInspector.js";
 export { RequirementsOntologyInspector } from "./RequirementsOntologyInspector.js";
 export { BiochemInspector } from "./BiochemInspector.js";
 export { AutomationControlInspector } from "./AutomationControlInspector.js";
+export { OpenChannelHydraulicsInspector } from "./OpenChannelHydraulicsInspector.js";
+export { TransitCockpitInspector } from "./TransitCockpitInspector.js";

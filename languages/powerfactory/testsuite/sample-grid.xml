@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="Substation_1"></DataObject>
+  <DataObject class="ElmSubstat" loc_name="Substation_2"></DataObject>
+  <DataObject class="ElmSubstat" loc_name="Substation_3"></DataObject>
+
+  <DataObject class="ElmTerm" loc_name="Bus_1"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="Bus_2"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="Bus_3"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+
+  <DataObject class="ElmLne" loc_name="Line_1_2">
+    <bus1>Bus_1</bus1>
+    <bus2>Bus_2</bus2>
+    <dline>20.0</dline>
+    <r1>2.42</r1>
+    <x1>7.26</x1>
+    <b1>15.0</b1>
+  </DataObject>
+
+  <DataObject class="ElmLne" loc_name="Line_2_3">
+    <bus1>Bus_2</bus1>
+    <bus2>Bus_3</bus2>
+    <dline>15.0</dline>
+    <r1>1.81</r1>
+    <x1>5.44</x1>
+    <b1>12.0</b1>
+  </DataObject>
+
+  <DataObject class="ElmLne" loc_name="Line_1_3">
+    <bus1>Bus_1</bus1>
+    <bus2>Bus_3</bus2>
+    <dline>25.0</dline>
+    <r1>3.02</r1>
+    <x1>9.07</x1>
+    <b1>18.0</b1>
+  </DataObject>
+
+  <DataObject class="ElmSym" loc_name="Gen_1">
+    <bus1>Bus_1</bus1>
+    <pgini>70.0</pgini>
+    <qgini>15.0</qgini>
+    <usetp>1.02</usetp>
+  </DataObject>
+
+  <DataObject class="ElmSym" loc_name="Gen_3">
+    <bus1>Bus_3</bus1>
+    <pgini>30.0</pgini>
+    <qgini>10.0</qgini>
+    <usetp>1.00</usetp>
+  </DataObject>
+
+  <DataObject class="ElmLod" loc_name="Load_2">
+    <bus1>Bus_2</bus1>
+    <plini>80.0</plini>
+    <qlini>25.0</qlini>
+  </DataObject>
+
+  <DataObject class="StaSwitch" loc_name="CB_1_2">
+    <bus1>Bus_1</bus1>
+    <bus2>Bus_2</bus2>
+    <on_off>1</on_off>
+  </DataObject>
+</PowerFactory>

@@ -55,7 +55,7 @@ interface FeaMeshRendererProps {
   displacementScale?: number;
 }
 
-export type FeaFieldType = "vonMises" | "dispMagnitude" | "dispX" | "dispY" | "dispZ";
+export type FeaFieldType = "vonMises" | "dispMagnitude" | "dispX" | "dispY" | "dispZ" | "yieldMargin";
 
 export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementScale = 50.0 }: FeaMeshRendererProps) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -116,6 +116,28 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
       } else if (selectedField === "dispZ") {
         scalar = Math.abs(displacements[i * 3 + 2] ?? 0);
         norm = maxDisp;
+      } else if (selectedField === "yieldMargin") {
+        const stress = vonMisesStress[i] ?? 0;
+        const sf = payload.stats.safetyFactor ?? 1.5;
+        const allowable = maxStress / sf;
+        const ratio = stress / allowable;
+        if (ratio >= 1.0) {
+          // Failure / Yield exceeded: high-contrast warning crimson
+          colors[i * 3 + 0] = 0.94;
+          colors[i * 3 + 1] = 0.27;
+          colors[i * 3 + 2] = 0.27;
+        } else if (ratio >= 0.8) {
+          // Warning threshold: amber
+          colors[i * 3 + 0] = 0.96;
+          colors[i * 3 + 1] = 0.62;
+          colors[i * 3 + 2] = 0.04;
+        } else {
+          // Certified safe: emerald green
+          colors[i * 3 + 0] = 0.06;
+          colors[i * 3 + 1] = 0.72;
+          colors[i * 3 + 2] = 0.51;
+        }
+        continue;
       }
 
       const t = Math.max(0, Math.min(1, scalar / norm));
@@ -228,6 +250,7 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
               }}
             >
               <option value="vonMises">Von Mises Stress</option>
+              <option value="yieldMargin">🛡️ Yield Safety Margin</option>
               <option value="dispMagnitude">Total Deflection |U|</option>
               <option value="dispX">Displacement Ux</option>
               <option value="dispY">Displacement Uy</option>

@@ -14,56 +14,104 @@ import { discoverWorkspaceLanguages } from "./language-discovery.js";
  * Canonical maturity classification across all 44 ModelScript languages.
  */
 export const DEFAULT_LANGUAGE_MATURITY: Record<string, LanguageMaturity> = {
-  // Tier 1: Stable (Production-grade native WASM GLR parser, Salsa queries, simulation/verification)
-  modelica: "stable",
-  sysml2: "stable",
-  step: "stable",
-  owl2: "stable",
-  scad: "stable",
+  // Tier 1: Stable (24 languages)
+  adams: "stable",
+  ampl: "stable",
+  ccsds: "stable",
   csv: "stable",
-  ssp: "stable",
+  easy5: "stable",
+  epanet: "stable",
+  gensys: "stable",
+  lps: "stable",
+  modelica: "stable",
+  modelscript: "stable",
+  olga: "stable",
+  opendrive: "stable",
+  owl2: "stable",
   pscad: "stable",
+  psse: "stable",
+  relap5: "stable",
+  reqif: "stable",
+  rocets: "stable",
+  scad: "stable",
+  spice: "stable",
+  ssp: "stable",
+  swmm: "stable",
+  sysml2: "stable",
+  urdf: "stable",
 
-  // Tier 2: Beta (Domain-complete parser, lowering, and custom IDE editor/diagram integration)
-  modelscript: "beta",
-  cfd: "beta",
-  fea: "beta",
+  // Aliases for stable languages
+  sysml: "stable",
+  openscad: "stable",
+  owl: "stable",
+
+  // Tier 2: Beta (57 languages)
+  antimony: "beta",
+  aspen: "beta",
+  automationml: "beta",
+  autosar: "beta",
+  bngl: "beta",
   c: "beta",
+  cantera: "beta",
+  cellml: "beta",
+  cfd: "beta",
+  cgmes: "beta",
+  "dicom-rt": "beta",
+  eclipse: "beta",
+  energyplus: "beta",
+  fea: "beta",
+  febio: "beta",
+  fiber: "beta",
   fortran: "beta",
-  gensys: "beta",
-  simpack: "beta",
-  psse: "beta",
-  olga: "beta",
-  lps: "beta",
-  easy5: "beta",
-  rocets: "beta",
+  genbank: "beta",
+  gproms: "beta",
+  gtfs: "beta",
+  gtsuite: "beta",
+  "hec-ras": "beta",
+  ibis: "beta",
+  igtl: "beta",
+  jsbsim: "beta",
+  landgem: "beta",
+  modflow: "beta",
+  nifti: "beta",
+  nmtran: "beta",
+  ocpp: "beta",
+  openadr: "beta",
+  opendss: "beta",
+  openscenario: "beta",
+  opensim: "beta",
+  optical: "beta",
+  oscal: "beta",
+  pdb: "beta",
+  phreeqc: "beta",
+  plcopen: "beta",
+  powerfactory: "beta",
+  pslf: "beta",
+  qif: "beta",
+  ran: "beta",
+  sbml: "beta",
+  sbol: "beta",
+  sedml: "beta",
   sima: "beta",
-  spice: "beta",
-  reqif: "beta",
+  simpack: "beta",
   simulink: "beta",
+  smiles: "beta",
+  step: "beta",
+  "three-mf": "beta",
+  topas: "beta",
+  touchstone: "beta",
+  tough: "beta",
+  usd: "beta",
+  "verilog-a": "beta",
 
-  // Tier 3: Experimental (Early-stage domain parser, DAE/Modelica projection, or experimental support)
-  adams: "experimental",
-  aspen: "experimental",
-  autosar: "experimental",
-  ccsds: "experimental",
-  eclipse: "experimental",
-  energyplus: "experimental",
-  epanet: "experimental",
-  gtsuite: "experimental",
-  ibis: "experimental",
-  jsbsim: "experimental",
-  opendrive: "experimental",
-  opendss: "experimental",
-  openscenario: "experimental",
-  plcopen: "experimental",
-  relap5: "experimental",
-  sbml: "experimental",
-  swmm: "experimental",
-  touchstone: "experimental",
-  urdf: "experimental",
-  "verilog-a": "experimental",
-  usd: "experimental",
+  // Aliases & domain variants
+  openfoam: "beta",
+  vhdlams: "beta",
+  verilogams: "beta",
+  bondgraph: "beta",
+  smv: "beta",
+  aml: "beta",
+  caex: "beta",
 };
 
 /**
@@ -83,36 +131,72 @@ export const DIAGRAM_EDITOR_SUPPORTED_LANGS = new Set<string>([
   "ssp",
   "modelscript",
   "adams",
+  "ampl",
+  "antimony",
   "aspen",
+  "automationml",
   "autosar",
+  "bngl",
   "c",
+  "cantera",
   "ccsds",
+  "cellml",
+  "cgmes",
+  "dicom-rt",
   "easy5",
   "eclipse",
   "energyplus",
   "epanet",
+  "febio",
+  "fiber",
   "fortran",
+  "genbank",
   "gensys",
+  "gproms",
+  "gtfs",
   "gtsuite",
+  "hec-ras",
   "ibis",
+  "igtl",
   "jsbsim",
+  "landgem",
   "lps",
+  "modflow",
+  "nifti",
+  "nmtran",
+  "ocpp",
   "olga",
+  "openadr",
   "opendrive",
   "opendss",
   "openscenario",
+  "opensim",
+  "optical",
+  "oscal",
+  "pdb",
+  "phreeqc",
   "plcopen",
+  "powerfactory",
+  "pslf",
   "psse",
+  "qif",
+  "ran",
   "relap5",
   "reqif",
   "rocets",
   "sbml",
+  "sbol",
+  "sedml",
   "sima",
   "simpack",
   "simulink",
+  "smiles",
   "spice",
   "swmm",
+  "three-mf",
+  "topas",
   "touchstone",
+  "tough",
   "urdf",
   "verilog-a",
   "usd",
@@ -132,14 +216,20 @@ export interface ExtensionOptions {
   publisher?: string | undefined;
   /** Extension description */
   description?: string | undefined;
+  /** Extension icon path relative to extension root (e.g. "images/icon.png") */
+  icon?: string | undefined;
   /** Homepage URL */
   homepage?: string | undefined;
   /** Repository URL */
   repository?: string | undefined;
-  /** Minimum VS Code engine version (default: "^1.80.0") */
+  /** Minimum VS Code engine version (default: "^1.90.0") */
   vscodeEngine?: string | undefined;
   /** Output mode: "web" (pure browser) | "node" (desktop) | "universal" (both) */
   target?: "web" | "node" | "universal" | undefined;
+  /** Minify bundled JavaScript assets (default: true in buildIdeExtension) */
+  minify?: boolean | undefined;
+  /** Emit source maps for bundled JavaScript assets (default: false in buildIdeExtension) */
+  sourcemap?: boolean | "linked" | "inline" | "external" | undefined;
   /** Feature toggles */
   features?:
     | {
@@ -252,8 +342,8 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const contributesGrammars: any[] = [];
   const customEditors: any[] = [];
   const activationEvents: string[] = [
-    "*",
     "onStartupFinished",
+    "onUri",
     "onFileSystem:memfs",
     "onFileSystem:modelica",
     "onFileSystem:github",
@@ -427,6 +517,71 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       viewType: "modelscript.gtsuiteEditor",
       displayName: "GT-SUITE Powertrain & Thermal Studio",
       selector: [{ filenamePattern: "*.gtm" }, { filenamePattern: "*.gtp" }],
+      priority: "option",
+    });
+  }
+
+  // QIF Quality Information Framework Metrology Studio
+  if (languages.some((l) => l.id === "qif")) {
+    customEditors.push({
+      viewType: "modelscript.qifEditor",
+      displayName: "QIF Quality Information Framework Metrology Studio",
+      selector: [{ filenamePattern: "*.qif" }, { filenamePattern: "*.qif.json" }, { filenamePattern: "*.qif.xml" }],
+      priority: "option",
+    });
+  }
+
+  // OSCAL Security Assessment & FedRAMP Studio
+  if (languages.some((l) => l.id === "oscal")) {
+    customEditors.push({
+      viewType: "modelscript.oscalEditor",
+      displayName: "OSCAL Security Assessment & FedRAMP Studio",
+      selector: [
+        { filenamePattern: "*.oscal.json" },
+        { filenamePattern: "*.oscal.yaml" },
+        { filenamePattern: "*.oscal.yml" },
+        { filenamePattern: "*.oscal.xml" },
+      ],
+      priority: "option",
+    });
+  }
+
+  // AutomationML Engineering Workbench
+  if (languages.some((l) => l.id === "automationml")) {
+    customEditors.push({
+      viewType: "modelscript.amlEditor",
+      displayName: "AutomationML Engineering Workbench",
+      selector: [{ filenamePattern: "*.aml" }, { filenamePattern: "*.caex" }],
+      priority: "option",
+    });
+  }
+
+  // OpenSim Biomechanics & Musculoskeletal Studio
+  if (languages.some((l) => l.id === "opensim")) {
+    customEditors.push({
+      viewType: "modelscript.opensimEditor",
+      displayName: "OpenSim Biomechanics & Musculoskeletal Studio",
+      selector: [{ filenamePattern: "*.osim" }],
+      priority: "option",
+    });
+  }
+
+  // DICOM-RT Radiation Oncology & Dosimetry Studio
+  if (languages.some((l) => l.id === "dicom-rt")) {
+    customEditors.push({
+      viewType: "modelscript.dicomRtEditor",
+      displayName: "DICOM-RT Radiation Oncology & Dosimetry Studio",
+      selector: [{ filenamePattern: "*.dcm" }, { filenamePattern: "*.dcm.json" }],
+      priority: "option",
+    });
+  }
+
+  // OpenIGTLink & Surgical Robotics Studio
+  if (languages.some((l) => l.id === "igtl")) {
+    customEditors.push({
+      viewType: "modelscript.igtlEditor",
+      displayName: "OpenIGTLink & Surgical Robotics Studio",
+      selector: [{ filenamePattern: "*.igtl" }, { filenamePattern: "*.igtl.json" }],
       priority: "option",
     });
   }
@@ -1854,16 +2009,19 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       properties: {
         "modelscript.apiUrl": {
           type: "string",
+          scope: "machine",
           default: "http://localhost:3000/api/v1",
-          description: "Base URL for the ModelScript backend API server.",
+          description: "Base URL for the ModelScript backend API server. Configured at machine/user scope.",
         },
         "modelscript.registry.url": {
           type: "string",
+          scope: "machine",
           default: "https://api.modelscript.org",
           description: "Base URL for the ModelScript package registry.",
         },
         "modelscript.registryUrl": {
           type: "string",
+          scope: "machine",
           default: "https://api.modelscript.org",
           markdownDeprecationMessage: "Use `#modelscript.registry.url#` instead.",
           description: "Base URL for the ModelScript package registry and backend API.",
@@ -1883,7 +2041,9 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         "modelscript.llm.apiKey": {
           type: "string",
           default: "",
-          description: "API key for cloud LLM providers (OpenAI, Anthropic, Gemini).",
+          scope: "application",
+          description:
+            "API key for cloud LLM providers (OpenAI, Anthropic, Gemini). Stored in application scope or SecretStorage.",
         },
         "modelscript.llm.endpoint": {
           type: "string",
@@ -1897,35 +2057,63 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         },
         "modelscript.cosim.brokerUrl": {
           type: "string",
+          scope: "machine",
           default: "ws://localhost:9001",
           description: "WebSocket MQTT broker URL for live digital twin and co-simulation streaming.",
         },
         "modelscript.mqtt.brokerUrl": {
           type: "string",
+          scope: "machine",
           default: "ws://localhost:9001",
           markdownDeprecationMessage: "Use `#modelscript.cosim.brokerUrl#` instead.",
           description: "WebSocket MQTT broker URL for live digital twin and hardware-in-the-loop streaming.",
         },
         "modelscript.collab.signalingUrl": {
           type: "string",
+          scope: "machine",
           default: "ws://localhost:3000/collab",
           description: "WebSocket signaling URL for live multi-user collaborative editing.",
         },
         "modelscript.cloud.apiUrl": {
           type: "string",
+          scope: "machine",
           default: "https://api.modelscript.org",
           description: "Endpoint URL for ModelScript Cloud HPC simulation jobs.",
         },
         "modelscript.cloud.apiKey": {
           type: "string",
           default: "",
-          description: "Authentication API key for ModelScript Cloud simulation services.",
+          scope: "application",
+          description:
+            "Authentication API key for ModelScript Cloud simulation services. Stored in application scope or SecretStorage.",
         },
         "modelscript.cloud.pollIntervalMs": {
           type: "number",
           default: 30000,
           description:
             "Polling interval in milliseconds for ModelScript Cloud job status (set to 0 to disable background polling).",
+        },
+      },
+    },
+    {
+      title: "ModelScript: Security & Air-Gapped Network",
+      properties: {
+        "modelscript.security.trustedOrigins": {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          default: [],
+          scope: "machine",
+          description:
+            "Explicit list of trusted parent origins allowed to communicate with ModelScript Studio via postMessage (e.g. ['https://ansatz.internal.corp']). In air-gapped environments, only origins in this list and local loopback are accepted.",
+        },
+        "modelscript.network.airgapped": {
+          type: "boolean",
+          default: false,
+          scope: "machine",
+          description:
+            "Enable strict air-gapped / offline operation. Completely blocks all automatic phone-home network access to public endpoints (ansatz.social, modelscript.org).",
         },
       },
     },
@@ -1937,6 +2125,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     version,
     publisher,
     description,
+    ...(options?.icon ? { icon: options.icon } : {}),
     categories: ["Programming Languages", "Linters", "Formatters"],
     keywords: ["modelica", "sysml", "simulation", "dsl", "modeling", "wasm"],
     homepage: options?.homepage || "https://modelscript.org",
@@ -1946,7 +2135,29 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
     license: "AGPL-3.0-or-later",
     engines: {
-      vscode: options?.vscodeEngine || "^1.80.0",
+      vscode: options?.vscodeEngine || "^1.90.0",
+    },
+    capabilities: {
+      virtualWorkspaces: true,
+      untrustedWorkspaces: {
+        supported: "limited",
+        description:
+          "Cloud simulation job submission, remote package installation, co-simulation brokers, and custom API endpoints are restricted in untrusted workspaces.",
+        restrictedConfigurations: [
+          "modelscript.apiUrl",
+          "modelscript.registry.url",
+          "modelscript.registryUrl",
+          "modelscript.llm.apiKey",
+          "modelscript.llm.endpoint",
+          "modelscript.cosim.brokerUrl",
+          "modelscript.mqtt.brokerUrl",
+          "modelscript.collab.signalingUrl",
+          "modelscript.cloud.apiUrl",
+          "modelscript.cloud.apiKey",
+          "modelscript.security.trustedOrigins",
+          "modelscript.network.airgapped",
+        ],
+      },
     },
     browser: "./dist/extension.js",
     activationEvents,
@@ -2122,13 +2333,31 @@ class PolyglotDiagramEditorProvider implements vscode.CustomTextEditorProvider {
     updateWebview();
   }
 
-  private getHtmlForWebview(_webview: vscode.Webview, _document: vscode.TextDocument): string {
+  private getHtmlForWebview(webview: vscode.Webview, _document: vscode.TextDocument): string {
+    let nonce = "";
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      nonce = crypto.randomUUID().replace(/-/g, "");
+    } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const arr = new Uint8Array(16);
+      crypto.getRandomValues(arr);
+      nonce = Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+    } else {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+      for (let i = 0; i < 32; i++) {
+        nonce += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    }
+    const safeTitle = String(this.langMeta.displayName).replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] || c
+    );
     return \`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \${webview.cspSource} data:; style-src \${webview.cspSource} 'unsafe-inline'; script-src 'nonce-\${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>\${this.langMeta.displayName} Diagram</title>
+  <title>\${safeTitle} Diagram</title>
   <style>
     body { margin: 0; padding: 0; background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
     #canvas-container { flex: 1; position: relative; background: #0d1117; background-image: radial-gradient(#21262d 1px, transparent 1px); background-size: 20px 20px; overflow: hidden; }
@@ -2139,7 +2368,7 @@ class PolyglotDiagramEditorProvider implements vscode.CustomTextEditorProvider {
 </head>
 <body>
   <div id="canvas-container"></div>
-  <script>
+  <script nonce="\${nonce}">
     const vscode = acquireVsCodeApi();
     const container = document.getElementById('canvas-container');
     let currentDiagram = { nodes: [], edges: [] };
@@ -2153,15 +2382,22 @@ class PolyglotDiagramEditorProvider implements vscode.CustomTextEditorProvider {
     });
 
     function render() {
-      container.innerHTML = '';
+      container.textContent = '';
       (currentDiagram.nodes || []).forEach(node => {
         const el = document.createElement('div');
         el.className = 'diagram-node';
-        el.style.left = (node.x + 250) + 'px';
-        el.style.top = (node.y + 200) + 'px';
-        el.style.width = (node.width || 120) + 'px';
-        el.style.height = (node.height || 60) + 'px';
-        el.innerHTML = '<span style="font-size: 11px; opacity: 0.7;">' + (node.typeId || 'Node') + '</span><span>' + (node.label || node.id || 'Node') + '</span>';
+        el.style.left = (Number(node.x || 0) + 250) + 'px';
+        el.style.top = (Number(node.y || 0) + 200) + 'px';
+        el.style.width = (Number(node.width || 120)) + 'px';
+        el.style.height = (Number(node.height || 60)) + 'px';
+        const typeSpan = document.createElement('span');
+        typeSpan.style.fontSize = '11px';
+        typeSpan.style.opacity = '0.7';
+        typeSpan.textContent = String(node.typeId || 'Node');
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = String(node.label || node.id || 'Node');
+        el.appendChild(typeSpan);
+        el.appendChild(labelSpan);
         container.appendChild(el);
       });
     }
@@ -2234,6 +2470,16 @@ export function deactivate() {}
 `;
 }
 
+const DEFAULT_VSCODEIGNORE = [
+  "**/*.map",
+  "**/*.ts",
+  "tsconfig.json",
+  "src/**",
+  "*.vsix",
+  ".DS_Store",
+  "",
+].join("\n");
+
 /**
  * Generates the complete set of files for a VS Code Extension in-memory.
  * Returns a list of relative paths and string/binary contents.
@@ -2253,7 +2499,7 @@ export function bundleExtension(
     content: JSON.stringify(packageJson, null, 2),
   });
 
-  // 2. tsconfig.json
+  // 2. tsconfig.json & .vscodeignore
   const tsconfig = {
     compilerOptions: {
       module: "CommonJS",
@@ -2268,6 +2514,10 @@ export function bundleExtension(
   files.push({
     path: "tsconfig.json",
     content: JSON.stringify(tsconfig, null, 2),
+  });
+  files.push({
+    path: ".vscodeignore",
+    content: DEFAULT_VSCODEIGNORE,
   });
 
   // 3. Language configurations & TextMate grammars for each language
@@ -2355,6 +2605,13 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   const path = await import("path");
   const esbuild = await import("esbuild");
 
+  const shouldMinify = options?.minify ?? true;
+  const shouldSourcemap = options?.sourcemap ?? false;
+
+  // Clean stale bundle directories so outdated or duplicate bundles never leak into the VSIX
+  fs.rmSync(path.join(outDir, "dist"), { recursive: true, force: true });
+  fs.rmSync(path.join(outDir, "server"), { recursive: true, force: true });
+  fs.rmSync(path.join(outDir, "wasm"), { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
   fs.mkdirSync(path.join(outDir, "dist"), { recursive: true });
   fs.mkdirSync(path.join(outDir, "server", "dist"), { recursive: true });
@@ -2402,6 +2659,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     description:
       "Complete Modelica, SysML, STEP, and OWL2 development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL.",
     version: options?.version || workspaceVersion,
+    icon: options?.icon || "images/icon.png",
     ...options,
     features: {
       diagramEditor: true,
@@ -2418,6 +2676,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   pkg["browser"] = "./dist/browserClientMain.js";
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
   fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
+  fs.writeFileSync(path.join(outDir, ".vscodeignore"), DEFAULT_VSCODEIGNORE, "utf-8");
   fs.writeFileSync(
     path.join(outDir, "LICENSE.md"),
     "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors\n",
@@ -2489,6 +2748,8 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       format: "cjs",
       platform: "browser",
       target: "es2022",
+      minify: shouldMinify,
+      sourcemap: shouldSourcemap,
       external: ["vscode"],
       define: {
         "process.env": JSON.stringify({}),
@@ -2502,7 +2763,6 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         "duplicate-object-key": "silent",
         "empty-import-meta": "silent",
       },
-      sourcemap: "linked",
     });
   }
 
@@ -2516,6 +2776,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         (f.endsWith(".ts") || f.endsWith(".tsx")) &&
         f !== "notebook-renderer.ts" &&
         f !== "notebookRenderer.ts" &&
+        f !== "chat-worker.ts" &&
         !f.startsWith("base-")
       ) {
         const fullPath = path.join(webviewDir, f);
@@ -2533,7 +2794,8 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       bundle: true,
       format: "iife",
       platform: "browser",
-      sourcemap: "linked",
+      minify: shouldMinify,
+      sourcemap: shouldSourcemap,
       external: ["vscode", "@kitware/vtk.js", "@kitware/vtk.js/*"],
       define: {
         "process.env": JSON.stringify({}),
@@ -2564,7 +2826,8 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       bundle: true,
       format: "esm",
       platform: "browser",
-      sourcemap: "linked",
+      minify: shouldMinify,
+      sourcemap: shouldSourcemap,
       logOverride: {
         "duplicate-object-key": "silent",
         "empty-import-meta": "silent",
@@ -2573,12 +2836,22 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   }
 
   // 5. Copy WASM and library assets
-  // Copy discovered language WASM assets (<lang>.wasm)
+  // Copy discovered language WASM assets (<lang>.wasm and minified <lang>.bindings.js)
   for (const asset of discovered.wasmAssets) {
     const destPath = path.join(outDir, asset.dest);
     if (fs.existsSync(asset.src)) {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.cpSync(asset.src, destPath, { recursive: true });
+      if (shouldMinify && asset.dest.endsWith(".js") && fs.statSync(asset.src).isFile()) {
+        const rawJs = fs.readFileSync(asset.src, "utf-8");
+        const minified = await esbuild.transform(rawJs, {
+          loader: "js",
+          minify: true,
+          target: "es2022",
+        });
+        fs.writeFileSync(destPath, minified.code, "utf-8");
+      } else {
+        fs.cpSync(asset.src, destPath, { recursive: true });
+      }
     }
   }
 
@@ -2586,8 +2859,6 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     [path.join(repoRoot, "packages/runtime/build/release.wasm"), "server/dist/release.wasm"],
     [path.join(repoRoot, "packages/simulate/src/wasm/sundials.wasm"), "server/dist/sundials.wasm"],
     [path.join(repoRoot, "packages/simulate/src/wasm/sundials.js"), "server/dist/sundials.js"],
-    [path.join(repoRoot, "packages/simulate/src/wasm/sundials.wasm"), "wasm/sundials.wasm"],
-    [path.join(repoRoot, "packages/simulate/src/wasm/sundials.js"), "wasm/sundials.js"],
     [path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"), "server/dist/occt-import-js.wasm"],
     [
       path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"),
@@ -2620,20 +2891,15 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     }
   }
 
-  // 6. Bundle LSP browser server into standalone IIFE (if not already copied from lsp dist)
+  // 6. Bundle LSP browser server into standalone IIFE (or copy & minify from lsp dist)
   const lspDir = path.join(repoRoot, "packages/lsp");
   const browserServerMain = path.join(lspDir, "src/browserServerMain.ts");
   const destBrowserServer = path.join(outDir, "server/dist/browserServerMain.js");
   const destIndexerWorker = path.join(outDir, "server/dist/workers/indexer.worker.js");
   const lspDist = path.join(lspDir, "dist");
-  if (fs.existsSync(path.join(lspDist, "browserServerMain.js"))) {
-    fs.mkdirSync(path.dirname(destBrowserServer), { recursive: true });
-    fs.cpSync(path.join(lspDist, "browserServerMain.js"), destBrowserServer);
-    if (fs.existsSync(path.join(lspDist, "workers/indexer.worker.js"))) {
-      fs.mkdirSync(path.dirname(destIndexerWorker), { recursive: true });
-      fs.cpSync(path.join(lspDist, "workers/indexer.worker.js"), destIndexerWorker);
-    }
-  } else if (fs.existsSync(browserServerMain)) {
+  const processPolyfill = path.join(lspDir, "scripts/process-polyfill.js");
+  const serverInject = fs.existsSync(processPolyfill) ? [processPolyfill] : [];
+  if (fs.existsSync(browserServerMain)) {
     await esbuild.build({
       entryPoints: [browserServerMain],
       outfile: destBrowserServer,
@@ -2641,9 +2907,9 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       format: "iife",
       platform: "browser",
       target: "es2022",
-      minify: false,
+      minify: shouldMinify,
       keepNames: true,
-      sourcemap: "linked",
+      sourcemap: shouldSourcemap,
       banner: {
         js: `${BROWSER_PROCESS_BANNER}\nvar process = globalThis.process;\n`,
       },
@@ -2652,6 +2918,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         "process.browser": "true",
         "import.meta.url": "self.location.href",
       },
+      inject: serverInject,
       logOverride: {
         "duplicate-object-key": "silent",
         "empty-import-meta": "silent",
@@ -2668,9 +2935,9 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         format: "iife",
         platform: "browser",
         target: "es2022",
-        minify: false,
+        minify: shouldMinify,
         keepNames: true,
-        sourcemap: "linked",
+        sourcemap: shouldSourcemap,
         banner: {
           js: `${BROWSER_PROCESS_BANNER}\nvar process = globalThis.process;\n`,
         },
@@ -2679,12 +2946,43 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
           "process.browser": "true",
           "import.meta.url": "self.location.href",
         },
+        inject: serverInject,
         logOverride: {
           "duplicate-object-key": "silent",
           "empty-import-meta": "silent",
         },
         plugins: [ignorePlugin],
       });
+    }
+  } else if (fs.existsSync(path.join(lspDist, "browserServerMain.js"))) {
+    fs.mkdirSync(path.dirname(destBrowserServer), { recursive: true });
+    const rawServerJs = fs.readFileSync(path.join(lspDist, "browserServerMain.js"), "utf-8");
+    if (shouldMinify) {
+      const minifiedServer = await esbuild.transform(rawServerJs, {
+        loader: "js",
+        minify: true,
+        keepNames: true,
+        target: "es2022",
+      });
+      fs.writeFileSync(destBrowserServer, minifiedServer.code, "utf-8");
+    } else {
+      fs.writeFileSync(destBrowserServer, rawServerJs, "utf-8");
+    }
+
+    if (fs.existsSync(path.join(lspDist, "workers/indexer.worker.js"))) {
+      fs.mkdirSync(path.dirname(destIndexerWorker), { recursive: true });
+      const rawWorkerJs = fs.readFileSync(path.join(lspDist, "workers/indexer.worker.js"), "utf-8");
+      if (shouldMinify) {
+        const minifiedWorker = await esbuild.transform(rawWorkerJs, {
+          loader: "js",
+          minify: true,
+          keepNames: true,
+          target: "es2022",
+        });
+        fs.writeFileSync(destIndexerWorker, minifiedWorker.code, "utf-8");
+      } else {
+        fs.writeFileSync(destIndexerWorker, rawWorkerJs, "utf-8");
+      }
     }
   }
 }

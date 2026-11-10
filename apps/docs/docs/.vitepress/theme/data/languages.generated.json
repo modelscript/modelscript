@@ -25,6 +25,42 @@
     "ruleCount": 226
   },
   {
+    "slug": "ampl",
+    "name": "AMPL",
+    "sidebar": "AMPL Optimization",
+    "ext": ".mod, .dat, .run, .nl, .mps",
+    "role": "Mathematical programming & optimization (LP, MILP, NLP)",
+    "group": "core",
+    "pkgName": "@modelscript/ampl",
+    "version": "0.1.0",
+    "tier": "stable",
+    "cliCommand": "msx ampl",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "solve",
+      "run",
+      "repl",
+      "to-nl",
+      "to-mps",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE",
+        "ASL .nl"
+      ]
+    },
+    "ruleCount": 12
+  },
+  {
     "slug": "sysml2",
     "name": "SysML v2 / KerML",
     "sidebar": "SysML v2 / KerML",
@@ -174,7 +210,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/step",
     "version": "0.1.0",
-    "tier": "stable",
+    "tier": "beta",
     "cliCommand": "msx csg",
     "actions": [],
     "capabilities": {
@@ -256,7 +292,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/cfd",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx cfd",
     "actions": [
       "lint",
@@ -287,7 +323,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/fea",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx fea",
     "actions": [
       "lint",
@@ -318,7 +354,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/usd",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -326,7 +362,11 @@
       "lint": true,
       "dae": true,
       "simulate": false,
-      "projections": []
+      "projections": [
+        "STEP",
+        "URDF",
+        "Modelica"
+      ]
     },
     "ruleCount": 7
   },
@@ -393,7 +433,7 @@
     "group": "integration",
     "pkgName": "@modelscript/fortran",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -414,7 +454,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/jsbsim",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx jsbsim",
     "actions": [
       "inspect",
@@ -444,7 +484,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/rocets",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx rocets",
     "actions": [
       "lint",
@@ -478,7 +518,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/ccsds",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx ccsds",
     "actions": [
       "inspect",
@@ -511,7 +551,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/easy5",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx easy5",
     "actions": [
       "lint",
@@ -644,7 +684,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/opendrive",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx opendrive",
     "actions": [
       "inspect",
@@ -674,7 +714,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/openscenario",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx openscenario",
     "actions": [
       "inspect",
@@ -694,6 +734,38 @@
       ]
     },
     "ruleCount": 13
+  },
+  {
+    "slug": "gtfs",
+    "name": "GTFS",
+    "sidebar": "GTFS Transit Electrification",
+    "ext": ".gtfs, .zip",
+    "role": "Transit schedules & fleet electrification power",
+    "group": "automotive",
+    "pkgName": "@modelscript/gtfs",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx gtfs",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "traction",
+      "depot",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 7
   },
   {
     "slug": "gensys",
@@ -806,8 +878,8 @@
     "slug": "psse",
     "name": "PSS/E",
     "sidebar": "PSS/E Power Flow (.raw)",
-    "ext": ".raw",
-    "role": "Transmission power flow",
+    "ext": ".raw, .dyr",
+    "role": "Transmission power flow & transient stability",
     "group": "power",
     "pkgName": "@modelscript/psse",
     "version": "0.1.0",
@@ -826,7 +898,21 @@
       "fault",
       "modes",
       "n1",
-      "cpf"
+      "cpf",
+      "sld",
+      "idv",
+      "verify-nerc",
+      "to-cgmes",
+      "from-cgmes",
+      "calibrate",
+      "pmu-calibrate",
+      "equiv",
+      "collector-equiv",
+      "benchmark",
+      "benchmark-ibr",
+      "audit-protection",
+      "dossier",
+      "gatekeeper"
     ],
     "capabilities": {
       "parse": true,
@@ -840,6 +926,76 @@
     "ruleCount": 16
   },
   {
+    "slug": "powerfactory",
+    "name": "DIgSILENT PowerFactory",
+    "sidebar": "DIgSILENT PowerFactory",
+    "ext": ".dgs, .pfd",
+    "role": "Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT",
+    "group": "power",
+    "pkgName": "@modelscript/powerfactory",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx powerfactory",
+    "actions": [
+      "inspect",
+      "diagram",
+      "solve",
+      "fault",
+      "modes",
+      "dlr",
+      "harmonics",
+      "qdsl",
+      "opf",
+      "gridcode",
+      "to-psse",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "PSS/E",
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 6
+  },
+  {
+    "slug": "pslf",
+    "name": "GE Vernova PSLF",
+    "sidebar": "GE PSLF WECC Grid",
+    "ext": ".epc, .dyd",
+    "role": "WECC bulk transmission power flow & dynamic models",
+    "group": "power",
+    "pkgName": "@modelscript/pslf",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx pslf",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "solve",
+      "to-psse",
+      "from-psse"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "PSS/E",
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
     "slug": "cgmes",
     "name": "CIM / CGMES",
     "sidebar": "CIM / CGMES",
@@ -848,7 +1004,7 @@
     "group": "power",
     "pkgName": "@modelscript/cgmes",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx cgmes",
     "actions": [
       "inspect",
@@ -878,15 +1034,24 @@
     "group": "power",
     "pkgName": "@modelscript/opendss",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx opendss",
     "actions": [
       "inspect",
       "summary",
       "lint",
       "powerflow",
+      "ybus",
       "opf",
       "d-opf",
+      "fault",
+      "harmonics",
+      "protection",
+      "reliability",
+      "gic",
+      "hca",
+      "hosting-capacity",
+      "flisr",
       "to-dae",
       "to-modelica"
     ],
@@ -900,6 +1065,99 @@
       ]
     },
     "ruleCount": 13
+  },
+  {
+    "slug": "ocpp",
+    "name": "OCPP",
+    "sidebar": "OCPP EV Smart Charging",
+    "ext": ".ocpp, .json",
+    "role": "EV smart charging & transformer load management",
+    "group": "power",
+    "pkgName": "@modelscript/ocpp",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx ocpp",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "schedule",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 5
+  },
+  {
+    "slug": "openadr",
+    "name": "OpenADR",
+    "sidebar": "OpenADR Demand Response",
+    "ext": ".oadr, .xml, .json",
+    "role": "Automated demand response & peak shaving",
+    "group": "power",
+    "pkgName": "@modelscript/openadr",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx openadr",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "curtail",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 4
+  },
+  {
+    "slug": "tough",
+    "name": "LBNL TOUGH",
+    "sidebar": "TOUGH Geothermal",
+    "ext": ".tgh, .dat",
+    "role": "Geothermal reservoir & wellbore flashing thermodynamics",
+    "group": "power",
+    "pkgName": "@modelscript/tough",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx tough",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "flash",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 5
   },
   {
     "slug": "olga",
@@ -987,7 +1245,7 @@
     "group": "oil-gas",
     "pkgName": "@modelscript/eclipse",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx eclipse",
     "actions": [
       "inspect",
@@ -1017,7 +1275,7 @@
     "group": "nuclear",
     "pkgName": "@modelscript/relap5",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "stable",
     "cliCommand": "msx relap5",
     "actions": [
       "inspect",
@@ -1047,7 +1305,7 @@
     "group": "marine",
     "pkgName": "@modelscript/sima",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx sima",
     "actions": [
       "lint",
@@ -1145,7 +1403,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/ibis",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx ibis",
     "actions": [
       "inspect",
@@ -1159,7 +1417,7 @@
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "Modelica"
       ]
@@ -1175,7 +1433,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/touchstone",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx touchstone",
     "actions": [
       "inspect",
@@ -1190,7 +1448,7 @@
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "Modelica"
       ]
@@ -1206,57 +1464,89 @@
     "group": "electronics",
     "pkgName": "@modelscript/optical",
     "version": "0.1.0",
-    "tier": "preview",
-    "cliCommand": null,
-    "actions": [],
+    "tier": "beta",
+    "cliCommand": "msx optical",
+    "actions": [
+      "inspect",
+      "otdr",
+      "gsnr",
+      "lint",
+      "to-dae"
+    ],
     "capabilities": {
       "parse": true,
-      "lint": false,
+      "lint": true,
       "dae": true,
-      "simulate": false,
-      "projections": []
+      "simulate": true,
+      "projections": [
+        "SysML v2",
+        "OWL2"
+      ]
     },
-    "ruleCount": 0
+    "ruleCount": 7
   },
   {
     "slug": "ran",
     "name": "NSMA WG16 & Planet Antenna",
     "sidebar": "RAN & Microwave (.adf)",
     "ext": ".adf, .pat",
-    "role": "Antenna 3D patterns & microwave link budgets",
+    "role": "Antenna 3D patterns, RF MPE safety & microwave links",
     "group": "electronics",
     "pkgName": "@modelscript/ran",
     "version": "0.1.0",
-    "tier": "preview",
-    "cliCommand": null,
-    "actions": [],
+    "tier": "beta",
+    "cliCommand": "msx ran",
+    "actions": [
+      "microwave",
+      "budget",
+      "pcn",
+      "mpe",
+      "faa",
+      "antenna",
+      "fresnel"
+    ],
     "capabilities": {
       "parse": true,
-      "lint": false,
-      "dae": false,
-      "simulate": false,
-      "projections": []
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "SysML v2",
+        "OWL2"
+      ]
     },
-    "ruleCount": 0
+    "ruleCount": 5
   },
   {
     "slug": "fiber",
     "name": "TIA-598-D Outside Plant",
     "sidebar": "Fiber OSP Cadastre",
     "ext": ".geojson",
-    "role": "Fiber strand tracing & physical SRLG diversity",
+    "role": "Fiber strand tracing, NESC pole loading & OTDR GIS fault location",
     "group": "electronics",
     "pkgName": "@modelscript/fiber",
     "version": "0.1.0",
-    "tier": "preview",
-    "cliCommand": null,
-    "actions": [],
+    "tier": "beta",
+    "cliCommand": "msx fiber",
+    "actions": [
+      "locate",
+      "otdr-fault",
+      "trace",
+      "srlg",
+      "color",
+      "bdc",
+      "pole-loading",
+      "make-ready"
+    ],
     "capabilities": {
       "parse": true,
       "lint": false,
-      "dae": false,
-      "simulate": false,
-      "projections": []
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "SysML v2",
+        "OWL2"
+      ]
     },
     "ruleCount": 0
   },
@@ -1269,7 +1559,7 @@
     "group": "robotics",
     "pkgName": "@modelscript/urdf",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx urdf",
     "actions": [
       "inspect",
@@ -1370,7 +1660,7 @@
     "group": "robotics",
     "pkgName": "@modelscript/adams",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx adams",
     "actions": [
       "inspect",
@@ -1434,12 +1724,20 @@
     "group": "buildings",
     "pkgName": "@modelscript/epanet",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx epanet",
     "actions": [
       "inspect",
       "lint",
       "solve",
+      "eps",
+      "pdd",
+      "surge",
+      "audit",
+      "ops",
+      "quality",
+      "diff",
+      "from-gis",
       "to-modelica",
       "to-dae"
     ],
@@ -1463,7 +1761,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/swmm",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "stable",
     "cliCommand": "msx swmm",
     "actions": [
       "inspect",
@@ -1471,7 +1769,11 @@
       "lint",
       "to-dae",
       "to-modelica",
-      "route-flow"
+      "route-flow",
+      "rtc",
+      "quality",
+      "diff",
+      "from-gis"
     ],
     "capabilities": {
       "parse": true,
@@ -1485,6 +1787,100 @@
     "ruleCount": 13
   },
   {
+    "slug": "hec-ras",
+    "name": "USACE HEC-RAS",
+    "sidebar": "HEC-RAS River Hydraulics",
+    "ext": ".g01, .g02, .rasgeo",
+    "role": "River basin & open-channel hydraulics",
+    "group": "buildings",
+    "pkgName": "@modelscript/hec-ras",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx hec-ras",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "profile",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "modflow",
+    "name": "USGS MODFLOW",
+    "sidebar": "MODFLOW Groundwater",
+    "ext": ".dis, .dis6, .npf, .wel",
+    "role": "Regional groundwater aquifers & 3D Darcy flow",
+    "group": "buildings",
+    "pkgName": "@modelscript/modflow",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx modflow",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "balance",
+      "heads",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 6
+  },
+  {
+    "slug": "landgem",
+    "name": "EPA LandGEM",
+    "sidebar": "LandGEM Biogas",
+    "ext": ".landgem, .lfg, .biogas",
+    "role": "Solid waste methane decay & landfill biogas CHP",
+    "group": "buildings",
+    "pkgName": "@modelscript/landgem",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx landgem",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "biogas",
+      "solve",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 6
+  },
+  {
     "slug": "aspen",
     "name": "Aspen Plus / HYSYS",
     "sidebar": "Aspen Chemical Process",
@@ -1493,7 +1889,7 @@
     "group": "process",
     "pkgName": "@modelscript/aspen",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx aspen",
     "actions": [
       "inspect",
@@ -1523,7 +1919,7 @@
     "group": "process",
     "pkgName": "@modelscript/gproms",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1547,7 +1943,7 @@
     "group": "process",
     "pkgName": "@modelscript/cantera",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1571,7 +1967,7 @@
     "group": "process",
     "pkgName": "@modelscript/phreeqc",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1595,14 +1991,14 @@
     "group": "process",
     "pkgName": "@modelscript/smiles",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "SBML",
         "OWL2"
@@ -1619,7 +2015,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/sbml",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx sbml",
     "actions": [
       "inspect",
@@ -1649,7 +2045,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/antimony",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1673,7 +2069,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/bngl",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1697,14 +2093,14 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/sbol",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "SBML",
         "OWL2"
@@ -1721,7 +2117,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/sedml",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1745,7 +2141,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/nmtran",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -1769,14 +2165,14 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/pdb",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "SBML",
         "OWL2"
@@ -1793,14 +2189,14 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/genbank",
     "version": "0.1.0",
-    "tier": "preview",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "SBML",
         "OWL2"

@@ -144,6 +144,11 @@ ModelScript embeds native 3D continuum fluid, structural, and volumetric meshing
      $$g_{\text{min, WC}} = \sum_{i} d_i L_{0,i} + \sum_{i} \min(d_i t_i^L, d_i t_i^U) + \Delta g_{\text{th, min}} + \Delta g_{\text{el, min}}, \qquad \sigma_{\text{RSS}} = \sqrt{\sum_{i} \left(\frac{t_i^U - t_i^L}{6}\right)^2}$$
 3. **Certified Bi-Directional CAD Parameter Inversion (`parameter-inversion.ts`)**:
    - `ParameterInversionEngine` closes the loop from 1D system optimization back to 3D MCAD source code. Given target mass/inertia constraints (`solveLengthForMass`, `scaleDimensionsForMass`) or optimized Modelica parameters, `patchMcadSourceCertified` verifies candidate dimensions against a multidisciplinary `SafeRegionGuard` ($\mathcal{P}_{\text{safe}}$ box bounds and buckling/stress/clearance predicates) before rewriting the parametric MCAD AST and regenerating STEP geometry.
+4. **3D Spatial Formal Verification Overlays (`verification-overlay.ts`)**:
+   - Projects mathematical proof artifacts from `@modelscript/runtime` and `@modelscript/simulate` directly onto 3D CAD assemblies (`Three.js`, glTF 2.0, and OpenUSD `.usda`):
+     - **Reachability Tube Envelopes (`buildReachabilityTubeOverlay`)**: Extrudes interval Taylor-Model state flowpipes ($[x_i^{\text{lo}}(t), x_i^{\text{hi}}(t)]$) into semi-transparent 3D swept bounding-tube meshes colored by temporal progression or safety margin.
+     - **SOS Barrier & Lyapunov Iso-Surface Shells (`buildBarrierShellOverlay`)**: Evaluates the zero-level set $B(\mathbf{x}) = 0$ (or level surface $V(\mathbf{x}) = c$) of a synthesized Sum-of-Squares polynomial certificate over a 3D spatial grid to render invariant safety shells around robotic manipulators and aerospace vehicles.
+     - **Dynamic Clearance Witness Vectors (`buildDynamicClearanceOverlay`)**: Renders minimum-distance witness arrows and crimson collision capsules between nearest B-Rep faces at the critical timestamp $t^*$.
 
 ### 6. ECAD / PCB Geometry, Autorouting & DRC (`packages/cad/src/ecad/`)
 
@@ -158,12 +163,12 @@ ModelScript embeds native 3D continuum fluid, structural, and volumetric meshing
 
 ## Upstream & Downstream Integration
 
-| Component                             | Upstream Dependencies                                | Downstream Consumers                                           |
-| :------------------------------------ | :--------------------------------------------------- | :------------------------------------------------------------- |
-| **SdpSolver**                         | Polynomial constraints from `TheoryCoordinator`      | Formal Lyapunov barrier certificates, safety proofs            |
-| **BvpSolver**                         | ODE dynamics from `DaeBuilder`, split boundary specs | Model predictive control (MPC), trajectory optimization        |
-| **ScadEvaluator & StepMesher**        | Declarative `.scad` & `.step` B-Rep models           | `FeaSolver`, `WebGPULbmRunner`, CalculiX `.inp`, SU2 `.su2`    |
-| **WebGPULbmRunner & FeaSolver**       | `StepMesher` Tet4/Tet10 meshes, FSI boundary loads   | Aeroelastic FSI co-simulation, POD reduced-order models        |
-| **DynamicClearance & ToleranceStack** | Reachability flowpipes, GD&T specs, CAD `Assembly`   | `UnifiedVerifier` (`msx verify`), counterexample STEP export   |
-| **ParameterInversionEngine**          | Optimized 1D Modelica parameters, `SafeRegionGuard`  | Automated MCAD source patching and AOT STEP regeneration       |
-| **ECAD Gerber / PCBRouter / DRC**     | Electrical netlists, component footprints            | RS-274X `.gbr` & Excellon `.xln` manufacturing outputs, WebIDE |
+| Component                                      | Upstream Dependencies                                | Downstream Consumers                                                   |
+| :--------------------------------------------- | :--------------------------------------------------- | :--------------------------------------------------------------------- |
+| **SdpSolver**                                  | Polynomial constraints from `TheoryCoordinator`      | Formal Lyapunov barrier certificates, 3D SOS barrier shell overlays    |
+| **BvpSolver**                                  | ODE dynamics from `DaeBuilder`, split boundary specs | Model predictive control (MPC), trajectory optimization                |
+| **ScadEvaluator & StepMesher**                 | Declarative `.scad` & `.step` B-Rep models           | `FeaSolver`, `WebGPULbmRunner`, CalculiX `.inp`, SU2 `.su2`            |
+| **WebGPULbmRunner & FeaSolver**                | `StepMesher` Tet4/Tet10 meshes, FSI boundary loads   | Aeroelastic FSI co-simulation, POD reduced-order models                |
+| **DynamicClearance, Overlays & ToleranceStack**| Reachability flowpipes, SOS certs, CAD `Assembly`    | `UnifiedVerifier` (`msx verify`), OpenUSD / Three.js 3D CAD viewport   |
+| **ParameterInversionEngine**                   | Optimized 1D Modelica parameters, `SafeRegionGuard`  | Automated MCAD source patching and AOT STEP regeneration               |
+| **ECAD Gerber / PCBRouter / DRC**              | Electrical netlists, component footprints            | RS-274X `.gbr` & Excellon `.xln` manufacturing outputs, WebIDE         |

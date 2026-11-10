@@ -1,13 +1,13 @@
 ---
 title: AI Agents & MCP Workflows
-description: Connect Claude Code, Cursor, Windsurf, and custom LLM agents to ModelScript's 60 deterministic compiler, simulation, CAD, TGG, and formal verification MCP tools.
+description: Connect Claude Code, Cursor, Windsurf, and custom LLM agents to ModelScript's 92 deterministic compiler, simulation, CAD, TGG, grid/water/telecom, and formal verification MCP tools.
 ---
 
 # AI Agents & MCP Workflows
 
 Large language models excel at generating structure and exploring design spaces, but when asked to write differential equations, power-grid topologies, or safety-critical requirements in free text, they frequently hallucinate mismatched units, structurally singular DAEs, or violated physical conservation laws.
 
-ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **60 polyglot compilation, simulation, CAD, TGG, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
+ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **92 polyglot compilation, simulation, CAD, TGG, power grid, municipal water, telecom, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
 
 ---
 
@@ -37,7 +37,7 @@ Or add it directly from your terminal via the VS Code CLI:
 code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
 ```
 
-Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 60 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
+Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 92 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
 
 ### Claude Code (`stdio`)
 
@@ -93,12 +93,12 @@ When prompting an LLM outside of MCP (or seeding system prompts for custom agent
 ```mermaid
 sequenceDiagram
     participant Agent as AI Agent (Claude / Cursor)
-    participant MCP as @modelscript/mcp (60 Tools)
+    participant MCP as @modelscript/mcp (92 Tools)
     participant Core as WASM GLR + Salsa + DAE Arena
     participant Verify as 13 Theory Oracles & Solvers
 
     Agent->>MCP: 1. modelica_lint / sysml2_check_constraints
-    MCP->>Core: Parse CST & evaluate 1,035 static lint rules
+    MCP->>Core: Parse CST & evaluate 1,260+ static lint rules
     Core-->>Agent: Structured diagnostics (line, col, rule, fix)
     Agent->>MCP: 2. modelscript_closed_loop_synthesize
     MCP->>Verify: Flatten DAE -> Integrate -> Check STL robustness
@@ -224,5 +224,5 @@ Use these prompt templates with Claude Code or Cursor when working in a ModelScr
 
 ## Next Steps
 
-- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 60 core MCP tools, IDE copilot tiers, and autonomous social bots.
+- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 92 core MCP tools, IDE copilot tiers, and autonomous social bots.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Automate headless linting, SARIF verification, visual PR diffs, and DHF compliance dossiers on every commit.

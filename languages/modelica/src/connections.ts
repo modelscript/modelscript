@@ -147,18 +147,22 @@ export class ModelicaPortBalancer {
     );
 
     let hasConnectEq = false;
+    let hasOutsideConnect = false;
     for (let i = 0; i < dae.eqCount; i++) {
       if (dae.getEqKind(i) === EqKind.Connect) {
         hasConnectEq = true;
-        break;
+        if (dae.getEqAux(i) !== 0) {
+          hasOutsideConnect = true;
+        }
       }
     }
 
     // Fast path: delegate standard acausal connections to the in-WASM AssemblyScript connection kernel
-    // when no expandable buses are present.
+    // when no expandable buses or hierarchical outside connector flags are present.
     const state = getFlatteningState(dae);
     if (
       hasConnectEq &&
+      !hasOutsideConnect &&
       options?.useWasmKernel !== false &&
       dae.exports &&
       typeof dae.exports.flattener_expandConnections === "function" &&
@@ -799,13 +803,7 @@ export class ModelicaPortBalancer {
       } else {
         const fromDesc = prefixMap.get(fromStr);
         const toDesc = prefixMap.get(toStr);
-        const hasArrayDesc = (prefix: string) => {
-          const p = prefix + "[";
-          for (let v = 0; v < dae.varCount; v++) {
-            if (dae.getVarName(v).startsWith(p)) return true;
-          }
-          return false;
-        };
+        const hasArrayDesc = (prefix: string) => dae.hasArrayElements(prefix);
 
         const isBus = isExpBusVar(fromStr) || isExpBusVar(toStr);
         let isPlugCompatible = true;
@@ -1030,6 +1028,16 @@ export class ModelicaPortBalancer {
       }
       return common.join(".");
     };
+    const getConnectTargetVars = (s: string): number[] => {
+      const res: number[] = [];
+      const exact = dae.getVarIdxByName(s);
+      if (exact !== -1) res.push(exact);
+      const desc = prefixMap.get(s);
+      if (desc) {
+        for (const v of desc) res.push(v);
+      }
+      return res;
+    };
     const connectPairEqIndices = new Set(connectPairs.map((p) => p[2]));
     for (let i = 0; i < dae.eqCount; i++) {
       if (dae.getEqKind(i) === EqKind.Connect) {
@@ -1042,37 +1050,29 @@ export class ModelicaPortBalancer {
         const compPfx = sLhs && sRhs ? getCommonDotPrefix(sLhs, sRhs) : "";
         if (flags & 1) {
           if (sLhs) {
-            for (let v = 0; v < dae.varCount; v++) {
-              const vn = dae.getVarName(v);
-              if (vn === sLhs || vn.startsWith(sLhs + ".")) {
-                outsideVarSet.add(v);
-                if (compPfx) varConnectorCompPrefix.set(v, compPfx);
-              }
+            for (const v of getConnectTargetVars(sLhs)) {
+              outsideVarSet.add(v);
+              if (compPfx) varConnectorCompPrefix.set(v, compPfx);
             }
           }
         } else {
           if (sLhs) {
-            for (let v = 0; v < dae.varCount; v++) {
-              const vn = dae.getVarName(v);
-              if (vn === sLhs || vn.startsWith(sLhs + ".")) outerConnectedVars.add(v);
+            for (const v of getConnectTargetVars(sLhs)) {
+              outerConnectedVars.add(v);
             }
           }
         }
         if (flags & 2) {
           if (sRhs) {
-            for (let v = 0; v < dae.varCount; v++) {
-              const vn = dae.getVarName(v);
-              if (vn === sRhs || vn.startsWith(sRhs + ".")) {
-                outsideVarSet.add(v);
-                if (compPfx) varConnectorCompPrefix.set(v, compPfx);
-              }
+            for (const v of getConnectTargetVars(sRhs)) {
+              outsideVarSet.add(v);
+              if (compPfx) varConnectorCompPrefix.set(v, compPfx);
             }
           }
         } else {
           if (sRhs) {
-            for (let v = 0; v < dae.varCount; v++) {
-              const vn = dae.getVarName(v);
-              if (vn === sRhs || vn.startsWith(sRhs + ".")) outerConnectedVars.add(v);
+            for (const v of getConnectTargetVars(sRhs)) {
+              outerConnectedVars.add(v);
             }
           }
         }
@@ -2278,10 +2278,10 @@ export class ModelicaPortBalancer {
           return isOutsideOrOuter(dae.getVarName(vIdx), vIdx);
         };
         const hasOutside =
-          (options?.isOldFrontend || options?.omcCompatibility) &&
-          (groupHasOutsideVar ||
-            minDots < maxDots ||
-            group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx)));
+          groupHasOutsideVar ||
+          ((options?.isOldFrontend || options?.omcCompatibility) &&
+            (minDots < maxDots ||
+              group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx))));
         const isWorldGroup =
           options?.omcCompatibility &&
           ((group.length > 2 && group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))) ||
@@ -2298,7 +2298,7 @@ export class ModelicaPortBalancer {
                   (isGroupOutside(vIdx) && dae.getVarName(vIdx).includes(".")) ||
                   (!dae.getVarName(vIdx).includes(".") && group.some((v) => dae.getVarFlowPrefix(v) !== "flow")),
               )));
-        if (options?.omcCompatibility && (hasOutside || isWorldGroup)) {
+        if ((options?.omcCompatibility || groupHasOutsideVar) && (hasOutside || isWorldGroup)) {
           if (isWorldGroup) {
             let worldOrdered = group;
             if (brokenOverconstrainedConnections.length > 0 && resolvedPairs.length > 0) {

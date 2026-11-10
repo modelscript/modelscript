@@ -1,23 +1,23 @@
 ---
 title: "Polyglot Language Ecosystem"
-description: "ModelScript is not a single-language compiler—it is a polyglot systems engineering framework. All 68 engineering, scientific, and clinical languages share the same WebAssembly GLR parser compiler..."
+description: "ModelScript is not a single-language compiler—it is a polyglot systems engineering framework. All 81 engineering, scientific, and clinical languages share the same WebAssembly GLR parser compiler..."
 ---
 
 # Polyglot Language Ecosystem
 
-ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **68 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **81 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 
 ## Language Maturity Tiers
 
-Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts`:
+Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**24 Stable**, **57 Beta**, **0 Preview**):
 
 | Tier        |   Badge   | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                       |
 | :---------- | :-------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stable**  | `Stable`  | Production-ready with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, EN 14363 Manchester Benchmark, IEEE 2800-2022, NIST STEP AP242). |
-| **Beta**    |  `Beta`   | Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including AUTOSAR, Simulink, SIMPACK, ADAMS, URDF, PLCopen, AutomationML, NIST OSCAL, ISO 23952 QIF, and the Radiology / Oncology / Surgical CAS suite).                |
-| **Preview** | `Preview` | Specialized domain and dialect support with native WASM parser, static diagnostics, core AST/DAE lowering, and baseline verification test suites (including CFD, FEA, PSS/E, CIM / CGMES, OpenDSS, Aspen Plus, gPROMS, Cantera, PHREEQC, SMILES, and the Systems & Synthetic Biology suite).                                                                |
+| **Stable**  | `Stable`  | Production-ready (**24 languages**) with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (including ModelScript, Modelica, AMPL, SysML v2, ReqIF, SSP, OWL 2, CSV, C, PSCAD, PSS/E, OpenDSS, SPICE, OLGA, PipelineStudio, EPANET, SWMM, EnergyPlus, GENSYS, URDF, PLCopen, STEP, OpenSCAD, and OpenUSD). |
+| **Beta**    |  `Beta`   | Domain-complete (**57 languages**) with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including DIgSILENT PowerFactory, GE PSLF, CIM/CGMES, OCPP, OpenADR, Optical/DWDM, 5G/6G RAN, Fiber OSP, HEC-RAS, TOUGH, MODFLOW 6, LandGEM, GTFS, AUTOSAR, Simulink, SIMPACK, ADAMS, AutomationML, NIST OSCAL, ISO 23952 QIF, CFD, FEA, Chemical/Bio, and the Radiology / Oncology / Surgical CAS suite). |
+| **Preview** | `Preview` | Early-access tier (**0 languages currently in Preview** — all 81 language packages meet or exceed `Beta` or `Stable` verification requirements).                                                                                                                                                                                                            |
 
 ---
 

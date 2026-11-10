@@ -96,7 +96,7 @@ npx msx export-formal FlightControl.sysml --format ocra -o fcs.oss
 
 ## 4. CI/CD Quality Gates & Regulatory Compliance Dossiers
 
-The `msx verify` and `msx dhf` commands serialize static diagnostics, formal proof certificates, and requirement traceability matrices into industry-standard CI/CD and regulatory formats:
+The `msx verify`, `msx dhf`, `msx dossier`, and `msx gatekeeper` commands serialize static diagnostics, formal proof certificates, grid interconnection scorecards, and requirement traceability matrices into industry-standard CI/CD and regulatory formats:
 
 ```bash
 # SARIF v2.1.0 for GitHub Code Scanning / Azure DevOps Security Tab
@@ -111,14 +111,22 @@ npx msx verify system.mo --format junit --report junit-report.xml
 # FDA 21 CFR Part 820 / ISO 13485 / ISO 26262 Design History File (DHF) Dossier
 npx msx verify system.mo --format dhf --report dossier.md
 npx msx dhf export ./workspace --format markdown -o DHF_Dossier.md
+
+# NERC RSAW & NIST OSCAL 1.1 compliance dossier with FERC CEII watermark & Ed25519 signature
+npx msx dossier build plant-manifest.json --out plant-rsaw.md --key keys/ed25519.pem
+
+# Automated 5-stage ISO / Transmission Planner Grid Code Gatekeeper scorecard
+npx msx gatekeeper evaluate submission.zip --interconnection Western --mva 150 --kv 230 --out scorecard.json
 ```
 
-| Format              | Schema / Standard             | Key Payload Contents                                                                                                                                        |
-| :------------------ | :---------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SARIF** (`sarif`) | OASIS SARIF v2.1.0            | Rule descriptors (`M1000`–`M6040`, `S1001`–`S5008`), physical file locations (1-indexed line/column spans), severity levels, and counterexample code flows. |
-| **CTRF** (`ctrf`)   | CTRF v0.0.0 JSON              | Standardized `results.summary` (`tests`, `passed`, `failed`, `skipped`) and per-property verification duration and witness traces.                          |
-| **JUnit** (`junit`) | JUnit XML                     | `<testsuites>` and `<testcase>` elements with `<failure>` stack traces for falsified invariants or lint errors.                                             |
-| **DHF** (`dhf`)     | FDA 21 CFR 820.30 / ISO 13485 | End-to-end Requirements Traceability Matrix (RTM), formal proof summaries, simulation verification evidence, and SHA-256 artifact integrity digests.        |
+| Format / Dossier                | Schema / Standard                       | Key Payload Contents                                                                                                                                        |
+| :------------------------------ | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SARIF** (`sarif`)             | OASIS SARIF v2.1.0                      | Rule descriptors (`M1000`–`M6040`, `S1001`–`S5008`), physical file locations (1-indexed line/column spans), severity levels, and counterexample code flows. |
+| **CTRF** (`ctrf`)               | CTRF v0.0.0 JSON                        | Standardized `results.summary` (`tests`, `passed`, `failed`, `skipped`) and per-property verification duration and witness traces.                          |
+| **JUnit** (`junit`)             | JUnit XML                               | `<testsuites>` and `<testcase>` elements with `<failure>` stack traces for falsified invariants or lint errors.                                             |
+| **DHF** (`dhf`)                 | FDA 21 CFR 820.30 / ISO 13485           | End-to-end Requirements Traceability Matrix (RTM), formal proof summaries, simulation verification evidence, and SHA-256 artifact integrity digests.        |
+| **NERC RSAW / OSCAL** (`dossier`)| NERC PRC-024-3 / MOD-026 / OSCAL 1.1.2 | Automated Reliability Standard Audit Worksheet (RSAW), NIST OSCAL Assessment Results JSON, FERC CEII header watermarks, and Ed25519 cryptographic tokens.   |
+| **Grid Gatekeeper** (`gatekeeper`)| NERC MOD-032-1 / IEEE Std 2800-2022   | 5-stage interconnection screening scorecard (MOD-032 completeness, 20 s flat-start drift, weak-grid $\text{SCR}=1.5$, IEEE 2800 LVRT/HVRT, EMT-RMS parity). |
 
 ---
 
@@ -155,26 +163,32 @@ npx msx ddp to-aasx PumpStation.ddp -o PumpStation.aasx
 
 ---
 
-## 7. CAD, ECAD & Multi-Physics CAE Formats (STEP, CSG, Gerber, SU2, CalculiX)
+## 7. CAD, ECAD & Multi-Physics CAE Formats (STEP, CSG, OpenUSD, Gerber, SU2, CalculiX)
 
-`@modelscript/cad` and the polyglot language plugins provide direct geometric and mesh interoperability:
+`@modelscript/cad` and the polyglot language plugins provide direct geometric, scene-graph, and mesh interoperability:
 
 | Domain                         | Format / Standard                                              | Extensions                               | Capabilities                                                                                                                                                              |
 | :----------------------------- | :------------------------------------------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **3D B-Rep CAD**               | **ISO 10303-21 STEP** (AP203 / AP214 / AP242)                  | `.stp`, `.step`                          | Native GLR parser for `DATA` entity graphs (`ADVANCED_FACE`, `B_SPLINE_SURFACE_WITH_KNOTS`, `MANIFOLD_SOLID_BREP`, `PRODUCT_DEFINITION`) and OpenCASCADE B-Rep export.    |
-| **Parametric CSG & Meshes**    | **OpenSCAD**, **STL**, **OBJ**, **glTF 2.0 / GLB**             | `.scad`, `.stl`, `.obj`, `.gltf`, `.glb` | Evaluates `.scad` scripts and Modelica `Visualizers` (`msx csg`) into watertight boundary-representation solids and triangulated 3D web assets.                           |
+| **Parametric CSG & Meshes**    | **OpenSCAD**, **STL**, **OBJ**, **glTF 2.0 / GLB**             | `.scad`, `.stl`, `.obj`, `.gltf`, `.glb` | Evaluates `.scad` scripts and Modelica `Visualizers` (`msx csg`) into watertight boundary-representation solids, 3D formal verification overlays, and glTF 2.0 web assets. |
+| **3D Scene Graph & Physics**   | **Pixar OpenUSD (`UsdPhysics` & `UsdShade`)**                  | `.usda`, `.usdc`, `.usdz`                | Parses and exports hierarchical `Xform`/`Mesh` prims, `PhysicsRigidBodyAPI` mass/inertia, joints, PBR materials, and 3D reachability-tube / SOS barrier-shell overlays.   |
 | **ECAD / PCB Manufacturing**   | **Gerber RS-274X / X2**, **Excellon**, **IPC-2581**, **ODB++** | `.gbr`, `.gtl`, `.gbl`, `.drl`           | Parses aperture definitions (`%ADD...*%`), copper traces, solder mask layers, and NC drill coordinates for 3D PCB stackup rendering and thermal-electrical co-simulation. |
 | **CFD (Fluid Dynamics)**       | **SU2- & OpenFOAM-Compatible**, **CGNS / VTK**                 | `.cfg`, `.su2`, `.vtk`                   | Parses and validates SU2 solver configurations (`SOLVER=RANS`, boundary markers, CFL schedules) and unstructured finite-volume meshes (`NDIME=`, `NELEM=`, `NPOIN=`).     |
 | **FEA (Structural / Thermal)** | **CalculiX- & Abaqus-Compatible**, **NASTRAN-Compatible BDF**  | `.inp`, `.bdf`, `.frd`                   | Parses `*NODE`, `*ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*STEP`, and `*BOUNDARY` decks for thermo-mechanical ROM extraction and stress verification.                         |
 
 ---
 
-## 8. Power Systems & Electronics (PSCAD & SPICE)
+## 8. Power Systems, Grid Interconnect & Electronics (PSCAD, PSS/E, PowerFactory, PSLF, CGMES, OpenDSS, SPICE)
 
-| Format             | Extensions                    | CLI / Tooling                                                                  | Capabilities                                                                                                                                                                         |
-| :----------------- | :---------------------------- | :----------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PSCAD EMT**      | `.pscx`, `.pswx`, `.psmx`     | `msx pscad <lint\|diagram\|sim\|verify-ieee2800\|export-modelica\|export-ssp>` | Parses hierarchical XML schematics, Blackbox/CSMF control blocks, transmission line segments, and executes nodal admittance EMT simulation and IEEE Std 2800-2022 compliance checks. |
-| **SPICE Netlists** | `.sp`, `.cir`, `.net`, `.sub` | TGG Synchronization (`msx align`) & `@modelscript/modelica`                    | Bi-directionally maps SPICE netlists (`.subckt`, `R`, `L`, `C`, `M` MOSFET, `Q` BJT, `V`, `I`) to `Modelica.Electrical.Analog` / `Spice3` components.                                |
+| Format                        | Extensions                     | CLI / Tooling                                                                  | Capabilities                                                                                                                                                                         |
+| :---------------------------- | :----------------------------- | :----------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PSCAD EMT**                 | `.pscx`, `.pswx`, `.psmx`      | `msx pscad <lint\|diagram\|sim\|verify-ieee2800\|export-modelica\|export-ssp>` | Parses hierarchical XML schematics, Blackbox/CSMF control blocks, transmission line segments, and executes nodal admittance EMT simulation and IEEE Std 2800-2022 compliance checks. |
+| **Siemens PSS/E**             | `.raw`, `.dyr`, `.seq`         | `msx psse <lint\|powerflow\|sim\|contingency\|eigen\|short-circuit\|cct>`      | Parses v33/v34/v35 power flow and dynamic records (`GENROU`, `REGCA1`, `REECA1`, `REPCA1`), runs AC/DC power flow, $N-1$ contingency screening, and exports OpenIPSL Modelica.      |
+| **DIgSILENT PowerFactory**    | `.dsl`, `.dgs`                 | `msx powerfactory <lint\|sim\|powerflow\|short-circuit\|modal\|harmonic\|emt>` | Compiles Composite Models (`ElmComp`), Block Definitions (`BlkDef`), and DGS network tables (`ElmTerm`, `ElmSym`, `ElmLne`) for RMS/EMT simulation, IEC 60909 fault, and Modelica.   |
+| **GE Vernova PSLF**           | `.epc`, `.dyd`                 | `msx pslf <lint\|powerflow\|sim\|short-circuit\|wecc\|export-modelica>`        | Parses WECC power flow (`.epc`) and dynamic model libraries (`.dyd`), executes WECC disturbance ride-through and oscillatory damping studies, and converts to/from PSS/E & Modelica. |
+| **ENTSO-E CIM / CGMES**       | `.xml`, `.rdf`                 | `@modelscript/cgmes` (`parseCgmes`, `solveCgmesPowerFlow`, `lowerCgmesToModelica`) | Parses IEC 61970-600-2 CGMES v2.4.15 / v3.0 `EQ`, `SSH`, `TP`, `SV`, and `DY` RDF/XML profiles, runs multi-island AC power flow, and lowers directly to `DAEBuilder` and Modelica.    |
+| **EPRI OpenDSS**              | `.dss`                         | `msx opendss <lint\|powerflow\|hosting-capacity\|volt-var\|flisr\|qsts>`       | Solves unbalanced 3-phase multi-wire distribution networks, IEEE 1547 DER hosting capacity, smart-inverter Volt-VAR droop, FLISR restoration, and 24-hour QSTS profiles.             |
+| **SPICE & Verilog-A**         | `.sp`, `.cir`, `.net`, `.va`   | TGG Synchronization (`msx align`), `@modelscript/spice`, `@modelscript/verilog-a` | Bi-directionally maps SPICE netlists and compact semiconductor device equations (`I(p,n) <+ ...`, `ddt()`) to `Modelica.Electrical.Analog` / `Spice3` components.                    |
 
 ---
 

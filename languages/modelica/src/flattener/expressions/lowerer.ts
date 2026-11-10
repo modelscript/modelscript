@@ -83,6 +83,7 @@ import {
   getDaeDimSize,
   getEnumLiteralIndex,
   getSymbolEnumLiterals,
+  getVarPrefixSet,
   isInsideForIndex,
   isIntegerTypeSpec,
   lookupDbConstant,
@@ -7269,6 +7270,16 @@ function lowerPreBinaryCSTExpression(
         if (vName && dae.hasArrayElements(vName)) {
           const ctor = expandVarToArrayCtor(vName, dae);
           if (ctor !== null) item = ctor;
+        } else if (vName) {
+          const vIdx = dae.getVarIdxByName(vName);
+          if (vIdx >= 0) {
+            const vExpr = (dae as any).getExplicitVarExpression
+              ? (dae as any).getExplicitVarExpression(vIdx)
+              : dae.getVarExpression(vIdx);
+            if (vExpr != null && vExpr >= 0 && dae.getExprKind(vExpr) === ExprKind.ArrayCtor) {
+              item = vExpr;
+            }
+          }
         }
       }
       const rank = getArrayCtorRank(item, dae);
@@ -7278,7 +7289,7 @@ function lowerPreBinaryCSTExpression(
       }
       if (rank === 1) {
         const elems = getArrayCtorElements(item, dae);
-        if (blockLen > 1 || (blocks.length === 1 && blocks[0]?.length === 1) || anySingleScalarBlock) {
+        if (blockLen > 1 || (blocks.length === 1 && blocks[0]?.length === 1) || anySingleScalarBlock || blocks.length > 1) {
           return elems.map((e) => [e]);
         }
         return [elems];
@@ -10710,13 +10721,9 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
           const curClsId =
             flattener?.currentClassId ?? flattener?.currentFlatteningFunctionId ?? flattener?.currentRootClassId;
           const isLocalComp = (() => {
-            const pfx = `${candidate}.`;
-            const pfx0 = prefix ? `${prefix}.${parts[0]}.` : `${parts[0]}.`;
-            for (let vi = 0; vi < dae.varCount; vi++) {
-              if (dae.isVarRemoved(vi)) continue;
-              const vn = dae.getVarName(vi);
-              if (vn.startsWith(pfx) || vn.startsWith(pfx0)) return true;
-            }
+            const pfx0Base = prefix ? `${prefix}.${parts[0]}` : parts[0]!;
+            const prefixSet = getVarPrefixSet(dae);
+            if (prefixSet.has(candidate) || prefixSet.has(pfx0Base)) return true;
             if (curClsId && db.childrenOf(curClsId).some((c) => c.kind === "Component" && c.name === parts[0])) {
               return true;
             }

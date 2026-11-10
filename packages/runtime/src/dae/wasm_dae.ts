@@ -733,15 +733,70 @@ export class WasmDaeBridge implements IDaeBuilder {
   /** Reverse lookup map from overridden/renamed variable name to variable index. */
   public _renamedVarsReverse = new Map<string, number>();
 
+  /** Number of arena variables whose array prefixes have been indexed in `baseArrayIndices`. */
+  private _indexedVarCount = 0;
+
+  /**
+   * Computes all unsubscripted base prefixes and stripped-segment dotted paths for `varName`.
+   */
+  private _getArrayBaseKeys(varName: string): Set<string> {
+    const keys = new Set<string>();
+    if (!varName.includes("[")) return keys;
+    let pos = 0;
+    while ((pos = varName.indexOf("[", pos)) !== -1) {
+      keys.add(varName.slice(0, pos));
+      pos++;
+    }
+    if (varName.includes(".")) {
+      const parts = splitPath(varName);
+      const subIndices: { idx: number; base: string }[] = [];
+      for (let i = 0; i < parts.length; i++) {
+        const vp = parts[i]!;
+        if (vp.endsWith("]")) {
+          const bPos = vp.indexOf("[");
+          if (bPos > 0) {
+            subIndices.push({ idx: i, base: vp.slice(0, bPos) });
+          }
+        }
+      }
+      if (subIndices.length > 0 && subIndices.length <= 6) {
+        const total = 1 << subIndices.length;
+        for (let mask = 1; mask < total; mask++) {
+          const cand = [...parts];
+          for (let b = 0; b < subIndices.length; b++) {
+            if ((mask & (1 << b)) !== 0) {
+              const info = subIndices[b]!;
+              cand[info.idx] = info.base;
+            }
+          }
+          keys.add(cand.join("."));
+        }
+      }
+    }
+    return keys;
+  }
+
+  /**
+   * Ensures all arena variables up to `this.varCount` have been indexed in `baseArrayIndices`.
+   */
+  private _ensureArrayVariablesIndexed(): void {
+    const vc = this.varCount;
+    if (this._indexedVarCount < vc) {
+      for (let i = this._indexedVarCount; i < vc; i++) {
+        const vn = this.getVarName(i);
+        if (vn) this._indexArrayVariable(i, vn);
+      }
+      this._indexedVarCount = vc;
+    }
+  }
+
   /**
    * Indexes a scalarized array variable (e.g., `x[1,2]` or `comp[1].y[2]`) under all of its
-   * unsubscripted base prefixes in `baseArrayIndices`.
+   * unsubscripted base prefixes and stripped-segment paths in `baseArrayIndices`.
    */
   private _indexArrayVariable(varIdx: number, varName: string): void {
     if (!varName.includes("[")) return;
-    let pos = 0;
-    while ((pos = varName.indexOf("[", pos)) !== -1) {
-      const base = varName.slice(0, pos);
+    for (const base of this._getArrayBaseKeys(varName)) {
       let list = this.baseArrayIndices.get(base);
       if (!list) {
         list = [];
@@ -752,7 +807,6 @@ export class WasmDaeBridge implements IDaeBuilder {
       } else if (!list.includes(varIdx)) {
         list.push(varIdx);
       }
-      pos++;
     }
   }
 
@@ -761,9 +815,7 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   private _unindexArrayVariable(varIdx: number, varName: string): void {
     if (!varName.includes("[")) return;
-    let pos = 0;
-    while ((pos = varName.indexOf("[", pos)) !== -1) {
-      const base = varName.slice(0, pos);
+    for (const base of this._getArrayBaseKeys(varName)) {
       const list = this.baseArrayIndices.get(base);
       if (list) {
         const idx = list.indexOf(varIdx);
@@ -774,7 +826,6 @@ export class WasmDaeBridge implements IDaeBuilder {
           }
         }
       }
-      pos++;
     }
   }
   /** Map from variable index to array dimension sizes (`number[]`). */
@@ -892,6 +943,7 @@ export class WasmDaeBridge implements IDaeBuilder {
           this._indexArrayVariable(i, vName);
         }
       }
+      this._indexedVarCount = this.varCount;
     }
 
     if (this.ptr && daeFinalizationRegistry) {
@@ -1057,6 +1109,9 @@ export class WasmDaeBridge implements IDaeBuilder {
         const nameStr = typeof nameIdOrString === "string" ? nameIdOrString : this.interner.resolve(nameId);
         if (nameStr) {
           this._indexArrayVariable(idx, nameStr);
+        }
+        if (idx === this._indexedVarCount) {
+          this._indexedVarCount = idx + 1;
         }
       }
       return idx;
@@ -1621,16 +1676,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   hasArrayElements(baseName: string): boolean {
     if (this.namedArrayShapes.has(baseName)) return true;
+    this._ensureArrayVariablesIndexed();
     const direct = this.baseArrayIndices.get(baseName);
-    if (direct && direct.length > 0) return true;
-    if (baseName.includes(".")) {
-      const labelMaps: Map<string, number>[] = [];
-      for (let i = 0; i < this.varCount; i++) {
-        const idxs = matchVarPath(this.getVarName(i), baseName, labelMaps);
-        if (idxs && idxs.length > 0) return true;
-      }
-    }
-    return false;
+    return direct !== undefined && direct.length > 0;
   }
 
   /**
@@ -1640,19 +1688,12 @@ export class WasmDaeBridge implements IDaeBuilder {
    * @returns Array of 0-based variable indices.
    */
   getArrayElementIndices(baseName: string): number[] {
+    this._ensureArrayVariablesIndexed();
     const direct = this.baseArrayIndices.get(baseName);
     if (direct && direct.length > 0) {
       return [...direct];
     }
-    const indices: number[] = [];
-    if (baseName.includes(".")) {
-      const labelMaps: Map<string, number>[] = [];
-      for (let i = 0; i < this.varCount; i++) {
-        const idxs = matchVarPath(this.getVarName(i), baseName, labelMaps);
-        if (idxs && idxs.length > 0) indices.push(i);
-      }
-    }
-    return indices;
+    return [];
   }
 
   /**
@@ -1673,6 +1714,7 @@ export class WasmDaeBridge implements IDaeBuilder {
       this.ptr = 0;
     }
     this.baseArrayIndices.clear();
+    this._indexedVarCount = 0;
     this._renamedVars.clear();
     this._renamedVarsReverse.clear();
     this.namedArrayShapes.clear();
@@ -2513,6 +2555,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    * Appends a raw expression node (`kind`, `data1`, `left`, `right`) to the WASM expression arena.
    */
   addExpression(kind: ExprKind, data1 = 0, left = 0xffffffff, right = 0xffffffff): number {
+    if (kind === ExprKind.IntLiteral && (data1 > 2147483647 || data1 < -2147483648)) {
+      return this.addRealLiteral(data1);
+    }
     if (!this.exports?.dae_addExpression) return -1;
     const exprId = this.exports.dae_addExpression(this.ptr, kind, data1, left, right);
     if (kind === ExprKind.Name && exprId >= 0) {
@@ -2558,6 +2603,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    * Appends a 32-bit signed integer literal expression (`ExprKind.IntLiteral`) to the arena.
    */
   addIntLiteral(value: number): number {
+    if (value > 2147483647 || value < -2147483648) {
+      return this.addRealLiteral(value);
+    }
     if (this.exports?.dae_addIntLiteral) {
       return this.exports.dae_addIntLiteral(this.ptr, value);
     }
@@ -3555,6 +3603,7 @@ export class WasmDaeBridge implements IDaeBuilder {
       this.nameExprIndices.length = snap.nameExprIndicesLen;
       this.paramNameToEqs = snap.paramNameToEqs;
       this.baseArrayIndices = snap.baseArrayIndices;
+      this._indexedVarCount = this.varCount;
     }
   }
 

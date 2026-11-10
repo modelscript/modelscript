@@ -1160,7 +1160,10 @@ export function findOperatorRecordComponentType(
     const cType = dae.getVarCustomType(vIdx);
     if (!cType) return null;
     const cleanType = cType.includes(".") ? cType.split(".").pop()! : cType;
-    const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+    const rawClassSym = db
+      .byName(cleanType)
+      .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+    const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
     if (classSym) {
       const shape = dae.getVarShape(vIdx);
       const isArray = Boolean(shape && shape.length > 0);
@@ -1182,7 +1185,10 @@ export function findOperatorRecordComponentType(
         db.query<string | null>("typeSpecifier", compSym.id);
       if (!typeSpec) return null;
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-      const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const rawClassSym = db
+        .byName(cleanType)
+        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
       if (classSym) {
         const arrayDims = extractDims(compInst?.arrayDimensions);
         const isArray = Boolean((arrayDims && arrayDims.length > 0) || (compSym.metadata as any)?.isArray);
@@ -1194,15 +1200,23 @@ export function findOperatorRecordComponentType(
   }
 
   let compSym: any = null;
-  if (flattener?.currentRootClassId) {
-    const comps = db.childrenOf(flattener.currentRootClassId).filter((c: any) => c.kind === "Component");
+  const candidateClassIds = [flattener?.currentClassId, flattener?.currentRootClassId].filter(
+    (id, idx, arr) => id != null && arr.indexOf(id) === idx,
+  );
+  for (const clsId of candidateClassIds) {
+    const comps = db.childrenOf(clsId).filter((c: any) => c.kind === "Component");
     compSym = comps.find((c: any) => (c.name ? c.name.split("[")[0] : "") === baseName);
     if (!compSym) {
-      const instComps = db.query<any[]>("instantiate", flattener.currentRootClassId);
+      const instComps = db.query<any[]>("instantiate", clsId);
       if (instComps) {
         compSym = instComps.find((c: any) => (c.name ? c.name.split("[")[0] : "") === baseName);
       }
     }
+    if (!compSym) {
+      const resSym = db.query<any>("resolveSimpleName", clsId)?.(baseName);
+      if (resSym?.kind === "Component") compSym = resSym;
+    }
+    if (compSym) break;
   }
   if (!compSym) {
     compSym = db.byName(baseName).find((e: any) => e.kind === "Component");
@@ -1215,7 +1229,10 @@ export function findOperatorRecordComponentType(
       db.query<string | null>("typeSpecifier", compSym.id);
     if (typeSpec) {
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-      const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const rawClassSym = db
+        .byName(cleanType)
+        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
       if (classSym) {
         const arrayDims = extractDims(compInst?.arrayDimensions);
         const isArray = Boolean(
@@ -1228,6 +1245,51 @@ export function findOperatorRecordComponentType(
   }
   return null;
 }
+
+function unwrapOperatorRecordSym(classSym: any, db: QueryDB, flattener: any): any {
+  if (!classSym) return classSym;
+  const ops = db.query<Map<string, any[]> | null>("operatorFunctions", classSym.id);
+  if (ops && ops.size > 0) return classSym;
+  let curr = classSym;
+  const visited = new Set<number>();
+  while (curr && !visited.has(curr.id)) {
+    visited.add(curr.id);
+    const curOps = db.query<Map<string, any[]> | null>("operatorFunctions", curr.id);
+    if (curOps && curOps.size > 0) return curr;
+    const baseSym = db.query<any>("resolvedBaseClass", curr.id);
+    if (baseSym && baseSym.id !== curr.id) {
+      curr = baseSym;
+      continue;
+    }
+    break;
+  }
+  const complexSym = db
+    .byName("Complex")
+    .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+  return complexSym ?? curr;
+}
+
+const COMPLEX_MATH_COMPLEX_RETURN_FNS = new Set([
+  "conj",
+  "fromPolar",
+  "exp",
+  "log",
+  "log10",
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "asinh",
+  "acosh",
+  "atanh",
+  "sqrt",
+]);
 
 export function resolveOperatorRecord(
   exprId: number,
@@ -1270,6 +1332,21 @@ export function resolveOperatorRecord(
   } | null => {
     if (!pathStr || !/^[a-zA-Z_]\w*(?:\s*\[[^\]]*\]|\.[a-zA-Z_]\w*)*$/.test(pathStr)) return null;
     const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
+    const hasComplexFields =
+      (dae.getVarIdxByName(`${pathStr}.re`) >= 0 && dae.getVarIdxByName(`${pathStr}.im`) >= 0) ||
+      Boolean(
+        currentPrefix &&
+          dae.getVarIdxByName(`${currentPrefix}.${pathStr}.re`) >= 0 &&
+          dae.getVarIdxByName(`${currentPrefix}.${pathStr}.im`) >= 0,
+      );
+    if (hasComplexFields) {
+      const complexSym = db
+        .byName("Complex")
+        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      if (complexSym) {
+        return { name: complexSym.name, symId: complexSym.id, isArray: false };
+      }
+    }
     let fullIdx = dae.getVarIdxByName(pathStr);
     if (fullIdx < 0 && currentPrefix) {
       fullIdx = dae.getVarIdxByName(`${currentPrefix}.${pathStr}`);
@@ -1302,7 +1379,10 @@ export function resolveOperatorRecord(
         db.query<string | null>("typeSpecifier", fieldSym.id);
       if (!typeSpec) return null;
       const cleanType: string = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-      const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const rawClassSym = db
+        .byName(cleanType)
+        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
       if (!classSym) return null;
       const rawDims: any = compInst?.arrayDimensions;
       const arrayDims: number[] | undefined =
@@ -1357,11 +1437,24 @@ export function resolveOperatorRecord(
       const fnName = dae.interner.resolve(dae.getExprData1(exprId));
       if (fnName) {
         const baseClass = fnName.split(".")[0]!;
-        const classSym = db
+        const rawClassSym = db
           .byName(baseClass)
           .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+        const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
         if (classSym) {
           return { name: classSym.name, symId: classSym.id, isArray: false };
+        }
+        const shortFn = fnName.split(".").pop()!;
+        if (
+          (fnName.includes("ComplexMath.") && COMPLEX_MATH_COMPLEX_RETURN_FNS.has(shortFn)) ||
+          (dae as any).getFunction?.(fnName)?.outputs?.[0]?.customType === "Complex"
+        ) {
+          const complexSym = db
+            .byName("Complex")
+            .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+          if (complexSym) {
+            return { name: complexSym.name, symId: complexSym.id, isArray: false };
+          }
         }
       }
     }

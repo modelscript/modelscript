@@ -387,12 +387,58 @@ function orderRowsByBarycenter(rows: PsseBusLike[][], neighbors: Map<number, num
   }
 }
 
+export interface PsseViewportOptions {
+  /** Optional world-coordinate bounding box for frustum culling (`[minX, minY, maxX, maxY]`). */
+  viewport?: { minX: number; minY: number; maxX: number; maxY: number } | undefined;
+  /** Zoom level (`1.0` = 100%). At `zoom < 0.45`, LOD mode suppresses secondary text labels and equipment sub-nodes. */
+  zoom?: number | undefined;
+  /** Maximum number of buses to emit in full SVG/X6 mode before enabling LOD simplification. Default: 500. */
+  lodBusThreshold?: number | undefined;
+}
+
+export interface PsseCanvasBusNode {
+  busNumber: number;
+  name: string;
+  baseKv: number;
+  x: number;
+  y: number;
+  color: string;
+  vm: number;
+  va: number;
+  status: "normal" | "warning" | "violation";
+}
+
+export interface PsseCanvasEdge {
+  fromBus: number;
+  toBus: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  width: number;
+  loadingPct: number;
+  isTransformer: boolean;
+}
+
+export interface PsseCanvasScene {
+  title: string;
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  buses: PsseCanvasBusNode[];
+  edges: PsseCanvasEdge[];
+}
+
 /**
  * Builds an interactive AntV X6 graph model for a PSS/E base case,
  * optionally overlaid with solved AC power-flow telemetry (voltages, angles,
- * generator dispatch, branch MW/Mvar flows, and thermal loading percentages).
+ * generator dispatch, branch MW/Mvar flows, and thermal loading percentages)
+ * and optional viewport frustum culling / Level-of-Detail (LOD) simplification.
  */
-export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay): PsseDiagramGraph {
+export function buildPsseDiagram(
+  c: PsseCaseLike,
+  powerflow?: PssePowerFlowOverlay,
+  options?: PsseViewportOptions,
+): PsseDiagramGraph {
   const cells: PsseDiagramCell[] = [];
   const pf = powerflow ?? c.powerflow;
   const pfBusMap = new Map<number, NormalizedBusPf>();
@@ -516,7 +562,8 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     }
 
     const rawTiers = [tier1, tier2, tier3, tier4, tier5].filter((t) => t.length > 0);
-    const maxCols = 4;
+    const maxCols =
+      busList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(busList.length * 2.2))));
     const rows: PsseBusLike[][] = [];
     for (const tier of rawTiers) {
       if (tier.length <= maxCols) {
@@ -552,10 +599,30 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     }
   }
 
+  const vp = options?.viewport;
+  const vpMargin = 200;
+  const lodThreshold = options?.lodBusThreshold ?? 500;
+  const isLowDetail = (options?.zoom !== undefined && options.zoom < 0.45) || busList.length > lodThreshold;
+
+  const isPointInViewport = (x: number, y: number): boolean => {
+    if (!vp) return true;
+    return (
+      x >= vp.minX - vpMargin &&
+      x <= vp.maxX + vpMargin &&
+      y >= vp.minY - vpMargin &&
+      y <= vp.maxY + vpMargin
+    );
+  };
+
+  const visibleBusSet = new Set<number>();
+
   for (const b of busList) {
     const pos = busCoords.get(b.i) ?? { x: 200, y: 200 };
     const x = pos.x;
     const y = pos.y;
+    if (!isPointInViewport(x, y)) continue;
+    visibleBusSet.add(b.i);
+
     const pfBus = pfBusMap.get(b.i);
     const vm = pfBus?.vm ?? b.vm;
     const va = pfBus?.va ?? b.va;
@@ -585,7 +652,9 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     const typeLabel = b.ide === 3 ? "Slack" : b.ide === 2 ? "PV" : b.ide === 4 ? "Isolated" : "PQ";
     const vmText = vm !== undefined && vm > 0 ? ` · ${vm.toFixed(3)} pu` : "";
     const vaText = va !== undefined && (pfBus !== undefined || Math.abs(va) > 1e-3) ? ` ∠${va.toFixed(1)}°` : "";
-    const busLabel = `Bus ${b.i}: ${b.name.trim()}\n${formatKv(b.baseKv)} (${typeLabel}${vmText}${vaText})`;
+    const busLabel = isLowDetail
+      ? `Bus ${b.i}`
+      : `Bus ${b.i}: ${b.name.trim()}\n${formatKv(b.baseKv)} (${typeLabel}${vmText}${vaText})`;
 
     cells.push({
       id: `bus_${b.i}`,
@@ -630,256 +699,260 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
   }
 
   // 2. Add Generators attached above buses (fanning out multiple units per bus)
-  for (const [busNum, gens] of inServiceGensByBus.entries()) {
-    const bPos = busCoords.get(busNum);
-    if (!bPos) continue;
-    const hostBus = busMap.get(busNum);
-    const pfBus = pfBusMap.get(busNum);
-    const genCount = gens.length;
+  if (!isLowDetail) {
+    for (const [busNum, gens] of inServiceGensByBus.entries()) {
+      if (!visibleBusSet.has(busNum)) continue;
+      const bPos = busCoords.get(busNum);
+      if (!bPos) continue;
+      const hostBus = busMap.get(busNum);
+      const pfBus = pfBusMap.get(busNum);
+      const genCount = gens.length;
 
-    // Total nominal pg for proportional sharing when solved pfBus is present
-    const totalSchedPg = gens.reduce((acc, g) => acc + Math.abs(g.pg), 0);
-    const totalSchedQg = gens.reduce((acc, g) => acc + Math.abs(g.qg), 0);
+      // Total nominal pg for proportional sharing when solved pfBus is present
+      const totalSchedPg = gens.reduce((acc, g) => acc + Math.abs(g.pg), 0);
+      const totalSchedQg = gens.reduce((acc, g) => acc + Math.abs(g.qg), 0);
 
-    gens.forEach((g, idx) => {
-      const pShare = totalSchedPg > 1e-3 ? Math.abs(g.pg) / totalSchedPg : 1 / genCount;
-      const qShare = totalSchedQg > 1e-3 ? Math.abs(g.qg) / totalSchedQg : 1 / genCount;
-      const pGen = pfBus ? pfBus.pGen * pShare : g.pg;
-      const qGen = pfBus ? pfBus.qGen * qShare : g.qg;
+      gens.forEach((g, idx) => {
+        const pShare = totalSchedPg > 1e-3 ? Math.abs(g.pg) / totalSchedPg : 1 / genCount;
+        const qShare = totalSchedQg > 1e-3 ? Math.abs(g.qg) / totalSchedQg : 1 / genCount;
+        const pGen = pfBus ? pfBus.pGen * pShare : g.pg;
+        const qGen = pfBus ? pfBus.qGen * qShare : g.qg;
 
-      const genIdClean = g.id.trim() || "1";
-      const genNodeId = `gen_${g.i}_${genIdClean}`;
-      const offsetX = genCount > 1 ? (idx - (genCount - 1) / 2) * 72 : 0;
-      const gx = bPos.x + offsetX;
-      const gy = bPos.y - 74;
+        const genIdClean = g.id.trim() || "1";
+        const genNodeId = `gen_${g.i}_${genIdClean}`;
+        const offsetX = genCount > 1 ? (idx - (genCount - 1) / 2) * 72 : 0;
+        const gx = bPos.x + offsetX;
+        const gy = bPos.y - 74;
 
-      const genKind = classifyGeneratorKind(g, hostBus?.name);
-      const kindBadge = genKind === "wind" ? "WTG" : genKind === "solar" ? "PV" : genKind === "condenser" ? "SC" : "G~";
-      const strokeColor = genKind === "condenser" ? "#38bdf8" : genKind === "solar" ? "#10b981" : "#22c55e";
+        const genKind = classifyGeneratorKind(g, hostBus?.name);
+        const kindBadge = genKind === "wind" ? "WTG" : genKind === "solar" ? "PV" : genKind === "condenser" ? "SC" : "G~";
+        const strokeColor = genKind === "condenser" ? "#38bdf8" : genKind === "solar" ? "#10b981" : "#22c55e";
 
-      const qSign = qGen >= 0 ? "+" : "";
-      const genPrefix = genIdClean.toUpperCase() === kindBadge.toUpperCase() ? kindBadge : `${kindBadge} ${genIdClean}`;
-      const genLabel = `${genPrefix} · ${pGen.toFixed(1)} MW\n${qSign}${qGen.toFixed(1)} Mvar`;
+        const qSign = qGen >= 0 ? "+" : "";
+        const genPrefix = genIdClean.toUpperCase() === kindBadge.toUpperCase() ? kindBadge : `${kindBadge} ${genIdClean}`;
+        const genLabel = `${genPrefix} · ${pGen.toFixed(1)} MW\n${qSign}${qGen.toFixed(1)} Mvar`;
 
-      cells.push({
-        id: genNodeId,
-        shape: "circle",
-        x: gx - 24,
-        y: gy - 24,
-        width: 48,
-        height: 48,
-        label: genLabel,
-        attrs: {
-          body: {
-            fill: "#0f172a",
-            stroke: strokeColor,
-            strokeWidth: 2.5,
-          },
-          label: {
-            text: genLabel,
-            fill: genKind === "condenser" ? "#7dd3fc" : "#4ade80",
-            fontSize: 8.5,
-            fontWeight: "bold",
-            fontFamily: "Inter, system-ui, sans-serif",
-          },
-        },
-        data: {
-          busNumber: g.i,
-          generatorId: genIdClean,
-          genKind,
-          pGen,
-          qGen,
-          mbase: g.mbase ?? 100,
-        },
-      });
-
-      // Connecting lead from generator to bus
-      cells.push({
-        id: `wire_${genNodeId}_to_bus_${g.i}`,
-        shape: "edge",
-        source: { cell: genNodeId },
-        target: { cell: `bus_${g.i}` },
-        attrs: {
-          line: {
-            stroke: strokeColor,
-            strokeWidth: 2,
-            targetMarker: null,
-            sourceMarker: null,
-          },
-        },
-      });
-    });
-  }
-
-  // 3. Add Loads attached below buses
-  for (const [busNum, loads] of inServiceLoadsByBus.entries()) {
-    const bPos = busCoords.get(busNum);
-    if (!bPos) continue;
-    const loadCount = loads.length;
-
-    loads.forEach((l, idx) => {
-      const loadIdClean = l.id.trim() || "1";
-      const loadNodeId = `load_${l.i}_${loadIdClean}`;
-      const offsetX = loadCount > 1 ? (idx - (loadCount - 1) / 2) * 92 : 0;
-      const lx = bPos.x + offsetX;
-      const ly = bPos.y + 68;
-      const loadLabel = `Load ${l.pl.toFixed(1)} MW\n${l.ql.toFixed(1)} Mvar`;
-
-      cells.push({
-        id: loadNodeId,
-        shape: "rect",
-        x: lx - 42,
-        y: ly - 15,
-        width: 84,
-        height: 30,
-        label: loadLabel,
-        attrs: {
-          body: {
-            fill: "#0f172a",
-            stroke: "#f59e0b",
-            strokeWidth: 1.8,
-            rx: 4,
-            ry: 4,
-          },
-          label: {
-            text: loadLabel,
-            fill: "#fbbf24",
-            fontSize: 9,
-            fontFamily: "Inter, system-ui, sans-serif",
-          },
-        },
-        data: {
-          busNumber: l.i,
-          loadId: loadIdClean,
-          pl: l.pl,
-          ql: l.ql,
-        },
-      });
-
-      // Connecting feeder lead from bus to load
-      cells.push({
-        id: `wire_bus_${l.i}_to_${loadNodeId}`,
-        shape: "edge",
-        source: { cell: `bus_${l.i}` },
-        target: { cell: loadNodeId },
-        attrs: {
-          line: {
-            stroke: "#f59e0b",
-            strokeWidth: 1.8,
-            targetMarker: {
-              name: "block",
-              width: 6,
-              height: 5,
+        cells.push({
+          id: genNodeId,
+          shape: "circle",
+          x: gx - 24,
+          y: gy - 24,
+          width: 48,
+          height: 48,
+          label: genLabel,
+          attrs: {
+            body: {
+              fill: "#0f172a",
+              stroke: strokeColor,
+              strokeWidth: 2.5,
+            },
+            label: {
+              text: genLabel,
+              fill: genKind === "condenser" ? "#7dd3fc" : "#4ade80",
+              fontSize: 8.5,
+              fontWeight: "bold",
+              fontFamily: "Inter, system-ui, sans-serif",
             },
           },
-        },
-      });
-    });
-  }
+          data: {
+            busNumber: g.i,
+            generatorId: genIdClean,
+            genKind,
+            pGen,
+            qGen,
+            mbase: g.mbase ?? 100,
+          },
+        });
 
-  // 3b. Add Fixed & Switched Shunt Capacitor / Reactor Banks
-  interface ShuntEntry {
-    id: string;
-    bus: number;
-    shuntId: string;
-    bMvar: number;
-    gMw: number;
-    isSwitched: boolean;
-  }
-  const shuntsByBus = new Map<number, ShuntEntry[]>();
-  if (c.fixedShunts) {
-    for (const s of c.fixedShunts) {
-      if (s.status !== 1) continue;
-      const arr = shuntsByBus.get(s.i) ?? [];
-      const shuntIdClean = s.id.trim() || "1";
-      arr.push({
-        id: `shunt_${s.i}_${shuntIdClean}`,
-        bus: s.i,
-        shuntId: shuntIdClean,
-        bMvar: s.bl,
-        gMw: s.gl,
-        isSwitched: false,
+        // Connecting lead from generator to bus
+        cells.push({
+          id: `wire_${genNodeId}_to_bus_${g.i}`,
+          shape: "edge",
+          source: { cell: genNodeId },
+          target: { cell: `bus_${g.i}` },
+          attrs: {
+            line: {
+              stroke: strokeColor,
+              strokeWidth: 2,
+              targetMarker: null,
+              sourceMarker: null,
+            },
+          },
+        });
       });
-      shuntsByBus.set(s.i, arr);
     }
-  }
-  if (c.switchedShunts) {
-    for (const s of c.switchedShunts) {
-      if (s.stat !== 1) continue;
-      const arr = shuntsByBus.get(s.i) ?? [];
-      arr.push({
-        id: `swshunt_${s.i}_SW`,
-        bus: s.i,
-        shuntId: "SW",
-        bMvar: s.binit,
-        gMw: 0,
-        isSwitched: true,
+
+    // 3. Add Loads attached below buses
+    for (const [busNum, loads] of inServiceLoadsByBus.entries()) {
+      if (!visibleBusSet.has(busNum)) continue;
+      const bPos = busCoords.get(busNum);
+      if (!bPos) continue;
+      const loadCount = loads.length;
+
+      loads.forEach((l, idx) => {
+        const loadIdClean = l.id.trim() || "1";
+        const loadNodeId = `load_${l.i}_${loadIdClean}`;
+        const offsetX = loadCount > 1 ? (idx - (loadCount - 1) / 2) * 92 : 0;
+        const lx = bPos.x + offsetX;
+        const ly = bPos.y + 68;
+        const loadLabel = `Load ${l.pl.toFixed(1)} MW\n${l.ql.toFixed(1)} Mvar`;
+
+        cells.push({
+          id: loadNodeId,
+          shape: "rect",
+          x: lx - 42,
+          y: ly - 15,
+          width: 84,
+          height: 30,
+          label: loadLabel,
+          attrs: {
+            body: {
+              fill: "#0f172a",
+              stroke: "#f59e0b",
+              strokeWidth: 1.8,
+              rx: 4,
+              ry: 4,
+            },
+            label: {
+              text: loadLabel,
+              fill: "#fbbf24",
+              fontSize: 9,
+              fontFamily: "Inter, system-ui, sans-serif",
+            },
+          },
+          data: {
+            busNumber: l.i,
+            loadId: loadIdClean,
+            pl: l.pl,
+            ql: l.ql,
+          },
+        });
+
+        // Connecting feeder lead from bus to load
+        cells.push({
+          id: `wire_bus_${l.i}_to_${loadNodeId}`,
+          shape: "edge",
+          source: { cell: `bus_${l.i}` },
+          target: { cell: loadNodeId },
+          attrs: {
+            line: {
+              stroke: "#f59e0b",
+              strokeWidth: 1.8,
+              targetMarker: {
+                name: "block",
+                width: 6,
+                height: 5,
+              },
+            },
+          },
+        });
       });
-      shuntsByBus.set(s.i, arr);
     }
-  }
 
-  for (const [busNum, shunts] of shuntsByBus.entries()) {
-    const bPos = busCoords.get(busNum);
-    if (!bPos) continue;
-    const hasLoadOnBus = (inServiceLoadsByBus.get(busNum)?.length ?? 0) > 0;
+    // 3b. Add Fixed & Switched Shunt Capacitor / Reactor Banks
+    interface ShuntEntry {
+      id: string;
+      bus: number;
+      shuntId: string;
+      bMvar: number;
+      gMw: number;
+      isSwitched: boolean;
+    }
+    const shuntsByBus = new Map<number, ShuntEntry[]>();
+    if (c.fixedShunts) {
+      for (const s of c.fixedShunts) {
+        if (s.status !== 1 || !visibleBusSet.has(s.i)) continue;
+        const arr = shuntsByBus.get(s.i) ?? [];
+        const shuntIdClean = s.id.trim() || "1";
+        arr.push({
+          id: `shunt_${s.i}_${shuntIdClean}`,
+          bus: s.i,
+          shuntId: shuntIdClean,
+          bMvar: s.bl,
+          gMw: s.gl,
+          isSwitched: false,
+        });
+        shuntsByBus.set(s.i, arr);
+      }
+    }
+    if (c.switchedShunts) {
+      for (const s of c.switchedShunts) {
+        if (s.stat !== 1 || !visibleBusSet.has(s.i)) continue;
+        const arr = shuntsByBus.get(s.i) ?? [];
+        arr.push({
+          id: `swshunt_${s.i}_SW`,
+          bus: s.i,
+          shuntId: "SW",
+          bMvar: s.binit,
+          gMw: 0,
+          isSwitched: true,
+        });
+        shuntsByBus.set(s.i, arr);
+      }
+    }
 
-    shunts.forEach((sh, idx) => {
-      // Place shunt bank to the bottom-right if bus already has a load below it, or directly below
-      const sx = hasLoadOnBus ? bPos.x + 76 + idx * 66 : bPos.x + idx * 66;
-      const sy = bPos.y + 66;
-      const isCap = sh.bMvar >= 0;
-      const typeTag = sh.isSwitched ? (isCap ? "SwCap" : "SwReac") : isCap ? "Cap" : "Reac";
-      const sign = sh.bMvar >= 0 ? "+" : "";
-      const shuntLabel = `${typeTag} ${sh.shuntId}\n${sign}${sh.bMvar.toFixed(1)} Mvar`;
+    for (const [busNum, shunts] of shuntsByBus.entries()) {
+      const bPos = busCoords.get(busNum);
+      if (!bPos) continue;
+      const hasLoadOnBus = (inServiceLoadsByBus.get(busNum)?.length ?? 0) > 0;
 
-      cells.push({
-        id: sh.id,
-        shape: "rect",
-        x: sx - 32,
-        y: sy - 15,
-        width: 64,
-        height: 30,
-        label: shuntLabel,
-        attrs: {
-          body: {
-            fill: "#0f172a",
-            stroke: "#06b6d4",
-            strokeWidth: 1.8,
-            rx: 4,
-            ry: 4,
+      shunts.forEach((sh, idx) => {
+        // Place shunt bank to the bottom-right if bus already has a load below it, or directly below
+        const sx = hasLoadOnBus ? bPos.x + 76 + idx * 66 : bPos.x + idx * 66;
+        const sy = bPos.y + 66;
+        const isCap = sh.bMvar >= 0;
+        const typeTag = sh.isSwitched ? (isCap ? "SwCap" : "SwReac") : isCap ? "Cap" : "Reac";
+        const sign = sh.bMvar >= 0 ? "+" : "";
+        const shuntLabel = `${typeTag} ${sh.shuntId}\n${sign}${sh.bMvar.toFixed(1)} Mvar`;
+
+        cells.push({
+          id: sh.id,
+          shape: "rect",
+          x: sx - 32,
+          y: sy - 15,
+          width: 64,
+          height: 30,
+          label: shuntLabel,
+          attrs: {
+            body: {
+              fill: "#0f172a",
+              stroke: "#06b6d4",
+              strokeWidth: 1.8,
+              rx: 4,
+              ry: 4,
+            },
+            label: {
+              text: shuntLabel,
+              fill: "#67e8f9",
+              fontSize: 8.5,
+              fontFamily: "Inter, system-ui, sans-serif",
+            },
           },
-          label: {
-            text: shuntLabel,
-            fill: "#67e8f9",
-            fontSize: 8.5,
-            fontFamily: "Inter, system-ui, sans-serif",
+          data: {
+            busNumber: sh.bus,
+            shuntId: sh.shuntId,
+            bMvar: sh.bMvar,
+            gMw: sh.gMw,
+            isSwitched: sh.isSwitched,
           },
-        },
-        data: {
-          busNumber: sh.bus,
-          shuntId: sh.shuntId,
-          bMvar: sh.bMvar,
-          gMw: sh.gMw,
-          isSwitched: sh.isSwitched,
-        },
+        });
+
+        cells.push({
+          id: `wire_bus_${sh.bus}_to_${sh.id}`,
+          shape: "edge",
+          source: { cell: `bus_${sh.bus}` },
+          target: { cell: sh.id },
+          attrs: {
+            line: {
+              stroke: "#06b6d4",
+              strokeWidth: 1.8,
+              targetMarker: null,
+              sourceMarker: null,
+            },
+          },
+        });
       });
-
-      cells.push({
-        id: `wire_bus_${sh.bus}_to_${sh.id}`,
-        shape: "edge",
-        source: { cell: `bus_${sh.bus}` },
-        target: { cell: sh.id },
-        attrs: {
-          line: {
-            stroke: "#06b6d4",
-            strokeWidth: 1.8,
-            targetMarker: null,
-            sourceMarker: null,
-          },
-        },
-      });
-    });
+    }
   }
 
   // Group parallel branches between the same bus pair so they can be offset cleanly
@@ -887,13 +960,80 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
   const pairIndices = new Map<string, number>();
   for (const br of c.branches) {
     if (br.st !== 1) continue;
+    if (!visibleBusSet.has(br.i) && !visibleBusSet.has(br.j)) continue;
     const pairKey = `${Math.min(br.i, br.j)}_${Math.max(br.i, br.j)}`;
     pairCounts.set(pairKey, (pairCounts.get(pairKey) ?? 0) + 1);
+  }
+
+  // Ensure any direct 1-hop endpoint bus of a partially-visible edge is also emitted into cells if viewport culling is active
+  if (vp) {
+    const initialVisibleBuses = new Set(visibleBusSet);
+    const ensureEndpointBus = (busNum: number) => {
+      if (visibleBusSet.has(busNum)) return;
+      const b = busMap.get(busNum);
+      const pos = busCoords.get(busNum);
+      if (!b || !pos) return;
+      visibleBusSet.add(busNum);
+      const voltageColor = getVoltageColor(b.baseKv);
+      const busLabel = isLowDetail ? `Bus ${b.i}` : `Bus ${b.i}: ${b.name.trim()}\n${formatKv(b.baseKv)}`;
+      cells.push({
+        id: `bus_${b.i}`,
+        shape: "rect",
+        x: pos.x - 78,
+        y: pos.y - 20,
+        width: 156,
+        height: 40,
+        label: busLabel,
+        attrs: {
+          body: {
+            fill: "#1e293b",
+            stroke: voltageColor,
+            strokeWidth: 3,
+            rx: 5,
+            ry: 5,
+          },
+          label: {
+            text: busLabel,
+            fill: "#f8fafc",
+            fontSize: 10,
+            fontWeight: "bold",
+            fontFamily: "Inter, system-ui, sans-serif",
+            textAnchor: "middle",
+          },
+        },
+        data: {
+          busNumber: b.i,
+          busName: b.name.trim(),
+          baseKv: b.baseKv,
+          voltageColor,
+          busType: b.ide,
+          voltageStatus: "normal",
+        },
+      });
+    };
+
+    for (const br of c.branches) {
+      if (br.st !== 1) continue;
+      if (initialVisibleBuses.has(br.i) !== initialVisibleBuses.has(br.j)) {
+        ensureEndpointBus(br.i);
+        ensureEndpointBus(br.j);
+      }
+    }
+    if (c.transformers) {
+      for (const t of c.transformers) {
+        if (t.stat === 0) continue;
+        if (initialVisibleBuses.has(t.i) !== initialVisibleBuses.has(t.j)) {
+          ensureEndpointBus(t.i);
+          ensureEndpointBus(t.j);
+        }
+      }
+    }
   }
 
   // 4. Add AC Transmission Lines
   for (const br of c.branches) {
     if (br.st !== 1) continue;
+    if (!visibleBusSet.has(br.i) || !visibleBusSet.has(br.j)) continue;
     const fromBus = busMap.get(br.i);
     if (!fromBus || !busCoords.has(br.i) || !busCoords.has(br.j)) continue;
 
@@ -919,36 +1059,42 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
 
     const cktBadge = parallelCount > 1 || cktId !== "1" ? ` #${cktId}` : "";
     const loadingSuffix = pfBr && pfBr.loadingPct > 0 ? ` [${pfBr.loadingPct.toFixed(0)}%]` : "";
-    const edgeLabel = pfBr
-      ? `${br.i}→${br.j}${cktBadge}: ${pfBr.pFrom.toFixed(1)} MW, ${pfBr.qFrom.toFixed(1)} Mvar${loadingSuffix}`
-      : `${br.i}–${br.j}${cktBadge} (X=${br.x.toFixed(3)})`;
+    const edgeLabel = isLowDetail
+      ? undefined
+      : pfBr
+        ? `${br.i}→${br.j}${cktBadge}: ${pfBr.pFrom.toFixed(1)} MW, ${pfBr.qFrom.toFixed(1)} Mvar${loadingSuffix}`
+        : `${br.i}–${br.j}${cktBadge} (X=${br.x.toFixed(3)})`;
 
     cells.push({
       id: `branch_${br.i}_${br.j}_${cktId}`,
       shape: "edge",
       source: { cell: `bus_${br.i}` },
       target: { cell: `bus_${br.j}` },
-      label: edgeLabel,
-      labels: [
-        {
-          attrs: {
-            text: {
-              text: edgeLabel,
-              fill: pfBr && pfBr.loadingPct >= 100 ? "#fecaca" : "#cbd5e1",
-              fontSize: 9,
-              fontFamily: "Inter, system-ui, sans-serif",
-            },
-            rect: {
-              fill: "#0f172a",
-              stroke: color,
-              strokeWidth: 1,
-              rx: 3,
-              ry: 3,
-            },
-          },
-          position: 0.5,
-        },
-      ],
+      ...(edgeLabel
+        ? {
+            label: edgeLabel,
+            labels: [
+              {
+                attrs: {
+                  text: {
+                    text: edgeLabel,
+                    fill: pfBr && pfBr.loadingPct >= 100 ? "#fecaca" : "#cbd5e1",
+                    fontSize: 9,
+                    fontFamily: "Inter, system-ui, sans-serif",
+                  },
+                  rect: {
+                    fill: "#0f172a",
+                    stroke: color,
+                    strokeWidth: 1,
+                    rx: 3,
+                    ry: 3,
+                  },
+                },
+                position: 0.5,
+              },
+            ],
+          }
+        : {}),
       attrs: {
         line: {
           stroke: color,
@@ -987,6 +1133,7 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
   if (c.transformers) {
     for (const t of c.transformers) {
       if (t.stat === 0) continue;
+      if (!visibleBusSet.has(t.i) || !visibleBusSet.has(t.j)) continue;
       if (!busCoords.has(t.i) || !busCoords.has(t.j)) continue;
 
       const cktId = t.ckt.trim() || "1";
@@ -994,37 +1141,43 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
       const tapStr = t.windv1 && Math.abs(t.windv1 - 1.0) > 1e-3 ? ` (${t.windv1.toFixed(3)}:1)` : "";
       const is3W = t.k !== undefined && t.k !== 0;
       const xfPrefix = is3W ? `3W-XFMR ${t.i}→${t.j}→${t.k}` : `XFMR ${t.i}→${t.j}`;
-      const xfLabel = pfXf
-        ? `${xfPrefix}${tapStr}: ${pfXf.pFrom.toFixed(1)} MW, ${pfXf.qFrom.toFixed(1)} Mvar`
-        : `${xfPrefix}${tapStr}`;
+      const xfLabel = isLowDetail
+        ? undefined
+        : pfXf
+          ? `${xfPrefix}${tapStr}: ${pfXf.pFrom.toFixed(1)} MW, ${pfXf.qFrom.toFixed(1)} Mvar`
+          : `${xfPrefix}${tapStr}`;
 
       cells.push({
         id: `xfmr_${t.i}_${t.j}_${cktId}`,
         shape: "edge",
         source: { cell: `bus_${t.i}` },
         target: { cell: `bus_${t.j}` },
-        label: xfLabel,
-        labels: [
-          {
-            attrs: {
-              text: {
-                text: xfLabel,
-                fill: "#f9a8d4",
-                fontSize: 9,
-                fontWeight: "bold",
-                fontFamily: "Inter, system-ui, sans-serif",
-              },
-              rect: {
-                fill: "#0f172a",
-                stroke: "#ec4899",
-                strokeWidth: 1.2,
-                rx: 3,
-                ry: 3,
-              },
-            },
-            position: 0.5,
-          },
-        ],
+        ...(xfLabel
+          ? {
+              label: xfLabel,
+              labels: [
+                {
+                  attrs: {
+                    text: {
+                      text: xfLabel,
+                      fill: "#f9a8d4",
+                      fontSize: 9,
+                      fontWeight: "bold",
+                      fontFamily: "Inter, system-ui, sans-serif",
+                    },
+                    rect: {
+                      fill: "#0f172a",
+                      stroke: "#ec4899",
+                      strokeWidth: 1.2,
+                      rx: 3,
+                      ry: 3,
+                    },
+                  },
+                  position: 0.5,
+                },
+              ],
+            }
+          : {}),
         attrs: {
           line: {
             stroke: "#ec4899",
@@ -1053,34 +1206,38 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
       });
 
       // Render tertiary winding leg for 3-winding transformers
-      if (is3W && t.k && busCoords.has(t.k)) {
-        const w3Label = `3W Tertiary ${t.i}→${t.k}`;
+      if (is3W && t.k && visibleBusSet.has(t.k) && busCoords.has(t.k)) {
+        const w3Label = isLowDetail ? undefined : `3W Tertiary ${t.i}→${t.k}`;
         cells.push({
           id: `xfmr_${t.i}_${t.k}_${cktId}_w3`,
           shape: "edge",
           source: { cell: `bus_${t.i}` },
           target: { cell: `bus_${t.k}` },
-          label: w3Label,
-          labels: [
-            {
-              attrs: {
-                text: {
-                  text: w3Label,
-                  fill: "#f9a8d4",
-                  fontSize: 8.5,
-                  fontFamily: "Inter, system-ui, sans-serif",
-                },
-                rect: {
-                  fill: "#0f172a",
-                  stroke: "#ec4899",
-                  strokeWidth: 1,
-                  rx: 3,
-                  ry: 3,
-                },
-              },
-              position: 0.5,
-            },
-          ],
+          ...(w3Label
+            ? {
+                label: w3Label,
+                labels: [
+                  {
+                    attrs: {
+                      text: {
+                        text: w3Label,
+                        fill: "#f9a8d4",
+                        fontSize: 8.5,
+                        fontFamily: "Inter, system-ui, sans-serif",
+                      },
+                      rect: {
+                        fill: "#0f172a",
+                        stroke: "#ec4899",
+                        strokeWidth: 1,
+                        rx: 3,
+                        ry: 3,
+                      },
+                    },
+                    position: 0.5,
+                  },
+                ],
+              }
+            : {}),
           attrs: {
             line: {
               stroke: "#ec4899",
@@ -1099,15 +1256,16 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
   if (c.twoTerminalDc) {
     for (const dc of c.twoTerminalDc) {
       if (dc.mdc === 0 || !dc.ipr || !dc.ipi) continue;
+      if (!visibleBusSet.has(dc.ipr) || !visibleBusSet.has(dc.ipi)) continue;
       if (!busCoords.has(dc.ipr) || !busCoords.has(dc.ipi)) continue;
       const dcName = dc.name?.trim() || (dc.i !== undefined ? String(dc.i) : "1");
-      const dcLabel = `HVDC ${dcName}: ${dc.ipr}⇒${dc.ipi}`;
+      const dcLabel = isLowDetail ? undefined : `HVDC ${dcName}: ${dc.ipr}⇒${dc.ipi}`;
       cells.push({
         id: `hvdc_${dc.ipr}_${dc.ipi}_${dcName}`,
         shape: "edge",
         source: { cell: `bus_${dc.ipr}` },
         target: { cell: `bus_${dc.ipi}` },
-        label: dcLabel,
+        ...(dcLabel ? { label: dcLabel } : {}),
         attrs: {
           line: {
             stroke: "#a855f7",
@@ -1127,14 +1285,15 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
   if (c.vscDc) {
     for (const vsc of c.vscDc) {
       if (vsc.mdc === 0 || !vsc.ibus1 || !vsc.ibus2) continue;
+      if (!visibleBusSet.has(vsc.ibus1) || !visibleBusSet.has(vsc.ibus2)) continue;
       if (!busCoords.has(vsc.ibus1) || !busCoords.has(vsc.ibus2)) continue;
-      const vscLabel = `VSC-HVDC ${vsc.name.trim()}: ${vsc.ibus1}⇔${vsc.ibus2}`;
+      const vscLabel = isLowDetail ? undefined : `VSC-HVDC ${vsc.name.trim()}: ${vsc.ibus1}⇔${vsc.ibus2}`;
       cells.push({
         id: `vscdc_${vsc.ibus1}_${vsc.ibus2}_${vsc.name.trim() || "1"}`,
         shape: "edge",
         source: { cell: `bus_${vsc.ibus1}` },
         target: { cell: `bus_${vsc.ibus2}` },
-        label: vscLabel,
+        ...(vscLabel ? { label: vscLabel } : {}),
         attrs: {
           line: {
             stroke: "#c084fc",
@@ -1159,12 +1318,109 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
 }
 
 /**
+ * Builds a compact, flat Canvas 2D / WebGL scene descriptor for high-scale
+ * PSS/E networks (5,000+ to 70,000+ buses) without allocating SVG DOM nodes.
+ */
+export function buildPsseCanvasScene(
+  c: PsseCaseLike,
+  powerflow?: PssePowerFlowOverlay,
+  options?: PsseViewportOptions,
+): PsseCanvasScene {
+  const diag = buildPsseDiagram(c, powerflow, options);
+  const buses: PsseCanvasBusNode[] = [];
+  const edges: PsseCanvasEdge[] = [];
+  const busCenterMap = new Map<string, { x: number; y: number }>();
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const cell of diag.cells) {
+    if (cell.id.startsWith("bus_") && cell.x !== undefined && cell.y !== undefined) {
+      const w = cell.width ?? 156;
+      const h = cell.height ?? 40;
+      const cx = cell.x + w / 2;
+      const cy = cell.y + h / 2;
+      busCenterMap.set(cell.id, { x: cx, y: cy });
+
+      if (cell.x < minX) minX = cell.x;
+      if (cell.y < minY) minY = cell.y;
+      if (cell.x + w > maxX) maxX = cell.x + w;
+      if (cell.y + h > maxY) maxY = cell.y + h;
+
+      const busNum = (cell.data?.["busNumber"] as number | undefined) ?? Number(cell.id.slice(4));
+      buses.push({
+        busNumber: busNum,
+        name: (cell.data?.["busName"] as string | undefined) ?? `Bus ${busNum}`,
+        x: cx,
+        y: cy,
+        width: w,
+        height: h,
+        baseKv: (cell.data?.["baseKv"] as number | undefined) ?? 138,
+        color: (cell.data?.["voltageColor"] as string | undefined) ?? "#38bdf8",
+        vm: cell.data?.["vm"] as number | undefined,
+        va: cell.data?.["va"] as number | undefined,
+        status: (cell.data?.["voltageStatus"] as "normal" | "warning" | "violation" | undefined) ?? "normal",
+      });
+    }
+  }
+
+  for (const cell of diag.cells) {
+    if (cell.shape === "edge" && cell.source && cell.target && !cell.id.startsWith("wire_")) {
+      const srcId = cell.source.cell;
+      const tgtId = cell.target.cell;
+      const p1 = busCenterMap.get(srcId);
+      const p2 = busCenterMap.get(tgtId);
+      if (!p1 || !p2) continue;
+
+      const color = (cell.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const width = (cell.attrs?.["line"]?.["strokeWidth"] as number | undefined) ?? 2;
+      const dashed = Boolean(cell.attrs?.["line"]?.["strokeDasharray"]);
+
+      edges.push({
+        id: cell.id,
+        fromBus: (cell.data?.["fromBus"] as number | undefined) ?? 0,
+        toBus: (cell.data?.["toBus"] as number | undefined) ?? 0,
+        x1: p1.x,
+        y1: p1.y,
+        x2: p2.x,
+        y2: p2.y,
+        color,
+        width,
+        dashed,
+        loadingPct: cell.data?.["loadingPct"] as number | undefined,
+        label: cell.label,
+      });
+    }
+  }
+
+  if (!isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = 800;
+    maxY = 600;
+  }
+
+  return {
+    title: diag.title,
+    bounds: { minX, minY, maxX, maxY },
+    buses,
+    edges,
+  };
+}
+
+/**
  * Renders standalone SVG markup for a PSS/E base case with IEEE/IEC power
  * symbols, substation busbars, interlocking transformer coils, and haloed
  * telemetry badges.
  */
-export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay): string {
-  const diag = buildPsseDiagram(c, powerflow);
+export function renderPsseSvg(
+  c: PsseCaseLike,
+  powerflow?: PssePowerFlowOverlay,
+  options?: PsseViewportOptions,
+): string {
+  const diag = buildPsseDiagram(c, powerflow, options);
 
   let minX = Infinity;
   let minY = Infinity;

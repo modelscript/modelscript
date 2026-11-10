@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { detectLanguageIdFromUri } from "./controllers/simulation-controller.js";
 import { PolyglotVisualizerPanel } from "./polyglot-visualizer-panel.js";
 
 export interface TargetDomainQuickPickItem extends vscode.QuickPickItem {
@@ -232,29 +233,7 @@ export class PolyglotLiveSyncManager implements vscode.Disposable {
  * Helper to deduce language id from document extension or name.
  */
 function inferLanguageId(fileName: string): string {
-  const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
-  switch (ext) {
-    case ".mo":
-    case ".mos":
-      return "modelica";
-    case ".sysml":
-    case ".sysml2":
-      return "sysml2";
-    case ".scad":
-      return "scad";
-    case ".step":
-    case ".stp":
-    case ".p21":
-      return "step";
-    case ".owl":
-    case ".ttl":
-    case ".ofn":
-      return "owl2";
-    case ".csv":
-      return "csv";
-    default:
-      return "modelica";
-  }
+  return detectLanguageIdFromUri(fileName);
 }
 
 /**

@@ -19,6 +19,14 @@ describe("Water Utilities Engineering Integration for Ansatz Social", () => {
       assert.strictEqual(isWaterFlowCode("INP"), true);
       assert.strictEqual(isWaterFlowCode("water"), true);
       assert.strictEqual(isWaterFlowCode("waterflow"), true);
+      assert.strictEqual(isWaterFlowCode("hec-ras"), true);
+      assert.strictEqual(isWaterFlowCode("HEC-RAS"), true);
+      assert.strictEqual(isWaterFlowCode("ras"), true);
+      assert.strictEqual(isWaterFlowCode("rasgeo"), true);
+      assert.strictEqual(isWaterFlowCode("modflow"), true);
+      assert.strictEqual(isWaterFlowCode("MODFLOW"), true);
+      assert.strictEqual(isWaterFlowCode("dis"), true);
+      assert.strictEqual(isWaterFlowCode("dis6"), true);
       assert.strictEqual(isWaterFlowCode("modelica"), false);
       assert.strictEqual(isWaterFlowCode("psse"), false);
     });
@@ -338,6 +346,46 @@ OF1 500.0 100.0
       assert.ok(element, "SwmmViewer React element should be created successfully");
       assert.strictEqual(element.props.viewConfig.title, "SWMM Studio Test");
       assert.strictEqual(element.props.viewConfig.mode, "plan");
+    });
+  });
+
+  describe("5. Polyglot Utility Inspectors", () => {
+    it("instantiates OpenChannelHydraulicsInspector with HEC-RAS cross-sections", async () => {
+      const { OpenChannelHydraulicsInspector } = await import(
+        "../src/components/morsel/panels/inspectors/OpenChannelHydraulicsInspector.js"
+      );
+      assert.ok(OpenChannelHydraulicsInspector, "OpenChannelHydraulicsInspector must be exported");
+
+      const hecRasCode = `Type RM = 1000\nMann = 0.035\nInvert = 120.0\nType RM = 800\nMann = 0.035\nInvert = 117.2\nType RM = 600\nMann = 0.035\nInvert = 114.5\n`;
+      const lines = hecRasCode.split("\n");
+
+      const element = React.createElement(OpenChannelHydraulicsInspector, {
+        code: hecRasCode,
+        lines,
+        colorMode: "dark",
+      });
+      assert.ok(element, "OpenChannelHydraulicsInspector element created");
+      assert.strictEqual(element.props.colorMode, "dark");
+      assert.strictEqual(element.props.lines.length, lines.length);
+    });
+
+    it("instantiates TransitCockpitInspector with GTFS schedule", async () => {
+      const { TransitCockpitInspector } = await import(
+        "../src/components/morsel/panels/inspectors/TransitCockpitInspector.js"
+      );
+      assert.ok(TransitCockpitInspector, "TransitCockpitInspector must be exported");
+
+      const gtfsCode = `trip_id,route_id,service_id,trip_headsign\nTRIP_38R_01,Route-38R,WEEKDAY,Outbound\nTRIP_38R_02,Route-38R,WEEKDAY,Outbound\n`;
+      const lines = gtfsCode.split("\n");
+
+      const element = React.createElement(TransitCockpitInspector, {
+        code: gtfsCode,
+        lines,
+        colorMode: "light",
+      });
+      assert.ok(element, "TransitCockpitInspector element created");
+      assert.strictEqual(element.props.colorMode, "light");
+      assert.strictEqual(element.props.lines.length, lines.length);
     });
   });
 });

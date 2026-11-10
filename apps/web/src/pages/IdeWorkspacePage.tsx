@@ -539,7 +539,8 @@ export const IdeWorkspacePage: React.FC = () => {
   useEffect(() => {
     try {
       if (token) {
-        document.cookie = `modelscript_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
+        const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+        document.cookie = `modelscript_token=${encodeURIComponent(token)}; path=/; SameSite=Lax${isHttps ? "; Secure" : ""}`;
       }
     } catch {
       // ignore
@@ -549,7 +550,8 @@ export const IdeWorkspacePage: React.FC = () => {
   const broadcastSyncState = useCallback(() => {
     try {
       if (token) {
-        document.cookie = `modelscript_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
+        const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+        document.cookie = `modelscript_token=${encodeURIComponent(token)}; path=/; SameSite=Lax${isHttps ? "; Secure" : ""}`;
       }
       const bridge = new BroadcastChannel("modelscript:host-bridge");
       if (token && user) {
@@ -705,9 +707,40 @@ export const IdeWorkspacePage: React.FC = () => {
   }, [broadcastSyncState, navigate, openComposeWithEnrichedPayload]);
 
   const handleLaunchVsCodeUrl = (url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
-    setTimeout(broadcastSyncState, 700);
-    setTimeout(broadcastSyncState, 1800);
+    const newWin = window.open(url, "_blank");
+    const syncToWin = () => {
+      if (newWin && !newWin.closed) {
+        try {
+          const targetOrigin = new URL(url, window.location.origin).origin;
+          if (token && user) {
+            newWin.postMessage({
+              type: "MODELSCRIPT_AUTH_SYNC",
+              token,
+              user: {
+                id: user.id,
+                username: user.username,
+                displayName: user.display_name,
+                email: user.email,
+              },
+            }, targetOrigin);
+          }
+          if (artifactMetadata) {
+            newWin.postMessage({
+              type: "MODELSCRIPT_MOUNT_ARTIFACT",
+              artifactId: artifactMetadata.id,
+              title: artifactMetadata.title,
+              viewType: artifactMetadata.viewType,
+              viewConfig: artifactMetadata.viewConfig,
+            }, targetOrigin);
+          }
+        } catch {
+          // ignore cross-origin access limitations
+        }
+      }
+      broadcastSyncState();
+    };
+    setTimeout(syncToWin, 700);
+    setTimeout(syncToWin, 1800);
   };
 
   const handleLaunchHandoffInVsCode = () => {

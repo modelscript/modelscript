@@ -33,7 +33,7 @@ const stats = computed<StatItem[]>(() => [
     link: "/languages/overview",
     actionText: "Catalog",
     accent: "emerald",
-    tags: [".mo", ".sysml", ".step", ".cir", "+64"],
+    tags: [".mo", ".sysml", ".step", ".cir", `+${LANGUAGE_COUNT - 4}`],
   },
   {
     value: totalLintRules.toLocaleString("en-US"),

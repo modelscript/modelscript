@@ -42,7 +42,7 @@ import {
   type FmuInstanceMetadata,
   type FmuSubsystem,
 } from "@modelscript/runtime/wasm_fmu_subsystem.js";
-import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat, type LUFactorizationFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
 import { buildAdJacobian } from "@modelscript/runtime/wasm_tape.js";
@@ -107,6 +107,12 @@ interface TornExecutionPlan {
     solvedVarNameId: number;
     isolatedExprId: number;
   }>;
+  compiledResiduals?: ((env: Float64Array, xTrial: Float64Array, R_out: Float64Array) => number) | undefined;
+  cachedFact?: LUFactorizationFlat | undefined;
+  cachedFactJ?: Float64Array | undefined;
+  cachedJ?: Float64Array | undefined;
+  cachedPiv?: Int32Array | undefined;
+  cachedScale?: Float64Array | undefined;
 }
 
 type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }> & {
@@ -730,7 +736,7 @@ export class ArenaSimulator {
       if (block.eqIdxs.length === 1 && block.vars.length === 1) {
         const eqIdx = block.eqIdxs[0] ?? -1;
         const varIdx = block.vars[0] ?? -1;
-        if (eqIdx !== -1 && varIdx !== -1) {
+        if (eqIdx !== -1 && varIdx !== -1 && !this.stateVars.has(varIdx)) {
           singleBlocks.push({ eqIdx, varIdx, blockIdx: i });
         }
       }
@@ -787,6 +793,8 @@ export class ArenaSimulator {
         const varIdx = block.vars[0] ?? -1;
 
         if (eqIdx === -1 || varIdx === -1) continue;
+        // Continuous state variables are stepped by the ODE integrator, not solved as algebraic assignments
+        if (this.stateVars.has(varIdx)) continue;
 
         let isolatedExprId = isolatedMap.get(i) ?? -1;
         if (isolatedExprId === -1) {
@@ -800,11 +808,13 @@ export class ArenaSimulator {
           this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
         }
       } else {
-        const optimized = tryOptimizeLoopWithGroebner(this.arena, block.eqIdxs, block.vars);
+        const activeVars = block.vars.filter((v) => !this.stateVars.has(v));
+        if (activeVars.length === 0) continue;
+        const optimized = tryOptimizeLoopWithGroebner(this.arena, block.eqIdxs, activeVars);
         if (optimized) {
           this.executionBlocks.push(...optimized);
         } else {
-          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars, tearing: block.tearing });
+          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: activeVars, tearing: block.tearing });
         }
       }
     }
@@ -903,7 +913,7 @@ export class ArenaSimulator {
           }
         }
         const varNameId = this.arena.getVarNameId(i);
-        const hasEq = existingBindingEqs.get(varNameId)?.has(exprId) ?? false;
+        const hasEq = existingBindingEqs.has(varNameId);
         if (!hasEq) {
           const lhsExprId = this.arena.addExpression(ExprKind.Name, varNameId);
           this.arena.addEquation(EqKind.Simple, lhsExprId, exprId);
@@ -927,9 +937,21 @@ export class ArenaSimulator {
       let val: number | null = null;
       if (typeof exprId === "number" && exprId !== -1) {
         const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
-        const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
-        if (typeof numVal === "number" && isFinite(numVal)) {
-          val = numVal;
+        if (Array.isArray(rawVal)) {
+          for (let idx = 0; idx < rawVal.length; idx++) {
+            const elem = rawVal[idx];
+            const numElem = typeof elem === "boolean" ? (elem ? 1 : 0) : elem;
+            if (typeof numElem === "number" && isFinite(numElem)) {
+              const elemKey = `${name}[${idx + 1}]`;
+              this.arena.interner.intern(elemKey);
+              this.parameters.set(elemKey, numElem);
+            }
+          }
+        } else {
+          const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
+          if (typeof numVal === "number" && isFinite(numVal)) {
+            val = numVal;
+          }
         }
       }
       if (val === null || typeof val !== "number" || !isFinite(val)) {
@@ -940,7 +962,7 @@ export class ArenaSimulator {
     }
 
     // Multi-pass resolution to ensure dependent parameter expressions and fixed=false InitialSimple parameter equations converge
-    for (let pass = 0; pass < 5; pass++) {
+    for (let pass = 0; pass < 20; pass++) {
       let changed = false;
       for (const i of this.parameterVars) {
         if (this.arena.isVarRemoved(i)) continue;
@@ -950,12 +972,27 @@ export class ArenaSimulator {
         const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
         if (typeof exprId === "number" && exprId !== -1) {
           const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
-          const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
-          if (typeof numVal === "number" && isFinite(numVal)) {
-            if (this.parameters.get(name) !== numVal) {
-              this.parameters.set(name, numVal);
-              this.arena.setVarStartValue(i, numVal);
-              changed = true;
+          if (Array.isArray(rawVal)) {
+            for (let idx = 0; idx < rawVal.length; idx++) {
+              const elem = rawVal[idx];
+              const numElem = typeof elem === "boolean" ? (elem ? 1 : 0) : elem;
+              if (typeof numElem === "number" && isFinite(numElem)) {
+                const elemKey = `${name}[${idx + 1}]`;
+                this.arena.interner.intern(elemKey);
+                if (this.parameters.get(elemKey) !== numElem) {
+                  this.parameters.set(elemKey, numElem);
+                  changed = true;
+                }
+              }
+            }
+          } else {
+            const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
+            if (typeof numVal === "number" && isFinite(numVal)) {
+              if (this.parameters.get(name) !== numVal) {
+                this.parameters.set(name, numVal);
+                this.arena.setVarStartValue(i, numVal);
+                changed = true;
+              }
             }
           }
         }
@@ -985,6 +1022,19 @@ export class ArenaSimulator {
         }
       }
       if (!changed) break;
+    }
+
+    // Propagate resolved parameter values into variable `start` attributes (e.g. `Real e1q(start = e1q0)`)
+    for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
+      if (this.arena.isVarRemoved(vIdx) || this.parameterVars.has(vIdx)) continue;
+      const startAttrId = this.arena.getVarAttr(vIdx, "start");
+      if (typeof startAttrId === "number" && startAttrId >= 0) {
+        const rawStart = evaluateArenaExpression(this.arena, startAttrId, this.parameters);
+        const numStart = typeof rawStart === "boolean" ? (rawStart ? 1 : 0) : rawStart;
+        if (typeof numStart === "number" && isFinite(numStart)) {
+          this.arena.setVarStartValue(vIdx, numStart);
+        }
+      }
     }
   }
 
@@ -2512,6 +2562,132 @@ export class ArenaSimulator {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
+   * Structural equality comparison for DAE arena expressions.
+   */
+  private areArenaExprsEqual(id1: number, id2: number): boolean {
+    if (id1 === id2) return true;
+    if (id1 < 0 || id2 < 0) return false;
+    const k1 = this.arena.getExprKind(id1);
+    const k2 = this.arena.getExprKind(id2);
+    if (k1 !== k2) return false;
+    if (this.arena.getExprData1(id1) !== this.arena.getExprData1(id2)) return false;
+    switch (k1) {
+      case ExprKind.RealLiteral:
+      case ExprKind.IntLiteral:
+      case ExprKind.BoolLiteral:
+      case ExprKind.StringLiteral:
+      case ExprKind.Name:
+        return true;
+      case ExprKind.Unary:
+      case ExprKind.Negate:
+        return this.areArenaExprsEqual(this.arena.getExprLeft(id1), this.arena.getExprLeft(id2));
+      case ExprKind.Binary:
+      case ExprKind.IfElse:
+        return (
+          this.areArenaExprsEqual(this.arena.getExprLeft(id1), this.arena.getExprLeft(id2)) &&
+          this.areArenaExprsEqual(this.arena.getExprRight(id1), this.arena.getExprRight(id2))
+        );
+      case ExprKind.Call: {
+        const left1 = this.arena.getExprLeft(id1);
+        const left2 = this.arena.getExprLeft(id2);
+        const right1 = this.arena.getExprRight(id1);
+        const right2 = this.arena.getExprRight(id2);
+        if (right1 !== right2) return false;
+        for (let a = 0; a < right1; a++) {
+          const arg1 = a === 0 ? left1 : this.arena.getExprLeft(id1 + a);
+          const arg2 = a === 0 ? left2 : this.arena.getExprLeft(id2 + a);
+          if (!this.areArenaExprsEqual(arg1, arg2)) return false;
+        }
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Checks whether an expression references time or any continuous/discrete state/algebraic variable.
+   * If false, the expression is composed purely of constants and parameters and cannot cross zero.
+   */
+  private exprHasContinuousVars(exprId: number): boolean {
+    if (exprId < 0) return false;
+    const kind = this.arena.getExprKind(exprId);
+    if (kind === ExprKind.Name) {
+      const name = this.arena.interner.resolve(this.arena.getExprData1(exprId));
+      if (name === "time") return true;
+      const vIdx = this.arena.getVarIdxByName(name);
+      if (vIdx >= 0) {
+        const v = this.arena.getVarVariability(vIdx);
+        if (v !== Variability.Parameter && v !== Variability.Constant) return true;
+      }
+      return false;
+    }
+    if (kind === ExprKind.Binary) {
+      return (
+        this.exprHasContinuousVars(this.arena.getExprLeft(exprId)) ||
+        this.exprHasContinuousVars(this.arena.getExprRight(exprId))
+      );
+    }
+    if (kind === ExprKind.Negate || kind === ExprKind.Unary) {
+      return this.exprHasContinuousVars(this.arena.getExprLeft(exprId));
+    }
+    if (kind === ExprKind.IfElse) {
+      return (
+        this.exprHasContinuousVars(this.arena.getExprLeft(exprId)) ||
+        this.exprHasContinuousVars(this.arena.getExprRight(exprId))
+      );
+    }
+    if (kind === ExprKind.Call) {
+      const argc = this.arena.getExprRight(exprId);
+      const firstArg = this.arena.getExprLeft(exprId);
+      for (let a = 0; a < argc; a++) {
+        const argId = a === 0 ? firstArg : this.arena.getExprLeft(exprId + a);
+        if (this.exprHasContinuousVars(argId)) return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  /**
+   * Checks whether an event indicator is a time event `time - T_const` with a constant threshold
+   * that lies strictly outside the simulation interval [startTime, stopTime].
+   */
+  private isInactiveTimeEvent(exprId: number): boolean {
+    const kind = this.arena.getExprKind(exprId);
+    if (kind !== ExprKind.Binary) return false;
+    const op = this.arena.getExprData1(exprId);
+    if (op !== BinOp.Sub) return false;
+    const leftId = this.arena.getExprLeft(exprId);
+    const rightId = this.arena.getExprRight(exprId);
+    let timeSide = 0;
+    if (
+      this.arena.getExprKind(leftId) === ExprKind.Name &&
+      this.arena.interner.resolve(this.arena.getExprData1(leftId)) === "time"
+    ) {
+      timeSide = 1;
+    } else if (
+      this.arena.getExprKind(rightId) === ExprKind.Name &&
+      this.arena.interner.resolve(this.arena.getExprData1(rightId)) === "time"
+    ) {
+      timeSide = 2;
+    }
+    if (timeSide === 0) return false;
+    const constSideId = timeSide === 1 ? rightId : leftId;
+    if (this.exprHasContinuousVars(constSideId)) return false;
+
+    const constVal = evaluateArenaExpression(this.arena, constSideId, this.parameters);
+    if (typeof constVal !== "number" || !isFinite(constVal)) return false;
+
+    const startTime = this.arena.experiment.startTime ?? 0;
+    const stopTime = this.arena.experiment.stopTime ?? 10;
+    if (constVal < startTime - 1e-6 || constVal > stopTime + 1e-6) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Collects all continuous zero-crossing event indicators from `when` conditions,
    * `if` equations, and `if-then-else` expressions (excluding sub-expressions wrapped in `noEvent()`).
    */
@@ -2521,7 +2697,11 @@ export class ArenaSimulator {
       const clause = this.whenClauses[cIdx]!;
       const indicators = this.collectEventIndicators(clause.conditionExprId);
       for (const ind of indicators) {
-        let existing = this.eventIndicators.find((e) => e.exprId === ind.exprId && e.direction === ind.direction);
+        if (!this.exprHasContinuousVars(ind.exprId)) continue;
+        if (this.isInactiveTimeEvent(ind.exprId)) continue;
+        let existing = this.eventIndicators.find(
+          (e) => this.areArenaExprsEqual(e.exprId, ind.exprId) && e.direction === ind.direction,
+        );
         if (!existing) {
           existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction, clauseIndices: [] };
           this.eventIndicators.push(existing);
@@ -2536,7 +2716,11 @@ export class ArenaSimulator {
     const addIfIndicator = (condId: number): void => {
       if (condId < 0) return;
       for (const ind of this.collectEventIndicators(condId)) {
-        let existing = this.eventIndicators.find((e) => e.exprId === ind.exprId && e.direction === ind.direction);
+        if (!this.exprHasContinuousVars(ind.exprId)) continue;
+        if (this.isInactiveTimeEvent(ind.exprId)) continue;
+        let existing = this.eventIndicators.find(
+          (e) => this.areArenaExprsEqual(e.exprId, ind.exprId) && e.direction === ind.direction,
+        );
         if (!existing) {
           existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction, clauseIndices: [] };
           this.eventIndicators.push(existing);
@@ -2579,6 +2763,7 @@ export class ArenaSimulator {
     }
 
     for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.isEqRemoved(eqIdx) || this.arena.isEqInitial(eqIdx)) continue;
       const eqKind = this.arena.getEqKind(eqIdx);
       if (eqKind === EqKind.Simple) {
         const lhsId = this.arena.getEqLhs(eqIdx);
@@ -2893,9 +3078,281 @@ export class ArenaSimulator {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
+   * Recursively lowers an arena expression (`exprId`) into a JavaScript expression string reading `env[nameId]`.
+   */
+  private exprToJs(arena: DAEBuilder, exprId: number): string {
+    if (exprId < 0) return "0";
+    const kind = arena.getExprKind(exprId);
+    switch (kind) {
+      case ExprKind.RealLiteral:
+        return arena.getExprRealValue(exprId).toString();
+      case ExprKind.IntLiteral:
+      case ExprKind.BoolLiteral:
+      case ExprKind.EnumLiteral:
+        return arena.getExprData1(exprId).toString();
+      case ExprKind.Name: {
+        const nameId = arena.getExprData1(exprId);
+        return `env[${nameId}]`;
+      }
+      case ExprKind.Der: {
+        const innerExprId = arena.getExprData1(exprId);
+        if (arena.getExprKind(innerExprId) === ExprKind.Name) {
+          const innerNameId = arena.getExprData1(innerExprId);
+          const innerName = arena.interner.resolve(innerNameId);
+          if (innerName) {
+            const derId = arena.interner.intern(`der(${innerName})`);
+            return `env[${derId}]`;
+          }
+        }
+        return `helpers.evalExpr(${exprId}, env)`;
+      }
+      case ExprKind.Negate: {
+        return `(-(${this.exprToJs(arena, arena.getExprLeft(exprId))}))`;
+      }
+      case ExprKind.Unary: {
+        const op = arena.getExprData1(exprId);
+        const operand = this.exprToJs(arena, arena.getExprLeft(exprId));
+        if (op === UnaryOp.Negate) return `(-(${operand}))`;
+        if (op === UnaryOp.Not) return `((${operand}) === 0 ? 1 : 0)`;
+        return `helpers.evalExpr(${exprId}, env)`;
+      }
+      case ExprKind.Binary: {
+        const op = arena.getExprData1(exprId);
+        const left = this.exprToJs(arena, arena.getExprLeft(exprId));
+        const right = this.exprToJs(arena, arena.getExprRight(exprId));
+        switch (op) {
+          case BinOp.Add:
+          case BinOp.ElemAdd:
+            return `((${left}) + (${right}))`;
+          case BinOp.Sub:
+          case BinOp.ElemSub:
+            return `((${left}) - (${right}))`;
+          case BinOp.Mul:
+          case BinOp.ElemMul:
+            return `((${left}) * (${right}))`;
+          case BinOp.Div:
+          case BinOp.ElemDiv:
+            return `((${left}) / (${right}))`;
+          case BinOp.Pow:
+          case BinOp.ElemPow:
+            return `Math.pow(${left}, ${right})`;
+          case BinOp.And:
+            return `(((${left}) !== 0 && (${right}) !== 0) ? 1 : 0)`;
+          case BinOp.Or:
+            return `(((${left}) !== 0 || (${right}) !== 0) ? 1 : 0)`;
+          case BinOp.Lt:
+            return `((${left}) < (${right}) ? 1 : 0)`;
+          case BinOp.Lte:
+            return `((${left}) <= (${right}) ? 1 : 0)`;
+          case BinOp.Gt:
+            return `((${left}) > (${right}) ? 1 : 0)`;
+          case BinOp.Gte:
+            return `((${left}) >= (${right}) ? 1 : 0)`;
+          case BinOp.Eq:
+            return `((${left}) === (${right}) ? 1 : 0)`;
+          case BinOp.Neq:
+            return `((${left}) !== (${right}) ? 1 : 0)`;
+          default:
+            return `helpers.evalExpr(${exprId}, env)`;
+        }
+      }
+      case ExprKind.IfElse: {
+        const cond = this.exprToJs(arena, arena.getExprData1(exprId));
+        const thenVal = this.exprToJs(arena, arena.getExprLeft(exprId));
+        const elseVal = this.exprToJs(arena, arena.getExprRight(exprId));
+        return `((${cond}) !== 0 ? (${thenVal}) : (${elseVal}))`;
+      }
+      case ExprKind.Call: {
+        const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+        const cleanFn = fnName.replace(/^(Modelica\.(Math|ComplexMath)\.|Math\.)/, "");
+        const argCount = arena.getExprRight(exprId);
+        const firstArg = arena.getExprLeft(exprId);
+
+        // Event-generating or stateful operators delegate to runtime evaluator
+        if (
+          cleanFn === "edge" ||
+          cleanFn === "change" ||
+          cleanFn === "sample" ||
+          cleanFn === "initial" ||
+          cleanFn === "terminal" ||
+          cleanFn === "pre" ||
+          cleanFn === "delay"
+        ) {
+          return `helpers.evalExpr(${exprId}, env)`;
+        }
+
+        if (
+          (cleanFn === "activeState" ||
+            cleanFn === "ticksInState" ||
+            cleanFn === "timeInState" ||
+            cleanFn === "previousState") &&
+          argCount >= 1 &&
+          arena.getExprKind(firstArg) === ExprKind.Name
+        ) {
+          const argName = arena.interner.resolve(arena.getExprData1(firstArg));
+          if (argName) {
+            const intrinsicId = arena.interner.intern(`$${cleanFn}(${argName})`);
+            return `env[${intrinsicId}]`;
+          }
+        }
+
+        if (cleanFn === "der" && argCount === 1 && arena.getExprKind(firstArg) === ExprKind.Name) {
+          const innerName = arena.interner.resolve(arena.getExprData1(firstArg));
+          if (innerName) {
+            const derId = arena.interner.intern(`der(${innerName})`);
+            return `env[${derId}]`;
+          }
+        }
+
+        if (cleanFn === "smooth") {
+          if (argCount > 1) {
+            return `(${this.exprToJs(arena, arena.getExprLeft(exprId + 1))})`;
+          }
+          return argCount > 0 ? `(${this.exprToJs(arena, firstArg)})` : "0";
+        }
+
+        const arg = this.exprToJs(arena, firstArg);
+
+        if (cleanFn === "sin") return `Math.sin(${arg})`;
+        if (cleanFn === "cos") return `Math.cos(${arg})`;
+        if (cleanFn === "tan") return `Math.tan(${arg})`;
+        if (cleanFn === "asin") return `Math.asin(${arg})`;
+        if (cleanFn === "acos") return `Math.acos(${arg})`;
+        if (cleanFn === "atan") return `Math.atan(${arg})`;
+        if (cleanFn === "sinh") return `Math.sinh(${arg})`;
+        if (cleanFn === "cosh") return `Math.cosh(${arg})`;
+        if (cleanFn === "tanh") return `Math.tanh(${arg})`;
+        if (cleanFn === "exp") return `Math.exp(${arg})`;
+        if (cleanFn === "log") return `Math.log(${arg})`;
+        if (cleanFn === "log10") return `Math.log10(${arg})`;
+        if (cleanFn === "sqrt") return `Math.sqrt(${arg})`;
+        if (cleanFn === "abs") return `Math.abs(${arg})`;
+        if (cleanFn === "sign") return `Math.sign(${arg})`;
+        if (cleanFn === "ceil") return `Math.ceil(${arg})`;
+        if (cleanFn === "floor" || cleanFn === "integer") return `Math.floor(${arg})`;
+        if (
+          cleanFn === "noEvent" ||
+          cleanFn === "homotopy" ||
+          cleanFn === "/*Real*/" ||
+          cleanFn === "/*Integer*/" ||
+          cleanFn === "/*Boolean*/"
+        )
+          return `(${arg})`;
+
+        if (argCount === 2) {
+          const arg1 = this.exprToJs(arena, arena.getExprLeft(exprId + 1));
+          if (cleanFn === "atan2") return `Math.atan2(${arg}, ${arg1})`;
+          if (cleanFn === "max") return `Math.max(${arg}, ${arg1})`;
+          if (cleanFn === "min") return `Math.min(${arg}, ${arg1})`;
+        }
+
+        if (fnName.includes("getTable1DValue") || fnName.includes("CombiTable1D_getValue")) {
+          const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+          const icolJs = this.exprToJs(arena, arena.getExprLeft(exprId + 1));
+          const uJs = this.exprToJs(arena, arena.getExprLeft(exprId + 2));
+          return `helpers.getTable1DValue(${tableVarNameId}, ${icolJs}, ${uJs})`;
+        }
+
+        if (fnName.includes("getTimeTableValue") || fnName.includes("CombiTimeTable_getValue")) {
+          const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+          const icolJs = this.exprToJs(arena, arena.getExprLeft(exprId + 1));
+          const timeJs = this.exprToJs(arena, arena.getExprLeft(exprId + 2));
+          return `helpers.getTimeTableValue(${tableVarNameId}, ${icolJs}, ${timeJs})`;
+        }
+
+        if (fnName.includes("getTimeTableTmin")) {
+          const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+          return `helpers.getTimeTableTmin(${tableVarNameId})`;
+        }
+
+        if (fnName.includes("getTimeTableTmax")) {
+          const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+          return `helpers.getTimeTableTmax(${tableVarNameId})`;
+        }
+
+        if (fnName.includes("getNextTimeEvent")) {
+          const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+          const timeJs = this.exprToJs(arena, arena.getExprLeft(exprId + 1));
+          return `helpers.getNextTimeEvent(${tableVarNameId}, ${timeJs})`;
+        }
+
+        return `helpers.evalExpr(${exprId}, env)`;
+      }
+      default:
+        return `helpers.evalExpr(${exprId}, env)`;
+    }
+  }
+
+  /**
+   * JIT-compiles a torn execution plan into a specialized closure evaluating
+   * the topological causal chain and residual equations at native JS machine speed.
+   */
+  private compileTornPlan(plan: TornExecutionPlan): void {
+    const k = plan.k;
+    const lines: string[] = [];
+    // 1. Assign trial variables from xTrial to env
+    for (let i = 0; i < k; i++) {
+      lines.push(`env[${plan.tearingVarNameIds[i]}] = xTrial[${i}];`);
+    }
+    // 2. Evaluate forward causal chain assignments in topological order
+    for (let c = 0; c < plan.causalChain.length; c++) {
+      const step = plan.causalChain[c]!;
+      const exprJs = this.exprToJs(this.arena, step.isolatedExprId);
+      lines.push(`{ const v = ${exprJs}; env[${step.solvedVarNameId}] = Number.isFinite(v) ? v : 0; }`);
+    }
+    // 3. Evaluate residual equations
+    lines.push("let maxR = 0;");
+    for (let j = 0; j < k; j++) {
+      const rJs = this.exprToJs(this.arena, plan.residualExprIds[j]!);
+      lines.push(
+        `{ const r = ${rJs}; const ar = Math.abs(r); R_out[${j}] = Number.isFinite(r) ? r : 1e10; if (ar > maxR) maxR = ar; }`,
+      );
+    }
+    lines.push("return maxR;");
+
+    try {
+      const helpers = {
+        getTimeTableValue: (tableIdStrId: number, icol: number, timeIn: number) => {
+          const cached = getOrCreateCachedTable(this.arena, tableIdStrId);
+          return evalTimeTableValue(cached, icol, timeIn);
+        },
+        getTable1DValue: (tableIdStrId: number, icol: number, uIn: number) => {
+          const cached = getOrCreateCachedTable(this.arena, tableIdStrId);
+          return evalTable1DValue(cached, icol, uIn);
+        },
+        getTimeTableTmin: (tableIdStrId: number) => {
+          const cached = getOrCreateCachedTable(this.arena, tableIdStrId);
+          return evalTimeTableTmin(cached);
+        },
+        getTimeTableTmax: (tableIdStrId: number) => {
+          const cached = getOrCreateCachedTable(this.arena, tableIdStrId);
+          return evalTimeTableTmax(cached);
+        },
+        getNextTimeEvent: (_tableIdStrId: number, _timeIn: number) => {
+          return 1e100;
+        },
+        evalExpr: (exprId: number, env: Float64Array) => {
+          return evaluateArenaRuntime(this.arena, exprId, env, this.preValuesByStringId);
+        },
+      };
+      const rawResFn = createDynamicFunction("env", "xTrial", "R_out", "helpers", lines.join("\n")) as (
+        env: Float64Array,
+        xTrial: Float64Array,
+        R_out: Float64Array,
+        helpers: any,
+      ) => number;
+      plan.compiledResiduals = (env: Float64Array, xTrial: Float64Array, R_out: Float64Array) =>
+        rawResFn(env, xTrial, R_out, helpers);
+    } catch {
+      // Fall back to interpretive evaluation if dynamic compilation fails
+    }
+  }
+
+  /**
    * Attempts to solve an algebraic loop block using Kron/Cellier tearing.
    * Partitions the block into $k$ tearing variables iterated by Newton-Raphson,
    * an explicit forward assignment causal chain ($m-k$ variables), and $k$ residuals.
+   * Employs compiled forward chain execution, Jacobian reuse (Chord Newton), and flat LU factorization.
    * Returns true if the torn solve succeeded, or false to fall back to untorn Newton.
    */
   private trySolveTornBlock(sysBlock: SystemExecutionBlock, valuesByStringId: Float64Array): boolean {
@@ -2943,13 +3400,15 @@ export class ArenaSimulator {
         const rhs = this.arena.getEqRhs(eqIdx);
         resExprIds[i] = this.arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
       }
-      sysBlock._tornPlan = {
+      const plan: TornExecutionPlan = {
         k,
         tearingVarIndices: tearVarIndices,
         tearingVarNameIds: tearVarNameIds,
         residualExprIds: resExprIds,
         causalChain: causalPlan,
       };
+      this.compileTornPlan(plan);
+      sysBlock._tornPlan = plan;
     }
 
     if (sysBlock._tornPlan === null) return false;
@@ -2963,113 +3422,203 @@ export class ArenaSimulator {
       xTear[i] = Number.isFinite(v) ? v : 0;
     }
 
-    const evalResiduals = (xTrial: Float64Array, R_out: Float64Array): number => {
-      for (let i = 0; i < k; i++) {
-        valuesByStringId[plan.tearingVarNameIds[i]!] = xTrial[i]!;
-      }
-      for (let c = 0; c < plan.causalChain.length; c++) {
-        const step = plan.causalChain[c]!;
-        const val = evaluateArenaRuntime(this.arena, step.isolatedExprId, valuesByStringId, this.preValuesByStringId);
-        valuesByStringId[step.solvedVarNameId] = Number.isFinite(val) ? val : 0;
-      }
-      let maxR = 0;
-      for (let j = 0; j < k; j++) {
-        const r = evaluateArenaRuntime(
-          this.arena,
-          plan.residualExprIds[j]!,
-          valuesByStringId,
-          this.preValuesByStringId,
-        );
-        const ar = Math.abs(r);
-        R_out[j] = Number.isFinite(r) ? r : 1e10;
-        if (ar > maxR) maxR = ar;
-      }
-      return maxR;
-    };
+    const compiled = plan.compiledResiduals;
+    const evalResiduals = compiled
+      ? (xTrial: Float64Array, R_out: Float64Array): number => {
+          return compiled(valuesByStringId, xTrial, R_out);
+        }
+      : (xTrial: Float64Array, R_out: Float64Array): number => {
+          for (let i = 0; i < k; i++) {
+            valuesByStringId[plan.tearingVarNameIds[i]!] = xTrial[i]!;
+          }
+          for (let c = 0; c < plan.causalChain.length; c++) {
+            const step = plan.causalChain[c]!;
+            const val = evaluateArenaRuntime(
+              this.arena,
+              step.isolatedExprId,
+              valuesByStringId,
+              this.preValuesByStringId,
+            );
+            valuesByStringId[step.solvedVarNameId] = Number.isFinite(val) ? val : 0;
+          }
+          let maxR = 0;
+          for (let j = 0; j < k; j++) {
+            const r = evaluateArenaRuntime(
+              this.arena,
+              plan.residualExprIds[j]!,
+              valuesByStringId,
+              this.preValuesByStringId,
+            );
+            const ar = Math.abs(r);
+            R_out[j] = Number.isFinite(r) ? r : 1e10;
+            if (ar > maxR) maxR = ar;
+          }
+          return maxR;
+        };
 
     const R = new Float64Array(k);
     const R_pert = new Float64Array(k);
-    const J = new Float64Array(k * k);
     const deltaX = new Float64Array(k);
+    const xTrial = new Float64Array(k);
 
+    const tearTol = k > 8 ? 1e-4 : 1e-6;
     let currentMaxR = evalResiduals(xTear, R);
-    if (currentMaxR < 1e-10) {
+    if (currentMaxR < tearTol) {
       for (let i = 0; i < k; i++) {
         this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
       }
       return true;
     }
 
-    const piv = new Int32Array(k);
-    const scale = new Float64Array(k);
+    let bestMaxR = currentMaxR;
+    const bestXTear = new Float64Array(xTear);
 
-    for (let iter = 0; iter < 30; iter++) {
-      for (let j = 0; j < k; j++) {
-        const origXj = xTear[j]!;
-        const eps = 1e-7 * Math.max(1.0, Math.abs(origXj));
-        xTear[j] = origXj + eps;
-        evalResiduals(xTear, R_pert);
-        xTear[j] = origXj;
-        const invEps = 1.0 / eps;
+    if (!plan.cachedPiv) plan.cachedPiv = new Int32Array(k);
+    if (!plan.cachedScale) plan.cachedScale = new Float64Array(k);
+    if (!plan.cachedJ) plan.cachedJ = new Float64Array(k * k);
+    if (!plan.cachedFactJ) plan.cachedFactJ = new Float64Array(k * k);
+
+    const piv = plan.cachedPiv;
+    const scale = plan.cachedScale;
+    const J = plan.cachedJ;
+    const factJ = plan.cachedFactJ;
+
+    let haveFact = plan.cachedFact !== undefined;
+    let chordSteps = 0;
+
+    for (let iter = 0; iter < 40; iter++) {
+      let solvedStep = false;
+
+      // ── Try Chord Step if we have a valid factored Jacobian near the root ──
+      if (haveFact && chordSteps < 4 && currentMaxR < 1e-2) {
+        for (let i = 0; i < k; i++) deltaX[i] = -R[i]!;
+        luSolveFlat(plan.cachedFact!, deltaX);
+        let stepFinite = true;
         for (let i = 0; i < k; i++) {
-          J[i * k + j] = (R_pert[i]! - R[i]!) * invEps;
+          if (!Number.isFinite(deltaX[i]!)) {
+            stepFinite = false;
+            break;
+          }
         }
-      }
-
-      if (k === 1) {
-        const diag = J[0]!;
-        if (Math.abs(diag) < 1e-14) break;
-        deltaX[0] = -R[0]! / diag;
-      } else if (k === 2) {
-        const j00 = J[0]!,
-          j01 = J[1]!,
-          j10 = J[2]!,
-          j11 = J[3]!;
-        const det = j00 * j11 - j01 * j10;
-        if (Math.abs(det) < 1e-14) break;
-        const invDet = 1.0 / det;
-        deltaX[0] = (-R[0]! * j11 + R[1]! * j01) * invDet;
-        deltaX[1] = (-R[1]! * j00 + R[0]! * j10) * invDet;
-      } else {
-        try {
-          const fact = luFactorFlat(J, k, piv, scale);
-          for (let i = 0; i < k; i++) deltaX[i] = -R[i]!;
-          luSolveFlat(fact, deltaX);
-          let stepFinite = true;
-          for (let i = 0; i < k; i++) {
-            if (!Number.isFinite(deltaX[i]!)) {
-              stepFinite = false;
+        if (stepFinite) {
+          for (const alpha of [1.0, 0.5, 0.25]) {
+            for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + alpha * deltaX[i]!;
+            const trialR = evalResiduals(xTrial, R_pert);
+            if (trialR < currentMaxR * 0.9 || trialR < tearTol) {
+              for (let i = 0; i < k; i++) {
+                xTear[i] = xTrial[i]!;
+                R[i] = R_pert[i]!;
+              }
+              currentMaxR = trialR;
+              if (currentMaxR < bestMaxR) {
+                bestMaxR = currentMaxR;
+                bestXTear.set(xTear);
+              }
+              solvedStep = true;
+              chordSteps++;
               break;
             }
           }
-          if (!stepFinite) break;
-        } catch {
-          break;
         }
       }
 
-      let stepAccepted = false;
-      const xTrial = new Float64Array(k);
-      for (const alpha of [1.0, 0.5, 0.25, 0.125]) {
-        for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + alpha * deltaX[i]!;
-        const trialR = evalResiduals(xTrial, R_pert);
-        if (trialR < currentMaxR) {
-          for (let i = 0; i < k; i++) {
-            xTear[i] = xTrial[i]!;
-            R[i] = R_pert[i]!;
+      // If Chord step did not succeed, recompute Jacobian & factorize
+      if (!solvedStep) {
+        chordSteps = 0;
+        if (k === 1) {
+          const origX = xTear[0]!;
+          const eps = 1e-7 * Math.max(1.0, Math.abs(origX));
+          xTear[0] = origX + eps;
+          evalResiduals(xTear, R_pert);
+          xTear[0] = origX;
+          const diag = (R_pert[0]! - R[0]!) / eps;
+          if (Math.abs(diag) < 1e-14) break;
+          deltaX[0] = -R[0]! / diag;
+        } else if (k === 2) {
+          for (let j = 0; j < 2; j++) {
+            const origXj = xTear[j]!;
+            const eps = 1e-7 * Math.max(1.0, Math.abs(origXj));
+            xTear[j] = origXj + eps;
+            evalResiduals(xTear, R_pert);
+            xTear[j] = origXj;
+            const invEps = 1.0 / eps;
+            J[0 * 2 + j] = (R_pert[0]! - R[0]!) * invEps;
+            J[1 * 2 + j] = (R_pert[1]! - R[1]!) * invEps;
           }
-          currentMaxR = trialR;
-          stepAccepted = true;
-          break;
+          const j00 = J[0]!,
+            j01 = J[1]!,
+            j10 = J[2]!,
+            j11 = J[3]!;
+          const det = j00 * j11 - j01 * j10;
+          if (Math.abs(det) < 1e-14) break;
+          const invDet = 1.0 / det;
+          deltaX[0] = (-R[0]! * j11 + R[1]! * j01) * invDet;
+          deltaX[1] = (-R[1]! * j00 + R[0]! * j10) * invDet;
+        } else {
+          for (let j = 0; j < k; j++) {
+            const origXj = xTear[j]!;
+            const eps = 1e-7 * Math.max(1.0, Math.abs(origXj));
+            xTear[j] = origXj + eps;
+            evalResiduals(xTear, R_pert);
+            xTear[j] = origXj;
+            const invEps = 1.0 / eps;
+            for (let i = 0; i < k; i++) {
+              J[i * k + j] = (R_pert[i]! - R[i]!) * invEps;
+            }
+          }
+
+          try {
+            factJ.set(J);
+            plan.cachedFact = luFactorFlat(factJ, k, piv, scale);
+            haveFact = true;
+            for (let i = 0; i < k; i++) deltaX[i] = -R[i]!;
+            luSolveFlat(plan.cachedFact, deltaX);
+            let stepFinite = true;
+            for (let i = 0; i < k; i++) {
+              if (!Number.isFinite(deltaX[i]!)) {
+                stepFinite = false;
+                break;
+              }
+            }
+            if (!stepFinite) break;
+          } catch {
+            plan.cachedFact = undefined;
+            haveFact = false;
+            break;
+          }
+        }
+
+        let stepAccepted = false;
+        for (const alpha of [1.0, 0.5, 0.25, 0.125, 0.05]) {
+          for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + alpha * deltaX[i]!;
+          const trialR = evalResiduals(xTrial, R_pert);
+          if (trialR < currentMaxR) {
+            for (let i = 0; i < k; i++) {
+              xTear[i] = xTrial[i]!;
+              R[i] = R_pert[i]!;
+            }
+            currentMaxR = trialR;
+            if (currentMaxR < bestMaxR) {
+              bestMaxR = currentMaxR;
+              bestXTear.set(xTear);
+            }
+            stepAccepted = true;
+            break;
+          }
+        }
+
+        if (!stepAccepted) {
+          for (let i = 0; i < k; i++) xTear[i] = xTear[i]! + deltaX[i]!;
+          currentMaxR = evalResiduals(xTear, R);
+          if (currentMaxR < bestMaxR) {
+            bestMaxR = currentMaxR;
+            bestXTear.set(xTear);
+          }
         }
       }
 
-      if (!stepAccepted) {
-        for (let i = 0; i < k; i++) xTear[i] = xTear[i]! + deltaX[i]!;
-        currentMaxR = evalResiduals(xTear, R);
-      }
-
-      if (currentMaxR < 1e-10) {
+      if (currentMaxR < tearTol) {
+        evalResiduals(xTear, R);
         for (let i = 0; i < k; i++) {
           this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
         }
@@ -3077,9 +3626,10 @@ export class ArenaSimulator {
       }
     }
 
-    if (currentMaxR < 1e-6) {
+    if (bestMaxR < (k > 8 ? 1e-3 : 1e-6)) {
+      evalResiduals(bestXTear, R);
       for (let i = 0; i < k; i++) {
-        this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
+        this.algWarmStart.set(plan.tearingVarNameIds[i]!, bestXTear[i]!);
       }
       return true;
     }
@@ -3099,7 +3649,12 @@ export class ArenaSimulator {
     const m = block.vars.length;
     if (m === 0) return;
 
-    if (this.trySolveTornBlock(block as SystemExecutionBlock, valuesByStringId)) {
+    const sysBlock = block as SystemExecutionBlock;
+    if (
+      !sysBlock._isLinearSystem &&
+      (!sysBlock._compiledJacobian || m > 24) &&
+      this.trySolveTornBlock(sysBlock, valuesByStringId)
+    ) {
       return;
     }
 
@@ -3114,7 +3669,6 @@ export class ArenaSimulator {
     const scale = this.newtonScratchScale;
     const dualStack = this.newtonScratchDualStack;
 
-    const sysBlock = block as SystemExecutionBlock;
     let cachedVarIds: Int32Array | undefined = sysBlock._varNameIds;
     let cachedResIds: Int32Array | undefined = sysBlock._resExprIds;
     if (!cachedVarIds || !cachedResIds) {
@@ -3421,209 +3975,8 @@ export class ArenaSimulator {
         },
       };
 
-      // 2. Recursively lower an arena expression (`exprId`) into a JavaScript expression string reading `env[nameId]`
-      function exprToJs(exprId: number): string {
-        if (exprId < 0) return "0";
-        const kind = arena.getExprKind(exprId);
-        switch (kind) {
-          case ExprKind.RealLiteral:
-            return arena.getExprRealValue(exprId).toString();
-          case ExprKind.IntLiteral:
-          case ExprKind.BoolLiteral:
-          case ExprKind.EnumLiteral:
-            return arena.getExprData1(exprId).toString();
-          case ExprKind.Name: {
-            const nameId = arena.getExprData1(exprId);
-            return `env[${nameId}]`;
-          }
-          case ExprKind.Der: {
-            const innerExprId = arena.getExprData1(exprId);
-            if (arena.getExprKind(innerExprId) === ExprKind.Name) {
-              const innerNameId = arena.getExprData1(innerExprId);
-              const innerName = arena.interner.resolve(innerNameId);
-              if (innerName) {
-                const derId = arena.interner.intern(`der(${innerName})`);
-                return `env[${derId}]`;
-              }
-            }
-            return `helpers.evalExpr(${exprId}, env)`;
-          }
-          case ExprKind.Negate: {
-            return `(-(${exprToJs(arena.getExprLeft(exprId))}))`;
-          }
-          case ExprKind.Unary: {
-            const op = arena.getExprData1(exprId);
-            const operand = exprToJs(arena.getExprLeft(exprId));
-            if (op === UnaryOp.Negate) return `(-(${operand}))`;
-            if (op === UnaryOp.Not) return `((${operand}) === 0 ? 1 : 0)`;
-            return `helpers.evalExpr(${exprId}, env)`;
-          }
-          case ExprKind.Binary: {
-            const op = arena.getExprData1(exprId);
-            const left = exprToJs(arena.getExprLeft(exprId));
-            const right = exprToJs(arena.getExprRight(exprId));
-            switch (op) {
-              case BinOp.Add:
-              case BinOp.ElemAdd:
-                return `((${left}) + (${right}))`;
-              case BinOp.Sub:
-              case BinOp.ElemSub:
-                return `((${left}) - (${right}))`;
-              case BinOp.Mul:
-              case BinOp.ElemMul:
-                return `((${left}) * (${right}))`;
-              case BinOp.Div:
-              case BinOp.ElemDiv:
-                return `((${left}) / (${right}))`;
-              case BinOp.Pow:
-              case BinOp.ElemPow:
-                return `Math.pow(${left}, ${right})`;
-              case BinOp.And:
-                return `(((${left}) !== 0 && (${right}) !== 0) ? 1 : 0)`;
-              case BinOp.Or:
-                return `(((${left}) !== 0 || (${right}) !== 0) ? 1 : 0)`;
-              case BinOp.Lt:
-                return `((${left}) < (${right}) ? 1 : 0)`;
-              case BinOp.Lte:
-                return `((${left}) <= (${right}) ? 1 : 0)`;
-              case BinOp.Gt:
-                return `((${left}) > (${right}) ? 1 : 0)`;
-              case BinOp.Gte:
-                return `((${left}) >= (${right}) ? 1 : 0)`;
-              case BinOp.Eq:
-                return `((${left}) === (${right}) ? 1 : 0)`;
-              case BinOp.Neq:
-                return `((${left}) !== (${right}) ? 1 : 0)`;
-              default:
-                return `helpers.evalExpr(${exprId}, env)`;
-            }
-          }
-          case ExprKind.IfElse: {
-            const cond = exprToJs(arena.getExprData1(exprId));
-            const thenVal = exprToJs(arena.getExprLeft(exprId));
-            const elseVal = exprToJs(arena.getExprRight(exprId));
-            return `((${cond}) !== 0 ? (${thenVal}) : (${elseVal}))`;
-          }
-          case ExprKind.Call: {
-            const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
-            const cleanFn = fnName.replace(/^(Modelica\.(Math|ComplexMath)\.|Math\.)/, "");
-            const argCount = arena.getExprRight(exprId);
-            const firstArg = arena.getExprLeft(exprId);
-
-            // Event-generating or stateful operators delegate to runtime evaluator
-            if (
-              cleanFn === "edge" ||
-              cleanFn === "change" ||
-              cleanFn === "sample" ||
-              cleanFn === "initial" ||
-              cleanFn === "terminal" ||
-              cleanFn === "pre" ||
-              cleanFn === "delay"
-            ) {
-              return `helpers.evalExpr(${exprId}, env)`;
-            }
-
-            if (
-              (cleanFn === "activeState" ||
-                cleanFn === "ticksInState" ||
-                cleanFn === "timeInState" ||
-                cleanFn === "previousState") &&
-              argCount >= 1 &&
-              arena.getExprKind(firstArg) === ExprKind.Name
-            ) {
-              const argName = arena.interner.resolve(arena.getExprData1(firstArg));
-              if (argName) {
-                const intrinsicId = arena.interner.intern(`$${cleanFn}(${argName})`);
-                return `env[${intrinsicId}]`;
-              }
-            }
-
-            if (cleanFn === "der" && argCount === 1 && arena.getExprKind(firstArg) === ExprKind.Name) {
-              const innerName = arena.interner.resolve(arena.getExprData1(firstArg));
-              if (innerName) {
-                const derId = arena.interner.intern(`der(${innerName})`);
-                return `env[${derId}]`;
-              }
-            }
-
-            if (cleanFn === "smooth") {
-              if (argCount > 1) {
-                return `(${exprToJs(arena.getExprLeft(exprId + 1))})`;
-              }
-              return argCount > 0 ? `(${exprToJs(firstArg)})` : "0";
-            }
-
-            const arg = exprToJs(firstArg);
-
-            if (cleanFn === "sin") return `Math.sin(${arg})`;
-            if (cleanFn === "cos") return `Math.cos(${arg})`;
-            if (cleanFn === "tan") return `Math.tan(${arg})`;
-            if (cleanFn === "asin") return `Math.asin(${arg})`;
-            if (cleanFn === "acos") return `Math.acos(${arg})`;
-            if (cleanFn === "atan") return `Math.atan(${arg})`;
-            if (cleanFn === "sinh") return `Math.sinh(${arg})`;
-            if (cleanFn === "cosh") return `Math.cosh(${arg})`;
-            if (cleanFn === "tanh") return `Math.tanh(${arg})`;
-            if (cleanFn === "exp") return `Math.exp(${arg})`;
-            if (cleanFn === "log") return `Math.log(${arg})`;
-            if (cleanFn === "log10") return `Math.log10(${arg})`;
-            if (cleanFn === "sqrt") return `Math.sqrt(${arg})`;
-            if (cleanFn === "abs") return `Math.abs(${arg})`;
-            if (cleanFn === "sign") return `Math.sign(${arg})`;
-            if (cleanFn === "ceil") return `Math.ceil(${arg})`;
-            if (cleanFn === "floor" || cleanFn === "integer") return `Math.floor(${arg})`;
-            if (
-              cleanFn === "noEvent" ||
-              cleanFn === "homotopy" ||
-              cleanFn === "/*Real*/" ||
-              cleanFn === "/*Integer*/" ||
-              cleanFn === "/*Boolean*/"
-            )
-              return `(${arg})`;
-
-            if (argCount === 2) {
-              const arg1 = exprToJs(arena.getExprLeft(exprId + 1));
-              if (cleanFn === "atan2") return `Math.atan2(${arg}, ${arg1})`;
-              if (cleanFn === "max") return `Math.max(${arg}, ${arg1})`;
-              if (cleanFn === "min") return `Math.min(${arg}, ${arg1})`;
-            }
-
-            if (fnName.includes("getTable1DValue") || fnName.includes("CombiTable1D_getValue")) {
-              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
-              const icolJs = exprToJs(arena.getExprLeft(exprId + 1));
-              const uJs = exprToJs(arena.getExprLeft(exprId + 2));
-              return `helpers.getTable1DValue(${tableVarNameId}, ${icolJs}, ${uJs})`;
-            }
-
-            if (fnName.includes("getTimeTableValue") || fnName.includes("CombiTimeTable_getValue")) {
-              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
-              const icolJs = exprToJs(arena.getExprLeft(exprId + 1));
-              const timeJs = exprToJs(arena.getExprLeft(exprId + 2));
-              return `helpers.getTimeTableValue(${tableVarNameId}, ${icolJs}, ${timeJs})`;
-            }
-
-            if (fnName.includes("getTimeTableTmin")) {
-              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
-              return `helpers.getTimeTableTmin(${tableVarNameId})`;
-            }
-
-            if (fnName.includes("getTimeTableTmax")) {
-              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
-              return `helpers.getTimeTableTmax(${tableVarNameId})`;
-            }
-
-            if (fnName.includes("getNextTimeEvent")) {
-              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
-              const timeJs = exprToJs(arena.getExprLeft(exprId + 1));
-              return `helpers.getNextTimeEvent(${tableVarNameId}, ${timeJs})`;
-            }
-
-            return `helpers.evalExpr(${exprId}, env)`;
-          }
-          default:
-            return `helpers.evalExpr(${exprId}, env)`;
-        }
-      }
+      // 2. Delegate expression lowering to this.exprToJs
+      const exprToJs = (exprId: number): string => this.exprToJs(arena, exprId);
 
       // 3. Symbolically differentiate `exprId` with respect to `seedNameId` into a JS expression string
       //    (returns "0" for constants/unrelated variables, or `null` if non-differentiable)
@@ -3817,16 +4170,130 @@ export class ArenaSimulator {
         }
       }
 
-      // 4. For large models or when WASM linear bytecode runtime is available,
-      // use the linear bytecode executor to avoid generating thousands of JavaScript code
-      // strings and dynamic functions.
+      // 4. For large models (> 4,000 blocks) or pure causal models when WASM linear bytecode runtime is available,
+      // use the linear bytecode executor. When system blocks are present, prefer JS JIT compilation up to 4,000 blocks
+      // so analytical residual/Jacobian closures are compiled.
+      const hasAnySystemBlock = this.executionBlocks.some((b) => b.type === "system" && b.vars.length > 0);
       if (
-        this.executionBlocks.length > 500 ||
-        (this.executionBlocks.length > 50 && typeof (arena as any).exports?.sim_evalFlatBytecode === "function")
+        this.executionBlocks.length > 4000 ||
+        (!hasAnySystemBlock &&
+          (this.executionBlocks.length > 500 ||
+            (this.executionBlocks.length > 50 && typeof (arena as any).exports?.sim_evalFlatBytecode === "function")))
       ) {
         const flatBc = this.compileFlatBytecode(helpers);
         if (flatBc) return flatBc;
       }
+
+      const exprDependsOnVars = (exprId: number, blockVarIdSet: Set<number>): boolean => {
+        if (exprId < 0) return false;
+        const kind = arena.getExprKind(exprId);
+        if (kind === ExprKind.Name) {
+          return blockVarIdSet.has(arena.getExprData1(exprId));
+        }
+        if (kind === ExprKind.Der) {
+          const inner = arena.getExprData1(exprId);
+          if (arena.getExprKind(inner) === ExprKind.Name) {
+            const innerName = arena.interner.resolve(arena.getExprData1(inner));
+            if (innerName) {
+              return blockVarIdSet.has(arena.interner.intern(`der(${innerName})`));
+            }
+          }
+          return exprDependsOnVars(inner, blockVarIdSet);
+        }
+        if (kind === ExprKind.Negate || kind === ExprKind.Unary) {
+          return exprDependsOnVars(arena.getExprLeft(exprId), blockVarIdSet);
+        }
+        if (kind === ExprKind.Binary) {
+          return (
+            exprDependsOnVars(arena.getExprLeft(exprId), blockVarIdSet) ||
+            exprDependsOnVars(arena.getExprRight(exprId), blockVarIdSet)
+          );
+        }
+        if (kind === ExprKind.IfElse) {
+          return (
+            exprDependsOnVars(arena.getExprData1(exprId), blockVarIdSet) ||
+            exprDependsOnVars(arena.getExprLeft(exprId), blockVarIdSet) ||
+            exprDependsOnVars(arena.getExprRight(exprId), blockVarIdSet)
+          );
+        }
+        if (kind === ExprKind.Call) {
+          const argc = arena.getExprRight(exprId);
+          const firstArg = arena.getExprLeft(exprId);
+          for (let a = 0; a < argc; a++) {
+            if (exprDependsOnVars(a === 0 ? firstArg : arena.getExprLeft(exprId + a), blockVarIdSet)) {
+              return true;
+            }
+          }
+          return false;
+        }
+        return false;
+      };
+
+      const isExprLinearInVars = (exprId: number, blockVarIdSet: Set<number>): boolean => {
+        if (exprId < 0 || !exprDependsOnVars(exprId, blockVarIdSet)) return true;
+        const kind = arena.getExprKind(exprId);
+        if (kind === ExprKind.Name || kind === ExprKind.Der) return true;
+        if (kind === ExprKind.Negate) {
+          return isExprLinearInVars(arena.getExprLeft(exprId), blockVarIdSet);
+        }
+        if (kind === ExprKind.Unary) {
+          return (
+            arena.getExprData1(exprId) === UnaryOp.Negate &&
+            isExprLinearInVars(arena.getExprLeft(exprId), blockVarIdSet)
+          );
+        }
+        if (kind === ExprKind.Binary) {
+          const op = arena.getExprData1(exprId);
+          const lId = arena.getExprLeft(exprId);
+          const rId = arena.getExprRight(exprId);
+          if (op === BinOp.Add || op === BinOp.ElemAdd || op === BinOp.Sub || op === BinOp.ElemSub) {
+            return isExprLinearInVars(lId, blockVarIdSet) && isExprLinearInVars(rId, blockVarIdSet);
+          }
+          if (op === BinOp.Mul || op === BinOp.ElemMul) {
+            const lDep = exprDependsOnVars(lId, blockVarIdSet);
+            const rDep = exprDependsOnVars(rId, blockVarIdSet);
+            if (lDep && rDep) return false;
+            return lDep ? isExprLinearInVars(lId, blockVarIdSet) : isExprLinearInVars(rId, blockVarIdSet);
+          }
+          if (op === BinOp.Div || op === BinOp.ElemDiv) {
+            if (exprDependsOnVars(rId, blockVarIdSet)) return false;
+            return isExprLinearInVars(lId, blockVarIdSet);
+          }
+          return false;
+        }
+        if (kind === ExprKind.IfElse) {
+          const condId = arena.getExprData1(exprId);
+          if (exprDependsOnVars(condId, blockVarIdSet)) return false;
+          return (
+            isExprLinearInVars(arena.getExprLeft(exprId), blockVarIdSet) &&
+            isExprLinearInVars(arena.getExprRight(exprId), blockVarIdSet)
+          );
+        }
+        if (kind === ExprKind.Call) {
+          const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+          const cleanFn = fnName.replace(/^(Modelica\.(Math|ComplexMath)\.|Math\.)/, "");
+          const argc = arena.getExprRight(exprId);
+          const firstArg = arena.getExprLeft(exprId);
+          if (
+            cleanFn === "noEvent" ||
+            cleanFn === "homotopy" ||
+            cleanFn === "/*Real*/" ||
+            cleanFn === "/*Integer*/" ||
+            cleanFn === "/*Boolean*/"
+          ) {
+            return argc > 0 ? isExprLinearInVars(firstArg, blockVarIdSet) : true;
+          }
+          if (cleanFn === "smooth") {
+            return argc > 1
+              ? isExprLinearInVars(arena.getExprLeft(exprId + 1), blockVarIdSet)
+              : argc > 0
+                ? isExprLinearInVars(firstArg, blockVarIdSet)
+                : true;
+          }
+          return false;
+        }
+        return false;
+      };
 
       // Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
       const CHUNK_SIZE = 4000;
@@ -3861,15 +4328,20 @@ export class ArenaSimulator {
           sysBlock._resExprIds = resIds;
 
           if (m <= 64) {
-            // Detect whether the system is purely linear (constant Jacobian entries wrt block unknowns)
-            let isLinearSystem = true;
+            // Detect whether the system is purely linear (affine) wrt block unknowns
+            const blockVarIdSet = new Set<number>();
             const varEnvTokens: string[] = [];
-            for (let k = 0; k < m; k++) varEnvTokens.push(`env[${varIds[k]}]`);
+            for (let k = 0; k < m; k++) {
+              blockVarIdSet.add(varIds[k] as number);
+              varEnvTokens.push(`env[${varIds[k]}]`);
+            }
+            let isLinearSystem = true;
 
             const resLines: string[] = ["let maxR = 0;"];
             for (let i = 0; i < m; i++) {
-              const resJs = exprToJs(resIds[i] as number);
-              if (resJs.includes("?") || resJs.includes("Math.") || resJs.includes("helpers.")) {
+              const resId = resIds[i] as number;
+              const resJs = exprToJs(resId);
+              if (resJs.includes("helpers.") || !isExprLinearInVars(resId, blockVarIdSet)) {
                 isLinearSystem = false;
               }
               resLines.push(
@@ -5374,7 +5846,14 @@ export class ArenaSimulator {
         y0,
         stopTime,
         outputTimes,
-        { atol, rtol, ...(adJacobian ? { jacobian: adJacobian } : {}) },
+        {
+          atol,
+          rtol,
+          initialStep: step,
+          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+          eventDirections: eventDirs,
+          ...(adJacobian ? { jacobian: adJacobian } : {}),
+        },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
       );
@@ -5610,6 +6089,9 @@ export class ArenaSimulator {
       // Re-evaluate algebraic variables for the recorded state
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
+      }
 
       const fa = new Float64Array(outIds.length);
       for (let i = 0; i < outIds.length; i++) {

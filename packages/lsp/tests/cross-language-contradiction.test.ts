@@ -206,4 +206,60 @@ describe("Cross-Language Incremental Verification (Modelica + OWL2)", () => {
     assert.ok(owlClearedSent, "Notification sent to constraints.owl");
     assert.strictEqual(owlClearedSent.diagnostics.length, 0, "constraints.owl diagnostics cleared");
   });
+
+  it("should retract axioms from owl2Store and purge verification/reasoner caches on disposeDocument", () => {
+    const docUri = "memfs:disposal/circuit.cir";
+    const unifiedWs = new UnifiedWorkspace();
+    const mockConnection: any = {
+      console: { log: () => {}, error: () => {}, warn: () => {}, info: () => {} },
+      sendDiagnostics: () => {},
+      sendNotification: () => {},
+    };
+
+    const mockDocManager: any = {
+      documents: new Map(),
+      documentTrees: new Map(),
+      lazyLibTrees: new Map(),
+    };
+
+    const mockWorkspaceManager: any = {
+      unifiedWorkspace: unifiedWs,
+      getWorkspaceIndex: () => null,
+    };
+
+    const validationService = new (ValidationService as any)(mockConnection, mockDocManager, mockWorkspaceManager, {
+      sharedContext: null,
+      getParserForUri: () => null,
+    } as any);
+
+    // Populate mock caches and owl2Store
+    validationService.verificationDiagnosticsByUri.set(docUri, [{ message: "mock" } as any]);
+    validationService.verificationResultsByUri.set(docUri, [{ mock: true }]);
+    validationService.modelicaProofResultsByUri.set(docUri, new Map([["test", {}]]));
+    validationService.daeVerificationResultsByUri.set(docUri, new Map([["test", {}]]));
+    validationService.reasonerDiagnosticsByUri.set(docUri, [{ message: "contradiction" } as any]);
+
+    const spiceKey = `spice:${docUri}`;
+    unifiedWs.owl2Store.setAxioms(spiceKey, [
+      { type: "ClassDeclaration", iri: "spice:Resistor", sourceLang: "spice" },
+    ]);
+    assert.ok(unifiedWs.owl2Store.axioms.some((a) => (a as any).iri === "spice:Resistor"));
+
+    // Call disposeDocument
+    validationService.disposeDocument(docUri);
+
+    // Verify all caches were purged
+    assert.strictEqual(validationService.verificationDiagnosticsByUri.has(docUri), false);
+    assert.strictEqual(validationService.verificationResultsByUri.has(docUri), false);
+    assert.strictEqual(validationService.modelicaProofResultsByUri.has(docUri), false);
+    assert.strictEqual(validationService.daeVerificationResultsByUri.has(docUri), false);
+    assert.strictEqual(validationService.reasonerDiagnosticsByUri.has(docUri), false);
+
+    // Verify axioms for docUri were retracted from owl2Store
+    assert.strictEqual(
+      unifiedWs.owl2Store.axioms.some((a) => (a as any).iri === "spice:Resistor"),
+      false,
+      "Axioms for disposed document must be retracted from owl2Store",
+    );
+  });
 });

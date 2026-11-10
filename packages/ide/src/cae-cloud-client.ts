@@ -69,9 +69,25 @@ export class CaeCloudClient {
     this.authToken = token;
   }
 
+  private isSecureOrLoopbackEndpoint(): boolean {
+    try {
+      const parsed = new URL(this.apiBaseUrl);
+      if (parsed.protocol === "https:") return true;
+      const host = parsed.hostname.toLowerCase();
+      return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+    } catch {
+      return false;
+    }
+  }
+
   private buildHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = { ...extra };
     if (this.authToken) {
+      if (!this.isSecureOrLoopbackEndpoint()) {
+        throw new Error(
+          `Refusing to transmit Bearer token over cleartext HTTP to non-loopback endpoint '${this.apiBaseUrl}'. Use https:// instead.`,
+        );
+      }
       headers["Authorization"] = `Bearer ${this.authToken}`;
     }
     return headers;

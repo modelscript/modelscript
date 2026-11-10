@@ -334,6 +334,19 @@ export class CadViewerPanel extends BaseWebviewPanel {
       }
 
       this._panel.webview.postMessage({ type: "cadComponents", data: cadComponents });
+
+      if (this._client && typeof this._client.sendRequest === "function") {
+        try {
+          const overlay = await this._client.sendRequest<unknown>("modelscript/getVerification3DOverlay", {
+            uri,
+          });
+          if (overlay) {
+            this.sendVerificationOverlay(overlay);
+          }
+        } catch {
+          // Optional formal verification overlay
+        }
+      }
     } catch (e) {
       console.warn("[CAD Viewer] Failed to get CAD components:", e);
     }
@@ -385,6 +398,31 @@ export class CadViewerPanel extends BaseWebviewPanel {
       type: "QIF_INSPECTION_OVERLAY",
       data: payload,
     });
+  }
+
+  /**
+   * Push 3D formal verification overlay payload (reachability flowpipes, dynamic clearance vectors, barrier shells)
+   */
+  public sendVerificationOverlay(payload: unknown): void {
+    this._panel.webview.postMessage({
+      type: "VERIFICATION_OVERLAY",
+      data: payload,
+    });
+  }
+
+  /**
+   * Focus a formal verification counterexample / violation in the 3D viewport.
+   */
+  public focusViolationIn3D(options: { time?: number; lhsName?: string; contractId?: string }): void {
+    this._panel.webview.postMessage({
+      type: "FOCUS_VIOLATION_3D",
+      time: options.time,
+      lhsName: options.lhsName,
+      contractId: options.contractId,
+    });
+    if (options.lhsName) {
+      this.focusPart(options.lhsName);
+    }
   }
 
   /**

@@ -679,3 +679,27 @@ test("PSS/E Small-Signal Stability: Computes electromechanical DAE eigenvalues, 
   }
   assert.ok(modal.reportText.includes("SMALL-SIGNAL STABILITY & MODAL ANALYSIS REPORT"));
 });
+
+test("PSS/E Small-Signal Stability: Arnoldi eigensolver matches QR on IEEE 14-bus test case", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const modalQr = analyzeSmallSignalStability(parsed, { method: "qr" });
+  const modalArnoldi = analyzeSmallSignalStability(parsed, { method: "arnoldi", numModes: 8 });
+
+  assert.equal(modalArnoldi.summary.totalMachines, 3);
+  assert.equal(modalArnoldi.summary.totalStates, 15);
+  assert.ok(modalArnoldi.modes.length > 0);
+  assert.ok(modalArnoldi.summary.stable);
+
+  // Compare oscillatory modes (sorted by frequency)
+  const oscQr = modalQr.modes.filter((m) => m.frequencyHz > 0).sort((a, b) => a.frequencyHz - b.frequencyHz);
+  const oscArnoldi = modalArnoldi.modes.filter((m) => m.frequencyHz > 0).sort((a, b) => a.frequencyHz - b.frequencyHz);
+
+  assert.strictEqual(oscArnoldi.length, oscQr.length, "Both solvers should detect identical number of oscillatory modes");
+  for (let i = 0; i < oscQr.length; i++) {
+    const q = oscQr[i]!;
+    const a = oscArnoldi[i]!;
+    assert.ok(Math.abs(q.frequencyHz - a.frequencyHz) < 1e-4, `Freq mismatch at mode ${i}: ${q.frequencyHz} vs ${a.frequencyHz}`);
+    assert.ok(Math.abs(q.dampingRatio - a.dampingRatio) < 1e-4, `Damping mismatch at mode ${i}: ${q.dampingRatio} vs ${a.dampingRatio}`);
+    assert.ok(Math.abs(q.real - a.real) < 1e-4, `Real part mismatch at mode ${i}: ${q.real} vs ${a.real}`);
+  }
+});

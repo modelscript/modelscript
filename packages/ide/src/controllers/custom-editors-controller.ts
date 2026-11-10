@@ -12,6 +12,7 @@ import { GCodeEditorProvider } from "../gcode-editor-provider.js";
 import { GtSuiteEditorProvider } from "../gtsuite-editor-provider.js";
 import { InpEditorProvider } from "../inp-editor-provider.js";
 import { LpsEditorProvider } from "../lps-editor-provider.js";
+import { DicomRtEditorProvider, IgtlEditorProvider, OpenSimEditorProvider } from "../medical-editor-provider.js";
 import { OlgaEditorProvider } from "../olga-editor-provider.js";
 import { OscalEditorProvider } from "../oscal-editor-provider.js";
 import { PsoutEditorProvider } from "../psout-editor-provider.js";
@@ -238,6 +239,27 @@ export function registerCustomEditors(
   const amlEditor = new AmlEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(AmlEditorProvider.viewType, amlEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const opensimEditor = new OpenSimEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(OpenSimEditorProvider.viewType, opensimEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const dicomRtEditor = new DicomRtEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(DicomRtEditorProvider.viewType, dicomRtEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const igtlEditor = new IgtlEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(IgtlEditorProvider.viewType, igtlEditor, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );

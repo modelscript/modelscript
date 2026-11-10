@@ -673,6 +673,55 @@ export class LineConstantsSolver {
     };
   }
 
+  private static solveDense(A: Float64Array, b: Float64Array, n: number): Float64Array | null {
+    const M = new Float64Array(A);
+    const x = new Float64Array(b);
+
+    for (let k = 0; k < n; k++) {
+      let maxVal = Math.abs(M[k * n + k]!);
+      let maxRow = k;
+      for (let r = k + 1; r < n; r++) {
+        const v = Math.abs(M[r * n + k]!);
+        if (v > maxVal) {
+          maxVal = v;
+          maxRow = r;
+        }
+      }
+      if (maxRow !== k) {
+        for (let c = 0; c < n; c++) {
+          const tM = M[k * n + c]!;
+          M[k * n + c] = M[maxRow * n + c]!;
+          M[maxRow * n + c] = tM;
+        }
+        const tb = x[k]!;
+        x[k] = x[maxRow]!;
+        x[maxRow] = tb;
+      }
+
+      const diag = M[k * n + k]!;
+      const safeDiag = Math.abs(diag) > 1e-14 ? diag : 1e-14;
+
+      for (let r = k + 1; r < n; r++) {
+        const factor = M[r * n + k]! / safeDiag;
+        for (let c = k + 1; c < n; c++) {
+          M[r * n + c] = M[r * n + c]! - factor * M[k * n + c]!;
+        }
+        x[r] = x[r]! - factor * x[k]!;
+      }
+    }
+
+    for (let i = n - 1; i >= 0; i--) {
+      let sum = x[i]!;
+      for (let j = i + 1; j < n; j++) {
+        sum -= M[i * n + j]! * x[j]!;
+      }
+      const diag = M[i * n + i]!;
+      x[i] = Math.abs(diag) > 1e-14 ? sum / diag : 0.0;
+    }
+
+    return x;
+  }
+
   // ==========================================================================
   // Matrix Reduction & Inversion Helpers
   // ==========================================================================
@@ -845,54 +894,5 @@ export class LineConstantsSolver {
     }
 
     return res;
-  }
-
-  private static solveDense(A: Float64Array, b: Float64Array, n: number): Float64Array | null {
-    const M = new Float64Array(A);
-    const x = new Float64Array(b);
-
-    for (let k = 0; k < n; k++) {
-      let maxVal = Math.abs(M[k * n + k]!);
-      let maxRow = k;
-      for (let r = k + 1; r < n; r++) {
-        const v = Math.abs(M[r * n + k]!);
-        if (v > maxVal) {
-          maxVal = v;
-          maxRow = r;
-        }
-      }
-      if (maxRow !== k) {
-        for (let c = 0; c < n; c++) {
-          const tM = M[k * n + c]!;
-          M[k * n + c] = M[maxRow * n + c]!;
-          M[maxRow * n + c] = tM;
-        }
-        const tb = x[k]!;
-        x[k] = x[maxRow]!;
-        x[maxRow] = tb;
-      }
-
-      const diag = M[k * n + k]!;
-      const safeDiag = Math.abs(diag) > 1e-14 ? diag : 1e-14;
-
-      for (let r = k + 1; r < n; r++) {
-        const factor = M[r * n + k]! / safeDiag;
-        for (let c = k + 1; c < n; c++) {
-          M[r * n + c] = M[r * n + c]! - factor * M[k * n + c]!;
-        }
-        x[r] = x[r]! - factor * x[k]!;
-      }
-    }
-
-    for (let i = n - 1; i >= 0; i--) {
-      let sum = x[i]!;
-      for (let j = i + 1; j < n; j++) {
-        sum -= M[i * n + j]! * x[j]!;
-      }
-      const diag = M[i * n + i]!;
-      x[i] = Math.abs(diag) > 1e-14 ? sum / diag : 0.0;
-    }
-
-    return x;
   }
 }

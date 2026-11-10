@@ -87,6 +87,7 @@ interface ParameterDelta {
 }
 
 import { parseModelicaParameters } from "../../util/modelica-params";
+import { AnsatzSemanticDiffStudio } from "../diff/AnsatzSemanticDiffStudio";
 
 export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   isOpen,
@@ -98,7 +99,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   const [parentArtifact, setParentArtifact] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"diff" | "parameters">("diff");
+  const [activeTab, setActiveTab] = useState<"studio" | "diff" | "parameters">("studio");
 
   useEffect(() => {
     if (!isOpen || !forkedFromArtifactId) return;
@@ -324,6 +325,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               borderRadius="8px"
               border="1px solid var(--color-border-default)"
             >
+              <ModeButton $active={activeTab === "studio"} onClick={() => setActiveTab("studio")}>
+                ⚡ Semantic Studio
+              </ModeButton>
               <ModeButton $active={activeTab === "diff"} onClick={() => setActiveTab("diff")}>
                 Source Diff
               </ModeButton>
@@ -373,6 +377,18 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               <Button size="small" onClick={onClose}>
                 Close
               </Button>
+            </Box>
+          ) : activeTab === "studio" ? (
+            <Box height="100%" overflow="auto" p={3} bg="var(--color-canvas-default)">
+              <AnsatzSemanticDiffStudio
+                oldCode={parentCode}
+                newCode={currentCode}
+                filename={`Artifact #${currentArtifact?.id || "fork"}`}
+                language={diffLanguage}
+                baseLabel={`Upstream #${forkedFromArtifactId}`}
+                headLabel={`Fork #${currentArtifact?.id || "current"}`}
+                editorHeight={380}
+              />
             </Box>
           ) : activeTab === "diff" ? (
             <DiffEditor

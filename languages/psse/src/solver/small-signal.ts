@@ -21,6 +21,7 @@
  *   - Standards compliance check (damping ratio zeta >= 5% per NERC/WECC/IEEE guidelines).
  */
 
+import { type LinearOperator, sparseArnoldiEigensolver } from "@modelscript/runtime";
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
 import type { PsseCase, PsseDyrCase } from "../types.js";
 import { solvePowerFlow } from "./ac-powerflow.js";
@@ -32,6 +33,10 @@ export interface SmallSignalOptions {
   caseTitle?: string | undefined;
   /** Optional parsed PSS/E .dyr dynamic case. */
   dyr?: PsseDyrCase | undefined;
+  /** Eigensolver method: 'qr' (dense Francis double-shift) | 'arnoldi' (sparse Krylov Arnoldi) | 'auto'. Default: 'auto'. */
+  method?: "qr" | "arnoldi" | "auto" | undefined;
+  /** Number of modes to extract when using Arnoldi (default: 20). */
+  numModes?: number | undefined;
 }
 
 export interface ModalModeResult {
@@ -524,8 +529,29 @@ export function analyzeSmallSignalStability(psseCase: PsseCase, options: SmallSi
     }
   }
 
-  // Compute eigenvalues
-  const poles = computeEigenvalues(A_red, numStates);
+  // Compute eigenvalues via Francis double-shift QR or Sparse Krylov Arnoldi
+  let poles: Array<{ re: number; im: number }>;
+  if (options.method === "arnoldi" || (options.method !== "qr" && numStates > 50)) {
+    const k = options.numModes ?? Math.min(numStates, 20);
+    const op: LinearOperator = {
+      dim: numStates,
+      apply: (v: Float64Array, out: Float64Array) => {
+        for (let i = 0; i < numStates; i++) {
+          let sum = 0;
+          for (let jj = 0; jj < numStates; jj++) sum += A_red[i * numStates + jj]! * v[jj]!;
+          out[i] = sum;
+        }
+      },
+    };
+    const arnoldiRes = sparseArnoldiEigensolver(op, {
+      k,
+      m: Math.min(numStates, Math.max(2 * k, 24)),
+      which: "LM",
+    });
+    poles = arnoldiRes.eigenvalues.map((e: { real: number; imag: number }) => ({ re: e.real, im: e.imag }));
+  } else {
+    poles = computeEigenvalues(A_red, numStates);
+  }
 
   // Group complex conjugate pairs
   const processedModes: ModalModeResult[] = [];

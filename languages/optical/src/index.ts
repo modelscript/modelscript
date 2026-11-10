@@ -2,6 +2,7 @@
 
 export * from "./dae/optical-to-dae.js";
 export * from "./errors.js";
+export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./parser/openroadm-parser.js";
 export * from "./solvers/gn-model.js";

@@ -1,0 +1,11 @@
+set PRODUCTS := bands coils;
+
+param Rate :=
+  bands 200
+  coils 140;
+
+param Profit :=
+  bands 25
+  coils 30;
+
+param AvailableHours := 40;

@@ -4836,7 +4836,10 @@ export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
   const prefixSet = getVarPrefixSet(dae);
   const parts = refStr.split(".");
   const firstPart = parts[0]!;
-  if (!prefixSet.has(refStr) && !prefixSet.has(firstPart)) {
+  if (
+    (!prefixSet.has(refStr) && !prefixSet.has(firstPart)) ||
+    !parts.some((p, idx) => !p.includes("[") && dae.hasArrayElements(parts.slice(0, idx + 1).join(".")))
+  ) {
     const res = [refStr];
     cache.set(refStr, res);
     return res;

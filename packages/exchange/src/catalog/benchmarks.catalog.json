@@ -1,0 +1,1199 @@
+{
+  "version": "1.0.0",
+  "benchmarks": [
+    {
+      "id": "sbml-semantic-cases",
+      "language": "sbml",
+      "name": "SBML Semantic Conformance Test Suite",
+      "version": "3.3.0",
+      "description": "Official SBML conformance test suite containing >1,200 semantic test cases with analytical and high-precision numerical CSV trajectory solutions across SBML Levels 1-3.",
+      "license": "LGPL-2.1-or-later",
+      "tier": "beta-to-stable",
+      "domain": "life-sciences",
+      "category": "numerical-trajectory",
+      "filename": "sbml-test-suite-3.3.0.zip",
+      "referenceTool": "libSBML / RoadRunner",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "Trajectory RMSE < 1e-3 across all chemical species concentrations over simulated time"
+      },
+      "upstream": {
+        "url": "https://github.com/sbmlteam/sbml-test-suite/archive/refs/tags/v3.3.0.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/sbml/sbml-test-suite-3.3.0.zip",
+        "archiveType": "zip",
+        "extractSubpath": "sbml-test-suite-3.3.0/cases/semantic"
+      },
+      "minExpectedCases": 50
+    },
+    {
+      "id": "opendss-ieee-feeders",
+      "language": "opendss",
+      "name": "EPRI OpenDSS IEEE Radial Distribution Test Feeders",
+      "version": "9.6.1",
+      "description": "Standard IEEE 4-bus, 13-bus, 34-bus, 123-bus, and 8500-node radial distribution test feeders with multi-phase unbalanced loads and PV generation.",
+      "license": "BSD-3-Clause",
+      "tier": "beta-to-stable",
+      "domain": "power-energy",
+      "category": "conformance",
+      "filename": "opendss-ieee-feeders-9.6.1.zip",
+      "referenceTool": "EPRI OpenDSS",
+      "parityMetric": {
+        "targetMetric": "max-relative-error",
+        "threshold": 0.005,
+        "description": "Nodal voltage magnitude and angle error < 0.5% relative to OpenDSS COM solution"
+      },
+      "upstream": {
+        "url": "https://github.com/electric-power/OpenDSS/archive/refs/tags/v9.6.1.1.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/opendss/opendss-ieee-feeders-9.6.1.zip",
+        "archiveType": "zip",
+        "extractSubpath": "OpenDSS-9.6.1.1/Distrib/IEEETestCases"
+      },
+      "minExpectedCases": 15
+    },
+    {
+      "id": "cantera-reaction-mechanisms",
+      "language": "cantera",
+      "name": "Cantera Chemical Kinetics & Combustion Mechanisms",
+      "version": "3.0.0",
+      "description": "Production chemical reaction mechanisms including GRI-Mech 3.0, San Diego Mechanism, and hydrogen/oxygen combustion kinetics.",
+      "license": "BSD-3-Clause",
+      "tier": "beta-to-stable",
+      "domain": "fluids-process",
+      "category": "numerical-trajectory",
+      "filename": "cantera-mechanisms-3.0.0.zip",
+      "referenceTool": "Cantera C++ Engine",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "Ignition delay time and major species mole fractions RMSE < 1e-3"
+      },
+      "upstream": {
+        "url": "https://github.com/Cantera/cantera/archive/refs/tags/v3.0.0.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/cantera/cantera-mechanisms-3.0.0.zip",
+        "archiveType": "zip",
+        "extractSubpath": "cantera-3.0.0/test/data"
+      },
+      "minExpectedCases": 10
+    },
+    {
+      "id": "swmm-qa-examples",
+      "language": "swmm",
+      "name": "US EPA SWMM 5.2 Quality Assurance Benchmark Examples",
+      "version": "5.2.4",
+      "description": "US EPA Stormwater Management Model canonical examples 1 through 8 covering dynamic wave routing, detention ponds, and backwater curves.",
+      "license": "CC0-1.0",
+      "tier": "preview-to-beta",
+      "domain": "fluids-process",
+      "category": "numerical-trajectory",
+      "filename": "swmm-qa-examples-5.2.4.zip",
+      "referenceTool": "US EPA SWMM 5.2",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.002,
+        "description": "Conduit flow and junction hydraulic head RMSE < 0.2%"
+      },
+      "upstream": {
+        "url": "https://github.com/USEPA/Stormwater-Management-Model/archive/refs/tags/v5.2.4.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/swmm/swmm-qa-examples-5.2.4.zip",
+        "archiveType": "zip",
+        "extractSubpath": "Stormwater-Management-Model-5.2.4/tests"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "cgmes-conformity-grid",
+      "language": "cgmes",
+      "name": "ENTSO-E CGMES Interoperability & Conformity Models",
+      "version": "3.0.0",
+      "description": "ENTSO-E Common Grid Model Exchange Standard conformity assessment configurations including MicroGrid and SmallGrid test profiles.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "power-energy",
+      "category": "conformance",
+      "filename": "cgmes-conformity-3.0.0.zip",
+      "referenceTool": "ENTSO-E CGMES Validator",
+      "parityMetric": {
+        "targetMetric": "ast-pass-rate",
+        "threshold": 100,
+        "description": "100% semantic validation of EQ, TP, SV, and SSH profile interconnections"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/cgmes/cgmes-conformity-3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 6
+    },
+    {
+      "id": "antimony-tellurium-suite",
+      "language": "antimony",
+      "name": "libAntimony Modular Reaction Network Verification Suite",
+      "version": "2.14.0",
+      "description": "Modular biological reaction model definitions with algebraic rules, rate laws, and events.",
+      "license": "BSD-3-Clause",
+      "tier": "preview-to-beta",
+      "domain": "life-sciences",
+      "category": "conformance",
+      "filename": "antimony-tests-2.14.0.zip",
+      "referenceTool": "libAntimony / Tellurium",
+      "parityMetric": {
+        "targetMetric": "dae-parity",
+        "threshold": 100,
+        "description": "Exact equality of flattened ODE species states, reaction rate laws, and conservation matrices"
+      },
+      "upstream": {
+        "url": "https://github.com/sys-bio/antimony/archive/refs/tags/v2.14.0.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/antimony/antimony-tests-2.14.0.zip",
+        "archiveType": "zip",
+        "extractSubpath": "antimony-2.14.0/src/test"
+      },
+      "minExpectedCases": 25
+    },
+    {
+      "id": "epanet-benchmark-networks",
+      "language": "epanet",
+      "name": "US EPA EPANET 2.2 Water Distribution Benchmark Networks",
+      "version": "2.2.0",
+      "description": "Official EPA EPANET test networks (Net1, Net2, Net3, BWSN, Richmond, C-Town) verifying Todini Global Gradient Method pressure and flow convergence.",
+      "license": "MIT",
+      "tier": "beta-to-stable",
+      "domain": "fluids-process",
+      "category": "numerical-trajectory",
+      "filename": "epanet-benchmarks-2.2.0.zip",
+      "referenceTool": "US EPA EPANET 2.2 C-Engine",
+      "parityMetric": {
+        "targetMetric": "max-relative-error",
+        "threshold": 0.001,
+        "description": "Nodal pressure heads and pipe flow rates within 0.1% of EPANET reference binaries"
+      },
+      "upstream": {
+        "url": "https://github.com/OpenWaterAnalytics/EPANET/archive/refs/tags/v2.2.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/epanet/epanet-benchmarks-2.2.0.zip",
+        "archiveType": "zip",
+        "extractSubpath": "EPANET-2.2/tests"
+      },
+      "minExpectedCases": 12
+    },
+    {
+      "id": "opensim-models-gait",
+      "language": "opensim",
+      "name": "OpenSim Gait2392 & Rajagopal Musculoskeletal Benchmark Models",
+      "version": "4.5.0",
+      "description": "Normative biomechanical musculoskeletal models including gait2392 (23 DoF, 92 muscles) and Rajagopal 2016 full-body gait model with Thelen Hill-type muscle actuators.",
+      "license": "Apache-2.0",
+      "tier": "beta-to-stable",
+      "domain": "life-sciences",
+      "category": "numerical-trajectory",
+      "filename": "opensim-models-4.5.0.zip",
+      "referenceTool": "OpenSim 4.x / Simbody",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.005,
+        "description": "Joint coordinate trajectories and muscle activation forces RMSE < 0.5%"
+      },
+      "upstream": {
+        "url": "https://github.com/opensim-org/opensim-models/archive/refs/tags/v4.5.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/opensim/opensim-models-4.5.0.zip",
+        "archiveType": "zip",
+        "extractSubpath": "opensim-models-4.5/Models"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "verilog-a-compact-models",
+      "language": "verilog-a",
+      "name": "Si2 Compact Model Coalition (CMC) Verilog-A Golden Device Models",
+      "version": "2.4.0",
+      "description": "Industry-standard open-source semiconductor device models: PSP (102/103/104), BSIM4, BSIM-CMG, and ASM-HEMT.",
+      "license": "EPL-2.0",
+      "tier": "beta-to-stable",
+      "domain": "power-energy",
+      "category": "numerical-trajectory",
+      "filename": "verilog-a-va-models-2.4.0.zip",
+      "referenceTool": "ngspice / OpenVAF",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "Gummel plot currents and small-signal capacitances RMSE < 1e-3 vs OpenVAF"
+      },
+      "upstream": {
+        "url": "https://github.com/dwarning/VA-Models/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/verilog-a/verilog-a-va-models-2.4.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 15
+    },
+    {
+      "id": "febio-biomechanics-suite",
+      "language": "febio",
+      "name": "FEBio Nonlinear Soft-Tissue Biomechanics Test Suite",
+      "version": "4.0.0",
+      "description": "Official FEBio verification problems including biphasic poroelastic cartilage compression, hyperelastic arterial inflation, and sliding contact.",
+      "license": "MIT",
+      "tier": "beta-to-stable",
+      "domain": "life-sciences",
+      "category": "numerical-trajectory",
+      "filename": "febio-testsuite-4.0.0.zip",
+      "referenceTool": "FEBio Suite 4.x",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.005,
+        "description": "Nodal displacements and fluid pore pressures RMSE < 0.5% over dynamic loading cycle"
+      },
+      "upstream": {
+        "url": "https://github.com/febiosoftware/TestSuite/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/febio/febio-testsuite-4.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 20
+    },
+    {
+      "id": "qif-sample-files",
+      "language": "qif",
+      "name": "DMSC ISO 23952:2020 QIF 3.0 Metrology Sample Files",
+      "version": "3.0.0",
+      "description": "Official Quality Information Framework (QIF 3.0) semantic GD&T, measurement plans, and CMM inspection results.",
+      "license": "Apache-2.0",
+      "tier": "beta-to-stable",
+      "domain": "cad-structures",
+      "category": "conformance",
+      "filename": "qif-sample-files-3.0.0.zip",
+      "referenceTool": "DMSC QIF Validator",
+      "parityMetric": {
+        "targetMetric": "ast-pass-rate",
+        "threshold": 100,
+        "description": "100% pass rate on datum reference frames and characteristic evaluation rules"
+      },
+      "upstream": {
+        "url": "https://github.com/DMSC-INC/QIF_Sample_Files/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/qif/qif-sample-files-3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 12
+    },
+    {
+      "id": "energyplus-reference-buildings",
+      "language": "energyplus",
+      "name": "US DOE Commercial Reference Building Models (ASHRAE 140)",
+      "version": "24.1.0",
+      "description": "US Department of Energy 16 commercial building archetypes across 16 climate zones and BESTEST ASHRAE 140 evaluation decks.",
+      "license": "BSD-3-Clause",
+      "tier": "beta-to-stable",
+      "domain": "fluids-process",
+      "category": "numerical-trajectory",
+      "filename": "energyplus-reference-buildings-24.1.0.zip",
+      "referenceTool": "US DOE EnergyPlus",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.01,
+        "description": "Zone heating/cooling loads and indoor temperature profiles RMSE < 1.0%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/energyplus/energyplus-reference-buildings-24.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 16
+    },
+    {
+      "id": "urdf-moveit-robots",
+      "language": "urdf",
+      "name": "ROS Industrial & MoveIt Kinematic Robot Descriptions",
+      "version": "2.5.0",
+      "description": "Standard industrial and collaborative robot URDF descriptions: Universal Robots UR5/UR10, Franka Emika Panda, and KUKA iiwa.",
+      "license": "BSD-3-Clause",
+      "tier": "beta-to-stable",
+      "domain": "mobility-auto",
+      "category": "conformance",
+      "filename": "urdf-moveit-robots-2.5.0.zip",
+      "referenceTool": "ROS MoveIt / Pinocchio",
+      "parityMetric": {
+        "targetMetric": "max-relative-error",
+        "threshold": 0.0001,
+        "description": "Forward kinematics end-effector Cartesian position error < 0.1 mm"
+      },
+      "upstream": {
+        "url": "https://github.com/moveit/moveit_resources/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/urdf/urdf-moveit-robots-2.5.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 10
+    },
+    {
+      "id": "sysml2-xpect-tests",
+      "language": "sysml2",
+      "name": "OMG SysML v2 Pilot Implementation Xpect Test Suite",
+      "version": "2026.3.0",
+      "description": "Normative KerML and SysML v2 semantic validation test suite covering type inference, inheritance, imports, and constraint evaluation.",
+      "license": "LGPL-3.0-or-later",
+      "tier": "stable-hardening",
+      "domain": "systems-physics",
+      "category": "conformance",
+      "filename": "sysml-v2-xpect-tests-2026-03.zip",
+      "referenceTool": "SysML v2 Pilot Implementation",
+      "parityMetric": {
+        "targetMetric": "ast-pass-rate",
+        "threshold": 100,
+        "description": "100% pass rate on normative KerML/SysML v2 semantic test cases"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/sysml2/sysml-v2-xpect-tests-2026-03.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 30
+    },
+    {
+      "id": "modelica-msl-suite",
+      "language": "modelica",
+      "name": "Modelica Standard Library 4.0/4.1 Verification Suite",
+      "version": "4.1.0",
+      "description": "MSL multiphysics benchmarks (Electrical, Mechanics, Fluid, Thermal, Media) evaluated across flattening, simulation, diagram, and icon stages.",
+      "license": "BSD-3-Clause",
+      "tier": "stable-hardening",
+      "domain": "systems-physics",
+      "category": "numerical-trajectory",
+      "filename": "ModelicaStandardLibrary_v4.1.0.zip",
+      "referenceTool": "OpenModelica (omc)",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "Simulation trajectory RMSE < 1e-3 against OpenModelica golden results"
+      },
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 100
+    },
+    {
+      "id": "scad-bosl2-suite",
+      "language": "scad",
+      "name": "BOSL2 Belfry OpenSCAD Library v2 Regression Suite",
+      "version": "2.0.0",
+      "description": "Comprehensive constructive solid geometry boolean evaluation, polyhedron skinning, and mechanical fastener rendering tests.",
+      "license": "BSD-2-Clause",
+      "tier": "stable-hardening",
+      "domain": "cad-structures",
+      "category": "conformance",
+      "filename": "bosl2-suite-2.0.0.zip",
+      "referenceTool": "OpenSCAD CGAL / Manifold",
+      "parityMetric": {
+        "targetMetric": "ast-pass-rate",
+        "threshold": 100,
+        "description": "100% volumetric boolean correctness and CSG tree lowering parity"
+      },
+      "upstream": {
+        "url": "https://github.com/BelfrySCAD/BOSL2/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/scad/bosl2-suite-2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 40
+    },
+    {
+      "id": "rocets-liquid-propulsion",
+      "language": "rocets",
+      "name": "NASA ROCETS Liquid Rocket Propulsion Staged Combustion Benchmark",
+      "version": "2.0.0",
+      "description": "NASA SSME staged-combustion power balance cycle, turbopump shaft power conservation, nozzle gas dynamics, and startup transient.",
+      "license": "NASA-1.3",
+      "tier": "beta-to-stable",
+      "domain": "aerospace-controls",
+      "category": "numerical-trajectory",
+      "filename": "rocets-ssme-2.0.0.zip",
+      "referenceTool": "NASA ROCETS Fortran-77 Engine",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.005,
+        "description": "Chamber pressure and turbopump shaft RPM convergence within 0.5% of NASA reference"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/rocets/rocets-ssme-2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "ccsds-orbit-mechanics",
+      "language": "ccsds",
+      "name": "CCSDS Astrodynamics High-Fidelity Orbit Propagation Benchmark",
+      "version": "2.0.0",
+      "description": "High-fidelity LEO/GEO orbit propagation under J2-J4 zonal harmonics, solar radiation pressure with Earth shadow, third-body Moon/Sun perturbations, and OEM cubic Hermite ephemeris interpolation.",
+      "license": "CC0-1.0",
+      "tier": "beta-to-stable",
+      "domain": "aerospace-controls",
+      "category": "numerical-trajectory",
+      "filename": "ccsds-oem-iss-2.0.0.zip",
+      "referenceTool": "NASA SPICE / Orekit",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "Orbital position vector within 10 meters over 90-minute orbital period"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/ccsds/ccsds-oem-iss-2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "jsbsim-flight-dynamics",
+      "language": "jsbsim",
+      "name": "JSBSim 6-DOF Flight Dynamics & Longitudinal Modal Benchmark",
+      "version": "2.0.0",
+      "description": "Full 6-DOF rigid aircraft flight dynamics equations of motion, steady-state flight condition trim solver, and Short-Period and Phugoid longitudinal modal stability extraction.",
+      "license": "LGPL-2.1-or-later",
+      "tier": "preview-to-beta",
+      "domain": "aerospace-controls",
+      "category": "numerical-trajectory",
+      "filename": "jsbsim-c172-fdm-2.0.0.zip",
+      "referenceTool": "JSBSim C++ Reference",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Longitudinal modal frequencies and trim throttle within 0.5% of reference"
+      },
+      "upstream": {
+        "url": "https://github.com/JSBSim-Team/jsbsim/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/jsbsim/jsbsim-c172-fdm-2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 10
+    },
+    {
+      "id": "relap5-nuclear-transients",
+      "language": "relap5",
+      "name": "NRC RELAP5 PWR Primary Loop SCRAM & Point Kinetics Benchmark",
+      "version": "3.0.0",
+      "description": "Pressurized Water Reactor primary system thermal-hydraulics, 6-group delayed neutron point kinetics, Doppler fuel feedback, and automatic SCRAM control rod insertion transient.",
+      "license": "BSD-3-Clause",
+      "tier": "preview-to-beta",
+      "domain": "process-fluids",
+      "category": "numerical-trajectory",
+      "filename": "relap5-pwr-scram-3.0.0.zip",
+      "referenceTool": "RELAP5-3D / US NRC",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.01,
+        "description": "Neutron flux power drop and cladding temperature trajectory RMSE < 1.0%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/relap5/relap5-pwr-scram-3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "modflow-groundwater-flow",
+      "language": "modflow",
+      "name": "USGS MODFLOW 6 3D Multi-Layer Aquifer Flow Benchmark",
+      "version": "6.4.0",
+      "description": "USGS TWRI 3-layer heterogeneous aquifer model with river-aquifer leakage coupling (RIV6), high-capacity pumping well cones of depression (WEL6), and Darcy conservation DAE lowering.",
+      "license": "CC0-1.0",
+      "tier": "preview-to-beta",
+      "domain": "process-fluids",
+      "category": "numerical-trajectory",
+      "filename": "modflow-twri-6.4.0.zip",
+      "referenceTool": "USGS MODFLOW 6",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "3D cell hydraulic heads and total water balance within 0.5% of USGS ground truth"
+      },
+      "upstream": {
+        "url": "https://github.com/MODFLOW-USGS/modflow6/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/modflow/modflow-twri-6.4.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 12
+    },
+    {
+      "id": "touchstone-s-parameters",
+      "language": "touchstone",
+      "name": "Touchstone RF S-Parameter Multi-Port Interconnect & Passivity Benchmark",
+      "version": "2.0.0",
+      "description": "4-port differential transmission line S-parameters verifying physical passivity conditions (||S|| <= 1), vector fitting rational pole extraction, and NEXT/FEXT crosstalk isolation.",
+      "license": "BSD-3-Clause",
+      "tier": "preview-to-beta",
+      "domain": "power-energy",
+      "category": "conformance",
+      "filename": "touchstone-benchmarks-2.0.0.zip",
+      "referenceTool": "Keysight ADS / Scikit-RF",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "S-parameter magnitude, phase, passivity norm, and vector-fitted poles RMSE < 1e-3"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/touchstone/touchstone-benchmarks-2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "openscenario-highway-cutin",
+      "language": "openscenario",
+      "name": "ASAM OpenSCENARIO Highway Cut-In & Emergency Braking Safety Benchmark",
+      "version": "1.2.0",
+      "description": "Multi-agent highway cut-in scenario with Autonomous Emergency Braking (AEB), state-machine orchestration, Time-To-Collision (TTC) monitoring, and RSS safety bounds.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "mobility-auto",
+      "category": "numerical-trajectory",
+      "filename": "openscenario-cutin-1.2.0.zip",
+      "referenceTool": "ASAM OpenSCENARIO / esmini",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Kinematic vehicle trajectories, Time-To-Collision (TTC), and RSS bounds within 0.5%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/openscenario/openscenario-cutin-1.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 10
+    },
+    {
+      "id": "cgmes-entsoe-corridor",
+      "language": "cgmes",
+      "name": "ENTSO-E CGMES CIM16 Transmission Grid & Topology Benchmark",
+      "version": "1.0.0",
+      "description": "European ENTSO-E 400 kV high-voltage transmission grid benchmark with EQ/SSH profile separation, Union-Find topological node reduction, and AC load flow lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "power-energy",
+      "category": "conformance",
+      "filename": "cgmes-entsoe-1.0.0.zip",
+      "referenceTool": "ENTSO-E CGMES / CIMpy",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.001,
+        "description": "Active and reactive line power flows within 0.1% of ENTSO-E AC power flow ground truth"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/cgmes/cgmes-entsoe-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "antimony-mapk-cascade",
+      "language": "antimony",
+      "name": "Kholodenko 2000 MAPK Signaling Cascade Benchmark",
+      "version": "1.0.0",
+      "description": "Kholodenko 2000 three-tier MAPK phosphorylation cascade featuring ultra-sensitivity, negative feedback oscillations, and exact mass conservation.",
+      "license": "BSD-3-Clause",
+      "tier": "preview-to-beta",
+      "domain": "life-sciences",
+      "category": "numerical-trajectory",
+      "filename": "antimony-mapk-1.0.0.zip",
+      "referenceTool": "libAntimony / Tellurium",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "MAPK and MKK phosphorylation trajectories and total mass conservation RMSE < 1e-3"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/antimony/antimony-mapk-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "ibis-serdes-10g",
+      "language": "ibis",
+      "name": "IBIS 5.0 SerDes 10 Gbps High-Speed Channel & Equalization Benchmark",
+      "version": "5.0.0",
+      "description": "ANSI/EIA-656 IBIS 10 Gbps differential SerDes buffer with package parasitics, algorithmic FFE/CTLE/DFE equalization, and statistical eye opening at BER 1e-12.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "power-energy",
+      "category": "numerical-trajectory",
+      "filename": "ibis-serdes-5.0.0.zip",
+      "referenceTool": "IBIS Open Forum / ngspice",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.01,
+        "description": "Driver on-resistance, statistical eye opening, and DAE state-space response within 1.0%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/ibis/ibis-serdes-5.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 6
+    },
+    {
+      "id": "bngl-egfr-signaling",
+      "language": "bngl",
+      "name": "BioNetGen EGFR Dimerization & Signaling Cascade Benchmark",
+      "version": "2.5.0",
+      "description": "Rule-based EGFR signaling cascade with multi-site phosphorylation, adaptor protein recruitment (Grb2/Sos), rule network expansion into elementary ODEs, and mass conservation.",
+      "license": "MIT",
+      "tier": "preview-to-beta",
+      "domain": "life-sciences",
+      "category": "numerical-trajectory",
+      "filename": "bngl-egfr-2.5.0.zip",
+      "referenceTool": "BioNetGen 2.x / RuleBender",
+      "parityMetric": {
+        "targetMetric": "rmse",
+        "threshold": 0.001,
+        "description": "Expanded species concentrations and observable trajectory RMSE < 1e-3 with zero conservation error"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/bngl/bngl-egfr-2.5.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "sedml-metabolic-experiment",
+      "language": "sedml",
+      "name": "SED-ML Level 1 Version 4 Metabolic Parameter Sweep Benchmark",
+      "version": "1.4.0",
+      "description": "Simulation Experiment Description Markup Language standard multi-task execution with model changes, KiSAO algorithm mapping, MathML data generators, and 2D plot/report rendering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "life-sciences",
+      "category": "conformance",
+      "filename": "sedml-metabolic-1.4.0.zip",
+      "referenceTool": "SED-ML / libSEDML / COPASI",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.001,
+        "description": "Simulated time-series and computed MathML data generator yield curves within 0.1%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/sedml/sedml-metabolic-1.4.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "sbol-repressilator-circuit",
+      "language": "sbol",
+      "name": "SBOL 3.0 Elowitz Repressilator Synthetic Genetic Oscillator Benchmark",
+      "version": "3.0.0",
+      "description": "Synthetic Biology Open Language (SBOL3) Repressilator genetic oscillator with Sequence Ontology (SO) feature hierarchy, Systems Biology Ontology (SBO) interactions, and Hill ODE simulation.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "life-sciences",
+      "category": "numerical-trajectory",
+      "filename": "sbol-repressilator-3.0.0.zip",
+      "referenceTool": "libSBOLj / pySBOL3",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Limit-cycle oscillation amplitude and periods within 0.5% of canonical Hill ODE dynamics"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/sbol/sbol-repressilator-3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 8
+    },
+    {
+      "id": "tough-geothermal-reservoir",
+      "language": "tough",
+      "name": "TOUGH2/TOUGH3 EOS1 Geothermal Reservoir Benchmark",
+      "version": "3.0.0",
+      "description": "Non-isothermal multiphase subsurface fluid and heat transport in fractured reservoir rock, inter-block Darcy fluxes, and production well steam flashing.",
+      "license": "BSD-3-Clause-LBNL",
+      "tier": "preview-to-beta",
+      "domain": "subsurface-energy",
+      "category": "numerical-trajectory",
+      "filename": "tough-geothermal-3.0.0.zip",
+      "referenceTool": "LBNL TOUGH2 / TOUGH3",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Well thermal power and steam flashing fraction within 0.5% of EOS1 reference solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/tough/tough-geothermal-3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "hec-ras-river-reach",
+      "language": "hec-ras",
+      "name": "USACE HEC-RAS Bald Eagle Creek Open-Channel Reach Benchmark",
+      "version": "6.4.1",
+      "description": "Multi-cross-section 1D steady backwater profile, subcritical energy loss, normal depth Manning hydraulics, and DAE lowering.",
+      "license": "PublicDomain",
+      "tier": "preview-to-beta",
+      "domain": "hydraulics-water",
+      "category": "numerical-trajectory",
+      "filename": "hec-ras-river-6.4.1.zip",
+      "referenceTool": "USACE HEC-RAS",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Water surface elevation and energy grade line profiles within 0.5% of USACE HEC-RAS solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/hec-ras/hec-ras-river-6.4.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "ocpp-fleet-smart-charging",
+      "language": "ocpp",
+      "name": "OCPP 2.0.1 Multi-EVSE Fleet Depot Smart Charging Benchmark",
+      "version": "2.0.1",
+      "description": "Urgency-weighted dynamic power allocation across high-power DC fast charger sessions under substation transformer capacity limit.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "power-energy",
+      "category": "conformance",
+      "filename": "ocpp-fleet-2.0.1.zip",
+      "referenceTool": "Open Charge Alliance OCPP",
+      "parityMetric": {
+        "targetMetric": "max-relative-error",
+        "threshold": 0.001,
+        "description": "Total allocated charging power respects gridLimit within 0.1%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/ocpp/ocpp-fleet-2.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "openadr-grid-curtailment",
+      "language": "openadr",
+      "name": "OpenADR 2.0b / 3.0 Fast Demand Response Peak Shaving Benchmark",
+      "version": "3.0.0",
+      "description": "Automated demand response event scheduling, VTN-to-VEN curtailment dispatch, energy shed estimation, and DAE parameter lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "power-energy",
+      "category": "conformance",
+      "filename": "openadr-dr-3.0.0.zip",
+      "referenceTool": "OpenADR Alliance",
+      "parityMetric": {
+        "targetMetric": "max-relative-error",
+        "threshold": 0.001,
+        "description": "Time-series dispatch schedules and energy shed calculations within 0.1%"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/openadr/openadr-dr-3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "optical-terabit-dwdm",
+      "language": "optical",
+      "name": "OpenROADM 800 Gbps Terabit DWDM Backbone Benchmark",
+      "version": "7.1.0",
+      "description": "Multi-span 600 km coherent optical link, Gaussian Noise model non-linear interference, GSNR/OSNR margin, and dynamic EDFA gain saturation DAE.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "telecom-optics",
+      "category": "numerical-trajectory",
+      "filename": "optical-terabit-7.1.0.zip",
+      "referenceTool": "OpenROADM MSA / GNPy",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "GSNR and OSNR margins within 0.5% of GNPy non-linear analytical model"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/optical/optical-terabit-7.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "sima-oc4-semi-fowt",
+      "language": "sima",
+      "name": "SINTEF SIMA / RIFLEX OC4 Floating Offshore Wind Turbine Benchmark",
+      "version": "4.2.0",
+      "description": "6-DOF Cummins floater dynamics under JONSWAP irregular waves, 3-line catenary mooring spread, DNV-OS-E301 compliance, and Palmgren-Miner rainflow fatigue.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "marine-offshore",
+      "category": "numerical-trajectory",
+      "filename": "sima-oc4-4.2.0.zip",
+      "referenceTool": "SINTEF Ocean SIMA / SIMO / RIFLEX",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.01,
+        "description": "Mooring line tension, floater excursions, and DNV safety factors within 1.0% of SIMO/RIFLEX solver"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/sima/sima-oc4-4.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "cfd-naca0012-transonic",
+      "language": "cfd",
+      "name": "NASA Langley TMR NACA 0012 Transonic Aerodynamics Benchmark",
+      "version": "1.0.0",
+      "description": "NACA 0012 transonic airfoil aerodynamics at Mach 0.799, alpha 1.25 deg, Re 9M with 1D FVM streamtube fluid equations and DAE arena lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "fluid-aerospace",
+      "category": "numerical-trajectory",
+      "filename": "cfd-naca0012-1.0.0.zip",
+      "referenceTool": "NASA TMR / SU2 / OpenFOAM",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.01,
+        "description": "Lift, drag, and pressure distribution within 1% of SU2 Navier-Stokes solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/cfd/cfd-naca0012-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "fea-beam-vibration",
+      "language": "fea",
+      "name": "Abaqus / CalculiX Cantilever Beam Multi-Mode Vibration Benchmark",
+      "version": "1.0.0",
+      "description": "3D structural cantilever beam bending deflection, fundamental natural frequencies, modal coordinates, and DAE arena lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "structural-mechanics",
+      "category": "numerical-trajectory",
+      "filename": "fea-beam-1.0.0.zip",
+      "referenceTool": "CalculiX / Abaqus",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.01,
+        "description": "Tip deflection and natural frequencies within 1% of analytical Euler-Bernoulli solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/fea/fea-beam-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "fortran-orbital-dynamics",
+      "language": "fortran",
+      "name": "Fortran 6-DOF Orbital Dynamics & Propulsion System Benchmark",
+      "version": "1.0.0",
+      "description": "6-DOF orbital equations of motion, atmospheric drag, rocket propulsion, formal interval safety verification, and DAE arena lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "aerospace-controls",
+      "category": "numerical-trajectory",
+      "filename": "fortran-orbital-1.0.0.zip",
+      "referenceTool": "gfortran / EASY5",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Orbital velocity, altitude, and energy conservation within 0.5% of Runge-Kutta 4 solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/fortran/fortran-orbital-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "ran-5g-cband-backhaul",
+      "language": "ran",
+      "name": "5G C-Band Massive-MIMO & Multi-Hop Backhaul Network Benchmark",
+      "version": "1.0.0",
+      "description": "NSMA WG16 3D antenna pattern interpolation, FCC OET-65 MPE RF safety compliance, ITU-R P.530 rain fade, and mesh backhaul DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "telecom-optics",
+      "category": "numerical-trajectory",
+      "filename": "ran-5g-cband-1.0.0.zip",
+      "referenceTool": "Planet / EDX / ITU-R P.530",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Link budget RSL, SNR, and fade margin within 0.5% of ITU-R P.530 standard model"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/ran/ran-5g-cband-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "aspen-hydrocarbon-fractionation",
+      "language": "aspen",
+      "name": "Industrial De-Ethanizer & Hydrocarbon Fractionation Train Benchmark",
+      "version": "1.0.0",
+      "description": "Multi-stage RadFrac distillation column, preflash drum, pump, and heater flowsheet with Peng-Robinson VLE and structurally square DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "process-chemistry",
+      "category": "numerical-trajectory",
+      "filename": "aspen-fractionation-1.0.0.zip",
+      "referenceTool": "Aspen Plus / DWSIM",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Component splits, stage temperatures, and mass balance closure within 0.5% of Aspen Plus"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/aspen/aspen-fractionation-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "eclipse-spe10-reservoir",
+      "language": "eclipse",
+      "name": "SPE10 / North Sea Brent Multiphase Black-Oil Reservoir Benchmark",
+      "version": "1.0.0",
+      "description": "3D 3-phase black-oil reservoir depletion, 576 active cells, 4-well waterflood, Peaceman wellbore inflow, and material balance DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "subsurface-energy",
+      "category": "numerical-trajectory",
+      "filename": "eclipse-spe10-1.0.0.zip",
+      "referenceTool": "Schlumberger ECLIPSE 100 / OPM Flow",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.01,
+        "description": "STOIIP, cumulative production, and field average pressure within 1.0% of ECLIPSE 100"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/eclipse/eclipse-spe10-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "fiber-metro-ring-catena",
+      "language": "fiber",
+      "name": "144-Strand ANSI/TIA-598-D Metro Optical Ring & NESC Structural Benchmark",
+      "version": "1.0.0",
+      "description": "144-strand color code audit, NESC Rule 250 Heavy catenary sag/tension, ANSI O5.1 wood pole loading, SRLG disjointness, and ring loss DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "telecom-optics",
+      "category": "numerical-trajectory",
+      "filename": "fiber-metro-ring-1.0.0.zip",
+      "referenceTool": "O-Calc Pro / NESC C2",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Catenary sag, optical loss margins, and pole stress ratios within 0.5% of NESC standards"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/fiber/fiber-metro-ring-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "smiles-taxol-natural-product",
+      "language": "smiles",
+      "name": "SMILES Taxol Polycyclic Oncology Natural Product Benchmark",
+      "version": "1.0.0",
+      "description": "High-complexity polycyclic natural product (Paclitaxel / Taxol, C47H51NO14, MW = 853.9 g/mol), 62 heavy atoms, 7 rings, TPSA, Joback critical properties, and EOS DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "chemistry-materials",
+      "category": "numerical-trajectory",
+      "filename": "smiles-taxol-1.0.0.zip",
+      "referenceTool": "RDKit / Joback-Reid",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Molecular weight, TPSA, and critical properties within 0.5% of IUPAC reference standards"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/smiles/smiles-taxol-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "pdb-alpha-helix-peptide",
+      "language": "pdb",
+      "name": "PDB De Novo Alpha-Helical Polypeptide Biophysics & GNM Benchmark",
+      "version": "1.0.0",
+      "description": "wwPDB v3.3 atomic coordinates, alpha helix, beta sheet, disulfide bridge, Ramachandran phi/psi angles, Gaussian Network Model Kirchhoff matrix, and C-alpha harmonic DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "biomedical-healthcare",
+      "category": "numerical-trajectory",
+      "filename": "pdb-helix-1.0.0.zip",
+      "referenceTool": "wwPDB / ProDy GNM",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Radius of gyration, B-factor correlation, and Kirchhoff eigenvalues within 0.5% of analytical biophysics"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/pdb/pdb-helix-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "genbank-pgfp-plasmid",
+      "language": "genbank",
+      "name": "GenBank Synthetic pGFP Expression Plasmid & Central Dogma DAE Benchmark",
+      "version": "1.0.0",
+      "description": "90 bp circular ds-DNA synthetic expression construct, promoter, RBS, mini-GFP coding sequence, terminator, 6-frame ORF discovery, CAI evaluation, restriction digestion, and transcription/translation DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "synthetic-biology",
+      "category": "numerical-trajectory",
+      "filename": "genbank-plasmid-1.0.0.zip",
+      "referenceTool": "NCBI BLAST / Biopython",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "GC content, CAI, melting temperature, and restriction fragments within 0.5% of NCBI standards"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/genbank/genbank-plasmid-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "phreeqc-karst-aquifer",
+      "language": "phreeqc",
+      "name": "PHREEQC Karst Groundwater Speciation & Calcite Kinetics Benchmark",
+      "version": "1.0.0",
+      "description": "USGS PHREEQC aqueous speciation, Davies activity coefficients, carbonate equilibrium partitioning, mineral saturation indices, and Calcite dissolution rate DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "geochemistry-environment",
+      "category": "numerical-trajectory",
+      "filename": "phreeqc-karst-1.0.0.zip",
+      "referenceTool": "USGS PHREEQC Interactive",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Ionic strength, activity coefficients, and saturation indices within 0.5% of USGS PHREEQC"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/phreeqc/phreeqc-karst-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "nmtran-two-cmt-oral-pk",
+      "language": "nmtran",
+      "name": "NONMEM NM-TRAN Two-Compartment Oral Population PK/PD Benchmark",
+      "version": "1.0.0",
+      "description": "ADVAN4 TRANS4 mixed-effects population pharmacokinetic model, first-order absorption, multi-dose II=12 ADDL=1 regimen, Cmax/Tmax/AUC metrics, and compartment state-space DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "pharmacometrics",
+      "category": "numerical-trajectory",
+      "filename": "nmtran-oral-pk-1.0.0.zip",
+      "referenceTool": "ICON NONMEM 7.5",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Cmax, Tmax, and steady-state concentration within 0.5% of analytical ADVAN4 solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/nmtran/nmtran-oral-pk-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "gproms-axial-dispersion-pfr",
+      "language": "gproms",
+      "name": "gPROMS 1D Catalytic Tubular PFR Distributed PDAE Benchmark",
+      "version": "1.0.0",
+      "description": "1D tubular catalytic reactor with axial dispersion, Method-of-Lines discretization across 11 spatial nodes, boundary conditions, convection-reaction equilibrium, and high-order DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "chemical-process",
+      "category": "numerical-trajectory",
+      "filename": "gproms-pfr-1.0.0.zip",
+      "referenceTool": "PSE gPROMS ProcessBuilder",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.01,
+        "description": "Axial concentration profile and outlet conversion within 1.0% of analytical plug-flow solution"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/gproms/gproms-pfr-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "landgem-chp-facility",
+      "language": "landgem",
+      "name": "EPA LandGEM Solid Waste & Anaerobic Co-Digestion CHP Facility Benchmark",
+      "version": "1.0.0",
+      "description": "EPA LandGEM first-order decay methane generation kinetics across multi-year solid waste acceptance cohorts, LFG power generation potential (MW), and ADM1 anaerobic digester co-digestion CHP rating DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "geochemistry-environment",
+      "category": "numerical-trajectory",
+      "filename": "landgem-chp-1.0.0.zip",
+      "referenceTool": "EPA LandGEM v3.02",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Peak methane rate, cumulative yield, and digester biogas output within 0.5% of EPA LandGEM v3.02"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/landgem/landgem-chp-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "gtfs-electric-bus-depot",
+      "language": "gtfs",
+      "name": "GTFS Multimodal Transit Network & Electric Bus Depot Charging Benchmark",
+      "version": "1.0.0",
+      "description": "Metropolitan multimodal transit network timetable synchronization, electric bus aerodynamic/rolling resistance traction power dynamics, battery SOC depletion, and 24-hour fleet depot charging demand DAE lowering.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "mobility-auto",
+      "category": "numerical-trajectory",
+      "filename": "gtfs-depot-1.0.0.zip",
+      "referenceTool": "GTFS / NREL FASTSim",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Traction energy, peak electrical power, and fleet depot charging schedule within 0.5% of NREL FASTSim"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/gtfs/gtfs-depot-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    },
+    {
+      "id": "usd-robotic-articulated-arm",
+      "language": "usd",
+      "name": "Pixar OpenUSD 3D Robotic Articulated Arm & UsdPhysics Kinematics Benchmark",
+      "version": "1.0.0",
+      "description": "Pixar OpenUSD ASCII USDA scenegraph parsing, UsdPhysics rigid-body API schema validation, revolute joint spatial kinematics, time-sampled transformations, and linear memory DAE arena equations of motion.",
+      "license": "Apache-2.0",
+      "tier": "preview-to-beta",
+      "domain": "continuum-cad",
+      "category": "numerical-trajectory",
+      "filename": "usd-robot-1.0.0.zip",
+      "referenceTool": "Pixar OpenUSD / NVIDIA Omniverse PhysX",
+      "parityMetric": {
+        "targetMetric": "relative-error",
+        "threshold": 0.005,
+        "description": "Joint generalized coordinates, velocities, and actuator torque balances within 0.5% of NVIDIA PhysX"
+      },
+      "upstream": {
+        "url": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/usd/usd-robot-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedCases": 5
+    }
+  ]
+}

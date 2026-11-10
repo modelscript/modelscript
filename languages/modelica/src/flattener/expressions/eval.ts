@@ -15,7 +15,7 @@ import {
 } from "@modelscript/runtime";
 import { getExprArrayShape, getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import { exprReferencesRuntimeParameter } from "./binary-ops.js";
-import { evaluateCSTNumber, getSymbolEnumLiterals } from "./cst-utils.js";
+import { beginExternalCstEval, endExternalCstEval, evaluateCSTNumber, getSymbolEnumLiterals } from "./cst-utils.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "./functions.js";
 
 /**
@@ -1486,11 +1486,39 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
           const startId = dae.getExprData1(subExpr);
           const stepId = dae.getExprLeft(subExpr);
           const stopId = dae.getExprRight(subExpr);
-          const rStart = evalDaeExpr(startId, dae);
-          const rEnd = evalDaeExpr(stopId, dae);
+          let rStart = evalDaeExpr(startId, dae);
+          let rEnd = evalDaeExpr(stopId, dae);
           const rStep = stepId !== -1 && stepId !== 0xffffffff ? (evalDaeExpr(stepId, dae) ?? 1) : 1;
+          if (typeof rStart !== "number" || typeof rEnd !== "number") {
+            const evalWithDummy = (id: number, dummy: number): number | null => {
+              if (id < 0) return null;
+              const v = evalDaeExpr(id, dae);
+              if (typeof v === "number") return v;
+              const k = dae.getExprKind(id);
+              if (k === ExprKind.Name) return dummy;
+              if (k === ExprKind.Negate || (k === ExprKind.Unary && dae.getExprData1(id) === UnaryOp.Negate)) {
+                const sub = evalWithDummy(dae.getExprLeft(id), dummy);
+                return sub !== null ? -sub : null;
+              }
+              if (k === ExprKind.Binary) {
+                const l = evalWithDummy(dae.getExprLeft(id), dummy);
+                const r = evalWithDummy(dae.getExprRight(id), dummy);
+                if (l === null || r === null) return null;
+                const op = dae.getExprData1(id);
+                if (op === BinOp.Add) return l + r;
+                if (op === BinOp.Sub) return l - r;
+                if (op === BinOp.Mul) return l * r;
+                if (op === BinOp.Div && r !== 0) return l / r;
+              }
+              return null;
+            };
+            if (typeof rStart !== "number") rStart = evalWithDummy(startId, 1);
+            if (typeof rEnd !== "number") rEnd = evalWithDummy(stopId, 1);
+          }
           if (typeof rStart === "number" && typeof rEnd === "number" && typeof rStep === "number" && rStep !== 0) {
             remainingDims.push(Math.max(0, Math.floor((rEnd - rStart) / rStep + 1e-9) + 1));
+          } else {
+            remainingDims.push(i < baseDims.length ? baseDims[i]! : 1);
           }
         }
       }
@@ -1525,11 +1553,39 @@ export function evalDaeExpr(
   visitedVars?: Set<number>,
 ): any {
   if (exprId < 0) return null;
-  // Guard against cyclic expression graphs in the arena
+  const isTopLevel = !visitedExprs;
   if (!visitedExprs) visitedExprs = new Set<number>();
-  if (visitedExprs.has(exprId)) return null;
+  let memo = (visitedExprs as any)._memo as Map<number, any> | undefined;
+  if (!memo) {
+    memo = new Map<number, any>();
+    (visitedExprs as any)._memo = memo;
+  }
+  if (memo.has(exprId)) return memo.get(exprId);
+  if (visitedExprs.has(exprId)) {
+    (visitedExprs as any)._cycle = true;
+    return null;
+  }
+  if (isTopLevel) beginExternalCstEval();
   visitedExprs.add(exprId);
   try {
+    const res = evalDaeExprInner(exprId, dae, visitedExprs, visitedVars);
+    if (!(visitedExprs as any)._cycle) {
+      memo.set(exprId, res);
+    }
+    return res;
+  } finally {
+    visitedExprs.delete(exprId);
+    if (isTopLevel) endExternalCstEval();
+  }
+}
+
+function evalDaeExprInner(
+  exprId: number,
+  dae: DAEBuilder,
+  visitedExprs: Set<number>,
+  visitedVars?: Set<number>,
+): any {
+  {
     const kind = dae.getExprKind(exprId);
     switch (kind) {
       // ── Primitive scalar literals ──
@@ -2025,8 +2081,14 @@ export function evalDaeExpr(
           if (Array.isArray(args[0])) return args[0].map((x: any) => (typeof x === "number" ? Number(x) : x));
           return null;
         }
-        if (cleanFn === "/*Integer*/" || cleanFn === "Integer") {
+        if (cleanFn === "/*Integer*/" || cleanFn === "Integer" || cleanFn === "integer" || cleanFn === "floor") {
           return typeof args[0] === "number" ? Math.floor(args[0]) : null;
+        }
+        if (cleanFn === "ceil") {
+          return typeof args[0] === "number" ? Math.ceil(args[0]) : null;
+        }
+        if (cleanFn === "round") {
+          return typeof args[0] === "number" ? Math.round(args[0]) : null;
         }
         if (cleanFn === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
           return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
@@ -2213,8 +2275,6 @@ export function evalDaeExpr(
       default:
         return null;
     }
-  } finally {
-    visitedExprs.delete(exprId);
   }
 }
 

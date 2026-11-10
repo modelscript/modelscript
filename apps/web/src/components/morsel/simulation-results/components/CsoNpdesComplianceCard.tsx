@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { exportNetDmrCsv, exportNetDmrXml } from "@modelscript/swmm";
 import { CheckCircleFillIcon, DownloadIcon, WorkflowIcon, XCircleFillIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import styled from "styled-components";
@@ -236,6 +237,64 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleExportXml = () => {
+    const xml = exportNetDmrXml({
+      permitNumber: data.permitId || "NPDES-MA0101832",
+      facilityName: data.utilityName,
+      monitoringPeriodStart: `${data.evaluatedYear}-01-01`,
+      monitoringPeriodEnd: `${data.evaluatedYear}-12-31`,
+      evaluatedYear: data.evaluatedYear,
+      presumptiveApproach: {
+        maxEventsPermitted: data.maxEventsLimit,
+        minVolumetricCapturePct: data.targetCapturePct,
+        observedVolumetricCapturePct: data.volumetricCapturePct,
+        totalSystemEvents: data.totalAnnualEvents,
+        presumptiveCompliant:
+          data.totalAnnualEvents <= data.maxEventsLimit && data.volumetricCapturePct >= data.targetCapturePct,
+      },
+      totalSystemSpillVolumeM3: data.totalSpillVolumeM3,
+      rtcVolumeDivertedM3: data.rtcVolumeDivertedM3,
+      outfalls: (data.outfalls || []).map((of) => ({
+        outfallId: of.outfallId,
+        receivingWater: of.receivingWater,
+        totalEventsCount: of.annualEvents,
+        totalSpillVolumeM3: of.annualSpillVolumeM3,
+        peakSpillRateM3s: of.peakRateM3s,
+        parameters: [
+          {
+            parameterCode: "74055",
+            parameterName: "CSO Event Count",
+            value: of.annualEvents,
+            unit: "EVENTS",
+            statisticalBaseCode: "COUNT",
+            exceedance: of.annualEvents > data.maxEventsLimit,
+            permitLimit: data.maxEventsLimit,
+          },
+          {
+            parameterCode: "50050",
+            parameterName: "Flow, in conduit or through treatment plant",
+            value: of.annualSpillVolumeM3,
+            unit: "M3",
+            statisticalBaseCode: "TOTAL",
+            exceedance: false,
+          },
+        ],
+        compliant: of.compliant,
+      })),
+      overallStatus: computedStatus,
+    });
+
+    const blob = new Blob([xml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `netdmr-${data.permitId || "cso"}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <CardContainer $isDark={isDark}>
       <HeaderRow>
@@ -256,6 +315,10 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
         </TitleGroup>
 
         <ActionButtons>
+          <ActionBtn onClick={handleExportXml} aria-label="Export NetDMR XML">
+            <DownloadIcon size={14} />
+            Export NetDMR XML
+          </ActionBtn>
           <ActionBtn onClick={handleExport} aria-label="Export JSON">
             <DownloadIcon size={14} />
             Export JSON

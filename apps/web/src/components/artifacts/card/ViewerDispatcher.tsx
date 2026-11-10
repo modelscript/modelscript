@@ -77,6 +77,7 @@ const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewe
 const OtdrTraceViewer = React.lazy(() => import("../OtdrTraceViewer"));
 const FiberSpliceMatrixViewer = React.lazy(() => import("../FiberSpliceMatrixViewer"));
 const MicrowaveProfileViewer = React.lazy(() => import("../MicrowaveProfileViewer"));
+const MpeExclusionViewer = React.lazy(() => import("../MpeExclusionViewer"));
 
 export function getViewerExpectedHeight(
   viewType: string | undefined,
@@ -148,6 +149,9 @@ export function getViewerExpectedHeight(
     case "microwave-profile":
     case "fresnel-profile":
     case "ran-microwave":
+    case "mpe":
+    case "mpe-exclusion":
+    case "rf-safety":
       return "520px";
     case "package":
     case "library":
@@ -444,6 +448,10 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "microwave":
       case "ran":
         return <MicrowaveProfileViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "mpe":
+      case "mpe-exclusion":
+      case "rf-safety":
+        return <MpeExclusionViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "ssp":
       case "ssd":
         return (

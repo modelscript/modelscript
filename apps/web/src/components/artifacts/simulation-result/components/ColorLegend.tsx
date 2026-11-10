@@ -9,9 +9,19 @@ export interface ColorLegendProps {
   max: number;
   fieldName: string;
   unit?: string | undefined;
+  threshold?: number | undefined;
+  thresholdLabel?: string | undefined;
 }
 
-export const ColorLegend: React.FC<ColorLegendProps> = ({ preset, min, max, fieldName, unit }) => {
+export const ColorLegend: React.FC<ColorLegendProps> = ({
+  preset,
+  min,
+  max,
+  fieldName,
+  unit,
+  threshold,
+  thresholdLabel,
+}) => {
   const steps = 8;
   const formatValue = (v: number) => {
     if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + "M";
@@ -19,6 +29,12 @@ export const ColorLegend: React.FC<ColorLegendProps> = ({ preset, min, max, fiel
     if (Math.abs(v) < 0.01 && v !== 0) return v.toExponential(1);
     return v.toFixed(2);
   };
+
+  const thresholdFraction = threshold !== undefined && max > min ? (threshold - min) / (max - min) : null;
+  const thresholdTopPct =
+    thresholdFraction !== null && thresholdFraction >= 0 && thresholdFraction <= 1
+      ? (1 - thresholdFraction) * 100
+      : null;
 
   return (
     <div
@@ -56,11 +72,28 @@ export const ColorLegend: React.FC<ColorLegendProps> = ({ preset, min, max, fiel
           width: 16,
           borderRadius: 4,
           border: "1px solid var(--color-border)",
-          overflow: "hidden",
+          overflow: "visible",
           display: "flex",
           flexDirection: "column",
+          position: "relative",
         }}
       >
+        {thresholdTopPct !== null && (
+          <div
+            style={{
+              position: "absolute",
+              top: `${thresholdTopPct}%`,
+              left: -4,
+              right: -4,
+              height: 2,
+              backgroundColor: "#ef4444",
+              boxShadow: "0 0 6px #ef4444",
+              zIndex: 10,
+              borderRadius: 1,
+            }}
+            title={`${thresholdLabel ?? "Allowable Limit"}: ${formatValue(threshold!)}`}
+          />
+        )}
         {Array.from({ length: steps }).map((_, i) => {
           const t = 1 - i / (steps - 1); // Top = max
           return (

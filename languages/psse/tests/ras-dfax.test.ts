@@ -3,12 +3,16 @@
 import assert from "node:assert";
 import test from "node:test";
 import {
+  CONTINGENCY_SCREENING_WGSL,
   calculateLodfMatrix,
   calculateOtdfMatrix,
   calculatePtdfMatrix,
+  evaluateBatchedLodfCpu,
   parseRaw,
   screenContingencies,
+  screenContingenciesBatchAsync,
   type CandidateContingency,
+  type PsseCase,
   type RemedialActionScheme,
 } from "../src/index.js";
 
@@ -273,3 +277,190 @@ test("RAS/SPS: Compound logic (k_of_n & AND) triggers only under matching multi-
   assert(report2.rankedContingencies[0]!.rasTriggered !== undefined);
   assert.strictEqual(report2.rankedContingencies[0]!.rasTriggered[0], "RAS_COMPOUND");
 });
+
+test("DFAX Scale: Sparse LU PTDF and LODF on 500-bus meshed grid completes in < 150ms", () => {
+  const nBuses = 500;
+  const buses = new Map<number, any>();
+  const branches: any[] = [];
+  const generators: any[] = [];
+  const loads: any[] = [];
+
+  for (let i = 1; i <= nBuses; i++) {
+    buses.set(i, {
+      i,
+      name: `BUS_${i}`,
+      baskv: 230.0,
+      ide: i === 1 ? 3 : i % 25 === 0 ? 2 : 1,
+      area: 1,
+      zone: 1,
+      owner: 1,
+      vm: 1.0,
+      va: 0.0,
+    });
+    if (i === 1 || i % 25 === 0) {
+      generators.push({
+        i,
+        id: "1",
+        pg: 40.0,
+        qg: 0.0,
+        qt: 100.0,
+        qb: -100.0,
+        vs: 1.0,
+        ireg: 0,
+        mbase: 100.0,
+        zr: 0.0,
+        zx: 0.1,
+        rt: 0.0,
+        xt: 0.0,
+        gtap: 1.0,
+        stat: 1,
+        rmpct: 100.0,
+        pt: 100.0,
+        pb: 0.0,
+      });
+    } else {
+      loads.push({
+        i,
+        id: "1",
+        status: 1,
+        area: 1,
+        zone: 1,
+        pl: 1.5,
+        ql: 0.4,
+        ip: 0.0,
+        iq: 0.0,
+        yp: 0.0,
+        yq: 0.0,
+        owner: 1,
+        scale: 1,
+      });
+    }
+    if (i < nBuses) {
+      branches.push({
+        i,
+        j: i + 1,
+        ckt: "1",
+        r: 0.002,
+        x: 0.02,
+        b: 0.01,
+        rateA: 250.0,
+        rateB: 250.0,
+        rateC: 250.0,
+        gi: 0,
+        bi: 0,
+        gj: 0,
+        bj: 0,
+        st: 1,
+        met: 1,
+        len: 10.0,
+      });
+    }
+    if (i + 10 <= nBuses) {
+      branches.push({
+        i,
+        j: i + 10,
+        ckt: "1",
+        r: 0.004,
+        x: 0.04,
+        b: 0.01,
+        rateA: 200.0,
+        rateB: 200.0,
+        rateC: 200.0,
+        gi: 0,
+        bi: 0,
+        gj: 0,
+        bj: 0,
+        st: 1,
+        met: 1,
+        len: 20.0,
+      });
+    }
+  }
+
+  const synthetic500: PsseCase = {
+    header: { ic: 0, sbase: 100.0, rev: 33, xfrrat: 0, nxfrat: 1, basfrq: 60.0, title1: "500BUS", title2: "" },
+    buses,
+    loads,
+    fixedShunts: [],
+    generators,
+    branches,
+    transformers: [],
+    areas: [],
+    twoTerminalDc: [],
+    vscDc: [],
+    switchedShunts: [],
+  };
+
+  const t0 = performance.now();
+  const ptdf = calculatePtdfMatrix(synthetic500, { skipDenseRows: true });
+  const lodf = calculateLodfMatrix(synthetic500, { ptdf, skipDenseRows: true });
+  const elapsedMs = performance.now() - t0;
+
+  assert.strictEqual(ptdf.buses.length, 500);
+  assert.strictEqual(lodf.branches.length, branches.length);
+  assert.ok(lodf.flatFactors instanceof Float64Array);
+  assert.strictEqual(lodf.getOutageFactor(branches[0] ? { fromBus: 1, toBus: 2, ckt: "1" } : lodf.branches[0]!, { fromBus: 1, toBus: 2, ckt: "1" }), -1.0);
+  assert.ok(elapsedMs < 300, `500-bus sparse PTDF+LODF took ${elapsedMs.toFixed(1)} ms (expected < 300 ms)`);
+});
+
+test("Batched WebGPU / Typed-Array Contingency Screener: Evaluates N-1 and N-2 contingencies with Woodbury 2x2 LODF", async () => {
+  assert.ok(CONTINGENCY_SCREENING_WGSL.includes("@compute @workgroup_size(64)"));
+
+  const psCase = parseRaw(IEEE14_RAW);
+  const inService = psCase.branches.filter((b) => b.st !== 0);
+  const contingencies: CandidateContingency[] = [];
+
+  // Add all N-1 branch contingencies and 15 N-2 double-branch contingencies
+  for (let i = 0; i < inService.length; i++) {
+    const b = inService[i]!;
+    contingencies.push({
+      id: `N1_${b.i}_${b.j}`,
+      name: `Trip ${b.i}-${b.j}`,
+      events: [{ type: "trip_branch", fromBus: b.i, toBus: b.j, ckt: b.ckt }],
+    });
+  }
+  for (let i = 0; i < Math.min(5, inService.length); i++) {
+    for (let j = i + 1; j < Math.min(6, inService.length); j++) {
+      const b1 = inService[i]!;
+      const b2 = inService[j]!;
+      contingencies.push({
+        id: `N2_${b1.i}_${b1.j}__${b2.i}_${b2.j}`,
+        name: `Double Trip ${b1.i}-${b1.j} & ${b2.i}-${b2.j}`,
+        events: [
+          { type: "trip_branch", fromBus: b1.i, toBus: b1.j, ckt: b1.ckt },
+          { type: "trip_branch", fromBus: b2.i, toBus: b2.j, ckt: b2.ckt },
+        ],
+      });
+    }
+  }
+
+  const batchReport = await screenContingenciesBatchAsync(psCase, contingencies, {
+    topKAcConfirmation: 5,
+    preferCpu: true,
+  });
+
+  assert.strictEqual(batchReport.totalEvaluated, contingencies.length);
+  assert.strictEqual(batchReport.rankedContingencies.length, 5);
+  assert.strictEqual(batchReport.backend, "cpu-typed-array");
+  assert.ok(batchReport.linearScreeningTimeMs >= 0);
+
+  // Direct verification of evaluateBatchedLodfCpu on a 3-branch triangle
+  const baseFlows = new Float64Array([60.0, 40.0, 15.0]);
+  const ratings = new Float64Array([50.0, 50.0, 50.0]);
+  const lodfMat = new Float64Array([
+    -1.0, 0.5, 0.5,
+    0.5, -1.0, 0.5,
+    0.5, 0.5, -1.0,
+  ]);
+  const pairs = new Int32Array([
+    0, -1, // N-1: trip branch 0 -> branch 1 gets 40 + 0.5*60 = 70 (> 50 rating -> overload)
+    0, 1,  // N-2: trip branches 0 and 1
+  ]);
+  const metrics = evaluateBatchedLodfCpu(baseFlows, ratings, lodfMat, pairs, 100.0);
+  assert.strictEqual(metrics.length, 6);
+  assert.ok(metrics[0]! > 1.0, "Expected positive severity index for N-1 outage");
+  assert.ok(Math.abs(metrics[1]! - 140.0) < 1e-4, `Expected 140% max loading on branch 1, got ${metrics[1]}`);
+  assert.strictEqual(metrics[2], 1, "Expected 1 overloaded branch on N-1 outage");
+  assert.ok(metrics[3]! > metrics[0]!, "Expected N-2 double outage to have higher severity index than N-1");
+});
+

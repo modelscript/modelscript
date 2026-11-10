@@ -4,6 +4,87 @@ import type { ActionExecutionContext, LanguageAction } from "@modelscript/dsl";
 import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
+const STOP_TOKENS = new Set(["to", "from", "case", "deck", "model", "network", "flowsheet", "system"]);
+
+function normalizeActionTokens(id: string): string {
+  return id
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 0 && !STOP_TOKENS.has(t))
+    .sort()
+    .join("_");
+}
+
+function areActionIdsEquivalent(a: string, b: string): boolean {
+  if (a === b) return true;
+  const na = normalizeActionTokens(a);
+  const nb = normalizeActionTokens(b);
+  return na.length > 0 && na === nb;
+}
+
+function findMatchingAction(actions: LanguageAction[], requestedId: string): LanguageAction | undefined {
+  const exact = actions.find((a) => a.id === requestedId);
+  if (exact) return exact;
+  const equiv = actions.find((a) => areActionIdsEquivalent(a.id, requestedId));
+  if (equiv) return equiv;
+
+  const lower = requestedId.toLowerCase();
+  if (lower === "simulate" || lower === "solve") {
+    return (
+      actions.find((a) => a.category === "simulate") ??
+      actions.find((a) => /(simulate|solve|run_tran|run_op|run_scan|transient|steady)/i.test(a.id))
+    );
+  }
+  if (lower === "lint" || lower === "verify" || lower === "check") {
+    return (
+      actions.find((a) => a.category === "verify" && /lint|verify|check/i.test(a.id)) ??
+      actions.find((a) => a.category === "verify") ??
+      actions.find((a) => /(lint|verify|check)/i.test(a.id))
+    );
+  }
+  if (lower === "flatten" || lower === "to_dae" || lower === "dae") {
+    return actions.find((a) => /(to_dae|_dae$|flatten)/i.test(a.id));
+  }
+  return undefined;
+}
+
+function findMatchingHandler(
+  handlers: Record<string, (...args: any[]) => any> | undefined,
+  requestedId: string,
+): ((...args: any[]) => any) | undefined {
+  if (!handlers) return undefined;
+  if (typeof handlers[requestedId] === "function") return handlers[requestedId];
+  if (typeof handlers[`modelscript/${requestedId}`] === "function") return handlers[`modelscript/${requestedId}`];
+  for (const [key, fn] of Object.entries(handlers)) {
+    if (typeof fn === "function" && areActionIdsEquivalent(key, requestedId)) {
+      return fn;
+    }
+  }
+  const lower = requestedId.toLowerCase();
+  if (lower === "simulate" || lower === "solve") {
+    for (const [key, fn] of Object.entries(handlers)) {
+      if (typeof fn === "function" && /(simulate|solve|run_tran|run_op|run_scan|transient)/i.test(key)) {
+        return fn;
+      }
+    }
+  }
+  if (lower === "lint" || lower === "verify" || lower === "check") {
+    for (const [key, fn] of Object.entries(handlers)) {
+      if (typeof fn === "function" && /(lint|verify|check)/i.test(key)) {
+        return fn;
+      }
+    }
+  }
+  if (lower === "flatten" || lower === "to_dae" || lower === "dae") {
+    for (const [key, fn] of Object.entries(handlers)) {
+      if (typeof fn === "function" && /(to_dae|_dae$|flatten)/i.test(key)) {
+        return fn;
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Registers language-agnostic Inversion-of-Control (IoC) action router endpoints.
  * Completely decoupled from specific language implementations.
@@ -28,9 +109,9 @@ export function registerActionRouter(context: LspContext): void {
           seenPluginDefs.add(plugin.languageDef);
         }
         const actions: LanguageAction[] = plugin.languageDef?.actions || [];
-        const listedActionIds = new Set<string>();
+        const listedActionIds: string[] = [];
         for (const action of actions) {
-          listedActionIds.add(action.id);
+          listedActionIds.push(action.id);
           results.push({
             id: action.id,
             languageId: plugin.id,
@@ -45,8 +126,8 @@ export function registerActionRouter(context: LspContext): void {
         }
         if (plugin.actionHandlers) {
           for (const actionId of Object.keys(plugin.actionHandlers)) {
-            if (listedActionIds.has(actionId)) continue;
-            listedActionIds.add(actionId);
+            if (listedActionIds.some((existing) => areActionIdsEquivalent(existing, actionId))) continue;
+            listedActionIds.push(actionId);
             results.push({
               id: actionId,
               languageId: plugin.id,
@@ -83,8 +164,8 @@ export function registerActionRouter(context: LspContext): void {
         for (const p of globalLanguageRegistry.getAllPlugins()) {
           const actions: LanguageAction[] = p.languageDef?.actions || [];
           if (
-            actions.some((a) => a.id === params.actionId) ||
-            (p.actionHandlers && typeof p.actionHandlers[params.actionId] === "function")
+            actions.some((a) => areActionIdsEquivalent(a.id, params.actionId)) ||
+            findMatchingHandler(p.actionHandlers, params.actionId) !== undefined
           ) {
             plugin = p;
             break;
@@ -99,22 +180,29 @@ export function registerActionRouter(context: LspContext): void {
       }
 
       const actions: LanguageAction[] = plugin.languageDef?.actions || [];
-      const action = actions.find((a) => a.id === params.actionId);
+      const action = findMatchingAction(actions, params.actionId);
+      const effectiveActionId = action?.id ?? params.actionId;
 
       let executeFn = action?.execute;
-      if (typeof executeFn !== "function" && plugin.actionHandlers) {
-        executeFn = plugin.actionHandlers[params.actionId];
-      }
-      if (typeof executeFn !== "function" && plugin.languageDef?.actionHandlers) {
-        executeFn = plugin.languageDef.actionHandlers[params.actionId];
-      }
-      if (typeof executeFn !== "function" && plugin.handlers) {
-        executeFn = plugin.handlers[params.actionId] ?? plugin.handlers[`modelscript/${params.actionId}`];
-      }
-      if (typeof executeFn !== "function" && plugin.languageDef?.lsp?.handlers) {
+      if (typeof executeFn !== "function") {
         executeFn =
-          plugin.languageDef.lsp.handlers[params.actionId] ??
-          plugin.languageDef.lsp.handlers[`modelscript/${params.actionId}`];
+          findMatchingHandler(plugin.actionHandlers, effectiveActionId) ??
+          findMatchingHandler(plugin.actionHandlers, params.actionId);
+      }
+      if (typeof executeFn !== "function") {
+        executeFn =
+          findMatchingHandler(plugin.languageDef?.actionHandlers, effectiveActionId) ??
+          findMatchingHandler(plugin.languageDef?.actionHandlers, params.actionId);
+      }
+      if (typeof executeFn !== "function") {
+        executeFn =
+          findMatchingHandler(plugin.handlers, effectiveActionId) ??
+          findMatchingHandler(plugin.handlers, params.actionId);
+      }
+      if (typeof executeFn !== "function") {
+        executeFn =
+          findMatchingHandler(plugin.languageDef?.lsp?.handlers, effectiveActionId) ??
+          findMatchingHandler(plugin.languageDef?.lsp?.handlers, params.actionId);
       }
 
       if (typeof executeFn !== "function") {

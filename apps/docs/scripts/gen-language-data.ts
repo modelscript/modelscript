@@ -94,13 +94,24 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
 
     // Capabilities
     const hasDaeDir = fs.existsSync(path.join(dir, "src/dae"));
-    const hasSolverDir = fs.existsSync(path.join(dir, "src/solver"));
+    const hasSolverDir =
+      fs.existsSync(path.join(dir, "src/solver")) || fs.existsSync(path.join(dir, "src/solvers"));
     const hasDaeLowering =
       hasDaeDir ||
-      actions.some((a) => a.includes("dae")) ||
+      actions.some((a) => a.includes("dae") || a === "compile") ||
       [
         "modelica",
         "modelscript",
+        "ampl",
+        "powerfactory",
+        "pslf",
+        "ocpp",
+        "openadr",
+        "hec-ras",
+        "tough",
+        "modflow",
+        "landgem",
+        "gtfs",
         "c",
         "simpack",
         "gensys",
@@ -133,10 +144,27 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
           "inverse-dynamics",
           "dosimetry",
           "bragg-peak",
+          "osnr",
+          "link-budget",
+          "coverage",
+          "loss-budget",
         ].includes(a),
       ) ||
       [
         "modelica",
+        "ampl",
+        "powerfactory",
+        "pslf",
+        "ocpp",
+        "openadr",
+        "optical",
+        "ran",
+        "fiber",
+        "hec-ras",
+        "tough",
+        "modflow",
+        "landgem",
+        "gtfs",
         "spice",
         "jsbsim",
         "relap5",
@@ -186,6 +214,13 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
       }
     }
     if (lang.slug === "modelica") projections.push("DAE", "C", "FMU");
+    if (lang.slug === "ampl") projections.push("DAE", "Modelica", "ASL .nl");
+    if (lang.slug === "powerfactory") projections.push("Modelica", "PSS/E", "DAE");
+    if (lang.slug === "pslf") projections.push("PSS/E", "Modelica", "DAE");
+    if (["ocpp", "openadr", "gtfs"].includes(lang.slug)) projections.push("Modelica", "DAE");
+    if (["hec-ras", "tough", "modflow", "landgem"].includes(lang.slug)) projections.push("Modelica", "DAE");
+    if (["optical", "ran", "fiber"].includes(lang.slug)) projections.push("SysML v2", "OWL2");
+    if (lang.slug === "usd") projections.push("STEP", "URDF", "Modelica");
     if (lang.slug === "sysml2") projections.push("Modelica", "ReqIF");
     if (lang.slug === "step") projections.push("Modelica", "CSG");
     if (lang.slug === "scad") projections.push("CSG", "STEP");

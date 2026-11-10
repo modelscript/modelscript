@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  buildEpanetFromGis,
   epanetToModelica,
   lintEpanet,
   lowerEpanetToDae,
   parseInp,
   performAwwaM36WaterAudit,
+  serializeInp,
   solveExtendedPeriod,
   solveHydraulics,
   solveOptimalPumpScheduling,
@@ -12,6 +14,7 @@ import {
   solveWaterHammerMoc,
   solveWaterQuality,
 } from "@modelscript/epanet";
+import { diffEpanetNetworks, renderEpanetDiffSvg } from "@modelscript/diagram/water-network-diff";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -24,7 +27,7 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
       .positional("action", {
         type: "string",
         describe:
-          "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | to-modelica | to-dae",
+          "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | diff | to-modelica | to-dae",
         choices: [
           "inspect",
           "lint",
@@ -35,6 +38,8 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
           "audit",
           "ops",
           "quality",
+          "diff",
+          "from-gis",
           "to-modelica",
           "to-dae",
         ],
@@ -42,12 +47,40 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
       .positional("files", {
         type: "string",
         array: true,
-        describe: "Input EPANET network files (.inp)",
+        describe: "Input EPANET network files (.inp) or GeoJSON pipes for from-gis",
       })
       .option("out", {
         alias: ["o", "output"],
         type: "string",
-        describe: "Output file path for generated Modelica code",
+        describe: "Output file path for generated Modelica code or compiled network .inp",
+      })
+      .option("nodes", {
+        type: "string",
+        describe: "Optional GeoJSON file containing node/junction/reservoir assets",
+      })
+      .option("dem", {
+        type: "string",
+        describe: "Optional digital elevation model raster (.asc, .grd)",
+      })
+      .option("snap", {
+        type: "number",
+        describe: "Topological node snap tolerance in meters (default: 1.5m)",
+      })
+      .option("diameter", {
+        type: "number",
+        describe: "Default pipe diameter in mm (default: 200mm)",
+      })
+      .option("roughness", {
+        type: "number",
+        describe: "Default pipe Hazen-Williams C factor (default: 120)",
+      })
+      .option("demand", {
+        type: "number",
+        describe: "Default junction base demand in L/s (default: 0.0)",
+      })
+      .option("title", {
+        type: "string",
+        describe: "Network model title",
       })
       .option("max-iter", {
         type: "number",
@@ -68,6 +101,132 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
     if (files.length === 0) {
       console.error("Error: No input files provided.");
       process.exit(1);
+    }
+
+    if (action === "from-gis") {
+      const pipesInput = files[0]!;
+      const pipesPath = path.resolve(process.cwd(), pipesInput);
+      if (!fs.existsSync(pipesPath)) {
+        console.error(`Error: Pipes GeoJSON file not found: ${pipesInput}`);
+        process.exit(1);
+      }
+      const pipesGeoJson = fs.readFileSync(pipesPath, "utf-8");
+
+      let nodesGeoJson: string | undefined;
+      const nodesOpt = argv["nodes"] as string | undefined;
+      if (nodesOpt) {
+        const nodesPath = path.resolve(process.cwd(), nodesOpt);
+        if (fs.existsSync(nodesPath)) {
+          nodesGeoJson = fs.readFileSync(nodesPath, "utf-8");
+        } else {
+          console.warn(`Warning: Nodes file not found: ${nodesOpt}`);
+        }
+      }
+
+      let demContent: string | undefined;
+      const demOpt = argv["dem"] as string | undefined;
+      if (demOpt) {
+        const demPath = path.resolve(process.cwd(), demOpt);
+        if (fs.existsSync(demPath)) {
+          demContent = fs.readFileSync(demPath, "utf-8");
+        } else {
+          console.warn(`Warning: DEM file not found: ${demOpt}`);
+        }
+      }
+
+      const snapTol = argv["snap"] !== undefined ? Number(argv["snap"]) : 1.5;
+      const diam = argv["diameter"] !== undefined ? Number(argv["diameter"]) : 200.0;
+      const roughness = argv["roughness"] !== undefined ? Number(argv["roughness"]) : 120.0;
+      const demand = argv["demand"] !== undefined ? Number(argv["demand"]) : 0.0;
+      const title = argv["title"] as string | undefined;
+
+      const net = buildEpanetFromGis({
+        pipesGeoJson,
+        nodesGeoJson,
+        dem: demContent,
+        snapToleranceM: snapTol,
+        defaultDiameterMm: diam,
+        defaultRoughness: roughness,
+        defaultDemandLps: demand,
+        networkTitle: title ?? `GIS Ingested: ${path.basename(pipesInput)}`,
+      });
+
+      const serialized = serializeInp(net);
+      if (outFile) {
+        fs.writeFileSync(path.resolve(process.cwd(), outFile), serialized, "utf-8");
+        console.log(`\n=== EPANET GIS Ingestion Succeeded ===`);
+        console.log(`Saved compiled network to: ${outFile}`);
+        console.log(`  Junctions:  ${net.junctions.length}`);
+        console.log(`  Reservoirs: ${net.reservoirs.length}`);
+        console.log(`  Tanks:      ${net.tanks.length}`);
+        console.log(`  Pipes:      ${net.pipes.length}`);
+      } else {
+        console.log(serialized);
+      }
+      return;
+    }
+
+    if (action === "diff") {
+      if (files.length < 2) {
+        console.error("Error: Diff requires two EPANET network files: msx epanet diff <base.inp> <target.inp>");
+        process.exit(1);
+      }
+      const baseInput = files[0]!;
+      const targetInput = files[1]!;
+      const baseFile = path.resolve(process.cwd(), baseInput);
+      const targetFile = path.resolve(process.cwd(), targetInput);
+      if (!fs.existsSync(baseFile)) {
+        console.error(`Error: Base file not found: ${baseInput}`);
+        process.exit(1);
+      }
+      if (!fs.existsSync(targetFile)) {
+        console.error(`Error: Target file not found: ${targetInput}`);
+        process.exit(1);
+      }
+
+      const baseNet = parseInp(fs.readFileSync(baseFile, "utf-8"), baseInput);
+      const targetNet = parseInp(fs.readFileSync(targetFile, "utf-8"), targetInput);
+      const diff = diffEpanetNetworks(baseNet, targetNet);
+
+      console.log(`\n=== Visual PR Diff: EPANET Drinking Water System ===`);
+      console.log(`Base:   ${baseInput}`);
+      console.log(`Target: ${targetInput}`);
+      console.log(`\nDelta Summary:`);
+      console.log(`  Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified, ${diff.stats.unchangedNodes} unchanged`);
+      console.log(`  Links: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified, ${diff.stats.unchangedLinks} unchanged`);
+      if (diff.stats.maxPressureDeltaM !== 0 || diff.stats.maxVelocityDeltaMs !== 0) {
+        console.log(`  Hydraulic Impact: Max ΔP = ${diff.stats.maxPressureDeltaM.toFixed(2)} m, Max ΔV = ${diff.stats.maxVelocityDeltaMs.toFixed(2)} m/s`);
+      }
+
+      if (diff.stats.modifiedLinks > 0) {
+        console.log(`\nModified Links:`);
+        for (const [id, link] of diff.links) {
+          if (link.status === "modified") {
+            const deltas = link.propertyDeltas
+              .map((d) => `${d.property}: ${d.baseValue} -> ${d.targetValue} (${(d.delta ?? 0) >= 0 ? "+" : ""}${d.delta})`)
+              .join(", ");
+            console.log(`  - Pipe '${id}': ${deltas}`);
+          }
+        }
+      }
+
+      if (outFile) {
+        const outPath = path.resolve(process.cwd(), outFile);
+        if (outFile.endsWith(".svg")) {
+          const svg = renderEpanetDiffSvg(diff, { theme: "dark" });
+          fs.writeFileSync(outPath, svg, "utf-8");
+          console.log(`\nSaved visual diff SVG schematic to ${outFile}`);
+        } else if (outFile.endsWith(".html")) {
+          const svg = renderEpanetDiffSvg(diff, { theme: "dark" });
+          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Water Network Diff</title><style>body{margin:0;padding:24px;background:#0d1117;display:flex;justify-content:center;align-items:center;min-height:100vh;}</style></head><body>${svg}</body></html>`;
+          fs.writeFileSync(outPath, html, "utf-8");
+          console.log(`\nSaved visual diff HTML review bundle to ${outFile}`);
+        } else if (outFile.endsWith(".json")) {
+          fs.writeFileSync(outPath, JSON.stringify(diff, null, 2), "utf-8");
+          console.log(`\nSaved semantic diff JSON report to ${outFile}`);
+        }
+      }
+      return;
     }
 
     for (const file of files) {

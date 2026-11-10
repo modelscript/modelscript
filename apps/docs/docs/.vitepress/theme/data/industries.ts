@@ -161,6 +161,7 @@ export const INDUSTRIES: Industry[] = [
       "gtsuite",
       "opendrive",
       "openscenario",
+      "gtfs",
       "adams",
       "simpack",
       "qif",
@@ -173,6 +174,7 @@ export const INDUSTRIES: Industry[] = [
       "AUTOSAR Classic & Adaptive",
       "ASAM OpenDRIVE",
       "ASAM OpenSCENARIO",
+      "GTFS Transit Feeds",
       "FMI 2.0 / 3.0",
       "SSP 1.0 / 2.0",
       "ISO 26262 (via ReqIF)",
@@ -228,9 +230,9 @@ export const INDUSTRIES: Industry[] = [
     tagline: "Vehicle dynamics, track geometry & EN 14363",
     headline: "Railway vehicle dynamics and homologation, open and reproducible",
     summary:
-      "Read GENSYS and SIMPACK models, run track-vehicle simulations with measured irregularities, and generate EN 14363 acceptance and UIC 518 ride-comfort evidence automatically.",
-    languages: ["gensys", "simpack", "adams", "modelica", "step", "csv"],
-    standards: ["EN 14363", "UIC 518", "STEP AP242", "FMI 2.0 / 3.0"],
+      "Read GENSYS and SIMPACK models, GTFS transit schedules, run track-vehicle simulations with measured irregularities, and generate EN 14363 acceptance and UIC 518 ride-comfort evidence automatically.",
+    languages: ["gensys", "simpack", "gtfs", "adams", "modelica", "step", "csv"],
+    standards: ["EN 14363", "UIC 518", "GTFS Transit Feeds", "STEP AP242", "FMI 2.0 / 3.0"],
     pains: [
       {
         title: "Homologation is slow",
@@ -319,14 +321,31 @@ export const INDUSTRIES: Industry[] = [
     tagline: "EMT, power flow & grid-code compliance",
     headline: "Grid-code compliance, from PSCAD to IEEE 2800 in one pipeline",
     summary:
-      "Run PSCAD/EMTDC electromagnetic transients, PSS/E transmission power flow, and OpenDSS distribution studies in one open toolchain, with IEEE 2800 and NERC PRC-029 ride-through verification built in.",
-    languages: ["pscad", "psse", "cgmes", "opendss", "oscal", "modelica", "c", "fortran", "csv"],
+      "Run PSCAD/EMTDC electromagnetic transients, Siemens PSS/E, DIgSILENT PowerFactory, and GE PSLF transmission studies alongside OpenDSS distribution, OCPP EV charging, and OpenADR demand response — with IEEE 2800, NERC PRC-029, and ENTSO-E RfG verification built in.",
+    languages: [
+      "pscad",
+      "psse",
+      "powerfactory",
+      "pslf",
+      "cgmes",
+      "opendss",
+      "ocpp",
+      "openadr",
+      "ampl",
+      "oscal",
+      "modelica",
+      "c",
+      "fortran",
+      "csv",
+    ],
     standards: [
-      "IEEE 2800-2022",
-      "NERC PRC-029-1",
+      "IEEE 2800-2022 & NERC PRC-029-1",
+      "ENTSO-E RfG & IEEE 1547-2018",
+      "DIgSILENT PowerFactory (.dsl / .dgs)",
+      "GE PSLF (.epc / .dyd) & PSS/E RAW v30–35",
+      "OCPP 1.6J / 2.0.1 & OpenADR 2.0b",
       "NIST OSCAL 1.1 (NERC CIP)",
       "IEEE C37.111 COMTRADE",
-      "PSS/E RAW v30–35",
       "CIGRE black-box DLLs",
     ],
     pains: [
@@ -351,7 +370,7 @@ export const INDUSTRIES: Industry[] = [
       },
       {
         title: "Power flow & DER hosting",
-        body: "PSS/E transmission cases and OpenDSS unbalanced distribution and hosting-capacity analysis.",
+        body: "PSS/E, PowerFactory, and PSLF transmission cases plus OpenDSS unbalanced distribution and hosting-capacity analysis.",
       },
       {
         title: "COMTRADE waveforms",
@@ -359,10 +378,10 @@ export const INDUSTRIES: Industry[] = [
       },
     ],
     workflow: [
-      { label: "Import", detail: "PSCAD .pscx, PSS/E .raw, OpenDSS .dss" },
-      { label: "Simulate", detail: "EMT & power flow solvers" },
+      { label: "Import", detail: "PSCAD .pscx, PSS/E .raw, PowerFactory .dsl/.dgs, PSLF .epc, OpenDSS .dss" },
+      { label: "Simulate", detail: "EMT, RMS & power flow solvers" },
       { label: "Record", detail: "COMTRADE waveforms" },
-      { label: "Comply", detail: "IEEE 2800 / NERC PRC-029 report" },
+      { label: "Comply", detail: "IEEE 2800 / NERC PRC-029 / ENTSO-E RfG report" },
     ],
     cli: [
       "msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o report.json",
@@ -380,9 +399,9 @@ export const INDUSTRIES: Industry[] = [
     tagline: "Flow assurance, pipelines & reservoirs",
     headline: "Flow assurance from reservoir to export pipeline",
     summary:
-      "Connect ECLIPSE reservoir decks, OLGA multiphase flow models, PipelineStudio networks, and PHREEQC brine geochemistry, and simulate transients, phase envelopes, and gas properties in one workspace.",
-    languages: ["olga", "lps", "eclipse", "phreeqc", "aspen", "gproms", "sima", "modelica", "csv"],
-    standards: ["ISO 20765-1", "ISO 20765-2", "USGS PHREEQC", "FMI 2.0 / 3.0"],
+      "Connect ECLIPSE and TOUGH2/TOUGH3 subsurface reservoir decks, OLGA multiphase flow models, PipelineStudio networks, and PHREEQC brine geochemistry, and simulate transients, phase envelopes, and gas properties in one workspace.",
+    languages: ["olga", "lps", "eclipse", "tough", "phreeqc", "aspen", "gproms", "sima", "modelica", "csv"],
+    standards: ["ISO 20765-1", "ISO 20765-2", "TOUGH2 / TOUGH3 EOS", "USGS PHREEQC", "FMI 2.0 / 3.0"],
     pains: [
       {
         title: "Siloed disciplines",
@@ -401,10 +420,10 @@ export const INDUSTRIES: Industry[] = [
       },
       { title: "Thermodynamics", body: "Flash calculations and phase envelopes from compositional fluid definitions." },
       { title: "Pipeline networks", body: "PipelineStudio TGNET/TLNET hydraulics with ISO 20765 gas properties." },
-      { title: "Reservoir & scaling", body: "Parse ECLIPSE decks and evaluate PHREEQC mineral saturation indices." },
+      { title: "Reservoir & scaling", body: "Parse ECLIPSE and TOUGH decks and evaluate PHREEQC mineral saturation indices." },
     ],
     workflow: [
-      { label: "Reservoir", detail: "ECLIPSE & PHREEQC decks" },
+      { label: "Reservoir", detail: "ECLIPSE, TOUGH & PHREEQC decks" },
       { label: "Flowline", detail: "OLGA multiphase" },
       { label: "Network", detail: "PipelineStudio hydraulics" },
       { label: "Facility", detail: "Aspen & gPROMS flowsheets" },
@@ -460,12 +479,19 @@ export const INDUSTRIES: Industry[] = [
     icon: "building",
     accent: "#60a5fa",
     tone: ["indigo", "teal"],
-    tagline: "Building energy, water & stormwater networks",
-    headline: "Model the built environment, from HVAC to stormwater",
+    tagline: "Building energy, water, river hydraulics & groundwater",
+    headline: "Model the built environment, from HVAC to river hydraulics and aquifers",
     summary:
-      "Bring EnergyPlus building models, EPANET water distribution networks, and EPA SWMM stormwater systems into one workspace for coupled simulation and analysis.",
-    languages: ["energyplus", "epanet", "swmm", "phreeqc", "modelica", "step", "csv"],
-    standards: ["EnergyPlus IDF / epJSON", "EPANET INP", "SWMM 5.x", "FMI 2.0 / 3.0"],
+      "Bring EnergyPlus building models, EPANET water distribution networks, EPA SWMM stormwater systems, HEC-RAS river hydraulics, MODFLOW 6 groundwater aquifers, and LandGEM landfill emissions into one workspace for coupled simulation and analysis.",
+    languages: ["energyplus", "epanet", "swmm", "hec-ras", "modflow", "landgem", "phreeqc", "modelica", "step", "csv"],
+    standards: [
+      "EnergyPlus IDF / epJSON",
+      "EPANET INP & AWWA M36",
+      "SWMM 5.x",
+      "USACE HEC-RAS & USGS MODFLOW 6",
+      "US EPA LandGEM",
+      "FMI 2.0 / 3.0",
+    ],
     pains: [
       {
         title: "Disconnected systems",
@@ -476,12 +502,12 @@ export const INDUSTRIES: Industry[] = [
     ],
     capabilities: [
       { title: "Building energy", body: "Parse EnergyPlus IDF/epJSON models for thermal and HVAC analysis." },
-      { title: "Water distribution", body: "Pressurized network hydraulics from EPANET models." },
-      { title: "Stormwater routing", body: "1D Saint-Venant dynamic-wave routing for SWMM networks." },
+      { title: "Water distribution", body: "Pressurized network hydraulics, WQchlorine decay, and AWWA M36 audits from EPANET models." },
+      { title: "Stormwater, rivers & aquifers", body: "1D Saint-Venant SWMM routing, HEC-RAS river profiles, and MODFLOW 6 3D groundwater head." },
       { title: "Sensor calibration", body: "Align simulations with CSV telemetry for digital twins." },
     ],
     workflow: [
-      { label: "Import", detail: "IDF, EPANET & SWMM inputs" },
+      { label: "Import", detail: "IDF, EPANET, SWMM, HEC-RAS & MODFLOW inputs" },
       { label: "Couple", detail: "Projection to Modelica" },
       { label: "Simulate", detail: "Scenario sweeps" },
       { label: "Calibrate", detail: "Telemetry alignment" },
@@ -496,17 +522,24 @@ export const INDUSTRIES: Industry[] = [
   // ─────────────────────── Electronics, Industry & Science ───────────────────────
   {
     slug: "electronics",
-    name: "Electronics & Semiconductors",
+    name: "Electronics, RF & Telecommunications",
     group: "industry",
     icon: "cpu",
     accent: "#22d3ee",
     tone: ["cyan", "violet"],
-    tagline: "SPICE, compact models, IBIS & S-parameters",
-    headline: "Analog, RF, and signal integrity in one open toolchain",
+    tagline: "SPICE, compact models, IBIS, S-parameters, DWDM & 5G RAN",
+    headline: "Analog, RF, signal integrity, and optical/wireless telecom in one open toolchain",
     summary:
-      "Simulate SPICE netlists, compile Verilog-A compact models, and integrate IBIS buffers and Touchstone S-parameters with vector fitting and passivity enforcement.",
-    languages: ["spice", "verilog-a", "ibis", "touchstone", "modelica", "c"],
-    standards: ["IEEE 1857 Verilog-A / AMS", "IBIS", "Touchstone 1.0 / 2.0", "SPICE netlists", "FMI 2.0 / 3.0"],
+      "Simulate SPICE netlists, compile Verilog-A compact models, integrate IBIS buffers and Touchstone S-parameters, and model DWDM optical transport, 5G NR / LTE RAN coverage, and TIA-598-D outside-plant fiber networks.",
+    languages: ["spice", "verilog-a", "ibis", "touchstone", "optical", "ran", "fiber", "modelica", "c"],
+    standards: [
+      "IEEE 1857 Verilog-A / AMS",
+      "IBIS & Touchstone 1.0 / 2.0",
+      "ITU-T G.694.1 DWDM & Telcordia SR-4731 OTDR (.sor)",
+      "3GPP TR 38.901 5G NR & NSMA WG16 (.adf / .msi)",
+      "TIA-598-D Outside-Plant Fiber",
+      "SPICE netlists & FMI 2.0 / 3.0",
+    ],
     pains: [
       { title: "Fragmented EDA flows", body: "Circuit, device, and channel models each need a different simulator." },
       {
@@ -525,12 +558,12 @@ export const INDUSTRIES: Industry[] = [
         title: "Rational macromodels",
         body: "Vector fitting with Hamiltonian passivity enforcement for Touchstone data.",
       },
-      { title: "System-level projection", body: "Project circuits into Modelica for multi-domain studies." },
+      { title: "Optical, 5G RAN & Fiber", body: "DWDM OSNR/GSNR & OTDR trace analysis, 3GPP 38.901 RF coverage, and TIA-598-D strand splicing." },
     ],
     workflow: [
       { label: "Netlist", detail: "SPICE + Verilog-A devices" },
-      { label: "Channel", detail: "Touchstone & IBIS models" },
-      { label: "Simulate", detail: "OP, transient & AC" },
+      { label: "Channel", detail: "Touchstone, IBIS, DWDM & RAN" },
+      { label: "Simulate", detail: "OP, transient, AC & link budgets" },
       { label: "Integrate", detail: "Modelica / FMU export" },
     ],
     cli: [
@@ -596,8 +629,8 @@ export const INDUSTRIES: Industry[] = [
     tagline: "Flowsheets, kinetics, geochemistry & molecular graphs",
     headline: "Open, scriptable chemical & process simulation",
     summary:
-      "Parse Aspen Plus flowsheets, gPROMS dynamic PDEs, Cantera reaction mechanisms, PHREEQC aqueous geochemistry, and SMILES/SDF molecular graphs, and couple them with equation-based control and pipeline networks.",
-    languages: ["aspen", "gproms", "cantera", "phreeqc", "smiles", "olga", "lps", "plcopen", "modelica", "csv"],
+      "Parse Aspen Plus flowsheets, gPROMS dynamic PDEs, AMPL algebraic optimization models, Cantera reaction mechanisms, PHREEQC aqueous geochemistry, and SMILES/SDF molecular graphs, and couple them with equation-based control and pipeline networks.",
+    languages: ["aspen", "gproms", "ampl", "cantera", "phreeqc", "smiles", "olga", "lps", "plcopen", "modelica", "csv"],
     standards: [
       "Aspen Plus / HYSYS inputs",
       "gPROMS PML",

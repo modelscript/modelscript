@@ -4,12 +4,14 @@ import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { CaeCloudClient, type ComputeProfileInfo } from "./cae-cloud-client.js";
 import { SimulationPanel } from "./simulation-panel.js";
+import { getNonce } from "./utils/nonce.js";
 
 export type ComputeProfileViewModel = ComputeProfileInfo;
 
 export class CloudJobPanel {
   public static currentPanel: CloudJobPanel | undefined;
   public static readonly viewType = "modelscript.cloudJob";
+  private static _secretStorage: vscode.SecretStorage | undefined;
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -18,6 +20,10 @@ export class CloudJobPanel {
   private _apiBaseUrl: string;
   private _targetUri?: string | undefined;
   private _activeJobId?: string | undefined;
+
+  public static setSecretStorage(secrets: vscode.SecretStorage) {
+    CloudJobPanel._secretStorage = secrets;
+  }
 
   public static createOrShow(extensionUri: vscode.Uri, client?: LanguageClient, targetUri?: string) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
@@ -80,15 +86,35 @@ export class CloudJobPanel {
     this.refresh();
   }
 
-  private _getApiConfig(extraHeaders?: Record<string, string>): { baseUrl: string; headers: Record<string, string> } {
+  private async _resolveCloudToken(): Promise<string | undefined> {
+    const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
+    const settingsToken = cfg.get<string>("authToken") || cfg.get<string>("apiKey");
+    if (CloudJobPanel._secretStorage) {
+      try {
+        let secret = await CloudJobPanel._secretStorage.get("modelscript.cloud.apiKey");
+        if (!secret && settingsToken) {
+          await CloudJobPanel._secretStorage.store("modelscript.cloud.apiKey", settingsToken);
+          secret = settingsToken;
+        }
+        if (secret) return secret;
+      } catch {
+        // Fallback to settings token if SecretStorage fails
+      }
+    }
+    return settingsToken;
+  }
+
+  private async _getApiConfig(
+    extraHeaders?: Record<string, string>,
+  ): Promise<{ baseUrl: string; headers: Record<string, string>; token?: string | undefined }> {
     const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
     const baseUrl = (cfg.get<string>("apiBaseUrl") || this._apiBaseUrl).replace(/\/+$/, "");
-    const token = cfg.get<string>("authToken");
+    const token = await this._resolveCloudToken();
     const headers: Record<string, string> = { ...extraHeaders };
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
-    return { baseUrl, headers };
+    return { baseUrl, headers, token };
   }
 
   public async refresh(): Promise<void> {
@@ -101,9 +127,7 @@ export class CloudJobPanel {
       if (ext === ".cfg") domain = "cfd";
       else if (ext === ".inp") domain = "fea";
 
-      const { baseUrl } = this._getApiConfig();
-      const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
-      const token = cfg.get<string>("authToken");
+      const { baseUrl, token } = await this._getApiConfig();
       const cloudClient = new CaeCloudClient(baseUrl, token);
 
       // Fetch profiles & balance
@@ -174,7 +198,7 @@ export class CloudJobPanel {
     this._panel.webview.postMessage({ type: "dispatchStarted" });
 
     try {
-      const { baseUrl, headers } = this._getApiConfig({ "Content-Type": "application/json" });
+      const { baseUrl, headers } = await this._getApiConfig({ "Content-Type": "application/json" });
       const res = await fetch(`${baseUrl}/cloud/dispatch`, {
         method: "POST",
         headers,
@@ -220,7 +244,7 @@ export class CloudJobPanel {
 
   private async cancelJob(jobId: string): Promise<void> {
     try {
-      const { baseUrl, headers } = this._getApiConfig();
+      const { baseUrl, headers } = await this._getApiConfig();
       const res = await fetch(`${baseUrl}/cloud/jobs/${jobId}/cancel`, {
         method: "POST",
         headers,
@@ -236,7 +260,7 @@ export class CloudJobPanel {
 
   private async openSimulationResult(jobId: string): Promise<void> {
     try {
-      const { baseUrl, headers } = this._getApiConfig();
+      const { baseUrl, headers } = await this._getApiConfig();
       const res = await fetch(`${baseUrl}/cloud/jobs/${jobId}/result`, { headers });
       if (!res.ok) {
         vscode.window.showErrorMessage("Could not load simulation results.");
@@ -297,11 +321,12 @@ export class CloudJobPanel {
   }
 
   private _getHtmlForWebview(): string {
+    const nonce = getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:; connect-src http: https:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:; connect-src http: https:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ModelScript Cloud HPC Dispatch</title>
   <style>
@@ -523,7 +548,7 @@ export class CloudJobPanel {
     <div class="log-box" id="logBox">Connecting to telemetry stream…</div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let selectedProfileId = "standard";
     let profilesList = [];

@@ -687,15 +687,44 @@ function parseSvgXmlToMarkup(
   return markup.length > 0 ? { markup, attrs } : undefined;
 }
 
+export interface PscadViewportOptions {
+  /** Optional world-space bounding box to cull off-screen buses, components, and wires */
+  viewport?: { minX: number; minY: number; maxX: number; maxY: number } | undefined;
+  /** Optional zoom factor (e.g., < 0.45 triggers simplified low-detail rendering) */
+  zoom?: number | undefined;
+  /** Threshold of component count above which simplified LOD mode activates automatically (default: 500) */
+  lodComponentThreshold?: number | undefined;
+}
+
 /**
  * Builds an AntV X6-compatible diagram graph from a PSCAD project (or a specific sub-module).
  */
-export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string): PscadDiagramGraph {
+export function buildPscadDiagram(
+  project: PscadProjectLike,
+  moduleName?: string,
+  options?: PscadViewportOptions,
+): PscadDiagramGraph {
   const cells: X6CellData[] = [];
   const mod =
     (moduleName && project.subModules?.get(moduleName)) ||
     (moduleName && moduleName.includes(":") ? project.subModules?.get(moduleName.split(":").pop()!) : undefined) ||
     project.rootModule;
+
+  const vp = options?.viewport;
+  const vpMargin = 160;
+  const lodThreshold = options?.lodComponentThreshold ?? 500;
+  const isLowDetail =
+    (options?.zoom !== undefined && options.zoom < 0.45) || mod.components.length > lodThreshold;
+
+  const isInViewport = (x: number, y: number, w = 0, h = 0): boolean => {
+    if (!vp) return true;
+    return (
+      x + w >= vp.minX - vpMargin &&
+      x - w <= vp.maxX + vpMargin &&
+      y + h >= vp.minY - vpMargin &&
+      y - h <= vp.maxY + vpMargin
+    );
+  };
 
   // Map portId or busId -> { cell: nodeId, port: portId, world: { x, y } }
   const portAnchorMap = new Map<string, { cell: string; port: string; world: { x: number; y: number } }>();
@@ -704,6 +733,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   for (const bus of mod.buses) {
     const width = bus.length ?? 80;
     const height = 14;
+    if (!isInViewport(bus.position.x, bus.position.y, width, height)) continue;
     const vbase = bus.voltageBaseKv ?? 230;
     const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
     const busInId = `${bus.id}_in`;
@@ -966,6 +996,10 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   for (const cmp of mod.components) {
     // In projects with layered components (e.g. master.pslx), ignore suppressed/hidden components (z < 0)
     if (hasLayeredComponents && cmp.z !== undefined && cmp.z < 0) {
+      continue;
+    }
+
+    if (!isInViewport(cmp.position.x, cmp.position.y, cmp.width ?? 60, cmp.height ?? 40)) {
       continue;
     }
 
@@ -1237,7 +1271,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         width = 116;
         height = 120;
       }
-      const graphicXml = defGraphic?.svgXml || defGraphic?.graphicsXml;
+      const graphicXml = !isLowDetail ? defGraphic?.svgXml || defGraphic?.graphicsXml : undefined;
       const parsedDef = graphicXml
         ? parseSvgXmlToMarkup(graphicXml, effParams, width, height, cellAngle, cmp.mirror ?? false, cleanDefn)
         : undefined;
@@ -1835,6 +1869,14 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     if (wire.vertices.length >= 2) {
       const firstPt = wire.vertices[0]!;
       const lastPt = wire.vertices[wire.vertices.length - 1]!;
+      if (
+        vp &&
+        !isInViewport(firstPt.x, firstPt.y) &&
+        !isInViewport(lastPt.x, lastPt.y) &&
+        !wire.vertices.some((v) => isInViewport(v.x, v.y))
+      ) {
+        continue;
+      }
       const srcAnchor = findNearestPortAnchor(firstPt, wire.startPortId);
       const tgtAnchor = findNearestPortAnchor(lastPt, wire.endPortId);
 
@@ -1877,9 +1919,10 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   }
 
   // 4. Emit T-Junction Solder Dots where 3+ wire segments or mid-wire taps intersect
-  if (project.projectType !== "library" && mod.junctions && mod.junctions.length > 0) {
+  if (!isLowDetail && project.projectType !== "library" && mod.junctions && mod.junctions.length > 0) {
     for (let idx = 0; idx < mod.junctions.length; idx++) {
       const j = mod.junctions[idx]!;
+      if (!isInViewport(j.x, j.y, 5, 5)) continue;
       cells.push({
         id: `solder_dot_${j.x}_${j.y}_${idx}`,
         shape: "circle",
@@ -1909,6 +1952,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   if (mod.stickies) {
     for (const sticky of mod.stickies) {
       if (consumedStickyIds.has(sticky.id)) continue;
+      if (!isInViewport(sticky.position.x, sticky.position.y, sticky.width, sticky.height)) continue;
       const isBanner = sticky.width > 400;
       const isTitle = sticky.height <= 40;
       cells.push({
@@ -1949,6 +1993,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   if (mod.lines && mod.lines.length > 0) {
     for (const line of mod.lines) {
       if (consumedLineIds.has(line.id)) continue;
+      if (!isInViewport(line.x1, line.y1) && !isInViewport(line.x2, line.y2)) continue;
       const isDivider = line.classId?.toLowerCase() === "divider";
       cells.push({
         id: line.id,
@@ -2021,9 +2066,9 @@ function resolveVar(val?: string, isDark = false): string | undefined {
  */
 export function renderPscadSvg(
   project: PscadProjectLike,
-  options?: { theme?: "light" | "dark"; moduleName?: string },
+  options?: { theme?: "light" | "dark"; moduleName?: string } & PscadViewportOptions,
 ): string {
-  const diag = buildPscadDiagram(project, options?.moduleName);
+  const diag = buildPscadDiagram(project, options?.moduleName, options);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;

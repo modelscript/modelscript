@@ -30,6 +30,7 @@ type DomainModuleLoader = () => Promise<CommandModule<Record<string, unknown>, R
 
 const DOMAIN_COMMAND_LOADERS: Record<string, DomainModuleLoader> = {
   adams: async () => (await import("../commands/adams.js")).AdamsCommand,
+  ampl: async () => (await import("../commands/ampl.js")).AmplCommand,
   aspen: async () => (await import("../commands/aspen.js")).AspenCommand,
   autosar: async () => (await import("../commands/autosar.js")).AutosarCommand,
   c: async () => (await import("../commands/c.js")).CCommand,
@@ -42,11 +43,17 @@ const DOMAIN_COMMAND_LOADERS: Record<string, DomainModuleLoader> = {
   epanet: async () => (await import("../commands/epanet.js")).EpanetCommand,
   fea: async () => (await import("../commands/fea.js")).FeaCommand,
   gensys: async () => (await import("../commands/gensys.js")).GensysCommand,
+  gtfs: async () => (await import("../commands/gtfs.js")).GtfsCommand,
   gtsuite: async () => (await import("../commands/gtsuite.js")).GtSuiteCommand,
+  "hec-ras": async () => (await import("../commands/hec-ras.js")).HecRasCommand,
   ibis: async () => (await import("../commands/ibis.js")).IbisCommand,
   jsbsim: async () => (await import("../commands/jsbsim.js")).JsbsimCommand,
+  landgem: async () => (await import("../commands/landgem.js")).LandgemCommand,
   lps: async () => (await import("../commands/lps.js")).LpsCommand,
+  modflow: async () => (await import("../commands/modflow.js")).ModflowCommand,
+  ocpp: async () => (await import("../commands/ocpp.js")).OcppCommand,
   olga: async () => (await import("../commands/olga.js")).OlgaCommand,
+  openadr: async () => (await import("../commands/openadr.js")).OpenAdrCommand,
   opendrive: async () => (await import("../commands/opendrive.js")).OpenDriveCommand,
   opendss: async () => (await import("../commands/opendss.js")).OpenDssCommand,
   openscenario: async () => (await import("../commands/openscenario.js")).OpenScenarioCommand,
@@ -61,6 +68,7 @@ const DOMAIN_COMMAND_LOADERS: Record<string, DomainModuleLoader> = {
   simulink: async () => (await import("../commands/simulink.js")).SimulinkCommand,
   swmm: async () => (await import("../commands/swmm.js")).SwmmCommand,
   touchstone: async () => (await import("../commands/touchstone.js")).TouchstoneCommand,
+  tough: async () => (await import("../commands/tough.js")).ToughCommand,
   urdf: async () => (await import("../commands/urdf.js")).UrdfCommand,
   "verilog-a": async () => (await import("../commands/verilog-a.js")).VerilogACommand,
 };
@@ -77,6 +85,7 @@ export function mapActionForDomain(
 
   if (normalized === "simulate" && rawAction === normalized) {
     switch (langId) {
+      case "ampl":
       case "cfd":
       case "eclipse":
       case "epanet":
@@ -104,6 +113,20 @@ export function mapActionForDomain(
         return { action: "eval" };
       case "easy5":
         return { action: "linearize" };
+      case "hec-ras":
+        return { action: "profile" };
+      case "ocpp":
+        return { action: "schedule" };
+      case "openadr":
+        return { action: "curtail" };
+      case "tough":
+        return { action: "flash" };
+      case "modflow":
+        return { action: "balance" };
+      case "landgem":
+        return { action: "biogas" };
+      case "gtfs":
+        return { action: "traction" };
       default:
         return { action: "simulate" };
     }

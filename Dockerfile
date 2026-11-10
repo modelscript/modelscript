@@ -46,6 +46,7 @@ COPY packages/simulate/package.json packages/simulate/
 
 # Languages manifests
 COPY languages/adams/package.json languages/adams/
+COPY languages/ampl/package.json languages/ampl/
 COPY languages/antimony/package.json languages/antimony/
 COPY languages/aspen/package.json languages/aspen/
 COPY languages/automationml/package.json languages/automationml/
@@ -71,15 +72,21 @@ COPY languages/genbank/package.json languages/genbank/
 COPY languages/gensys/package.json languages/gensys/
 COPY languages/gproms/package.json languages/gproms/
 COPY languages/gtsuite/package.json languages/gtsuite/
+COPY languages/gtfs/package.json languages/gtfs/
+COPY languages/hec-ras/package.json languages/hec-ras/
 COPY languages/ibis/package.json languages/ibis/
 COPY languages/igtl/package.json languages/igtl/
 COPY languages/jsbsim/package.json languages/jsbsim/
+COPY languages/landgem/package.json languages/landgem/
 COPY languages/lps/package.json languages/lps/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelscript/package.json languages/modelscript/
+COPY languages/modflow/package.json languages/modflow/
 COPY languages/nifti/package.json languages/nifti/
 COPY languages/nmtran/package.json languages/nmtran/
+COPY languages/ocpp/package.json languages/ocpp/
 COPY languages/olga/package.json languages/olga/
+COPY languages/openadr/package.json languages/openadr/
 COPY languages/opendrive/package.json languages/opendrive/
 COPY languages/opendss/package.json languages/opendss/
 COPY languages/openscenario/package.json languages/openscenario/
@@ -90,8 +97,10 @@ COPY languages/owl2/package.json languages/owl2/
 COPY languages/pdb/package.json languages/pdb/
 COPY languages/phreeqc/package.json languages/phreeqc/
 COPY languages/plcopen/package.json languages/plcopen/
+COPY languages/powerfactory/package.json languages/powerfactory/
 COPY languages/pscad/package.json languages/pscad/
 COPY languages/psse/package.json languages/psse/
+COPY languages/pslf/package.json languages/pslf/
 COPY languages/qif/package.json languages/qif/
 COPY languages/ran/package.json languages/ran/
 COPY languages/relap5/package.json languages/relap5/
@@ -112,6 +121,7 @@ COPY languages/swmm/package.json languages/swmm/
 COPY languages/sysml2/package.json languages/sysml2/
 COPY languages/three-mf/package.json languages/three-mf/
 COPY languages/topas/package.json languages/topas/
+COPY languages/tough/package.json languages/tough/
 COPY languages/touchstone/package.json languages/touchstone/
 COPY languages/urdf/package.json languages/urdf/
 COPY languages/usd/package.json languages/usd/

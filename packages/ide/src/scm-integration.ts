@@ -2,7 +2,8 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { isSupportedModelFile } from "./utils/file-utils";
+import { isSupportedModelFile } from "./utils/file-utils.js";
+import { getNonce } from "./utils/nonce.js";
 
 export interface GitRepository {
   state: {
@@ -143,11 +144,15 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
           {
             enableScripts: true,
             retainContextWhenHidden: true,
+            localResourceRoots: [],
           },
         );
 
-        const wrapCsp = (bodyHtml: string) =>
-          `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline';"></head><body>${bodyHtml}</body></html>`;
+        const wrapCsp = (bodyHtml: string) => {
+          const nonce = getNonce();
+          const withNoncedScripts = bodyHtml.replace(/<script(?=[>\s])/gi, `<script nonce="${nonce}"`);
+          return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body>${withNoncedScripts}</body></html>`;
+        };
 
         if (!client) {
           panel.webview.html = wrapCsp("<h3>Language client not running.</h3>");

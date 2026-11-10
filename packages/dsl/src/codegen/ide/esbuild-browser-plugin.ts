@@ -59,6 +59,7 @@ const NODE_BUILTINS = [
   "assemblyscript/asc",
   "assemblyscript/dist/asc.js",
   "binaryen",
+  "typescript",
 ];
 
 const BUILTINS_FILTER = new RegExp(
@@ -96,6 +97,8 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
   self.process = globalThis.process;
 }`;
 
+import fs from "node:fs";
+import path from "node:path";
 import type { Plugin, PluginBuild } from "esbuild";
 
 export const BROWSER_BUFFER_AND_PROCESS_BANNER = `${BROWSER_BUFFER_BANNER}\n${BROWSER_PROCESS_BANNER}`;
@@ -109,6 +112,23 @@ export function createNodeBuiltinsIgnorePlugin(): Plugin {
     name: "node-builtins-ignore",
     setup(build: PluginBuild) {
       build.onResolve({ filter: BUILTINS_FILTER }, (args) => ({ path: args.path, namespace: "ignore" }));
+      build.onResolve({ filter: /src-gen\/runtime-templates\.js$/ }, (args) => ({
+        path: args.path,
+        namespace: "ignore-templates",
+      }));
+      build.onLoad({ filter: /.*/, namespace: "ignore-templates" }, () => ({
+        contents: `module.exports = new Proxy({}, { get: (t, p) => p === "__esModule" ? true : "" });`,
+        loader: "js",
+      }));
+      build.onResolve({ filter: /src-gen\/bindings\.js$/ }, (args) => {
+        if (!args.resolveDir) return undefined;
+        const resolved = path.resolve(args.resolveDir, args.path);
+        const normalized = resolved.replace(/\/dist\/src-gen\/bindings\.js$/, "/src-gen/bindings.js");
+        if (normalized !== resolved && fs.existsSync(normalized)) {
+          return { path: normalized };
+        }
+        return undefined;
+      });
       build.onLoad({ filter: /.*/, namespace: "ignore" }, (args) => {
         const mod = args.path.replace(/^node:/, "");
         if (mod === "events") {

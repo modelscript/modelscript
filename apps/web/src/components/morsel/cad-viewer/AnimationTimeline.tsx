@@ -13,8 +13,15 @@ import { IconButton, Select } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { AnimationController, AnimationState } from "./animation-controller";
 
+export interface BreachMarker {
+  time: number;
+  label: string;
+  contractId?: string | undefined;
+}
+
 interface AnimationTimelineProps {
   controller: AnimationController;
+  breachMarkers?: BreachMarker[] | undefined;
 }
 
 const SPEED_OPTIONS = [
@@ -242,6 +249,47 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
             opacity: isLive ? 0.4 : 1,
           }}
         />
+
+        {/* Verification breach indicators on timeline */}
+        {breachMarkers &&
+          breachMarkers.map((b) => {
+            const range = state.stopTime - state.startTime;
+            if (range <= 0) return null;
+            const leftPct = Math.max(0, Math.min(100, ((b.time - state.startTime) / range) * 100));
+            return (
+              <div
+                key={`${b.time}_${b.contractId ?? ""}`}
+                title={`Violation at ${b.time.toFixed(2)}s: ${b.label}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  controller.seek(b.time);
+                }}
+                style={{
+                  position: "absolute",
+                  left: `${leftPct}%`,
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: 10,
+                  height: 14,
+                  cursor: "pointer",
+                  zIndex: 5,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: 3,
+                    height: 10,
+                    backgroundColor: "#ef4444",
+                    borderRadius: 2,
+                    boxShadow: "0 0 6px rgba(239, 68, 68, 0.9)",
+                  }}
+                />
+              </div>
+            );
+          })}
       </div>
 
       {/* Speed selector */}

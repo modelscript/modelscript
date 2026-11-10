@@ -11,16 +11,359 @@ import { type FlowpipeEnvelope, SimulationPanel } from "../simulation-panel.js";
 import { SurrogatePanel } from "../surrogate-panel.js";
 import { UncertaintyPanel } from "../uncertainty-panel.js";
 import { getSimulationDefaults } from "../utils/config.js";
+import { isSupportedModelFile } from "../utils/file-utils.js";
 import { extractFromZip } from "../utils/zip.js";
 import { VerificationPanel } from "../verification-panel.js";
 
 interface ModelicaActionInputs extends Record<string, unknown> {
   documentText?: string | undefined;
   name?: string | undefined;
+  languageId?: string | undefined;
   stopTime?: number | undefined;
   intervals?: number | undefined;
   tolerance?: number | undefined;
   solver?: string | undefined;
+}
+
+export function extractModelNameFromText(text: string, filenameOrUri?: string): string | undefined {
+  // 1. Modelica: within prefix + class/model/record
+  const wm = text.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+  const mm = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+  if (mm) {
+    return wm && wm[1]?.trim() ? `${wm[1].trim()}.${mm[1]}` : mm[1];
+  }
+  // 2. SysML v2: package or part def/item def
+  const sm = text.match(/\b(?:package|part\s+def|part|action\s+def|action|item\s+def)\s+([A-Za-z0-9_]+)/);
+  if (sm) {
+    return sm[1];
+  }
+  // 3. SPICE: subcircuit declaration
+  const spm = text.match(/^\s*\.subckt\s+([A-Za-z0-9_]+)/im);
+  if (spm) {
+    return spm[1];
+  }
+  // 4. Verilog-A: module declaration
+  const vm = text.match(/\bmodule\s+([A-Za-z0-9_]+)/);
+  if (vm) {
+    return vm[1];
+  }
+  // 5. Fallback: file basename without extension
+  if (filenameOrUri) {
+    const clean = filenameOrUri.split("/").pop()?.split("\\").pop();
+    if (clean) {
+      return clean.replace(/\.[^/.]+$/, "");
+    }
+  }
+  return undefined;
+}
+
+export function detectLanguageIdFromUri(uriStr?: string): string {
+  if (!uriStr) return "modelica";
+  const clean = uriStr.split("?")[0]!.split("#")[0]!.toLowerCase();
+  // Compound extensions first
+  if (clean.endsWith(".oscal.json") || clean.endsWith(".oscal.xml") || clean.endsWith(".oscal.yaml") || clean.endsWith(".oscal.yml")) return "oscal";
+  if (clean.endsWith(".dcm.json") || clean.endsWith(".rtplan.json") || clean.endsWith(".rtdose.json") || clean.endsWith(".rtstruct.json")) return "dicom-rt";
+  if (clean.endsWith(".igtl.json") || clean.endsWith(".igtl.xml")) return "igtl";
+  if (clean.endsWith(".nii.gz") || clean.endsWith(".nii.json")) return "nifti";
+  if (clean.endsWith(".qif.xml") || clean.endsWith(".qif.json")) return "qif";
+  if (clean.endsWith(".ocpp.json")) return "ocpp";
+  if (clean.endsWith(".oadr.xml") || clean.endsWith(".oadr.json") || clean.endsWith(".oadr.yaml")) return "openadr";
+  if (clean.endsWith(".gtfs.txt")) return "gtfs";
+
+  const dotIdx = clean.lastIndexOf(".");
+  if (dotIdx === -1) return "modelica";
+  const ext = clean.slice(dotIdx);
+  switch (ext) {
+    case ".mo":
+    case ".mos":
+      return "modelica";
+    case ".msx":
+    case ".modelscript":
+      return "modelscript";
+    case ".sysml":
+    case ".sysml2":
+    case ".kerml":
+      return "sysml2";
+    case ".sp":
+    case ".cir":
+    case ".net":
+      return "spice";
+    case ".va":
+    case ".vams":
+      return "verilog-a";
+    case ".pscx":
+    case ".pslx":
+    case ".psc":
+      return "pscad";
+    case ".raw":
+    case ".dyr":
+    case ".seq":
+    case ".idv":
+      return "psse";
+    case ".epc":
+    case ".dyd":
+      return "pslf";
+    case ".pfd":
+    case ".dz":
+      return "powerfactory";
+    case ".cgmes":
+      return "cgmes";
+    case ".dss":
+      return "opendss";
+    case ".ibs":
+    case ".ebd":
+    case ".pkg":
+      return "ibis";
+    case ".s1p":
+    case ".s2p":
+    case ".s3p":
+    case ".s4p":
+    case ".snp":
+    case ".ts":
+      return "touchstone";
+    case ".gen":
+    case ".opf":
+      return "olga";
+    case ".lps":
+      return "lps";
+    case ".bkp":
+    case ".apw":
+      return "aspen";
+    case ".afi":
+      return "eclipse";
+    case ".epanet":
+      return "epanet";
+    case ".swmm":
+    case ".rpt":
+      return "swmm";
+    case ".r5":
+    case ".relap":
+    case ".relap5":
+      return "relap5";
+    case ".idf":
+    case ".epJSON":
+      return "energyplus";
+    case ".adm":
+    case ".cmd":
+    case ".acf":
+      return "adams";
+    case ".spck":
+    case ".sbr":
+      return "simpack";
+    case ".calc":
+    case ".tsimf":
+    case ".fresimf":
+    case ". modal":
+    case ".gensys":
+      return "gensys";
+    case ".gtm":
+    case ".gtd":
+    case ".gtx":
+    case ".gt":
+      return "gtsuite";
+    case ".sima":
+    case ".stask":
+      return "sima";
+    case ".urdf":
+    case ".xacro":
+    case ".sdf":
+      return "urdf";
+    case ".xodr":
+      return "opendrive";
+    case ".xosc":
+      return "openscenario";
+    case ".arxml":
+      return "autosar";
+    case ".slx":
+    case ".mdl":
+      return "simulink";
+    case ".ez5":
+    case ".ezm":
+    case ".ezmf":
+    case ".easy5":
+      return "easy5";
+    case ".jsbsim":
+      return "jsbsim";
+    case ".roc":
+    case ".rocets":
+      return "rocets";
+    case ".oem":
+    case ".omm":
+    case ".opm":
+    case ".ocm":
+    case ".tdm":
+    case ".xtce":
+      return "ccsds";
+    case ".plcopen":
+    case ".st":
+    case ".iec":
+      return "plcopen";
+    case ".aml":
+    case ".amlx":
+      return "automationml";
+    case ".step":
+    case ".stp":
+    case ".p21":
+      return "step";
+    case ".qif":
+      return "qif";
+    case ".scad":
+      return "scad";
+    case ".usd":
+    case ".usda":
+    case ".usdc":
+    case ".usdz":
+      return "usd";
+    case ".inp":
+    case ".inpt":
+    case ".bdf":
+    case ".frd":
+      return "fea";
+    case ".cfg":
+    case ".cfgt":
+    case ".su2":
+    case ".cgns":
+      return "cfd";
+    case ".sbml":
+      return "sbml";
+    case ".ant":
+    case ".antimony":
+      return "antimony";
+    case ".cti":
+      return "cantera";
+    case ".smi":
+    case ".smiles":
+      return "smiles";
+    case ".ctl":
+    case ".nmtran":
+      return "nmtran";
+    case ".sbol":
+      return "sbol";
+    case ".bngl":
+      return "bngl";
+    case ".sedml":
+      return "sedml";
+    case ".pdb":
+    case ".cif":
+    case ".mmcif":
+      return "pdb";
+    case ".gb":
+    case ".gbk":
+    case ".genbank":
+    case ".fasta":
+      return "genbank";
+    case ".gPJ":
+    case ".gpj":
+    case ".PMS":
+    case ".pms":
+    case ".gproms":
+      return "gproms";
+    case ".pqi":
+    case ".phreeqc":
+      return "phreeqc";
+    case ".f":
+    case ".for":
+    case ".f77":
+    case ".f90":
+    case ".f95":
+    case ".f03":
+    case ".f08":
+      return "fortran";
+    case ".c":
+    case ".h":
+      return "c";
+    case ".osim":
+    case ".mot":
+    case ".trc":
+      return "opensim";
+    case ".dcm":
+    case ".rtplan":
+    case ".rtdose":
+    case ".rtstruct":
+      return "dicom-rt";
+    case ".cellml":
+      return "cellml";
+    case ".feb":
+    case ".febio":
+      return "febio";
+    case ".nii":
+    case ".nrrd":
+      return "nifti";
+    case ".topas":
+      return "topas";
+    case ".3mf":
+    case ".amf":
+      return "three-mf";
+    case ".igtl":
+      return "igtl";
+    case ".ampl":
+    case ".mod":
+    case ".run":
+      return "ampl";
+    case ".ssd":
+    case ".ssv":
+    case ".ssm":
+    case ".ssp":
+      return "ssp";
+    case ".reqif":
+    case ".reqifz":
+      return "reqif";
+    case ".oscal":
+      return "oscal";
+    case ".owl":
+    case ".ttl":
+    case ".ofn":
+    case ".omn":
+    case ".fss":
+      return "owl2";
+    case ".csv":
+    case ".tsv":
+      return "csv";
+    case ".g01":
+    case ".g02":
+    case ".g03":
+    case ".rasgeo":
+    case ".u01":
+    case ".f01":
+      return "hec-ras";
+    case ".ocpp":
+    case ".cpo":
+    case ".evse":
+      return "ocpp";
+    case ".oadr":
+      return "openadr";
+    case ".tough":
+    case ".tgh":
+      return "tough";
+    case ".dis":
+    case ".dis6":
+    case ".npf":
+    case ".npf6":
+    case ".wel":
+    case ".wel6":
+    case ".riv":
+    case ".riv6":
+    case ".chd":
+    case ".chd6":
+      return "modflow";
+    case ".landgem":
+    case ".lfg":
+    case ".biogas":
+      return "landgem";
+    case ".gtfs":
+    case ".gtfs-rt":
+      return "gtfs";
+    case ".sor":
+      return "optical";
+    case ".nsma":
+    case ".planet":
+      return "ran";
+    case ".fiber":
+    case ".osp":
+      return "fiber";
+    default:
+      return "modelica";
+  }
 }
 
 type SimulationCommandArg =
@@ -232,25 +575,27 @@ export function registerSimulationCommands(
         if (!uri && editor?.document) {
           uri = editor.document.uri.toString();
         }
+        let targetLang = inputs.languageId;
         if (!uri) {
           const candidate =
             vscode.window.visibleTextEditors.find(
               (e) =>
                 e.document.uri.scheme !== "output" &&
-                (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
+                (isSupportedModelFile(e.document.uri.path) || e.document.languageId === "modelica"),
             )?.document ??
             vscode.workspace.textDocuments.find(
-              (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
+              (d) =>
+                d.uri.scheme !== "output" &&
+                (isSupportedModelFile(d.uri.path) || d.languageId === "modelica"),
             );
           if (candidate) {
             uri = candidate.uri.toString();
             if (!inputs.documentText) inputs.documentText = candidate.getText();
             if (!inputs.name) {
-              const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-              const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-              if (m) {
-                inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-              }
+              inputs.name = extractModelNameFromText(candidate.getText(), candidate.uri.path);
+            }
+            if (!targetLang && candidate.languageId && candidate.languageId !== "plaintext") {
+              targetLang = candidate.languageId;
             }
           }
         }
@@ -258,11 +603,7 @@ export function registerSimulationCommands(
           inputs.documentText = editor.document.getText();
         }
         if (inputs.documentText && !inputs.name) {
-          const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-          if (m) {
-            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-          }
+          inputs.name = extractModelNameFromText(inputs.documentText, uri || editor?.document.uri.path);
         }
 
         const simDefaults = getSimulationDefaults();
@@ -272,17 +613,24 @@ export function registerSimulationCommands(
         if (inputs.solver === undefined) inputs.solver = simDefaults.solver;
 
         try {
-          const lang = editor?.document.languageId ?? "modelica";
+          if (!targetLang) {
+            if (editor?.document && editor.document.languageId && editor.document.languageId !== "plaintext") {
+              targetLang = editor.document.languageId;
+            } else {
+              targetLang = detectLanguageIdFromUri(uri);
+            }
+          }
+          const finalLang = targetLang || "modelica";
           await vscode.window.withProgress(
             {
               location: vscode.ProgressLocation.Notification,
-              title: `Simulating ${inputs.name || "Model"}...`,
+              title: `Simulating ${inputs.name || "Model"} (${finalLang})...`,
               cancellable: false,
             },
             async () => {
               const res = await client!.sendRequest<ModelicaSimulateResponse>("modelscript/executeAction", {
                 actionId: "simulate",
-                languageId: lang,
+                languageId: finalLang,
                 uri,
                 inputs,
               });

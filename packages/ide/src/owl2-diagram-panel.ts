@@ -8,6 +8,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { getNonce } from "./utils/nonce.js";
 
 export interface OWL2DiagramData {
   nodes: OWL2DiagramNode[];
@@ -58,6 +59,7 @@ export class OWL2DiagramPanel {
     const panel = vscode.window.createWebviewPanel(OWL2DiagramPanel.viewType, "OWL2 Ontology Diagram", column, {
       enableScripts: true,
       retainContextWhenHidden: true,
+      localResourceRoots: [],
     });
 
     OWL2DiagramPanel.currentPanel = new OWL2DiagramPanel(panel, client, documentUri);
@@ -146,14 +148,15 @@ export class OWL2DiagramPanel {
   }
 
   private getHtml(data: OWL2DiagramData): string {
-    const nodesJson = JSON.stringify(data.nodes);
-    const edgesJson = JSON.stringify(data.edges);
+    const nonce = getNonce();
+    const nodesJson = JSON.stringify(data.nodes).replace(/</g, "\\u003c");
+    const edgesJson = JSON.stringify(data.edges).replace(/</g, "\\u003c");
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #1a1a2e; color: #e0e0e0; font-family: 'Inter', 'Segoe UI', sans-serif;
@@ -194,8 +197,8 @@ export class OWL2DiagramPanel {
 </head>
 <body>
   <div id="toolbar">
-    <button onclick="resetView()">⟳ Reset</button>
-    <button onclick="fitToScreen()">⊞ Fit</button>
+    <button id="btnReset">⟳ Reset</button>
+    <button id="btnFit">⊞ Fit</button>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:#e74c3c"></div>Class</div>
       <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div>Defined</div>
@@ -206,10 +209,19 @@ export class OWL2DiagramPanel {
   </div>
   <div id="canvas"></div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const nodes = ${nodesJson};
     const edges = ${edgesJson};
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     // Simple force-directed layout
     const W = window.innerWidth;
@@ -272,6 +284,16 @@ export class OWL2DiagramPanel {
       }
     }
 
+    const canvasEl = document.getElementById('canvas');
+    canvasEl.addEventListener('click', (ev) => {
+      const group = ev.target && ev.target.closest ? ev.target.closest('g[data-node-id]') : null;
+      if (group) {
+        vscode.postMessage({ command: 'navigateToIri', iri: group.getAttribute('data-node-id') });
+      }
+    });
+    document.getElementById('btnReset').addEventListener('click', () => resetView());
+    document.getElementById('btnFit').addEventListener('click', () => fitToScreen());
+
     simulate(200);
     render();
 
@@ -301,31 +323,28 @@ export class OWL2DiagramPanel {
         const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
         if (!a || !b) continue;
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-        edgeSvg += \`<line x1="\${a.x}" y1="\${a.y}" x2="\${b.x}" y2="\${b.y}" class="edge-\${e.type}"/>\`;
+        edgeSvg += \`<line x1="\${a.x}" y1="\${a.y}" x2="\${b.x}" y2="\${b.y}" class="edge-\${esc(e.type)}"/>\`;
         if (e.label) {
-          edgeSvg += \`<text x="\${mx}" y="\${my - 6}" class="edge-label">\${e.label}</text>\`;
+          edgeSvg += \`<text x="\${mx}" y="\${my - 6}" class="edge-label">\${esc(e.label)}</text>\`;
         }
       }
 
       let nodeSvg = '';
       for (const n of nodes) {
         const extra = n.isDefinedClass ? ' defined' : '';
-        const shortLabel = n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label;
+        const rawLabel = String(n.label ?? '');
+        const shortLabel = rawLabel.length > 18 ? rawLabel.slice(0, 16) + '…' : rawLabel;
         nodeSvg += \`
-          <g class="node-group node-\${n.type}\${extra}"
+          <g class="node-group node-\${esc(n.type)}\${extra}"
              transform="translate(\${n.x - NODE_W/2}, \${n.y - NODE_H/2})"
-             onclick="nodeClick('\${n.id}')">
+             data-node-id="\${esc(n.id)}">
             <rect width="\${NODE_W}" height="\${NODE_H}" stroke-width="1.5"/>
-            <text x="\${NODE_W/2}" y="\${NODE_H/2}" class="node-label">\${shortLabel}</text>
+            <text x="\${NODE_W/2}" y="\${NODE_H/2}" class="node-label">\${esc(shortLabel)}</text>
           </g>\`;
       }
 
-      document.getElementById('canvas').innerHTML =
+      canvasEl.innerHTML =
         \`<svg viewBox="0 0 \${W} \${H}">\${defs}\${edgeSvg}\${nodeSvg}</svg>\`;
-    }
-
-    function nodeClick(iri) {
-      vscode.postMessage({ command: 'navigateToIri', iri });
     }
 
     function resetView() {

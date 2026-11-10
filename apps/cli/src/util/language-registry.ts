@@ -94,6 +94,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "owl2", name: "OWL2", extensions: [".owl", ".owl2", ".ttl", ".ofn", ".rdf"], isBuiltIn: true },
   { id: "csv", name: "CSV", extensions: [".csv"], isBuiltIn: true },
   { id: "ssp", name: "SSP", extensions: [".ssp", ".ssd", ".ssv", ".ssm"], isBuiltIn: true },
+  { id: "ampl", name: "AMPL", extensions: [".mod", ".ampl"], isBuiltIn: true },
   { id: "cfd", name: "CFD", extensions: [".cfg", ".cfgt", ".su2", ".cfd", ".foam"], isBuiltIn: true },
   { id: "fea", name: "FEA", extensions: [".inp", ".inpt", ".bdf", ".fea", ".dat"], isBuiltIn: true },
   { id: "pscad", name: "PSCAD", extensions: [".pscx", ".pslx", ".pswx", ".psmx"], isBuiltIn: true },
@@ -123,8 +124,14 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
     extensions: [".gensys", ".gpf", ".tsimf", ".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
     isBuiltIn: true,
   },
+  { id: "gtfs", name: "GTFS", extensions: [".gtfs", ".gtfs.txt", ".gtfs-rt"], isBuiltIn: true },
+  { id: "hec-ras", name: "HEC-RAS", extensions: [".g01", ".g02", ".g03", ".rasgeo", ".u01", ".f01", ".prj"], isBuiltIn: true },
   { id: "ibis", name: "IBIS", extensions: [".ibs", ".ebd", ".pkg"], isBuiltIn: true },
   { id: "jsbsim", name: "JSBSim", extensions: [".jsbsim", ".xml", ".jsbsim.xml"], isBuiltIn: true },
+  { id: "landgem", name: "LandGEM", extensions: [".landgem", ".lfg", ".biogas"], isBuiltIn: true },
+  { id: "modflow", name: "MODFLOW", extensions: [".dis", ".dis6", ".npf", ".npf6", ".wel", ".wel6", ".riv", ".riv6", ".chd", ".chd6"], isBuiltIn: true },
+  { id: "ocpp", name: "OCPP", extensions: [".ocpp", ".ocpp.json", ".cpo", ".evse"], isBuiltIn: true },
+  { id: "openadr", name: "OpenADR", extensions: [".oadr", ".oadr.xml", ".oadr.json", ".oadr.yaml"], isBuiltIn: true },
   { id: "opendrive", name: "OpenDRIVE", extensions: [".xodr", ".opendrive.xml"], isBuiltIn: true },
   { id: "opendss", name: "OpenDSS", extensions: [".dss"], isBuiltIn: true },
   { id: "openscenario", name: "OpenSCENARIO", extensions: [".xosc", ".osc", ".openscenario.xml"], isBuiltIn: true },
@@ -142,6 +149,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "simulink", name: "Simulink", extensions: [".mdl", ".slx"], isBuiltIn: true },
   { id: "spice", name: "SPICE", extensions: [".cir", ".sp", ".lib", ".net"], isBuiltIn: true },
   { id: "swmm", name: "SWMM", extensions: [".swmm", ".swmm.inp"], isBuiltIn: true },
+  { id: "tough", name: "TOUGH", extensions: [".tough", ".dat", ".tgh"], isBuiltIn: true },
   {
     id: "touchstone",
     name: "Touchstone",
@@ -192,12 +200,24 @@ export function resolveBuiltInWasmPath(id: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 /**
+ * Sanitizes and validates a language identifier against path traversal and invalid characters.
+ */
+export function sanitizeLanguageId(id: string): string {
+  const norm = (id || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(norm)) {
+    throw new Error(`Invalid language identifier '${id}'. Must match /^[a-z0-9][a-z0-9_-]{0,63}$/`);
+  }
+  return norm;
+}
+
+/**
  * Registers a language manifest into the user catalog (~/.modelscript/languages/).
  */
 export function registerLanguage(manifest: LanguageManifest): void {
   ensureRegistryDir();
   const catalog = loadUserCatalog();
-  const langDir = path.join(getRegistryDir(), manifest.id);
+  const normId = sanitizeLanguageId(manifest.id);
+  const langDir = path.join(getRegistryDir(), normId);
   if (!fs.existsSync(langDir)) {
     fs.mkdirSync(langDir, { recursive: true });
   }
@@ -224,6 +244,7 @@ export function registerLanguage(manifest: LanguageManifest): void {
 
   const updatedManifest: LanguageManifest = {
     ...manifest,
+    id: normId,
     wasmPath: storedWasmPath,
     wrapperPath: storedWrapperPath,
     registeredAt: new Date().toISOString(),
@@ -231,7 +252,7 @@ export function registerLanguage(manifest: LanguageManifest): void {
 
   fs.writeFileSync(path.join(langDir, "manifest.json"), JSON.stringify(updatedManifest, null, 2), "utf-8");
 
-  catalog.languages[manifest.id] = updatedManifest;
+  catalog.languages[normId] = updatedManifest;
   saveUserCatalog(catalog);
 }
 
@@ -240,7 +261,7 @@ export function registerLanguage(manifest: LanguageManifest): void {
  */
 export function unregisterLanguage(id: string): boolean {
   const catalog = loadUserCatalog();
-  const normId = id.toLowerCase();
+  const normId = sanitizeLanguageId(id);
   if (!catalog.languages[normId]) {
     return false;
   }
@@ -351,6 +372,7 @@ export async function registerLanguageFromDirectory(dir: string): Promise<Langua
     }
   }
 
+  langId = sanitizeLanguageId(langId);
   // Ensure parser.wasm is copied into ~/.modelscript/languages/<langId>/
   const userLangDir = path.join(getRegistryDir(), langId);
   fs.mkdirSync(userLangDir, { recursive: true });
@@ -637,10 +659,12 @@ function tryResolveLocalDirectory(cwd: string): LanguageManifest | undefined {
  * Creates the ResolvedLanguage instance containing parser loading, formatting, and unparsing routines.
  */
 function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
+  let cachedParserPromise: Promise<{ parser: TreeSitterParser; facade?: LspFacade | undefined; binding?: unknown }> | null = null;
   return {
     manifest,
 
     async loadParser() {
+      if (cachedParserPromise) return cachedParserPromise;
       const wasmPath = manifest.wasmPath || resolveBuiltInWasmPath(manifest.id);
       if (!wasmPath || !fs.existsSync(wasmPath)) {
         throw new Error(
@@ -648,8 +672,16 @@ function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
         );
       }
 
-      const { createWasmParser } = await import("@modelscript/dsl");
-      return await createWasmParser(wasmPath);
+      cachedParserPromise = (async () => {
+        const { createWasmParser } = await import("@modelscript/dsl");
+        return await createWasmParser(wasmPath);
+      })();
+      try {
+        return await cachedParserPromise;
+      } catch (err) {
+        cachedParserPromise = null;
+        throw err;
+      }
     },
 
     async format(content: string, options?: FormatOptions): Promise<string> {

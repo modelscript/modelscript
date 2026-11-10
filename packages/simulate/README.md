@@ -23,11 +23,21 @@ Operates directly on `@modelscript/runtime` linear-memory `DAEBuilder` arenas (`
   - `rodas4p` (`src/solvers/rodas4p.ts`): 4th-order stiffly accurate Rosenbrock-Wanner method for stiff ODEs and index-1 DAEs without nonlinear Newton iteration.
   - `bdf`: Variable-order (1–5), variable-step Backward Differentiation Formula solver with sparse KLU/CSR Jacobian factorization (`src/solvers/sparse-solver-bridge.ts`).
   - **SUNDIALS WASM (`cvode` & `ida`, `src/solvers/sundials-wasm.ts`)**: WebAssembly-compiled Lawrence Livermore **SUNDIALS CVODE** (Adams-Moulton / BDF) and **IDA** (implicit differential-algebraic solver) with exact rootfinding.
-- **Specialized Solvers (`src/solvers/`)**: Delay Differential Equations (`dde-solver.ts`), Stochastic Differential Equations (`sde-solver.ts`, Euler-Maruyama / Milstein), Two-Point Boundary Value Problems (`bvp-solver.ts`, collocation/shooting), and Nodal Admittance Power Systems EMT (`src/solvers/emt/`).
+- **Specialized Solvers (`src/solvers/`)**: Delay Differential Equations (`dde-solver.ts`), Stochastic Differential Equations (`sde-solver.ts`, Euler-Maruyama / Milstein), Two-Point Boundary Value Problems (`bvp-solver.ts`, collocation/shooting), Nodal Admittance Power Systems EMT (`src/solvers/emt/`), and 3GPP 5G NR / LTE RAN RF propagation & SINR coverage solver (`src/solvers/ran-coverage-solver.ts`).
+- **Power Flow, Harmonics & Dynamic Line Rating (`src/solvers/powerflow/`)**:
+  - `harmonics-solver.ts`: IEEE 519 harmonic current injection, frequency-scan admittance matrix $\mathbf{Y}_h$, Total Harmonic Distortion ($\text{THD}_V, \text{THD}_I$), and parallel/series resonance detection (`solveHarmonics`).
+  - `quasi-dynamic.ts`: Multi-period Quasi-Dynamic Simulation (QDS) time-series solver for hourly/seasonal load and renewable profiles (`runQuasiDynamicSimulation`).
+  - `dynamic-line-rating.ts`: IEEE 738 / CIGRE TB 601 convective/radiative/solar conductor heat balance and real-time thermal ampacity solver (`computeDynamicLineRating`).
+- **Protection Coordination, Relay Catalog & IEEE 1584 Arc-Flash (`src/solvers/protection/`)**:
+  - `arc-flash.ts`: IEEE 1584-2018 incident energy ($E$ in $\text{cal/cm}^2$), arcing current ($I_{\text{arc}}$), arc-flash boundary ($D_{\text{AFB}}$), and NFPA 70E PPE category calculator (`computeArcFlash`).
+  - `distance-protection.ts`: 21 distance relay mho/quadrilateral apparent impedance reach, zone grading (Z1/Z2/Z3), and power-swing blocking (`evaluateDistanceProtection`).
+  - `relay-catalog.ts` & `stationware-manager.ts`: Vendor-accurate ANSI/IEC inverse-time overcurrent (50/51) curves, CTI grading verification, and substation relay setting group management (`StationWareManager`).
+- **Grid-Code Ride-Through Compliance (`src/solvers/compliance/`)**:
+  - `gridcode-templates.ts` & `gridcode-auditor.ts`: Automated transient LVRT/HVRT voltage ride-through, frequency ride-through, and reactive current response ($T_{90}$) compliance verification against **IEEE 2800-2022**, **IEEE 1547-2018**, **ENTSO-E RfG (Type B/C/D)**, **NERC PRC-024-3**, and **ERCOT Nodal**.
 
-### 2. WebGPU Batched WGSL Compute Engine (`@modelscript/simulate/webgpu`)
+### 2. WebGPU Batched WGSL Compute Engine (`@modelscript/simulate/webgpu`, `src/gpu/`)
 
-- **Automated DAE-to-WGSL Compilation (`src/core/wgsl-codegen.ts`, `src/core/wgsl-cache.ts`)**: Compiles flattened arena equations directly into WebGPU Shading Language (`@compute @workgroup_size(64)`) shaders.
+- **Automated DAE-to-WGSL Compilation (`src/core/wgsl-codegen.ts`, `src/core/wgsl-cache.ts`, `src/gpu/`)**: Compiles flattened arena equations directly into WebGPU Shading Language (`@compute @workgroup_size(64)`) shaders with automated CPU-vs-GPU numerical parity validation (`gpu-correctness-harness.ts`).
 - **Massive Parallel Parameter Sweeps (`src/core/webgpu-simulation-runner.ts`, `src/core/vmap-arena.ts`)**: Executes tens of thousands of parameter trajectories concurrently on the GPU (`gpu-buffers.ts`, `webgpu-reduction.ts`) with automatic fallback to multi-threaded WASM SIMD workers.
 
 ### 3. Hybrid Adjoint Sensitivity & Differentiable Simulation (`src/core/`, `@modelscript/simulate/optimizer`)

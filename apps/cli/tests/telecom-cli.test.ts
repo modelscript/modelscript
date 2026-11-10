@@ -288,6 +288,233 @@ test("Telecom Utilities CLI Commands Suite (optical, ran, fiber)", async (t) => 
     }
   });
 
+  await t.test("msx ran pcn (Prior Coordination Notice exhibit)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (RanCommand.handler as any)({
+        action: "pcn",
+        freq: 11.2,
+        dist: 18.5,
+        "tx-power": 23.0,
+        "tx-gain": 39.5,
+        "rx-gain": 39.5,
+      });
+      assert.ok(logs.some((l) => l.includes("PRIOR COORDINATION NOTICE (PCN)")));
+      assert.ok(logs.some((l) => l.includes("47 C.F.R. § 101.103(d)")));
+      assert.ok(logs.some((l) => l.includes("NOTICE_DISPATCHED")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx ran mpe (FCC OET Bulletin 65 Safety Solver)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (RanCommand.handler as any)({
+        action: "mpe",
+        freq: 1900,
+        "power-watts": 40.0,
+        "tx-gain": 17.5,
+      });
+      assert.ok(logs.some((l) => l.includes("FCC OET Bulletin 65 & ICNIRP RF Safety")));
+      assert.ok(logs.some((l) => l.includes("Main-Beam Exclusion (GenPop):")));
+      assert.ok(logs.some((l) => l.includes("Compliance Verdict:")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx ran faa (14 CFR Part 77 Airspace Obstruction)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (RanCommand.handler as any)({
+        action: "faa",
+        lat: 40.7128,
+        lon: -74.006,
+        height: 220, // > 200 ft AGL notice threshold
+        elev: 25,
+      });
+      assert.ok(logs.some((l) => l.includes("FAA 14 CFR Part 77 Airspace Obstruction Evaluation")));
+      assert.ok(logs.some((l) => l.includes("Exceeds 200 ft Baseline:   YES")));
+      assert.ok(logs.some((l) => l.includes("FAA Form 7460-1 Required:")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx fiber bdc (FCC Broadband Data Collection H3 Spatial Fabric)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+    const bdcOutGeoJson = path.join(tmpDir, "bdc_fabric.geojson");
+    const bdcOutCsv = path.join(tmpDir, "bdc_fabric.csv");
+
+    try {
+      await (FiberCommand.handler as any)({
+        action: "bdc",
+        files: [geojsonFile],
+        tech: 50,
+        down: 1000,
+        up: 1000,
+        res: 9,
+        provider: "ModelScript Fiber Network",
+        out: bdcOutGeoJson,
+      });
+      assert.ok(logs.some((l) => l.includes("FCC Broadband Data Collection (BDC) Spatial Fabric")));
+      assert.ok(logs.some((l) => l.includes("Optical Carrier / FTTH")));
+      assert.ok(logs.some((l) => l.includes("Exported FCC BDC submission dataset")));
+      assert.ok(fs.existsSync(bdcOutGeoJson));
+
+      // Test CSV output
+      await (FiberCommand.handler as any)({
+        action: "bdc",
+        files: [geojsonFile],
+        tech: 50,
+        down: 1000,
+        up: 1000,
+        res: 9,
+        out: bdcOutCsv,
+        format: "csv",
+      });
+      assert.ok(fs.existsSync(bdcOutCsv));
+      const csvContent = fs.readFileSync(bdcOutCsv, "utf-8");
+      assert.ok(csvContent.includes("h3_index,technology,max_advertised_download_mbps"));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx fiber pole-loading (NESC Rule 250/260 & ANSI O5.1 FEA)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (FiberCommand.handler as any)({
+        action: "pole-loading",
+        "pole-class": "4",
+        species: "southern-yellow-pine",
+        length: 40.0,
+        grade: "C-elsewhere",
+        "prop-height": 21.0,
+      });
+      assert.ok(logs.some((l) => l.includes("NESC RULE 250/260 & ANSI O5.1 POLE LOADING ANALYSIS")));
+      assert.ok(logs.some((l) => l.includes("Southern Yellow Pine (Class 4)")));
+      assert.ok(logs.some((l) => l.includes("Pole Capacity Utilization:")));
+      assert.ok(logs.some((l) => l.includes("PASS (Meets NESC Rule 260)")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx fiber make-ready (NESC Table 235-5 Joint-Use Exhibit)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (FiberCommand.handler as any)({
+        action: "make-ready",
+        "prop-height": 21.0,
+      });
+      assert.ok(logs.some((l) => l.includes("JOINT-USE POLE ATTACHMENT MAKE-READY AUDIT EXHIBIT")));
+      assert.ok(logs.some((l) => l.includes("POLE ATTACHMENT SCHEDULE (TOP TO BOTTOM):")));
+      assert.ok(logs.some((l) => l.includes("APPROVED (Zero Make-Ready Required)")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx ran mpe --standard=canada-sc6 (Health Canada Safety Code 6)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (RanCommand.handler as any)({
+        action: "mpe",
+        freq: 3500,
+        "power-watts": 40.0,
+        "tx-gain": 17.5,
+        standard: "canada-sc6",
+      });
+      assert.ok(logs.some((l) => l.includes("Health Canada Safety Code 6 (2015/2021) / ISED RSS-102")));
+      assert.ok(logs.some((l) => l.includes("Standard:                  HEALTH_CANADA_SC6")));
+      assert.ok(logs.some((l) => l.includes("Main-Beam Exclusion (GenPop):")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx ran airspace --regulator=icao (ICAO Annex 14 OLS Evaluation)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (RanCommand.handler as any)({
+        action: "airspace",
+        regulator: "icao",
+        "height-m": 60.0,
+        "elev-m": 120.0,
+        lat: 49.02,
+        lon: 2.56,
+      });
+      assert.ok(logs.some((l) => l.includes("ICAO Annex 14 Volume I Obstacle Limitation Surfaces (OLS) Evaluation")));
+      assert.ok(logs.some((l) => l.includes("e-TOD Category:")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx fiber pole-loading --standard=csa (CSA C22.3 No. 1 Overhead Systems)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (FiberCommand.handler as any)({
+        action: "pole-loading",
+        standard: "csa",
+        district: "severe",
+        "length-m": 12.0,
+      });
+      assert.ok(logs.some((l) => l.includes("CSA C22.3 NO. 1 & CSA 015 OVERHEAD POLE STRESS ANALYSIS")));
+      assert.ok(logs.some((l) => l.includes("Loading District:           SEVERE")));
+      assert.ok(logs.some((l) => l.includes("PASS (Meets CSA C22.3 No. 1)")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx fiber pole-loading --standard=eurocode (Eurocode EN 1991-1-4 & EN 50341)", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (FiberCommand.handler as any)({
+        action: "pole-loading",
+        standard: "eurocode",
+        "length-m": 15.0,
+      });
+      assert.ok(logs.some((l) => l.includes("EUROCODE EN 1991-1-4 & EN 50341 STRUCTURAL MAST ANALYSIS")));
+      assert.ok(logs.some((l) => l.includes("Peak Wind Pressure at Top:")));
+      assert.ok(logs.some((l) => l.includes("PASS (Meets Eurocode 3 ULS)")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
   // Cleanup scratch directory
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

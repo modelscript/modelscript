@@ -1,7 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
-import { getRegistryUrl } from "./utils/config.js";
+import { getRegistryUrl, isAirgapped } from "./utils/config.js";
+import { getNonce } from "./utils/nonce.js";
+
+const VALID_PACKAGE_NAME_RE = /^(?:@[a-zA-Z0-9._-]+\/)?[a-zA-Z0-9._-]+$/;
+const VALID_VERSION_RE = /^[a-zA-Z0-9.+_-]+$/;
+
+function isValidPackageName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.includes("..") || trimmed.includes("\\")) return false;
+  return VALID_PACKAGE_NAME_RE.test(trimmed);
+}
+
+function isValidVersionSpec(version: string): boolean {
+  const trimmed = version.trim();
+  if (!trimmed || trimmed.includes("..") || trimmed.includes("/") || trimmed.includes("\\")) return false;
+  return VALID_VERSION_RE.test(trimmed);
+}
+
+function isAllowedImportUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol === "https:") return true;
+    if (
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export interface AnsatzPackageSummary {
   name: string;
@@ -97,6 +129,17 @@ const CURATED_LIBRARIES: AnsatzPackageSummary[] = [
  */
 export async function searchAnsatzPackages(query: string, signal?: AbortSignal): Promise<AnsatzPackageSummary[]> {
   const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  if (isAirgapped()) {
+    try {
+      const parsed = new URL(baseUrl);
+      const h = parsed.hostname.toLowerCase();
+      if (h === "api.modelscript.org" || h.endsWith(".modelscript.org") || h === "ansatz.social" || h.endsWith(".ansatz.social")) {
+        return [];
+      }
+    } catch {
+      return [];
+    }
+  }
   const encodedQuery = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
   const endpoints = [`${baseUrl}/packages${encodedQuery}`, `${baseUrl}/libraries${encodedQuery}`];
 
@@ -288,6 +331,18 @@ async function resolveConcreteVersion(packageName: string, requestedVersion: str
     return requestedVersion;
   }
   const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  if (isAirgapped()) {
+    try {
+      const parsed = new URL(baseUrl);
+      const h = parsed.hostname.toLowerCase();
+      if (h === "api.modelscript.org" || h.endsWith(".modelscript.org") || h === "ansatz.social" || h.endsWith(".ansatz.social")) {
+        const curated = CURATED_LIBRARIES.find((c) => c.name.toLowerCase() === packageName.toLowerCase());
+        return curated?.latestVersion || requestedVersion || "latest";
+      }
+    } catch {
+      // Fall through
+    }
+  }
   for (const prefix of ["packages", "libraries"]) {
     try {
       const resp = await fetch(`${baseUrl}/${prefix}/${encodeURIComponent(packageName)}`);
@@ -345,12 +400,24 @@ export function registerRegistryView(
     vscode.commands.registerCommand(
       "modelscript.registry.install",
       async (packageName?: string, packageVersion = "latest") => {
+        if (!vscode.workspace.isTrusted) {
+          vscode.window.showErrorMessage("Cannot install packages in an untrusted workspace.");
+          return;
+        }
         if (!packageName || typeof packageName !== "string") {
           await showAnsatzPackagePicker();
           return;
         }
+        if (!isValidPackageName(packageName) || !isValidVersionSpec(packageVersion)) {
+          vscode.window.showErrorMessage(`Invalid package name or version: '${packageName}@${packageVersion}'.`);
+          return;
+        }
 
         const resolvedVersion = await resolveConcreteVersion(packageName, packageVersion);
+        if (!isValidVersionSpec(resolvedVersion)) {
+          vscode.window.showErrorMessage(`Invalid resolved version '${resolvedVersion}' for package '${packageName}'.`);
+          return;
+        }
 
         await vscode.window.withProgress(
           {
@@ -500,6 +567,10 @@ export function registerRegistryView(
 
   // Uninstall / remove package command
   const uninstallHandler = async (arg?: string | { info?: { name?: string; id?: string } }) => {
+    if (!vscode.workspace.isTrusted) {
+      vscode.window.showErrorMessage("Cannot remove packages in an untrusted workspace.");
+      return;
+    }
     let packageName = extractPackageNameFromArg(arg).name;
 
     if (!packageName) {
@@ -576,7 +647,7 @@ export function registerRegistryView(
         "modelscript.packageDetail",
         `${name}@${resolvedVersion}`,
         vscode.ViewColumn.One,
-        { enableScripts: true },
+        { enableScripts: true, localResourceRoots: [] },
       );
 
       panel.webview.onDidReceiveMessage((message) => {
@@ -609,7 +680,8 @@ export function registerRegistryView(
           };
         }
         const readme = packument.description || "No description available.";
-        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"><style>
+        const nonce = getNonce();
+        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"><style>
           body { font-family: var(--vscode-font-family); padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
           h1 { font-size: 24px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
           .meta { color: var(--vscode-descriptionForeground); font-size: 13px; margin-bottom: 24px; }
@@ -618,7 +690,7 @@ export function registerRegistryView(
           .install-btn:hover { background: var(--vscode-button-hoverBackground); }
           .readme { line-height: 1.7; }
         </style></head><body>
-          <h1>${escapeHtml(packument.name || name)} <button class="install-btn" onclick="acquireVsCodeApi().postMessage({command: 'install'})">Add to Libraries</button></h1>
+          <h1>${escapeHtml(packument.name || name)} <button class="install-btn" id="install-btn">Add to Libraries</button></h1>
           <div class="meta">
             <span class="badge">v${escapeHtml(packument.version || resolvedVersion)}</span>
             ${packument.license ? `<span class="badge">${escapeHtml(packument.license)}</span>` : ""}
@@ -626,6 +698,12 @@ export function registerRegistryView(
             ${packument.size ? `<span>${Math.round(packument.size / 1024)} KB</span>` : ""}
           </div>
           <div class="readme">${escapeHtml(readme)}</div>
+          <script nonce="${nonce}">
+            const vscode = acquireVsCodeApi();
+            document.getElementById("install-btn")?.addEventListener("click", () => {
+              vscode.postMessage({ command: "install" });
+            });
+          </script>
         </body></html>`;
       } catch (e) {
         panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none';"></head><body><p>Failed to load package details: ${escapeHtml(String(e))}</p></body></html>`;
@@ -636,6 +714,10 @@ export function registerRegistryView(
   // Import library from a local .zip archive
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.libraryView.importZip", async () => {
+      if (!vscode.workspace.isTrusted) {
+        vscode.window.showErrorMessage("Cannot import library archives in an untrusted workspace.");
+        return;
+      }
       try {
         const picked = await vscode.window.showOpenDialog({
           canSelectFiles: true,
@@ -675,17 +757,37 @@ export function registerRegistryView(
   // Import library from an HTTP/HTTPS URL
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.libraryView.importUrl", async (passedUrl?: string) => {
-      const url =
-        typeof passedUrl === "string" && passedUrl.trim()
-          ? passedUrl.trim()
-          : (
-              await vscode.window.showInputBox({
-                title: "Import Library from URL",
-                prompt: "Enter the URL of a .zip library archive (e.g., GitHub release or raw archive URL)",
-                placeHolder: "https://example.com/MyLibrary-1.0.0.zip",
-              })
-            )?.trim();
+      if (!vscode.workspace.isTrusted) {
+        vscode.window.showErrorMessage("Cannot import external library URLs in an untrusted workspace.");
+        return;
+      }
+      const isProgrammaticUrl = typeof passedUrl === "string" && passedUrl.trim().length > 0;
+      const url = isProgrammaticUrl
+        ? passedUrl.trim()
+        : (
+            await vscode.window.showInputBox({
+              title: "Import Library from URL",
+              prompt: "Enter the URL of a .zip library archive (e.g., GitHub release or raw archive URL)",
+              placeHolder: "https://example.com/MyLibrary-1.0.0.zip",
+            })
+          )?.trim();
       if (!url) return;
+
+      if (!isAllowedImportUrl(url)) {
+        vscode.window.showErrorMessage(
+          "Only https:// (or localhost http://) URLs are allowed when importing library archives.",
+        );
+        return;
+      }
+
+      if (isProgrammaticUrl) {
+        const confirm = await vscode.window.showWarningMessage(
+          `Import and mount library archive from ${url}?`,
+          { modal: true },
+          "Import",
+        );
+        if (confirm !== "Import") return;
+      }
 
       const fileName = url.split("/").pop()?.split("?")[0] || "Library.zip";
       const defaultName = fileName.replace(/\.zip$/i, "").split(/[-_ ]/)[0] || "CustomLibrary";

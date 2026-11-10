@@ -37,6 +37,7 @@ import { legend } from "./providers/semanticTokensProvider.js";
 import { registerBuiltinLanguagePlugins } from "./registry/builtin-plugins.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
 import { registerAllLspEndpoints, registerAllLspProviders } from "./router.js";
+import { CadMetricsService } from "./services/cad-metrics-service.js";
 import { DiagramService } from "./services/diagram-service.js";
 import { DocumentManager } from "./services/document-manager.js";
 import { HierarchyService } from "./services/hierarchy-service.js";
@@ -44,6 +45,7 @@ import { ParserService } from "./services/parser-service.js";
 import { deduplicateAllDiagnostics, ValidationService } from "./services/validation-service.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
 import { computeTreeEdit } from "./utils/ast-utils.js";
+import { LspWorkDoneProgressReporter } from "./utils/progress-reporter.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 
 /**
@@ -89,6 +91,7 @@ export function startNodeServer(input?: any, output?: any) {
       sysml2DiagramOps: { ...sysml2DiagramOps, buildSysML2DiagramData },
     },
   );
+  const cadMetricsService = new CadMetricsService();
 
   /**
    * Flatten a class instance using the arena-native pipeline.
@@ -262,6 +265,14 @@ export function startNodeServer(input?: any, output?: any) {
         createWasmParser(wasmPath)
           .then(({ parser, facade }) => {
             parserService.registerParser(item.id, parser, facade);
+            const plugin = globalLanguageRegistry.getPluginById(item.id);
+            const exts = plugin?.extensions ?? [`.${item.id}`];
+            if (workspaceManager?.unifiedWorkspace && parser) {
+              for (const ext of exts) {
+                workspaceManager.unifiedWorkspace.registerParser(ext, parser);
+                workspaceManager.unifiedWorkspace.registerLanguageExtension(ext, item.id);
+              }
+            }
             if (item.id === "modelica") {
               (globalThis as any).modelicaParser = parser;
             }
@@ -302,7 +313,12 @@ export function startNodeServer(input?: any, output?: any) {
       const catalog = JSON.parse(fs.readFileSync(regPath, "utf-8"));
       const languages = catalog.languages || {};
 
-      for (const [id, entry] of Object.entries<any>(languages)) {
+      for (const [rawId, entry] of Object.entries<any>(languages)) {
+        const id = rawId.toLowerCase();
+        if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) {
+          connection.console.warn(`[NodeServer] Ignoring invalid custom language identifier: '${rawId}'`);
+          continue;
+        }
         if (globalLanguageRegistry.getPluginById(id)) continue;
 
         let wasmPath = entry.wasmPath;
@@ -320,10 +336,17 @@ export function startNodeServer(input?: any, output?: any) {
           try {
             const { parser, facade } = await createWasmParser(wasmPath);
             parserService.registerParser(id, parser, facade);
+            const exts = entry.extensions || [`.${id}`];
+            if (workspaceManager?.unifiedWorkspace && parser) {
+              for (const ext of exts) {
+                workspaceManager.unifiedWorkspace.registerParser(ext, parser);
+                workspaceManager.unifiedWorkspace.registerLanguageExtension(ext, id);
+              }
+            }
             globalLanguageRegistry.register({
               id,
               name: entry.name || id,
-              extensions: entry.extensions || [`.${id}`],
+              extensions: exts,
               parser,
               facade,
               disposables: [],
@@ -380,7 +403,13 @@ export function startNodeServer(input?: any, output?: any) {
 
     const capabilities: ServerCapabilities = {
       positionEncoding: PositionEncodingKind.UTF16,
-      textDocumentSync: TextDocumentSyncKind.Incremental,
+      textDocumentSync: {
+        openClose: true,
+        change: TextDocumentSyncKind.Incremental,
+        save: {
+          includeText: true,
+        },
+      },
       completionProvider: {
         resolveProvider: false,
         triggerCharacters: [".", ":", "$", "@"],
@@ -407,17 +436,28 @@ export function startNodeServer(input?: any, output?: any) {
         prepareProvider: true,
       },
       codeActionProvider: {
-        codeActionKinds: [CodeActionKind.QuickFix],
+        codeActionKinds: [
+          CodeActionKind.QuickFix,
+          CodeActionKind.Refactor,
+          CodeActionKind.RefactorRewrite,
+          CodeActionKind.Source,
+          CodeActionKind.SourceFixAll,
+        ],
+      },
+      codeLensProvider: {
+        resolveProvider: false,
+      },
+      inlayHintProvider: {
+        resolveProvider: false,
       },
       workspaceSymbolProvider: true,
-      inlayHintProvider: true,
-      codeLensProvider: { resolveProvider: false },
     };
 
     return { capabilities };
   });
 
   connection.onInitialized(() => {
+    LspWorkDoneProgressReporter.registerCancelHandler(connection);
     connection.console.info("ModelScript Node.js Language Server initialized.");
   });
 
@@ -427,6 +467,20 @@ export function startNodeServer(input?: any, output?: any) {
       await validationService.validateTextDocument(e.document);
     } catch (err: any) {
       connection.console.warn(`[onDidOpen] Validation error for ${e.document.uri}: ${err?.message}`);
+    }
+  });
+
+  documents.onDidSave(async (e) => {
+    try {
+      await validationService.validateTextDocument(e.document);
+      const progressReporter = await LspWorkDoneProgressReporter.create(
+        connection,
+        "ModelScript Formal Verification",
+        { message: "Verifying requirements & invariants..." },
+      );
+      await validationService.runVerificationForUri(e.document.uri, progressReporter);
+    } catch (err: any) {
+      connection.console.warn(`[onDidSave] Verification error for ${e.document.uri}: ${err?.message}`);
     }
   });
 
@@ -665,6 +719,7 @@ export function startNodeServer(input?: any, output?: any) {
     ];
     connection.sendDiagnostics({ uri, diagnostics: persistentDiags });
 
+    cadMetricsService.disposeDocument(uri);
     // Re-validate remaining open documents
     for (const doc of documents.all()) {
       validationService.validateTextDocument(doc).catch(() => {});
@@ -680,6 +735,7 @@ export function startNodeServer(input?: any, output?: any) {
     validationService,
     parserService,
     diagramService,
+    cadMetricsService,
     state: {
       activeValidationPromises: validationService.activeValidationPromises,
       get sharedContext() {
@@ -701,6 +757,28 @@ export function startNodeServer(input?: any, output?: any) {
   // 3. Register Language Feature Providers & Custom Domain Handlers
   registerAllLspProviders(lspContext);
   registerAllLspEndpoints(lspContext);
+
+  connection.onDidChangeConfiguration((change: any) => {
+    const raw = change?.settings?.modelscript ?? change?.settings;
+    if (raw && typeof raw === "object") {
+      lspContext.settings = {
+        ...lspContext.settings,
+        ...raw,
+      };
+      if (raw.languages) {
+        globalLanguageRegistry.setLanguageConfig(raw.languages);
+      }
+      if (raw.diagnostics && validationService) {
+        validationService.diagnosticsConfig = {
+          ...validationService.diagnosticsConfig,
+          ...raw.diagnostics,
+        };
+      }
+      for (const doc of documents.all()) {
+        validationService.validateTextDocument(doc);
+      }
+    }
+  });
 
   // Listen on the document manager and connection
   documents.listen(connection);

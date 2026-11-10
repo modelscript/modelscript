@@ -167,11 +167,12 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EASY5 Model Editor</title>
   <style>
@@ -614,7 +615,7 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
     </div>
   </main>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     function escapeHtml(str) {

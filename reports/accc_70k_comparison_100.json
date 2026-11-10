@@ -1,0 +1,16 @@
+{
+  "totalContingencies": 100,
+  "twoStageDurationSec": 16.573,
+  "fullAcDurationSec": 11.824,
+  "speedupFactor": 0.71,
+  "twoStageThroughputSolvesPerSec": 6.03,
+  "fullAcThroughputSolvesPerSec": 8.46,
+  "meanAbsoluteLoadingErrorPct": 0.46,
+  "maxAbsoluteLoadingErrorPct": 17.67,
+  "worstDifferenceContingency": "CTG_TIE_41001_42001",
+  "criticalFalseNegatives": 0,
+  "falsePositives": 0,
+  "totalLowVoltageViolationsFound": 1478,
+  "minimumGridVoltagePu": 0.5,
+  "perfectSafetyParity": true
+}

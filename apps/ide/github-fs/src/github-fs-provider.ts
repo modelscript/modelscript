@@ -51,27 +51,42 @@ let fileCacheSize = 0;
 
 // ── API helpers ──
 
-function getApiBase(): string {
+function getApiBase(): { baseUrl: string; isSameOriginProxy: boolean } {
   // Use the proxy on the same origin as the extension host worker
   if (typeof self !== "undefined" && self.location && self.location.origin && self.location.origin !== "null") {
-    return `${self.location.origin}/api/github`;
+    return { baseUrl: `${self.location.origin}/api/github`, isSameOriginProxy: true };
+  }
+  const airgapped = vscode.workspace.getConfiguration("modelscript").get<boolean>("network.airgapped", false);
+  if (airgapped) {
+    throw new Error(
+      "Outbound GitHub API requests are blocked in airgapped mode (modelscript.network.airgapped = true).",
+    );
   }
   // Fallback: direct GitHub API (may hit rate limits / CORS issues)
-  return "https://api.github.com";
+  return { baseUrl: "https://api.github.com", isSameOriginProxy: false };
 }
 
 async function githubFetch(apiPath: string): Promise<Response> {
-  const url = `${getApiBase()}${apiPath}`;
+  const { baseUrl, isSameOriginProxy } = getApiBase();
+  const url = `${baseUrl}${apiPath}`;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
     "User-Agent": "ModelScript-IDE",
   };
-  const token = vscode.workspace.getConfiguration("github-fs").get<string>("token")?.trim();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  const ghToken = vscode.workspace.getConfiguration("github-fs").get<string>("token")?.trim();
+  const msConfig = vscode.workspace.getConfiguration("modelscript");
+  const ansatzToken = msConfig.get<string>("cloud.authToken")?.trim() || msConfig.get<string>("apiKey")?.trim();
+  if (ghToken) {
+    headers.Authorization = `Bearer ${ghToken}`;
+  } else if (isSameOriginProxy && ansatzToken) {
+    // Authenticate private/internal Ansatz Spaces via the same-origin /api/github endpoint
+    headers.Authorization = `Bearer ${ansatzToken}`;
   }
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers,
+    ...(isSameOriginProxy ? { credentials: "include" as RequestCredentials } : {}),
+  });
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -98,11 +113,30 @@ interface ParsedUri {
   filePath: string; // path within the repo (e.g. "/src/main.ts")
 }
 
+const VALID_GITHUB_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
+
+function isValidGitHubSegment(seg: string): boolean {
+  return Boolean(seg && seg !== "." && seg !== ".." && VALID_GITHUB_SEGMENT_RE.test(seg));
+}
+
+function encodeGitHubFilePath(filePath: string): string {
+  const parts = filePath.split("/").filter(Boolean);
+  for (const part of parts) {
+    if (part === "." || part === "..") {
+      throw vscode.FileSystemError.NoPermissions(`Invalid path traversal segment in '${filePath}'`);
+    }
+  }
+  return "/" + parts.map((p) => encodeURIComponent(p)).join("/");
+}
+
 function parseGitHubUri(uri: vscode.Uri): ParsedUri {
   // URI path format: /owner/repo/rest/of/path
   const segments = uri.path.split("/").filter(Boolean);
   const owner = segments[0] || "";
   const repo = segments[1] || "";
+  if (!isValidGitHubSegment(owner) || !isValidGitHubSegment(repo)) {
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
   const filePath = segments.length > 2 ? "/" + segments.slice(2).join("/") : "/";
   const query = new URLSearchParams(uri.query);
   const ref = query.get("ref") || "main";
@@ -121,13 +155,17 @@ async function fetchTreeWithFallback(owner: string, repo: string, ref: string): 
   let response: Response;
   try {
     console.log(`[github-fs] Fetching tree: ${owner}/${repo}@${ref}`);
-    response = await githubFetch(`/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
+    response = await githubFetch(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    );
   } catch (err) {
     const fallbackRef = ref === "main" ? "master" : ref === "master" ? "main" : null;
     if (fallbackRef && err instanceof vscode.FileSystemError) {
       console.log(`[github-fs] Branch '${ref}' not found for ${owner}/${repo}, falling back to '${fallbackRef}'`);
       resolvedRef = fallbackRef;
-      response = await githubFetch(`/repos/${owner}/${repo}/git/trees/${encodeURIComponent(fallbackRef)}?recursive=1`);
+      response = await githubFetch(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(fallbackRef)}?recursive=1`,
+      );
     } else {
       throw err;
     }
@@ -267,6 +305,7 @@ export class GitHubFileSystemProvider implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.FileIsADirectory(uri);
     }
 
+    const encodedFilePath = encodeGitHubFilePath(filePath);
     const cacheKey = `${owner}/${repo}@${ref}:${filePath}`;
 
     const cached = FILE_CACHE.get(cacheKey);
@@ -293,16 +332,20 @@ export class GitHubFileSystemProvider implements vscode.FileSystemProvider {
       const effectiveRef = treeMeta.resolvedRef || ref;
       let data: ContentResponse;
       if (treeEntry.sha && (treeEntry.size ?? 0) > 1000000) {
-        const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${treeEntry.sha}`);
+        const blobResp = await githubFetch(
+          `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/blobs/${encodeURIComponent(treeEntry.sha)}`,
+        );
         data = await blobResp.json();
       } else {
         // Use the Contents API to get file content, falling back to Git Blobs API for >1MB files
         const response = await githubFetch(
-          `/repos/${owner}/${repo}/contents${filePath}?ref=${encodeURIComponent(effectiveRef)}`,
+          `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${encodedFilePath}?ref=${encodeURIComponent(effectiveRef)}`,
         );
         data = await response.json();
         if ((!data.content || data.content.length === 0) && data.sha && data.size > 0) {
-          const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${data.sha}`);
+          const blobResp = await githubFetch(
+            `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/blobs/${encodeURIComponent(data.sha)}`,
+          );
           data = await blobResp.json();
         }
       }

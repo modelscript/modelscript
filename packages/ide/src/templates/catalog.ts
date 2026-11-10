@@ -45,6 +45,7 @@ export interface IMemoryFileSystemProvider {
   writeFiles?(entries: [vscode.Uri, Uint8Array][]): void;
   registerRemoteFiles?(workspaceUri: vscode.Uri, entries: RemoteFileEntry[]): void;
   clearDirectory?(workspaceUri: vscode.Uri): void;
+  readDirectory?(uri: vscode.Uri): [string, vscode.FileType][] | Promise<[string, vscode.FileType][]>;
   delete?(uri: vscode.Uri, options?: { recursive?: boolean }): void | Promise<void>;
 }
 
@@ -5225,19 +5226,27 @@ export function mountArtifactToMemFs(
   if (typeof memFs.clearDirectory === "function") {
     memFs.clearDirectory(workspaceUri);
   } else if (typeof memFs.delete === "function") {
-    for (const staleName of [
-      "ArtifactModel.mo",
-      `ArtifactModel_${descriptor.artifactId}.mo`,
-      "README.md",
-      "HelloWorld.mo",
-    ]) {
-      if (!files[staleName]) {
-        try {
-          memFs.delete(joinPath(workspaceUri, staleName));
-        } catch {
-          // ignore
+    try {
+      const existing = typeof memFs.readDirectory === "function" ? (memFs.readDirectory(workspaceUri) as any) : [];
+      if (Array.isArray(existing)) {
+        for (const [staleName] of existing) {
+          if (
+            !files[staleName] &&
+            (staleName.startsWith("ArtifactModel") ||
+              staleName.startsWith("ScratchModel") ||
+              staleName === "HelloWorld.mo" ||
+              staleName === "README.md")
+          ) {
+            try {
+              memFs.delete(joinPath(workspaceUri, staleName));
+            } catch {
+              // ignore
+            }
+          }
         }
       }
+    } catch {
+      // ignore
     }
   }
 

@@ -116,16 +116,25 @@ Beyond acausal block schematics, ModelScript provides domain-specific geometric 
 2. **UML / SysML v2 Sequence & Activity Swimlane Layouts (`sequence-layout.ts`, `swimlane-layout.ts`)**:
    - **Dual-Axis Sequence Layout (`computeSequenceLayout` / `applySequenceLayout`)**: Orders participant lifelines left-to-right ($x_i = x_{\text{left}} + i \cdot \Delta x_{\text{lifeline}} + W_{\text{hdr}}/2$), renders dashed vertical lifeline stems (`__seq_stem_*`), and stacks temporal messages top-to-bottom ($y_{k+1} = y_k + \Delta y_{\text{msg}}$) with distinct styling for synchronous (`sync`), asynchronous (`async`), dashed `reply`, and self-loop (`isSelf`, $1.5\times$ vertical spacing) messages.
    - **2D Activity Swimlane Partitioning (`applySwimlaneLayout`)**: Groups SysML v2 action nodes into vertical or horizontal allocation partitions (`SwimlanePartition`), sizing uniform lane containers (`swimlane_<id>`) to the maximum member stack height and routing cross-lane object/control flows via `port-orthogonal-astar`.
-3. **PSCAD Power-System Single-Line Diagram (SLD) Busbar/Feeder Orthogonal Routing (`pscad-diagram-builder.ts` / `pscad-sld-builder.ts`)**:
-   - `buildPscadDiagram` renders `.pscx`/`.pslx` electromagnetic transient models into IEEE-standard Single-Line Diagrams with voltage-coded busbar glyphs ($\ge 200\text{ kV}$ red `#ff5252`, $\ge 69\text{ kV}$ amber `#ffab40`, $< 69\text{ kV}$ cyan `#40c4ff`), specialized IEEE apparatus vector glyphs (`transformerGlyph`, `generatorGlyph`, `inverterIbrGlyph`, `breakerGlyph`, `surgeArresterGlyph`, `faultGlyph`, `converterBridgeGlyph`), solder-dot wire T-junctions, and orthogonal feeder routing.
+3. **PSCAD & PowerFactory Power-System Single-Line Diagram (SLD) & Block Schematics (`pscad-diagram-builder.ts`, `powerfactory-diagram-builder.ts`)**:
+   - `buildPscadDiagram` and `buildPowerFactoryDiagram` render `.pscx`/`.pslx` and DIgSILENT PowerFactory `.dsl`/`.dgs` models into IEEE-standard Single-Line Diagrams and AVR/Gov/PSS composite block diagrams with voltage-coded busbar glyphs ($\ge 200\text{ kV}$ red `#ff5252`, $\ge 69\text{ kV}$ amber `#ffab40`, $< 69\text{ kV}$ cyan `#40c4ff`), specialized IEEE apparatus vector glyphs (`transformerGlyph`, `generatorGlyph`, `inverterIbrGlyph`, `breakerGlyph`, `surgeArresterGlyph`, `faultGlyph`, `converterBridgeGlyph`), solder-dot wire T-junctions, and orthogonal feeder routing.
+4. **Protection Relay Log-Log TCC, Distance R-X Plane & Generator P-Q Capability Plots (`tcc-diagram-builder.ts`, `rx-diagram-builder.ts`, `pq-diagram-builder.ts`)**:
+   - **Time-Current Characteristic (TCC) Log-Log Plots (`buildTccDiagram`)**: Renders multi-decade log-log ($10^0\dots 10^5\text{ A}$ vs. $10^{-2}\dots 10^3\text{ s}$) overcurrent relay (`IEEE Moderately/Very/Extremely Inverse`, `IEC Standard/Very/Extremely Inverse`, `Definite Time`) and fuse melting/clearing curves alongside annotated Coordination Time Interval (CTI) margin arrows.
+   - **Distance Protection R-X Impedance Plane (`buildRxDiagram`)**: Plots Zone 1, Zone 2, and Zone 3 Mho circles and quadrilateral reach polygons, transmission line impedance vectors $Z_L \angle \theta_L$, load encroachment blinders, and apparent fault impedance trajectories $Z_{\text{app}}(t)$ in the complex $R + jX$ plane.
+   - **Synchronous Generator P-Q Capability Envelopes (`buildPqDiagram`)**: Synthesizes active-vs-reactive ($P\text{–}Q$) operating envelopes bounded by armature current heatingCircles, field current rotor heating arcs, stator end-region core heating limits, prime-mover MW limits, and Under-Excitation Limiter (UEL) / steady-state stability boundaries.
+5. **Hydraulic & Stormwater Pipe Network Topological Diffs (`water-network-diff.ts`)**:
+   - `diffWaterNetworks` and `renderWaterNetworkDiffSvg` compare baseline and proposed EPANET / SWMM `.inp` pipe networks, highlighting added/removed/resized conduits, junction pressure deltas $\Delta p$, and flow reversals on spatially anchored municipal layouts.
 
-### 5. Semantic Visual Diffing & Collaborative Presence
+### 5. Semantic Visual Diffing, CST 3-Way Merge & Collaborative Presence
 
 1. **AST-Aware Structural Graph Diffing & Mental-Map Stabilization (`visual-diff-graph.ts`, `visual-diff-renderer.ts` / `visual-diff.ts`)**:
    - `buildVisualDiffGraph` computes a semantic delta between `Base` and `Head` diagram revisions, classifying nodes and edges into `added`, `deleted`, `modified`, and `unchanged` states (`DiffStatus`).
    - **Breaking Interface Detection**: Inspects property and port changes (`diffProperties`) against architectural breaking keys (`direction`, `isAbstract`, `typeName`, `multiplicity`, `causality`, `variability`, `flowDirection`) and flags deleted components or port-count mutations as `MODIFIED (BREAKING)`.
    - **Anchor-Preserving Layout Stabilization (`computeIncrementalStabilization`)**: Locks `Base` node coordinates as immutable spatial anchors while iteratively relaxing newly added/modified `Head` nodes to eliminate bounding-box overlaps without destroying the reviewer's spatial mental map.
-2. **CRDT / WebSocket Cursor, Selection Lock & Spatial Delta Synchronization (`collab-manager.ts`)**:
+2. **Tree-Edit-Distance CST Semantic Diff & 3-Way Merge Engine (`semantic_diff.ts` in `@modelscript/dsl`)**:
+   - `diffEntities` and `mergeEntities3Way` (`msx merge`) match declarations across `base`, `ours`, and `theirs` revisions by stable semantic key (`kind::name`) and dice-coefficient structural similarity ($\ge 0.55$) to detect renames, equations, and parameter modifications while ignoring formatting whitespace.
+   - Automatically merges non-overlapping edits and isolates true concurrent collisions (`modify-modify`, `delete-modify`, `add-add`) with line/column spans.
+3. **CRDT / WebSocket Cursor, Selection Lock & Spatial Delta Synchronization (`collab-manager.ts`)**:
    - `CollabManager` coordinates real-time multi-user diagramming over WebSocket and VS Code Live Share transports:
      - **60 FPS Spatial Delta Streaming (`broadcastSpatialDelta`)**: Streams live component drag transformations (`PlacementItem`) with Last-Write-Wins (`LWW`) timestamp conflict resolution (`d.timestamp >= existing.timestamp`).
      - **Component Selection Locks (`SelectionLock`)**: Broadcasts per-peer component locks with distinct peer colors and automatic stale-peer heartbeat eviction (`purgeStalePeers`).
@@ -135,11 +144,11 @@ Beyond acausal block schematics, ModelScript provides domain-specific geometric 
 
 ## Upstream & Downstream Integration
 
-| Pipeline Component                  | Upstream Dependencies                                   | Downstream Consumers                                           |
-| :---------------------------------- | :------------------------------------------------------ | :------------------------------------------------------------- |
-| **PortIlpSolver**                   | `SymbolIndex` connector ports, `Annotation` constraints | Port placement in `TsmLayoutEngine`                            |
-| **TsmLayoutEngine**                 | Polyglot connect graphs (Modelica, SysML v2)            | Node bounding box placement, routing channels                  |
-| **PortRouter**                      | Component layout coordinates, Port locations            | SVG polyline rendering, interactive 3D/2D IDE canvas           |
-| **FaultTree / Sequence / Swimlane** | Safety MCS sets, SysML v2 interactions & activities     | X6 WebIDE canvas, headless SVG & PDF documentation export      |
-| **PscadDiagramBuilder**             | PSCAD `.pscx` / `.pslx` AST & bus/feeder netlists       | Power-system SLD viewer, EMT fault & breaker state overlays    |
-| **VisualDiffGraph & CollabManager** | Git Base/Head ASTs, WebSocket / Live Share peer streams | PR visual diff bundles (`html-diff-bundle.ts`), multi-user IDE |
+| Pipeline Component                        | Upstream Dependencies                                      | Downstream Consumers                                           |
+| :---------------------------------------- | :--------------------------------------------------------- | :------------------------------------------------------------- |
+| **PortIlpSolver**                         | `SymbolIndex` connector ports, `Annotation` constraints    | Port placement in `TsmLayoutEngine`                            |
+| **TsmLayoutEngine**                       | Polyglot connect graphs (Modelica, SysML v2)               | Node bounding box placement, routing channels                  |
+| **PortRouter**                            | Component layout coordinates, Port locations               | SVG polyline rendering, interactive 3D/2D IDE canvas           |
+| **FaultTree / Sequence / Swimlane**       | Safety MCS sets, SysML v2 interactions & activities        | X6 WebIDE canvas, headless SVG & PDF documentation export      |
+| **Pscad / PowerFactory / TCC / R-X / P-Q**| `.pscx`, `.dsl`, `.dgs`, `.dss`, `.raw` grid & relay ASTs  | Power-system SLD, relay coordination & capability viewers      |
+| **VisualDiffGraph, Merge & CollabManager**| Git Base/Ours/Theirs ASTs, WebSocket / Live Share streams  | `msx merge`, PR visual diff bundles, multi-user IDE            |

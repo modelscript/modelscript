@@ -17,7 +17,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: LanguageClient,
+    private readonly secrets?: vscode.SecretStorage,
   ) {}
+
+  private async resolveLlmApiKey(): Promise<string | undefined> {
+    const cfg = vscode.workspace.getConfiguration("modelscript.llm");
+    const settingsKey = cfg.get<string>("apiKey");
+    if (this.secrets) {
+      try {
+        let secret = await this.secrets.get("modelscript.llm.apiKey");
+        if (!secret && settingsKey) {
+          await this.secrets.store("modelscript.llm.apiKey", settingsKey);
+          secret = settingsKey;
+        }
+        if (secret) return secret;
+      } catch {
+        // Fallback to settings
+      }
+    }
+    return settingsKey;
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -629,9 +648,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // 2. Fallback: Check if local proxy or IDE backend endpoint is reachable
       const serverUrl = process.env["MODELSCRIPT_API_URL"] || "http://localhost:8000/api/llm/chat";
       try {
+        const llmApiKey = await this.resolveLlmApiKey();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (llmApiKey) {
+          const parsedUrl = new URL(serverUrl);
+          if (
+            parsedUrl.protocol === "https:" ||
+            parsedUrl.hostname === "localhost" ||
+            parsedUrl.hostname === "127.0.0.1"
+          ) {
+            headers["Authorization"] = `Bearer ${llmApiKey}`;
+          }
+        }
         const res = await fetch(serverUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ messages: msg.messages }),
         });
 

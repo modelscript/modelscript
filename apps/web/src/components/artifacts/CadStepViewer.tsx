@@ -18,6 +18,7 @@ import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { adaptSvgMarkupForTheme } from "./PolyglotArtifactViewer";
 import SafeOrbitControls from "./SafeOrbitControls";
 import type { SpatialPin } from "./spatial-pin";
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 
 interface CadStepViewerProps {
@@ -25,6 +26,7 @@ interface CadStepViewerProps {
   viewConfig: any;
   isFullScreen?: boolean | undefined;
   onPinCreated?: ((pin: SpatialPin) => void) | undefined;
+  verificationOverlay?: Verification3DOverlayPayload | undefined;
 }
 
 export type StepViewTab = "3d" | "diagram" | "code";
@@ -884,8 +886,30 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
   return meshes;
 }
 
-const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, isFullScreen, onPinCreated }) => {
+const CadStepViewer: React.FC<CadStepViewerProps> = ({
+  artifactId,
+  viewConfig,
+  isFullScreen,
+  onPinCreated,
+  verificationOverlay,
+}) => {
   const toast = useToast();
+  const effectiveVerificationOverlay: Verification3DOverlayPayload | undefined =
+    verificationOverlay || viewConfig?.verificationOverlay;
+
+  const boundaryDefectPins = useMemo(() => {
+    if (!effectiveVerificationOverlay?.spatialPins) return [];
+    return effectiveVerificationOverlay.spatialPins.filter(
+      (pin) =>
+        pin.contractId?.startsWith("watertight_") ||
+        pin.label.toLowerCase().includes("watertight") ||
+        pin.label.toLowerCase().includes("boundary") ||
+        pin.label.toLowerCase().includes("non-manifold") ||
+        pin.severity === "error" ||
+        pin.severity === "warning",
+    );
+  }, [effectiveVerificationOverlay]);
+
   const [viewTab, setViewTab] = useState<StepViewTab>("3d");
   const [stepSource, setStepSource] = useState<string>(
     () =>
@@ -1278,6 +1302,31 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
           >
             ISO-10303-21 STEP
           </span>
+          {effectiveVerificationOverlay && (
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 600,
+                padding: "2px 7px",
+                borderRadius: "999px",
+                background: effectiveVerificationOverlay.isCertifiedSafe
+                  ? "rgba(16, 185, 129, 0.15)"
+                  : "rgba(239, 68, 68, 0.15)",
+                color: effectiveVerificationOverlay.isCertifiedSafe ? "#34d399" : "#f87171",
+                border: `1px solid ${
+                  effectiveVerificationOverlay.isCertifiedSafe
+                    ? "rgba(16, 185, 129, 0.35)"
+                    : "rgba(239, 68, 68, 0.35)"
+                }`,
+                fontFamily: "var(--font-mono, monospace)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {effectiveVerificationOverlay.isCertifiedSafe
+                ? "🛡️ CERTIFIED WATERTIGHT"
+                : `⚠️ ${boundaryDefectPins.length > 0 ? "TOPOLOGY DEFECT" : "CONTRACT VIOLATION"}`}
+            </span>
+          )}
         </Box>
 
         <Box display="flex" alignItems="center" gap={2}>
@@ -1446,49 +1495,94 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                           : [0, 0, 0]
                       }
                     >
-                      {meshItems.map(({ geo, idx, offset, compName, matColor }) => (
-                        <mesh
-                          key={idx}
-                          geometry={geo}
-                          position={offset}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
-                            const cadPos: [number, number, number] = [
-                              e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
-                              e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
-                              e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
-                            ];
-                            setProbedPoint({
-                              position: cadPos,
-                              worldPosition: [e.point.x, e.point.y, e.point.z],
-                              partName: compName,
-                            });
-                            if (isPinMode && onPinCreated) {
-                              onPinCreated({
-                                worldPosition: cadPos,
-                                cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
-                                cameraTarget: cadPos,
-                                fieldName: compName,
-                                scalarValue: idx + 1,
-                              });
-                              setIsPinMode(false);
-                            }
-                          }}
-                        >
-                          <meshPhysicalMaterial
-                            color={matColor}
-                            metalness={0.28}
-                            roughness={0.48}
-                            wireframe={renderMode === "wireframe"}
-                            transparent={renderMode === "xray"}
-                            opacity={renderMode === "xray" ? 0.35 : 1.0}
-                            clearcoat={0.1}
-                            side={THREE.DoubleSide}
-                            clippingPlanes={activeClippingPlanes}
-                            clipShadows={true}
-                          />
-                        </mesh>
+                      {meshItems.map(({ geo, idx, offset, compName, matColor }) => {
+                        const isDefective = boundaryDefectPins.some(
+                          (pin) =>
+                            pin.contractId === `watertight_${compName}` ||
+                            pin.label.includes(compName) ||
+                            (boundaryDefectPins.length > 0 && meshItems.length === 1),
+                        );
+                        return (
+                          <group key={idx}>
+                            <mesh
+                              geometry={geo}
+                              position={offset}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
+                                const cadPos: [number, number, number] = [
+                                  e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
+                                  e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
+                                  e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
+                                ];
+                                setProbedPoint({
+                                  position: cadPos,
+                                  worldPosition: [e.point.x, e.point.y, e.point.z],
+                                  partName: compName,
+                                });
+                                if (isPinMode && onPinCreated) {
+                                  onPinCreated({
+                                    worldPosition: cadPos,
+                                    cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
+                                    cameraTarget: cadPos,
+                                    fieldName: compName,
+                                    scalarValue: idx + 1,
+                                  });
+                                  setIsPinMode(false);
+                                }
+                              }}
+                            >
+                              <meshPhysicalMaterial
+                                color={matColor}
+                                metalness={0.28}
+                                roughness={0.48}
+                                wireframe={renderMode === "wireframe"}
+                                transparent={renderMode === "xray"}
+                                opacity={renderMode === "xray" ? 0.35 : 1.0}
+                                clearcoat={0.1}
+                                side={THREE.DoubleSide}
+                                clippingPlanes={activeClippingPlanes}
+                                clipShadows={true}
+                              />
+                            </mesh>
+                            {isDefective && (
+                              <lineSegments position={offset}>
+                                <edgesGeometry args={[geo, 15]} />
+                                <lineBasicMaterial color="#f97316" depthTest={false} transparent opacity={0.95} />
+                              </lineSegments>
+                            )}
+                          </group>
+                        );
+                      })}
+                      {boundaryDefectPins.map((pin) => (
+                        <group key={pin.id} position={pin.position}>
+                          <mesh>
+                            <sphereGeometry args={[0.5, 16, 16]} />
+                            <meshBasicMaterial color={pin.severity === "error" ? "#ef4444" : "#f97316"} />
+                          </mesh>
+                          <Html distanceFactor={22} center>
+                            <div
+                              style={{
+                                background: "rgba(15, 23, 42, 0.95)",
+                                border: `1px solid ${pin.severity === "error" ? "#ef4444" : "#f97316"}`,
+                                borderRadius: "6px",
+                                padding: "3px 8px",
+                                whiteSpace: "nowrap",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                color: "#f8fafc",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
+                                pointerEvents: "none",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              <span>⚠️</span>
+                              <span>{pin.label}</span>
+                            </div>
+                          </Html>
+                        </group>
                       ))}
                     </group>
                     {probedPoint?.worldPosition && (

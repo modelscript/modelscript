@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { Uri, workspace } from "vscode";
 import type { LibraryTreeProvider } from "../library-tree-provider.js";
 import { type ArtifactWorkspaceDescriptor, mountArtifactToMemFs } from "../templates/catalog.js";
+import { getTrustedOrigins, isAirgapped } from "../utils/config.js";
 import { hydrateArtifactDescriptor, type MemoryFileSystemProvider } from "./virtual-fs-service.js";
 
 const EXT_METADATA: Record<string, { dialect: string; viewType: string; langTag: string }> = {
@@ -83,7 +84,66 @@ const EXT_METADATA: Record<string, { dialect: string; viewType: string; langTag:
   ".dss": { dialect: "opendss", viewType: "opendss", langTag: "text" },
   ".vtu": { dialect: "vtk", viewType: "simulation-result", langTag: "xml" },
   ".vtk": { dialect: "vtk", viewType: "simulation-result", langTag: "xml" },
+  ".qif": { dialect: "qif", viewType: "qif", langTag: "xml" },
+  ".aml": { dialect: "automationml", viewType: "automationml", langTag: "xml" },
+  ".caex": { dialect: "automationml", viewType: "automationml", langTag: "xml" },
+  ".3mf": { dialect: "three-mf", viewType: "three-mf", langTag: "xml" },
+  ".gproms": { dialect: "gproms", viewType: "gproms", langTag: "text" },
+  ".cti": { dialect: "cantera", viewType: "cantera", langTag: "python" },
+  ".pqi": { dialect: "phreeqc", viewType: "phreeqc", langTag: "text" },
+  ".smi": { dialect: "smiles", viewType: "smiles", langTag: "text" },
+  ".ant": { dialect: "antimony", viewType: "antimony", langTag: "text" },
+  ".bngl": { dialect: "bngl", viewType: "bngl", langTag: "text" },
+  ".cellml": { dialect: "cellml", viewType: "cellml", langTag: "xml" },
+  ".sedml": { dialect: "sedml", viewType: "sedml", langTag: "xml" },
+  ".sbol": { dialect: "sbol", viewType: "sbol", langTag: "xml" },
+  ".gb": { dialect: "genbank", viewType: "genbank", langTag: "text" },
+  ".pdb": { dialect: "pdb", viewType: "pdb", langTag: "text" },
+  ".ctl": { dialect: "nmtran", viewType: "nmtran", langTag: "text" },
+  ".osim": { dialect: "opensim", viewType: "opensim", langTag: "xml" },
+  ".feb": { dialect: "febio", viewType: "febio", langTag: "xml" },
+  ".dcm": { dialect: "dicom-rt", viewType: "dicom-rt", langTag: "json" },
+  ".nii": { dialect: "nifti", viewType: "nifti", langTag: "json" },
+  ".topas": { dialect: "topas", viewType: "topas", langTag: "text" },
+  ".igtl": { dialect: "igtl", viewType: "igtl", langTag: "json" },
+  ".gcode": { dialect: "gcode", viewType: "gcode", langTag: "gcode" },
+  ".nc": { dialect: "gcode", viewType: "gcode", langTag: "gcode" },
+  ".cgmes": { dialect: "cgmes", viewType: "cgmes", langTag: "xml" },
+  ".pfd": { dialect: "powerfactory", viewType: "powerfactory", langTag: "text" },
+  ".pvd": { dialect: "pslf", viewType: "pslf", langTag: "text" },
+  ".ran": { dialect: "ran", viewType: "ran", langTag: "text" },
+  ".ampl": { dialect: "ampl", viewType: "ampl", langTag: "ampl" },
+  ".mod": { dialect: "ampl", viewType: "ampl", langTag: "ampl" },
+  ".dat": { dialect: "ampl", viewType: "ampl", langTag: "text" },
+  ".tough": { dialect: "tough", viewType: "tough", langTag: "text" },
+  ".modflow": { dialect: "modflow", viewType: "modflow", langTag: "text" },
+  ".landgem": { dialect: "landgem", viewType: "landgem", langTag: "text" },
+  ".gtfs": { dialect: "gtfs", viewType: "gtfs", langTag: "text" },
+  ".ocpp": { dialect: "ocpp", viewType: "ocpp", langTag: "json" },
+  ".openadr": { dialect: "openadr", viewType: "openadr", langTag: "xml" },
+  ".prj": { dialect: "hec-ras", viewType: "hec-ras", langTag: "text" },
+  ".fiber": { dialect: "fiber", viewType: "fiber", langTag: "text" },
+  ".optical": { dialect: "optical", viewType: "optical", langTag: "text" },
+  ".usd": { dialect: "usd", viewType: "usd", langTag: "usd" },
+  ".usda": { dialect: "usd", viewType: "usd", langTag: "usd" },
+  ".usdc": { dialect: "usd", viewType: "usd", langTag: "usd" },
 };
+
+function inferExtMetadata(filename: string): { dialect: string; viewType: string; langTag: string } {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".oscal.json")) return { dialect: "oscal", viewType: "oscal", langTag: "json" };
+  if (lower.endsWith(".oscal.yaml") || lower.endsWith(".oscal.yml")) return { dialect: "oscal", viewType: "oscal", langTag: "yaml" };
+  if (lower.endsWith(".oscal.xml")) return { dialect: "oscal", viewType: "oscal", langTag: "xml" };
+  if (lower.endsWith(".dcm.json")) return { dialect: "dicom-rt", viewType: "dicom-rt", langTag: "json" };
+  if (lower.endsWith(".nii.json")) return { dialect: "nifti", viewType: "nifti", langTag: "json" };
+  if (lower.endsWith(".igtl.json")) return { dialect: "igtl", viewType: "igtl", langTag: "json" };
+  if (lower.endsWith(".qif.json")) return { dialect: "qif", viewType: "qif", langTag: "json" };
+  if (lower.endsWith(".qif.xml")) return { dialect: "qif", viewType: "qif", langTag: "xml" };
+
+  const dotIndex = filename.lastIndexOf(".");
+  const ext = dotIndex >= 0 ? filename.slice(dotIndex).toLowerCase() : ".mo";
+  return EXT_METADATA[ext] || { dialect: "modelica", viewType: "modelica-code", langTag: "modelica" };
+}
 
 export interface WorkspaceSnapshotPayload {
   title: string;
@@ -106,11 +166,67 @@ export interface WorkspaceSnapshotPayload {
   };
 }
 
+export function isTrustedHostOrigin(origin: string): boolean {
+  if (!origin || origin === "null") return false;
+  try {
+    const parsed = new URL(origin);
+
+    // 1. Same-origin iframe embed
+    if (typeof self !== "undefined" && self.location?.origin && parsed.origin === self.location.origin) {
+      return true;
+    }
+
+    // 2. Development loopback (localhost, 127.0.0.1, ::1)
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1" || parsed.hostname === "[::1]")
+    ) {
+      return true;
+    }
+
+    // 3. Explicitly configured trusted origins (takes precedence in air-gapped and enterprise environments)
+    const configuredOrigins = getTrustedOrigins();
+    for (const trusted of configuredOrigins) {
+      try {
+        const tUrl = new URL(trusted);
+        if (parsed.origin === tUrl.origin) {
+          return true;
+        }
+      } catch {
+        // Skip invalid URL string in configuration
+      }
+    }
+
+    // 4. In air-gapped mode, refuse all public internet domains
+    if (isAirgapped()) {
+      return false;
+    }
+
+    // 5. Default public flagship domains (modelscript.org, ansatz.social) allowed only when NOT in air-gapped mode
+    if (parsed.protocol === "https:") {
+      const h = parsed.hostname.toLowerCase();
+      if (
+        h === "modelscript.org" ||
+        h.endsWith(".modelscript.org") ||
+        h === "ansatz.social" ||
+        h.endsWith(".ansatz.social")
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export class HostBridgeService implements vscode.Disposable {
   private _disposables: vscode.Disposable[] = [];
   private _mountedArtifactId: string | number | undefined;
   private _mountedTitle: string | undefined;
   private _lastMountedKey: string | undefined;
+  private _trustedParentOrigin: string | undefined;
 
   constructor(
     _context: vscode.ExtensionContext,
@@ -155,8 +271,8 @@ export class HostBridgeService implements vscode.Disposable {
         const existingEntries = this.memFs.readDirectory(targetUri);
         const hasRealFiles = existingEntries.some(
           ([name]) =>
-            name !== "ArtifactModel.mo" &&
-            name !== `ArtifactModel_${artIdStr}.mo` &&
+            !name.startsWith("ArtifactModel") &&
+            !name.startsWith("ScratchModel") &&
             name !== "README.md" &&
             name !== "HelloWorld.mo",
         );
@@ -318,9 +434,7 @@ export class HostBridgeService implements vscode.Disposable {
       snippet = files[primaryFile]!;
     }
 
-    const dotIndex = primaryFile.lastIndexOf(".");
-    const ext = dotIndex >= 0 ? primaryFile.slice(dotIndex).toLowerCase() : ".mo";
-    const meta = EXT_METADATA[ext] || { dialect: "modelica", viewType: "modelica-code", langTag: "modelica" };
+    const meta = inferExtMetadata(primaryFile);
 
     const isMultiFile = allFileKeys.length > 1;
     const baseTitle =
@@ -364,16 +478,18 @@ export class HostBridgeService implements vscode.Disposable {
     };
   }
 
+  private postToParent(message: unknown): void {
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      const targetOrigin = this._trustedParentOrigin || window.location.origin;
+      window.parent.postMessage(message, targetOrigin);
+    }
+  }
+
   public sendWorkspaceSnapshot(requestId?: string): WorkspaceSnapshotPayload {
     const payload = this.collectWorkspaceSnapshot();
     try {
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage(
-          { type: "MODELSCRIPT_WORKSPACE_SNAPSHOT", payload, requestId },
-          window.location.origin,
-        );
-        window.parent.postMessage({ type: "MODELSCRIPT_SHARE_TO_FEED", payload, requestId }, window.location.origin);
-      }
+      this.postToParent({ type: "MODELSCRIPT_WORKSPACE_SNAPSHOT", payload, requestId });
+      this.postToParent({ type: "MODELSCRIPT_SHARE_TO_FEED", payload, requestId });
       const channel = new BroadcastChannel("modelscript:host-bridge");
       channel.postMessage({
         type: "MODELSCRIPT_WORKSPACE_SNAPSHOT",
@@ -396,9 +512,7 @@ export class HostBridgeService implements vscode.Disposable {
     const payload = this.collectWorkspaceSnapshot();
 
     try {
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "MODELSCRIPT_SHARE_TO_FEED", payload }, window.location.origin);
-      }
+      this.postToParent({ type: "MODELSCRIPT_SHARE_TO_FEED", payload });
       const channel = new BroadcastChannel("modelscript:host-bridge");
       channel.postMessage({
         type: "MODELSCRIPT_SHARE_TO_FEED",
@@ -472,9 +586,7 @@ export class HostBridgeService implements vscode.Disposable {
     };
 
     try {
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "MODELSCRIPT_SHARE_TO_FEED", payload }, window.location.origin);
-      }
+      this.postToParent({ type: "MODELSCRIPT_SHARE_TO_FEED", payload });
       const channel = new BroadcastChannel("modelscript:host-bridge");
       channel.postMessage({
         type: "MODELSCRIPT_SHARE_TO_FEED",
@@ -509,9 +621,7 @@ export class HostBridgeService implements vscode.Disposable {
       requestId,
     };
     try {
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage(payload, window.location.origin);
-      }
+      this.postToParent(payload);
       const channel = new BroadcastChannel("modelscript:host-bridge");
       channel.postMessage(payload);
       channel.close();
@@ -541,9 +651,7 @@ export class HostBridgeService implements vscode.Disposable {
       requestId: payload.requestId,
     };
     try {
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage(ack, window.location.origin);
-      }
+      this.postToParent(ack);
       const channel = new BroadcastChannel("modelscript:host-bridge");
       channel.postMessage(ack);
       channel.close();
@@ -605,6 +713,8 @@ export class HostBridgeService implements vscode.Disposable {
 
     if (typeof window !== "undefined") {
       const windowMsgHandler = (ev: MessageEvent) => {
+        if (!isTrustedHostOrigin(ev.origin)) return;
+        this._trustedParentOrigin = ev.origin;
         this.handleIncomingBridgeMessage(ev.data);
       };
       window.addEventListener("message", windowMsgHandler);

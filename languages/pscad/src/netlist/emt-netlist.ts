@@ -130,6 +130,16 @@ function mergeWireNets(mod: PscxModule): string[][] {
   return mod.wires.map((_, i) => [...ports.get(find(i))!]);
 }
 
+/**
+ * Fast-path CST-to-`EmtNetlist` lowering directly from a raw PSCAD `.pscx` XML string.
+ * Skips line/column indexing, SVG/graphics string extraction, and FlyBy/Check documentation
+ * parsing via `parsePscxCst(xmlSource, { headless: true })`.
+ */
+export function extractEmtNetlistFromXml(xmlSource: string): EmtNetlist {
+  const project = parsePscx(xmlSource, { headless: true });
+  return extractEmtNetlist(project);
+}
+
 export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const buses = new Map<string, EmtBus>();
   const branches: EmtBranch[] = [];

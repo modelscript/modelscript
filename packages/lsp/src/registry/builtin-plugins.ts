@@ -8,6 +8,13 @@ import {
   validateAdams,
 } from "@modelscript/adams";
 import {
+  amplLanguage,
+  AmplWorkspaceIndex,
+  getAmplDocumentSymbols,
+  getAmplHover,
+  validateAmpl,
+} from "@modelscript/ampl";
+import {
   aspenLanguage,
   AspenWorkspaceIndex,
   getAspenDocumentSymbols,
@@ -75,6 +82,55 @@ import {
   GtSuiteWorkspaceIndex,
   validateGtsuite,
 } from "@modelscript/gtsuite";
+import {
+  getGtfsDocumentSymbols,
+  getGtfsHover,
+  gtfsLanguage,
+  GtfsWorkspaceIndex,
+  validateGtfs,
+} from "@modelscript/gtfs";
+import {
+  getHecRasDocumentSymbols,
+  getHecRasHover,
+  hecRasLanguage,
+  HecRasWorkspaceIndex,
+  validateHecRas,
+} from "@modelscript/hec-ras";
+import {
+  getLandgemDocumentSymbols,
+  getLandgemHover,
+  landgemLanguage,
+  LandgemWorkspaceIndex,
+  validateLandgem,
+} from "@modelscript/landgem";
+import {
+  getModflowDocumentSymbols,
+  getModflowHover,
+  modflowLanguage,
+  ModflowWorkspaceIndex,
+  validateModflow,
+} from "@modelscript/modflow";
+import {
+  getOcppDocumentSymbols,
+  getOcppHover,
+  ocppLanguage,
+  OcppWorkspaceIndex,
+  validateOcpp,
+} from "@modelscript/ocpp";
+import {
+  getOpenAdrDocumentSymbols,
+  getOpenAdrHover,
+  openadrLanguage,
+  OpenAdrWorkspaceIndex,
+  validateOpenAdr,
+} from "@modelscript/openadr";
+import {
+  getToughDocumentSymbols,
+  getToughHover,
+  toughLanguage,
+  ToughWorkspaceIndex,
+  validateTough,
+} from "@modelscript/tough";
 import {
   getIbisDocumentSymbols,
   getIbisHover,
@@ -232,6 +288,167 @@ import {
   VerilogAWorkspaceIndex,
 } from "@modelscript/verilog-a";
 import {
+  antimonyLanguage,
+  AntimonyWorkspaceIndex,
+  getAntimonyDocumentSymbols,
+  getAntimonyHover,
+  validateAntimony,
+} from "@modelscript/antimony";
+import {
+  automationMLLanguage,
+  AutomationMLWorkspaceIndex,
+  getAutomationMLDocumentSymbols,
+  getAutomationMLHover,
+  validateAutomationML,
+} from "@modelscript/automationml";
+import {
+  bnglLanguage,
+  BnglWorkspaceIndex,
+  getBnglDocumentSymbols,
+  getBnglHover,
+  validateBngl,
+} from "@modelscript/bngl";
+import {
+  canteraLanguage,
+  CanteraWorkspaceIndex,
+  getCanteraDocumentSymbols,
+  getCanteraHover,
+  validateCantera,
+} from "@modelscript/cantera";
+import {
+  cellmlLanguage,
+  CellmlWorkspaceIndex,
+  getCellmlDocumentSymbols,
+  getCellmlHover,
+  validateCellml,
+} from "@modelscript/cellml";
+import { cgmesLanguage, lintCgmesModel, parseCgmesRdf } from "@modelscript/cgmes";
+import {
+  dicomRtLanguage,
+  DicomRtWorkspaceIndex,
+  getDicomRtDocumentSymbols,
+  getDicomRtHover,
+  validateDicomRt,
+} from "@modelscript/dicom-rt";
+import {
+  febioLanguage,
+  FebioWorkspaceIndex,
+  getFebioDocumentSymbols,
+  getFebioHover,
+  validateFebio,
+} from "@modelscript/febio";
+import { fiberLanguage, FiberWorkspaceIndex } from "@modelscript/fiber";
+import {
+  genbankLanguage,
+  GenbankWorkspaceIndex,
+  getGenbankDocumentSymbols,
+  getGenbankHover,
+  validateGenbank,
+} from "@modelscript/genbank";
+import {
+   getGpromsDocumentSymbols,
+  getGpromsHover,
+  gpromsLanguage,
+  GpromsWorkspaceIndex,
+  validateGproms,
+} from "@modelscript/gproms";
+import {
+  getIgtlDocumentSymbols,
+  getIgtlHover,
+  igtlLanguage,
+  IgtlWorkspaceIndex,
+  validateIgtl,
+} from "@modelscript/igtl";
+import {
+  getNiftiDocumentSymbols,
+  getNiftiHover,
+  niftiLanguage,
+  NiftiWorkspaceIndex,
+  validateNifti,
+} from "@modelscript/nifti";
+import {
+  getNmtranDocumentSymbols,
+  getNmtranHover,
+  nmtranLanguage,
+  NmtranWorkspaceIndex,
+  validateNmtran,
+} from "@modelscript/nmtran";
+import {
+  getOpenSimDocumentSymbols,
+  getOpenSimHover,
+  openSimLanguage,
+  OpenSimWorkspaceIndex,
+  validateOpenSim,
+} from "@modelscript/opensim";
+import { lintOpticalTopology, opticalLanguage, OpticalWorkspaceIndex, parseOpenRoadmTopology } from "@modelscript/optical";
+import {
+  getOscalDocumentSymbols,
+  getOscalHover,
+  oscalLanguage,
+  OscalWorkspaceIndex,
+  validateOscal,
+} from "@modelscript/oscal";
+import {
+  getPdbDocumentSymbols,
+  getPdbHover,
+  pdbLanguage,
+  PdbWorkspaceIndex,
+  validatePdb,
+} from "@modelscript/pdb";
+import {
+  getPhreeqcDocumentSymbols,
+  getPhreeqcHover,
+  phreeqcLanguage,
+  PhreeqcWorkspaceIndex,
+  validatePhreeqc,
+} from "@modelscript/phreeqc";
+import { lintPowerFactoryModel, parsePowerFactoryXml, powerFactoryLanguage } from "@modelscript/powerfactory";
+import { lintPslfDyd, lintPslfEpc, parsePslfDyd, parsePslfEpc, pslfLanguage } from "@modelscript/pslf";
+import {
+  getQifDocumentSymbols,
+  getQifHover,
+  qifLanguage,
+  QifWorkspaceIndex,
+  validateQif,
+} from "@modelscript/qif";
+import { lintAntennaPatternDeck, parseNsmaAdf, parsePlanetPat, ranLanguage, RanWorkspaceIndex } from "@modelscript/ran";
+import {
+  getSbolDocumentSymbols,
+  getSbolHover,
+  sbolLanguage,
+  SbolWorkspaceIndex,
+  validateSbol,
+} from "@modelscript/sbol";
+import {
+  getSedmlDocumentSymbols,
+  getSedmlHover,
+  sedmlLanguage,
+  SedmlWorkspaceIndex,
+  validateSedml,
+} from "@modelscript/sedml";
+import {
+  getSmilesDocumentSymbols,
+  getSmilesHover,
+  smilesLanguage,
+  SmilesWorkspaceIndex,
+  validateSmiles,
+} from "@modelscript/smiles";
+import {
+  getThreeMfDocumentSymbols,
+  getThreeMfHover,
+  threeMfLanguage,
+  ThreeMfWorkspaceIndex,
+  validateThreeMf,
+} from "@modelscript/three-mf";
+import {
+  getTopasDocumentSymbols,
+  getTopasHover,
+  topasLanguage,
+  TopasWorkspaceIndex,
+  validateTopas,
+} from "@modelscript/topas";
+import { usdLanguage, UsdLspService, UsdWorkspaceIndex } from "@modelscript/usd";
+import {
   createOpenDriveDiagramBackend,
   createPscadDiagramBackend,
   createSimulinkDiagramBackend,
@@ -287,8 +504,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("modelica");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("modelica") !== val) {
+        parserService.registerParser("modelica", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("modelica");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("modelica") !== val) {
+        parserService.registerParser("modelica", parserService.getParser("modelica"), val);
+      }
     },
     workspaceIndex: workspaceManager.getWorkspaceIndex("modelica"),
     get queryEngine() {
@@ -310,8 +537,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("sysml2");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("sysml2") !== val) {
+        parserService.registerParser("sysml2", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("sysml2");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("sysml2") !== val) {
+        parserService.registerParser("sysml2", parserService.getParser("sysml2"), val);
+      }
     },
     workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
     get queryEngine() {
@@ -331,8 +568,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("sysml2");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("sysml2") !== val) {
+        parserService.registerParser("sysml2", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("sysml2");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("sysml2") !== val) {
+        parserService.registerParser("sysml2", parserService.getParser("sysml2"), val);
+      }
     },
     workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
     get queryEngine() {
@@ -352,8 +599,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("step");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("step") !== val) {
+        parserService.registerParser("step", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("step");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("step") !== val) {
+        parserService.registerParser("step", parserService.getParser("step"), val);
+      }
     },
     workspaceIndex: workspaceManager.getWorkspaceIndex("step"),
     get queryEngine() {
@@ -373,8 +630,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("owl2");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("owl2") !== val) {
+        parserService.registerParser("owl2", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("owl2");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("owl2") !== val) {
+        parserService.registerParser("owl2", parserService.getParser("owl2"), val);
+      }
     },
     get workspaceIndex() {
       return workspaceManager.getWorkspaceIndex("owl2");
@@ -396,8 +663,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("csv");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("csv") !== val) {
+        parserService.registerParser("csv", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("csv");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("csv") !== val) {
+        parserService.registerParser("csv", parserService.getParser("csv"), val);
+      }
     },
     languageDef: csvLangFallback,
     customHandlers: {
@@ -416,15 +693,25 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("scad");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("scad") !== val) {
+        parserService.registerParser("scad", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("scad");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("scad") !== val) {
+        parserService.registerParser("scad", parserService.getParser("scad"), val);
+      }
     },
     languageDef: scadLangFallback,
     customHandlers: {
       validate: async (doc: any) => {
         const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { lintScadCst, getScadParser } = await import("@modelscript/scad");
-        const parser = await getScadParser();
+        const parser = parserService?.getParser("scad") ?? (await getScadParser());
         if (!parser) return [];
         const tree = parser.parse(text);
         return tree?.rootNode ? lintScadCst(tree.rootNode as any, text) : [];
@@ -439,8 +726,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get parser() {
       return parserService?.getParser("modelscript");
     },
+    set parser(val: any) {
+      if (parserService && parserService.getParser("modelscript") !== val) {
+        parserService.registerParser("modelscript", val);
+      }
+    },
     get facade() {
       return parserService?.getFacade("modelscript");
+    },
+    set facade(val: any) {
+      if (parserService && parserService.getFacade("modelscript") !== val) {
+        parserService.registerParser("modelscript", parserService.getParser("modelscript"), val);
+      }
     },
     workspaceIndex: workspaceManager.getWorkspaceIndex("modelscript"),
     get queryEngine() {
@@ -1037,6 +1334,67 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         if (!text) return null;
         const { parseSwmm, routeNetworkFlow } = await import("@modelscript/swmm");
         return routeNetworkFlow(parseSwmm(text));
+      },
+    },
+    disposables: [],
+  });
+
+  // AMPL
+  const amplWsIndex = ensureWorkspaceIndex("ampl", () => new AmplWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "ampl",
+    name: "AMPL",
+    extensions: [".mod", ".dat", ".ampl"],
+    languageDef: amplLanguage,
+    workspaceIndex: amplWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getAmplDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        return getAmplHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+      },
+      validate: (doc: any) => validateAmpl(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    actionHandlers: {
+      ampl_lint: async (ctx: any, params: any) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return [];
+        const { parseAmplModel, lintAmpl } = await import("@modelscript/ampl");
+        return lintAmpl(parseAmplModel(text));
+      },
+      ampl_solve: async (ctx: any, params: any) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return null;
+        const { parseAmplModel, instantiateAmpl, solveAmpl } = await import("@modelscript/ampl");
+        const problem = instantiateAmpl(parseAmplModel(text));
+        return solveAmpl(problem, params?.options);
+      },
+      ampl_to_dae: async (ctx: any, params: any) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return null;
+        const { parseAmplModel, instantiateAmpl, lowerAmplToDae } = await import("@modelscript/ampl");
+        const problem = instantiateAmpl(parseAmplModel(text));
+        const dae = lowerAmplToDae(problem);
+        return {
+          modelName: problem.name,
+          variableCount: dae.variables().length,
+          equationCount: dae.equations().length,
+        };
+      },
+      ampl_to_nl: async (ctx: any, params: any) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return "";
+        const { parseAmplModel, instantiateAmpl, writeNlProblem } = await import("@modelscript/ampl");
+        const problem = instantiateAmpl(parseAmplModel(text));
+        return writeNlProblem(problem);
+      },
+      ampl_to_modelica: async (ctx: any, params: any) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return "";
+        const { parseAmplModel, instantiateAmpl, amplToModelica } = await import("@modelscript/ampl");
+        const problem = instantiateAmpl(parseAmplModel(text));
+        return amplToModelica(problem);
       },
     },
     disposables: [],
@@ -2659,7 +3017,700 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     disposables: [],
   });
 
+  // 38. HEC-RAS (River Hydraulics & Floodplains)
+  const hecRasWsIndex = ensureWorkspaceIndex("hec-ras", () => new HecRasWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "hec-ras",
+    name: "HEC-RAS",
+    extensions: [".g01", ".g02", ".g03", ".rasgeo", ".u01", ".f01", ".prj"],
+    languageDef: hecRasLanguage,
+    workspaceIndex: hecRasWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getHecRasDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getHecRasHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateHecRas(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // 39. OCPP (Electric Vehicle Smart Charging)
+  const ocppWsIndex = ensureWorkspaceIndex("ocpp", () => new OcppWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "ocpp",
+    name: "OCPP",
+    extensions: [".ocpp", ".ocpp.json", ".cpo", ".evse"],
+    languageDef: ocppLanguage,
+    workspaceIndex: ocppWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getOcppDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getOcppHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateOcpp(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // 40. OpenADR (Automated Demand Response & Grid Flexibility)
+  const openadrWsIndex = ensureWorkspaceIndex("openadr", () => new OpenAdrWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "openadr",
+    name: "OpenADR",
+    extensions: [".oadr", ".oadr.xml", ".oadr.json", ".oadr.yaml"],
+    languageDef: openadrLanguage,
+    workspaceIndex: openadrWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getOpenAdrDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getOpenAdrHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateOpenAdr(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // 41. TOUGH (Deep Geothermal Reservoir & Hydrothermal Flows)
+  const toughWsIndex = ensureWorkspaceIndex("tough", () => new ToughWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "tough",
+    name: "TOUGH",
+    extensions: [".tough", ".dat", ".tgh"],
+    languageDef: toughLanguage,
+    workspaceIndex: toughWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getToughDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getToughHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateTough(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // 42. MODFLOW (Multi-Layer Groundwater Aquifers)
+  const modflowWsIndex = ensureWorkspaceIndex("modflow", () => new ModflowWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "modflow",
+    name: "MODFLOW",
+    extensions: [".dis", ".dis6", ".npf", ".npf6", ".wel", ".wel6", ".riv", ".riv6", ".chd", ".chd6"],
+    languageDef: modflowLanguage,
+    workspaceIndex: modflowWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getModflowDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getModflowHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateModflow(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // 43. LandGEM (Landfill Gas & ADM1 Anaerobic Digestion)
+  const landgemWsIndex = ensureWorkspaceIndex("landgem", () => new LandgemWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "landgem",
+    name: "LandGEM",
+    extensions: [".landgem", ".lfg", ".biogas"],
+    languageDef: landgemLanguage,
+    workspaceIndex: landgemWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getLandgemDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getLandgemHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateLandgem(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // 44. GTFS (Public Transit Electrification & Traction)
+  const gtfsWsIndex = ensureWorkspaceIndex("gtfs", () => new GtfsWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "gtfs",
+    name: "GTFS",
+    extensions: [".gtfs", ".gtfs.txt", ".gtfs-rt"],
+    languageDef: gtfsLanguage,
+    workspaceIndex: gtfsWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getGtfsDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        const line = lines.length - 1;
+        const character = lines[lines.length - 1]!.length;
+        return getGtfsHover(text, { line, character });
+      },
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        return validateGtfs(text);
+      },
+    },
+    disposables: [],
+  });
+
+  // Helper to convert character offset to 0-based { line, character }
+  const offsetToPosition = (text: string, offset: number) => {
+    const lines = text.slice(0, offset).split("\n");
+    return {
+      line: lines.length - 1,
+      character: lines[lines.length - 1]!.length,
+    };
+  };
+
+  // 45. Antimony
+  const antimonyWsIndex = ensureWorkspaceIndex("antimony", () => new AntimonyWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "antimony",
+    name: "Antimony",
+    extensions: [".ant"],
+    languageDef: antimonyLanguage,
+    workspaceIndex: antimonyWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getAntimonyDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getAntimonyHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateAntimony(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 46. AutomationML
+  const automationmlWsIndex = ensureWorkspaceIndex("automationml", () => new AutomationMLWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "automationml",
+    name: "AutomationML",
+    extensions: [".aml", ".amlx"],
+    languageDef: automationMLLanguage,
+    workspaceIndex: automationmlWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getAutomationMLDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getAutomationMLHover(text, offset),
+      validate: (doc: any) => validateAutomationML(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 47. BNGL
+  const bnglWsIndex = ensureWorkspaceIndex("bngl", () => new BnglWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "bngl",
+    name: "BNGL",
+    extensions: [".bngl"],
+    languageDef: bnglLanguage,
+    workspaceIndex: bnglWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getBnglDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getBnglHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateBngl(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 48. Cantera
+  const canteraWsIndex = ensureWorkspaceIndex("cantera", () => new CanteraWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "cantera",
+    name: "Cantera",
+    extensions: [".cti", ".ctml"],
+    languageDef: canteraLanguage,
+    workspaceIndex: canteraWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getCanteraDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getCanteraHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateCantera(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 49. CellML
+  const cellmlWsIndex = ensureWorkspaceIndex("cellml", () => new CellmlWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "cellml",
+    name: "CellML",
+    extensions: [".cellml"],
+    languageDef: cellmlLanguage,
+    workspaceIndex: cellmlWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getCellmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getCellmlHover(text, offset),
+      validate: (doc: any) => validateCellml(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 50. CGMES
+  globalLanguageRegistry.register({
+    id: "cgmes",
+    name: "CGMES",
+    extensions: [".cgmes", ".cim", ".rdf"],
+    languageDef: cgmesLanguage,
+    customHandlers: {
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const model = parseCgmesRdf(text);
+        return lintCgmesModel(model);
+      },
+    },
+    disposables: [],
+  });
+
+  // 51. DICOM-RT
+  const dicomRtWsIndex = ensureWorkspaceIndex("dicom-rt", () => new DicomRtWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "dicom-rt",
+    name: "DICOM-RT",
+    extensions: [".dcm.json", ".dicom-rt", ".rtplan.json", ".rtdose.json", ".rtstruct.json"],
+    languageDef: dicomRtLanguage,
+    workspaceIndex: dicomRtWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getDicomRtDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getDicomRtHover(text, offset),
+      validate: (doc: any) => validateDicomRt(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 52. FEBio
+  const febioWsIndex = ensureWorkspaceIndex("febio", () => new FebioWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "febio",
+    name: "FEBio",
+    extensions: [".feb"],
+    languageDef: febioLanguage,
+    workspaceIndex: febioWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getFebioDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getFebioHover(text, offset),
+      validate: (doc: any) => validateFebio(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 53. Fiber
+  const fiberWsIndex = ensureWorkspaceIndex("fiber", () => new FiberWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "fiber",
+    name: "Fiber",
+    extensions: [".fiber.geojson", ".osp.json"],
+    languageDef: fiberLanguage,
+    workspaceIndex: fiberWsIndex,
+    disposables: [],
+  });
+
+  // 54. GenBank
+  const genbankWsIndex = ensureWorkspaceIndex("genbank", () => new GenbankWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "genbank",
+    name: "GenBank",
+    extensions: [".gb", ".gbk", ".genbank"],
+    languageDef: genbankLanguage,
+    workspaceIndex: genbankWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getGenbankDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getGenbankHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateGenbank(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 55. gPROMS
+  const gpromsWsIndex = ensureWorkspaceIndex("gproms", () => new GpromsWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "gproms",
+    name: "gPROMS",
+    extensions: [".gPROMS", ".gproms"],
+    languageDef: gpromsLanguage,
+    workspaceIndex: gpromsWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getGpromsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getGpromsHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateGproms(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 56. OpenIGTLink (IGTL)
+  const igtlWsIndex = ensureWorkspaceIndex("igtl", () => new IgtlWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "igtl",
+    name: "OpenIGTLink",
+    extensions: [".igtl", ".igtl.json"],
+    languageDef: igtlLanguage,
+    workspaceIndex: igtlWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getIgtlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getIgtlHover(text, offset),
+      validate: (doc: any) => validateIgtl(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 57. NIfTI
+  const niftiWsIndex = ensureWorkspaceIndex("nifti", () => new NiftiWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "nifti",
+    name: "NIfTI",
+    extensions: [".nii", ".nii.json"],
+    languageDef: niftiLanguage,
+    workspaceIndex: niftiWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getNiftiDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getNiftiHover(text, offset),
+      validate: (doc: any) => validateNifti(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 58. NM-TRAN
+  const nmtranWsIndex = ensureWorkspaceIndex("nmtran", () => new NmtranWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "nmtran",
+    name: "NM-TRAN",
+    extensions: [".ctl", ".nmtran"],
+    languageDef: nmtranLanguage,
+    workspaceIndex: nmtranWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getNmtranDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getNmtranHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateNmtran(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 59. OpenSim
+  const opensimWsIndex = ensureWorkspaceIndex("opensim", () => new OpenSimWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "opensim",
+    name: "OpenSim",
+    extensions: [".osim"],
+    languageDef: openSimLanguage,
+    workspaceIndex: opensimWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getOpenSimDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getOpenSimHover(text, offset),
+      validate: (doc: any) => validateOpenSim(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 60. Optical
+  const opticalWsIndex = ensureWorkspaceIndex("optical", () => new OpticalWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "optical",
+    name: "Optical",
+    extensions: [".sor", ".openroadm.json"],
+    languageDef: opticalLanguage,
+    workspaceIndex: opticalWsIndex,
+    customHandlers: {
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        if (text.trim().startsWith("{")) {
+          return lintOpticalTopology(parseOpenRoadmTopology(text));
+        }
+        return [];
+      },
+    },
+    disposables: [],
+  });
+
+  // 61. OSCAL
+  const oscalWsIndex = ensureWorkspaceIndex("oscal", () => new OscalWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "oscal",
+    name: "OSCAL",
+    extensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.xml"],
+    languageDef: oscalLanguage,
+    workspaceIndex: oscalWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getOscalDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getOscalHover(text, offset),
+      validate: (doc: any) => validateOscal(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 62. PDB
+  const pdbWsIndex = ensureWorkspaceIndex("pdb", () => new PdbWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "pdb",
+    name: "PDB",
+    extensions: [".pdb", ".ent"],
+    languageDef: pdbLanguage,
+    workspaceIndex: pdbWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getPdbDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getPdbHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validatePdb(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 63. PHREEQC
+  const phreeqcWsIndex = ensureWorkspaceIndex("phreeqc", () => new PhreeqcWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "phreeqc",
+    name: "PHREEQC",
+    extensions: [".pqi", ".phreeqc"],
+    languageDef: phreeqcLanguage,
+    workspaceIndex: phreeqcWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getPhreeqcDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getPhreeqcHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validatePhreeqc(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 64. PowerFactory
+  globalLanguageRegistry.register({
+    id: "powerfactory",
+    name: "PowerFactory",
+    extensions: [".pfd", ".dz", ".dsl"],
+    languageDef: powerFactoryLanguage,
+    customHandlers: {
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        if (text.trim().startsWith("<")) {
+          return lintPowerFactoryModel(parsePowerFactoryXml(text));
+        }
+        return [];
+      },
+    },
+    disposables: [],
+  });
+
+  // 65. PSLF
+  globalLanguageRegistry.register({
+    id: "pslf",
+    name: "PSLF",
+    extensions: [".epc", ".dyd"],
+    languageDef: pslfLanguage,
+    customHandlers: {
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const uri = typeof doc?.uri === "string" ? doc.uri : "";
+        if (uri.toLowerCase().endsWith(".dyd") || text.includes("models")) {
+          return lintPslfDyd(parsePslfDyd(text));
+        }
+        return lintPslfEpc(parsePslfEpc(text));
+      },
+    },
+    disposables: [],
+  });
+
+  // 66. QIF
+  const qifWsIndex = ensureWorkspaceIndex("qif", () => new QifWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "qif",
+    name: "QIF",
+    extensions: [".qif", ".qif.json"],
+    languageDef: qifLanguage,
+    workspaceIndex: qifWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getQifDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getQifHover(text, offset),
+      validate: (doc: any) => validateQif(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 67. RAN
+  const ranWsIndex = ensureWorkspaceIndex("ran", () => new RanWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "ran",
+    name: "RAN",
+    extensions: [".adf", ".nsma", ".msi", ".planet"],
+    languageDef: ranLanguage,
+    workspaceIndex: ranWsIndex,
+    customHandlers: {
+      validate: (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const isNsma = text.includes("REVNUM:") || text.includes("MANUF:") || text.includes("NOFREQ:");
+        const deck = isNsma ? parseNsmaAdf(text) : parsePlanetPat(text);
+        return lintAntennaPatternDeck(deck);
+      },
+    },
+    disposables: [],
+  });
+
+  // 68. SBOL
+  const sbolWsIndex = ensureWorkspaceIndex("sbol", () => new SbolWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "sbol",
+    name: "SBOL",
+    extensions: [".sbol", ".sbol.xml"],
+    languageDef: sbolLanguage,
+    workspaceIndex: sbolWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getSbolDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getSbolHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateSbol(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 69. SED-ML
+  const sedmlWsIndex = ensureWorkspaceIndex("sedml", () => new SedmlWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "sedml",
+    name: "SED-ML",
+    extensions: [".sedml"],
+    languageDef: sedmlLanguage,
+    workspaceIndex: sedmlWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getSedmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getSedmlHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateSedml(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 70. SMILES
+  const smilesWsIndex = ensureWorkspaceIndex("smiles", () => new SmilesWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "smiles",
+    name: "SMILES",
+    extensions: [".smi", ".smiles"],
+    languageDef: smilesLanguage,
+    workspaceIndex: smilesWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getSmilesDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getSmilesHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => validateSmiles(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 71. 3MF
+  const threeMfWsIndex = ensureWorkspaceIndex("three-mf", () => new ThreeMfWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "three-mf",
+    name: "3MF",
+    extensions: [".3mf", ".3mf.model"],
+    languageDef: threeMfLanguage,
+    workspaceIndex: threeMfWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getThreeMfDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getThreeMfHover(text, offset),
+      validate: (doc: any) => validateThreeMf(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 72. TOPAS
+  const topasWsIndex = ensureWorkspaceIndex("topas", () => new TopasWorkspaceIndex());
+  globalLanguageRegistry.register({
+    id: "topas",
+    name: "TOPAS",
+    extensions: [".topas", ".tps"],
+    languageDef: topasLanguage,
+    workspaceIndex: topasWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getTopasDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => getTopasHover(text, offset),
+      validate: (doc: any) => validateTopas(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 73. OpenUSD
+  const usdWsIndex = ensureWorkspaceIndex("usd", () => new UsdWorkspaceIndex());
+  const usdLspService = new UsdLspService();
+  globalLanguageRegistry.register({
+    id: "usd",
+    name: "OpenUSD",
+    extensions: [".usda", ".usd", ".usdc", ".usdz"],
+    languageDef: usdLanguage,
+    workspaceIndex: usdWsIndex,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        usdLspService.getDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      hover: (offset: number, text: string) => usdLspService.getHover(text, offsetToPosition(text, offset)),
+      validate: (doc: any) => usdLspService.validate(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
   if (connection) {
-    connection.console.info("[lsp] All 44 built-in domain language plugins registered successfully.");
+    connection.console.info("[lsp] All 81 built-in domain language plugins registered successfully.");
   }
 }

@@ -132,31 +132,53 @@ function findInheritedExtendsMod(
   return null;
 }
 
+const _componentEvalMemo = new Map<string, unknown>();
+let _componentEvalCycle = false;
+
 function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB, scope?: SymbolEntry | null): unknown {
-  if (resolved.kind === "Component" && !evaluatingComponentIds.has(resolved.id)) {
+  if (resolved.kind === "Component") {
+    const memoKey = `${scope?.id ?? 0}:${resolved.id}`;
+    if (_componentEvalMemo.has(memoKey)) {
+      return _componentEvalMemo.get(memoKey);
+    }
+    if (evaluatingComponentIds.has(resolved.id)) {
+      _componentEvalCycle = true;
+      return resolved;
+    }
     evaluatingComponentIds.add(resolved.id);
     try {
+      let res: unknown = resolved;
       if (scope && (scope.kind === "Class" || scope.kind === "Package") && scope.id !== resolved.parentId) {
         const inhMod = findInheritedExtendsMod(db, scope.id, resolved.name);
         if (inhMod) {
           const scopeEntry = db.symbol(inhMod.evalScopeId) ?? scope;
           const val = evaluateModValue(inhMod.modVal, scopeEntry, db);
           if (val !== null && val !== undefined) {
-            return val;
+            res = val;
           }
         }
       }
-      const compMod = db.query<any>("effectiveModification", resolved.id);
-      if (compMod?.bindingExpression) {
-        const scopeId = compMod.evaluationScopeId ?? resolved.parentId;
-        const scopeEntry = scopeId ? (db.symbol(scopeId) ?? null) : null;
-        const val = evaluateModValue(compMod.bindingExpression, scopeEntry, db);
-        if (val !== null && val !== undefined) {
-          return val;
+      if (res === resolved) {
+        const compMod = db.query<any>("effectiveModification", resolved.id);
+        if (compMod?.bindingExpression) {
+          const scopeId = compMod.evaluationScopeId ?? resolved.parentId;
+          const scopeEntry = scopeId ? (db.symbol(scopeId) ?? null) : null;
+          const val = evaluateModValue(compMod.bindingExpression, scopeEntry, db);
+          if (val !== null && val !== undefined) {
+            res = val;
+          }
         }
       }
+      if (!_componentEvalCycle) {
+        _componentEvalMemo.set(memoKey, res);
+      }
+      return res;
     } finally {
       evaluatingComponentIds.delete(resolved.id);
+      if (evaluatingComponentIds.size === 0) {
+        _componentEvalMemo.clear();
+        _componentEvalCycle = false;
+      }
     }
   }
   return resolved;

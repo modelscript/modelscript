@@ -30,8 +30,12 @@ ModelScript polyglot diagramming and visual schematic engine — AntV X6 interac
 - **Fault Tree Analysis (`src/fault-tree.ts`, `@modelscript/diagram/fault-tree`)**: IEC 61025 Fault Tree gate symbols (`AND`, `OR`, `XOR`, `VOTING k-out-of-n`, `INHIBIT`, `PRIORITY_AND`, basic/undeveloped/conditioning events), minimal cut-set highlighting, and top-event probability propagation.
 - **OWL 2 Ontology Graphs**: Class hierarchy (`SubClassOf`), object property domain/range edges, and inferred axiom dashed overlays.
 - **SSP 1.0 System Topology**: Multi-FMU architecture block diagrams with typed causal connectors and parameter mapping badges.
-- **PSCAD & PSS/E Power Grid Diagrams (`src/pscad-diagram-builder.ts`, `src/psse-diagram-builder.ts`)**: Electrical power system Single-Line Diagrams (SLD), busbars, multi-winding transformers, transmission lines, breakers, generator capability limits, and Inverter-Based Resource (IBR) schematics.
-- **Pipeline & Multiphase Fluid Networks (`src/olga-diagram-builder.ts`, `src/lps-diagram-builder.ts`)**: OLGA subsea flowline elevation bathymetry, topside risers, chokes, wells, and PipelineStudio continental compressor/regulator network graphs.
+- **PSCAD, PSS/E & PowerFactory Power Grid Diagrams (`src/pscad-diagram-builder.ts`, `src/psse-diagram-builder.ts`, `src/powerfactory-diagram-builder.ts`)**: Electrical power system Single-Line Diagrams (SLD), busbars with voltage/loading/island heatmap coloring modes, multi-winding transformers, transmission lines, breakers, and Inverter-Based Resource (IBR) schematics.
+- **Protection Coordination & Generator Capability Charts (`src/tcc-diagram-builder.ts`, `src/rx-diagram-builder.ts`, `src/pq-diagram-builder.ts`)**:
+  - `buildTccDiagram`: Log-log Time-Current Characteristic (TCC) relay coordination charts with inverse-time 51/50 curves, fuse envelopes, cable $I^2t$ thermal damage limits, transformer inrush points, and CTI grading margins.
+  - `buildRxDiagram`: Complex impedance plane ($R\text{–}X$) diagrams with Zone 1/2/3 mho circles, quadrilateral reach polygons, load encroachment blinders, and fault impedance loci.
+  - `buildPqCapabilityDiagram`: Synchronous generator and IBR $P\text{–}Q$ reactive capability curves (armature current, field heating, SSSL, UEL, and operating points).
+- **Pipeline, Water & Multiphase Fluid Networks (`src/olga-diagram-builder.ts`, `src/lps-diagram-builder.ts`, `src/water-network-diff.ts`)**: OLGA subsea flowline elevation bathymetry, PipelineStudio continental compressor networks, and spatial EPANET/SWMM water network topological diff overlays (`diffWaterNetworks`, `buildWaterDiffDiagram`).
 - **SIMA Offshore Marine Schematics (`src/sima-diagram-builder.ts`)**: Multi-body floater geometry, fairlead attachments, catenary mooring line touchdown profiles, and anchor polar spread layouts.
 
 ### 4. Perceptual Dark-Mode Color Inversion
@@ -40,7 +44,7 @@ ModelScript polyglot diagramming and visual schematic engine — AntV X6 interac
 
 ### 5. Semantic Visual Diff Bundles (`@modelscript/diagram/visual-diff`)
 
-- **Structural Graph Diffing (`src/visual-diff-graph.ts`, `src/visual-diff-renderer.ts`)**: Computes semantic additions, deletions, parameter modifications, and re-routed connections between two model revisions (`added` in green, `removed` in red, `modified` in amber).
+- **Structural & Hydraulic Graph Diffing (`src/visual-diff-graph.ts`, `src/visual-diff-renderer.ts`, `src/water-network-diff.ts`)**: Computes semantic additions, deletions, parameter modifications, pipe resizing, pressure deltas, and re-routed connections between two model revisions (`added` in green, `removed` in red, `modified` in amber).
 - **Standalone HTML Diff Bundles (`src/html-diff-bundle.ts`, `@modelscript/diagram/html-diff-bundle`)**: Generates self-contained, interactive dark-mode HTML visual pull-request review bundles with synchronized pan/zoom, side-by-side or overlay modes, and property inspection tables.
 
 ### 6. Real-Time Collaboration & Live Telemetry Animation

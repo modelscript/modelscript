@@ -4405,6 +4405,7 @@ export function instantiateElements(
           let resolvedPkgRecordConst = false;
           let isContinuousRecordCtorEq = false;
           let isContinuousRecordFnEq = false;
+          let isParameterRecordInitEq = false;
           if (isRecordTarget && !hasOpRecBinding) {
             const bText = (
               matchingParentArg?.value?.text ??
@@ -4456,16 +4457,29 @@ export function instantiateElements(
                       !flattener["isCstNodeProtected"](flattener.db.cstNode(s.id)) &&
                       (s.metadata as any)?.variability !== "constant",
                   );
+                const ctorEvalScopeId =
+                  matchingParentArg?.evaluationScopeId ??
+                  matchingClassArg?.evaluationScopeId ??
+                  flattener.db.symbol(elemId)?.parentId ??
+                  flattener.currentClassId;
                 for (let aIdx = 0; aIdx < rawArgs.length; aIdx++) {
                   const argStr = rawArgs[aIdx]!;
                   const eqIdx = argStr.indexOf("=");
                   if (eqIdx > 0 && !argStr.slice(0, eqIdx).includes("(") && !argStr.slice(0, eqIdx).includes("[")) {
                     const fName = argStr.slice(0, eqIdx).trim();
                     const fVal = argStr.slice(eqIdx + 1).trim();
-                    recordCtorArgs.push({ name: fName, value: { kind: "expression", text: fVal } });
+                    recordCtorArgs.push({
+                      name: fName,
+                      value: { kind: "expression", text: fVal },
+                      evaluationScopeId: ctorEvalScopeId,
+                    });
                   } else if (subSyms[aIdx]) {
                     const fName = subSyms[aIdx]!.name;
-                    recordCtorArgs.push({ name: fName, value: { kind: "expression", text: argStr } });
+                    recordCtorArgs.push({
+                      name: fName,
+                      value: { kind: "expression", text: argStr },
+                      evaluationScopeId: ctorEvalScopeId,
+                    });
                   }
                 }
                 if (
@@ -4570,7 +4584,7 @@ export function instantiateElements(
                     }
                   }
                 }
-              } else {
+              } else if (!(isOpRec && classTarget?.name === "Complex")) {
                 const ctorShortName = ctorName.includes(".") ? ctorName.split(".").pop()! : ctorName;
                 const fnCandidates = flattener.db.byName(ctorShortName).filter((e) => flattener["isFunctionSym"](e));
                 const isNonPartialFn = (e: SymbolEntry) => {
@@ -4640,8 +4654,14 @@ export function instantiateElements(
                     let vIdx = dae.lookupVariable(scopedAp);
                     if (vIdx < 0) vIdx = dae.lookupVariable(t);
                     if (vIdx >= 0) {
+                      if (!dae.isVarFixed(vIdx)) return null;
                       const sv = dae.getVarExpression(vIdx);
-                      const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
+                      const val =
+                        sv !== undefined && sv >= 0
+                          ? evalDaeExpr(sv, dae)
+                          : dae.hasExplicitVarExpression(vIdx)
+                            ? dae.getVarStartValue(vIdx)
+                            : null;
                       return val !== null && val !== undefined ? val : null;
                     }
                     const arrBase = dae.hasArrayElements(scopedAp) ? scopedAp : dae.hasArrayElements(t) ? t : null;
@@ -4884,6 +4904,15 @@ export function instantiateElements(
                           resolvedPkgRecordConst = true;
                         }
                       }
+                    }
+                    if (
+                      !resolvedPkgRecordConst &&
+                      (compInst.variability === "parameter" ||
+                        parentMods?.parentVariability === Variability.Parameter) &&
+                      dae.classKind !== "function" &&
+                      (!compInst.arrayDimensions || compInst.arrayDimensions.length === 0)
+                    ) {
+                      isParameterRecordInitEq = true;
                     }
                   }
                 }
@@ -5128,14 +5157,39 @@ export function instantiateElements(
               ? resolveChainedRedecl(a, a.evaluationScopeId, rawSubModArgs)
               : a,
           );
+          const recordBindingSource =
+            matchingParentArg?.value ?? matchingClassArg?.value ?? compInst.modification?.bindingExpression;
+          const cleanRecordBindText = recordBindingSource?.text ? recordBindingSource.text.trim().replace(/^=/, "").trim() : "";
+          const isSelfRecordVarRef =
+            Boolean(cleanRecordBindText) &&
+            /^[a-zA-Z_]\w*(?:\[[^\]]+\])?(?:\.[a-zA-Z_]\w*(?:\[[^\]]+\])?)*$/.test(cleanRecordBindText);
+          const isParamRecord =
+            compInst.variability === "parameter" || parentMods?.parentVariability === Variability.Parameter;
+          if (
+            isRecordTarget &&
+            !hasOpRecBinding &&
+            isParamRecord &&
+            cleanRecordBindText &&
+            !isSelfRecordVarRef &&
+            recordCtorArgs.length === 0 &&
+            !resolvedPkgRecordConst &&
+            !isRecordVarRef &&
+            dae.classKind !== "function" &&
+            (!compInst.arrayDimensions || compInst.arrayDimensions.length === 0)
+          ) {
+            isParameterRecordInitEq = true;
+          }
           const effectiveSubMod = {
             args: resolvedSubModArgs,
-            suppressDefaultBindings: isContinuousRecordCtorEq,
+            suppressDefaultBindings: isContinuousRecordCtorEq || isParameterRecordInitEq,
+            forceFixedFalse: Boolean(
+              (isParameterRecordInitEq && !(isOpRec && classTarget?.name === "Complex")) || parentMods?.forceFixedFalse,
+            ),
             instantiatingClassIds: nextInstantiatingClassIds,
             componentClauseRange: compClauseRange ?? parentMods?.componentClauseRange,
             currentClassId: classTargetId ?? flattener.currentClassId,
             bindingExpression:
-              hasOpRecBinding || resolvedPkgRecordConst || isContinuousRecordCtorEq
+              hasOpRecBinding || resolvedPkgRecordConst || isContinuousRecordCtorEq || isParameterRecordInitEq
                 ? null
                 : (matchingParentArg?.value ??
                   matchingClassArg?.value ??
@@ -6066,30 +6120,304 @@ export function instantiateElements(
                   }
                 }
               }
-              if (isContinuousRecordFnEq) {
-                const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
-                const findBindingExprNode = (n: any): any => {
-                  if (!n) return null;
-                  if (n.type === "expression") return n;
-                  for (const c of n.children || []) {
-                    const res = findBindingExprNode(c);
-                    if (res) return res;
-                  }
-                  return null;
-                };
-                const exprCst = findBindingExprNode(modChild ?? elemCst);
-                if (exprCst) {
-                  const prevClassId = flattener.currentClassId;
-                  const elemOwnerId = flattener.db.symbol(elemId)?.parentId ?? flattener.currentClassId;
-                  if (elemOwnerId) flattener.currentClassId = elemOwnerId;
-                  try {
-                    const rhsExprId = flattener.lowerExpr(exprCst, dae, prefix);
-                    if (rhsExprId >= 0) {
-                      dae.addEquation(EqKind.Simple, dae.addNameExpr(name), rhsExprId);
+              if (isContinuousRecordFnEq || isParameterRecordInitEq) {
+                const modScopeId =
+                  matchingParentArg?.evaluationScopeId ??
+                  matchingClassArg?.evaluationScopeId ??
+                  flattener.db.symbol(elemId)?.parentId ??
+                  flattener.currentClassId;
+                const modScopeSym = modScopeId != null ? flattener.db.symbol(modScopeId) : null;
+                let exprCst =
+                  recordBindingSource?.cstBytes && modScopeSym
+                    ? flattener.db.cstNodeRange(recordBindingSource.cstBytes[0], recordBindingSource.cstBytes[1], modScopeSym)
+                    : null;
+                if (!exprCst) {
+                  const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
+                  const findBindingExprNode = (n: any): any => {
+                    if (!n) return null;
+                    if (n.type === "expression") return n;
+                    for (const c of n.children || []) {
+                      const res = findBindingExprNode(c);
+                      if (res) return res;
                     }
-                  } finally {
-                    flattener.currentClassId = prevClassId;
+                    return null;
+                  };
+                  exprCst = findBindingExprNode(modChild ?? elemCst);
+                }
+                const prevClassId = flattener.currentClassId;
+                const prevOwnerImports = flattener.currentImports;
+                const elemOwnerId = modScopeId ?? flattener.db.symbol(elemId)?.parentId ?? flattener.currentClassId;
+                if (elemOwnerId) {
+                  flattener.currentClassId = elemOwnerId;
+                  const ownerImports = flattener["collectClassImports"]?.(elemOwnerId);
+                  if (ownerImports) {
+                    flattener.currentImports = new Map([...flattener.currentImports, ...ownerImports]);
                   }
+                }
+                try {
+                  const rhsExprId = exprCst
+                    ? flattener.lowerExpr(exprCst, dae, prefix)
+                    : recordBindingSource?.text
+                      ? (lowerStandaloneExpression(
+                          flattener,
+                          recordBindingSource.text,
+                          dae,
+                          prefix,
+                          compInst.name,
+                          VarType.Real,
+                        ) ?? -1)
+                      : -1;
+                  if (rhsExprId >= 0) {
+                    let decomposedComplex = false;
+                    if (isParameterRecordInitEq && isOpRec && classTarget?.name === "Complex") {
+                      const decomposeComplexExpr = (id: number, depth = 0): [number, number] | null => {
+                        if (id < 0 || depth > 24) return null;
+                        const k = dae.getExprKind(id);
+                        if (k === ExprKind.RealLiteral || k === ExprKind.IntLiteral) {
+                          return [id, dae.addRealLiteral(0.0)];
+                        }
+                        if (k === ExprKind.Name) {
+                          const nm = dae.interner.resolve(dae.getExprData1(id)) || "";
+                          if (nm === "Modelica.ComplexMath.j" || nm === "ComplexMath.j" || nm.endsWith(".ComplexMath.j")) {
+                            return [dae.addRealLiteral(0.0), dae.addRealLiteral(1.0)];
+                          }
+                          return [dae.addNameExpr(`${nm}.re`), dae.addNameExpr(`${nm}.im`)];
+                        }
+                        if (k === ExprKind.Negate) {
+                          const sub = decomposeComplexExpr(dae.getExprLeft(id), depth + 1);
+                          if (!sub) return null;
+                          return [
+                            dae.addExpression(ExprKind.Negate, 0, sub[0]),
+                            dae.addExpression(ExprKind.Negate, 0, sub[1]),
+                          ];
+                        }
+                        if (k === ExprKind.Unary) {
+                          const op = dae.getExprData1(id);
+                          const sub = decomposeComplexExpr(dae.getExprLeft(id), depth + 1);
+                          if (!sub) return null;
+                          if (op === UnaryOp.Negate) {
+                            return [
+                              dae.addExpression(ExprKind.Negate, 0, sub[0]),
+                              dae.addExpression(ExprKind.Negate, 0, sub[1]),
+                            ];
+                          }
+                          return sub;
+                        }
+                        if (k === ExprKind.Binary) {
+                          const op = dae.getExprData1(id);
+                          const l = decomposeComplexExpr(dae.getExprLeft(id), depth + 1);
+                          const r = decomposeComplexExpr(dae.getExprRight(id), depth + 1);
+                          if (!l || !r) return null;
+                          if (op === BinOp.Add) {
+                            return [dae.addBinaryExpr(BinOp.Add, l[0], r[0]), dae.addBinaryExpr(BinOp.Add, l[1], r[1])];
+                          }
+                          if (op === BinOp.Sub) {
+                            return [dae.addBinaryExpr(BinOp.Sub, l[0], r[0]), dae.addBinaryExpr(BinOp.Sub, l[1], r[1])];
+                          }
+                          if (op === BinOp.Mul) {
+                            return [
+                              dae.addBinaryExpr(
+                                BinOp.Sub,
+                                dae.addBinaryExpr(BinOp.Mul, l[0], r[0]),
+                                dae.addBinaryExpr(BinOp.Mul, l[1], r[1]),
+                              ),
+                              dae.addBinaryExpr(
+                                BinOp.Add,
+                                dae.addBinaryExpr(BinOp.Mul, l[0], r[1]),
+                                dae.addBinaryExpr(BinOp.Mul, l[1], r[0]),
+                              ),
+                            ];
+                          }
+                          if (op === BinOp.Div) {
+                            const denom = dae.addBinaryExpr(
+                              BinOp.Add,
+                              dae.addBinaryExpr(BinOp.Mul, r[0], r[0]),
+                              dae.addBinaryExpr(BinOp.Mul, r[1], r[1]),
+                            );
+                            return [
+                              dae.addBinaryExpr(
+                                BinOp.Div,
+                                dae.addBinaryExpr(
+                                  BinOp.Add,
+                                  dae.addBinaryExpr(BinOp.Mul, l[0], r[0]),
+                                  dae.addBinaryExpr(BinOp.Mul, l[1], r[1]),
+                                ),
+                                denom,
+                              ),
+                              dae.addBinaryExpr(
+                                BinOp.Div,
+                                dae.addBinaryExpr(
+                                  BinOp.Sub,
+                                  dae.addBinaryExpr(BinOp.Mul, l[1], r[0]),
+                                  dae.addBinaryExpr(BinOp.Mul, l[0], r[1]),
+                                ),
+                                denom,
+                              ),
+                            ];
+                          }
+                        }
+                        if (k === ExprKind.IfElse) {
+                          const cond = dae.getExprData1(id);
+                          const tBranch = decomposeComplexExpr(dae.getExprLeft(id), depth + 1);
+                          const fBranch = decomposeComplexExpr(dae.getExprRight(id), depth + 1);
+                          if (!tBranch || !fBranch) return null;
+                          return [
+                            dae.addIfElseExpr(cond, tBranch[0], fBranch[0]),
+                            dae.addIfElseExpr(cond, tBranch[1], fBranch[1]),
+                          ];
+                        }
+                        if (k === ExprKind.Call) {
+                          const fnName = dae.interner.resolve(dae.getExprData1(id)) || "";
+                          const argCount = dae.getExprRight(id);
+                          const getArg = (idx: number) =>
+                            idx === 0 ? dae.getExprLeft(id) : dae.getExprLeft(id + idx);
+                          if (fnName === "Complex" || fnName === "Complex.'constructor'.fromReal") {
+                            if (argCount >= 2) return [getArg(0), getArg(1)];
+                            if (argCount === 1) return [getArg(0), dae.addRealLiteral(0.0)];
+                          }
+                          if (fnName === "Complex.'0'") {
+                            return [dae.addRealLiteral(0.0), dae.addRealLiteral(0.0)];
+                          }
+                          if ((fnName === "Complex.'-'.negate" || fnName === "Complex.'-'") && argCount === 1) {
+                            const sub = decomposeComplexExpr(getArg(0), depth + 1);
+                            if (!sub) return null;
+                            return [
+                              dae.addExpression(ExprKind.Negate, 0, sub[0]),
+                              dae.addExpression(ExprKind.Negate, 0, sub[1]),
+                            ];
+                          }
+                          if ((fnName === "Complex.'+'.add" || fnName === "Complex.'+'") && argCount === 2) {
+                            const l = decomposeComplexExpr(getArg(0), depth + 1);
+                            const r = decomposeComplexExpr(getArg(1), depth + 1);
+                            if (!l || !r) return null;
+                            return [dae.addBinaryExpr(BinOp.Add, l[0], r[0]), dae.addBinaryExpr(BinOp.Add, l[1], r[1])];
+                          }
+                          if ((fnName === "Complex.'-'.subtract" || fnName === "Complex.'-'") && argCount === 2) {
+                            const l = decomposeComplexExpr(getArg(0), depth + 1);
+                            const r = decomposeComplexExpr(getArg(1), depth + 1);
+                            if (!l || !r) return null;
+                            return [dae.addBinaryExpr(BinOp.Sub, l[0], r[0]), dae.addBinaryExpr(BinOp.Sub, l[1], r[1])];
+                          }
+                          if ((fnName === "Complex.'*'.multiply" || fnName === "Complex.'*'") && argCount === 2) {
+                            const l = decomposeComplexExpr(getArg(0), depth + 1);
+                            const r = decomposeComplexExpr(getArg(1), depth + 1);
+                            if (!l || !r) return null;
+                            return [
+                              dae.addBinaryExpr(
+                                BinOp.Sub,
+                                dae.addBinaryExpr(BinOp.Mul, l[0], r[0]),
+                                dae.addBinaryExpr(BinOp.Mul, l[1], r[1]),
+                              ),
+                              dae.addBinaryExpr(
+                                BinOp.Add,
+                                dae.addBinaryExpr(BinOp.Mul, l[0], r[1]),
+                                dae.addBinaryExpr(BinOp.Mul, l[1], r[0]),
+                              ),
+                            ];
+                          }
+                          if ((fnName === "Complex.'/'.divide" || fnName === "Complex.'/'") && argCount === 2) {
+                            const l = decomposeComplexExpr(getArg(0), depth + 1);
+                            const r = decomposeComplexExpr(getArg(1), depth + 1);
+                            if (!l || !r) return null;
+                            const denom = dae.addBinaryExpr(
+                              BinOp.Add,
+                              dae.addBinaryExpr(BinOp.Mul, r[0], r[0]),
+                              dae.addBinaryExpr(BinOp.Mul, r[1], r[1]),
+                            );
+                            return [
+                              dae.addBinaryExpr(
+                                BinOp.Div,
+                                dae.addBinaryExpr(
+                                  BinOp.Add,
+                                  dae.addBinaryExpr(BinOp.Mul, l[0], r[0]),
+                                  dae.addBinaryExpr(BinOp.Mul, l[1], r[1]),
+                                ),
+                                denom,
+                              ),
+                              dae.addBinaryExpr(
+                                BinOp.Div,
+                                dae.addBinaryExpr(
+                                  BinOp.Sub,
+                                  dae.addBinaryExpr(BinOp.Mul, l[1], r[0]),
+                                  dae.addBinaryExpr(BinOp.Mul, l[0], r[1]),
+                                ),
+                                denom,
+                              ),
+                            ];
+                          }
+                          if (
+                            (fnName === "conj" ||
+                              fnName === "Modelica.ComplexMath.conj" ||
+                              fnName === "ComplexMath.conj" ||
+                              fnName.endsWith(".conj")) &&
+                            argCount === 1
+                          ) {
+                            const sub = decomposeComplexExpr(getArg(0), depth + 1);
+                            if (!sub) return null;
+                            return [sub[0], dae.addExpression(ExprKind.Negate, 0, sub[1])];
+                          }
+                          if (
+                            (fnName === "fromPolar" ||
+                              fnName === "Modelica.ComplexMath.fromPolar" ||
+                              fnName === "ComplexMath.fromPolar" ||
+                              fnName.endsWith(".fromPolar")) &&
+                            argCount === 2
+                          ) {
+                            const lenExpr = getArg(0);
+                            const phiExpr = getArg(1);
+                            return [
+                              dae.addBinaryExpr(BinOp.Mul, lenExpr, dae.addCallExpr("cos", [phiExpr])),
+                              dae.addBinaryExpr(BinOp.Mul, lenExpr, dae.addCallExpr("sin", [phiExpr])),
+                            ];
+                          }
+                          if (
+                            (fnName === "exp" ||
+                              fnName === "Modelica.ComplexMath.exp" ||
+                              fnName === "ComplexMath.exp" ||
+                              fnName.endsWith(".exp")) &&
+                            argCount === 1
+                          ) {
+                            const sub = decomposeComplexExpr(getArg(0), depth + 1);
+                            if (!sub) return null;
+                            return [
+                              dae.addBinaryExpr(
+                                BinOp.Mul,
+                                dae.addCallExpr("exp", [sub[0]]),
+                                dae.addCallExpr("cos", [sub[1]]),
+                              ),
+                              dae.addBinaryExpr(
+                                BinOp.Mul,
+                                dae.addCallExpr("exp", [sub[0]]),
+                                dae.addCallExpr("sin", [sub[1]]),
+                              ),
+                            ];
+                          }
+                        }
+                        return null;
+                      };
+                      const pair = decomposeComplexExpr(rhsExprId);
+                      const reIdx = dae.getVarIdxByName(`${name}.re`);
+                      const imIdx = dae.getVarIdxByName(`${name}.im`);
+                      if (pair && reIdx >= 0 && imIdx >= 0) {
+                        dae.setVarExpression(reIdx, pair[0]);
+                        dae.setVarExpression(imIdx, pair[1]);
+                        decomposedComplex = true;
+                      } else {
+                        if (reIdx >= 0) dae.setVarAttr(reIdx, "fixed", dae.addBoolLiteral(false));
+                        if (imIdx >= 0) dae.setVarAttr(imIdx, "fixed", dae.addBoolLiteral(false));
+                      }
+                    }
+                    if (!decomposedComplex) {
+                      dae.addEquation(
+                        isParameterRecordInitEq ? EqKind.InitialSimple : EqKind.Simple,
+                        dae.addNameExpr(name),
+                        rhsExprId,
+                      );
+                    }
+                  }
+                } finally {
+                  flattener.currentClassId = prevClassId;
+                  flattener.currentImports = prevOwnerImports;
                 }
               }
             }
@@ -6999,19 +7327,41 @@ export function instantiateElements(
                   const fullLit = dae.interner.resolve(dae.getExprLeft(exprId)) ?? "";
                   const lastDot = fullLit.lastIndexOf(".");
                   const rhsTypePath = lastDot >= 0 ? fullLit.slice(0, lastDot) : "";
-                  const rhsShortName = rhsTypePath.split(".").pop()!;
-                  const rhsTypeSyms = flattener.db.byName(rhsShortName);
-                  const rhsTypeSym = rhsTypeSyms.find((s) => s.kind === "Class") ?? rhsTypeSyms[0];
-                  const rhsLits = rhsTypeSym
+                  const litShortName = lastDot >= 0 ? fullLit.slice(lastDot + 1) : fullLit;
+
+                  let rhsTypeSym: SymbolEntry | null | undefined = null;
+                  if (rhsTypePath) {
+                    const evalScope = elemOwnerId ?? flattener.currentClassId;
+                    const resolveName = evalScope
+                      ? (flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", evalScope) ??
+                         flattener.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", evalScope))
+                      : null;
+                    if (resolveName) {
+                      rhsTypeSym = resolveName(rhsTypePath);
+                    }
+                    if (!rhsTypeSym) {
+                      const fqnCandidates = flattener.db.byName(rhsTypePath).filter((s) => s.kind === "Class" || s.kind === "Type");
+                      if (fqnCandidates.length > 0) rhsTypeSym = fqnCandidates[0];
+                    }
+                    if (!rhsTypeSym) {
+                      const rhsShortName = rhsTypePath.split(".").pop()!;
+                      const rhsTypeSyms = flattener.db.byName(rhsShortName).filter((s) => s.kind === "Class" || s.kind === "Type");
+                      rhsTypeSym = rhsTypeSyms.find((s) => s.kind === "Class") ?? rhsTypeSyms[0];
+                    }
+                  }
+                  const baseRhsSym = rhsTypeSym ? (getBaseEnumSymbol(flattener.db, rhsTypeSym) ?? rhsTypeSym) : null;
+                  const rhsLits = baseRhsSym
                     ? (extractEnumLiteralsFromCst(
-                        flattener.db.cstNode(rhsTypeSym.id) as any,
-                        rhsTypeSym.metadata as any,
+                        flattener.db.cstNode(baseRhsSym.id) as any,
+                        baseRhsSym.metadata as any,
                       ) ?? [])
                     : [];
                   const targetLits = enumLiterals
                     ? enumLiterals.map((l: any) => (typeof l === "string" ? l : (l.stringValue ?? l.name ?? String(l))))
                     : [];
-                  const isSubtype = rhsLits.length > 0 && rhsLits.every((lit: string) => targetLits.includes(lit));
+                  const isSubtype =
+                    (rhsLits.length > 0 && rhsLits.every((lit: string) => targetLits.includes(lit))) ||
+                    (rhsLits.length === 0 && targetLits.includes(litShortName));
                   if (!isSubtype) {
                     enumMismatch = true;
                     expectedEnumStr = `enumeration(${targetLits.join(", ")})`;
@@ -7589,7 +7939,26 @@ export function instantiateElements(
                   bText.includes("+") ||
                   bText.includes("-"))
               ) {
-                exprId = lowerStandaloneExpression(flattener, bText, dae, bindingPrefix, compInst.name, varType);
+                const prevClassId = flattener.currentClassId;
+                const prevEvalImports = flattener.currentImports;
+                const evalScopeId =
+                  effectiveParentArg?.evaluationScopeId ??
+                  effectiveClassArg?.evaluationScopeId ??
+                  flattener.db.symbol(elemId)?.parentId ??
+                  flattener.currentClassId;
+                if (evalScopeId) {
+                  flattener.currentClassId = evalScopeId;
+                  const ownerImports = flattener["collectClassImports"]?.(evalScopeId);
+                  if (ownerImports) {
+                    flattener.currentImports = new Map([...flattener.currentImports, ...ownerImports]);
+                  }
+                }
+                try {
+                  exprId = lowerStandaloneExpression(flattener, bText, dae, bindingPrefix, compInst.name, varType);
+                } finally {
+                  flattener.currentClassId = prevClassId;
+                  flattener.currentImports = prevEvalImports;
+                }
               }
 
               if (exprId === null) {
@@ -7764,6 +8133,9 @@ export function instantiateElements(
                 ) {
                   const lhsExprId = dae.addNameExpr(dae.getVarName(varIdx));
                   dae.addEquation(EqKind.Simple, lhsExprId, exprId);
+                  const extMeta = (dae.extensionMetadata ??= {});
+                  const emittedSet = (extMeta["emittedBindingEqVars"] ??= new Set<number>()) as Set<number>;
+                  emittedSet.add(varIdx);
                 }
               }
             }
@@ -8341,6 +8713,10 @@ export function instantiateElements(
                   }
                 }
               }
+            }
+            if (parentMods?.forceFixedFalse) {
+              dae.setVarAttr(varIdx, "fixed", dae.addExpression(ExprKind.BoolLiteral, 0));
+              dae.setVarFixed(varIdx, false);
             }
           } finally {
             flattener.currentBindingCompName = prevBindingCompName;
@@ -9065,7 +9441,18 @@ export function instantiateElements(
         }
         if (arrayDims && arrayDims.length > 0) {
           setNamedArrayShape(dae, name, arrayDims);
-          for (let v = 0; v < dae.varCount; v++) {
+          const sizeVars: number[] = ((state as any).pendingSizeCallVars ??= []);
+          const scannedTo: number = (state as any).pendingSizeScannedCount ?? 0;
+          for (let v = scannedTo; v < dae.varCount; v++) {
+            const vExpr = dae.getVarExpression(v);
+            if (vExpr !== undefined && vExpr >= 0 && dae.getExprKind(vExpr) === ExprKind.Call) {
+              if (dae.interner.resolve(dae.getExprData1(vExpr)) === "size") {
+                sizeVars.push(v);
+              }
+            }
+          }
+          (state as any).pendingSizeScannedCount = dae.varCount;
+          for (const v of sizeVars) {
             const vExpr = dae.getVarExpression(v);
             if (vExpr !== undefined && vExpr >= 0 && dae.getExprKind(vExpr) === ExprKind.Call) {
               const fnStr = dae.interner.resolve(dae.getExprData1(vExpr));
@@ -9295,11 +9682,12 @@ export function instantiateElements(
             const hasColon =
               rawDims &&
               rawDims.some((d: any) => d.kind === "colon" || d.text?.trim() === ":" || d.kind === "flexible");
-            const concreteShape = hasColon
-              ? rawDims!.map((d: any) => (d.kind === "literal" ? d.value : -1))
-              : arrayDims && arrayDims.length > 0 && arrayDims.every((d) => d > 0)
+            const concreteShape =
+              arrayDims && arrayDims.length > 0 && arrayDims.every((d) => d > 0)
                 ? arrayDims
-                : (rawDims?.map((d: any) => (d.kind === "literal" ? d.value : -1)) ?? []);
+                : hasColon
+                  ? rawDims!.map((d: any) => (d.kind === "literal" ? d.value : -1))
+                  : (rawDims?.map((d: any) => (d.kind === "literal" ? d.value : -1)) ?? []);
             if (
               flattener.options.arrayMode === "preserve" &&
               dae.extensionMetadata?.["isOldFrontend"] &&
@@ -9939,6 +10327,8 @@ export function instantiateElements(
             dae.extensionMetadata?.["isOldFrontend"] &&
             variability === Variability.Constant &&
             prefix &&
+            !parentMods?.isRecord &&
+            parentMods?.parentVariability !== Variability.Constant &&
             isNumericLiteralConst &&
             ownerClassId != null
           ) {

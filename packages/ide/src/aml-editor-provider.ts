@@ -140,10 +140,12 @@ export class AmlEditorProvider extends BaseCustomEditorProvider {
   }
 
   private getHtmlForWebview(): string {
+    const nonce = this.getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AutomationML Smart Manufacturing Workbench</title>
   <style>
@@ -191,7 +193,7 @@ export class AmlEditorProvider extends BaseCustomEditorProvider {
   <div id="tab-workcell3d" class="panel"><div id="workcell3dBox" class="svg-box"></div></div>
   <div id="tab-commissioning" class="panel"><div id="commissioningBox" class="code-box"></div></div>
   <div id="tab-projections" class="panel"><div id="projectionsBox" class="code-box"></div></div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', () => {

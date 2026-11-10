@@ -89,4 +89,11 @@ export abstract class BaseCustomEditorProvider implements vscode.CustomTextEdito
       }
     });
   }
+
+  /**
+   * Generates a random cryptographic nonce.
+   */
+  protected getNonce(): string {
+    return getNonce();
+  }
 }

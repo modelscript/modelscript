@@ -26,6 +26,7 @@ Flagship Modelica 3.x physical modeling and simulation compiler (`.mo`) for Mode
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `src/language.ts`                | Modelica 3.x grammar specification, lexer rules, and CST combinators for `@modelscript/dsl` (`buildParser`)              |
 | `src/flattener.ts`               | TypeScript coordinator and hybrid bridge for the arena-native `ModelicaFlattener` (`hybrid`, `wasm`, `ts`, `diff` modes) |
+| `src/flattener/`                 | Modularized flattening subsystems (`declarations`, `equations`, `expressions`, `functions`, `modifications`, `types`)    |
 | `assembly/flattener.ts`          | In-WASM AssemblyScript flattening kernel lowering linear CST nodes directly into `DAEBuilder`                            |
 | `src/queries.ts`                 | Salsa `QueryEngine` semantic queries (`instantiate`, `classInstance`, `resolveSimpleName`, `variability`, `causality`)   |
 | `src/connections.ts`             | `ModelicaPortBalancer` for standard, stream, and expandable connector topological balancing                              |
@@ -36,6 +37,7 @@ Flagship Modelica 3.x physical modeling and simulation compiler (`.mo`) for Mode
 | `transformers/`                  | Bidirectional Triple Graph Grammar (TGG) transformers for SysML v2, OWL 2, and CSV                                       |
 | `tests/testsuite-runner.ts`      | OpenModelica (`omc`) conformance testsuite runner                                                                        |
 | `tests/msl-comparison-runner.ts` | On-the-fly Modelica Standard Library (MSL) verification and benchmark runner                                             |
+| `tests/openipsl-sim-verify.ts`   | OpenIPSL power system transient stability verification runner                                                            |
 
 ---
 

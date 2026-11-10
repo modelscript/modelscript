@@ -12,7 +12,7 @@ import {
   type PsseTransformerLike,
   renderPsseSldSvg,
 } from "@modelscript/diagram";
-import { type PowerFlowResult, type PsseCase, parseRaw, solvePowerFlow } from "@modelscript/psse";
+import { type PowerFlowResult, type PsseCase, parseRaw, solvePowerFlow, solvePowerFlowAsync } from "@modelscript/psse";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -500,26 +500,54 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     }
   }, [loading, rawText]);
 
-  const psseAnalysis = useMemo(() => {
+  const [asyncPowerflow, setAsyncPowerflow] = useState<PowerFlowResult | null>(null);
+
+  const parsedData = useMemo(() => {
     let parsedCase: PsseCase | null = null;
-    let powerflow: PowerFlowResult | null = null;
+    let syncPowerflow: PowerFlowResult | null = null;
     const parsedClient = rawText ? parsePsseRawClient(rawText) : undefined;
 
     if (rawText.trim()) {
       try {
         const candidate = parseRaw(rawText);
-        if (candidate.buses.length > 0) {
+        if (candidate.buses.size > 0) {
           parsedCase = candidate;
-          powerflow = solvePowerFlow(candidate);
+          if (candidate.buses.size <= 500) {
+            syncPowerflow = solvePowerFlow(candidate);
+          }
         }
       } catch (err) {
         console.warn("[PsseSldViewer] parseRaw / solvePowerFlow fallback:", err);
       }
     }
+    return { parsedCase, syncPowerflow, parsedClient };
+  }, [rawText]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const c = parsedData.parsedCase;
+    if (c && c.buses.size > 500) {
+      solvePowerFlowAsync(c)
+        .then((sol) => {
+          if (!cancelled) setAsyncPowerflow(sol);
+        })
+        .catch(() => {});
+    } else {
+      setAsyncPowerflow(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [parsedData.parsedCase]);
+
+  const psseAnalysis = useMemo(() => {
+    const { parsedCase, syncPowerflow, parsedClient } = parsedData;
+    const powerflow = syncPowerflow ?? asyncPowerflow;
+    const parsedCaseBuses = parsedCase ? Array.from(parsedCase.buses.values()) : [];
 
     const buses: PsseBusLike[] =
-      parsedCase?.buses && parsedCase.buses.length > 0
-        ? parsedCase.buses
+      parsedCaseBuses.length > 0
+        ? parsedCaseBuses
         : parsedClient?.buses && parsedClient.buses.length > 0
           ? parsedClient.buses
           : (viewConfig.buses || []).map((b) => ({
@@ -541,7 +569,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     const solvedVms =
       powerflow && powerflow.buses.length > 0
         ? powerflow.buses.map((b) => b.vm).filter((v) => Number.isFinite(v) && v > 0)
-        : buses.map((b) => b.vm).filter((v) => Number.isFinite(v) && v > 0);
+        : buses.map((b) => b.vm).filter((v): v is number => v !== undefined && Number.isFinite(v) && v > 0);
 
     const minVm = solvedVms.length > 0 ? Math.min(...solvedVms) : 1.0;
     const maxVm = solvedVms.length > 0 ? Math.max(...solvedVms) : 1.0;
@@ -549,12 +577,12 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     const totalGenMw =
       viewConfig.metrics?.totalGenMw ??
       (powerflow
-        ? Number(powerflow.buses.reduce((s, b) => s + b.pGen, 0).toFixed(1))
+        ? Number(powerflow.buses.reduce((s, b) => s + (b.pgMw ?? (b as any).pGen ?? 0), 0).toFixed(1))
         : (parsedClient?.totalGenMw ?? 0));
     const totalLoadMw =
       viewConfig.metrics?.totalLoadMw ??
       (powerflow
-        ? Number(powerflow.buses.reduce((s, b) => s + b.pLoad, 0).toFixed(1))
+        ? Number(powerflow.buses.reduce((s, b) => s + (b.plMw ?? (b as any).pLoad ?? 0), 0).toFixed(1))
         : (parsedClient?.totalLoadMw ?? 0));
     const lossesMw =
       viewConfig.metrics?.lossesMw ??
@@ -582,7 +610,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
         converged: powerflow?.converged ?? true,
       },
     };
-  }, [rawText, viewConfig.buses, viewConfig.metrics]);
+  }, [parsedData, asyncPowerflow, viewConfig.buses, viewConfig.metrics]);
 
   const sanitizedSvg = useMemo(() => {
     if (psseAnalysis.buses.length > 0) {
@@ -614,11 +642,20 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           ...(effectiveOverlay ? { powerflow: effectiveOverlay } : {}),
         };
 
-        const built = renderPsseSldSvg(model, {
-          ...(effectiveOverlay ?? {}),
-          powerflow,
-          overlayMode,
-        } as unknown as PssePowerFlowOverlay);
+        const built = renderPsseSldSvg(
+          model,
+          {
+            ...(effectiveOverlay ?? {}),
+            powerflow,
+            overlayMode,
+          } as unknown as PssePowerFlowOverlay,
+          {
+            lodBusThreshold: 500,
+            ...(psseAnalysis.buses.length > 1500
+              ? { viewport: { minX: 0, minY: 0, maxX: 4000, maxY: 3000 } }
+              : {}),
+          },
+        );
         return sanitizeSvgMarkup(built, { isFullScreen, isDark });
       } catch {
         // Fallback to pre-rendered svg if available

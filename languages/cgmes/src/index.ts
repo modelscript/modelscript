@@ -8,6 +8,7 @@
  * conversion to PSS/E and OpenIPSL Modelica, and semantic linting.
  */
 
+export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./parser/cgmes-rdf-parser.js";
 export * from "./projections/cgmes-to-modelica.js";

@@ -363,6 +363,7 @@ export interface SpaceGitDiffFile {
   language: string;
   oldContent: string;
   newContent: string;
+  ancestorContent?: string | undefined;
   additions: number;
   deletions: number;
   status: "added" | "modified" | "deleted";
@@ -371,6 +372,7 @@ export interface SpaceGitDiffFile {
 export interface SpaceGitDiffResult {
   sourceBranch: string;
   targetBranch: string;
+  mergeBaseSha?: string | undefined;
   files: SpaceGitDiffFile[];
   totalAdditions: number;
   totalDeletions: number;
@@ -480,6 +482,20 @@ export function getSpaceGitDiff(opts: {
       return null;
     }
 
+    let mergeBaseSha: string | undefined;
+    try {
+      const mbOut = execFileSync("git", ["-C", opts.repoPath, "merge-base", opts.baseRef, opts.targetRef], {
+        env,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (/^[a-f0-9]{40}$/.test(mbOut)) {
+        mergeBaseSha = mbOut;
+      }
+    } catch {
+      // Merge base calculation fallback (e.g. initial roots or unrelated histories)
+    }
+
     const diffStatOut = execFileSync(
       "git",
       ["-C", opts.repoPath, "diff", "--name-status", opts.baseRef, opts.targetRef],
@@ -514,6 +530,10 @@ export function getSpaceGitDiff(opts: {
         status === "deleted"
           ? ""
           : (readSpaceGitFileAtRef({ repoPath: opts.repoPath, ref: opts.targetRef, filePath }) ?? "");
+      const ancestorContent =
+        mergeBaseSha && status !== "added"
+          ? (readSpaceGitFileAtRef({ repoPath: opts.repoPath, ref: mergeBaseSha, filePath }) ?? undefined)
+          : undefined;
 
       const oldLines = oldContent ? oldContent.split("\n").length : 0;
       const newLines = newContent ? newContent.split("\n").length : 0;
@@ -540,6 +560,7 @@ export function getSpaceGitDiff(opts: {
         language: inferLanguageFromFilename(filePath),
         oldContent,
         newContent,
+        ancestorContent,
         additions,
         deletions,
         status,
@@ -549,6 +570,7 @@ export function getSpaceGitDiff(opts: {
     return {
       sourceBranch: opts.targetRef,
       targetBranch: opts.baseRef,
+      mergeBaseSha,
       files,
       totalAdditions,
       totalDeletions,

@@ -131,7 +131,7 @@ export class TreeViewController implements vscode.Disposable {
         this._disposables.push(
           vscode.window.onDidChangeActiveTextEditor((editor) => {
             const docUri = editor?.document.uri.toString();
-            if (docUri && /\.(?:fss|owl|ttl)$/i.test(docUri)) {
+            if (docUri && /\.(?:fss|owl|ttl|ofn|omn)$/i.test(docUri)) {
               owlClassProvider.setDocumentUri(docUri);
               owlPropertyProvider.setDocumentUri(docUri);
             }

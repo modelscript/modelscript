@@ -248,6 +248,31 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  polyglot_benchmarks:
+    name: Polyglot Industrial Benchmarks
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache Benchmarks
+        uses: actions/cache@v4
+        with:
+          path: .cache/benchmarks
+          key: ${{ runner.os }}-benchmarks-${{ hashFiles('scripts/fetch-benchmarks.ts', 'packages/exchange/src/catalog/benchmarks.catalog.json') }}
+          restore-keys: |
+            ${{ runner.os }}-benchmarks-
+      - name: Fetch Benchmarks
+        run: npm run fetch:benchmarks
+      - name: Run Industrial Benchmark Matrix
+        run: npm run test:benchmarks
+
   publish_reports:
     needs: [test, modelica_testsuite]
     runs-on: ubuntu-latest
@@ -548,6 +573,7 @@ jobs:
       - test
       - modelica_testsuite
       - cross_os_smoke
+      - polyglot_benchmarks
     runs-on: ubuntu-latest
     steps:
       - name: Verify All Required Jobs Succeeded
@@ -558,7 +584,8 @@ jobs:
           echo "  test: ${{ needs.test.result }}"
           echo "  modelica_testsuite: ${{ needs.modelica_testsuite.result }}"
           echo "  cross_os_smoke: ${{ needs.cross_os_smoke.result }}"
-          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.cross_os_smoke.result }}"; do
+          echo "  polyglot_benchmarks: ${{ needs.polyglot_benchmarks.result }}"
+          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.cross_os_smoke.result }}" "${{ needs.polyglot_benchmarks.result }}"; do
             if [ "$res" != "success" ] && [ "$res" != "skipped" ]; then
               echo "Error: Required job finished with status '$res'"
               exit 1

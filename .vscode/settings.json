@@ -1,4 +1,17 @@
 {
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.tsserver.maxTsServerMemory": 8192,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.eol": "\n",
+
   "files.watcherExclude": {
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true,
@@ -7,6 +20,35 @@
     "**/.cache/**": true,
     "**/dist/**": true,
     "**/build/**": true,
-    "**/coverage/**": true
+    "**/coverage/**": true,
+    "**/.system_generated/**": true,
+    "**/data/git-repos/**": true,
+    "**/testsuite/**/.cache/**": true,
+    "**/*.wasm": true
+  },
+
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/*.code-search": true,
+    "**/.nx": true,
+    "**/.cache": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/coverage": true,
+    "**/.system_generated": true,
+    "**/data/git-repos": true,
+    "**/testsuite/**/.cache": true,
+    "**/*.wasm": true,
+    "**/*.map": true
+  },
+
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/.nx/cache": true,
+    "**/.turbo": true,
+    "**/*.tsbuildinfo": true
   }
 }

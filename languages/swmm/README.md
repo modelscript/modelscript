@@ -13,7 +13,7 @@ US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydr
 - **1D Open-Channel & Circular Conduit Hydraulic Routing Solver (`routeNetworkFlow`, `computeCircularSection`)**: Computes exact circular and rectangular partially-full wetted cross-section geometry ($\theta = 2 \arccos(1 - 2d/D)$, area $A$, wetted perimeter $P_w$, hydraulic radius $R_h = A / P_w$), Manning open-channel discharge ($Q = \frac{k_u}{n} A R_h^{2/3} S_0^{1/2}$), full-pipe capacity ratio ($Q / Q_{\text{full}}$), nodal hydraulic head balance, and surcharge/overflow detection (`NORMAL`, `SURCHARGED`, `DRY`).
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerSwmmToDae`)**: Lowers junction/storage nodal continuity ODEs ($A_{\text{node}} \frac{dH_i}{dt} = Q_{\text{inflow},i} + \sum Q_{\text{in}} - \sum Q_{\text{out}}$), Manning open-channel conduit momentum equations, and weir/orifice discharge equations directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **13 Pre-Flight Urban Drainage & Sewer Lint Rules (`M8201`–`M8213`, `lintSwmm`)**: Static verification of conduit/pump/weir/orifice endpoint nodes, adverse conduit bed slopes ($z_{\text{in}} < z_{\text{out}}$), missing `[XSECTIONS]` declarations, unsupported outfall boundary types, manhole surcharge overflow risks ($z_{\text{rim}} < z_{\text{crown}}$), duplicate node/link identifiers, non-positive Manning's roughness $n$ or conduit length, isolated junctions, dangling subcatchment outlets, negative weir crest offsets, and invalid discharge coefficients $C_d$.
-- **Modelica 3.x Stormwater Network Projection (`swmmToModelica`)**: Synthesizes standalone Modelica 3.x open-channel and storage hydraulic network models.
+- **Modelica 3.x Stormwater Network Projection, GIS Ingestion & EPA NetDMR Export (`swmmToModelica`, `src/spatial/gis-ingestor.ts`, `src/exporters/netdmr-exporter.ts`)**: Synthesizes standalone Modelica 3.x open-channel hydraulic network models, ingests GeoJSON subcatchment/conduit layers, and exports US EPA NPDES NetDMR CSO/SSO overflow discharge monitoring reports. Exposes 3 dedicated MCP tools (`swmm_run_simulation`, `swmm_detention_pond_size`, `swmm_lid_green_infrastructure`).
 - **Multi-File Workspace Indexing & LSP (`SwmmWorkspaceIndex`, `provideSwmmHover`, `provideSwmmCompletions`)**: Implements `IWorkspaceIndex` across SWMM `.inp` drainage models with node/conduit hover cards, section/keyword completions, and AST writeback.
 
 ---
@@ -29,11 +29,14 @@ US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydr
 | `src/parser/swmm-parser.ts`           | `parseSwmm` zero-regex parser for US EPA SWMM 5.x `.inp` files                                                           |
 | `src/lints/swmm-linter.ts`            | `lintSwmm` sewer topology, adverse slope, surcharge risk, and Manning roughness linter                                   |
 | `src/lints/index.ts`                  | Linter barrel exports                                                                                                    |
-| `src/solver/hydraulic-solver.ts`      | `routeNetworkFlow` and `computeCircularSection` 1D Manning open-channel hydraulic routing solver                         |
+| `src/solver/hydraulic-solver.ts`      | `routeNetworkFlow`, Saint-Venant dynamic wave, Preissmann slot surcharge, detention pond sizing, and LID green infra     |
+| `src/spatial/gis-ingestor.ts`         | GeoJSON spatial subcatchment, junction, and conduit ingestion                                                            |
+| `src/exporters/netdmr-exporter.ts`    | US EPA NPDES NetDMR CSO/SSO overflow compliance report exporter                                                          |
 | `src/dae/swmm-to-dae.ts`              | `lowerSwmmToDae` direct lowering of junctions, storage units, and conduits into `DAEBuilder` linear memory               |
 | `src/projections/swmm-to-modelica.ts` | `swmmToModelica` translator to Modelica 3.x open-channel hydraulic models                                                |
 | `src/workspace-index.ts`              | `SwmmWorkspaceIndex` implementing `IWorkspaceIndex` across `.inp` files                                                  |
 | `src/lsp.ts`                          | LSP hover, completion, and symbol providers                                                                              |
+| `tests/swmm-benchmark-runner.ts`      | US EPA SWMM hydraulic routing and runoff verification benchmark runner                                                   |
 
 ---
 

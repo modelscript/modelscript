@@ -1367,6 +1367,89 @@
     ]
   },
   {
+    "slug": "ampl",
+    "name": "AMPL",
+    "packageName": "@modelscript/ampl",
+    "sources": [
+      "languages/ampl/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M9501",
+        "rule": "syntax-error",
+        "severity": "error",
+        "message": "Syntax error in AMPL source: <detail>."
+      },
+      {
+        "code": "M9502",
+        "rule": "undeclared-set",
+        "severity": "error",
+        "message": "Reference to undeclared set '<setName>'."
+      },
+      {
+        "code": "M9503",
+        "rule": "undeclared-param",
+        "severity": "error",
+        "message": "Reference to undeclared parameter '<paramName>'."
+      },
+      {
+        "code": "M9504",
+        "rule": "undeclared-var",
+        "severity": "error",
+        "message": "Reference to undeclared variable '<varName>'."
+      },
+      {
+        "code": "M9505",
+        "rule": "dimension-mismatch",
+        "severity": "error",
+        "message": "Dimension mismatch for '<name>': expected <expected> indices, but found <actual>."
+      },
+      {
+        "code": "M9506",
+        "rule": "bounds-conflict",
+        "severity": "error",
+        "message": "Variable or constraint '<name>' specifies conflicting bounds: lower bound (<lb>) exceeds upper bound (<ub>)."
+      },
+      {
+        "code": "M9507",
+        "rule": "division-by-zero",
+        "severity": "error",
+        "message": "Division by zero detected in expression '<context>'."
+      },
+      {
+        "code": "M9508",
+        "rule": "nonlinear-integer-constraint",
+        "severity": "warning",
+        "message": "Constraint '<conName>' contains nonlinear terms with integer/binary variable '<varName>'. Global solver (Couenne/Bonmin) required."
+      },
+      {
+        "code": "M9509",
+        "rule": "empty-index-set",
+        "severity": "warning",
+        "message": "Index set '<setName>' is empty during instantiation of '<context>'."
+      },
+      {
+        "code": "M9510",
+        "rule": "duplicate-declaration",
+        "severity": "error",
+        "message": "Duplicate declaration of <kind> '<name>'."
+      },
+      {
+        "code": "M9511",
+        "rule": "set-arity-mismatch",
+        "severity": "error",
+        "message": "Set '<setName>' declared with dimen <expected> contains member tuple with arity <actual>."
+      },
+      {
+        "code": "M9512",
+        "rule": "subset-relation-violation",
+        "severity": "error",
+        "message": "Set '<setName>' member '<member>' is not in parent set '<parentSet>' required by 'within' clause."
+      }
+    ]
+  },
+  {
     "slug": "sysml2",
     "name": "SysML v2 / KerML",
     "packageName": "@modelscript/sysml2",
@@ -3618,6 +3701,59 @@
     ]
   },
   {
+    "slug": "gtfs",
+    "name": "GTFS",
+    "packageName": "@modelscript/gtfs",
+    "sources": [
+      "languages/gtfs/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "gtfs-parse-error",
+        "severity": "error",
+        "message": "Syntax or structure error in GTFS feed: <err>."
+      },
+      {
+        "code": "M2001",
+        "rule": "gtfs-stop-not-found",
+        "severity": "error",
+        "message": "Stop '<stopId>' referenced in trip '<tripId>' is not declared in stops table."
+      },
+      {
+        "code": "M2002",
+        "rule": "gtfs-route-not-found",
+        "severity": "error",
+        "message": "Route '<routeId>' referenced in trip '<tripId>' is not declared in routes table."
+      },
+      {
+        "code": "M3001",
+        "rule": "gtfs-excessive-speed",
+        "severity": "error",
+        "message": "Trip '<tripId>' segment speed (<value> km/h) exceeds safe urban transit threshold (120 km/h)."
+      },
+      {
+        "code": "M3002",
+        "rule": "gtfs-excessive-acceleration",
+        "severity": "warning",
+        "message": "Trip '<tripId>' segment acceleration (<value> m/s^2) exceeds passenger comfort standard (2.5 m/s^2)."
+      },
+      {
+        "code": "M4001",
+        "rule": "gtfs-battery-depletion",
+        "severity": "error",
+        "message": "Electric bus battery SOC drops to <value>% on trip '<tripId>', breaching 10% critical reserve limit."
+      },
+      {
+        "code": "M4002",
+        "rule": "gtfs-time-reversal",
+        "severity": "error",
+        "message": "Trip '<tripId>' sequence <stopSeq> has arrival time before preceding departure time."
+      }
+    ]
+  },
+  {
     "slug": "gensys",
     "name": "GENSYS",
     "packageName": "@modelscript/gensys",
@@ -3980,6 +4116,124 @@
     ]
   },
   {
+    "slug": "powerfactory",
+    "name": "DIgSILENT PowerFactory",
+    "packageName": "@modelscript/powerfactory",
+    "sources": [
+      "languages/powerfactory/src/lints/index.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "PF1001",
+        "rule": "floating-terminal",
+        "severity": "warning",
+        "message": "Terminal '<terminalName>' is floating and not connected to any electrical equipment."
+      },
+      {
+        "code": "PF1002",
+        "rule": "invalid-line-parameters",
+        "severity": "error",
+        "message": "Line '<lineName>' lacks explicit resistance R1/type definition or has non-positive length."
+      },
+      {
+        "code": "PF1003",
+        "rule": "transformer-voltage-mismatch",
+        "severity": "warning",
+        "message": "Transformer '<trafoName>' rated HV voltage differs by >20% from connected bus nominal voltage."
+      },
+      {
+        "code": "PF1004",
+        "rule": "generator-voltage-setpoint-bounds",
+        "severity": "warning",
+        "message": "Generator '<genName>' voltage setpoint is outside typical operating range [0.8, 1.2] pu."
+      },
+      {
+        "code": "PF1005",
+        "rule": "generator-power-exceeds-mbase",
+        "severity": "warning",
+        "message": "Generator '<genName>' scheduled active power exceeds rated apparent power MVA."
+      },
+      {
+        "code": "PF1008",
+        "rule": "unresolved-terminal-reference",
+        "severity": "error",
+        "message": "Element '<elementName>' references unknown terminal '<terminalId>'."
+      }
+    ]
+  },
+  {
+    "slug": "pslf",
+    "name": "GE Vernova PSLF",
+    "packageName": "@modelscript/pslf",
+    "sources": [
+      "languages/pslf/src/lints/index.ts"
+    ],
+    "cli": "msx pslf lint",
+    "rules": [
+      {
+        "code": "PSLF-E001",
+        "rule": "missing-slack-bus",
+        "severity": "error",
+        "message": "No slack / swing bus (busType 3) defined in the power flow case."
+      },
+      {
+        "code": "PSLF-E002",
+        "rule": "dangling-branch-bus",
+        "severity": "error",
+        "message": "Transmission line connects to non-existent bus '<busNumber>'."
+      },
+      {
+        "code": "PSLF-E003",
+        "rule": "dangling-transformer-bus",
+        "severity": "error",
+        "message": "Transformer connects to non-existent bus '<busNumber>'."
+      },
+      {
+        "code": "PSLF-E004",
+        "rule": "dangling-generator-bus",
+        "severity": "error",
+        "message": "Generator is connected to non-existent bus '<busNumber>'."
+      },
+      {
+        "code": "PSLF-E005",
+        "rule": "inverted-generator-reactive-limits",
+        "severity": "error",
+        "message": "Generator reactive lower limit Q_min (<qmin> Mvar) exceeds Q_max (<qmax> Mvar)."
+      },
+      {
+        "code": "PSLF-E006",
+        "rule": "dangling-dynamic-model-bus",
+        "severity": "error",
+        "message": "Dynamic model '<modelType>' refers to non-existent power flow bus '<busNumber>'."
+      },
+      {
+        "code": "PSLF-E007",
+        "rule": "non-positive-generator-inertia",
+        "severity": "error",
+        "message": "Classical generator model has non-positive inertia H = '<inertiaH>'."
+      },
+      {
+        "code": "PSLF-W001",
+        "rule": "non-positive-branch-reactance",
+        "severity": "warning",
+        "message": "Branch series reactance X is non-positive (<xPu> pu)."
+      },
+      {
+        "code": "PSLF-W002",
+        "rule": "transformer-ratio-out-of-bounds",
+        "severity": "warning",
+        "message": "Transformer off-nominal turns ratio <ratio> pu is outside typical operating envelope [0.8, 1.2]."
+      },
+      {
+        "code": "PSLF-W003",
+        "rule": "isolated-bus",
+        "severity": "warning",
+        "message": "Bus '<busName>' is electrically isolated without any in-service branch or transformer connections."
+      }
+    ]
+  },
+  {
     "slug": "cgmes",
     "name": "CIM / CGMES",
     "packageName": "@modelscript/cgmes",
@@ -4136,6 +4390,123 @@
         "rule": "capacitor-overvoltage-risk",
         "severity": "warning",
         "message": "Capacitor bank '<capName>' kVAR rating (<kvar>) exceeds feeder minimum load (<loadKvar>), risking overvoltage."
+      }
+    ]
+  },
+  {
+    "slug": "ocpp",
+    "name": "OCPP",
+    "packageName": "@modelscript/ocpp",
+    "sources": [
+      "languages/ocpp/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "ocpp-parse-error",
+        "severity": "error",
+        "message": "Syntax or JSON-RPC format error in OCPP deck: <err>."
+      },
+      {
+        "code": "M3001",
+        "rule": "ocpp-power-limit-exceeded",
+        "severity": "warning",
+        "message": "Station '<stationId>' total peak power draw (<totalKw> kW) exceeds upstream grid transformer limit (<limitKw> kW)."
+      },
+      {
+        "code": "M3002",
+        "rule": "ocpp-invalid-soc-range",
+        "severity": "error",
+        "message": "Charging session '<txId>' has invalid SoC range: current <currentSoC>, target <targetSoC>. Values must be in [0.0, 1.0] with target > current."
+      },
+      {
+        "code": "M4001",
+        "rule": "ocpp-connector-not-found",
+        "severity": "error",
+        "message": "EVSE '<evseId>', connector '<connId>' in station '<stationId>' has invalid ID (must be positive integer)."
+      },
+      {
+        "code": "M5001",
+        "rule": "ocpp-deadline-infeasible",
+        "severity": "warning",
+        "message": "Session '<txId>' requires <value> kWh, but connector can only deliver <value> kWh in <departureMinutes> min. Target SoC will not be reached before departure."
+      }
+    ]
+  },
+  {
+    "slug": "openadr",
+    "name": "OpenADR",
+    "packageName": "@modelscript/openadr",
+    "sources": [
+      "languages/openadr/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "openadr-parse-error",
+        "severity": "error",
+        "message": "Syntax or XML/JSON format error in OpenADR payload: <err>."
+      },
+      {
+        "code": "M3001",
+        "rule": "openadr-negative-duration",
+        "severity": "error",
+        "message": "Event '<eventId>' interval has invalid non-positive duration: <duration>s. Duration must be strictly positive."
+      },
+      {
+        "code": "M3002",
+        "rule": "openadr-invalid-signal-payload",
+        "severity": "warning",
+        "message": "Event '<eventId>' has negative payload (<payload>) for signalType '<signalType>'."
+      },
+      {
+        "code": "M4001",
+        "rule": "openadr-empty-intervals",
+        "severity": "error",
+        "message": "Event '<eventId>' declared with status 'active' has zero intervals specified."
+      }
+    ]
+  },
+  {
+    "slug": "tough",
+    "name": "LBNL TOUGH",
+    "packageName": "@modelscript/tough",
+    "sources": [
+      "languages/tough/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "tough-parse-error",
+        "severity": "error",
+        "message": "Syntax or block structure error in TOUGH deck: <err>."
+      },
+      {
+        "code": "M2001",
+        "rule": "tough-rock-not-found",
+        "severity": "error",
+        "message": "Element '<elem>' references rock material '<rock>', which is not defined in ROCKS block."
+      },
+      {
+        "code": "M3001",
+        "rule": "tough-invalid-porosity",
+        "severity": "error",
+        "message": "Rock '<rock>' has invalid porosity <phi>. Porosity must satisfy 0.0 < phi < 1.0."
+      },
+      {
+        "code": "M4001",
+        "rule": "tough-dangling-connection",
+        "severity": "error",
+        "message": "Connection #<connIndex> references undefined grid block '<elem>'."
+      },
+      {
+        "code": "M5001",
+        "rule": "tough-negative-temperature",
+        "severity": "warning",
+        "message": "Element '<elem>' initial temperature is sub-zero (<tempC> °C). Sub-zero temperatures risk freezing phase changes not handled by standard EOS1."
       }
     ]
   },
@@ -4851,6 +5222,100 @@
     ]
   },
   {
+    "slug": "optical",
+    "name": "OpenROADM & Telcordia .sor",
+    "packageName": "@modelscript/optical",
+    "sources": [
+      "languages/optical/src/errors.ts"
+    ],
+    "cli": "msx optical lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "osnr-margin-exhausted",
+        "severity": "error",
+        "message": "Channel '<channelId>' GSNR (<gsnrDb> dB) is below required FEC threshold (<requiredDb> dB)."
+      },
+      {
+        "code": "M1002",
+        "rule": "edfa-input-power-underflow",
+        "severity": "warning",
+        "message": "Amplifier '<ampId>' input power (<inputDbm> dBm) is below operational sensitivity threshold (<sensitivityDbm> dBm)."
+      },
+      {
+        "code": "M1003",
+        "rule": "nonlinear-power-threshold-exceeded",
+        "severity": "warning",
+        "message": "Span '<spanId>' total launch power (<powerDbm> dBm) exceeds non-linear Kerr threshold (<thresholdDbm> dBm)."
+      },
+      {
+        "code": "M1004",
+        "rule": "roadm-colorless-contention",
+        "severity": "error",
+        "message": "ROADM '<nodeId>' SRG bank <srgNum> has frequency contention at <freqThz> THz between '<ch1>' and '<ch2>'."
+      },
+      {
+        "code": "M1005",
+        "rule": "uncompensated-chromatic-dispersion",
+        "severity": "error",
+        "message": "Channel '<channelId>' accumulated chromatic dispersion (<accumPsPerNm> ps/nm) exceeds DSP buffer limit (<limitPsPerNm> ps/nm)."
+      },
+      {
+        "code": "M1006",
+        "rule": "otdr-high-loss-event",
+        "severity": "error",
+        "message": "OTDR Event #<evNum> at NaNm specifies high loss (<lossDb> dB), exceeding max allowable (<maxDb> dB)."
+      },
+      {
+        "code": "M1007",
+        "rule": "srlg-diversity-violation",
+        "severity": "error",
+        "message": "Protection pair '<ch1>' and '<ch2>' share common-risk conduit/trench '<srlgId>'."
+      }
+    ]
+  },
+  {
+    "slug": "ran",
+    "name": "NSMA WG16 & Planet Antenna",
+    "packageName": "@modelscript/ran",
+    "sources": [
+      "languages/ran/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M2001",
+        "rule": "fresnel-zone-obstruction",
+        "severity": "error",
+        "message": "Microwave link '<linkId>' has terrain obstacle at <distKm> km penetrating 1st Fresnel zone (clearance ratio <ratio> < 0.60)."
+      },
+      {
+        "code": "M2002",
+        "rule": "link-availability-sub-five-nines",
+        "severity": "warning",
+        "message": "Microwave link '<linkId>' annual availability (<avail>%) is below 99.999% SLA (<unavailMin> minutes/year outage)."
+      },
+      {
+        "code": "M2003",
+        "rule": "fcc-eirp-limit-exceeded",
+        "severity": "error",
+        "message": "Microwave link '<linkId>' EIRP (<eirpDbm> dBm) exceeds regulatory FCC Part 101 ceiling (<maxDbm> dBm)."
+      },
+      {
+        "code": "M2004",
+        "rule": "polarization-mismatch",
+        "severity": "error",
+        "message": "Link '<linkId>' declares polarization '<txPol>' but antenna specifies incompatible '<antPol>'."
+      },
+      {
+        "code": "M2005",
+        "rule": "antenna-downtilt-out-of-bounds",
+        "severity": "warning",
+        "message": "Antenna '<antenna>' declares electrical downtilt (<tilt> deg) outside typical operational range [0.0, 16.0 deg]."
+      }
+    ]
+  },
+  {
     "slug": "urdf",
     "name": "URDF / Xacro",
     "packageName": "@modelscript/urdf",
@@ -5386,6 +5851,159 @@
         "rule": "invalid-discharge-coefficient",
         "severity": "error",
         "message": "Link '<linkId>' specifies non-positive discharge coefficient (Cd = <cd>)."
+      }
+    ]
+  },
+  {
+    "slug": "hec-ras",
+    "name": "USACE HEC-RAS",
+    "packageName": "@modelscript/hec-ras",
+    "sources": [
+      "languages/hec-ras/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "hecras-parse-error",
+        "severity": "error",
+        "message": "Syntax error in HEC-RAS deck: <err>."
+      },
+      {
+        "code": "M2001",
+        "rule": "hecras-reach-not-found",
+        "severity": "error",
+        "message": "River '<river>', reach '<reach>' was referenced but not defined in geometry."
+      },
+      {
+        "code": "M3001",
+        "rule": "hecras-station-inversion",
+        "severity": "error",
+        "message": "Cross-section at station '<station>' has inverted station offsets: <currSta> <= <prevSta>. Offsets must be strictly monotonically increasing."
+      },
+      {
+        "code": "M3002",
+        "rule": "hecras-manning-out-of-bounds",
+        "severity": "warning",
+        "message": "Manning roughness coefficient <n> at station '<station>' is outside typical physical bounds (0.01 - 0.20)."
+      },
+      {
+        "code": "M3003",
+        "rule": "hecras-bank-station-out-of-bounds",
+        "severity": "error",
+        "message": "Bank station <bank> at station '<station>' is outside cross-section limits [<minSta>, <maxSta>]."
+      },
+      {
+        "code": "M4001",
+        "rule": "hecras-disconnected-reach",
+        "severity": "error",
+        "message": "River reach '<river>, <reach>' has fewer than 2 cross-sections and cannot form a valid conveyance profile."
+      },
+      {
+        "code": "M5001",
+        "rule": "hecras-adverse-slope",
+        "severity": "warning",
+        "message": "Adverse bed slope detected between upstream station '<usStation>' (invert <usBed> m) and downstream station '<dsStation>' (invert <dsBed> m)."
+      },
+      {
+        "code": "M5002",
+        "rule": "hecras-missing-downstream-boundary",
+        "severity": "error",
+        "message": "Reach '<river>, <reach>' is missing a downstream boundary condition (Normal Depth, Known WS, or Rating Curve)."
+      }
+    ]
+  },
+  {
+    "slug": "modflow",
+    "name": "USGS MODFLOW",
+    "packageName": "@modelscript/modflow",
+    "sources": [
+      "languages/modflow/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "modflow-parse-error",
+        "severity": "error",
+        "message": "Syntax or structure error in MODFLOW deck: <err>."
+      },
+      {
+        "code": "M2001",
+        "rule": "modflow-cell-out-of-bounds",
+        "severity": "error",
+        "message": "Grid cell (<layer>, <row>, <col>) is out of bounds for grid dimensions (<maxL>, <maxR>, <maxC>)."
+      },
+      {
+        "code": "M3001",
+        "rule": "modflow-invalid-conductivity",
+        "severity": "error",
+        "message": "Hydraulic conductivity K = <k> is invalid. K must be strictly positive (K > 0)."
+      },
+      {
+        "code": "M3002",
+        "rule": "modflow-invalid-storage",
+        "severity": "error",
+        "message": "Aquifer storage parameter <param> = <val> is invalid. Value must be non-negative."
+      },
+      {
+        "code": "M4001",
+        "rule": "modflow-river-stage-below-bottom",
+        "severity": "error",
+        "message": "River stage <stage> m is lower than river bed bottom elevation <rbot> m."
+      },
+      {
+        "code": "M4002",
+        "rule": "modflow-layer-elevation-inversion",
+        "severity": "error",
+        "message": "Layer <layer> has bottom elevation (<botm>) higher than or equal to its top elevation (<top>)."
+      }
+    ]
+  },
+  {
+    "slug": "landgem",
+    "name": "EPA LandGEM",
+    "packageName": "@modelscript/landgem",
+    "sources": [
+      "languages/landgem/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "landgem-parse-error",
+        "severity": "error",
+        "message": "Syntax or structure error in LandGEM / Biogas deck: <err>."
+      },
+      {
+        "code": "M2001",
+        "rule": "landgem-missing-waste-data",
+        "severity": "error",
+        "message": "Landfill site '<site>' has no historical or projected waste acceptance cohorts."
+      },
+      {
+        "code": "M3001",
+        "rule": "landgem-invalid-kinetic-parameter",
+        "severity": "error",
+        "message": "Kinetic parameter <param> = <val> is invalid. Value must be strictly positive (<param> > 0)."
+      },
+      {
+        "code": "M3002",
+        "rule": "landgem-digester-ph-inhibition",
+        "severity": "error",
+        "message": "Digester '<digester>' operating pH (<ph>) causes severe methanogenic inhibition. Optimum pH is 6.8 - 7.6."
+      },
+      {
+        "code": "M4001",
+        "rule": "landgem-invalid-year-range",
+        "severity": "error",
+        "message": "Landfill site '<site>' closing year (<close>) must be greater than or equal to opening year (<open>)."
+      },
+      {
+        "code": "M4002",
+        "rule": "landgem-negative-waste-mass",
+        "severity": "error",
+        "message": "Waste acceptance in year <year> has negative mass (<mass> Mg). Waste mass must be non-negative."
       }
     ]
   },

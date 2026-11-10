@@ -123,6 +123,56 @@ test("EPANET CLI Commands (msx epanet inspect, lint, solve, to-modelica, to-dae)
     }
   });
 
+  await t.test("msx epanet from-gis", async () => {
+    const pipesGeoJsonFile = path.join(tmpDir, "pipes.geojson");
+    const outInpFile = path.join(tmpDir, "gis_network.inp");
+    fs.writeFileSync(
+      pipesGeoJsonFile,
+      JSON.stringify({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "PIPE_A",
+            properties: { diameter: 250, roughness: 125 },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [0, 0],
+                [100, 0],
+              ],
+            },
+          },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => logs.push(args.join(" "));
+
+    try {
+      await (EpanetCommand.handler as any)({
+        action: "from-gis",
+        files: [pipesGeoJsonFile],
+        out: outInpFile,
+        diameter: 250,
+        demand: 2.5,
+        title: "CLI GIS Network",
+      });
+
+      assert.ok(fs.existsSync(outInpFile));
+      const inp = fs.readFileSync(outInpFile, "utf-8");
+      assert.ok(inp.includes("CLI GIS Network"));
+      assert.ok(inp.includes("PIPE_A"));
+      assert.ok(logs.some((l) => l.includes("EPANET GIS Ingestion Succeeded")));
+      assert.ok(logs.some((l) => l.includes("Pipes:      1")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
   // Cleanup
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

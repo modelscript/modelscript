@@ -2,7 +2,9 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildPscadDiagram } from "../src/pscad-diagram-builder.js";
 import {
+  buildPsseCanvasScene,
   buildPsseDiagram,
   classifyGeneratorKind,
   getVoltageColor,
@@ -142,3 +144,73 @@ test("PSS/E SVG: Renders valid standalone SVG markup with generator callouts and
   assert.ok(svg.includes("SC · 0.0 MW"));
   assert.ok(svg.endsWith("</svg>\n"));
 });
+
+test("PSS/E Scale: Viewport frustum culling, automatic LOD (>500 buses), and Canvas 2D scene builder", () => {
+  const largeCase: PsseCaseLike = {
+    title1: "600-Bus Synthetic Grid",
+    buses: [],
+    branches: [],
+    generators: [],
+    loads: [],
+  };
+  for (let i = 1; i <= 600; i++) {
+    largeCase.buses.push({ i, name: `B${i}`, baseKv: 230, ide: i === 1 ? 3 : 1, vm: 1.0 });
+    if (i > 1) {
+      largeCase.branches.push({ i: i - 1, j: i, ckt: "1", r: 0.01, x: 0.05, b: 0.01, st: 1 });
+    }
+    if (i % 10 === 0) {
+      largeCase.generators.push({ i, id: "1", pg: 50, qg: 10, stat: 1 });
+      largeCase.loads.push({ i, id: "1", pl: 40, ql: 15, status: 1 });
+    }
+  }
+
+  // 1. Automatic LOD mode (600 > 500 buses) omits secondary generator/load sub-nodes and edge labels
+  const lodDiag = buildPsseDiagram(largeCase);
+  assert.equal(
+    lodDiag.cells.filter((c) => c.id.startsWith("gen_") || c.id.startsWith("load_")).length,
+    0,
+    "LOD mode should skip secondary generator/load nodes above 500 buses",
+  );
+  assert.equal(lodDiag.cells.filter((c) => c.id.startsWith("bus_")).length, 600);
+
+  // 2. Viewport frustum culling restricts emitted cells to visible spatial window
+  const culledDiag = buildPsseDiagram(largeCase, undefined, {
+    viewport: { minX: 0, minY: 0, maxX: 600, maxY: 600 },
+  });
+  const culledBusCount = culledDiag.cells.filter((c) => c.id.startsWith("bus_")).length;
+  assert.ok(culledBusCount > 0 && culledBusCount < 60, `Expected culled bus count < 60, got ${culledBusCount}`);
+
+  // 3. Flat Canvas 2D scene descriptor
+  const scene = buildPsseCanvasScene(largeCase);
+  assert.equal(scene.buses.length, 600);
+  assert.equal(scene.edges.length, 599);
+});
+
+test("PSCAD Scale: Viewport frustum culling and LOD mode in buildPscadDiagram", () => {
+  const project = {
+    name: "LargeSchem",
+    rootModule: {
+      name: "Main",
+      buses: [
+        { id: "b1", name: "Bus1", position: { x: 100, y: 100 }, length: 80 },
+        { id: "b2", name: "Bus2", position: { x: 5000, y: 5000 }, length: 80 },
+      ],
+      components: [
+        { id: "c1", definitionName: "master:source3", position: { x: 120, y: 100 }, parameters: {} },
+        { id: "c2", definitionName: "master:xfmr-3p2w", position: { x: 5100, y: 5000 }, parameters: {} },
+      ],
+      wires: [
+        { id: "w1", vertices: [{ x: 100, y: 100 }, { x: 120, y: 100 }] },
+        { id: "w2", vertices: [{ x: 5000, y: 5000 }, { x: 5100, y: 5000 }] },
+      ],
+    },
+  };
+
+  const culled = buildPscadDiagram(project, undefined, {
+    viewport: { minX: 0, minY: 0, maxX: 400, maxY: 400 },
+    zoom: 0.3,
+  });
+  assert.equal(culled.metadata.nodeCount, 2);
+  assert.equal(culled.metadata.edgeCount, 1);
+});
+

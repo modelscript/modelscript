@@ -56,13 +56,27 @@ export class MemoryQueryCacheStore implements QueryCacheStore {
 export function serializeMemo(memo: Memo): Record<string, unknown> {
   const out: Record<string, unknown> = {
     ...memo,
-    dependencies:
+  };
+  if (memo.inputs) {
+    out["inputs"] = Array.from(memo.inputs);
+  }
+  if (memo.queries) {
+    out["queries"] = memo.queries;
+  }
+  if (memo.byNames) {
+    out["byNames"] = memo.byNames;
+  }
+  if (memo.domains) {
+    out["domains"] = memo.domains;
+  }
+  if (memo.dependencies) {
+    out["dependencies"] =
       memo.dependencies instanceof Set
         ? Array.from(memo.dependencies)
         : Array.isArray(memo.dependencies)
           ? memo.dependencies
-          : [],
-  };
+          : [];
+  }
   if (memo.byNameLookups !== undefined) {
     out["byNameLookups"] =
       memo.byNameLookups instanceof Set
@@ -93,12 +107,39 @@ export function serializeMemo(memo: Memo): Record<string, unknown> {
 export function deserializeMemo(raw: any): Memo {
   if (!raw || typeof raw !== "object") return raw;
   const memo: any = { ...raw };
+  if (Array.isArray(raw.inputs)) {
+    memo.inputs = new Int32Array(raw.inputs);
+  }
+  if (Array.isArray(raw.queries)) {
+    memo.queries = raw.queries;
+  }
+  if (Array.isArray(raw.byNames)) {
+    memo.byNames = raw.byNames;
+  }
+  if (Array.isArray(raw.domains)) {
+    memo.domains = raw.domains;
+  }
   if (Array.isArray(raw.dependencies)) {
     memo.dependencies = raw.dependencies;
+    // Migrate legacy dependencies to compact typed inputs if missing
+    if (!memo.inputs) {
+      const inputs: number[] = [];
+      const queries: any[] = [];
+      const byNames: string[] = [];
+      const domains: number[] = [];
+      for (const dep of raw.dependencies) {
+        if (dep.kind === "input") inputs.push(dep.symbolId);
+        else if (dep.kind === "query") queries.push(dep);
+        else if (dep.kind === "byName") byNames.push(dep.name);
+        else if (dep.kind === "domain") domains.push(dep.domain);
+      }
+      if (inputs.length > 0) memo.inputs = new Int32Array(inputs);
+      if (queries.length > 0) memo.queries = queries;
+      if (byNames.length > 0) memo.byNames = byNames;
+      if (domains.length > 0) memo.domains = domains;
+    }
   } else if (raw.dependencies instanceof Set) {
     memo.dependencies = Array.from(raw.dependencies);
-  } else {
-    memo.dependencies = [];
   }
   if (raw.byNameLookups !== undefined) {
     memo.byNameLookups =

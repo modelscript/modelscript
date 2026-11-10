@@ -1291,6 +1291,10 @@ export class ModelicaFlattener {
           this.db.byName(child.name)?.[0] ??
           (child.name.includes(".") ? this.db.byName(child.name.split(".").pop()!)?.[0] : undefined);
         if (baseClass) {
+          if (sym?.resourceId && baseClass.resourceId && baseClass.resourceId !== sym.resourceId) {
+            this._unsupportedWasmCache.set(classId, true);
+            return true;
+          }
           const extModRaw = this.db.query<any>("extendsModificationParsed", child.id);
           const extModArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
           if (extModArgs.length > 0) {
@@ -1393,6 +1397,15 @@ export class ModelicaFlattener {
           !rawSpec.startsWith("SI.") &&
           !rawSpec.startsWith("Modelica.SIunits.") &&
           !rawSpec.startsWith("Modelica.Units.SI.")
+        ) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
+        if (
+          targetClass &&
+          ((sym?.resourceId && targetClass.resourceId && targetClass.resourceId !== sym.resourceId) ||
+            this.isOperatorRecordSym(targetClass) ||
+            targetClass.name === "Complex")
         ) {
           this._unsupportedWasmCache.set(classId, true);
           return true;
@@ -3372,7 +3385,15 @@ export class ModelicaFlattener {
     // 2.5 Fold constants on initial DAE so parameters, dimensions, and expressions are resolved
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
 
-    const shouldScalarize = this.options.arrayMode === "scalarize";
+    let shouldScalarize = this.options.arrayMode === "scalarize";
+    if (!shouldScalarize) {
+      for (let i = 0; i < dae.varCount; i++) {
+        if (!dae.isVarRemoved(i) && dae.isVarFlow(i) && dae.getVarShape(i).length > 0) {
+          shouldScalarize = true;
+          break;
+        }
+      }
+    }
 
     dae.extensionMetadata.expandableBuses = Array.from(this.expandableBuses.keys());
 

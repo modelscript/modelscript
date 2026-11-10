@@ -49,7 +49,7 @@ uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
 
 These files can be immediately opened in Apple Vision Pro, Quick Look, or NVIDIA Omniverse for dynamic simulation playback.
 
-### 3. Procedural CAD & CSG Export
+### 3. Procedural CAD, CSG & 3D Formal Verification Overlays
 
 Watertight 2-manifold triangular meshes synthesized by `@modelscript/cad` (`ManifoldSurfaceMesh`) and OpenSCAD (`@modelscript/scad`) map directly to `UsdGeomMesh`:
 
@@ -58,6 +58,7 @@ Watertight 2-manifold triangular meshes synthesized by `@modelscript/cad` (`Mani
 - Triangulated index buffers (`int[] faceVertexIndices`)
 - Diffuse material colors (`color3f[] primvars:displayColor`)
 - Part assembly transformations (`matrix4d xformOp:transform`)
+- **Spatial Verification Overlays (`exportVerificationOverlayToUsd`)**: Exports translucent zonotope/Taylor-model reachability flowpipe tubes, Sum-of-Squares (SOS) Lyapunov barrier shells, and minimum dynamic clearance vectors directly into `.usda` / `.usdz` stages with embedded `customData` proof certificates.
 
 ---
 

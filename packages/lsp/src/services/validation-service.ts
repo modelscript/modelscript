@@ -9,14 +9,20 @@ import { ParserService } from "./parser-service.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 import { getModelicaErrorCodeDef } from "@modelscript/modelica";
-import { lowerCstToAxioms } from "@modelscript/owl2/cst-lowering";
-import { QueryEngine, VerificationRunner } from "@modelscript/runtime";
+import {
+  PolyglotDriftChecker,
+  type PolyglotModelSource,
+  QueryEngine,
+  SemanticAxiomProjector,
+  VerificationRunner,
+} from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
 import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { ThreadDiagnosticsProvider } from "../providers/threadDiagnosticsProvider.js";
 import { getArenaParameterInfo } from "../utils/arena-utils.js";
 import { computeTreeEdit } from "../utils/ast-utils.js";
+import { LspWorkDoneProgressReporter } from "../utils/progress-reporter.js";
 import { ReasonerService } from "./reasoner-service.js";
 
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
@@ -278,6 +284,8 @@ export class ValidationService {
   public modelicaProofResultsByUri = new Map<string, Map<string, any>>();
   /** Cached Modelica DAE reachability and BLT verification results per URI and class name. */
   public modelicaDaeVerificationResultsByUri = new Map<string, Map<string, any>>();
+  /** Cached polyglot DAE reachability and BLT verification results per URI and model/class name. */
+  public daeVerificationResultsByUri = new Map<string, Map<string, any>>();
   /** Cached OWL2 / ontological description logic reasoner diagnostics per document URI. */
   public reasonerDiagnosticsByUri = new Map<string, Diagnostic[]>();
 
@@ -473,6 +481,45 @@ export class ValidationService {
     }
     this.activeValidationPromises.delete(uri);
     this.activeValidationPromises.delete(eff);
+
+    // Clean up reasoner and formal verification result caches
+    this.verificationDiagnosticsByUri.delete(uri);
+    this.verificationDiagnosticsByUri.delete(eff);
+    this.verificationResultsByUri.delete(uri);
+    this.verificationResultsByUri.delete(eff);
+    this.modelicaProofResultsByUri.delete(uri);
+    this.modelicaProofResultsByUri.delete(eff);
+    this.modelicaDaeVerificationResultsByUri.delete(uri);
+    this.modelicaDaeVerificationResultsByUri.delete(eff);
+    this.daeVerificationResultsByUri.delete(uri);
+    this.daeVerificationResultsByUri.delete(eff);
+    this.reasonerDiagnosticsByUri.delete(uri);
+    this.reasonerDiagnosticsByUri.delete(eff);
+
+    // Retract registered axioms from owl2Store and update reasoner
+    const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+    if (store && typeof (store as any).setAxioms === "function") {
+      const keysToClear: string[] = [];
+      if ((store as any)._axiomsBySource instanceof Map) {
+        for (const k of (store as any)._axiomsBySource.keys()) {
+          if (k === uri || k === eff || k.endsWith(`:${uri}`) || k.endsWith(`:${eff}`)) {
+            keysToClear.push(k);
+          }
+        }
+      } else {
+        keysToClear.push(uri, eff);
+      }
+
+      for (const k of keysToClear) {
+        const delta = (store as any).setAxioms(k, []);
+        if (typeof (store as any).clearAxioms === "function") {
+          (store as any).clearAxioms(k);
+        }
+        if (delta && this.reasonerService?.updateAndReason) {
+          this.reasonerService.updateAndReason(new Map(), delta);
+        }
+      }
+    }
   }
 
   /**
@@ -968,14 +1015,44 @@ export class ValidationService {
         processedText = (globalThis as any).preprocessLanguageText(langId, text);
       }
 
+      let releaseLock: () => void = () => {};
+      const currentLock = this.wasmParserMutex;
+      this.wasmParserMutex = new Promise<void>((resolve) => {
+        releaseLock = resolve;
+      });
+      await currentLock;
+
       let tree: any;
-      if (cached?.tree && cached.text !== text && parser) {
-        const edit = computeTreeEdit(cached.text, text);
-        tree = parser.parse(processedText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
-      } else if (parser) {
-        tree = parser.parse(processedText);
-      } else if (this.parserService.sharedContext && isModelica) {
-        tree = this.parserService.sharedContext.parse(".mo", processedText);
+      try {
+        const oldTree = cached?.tree as unknown as
+          | {
+              rootPtr?: number;
+              rootNode?: { id?: number; tree?: { facade?: unknown } };
+              facade?: unknown;
+              edit?: (e: unknown) => void;
+            }
+          | null
+          | undefined;
+        const oldRootPtr = oldTree?.rootPtr ?? oldTree?.rootNode?.id ?? 0;
+        const activeFacade = (plugin?.facade ??
+          oldTree?.facade ??
+          oldTree?.rootNode?.tree?.facade ??
+          this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
+        const isOldTreeActiveInWasm = Boolean(oldRootPtr && activeFacade && activeFacade.lastAstRoot === oldRootPtr);
+
+        if (cached?.tree && cached.text !== text && isOldTreeActiveInWasm && parser) {
+          const edit = computeTreeEdit(cached.text, text);
+          if (typeof oldTree?.edit === "function") {
+            oldTree.edit(edit as never);
+          }
+          tree = parser.parse(processedText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
+        } else if (parser) {
+          tree = parser.parse(processedText);
+        } else if (this.parserService.sharedContext && isModelica) {
+          tree = this.parserService.sharedContext.parse(".mo", processedText);
+        }
+      } finally {
+        releaseLock();
       }
 
       if (tree) {
@@ -1145,6 +1222,7 @@ export class ValidationService {
     crossDomainDrift?: "error" | "warning" | "information" | "off" | undefined;
     formalVerificationOnSave?: boolean | undefined;
     daeSingularityCheck?: boolean | undefined;
+    showInformationalBadges?: boolean | undefined;
   } = {};
 
   public async validateTextDocument(textDocument: TextDocument): Promise<void> {
@@ -1812,6 +1890,10 @@ export class ValidationService {
           await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
           await this.postValidateModelicaDaeReachability(effectiveUri, textDocument, newSemanticDiagnostics);
           this.postValidateModelicaReasoner(effectiveUri, newSemanticDiagnostics);
+          this.postValidatePolyglotDrift(effectiveUri, langId, newSemanticDiagnostics);
+        } else if (!hasSyntaxErrors) {
+          this.postValidatePolyglotReasoner(effectiveUri, langId, newSemanticDiagnostics);
+          this.postValidatePolyglotDrift(effectiveUri, langId, newSemanticDiagnostics);
         }
       }
 
@@ -2187,12 +2269,13 @@ export class ValidationService {
         }
       }
 
+      const allowInfoBadges = this.diagnosticsConfig.showInformationalBadges !== false;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const rawLine = lines[i]!;
 
         const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(rawLine);
-        if (tagMatch) {
+        if (tagMatch && allowInfoBadges) {
           const portName = tagMatch[1]!;
           const portType = tagMatch[2];
           const col = rawLine.indexOf(portName);
@@ -2215,7 +2298,7 @@ export class ValidationService {
               message: `[Structural Feasibility Warning] Arm thickness (${val} mm) is below structural feasibility threshold (3.8 mm) for allowable bending stress (180.0 MPa).`,
               source: "scad",
             });
-          } else {
+          } else if (allowInfoBadges) {
             scadDiagnostics.push({
               severity: DiagnosticSeverity.Information,
               range: { start: { line: i, character: col }, end: { line: i, character: col + 13 } },
@@ -2242,7 +2325,7 @@ export class ValidationService {
               message: `[CAD Parameter Bounds Violation] Parameter '${paramName}' (${val}) is outside certified bounds [${minVal}, ${maxVal}].`,
               source: "scad",
             });
-          } else {
+          } else if (allowInfoBadges) {
             scadDiagnostics.push({
               severity: DiagnosticSeverity.Information,
               range: { start: { line: i, character: col }, end: { line: i, character: col + paramName.length } },
@@ -2939,17 +3022,19 @@ export class ValidationService {
       }
 
       // Cross-domain aerodynamic parity diagnostics
-      const cfdProps = extractCfdSlicingProperties(text);
-      const cfdLines = text.split(/\r?\n/);
-      for (let i = 0; i < cfdLines.length; i++) {
-        const line = cfdLines[i]!;
-        if (/^\s*REF_AREA\s*=/i.test(line)) {
-          cfdDiagnostics.push({
-            severity: DiagnosticSeverity.Information,
-            range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
-            message: `[CFD Aerodynamic Polar] Evaluated drag coefficient Cd = ${cfdProps.cd.toFixed(4)} at reference area A_ref = ${cfdProps.refArea.toFixed(3)} m². Cruise airspeed: ${cfdProps.freeStreamVelocity.toFixed(1)} m/s.`,
-            source: "cfd",
-          });
+      if (this.diagnosticsConfig.showInformationalBadges !== false) {
+        const cfdProps = extractCfdSlicingProperties(text);
+        const cfdLines = text.split(/\r?\n/);
+        for (let i = 0; i < cfdLines.length; i++) {
+          const line = cfdLines[i]!;
+          if (/^\s*REF_AREA\s*=/i.test(line)) {
+            cfdDiagnostics.push({
+              severity: DiagnosticSeverity.Information,
+              range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
+              message: `[CFD Aerodynamic Polar] Evaluated drag coefficient Cd = ${cfdProps.cd.toFixed(4)} at reference area A_ref = ${cfdProps.refArea.toFixed(3)} m². Cruise airspeed: ${cfdProps.freeStreamVelocity.toFixed(1)} m/s.`,
+              source: "cfd",
+            });
+          }
         }
       }
     } catch (e: any) {
@@ -3136,16 +3221,18 @@ export class ValidationService {
         const yieldMPa = 180.0;
         const sf = sigmaMaxMPa > 0 ? yieldMPa / sigmaMaxMPa : 99.9;
         const cmp = sigmaMaxMPa <= yieldMPa ? "<=" : ">";
-        const feaLines = text.split(/\r?\n/);
-        for (let i = 0; i < feaLines.length; i++) {
-          const line = feaLines[i]!;
-          if (/^\*SOLID SECTION/i.test(line) || (isBdf && /^\s*PSOLID\b/i.test(line))) {
-            feaDiagnostics.push({
-              severity: DiagnosticSeverity.Information,
-              range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
-              message: `[FEA Structural Invariant] Arm bending stress verified: peak σ_max = ${sigmaMaxMPa.toFixed(1)} MPa ${cmp} ${yieldMPa.toFixed(1)} MPa (SF = ${sf.toFixed(2)}). Calibrated mass: ${totalMass.toFixed(2)} kg.`,
-              source: "fea",
-            });
+        if (this.diagnosticsConfig.showInformationalBadges !== false) {
+          const feaLines = text.split(/\r?\n/);
+          for (let i = 0; i < feaLines.length; i++) {
+            const line = feaLines[i]!;
+            if (/^\*SOLID SECTION/i.test(line) || (isBdf && /^\s*PSOLID\b/i.test(line))) {
+              feaDiagnostics.push({
+                severity: DiagnosticSeverity.Information,
+                range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
+                message: `[FEA Structural Invariant] Arm bending stress verified: peak σ_max = ${sigmaMaxMPa.toFixed(1)} MPa ${cmp} ${yieldMPa.toFixed(1)} MPa (SF = ${sf.toFixed(2)}). Calibrated mass: ${totalMass.toFixed(2)} kg.`,
+                source: "fea",
+              });
+            }
           }
         }
       }
@@ -3362,10 +3449,12 @@ export class ValidationService {
         });
       }
 
+      const { lowerCstToAxioms } = await import("@modelscript/owl2");
       const axioms = lowerCstToAxioms(tree.rootNode, text);
       const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+      let delta: any = undefined;
       if (store && typeof store.setAxioms === "function") {
-        store.setAxioms(effectiveUri, axioms);
+        delta = store.setAxioms(effectiveUri, axioms);
       }
 
       const versions = new Map<string, number>();
@@ -3374,12 +3463,12 @@ export class ValidationService {
       const sIndex = this.workspaceManager.getWorkspaceIndex?.("sysml2");
       if (sIndex) versions.set("sysml2", sIndex.version);
 
-      if (store?.axioms && typeof this.reasonerService?.reasoner?.loadOntology === "function") {
+      if (!this.reasonerService?.updateAndReason && store?.axioms && typeof this.reasonerService?.reasoner?.loadOntology === "function") {
         this.reasonerService.reasoner.loadOntology(store.axioms);
       }
 
       const consistency = this.reasonerService?.updateAndReason
-        ? this.reasonerService.updateAndReason(versions)
+        ? this.reasonerService.updateAndReason(versions, delta)
         : this.reasonerService?.reasoner?.checkConsistency();
 
       this.routeReasonerDiagnostics(effectiveUri, consistency, diagnostics, "owl2-reasoner");
@@ -3430,6 +3519,169 @@ export class ValidationService {
   }
 
   /**
+   * Updates the ontological reasoner after polyglot document validation across any of the 68 languages.
+   * Projects the file's SymbolIndex into BFO/IOF OWL2 axioms and triggers incremental reasoning.
+   */
+  private postValidatePolyglotReasoner(
+    effectiveUri: string,
+    langId: string,
+    diagnostics: Diagnostic[],
+  ): void {
+    try {
+      const wsIdx = this.workspaceManager.getWorkspaceIndex?.(langId);
+      const fileIdx = wsIdx?.getFileIndex?.(effectiveUri);
+      if (!fileIdx) return;
+
+      const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+      if (!store) return;
+
+      const axioms = fileIdx.symbols && fileIdx.symbols.size > 0
+        ? SemanticAxiomProjector.projectSymbolIndex(fileIdx, {
+            sourceLang: langId,
+            sourceUri: effectiveUri,
+            basePrefix: `${langId}:`,
+          })
+        : [];
+
+      let delta: any = undefined;
+      const key = `${langId}:${effectiveUri}`;
+      if (typeof (store as any).setAxioms === "function") {
+        delta = (store as any).setAxioms(key, axioms);
+      }
+
+      const versions = new Map<string, number>();
+      if (wsIdx) versions.set(langId, wsIdx.version);
+
+      const consistency = this.reasonerService?.updateAndReason
+        ? this.reasonerService.updateAndReason(versions, delta)
+        : this.reasonerService?.reasoner?.checkConsistency();
+
+      this.routeReasonerDiagnostics(effectiveUri, consistency, diagnostics, `${langId}-reasoner`);
+    } catch (e: any) {
+      this.connection.console.error(`[${langId}-reasoner] Polyglot reasoner update failed: ${e.message}`);
+    }
+  }
+
+  /**
+   * Scans cross-language workspace indices for parameter drift and model divergence.
+   * Emits M5104 diagnostics with clickable relatedInformation links to counterpart declarations.
+   */
+  private postValidatePolyglotDrift(
+    effectiveUri: string,
+    _langId: string,
+    diagnostics: Diagnostic[],
+  ): void {
+    try {
+      const sources: PolyglotModelSource[] = [];
+      const plugins = globalLanguageRegistry.getAllPlugins();
+
+      for (const plugin of plugins) {
+        const pId = plugin.id;
+        const wsIdx = plugin.workspaceIndex ?? this.workspaceManager?.getWorkspaceIndex?.(pId);
+        if (!wsIdx) continue;
+
+        const files: Map<string, any> | undefined = wsIdx.files ?? wsIdx.fileIndices;
+        if (files) {
+          for (const [fUri, fIdx] of files.entries()) {
+            if (!fIdx?.symbols) continue;
+            for (const sym of fIdx.symbols.values()) {
+              const val =
+                sym.metadata?.value ??
+                sym.metadata?.nominal ??
+                sym.metadata?.defaultValue ??
+                (sym.metadata?.variability === "parameter" && typeof sym.metadata?.binding === "number"
+                  ? sym.metadata.binding
+                  : undefined);
+              if (val !== undefined && typeof val === "number" && Number.isFinite(val)) {
+                const parent = sym.parentId ? fIdx.symbols.get(sym.parentId) : undefined;
+                const fileBase = fUri.split("/").pop()?.replace(/\.[^.]+$/, "") || sym.name;
+                const compName = parent ? parent.name : fileBase;
+                sources.push({
+                  lang: pId,
+                  uri: fUri,
+                  component: compName,
+                  param: sym.name,
+                  value: val,
+                  startOffset: sym.startOffset,
+                  endOffset: sym.endOffset,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (sources.length < 2) return;
+
+      const violations = PolyglotDriftChecker.checkDrift(sources, { tolerance: 0.001 });
+      const norm = (u: string) => u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+      const targetUri = norm(effectiveUri);
+
+      for (const v of violations) {
+        if (norm(v.sourceA.uri) === targetUri || norm(v.sourceB.uri) === targetUri) {
+          const isA = norm(v.sourceA.uri) === targetUri;
+          const mySource = isA ? v.sourceA : v.sourceB;
+          const otherSource = isA ? v.sourceB : v.sourceA;
+
+          const textDoc = this.documentManager.documents.get(effectiveUri);
+          const start =
+            textDoc && mySource.startOffset !== undefined
+              ? textDoc.positionAt(mySource.startOffset)
+              : { line: 0, character: 0 };
+          const end =
+            textDoc && mySource.endOffset !== undefined
+              ? textDoc.positionAt(mySource.endOffset)
+              : { line: 0, character: 10 };
+
+          const otherDoc = this.documentManager.documents.get(otherSource.uri);
+          const otherStart =
+            otherDoc && otherSource.startOffset !== undefined
+              ? otherDoc.positionAt(otherSource.startOffset)
+              : { line: 0, character: 0 };
+          const otherEnd =
+            otherDoc && otherSource.endOffset !== undefined
+              ? otherDoc.positionAt(otherSource.endOffset)
+              : { line: 0, character: 10 };
+
+          const otherFile = otherSource.uri.split("/").pop() || otherSource.uri;
+          const pct = (v.relativeDiscrepancy * 100).toFixed(1);
+
+          const diag: Diagnostic = {
+            severity: v.relativeDiscrepancy > 0.2 ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+            range: { start, end },
+            code: "M5104",
+            source: "modelscript-drift-checker",
+            message: `Cross-language parameter drift: '${mySource.param}' in ${mySource.lang.toUpperCase()} (${mySource.value}) diverges from ${otherSource.lang.toUpperCase()} (${otherSource.value}) in '${otherFile}' by ${pct}%.`,
+            relatedInformation: [
+              {
+                location: {
+                  uri: otherSource.uri,
+                  range: { start: otherStart, end: otherEnd },
+                },
+                message: `Counterpart declaration: '${otherSource.param} = ${otherSource.value}' in ${otherSource.lang.toUpperCase()}`,
+              },
+            ],
+            data: {
+              code: "M5104",
+              component: v.componentName,
+              param: mySource.param,
+              currentValue: mySource.value,
+              suggestedValue: otherSource.value,
+              sourceLang: mySource.lang,
+              counterpartLang: otherSource.lang,
+              counterpartUri: otherSource.uri,
+            },
+          };
+
+          diagnostics.push(diag);
+        }
+      }
+    } catch (e: any) {
+      this.connection.console.error?.(`[drift-checker] Drift check failed: ${e.message}`);
+    }
+  }
+
+  /**
    * Maps minimal conflict cores and unsat explanations from the description logic reasoner
    * back to source document ranges and publishes cross-document diagnostics.
    */
@@ -3475,6 +3727,56 @@ export class ValidationService {
         }
       }
 
+      // Determine if this is a BFO disjointness / category violation
+      const isBfoViolation =
+        explanation.toLowerCase().includes("bfo") ||
+        candidateAxioms.some((a) => {
+          const s = JSON.stringify(a);
+          return s.includes("bfo:") || s.includes("Continuant") || s.includes("Occurrent");
+        });
+      const diagCode = isBfoViolation ? "M4102" : "M4101";
+
+      const buildRelatedInfo = (targetUri: string, targetRange: any) => {
+        const related: any[] = [];
+        for (const ax of candidateAxioms) {
+          const iris: string[] = [
+            (ax as any).subClassIri,
+            (ax as any).superClassIri,
+            (ax as any).individualIri,
+            (ax as any).classIri,
+            ...(Array.isArray((ax as any).classIris) ? (ax as any).classIris : []),
+            (ax as any).subjectIri,
+            (ax as any).objectIri,
+            (ax as any).iri,
+          ].filter(Boolean);
+
+          for (const iri of iris) {
+            const loc = this.findDeclarationLocation(iri);
+            if (
+              loc &&
+              (loc.uri !== targetUri ||
+                loc.range.start.line !== targetRange.start.line ||
+                loc.range.start.character !== targetRange.start.character)
+            ) {
+              if (
+                !related.some(
+                  (r) =>
+                    r.location.uri === loc.uri &&
+                    r.location.range.start.line === loc.range.start.line &&
+                    r.location.range.start.character === loc.range.start.character,
+                )
+              ) {
+                related.push({
+                  location: { uri: loc.uri, range: loc.range },
+                  message: `Conflicting axiom (${ax.type}) involves '${iri}'`,
+                });
+              }
+            }
+          }
+        }
+        return related.length > 0 ? related : undefined;
+      };
+
       const seenRangesByUri = new Map<string, Set<string>>();
 
       const addDiag = (locUri: string, range: any) => {
@@ -3500,12 +3802,24 @@ export class ValidationService {
             locUri.endsWith(".ttl")
               ? "Ontology inconsistency: "
               : "Logical contradiction: ";
-          uriDiags.push({
+          const relInfo = buildRelatedInfo(locUri, range);
+          const diag: Diagnostic = {
             severity: DiagnosticSeverity.Error,
             range,
+            code: diagCode,
             message: `${msgPrefix}${explanation}`,
             source,
-          });
+            data: {
+              code: diagCode,
+              minimalConflictCore: consistency.minimalConflictCore,
+              minimalCorrectionSubsets: consistency.minimalCorrectionSubsets,
+              explanation,
+            },
+          };
+          if (relInfo && relInfo.length > 0) {
+            diag.relatedInformation = relInfo;
+          }
+          uriDiags.push(diag);
         }
       };
 
@@ -3680,12 +3994,19 @@ export class ValidationService {
             const startPos = textDocument.positionAt(bugStart);
             const endPos = textDocument.positionAt(bugEnd);
 
+            const bugCode: string = bug.category;
+
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               range: { start: startPos, end: endPos },
               message: `[Formal Proof Defect] ${bug.description}`,
               source: "modelscript-prover",
-              code: bug.category,
+              code: bugCode,
+              data: {
+                category: bug.category,
+                kind: bug.category,
+                rule: "M5101",
+              },
             });
           }
 
@@ -3695,12 +4016,19 @@ export class ValidationService {
             const startPos = textDocument.positionAt(warnStart);
             const endPos = textDocument.positionAt(warnEnd);
 
+            const warnCode: string = warn.category;
+
             diagnostics.push({
               severity: DiagnosticSeverity.Warning,
               range: { start: startPos, end: endPos },
               message: `[Formal Proof Unproven] ${warn.description}. Consider adding an invariant assertion.`,
               source: "modelscript-prover",
-              code: warn.category,
+              code: warnCode,
+              data: {
+                category: warn.category,
+                kind: warn.category,
+                rule: "M5101",
+              },
             });
           }
         }
@@ -3788,12 +4116,19 @@ export class ValidationService {
           const startPos = textDocument.positionAt(bugStart);
           const endPos = textDocument.positionAt(bugEnd);
 
+          const bugCode: string = bug.category;
+
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             range: { start: startPos, end: endPos },
             message: `[Formal Proof Defect] ${bug.description}`,
             source: "modelscript-prover",
-            code: bug.category,
+            code: bugCode,
+            data: {
+              category: bug.category,
+              kind: bug.category,
+              rule: "M5101",
+            },
           });
         }
 
@@ -3804,12 +4139,19 @@ export class ValidationService {
           const startPos = textDocument.positionAt(warnStart);
           const endPos = textDocument.positionAt(warnEnd);
 
+          const warnCode: string = warn.category;
+
           diagnostics.push({
             severity: DiagnosticSeverity.Warning,
             range: { start: startPos, end: endPos },
             message: `[Formal Proof Unproven] ${warn.description}. Consider adding an invariant assertion.`,
             source: "modelscript-prover",
-            code: warn.category,
+            code: warnCode,
+            data: {
+              category: warn.category,
+              kind: warn.category,
+              rule: "M5101",
+            },
           });
         }
       }
@@ -3890,6 +4232,7 @@ export class ValidationService {
   ): Promise<void> {
     const daeMap = new Map<string, any>();
     this.modelicaDaeVerificationResultsByUri.set(effectiveUri, daeMap);
+    this.daeVerificationResultsByUri.set(effectiveUri, daeMap);
     try {
       const classes = this.listModelicaClassesForUri(effectiveUri);
       if (classes.length === 0) return;
@@ -4216,12 +4559,22 @@ export class ValidationService {
           const startPos = textDocument.positionAt(issueOffset);
           const endPos = textDocument.positionAt(issueOffset + issueLength);
           const definite = issue.severity === "definite";
+          const code: string = issue.kind;
           diagnostics.push({
             severity: definite ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
             range: { start: startPos, end: endPos },
             message: `${definite ? "[DAE Formal Defect]" : "[DAE Invariant Warning]"} ${issue.message}`,
             source: "modelscript-dae-verifier",
-            code: issue.kind,
+            code,
+            data: {
+              kind: issue.kind,
+              severity: issue.severity,
+              interval: issue.interval,
+              varName: issue.varName,
+              rule: issue.kind === "div_by_zero" ? "M5101" : "M5103",
+              suggestedValue: (issue as any).suggestedValue,
+              requiredLimit: (issue as any).requiredLimit,
+            },
           });
         }
       }
@@ -4380,7 +4733,10 @@ export class ValidationService {
    * Executes SysML v2 verification cases in `uri` by flattening and simulating linked Modelica models
    * and evaluating requirement constraints against simulated trajectories.
    */
-  async runVerificationForUri(uri: string): Promise<{ ok: boolean; error?: string | undefined }> {
+  async runVerificationForUri(
+    uri: string,
+    progressReporter?: LspWorkDoneProgressReporter,
+  ): Promise<{ ok: boolean; error?: string | undefined }> {
     try {
       const textDocument = this.documentManager.documents.get(uri);
       if (!textDocument) throw new Error("Document not found");
@@ -4388,6 +4744,12 @@ export class ValidationService {
       if (this.activeVerification) this.activeVerification.abort();
       this.activeVerification = new AbortController();
       const signal = this.activeVerification.signal;
+
+      if (progressReporter) {
+        progressReporter.abortController.signal.addEventListener("abort", () => {
+          this.activeVerification?.abort();
+        });
+      }
 
       const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const fileNodes = Array.from(db.symbols.values()).filter(
@@ -4400,7 +4762,12 @@ export class ValidationService {
             s.ruleName === "VerificationCaseUsage"),
       );
 
-      if (fileNodes.length === 0) return { ok: true };
+      if (fileNodes.length === 0) {
+        progressReporter?.done("No verification cases found");
+        return { ok: true };
+      }
+
+      progressReporter?.report(10, `Found ${fileNodes.length} verification case(s). Initializing engines...`);
 
       const verifyCstTreeWrapper = {
         getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
@@ -4499,8 +4866,15 @@ export class ValidationService {
       const newDiagnostics: Diagnostic[] = [];
       const allResults: any[] = [];
 
+      let caseIdx = 0;
       for (const verifyUsage of fileNodes) {
-        if (signal.aborted) return { ok: false };
+        if (signal.aborted || progressReporter?.isCancelled) {
+          progressReporter?.done("Verification cancelled");
+          return { ok: false };
+        }
+        caseIdx++;
+        const caseProgress = 10 + Math.round((caseIdx / fileNodes.length) * 80);
+        progressReporter?.report(caseProgress, `Simulating & verifying case ${caseIdx}/${fileNodes.length}...`);
 
         const topo = sysmlDB.query("extractTopology", (verifyUsage as any).id) as any;
         if (!topo || topo.rootIds.length === 0) continue;
@@ -4571,7 +4945,10 @@ export class ValidationService {
           solver: exp.algorithm as any,
         });
 
-        if (signal.aborted) return { ok: false };
+        if (signal.aborted || progressReporter?.isCancelled) {
+          progressReporter?.done("Verification cancelled");
+          return { ok: false };
+        }
 
         const simParameters: { name: string; value: number }[] = [];
         const paramInfo = getArenaParameterInfo(arena);
@@ -4600,19 +4977,31 @@ export class ValidationService {
             message: v.message || "Constraint violated",
             severity: DiagnosticSeverity.Error,
             source: "sysml2-verifier",
+            code: "M5102",
+            data: {
+              constraintId: v.constraintId,
+              requiredLimit: (v as any).requiredLimit,
+              suggestedValue: (v as any).suggestedValue,
+            },
           }));
           newDiagnostics.push(...diags);
         }
       }
 
-      if (signal.aborted) return { ok: false };
+      if (signal.aborted || progressReporter?.isCancelled) {
+        progressReporter?.done("Verification cancelled");
+        return { ok: false };
+      }
 
       this.verificationDiagnosticsByUri.set(uri, newDiagnostics);
       this.verificationResultsByUri.set(uri, allResults);
 
       this.validateTextDocument(textDocument);
+      progressReporter?.report(100, `Completed ${fileNodes.length} verification case(s)`);
+      progressReporter?.done("Verification completed successfully");
       return { ok: true };
     } catch (e: any) {
+      progressReporter?.done(`Verification error: ${e.message}`);
       this.connection.console.error(`[sysml2-verifier] Error: ${e.message}\n${e.stack}`);
 
       const crashDiag: Diagnostic = {

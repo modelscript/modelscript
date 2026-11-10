@@ -118,42 +118,104 @@ export interface LintDiagnostic {
  * language domain revisions read while computing a query's value so Salsa's `deepVerify`
  * and reverse-dependency invalidation can track exact fine-grained dependencies.
  */
+export interface QueryDependencyRecord {
+  queryName: string;
+  symbolId: SymbolId;
+  argsHash?: string | undefined;
+  key?: number | undefined;
+}
+
 class DependencyTracker {
-  /** Ordered list of dependency keys read during the current query execution. */
-  readonly dependencies: DependencyKey[] = [];
-  /** Set of symbol names queried via `byName()` during the current query execution. */
-  readonly byNameLookups = new Set<string>();
+  // Pre-allocated typed array buffer for direct symbol input tracking (zero object allocations)
+  private inputBuffer: Int32Array = new Int32Array(32);
+  private inputCount = 0;
 
-  /** Records a direct dependency on a symbol entry's input state. */
+  public queries?: QueryDependencyRecord[] | undefined;
+  public byNames?: string[] | undefined;
+  public domains?: LanguageDomainId[] | undefined;
+
+  /** Records a direct dependency on a symbol entry's input state without allocating any JS objects. */
   recordInput(symbolId: SymbolId): void {
-    this.dependencies.push({ kind: "input", symbolId });
+    if (this.inputCount >= this.inputBuffer.length) {
+      const next = new Int32Array(this.inputBuffer.length * 2);
+      next.set(this.inputBuffer);
+      this.inputBuffer = next;
+    }
+    this.inputBuffer[this.inputCount++] = symbolId;
   }
 
-  /** Records a dependency on another derived Salsa query (and optional serialized argument hash). */
-  recordQuery(queryName: string, symbolId: SymbolId, argsHash?: string): void {
-    this.dependencies.push({ kind: "query", queryName, symbolId, argsHash });
+  /** Records a dependency on another derived Salsa query. */
+  recordQuery(queryName: string, symbolId: SymbolId, argsHash?: string, key?: number): void {
+    if (!this.queries) this.queries = [];
+    this.queries.push({ queryName, symbolId, argsHash, key });
   }
 
-  /** Records a dependency on the global `byName` symbol resolution table for `name`. */
+  /** Records a dependency on the global `byName` symbol resolution table. */
   recordByName(name: string): void {
-    this.byNameLookups.add(name);
-    this.dependencies.push({ kind: "byName", name });
+    if (!this.byNames) this.byNames = [];
+    this.byNames.push(name);
   }
 
   /** Records a dependency on a polyglot language domain's revision counter. */
   recordDomain(domain: LanguageDomainId): void {
-    this.dependencies.push({ kind: "domain", domain });
+    if (!this.domains) this.domains = [];
+    this.domains.push(domain);
+  }
+
+  /** Freezes and returns a compact Int32Array of recorded input symbol IDs. */
+  finishInputs(): Int32Array | undefined {
+    if (this.inputCount === 0) return undefined;
+    return new Int32Array(this.inputBuffer.subarray(0, this.inputCount));
+  }
+
+  /** Synthetic compatibility getter for legacy callers inspecting raw `dependencies`. */
+  get dependencies(): DependencyKey[] {
+    const deps: DependencyKey[] = [];
+    for (let i = 0; i < this.inputCount; i++) {
+      deps.push({ kind: "input", symbolId: this.inputBuffer[i]! });
+    }
+    if (this.queries) {
+      for (const q of this.queries) {
+        deps.push({ kind: "query", queryName: q.queryName, symbolId: q.symbolId, argsHash: q.argsHash });
+      }
+    }
+    if (this.byNames) {
+      for (const name of this.byNames) {
+        deps.push({ kind: "byName", name });
+      }
+    }
+    if (this.domains) {
+      for (const d of this.domains) {
+        deps.push({ kind: "domain", domain: d });
+      }
+    }
+    return deps;
   }
 }
 
 /**
  * Bounded recursive structural equality check used by Salsa backdating to determine
  * whether a recomputed query value is equivalent to its prior memoized result.
+ * Includes O(1) 64-bit Merkle hash fast-paths for CST/AST/Symbol nodes.
  */
 function shallowEqual(a: unknown, b: unknown, depth = 0): boolean {
   if (a === b) return true;
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
   if (depth > 10) return false;
+
+  // Fast-path O(1) 64-bit Merkle hash comparison for CST nodes, symbols, or AST fragments
+  const aObj = a as any;
+  const bObj = b as any;
+  if (aObj.merkleLow !== undefined && bObj.merkleLow !== undefined) {
+    if (aObj.merkleLow !== 0 || aObj.merkleHigh !== 0 || bObj.merkleLow !== 0 || bObj.merkleHigh !== 0) {
+      return aObj.merkleLow === bObj.merkleLow && aObj.merkleHigh === bObj.merkleHigh;
+    }
+  }
+  if (aObj._merkleLow !== undefined && bObj._merkleLow !== undefined) {
+    if (aObj._merkleLow !== 0 || aObj._merkleHigh !== 0 || bObj._merkleLow !== 0 || bObj._merkleHigh !== 0) {
+      return aObj._merkleLow === bObj._merkleLow && aObj._merkleHigh === bObj._merkleHigh;
+    }
+  }
 
   if (Array.isArray(a)) {
     if (!Array.isArray(b) || a.length !== b.length) return false;
@@ -668,6 +730,14 @@ export class WasmQueryEngine {
   ): T {
     const argsHash = stableStringifyArgs(args, hashOverride);
     return this.fetch(queryName, id, argsHash, args) as T;
+  }
+
+  /**
+   * Evaluates or retrieves the memoized 3D formal verification overlay for a class/component symbol,
+   * including dynamic clearance violations, safety shells, and counterexample witness states.
+   */
+  public verification3DOverlay<T = unknown>(symbolId: SymbolId): T {
+    return this.query<T>("verification3DOverlay", symbolId);
   }
 
   /** Replaces the backing syntax tree reference (`this.tree`). */
@@ -1530,7 +1600,7 @@ export class WasmQueryEngine {
 
     // Record this query invocation as a dependency of the parent query currently on the execution stack.
     if (this.activeTracker) {
-      this.activeTracker.recordQuery(queryName, symbolId, argsHash);
+      this.activeTracker.recordQuery(queryName, symbolId, argsHash, key);
     }
 
     const memo = this.memos.get(key);
@@ -1554,10 +1624,9 @@ export class WasmQueryEngine {
    * Salsa deep verification step: walks a cached `Memo`'s recorded dependencies to determine
    * whether the memo's value is still valid at `this.currentRevision` without re-running its body.
    *
-   * - For `"input"`, `"byName"`, and `"domain"` dependencies, compares their revision counters
-   *   directly against `memo.verified_at`.
-   * - For `"query"` dependencies, recursively calls `this.fetch()` (which may itself deep-verify
-   *   or re-execute and backdate the child query) and checks whether `depMemo.changed_at > memo.verified_at`.
+   * - For symbol inputs (`memo.inputs`), scans the contiguous `Int32Array` in a tight loop.
+   * - For `"byName"` and `"domain"` dependencies, compares their revision counters directly against `memo.verified_at`.
+   * - For `"query"` dependencies, recursively calls `this.fetch()` and checks whether `depMemo.changed_at > memo.verified_at`.
    */
   private deepVerify(memo: Memo, memoKey: number): boolean {
     // Guard against cyclic verification loops.
@@ -1567,34 +1636,84 @@ export class WasmQueryEngine {
     const prevTracker = this.activeTracker;
     this.activeTracker = null;
     try {
-      for (const dep of memo.dependencies) {
-        if (dep.kind === "input") {
-          // Direct symbol input check: invalidated if the symbol was modified after `memo.verified_at`.
-          const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
-          if (rev > memo.verified_at) return false;
-        } else if (dep.kind === "byName") {
-          // Name table lookup check: invalidated if symbols with `dep.name` were added/removed/renamed.
-          const rev = this.byNameRevisions.get(dep.name) ?? 0;
-          if (rev > memo.verified_at) return false;
-        } else if (dep.kind === "domain") {
-          // Polyglot domain check: invalidated if the target language domain revision advanced.
-          const rev = this.domainRevisions.get(dep.domain) ?? 0;
-          if (rev > memo.verified_at) return false;
-        } else if (dep.kind === "query") {
-          // Derived sub-query check: ensure the sub-query is up-to-date for `currentRevision`,
-          // then check whether its output value actually changed (`changed_at > memo.verified_at`).
+      const verifiedAt = memo.verified_at;
+
+      // 1. Vectorized input check: tight contiguous integer loop over symbol IDs
+      if (memo.inputs) {
+        const inputs = memo.inputs;
+        const len = inputs.length;
+        for (let i = 0; i < len; i++) {
+          const rev = this.inputRevisions.get(inputs[i]!) ?? 0;
+          if (rev > verifiedAt) return false;
+        }
+      }
+
+      // 2. Name table lookup check
+      if (memo.byNames) {
+        const byNames = memo.byNames;
+        const len = byNames.length;
+        for (let i = 0; i < len; i++) {
+          const rev = this.byNameRevisions.get(byNames[i]!) ?? 0;
+          if (rev > verifiedAt) return false;
+        }
+      }
+
+      // 3. Polyglot domain check
+      if (memo.domains) {
+        const domains = memo.domains;
+        const len = domains.length;
+        for (let i = 0; i < len; i++) {
+          const rev = this.domainRevisions.get(domains[i]!) ?? 0;
+          if (rev > verifiedAt) return false;
+        }
+      }
+
+      // 4. Derived sub-query check
+      if (memo.queries) {
+        const queries = memo.queries;
+        const len = queries.length;
+        for (let i = 0; i < len; i++) {
+          const dep = queries[i]!;
           try {
             this.fetch(dep.queryName, dep.symbolId, dep.argsHash);
           } catch (e) {
             if (e instanceof QueryCancelledError) throw e;
             return false;
           }
-          const depKey = this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
+          const depKey = dep.key ?? this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
           const depMemo = this.memos.get(depKey);
           if (!depMemo) return false;
-          if (depMemo.changed_at > memo.verified_at) return false;
+          if (depMemo.changed_at > verifiedAt) return false;
         }
       }
+
+      // 5. Fallback for legacy/compatibility memos
+      if (memo.dependencies && memo.dependencies.length > 0 && !memo.inputs && !memo.queries) {
+        for (const dep of memo.dependencies) {
+          if (dep.kind === "input") {
+            const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
+            if (rev > verifiedAt) return false;
+          } else if (dep.kind === "byName") {
+            const rev = this.byNameRevisions.get(dep.name) ?? 0;
+            if (rev > verifiedAt) return false;
+          } else if (dep.kind === "domain") {
+            const rev = this.domainRevisions.get(dep.domain) ?? 0;
+            if (rev > verifiedAt) return false;
+          } else if (dep.kind === "query") {
+            try {
+              this.fetch(dep.queryName, dep.symbolId, dep.argsHash);
+            } catch (e) {
+              if (e instanceof QueryCancelledError) throw e;
+              return false;
+            }
+            const depKey = this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
+            const depMemo = this.memos.get(depKey);
+            if (!depMemo) return false;
+            if (depMemo.changed_at > verifiedAt) return false;
+          }
+        }
+      }
+
       return true;
     } finally {
       this.activeTracker = prevTracker;
@@ -1671,12 +1790,15 @@ export class WasmQueryEngine {
       changedAt = oldMemo.changed_at;
     }
 
+    const inputs = tracker.finishInputs();
     const memo: Memo = {
       value: result,
       verified_at: this.currentRevision,
       changed_at: changedAt,
-      dependencies: tracker.dependencies,
-      byNameLookups: tracker.byNameLookups,
+      inputs,
+      queries: tracker.queries,
+      byNames: tracker.byNames,
+      domains: tracker.domains,
     };
 
     // Enforce bounded memo table capacity via FIFO eviction before storing the new memo.
@@ -1687,19 +1809,24 @@ export class WasmQueryEngine {
     this.memos.set(key, memo);
 
     // Populate reverse dependency tables so future `invalidate()` calls can locate this memo key.
-    for (const dep of tracker.dependencies) {
-      if (dep.kind === "input") {
-        let set = this.inputReverseDependencies.get(dep.symbolId);
+    if (inputs) {
+      const len = inputs.length;
+      for (let i = 0; i < len; i++) {
+        const symId = inputs[i]!;
+        let set = this.inputReverseDependencies.get(symId);
         if (!set) {
           set = new Set();
-          this.inputReverseDependencies.set(dep.symbolId, set);
+          this.inputReverseDependencies.set(symId, set);
         }
         set.add(key);
-      } else if (dep.kind === "byName") {
-        let set = this.byNameReverseDependencies.get(dep.name);
+      }
+    }
+    if (tracker.byNames) {
+      for (const name of tracker.byNames) {
+        let set = this.byNameReverseDependencies.get(name);
         if (!set) {
           set = new Set();
-          this.byNameReverseDependencies.set(dep.name, set);
+          this.byNameReverseDependencies.set(name, set);
         }
         set.add(key);
       }
@@ -2423,6 +2550,10 @@ export class WasmQueryEngine {
 
       cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null {
         return engine.getCstNodeRange(startOffset, endOffset, entry);
+      },
+
+      verification3DOverlay<T = unknown>(symbolId: SymbolId): T {
+        return engine.verification3DOverlay<T>(symbolId);
       },
 
       flushVolatile(): void {

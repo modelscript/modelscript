@@ -1109,10 +1109,14 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
   const msVarNameSet = new Set(msParsed.vars.map(extractVarName).filter(Boolean));
   let unmatchedVarNames = 0;
   for (const v of omcVarNameSet) {
-    if (!msVarNameSet.has(v)) unmatchedVarNames++;
+    if (!msVarNameSet.has(v)) {
+      unmatchedVarNames++;
+    }
   }
   for (const v of msVarNameSet) {
-    if (!omcVarNameSet.has(v)) unmatchedVarNames++;
+    if (!omcVarNameSet.has(v)) {
+      unmatchedVarNames++;
+    }
   }
   const varNamesMatch = unmatchedVarNames === 0;
 
@@ -1135,7 +1139,14 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
     );
   }
   if (unmatchedVarNames > 0) {
-    diffParts.push(`Unmatched variable names: ${unmatchedVarNames}`);
+    const missingInMs = Array.from(omcVarNameSet).filter((v) => !msVarNameSet.has(v));
+    const missingInOmc = Array.from(msVarNameSet).filter((v) => !omcVarNameSet.has(v));
+    if (missingInMs.length > 0) {
+      diffParts.push(`Missing in MS: [${missingInMs.slice(0, 10).join(", ")}]`);
+    }
+    if (missingInOmc.length > 0) {
+      diffParts.push(`Extra in MS: [${missingInOmc.slice(0, 10).join(", ")}]`);
+    }
   }
   if (unmatchedEquations > 0) {
     diffParts.push(`Unmatched equations: ${unmatchedEquations}`);

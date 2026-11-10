@@ -26,6 +26,7 @@ import {
   type SparseLU,
 } from "@modelscript/runtime";
 import { synthesizeLineGeometry } from "../physics/carson-kron.js";
+import { getLengthScale } from "../parser/opendss-parser.js";
 import type { DssDeck } from "../types.js";
 import type {
   BusPowerFlowResult,
@@ -274,9 +275,18 @@ export function buildOpenDssYbus(deck: DssDeck, _options: AdmittancePowerFlowOpt
 
   // Transformer connected phases
   for (const [, xfmr] of deck.transformers) {
-    const phCount = Math.min(3, xfmr.phases);
-    for (const b of xfmr.buses) {
-      for (let p = 1; p <= phCount; p++) touchBusPhase(b, p);
+    if (xfmr.phaseNodes && xfmr.phaseNodes.length > 0) {
+      for (let w = 0; w < xfmr.buses.length; w++) {
+        const b = xfmr.buses[w];
+        if (!b) continue;
+        const wNodes = xfmr.phaseNodes[w] ?? [1, 2, 3].slice(0, xfmr.phases);
+        for (const p of wNodes) if (p >= 1 && p <= 3) touchBusPhase(b, p);
+      }
+    } else {
+      const phCount = Math.min(3, xfmr.phases);
+      for (const b of xfmr.buses) {
+        for (let p = 1; p <= phCount; p++) touchBusPhase(b, p);
+      }
     }
   }
 
@@ -374,15 +384,16 @@ export function buildOpenDssYbus(deck: DssDeck, _options: AdmittancePowerFlowOpt
 
   for (const [, line] of deck.lines) {
     const lc = line.lineCode ? deck.lineCodes.get(line.lineCode) : undefined;
+    const lenScale = getLengthScale(line.units, lc?.units);
+    const len = Math.max(1e-6, line.length * lenScale);
     const r1 = line.r1 ?? lc?.r1 ?? 0.1;
     const x1 = line.x1 ?? lc?.x1 ?? 0.4;
     const r0 = line.r0 ?? lc?.r0 ?? r1 * 2.5;
     const x0 = line.x0 ?? lc?.x0 ?? x1 * 2.5;
     const c1 = line.c1 ?? lc?.c1 ?? 0;
-    const len = Math.max(1e-6, line.length);
 
-    let rmatrix = line.rmatrix;
-    let xmatrix = line.xmatrix;
+    let rmatrix = line.rmatrix ?? lc?.rmatrix;
+    let xmatrix = line.xmatrix ?? lc?.xmatrix;
     if (!rmatrix && !line.r1 && line.geometry && deck.lineGeometries) {
       const geom = deck.lineGeometries.get(line.geometry);
       if (geom) {
@@ -514,9 +525,14 @@ export function buildOpenDssYbus(deck: DssDeck, _options: AdmittancePowerFlowOpt
     const yMut21B = yMutB * cosS + yMutG * sinS;
 
     const nPhases = Math.min(3, xfmr.phases);
-    for (let ph = 1; ph <= nPhases; ph++) {
-      const idx1 = nodeMap.get(makeNodeKey(b1, ph));
-      const idx2 = nodeMap.get(makeNodeKey(b2, ph));
+    const nodesPri = xfmr.phaseNodes?.[0] ?? [1, 2, 3].slice(0, nPhases);
+    const nodesSec = xfmr.phaseNodes?.[1] ?? [1, 2, 3].slice(0, nPhases);
+    const nPh = Math.min(nodesPri.length, nodesSec.length);
+    for (let p = 0; p < nPh; p++) {
+      const ph1 = nodesPri[p]!;
+      const ph2 = nodesSec[p]!;
+      const idx1 = nodeMap.get(makeNodeKey(b1, ph1));
+      const idx2 = nodeMap.get(makeNodeKey(b2, ph2));
       if (idx1 === undefined || idx2 === undefined) continue;
 
       addBlockEntry(idx1, idx1, +yPriG, +yPriB);
@@ -827,9 +843,10 @@ function solveAdmittanceSinglePass(deck: DssDeck, options: AdmittancePowerFlowOp
 
   for (const [, line] of deck.lines) {
     const lc = line.lineCode ? deck.lineCodes.get(line.lineCode) : undefined;
-    const r1 = line.r1 ?? lc?.r1 ?? 0.1;
-    const x1 = line.x1 ?? lc?.x1 ?? 0.4;
-    const len = Math.max(1e-6, line.length);
+    const lenScale = getLengthScale(line.units, lc?.units);
+    const len = Math.max(1e-6, line.length * lenScale);
+    const r1 = line.r1 ?? lc?.r1 ?? (lc?.rmatrix ? lc.rmatrix[0]?.[0] : 0.1);
+    const x1 = line.x1 ?? lc?.x1 ?? (lc?.xmatrix ? lc.xmatrix[0]?.[0] : 0.4);
     const rTot = r1 * len;
     const xTot = x1 * len;
     const zSq = rTot * rTot + xTot * xTot;

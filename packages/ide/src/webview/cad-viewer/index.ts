@@ -15,3 +15,11 @@ export { CaeTelemetryPanel } from "./cae-telemetry-panel";
 export { InstancedCadAssembly, type InstancedCadAssemblyProps } from "./instanced-cad-assembly";
 export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";
 export { VrButton, default as VrMode } from "./vr-mode";
+export { ReachabilityTubeOverlay, type ReachabilityTubeOverlayProps } from "./reachability-tube-overlay";
+export { DynamicClearanceVector, type DynamicClearanceVectorProps } from "./dynamic-clearance-vector";
+export { BarrierShellOverlay, type BarrierShellOverlayProps } from "./barrier-shell-overlay";
+export {
+  RequirementVerdictCard,
+  type RequirementVerdictCardProps,
+  type RequirementVerdictPayload,
+} from "./requirement-verdict-card";

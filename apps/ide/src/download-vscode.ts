@@ -3,6 +3,7 @@
 // Downloads the VS Code Web stable build and extracts it to ./vscode-web/.
 // Uses the same mechanism as @vscode/test-web's download.ts.
 
+import { createHash } from "crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { get } from "https";
 import { dirname, join } from "path";
@@ -77,24 +78,21 @@ async function downloadAndExtract(url: string, dest: string): Promise<void> {
 }
 
 function patchWebviewPreHtml(html: string): string {
-  let out = html.replace(
-    "script-src 'sha256-TaWGDzV7c9rUH2q/5ygOyYUHSyHIqBMYfucPh3lnKvU=' 'self'",
-    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
-  );
-  out = out.replace(
-    /script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g,
-    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
-  );
-  out = out.replace(
-    /script-src 'unsafe-inline' 'self'(?! https:\/\/static\.cloudflareinsights\.com)/g,
-    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
-  );
-
   // Allow same-origin webview hosting (e.g. ansatz.social, modelscript.org, localhost) in addition to wildcard hash subdomains
-  out = out.replace(
+  let out = html.replace(
     /if \((?:hostname === "localhost" \|\| hostname === "127\.0\.0\.1" \|\| )?(?:location\.origin === parentOrigin \|\| )?hostname === parentOriginHash/g,
     'if (hostname === "localhost" || hostname === "127.0.0.1" || location.origin === parentOrigin || hostname === parentOriginHash',
   );
+
+  // Recompute the SHA-256 CSP hash for the patched inline <script> block instead of weakening to 'unsafe-inline'
+  const scriptMatch = out.match(/<script\b[^>]*>([\s\S]*?)<\/script>/);
+  if (scriptMatch && scriptMatch[1]) {
+    const newHash = createHash("sha256").update(scriptMatch[1], "utf8").digest("base64");
+    out = out.replace(
+      /script-src (?:'sha256-[A-Za-z0-9+/=]+'|'unsafe-inline') 'self'(?: https:\/\/static\.cloudflareinsights\.com)?/g,
+      `script-src 'sha256-${newHash}' 'self'`,
+    );
+  }
   return out;
 }
 

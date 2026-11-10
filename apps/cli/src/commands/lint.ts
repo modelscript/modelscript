@@ -1005,6 +1005,32 @@ export const Lint: CommandModule<{}, LintArgs> = {
           continue;
         }
 
+        if (langId === "ampl") {
+          const { parseAmplModel, lintAmpl } = await import("@modelscript/ampl");
+          const model = parseAmplModel(item.text);
+          const amplDiags = lintAmpl(model);
+          for (const ad of amplDiags) {
+            const startLine = ad.range?.start.line ?? 1;
+            const startCol = ad.range?.start.column ?? 1;
+            const endLine = ad.range?.end.line ?? startLine;
+            const endCol = ad.range?.end.column ?? (startCol + 5);
+            const startOffset = lineColToByte(item.text, startLine, startCol);
+            const endOffset = lineColToByte(item.text, endLine, endCol);
+            diagnostics.push({
+              severity: ad.severity,
+              lintName: `M${ad.code}`,
+              code: ad.code,
+              domain: "ampl",
+              message: ad.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset,
+            });
+          }
+          continue;
+        }
+
         if (langId === "easy5") {
           const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
           const model = parseEasy5(item.text);
@@ -1330,6 +1356,148 @@ export const Lint: CommandModule<{}, LintArgs> = {
               resourceId: filePath,
               startOffset,
               endOffset: startOffset + 5,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "hec-ras" || item.langId === "hecras" || item.langId === "ras") {
+          const { parseHecRas, lintHecRas } = await import("@modelscript/hec-ras");
+          const { geometry, flow } = parseHecRas(item.text);
+          if (geometry) {
+            for (const d of lintHecRas(geometry, flow)) {
+              const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+              diagnostics.push({
+                severity: d.severity,
+                lintName: d.rule,
+                code: `M${d.code}`,
+                domain: "hec-ras",
+                message: d.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset,
+                endOffset: startOffset + 10,
+              });
+            }
+          }
+          continue;
+        }
+
+        if (item.langId === "ocpp") {
+          const { parseOcpp, lintOcpp } = await import("@modelscript/ocpp");
+          const net = parseOcpp(item.text);
+          for (const d of lintOcpp(net)) {
+            const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "ocpp",
+              message: d.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 10,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "openadr") {
+          const { parseOpenAdr, lintOpenAdr } = await import("@modelscript/openadr");
+          const deck = parseOpenAdr(item.text);
+          for (const d of lintOpenAdr(deck)) {
+            const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "openadr",
+              message: d.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 10,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "tough") {
+          const { parseTough, lintTough } = await import("@modelscript/tough");
+          const deck = parseTough(item.text);
+          for (const d of lintTough(deck)) {
+            const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "tough",
+              message: d.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 10,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "modflow") {
+          const { parseModflow, lintModflow } = await import("@modelscript/modflow");
+          const model = parseModflow(item.text);
+          for (const d of lintModflow(model)) {
+            const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "modflow",
+              message: d.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 10,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "landgem") {
+          const { parseLandgem, lintLandgem } = await import("@modelscript/landgem");
+          const model = parseLandgem(item.text);
+          for (const d of lintLandgem(model)) {
+            const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "landgem",
+              message: d.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 10,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "gtfs") {
+          const { parseGtfs, lintGtfs } = await import("@modelscript/gtfs");
+          const feed = parseGtfs(item.text);
+          for (const d of lintGtfs(feed)) {
+            const startOffset = lineColToByte(item.text, d.line ?? 1, 1);
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "gtfs",
+              message: d.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 10,
             });
           }
           continue;

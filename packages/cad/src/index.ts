@@ -222,3 +222,16 @@ export {
   type CameraViewportConfig,
   type LoDThresholds,
 } from "./lod.js";
+
+// 3D Verification Overlay Protocol & Adapters
+export {
+  spatialOracleToVerification3DOverlay,
+  toVerification3DOverlay,
+  type BarrierCertificateShellSpec,
+  type CounterexampleWitnessState,
+  type DynamicClearanceVectorEntry,
+  type ReachabilityTubeSegment,
+  type SpatialOracleIntegrityReport,
+  type SpatialPinDiagnostic,
+  type Verification3DOverlayPayload,
+} from "./verification-overlay.js";

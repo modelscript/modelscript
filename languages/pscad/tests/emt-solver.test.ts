@@ -479,4 +479,313 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
       `Rotor angle delta must advance during fault from ${deltaInit} to ${deltaEndFault} rad`,
     );
   });
+
+  it("should solve a 200-bus (600 phase nodes) 3-phase EMT grid using sparse CCS LU factorization", () => {
+    const nBuses = 200;
+    const buses = new Map<string, { id: string; baseKv: number; nominalKv: number; connectedBranchIds: string[] }>();
+    const branches: NonNullable<EmtNetlist["branches"]> = [];
+    for (let i = 1; i <= nBuses; i++) {
+      buses.set(`Bus_${i}`, {
+        id: `Bus_${i}`,
+        baseKv: 230.0,
+        nominalKv: 230.0,
+        connectedBranchIds: [],
+      });
+      if (i > 1) {
+        branches.push({
+          id: `Line_${i - 1}_${i}`,
+          fromBus: `Bus_${i - 1}`,
+          toBus: `Bus_${i}`,
+          rOhm: 0.5,
+          lHenry: 0.005,
+          cFarad: 1e-7,
+        });
+      }
+      if (i > 10 && i % 10 === 0) {
+        branches.push({
+          id: `Mesh_${i - 10}_${i}`,
+          fromBus: `Bus_${i - 10}`,
+          toBus: `Bus_${i}`,
+          rOhm: 0.8,
+          lHenry: 0.008,
+          cFarad: 1e-7,
+        });
+      }
+    }
+
+    const netlist: EmtNetlist = {
+      name: "Sparse200BusGrid",
+      nominalFrequencyHz: 60.0,
+      buses: buses as EmtNetlist["buses"],
+      sources: [
+        {
+          id: "SlackSrc",
+          bus: "Bus_1",
+          voltageKv: 230.0,
+          frequencyHz: 60.0,
+          rSourceOhm: 0.2,
+          lSourceHenry: 0.002,
+        },
+        {
+          id: "TailSrc",
+          bus: `Bus_${nBuses}`,
+          voltageKv: 230.0,
+          frequencyHz: 60.0,
+          rSourceOhm: 0.3,
+          lSourceHenry: 0.003,
+        },
+      ],
+      branches,
+    };
+
+    const t0 = performance.now();
+    const solver = new EmtSolver(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.01, // 200 steps
+      enableCda: true,
+    });
+    const result = solver.solve();
+    const elapsedMs = performance.now() - t0;
+
+    assert.equal(result.metrics.totalSteps, 200);
+    assert.equal(result.metrics.luFactorizations, 3);
+    assert.ok(elapsedMs < 1000, `200-bus sparse EMT solve took ${elapsedMs.toFixed(1)} ms (< 1000 ms expected)`);
+    const vMid = result.busVoltages.get("Bus_100");
+    assert.ok(vMid && vMid.length === 200);
+  });
+
+  it("should lower PSCAD XML directly to EmtNetlist and execute async simulation with zero-copy transferables", async () => {
+    const { extractEmtNetlistFromXml, runEmtSimulationFromXmlAsync } = await import("../src/index.js");
+    const xml = `<project name="FastPathCase" version="5.0">
+      <paramlist name="Settings">
+        <param name="time_step" value="50" />
+        <param name="time_duration" value="0.05" />
+      </paramlist>
+      <definitions>
+        <Definition classid="StationDefn" name="DS" />
+        <Definition classid="UserCmpDefn" name="Main">
+          <schematic classid="UserCanvas">
+            <bus id="B1" name="Bus1" x="100" y="100" vbase="230" length="40" />
+            <bus id="B2" name="Bus2" x="200" y="100" vbase="230" length="40" />
+            <user id="S1" defn="master:source_3p" x="80" y="100">
+              <paramlist>
+                <param name="Vm" value="230.0" />
+                <param name="F" value="60.0" />
+              </paramlist>
+            </user>
+            <user id="R1" defn="master:resistor" x="150" y="100">
+              <paramlist>
+                <param name="R" value="10.0" />
+              </paramlist>
+            </user>
+            <wire id="W1" x="132" y="100" w="-32" h="0" />
+            <wire id="W2" x="168" y="100" w="32" h="0" />
+          </schematic>
+        </Definition>
+      </definitions>
+    </project>`;
+
+    const netlist = extractEmtNetlistFromXml(xml);
+    assert.ok(netlist.buses.size >= 2);
+    assert.ok(netlist.branches.length >= 1);
+
+    const { result, transferables } = await runEmtSimulationFromXmlAsync(xml, {
+      timeStepSec: 50e-6,
+      durationSec: 0.005,
+    });
+    assert.equal(result.metrics.totalSteps, 100);
+    assert.ok(transferables.length >= 3, "Expected zero-copy transferable ArrayBuffers");
+    assert.ok(transferables.every((b) => b instanceof ArrayBuffer && b.byteLength > 0));
+  });
+
+  it("should fit rational poles via Gustavsen-Semlyen Vector Fitting and synthesize wideband Carson FD-line models", async () => {
+    const { gustavsenVectorFit, synthesizeFdLineModel } = await import("../src/solver/vector-fitting.js");
+
+    // 1. Test Gustavsen-Semlyen pole relocation on a known 3-pole rational function:
+    //    f(s) = 0.003 + 12 / (s + 50) + 180 / (s + 800) + 2500 / (s + 12000)
+    const nFreqs = 32;
+    const omegas = new Float64Array(nFreqs);
+    const fReal = new Float64Array(nFreqs);
+    const fImag = new Float64Array(nFreqs);
+    const truePoles = [-50.0, -800.0, -12000.0];
+    const trueRes = [12.0, 180.0, 2500.0];
+    const trueD0 = 0.003;
+
+    for (let k = 0; k < nFreqs; k++) {
+      const w = Math.pow(10, 0.5 + (5.0 * k) / (nFreqs - 1));
+      omegas[k] = w;
+      let re = trueD0;
+      let im = 0.0;
+      for (let m = 0; m < truePoles.length; m++) {
+        const p = truePoles[m]!;
+        const r = trueRes[m]!;
+        const denom = p * p + w * w;
+        re += (r * -p) / denom;
+        im += (r * -w) / denom;
+      }
+      fReal[k] = re;
+      fImag[k] = im;
+    }
+
+    const fit = gustavsenVectorFit(omegas, fReal, fImag, {
+      order: 3,
+      iterations: 5,
+      fitDirectTerm: true,
+      enforcePassivity: true,
+    });
+
+    assert.equal(fit.poles.length, 3);
+    assert.ok(fit.poles.every((p) => p < 0), "All relocated poles must lie in the open left half-plane");
+    assert.ok(fit.residues.every((r) => r >= 0), "Passivity-enforced residues must be non-negative");
+    assert.ok(fit.rmsError < 5e-3, `Expected small vector fitting RMS error, got ${fit.rmsError}`);
+
+    // 2. Test wideband Carson earth-return FD-line synthesis
+    const fdModel = synthesizeFdLineModel(
+      {
+        lengthKm: 120.0,
+        rPerKm: 0.028,
+        lPerKm: 0.95e-3,
+        cPerKm: 11.5e-9,
+        towerHeightM: 25.0,
+        conductorRadiusM: 0.016,
+        soilResistivityOhmM: 100.0,
+      },
+      50e-6,
+    );
+
+    assert.ok(fdModel.gInf > 0.001 && fdModel.gInf < 0.02);
+    assert.ok(fdModel.tauSec > 300e-6 && fdModel.tauSec < 600e-6);
+    assert.ok(fdModel.yPoles.length >= 4 && fdModel.yPoles.every((p) => p < 0));
+    assert.ok(fdModel.hPoles.length >= 4 && fdModel.hPoles.every((p) => p < 0));
+  });
+
+  it("should simulate frequency-dependent (FDPM / ULM) transmission lines on both WASM and TypeScript backends", () => {
+    const netlist: EmtNetlist = {
+      buses: new Map([
+        ["SendBus", { id: "SendBus", name: "SendBus", baseKv: 230.0 }],
+        ["RecvBus", { id: "RecvBus", name: "RecvBus", baseKv: 230.0 }],
+      ]),
+      sources: [
+        {
+          id: "GenSend",
+          bus: "SendBus",
+          voltageKv: 230.0,
+          frequencyHz: 60.0,
+          rSourceOhm: 0.5,
+          lSourceHenry: 0.005,
+        },
+      ],
+      branches: [
+        {
+          id: "LoadRecv",
+          fromBus: "RecvBus",
+          toBus: "0",
+          rOhm: 250.0,
+        },
+      ],
+      transmissionLines: [
+        {
+          id: "FDLine_120km",
+          fromBus: "SendBus",
+          toBus: "RecvBus",
+          lengthKm: 120.0,
+          modelType: "fdpm",
+          rPerKm: 0.032,
+          lPerKm: 1.0e-3,
+          cPerKm: 11.0e-9,
+          r0PerKm: 0.18,
+          l0PerKm: 3.2e-3,
+          c0PerKm: 7.5e-9,
+        },
+      ],
+    };
+
+    const wasmSolver = new EmtSolver(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.01,
+      useWasm: true,
+    });
+    const tsSolver = new EmtSolver(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.01,
+      useWasm: false,
+    });
+
+    const wasmRes = wasmSolver.solve();
+    const tsRes = tsSolver.solve();
+
+    const vRecvWasm = wasmRes.busVoltages.get("RecvBus")!;
+    const vRecvTs = tsRes.busVoltages.get("RecvBus")!;
+    assert.equal(vRecvWasm.length, 200);
+    assert.equal(vRecvTs.length, 200);
+    assert.ok(vRecvWasm.every((v) => Number.isFinite(v)));
+    assert.ok(vRecvTs.every((v) => Number.isFinite(v)));
+
+    // Receiving end should be energized after propagation delay (~0.4 ms = 8 steps)
+    const maxRecvWasm = Math.max(... Array.from(vRecvWasm).map(Math.abs));
+    const maxRecvTs = Math.max(... Array.from(vRecvTs).map(Math.abs));
+    assert.ok(maxRecvWasm > 100.0, `Expected WASM FDPM receiving voltage > 100 kV, got ${maxRecvWasm}`);
+    assert.ok(maxRecvTs > 100.0, `Expected TS FDPM receiving voltage > 100 kV, got ${maxRecvTs}`);
+  });
+
+  it("should match full sparseLuFactor to machine precision when using sparseLuAnalyze + sparseLuRefactorize", async () => {
+    const {
+      SparseTripletBuilder,
+      sparseLuAnalyze,
+      sparseLuFactor,
+      sparseLuRefactorize,
+      sparseLuSolve,
+    } = await import("@modelscript/runtime");
+
+    const n = 20;
+    const builder = new SparseTripletBuilder(n, n, n * 4);
+    for (let i = 0; i < n; i++) {
+      builder.addStructural(i, i, 4.0);
+      if (i + 1 < n) {
+        builder.addStructural(i, i + 1, -1.0);
+        builder.addStructural(i + 1, i, -1.0);
+      }
+      if (i + 3 < n) {
+        builder.addStructural(i, i + 3, 0.0); // Zero structural slot initially
+        builder.addStructural(i + 3, i, 0.0);
+      }
+    }
+
+    const { ccs, tripletToCcsIdx } = builder.buildCCSWithMap();
+    const lu = sparseLuAnalyze(ccs);
+
+    // Mutate values including previously zero structural entries (breaker closing)
+    builder.clear();
+    for (let i = 0; i < n; i++) {
+      builder.addStructural(i, i, 5.5 + i * 0.1);
+      if (i + 1 < n) {
+        builder.addStructural(i, i + 1, -1.2);
+        builder.addStructural(i + 1, i, -1.2);
+      }
+      if (i + 3 < n) {
+        builder.addStructural(i, i + 3, -0.45);
+        builder.addStructural(i + 3, i, -0.45);
+      }
+    }
+
+    const updatedOk = builder.updateCCSValues(ccs, tripletToCcsIdx);
+    assert.ok(updatedOk, "Expected in-place CCS value update to succeed");
+    const refacOk = sparseLuRefactorize(ccs, lu);
+    assert.ok(refacOk, "Expected zero-allocation numeric refactorization to succeed");
+
+    const freshLu = sparseLuFactor(builder.toCCS());
+    const rhs = new Float64Array(n);
+    for (let i = 0; i < n; i++) rhs[i] = Math.sin(i + 1) * 10.0;
+
+    const xRefac = sparseLuSolve(lu, rhs);
+    const xFresh = sparseLuSolve(freshLu, rhs);
+    for (let i = 0; i < n; i++) {
+      assert.ok(
+        Math.abs(xRefac[i]! - xFresh[i]!) < 1e-11,
+        `Mismatch at index ${i}: ${xRefac[i]} vs ${xFresh[i]}`,
+      );
+    }
+  });
 });
+
+

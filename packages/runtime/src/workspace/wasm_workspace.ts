@@ -408,18 +408,24 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    */
   ensureIndexed(uri: string): void {
     if (!uri || this.ensuringUriSet.has(uri)) return;
+    const preEntry = this.fileLoaders.get(uri);
+    if (!preEntry) return;
+    if (
+      preEntry.parentFQN &&
+      !this.ensuringFQNSet.has(preEntry.parentFQN) &&
+      !this.ensuredFQNs.has(preEntry.parentFQN)
+    ) {
+      this.ensureFQNIndexed(preEntry.parentFQN);
+    }
+    if (this.ensuringUriSet.has(uri)) return;
+    const entry = this.fileLoaders.get(uri);
+    if (!entry) return;
     this.ensuringUriSet.add(uri);
     try {
-      const entry = this.fileLoaders.get(uri);
-      if (entry) {
-        this.fileLoaders.delete(uri);
-        if (entry.parentFQN && !this.ensuringFQNSet.has(entry.parentFQN)) {
-          this.ensureFQNIndexed(entry.parentFQN);
-        }
-        const rootNode = entry.loader();
-        if (rootNode) {
-          this.indexCst(uri, rootNode, entry.parentFQN);
-        }
+      this.fileLoaders.delete(uri);
+      const rootNode = entry.loader();
+      if (rootNode) {
+        this.indexCst(uri, rootNode, entry.parentFQN);
       }
     } finally {
       this.ensuringUriSet.delete(uri);
@@ -477,7 +483,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const norm = !parentFQN || parentFQN === "" ? "" : parentFQN;
     for (const [uri, entry] of Array.from(this.fileLoaders.entries())) {
       const entryParent = !entry.parentFQN || entry.parentFQN === "" ? "" : entry.parentFQN;
-      if (entryParent === norm || (norm === "Modelica" && (uri.endsWith("/Icons.mo") || uri.endsWith("Icons.mo")))) {
+      if (
+        entryParent === norm ||
+        (norm === "Modelica" && !entryParent && (uri.endsWith("/Icons.mo") || uri.endsWith("Icons.mo")))
+      ) {
         this.ensureIndexed(uri);
       }
     }
@@ -1945,8 +1954,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * re-parsing when `oldTree` and `editBounds` are provided.
    */
   parse(uriOrExt: string, input: string, oldTree?: any, editBounds?: any): any {
-    const ext = uriOrExt.includes(".") ? `.${uriOrExt.split(".").pop()}` : uriOrExt;
-    const parser = this.getParser(ext);
+    const ext = uriOrExt.startsWith(".") ? uriOrExt.toLowerCase() : UnifiedWorkspace.extractExtension(uriOrExt);
+    const parser = this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
     if (!parser) {
       throw new Error(`[UnifiedWorkspace] No parser registered for extension '${ext}'`);
     }
@@ -1994,8 +2003,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
 
     let tree = prev?.tree;
     if (options?.parse !== false) {
-      const ext = uri.includes(".") ? `.${uri.split(".").pop()}` : "";
-      const parser = this.getParser(ext);
+      const ext = UnifiedWorkspace.extractExtension(uri);
+      const parser = this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
       if (parser) {
         try {
           tree = this.parse(uri, text, options?.oldTree ?? prev?.tree, options?.editBounds);
@@ -2040,8 +2049,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     const doc = this.documents.get(uri);
     if (!doc) return undefined;
     if (doc.tree) return doc.tree;
-    const ext = uri.includes(".") ? `.${uri.split(".").pop()}` : "";
-    const parser = this.getParser(ext);
+    const ext = UnifiedWorkspace.extractExtension(uri);
+    const parser = this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
     if (parser && doc.text !== undefined) {
       try {
         doc.tree = this.parse(uri, doc.text);
@@ -2076,10 +2085,47 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return existed;
   }
 
+  /** Extracts the normalized file extension or compound extension from a URI, stripping query and hash. */
+  static extractExtension(uri: string): string {
+    const cleanUri = uri.split(/[?#]/)[0]!;
+    const lastSlash = Math.max(cleanUri.lastIndexOf("/"), cleanUri.lastIndexOf("\\"));
+    const filename = lastSlash >= 0 ? cleanUri.slice(lastSlash + 1) : cleanUri;
+    const lower = filename.toLowerCase();
+
+    // Compound extensions
+    const compoundExts = [
+      ".swmm.inp",
+      ".epanet.inp",
+      ".sima.inp",
+      ".relap5.inp",
+      ".aspen.inp",
+      ".jsbsim.xml",
+      ".plcopen.xml",
+      ".sbml.xml",
+      ".plus.xml",
+      ".oscal.json",
+      ".oscal.yaml",
+      ".oscal.yml",
+      ".oscal.xml",
+      ".dcm.json",
+      ".dcm.xml",
+      ".nii.json",
+      ".igtl.json",
+    ];
+    for (const ce of compoundExts) {
+      if (lower.endsWith(ce)) return ce;
+    }
+
+    const lastDot = filename.lastIndexOf(".");
+    if (lastDot < 0) return "";
+    return filename.slice(lastDot).toLowerCase();
+  }
+
   /** Static lookup table mapping file extensions (e.g. `".mo"`, `".sysml"`) to canonical language IDs. */
   private static languageExtensionMap = new Map<string, string>([
     [".sysml", "sysml2"],
     [".sysml2", "sysml2"],
+    [".kerml", "sysml2"],
     [".mo", "modelica"],
     [".msim", "modelica"],
     [".mos", "modelica"],
@@ -2110,9 +2156,30 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
 
   /** Infers the canonical language identifier (e.g. `"modelica"`, `"sysml2"`) from a document URI's file extension. */
   detectLanguage(uri: string): string | undefined {
-    const ext = uri.includes(".") ? `.${uri.split(".").pop()?.toLowerCase()}` : "";
+    const ext = UnifiedWorkspace.extractExtension(uri);
+    if (!ext) return undefined;
+    if (ext === ".swmm.inp") return "swmm";
+    if (ext === ".epanet.inp") return "epanet";
+    if (ext === ".sima.inp") return "sima";
+    if (ext === ".relap5.inp") return "relap5";
+    if (ext === ".aspen.inp") return "aspen";
+    if (ext === ".jsbsim.xml") return "jsbsim";
+    if (ext === ".plcopen.xml") return "plcopen";
+    if (ext === ".sbml.xml") return "sbml";
+    if (ext === ".plus.xml" || ext === ".igtl.json") return "igtl";
+    if (ext.startsWith(".oscal.")) return "oscal";
+    if (ext.startsWith(".dcm.")) return "dicom-rt";
+    if (ext === ".nii.json") return "nifti";
+
     if (UnifiedWorkspace.languageExtensionMap.has(ext)) {
       return UnifiedWorkspace.languageExtensionMap.get(ext);
+    }
+    const dotIdx = ext.lastIndexOf(".");
+    if (dotIdx > 0) {
+      const simple = ext.slice(dotIdx);
+      if (UnifiedWorkspace.languageExtensionMap.has(simple)) {
+        return UnifiedWorkspace.languageExtensionMap.get(simple);
+      }
     }
     return undefined;
   }
@@ -2142,15 +2209,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       const stat = fs.stat(dir);
       if (!stat) return;
       if (stat.isFile()) {
-        const ext = dir.includes(".") ? `.${dir.split(".").pop()}` : "";
+        const ext = UnifiedWorkspace.extractExtension(dir);
         if (this.getParser(ext)) {
           const content = fs.read(dir);
           this.setDocument(dir, content);
-          const lang = this.detectLanguage(dir);
-          const ws = lang ? this.workspaces.get(lang) : undefined;
-          if (ws && typeof ws.register === "function") {
-            ws.register(dir, () => this.getDocumentTree(dir)?.rootNode);
-          }
           loadedUris.push(dir);
         }
       } else if (stat.isDirectory()) {

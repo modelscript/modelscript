@@ -251,6 +251,11 @@ export interface QueryDB {
   geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding;
 
   /**
+   * Evaluates or retrieves the memoized 3D formal verification overlay for a class/component symbol.
+   */
+  verification3DOverlay?<T = unknown>(symbolId: SymbolId): T;
+
+  /**
    * Get current revision for a specific language domain.
    */
   getDomainRevision?(domain: LanguageDomainId): Revision;
@@ -444,14 +449,23 @@ export interface Memo {
   verified_at: Revision;
   /** The revision in which this memo's value last actually changed. */
   changed_at: Revision;
-  /** The set of dependencies read during the last execution. */
-  dependencies: DependencyKey[];
+  /** Direct symbol input dependencies read during the last execution (zero-object packed integer IDs). */
+  inputs?: Int32Array | undefined;
+  /** Derived query dependencies read during the last execution. */
+  queries?:
+    | { queryName: string; symbolId: SymbolId; argsHash?: string | undefined; key?: number | undefined }[]
+    | undefined;
+  /** Name table lookups read during the last execution. */
+  byNames?: string[] | undefined;
+  /** Polyglot domain revisions read during the last execution. */
+  domains?: LanguageDomainId[] | undefined;
+  /** The set of dependencies read during the last execution (legacy/compatibility representation). */
+  dependencies?: DependencyKey[] | undefined;
   /** The set of cache keys for memos that depend on this one. Used for push-based invalidation. */
   reverseDependencies?: Set<number> | undefined;
   /**
    * Names looked up via byName() during the last execution.
-   * Used to selectively invalidate memos when new symbols appear,
-   * instead of the nuclear memos.clear() approach.
+   * @deprecated Names are tracked directly in `byNames` and `byNameReverseDependencies`.
    */
   byNameLookups?: Set<string> | undefined;
 }

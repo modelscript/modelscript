@@ -304,7 +304,7 @@ export function dopri5(
 
           const reqDir = eventDirections?.[ei] ?? 0;
           let signChange = false;
-          if (prev * curr < 0) {
+          if (prev * curr < 0 && Math.max(Math.abs(prev), Math.abs(curr)) > 1e-9) {
             if (reqDir === 0) {
               signChange = true;
             } else if (reqDir < 0 && prev > 0 && curr < 0) {
@@ -608,7 +608,7 @@ export async function dopri5Async(
           const curr = newEventValues[ei] ?? 0;
           const reqDir = eventDirections?.[ei] ?? 0;
           let signChange = false;
-          if (prev * curr < 0) {
+          if (prev * curr < 0 && Math.max(Math.abs(prev), Math.abs(curr)) > 1e-9) {
             if (reqDir === 0) signChange = true;
             else if (reqDir < 0 && prev > 0 && curr < 0) signChange = true;
             else if (reqDir > 0 && prev < 0 && curr > 0) signChange = true;

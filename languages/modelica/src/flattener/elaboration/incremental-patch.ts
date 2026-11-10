@@ -8,6 +8,7 @@ import {
   foldSingleArenaEquation,
   foldTargetedParamEquations,
   type QueryDB,
+  StmtKind,
   type SymbolId,
   Variability,
 } from "@modelscript/runtime";
@@ -152,6 +153,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
 
   let stateCount = 0;
   let boundStateEqCount = 0;
+  const emittedBindingEqVars = dae.extensionMetadata?.["emittedBindingEqVars"] as Set<number> | undefined;
   for (let i = 0; i < dae.getVarCount(); i++) {
     if (dae.isVarRemoved(i)) continue;
     if (dae.getVarCausality(i) === Causality.Input) continue;
@@ -160,52 +162,96 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
       const elemCount = dae.getVarShapeElementCount(i);
       stateCount += elemCount;
       const bExpr = dae.getVarExpression(i);
-      if (bExpr !== undefined && bExpr >= 0 && bExpr !== 0xffffffff) {
+      if (bExpr !== undefined && bExpr >= 0 && bExpr !== 0xffffffff && !emittedBindingEqVars?.has(i)) {
         boundStateEqCount += elemCount;
       }
     }
   }
+  const getSingleEqScalarCount = (lhs: number, rhs: number): number => {
+    let count = 1;
+    for (const expr of [lhs, rhs]) {
+      if (expr < 0) continue;
+      let target = expr;
+      while (
+        target >= 0 &&
+        (dae.getExprKind(target) === ExprKind.Der || dae.getExprKind(target) === ExprKind.Negate)
+      ) {
+        target =
+          dae.getExprKind(target) === ExprKind.Der ? dae.getExprData1(target) : dae.getExprLeft(target);
+      }
+      if (target < 0) continue;
+      if (dae.getExprKind(target) === ExprKind.ArrayCtor) {
+        const elemCount = dae.getExprData1(target);
+        if (elemCount > 1) {
+          count = elemCount;
+          break;
+        }
+      }
+      if (dae.getExprKind(target) === ExprKind.Name) {
+        const name = dae.interner.resolve(dae.getExprData1(target));
+        if (name) {
+          const vId = dae.getVarIdxByName(name);
+          if (vId >= 0) {
+            const shapeCount = dae.getVarShapeElementCount(vId);
+            if (shapeCount > 1) {
+              count = shapeCount;
+              break;
+            }
+          } else if (dae.hasArrayElements(name)) {
+            const shape = dae.getNamedArrayShape(name);
+            const elemCount = shape ? shape.reduce((a, b) => a * b, 1) : dae.getArrayElementIndices(name).length;
+            if (elemCount > 1) {
+              count = elemCount;
+              break;
+            }
+          } else if (dae.getVarIdxByName(`${name}.re`) >= 0 && dae.getVarIdxByName(`${name}.im`) >= 0) {
+            count = 2;
+            break;
+          }
+        }
+      }
+      if (dae.getExprKind(target) === ExprKind.Call) {
+        const fnName = dae.interner.resolve(dae.getExprData1(target));
+        if (
+          fnName &&
+          (fnName === "Complex" ||
+            fnName.startsWith("Complex.") ||
+            fnName === "Modelica.ComplexMath.fromPolar" ||
+            fnName === "Modelica.ComplexMath.conj" ||
+            fnName === "Modelica.ComplexMath.exp")
+        ) {
+          count = 2;
+          break;
+        }
+      }
+    }
+    return count;
+  };
+
+  const countIfBranchEqs = (branchEqs: any[] | undefined): number => {
+    if (!branchEqs || branchEqs.length === 0) return 0;
+    let total = 0;
+    for (const subEq of branchEqs) {
+      if (subEq.isIf) {
+        total += countIfBranchEqs(subEq.thenEquations);
+      } else {
+        const lhsId = subEq.lhsExprId ?? subEq.lhs;
+        const rhsId = subEq.rhsExprId ?? subEq.rhs;
+        if (typeof lhsId === "number" && typeof rhsId === "number") {
+          total += getSingleEqScalarCount(lhsId, rhsId);
+        }
+      }
+    }
+    return total;
+  };
+
   let eqCount = 0;
   for (let i = 0; i < dae.getEqCount(); i++) {
     const kind = dae.getEqKind(i);
     if (kind === EqKind.Simple || kind === EqKind.Array) {
-      let count = 1;
       const lhs = dae.getEqLhs(i);
       const rhs = dae.getEqRhs(i);
-      for (const expr of [lhs, rhs]) {
-        if (expr < 0) continue;
-        let target = expr;
-        if (dae.getExprKind(target) === ExprKind.Der) {
-          target = dae.getExprData1(target);
-        }
-        if (dae.getExprKind(target) === ExprKind.ArrayCtor) {
-          const elemCount = dae.getExprData1(target);
-          if (elemCount > 1) {
-            count = elemCount;
-            break;
-          }
-        }
-        if (dae.getExprKind(target) === ExprKind.Name) {
-          const name = dae.interner.resolve(dae.getExprData1(target));
-          if (name) {
-            const vId = dae.getVarIdxByName(name);
-            if (vId >= 0) {
-              const shapeCount = dae.getVarShapeElementCount(vId);
-              if (shapeCount > 1) {
-                count = shapeCount;
-                break;
-              }
-            } else if (dae.hasArrayElements(name)) {
-              const shape = dae.getNamedArrayShape(name);
-              const elemCount = shape ? shape.reduce((a, b) => a * b, 1) : dae.getArrayElementIndices(name).length;
-              if (elemCount > 1) {
-                count = elemCount;
-                break;
-              }
-            }
-          }
-        }
-      }
+      const count = getSingleEqScalarCount(lhs, rhs);
       if (kind === EqKind.Simple && boundStateEqCount > 0 && lhs >= 0 && dae.getExprKind(lhs) === ExprKind.Name) {
         const lhsName = dae.interner.resolve(dae.getExprData1(lhs));
         if (lhsName) {
@@ -216,9 +262,47 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
         }
       }
       eqCount += count;
+    } else if (kind === EqKind.If) {
+      const meta = dae.getIfEquationMeta(i);
+      eqCount += countIfBranchEqs(meta?.thenEquations);
     }
   }
   eqCount += boundStateEqCount;
+
+  // Account for algorithm sections (MLS §8.4: each algorithm section contributes equations equal to
+  // the number of distinct continuous/discrete non-input variables assigned within that section)
+  for (const sec of dae.algorithmSections) {
+    const assignedVars = new Map<string, number>();
+    const end = Math.min(dae.stmtCount, sec.start + sec.count);
+    for (let idx = sec.start; idx < end; idx++) {
+      const k = dae.getStmtKind(idx);
+      if (k === StmtKind.Assignment) {
+        const lhsId = dae.getStmtData1(idx);
+        if (lhsId >= 0 && dae.getExprKind(lhsId) === ExprKind.Name) {
+          const lhsName = dae.interner.resolve(dae.getExprData1(lhsId));
+          if (lhsName && !assignedVars.has(lhsName)) {
+            const vId = dae.getVarIdxByName(lhsName);
+            if (vId >= 0) {
+              if (!dae.isVarRemoved(vId) && dae.getVarCausality(vId) !== Causality.Input) {
+                const v = dae.getVarVariability(vId);
+                if (v === Variability.Continuous || v === Variability.Discrete) {
+                  assignedVars.set(lhsName, getSingleEqScalarCount(lhsId, -1));
+                }
+              }
+            } else {
+              const c = getSingleEqScalarCount(lhsId, -1);
+              if (c > 1) {
+                assignedVars.set(lhsName, c);
+              }
+            }
+          }
+        }
+      }
+    }
+    for (const c of assignedVars.values()) {
+      eqCount += c;
+    }
+  }
 
   // Account for FMU black-box outputs as equations provided by external subsystems
   let fmuEqCount = 0;

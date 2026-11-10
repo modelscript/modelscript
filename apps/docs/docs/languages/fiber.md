@@ -46,3 +46,40 @@ description: "@modelscript/fiber (languages/fiber) provides ANSI/TIA-598-D color
   $$d_{\text{physical}} = \frac{d_{\text{optical}}}{H}$$
 - Corrects for slack storage coils stored in vaults, manholes, and aerial snowshoes.
 - Identifies the closest upstream and downstream access enclosures to dispatch emergency restoration crews directly to the proper vault.
+
+### 5. NESC C2 Pole Loading, Make-Ready & FCC BDC H3 Fabric
+
+- Solves aerial catenary sag-tension under NESC Heavy, Medium, Light, and Extreme Wind loading zones, and audits utility pole ground-line bending moment utilization and NESC Rule 235/238 vertical communication-to-supply clearances (plus CSA C22.3 No. 1 and Eurocode EN 1991-1-4).
+- Discretizes fiber service polygons into Uber H3 resolution-8/9/10 hexagonal cells (`discretizeCoverageToH3`) for FCC Broadband Data Collection (BDC) filings.
+
+---
+
+## Pre-Flight Outside Plant Lint Rules
+
+<LintRules lang="fiber" />
+
+---
+
+## CLI Usage (`msx fiber`)
+
+```bash
+# Convert OTDR optical fault distance into exact WGS84 GIS coordinates with helix slack correction
+msx fiber locate route.geojson --distance=4250 --helix=1.03
+
+# Trace end-to-end fiber strand connectivity and splice budget
+msx fiber trace network.json --cable=CBL-101 --strand=12
+
+# Audit Shared Risk Link Group (SRLG) physical path diversity and single points of failure
+msx fiber srlg network.json
+
+# Resolve ANSI/TIA-598-D buffer tube and fiber strand color codes
+msx fiber color 144
+
+# Discretize fiber coverage polygons into FCC Broadband Data Collection (BDC) H3 hexagons
+msx fiber bdc route.geojson --tech=50 --down=1000 --up=1000 --res=9 --out=bdc.geojson
+
+# Run NESC C2 / GO 95 utility pole structural loading and make-ready clearance audits
+msx fiber pole-loading --pole-class=4 --species=southern-yellow-pine --length=40 --grade=C-elsewhere
+msx fiber make-ready --prop-height=21
+```
+

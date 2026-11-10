@@ -1,11 +1,11 @@
 ---
-title: gPROMS / PML Dynamic Process Modeling (.gproms, .pml)
-description: Native WebAssembly GLR parsing, Method-of-Lines (MOL) spatial finite-difference discretization for distributed-parameter PDAEs, dynamic simulation, DAEBuilder lowering, and Modelica 3.x projection for gPROMS / PML models.
+title: "gPROMS / PML-Compatible Dynamic Process Modeling (.gproms, .pml)"
+description: "Native WebAssembly GLR parsing, Method-of-Lines (MOL) spatial finite-difference discretization for distributed-parameter PDAEs, dynamic simulation, DAEBuilder lowering, and Modelica 3.x projection for gPROMS / PML-compatible models."
 ---
 
-# gPROMS / PML Dynamic Process Modeling (`.gproms`, `.pml`)
+# gPROMS / PML-Compatible Dynamic Process Modeling (`.gproms`, `.pml`)
 
-`@modelscript/gproms` (`languages/gproms`) provides native WebAssembly GLR parsing, Method-of-Lines (MOL) spatial finite-difference discretization for distributed-parameter partial differential-algebraic equations (PDAEs), 4th-order Runge-Kutta dynamic simulation, `DAEBuilder` lowering, and Modelica 3.x projection for **gPROMS Process Modeling Language (PML)** chemical, pharmaceutical, and crystallization process models.
+`@modelscript/gproms` (`languages/gproms`) provides native WebAssembly GLR parsing, Method-of-Lines (MOL) spatial finite-difference discretization for distributed-parameter partial differential-algebraic equations (PDAEs), 4th-order Runge-Kutta dynamic simulation, `DAEBuilder` lowering, and Modelica 3.x projection for **gPROMS / PML-compatible** chemical, pharmaceutical, and crystallization process models.
 
 ---
 

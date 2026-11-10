@@ -67,3 +67,12 @@ export function resolveStrandColor(strandNumber1Based: number, fibersPerTube = 1
     fiberHasStripe,
   };
 }
+
+export function getStrandColorInfo(strandNumber1Based: number): Tia598Color {
+  return getTia598Color(strandNumber1Based);
+}
+
+export function getBufferTubeColorInfo(tubeNumber1Based: number): Tia598Color {
+  return getTia598Color(tubeNumber1Based);
+}
+

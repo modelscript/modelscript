@@ -429,12 +429,20 @@ export function registerMiscEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getSemanticDiff",
     async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: any[] }> => {
-      const isSysml = params.uri.endsWith(".sysml") || params.uri.endsWith(".sysml2");
-      const isModelica = params.uri.endsWith(".mo");
-      if (!isSysml && !isModelica) return { diffs: [] };
+      const plugin =
+        globalLanguageRegistry.getPluginForLanguageIdOrUri(undefined, params.uri) ||
+        globalLanguageRegistry.getPluginForUri(params.uri);
+      const isSysml =
+        params.uri.endsWith(".sysml") ||
+        params.uri.endsWith(".sysml2") ||
+        plugin?.id === "sysml2" ||
+        plugin?.id === "sysml";
+      const isModelica = params.uri.endsWith(".mo") || plugin?.id === "modelica";
+      const langId = plugin?.id ?? (isSysml ? "sysml2" : isModelica ? "modelica" : null);
 
       const langParser =
-        context.parserService.getParser(isSysml ? "sysml2" : "modelica") ??
+        (langId ? context.parserService.getParser(langId) : null) ??
+        context.parserService.getParserForUri(params.uri) ??
         (isSysml ? (globalThis as any).sysml2Parser : (globalThis as any).parser);
 
       if (!langParser) return { diffs: [] };
@@ -442,22 +450,54 @@ export function registerMiscEndpoints(context: LspContext) {
       let oldTree: any = null;
       let newTree: any = null;
       try {
-        const oldDoc = TextDocument.create(params.uri, isSysml ? "sysml2" : "modelica", 1, params.oldText);
-        const newDoc = TextDocument.create(params.uri, isSysml ? "sysml2" : "modelica", 1, params.newText);
+        const docLang = langId ?? (isSysml ? "sysml2" : "modelica");
+        const oldDoc = TextDocument.create(params.uri, docLang, 1, params.oldText);
+        const newDoc = TextDocument.create(params.uri, docLang, 1, params.newText);
+
+        const createWsIndex = () => {
+          if (isSysml) return createSysML2WorkspaceIndex();
+          if (isModelica) return createModelicaWorkspaceIndex();
+          if (langId) {
+            const norm = langId.toLowerCase();
+            const factory =
+              (plugin as any)?.createWorkspaceIndex ??
+              (globalThis as any)[`create_${norm}_workspace_index`] ??
+              (globalThis as any)[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}WorkspaceIndex`];
+            if (typeof factory === "function") {
+              return factory();
+            }
+          }
+          return createModelicaWorkspaceIndex();
+        };
+
+        const createDb = (idx: any) => {
+          if (isSysml) return createSysML2QueryEngine(idx);
+          if (isModelica) return createModelicaQueryEngine(idx);
+          if (plugin?.createQueryEngine) {
+            try {
+              return plugin.createQueryEngine(idx, null);
+            } catch {}
+          }
+          return createModelicaQueryEngine(idx);
+        };
 
         oldTree = langParser.parse(params.oldText);
-        const oldWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
-        oldWs.reindexDocument(params.uri, () => oldTree.rootNode);
-        const oldIndex = oldWs.toUnifiedPartial();
-        const oldDb = isSysml ? createSysML2QueryEngine(oldIndex) : createModelicaQueryEngine(oldIndex);
-        const oldRootEntries = oldIndex.childrenOf.get(null) || [];
+        const oldWs = createWsIndex();
+        if (typeof oldWs.reindexDocument === "function") {
+          oldWs.reindexDocument(params.uri, () => oldTree.rootNode);
+        }
+        const oldIndex = typeof oldWs.toUnifiedPartial === "function" ? oldWs.toUnifiedPartial() : oldWs;
+        const oldDb = createDb(oldIndex);
+        const oldRootEntries = oldIndex?.childrenOf?.get(null) || [];
 
         newTree = langParser.parse(params.newText);
-        const newWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
-        newWs.reindexDocument(params.uri, () => newTree.rootNode);
-        const newIndex = newWs.toUnifiedPartial();
-        const newDb = isSysml ? createSysML2QueryEngine(newIndex) : createModelicaQueryEngine(newIndex);
-        const newRootEntries = newIndex.childrenOf.get(null) || [];
+        const newWs = createWsIndex();
+        if (typeof newWs.reindexDocument === "function") {
+          newWs.reindexDocument(params.uri, () => newTree.rootNode);
+        }
+        const newIndex = typeof newWs.toUnifiedPartial === "function" ? newWs.toUnifiedPartial() : newWs;
+        const newDb = createDb(newIndex);
+        const newRootEntries = newIndex?.childrenOf?.get(null) || [];
 
         // Pre-build index of safety critical symbols and their mitigations
         const hazardSymbols = new Map<string, any>();

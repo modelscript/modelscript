@@ -509,7 +509,18 @@ export default React.memo(PostArtifactSlider);
 
 export function isPowerFlowCode(lang?: string): boolean {
   const l = (lang || "").toLowerCase().trim();
-  return l === "psse" || l === "raw" || l === "powerflow" || l === "sld";
+  return (
+    l === "psse" ||
+    l === "raw" ||
+    l === "powerflow" ||
+    l === "sld" ||
+    l === "ocpp" ||
+    l === "cpo" ||
+    l === "evse" ||
+    l === "v2g" ||
+    l === "openadr" ||
+    l === "oadr"
+  );
 }
 
 export function isWaveformCode(lang?: string): boolean {
@@ -519,7 +530,20 @@ export function isWaveformCode(lang?: string): boolean {
 
 export function isWaterFlowCode(lang?: string): boolean {
   const l = (lang || "").toLowerCase().trim();
-  return l === "epanet" || l === "swmm" || l === "inp" || l === "water" || l === "waterflow";
+  return (
+    l === "epanet" ||
+    l === "swmm" ||
+    l === "inp" ||
+    l === "water" ||
+    l === "waterflow" ||
+    l === "hec-ras" ||
+    l === "hecras" ||
+    l === "ras" ||
+    l === "rasgeo" ||
+    l === "modflow" ||
+    l === "dis" ||
+    l === "dis6"
+  );
 }
 
 export function isHglCode(lang?: string): boolean {

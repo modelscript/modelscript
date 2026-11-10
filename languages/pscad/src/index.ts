@@ -2,6 +2,7 @@
 
 export * from "./analysis/control-intervals.js";
 export * from "./analysis/interval-report.js";
+export * from "./benchmarking/pmr-benchmarker.js";
 export * from "./catalog/master-library-schemas.js";
 export * from "./comtrade/comtrade-reader.js";
 export * from "./comtrade/comtrade-types.js";

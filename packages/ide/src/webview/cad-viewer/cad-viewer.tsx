@@ -23,12 +23,17 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
+import { BarrierShellOverlay } from "./barrier-shell-overlay";
 import { CadBindingPickerModal } from "./cad-binding-picker-modal";
 import { CfdMeshRenderer, type CfdMeshPayload } from "./cfd-mesh-renderer";
+import { DynamicClearanceVector } from "./dynamic-clearance-vector";
 import { FeaMeshRenderer, type FeaMeshPayload } from "./fea-mesh-renderer";
 import { InstancedCadAssembly } from "./instanced-cad-assembly";
+import { ReachabilityTubeOverlay } from "./reachability-tube-overlay";
+import { RequirementVerdictCard, type RequirementVerdictPayload } from "./requirement-verdict-card";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +138,8 @@ interface CadViewerProps {
   feaPayload?: FeaMeshPayload | null | undefined;
   /** ISO 23952 QIF MBD GD&T inspection overlay payload */
   qifOverlay?: QifOverlayPayload | null | undefined;
+  /** Formal verification 3D overlay payload (reachability flowpipes, dynamic clearance, barrier shells) */
+  verificationOverlay?: Verification3DOverlayPayload | null | undefined;
 }
 
 export interface QifOverlayPayload {
@@ -624,6 +631,9 @@ function SceneContents({
   cfdPayload,
   feaPayload,
   qifOverlay,
+  verificationOverlay,
+  showFlowpipe = true,
+  showBarrier = true,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -636,6 +646,9 @@ function SceneContents({
   cfdPayload?: CfdMeshPayload | null | undefined;
   feaPayload?: FeaMeshPayload | null | undefined;
   qifOverlay?: QifOverlayPayload | null | undefined;
+  verificationOverlay?: Verification3DOverlayPayload | null | undefined;
+  showFlowpipe?: boolean | undefined;
+  showBarrier?: boolean | undefined;
 }) {
   const { gl, camera } = useThree();
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
@@ -795,6 +808,24 @@ function SceneContents({
       {/* ISO 23952 QIF MBD GD&T 3D Overlay (CMM probe hits + STEP entity callouts) */}
       {qifOverlay && <QifInspectionOverlay3D overlay={qifOverlay} sceneRadius={r} />}
 
+      {/* 3D Formal Verification Overlays */}
+      {showFlowpipe &&
+        verificationOverlay?.flowpipes &&
+        Object.entries(verificationOverlay.flowpipes).map(([key, segments]) => (
+          <ReachabilityTubeOverlay key={`flowpipe_${key}`} segments={segments} />
+        ))}
+
+      {verificationOverlay?.clearanceHistory && (
+        <DynamicClearanceVector
+          clearanceHistory={verificationOverlay.clearanceHistory}
+          currentTime={animationController?.currentTime ?? 0}
+        />
+      )}
+
+      {showBarrier && verificationOverlay?.barrierShells && (
+        <BarrierShellOverlay shells={verificationOverlay.barrierShells} />
+      )}
+
       {/* Controls */}
       <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.1} />
 
@@ -915,11 +946,45 @@ export default function CadViewer({
   cfdPayload = null,
   feaPayload = null,
   qifOverlay = null,
+  verificationOverlay = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [contextLost, setContextLost] = useState<boolean>(false);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>("translate");
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
+  const [showFlowpipe, setShowFlowpipe] = useState(true);
+  const [showBarrier, setShowBarrier] = useState(true);
+
+  const primaryVerdict: RequirementVerdictPayload | null = useMemo(() => {
+    if (!verificationOverlay) return null;
+    if (verificationOverlay.counterexamples && verificationOverlay.counterexamples.length > 0) {
+      const ce = verificationOverlay.counterexamples[0]!;
+      const margin = ce.threshold !== 0 ? ((ce.actualValue - ce.threshold) / Math.abs(ce.threshold)) * 100 : -100;
+      return {
+        contractId: ce.contractId,
+        metricName: ce.metricName,
+        actualValue: ce.actualValue,
+        threshold: ce.threshold,
+        operator: ce.operator,
+        isSatisfied: false,
+        marginPercent: margin,
+        violationTime: ce.time,
+        witnessPoint: ce.focusPoint,
+      };
+    }
+    if (verificationOverlay.isCertifiedSafe) {
+      return {
+        contractId: "certified_safe",
+        metricName: "Spatial Clearance & Safety Invariants",
+        actualValue: verificationOverlay.worstMargin ?? 1.0,
+        threshold: 0.0,
+        operator: ">=",
+        isSatisfied: true,
+        marginPercent: (verificationOverlay.worstMargin ?? 0.1) * 100,
+      };
+    }
+    return null;
+  }, [verificationOverlay]);
 
   const selectedComponent = useMemo(
     () => (selectedName ? (components.find((c) => c.name === selectedName) ?? null) : null),
@@ -1169,8 +1234,25 @@ export default function CadViewer({
           cfdPayload={cfdPayload}
           feaPayload={feaPayload}
           qifOverlay={qifOverlay}
+          verificationOverlay={verificationOverlay}
+          showFlowpipe={showFlowpipe}
+          showBarrier={showBarrier}
         />
       </Canvas>
+
+      {/* Formal Verification Verdict Card & 3D Jump Actions */}
+      {primaryVerdict && (
+        <RequirementVerdictCard
+          verdict={primaryVerdict}
+          showFlowpipe={showFlowpipe}
+          onToggleFlowpipe={() => setShowFlowpipe((prev) => !prev)}
+          showBarrier={showBarrier}
+          onToggleBarrier={() => setShowBarrier((prev) => !prev)}
+          onJumpToViolation={(time) => {
+            animationController?.seek(time);
+          }}
+        />
+      )}
 
       {/* Animation timeline overlay */}
       {animationController && <AnimationTimeline controller={animationController} />}

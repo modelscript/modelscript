@@ -2,6 +2,7 @@
 
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { CadMetricsService } from "./services/cad-metrics-service.js";
 import { DiagramService } from "./services/diagram-service.js";
 import { DocumentManager } from "./services/document-manager.js";
 import { ParserService } from "./services/parser-service.js";
@@ -29,6 +30,8 @@ export interface LspContext {
   parserService: ParserService;
   /** Polyglot schematic, SysML v2, OWL2, and PSCAD diagram generation service. */
   diagramService: DiagramService;
+  /** Background OpenSCAD constructive solid geometry (CSG) meshing and metric service. */
+  cadMetricsService?: CadMetricsService | undefined;
 
   /** Mutable server state shared across loosely coupled handlers and notifications. */
   state: {

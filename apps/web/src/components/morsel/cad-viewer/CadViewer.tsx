@@ -8,7 +8,7 @@
  * interactions via CADPort annotations.
  */
 
-import type { DynamicBindingConfig } from "@modelscript/cad";
+import type { DynamicBindingConfig, Verification3DOverlayPayload } from "@modelscript/cad";
 import { ContactShadows, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -82,6 +82,8 @@ interface CadViewerProps {
   onSaveBindings?: ((componentName: string, bindings: DynamicBindingConfig[]) => void) | undefined;
   /** Disambiguate mobile touch: single finger passes page scroll, two fingers dolly/pan */
   touchScrollPassThrough?: boolean | undefined;
+  /** Formal verification 3D overlay payload */
+  verificationOverlay?: Verification3DOverlayPayload | null | undefined;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -637,12 +639,28 @@ export default function CadViewer({
   availableVariables = [],
   onSaveBindings,
   touchScrollPassThrough = false,
+  verificationOverlay = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
   const [clipAxis, setClipAxis] = useState<"none" | "x" | "y" | "z">("none");
   const [clipOffset, setClipOffset] = useState<number>(0);
   const [explosionFactor, setExplosionFactor] = useState<number>(0);
+
+  const breachMarkers = useMemo(() => {
+    if (!verificationOverlay) return undefined;
+    const markers: Array<{ time: number; label: string; contractId?: string }> = [];
+    if (verificationOverlay.counterexamples) {
+      for (const ce of verificationOverlay.counterexamples) {
+        markers.push({
+          time: ce.time,
+          label: `${ce.metricName} violated`,
+          contractId: ce.contractId,
+        });
+      }
+    }
+    return markers;
+  }, [verificationOverlay]);
 
   const activeClippingPlanes = useMemo(() => {
     if (clipAxis === "none") return [];
@@ -916,7 +934,7 @@ export default function CadViewer({
       </Canvas>
 
       {/* Animation timeline overlay */}
-      {animationController && <AnimationTimeline controller={animationController} />}
+      {animationController && <AnimationTimeline controller={animationController} breachMarkers={breachMarkers} />}
 
       {/* Interactive Geometry-to-Variable Binding Picker Modal */}
       {selectedComponent && (

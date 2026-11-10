@@ -44,16 +44,40 @@ export class ParserService {
     try {
       const plugin = globalLanguageRegistry.getPluginById(norm);
       if (plugin) {
-        plugin.parser = parser;
-        if (resolvedFacade !== null) plugin.facade = resolvedFacade;
+        const pDesc = Object.getOwnPropertyDescriptor(plugin, "parser");
+        if (!pDesc || pDesc.writable || typeof pDesc.set === "function") {
+          try {
+            plugin.parser = parser;
+          } catch {}
+        }
+        if (resolvedFacade !== null) {
+          const fDesc = Object.getOwnPropertyDescriptor(plugin, "facade");
+          if (!fDesc || fDesc.writable || typeof fDesc.set === "function") {
+            try {
+              plugin.facade = resolvedFacade;
+            } catch {}
+          }
+        }
       }
       const alt = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
       if (alt) {
         this.parserEntries.set(alt, { parser, facade: resolvedFacade, ready: !!parser });
         const altPlugin = globalLanguageRegistry.getPluginById(alt);
         if (altPlugin) {
-          altPlugin.parser = parser;
-          if (resolvedFacade !== null) altPlugin.facade = resolvedFacade;
+          const pDesc = Object.getOwnPropertyDescriptor(altPlugin, "parser");
+          if (!pDesc || pDesc.writable || typeof pDesc.set === "function") {
+            try {
+              altPlugin.parser = parser;
+            } catch {}
+          }
+          if (resolvedFacade !== null) {
+            const fDesc = Object.getOwnPropertyDescriptor(altPlugin, "facade");
+            if (!fDesc || fDesc.writable || typeof fDesc.set === "function") {
+              try {
+                altPlugin.facade = resolvedFacade;
+              } catch {}
+            }
+          }
         }
       }
       const setGlobalPlain = (key: string, val: any) => {
@@ -410,10 +434,10 @@ export class ParserService {
               );
             }
             if (text) {
-              const tree = this.sharedContext.parse(
-                uri.endsWith(".sysml") || uri.endsWith(".sysml2") || uri.endsWith(".kerml") ? ".sysml" : ".mo",
-                text,
-              );
+              const ext =
+                (this.workspaceManager?.unifiedWorkspace as any)?.extractExtension?.(uri) ??
+                (uri.includes(".") ? `.${uri.split(".").pop()}` : ".mo");
+              const tree = this.sharedContext.parse(ext, text);
               lazyCache = { tree, text };
               this.documentManager.lazyLibTrees.set(uri, lazyCache);
               if (this.documentManager.lazyLibTrees.size > 50) {
@@ -464,14 +488,17 @@ export class ParserService {
   }
 
   updateDocumentTree(uri: string, newText: string): TreeSitterTree {
-    if (!this.parserReady || !this.parser) {
-      throw new Error("Parser not ready");
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    const parser = plugin?.parser ?? this.getParserForUri(uri) ?? (this.isParserReady("modelica") ? this.parser : null);
+    const facade = plugin?.facade ?? (this.isParserReady("modelica") ? this.facade : null);
+    if (!parser) {
+      throw new Error(`Parser not ready for URI: ${uri}`);
     }
 
     const cached = this.documentManager.documentTrees.get(uri);
     const cachedTree = cached?.tree as unknown as { rootPtr?: number; rootNode?: { id?: number } } | null | undefined;
     const oldRootPtr = cachedTree?.rootPtr ?? cachedTree?.rootNode?.id ?? 0;
-    const isCachedTreeActive = Boolean(oldRootPtr && this.facade && this.facade.lastAstRoot === oldRootPtr);
+    const isCachedTreeActive = Boolean(oldRootPtr && facade && facade.lastAstRoot === oldRootPtr);
     let tree: TreeSitterTree;
     const t0 = performance.now();
 
@@ -486,14 +513,14 @@ export class ParserService {
       const tEdit2 = performance.now();
 
       // Attempt to set timeout to 100ms if supported
-      if (typeof (this.parser as any).setTimeoutMicros === "function") {
-        (this.parser as any).setTimeoutMicros(100000);
+      if (typeof (parser as any).setTimeoutMicros === "function") {
+        (parser as any).setTimeoutMicros(100000);
       }
       try {
-        tree = this.parser.parse(newText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex);
+        tree = parser.parse(newText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex);
       } finally {
-        if (typeof (this.parser as any).setTimeoutMicros === "function") {
-          (this.parser as any).setTimeoutMicros(0);
+        if (typeof (parser as any).setTimeoutMicros === "function") {
+          (parser as any).setTimeoutMicros(0);
         }
       }
       const tEdit3 = performance.now();
@@ -511,14 +538,14 @@ export class ParserService {
       const tParse0 = performance.now();
       void tParse0;
       // Attempt to set timeout to 1000ms if supported
-      if (typeof (this.parser as any).setTimeoutMicros === "function") {
-        (this.parser as any).setTimeoutMicros(1000000);
+      if (typeof (parser as any).setTimeoutMicros === "function") {
+        (parser as any).setTimeoutMicros(1000000);
       }
       try {
-        tree = this.parser.parse(newText);
+        tree = parser.parse(newText);
       } finally {
-        if (typeof (this.parser as any).setTimeoutMicros === "function") {
-          (this.parser as any).setTimeoutMicros(0);
+        if (typeof (parser as any).setTimeoutMicros === "function") {
+          (parser as any).setTimeoutMicros(0);
         }
       }
       const tParse1 = performance.now();
@@ -538,12 +565,15 @@ export class ParserService {
   }
 
   getDocumentTree(uri: string): TreeSitterTree | null {
-    if (!this.parserReady || !this.parser) return null;
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    const parser = plugin?.parser ?? this.getParserForUri(uri) ?? (this.isParserReady("modelica") ? this.parser : null);
+    const facade = plugin?.facade ?? (this.isParserReady("modelica") ? this.facade : null);
+    if (!parser) return null;
 
     const cached = this.documentManager.documentTrees.get(uri);
     const cachedTree = cached?.tree as unknown as { rootPtr?: number; rootNode?: { id?: number } } | null | undefined;
     const oldRootPtr = cachedTree?.rootPtr ?? cachedTree?.rootNode?.id ?? 0;
-    const isCachedTreeActive = Boolean(oldRootPtr && this.facade && this.facade.lastAstRoot === oldRootPtr);
+    const isCachedTreeActive = Boolean(oldRootPtr && facade && facade.lastAstRoot === oldRootPtr);
     if (cached && isCachedTreeActive) return cached.tree;
 
     // No cached tree — parse from current document text
@@ -688,11 +718,16 @@ export class ParserService {
     this.sharedContext = {
       fs: (globalThis as any).sharedFs,
       parse: (ext: string, input: string, ...rest: any[]) => {
-        const parser = this.getParserForUri(`file:///dummy${ext}`);
+        const normExt = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+        const parser =
+          this.getParserForUri(`file:///dummy${normExt}`) ??
+          (this.workspaceManager.unifiedWorkspace as any)?.getParser?.(normExt);
         if (parser) return parser.parse(input, ...rest);
-        if (ext === ".sysml" || ext === ".sysml2" || ext === ".kerml")
+        if (normExt === ".sysml" || normExt === ".sysml2" || normExt === ".kerml")
           return (this.sysml2Parser as any)?.parse(input, ...rest);
-        return (this.parser as any)?.parse(input, ...rest);
+        if (normExt === ".mo" || normExt === ".msim" || normExt === ".mos")
+          return (this.parser as any)?.parse(input, ...rest);
+        return null;
       },
       flattenArena: (name: string, classId?: any, _uri?: string, options?: any) => {
         const engine =
@@ -758,7 +793,12 @@ export class ParserService {
     syntaxNames?: string[] | undefined;
     fieldNames?: Record<string, number> | undefined;
   }): Promise<void> {
-    if (!entry.wasm || !this.serverDistBase) return;
+    const serverDistBase = this.getServerDistBase();
+    if (serverDistBase) {
+      this.serverDistBase = serverDistBase;
+    }
+    const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+    if (!this.serverDistBase && !isNode) return;
     if (this.isParserReady(entry.id)) {
       this.ensureSharedContext();
       return;
@@ -775,18 +815,34 @@ export class ParserService {
       const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
       const fieldNames = entry.fieldNames || (globalThis as any)[`${entry.id}FieldNames`];
       const exts = entry.fileExtensions || entry.extensions || [`.${entry.id}`];
-      const candidates = Array.from(
-        new Set([
-          `${this.serverDistBase}/${entry.wasm}`,
-          `${this.serverDistBase}/${entry.id}.wasm`,
-          `${this.serverDistBase}/parser.wasm`,
-        ]),
-      );
+      const candidates: string[] = [];
+
+      if (this.serverDistBase) {
+        if (entry.wasm) candidates.push(`${this.serverDistBase}/${entry.wasm}`);
+        candidates.push(`${this.serverDistBase}/${entry.id}.wasm`);
+        if (entry.id === "modelica") candidates.push(`${this.serverDistBase}/parser.wasm`);
+      }
+
+      if (isNode) {
+        try {
+          const modName = "node" + ":module";
+          const { createRequire } = await import(/* @vite-ignore */ modName);
+          const req = createRequire(import.meta.url);
+          try {
+            candidates.push(req.resolve(`@modelscript/${entry.id}/parser.wasm`));
+          } catch {}
+          try {
+            candidates.push(req.resolve(`@modelscript/${entry.id}/dist/parser.wasm`));
+          } catch {}
+        } catch {}
+      }
+
+      const uniqueCandidates = Array.from(new Set(candidates));
 
       try {
         let result: any = null;
         let lastError: any = null;
-        for (const candUrl of candidates) {
+        for (const candUrl of uniqueCandidates) {
           try {
             result = await createWasmParser(candUrl, { syntaxNames, fieldNames });
             if (result) break;
@@ -804,6 +860,7 @@ export class ParserService {
           if (this.workspaceManager?.unifiedWorkspace && result.parser) {
             for (const ext of exts) {
               this.workspaceManager.unifiedWorkspace.registerParser(ext, result.parser);
+              this.workspaceManager.unifiedWorkspace.registerLanguageExtension(ext, entry.id);
             }
           }
           if (entry.id === "sysml2") {
@@ -819,8 +876,14 @@ export class ParserService {
                 disposables: [],
               });
             } else {
-              existingSysml.parser = result.parser;
-              existingSysml.facade = result.facade;
+              const pDesc = Object.getOwnPropertyDescriptor(existingSysml, "parser");
+              if (!pDesc || pDesc.writable || typeof pDesc.set === "function") {
+                try { existingSysml.parser = result.parser; } catch {}
+              }
+              const fDesc = Object.getOwnPropertyDescriptor(existingSysml, "facade");
+              if (!fDesc || fDesc.writable || typeof fDesc.set === "function") {
+                try { existingSysml.facade = result.facade; } catch {}
+              }
             }
           }
 
@@ -836,8 +899,14 @@ export class ParserService {
               disposables: [],
             });
           } else {
-            existing.parser = result.parser;
-            existing.facade = result.facade;
+            const pDesc = Object.getOwnPropertyDescriptor(existing, "parser");
+            if (!pDesc || pDesc.writable || typeof pDesc.set === "function") {
+              try { existing.parser = result.parser; } catch {}
+            }
+            const fDesc = Object.getOwnPropertyDescriptor(existing, "facade");
+            if (!fDesc || fDesc.writable || typeof fDesc.set === "function") {
+              try { existing.facade = result.facade; } catch {}
+            }
           }
 
           this.connection.console.info(`ModelScript ${entry.displayName || entry.id} parser initialized`);
@@ -848,7 +917,13 @@ export class ParserService {
     })();
 
     this.loadingParserPromises.set(entry.id, loadPromise);
-    await loadPromise;
+    try {
+      await loadPromise;
+    } finally {
+      if (!this.isParserReady(entry.id)) {
+        this.loadingParserPromises.delete(entry.id);
+      }
+    }
   }
 
   private async ensureStdlibForLanguage(langId: string): Promise<void> {
@@ -884,6 +959,7 @@ export class ParserService {
           continue;
         }
 
+        let mountOk = false;
         const mountPromise = (async () => {
           this.connection.sendNotification("modelscript/status", {
             state: "loading",
@@ -899,32 +975,41 @@ export class ParserService {
             });
 
             if (ok) {
+              mountOk = true;
               this.connection.console.info(`[lsp] Successfully lazy-mounted stdlib ${libKey} for ${norm}.`);
             }
           } catch (mountErr) {
             this.connection.console.warn(`[lsp] Failed to mount polyglot stdlib ${libKey}: ${mountErr}`);
           }
 
-          for (const doc of this.documents.all()) {
-            const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
-            if (docLang === norm) {
-              try {
-                await (this.validationServiceRef?.validateTextDocument?.(doc) ?? globalCtx.validateTextDocument?.(doc));
-              } catch (err) {
-                this.connection.console.warn(`[lsp] Failed to validate open doc after ${libKey} load: ${err}`);
+          if (mountOk) {
+            for (const doc of this.documents.all()) {
+              const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
+              if (docLang === norm) {
+                try {
+                  await (this.validationServiceRef?.validateTextDocument?.(doc) ?? globalCtx.validateTextDocument?.(doc));
+                } catch (err) {
+                  this.connection.console.warn(`[lsp] Failed to validate open doc after ${libKey} load: ${err}`);
+                }
               }
             }
-          }
 
-          this.sendProjectTreeChanged();
-          this.connection.sendNotification("modelscript/status", {
-            state: "ready",
-            message: globalCtx.getReadyMessage?.() ?? "ModelScript",
-          });
+            this.sendProjectTreeChanged();
+            this.connection.sendNotification("modelscript/status", {
+              state: "ready",
+              message: globalCtx.getReadyMessage?.() ?? "ModelScript",
+            });
+          }
         })();
 
         this.loadingStdlibPromises.set(libKey, mountPromise);
-        await mountPromise;
+        try {
+          await mountPromise;
+        } finally {
+          if (!mountOk) {
+            this.loadingStdlibPromises.delete(libKey);
+          }
+        }
       }
       return;
     }
@@ -944,6 +1029,7 @@ export class ParserService {
       this.projectDependenciesRef.find((d) => d.name === depName) ??
       (depName === "Modelica" ? { name: "Modelica", version: "4.1.0" } : { name: "SysML", version: "2026.3.0" });
 
+    let loadSucceeded = false;
     const stdlibPromise = (async () => {
       if (this.validationServiceRef) {
         const alreadyDeclared = this.validationServiceRef.declaredDependencies?.some(
@@ -990,35 +1076,41 @@ export class ParserService {
         if (this.validationServiceRef) {
           this.validationServiceRef.markDependencyLoaded(dep.name, dep.version);
         }
+        loadSucceeded = true;
       } catch (err) {
         this.connection.console.warn(`[lsp] Failed to load ${dep.name}@${dep.version}: ${err}`);
-        if (this.validationServiceRef) {
-          this.validationServiceRef.markDependencyLoaded(dep.name, dep.version);
-        }
       }
 
-      (globalThis as any).clearIconCache?.();
-      (globalThis as any).clearDiagramCache?.();
-      (globalThis as any).diagramCache?.clear();
+      if (loadSucceeded) {
+        (globalThis as any).clearIconCache?.();
+        (globalThis as any).clearDiagramCache?.();
+        (globalThis as any).diagramCache?.clear();
 
-      for (const doc of this.documents.all()) {
-        try {
-          await (this.validationServiceRef?.validateTextDocument?.(doc) ??
-            (globalThis as any).validateTextDocument?.(doc));
-        } catch (err) {
-          this.connection.console.warn(`[lsp] Failed to validate open document after ${dep.name} load: ${err}`);
+        for (const doc of this.documents.all()) {
+          try {
+            await (this.validationServiceRef?.validateTextDocument?.(doc) ??
+              (globalThis as any).validateTextDocument?.(doc));
+          } catch (err) {
+            this.connection.console.warn(`[lsp] Failed to validate open document after ${dep.name} load: ${err}`);
+          }
         }
-      }
 
-      this.sendProjectTreeChanged();
-      this.connection.sendNotification("modelscript/status", {
-        state: "ready",
-        message: (globalThis as any).getReadyMessage?.() ?? "ModelScript",
-      });
+        this.sendProjectTreeChanged();
+        this.connection.sendNotification("modelscript/status", {
+          state: "ready",
+          message: (globalThis as any).getReadyMessage?.() ?? "ModelScript",
+        });
+      }
     })();
 
     this.loadingStdlibPromises.set(depName, stdlibPromise);
-    await stdlibPromise;
+    try {
+      await stdlibPromise;
+    } finally {
+      if (!loadSucceeded) {
+        this.loadingStdlibPromises.delete(depName);
+      }
+    }
   }
 
   public async syncDocumentLibraryVersions(uri: string, text: string): Promise<void> {
@@ -1054,13 +1146,27 @@ export class ParserService {
 
   public async ensureLanguageParserLoaded(languageIdOrUri: string): Promise<void> {
     const serverDistBase = this.getServerDistBase();
-    if (!serverDistBase) return;
-    this.serverDistBase = serverDistBase;
+    if (serverDistBase) {
+      this.serverDistBase = serverDistBase;
+    }
+    const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+    if (!this.serverDistBase && !isNode) return;
     this.ensureSharedContext();
     const langId = this.resolveNormalizedLanguageId(languageIdOrUri);
     if (!this.isParserReady(langId)) {
-      const entry = this.manifest.find((m) => m.id.toLowerCase() === langId.toLowerCase());
-      if (entry && entry.wasm) {
+      let entry = this.manifest.find((m) => m.id.toLowerCase() === langId.toLowerCase());
+      if (!entry) {
+        const plugin = globalLanguageRegistry.getPluginById(langId);
+        if (plugin) {
+          entry = {
+            id: plugin.id,
+            wasm: `${plugin.id}.wasm`,
+            displayName: plugin.name,
+            extensions: plugin.extensions,
+          };
+        }
+      }
+      if (entry && (entry.wasm || entry.id)) {
         await this.loadSingleWasmEntry(entry);
       }
     }

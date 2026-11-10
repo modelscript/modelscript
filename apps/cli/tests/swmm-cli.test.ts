@@ -117,4 +117,56 @@ test("SWMM CLI Commands (msx swmm inspect, lint, to-dae, to-modelica, route-flow
       console.log = origLog;
     }
   });
+
+  await t.test("msx swmm from-gis", async () => {
+    const conduitsGeoJsonFile = path.join(tmpDir, "conduits.geojson");
+    const outDeckFile = path.join(tmpDir, "gis_deck.inp");
+    fs.writeFileSync(
+      conduitsGeoJsonFile,
+      JSON.stringify({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "STORM_C1",
+            properties: { diameter: 0.75, roughness: 0.013 },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [10, 20],
+                [50, 60],
+              ],
+            },
+          },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => logs.push(args.join(" "));
+
+    try {
+      await (SwmmCommand.handler as any)({
+        action: "from-gis",
+        files: [conduitsGeoJsonFile],
+        out: outDeckFile,
+        diameter: 0.75,
+        title: "CLI SWMM GIS Network",
+      });
+
+      assert.ok(fs.existsSync(outDeckFile));
+      const inp = fs.readFileSync(outDeckFile, "utf-8");
+      assert.ok(inp.includes("CLI SWMM GIS Network"));
+      assert.ok(inp.includes("STORM_C1"));
+      assert.ok(logs.some((l) => l.includes("SWMM GIS Ingestion Succeeded")));
+      assert.ok(logs.some((l) => l.includes("Conduits:      1")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  // Cleanup
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });

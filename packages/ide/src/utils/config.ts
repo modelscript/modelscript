@@ -5,34 +5,104 @@ import * as vscode from "vscode";
 export type LanguageMaturityTier = "stable" | "beta" | "experimental";
 
 export const LANGUAGE_MATURITY_MAP: Record<string, LanguageMaturityTier> = {
-  // Stable (Tier 1)
-  modelica: "stable",
-  sysml2: "stable",
-  sysml: "stable",
-  step: "stable",
-  scad: "stable",
-  owl2: "stable",
+  // Stable (Tier 1 - 24 languages)
+  adams: "stable",
+  ampl: "stable",
+  ccsds: "stable",
   csv: "stable",
+  easy5: "stable",
+  epanet: "stable",
+  gensys: "stable",
+  lps: "stable",
+  modelica: "stable",
+  modelscript: "stable",
+  olga: "stable",
+  opendrive: "stable",
+  owl2: "stable",
   pscad: "stable",
+  psse: "stable",
+  relap5: "stable",
+  reqif: "stable",
+  rocets: "stable",
+  scad: "stable",
+  spice: "stable",
   ssp: "stable",
+  swmm: "stable",
+  sysml2: "stable",
+  urdf: "stable",
 
-  // Beta (Tier 2)
+  // Aliases for stable languages
+  sysml: "stable",
+  openscad: "stable",
+  owl: "stable",
+
+  // Beta (Tier 2 - 57 languages)
+  antimony: "beta",
+  aspen: "beta",
+  automationml: "beta",
+  autosar: "beta",
+  bngl: "beta",
+  c: "beta",
+  cantera: "beta",
+  cellml: "beta",
   cfd: "beta",
+  cgmes: "beta",
+  "dicom-rt": "beta",
+  eclipse: "beta",
+  energyplus: "beta",
   fea: "beta",
+  febio: "beta",
+  fiber: "beta",
+  fortran: "beta",
+  genbank: "beta",
+  gproms: "beta",
+  gtfs: "beta",
+  gtsuite: "beta",
+  "hec-ras": "beta",
+  ibis: "beta",
+  igtl: "beta",
+  jsbsim: "beta",
+  landgem: "beta",
+  modflow: "beta",
+  nifti: "beta",
+  nmtran: "beta",
+  ocpp: "beta",
+  openadr: "beta",
+  opendss: "beta",
+  openscenario: "beta",
+  opensim: "beta",
+  optical: "beta",
+  oscal: "beta",
+  pdb: "beta",
+  phreeqc: "beta",
+  plcopen: "beta",
+  powerfactory: "beta",
+  pslf: "beta",
+  qif: "beta",
+  ran: "beta",
+  sbml: "beta",
+  sbol: "beta",
+  sedml: "beta",
+  sima: "beta",
   simpack: "beta",
-  gensys: "beta",
-  spice: "beta",
+  simulink: "beta",
+  smiles: "beta",
+  step: "beta",
+  "three-mf": "beta",
+  topas: "beta",
+  touchstone: "beta",
+  tough: "beta",
+  usd: "beta",
+  "verilog-a": "beta",
+
+  // Aliases & domain variants
   openfoam: "beta",
-  olga: "beta",
   vhdlams: "beta",
   verilogams: "beta",
   bondgraph: "beta",
   smv: "beta",
-  reqif: "beta",
-  sima: "beta",
-  lps: "beta",
-  gtsuite: "beta",
-  modelscript: "beta",
+  aml: "beta",
+  caex: "beta",
 };
 
 export function getLanguageMaturity(languageId: string): LanguageMaturityTier {
@@ -557,3 +627,34 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
     },
   };
 }
+
+/**
+ * Returns whether strict air-gapped / offline operation is active.
+ * When enabled, all default phone-home network traffic to external public endpoints (ansatz.social, modelscript.org) is blocked.
+ */
+export function isAirgapped(): boolean {
+  try {
+    const cfg = vscode.workspace?.getConfiguration?.("modelscript.network");
+    return cfg?.get<boolean>("airgapped") ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the list of explicitly configured trusted parent origins allowed to communicate
+ * with ModelScript Studio via postMessage (e.g. ['https://ansatz.internal.corp']).
+ */
+export function getTrustedOrigins(): string[] {
+  try {
+    const cfg = vscode.workspace?.getConfiguration?.("modelscript.security");
+    const origins = cfg?.get<string[]>("trustedOrigins");
+    if (Array.isArray(origins)) {
+      return origins.map((o) => (typeof o === "string" ? o.trim() : "")).filter(Boolean);
+    }
+  } catch {
+    // Fallback
+  }
+  return [];
+}
+

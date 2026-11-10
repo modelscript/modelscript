@@ -1,11 +1,11 @@
 ---
-title: "PSCAD & Electromagnetic Transients (.pscx, .pslx, .pswx, .psmx, .psout, .cfg, .dat)"
-description: "The @modelscript/pscad language plugin (languages/pscad) provides native support for PSCAD™ / EMTDC™ projects, multi-project workspaces, component libraries, and IEEE C37.111 COMTRADE transient wav..."
+title: "PSCAD-Compatible Electromagnetic Transients (.pscx, .pslx, .pswx, .psmx, .psout, .cfg, .dat)"
+description: "The @modelscript/pscad language plugin (languages/pscad) provides native support for PSCAD-compatible projects, multi-project workspaces, component libraries, and IEEE C37.111 COMTRADE transient waveform recordings."
 ---
 
-# PSCAD & Electromagnetic Transients (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`)
+# PSCAD-Compatible Electromagnetic Transients (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`)
 
-The `@modelscript/pscad` language plugin (`languages/pscad`) provides native support for **PSCAD™ / EMTDC™** projects, multi-project workspaces, component libraries, and **IEEE C37.111 COMTRADE** transient waveform recordings. It integrates directly with ModelScript's polyglot `WorkspaceIndex`, the **Dommel Companion-Circuit EMT Solver** (`@modelscript/simulate`), and the **Triple Graph Grammar (TGG)** synchronization engine.
+The `@modelscript/pscad` language plugin (`languages/pscad`) provides native support for **PSCAD-compatible** projects, multi-project workspaces, component libraries, and **IEEE C37.111 COMTRADE** transient waveform recordings. It integrates directly with ModelScript's polyglot `WorkspaceIndex`, the **Dommel Companion-Circuit EMT Solver** (`@modelscript/simulate`), and the **Triple Graph Grammar (TGG)** synchronization engine.
 
 ---
 
@@ -196,23 +196,36 @@ fs.writeFileSync("output.psout", outBytes);
 
 ### Command-Line Interface (`msx pscad`)
 
-#### 1. Simulation Export to `.psout`
+#### 1. Inspection, Linting, Schematic Diff & IEEE 2800 Verification
+
+```bash
+# Inspect project components, wire nets, and pre-flight lint rules (M6001-M6017)
+msx pscad inspect models/benchmark.pscx
+msx pscad lint models/benchmark.pscx
+
+# Render schematic diagram SVG or compute visual schematic diff between two revisions
+msx pscad diagram models/benchmark.pscx --out=schematic.svg
+msx pscad diff models/rev1.pscx models/rev2.pscx
+
+# Verify IEEE 2800-2022 & NERC PRC-029-1 fault ride-through compliance
+msx pscad verify-ieee2800 models/benchmark.pscx
+
+# Project to Modelica or System Structure & Parameterization (SSP)
+msx pscad to-modelica models/benchmark.pscx --out=Benchmark.mo
+msx pscad to-ssp models/benchmark.pscx --out=SystemStructure.ssd
+```
+
+#### 2. Simulation Export to `.psout` & COMTRADE Conversion
 
 ```bash
 # Simulate a PSCAD case and export directly to .psout
 msx pscad sim models/benchmark.pscx --format=psout --out=results.psout
-```
 
-#### 2. Binary Inspection & Format Conversion
-
-```bash
 # Print formatted ANSI metadata table and channel telemetry
 msx pscad psout results.psout
 
-# Convert .psout to CSV
+# Convert .psout to CSV or IEEE C37.111 COMTRADE (.cfg + .dat)
 msx pscad psout results.psout --out=telemetry.csv
-
-# Convert .psout to IEEE C37.111 COMTRADE (.cfg + .dat)
 msx pscad psout results.psout --format=comtrade
 ```
 

@@ -46,7 +46,12 @@ ModelScript Standards & Interoperability Engine — Functional Mock-up Interface
 - **Industry 4.0 IDTA Asset Administration Shell v3.0 (`@modelscript/exchange/aasx`, `src/aasx/opc-packager.ts`)**: Generates Open Packaging Conventions (`.aasx`) archives containing standardized AAS v3.0 XML/JSON environments (`Nameplate`, `TechnicalData`, `HandoverDocumentation`, and `SimulationModels` submodels).
 - **DIN SPEC 3105 Open Know-How Lens Engine (`@modelscript/exchange/lens`, `src/lens/lens-engine.ts`)**: Projects unified workspace graphs into **DIN SPEC 3105-1 (OKH v1.0)** open hardware manifests (`okh.json` / `okh.toml`), extracting bills of materials (BOM), STEP/STL geometry links, PCB Gerber manufacturing files, and SPDX license metadata.
 
-### 5. Binary Telemetry Readers (`src/telemetry/`)
+### 5. Real-Time HIL Firmware, CIGRE B4.82 DLLs & Benchmark Catalog (`src/firmware/`, `src/catalog/`)
+
+- **IEEE / CIGRE B4.82 DLL & HIL Target Firmware Generator (`src/firmware/cigre-dll-wrapper.ts`, `src/firmware/hil-target-generator.ts`)**: Generates zero-malloc MISRA-C / ANSI C99 real-time controller firmware and standardized IEEE/CIGRE B4.82 (`Model_Initialize`, `Model_Outputs`, `Model_Terminate`) dynamic link library wrappers (`generateCigreDllSource`, `generateHilTargetWrapper`) for dSPACE, OPAL-RT, RTDS, Speedgoat, PSCAD, and PSS®E real-time targets.
+- **Standard Library & Verification Benchmark Catalogs (`src/catalog/stdlibs.catalog.json`, `src/catalog/benchmarks.catalog.json`)**: Curated multi-domain standard library and reference benchmark registry (`loadBenchmarkCatalog`, `BenchmarkCatalogEntry`) with SHA-256 integrity pins.
+
+### 6. Binary Telemetry Readers (`src/telemetry/`)
 
 - **ASAM MDF 4.x Reader (`src/telemetry/mdf4_reader.ts`)**: Zero-copy binary parser for automotive **ASAM COMMON MDF 4.1/4.2 (`.mf4`)** measurement files (`HD`, `DG`, `CG`, `CN`, `DT`/`DZ` blocks), converting recorded vehicle CAN/sensor channels into time-series trajectories for digital twin calibration.
 - **ROS 2 MCAP Reader (`src/telemetry/mcap_reader.ts`)**: High-speed binary reader for robotics **MCAP (`.mcap`)** container files, extracting timestamped topic messages and sensor streams.

@@ -753,6 +753,11 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscri
     candidateUrls.push(wasmUrl);
   } else {
     try {
+      candidateUrls.push(new URL(/* webpackIgnore: true */ "sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    try {
       candidateUrls.push(new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", base).href);
     } catch {
       // ignore
@@ -764,11 +769,6 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscri
     }
     try {
       candidateUrls.push(new URL(/* webpackIgnore: true */ "wasm/sundials.wasm", base).href);
-    } catch {
-      // ignore
-    }
-    try {
-      candidateUrls.push(new URL(/* webpackIgnore: true */ "sundials.wasm", base).href);
     } catch {
       // ignore
     }

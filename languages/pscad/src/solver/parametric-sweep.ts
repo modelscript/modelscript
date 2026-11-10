@@ -120,6 +120,7 @@ export function runPointOnWaveSweep(netlist: EmtNetlist, options: PointOnWaveOpt
           status: "open",
           initialClosed: false,
           closeTimeSec: Math.min(tA, tB, tC),
+          poleCloseTimesSec: [tA, tB, tC],
           openTimeSec: 1e9,
         };
       }

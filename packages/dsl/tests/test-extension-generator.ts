@@ -94,6 +94,23 @@ async function main() {
     (m: any) => m.command === "modelscript.openDiagramSource",
   );
   assert.ok(openSourceMenu, "Expected modelscript.openDiagramSource in editor/title menus");
+  assert.ok(!pkg.activationEvents.includes("*"), "Expected '*' to be excluded from activationEvents");
+  assert.ok(pkg.activationEvents.includes("onUri"), "Expected 'onUri' in activationEvents");
+  assert.strictEqual(pkg.engines.vscode, "^1.90.0");
+  assert.strictEqual(pkg.capabilities?.virtualWorkspaces, true);
+  assert.strictEqual(pkg.capabilities?.untrustedWorkspaces?.supported, "limited");
+  assert.ok(
+    pkg.capabilities?.untrustedWorkspaces?.restrictedConfigurations?.includes("modelscript.registry.url"),
+    "Expected restrictedConfigurations to include modelscript.registry.url",
+  );
+  const allConfigProps: Record<string, any> = Object.assign(
+    {},
+    ...(Array.isArray(pkg.contributes.configuration)
+      ? pkg.contributes.configuration.map((c: any) => c.properties || {})
+      : [pkg.contributes.configuration?.properties || {}]),
+  );
+  assert.strictEqual(allConfigProps["modelscript.llm.apiKey"]?.scope, "application");
+  assert.strictEqual(allConfigProps["modelscript.cloud.apiKey"]?.scope, "application");
   console.log("  ✓ Manifest generation passed");
 
   // Test 3: Language Configuration
@@ -109,6 +126,7 @@ async function main() {
   console.log("Test 4: In-memory virtual extension bundling...");
   const files = bundleExtension([calcGrammar, jsonGrammar], {
     name: "test-suite",
+    icon: "images/icon.png",
     features: {
       diagramEditor: true,
     },
@@ -116,6 +134,7 @@ async function main() {
 
   const filePaths = files.map((f) => f.path);
   assert.ok(filePaths.includes("package.json"));
+  assert.ok(filePaths.includes(".vscodeignore"), "Expected .vscodeignore to be generated");
   assert.ok(filePaths.includes("tsconfig.json"));
   assert.ok(filePaths.includes("src/extension.ts"));
   assert.ok(filePaths.includes("language-configuration-calc.json"));
@@ -131,6 +150,7 @@ async function main() {
       : new TextDecoder().decode(packageJsonFile.content),
   );
   assert.strictEqual(parsedPkg.name, "test-suite");
+  assert.strictEqual(parsedPkg.icon, "images/icon.png");
   console.log("  ✓ In-memory bundling passed");
 
   // Test 5: Method 2 - Custom Language Diagram Action Override

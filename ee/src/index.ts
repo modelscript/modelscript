@@ -6,6 +6,13 @@ import {
   type EnterpriseAdminDevopsRouters,
 } from "./admin-devops/admin-devops-governance.js";
 import {
+  runGatekeeperScreeningPipeline,
+  type GatekeeperScorecard,
+  type GatekeeperStageResult,
+  type GatekeeperSubmissionPackage,
+} from "./admin-devops/gatekeeper-pipeline.js";
+import { createGatekeeperRouter } from "./admin-devops/gatekeeper-service.js";
+import {
   defaultOidcService,
   OidcService,
   type OidcClaims,
@@ -37,6 +44,15 @@ import {
   type SignedComplianceAttestation,
 } from "./compliance/dhf-attestation.js";
 import {
+  buildRegulatoryDossier,
+  compileNercRsawDocument,
+  compileOscalAssessmentResults,
+  generateCeiiWatermarkHeader,
+  type CompiledRegulatoryDossier,
+  type DossierCompilationInput,
+  type RegulatoryDossierFinding,
+} from "./compliance/regulatory-dossier.js";
+import {
   createExportComplianceMiddleware,
   extractRequestCountry,
   extractRequestRegion,
@@ -53,7 +69,12 @@ import {
   auditTelecomSupplyChain,
   evaluateFccPart4Outage,
   FCC_COVERED_LIST_VENDORS,
+  generateDirsEmergencySnapshot,
+  generateNorsFilingDossier,
+  type DirsSnapshotInput,
+  type DirsSnapshotReport,
   type FccPart4NorsEvaluation,
+  type NorsFilingDossier,
   type ScrmAuditResult,
   type TelecomEquipmentItem,
   type TelecomOutageEvent,
@@ -121,6 +142,7 @@ export function mountEnterpriseEdition(ctx: EnterprisePluginHostContext): void {
   ctx.app.use("/api/v1", createDhfAttestationRouter());
   ctx.app.use("/api/v1", createEnterpriseHilPlmRouter());
   ctx.app.use("/api/v1", createEnterpriseDesktopRouter());
+  ctx.app.use("/api/v1", createGatekeeperRouter());
   mountEnterpriseCollabAndExports(ctx.app);
 
   if (ctx.auth) {
@@ -146,8 +168,12 @@ export function mountEnterpriseEdition(ctx: EnterprisePluginHostContext): void {
 export {
   ALL_ENTERPRISE_FEATURES,
   auditTelecomSupplyChain,
+  buildRegulatoryDossier,
   checkEnterpriseDesktopAirgapCompliance,
+  compileNercRsawDocument,
+  compileOscalAssessmentResults,
   computeAttestationDigest,
+  generateCeiiWatermarkHeader,
   createAirgapSecurityHeadersMiddleware,
   createDhfAttestationRouter,
   createEnterpriseComplianceRouter,
@@ -155,6 +181,7 @@ export {
   createEnterpriseHilPlmRouter,
   createEnterpriseLicenseRouter,
   createExportComplianceMiddleware,
+  createGatekeeperRouter,
   DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM,
   defaultOidcService,
   ENTERPRISE_HIL_TARGETS,
@@ -163,7 +190,9 @@ export {
   extractRequestCountry,
   extractRequestRegion,
   FCC_COVERED_LIST_VENDORS,
+  generateDirsEmergencySnapshot,
   generateLicenseKeyPair,
+  generateNorsFilingDossier,
   isExportRestricted,
   isOfacSanctioned,
   mountEnterpriseAdminAndDevops,
@@ -178,6 +207,7 @@ export {
   OidcService,
   requireEnterpriseFeature,
   resolveActiveEnterpriseLicense,
+  runGatekeeperScreeningPipeline,
   runLicenseCli,
   SANCTIONED_COUNTRIES,
   SANCTIONED_REGIONS,
@@ -194,6 +224,10 @@ export {
   type BlackboxFmuEntitlementResult,
   type CliEntitlementCheckResult,
   type ComplianceAttestationPayload,
+  type CompiledRegulatoryDossier,
+  type DirsSnapshotInput,
+  type DirsSnapshotReport,
+  type DossierCompilationInput,
   type Ed25519KeyPairPem,
   type EnterpriseAdminDevopsRouters,
   type EnterpriseAuthRouters,
@@ -211,11 +245,16 @@ export {
   type EnterpriseTwinsRouters,
   type ExportControlAuditLogger,
   type FccPart4NorsEvaluation,
+  type GatekeeperScorecard,
+  type GatekeeperStageResult,
+  type GatekeeperSubmissionPackage,
   type GeoLocationLookupAdapter,
   type LicenseVerificationResult,
+  type NorsFilingDossier,
   type OidcClaims,
   type OidcDatabaseAdapter,
   type OidcUserRecord,
+  type RegulatoryDossierFinding,
   type RegulatoryStandard,
   type ScrmAuditResult,
   type SignedComplianceAttestation,

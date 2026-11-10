@@ -12,9 +12,13 @@
 
 import {
   computeAmdOrdering,
+  type SparseCCSMatrix,
+  type SparseLU,
   solveLinearSystemSparse,
   solveSparseCCS,
+  sparseLuAnalyze,
   sparseLuFactor,
+  sparseLuRefactorize,
   sparseLuSolve,
   SparseTripletBuilder,
 } from "@modelscript/runtime";
@@ -274,6 +278,13 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   const busToQIdx = new Int32Array(N);
   let cachedColPerm: Int32Array | undefined;
   let cachedNVars = -1;
+  let cachedCcs: SparseCCSMatrix | undefined;
+  let cachedTripletMap: Int32Array | undefined;
+  let cachedLu: SparseLU | null = null;
+  let scratchDelta: Float64Array | undefined;
+  let jTriplets: SparseTripletBuilder | undefined;
+  let bpTriplets: SparseTripletBuilder | undefined;
+  let bppTriplets: SparseTripletBuilder | undefined;
 
   // Active indices:
   // Non-slack buses participate in delta P / delta theta
@@ -342,8 +353,12 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
     if (useFastDecoupled && iter >= 1) {
       // Fast Decoupled Power Flow (Stott-Alsac alternating P-theta and Q-V half-steps)
-      const bpTriplets = new SparseTripletBuilder(nP, nP, totalYbusNnz);
-      const bppTriplets = new SparseTripletBuilder(Math.max(1, nQ), Math.max(1, nQ), totalYbusNnz);
+      if (!bpTriplets || bpTriplets.nRows !== nP) {
+        bpTriplets = new SparseTripletBuilder(nP, nP, totalYbusNnz);
+      }
+      if (!bppTriplets || bppTriplets.nRows !== Math.max(1, nQ)) {
+        bppTriplets = new SparseTripletBuilder(Math.max(1, nQ), Math.max(1, nQ), totalYbusNnz);
+      }
 
       for (let sub = 0; sub < 2; sub++) {
         if (sub > 0) {
@@ -421,7 +436,11 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     let solved = false;
 
     if (nVars >= 24) {
-      const jTriplets = new SparseTripletBuilder(nVars, nVars, 4 * totalYbusNnz);
+      if (!jTriplets || jTriplets.nRows !== nVars) {
+        jTriplets = new SparseTripletBuilder(nVars, nVars, 4 * totalYbusNnz);
+      } else {
+        jTriplets.clear();
+      }
 
       for (let i = 0; i < N; i++) {
         const rP = busToPIdx[i]!;
@@ -451,54 +470,89 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
             // H_ik = ∂P_i / ∂θ_k
             if (rP >= 0 && cP >= 0) {
-              jTriplets.add(rP, cP, vi * vk * gSinMinusBCos);
+              jTriplets.addStructural(rP, cP, vi * vk * gSinMinusBCos);
             }
             // N_ik = ∂P_i / ∂V_k
             if (rP >= 0 && cQ >= 0) {
-              jTriplets.add(rP, nP + cQ, vi * gCosPlusBSin);
+              jTriplets.addStructural(rP, nP + cQ, vi * gCosPlusBSin);
             }
             // M_ik = ∂Q_i / ∂θ_k
             if (rQ >= 0 && cP >= 0) {
-              jTriplets.add(nP + rQ, cP, -vi * vk * gCosPlusBSin);
+              jTriplets.addStructural(nP + rQ, cP, -vi * vk * gCosPlusBSin);
             }
             // L_ik = ∂Q_i / ∂V_k
             if (rQ >= 0 && cQ >= 0) {
-              jTriplets.add(nP + rQ, nP + cQ, vi * gSinMinusBCos);
+              jTriplets.addStructural(nP + rQ, nP + cQ, vi * gSinMinusBCos);
             }
           } else {
             const gii = yDiagG[i]!;
             const bii = yDiagB[i]!;
             // Diagonal H_ii = -Q_i - B_ii * V_i^2
             if (rP >= 0 && cP >= 0) {
-              jTriplets.add(rP, cP, -Qcalc[i]! - bii * vi * vi);
+              jTriplets.addStructural(rP, cP, -Qcalc[i]! - bii * vi * vi);
             }
             // Diagonal N_ii = P_i / V_i + G_ii * V_i + ∂Pload/∂V
             if (rP >= 0 && cQ >= 0) {
               const dPloaddV = IloadP[i]! + 2 * YloadP[i]! * vi;
-              jTriplets.add(rP, nP + cQ, Pcalc[i]! / vi + gii * vi + dPloaddV);
+              jTriplets.addStructural(rP, nP + cQ, Pcalc[i]! / vi + gii * vi + dPloaddV);
             }
             // Diagonal M_ii = P_i - G_ii * V_i^2
             if (rQ >= 0 && cP >= 0) {
-              jTriplets.add(nP + rQ, cP, Pcalc[i]! - gii * vi * vi);
+              jTriplets.addStructural(nP + rQ, cP, Pcalc[i]! - gii * vi * vi);
             }
             // Diagonal L_ii = Q_i / V_i - B_ii * V_i + ∂Qload/∂V
             if (rQ >= 0 && cQ >= 0) {
               const dQloaddV = IloadQ[i]! - 2 * YloadQ[i]! * vi;
-              jTriplets.add(nP + rQ, nP + cQ, Qcalc[i]! / vi - bii * vi + dQloaddV);
+              jTriplets.addStructural(nP + rQ, nP + cQ, Qcalc[i]! / vi - bii * vi + dQloaddV);
             }
           }
         }
       }
 
-      const jCCS = jTriplets.toCCS();
-      if (cachedNVars !== nVars || !cachedColPerm) {
-        cachedColPerm = nVars >= 48 ? computeAmdOrdering(jCCS) : undefined;
-        cachedNVars = nVars;
+      if (!scratchDelta || scratchDelta.length < nVars) {
+        scratchDelta = new Float64Array(nVars);
       }
-      solved = solveSparseCCS(jCCS, delta, {
-        allowPerturbation: false,
-        colPerm: cachedColPerm,
-      });
+
+      if (
+        cachedNVars === nVars &&
+        cachedCcs &&
+        cachedTripletMap &&
+        cachedLu &&
+        jTriplets.updateCCSValues(cachedCcs, cachedTripletMap)
+      ) {
+        if (sparseLuRefactorize(cachedCcs, cachedLu, { allowPerturbation: false })) {
+          sparseLuSolve(cachedLu, delta, scratchDelta);
+          delta.set(scratchDelta.subarray(0, nVars));
+          solved = true;
+        } else {
+          cachedLu = sparseLuAnalyze(cachedCcs, {
+            allowPerturbation: false,
+            colPerm: cachedColPerm,
+          });
+          if (cachedLu) {
+            sparseLuSolve(cachedLu, delta, scratchDelta);
+            delta.set(scratchDelta.subarray(0, nVars));
+            solved = true;
+          }
+        }
+      } else {
+        const built = jTriplets.buildCCSWithMap();
+        cachedCcs = built.ccs;
+        cachedTripletMap = built.tripletToCcsIdx;
+        if (cachedNVars !== nVars || !cachedColPerm) {
+          cachedColPerm = nVars >= 48 ? computeAmdOrdering(cachedCcs) : undefined;
+          cachedNVars = nVars;
+        }
+        cachedLu = sparseLuAnalyze(cachedCcs, {
+          allowPerturbation: false,
+          colPerm: cachedColPerm,
+        });
+        if (cachedLu) {
+          sparseLuSolve(cachedLu, delta, scratchDelta);
+          delta.set(scratchDelta.subarray(0, nVars));
+          solved = true;
+        }
+      }
     } else {
       const J = new Float64Array(nVars * nVars);
       for (let i = 0; i < N; i++) {
@@ -2423,3 +2477,17 @@ export function formatShortCircuitReport(result: ShortCircuitAnalysisResult, cas
   lines.push(`====================================================================================================`);
   return lines.join("\n");
 }
+
+/**
+ * Executes AC Power Flow asynchronously (yielding to the browser UI thread or Web Worker
+ * event loop prior to sparse LU factorization) so 2,000+ to 70,000+ bus cases do not
+ * freeze interactive rendering.
+ */
+export async function solvePowerFlowAsync(
+  psseCase: PsseCase,
+  options: PowerFlowOptions = {},
+): Promise<PowerFlowSolution> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  return solvePowerFlow(psseCase, options);
+}
+

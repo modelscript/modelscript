@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import { AnimationController } from "./cad-viewer/animation-controller";
 import CadViewer, { type CadComponent, type GizmoCommitPayload, type QifOverlayPayload } from "./cad-viewer/cad-viewer";
 import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
@@ -26,6 +27,7 @@ function App() {
   const [cfdPayload, setCfdPayload] = useState<CfdMeshPayload | null>(null);
   const [feaPayload, setFeaPayload] = useState<FeaMeshPayload | null>(null);
   const [qifOverlay, setQifOverlay] = useState<QifOverlayPayload | null>(null);
+  const [verificationOverlay, setVerificationOverlay] = useState<Verification3DOverlayPayload | null>(null);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -138,6 +140,24 @@ function App() {
         } catch (e) {
           console.warn("[CadWebview] Failed to handle QIF_INSPECTION_OVERLAY:", e);
         }
+      } else if (message.type === "VERIFICATION_OVERLAY") {
+        try {
+          const payload = (message.data?.payload || message.data) as Verification3DOverlayPayload;
+          if (payload) {
+            setVerificationOverlay(payload);
+          }
+        } catch (e) {
+          console.warn("[CadWebview] Failed to handle VERIFICATION_OVERLAY:", e);
+        }
+      } else if (message.type === "FOCUS_VIOLATION_3D" || message.type === "focusViolationIn3D") {
+        const { time, lhsName } = message;
+        if (time !== undefined && Number.isFinite(time)) {
+          animationControllerRef.current?.seek(time);
+        }
+        if (lhsName) {
+          setSelectedName(lhsName);
+        }
+        forceUpdate((n) => n + 1);
       }
     };
     window.addEventListener("message", handleMessage);
@@ -188,6 +208,7 @@ function App() {
         cfdPayload={cfdPayload}
         feaPayload={feaPayload}
         qifOverlay={qifOverlay}
+        verificationOverlay={verificationOverlay}
       />
     </div>
   );

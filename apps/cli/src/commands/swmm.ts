@@ -12,14 +12,17 @@
  */
 
 import {
+  buildSwmmFromGis,
   computeSwmmWaterQuality,
   lintSwmm,
   lowerSwmmToDae,
   parseSwmm,
   routeNetworkFlow,
+  serializeSwmm,
   simulateSwmmRtc,
   swmmToModelica,
 } from "@modelscript/swmm";
+import { diffSwmmNetworks } from "@modelscript/diagram/water-network-diff";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -30,20 +33,56 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality)",
+        description: "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality, diff, from-gis)",
         type: "string",
-        choices: ["inspect", "summary", "lint", "to-dae", "to-modelica", "route-flow", "rtc", "quality"],
+        choices: ["inspect", "summary", "lint", "to-dae", "to-modelica", "route-flow", "rtc", "quality", "diff", "from-gis"],
         demandOption: true,
       })
       .positional("files", {
-        description: "SWMM input deck (.inp) file(s) to process",
+        description: "SWMM input deck (.inp) file(s) or conduits GeoJSON for from-gis",
         type: "string",
         array: true,
       })
       .option("out", {
         alias: ["o", "output"],
-        description: "Output file path (e.g. for Modelica export)",
+        description: "Output file path (e.g. for Modelica export or compiled network .inp)",
         type: "string",
+      })
+      .option("manholes", {
+        type: "string",
+        describe: "Optional GeoJSON file containing manholes / outfalls",
+      })
+      .option("subcatchments", {
+        type: "string",
+        describe: "Optional GeoJSON file containing catchment polygon boundaries",
+      })
+      .option("dem", {
+        type: "string",
+        describe: "Optional digital elevation model raster (.asc, .grd)",
+      })
+      .option("snap", {
+        type: "number",
+        describe: "Topological manhole snap tolerance in meters (default: 2.0m)",
+      })
+      .option("diameter", {
+        type: "number",
+        describe: "Default conduit diameter in meters (default: 0.6m)",
+      })
+      .option("manning", {
+        type: "number",
+        describe: "Default Manning's roughness n (default: 0.013)",
+      })
+      .option("depth", {
+        type: "number",
+        describe: "Default manhole depth in meters (default: 2.5m)",
+      })
+      .option("imperv", {
+        type: "number",
+        describe: "Default subcatchment imperviousness % (default: 40.0%)",
+      })
+      .option("title", {
+        type: "string",
+        describe: "Model deck title",
       });
   },
   handler: async (argv) => {
@@ -54,6 +93,134 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
     if (files.length === 0) {
       console.error("[swmm] No SWMM network file(s) specified.");
       process.exit(1);
+    }
+
+    if (action === "from-gis") {
+      const conduitsInput = files[0]!;
+      const conduitsPath = path.resolve(process.cwd(), conduitsInput);
+      if (!fs.existsSync(conduitsPath)) {
+        console.error(`Error: Conduits GeoJSON file not found: ${conduitsInput}`);
+        process.exit(1);
+      }
+      const conduitsGeoJson = fs.readFileSync(conduitsPath, "utf-8");
+
+      let manholesGeoJson: string | undefined;
+      const manholesOpt = argv["manholes"] as string | undefined;
+      if (manholesOpt) {
+        const mhPath = path.resolve(process.cwd(), manholesOpt);
+        if (fs.existsSync(mhPath)) {
+          manholesGeoJson = fs.readFileSync(mhPath, "utf-8");
+        } else {
+          console.warn(`Warning: Manholes file not found: ${manholesOpt}`);
+        }
+      }
+
+      let subcatchmentsGeoJson: string | undefined;
+      const subOpt = argv["subcatchments"] as string | undefined;
+      if (subOpt) {
+        const scPath = path.resolve(process.cwd(), subOpt);
+        if (fs.existsSync(scPath)) {
+          subcatchmentsGeoJson = fs.readFileSync(scPath, "utf-8");
+        } else {
+          console.warn(`Warning: Subcatchments file not found: ${subOpt}`);
+        }
+      }
+
+      let demContent: string | undefined;
+      const demOpt = argv["dem"] as string | undefined;
+      if (demOpt) {
+        const demPath = path.resolve(process.cwd(), demOpt);
+        if (fs.existsSync(demPath)) {
+          demContent = fs.readFileSync(demPath, "utf-8");
+        } else {
+          console.warn(`Warning: DEM file not found: ${demOpt}`);
+        }
+      }
+
+      const snapTol = argv["snap"] !== undefined ? Number(argv["snap"]) : 2.0;
+      const diam = argv["diameter"] !== undefined ? Number(argv["diameter"]) : 0.6;
+      const manningN = argv["manning"] !== undefined ? Number(argv["manning"]) : 0.013;
+      const depth = argv["depth"] !== undefined ? Number(argv["depth"]) : 2.5;
+      const imperv = argv["imperv"] !== undefined ? Number(argv["imperv"]) : 40.0;
+      const title = argv["title"] as string | undefined;
+
+      const deck = buildSwmmFromGis({
+        conduitsGeoJson,
+        manholesGeoJson,
+        subcatchmentsGeoJson,
+        dem: demContent,
+        snapToleranceM: snapTol,
+        defaultDiameterM: diam,
+        defaultManningN: manningN,
+        defaultManholeDepthM: depth,
+        defaultImpervPct: imperv,
+        title: title ?? `GIS Ingested: ${path.basename(conduitsInput)}`,
+      });
+
+      const serialized = serializeSwmm(deck);
+      if (out) {
+        fs.writeFileSync(path.resolve(process.cwd(), out), serialized, "utf-8");
+        console.log(`\n=== SWMM GIS Ingestion Succeeded ===`);
+        console.log(`Saved compiled network deck to: ${out}`);
+        console.log(`  Junctions:     ${deck.junctions.size}`);
+        console.log(`  Outfalls:      ${deck.outfalls.size}`);
+        console.log(`  Conduits:      ${deck.conduits.size}`);
+        console.log(`  Subcatchments: ${deck.subcatchments.size}`);
+      } else {
+        console.log(serialized);
+      }
+      return;
+    }
+
+    if (action === "diff") {
+      if (files.length < 2) {
+        console.error("Error: Diff requires two SWMM network files: msx swmm diff <base.inp> <target.inp>");
+        process.exit(1);
+      }
+      const baseInput = files[0]!;
+      const targetInput = files[1]!;
+      const baseFile = path.resolve(process.cwd(), baseInput);
+      const targetFile = path.resolve(process.cwd(), targetInput);
+      if (!fs.existsSync(baseFile)) {
+        console.error(`Error: Base file not found: ${baseInput}`);
+        process.exit(1);
+      }
+      if (!fs.existsSync(targetFile)) {
+        console.error(`Error: Target file not found: ${targetInput}`);
+        process.exit(1);
+      }
+
+      const baseNet = parseSwmm(fs.readFileSync(baseFile, "utf-8"));
+      const targetNet = parseSwmm(fs.readFileSync(targetFile, "utf-8"));
+      const diff = diffSwmmNetworks(baseNet, targetNet);
+
+      console.log(`\n=== Visual PR Diff: SWMM Drainage Network ===`);
+      console.log(`Base:   ${baseInput}`);
+      console.log(`Target: ${targetInput}`);
+      console.log(`\nDelta Summary:`);
+      console.log(`  Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified, ${diff.stats.unchangedNodes} unchanged`);
+      console.log(`  Links: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified, ${diff.stats.unchangedLinks} unchanged`);
+
+      if (diff.stats.modifiedLinks > 0) {
+        console.log(`\nModified Conduits:`);
+        for (const [id, link] of diff.links) {
+          if (link.status === "modified") {
+            const deltas = link.propertyDeltas
+              .map((d) => `${d.property}: ${d.baseValue} -> ${d.targetValue} (${(d.delta ?? 0) >= 0 ? "+" : ""}${d.delta})`)
+              .join(", ");
+            console.log(`  - Conduit '${id}': ${deltas}`);
+          }
+        }
+      }
+
+      if (out) {
+        const outPath = path.resolve(process.cwd(), out);
+        if (out.endsWith(".json")) {
+          fs.writeFileSync(outPath, JSON.stringify(diff, null, 2), "utf-8");
+          console.log(`\nSaved semantic diff JSON report to ${out}`);
+        }
+      }
+      return;
     }
 
     for (const file of files) {

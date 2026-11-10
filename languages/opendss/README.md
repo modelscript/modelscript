@@ -13,10 +13,10 @@ EPRI OpenDSS unbalanced multi-phase electric power distribution system and Distr
   - **Substation Source & Sequence Impedances**: `Circuit.<name>` (`basekv`, `pu`, `angle`, `phases`, `bus1`, `mvasc3`, `mvasc1`, `r1`, `x1`).
   - **Power Delivery Elements**: `LineCode.<name>` ($R_1, X_1, R_0, X_0, C_1, C_0$), `Line.<name>` (`bus1`, `bus2`, `linecode`, `length`, `units`, `phases`), `Transformer.<name>` (multi-winding `buses=[...]`, `kvs=[...]`, `kvas=[...]`, `conns=[...]`, `%r`, `xhl`), and `Capacitor.<name>`.
   - **Power Conversion & DER Elements**: `Load.<name>` (`kW`, `kvar`, `PF`, `model`), `Generator.<name>`, `PVSystem.<name>` (`kVA`, `Pmpp`, `irradiance`), and `Storage.<name>` (`kWrated`, `kWhrated`, `%stored`).
-- **Radial & Meshed Forward-Backward Sweep Power Flow Solver (`solveDistributionPowerFlow`)**: Iterative DistFlow / forward-backward sweep solver computing per-bus voltage magnitudes ($V_{\text{kV}}, V_{\text{pu}}$), voltage phase angles ($\delta^\circ$), active/reactive feeder load and DER generation totals, and $I^2 R$ distribution line and transformer copper losses.
+- **Radial & Meshed Power Flow & Unbalanced Multi-Phase $Y_{\text{bus}}$ Solvers (`solveDistributionPowerFlow`, `solveOpenDssYbus`)**: Iterative DistFlow / forward-backward sweep solver and full 3-phase Carson's equations nodal admittance ($Y_{\text{bus}}$) fixed-point injection solver (`src/solvers/opendss-ybus-solver.ts`) with IEEE 1547 Volt-Var / Volt-Watt smart inverter control, automatic SVR tap changer regulation, and ICA hosting capacity sweeps.
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerOpenDssToDae`)**: Compiles substation Thévenin sources, multi-winding transformers, distribution line $R + j\omega L$ branches, shunt capacitors, constant-power/impedance loads, PV inverters, and battery storage state-of-charge ODEs ($\frac{dE_{\text{BESS}}}{dt} = -P_{\text{BESS}}$) directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **8 Pre-Flight Distribution Grid & DER Hosting Lint Rules (`M8401`–`M8408`, `lintOpenDss`)**: Static electrical verification detecting isolated/undefined bus nodes, phase-count mismatches, transformer winding kV vs. bus base kV mismatches, reverse-power DER hosting capacity thermal overloads ($\sum P_{\text{PV+Gen}} > S_{\text{xfmr}}$), missing `New Circuit` sources, negative load kW declarations, non-positive line lengths, and undefined `LineCode` references.
-- **Modelica 3.x Distribution Grid Projection (`openDssToModelica`)**: Synthesizes standardized Modelica 3.x electrical distribution feeder models for transient and DER control co-simulation.
+- **Modelica 3.x Distribution Grid Projection (`openDssToModelica`) & 7 MCP Tools**: Synthesizes standardized Modelica 3.x electrical distribution feeder models and exposes 7 dedicated MCP tools (`opendss_solve_power_flow`, `opendss_hosting_capacity`, `opendss_short_circuit`, `opendss_qsts`, `opendss_flisr_reconfigure`, `opendss_volt_var_optimize`, `opendss_export_cim`).
 - **Multi-File Workspace Indexing & LSP (`OpenDssWorkspaceIndex`, `provideOpenDssHover`, `provideOpenDssCompletions`)**: Implements `IWorkspaceIndex` across master and redirected `.dss` feeder scripts with bus/element hover inspection, command completions, and AST writeback.
 
 ---
@@ -33,10 +33,12 @@ EPRI OpenDSS unbalanced multi-phase electric power distribution system and Distr
 | `src/lints/opendss-linter.ts`            | `lintOpenDss` distribution topology, phase consistency, and DER hosting capacity linter                                     |
 | `src/lints/index.ts`                     | Linter barrel exports                                                                                                       |
 | `src/solvers/power-flow-solver.ts`       | `solveDistributionPowerFlow` forward-backward sweep distribution power flow solver                                          |
+| `src/solvers/opendss-ybus-solver.ts`     | Multi-phase unbalanced $Y_{\text{bus}}$ fixed-point solver, QSTS, IEEE 1547 Volt-Var, ICA hosting capacity, and FLISR      |
 | `src/dae/opendss-to-dae.ts`              | `lowerOpenDssToDae` direct lowering of feeders, transformers, and DERs into `DAEBuilder` linear memory                      |
 | `src/projections/opendss-to-modelica.ts` | `openDssToModelica` translator to Modelica 3.x distribution grid models                                                     |
 | `src/workspace-index.ts`                 | `OpenDssWorkspaceIndex` implementing `IWorkspaceIndex` across `.dss` scripts                                                |
 | `src/lsp.ts`                             | LSP hover, completion, and symbol providers                                                                                 |
+| `tests/opendss-benchmark-runner.ts`      | IEEE 13-bus / 34-bus / 123-bus feeder benchmark verification runner                                                         |
 
 ---
 

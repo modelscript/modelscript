@@ -18,6 +18,13 @@ import type { DiagramData, DiagramEdge, DiagramNode } from "@modelscript/diagram
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import { LANGUAGES } from "../docs/.vitepress/theme/data/languages.js";
 
+// Seed Math.random deterministically so layout engines (e.g. ELK tie-breaking) produce identical SVGs across --check runs.
+let _rngState = 0x12345678;
+Math.random = () => {
+  _rngState = (_rngState * 1664525 + 1013904223) >>> 0;
+  return _rngState / 0x100000000;
+};
+
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outputPath = path.resolve(__dirname, "../docs/.vitepress/theme/data/language-examples.generated.json");
@@ -313,6 +320,31 @@ equation
   C2 * der(v2) = G * (v1 - v2) + iL;
   L * der(iL) = -v2;
 end ChuaNonlinearCircuit;`,
+  },
+
+  ampl: {
+    filename: "TransportationNetwork.mod",
+    title: "Hitchcock-Koopmans Multi-Commodity Transportation",
+    description:
+      "Linear programming model with multi-dimensional sets, demand satisfaction equations, and capacity constraints.",
+    viewLabel: "Optimization Model & Network Flow",
+    code: `set ORIG;
+set DEST;
+
+param supply {ORIG} >= 0;
+param demand {DEST} >= 0;
+param cost {ORIG, DEST} >= 0;
+
+var Trans {ORIG, DEST} >= 0;
+
+minimize Total_Cost:
+  sum {i in ORIG, j in DEST} cost[i, j] * Trans[i, j];
+
+subject to Supply_Limit {i in ORIG}:
+  sum {j in DEST} Trans[i, j] <= supply[i];
+
+subject to Demand_Satisfaction {j in DEST}:
+  sum {i in ORIG} Trans[i, j] = demand[j];`,
   },
 
   sysml2: {
@@ -1462,6 +1494,349 @@ C_comp 0.65p 0.50p 0.85p
 4.00    0.95  172.0    0.14 -124.0    0.14 -124.0    0.95  172.0`,
   },
 
+  optical: {
+    filename: "MetroRoadmRing.json",
+    title: "OpenROADM DWDM Transmission & ROADM Mesh",
+    description:
+      "OpenROADM multi-degree ROADM ring topology with in-line EDFA amplifiers, colorless/directionless add-drop banks, and optical span budgets.",
+    viewLabel: "OpenROADM DWDM Optical Topology",
+    code: `{
+  "network-name": "US-NorthEast-ROADM-Ring",
+  "nodes": [
+    {
+      "node-id": "ROADM-NYC",
+      "name": "New York Core Hub",
+      "node-type": "rdm",
+      "degrees": [{ "degree-number": 1, "max-wavelengths": 96 }, { "degree-number": 2, "max-wavelengths": 96 }],
+      "srgs": [{ "srg-number": 1, "max-add-drop": 96, "colorless": true, "directionless": true }]
+    },
+    {
+      "node-id": "ILA-HARTFORD",
+      "name": "Hartford In-Line Optical Amp",
+      "node-type": "ila",
+      "degrees": [{ "degree-number": 1, "max-wavelengths": 96 }]
+    },
+    {
+      "node-id": "ROADM-BOS",
+      "name": "Boston Regional Hub",
+      "node-type": "rdm",
+      "degrees": [{ "degree-number": 1, "max-wavelengths": 96 }, { "degree-number": 2, "max-wavelengths": 96 }],
+      "srgs": [{ "srg-number": 1, "max-add-drop": 96, "colorless": true, "directionless": true }]
+    }
+  ],
+  "links": [
+    {
+      "link-id": "SPAN-NYC-HARTFORD",
+      "source": "ROADM-NYC",
+      "dest": "ILA-HARTFORD",
+      "length-km": 178.5,
+      "span-loss-db": 39.2
+    },
+    {
+      "link-id": "SPAN-HARTFORD-BOS",
+      "source": "ILA-HARTFORD",
+      "dest": "ROADM-BOS",
+      "length-km": 162.0,
+      "span-loss-db": 35.6
+    }
+  ]
+}`,
+  },
+
+  ran: {
+    filename: "SectorAntenna.adf",
+    title: "NSMA WG16 Base Station Antenna Radiation Pattern",
+    description:
+      "NSMA WG16 antenna pattern defining horizontal azimuth and vertical elevation cuts, electrical downtilt, cross-polarization, and front-to-back ratio.",
+    viewLabel: "Antenna 3D Radiation Pattern & Envelope",
+    code: `REVNUM: 1.01
+PATTYP: C
+DESCR1: 65deg 18dBi Dual-Pol Base Station Antenna
+DESCR2: 1710-2170MHz
+MANUF: ModelScript Wireless
+MODEL: MSX-HEX-65-18
+GAIN: 18.0
+GAINU: DBI
+FRQREC: 1710.0 2170.0
+POLARZ: D
+DTILTE: 2.0
+DTILTM: 0.0
+NOAVAL: 13
+0.0 0.0
+30.0 2.8
+32.5 3.0
+60.0 12.0
+90.0 22.0
+120.0 25.0
+150.0 28.0
+180.0 30.0
+210.0 28.0
+240.0 25.0
+270.0 22.0
+300.0 12.0
+330.0 2.8
+NOEVAL: 9
+0.0 0.0
+3.5 3.0
+7.0 12.0
+15.0 20.0
+30.0 25.0
+90.0 30.0
+270.0 30.0
+345.0 20.0
+356.5 3.0`,
+  },
+
+  fiber: {
+    filename: "OutsidePlantFeeder.geojson",
+    title: "TIA-598 Outside Plant Cable Cadastre & Splice Topology",
+    description:
+      "Outside Plant (OSP) GeoJSON network tracing feeder cables, buffer tube hierarchies, splice closures, and central office termination paths.",
+    viewLabel: "Outside Plant GIS & Fiber Cadastre",
+    code: `{
+  "type": "FeatureCollection",
+  "name": "Metro-FTTx-Feeder",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-73.9851, 40.7488] },
+      "properties": { "id": "CO_MIDTOWN", "name": "Midtown Central Office", "node-type": "central-office" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-73.98, 40.752] },
+      "properties": { "id": "MH_42ND_5TH", "name": "Manhole 42nd & 5th", "node-type": "manhole" }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-73.975, 40.755] },
+      "properties": { "id": "FST_LEXINGTON", "name": "Splice Closure Lexington", "node-type": "splice-closure" }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-73.9851, 40.7488], [-73.98, 40.752], [-73.975, 40.755]]
+      },
+      "properties": {
+        "id": "CABLE-FEEDER-144",
+        "name": "Midtown Feeder Cable",
+        "from": "CO_MIDTOWN",
+        "to": "FST_LEXINGTON",
+        "strands": 144,
+        "standard": "TIA-598-D"
+      }
+    }
+  ]
+}`,
+  },
+
+  gtfs: {
+    filename: "TransitSchedule.gtfs",
+    title: "GTFS Schedule & Electric Bus Fleet Dispatch",
+    description:
+      "General Transit Feed Specification defining routes, stops, trips, and vehicle stop times for fleet electrification and depot charging dispatch.",
+    viewLabel: "Transit Electrification & Schedule Graph",
+    code: `# STOPS
+stop_id,stop_name,stop_lat,stop_lon
+STOP_1,Central Terminal,37.7749,-122.4194
+STOP_2,Civic Plaza,37.7793,-122.4175
+STOP_3,Metro Depot,37.7599,-122.4148
+
+# ROUTES
+route_id,route_short_name,route_long_name,route_type
+ROUTE_14,14,Mission Electric Rapid,3
+
+# TRIPS
+route_id,service_id,trip_id
+ROUTE_14,WEEKDAY,TRIP_101
+
+# STOP_TIMES
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+TRIP_101,06:00:00,06:02:00,STOP_1,1
+TRIP_101,06:15:00,06:17:00,STOP_2,2
+TRIP_101,06:30:00,06:35:00,STOP_3,3`,
+  },
+
+  ocpp: {
+    filename: "DepotCharger.ocpp",
+    title: "OCPP 2.0.1 Smart Charging Profile & EVSE Load Shaving",
+    description:
+      "OCPP charging station topology with multi-EVSE load limits, dynamic SoC targets, and transformer peak shaving constraints.",
+    viewLabel: "OCPP EV Smart Charging & Load Profile",
+    code: `station "Fleet_Depot_1" {
+  model: "Terra-184"
+  vendor: "ABB"
+  gridLimitKW: 180.0
+
+  evse 1 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 90.0
+      currentSession: {
+        transactionId: "TX-1001"
+        evBatteryCapacityKWh: 80.0
+        currentSoC: 0.20
+        targetSoC: 0.85
+        departureMinutes: 45
+      }
+    }
+  }
+
+  evse 2 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 90.0
+      currentSession: {
+        transactionId: "TX-1002"
+        evBatteryCapacityKWh: 60.0
+        currentSoC: 0.40
+        targetSoC: 0.90
+        departureMinutes: 60
+      }
+    }
+  }
+}`,
+  },
+
+  openadr: {
+    filename: "PeakFlexProgram.oadr",
+    title: "OpenADR 2.0b Automated Demand Response & Peak Shaving",
+    description:
+      "OpenADR demand response program defining Curtailment events, dispatch intervals, and setpoint payloads for grid-interactive buildings and charging depots.",
+    viewLabel: "OpenADR Demand Response Program & Dispatch",
+    code: `program "Summer_Peak_Flex" {
+  event "DR_EV_01" {
+    status: "active"
+    signalType: "setpoint"
+    targetVenId: "VEN-FLEET-DEPOT-1"
+
+    interval {
+      start: "2026-07-15T14:00:00Z"
+      durationSeconds: 7200
+      payload: 100.0
+    }
+
+    interval {
+      start: "2026-07-15T16:00:00Z"
+      durationSeconds: 3600
+      payload: 50.0
+    }
+  }
+}`,
+  },
+
+  tough: {
+    filename: "GeothermalReservoir.tgh",
+    title: "LBNL TOUGH2 Multi-Phase Geothermal Reservoir Simulation",
+    description:
+      "TOUGH2 numerical grid specifying basalt rock thermal properties, 3D element volumes, Darcy flow connections, and geothermal production well enthalpy rates.",
+    viewLabel: "TOUGH2 Geothermal Thermodynamic State",
+    code: `Geothermal Reservoir 2-Element Benchmark
+ROCKS
+BASLT    2700.0      0.10 5.0E-14 5.0E-14 1.0E-14       2.8    1050.0
+ELEME
+A1  1BASLT 1.0E+05
+A1  2BASLT 1.0E+05
+CONNE
+A1  1A1  2 50.0 50.0 1.0E+03       0.0
+GENER
+A1  1WELL1MASS      -20.0    1.5E+06
+INCON
+A1  1        1.2E+07       260.0
+A1  2        1.2E+07       260.0
+ENDCY`,
+  },
+
+  "hec-ras": {
+    filename: "RiverBasinReach.g01",
+    title: "USACE HEC-RAS 1D/2D River Hydraulics & Flood Analysis",
+    description:
+      "USACE HEC-RAS geometric definition containing station-elevation coordinates, Manning roughness factors, bank stations, and reach lengths.",
+    viewLabel: "HEC-RAS River Hydraulic Geometry & Profile",
+    code: `Geom Title=Columbia River Reach 1
+Program Version=6.3.1
+River Reach=Columbia,ReachA
+Reach XY=3
+0, 1000
+500, 1500
+1000, 2000
+
+Type RM CEM CS= 1 ,1000    ,        ,
+DESCRIPTION=Upstream Boundary Cross Section
+Station Elevation Data= 5
+0, 110  25, 98  50, 92  75, 98  100, 110
+Cross Section Reach Lengths and Manning Values=
+250, 250, 250, 3, 0.045, 0.035, 0.045, 0, 0
+Bank Sta=25,75
+Exp/Contr=0.1,0.3
+
+Type RM CEM CS= 1 ,750     ,        ,
+DESCRIPTION=Downstream Cross Section
+Station Elevation Data= 5
+0, 108  20, 96  50, 90  80, 96  100, 108
+Cross Section Reach Lengths and Manning Values=
+250, 250, 250, 3, 0.045, 0.035, 0.045, 0, 0
+Bank Sta=20,80
+Exp/Contr=0.1,0.3`,
+  },
+
+  modflow: {
+    filename: "GroundwaterBasin.dis6",
+    title: "USGS MODFLOW 6 Hydrogeological Groundwater Aquifer",
+    description:
+      "MODFLOW 6 structured discretization (DIS6) and node property flow (NPF6) grid modeling 3D Darcy groundwater seepage and well discharge.",
+    viewLabel: "MODFLOW Groundwater Flow & Aquifer Head",
+    code: `# MODFLOW 6 Simulation Model
+BEGIN DIS6
+  NLAY 2
+  NROW 3
+  NCOL 3
+  DELR 100.0
+  DELC 100.0
+  TOP 50.0
+  BOTM 20.0 0.0
+END DIS6
+
+BEGIN NPF6
+  K 15.0
+  K33 2.0
+  SS 1.0e-5
+  SY 0.18
+END NPF6
+
+BEGIN WEL6
+  1 2 2 -400.0
+END WEL6
+
+BEGIN RIV6
+  1 1 1 48.0 250.0 42.0
+END RIV6`,
+  },
+
+  landgem: {
+    filename: "PineCreekFacility.landgem",
+    title: "EPA LandGEM Municipal Solid Waste Biogas Generation",
+    description:
+      "EPA LandGEM first-order decay model calculating methane generation rate, NMOC emissions, and landfill gas energy potential.",
+    viewLabel: "LandGEM Biogas Generation & Methane Decay",
+    code: `# Regional Solid Waste & Biogas Facility
+SITE "PineCreekLandfill"
+  OPEN 2010
+  CLOSE 2035
+  L0 100.0  # m^3/Mg
+  K 0.04    # 1/yr conventional
+  NMOC 600  # ppmv
+  METHANE_PERCENT 50.0
+
+WASTE_ACCEPTANCE
+  2010 150000
+  2011 160000
+  2012 175000
+  2013 180000
+  2014 190000`,
+  },
+
   urdf: {
     filename: "ArticulatedArm3Dof.urdf",
     title: "ROS URDF 3-DOF Articulated Industrial Robot Arm",
@@ -2296,6 +2671,50 @@ s:Sc/BraggPeakDose/Component = "WaterPhantom"`,
     }
   ]
 }`,
+  },
+
+  powerfactory: {
+    filename: "IEEE9_RMS_Governing.dsl",
+    title: "DIgSILENT PowerFactory DSL Speed Governor & DGS Grid Exchange",
+    description:
+      "PowerFactory DSL block definition with lim(), picdrop(), and select() intrinsics coupled to an ElmSym/ElmTr2/ElmLne DGS transmission network.",
+    viewLabel: "PowerFactory DSL Block & DGS Grid Pipeline",
+    code: `BlkDef 'IEEEG1_Gov'
+  inc(wref = 1.0, pset = 0.85, K = 20.0, T1 = 0.1, T3 = 0.25)
+  vardef(w) = 'Rotor Speed (p.u.)';
+  vardef(pm) = 'Mechanical Power (p.u.)';
+  limits(T1)[0.001, 10.0];
+
+  dw = wref - w;
+  xe = lim(K * dw + pset, 0.0, 1.05);
+  x1. = (xe - x1) / T1;
+  pm = select(x1 > 0.0, x1, 0.0);
+end`,
+  },
+
+  pslf: {
+    filename: "WECC_2Bus_Gencc.epc",
+    title: "GE PSLF .epc Power Flow & .dyd GENCC / EXST1 Dynamic Deck",
+    description:
+      "WECC-standard GE PSLF EPC power flow deck with bus/branch/generator/transformer tables and DYD dynamic models (gencc, exst1, tgov1) lowered to the DAE arena.",
+    viewLabel: "GE PSLF .epc / .dyd WECC Transmission Pipeline",
+    code: `title
+WECC 2-Bus 500 kV Benchmark (.epc + .dyd)
+!
+bus data
+   1 "BUS1_GEN"  20.00  1   1.030   0.00   1   1
+   2 "BUS2_LOAD" 500.0  2   0.995  -4.20   1   1
+99999
+branch data
+   1 "BUS1_GEN" 20.0 2 "BUS2_LOAD" 500.0 "1 " 0.0015 0.0450 0.0800 600.0
+99999
+generator data
+   1 "BUS1_GEN" 20.0 "1 " 1  450.0  150.0  300.0 -150.0 550.0 0.0 0.20
+99999
+load data
+   2 "BUS2_LOAD" 500.0 "1 " 1  440.0  120.0  0.0  0.0  0.0  0.0
+99999
+end`,
   },
 };
 
@@ -4422,6 +4841,10 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
       return renderBothThemesFromDiagramData(data);
     }
 
+    case "ampl":
+    case "optical":
+    case "ran":
+    case "fiber":
     case "gproms":
     case "cantera":
     case "phreeqc":
@@ -4440,7 +4863,16 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
     case "nifti":
     case "topas":
     case "three-mf":
-    case "igtl": {
+    case "igtl":
+    case "gtfs":
+    case "ocpp":
+    case "openadr":
+    case "tough":
+    case "hec-ras":
+    case "modflow":
+    case "landgem":
+    case "powerfactory":
+    case "pslf": {
       const spec = EXAMPLE_SPECS[slug]!;
       const domainMeta: Record<
         string,
@@ -4457,6 +4889,54 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
           e5: string;
         }
       > = {
+        ampl: {
+          n1: ["Supply Plants", "«ORIG Set»", ["Seattle = 350", "San_Diego = 600"]],
+          n2: ["Trans[i, j]", "«Decision Vars»", ["Trans >= 0", "cost[i, j] freight"]],
+          n3: ["Demand Markets", "«DEST Set»", ["NY = 325, Chi = 300", "Topeka = 275"]],
+          n4: ["LP Solver", "«COIN-OR CLP»", ["Two-Phase Simplex", "Z* = 1707.50"]],
+          n5: ["DAE / ASL .nl", "«Target Bridge»", ["writeNlProblem", "lowerAmplToDae"]],
+          e1: "shipment",
+          e2: "demand meet",
+          e3: "optimal basis",
+          e4: "sparsity A",
+          e5: "solution",
+        },
+        optical: {
+          n1: ["ROADM-NYC", "«Core WSS Node»", ["Degree 1 & 2 (96 ch)", "Colorless/Directionless"]],
+          n2: ["In-Line EDFA", "«Optical Amp»", ["Gain = 20.0 dB", "NF = 5.5 dB"]],
+          n3: ["ROADM-BOS", "«Terminal Node»", ["Degree 1 & 2 (96 ch)", "Demux / Transponders"]],
+          n4: ["OTDR / .sor", "«Trace Analysis»", ["SR-4731 1550nm", "Loss = 0.22 dB/km"]],
+          n5: ["GNPy / OSNR", "«GSNR Engine»", ["GSNR = 21.4 dB", "Q-factor verified"]],
+          e1: "1550nm C-Band",
+          e2: "amplified span",
+          e3: "trace probe",
+          e4: "non-linear phase",
+          e5: "BER & margins",
+        },
+        ran: {
+          n1: ["BaseStation", "«eNodeB / gNodeB»", ["Freq = 1900 MHz", "Pout = 43 dBm"]],
+          n2: ["Antenna Array", "«Dual-Pol 65deg»", ["Gain = 18.0 dBi", "Tilt = 2.0 deg elect"]],
+          n3: ["Cell Coverage", "«RF Footprint»", ["3GPP 38.901 UMa", "RSRP >= -95 dBm"]],
+          n4: ["NSMA .adf", "«WG16 Pattern»", ["Azimuth 3dB = 65°", "Elevation 3dB = 7°"]],
+          n5: ["Link Budget", "«CINR & Throughput»", ["SINR = 19.8 dB", "CQI-15 256-QAM"]],
+          e1: "feeder loss",
+          e2: "beamforming",
+          e3: "pattern cut",
+          e4: "downtilt tilt",
+          e5: "cell throughput",
+        },
+        fiber: {
+          n1: ["Central Office", "«ODF Optical Frame»", ["CO_MIDTOWN", "Patch 1-144"]],
+          n2: ["Feeder Cable", "«TIA-598-D 144F»", ["12 Buffer Tubes", "Loose tube SMF-28"]],
+          n3: ["Splice Closure", "«FST Enclosure»", ["FST_LEXINGTON", "Fusion splice trays"]],
+          n4: ["Color Engine", "«Strand Registry»", ["Tube 1: Blue", "Strand 1: Blue"]],
+          n5: ["SRLG Graph", "«Route Diversity»", ["Zero shared conduit", "Dual-homed link"]],
+          e1: "distribution",
+          e2: "enclosure drop",
+          e3: "color lookup",
+          e4: "trace strand",
+          e5: "SRLG verify",
+        },
         gproms: {
           n1: ["FeedStream", "«gPROMS Port»", ["Cin = 2.0 kmol/m3", "Tin = 300.0 K"]],
           n2: ["ExothermicCSTR", "«gPROMS Model»", ["r_A = k0*exp(-Ea/RT)*Ca", "V = 2.5 m3"]],
@@ -4684,6 +5164,114 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
           e3: "locates fiducials",
           e4: "SVD registration",
           e5: "TRE safety gate",
+        },
+        gtfs: {
+          n1: ["Transit Agency", "«GTFS Feed»", ["agency.txt & routes.txt", "12 express corridors"]],
+          n2: ["Timetable Graph", "«stop_times.txt»", ["headway = 10 min", "trips & frequencies"]],
+          n3: ["Fleet Battery DAE", "«Electric Buses»", ["SoC = 45..90%", "peak traction kW"]],
+          n4: ["Depot Chargers", "«Smart Charging»", ["150 kW DC Fast", "demand response gate"]],
+          n5: ["Transit Sim DAE", "«Modelica / DAE»", ["on-time reliability", "energy consumption"]],
+          e1: "schedules",
+          e2: "dispatches",
+          e3: "charges",
+          e4: "grid load",
+          e5: "lowerToDAE",
+        },
+        ocpp: {
+          n1: ["Charging Station", "«OCPP 2.0.1 CSMS»", ["Dual CCS2 Dispensers", "ISO 15118 PnC"]],
+          n2: ["Transaction Event", "«Smart Charging»", ["TxStarted / MeterValues", "P_limit = 120 kW"]],
+          n3: ["Vehicle Battery", "«EV Equivalent Ckt»", ["Capacity = 77 kWh", "SoC target = 80%"]],
+          n4: ["Depot Transformer", "«Substation Feeder»", ["Peak 630 kVA limit", "Grid curtailment"]],
+          n5: ["DAE Coupled Sim", "«Modelica Target»", ["thermal throttling", "voltage stability"]],
+          e1: "authorizes",
+          e2: "meter values",
+          e3: "power profile",
+          e4: "transformer load",
+          e5: "lowerToDAE",
+        },
+        openadr: {
+          n1: ["VTN Server", "«OpenADR 2.0b VTN»", ["Demand Response Node", "OASIS EI Event"]],
+          n2: ["VEN Client", "«Facility VEN»", ["EiEvent / EiReport", "HTTP/XMPP payload"]],
+          n3: ["Curtailment Plan", "«Shed Strategy»", ["HVAC setback = +2°C", "Load drop = 250 kW"]],
+          n4: ["BTM Battery & PV", "«Flexibility Asset»", ["500 kWh BESS", "solar firming"]],
+          n5: ["Grid Stability DAE", "«DAE Arena Lowering»", ["spinning reserve", "ancillary services"]],
+          e1: "distributeEvent",
+          e2: "optIn / optOut",
+          e3: "telemetry report",
+          e4: "dispatch BESS",
+          e5: "verifyResponse",
+        },
+        tough: {
+          n1: ["Geothermal Reservoir", "«TOUGH2 / EOS1»", ["Perm = 50 mD", "Porosity = 0.15"]],
+          n2: ["Grid Mesh", "«Voronoi Elements»", ["3D Radial Discretization", "Volume = 2500 m3"]],
+          n3: ["Darcy Multiphase", "«Mass & Heat Flux»", ["Liquid & Steam", "P = 8.5 MPa, T = 260°C"]],
+          n4: ["Production Well", "«Wellbore Hydr»", ["Mass flow = 45 kg/s", "Enthalpy = 1150 kJ/kg"]],
+          n5: ["Flash Simulator", "«DAE / Power Cycle»", ["Double-Flash Turbine", "Net Output = 12.5 MW"]],
+          e1: "geometric mesh",
+          e2: "phase flux",
+          e3: "well inflow",
+          e4: "steam extraction",
+          e5: "lowerToDAE",
+        },
+        "hec-ras": {
+          n1: ["River Reach", "«HEC-RAS Geometry»", ["River: Pine Creek", "Reach: Lower Reach"]],
+          n2: ["Upstream XS", "«Cross Section 102»", ["Bank stations 45..120", "Manning n = 0.035"]],
+          n3: ["Downstream XS", "«Cross Section 101»", ["Bed slope S0 = 0.0015", "Expansion coeff = 0.3"]],
+          n4: ["Standard Step DAE", "«Energy & Momentum»", ["Q = 145.0 m3/s", "Subcritical Froude < 1"]],
+          n5: ["Flood Inundation", "«Surface Elevation»", ["WSE = 104.82 m", "Zero overbank hazard"]],
+          e1: "reach connect",
+          e2: "friction slope",
+          e3: "backwater step",
+          e4: "energy balance",
+          e5: "flood boundary",
+        },
+        modflow: {
+          n1: ["Aquifer Domain", "«MODFLOW-6 DIS»", ["3 Layers, Unconfined", "Kh = 25 m/d, Kv = 2.5 m/d"]],
+          n2: ["Structured Grid", "«Finite Difference»", ["50x50 cells (100m)", "Top = 50m, Bot = 10m"]],
+          n3: ["Pumping Wells", "«WEL Package»", ["Well 1: Q = -1200 m3/d", "Drawdown cone"]],
+          n4: ["River Boundary", "«RIV Package»", ["Stage = 42m, Rbot = 39m", "Conductance = 250 m2/d"]],
+          n5: ["Darcy Head DAE", "«Transient Flow»", ["Head field h(x,y,t)", "Mass balance error < 0.1%"]],
+          e1: "spatial mesh",
+          e2: "well discharge",
+          e3: "river seepage",
+          e4: "hydraulic head",
+          e5: "lowerToDAE",
+        },
+        landgem: {
+          n1: ["Landfill Facility", "«LandGEM 3.03»", ["Annual Waste Tonnage", "Open: 2010, Close: 2035"]],
+          n2: ["Methane Parameters", "«EPA AP-42 Reg»", ["Lo = 100 m3/Mg", "k = 0.040 yr^-1 (CAA)"]],
+          n3: ["Decay Equation", "«First-Order ODE»", ["Q_CH4 = 2*k*Lo*M*e^-kt", "Peak Year: 2036"]],
+          n4: ["Gas Recovery", "«Extraction Wellfield»", ["Capture eff = 85%", "Flare destruction = 99%"]],
+          n5: ["Biogas CHP DAE", "«DAE / Energy Model»", ["P_elec = 1.8 MW", "Avoided CO2e metric"]],
+          e1: "inventory",
+          e2: "kinetics",
+          e3: "methane yield",
+          e4: "wellfield capture",
+          e5: "chp generation",
+        },
+        powerfactory: {
+          n1: ["BlkDef 'IEEEG1'", "«PowerFactory DSL»", ["inc(wref, pset, K, T1)", "vardef(w, pm)"]],
+          n2: ["DSL Intrinsics", "«lim / picdrop / select»", ["x1. = (xe - x1) / T1", "limits(T1)[0.001, 10]"]],
+          n3: ["DGS Network", "«ElmSym / ElmTr2»", ["ElmTerm & ElmLne", "AC Load Flow"]],
+          n4: ["Composite Frame", "«BlkDef Frame Slots»", ["AVR + Gov + PSS", "Signal wiring"]],
+          n5: ["DAE / PSS/E / Modelica", "«Target Bridge»", ["compilePowerFactoryDsl", "exportDgsToPsseRaw"]],
+          e1: "parse & lint",
+          e2: "couple grid",
+          e3: "slot binding",
+          e4: "RMS equations",
+          e5: "lowerToDAE",
+        },
+        pslf: {
+          n1: ["WECC .epc Deck", "«GE PSLF Powerflow»", ["bus / branch / gen", "500 kV transmission"]],
+          n2: [".dyd Dynamics", "«GENCC / EXST1 / TGOV1»", ["PSS2A stabilizer", "REEC_A / REGCA IBR"]],
+          n3: ["Newton Powerflow", "«Sparse AC Solver»", ["V = 1.030 pu, 0.0 deg", "P_load = 440 MW"]],
+          n4: ["Transient DAE", "«Swing & Flux ODEs»", ["H = 3.5 s, D = 2.0", "Subtransient X''d"]],
+          n5: ["PSS/E .raw / Modelica", "«Bidirectional Bridge»", ["exportEpcToPsseRaw", "exportPslfToModelica"]],
+          e1: "couple .dyd",
+          e2: "solve Ybus",
+          e3: "initialize states",
+          e4: "integrate RMS",
+          e5: "export deck",
         },
       };
       const meta = domainMeta[slug] ?? {

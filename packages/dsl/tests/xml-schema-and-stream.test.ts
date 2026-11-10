@@ -7,8 +7,13 @@ import {
   applySplices,
   createXmlCstTree,
   ensureXmlParser,
+  isXmlParserReady,
   parseXml,
+  removeElementCstSplice,
+  removeElementSpanSplice,
   removeElementSplice,
+  setAttributeCstSplice,
+  setAttributeSpanSplice,
   setAttributeSplice,
   xmlAttr,
   xmlChild,
@@ -214,5 +219,44 @@ describe("XML DSL Integration, CST Adapter, Schema & Streaming Suite", () => {
     const out2 = applySplices(src, [appendChildSplice(a, "<d/>", src)]);
     assert.deepEqual(parseXml(out2).errors, []);
     assert.equal(parseXml(out2).root!.children.length, 3);
+  });
+
+  it("supports zero-allocation span-based splices and CST node helpers", () => {
+    const src = '<device id="dev1" x="10" y="20"><channel num="1"/></device>';
+    const doc = parseXml(src);
+    const tree = createXmlCstTree(doc);
+    const root = tree.rootNode as XmlCstNode;
+    assert.ok(root);
+
+    // Test attrSpan and boundary getters
+    const idSpan = root.attrSpan("id");
+    assert.ok(idSpan);
+    assert.equal(idSpan.value, "dev1");
+    assert.equal(root.selfClosing, false);
+    assert.ok(root.openEnd > root.startIndex);
+    assert.ok(root.closeStart > root.openEnd);
+
+    // Test setAttributeSpanSplice with explicit span
+    const xSpan = root.attrSpan("x");
+    const splice1 = setAttributeSpanSplice(src, root.element, "x", "99", xSpan);
+    const res1 = applySplices(src, [splice1]);
+    assert.ok(res1.includes('x="99"'));
+
+    // Test setAttributeCstSplice on CST node
+    const splice2 = setAttributeCstSplice(root, "y", "555");
+    const res2 = applySplices(src, [splice2]);
+    assert.ok(res2.includes('y="555"'));
+
+    // Test removeElementSpanSplice
+    const child = root.child(0);
+    assert.ok(child);
+    const splice3 = removeElementSpanSplice(src, { start: child.startIndex, end: child.endIndex });
+    const res3 = applySplices(src, [splice3]);
+    assert.ok(!res3.includes("<channel"));
+
+    // Test removeElementCstSplice
+    const splice4 = removeElementCstSplice(child);
+    const res4 = applySplices(src, [splice4]);
+    assert.ok(!res4.includes("<channel"));
   });
 });

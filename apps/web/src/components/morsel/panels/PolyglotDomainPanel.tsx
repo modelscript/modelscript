@@ -13,6 +13,8 @@ import {
   RequirementsOntologyInspector,
   BiochemInspector,
   AutomationControlInspector,
+  OpenChannelHydraulicsInspector,
+  TransitCockpitInspector,
 } from "./inspectors/index.js";
 const ReqifViewer = React.lazy(() => import("../../artifacts/ReqifViewer").then((m) => ({ default: m.ReqifViewer })));
 
@@ -1834,17 +1836,17 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     }
 
     // 3. Electrical Power Grid: for power transmission/distribution/netlists
-    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis"].includes(d) || code.includes("BUS DATA") || code.includes("BRANCH DATA")) {
+    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis", "ocpp", "cpo", "openadr", "oadr"].includes(d) || code.includes("BUS DATA") || code.includes("BRANCH DATA")) {
       tabs.push({ id: "power_grid", label: "⚡ Power Grid & Y-Bus" });
     }
 
     // 4. Multibody Kinematics: for mechanism models
-    if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario"].includes(d) || code.includes("<robot") || code.includes("<joint") || code.includes("PART/")) {
+    if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario", "gtfs"].includes(d) || code.includes("<robot") || code.includes("<joint") || code.includes("PART/") || code.includes("stop_id")) {
       tabs.push({ id: "multibody", label: "🤖 Multibody & Mobility" });
     }
 
     // 5. Thermo-Fluid Hydraulics: for pipe networks, wells, process flows
-    if (["olga", "lps", "gtsuite", "easy5", "rocets", "relap5", "aspen", "epanet", "swmm", "eclipse", "energyplus"].includes(d) || code.includes("PIPE") || code.includes("HYDRAULIC")) {
+    if (["olga", "lps", "gtsuite", "easy5", "rocets", "relap5", "aspen", "epanet", "swmm", "hec-ras", "hecras", "ras", "tough", "modflow", "landgem", "biogas", "lfg", "eclipse", "energyplus"].includes(d) || code.includes("PIPE") || code.includes("HYDRAULIC")) {
       tabs.push({ id: "thermo_fluid", label: "🌊 Hydraulics & HGL" });
     }
 
@@ -1868,13 +1870,29 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
       tabs.push({ id: "automation", label: "⚙️ SFC State Machine & WCET" });
     }
 
+    // 10. River Basin & Open-Channel Hydraulics: for HEC-RAS
+    if (["hec-ras", "hecras", "ras"].includes(d) || code.includes("Type RM") || code.includes("Node RM") || code.includes("Cross Section")) {
+      tabs.push({ id: "hec_ras_hydraulics", label: "🏞️ River Basin & WSP" });
+    }
+
+    // 11. Transit Electrification & Schedules: for GTFS
+    if (d === "gtfs" || code.includes("stop_times") || code.includes("trip_id") || code.includes("agency_id")) {
+      tabs.push({ id: "transit_cockpit", label: "🚎 Transit Cockpit & Marey" });
+    }
+
     // Always include entity & parameter inspector table
     tabs.push({ id: "entities", label: "📋 Declared Entities & Parameters" });
 
     return tabs;
   }, [d, isAcausalDae, hasBltData, code]);
 
-  const defaultSubTab = isAcausalDae && hasBltData ? "blt" : "entities";
+  const defaultSubTab = isAcausalDae && hasBltData
+    ? "blt"
+    : ["hec-ras", "hecras", "ras"].includes(d)
+    ? "hec_ras_hydraulics"
+    : d === "gtfs"
+    ? "transit_cockpit"
+    : "entities";
   const [activeSubTab, setActiveSubTab] = useState<string>(defaultSubTab);
   const effectiveSubTab = availableSubTabs.some((t) => t.id === activeSubTab)
     ? activeSubTab
@@ -1890,10 +1908,10 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     if (d === "sysml2" || d === "reqif" || code.includes("<REQ-IF")) {
       return analyzeRequirementsAndSysml(d, code, lines);
     }
-    if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario"].includes(d)) {
+    if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario", "gtfs"].includes(d)) {
       return analyzeMultibody(d, code, lines);
     }
-    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis"].includes(d)) {
+    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis", "ocpp", "cpo", "openadr", "oadr"].includes(d)) {
       return analyzePowerAndCircuits(d, code, lines);
     }
     if (
@@ -1907,6 +1925,14 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
         "aspen",
         "epanet",
         "swmm",
+        "hec-ras",
+        "hecras",
+        "ras",
+        "tough",
+        "modflow",
+        "landgem",
+        "biogas",
+        "lfg",
         "eclipse",
         "energyplus",
         "sbml",
@@ -2041,6 +2067,10 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
         <BiochemInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "automation" ? (
         <AutomationControlInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "hec_ras_hydraulics" ? (
+        <OpenChannelHydraulicsInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+      ) : effectiveSubTab === "transit_cockpit" ? (
+        <TransitCockpitInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : (
         <>
           {/* KPI Cards */}

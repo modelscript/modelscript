@@ -344,6 +344,96 @@
         "archiveType": "zip"
       },
       "minExpectedClasses": 30
+    },
+    {
+      "id": "hec-ras-usace-rivers-1.0.0",
+      "language": "hec-ras",
+      "packageName": "USACE-River-Hydraulics",
+      "version": "1.0.0",
+      "description": "USACE HEC-RAS reference river channels, bridges, and cross-section geometries",
+      "license": "Public-Domain",
+      "tier": "tier2_domain",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "USACE-River-Hydraulics-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/USACE-River-Hydraulics-1.0.0.zip",
+        "fallbackUrl": "https://github.com/HydrologicEngineeringCenter/hec-ras/archive/refs/tags/v6.4.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 10
+    },
+    {
+      "id": "modflow-usgs-aquifers-1.0.0",
+      "language": "modflow",
+      "packageName": "USGS-Groundwater-Aquifers",
+      "version": "1.0.0",
+      "description": "USGS MODFLOW 6 regional groundwater aquifer benchmarks and pumping wellfields",
+      "license": "Public-Domain",
+      "tier": "tier2_domain",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "USGS-Groundwater-Aquifers-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/USGS-Groundwater-Aquifers-1.0.0.zip",
+        "fallbackUrl": "https://github.com/MODFLOW-USGS/modflow6/archive/refs/tags/6.4.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 10
+    },
+    {
+      "id": "landgem-epa-biogas-1.0.0",
+      "language": "landgem",
+      "packageName": "EPA-LandGEM-Biogas",
+      "version": "1.0.0",
+      "description": "EPA LandGEM municipal solid waste methane decay curves and ADM1 anaerobic digestion benchmarks",
+      "license": "Public-Domain",
+      "tier": "tier2_domain",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "EPA-LandGEM-Biogas-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/EPA-LandGEM-Biogas-1.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/EPA-LandGEM-Biogas-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 5
+    },
+    {
+      "id": "gtfs-sfmta-transit-1.0.0",
+      "language": "gtfs",
+      "packageName": "SFMTA-Transit-Electrification",
+      "version": "1.0.0",
+      "description": "SFMTA Municipal Transportation Agency GTFS schedule and battery electric bus fleet operational routes",
+      "license": "CC0-1.0",
+      "tier": "tier2_domain",
+      "domain": "mobility-systems",
+      "pack": "mobility-systems",
+      "filename": "SFMTA-Transit-Electrification-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/SFMTA-Transit-Electrification-1.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SFMTA-Transit-Electrification-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 15
+    },
+    {
+      "id": "openadr-flexalert-1.0.0",
+      "language": "openadr",
+      "packageName": "OpenADR-FlexAlert-Programs",
+      "version": "1.0.0",
+      "description": "OpenADR 2.0b/3.0 demand response peak event profiles and dynamic tariff flexibility schedules",
+      "license": "Apache-2.0",
+      "tier": "tier2_domain",
+      "domain": "electrical-power",
+      "pack": "electrical-power",
+      "filename": "OpenADR-FlexAlert-Programs-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/OpenADR-FlexAlert-Programs-1.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/OpenADR-FlexAlert-Programs-1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 5
     }
   ]
 }

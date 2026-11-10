@@ -1,1 +1,7 @@
 * text=auto eol=lf
+
+# Exclude upstream OpenModelica testsuite fixtures from GitHub language stats
+languages/modelica/testsuite/OpenModelica/** linguist-vendored
+
+# Mark generated parser/grammar artifacts so they don't skew JS/TS stats
+languages/*/src-gen/** linguist-generated

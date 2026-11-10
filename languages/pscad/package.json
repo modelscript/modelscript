@@ -58,7 +58,8 @@
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench:pmr": "tsx tests/run-pmr-benchmark.ts"
   },
   "dependencies": {
     "@modelscript/c": "*",
