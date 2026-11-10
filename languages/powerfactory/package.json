@@ -39,6 +39,10 @@
     "./lints": {
       "types": "./dist/src/lints/index.d.ts",
       "default": "./dist/src/lints/index.js"
+    },
+    "./iec61850": {
+      "types": "./dist/src/iec61850/index.d.ts",
+      "default": "./dist/src/iec61850/index.js"
     }
   },
   "files": [

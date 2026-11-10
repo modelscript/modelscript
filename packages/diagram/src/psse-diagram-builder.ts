@@ -402,6 +402,8 @@ export interface PsseCanvasBusNode {
   baseKv: number;
   x: number;
   y: number;
+  width?: number | undefined;
+  height?: number | undefined;
   color: string;
   vm: number;
   va: number;
@@ -409,6 +411,7 @@ export interface PsseCanvasBusNode {
 }
 
 export interface PsseCanvasEdge {
+  id?: string | undefined;
   fromBus: number;
   toBus: number;
   x1: number;
@@ -419,6 +422,8 @@ export interface PsseCanvasEdge {
   width: number;
   loadingPct: number;
   isTransformer: boolean;
+  dashed?: boolean | undefined;
+  label?: string | undefined;
 }
 
 export interface PsseCanvasScene {
@@ -562,8 +567,7 @@ export function buildPsseDiagram(
     }
 
     const rawTiers = [tier1, tier2, tier3, tier4, tier5].filter((t) => t.length > 0);
-    const maxCols =
-      busList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(busList.length * 2.2))));
+    const maxCols = busList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(busList.length * 2.2))));
     const rows: PsseBusLike[][] = [];
     for (const tier of rawTiers) {
       if (tier.length <= maxCols) {
@@ -606,12 +610,7 @@ export function buildPsseDiagram(
 
   const isPointInViewport = (x: number, y: number): boolean => {
     if (!vp) return true;
-    return (
-      x >= vp.minX - vpMargin &&
-      x <= vp.maxX + vpMargin &&
-      y >= vp.minY - vpMargin &&
-      y <= vp.maxY + vpMargin
-    );
+    return x >= vp.minX - vpMargin && x <= vp.maxX + vpMargin && y >= vp.minY - vpMargin && y <= vp.maxY + vpMargin;
   };
 
   const visibleBusSet = new Set<number>();
@@ -725,11 +724,13 @@ export function buildPsseDiagram(
         const gy = bPos.y - 74;
 
         const genKind = classifyGeneratorKind(g, hostBus?.name);
-        const kindBadge = genKind === "wind" ? "WTG" : genKind === "solar" ? "PV" : genKind === "condenser" ? "SC" : "G~";
+        const kindBadge =
+          genKind === "wind" ? "WTG" : genKind === "solar" ? "PV" : genKind === "condenser" ? "SC" : "G~";
         const strokeColor = genKind === "condenser" ? "#38bdf8" : genKind === "solar" ? "#10b981" : "#22c55e";
 
         const qSign = qGen >= 0 ? "+" : "";
-        const genPrefix = genIdClean.toUpperCase() === kindBadge.toUpperCase() ? kindBadge : `${kindBadge} ${genIdClean}`;
+        const genPrefix =
+          genIdClean.toUpperCase() === kindBadge.toUpperCase() ? kindBadge : `${kindBadge} ${genIdClean}`;
         const genLabel = `${genPrefix} · ${pGen.toFixed(1)} MW\n${qSign}${qGen.toFixed(1)} Mvar`;
 
         cells.push({
@@ -1359,8 +1360,8 @@ export function buildPsseCanvasScene(
         height: h,
         baseKv: (cell.data?.["baseKv"] as number | undefined) ?? 138,
         color: (cell.data?.["voltageColor"] as string | undefined) ?? "#38bdf8",
-        vm: cell.data?.["vm"] as number | undefined,
-        va: cell.data?.["va"] as number | undefined,
+        vm: (cell.data?.["vm"] as number | undefined) ?? 1.0,
+        va: (cell.data?.["va"] as number | undefined) ?? 0.0,
         status: (cell.data?.["voltageStatus"] as "normal" | "warning" | "violation" | undefined) ?? "normal",
       });
     }
@@ -1368,8 +1369,9 @@ export function buildPsseCanvasScene(
 
   for (const cell of diag.cells) {
     if (cell.shape === "edge" && cell.source && cell.target && !cell.id.startsWith("wire_")) {
-      const srcId = cell.source.cell;
-      const tgtId = cell.target.cell;
+      const srcId = typeof cell.source === "object" && "cell" in cell.source ? cell.source.cell : undefined;
+      const tgtId = typeof cell.target === "object" && "cell" in cell.target ? cell.target.cell : undefined;
+      if (!srcId || !tgtId) continue;
       const p1 = busCenterMap.get(srcId);
       const p2 = busCenterMap.get(tgtId);
       if (!p1 || !p2) continue;
@@ -1389,7 +1391,8 @@ export function buildPsseCanvasScene(
         color,
         width,
         dashed,
-        loadingPct: cell.data?.["loadingPct"] as number | undefined,
+        loadingPct: (cell.data?.["loadingPct"] as number | undefined) ?? 0.0,
+        isTransformer: cell.id.startsWith("xfmr_"),
         label: cell.label,
       });
     }

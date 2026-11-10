@@ -649,3 +649,5 @@ export function writeRaw(c: PsseCase): string {
 
   return lines.join("\n") + "\n";
 }
+
+export const serializeRaw = writeRaw;

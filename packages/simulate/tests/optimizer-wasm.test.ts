@@ -126,6 +126,7 @@ console.log("Testing Compiler Optimizer WASM Integration...");
   const solver = new IpoptSolver("dummy.so");
   const result = await solver.solve();
   assert.strictEqual(result.status, "SUCCESS");
+  assert.strictEqual(result.backend, "trivial");
 
   // Verify L-BFGS-B pure TS optimization fallback on quadratic bowl min (x-3)^2 + (y-4)^2
   const optResult = await solver.solve(
@@ -140,6 +141,7 @@ console.log("Testing Compiler Optimizer WASM Integration...");
     (x) => [2 * (x[0] - 3.0), 2 * (x[1] - 4.0)],
   );
   assert.strictEqual(optResult.status, "SUCCESS");
+  assert.strictEqual(optResult.backend, "ts-lbfgsb");
   assert.ok(Math.abs(optResult.variables.solution[0] - 3.0) < 1e-4);
   assert.ok(Math.abs(optResult.variables.solution[1] - 4.0) < 1e-4);
   console.log("  ✔ IpoptSolver class instantiated and executed solve() with L-BFGS-B fallback");

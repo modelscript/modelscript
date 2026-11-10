@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
+import { BaseWorkspaceIndex, type SymbolIndex } from "@modelscript/runtime";
 import { parseGensysDeck } from "./parser/deck-parser.js";
 import type { GensysModel } from "./types.js";
 
@@ -8,152 +8,41 @@ import type { GensysModel } from "./types.js";
  * Multi-File Workspace Indexer for GENSYS models.
  * Resolves vehicle bodies, wheelsets, spring-damper couplings, and subsystem inclusions (.sub).
  */
-export class GensysWorkspaceIndex implements IWorkspaceIndex {
-  private _version = 1;
-  private fileIndices = new Map<string, SymbolIndex>();
-  private fileModels = new Map<string, GensysModel>();
-  private fileBaseIds = new Map<string, number>();
-  private nextFileSlot = 1;
+export class GensysWorkspaceIndex extends BaseWorkspaceIndex<GensysModel> {
+  public readonly languageName = "gensys";
 
-  get version(): number {
-    return this._version;
-  }
-
-  get structuralRevision(): number {
-    return this._version;
-  }
-
-  get fileCount(): number {
-    return this.fileIndices.size;
-  }
-
-  public has(uri: string): boolean {
-    return this.fileIndices.has(uri);
-  }
-
-  public getFileIndex(uri: string): SymbolIndex | undefined {
-    return this.fileIndices.get(uri);
-  }
-
-  public getModel(uri: string): GensysModel | undefined {
-    return this.fileModels.get(uri);
-  }
-
-  public register(uri: string, _loader?: () => unknown): void {
-    if (!this.fileIndices.has(uri)) {
-      this.fileIndices.set(uri, {
-        symbols: new Map(),
-        byName: new Map(),
-        childrenOf: new Map(),
-      });
-    }
-  }
-
-  public reindexDocument(
-    uri: string,
-    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
-  ): void {
-    this._version++;
-    if (loader) {
-      try {
-        const res = loader();
-        const text = typeof res === "string" ? res : (res?.sourceText ?? res?.text);
-        if (typeof text === "string") {
-          this.indexFile(uri, text);
-        }
-      } catch {
-        // incremental reindex guard
-      }
-    }
+  public get fileModels(): Map<string, GensysModel> {
+    return this.fileDecks;
   }
 
   public indexFile(uri: string, text: string): SymbolIndex {
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
-
-    let baseId = this.fileBaseIds.get(uri);
-    if (baseId === undefined) {
-      baseId = this.nextFileSlot++ * 100_000;
-      this.fileBaseIds.set(uri, baseId);
-    }
-    let idCounter = baseId;
+    const { addSymbol } = this.createIndexContext(uri);
 
     const parsedModel = parseGensysDeck(text, uri);
-    this.fileModels.set(uri, parsedModel);
+    this.fileDecks.set(uri, parsedModel);
 
     // Root Vehicle Model Symbol
-    const rootId = idCounter++ as SymbolId;
     const modelName = parsedModel.name || "GensysVehicle";
-    const rootEntry: SymbolEntry = {
-      id: rootId,
-      name: modelName,
-      kind: "Class",
-      ruleName: "gensys_model",
-      namePath: modelName,
-      fieldName: null,
-      parentId: null,
-      startOffset: 0,
-      endOffset: text.length,
-      exports: [],
-      inherits: [],
-      language: "gensys",
-      resourceId: uri,
-      metadata: {
-        numBodies: parsedModel.bodies.size,
-        numWheelsets: parsedModel.wheelsets.size,
-        numCouplings: parsedModel.couplings.size,
-        subsystems: parsedModel.subsystems,
-      },
-    };
-    symbols.set(rootId, rootEntry);
-    byName.set(modelName, [rootId]);
-    childrenOf.set(null, [rootId]);
-
-    const childIds: SymbolId[] = [];
-
-    function addChild(name: string, kind: string, meta?: Record<string, unknown>) {
-      const id = idCounter++ as SymbolId;
-      const entry: SymbolEntry = {
-        id,
-        name,
-        kind,
-        ruleName: "gensys_element",
-        namePath: `${modelName}.${name}`,
-        fieldName: null,
-        parentId: rootId,
-        startOffset: 0,
-        endOffset: 0,
-        exports: [],
-        inherits: [],
-        language: "gensys",
-        resourceId: uri,
-        metadata: meta ?? {},
-      };
-      symbols.set(id, entry);
-      const existing = byName.get(name) ?? [];
-      existing.push(id);
-      byName.set(name, existing);
-      childIds.push(id);
-    }
+    const rootId = addSymbol(modelName, "Class", null, 0, text.length, {
+      numBodies: parsedModel.bodies.size,
+      numWheelsets: parsedModel.wheelsets.size,
+      numCouplings: parsedModel.couplings.size,
+      subsystems: parsedModel.subsystems,
+    });
 
     for (const [bName, body] of parsedModel.bodies.entries()) {
-      addChild(bName, "Component", { type: "body", mass: body.mass, inertia: body.inertia });
+      addSymbol(bName, "Component", rootId, 0, 0, { type: "body", mass: body.mass, inertia: body.inertia });
     }
 
     for (const [wName, ws] of parsedModel.wheelsets.entries()) {
-      addChild(wName, "Component", { type: "wheelset", gauge: ws.gauge, radius: ws.wheelRadius });
+      addSymbol(wName, "Component", rootId, 0, 0, { type: "wheelset", gauge: ws.gauge, radius: ws.wheelRadius });
     }
 
     for (const [sName, s] of parsedModel.couplings.entries()) {
-      addChild(sName, "Component", { type: "spring_damper", body1: s.body1, body2: s.body2 });
+      addSymbol(sName, "Component", rootId, 0, 0, { type: "spring_damper", body1: s.body1, body2: s.body2 });
     }
 
-    childrenOf.set(rootId, childIds);
-
-    const index: SymbolIndex = { symbols, byName, childrenOf };
-    this.fileIndices.set(uri, index);
-    return index;
+    return this.getFileIndex(uri)!;
   }
 
   /**

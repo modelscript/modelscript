@@ -1028,6 +1028,47 @@ Tooling for **AMPL** algebraic mathematical programming models (`.mod`, `.dat`, 
 
 ---
 
+### `matpower`
+
+Tooling for **MATPOWER** transmission power flow and optimal power flow cases (`.m`), including pre-flight electrical and topological linting (`MP2001`–`MP4001`), DC and AC Optimal Power Flow dispatch, Siemens PSS/E (`.raw`) projection, and linear WebAssembly DAE lowering.
+
+<CliCommand name="matpower" />
+
+```bash
+# Print network summary of buses, lines, generators, and demand
+msx matpower summary case14.m
+
+# Run pre-flight lint diagnostics
+msx matpower lint case14.m
+
+# Solve DC Optimal Power Flow
+msx matpower solve case14.m --formulation=dc
+
+# Convert to Siemens PSS/E RAW
+msx matpower to-psse case14.m --out=case14.raw
+```
+
+---
+
+### `opf`
+
+Two-tier **Optimal Power Flow (OPF)** solver and exascale export engine supporting MATPOWER (`.m`), Siemens PSS/E (`.raw`), and JSON power network cases. See the complete [Optimal Power Flow Manual](./opf.md) for mathematical formulation details.
+
+<CliCommand name="opf" />
+
+```bash
+# Solve DC-OPF using Tier 2 Direct Zero-GC solver
+msx opf solve case14.m --formulation=dc
+
+# Export algebraic AMPL model and data files
+msx opf to-ampl case14.m --formulation=dc --out=./case14_ampl
+
+# Export PNNL ExaGO exascale HPC optimization bundle
+msx opf to-exago case14.m --app=scopflow --mpi-ranks=16 --out=./case14_exago
+```
+
+---
+
 ### `powerfactory`
 
 Tooling for **DIgSILENT PowerFactory** control block definitions (`.dsl`) and DGS grid exchange schemas (`.dgs`), including DSL static linting (`PF1001`–`PF1008`), composite frame binding, Newton-Raphson AC power flow, and projections to Siemens PSS/E and Modelica (`pf` and `digsilent` are aliases for `powerfactory`).

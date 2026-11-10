@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @fileoverview Ultra-High-Order Explicit Adaptive Runge-Kutta Integrators (Vern7 & Vern9).
+ * @fileoverview Ultra-High-Order Explicit Adaptive Integrators (Vern7 & Vern9 Aliases).
  *
  * Implements 7th-order (`vern7`, order 7(6)) and 9th-order (`vern9`, order 9(8))
- * explicit adaptive Runge-Kutta integrators for ultra-high-precision non-stiff ODEs,
- * astrodynamics, celestial mechanics, and long-horizon oscillatory trajectories.
+ * explicit adaptive integrators via symmetric Gragg-Bulirsch-Stoer (GBS) modified midpoint
+ * extrapolation with an Aitken-Neville polynomial tableau. Optimized for ultra-high-precision
+ * non-stiff ODEs, astrodynamics, celestial mechanics, and long-horizon oscillatory trajectories.
  *
  * Academic Citations:
- * - Verner, J. H. (2010). "Numerically optimal Runge–Kutta pairs with interpolants."
- *   Numerical Algorithms, 53(2-3), 383-396. https://doi.org/10.1007/s11075-009-9290-3
+ * - Gragg, W. B. (1965). "On extrapolation algorithms for ordinary initial value problems."
+ *   SIAM Journal on Numerical Analysis, 2(3), 384-403.
+ * - Bulirsch, R., & Stoer, J. (1966). "Numerical treatment of ordinary differential equations by
+ *   extrapolation methods." Numerische Mathematik, 8(1), 1-13.
  * - Hairer, E., Nørsett, S. P., & Wanner, G. (1993). Solving Ordinary Differential
  *   Equations I: Nonstiff Problems (2nd ed.). Springer Series in Computational Mathematics 8,
  *   Section II.9 & II.10. https://doi.org/10.1007/978-3-540-78862-1

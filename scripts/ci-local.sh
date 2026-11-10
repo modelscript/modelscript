@@ -4,6 +4,7 @@
 # scripts/ci-local.sh - Local simulation of GitHub Actions CI pipeline
 set -eo pipefail
 export NX_TUI=false
+export CI=true
 
 # Text colors
 RED='\033[0;31m'
@@ -115,9 +116,9 @@ run_task() {
   local description="$2"
   log_info "Starting: ${description}..."
   if [ "$RUN_ALL" = true ]; then
-    npx nx run-many -t "$target" --parallel=4 --output-style=stream
+    node scripts/nx-coordinator.js run-many -t "$target"
   else
-    npx nx affected -t "$target" --base="$BASE_REF" --parallel=4 --output-style=stream
+    node scripts/nx-coordinator.js affected -t "$target" --base="$BASE_REF"
   fi
   log_success "Completed: ${description}"
 }
@@ -173,9 +174,9 @@ if [ "$MODE_BUILD" = true ]; then
   echo ""
   log_info "Starting: Package builds..."
   if [ "$RUN_ALL" = true ] || [ "$MODE_FULL" = true ]; then
-    npx nx run-many -t build --parallel=4 --output-style=stream
+    node scripts/nx-coordinator.js run-many -t build
   else
-    npx nx affected -t build --base="$BASE_REF" --parallel=4 --output-style=stream
+    node scripts/nx-coordinator.js affected -t build --base="$BASE_REF"
   fi
   log_success "Completed: Package builds"
 

@@ -19,9 +19,18 @@ function collectTsFiles(dir, baseDir = dir) {
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === "formal") continue;
+      if (
+        entry.name === "formal" ||
+        entry.name === "fea" ||
+        entry.name === "cad" ||
+        entry.name === "diagram" ||
+        entry.name === "storage"
+      ) {
+        continue;
+      }
       results.push(...collectTsFiles(fullPath, baseDir));
     } else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+      if (entry.name === "wasm_emt.ts") continue;
       results.push({
         fullPath,
         relPath: path.relative(baseDir, fullPath).replace(/\\/g, "/"),

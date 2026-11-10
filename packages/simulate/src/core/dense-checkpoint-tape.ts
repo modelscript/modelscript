@@ -42,7 +42,11 @@ export interface CheckpointTapeStats {
 }
 
 export class DenseHermiteCheckpointTape {
-  private segments: HermiteSegment[] = [];
+  private flatBuffer: Float64Array;
+  private segmentCount = 0;
+  private readonly numStates: number;
+  private readonly numAlgebraic: number;
+  private readonly stride: number;
   private stateNames: string[] = [];
   private stateNameToIndex = new Map<string, number>();
   private algebraicNames: string[] = [];
@@ -51,7 +55,10 @@ export class DenseHermiteCheckpointTape {
   // Cached index for fast localized searching during backward sweeps
   private lastQueriedSegmentIdx = 0;
 
-  constructor(stateNames: string[], algebraicNames: string[] = []) {
+  // Lazily constructed HermiteSegment view cache for getSegments()
+  private cachedSegmentsView: HermiteSegment[] | null = null;
+
+  constructor(stateNames: string[], algebraicNames: string[] = [], initialCapacity = 256) {
     this.stateNames = [...stateNames];
     for (let i = 0; i < this.stateNames.length; i++) {
       this.stateNameToIndex.set(this.stateNames[i]!, i);
@@ -60,52 +67,95 @@ export class DenseHermiteCheckpointTape {
     for (let i = 0; i < this.algebraicNames.length; i++) {
       this.algNameToIndex.set(this.algebraicNames[i]!, i);
     }
+    this.numStates = this.stateNames.length;
+    this.numAlgebraic = this.algebraicNames.length;
+    // Stride layout: [t0, t1, x0(n), x1(n), dx0(n), dx1(n), y0(m), y1(m)]
+    this.stride = 2 + 4 * this.numStates + 2 * this.numAlgebraic;
+    this.flatBuffer = new Float64Array(Math.max(initialCapacity, 16) * this.stride);
   }
 
   /**
-   * Adds an accepted simulation transition segment to the tape.
+   * Adds an accepted simulation transition segment to the tape with zero-allocation flat copying.
    */
   public pushSegment(
     t0: number,
     t1: number,
-    x0: Float64Array,
-    x1: Float64Array,
-    dx0: Float64Array,
-    dx1: Float64Array,
-    y0?: Float64Array,
-    y1?: Float64Array,
+    x0: Float64Array | number[],
+    x1: Float64Array | number[],
+    dx0: Float64Array | number[],
+    dx1: Float64Array | number[],
+    y0?: Float64Array | number[] | undefined,
+    y1?: Float64Array | number[] | undefined,
   ): void {
     if (t1 <= t0) {
       throw new Error(`Invalid checkpoint segment: t1 (${t1}) must be strictly greater than t0 (${t0}).`);
     }
 
-    this.segments.push({
-      t0,
-      t1,
-      x0: new Float64Array(x0),
-      x1: new Float64Array(x1),
-      dx0: new Float64Array(dx0),
-      dx1: new Float64Array(dx1),
-      y0: y0 ? new Float64Array(y0) : undefined,
-      y1: y1 ? new Float64Array(y1) : undefined,
-    });
+    const requiredCap = (this.segmentCount + 1) * this.stride;
+    if (requiredCap > this.flatBuffer.length) {
+      const newCapacity = Math.max(this.flatBuffer.length * 2, requiredCap + 128 * this.stride);
+      const newBuf = new Float64Array(newCapacity);
+      newBuf.set(this.flatBuffer.subarray(0, this.segmentCount * this.stride));
+      this.flatBuffer = newBuf;
+      this.cachedSegmentsView = null; // Rebuild views when backing buffer reallocates
+    }
 
-    this.lastQueriedSegmentIdx = this.segments.length - 1;
+    const base = this.segmentCount * this.stride;
+    this.flatBuffer[base] = t0;
+    this.flatBuffer[base + 1] = t1;
+
+    const n = this.numStates;
+    const m = this.numAlgebraic;
+
+    const x0Off = base + 2;
+    const x1Off = x0Off + n;
+    const dx0Off = x1Off + n;
+    const dx1Off = dx0Off + n;
+    const y0Off = dx1Off + n;
+    const y1Off = y0Off + m;
+
+    this.flatBuffer.set(x0, x0Off);
+    this.flatBuffer.set(x1, x1Off);
+    this.flatBuffer.set(dx0, dx0Off);
+    this.flatBuffer.set(dx1, dx1Off);
+
+    if (y0 && m > 0) {
+      this.flatBuffer.set(y0, y0Off);
+    }
+    if (y1 && m > 0) {
+      this.flatBuffer.set(y1, y1Off);
+    }
+
+    this.lastQueriedSegmentIdx = this.segmentCount;
+    this.segmentCount++;
+
+    if (this.cachedSegmentsView !== null) {
+      this.cachedSegmentsView.push({
+        t0,
+        t1,
+        x0: this.flatBuffer.subarray(x0Off, x0Off + n),
+        x1: this.flatBuffer.subarray(x1Off, x1Off + n),
+        dx0: this.flatBuffer.subarray(dx0Off, dx0Off + n),
+        dx1: this.flatBuffer.subarray(dx1Off, dx1Off + n),
+        y0: m > 0 ? this.flatBuffer.subarray(y0Off, y0Off + m) : undefined,
+        y1: m > 0 ? this.flatBuffer.subarray(y1Off, y1Off + m) : undefined,
+      });
+    }
   }
 
   /**
    * Total number of stored segments.
    */
   public get length(): number {
-    return this.segments.length;
+    return this.segmentCount;
   }
 
   public get startTime(): number {
-    return this.segments.length > 0 ? this.segments[0]!.t0 : 0;
+    return this.segmentCount > 0 ? this.flatBuffer[0]! : 0;
   }
 
   public get stopTime(): number {
-    return this.segments.length > 0 ? this.segments[this.segments.length - 1]!.t1 : 0;
+    return this.segmentCount > 0 ? this.flatBuffer[(this.segmentCount - 1) * this.stride + 1]! : 0;
   }
 
   public getStateNames(): string[] {
@@ -116,8 +166,36 @@ export class DenseHermiteCheckpointTape {
     return this.algebraicNames;
   }
 
+  /**
+   * Returns readonly HermiteSegment view structures without copying underlying state vectors.
+   */
   public getSegments(): readonly HermiteSegment[] {
-    return this.segments;
+    if (this.cachedSegmentsView === null) {
+      const segs: HermiteSegment[] = new Array(this.segmentCount);
+      const n = this.numStates;
+      const m = this.numAlgebraic;
+      for (let k = 0; k < this.segmentCount; k++) {
+        const base = k * this.stride;
+        const x0Off = base + 2;
+        const x1Off = x0Off + n;
+        const dx0Off = x1Off + n;
+        const dx1Off = dx0Off + n;
+        const y0Off = dx1Off + n;
+        const y1Off = y0Off + m;
+        segs[k] = {
+          t0: this.flatBuffer[base]!,
+          t1: this.flatBuffer[base + 1]!,
+          x0: this.flatBuffer.subarray(x0Off, x0Off + n),
+          x1: this.flatBuffer.subarray(x1Off, x1Off + n),
+          dx0: this.flatBuffer.subarray(dx0Off, dx0Off + n),
+          dx1: this.flatBuffer.subarray(dx1Off, dx1Off + n),
+          y0: m > 0 ? this.flatBuffer.subarray(y0Off, y0Off + m) : undefined,
+          y1: m > 0 ? this.flatBuffer.subarray(y1Off, y1Off + m) : undefined,
+        };
+      }
+      this.cachedSegmentsView = segs;
+    }
+    return this.cachedSegmentsView;
   }
 
   /**
@@ -130,17 +208,21 @@ export class DenseHermiteCheckpointTape {
   }
 
   /**
-   * Zero-allocation evaluation of state vector x(t) into a target buffer.
+   * Zero-allocation evaluation of state vector x(t) into a target buffer directly from contiguous tape.
    */
   public evaluateStateInto(t: number, target: Float64Array): void {
-    if (this.segments.length === 0) {
+    if (this.segmentCount === 0) {
       throw new Error("Cannot evaluate state: tape has no recorded segments.");
     }
 
-    const seg = this.findSegment(t);
-    const h = seg.t1 - seg.t0;
-    const clampedT = Math.max(seg.t0, Math.min(seg.t1, t));
-    const theta = h > 0 ? (clampedT - seg.t0) / h : 0;
+    const segIdx = this.findSegmentIndex(t);
+    const base = segIdx * this.stride;
+    const buf = this.flatBuffer;
+    const t0 = buf[base]!;
+    const t1 = buf[base + 1]!;
+    const h = t1 - t0;
+    const clampedT = Math.max(t0, Math.min(t1, t));
+    const theta = h > 0 ? (clampedT - t0) / h : 0;
 
     // Hermite cubic basis polynomials
     const theta2 = theta * theta;
@@ -150,9 +232,14 @@ export class DenseHermiteCheckpointTape {
     const h01 = 3 * theta2 - 2 * theta3;
     const h11 = h * (-theta2 + theta3);
 
-    const n = this.stateNames.length;
+    const n = this.numStates;
+    const x0Off = base + 2;
+    const x1Off = x0Off + n;
+    const dx0Off = x1Off + n;
+    const dx1Off = dx0Off + n;
+
     for (let i = 0; i < n; i++) {
-      target[i] = h00 * (seg.x0[i] ?? 0) + h10 * (seg.dx0[i] ?? 0) + h01 * (seg.x1[i] ?? 0) + h11 * (seg.dx1[i] ?? 0);
+      target[i] = h00 * buf[x0Off + i]! + h10 * buf[dx0Off + i]! + h01 * buf[x1Off + i]! + h11 * buf[dx1Off + i]!;
     }
   }
 
@@ -166,19 +253,23 @@ export class DenseHermiteCheckpointTape {
   }
 
   /**
-   * Zero-allocation evaluation of dx/dt(t) into target buffer.
+   * Zero-allocation evaluation of dx/dt(t) into target buffer directly from contiguous tape.
    */
   public evaluateDerivativeInto(t: number, target: Float64Array): void {
-    if (this.segments.length === 0) {
+    if (this.segmentCount === 0) {
       throw new Error("Cannot evaluate derivative: tape has no recorded segments.");
     }
 
-    const seg = this.findSegment(t);
-    const h = seg.t1 - seg.t0;
+    const segIdx = this.findSegmentIndex(t);
+    const base = segIdx * this.stride;
+    const buf = this.flatBuffer;
+    const t0 = buf[base]!;
+    const t1 = buf[base + 1]!;
+    const h = t1 - t0;
     if (h <= 0) return;
 
-    const clampedT = Math.max(seg.t0, Math.min(seg.t1, t));
-    const theta = (clampedT - seg.t0) / h;
+    const clampedT = Math.max(t0, Math.min(t1, t));
+    const theta = (clampedT - t0) / h;
     const theta2 = theta * theta;
 
     // Derivatives of Hermite basis with respect to t
@@ -187,10 +278,14 @@ export class DenseHermiteCheckpointTape {
     const dh01 = (-6 * theta2 + 6 * theta) / h;
     const dh11 = -2 * theta + 3 * theta2;
 
-    const n = this.stateNames.length;
+    const n = this.numStates;
+    const x0Off = base + 2;
+    const x1Off = x0Off + n;
+    const dx0Off = x1Off + n;
+    const dx1Off = dx0Off + n;
+
     for (let i = 0; i < n; i++) {
-      target[i] =
-        dh00 * (seg.x0[i] ?? 0) + dh10 * (seg.dx0[i] ?? 0) + dh01 * (seg.x1[i] ?? 0) + dh11 * (seg.dx1[i] ?? 0);
+      target[i] = dh00 * buf[x0Off + i]! + dh10 * buf[dx0Off + i]! + dh01 * buf[x1Off + i]! + dh11 * buf[dx1Off + i]!;
     }
   }
 
@@ -205,18 +300,23 @@ export class DenseHermiteCheckpointTape {
   }
 
   public evaluateAlgebraicInto(t: number, target: Float64Array): void {
-    const n = this.algebraicNames.length;
-    if (n === 0 || this.segments.length === 0) return;
+    const m = this.numAlgebraic;
+    if (m === 0 || this.segmentCount === 0) return;
 
-    const seg = this.findSegment(t);
-    if (!seg.y0 || !seg.y1) return;
+    const segIdx = this.findSegmentIndex(t);
+    const base = segIdx * this.stride;
+    const buf = this.flatBuffer;
+    const t0 = buf[base]!;
+    const t1 = buf[base + 1]!;
+    const h = t1 - t0;
+    const clampedT = Math.max(t0, Math.min(t1, t));
+    const theta = h > 0 ? (clampedT - t0) / h : 0;
 
-    const h = seg.t1 - seg.t0;
-    const clampedT = Math.max(seg.t0, Math.min(seg.t1, t));
-    const theta = h > 0 ? (clampedT - seg.t0) / h : 0;
+    const y0Off = base + 2 + 4 * this.numStates;
+    const y1Off = y0Off + m;
 
-    for (let i = 0; i < n; i++) {
-      target[i] = (1 - theta) * (seg.y0[i] ?? 0) + theta * (seg.y1[i] ?? 0);
+    for (let i = 0; i < m; i++) {
+      target[i] = (1 - theta) * buf[y0Off + i]! + theta * buf[y1Off + i]!;
     }
   }
 
@@ -248,42 +348,46 @@ export class DenseHermiteCheckpointTape {
    * Fast segment lookup with localized caching.
    * Optimizes backward time stepping (common in adjoint passes) to O(1) amortized.
    */
-  private findSegment(t: number): HermiteSegment {
-    const nSegs = this.segments.length;
+  private findSegmentIndex(t: number): number {
+    const nSegs = this.segmentCount;
+    if (nSegs === 0) return 0;
+    const stride = this.stride;
+    const buf = this.flatBuffer;
     const currIdx = this.lastQueriedSegmentIdx;
 
     // Check cached index
-    const curr = this.segments[currIdx]!;
-    if (t >= curr.t0 && t <= curr.t1) {
-      return curr;
+    const currBase = currIdx * stride;
+    if (t >= buf[currBase]! && t <= buf[currBase + 1]!) {
+      return currIdx;
     }
 
     // Check immediate predecessor (very common during reverse adjoint stepping)
     if (currIdx > 0) {
-      const prev = this.segments[currIdx - 1]!;
-      if (t >= prev.t0 && t <= prev.t1) {
+      const prevBase = (currIdx - 1) * stride;
+      if (t >= buf[prevBase]! && t <= buf[prevBase + 1]!) {
         this.lastQueriedSegmentIdx = currIdx - 1;
-        return prev;
+        return currIdx - 1;
       }
     }
 
     // Check immediate successor (very common during forward playback)
     if (currIdx < nSegs - 1) {
-      const next = this.segments[currIdx + 1]!;
-      if (t >= next.t0 && t <= next.t1) {
+      const nextBase = (currIdx + 1) * stride;
+      if (t >= buf[nextBase]! && t <= buf[nextBase + 1]!) {
         this.lastQueriedSegmentIdx = currIdx + 1;
-        return next;
+        return currIdx + 1;
       }
     }
 
     // Boundary edge cases
-    if (t <= this.segments[0]!.t0) {
+    if (t <= buf[0]!) {
       this.lastQueriedSegmentIdx = 0;
-      return this.segments[0]!;
+      return 0;
     }
-    if (t >= this.segments[nSegs - 1]!.t1) {
+    const lastBase = (nSegs - 1) * stride;
+    if (t >= buf[lastBase + 1]!) {
       this.lastQueriedSegmentIdx = nSegs - 1;
-      return this.segments[nSegs - 1]!;
+      return nSegs - 1;
     }
 
     // Binary search for general non-monotonic access
@@ -291,36 +395,50 @@ export class DenseHermiteCheckpointTape {
     let high = nSegs - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
-      const seg = this.segments[mid]!;
-      if (t < seg.t0) {
+      const midBase = mid * stride;
+      const t0 = buf[midBase]!;
+      const t1 = buf[midBase + 1]!;
+      if (t < t0) {
         high = mid - 1;
-      } else if (t > seg.t1) {
+      } else if (t > t1) {
         low = mid + 1;
       } else {
         this.lastQueriedSegmentIdx = mid;
-        return seg;
+        return mid;
       }
     }
 
     this.lastQueriedSegmentIdx = Math.max(0, Math.min(nSegs - 1, low));
-    return this.segments[this.lastQueriedSegmentIdx]!;
+    return this.lastQueriedSegmentIdx;
   }
 
   /**
    * Returns memory footprint statistics.
    */
   public getStats(): CheckpointTapeStats {
-    const numStates = this.stateNames.length;
-    const numAlg = this.algebraicNames.length;
-    // Each segment stores: 4 state Float64Arrays (x0, x1, dx0, dx1) + 2 alg arrays (y0, y1)
-    const bytesPerSegment = (4 * numStates + (numAlg > 0 ? 2 * numAlg : 0)) * 8 + 64;
+    const numStates = this.numStates;
+    const numAlg = this.numAlgebraic;
     return {
-      segmentCount: this.segments.length,
+      segmentCount: this.segmentCount,
       numStates,
       numAlgebraic: numAlg,
-      memoryBytes: this.segments.length * bytesPerSegment,
+      memoryBytes: this.flatBuffer.byteLength,
       startTime: this.startTime,
       stopTime: this.stopTime,
     };
+  }
+
+  /**
+   * Returns the underlying contiguous Float64Array backing buffer.
+   */
+  public getFlatBuffer(): Float64Array {
+    return this.flatBuffer;
+  }
+
+  /**
+   * Returns the segment stride in Float64 elements.
+   */
+  public getStride(): number {
+    return this.stride;
   }
 }

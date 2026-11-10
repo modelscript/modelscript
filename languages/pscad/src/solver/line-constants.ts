@@ -20,6 +20,8 @@
  *    - Directly compatible with PSCAD EmtSolver FDPM companion branch kernel
  */
 
+import { createUniversalLineModel, type UniversalLineModelData } from "./universal-line-model.js";
+
 // Physical constants
 const MU_0 = 4.0 * Math.PI * 1e-7; // Permeability of free space (H/m)
 const EPSILON_0 = 8.854187817e-12; // Permittivity of free space (F/m)
@@ -894,5 +896,63 @@ export class LineConstantsSolver {
     }
 
     return res;
+  }
+
+  /**
+   * Solves full 3-phase Universal Line Model (ULM) phase-domain parameters directly from
+   * tower or cable geometry for transient EMT simulation.
+   */
+  static solveUlm(
+    geometry: TowerGeometry | CableGeometry,
+    options: LineConstantsOptions & {
+      dtSec?: number | undefined;
+      id?: string | undefined;
+      fromBus?: string | undefined;
+      toBus?: string | undefined;
+      fromIdx?: number | undefined;
+      toIdx?: number | undefined;
+    } = {},
+  ): UniversalLineModelData {
+    const isCable = "coreRadiusMeters" in geometry;
+    const baseRes = isCable
+      ? this.solveCable(geometry as CableGeometry, options)
+      : this.solveTower(geometry as TowerGeometry, options);
+    const lengthKm = options.lengthKm ?? baseRes.lengthKm;
+    const dtSec = options.dtSec ?? 50e-6;
+
+    const omega60 = 2.0 * Math.PI * 60.0;
+    return createUniversalLineModel({
+      id: options.id ?? `${geometry.name}_ULM`,
+      fromBus: options.fromBus ?? "Bus1",
+      toBus: options.toBus ?? "Bus2",
+      fromIdx: options.fromIdx ?? 0,
+      toIdx: options.toIdx ?? 1,
+      lengthKm,
+      dtSec,
+      rPerKm: baseRes.r1OhmPerKm,
+      lPerKm: baseRes.x1OhmPerKm / omega60,
+      cPerKm: (baseRes.b1MicroSiemensPerKm * 1e-6) / omega60,
+      r0PerKm: baseRes.r0OhmPerKm,
+      l0PerKm: baseRes.x0OhmPerKm / omega60,
+      c0PerKm: (baseRes.b0MicroSiemensPerKm * 1e-6) / omega60,
+      asymmetryFactor: isCable ? 0.02 : 0.12,
+    });
+  }
+
+  /**
+   * Solves full 3-phase Universal Line Model (ULM) parameters for a coaxial / XLPE cable.
+   */
+  static solveUlmCable(
+    cable: CableGeometry,
+    options: LineConstantsOptions & {
+      dtSec?: number | undefined;
+      id?: string | undefined;
+      fromBus?: string | undefined;
+      toBus?: string | undefined;
+      fromIdx?: number | undefined;
+      toIdx?: number | undefined;
+    } = {},
+  ): UniversalLineModelData {
+    return this.solveUlm(cable, options);
   }
 }

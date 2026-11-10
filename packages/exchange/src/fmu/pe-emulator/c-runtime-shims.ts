@@ -5,6 +5,7 @@
  * for FMI Dynamic Link Libraries.
  */
 
+import { registerDrmShims } from "./drm-shims.js";
 import type { GuestMemorySpace, X86RegisterState } from "./types.js";
 
 export interface SyscallContext {
@@ -546,5 +547,8 @@ export class CRuntimeManager {
     // C++ dynamic registration shims
     this.handlers.set("__cxa_atexit", (ctx) => ctx.cpu.setReturnInt(0n));
     this.handlers.set("__tls_get_addr", (ctx) => ctx.cpu.setReturnInt(errnoSlotPtr || 0x20000n));
+
+    // Wibu-Systems CodeMeter and Thales Sentinel HASP hardware dongle DRM shims
+    registerDrmShims(this);
   }
 }

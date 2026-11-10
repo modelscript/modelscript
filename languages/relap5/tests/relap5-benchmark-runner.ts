@@ -8,16 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  lowerRelap5ToDae,
-  parseRelap5,
-  solvePointKinetics,
-  type PointKineticsResult,
-  type Relap5Deck,
-} from "../src/index.js";
+import { lowerRelap5ToDae, parseRelap5, solvePointKinetics, type KineticsSimulationResult } from "../src/index.js";
 
 export const PWR_BENCHMARK_DECK = `* ====================================================================
 * NRC Standard Problem: PWR 4-Loop Reactor Primary System SCRAM Benchmark
@@ -72,7 +63,7 @@ export function runRelap5Benchmark(deckText = PWR_BENCHMARK_DECK): Relap5Benchma
   const deck = parseRelap5(deckText);
 
   // 1. Solve 6-group delayed neutron point kinetics during SCRAM
-  const scramRes: PointKineticsResult = solvePointKinetics(deck, {
+  const scramRes: KineticsSimulationResult = solvePointKinetics(deck, {
     duration: 5.0,
     tripScramTime: 1.0,
     stepSize: 0.001,

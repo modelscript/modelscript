@@ -151,6 +151,17 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
     const algorithm = rawAlg === "helm" ? "helm" : rawAlg === "fdpf" ? "fast_decoupled" : "newton_raphson";
     const tolerance = (argv["tol"] as number) ?? 1e-4;
     const maxIterations = (argv["max-iter"] as number) ?? 25;
+    if (action === "benchmark") {
+      console.log(`[psse] Running industrial SOTA power flow & ACCC benchmark...`);
+      const modelArg = (argv["model"] as string | undefined) ?? "activsg2000";
+      const { BenchmarkCommand } = await import("./benchmark.js");
+      await BenchmarkCommand.handler!({
+        ...argv,
+        suite: "psse",
+        model: modelArg,
+      } as any);
+      return;
+    }
 
     if (files.length === 0 && !(action === "gatekeeper" && argv["serve"])) {
       console.error("[psse] No PSS/E or CGMES files specified.");
@@ -185,14 +196,18 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       const dyrCase = parseDyr(dyrText);
 
       // Parse PMU telemetry CSV: time,vt,freq,p,q
-      const lines = pmuText.trim().split(/\r?\n/).filter((l) => l.trim().length > 0);
+      const lines = pmuText
+        .trim()
+        .split(/\r?\n/)
+        .filter((l) => l.trim().length > 0);
       const rawRows = lines.map((l) => l.split(",").map((s) => parseFloat(s.trim())));
       const isHeader = isNaN(rawRows[0]?.[0] ?? NaN);
       const dataRows = isHeader ? rawRows.slice(1) : rawRows;
 
       const busNumber = (argv["bus"] as number) ?? rawCase.generators[0]?.i ?? 101;
       const machineId = (argv["id"] as string) ?? rawCase.generators[0]?.id ?? "1";
-      const gen = rawCase.generators.find((g) => g.i === busNumber && g.id.trim() === machineId.trim()) ?? rawCase.generators[0];
+      const gen =
+        rawCase.generators.find((g) => g.i === busNumber && g.id.trim() === machineId.trim()) ?? rawCase.generators[0];
       if (!gen) {
         console.error(`[psse] Generator not found at bus ${busNumber} ID '${machineId}'`);
         process.exit(1);
@@ -212,8 +227,12 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
 
       console.log(`  ✔ Calibrated ${report.parameters.length} parameters for Bus ${busNumber} Gen '${machineId}'`);
       console.log(`    - Convergence: ${report.calibratedSimulation.overallScore >= 70 ? "CONVERGED" : "MAX_ITER"}`);
-      console.log(`    - P Fit: R² = ${report.calibratedSimulation.pMetrics.rSquared.toFixed(4)}, NRMSE = ${(report.calibratedSimulation.pMetrics.nrmse * 100).toFixed(2)}%`);
-      console.log(`    - Q Fit: R² = ${report.calibratedSimulation.qMetrics.rSquared.toFixed(4)}, NRMSE = ${(report.calibratedSimulation.qMetrics.nrmse * 100).toFixed(2)}%`);
+      console.log(
+        `    - P Fit: R² = ${report.calibratedSimulation.pMetrics.rSquared.toFixed(4)}, NRMSE = ${(report.calibratedSimulation.pMetrics.nrmse * 100).toFixed(2)}%`,
+      );
+      console.log(
+        `    - Q Fit: R² = ${report.calibratedSimulation.qMetrics.rSquared.toFixed(4)}, NRMSE = ${(report.calibratedSimulation.qMetrics.nrmse * 100).toFixed(2)}%`,
+      );
 
       const updatedDyr = applyCalibrationToDyrCase(dyrCase, report);
       const calibratedDyrText = serializeDyrCase(updatedDyr);
@@ -256,7 +275,9 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           console.log(`  ✔ Exported derivation report to ${outPath}`);
         } else {
           fs.writeFileSync(outPath, rawText, "utf-8");
-          console.log(`  ✔ Exported equivalent PSS/E RAW case to ${outPath} (${result.equivalentPsseCase.buses.size} buses)`);
+          console.log(
+            `  ✔ Exported equivalent PSS/E RAW case to ${outPath} (${result.equivalentPsseCase.buses.size} buses)`,
+          );
         }
       } else {
         console.log(rawText);
@@ -288,8 +309,8 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         pEmt[i] = isFault ? 10.0 + 2.0 * Math.sin(2 * Math.PI * 60 * t) : 100.0;
         qRms[i] = isFault ? 40.0 : 0.0;
         qEmt[i] = isFault ? 40.0 + 1.5 * Math.sin(2 * Math.PI * 60 * t) : 0.0;
-        vRms[i] = isFault ? 0.30 : 1.0;
-        vEmt[i] = isFault ? 0.30 : 1.0;
+        vRms[i] = isFault ? 0.3 : 1.0;
+        vEmt[i] = isFault ? 0.3 : 1.0;
       }
 
       const report = benchmarkIbrModels(plantName, [
@@ -306,7 +327,9 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         },
       ]);
 
-      console.log(`  ✔ Cross-Benchmarking Summary: ${report.summary.passedTests}/${report.summary.totalTests} tests passed`);
+      console.log(
+        `  ✔ Cross-Benchmarking Summary: ${report.summary.passedTests}/${report.summary.totalTests} tests passed`,
+      );
       console.log(`    - Avg P NRMSE: ${(report.summary.averagePnrmse * 100).toFixed(2)}%`);
       console.log(`    - Avg Q NRMSE: ${(report.summary.averageQnrmse * 100).toFixed(2)}%`);
 
@@ -351,7 +374,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
               deviceId: `40_GEN_${gen.i}`,
               ansiCode: 24 as const,
               elementName: `Gen ${gen.i} Volts/Hz`,
-              pickupValue: 1.10,
+              pickupValue: 1.1,
               timeDelaySec: 45.0,
             },
             {

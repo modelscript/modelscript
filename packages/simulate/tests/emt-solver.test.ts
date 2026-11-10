@@ -1454,4 +1454,62 @@ console.log("=== Testing WebAssembly Hybrid EMT Companion Solver ===");
   );
 }
 
-console.log("ALL EMT SOLVER TESTS PASSED SUCCESSFULLY! Phases 1, 2, 3, 4, 5, 6, 7, 8 & 9 verified.");
+// 23. Test EmtSolver High-Level API with Native WebAssembly Kernel Backend (backend: "wasm")
+{
+  console.log("Test 23: EmtSolver High-Level API with Native WebAssembly Kernel (backend: 'wasm')");
+  const dt = 20e-6;
+  const duration = 0.05; // 50 ms
+  const circuit: EmtCircuitDefinition = {
+    buses: ["Bus1", "Bus2"],
+    rlc: [
+      { id: "L_Tank", from: "Bus1", to: "Bus2", l: 0.02 },
+      { id: "C_Tank", from: "Bus2", to: "GND", c: 20e-6 },
+      { id: "R_Damp", from: "Bus2", to: "GND", r: 1000.0 },
+    ],
+    sources: [{ bus: "Bus1", vPeakKv: 10.0, freqHz: 60.0 }],
+  };
+
+  const solverWasm = new EmtSolver(circuit, {
+    timeStepSec: dt,
+    durationSec: duration,
+    backend: "wasm",
+  });
+  const resWasm = solverWasm.solve();
+
+  assert.strictEqual(resWasm.metrics.backend, "wasm", "EmtSolver must report 'wasm' backend when backend: 'wasm'");
+  assert.ok(resWasm.busVoltages.has("Bus2"), "Bus2 voltage array must be present");
+  const vBus2 = resWasm.busVoltages.get("Bus2")!;
+  assert.strictEqual(vBus2.length, Math.ceil(duration / dt));
+
+  let maxV2Kv = 0;
+  for (const v of vBus2) {
+    const kv = Math.abs(v) / 1e3;
+    if (kv > maxV2Kv) maxV2Kv = kv;
+  }
+  console.log(
+    `   WASM EmtSolver Bus2 Peak Voltage: ${maxV2Kv.toFixed(2)} kV across ${resWasm.metrics.totalSteps} steps in ${resWasm.metrics.wallClockTimeMs} ms`,
+  );
+  assert.ok(maxV2Kv > 5.0 && maxV2Kv < 15.0, "Bus2 peak voltage must be within physical range ~10 kV");
+
+  // Also verify backend: "ts" reports 'ts'
+  const solverTs = new EmtSolver(circuit, {
+    timeStepSec: dt,
+    durationSec: duration,
+    backend: "ts",
+  });
+  const resTs = solverTs.solve();
+  assert.strictEqual(resTs.metrics.backend, "ts", "EmtSolver must report 'ts' backend when backend: 'ts'");
+  const vBus2Ts = resTs.busVoltages.get("Bus2")!;
+  let maxV2TsKv = 0;
+  for (const v of vBus2Ts) {
+    const kv = Math.abs(v) / 1e3;
+    if (kv > maxV2TsKv) maxV2TsKv = kv;
+  }
+  const diffPercent = (Math.abs(maxV2Kv - maxV2TsKv) / maxV2TsKv) * 100;
+  console.log(
+    `   TS vs WASM Peak Voltage Parity: TS=${maxV2TsKv.toFixed(2)} kV vs WASM=${maxV2Kv.toFixed(2)} kV (diff: ${diffPercent.toFixed(2)}%)`,
+  );
+  assert.ok(diffPercent < 5.0, `TS and WASM solutions must agree within 5%, got ${diffPercent.toFixed(2)}%`);
+}
+
+console.log("ALL EMT SOLVER TESTS PASSED SUCCESSFULLY! Phases 1, 2, 3, 4, 5, 6, 7, 8, 9 & 10 verified.");

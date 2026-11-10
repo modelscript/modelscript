@@ -10,11 +10,14 @@ const srcWasm = path.join(pkgDir, "src", "wasm");
 const distWasm = path.join(pkgDir, "dist", "wasm");
 
 export function copyWasm() {
-  if (fs.existsSync(srcWasm)) {
-    fs.mkdirSync(distWasm, { recursive: true });
-    for (const file of fs.readdirSync(srcWasm)) {
-      if (file.endsWith(".wasm") || file.endsWith(".js") || file.endsWith(".d.ts")) {
-        fs.copyFileSync(path.join(srcWasm, file), path.join(distWasm, file));
+  const dirs = [path.join(pkgDir, "src", "wasm"), path.join(pkgDir, "wasm")];
+  for (const srcDir of dirs) {
+    if (fs.existsSync(srcDir)) {
+      fs.mkdirSync(distWasm, { recursive: true });
+      for (const file of fs.readdirSync(srcDir)) {
+        if (file.endsWith(".wasm") || file.endsWith(".js") || file.endsWith(".d.ts")) {
+          fs.copyFileSync(path.join(srcDir, file), path.join(distWasm, file));
+        }
       }
     }
   }

@@ -111,6 +111,10 @@ The **CLI** column below shows which command reports each language's rules.
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    11 | Language server / API   |
 
+::: info Not yet listed
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [ASPEN OneLiner / CAPE](../languages/oneliner.md), [ATP-EMTP](../languages/atp.md), [IEC 61850 SCL](../languages/scl.md), [IEEE 1815 / DNP3](../languages/dnp3.md), [IEEE COMTRADE](../languages/comtrade.md), [IWA Activated Sludge Models](../languages/asm.md), [MATPOWER](../languages/matpower.md), [OGC WaterML 2.0](../languages/waterml.md), [SEL Relay Settings](../languages/sel.md), [USACE HEC-HMS](../languages/hec-hms.md). See each language guide for details.
+:::
+
 ## Modelica {#modelica}
 
 Acausal multi-domain physics. **226 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)

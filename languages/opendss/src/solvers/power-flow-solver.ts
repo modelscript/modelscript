@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DssDeck, DssLine, DssTransformer } from "../types.js";
 import { getLengthScale } from "../parser/opendss-parser.js";
+import type { DssDeck, DssLine, DssTransformer } from "../types.js";
 import {
   buildOpenDssYbus,
   solveAdmittancePowerFlow,
@@ -281,8 +281,8 @@ export function solveDistributionPowerFlow(
           const lc = l.lineCode ? deck.lineCodes.get(l.lineCode) : undefined;
           const lenScale = getLengthScale(l.units, lc?.units);
           const len = Math.max(1e-6, l.length * lenScale);
-          const r1 = l.r1 ?? lc?.r1 ?? (lc?.rmatrix ? lc.rmatrix[0]?.[0] : 0.1);
-          const x1 = l.x1 ?? lc?.x1 ?? (lc?.xmatrix ? lc.xmatrix[0]?.[0] : 0.4);
+          const r1 = l.r1 ?? lc?.r1 ?? lc?.rmatrix?.[0]?.[0] ?? 0.1;
+          const x1 = l.x1 ?? lc?.x1 ?? lc?.xmatrix?.[0]?.[0] ?? 0.4;
           const r0 = l.r0 ?? lc?.r0 ?? r1 * 2.5;
           const x0 = l.x0 ?? lc?.x0 ?? x1 * 2.5;
           rTotal = r1 * len;

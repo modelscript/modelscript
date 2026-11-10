@@ -697,7 +697,7 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
     const varOffsets = arena.getVarOffsets?.() ?? new Int32Array(arena.varCount);
 
     lines.push(`    case ${b}u {`);
-    if (m >= 2 && m <= 8) {
+    if (m >= 2 && m <= 16) {
       // Coupled m x m Newton-Raphson with dense finite-difference Jacobian and partial-pivoting Gaussian elimination
       const offsetLiterals: string[] = [];
       for (let k = 0; k < m; k++) {

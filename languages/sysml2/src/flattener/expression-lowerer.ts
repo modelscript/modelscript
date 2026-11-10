@@ -329,6 +329,44 @@ function lowerBinaryChainedExpression(
     return lowerSysmlExpr(prefixed, arena);
   }
 
+  // Detect GLR grammar precedence inversions:
+  // In standard mathematical notation, multiplicative operators (*, /, %) have strictly higher
+  // precedence than additive operators (+, -). If the GLR parser reduced a MultiplicativeExpression
+  // with an unparenthesized Additive child, or an AdditiveExpression with an inverted Multiplicative child,
+  // fall back to the exact Pratt parser which strictly adheres to operator precedence hierarchies.
+  if (node.type === "MultiplicativeExpression") {
+    const hasUnparenthesizedAdditive = operands.some((op) => {
+      const unwrapped = unwrapCstNode(op);
+      const trimmed = op.text.trim();
+      return unwrapped.type === "AdditiveExpression" && !(trimmed.startsWith("(") && trimmed.endsWith(")"));
+    });
+    if (hasUnparenthesizedAdditive) {
+      const text = node.text?.trim() || "";
+      const prefixed = prefixSysmlExpression(text, prefix, localNames);
+      return lowerSysmlExpr(prefixed, arena);
+    }
+  }
+
+  if (node.type === "AdditiveExpression") {
+    const hasInvertedChild = operands.some((op) => {
+      const unwrapped = unwrapCstNode(op);
+      if (unwrapped.type === "MultiplicativeExpression") {
+        const mulOperands = unwrapped.childrenForFieldName?.("operand") ?? unwrapped.children ?? [];
+        return mulOperands.some((mop) => {
+          const u = unwrapCstNode(mop);
+          const trimmed = mop.text.trim();
+          return u.type === "AdditiveExpression" && !(trimmed.startsWith("(") && trimmed.endsWith(")"));
+        });
+      }
+      return false;
+    });
+    if (hasInvertedChild) {
+      const text = node.text?.trim() || "";
+      const prefixed = prefixSysmlExpression(text, prefix, localNames);
+      return lowerSysmlExpr(prefixed, arena);
+    }
+  }
+
   let leftId = lowerDirectCstExpression(operands[0]!, arena, prefix, localNames);
 
   for (let i = 0; i < operators.length && i + 1 < operands.length; i++) {

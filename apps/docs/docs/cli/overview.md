@@ -106,62 +106,64 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 
 ### 4. Polyglot Digital Thread, Co-Simulation & Domain Solvers
 
-| Command                                        | Aliases                | Summary                                                                                                                         |
-| :--------------------------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| [`render`](./commands.md#render)               | —                      | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.                  |
-| [`fmu`](./commands.md#fmu)                     | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
-| [`import-fmu`](./commands.md#import-fmu)       | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
-| [`cosim`](./commands.md#cosim)                 | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
-| [`polyglot`](./commands.md#polyglot)           | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 81 languages. |
-| [`align`](./commands.md#align)                 | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
-| [`sysml`](./commands.md#sysml)                 | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
-| [`oslc`](./commands.md#oslc)                   | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
-| [`reqif`](./commands.md#reqif)                 | —                      | Import and export OMG ReqIF 1.2 (`.reqif` / `.reqifz`) requirements exchange archives.                                          |
-| [`ddp`](./commands.md#ddp)                     | —                      | Inspect, pack, and convert ISO/PAS 81346 Digital Data Packages (`.ddp`) and Asset Administration Shells (`.aasx`).              |
-| [`dhf`](./commands.md#dhf)                     | —                      | Generate, audit, and inspect FDA 21 CFR Part 820 / ISO 13485 Design History File (DHF) compliance dossiers.                     |
-| [`ampl`](./commands.md#ampl)                   | —                      | Parse, lint (`M9801`–`M9810`), solve LP/MILP/NLP via COIN-OR CLP/CBC, export ASL `.nl`, and lower AMPL (`.mod`, `.dat`) models. |
-| [`pscad`](./commands.md#pscad)                 | —                      | Lint, render SLDs, diff, simulate EMT transients, verify IEEE 2800 ride-through, and export `.pscx`/`.pswx` projects.           |
-| [`psse`](./commands.md#psse)                   | —                      | Inspect, lint, solve AC power flow ($\mathbf{Y}_{\text{bus}}$), short-circuit, and project Siemens PSS/E (`.raw`, `.dyr`).      |
-| [`powerfactory`](./commands.md#powerfactory)   | `pf`, `digsilent`      | Parse, lint (`PF1001`–`PF1008`), compile DSL blocks, solve DGS power flow, and project DIgSILENT PowerFactory (`.dsl`, `.dgs`). |
-| [`pslf`](./commands.md#pslf)                   | —                      | Parse, lint (`PSLF-E001`–`PSLF-W003`), solve power flow, and project GE PSLF (`.epc`, `.dyd`) transmission decks.               |
-| [`cgmes`](./commands.md#cgmes)                 | —                      | Inspect, lint (`C1001`–`C1010`), solve AC/DC OPF, and convert ENTSO-E CIM / CGMES (`.xml`, `.rdf`) grid profiles.               |
-| [`opendss`](./commands.md#opendss)             | —                      | Solve unbalanced 3-phase power flow, harmonics, QSTS, IEEE 1547 hosting capacity, and FLISR on OpenDSS (`.dss`) feeders.        |
-| [`ocpp`](./commands.md#ocpp)                   | —                      | Validate, simulate smart-charging sessions, and lower OCPP 1.6J / 2.0.1 (`.ocpp`) EV charging transcripts.                      |
-| [`openadr`](./commands.md#openadr)             | —                      | Validate, simulate demand-response curtailment events, and lower OpenADR 2.0b / 3.0 (`.openadr`) payloads.                      |
-| [`optical`](./commands.md#optical)             | —                      | Compute ITU-T G.694.1 DWDM OSNR/GSNR link budgets and analyze Telcordia SR-4731 OTDR (`.sor`) traces.                           |
-| [`ran`](./commands.md#ran)                     | —                      | Compute 3GPP TR 38.901 5G NR / LTE RF link budgets, SINR coverage grids, and parse NSMA (`.adf`, `.msi`) antennas.              |
-| [`fiber`](./commands.md#fiber)                 | —                      | Resolve TIA-598-D fiber color codes, trace splice enclosures, and audit SRLG diversity on `.fiber` outside-plant cables.        |
-| [`spice`](./commands.md#spice)                 | —                      | Simulate DC operating point, transient, and AC frequency sweeps on SPICE (`.cir`, `.sp`, `.net`) netlists.                      |
-| [`olga`](./commands.md#olga)                   | —                      | Simulate 1D drift-flux multiphase flow, severe slugging, PVT flash, and verify flow assurance on OLGA (`.opi`, `.key`) decks.   |
-| [`lps`](./commands.md#lps)                     | —                      | Simulate transient gas/liquid networks, line pack, and hydrogen blends in PipelineStudio (`.lps`, `.tgx`, `.tlx`) models.       |
-| [`epanet`](./commands.md#epanet)               | —                      | Solve Global Gradient hydraulics, WQ chlorine decay, fire-flow, pump energy, and AWWA M36 audits on EPANET (`.inp`) networks.   |
-| [`swmm`](./commands.md#swmm)                   | —                      | Solve 1D Saint-Venant dynamic wave stormwater routing, detention pond sizing, and LID controls on EPA SWMM (`.inp`) models.     |
-| [`hec-ras`](./commands.md#hec-ras)             | `hecras`               | Solve 1D standard-step steady water surface profiles and floodplains on USACE HEC-RAS (`.prj`, `.g01`) river geometries.        |
-| [`tough`](./commands.md#tough)                 | `tough2`               | Parse, lint, and simulate non-isothermal multiphase subsurface & geothermal reservoirs on TOUGH2/TOUGH3 (`.tough`) decks.       |
-| [`modflow`](./commands.md#modflow)             | `mf6`                  | Solve 3D Darcy finite-difference groundwater head and pumping drawdowns on USGS MODFLOW 6 (`.nam`, `.dis`) models.              |
-| [`landgem`](./commands.md#landgem)             | —                      | Compute first-order landfill methane generation kinetics and biogas CHP energy yield on US EPA LandGEM (`.landgem`) decks.      |
-| [`gtfs`](./commands.md#gtfs)                   | —                      | Validate transit feeds, headways, and lower electric bus/rail fleet schedules to DAE on GTFS (`.gtfs`) datasets.                |
-| [`simulink`](./commands.md#simulink)           | —                      | Inspect, lint, lower to DAE, and project MATLAB Simulink (`.slx`, `.mdl`) control block diagrams to Modelica.                   |
-| [`autosar`](./commands.md#autosar)             | —                      | Inspect, lint, simulate the discrete Virtual RTE scheduler, and project AUTOSAR (`.arxml`) architectures.                       |
-| [`urdf`](./commands.md#urdf)                   | —                      | Validate kinematic trees, evaluate Featherstone RNEA inverse dynamics, and project ROS URDF/Xacro (`.urdf`, `.xacro`) robots.   |
-| [`simpack`](./commands.md#simpack)             | —                      | Analyze Grübler spatial mobility, lint markers/joints, and simulate SIMPACK (`.spck`, `.sim`) multibody systems.                |
-| [`gensys`](./commands.md#gensys)               | —                      | Verify EN 14363 derailment safety ($Y/Q \le 0.80$), FASTSIM contact, and simulate GENSYS (`.calc`) rail vehicles.               |
-| [`adams`](./commands.md#adams)                 | —                      | Analyze spatial mobility, lint markers, and project MSC Adams (`.adm`, `.cmd`) multibody mechanisms.                            |
-| [`easy5`](./commands.md#easy5)                 | —                      | Inspect, lint, linearize, and project EASY5 (`.ez5`, `.ezm`) aerospace and fluid-thermal schematics.                            |
-| [`gtsuite`](./commands.md#gtsuite)             | —                      | Inspect, lint compressor surge/CFL bounds, and simulate GT-SUITE (`.gtm`, `.gtd`) engine and powertrain models.                 |
-| [`sima`](./commands.md#sima)                   | —                      | Verify DNV-OS-E301 mooring tension safety factors and vessel offsets on SIMA (`.sima`, `.inp`) offshore models.                 |
-| [`rocets`](./commands.md#rocets)               | —                      | Balance turbopump flows, check chamber mixture ratios, and simulate NASA ROCETS (`.roc`, `.deck`) propulsion decks.             |
-| [`qif`](./commands.md#qif)                     | —                      | Validate ASME Y14.5 GD&T rules, compute SPC capability ($C_p, C_{pk}$, TUR), and reconcile STEP AP242 with ISO 23952 `.qif`.    |
-| [`oscal`](./commands.md#oscal)                 | —                      | Resolve control baselines, audit NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL security models.             |
-| [`aml`](./commands.md#aml)                     | `automationml`, `caex` | Validate IEC 62714 CAEX hierarchies, run closed-loop Virtual PLC commissioning, and project `.aml` workcells.                   |
-| [`opensim`](./commands.md#opensim)             | —                      | Validate musculoskeletal kinematics & Hill-type muscles (`M9101`–`M9110`), simulate activation, and project `.osim` models.     |
-| [`dicom-rt`](./commands.md#dicom-rt)           | —                      | Verify QUANTEC OAR dose limits & MLC kinematics (`M9201`–`M9210`), compute DVH/BED/$\text{EQD}_2$, and project `.rtplan`.       |
-| [`cellml`](./commands.md#cellml)               | —                      | Validate SI dimensional consistency (`M9301`–`M9310`), integrate electrophysiology ODEs, and project `.cellml` models.          |
-| [`febio`](./commands.md#febio)                 | `sofa`                 | Validate hyperelastic/biphasic tissue mechanics (`M9401`–`M9410`), solve strain energy, and project `.feb`/`.scn` scenes.       |
-| [`nifti`](./commands.md#nifti)                 | `nrrd`                 | Validate `qform`/`sform` RAS affine transforms (`M9501`–`M9510`), extract iso-surface meshes, and project `.nii`/`.nrrd`.       |
-| [`topas`](./commands.md#topas)                 | `gate`                 | Validate hadrontherapy beamlines (`M9601`–`M9610`), compute analytical Bragg peak depth-dose curves, and project `.topas`.      |
-| [`three-mf`](./commands.md#three-mf)           | `3mf`                  | Verify 2-manifold watertightness, wall thickness & osteotomy guides (`M9701`–`M9710`), and project `.3mf` surgical guides.      |
-| [`igtl`](./commands.md#igtl)                   | `openigtlink`          | Validate $SE(3)$ transforms (`M9801`–`M9810`), solve stylus pivot calibration & TRE, and project `.igtl`/`.plus.xml`.           |
+| Command                                      | Aliases                | Summary                                                                                                                         |
+| :------------------------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| [`render`](./commands.md#render)             | —                      | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.                  |
+| [`fmu`](./commands.md#fmu)                   | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
+| [`import-fmu`](./commands.md#import-fmu)     | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
+| [`cosim`](./commands.md#cosim)               | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
+| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 81 languages. |
+| [`align`](./commands.md#align)               | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
+| [`sysml`](./commands.md#sysml)               | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
+| [`oslc`](./commands.md#oslc)                 | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
+| [`reqif`](./commands.md#reqif)               | —                      | Import and export OMG ReqIF 1.2 (`.reqif` / `.reqifz`) requirements exchange archives.                                          |
+| [`ddp`](./commands.md#ddp)                   | —                      | Inspect, pack, and convert ISO/PAS 81346 Digital Data Packages (`.ddp`) and Asset Administration Shells (`.aasx`).              |
+| [`dhf`](./commands.md#dhf)                   | —                      | Generate, audit, and inspect FDA 21 CFR Part 820 / ISO 13485 Design History File (DHF) compliance dossiers.                     |
+| [`ampl`](./commands.md#ampl)                 | —                      | Parse, lint (`M9801`–`M9810`), solve LP/MILP/NLP via COIN-OR CLP/CBC, export ASL `.nl`, and lower AMPL (`.mod`, `.dat`) models. |
+| [`pscad`](./commands.md#pscad)               | —                      | Lint, render SLDs, diff, simulate EMT transients, verify IEEE 2800 ride-through, and export `.pscx`/`.pswx` projects.           |
+| [`psse`](./commands.md#psse)                 | —                      | Inspect, lint, solve AC power flow ($\mathbf{Y}_{\text{bus}}$), short-circuit, and project Siemens PSS/E (`.raw`, `.dyr`).      |
+| [`matpower`](./commands.md#matpower)         | —                      | Inspect, lint (`MP2001`–`MP4001`), solve OPF, and project MATPOWER (`.m`) transmission cases to PSS/E and DAE arenas.           |
+| [`opf`](./opf.md)                            | —                      | Solve DC/AC Optimal Power Flow, export to AMPL or PNNL ExaGO, solve Unit Commitment, and evaluate N-1 contingency redispatch.   |
+| [`powerfactory`](./commands.md#powerfactory) | `pf`, `digsilent`      | Parse, lint (`PF1001`–`PF1008`), compile DSL blocks, solve DGS power flow, and project DIgSILENT PowerFactory (`.dsl`, `.dgs`). |
+| [`pslf`](./commands.md#pslf)                 | —                      | Parse, lint (`PSLF-E001`–`PSLF-W003`), solve power flow, and project GE PSLF (`.epc`, `.dyd`) transmission decks.               |
+| [`cgmes`](./commands.md#cgmes)               | —                      | Inspect, lint (`C1001`–`C1010`), solve AC/DC OPF, and convert ENTSO-E CIM / CGMES (`.xml`, `.rdf`) grid profiles.               |
+| [`opendss`](./commands.md#opendss)           | —                      | Solve unbalanced 3-phase power flow, harmonics, QSTS, IEEE 1547 hosting capacity, and FLISR on OpenDSS (`.dss`) feeders.        |
+| [`ocpp`](./commands.md#ocpp)                 | —                      | Validate, simulate smart-charging sessions, and lower OCPP 1.6J / 2.0.1 (`.ocpp`) EV charging transcripts.                      |
+| [`openadr`](./commands.md#openadr)           | —                      | Validate, simulate demand-response curtailment events, and lower OpenADR 2.0b / 3.0 (`.openadr`) payloads.                      |
+| [`optical`](./commands.md#optical)           | —                      | Compute ITU-T G.694.1 DWDM OSNR/GSNR link budgets and analyze Telcordia SR-4731 OTDR (`.sor`) traces.                           |
+| [`ran`](./commands.md#ran)                   | —                      | Compute 3GPP TR 38.901 5G NR / LTE RF link budgets, SINR coverage grids, and parse NSMA (`.adf`, `.msi`) antennas.              |
+| [`fiber`](./commands.md#fiber)               | —                      | Resolve TIA-598-D fiber color codes, trace splice enclosures, and audit SRLG diversity on `.fiber` outside-plant cables.        |
+| [`spice`](./commands.md#spice)               | —                      | Simulate DC operating point, transient, and AC frequency sweeps on SPICE (`.cir`, `.sp`, `.net`) netlists.                      |
+| [`olga`](./commands.md#olga)                 | —                      | Simulate 1D drift-flux multiphase flow, severe slugging, PVT flash, and verify flow assurance on OLGA (`.opi`, `.key`) decks.   |
+| [`lps`](./commands.md#lps)                   | —                      | Simulate transient gas/liquid networks, line pack, and hydrogen blends in PipelineStudio (`.lps`, `.tgx`, `.tlx`) models.       |
+| [`epanet`](./commands.md#epanet)             | —                      | Solve Global Gradient hydraulics, WQ chlorine decay, fire-flow, pump energy, and AWWA M36 audits on EPANET (`.inp`) networks.   |
+| [`swmm`](./commands.md#swmm)                 | —                      | Solve 1D Saint-Venant dynamic wave stormwater routing, detention pond sizing, and LID controls on EPA SWMM (`.inp`) models.     |
+| [`hec-ras`](./commands.md#hec-ras)           | `hecras`               | Solve 1D standard-step steady water surface profiles and floodplains on USACE HEC-RAS (`.prj`, `.g01`) river geometries.        |
+| [`tough`](./commands.md#tough)               | `tough2`               | Parse, lint, and simulate non-isothermal multiphase subsurface & geothermal reservoirs on TOUGH2/TOUGH3 (`.tough`) decks.       |
+| [`modflow`](./commands.md#modflow)           | `mf6`                  | Solve 3D Darcy finite-difference groundwater head and pumping drawdowns on USGS MODFLOW 6 (`.nam`, `.dis`) models.              |
+| [`landgem`](./commands.md#landgem)           | —                      | Compute first-order landfill methane generation kinetics and biogas CHP energy yield on US EPA LandGEM (`.landgem`) decks.      |
+| [`gtfs`](./commands.md#gtfs)                 | —                      | Validate transit feeds, headways, and lower electric bus/rail fleet schedules to DAE on GTFS (`.gtfs`) datasets.                |
+| [`simulink`](./commands.md#simulink)         | —                      | Inspect, lint, lower to DAE, and project MATLAB Simulink (`.slx`, `.mdl`) control block diagrams to Modelica.                   |
+| [`autosar`](./commands.md#autosar)           | —                      | Inspect, lint, simulate the discrete Virtual RTE scheduler, and project AUTOSAR (`.arxml`) architectures.                       |
+| [`urdf`](./commands.md#urdf)                 | —                      | Validate kinematic trees, evaluate Featherstone RNEA inverse dynamics, and project ROS URDF/Xacro (`.urdf`, `.xacro`) robots.   |
+| [`simpack`](./commands.md#simpack)           | —                      | Analyze Grübler spatial mobility, lint markers/joints, and simulate SIMPACK (`.spck`, `.sim`) multibody systems.                |
+| [`gensys`](./commands.md#gensys)             | —                      | Verify EN 14363 derailment safety ($Y/Q \le 0.80$), FASTSIM contact, and simulate GENSYS (`.calc`) rail vehicles.               |
+| [`adams`](./commands.md#adams)               | —                      | Analyze spatial mobility, lint markers, and project MSC Adams (`.adm`, `.cmd`) multibody mechanisms.                            |
+| [`easy5`](./commands.md#easy5)               | —                      | Inspect, lint, linearize, and project EASY5 (`.ez5`, `.ezm`) aerospace and fluid-thermal schematics.                            |
+| [`gtsuite`](./commands.md#gtsuite)           | —                      | Inspect, lint compressor surge/CFL bounds, and simulate GT-SUITE (`.gtm`, `.gtd`) engine and powertrain models.                 |
+| [`sima`](./commands.md#sima)                 | —                      | Verify DNV-OS-E301 mooring tension safety factors and vessel offsets on SIMA (`.sima`, `.inp`) offshore models.                 |
+| [`rocets`](./commands.md#rocets)             | —                      | Balance turbopump flows, check chamber mixture ratios, and simulate NASA ROCETS (`.roc`, `.deck`) propulsion decks.             |
+| [`qif`](./commands.md#qif)                   | —                      | Validate ASME Y14.5 GD&T rules, compute SPC capability ($C_p, C_{pk}$, TUR), and reconcile STEP AP242 with ISO 23952 `.qif`.    |
+| [`oscal`](./commands.md#oscal)               | —                      | Resolve control baselines, audit NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL security models.             |
+| [`aml`](./commands.md#aml)                   | `automationml`, `caex` | Validate IEC 62714 CAEX hierarchies, run closed-loop Virtual PLC commissioning, and project `.aml` workcells.                   |
+| [`opensim`](./commands.md#opensim)           | —                      | Validate musculoskeletal kinematics & Hill-type muscles (`M9101`–`M9110`), simulate activation, and project `.osim` models.     |
+| [`dicom-rt`](./commands.md#dicom-rt)         | —                      | Verify QUANTEC OAR dose limits & MLC kinematics (`M9201`–`M9210`), compute DVH/BED/$\text{EQD}_2$, and project `.rtplan`.       |
+| [`cellml`](./commands.md#cellml)             | —                      | Validate SI dimensional consistency (`M9301`–`M9310`), integrate electrophysiology ODEs, and project `.cellml` models.          |
+| [`febio`](./commands.md#febio)               | `sofa`                 | Validate hyperelastic/biphasic tissue mechanics (`M9401`–`M9410`), solve strain energy, and project `.feb`/`.scn` scenes.       |
+| [`nifti`](./commands.md#nifti)               | `nrrd`                 | Validate `qform`/`sform` RAS affine transforms (`M9501`–`M9510`), extract iso-surface meshes, and project `.nii`/`.nrrd`.       |
+| [`topas`](./commands.md#topas)               | `gate`                 | Validate hadrontherapy beamlines (`M9601`–`M9610`), compute analytical Bragg peak depth-dose curves, and project `.topas`.      |
+| [`three-mf`](./commands.md#three-mf)         | `3mf`                  | Verify 2-manifold watertightness, wall thickness & osteotomy guides (`M9701`–`M9710`), and project `.3mf` surgical guides.      |
+| [`igtl`](./commands.md#igtl)                 | `openigtlink`          | Validate $SE(3)$ transforms (`M9801`–`M9810`), solve stylus pivot calibration & TRE, and project `.igtl`/`.plus.xml`.           |
 
 ### 5. Language Workbench, Daemon & IDE Tooling
 

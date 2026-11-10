@@ -344,8 +344,12 @@ export function sim_runBytecodeSimulationLoop(
   steps: i32,
   solverKind: i32,
   trajOutPtr: usize,
-  rk4ScratchPtr: usize
+  rk4ScratchPtr: usize,
+  atol: f64,
+  rtol: f64
 ): void {
+  if (atol <= 0.0) atol = 1e-7;
+  if (rtol <= 0.0) rtol = 1e-7;
   if (bytecodePtr == 0 || envPtr == 0 || bytecodeLen <= 0 || steps < 0) return;
 
   let env = changetype<UnmanagedFloat64Array>(envPtr);
@@ -366,6 +370,31 @@ export function sim_runBytecodeSimulationLoop(
       let oId = outIds[i];
       traj[i] = oId >= 0 ? env[oId] : 0.0;
     }
+  }
+
+  if (solverKind == 2) {
+    // ── Tsitouras 5(4) Adaptive Runge-Kutta (Tsit5) ──
+    sim_runTsit5AdaptiveLoop(
+      daePtr,
+      bytecodePtr,
+      bytecodeLen,
+      litPtr,
+      envPtr,
+      stateIdsPtr,
+      derivIdsPtr,
+      numStates,
+      outIdsPtr,
+      numOuts,
+      timeId,
+      startTime,
+      dt,
+      steps,
+      trajOutPtr,
+      rk4ScratchPtr,
+      atol,
+      rtol
+    );
+    return;
   }
 
   // Pre-calculate RK4 scratch pointers if RK4
@@ -470,6 +499,289 @@ export function sim_runBytecodeSimulationLoop(
       }
     }
   }
+}
+
+/**
+ * Adaptive Tsitouras 5(4) stepping kernel executing entirely inside linear memory.
+ */
+function sim_runTsit5AdaptiveLoop(
+  daePtr: u32,
+  bytecodePtr: usize,
+  bytecodeLen: i32,
+  litPtr: usize,
+  envPtr: usize,
+  stateIdsPtr: usize,
+  derivIdsPtr: usize,
+  numStates: i32,
+  outIdsPtr: usize,
+  numOuts: i32,
+  timeId: i32,
+  startTime: f64,
+  dt: f64,
+  steps: i32,
+  trajOutPtr: usize,
+  scratchPtr: usize,
+  atolIn: f64,
+  rtolIn: f64
+): void {
+  let atol: f64 = atolIn > 0.0 ? atolIn : 1e-7;
+  let rtol: f64 = rtolIn > 0.0 ? rtolIn : 1e-7;
+
+  let env = changetype<UnmanagedFloat64Array>(envPtr);
+  let traj = changetype<UnmanagedFloat64Array>(trajOutPtr);
+  let stateIds = changetype<UnmanagedInt32Array>(stateIdsPtr);
+  let derivIds = changetype<UnmanagedInt32Array>(derivIdsPtr);
+  let outIds = changetype<UnmanagedInt32Array>(outIdsPtr);
+
+  if (numStates <= 0) {
+    // Pure algebraic or discrete system: advance along output grid
+    for (let s: i32 = 0; s < steps; ++s) {
+      let nextTime = startTime + ((s + 1) as f64) * dt;
+      if (timeId >= 0) env[timeId] = nextTime;
+      sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+      if (trajOutPtr != 0 && numOuts > 0) {
+        let rowOffset = (s + 1) * numOuts;
+        for (let i: i32 = 0; i < numOuts; ++i) {
+          let oId = outIds[i];
+          traj[rowOffset + i] = oId >= 0 ? env[oId] : 0.0;
+        }
+      }
+    }
+    return;
+  }
+
+  let nU = numStates as usize;
+  let y0 = changetype<UnmanagedFloat64Array>(scratchPtr);
+  let yNew = changetype<UnmanagedFloat64Array>(scratchPtr + 2 * nU * 8);
+  let k0 = changetype<UnmanagedFloat64Array>(scratchPtr + 3 * nU * 8);
+  let k1 = changetype<UnmanagedFloat64Array>(scratchPtr + 4 * nU * 8);
+  let k2 = changetype<UnmanagedFloat64Array>(scratchPtr + 5 * nU * 8);
+  let k3 = changetype<UnmanagedFloat64Array>(scratchPtr + 6 * nU * 8);
+  let k4 = changetype<UnmanagedFloat64Array>(scratchPtr + 7 * nU * 8);
+  let k5 = changetype<UnmanagedFloat64Array>(scratchPtr + 8 * nU * 8);
+  let k6 = changetype<UnmanagedFloat64Array>(scratchPtr + 9 * nU * 8);
+
+  for (let i: i32 = 0; i < numStates; ++i) {
+    let sId = stateIds[i];
+    let dId = derivIds[i];
+    y0[i] = sId >= 0 ? env[sId] : 0.0;
+    k0[i] = dId >= 0 ? env[dId] : 0.0;
+  }
+
+  let t_sim: f64 = startTime;
+  let h: f64 = dt > 0.0 ? dt : 1e-3;
+  let minStep: f64 = 1e-14 * (1.0 + Math.abs(startTime));
+  let totalStop: f64 = startTime + (steps as f64) * dt;
+  let maxStep: f64 = Math.abs(totalStop - startTime);
+  if (maxStep <= 0.0) maxStep = 1e6;
+  let prevErrNorm: f64 = 1.0;
+  let s: i32 = 0;
+  let maxIters: i32 = steps * 1000 + 50000;
+  let iterCount: i32 = 0;
+
+  while (s < steps && iterCount < maxIters) {
+    iterCount++;
+
+    if (t_sim >= totalStop - 1e-14) {
+      while (s < steps) {
+        if (trajOutPtr != 0 && numOuts > 0) {
+          let rowOffset = (s + 1) * numOuts;
+          for (let i: i32 = 0; i < numOuts; ++i) {
+            let oId = outIds[i];
+            traj[rowOffset + i] = oId >= 0 ? env[oId] : 0.0;
+          }
+        }
+        s++;
+      }
+      break;
+    }
+
+    if (t_sim + h > totalStop) {
+      h = totalStop - t_sim;
+    }
+    if (h < minStep) {
+      h = minStep;
+    }
+
+    // Stage 1 (c1 = 0.161)
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let sId = stateIds[i];
+      if (sId >= 0) env[sId] = y0[i] + h * (0.161 * k0[i]);
+    }
+    if (timeId >= 0) env[timeId] = t_sim + 0.161 * h;
+    sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let dId = derivIds[i];
+      k1[i] = dId >= 0 ? env[dId] : 0.0;
+    }
+
+    // Stage 2 (c2 = 0.327)
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let sId = stateIds[i];
+      if (sId >= 0) env[sId] = y0[i] + h * (-0.008480655492356989 * k0[i] + 0.335480655492357 * k1[i]);
+    }
+    if (timeId >= 0) env[timeId] = t_sim + 0.327 * h;
+    sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let dId = derivIds[i];
+      k2[i] = dId >= 0 ? env[dId] : 0.0;
+    }
+
+    // Stage 3 (c3 = 0.9)
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let sId = stateIds[i];
+      if (sId >= 0) env[sId] = y0[i] + h * (2.8971530571054935 * k0[i] - 6.359448489975075 * k1[i] + 4.3622954328695815 * k2[i]);
+    }
+    if (timeId >= 0) env[timeId] = t_sim + 0.9 * h;
+    sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let dId = derivIds[i];
+      k3[i] = dId >= 0 ? env[dId] : 0.0;
+    }
+
+    // Stage 4 (c4 = 0.9800255409045097)
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let sId = stateIds[i];
+      if (sId >= 0) env[sId] = y0[i] + h * (5.325864828439257 * k0[i] - 11.748883564062828 * k1[i] + 7.495539342889836 * k2[i] - 0.09249506636175525 * k3[i]);
+    }
+    if (timeId >= 0) env[timeId] = t_sim + 0.9800255409045097 * h;
+    sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let dId = derivIds[i];
+      k4[i] = dId >= 0 ? env[dId] : 0.0;
+    }
+
+    // Stage 5 (c5 = 1.0)
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let sId = stateIds[i];
+      if (sId >= 0) env[sId] = y0[i] + h * (5.86145544294642 * k0[i] - 12.92096931784711 * k1[i] + 8.159367898576159 * k2[i] - 0.071584973281401 * k3[i] - 0.028269050394068383 * k4[i]);
+    }
+    if (timeId >= 0) env[timeId] = t_sim + 1.0 * h;
+    sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let dId = derivIds[i];
+      k5[i] = dId >= 0 ? env[dId] : 0.0;
+    }
+
+    // Candidate new state yNew (5th-order solution)
+    for (let i: i32 = 0; i < numStates; ++i) {
+      yNew[i] = y0[i] + h * (
+        0.09646076681806523 * k0[i] +
+        0.01 * k1[i] +
+        0.4798896504144996 * k2[i] +
+        1.379008574103742 * k3[i] -
+        3.290069515436081 * k4[i] +
+        2.324710524099774 * k5[i]
+      );
+      let sId = stateIds[i];
+      if (sId >= 0) env[sId] = yNew[i];
+    }
+    if (timeId >= 0) env[timeId] = t_sim + h;
+    sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let dId = derivIds[i];
+      k6[i] = dId >= 0 ? env[dId] : 0.0;
+    }
+
+    // Compute normalized embedded error norm
+    let errSqSum: f64 = 0.0;
+    for (let i: i32 = 0; i < numStates; ++i) {
+      let err_i = h * (
+        (0.09646076681806523 - 0.09468075576583947) * k0[i] +
+        (0.01 - 0.009183565540343252) * k1[i] +
+        (0.4798896504144996 - 0.4877705284247616) * k2[i] +
+        (1.379008574103742 - 1.234297566930479) * k3[i] +
+        (-3.290069515436081 - -2.7077123499835256) * k4[i] +
+        (2.324710524099774 - 1.866628418170587) * k5[i] +
+        (-1.0 / 66.0) * k6[i]
+      );
+      let sc_i = atol + rtol * Math.max(Math.abs(y0[i]), Math.abs(yNew[i]));
+      let ratio = Math.abs(err_i) / sc_i;
+      errSqSum += ratio * ratio;
+    }
+    let errNorm = Math.sqrt(errSqSum / (numStates as f64));
+
+    if (errNorm <= 1.0) {
+      let t_next = t_sim + h;
+
+      // Continuous Hermite dense output for all communication points falling in (t_sim, t_next]
+      while (s < steps) {
+        let t_out = startTime + ((s + 1) as f64) * dt;
+        if (t_out > t_next + 1e-14) {
+          break;
+        }
+        let theta: f64 = h > 1e-15 ? (t_out - t_sim) / h : 1.0;
+        if (theta < 0.0) theta = 0.0;
+        if (theta > 1.0) theta = 1.0;
+
+        let theta2 = theta * theta;
+        let theta3 = theta2 * theta;
+        let h00 = 2.0 * theta3 - 3.0 * theta2 + 1.0;
+        let h10 = theta3 - 2.0 * theta2 + theta;
+        let h01 = -2.0 * theta3 + 3.0 * theta2;
+        let h11 = theta3 - theta2;
+
+        for (let i: i32 = 0; i < numStates; ++i) {
+          let sId = stateIds[i];
+          if (sId >= 0) {
+            env[sId] = h00 * y0[i] + h10 * h * k0[i] + h01 * yNew[i] + h11 * h * k6[i];
+          }
+        }
+        if (timeId >= 0) {
+          env[timeId] = t_out;
+        }
+        sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
+
+        if (trajOutPtr != 0 && numOuts > 0) {
+          let rowOffset = (s + 1) * numOuts;
+          for (let i: i32 = 0; i < numOuts; ++i) {
+            let oId = outIds[i];
+            traj[rowOffset + i] = oId >= 0 ? env[oId] : 0.0;
+          }
+        }
+        s++;
+      }
+
+      // Advance state
+      t_sim = t_next;
+      for (let i: i32 = 0; i < numStates; ++i) {
+        y0[i] = yNew[i];
+        k0[i] = k6[i]; // FSAL reuse
+        let sId = stateIds[i];
+        if (sId >= 0) env[sId] = yNew[i];
+      }
+      if (timeId >= 0) {
+        env[timeId] = t_sim;
+      }
+
+      // Gustafsson Predictive PI Step Size Controller:
+      let safeErr = Math.max(errNorm, 1e-4);
+      let factor: f64 = 0.9 * Math.pow(safeErr, -0.14) * Math.pow(prevErrNorm, 0.08);
+      if (factor > 4.0) factor = 4.0;
+      if (factor < 0.2) factor = 0.2;
+      h = Math.min(maxStep, Math.max(minStep, h * factor));
+      prevErrNorm = safeErr;
+    } else {
+      // Step rejected
+      let safeErr = Math.max(errNorm, 1e-4);
+      let factor: f64 = 0.9 * Math.pow(safeErr, -0.25);
+      if (factor > 0.5) factor = 0.5;
+      if (factor < 0.1) factor = 0.1;
+      h = Math.max(minStep, h * factor);
+
+      // Restore env to y0
+      for (let i: i32 = 0; i < numStates; ++i) {
+        let sId = stateIds[i];
+        if (sId >= 0) env[sId] = y0[i];
+      }
+      if (timeId >= 0) {
+        env[timeId] = t_sim;
+      }
+    }
+  }
+
+  // Final evaluation to ensure all algebraic and auxiliary variables match t_sim
+  sim_evalFlatBytecode(daePtr, bytecodePtr, bytecodeLen, litPtr, envPtr, true);
 }
 
 

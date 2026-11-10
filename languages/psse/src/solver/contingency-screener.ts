@@ -921,7 +921,7 @@ export function screenContingencies(
         const idxAl = branchFromNrIdx[l]!;
         const idxBl = branchToNrIdx[l]!;
         const dTh = (idxAl >= 0 ? solVec[idxAl]! : 0.0) - (idxBl >= 0 ? solVec[idxBl]! : 0.0);
-        const lodf_lk = (dTh * branchInvX[l]!) * denom;
+        const lodf_lk = dTh * branchInvX[l]! * denom;
         scratchPostFlows[l] = Math.abs(basePFlows[l]! + Math.abs(lodf_lk) * pk);
       }
       return scratchPostFlows;
@@ -1001,9 +1001,7 @@ export function screenContingencies(
       const startNode = b.i;
       if (tin.has(startNode)) continue;
 
-      const stack: Array<{ u: number; pEdge: number; nextI: number }> = [
-        { u: startNode, pEdge: -1, nextI: 0 },
-      ];
+      const stack: Array<{ u: number; pEdge: number; nextI: number }> = [{ u: startNode, pEdge: -1, nextI: 0 }];
       timer++;
       tin.set(startNode, timer);
       low.set(startNode, timer);
@@ -1054,6 +1052,7 @@ export function screenContingencies(
     causesIslanding: boolean;
     islandCount: number;
     linearOverloads: number;
+    maxLinearLoading: number;
     trippedBranches: Set<string>;
   }> = [];
 

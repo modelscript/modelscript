@@ -635,8 +635,14 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
     });
 
     assert.equal(fit.poles.length, 3);
-    assert.ok(fit.poles.every((p) => p < 0), "All relocated poles must lie in the open left half-plane");
-    assert.ok(fit.residues.every((r) => r >= 0), "Passivity-enforced residues must be non-negative");
+    assert.ok(
+      fit.poles.every((p) => p < 0),
+      "All relocated poles must lie in the open left half-plane",
+    );
+    assert.ok(
+      fit.residues.every((r) => r >= 0),
+      "Passivity-enforced residues must be non-negative",
+    );
     assert.ok(fit.rmsError < 5e-3, `Expected small vector fitting RMS error, got ${fit.rmsError}`);
 
     // 2. Test wideband Carson earth-return FD-line synthesis
@@ -722,20 +728,15 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
     assert.ok(vRecvTs.every((v) => Number.isFinite(v)));
 
     // Receiving end should be energized after propagation delay (~0.4 ms = 8 steps)
-    const maxRecvWasm = Math.max(... Array.from(vRecvWasm).map(Math.abs));
-    const maxRecvTs = Math.max(... Array.from(vRecvTs).map(Math.abs));
+    const maxRecvWasm = Math.max(...Array.from(vRecvWasm).map(Math.abs));
+    const maxRecvTs = Math.max(...Array.from(vRecvTs).map(Math.abs));
     assert.ok(maxRecvWasm > 100.0, `Expected WASM FDPM receiving voltage > 100 kV, got ${maxRecvWasm}`);
     assert.ok(maxRecvTs > 100.0, `Expected TS FDPM receiving voltage > 100 kV, got ${maxRecvTs}`);
   });
 
   it("should match full sparseLuFactor to machine precision when using sparseLuAnalyze + sparseLuRefactorize", async () => {
-    const {
-      SparseTripletBuilder,
-      sparseLuAnalyze,
-      sparseLuFactor,
-      sparseLuRefactorize,
-      sparseLuSolve,
-    } = await import("@modelscript/runtime");
+    const { SparseTripletBuilder, sparseLuAnalyze, sparseLuFactor, sparseLuRefactorize, sparseLuSolve } =
+      await import("@modelscript/runtime");
 
     const n = 20;
     const builder = new SparseTripletBuilder(n, n, n * 4);
@@ -780,12 +781,188 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
     const xRefac = sparseLuSolve(lu, rhs);
     const xFresh = sparseLuSolve(freshLu, rhs);
     for (let i = 0; i < n; i++) {
-      assert.ok(
-        Math.abs(xRefac[i]! - xFresh[i]!) < 1e-11,
-        `Mismatch at index ${i}: ${xRefac[i]} vs ${xFresh[i]}`,
-      );
+      assert.ok(Math.abs(xRefac[i]! - xFresh[i]!) < 1e-11, `Mismatch at index ${i}: ${xRefac[i]} vs ${xFresh[i]}`);
     }
   });
+
+  it("should simulate multi-conductor Clarke modal Bergeron transmission line with distinct ground and aerial velocities", () => {
+    const netlist: EmtNetlist = {
+      name: "ModalBergeronGrid",
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["SendBus", { id: "SendBus", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["Brk1"] }],
+        ["LineSend", { id: "LineSend", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["Brk1", "ModalLine"] }],
+        [
+          "LineRecv",
+          { id: "LineRecv", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["ModalLine", "OpenTerm"] },
+        ],
+      ]),
+      sources: [
+        {
+          id: "Source1",
+          bus: "SendBus",
+          voltageKv: 230.0,
+          frequencyHz: 60.0,
+          rSourceOhm: 0.5,
+          lSourceHenry: 0.005,
+        },
+      ],
+      switches: [
+        {
+          id: "Brk1",
+          fromBus: "SendBus",
+          toBus: "LineSend",
+          initialClosed: false,
+          actionTimeSec: 0.01,
+          rClosedOhm: 1e-4,
+          rOpenOhm: 1e6,
+        },
+      ],
+      branches: [
+        {
+          id: "OpenTerm",
+          fromBus: "LineRecv",
+          toBus: "GND",
+          rOhm: 1e6,
+          lHenry: 0.0,
+          cFarad: 0.0,
+        },
+      ],
+      transmissionLines: [
+        {
+          id: "ModalLine",
+          fromBus: "LineSend",
+          toBus: "LineRecv",
+          lengthKm: 200.0,
+          rPerKm: 0.02,
+          lPerKm: 1.0e-3,
+          cPerKm: 10.0e-9,
+          // Zero-sequence earth return parameters: slower speed (tau0 > tau1) and higher surge impedance (Zc0 > Zc1)
+          r0PerKm: 0.12,
+          l0PerKm: 2.5e-3,
+          c0PerKm: 6.5e-9,
+          hasModal: true,
+          modelType: "bergeron",
+        },
+      ],
+    };
+
+    const solver = new EmtSolver(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.04,
+      enableCda: true,
+    });
+
+    const result = solver.solve();
+    assert.equal(result.metrics.totalSteps, 800);
+    assert.ok(result.metrics.switchingEvents > 0);
+
+    const vRecv = result.busVoltages.get("LineRecv");
+    assert.ok(vRecv !== undefined);
+    assert.ok(vRecv.every((v) => Number.isFinite(v)));
+
+    // Line energizes at 10 ms; receiving open-circuit reflects waves causing amplification
+    const maxVRecv = Math.max(...Array.from(vRecv).map(Math.abs));
+    const vBasePeak = ((230.0 * Math.SQRT2) / Math.sqrt(3.0)) * 1e3;
+    assert.ok(
+      maxVRecv > vBasePeak,
+      `Expected receiving end open-circuit wave reflection > ${vBasePeak} V, got ${maxVRecv}`,
+    );
+  });
+
+  it("should actively clamp transient overvoltages and accumulate energy using non-linear Surge Arresters (MOVs)", () => {
+    const buildCase = (withArrester: boolean): EmtNetlist => ({
+      name: "SurgeArresterTest",
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["BusA", { id: "BusA", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Brk"] }],
+        ["BusB", { id: "BusB", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Brk", "Line"] }],
+        ["BusC", { id: "BusC", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Line", "Term"] }],
+      ]),
+      sources: [
+        {
+          id: "EhvSource",
+          bus: "BusA",
+          voltageKv: 500.0,
+          frequencyHz: 60.0,
+          rSourceOhm: 0.5,
+          lSourceHenry: 0.01,
+        },
+      ],
+      switches: [
+        {
+          id: "Brk",
+          fromBus: "BusA",
+          toBus: "BusB",
+          initialClosed: false,
+          actionTimeSec: 0.005,
+          rClosedOhm: 1e-4,
+          rOpenOhm: 1e6,
+        },
+      ],
+      branches: [
+        {
+          id: "Term",
+          fromBus: "BusC",
+          toBus: "GND",
+          rOhm: 1e6,
+          lHenry: 0.0,
+          cFarad: 0.0,
+        },
+      ],
+      transmissionLines: [
+        {
+          id: "Line",
+          fromBus: "BusB",
+          toBus: "BusC",
+          lengthKm: 250.0,
+          rPerKm: 0.025,
+          lPerKm: 0.95e-3,
+          cPerKm: 12.5e-9,
+          modelType: "bergeron",
+        },
+      ],
+      surgeArresters: withArrester
+        ? [
+            {
+              id: "MOV_SUB",
+              fromBus: "BusC",
+              toBus: "GND",
+              vRefKv: 550.0, // Clamp at 550 kV
+              rClampOhm: 0.5,
+            },
+          ]
+        : [],
+    });
+
+    const options = {
+      timeStepSec: 50e-6,
+      durationSec: 0.03,
+      enableCda: true,
+    };
+
+    // 1. Without arrester
+    const resNoArrester = runEmtSimulation(buildCase(false), options);
+    const vNoArr = resNoArrester.busVoltages.get("BusC")!;
+    const maxVNoArr = Math.max(...Array.from(vNoArr).map(Math.abs));
+
+    // 2. With arrester
+    const resWithArrester = runEmtSimulation(buildCase(true), options);
+    const vWithArr = resWithArrester.busVoltages.get("BusC")!;
+    const maxVWithArr = Math.max(...Array.from(vWithArr).map(Math.abs));
+
+    // Arrester should strictly clamp the maximum overvoltage
+    assert.ok(
+      maxVWithArr < maxVNoArr,
+      `Expected arrester to reduce peak voltage: ${maxVWithArr} vs unmitigated ${maxVNoArr}`,
+    );
+
+    // Peak voltage with arrester should be close to vRefKv (550 kV)
+    assert.ok(maxVWithArr < 580e3, `Expected clamped voltage <= 580 kV, got ${maxVWithArr / 1e3} kV`);
+
+    // Energy dissipation must be recorded and positive
+    assert.ok(resWithArrester.surgeArresterEnergies !== undefined);
+    const energyKj = resWithArrester.surgeArresterEnergies.get("MOV_SUB");
+    assert.ok(energyKj !== undefined && energyKj > 0, `Expected positive dissipated energy, got ${energyKj} kJ`);
+  });
 });
-
-

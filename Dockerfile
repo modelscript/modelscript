@@ -48,7 +48,9 @@ COPY packages/simulate/package.json packages/simulate/
 COPY languages/adams/package.json languages/adams/
 COPY languages/ampl/package.json languages/ampl/
 COPY languages/antimony/package.json languages/antimony/
+COPY languages/asm/package.json languages/asm/
 COPY languages/aspen/package.json languages/aspen/
+COPY languages/atp/package.json languages/atp/
 COPY languages/automationml/package.json languages/automationml/
 COPY languages/autosar/package.json languages/autosar/
 COPY languages/bngl/package.json languages/bngl/
@@ -58,8 +60,10 @@ COPY languages/ccsds/package.json languages/ccsds/
 COPY languages/cellml/package.json languages/cellml/
 COPY languages/cfd/package.json languages/cfd/
 COPY languages/cgmes/package.json languages/cgmes/
+COPY languages/comtrade/package.json languages/comtrade/
 COPY languages/csv/package.json languages/csv/
 COPY languages/dicom-rt/package.json languages/dicom-rt/
+COPY languages/dnp3/package.json languages/dnp3/
 COPY languages/easy5/package.json languages/easy5/
 COPY languages/eclipse/package.json languages/eclipse/
 COPY languages/energyplus/package.json languages/energyplus/
@@ -73,6 +77,7 @@ COPY languages/gensys/package.json languages/gensys/
 COPY languages/gproms/package.json languages/gproms/
 COPY languages/gtsuite/package.json languages/gtsuite/
 COPY languages/gtfs/package.json languages/gtfs/
+COPY languages/hec-hms/package.json languages/hec-hms/
 COPY languages/hec-ras/package.json languages/hec-ras/
 COPY languages/ibis/package.json languages/ibis/
 COPY languages/igtl/package.json languages/igtl/
@@ -81,11 +86,13 @@ COPY languages/landgem/package.json languages/landgem/
 COPY languages/lps/package.json languages/lps/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelscript/package.json languages/modelscript/
+COPY languages/matpower/package.json languages/matpower/
 COPY languages/modflow/package.json languages/modflow/
 COPY languages/nifti/package.json languages/nifti/
 COPY languages/nmtran/package.json languages/nmtran/
 COPY languages/ocpp/package.json languages/ocpp/
 COPY languages/olga/package.json languages/olga/
+COPY languages/oneliner/package.json languages/oneliner/
 COPY languages/openadr/package.json languages/openadr/
 COPY languages/opendrive/package.json languages/opendrive/
 COPY languages/opendss/package.json languages/opendss/
@@ -109,7 +116,9 @@ COPY languages/rocets/package.json languages/rocets/
 COPY languages/sbml/package.json languages/sbml/
 COPY languages/sbol/package.json languages/sbol/
 COPY languages/scad/package.json languages/scad/
+COPY languages/scl/package.json languages/scl/
 COPY languages/sedml/package.json languages/sedml/
+COPY languages/sel/package.json languages/sel/
 COPY languages/sima/package.json languages/sima/
 COPY languages/simpack/package.json languages/simpack/
 COPY languages/simulink/package.json languages/simulink/
@@ -126,6 +135,7 @@ COPY languages/touchstone/package.json languages/touchstone/
 COPY languages/urdf/package.json languages/urdf/
 COPY languages/usd/package.json languages/usd/
 COPY languages/verilog-a/package.json languages/verilog-a/
+COPY languages/waterml/package.json languages/waterml/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild better-sqlite3
 
 # ==============================================================================

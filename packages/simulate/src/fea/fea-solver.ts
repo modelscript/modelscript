@@ -50,6 +50,9 @@ export class FeaSolver {
     const edof = this.nodesPerElement * 3;
     this.scratchKeRot = new Float64Array(edof * edof);
     this.scratchKeEff = new Float64Array(edof * edof);
+    this.scratchGe = new Float64Array(edof);
+    this.scratchFLocal = new Float64Array(edof);
+    this.scratchRotResult = { KeRot: this.scratchKeRot, R: this.scratchR };
 
     this.precomputeElementMatrices();
     this.assembleSparsityPattern();
@@ -58,12 +61,28 @@ export class FeaSolver {
   // Pre-allocated scratch buffers to eliminate per-element GC allocations
   private scratchM = new Float64Array(9);
   private scratchRM = new Float64Array(9);
+  private scratchR = new Float64Array(9);
+  private scratchInvE0 = new Float64Array(9);
+  private scratchF = new Float64Array(9);
+  private scratchInvR_T = new Float64Array(9);
+  private scratchRotResult: { KeRot: Float64Array; R: Float64Array };
+  private scratchGe: Float64Array;
+  private scratchFLocal: Float64Array;
   private scratchKeRot: Float64Array;
   private scratchKeEff: Float64Array;
+  private elementCsrMap!: Int32Array;
+  private diagCsrIndices!: Int32Array;
+  private flatKe!: Float64Array;
+  private fixedMask!: Uint8Array;
+  private prescribedDisp!: Float64Array;
 
   private precomputeElementMatrices(): void {
     const { nodeCoords, elements, numElements } = this.mesh;
     const rho = this.material.rho ?? 2700.0;
+    const edof = this.nodesPerElement * 3;
+    this.flatKe = new Float64Array(numElements * edof * edof);
+    this.fixedMask = new Uint8Array(this.numDofs);
+    this.prescribedDisp = new Float64Array(this.numDofs);
 
     for (let e = 0; e < numElements; e++) {
       if (this.isQuadratic) {
@@ -77,6 +96,7 @@ export class FeaSolver {
         this.elementKe[e] = Ke;
         this.elementB[e] = B_gauss;
         this.elementMe[e] = Me;
+        this.flatKe.set(Ke, e * edof * edof);
       } else {
         const n0 = elements[e * 4 + 0]!;
         const n1 = elements[e * 4 + 1]!;
@@ -93,6 +113,7 @@ export class FeaSolver {
         this.elementKe[e] = Ke;
         this.elementB[e] = B;
         this.elementMe[e] = Me;
+        this.flatKe.set(Ke, e * edof * edof);
       }
     }
   }
@@ -223,6 +244,43 @@ export class FeaSolver {
         this.colIndices[startPtr2 + idx + 2] = c2;
       }
     }
+
+    // 4. Precompute static element DOF to CSR column index pointers
+    const edof = npe * 3;
+    this.elementCsrMap = new Int32Array(numElements * edof * edof);
+    const findColIndex = (row: number, col: number): number => {
+      const start = this.rowOffsets[row]!;
+      const end = this.rowOffsets[row + 1]!;
+      for (let p = start; p < end; p++) {
+        if (this.colIndices[p] === col) return p;
+      }
+      return -1;
+    };
+
+    for (let e = 0; e < numElements; e++) {
+      const eBase = e * npe;
+      const mapBase = e * edof * edof;
+      for (let i = 0; i < npe; i++) {
+        const ni = elements[eBase + i]!;
+        for (let di = 0; di < 3; di++) {
+          const row = ni * 3 + di;
+          const locRow = i * 3 + di;
+          for (let j = 0; j < npe; j++) {
+            const nj = elements[eBase + j]!;
+            for (let dj = 0; dj < 3; dj++) {
+              const col = nj * 3 + dj;
+              const locCol = j * 3 + dj;
+              this.elementCsrMap[mapBase + locRow * edof + locCol] = findColIndex(row, col);
+            }
+          }
+        }
+      }
+    }
+
+    this.diagCsrIndices = new Int32Array(this.numDofs);
+    for (let i = 0; i < this.numDofs; i++) {
+      this.diagCsrIndices[i] = findColIndex(i, i);
+    }
   }
 
   private static wasmCorotScratch?:
@@ -289,9 +347,8 @@ export class FeaSolver {
         uView[i * 3 + 2] = u[ni + 2]!;
       }
       wasm.fea_compute_corotational_rotation(s.coordsPtr, s.uElemPtr, s.rPtr);
-      const R = new Float64Array(9);
-      R.set(new Float64Array(wasm.memory.buffer, s.rPtr, 9));
-      return R;
+      this.scratchR.set(new Float64Array(wasm.memory.buffer, s.rPtr, 9));
+      return this.scratchR;
     }
 
     // Undeformed edges
@@ -325,14 +382,23 @@ export class FeaSolver {
     ];
 
     // Inverse of E0
-    const invE0 = new Float64Array(9);
+    const invE0 = this.scratchInvE0;
     const detE0 =
       E0[0]! * (E0[4]! * E0[8]! - E0[5]! * E0[7]!) -
       E0[1]! * (E0[3]! * E0[8]! - E0[5]! * E0[6]!) +
       E0[2]! * (E0[3]! * E0[7]! - E0[4]! * E0[6]!);
 
     if (Math.abs(detE0) < 1e-15) {
-      return new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+      this.scratchR[0] = 1;
+      this.scratchR[1] = 0;
+      this.scratchR[2] = 0;
+      this.scratchR[3] = 0;
+      this.scratchR[4] = 1;
+      this.scratchR[5] = 0;
+      this.scratchR[6] = 0;
+      this.scratchR[7] = 0;
+      this.scratchR[8] = 1;
+      return this.scratchR;
     }
 
     const invDet = 1.0 / detE0;
@@ -347,7 +413,7 @@ export class FeaSolver {
     invE0[8] = (E0[0]! * E0[4]! - E0[1]! * E0[3]!) * invDet;
 
     // Deformation gradient F = e0 * inv(E0)
-    const F = new Float64Array(9);
+    const F = this.scratchF;
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) {
         let sum = 0.0;
@@ -359,7 +425,8 @@ export class FeaSolver {
     }
 
     // Polar decomposition via Higham iterations: R_{k+1} = 0.5 * (R_k + R_k^{-T})
-    const R = new Float64Array(F);
+    const R = this.scratchR;
+    R.set(F);
     for (let iter = 0; iter < 6; iter++) {
       const detR =
         R[0]! * (R[4]! * R[8]! - R[5]! * R[7]!) -
@@ -369,7 +436,7 @@ export class FeaSolver {
       if (Math.abs(detR) < 1e-12) break;
       const iDet = 1.0 / detR;
 
-      const invR_T = new Float64Array(9);
+      const invR_T = this.scratchInvR_T;
       invR_T[0] = (R[4]! * R[8]! - R[5]! * R[7]!) * iDet;
       invR_T[1] = (R[5]! * R[6]! - R[3]! * R[8]!) * iDet;
       invR_T[2] = (R[3]! * R[7]! - R[4]! * R[6]!) * iDet;
@@ -425,7 +492,7 @@ export class FeaSolver {
         }
       }
     }
-    return { KeRot: Ke, R };
+    return this.scratchRotResult;
   }
 
   /**
@@ -435,8 +502,8 @@ export class FeaSolver {
     const { nodeCoords, elements, numElements } = this.mesh;
     const npe = this.nodesPerElement;
     const edof = npe * 3;
-    const ge = new Float64Array(edof);
-    const fLocal = new Float64Array(edof);
+    const ge = this.scratchGe;
+    const fLocal = this.scratchFLocal;
 
     for (let e = 0; e < numElements; e++) {
       const R = this.computeElementRotation(e, u);
@@ -510,23 +577,81 @@ export class FeaSolver {
     prescribedDisplacements?: Map<number, number>,
     prescribedCorr?: Float64Array,
   ): void {
-    this.values.fill(0);
-    if (prescribedCorr) prescribedCorr.fill(0);
     const { elements, numElements } = this.mesh;
     const npe = this.nodesPerElement;
     const edof = npe * 3;
     const kFactor = dynFactors ? dynFactors.kFactor : 1.0;
     const mFactor = dynFactors ? dynFactors.mFactor : 0.0;
 
-    // Helper to find index in CSR row
-    const findColIndex = (row: number, col: number): number => {
-      const start = this.rowOffsets[row]!;
-      const end = this.rowOffsets[row + 1]!;
-      for (let p = start; p < end; p++) {
-        if (this.colIndices[p] === col) return p;
+    const bufs = this.ensureWasmBuffers();
+    if (bufs && typeof bufs.wasm.fea_assemble_csr_values === "function") {
+      const memBuf = bufs.wasm.memory.buffer;
+      if (corotational || kFactor !== 1.0 || mFactor !== 0.0) {
+        for (let e = 0; e < numElements; e++) {
+          let Ke = this.elementKe[e]!;
+          if (corotational) {
+            Ke = this.computeRotatedElementStiffness(e, this.lastDisplacements).KeRot;
+          }
+          const base = e * edof * edof;
+          if (kFactor !== 1.0 || mFactor !== 0.0) {
+            const Me = this.elementMe[e]!;
+            for (let i = 0; i < edof * edof; i++) {
+              this.flatKe[base + i] = kFactor * Ke[i]! + mFactor * Me[i]!;
+            }
+          } else if (corotational) {
+            this.flatKe.set(Ke, base);
+          }
+        }
       }
-      return -1;
-    };
+
+      new Float64Array(memBuf, bufs.keAllPtr, this.flatKe.length).set(this.flatKe);
+
+      this.fixedMask.fill(0);
+      for (const dof of fixedDofs) {
+        this.fixedMask[dof] = 1;
+      }
+      new Uint8Array(memBuf, bufs.fixedMaskPtr, this.numDofs).set(this.fixedMask);
+
+      let hasPrescribed = 0;
+      if (prescribedDisplacements && prescribedDisplacements.size > 0) {
+        hasPrescribed = 1;
+        this.prescribedDisp.fill(0);
+        for (const [dof, val] of prescribedDisplacements) {
+          this.prescribedDisp[dof] = val;
+        }
+        new Float64Array(memBuf, bufs.prescribedDispPtr, this.numDofs).set(this.prescribedDisp);
+      }
+
+      bufs.wasm.fea_assemble_csr_values(
+        numElements,
+        npe,
+        this.numDofs,
+        this.values.length,
+        bufs.elementsPtr,
+        bufs.elementCsrMapPtr,
+        bufs.keAllPtr,
+        bufs.fixedMaskPtr,
+        bufs.prescribedDispPtr,
+        hasPrescribed,
+        bufs.prescribedCorrPtr,
+        bufs.diagIndicesPtr,
+        bufs.valuesPtr,
+        bufs.diagInvPtr,
+      );
+
+      if (hasPrescribed && prescribedCorr) {
+        prescribedCorr.set(new Float64Array(memBuf, bufs.prescribedCorrPtr, this.numDofs));
+      } else if (prescribedCorr) {
+        prescribedCorr.fill(0);
+      }
+
+      this.values.set(new Float64Array(memBuf, bufs.valuesPtr, this.values.length));
+      this.diagInv.set(new Float64Array(memBuf, bufs.diagInvPtr, this.numDofs));
+      return;
+    }
+
+    this.values.fill(0);
+    if (prescribedCorr) prescribedCorr.fill(0);
 
     for (let e = 0; e < numElements; e++) {
       const KeBase = this.elementKe[e]!;
@@ -546,20 +671,23 @@ export class FeaSolver {
       }
 
       const eBase = e * npe;
+      const mapBase = e * edof * edof;
       for (let i = 0; i < npe; i++) {
         const ni = elements[eBase + i]!;
         for (let di = 0; di < 3; di++) {
           const row = ni * 3 + di;
           const isRowFixed = fixedDofs.has(row);
+          const locRow = i * 3 + di;
 
           for (let j = 0; j < npe; j++) {
             const nj = elements[eBase + j]!;
             for (let dj = 0; dj < 3; dj++) {
               const col = nj * 3 + dj;
               const isColFixed = fixedDofs.has(col);
+              const locCol = j * 3 + dj;
 
-              const keVal = KeEff[(i * 3 + di) * edof + (j * 3 + dj)]!;
-              const p = findColIndex(row, col);
+              const keVal = KeEff[locRow * edof + locCol]!;
+              const p = this.elementCsrMap[mapBase + locRow * edof + locCol]!;
 
               if (p !== -1) {
                 if (isRowFixed || isColFixed) {
@@ -583,7 +711,7 @@ export class FeaSolver {
 
     // Ensure fixed DOFs have exactly 1.0 on diagonal
     for (const dof of fixedDofs) {
-      const p = findColIndex(dof, dof);
+      const p = this.diagCsrIndices[dof]!;
       if (p !== -1) {
         this.values[p] = 1.0;
       }
@@ -591,7 +719,7 @@ export class FeaSolver {
 
     // Precompute Jacobi preconditioner: diagInv[i] = 1.0 / A[i, i]
     for (let i = 0; i < this.numDofs; i++) {
-      const p = findColIndex(i, i);
+      const p = this.diagCsrIndices[i]!;
       const diag = p !== -1 && Math.abs(this.values[p]!) > 1e-18 ? this.values[p]! : 1.0;
       this.diagInv[i] = 1.0 / diag;
     }
@@ -818,7 +946,7 @@ export class FeaSolver {
     return this.postProcess(u, corotational, isTransient);
   }
 
-  private static wasmPcgBuffers?:
+  private static wasmBuffers?:
     | {
         wasm: {
           memory: WebAssembly.Memory;
@@ -840,9 +968,29 @@ export class FeaSolver {
             tol: number,
             maxIters: number,
           ) => void;
+          fea_assemble_csr_values?: (
+            numElements: number,
+            npe: number,
+            numDofs: number,
+            nnz: number,
+            elementsPtr: number,
+            elementCsrMapPtr: number,
+            keAllPtr: number,
+            fixedMaskPtr: number,
+            prescribedDispPtr: number,
+            hasPrescribed: number,
+            prescribedCorrPtr: number,
+            diagIndicesPtr: number,
+            valuesOutPtr: number,
+            diagInvOutPtr: number,
+          ) => void;
         };
         capN: number;
         capNnz: number;
+        capElements: number;
+        capElemRefs: number;
+        capMap: number;
+        capKe: number;
         owner: FeaSolver | null;
         rowOffsetsPtr: number;
         colIndicesPtr: number;
@@ -854,77 +1002,147 @@ export class FeaSolver {
         zPtr: number;
         pPtr: number;
         apPtr: number;
+        elementsPtr: number;
+        elementCsrMapPtr: number;
+        keAllPtr: number;
+        fixedMaskPtr: number;
+        prescribedDispPtr: number;
+        prescribedCorrPtr: number;
+        diagIndicesPtr: number;
       }
     | undefined;
 
-  private solvePcg(b: Float64Array, x: Float64Array, tol: number, maxIters: number): void {
+  private ensureWasmBuffers(): typeof FeaSolver.wasmBuffers {
     const n = this.numDofs;
     const nnz = this.values.length;
+    const numElements = this.mesh.numElements;
+    const elemRefsLen = this.mesh.elements.length;
+    const mapLen = this.elementCsrMap.length;
+    const flatKeLen = this.flatKe.length;
+
     const wasm = getDefaultWasmExports() as
       | {
           memory: WebAssembly.Memory;
           __new?: ((bytes: number, id: number) => number) | undefined;
           __pin?: ((ptr: number) => void) | undefined;
           __unpin?: ((ptr: number) => void) | undefined;
-          fea_solve_csr_pcg?: NonNullable<typeof FeaSolver.wasmPcgBuffers>["wasm"]["fea_solve_csr_pcg"] | undefined;
+          fea_solve_csr_pcg?: NonNullable<typeof FeaSolver.wasmBuffers>["wasm"]["fea_solve_csr_pcg"] | undefined;
+          fea_assemble_csr_values?:
+            | NonNullable<typeof FeaSolver.wasmBuffers>["wasm"]["fea_assemble_csr_values"]
+            | undefined;
         }
       | null
       | undefined;
 
-    if (wasm && typeof wasm.fea_solve_csr_pcg === "function" && typeof wasm.__new === "function" && n > 0 && nnz > 0) {
-      const validWasm = wasm as NonNullable<typeof FeaSolver.wasmPcgBuffers>["wasm"];
-      const prev = FeaSolver.wasmPcgBuffers;
-      if (!prev || prev.wasm !== validWasm || prev.capN < n || prev.capNnz < nnz) {
-        if (prev && prev.wasm === validWasm && typeof validWasm.__unpin === "function") {
-          validWasm.__unpin(prev.rowOffsetsPtr);
-          validWasm.__unpin(prev.colIndicesPtr);
-          validWasm.__unpin(prev.valuesPtr);
-          validWasm.__unpin(prev.diagInvPtr);
-          validWasm.__unpin(prev.bPtr);
-          validWasm.__unpin(prev.xPtr);
-          validWasm.__unpin(prev.rPtr);
-          validWasm.__unpin(prev.zPtr);
-          validWasm.__unpin(prev.pPtr);
-          validWasm.__unpin(prev.apPtr);
-        }
-        const capN = prev && prev.wasm === validWasm ? Math.max(prev.capN, n) : n;
-        const capNnz = prev && prev.wasm === validWasm ? Math.max(prev.capNnz, nnz) : nnz;
-        const alloc = (bytes: number): number => {
-          const ptr = validWasm.__new(bytes, 0);
-          if (typeof validWasm.__pin === "function") validWasm.__pin(ptr);
-          return ptr;
-        };
-        FeaSolver.wasmPcgBuffers = {
-          wasm: validWasm,
-          capN,
-          capNnz,
-          owner: null,
-          rowOffsetsPtr: alloc((capN + 1) * 4),
-          colIndicesPtr: alloc(capNnz * 4),
-          valuesPtr: alloc(capNnz * 8),
-          diagInvPtr: alloc(capN * 8),
-          bPtr: alloc(capN * 8),
-          xPtr: alloc(capN * 8),
-          rPtr: alloc(capN * 8),
-          zPtr: alloc(capN * 8),
-          pPtr: alloc(capN * 8),
-          apPtr: alloc(capN * 8),
-        };
-      }
+    if (
+      !wasm ||
+      typeof wasm.fea_solve_csr_pcg !== "function" ||
+      typeof wasm.__new !== "function" ||
+      n <= 0 ||
+      nnz <= 0
+    ) {
+      return undefined;
+    }
 
-      const bufs = FeaSolver.wasmPcgBuffers!;
-      const memBuf = wasm.memory.buffer;
-      if (bufs.owner !== this) {
-        new Int32Array(memBuf, bufs.rowOffsetsPtr, n + 1).set(this.rowOffsets);
-        new Int32Array(memBuf, bufs.colIndicesPtr, nnz).set(this.colIndices);
-        bufs.owner = this;
+    const validWasm = wasm as NonNullable<typeof FeaSolver.wasmBuffers>["wasm"];
+    const prev = FeaSolver.wasmBuffers;
+
+    const needRealloc =
+      !prev ||
+      prev.wasm !== validWasm ||
+      prev.capN < n ||
+      prev.capNnz < nnz ||
+      prev.capElements < numElements ||
+      prev.capElemRefs < elemRefsLen ||
+      prev.capMap < mapLen ||
+      prev.capKe < flatKeLen;
+
+    if (needRealloc) {
+      if (prev && prev.wasm === validWasm && typeof validWasm.__unpin === "function") {
+        validWasm.__unpin(prev.rowOffsetsPtr);
+        validWasm.__unpin(prev.colIndicesPtr);
+        validWasm.__unpin(prev.valuesPtr);
+        validWasm.__unpin(prev.diagInvPtr);
+        validWasm.__unpin(prev.bPtr);
+        validWasm.__unpin(prev.xPtr);
+        validWasm.__unpin(prev.rPtr);
+        validWasm.__unpin(prev.zPtr);
+        validWasm.__unpin(prev.pPtr);
+        validWasm.__unpin(prev.apPtr);
+        validWasm.__unpin(prev.elementsPtr);
+        validWasm.__unpin(prev.elementCsrMapPtr);
+        validWasm.__unpin(prev.keAllPtr);
+        validWasm.__unpin(prev.fixedMaskPtr);
+        validWasm.__unpin(prev.prescribedDispPtr);
+        validWasm.__unpin(prev.prescribedCorrPtr);
+        validWasm.__unpin(prev.diagIndicesPtr);
       }
-      new Float64Array(memBuf, bufs.valuesPtr, nnz).set(this.values);
-      new Float64Array(memBuf, bufs.diagInvPtr, n).set(this.diagInv);
+      const capN = prev && prev.wasm === validWasm ? Math.max(prev.capN, n) : n;
+      const capNnz = prev && prev.wasm === validWasm ? Math.max(prev.capNnz, nnz) : nnz;
+      const capElements = prev && prev.wasm === validWasm ? Math.max(prev.capElements, numElements) : numElements;
+      const capElemRefs = prev && prev.wasm === validWasm ? Math.max(prev.capElemRefs, elemRefsLen) : elemRefsLen;
+      const capMap = prev && prev.wasm === validWasm ? Math.max(prev.capMap, mapLen) : mapLen;
+      const capKe = prev && prev.wasm === validWasm ? Math.max(prev.capKe, flatKeLen) : flatKeLen;
+
+      const alloc = (bytes: number): number => {
+        const ptr = validWasm.__new(bytes, 0);
+        if (typeof validWasm.__pin === "function") validWasm.__pin(ptr);
+        return ptr;
+      };
+
+      FeaSolver.wasmBuffers = {
+        wasm: validWasm,
+        capN,
+        capNnz,
+        capElements,
+        capElemRefs,
+        capMap,
+        capKe,
+        owner: null,
+        rowOffsetsPtr: alloc((capN + 1) * 4),
+        colIndicesPtr: alloc(capNnz * 4),
+        valuesPtr: alloc(capNnz * 8),
+        diagInvPtr: alloc(capN * 8),
+        bPtr: alloc(capN * 8),
+        xPtr: alloc(capN * 8),
+        rPtr: alloc(capN * 8),
+        zPtr: alloc(capN * 8),
+        pPtr: alloc(capN * 8),
+        apPtr: alloc(capN * 8),
+        elementsPtr: alloc(capElemRefs * 4),
+        elementCsrMapPtr: alloc(capMap * 4),
+        keAllPtr: alloc(capKe * 8),
+        fixedMaskPtr: alloc(capN * 1),
+        prescribedDispPtr: alloc(capN * 8),
+        prescribedCorrPtr: alloc(capN * 8),
+        diagIndicesPtr: alloc(capN * 4),
+      };
+    }
+
+    const bufs = FeaSolver.wasmBuffers!;
+    const memBuf = validWasm.memory.buffer;
+    if (bufs.owner !== this) {
+      new Int32Array(memBuf, bufs.rowOffsetsPtr, n + 1).set(this.rowOffsets);
+      new Int32Array(memBuf, bufs.colIndicesPtr, nnz).set(this.colIndices);
+      new Int32Array(memBuf, bufs.elementsPtr, elemRefsLen).set(this.mesh.elements);
+      new Int32Array(memBuf, bufs.elementCsrMapPtr, mapLen).set(this.elementCsrMap);
+      new Int32Array(memBuf, bufs.diagIndicesPtr, n).set(this.diagCsrIndices);
+      bufs.owner = this;
+    }
+
+    return bufs;
+  }
+
+  private solvePcg(b: Float64Array, x: Float64Array, tol: number, maxIters: number): void {
+    const n = this.numDofs;
+    const bufs = this.ensureWasmBuffers();
+
+    if (bufs && typeof bufs.wasm.fea_solve_csr_pcg === "function" && n > 0) {
+      const memBuf = bufs.wasm.memory.buffer;
       new Float64Array(memBuf, bufs.bPtr, n).set(b);
       new Float64Array(memBuf, bufs.xPtr, n).set(x);
 
-      wasm.fea_solve_csr_pcg(
+      bufs.wasm.fea_solve_csr_pcg(
         n,
         bufs.rowOffsetsPtr,
         bufs.colIndicesPtr,
@@ -940,7 +1158,7 @@ export class FeaSolver {
         maxIters,
       );
 
-      x.set(new Float64Array(wasm.memory.buffer, bufs.xPtr, n));
+      x.set(new Float64Array(memBuf, bufs.xPtr, n));
       return;
     }
 

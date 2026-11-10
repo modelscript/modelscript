@@ -12,11 +12,9 @@
  */
 
 import { fileURLToPath } from "node:url";
-import path from "node:path";
-import { parseCantera, solveCanteraReactor, lowerCanteraToDae } from "../src/index.js";
+import { lowerCanteraToDae, parseCantera, solveCanteraReactor } from "../src/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export async function runCanteraBenchmarks(): Promise<void> {
   console.log(`[cantera-benchmark-runner] Running Cantera chemical kinetics & reactor benchmarks...`);
@@ -113,7 +111,7 @@ reactions:
   let passed = true;
   for (const b of benchmarks) {
     const doc = parseCantera(b.yaml);
-    const res = solveCanteraReactor(doc, { duration: 0.001, steps: 50, reactorType: "constant-volume" });
+    const res = solveCanteraReactor(doc, { duration: 0.001, timeStep: 0.001 / 50 });
     const dae = lowerCanteraToDae(doc, { modelName: b.id });
 
     // Conservation check

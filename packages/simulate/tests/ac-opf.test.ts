@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { solveAcOpf, type GenericPowerCase } from "../src/solvers/opf/index.js";
+import { solveAcOpf, solveDirectAcOpf, type GenericPowerCase } from "../src/solvers/opf/index.js";
 
 // Standard 3-Bus Transmission Network with 2 Generators and 1 Load
 const THREE_BUS_AC_CASE: GenericPowerCase = {
@@ -87,4 +87,28 @@ test("AC-OPF: Converges on IEEE 14-bus test case with positive losses and voltag
   assert.ok(sol.totalLossMw >= 0, "Transmission line losses must be positive");
   assert.ok(sol.averageLmp > 0, "Average LMP must be positive");
   assert.ok(sol.reportText.includes("OPTIMAL POWER FLOW"));
+});
+
+test("Direct Tier-2 AC-OPF: Solves nonlinear AC power flow using analytical Jacobian and IPOPT/L-BFGS-B", async () => {
+  const customCosts = new Map([
+    ["1_G1", { c1: 20.0, c0: 0.0, c2: 0.002 }],
+    ["2_G2", { c1: 45.0, c0: 0.0, c2: 0.005 }],
+  ]);
+
+  const sol = await solveDirectAcOpf(THREE_BUS_AC_CASE, {
+    generatorCosts: customCosts,
+    voltageMin: 0.95,
+    voltageMax: 1.05,
+  });
+
+  assert.equal(sol.status, "OPTIMAL");
+  assert.equal(sol.formulation, "ac");
+  assert.equal(sol.totalLoadMw, 120.0);
+  assert.ok(sol.totalGenMw >= 119.0, `Total generation ${sol.totalGenMw} must cover load`);
+  assert.equal(sol.buses.length, 3);
+  assert.equal(sol.generators.length, 2);
+  assert.equal(sol.branches.length, 3);
+  for (const b of sol.buses) {
+    assert.ok(b.vm >= 0.94 && b.vm <= 1.06, `Bus voltage ${b.vm} must be within bounds`);
+  }
 });

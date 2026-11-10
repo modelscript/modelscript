@@ -1,0 +1,46 @@
+{
+  "name": "@modelscript/asm",
+  "version": "0.1.0",
+  "description": "IWA Activated Sludge Models (ASM1, ASM2d, ASM3, ADM1) wastewater biokinetics, Petersen matrix compiler, Takacs clarifier settling, and linear-memory DAE arena lowering",
+  "keywords": [
+    "asm",
+    "asm1",
+    "asm2d",
+    "asm3",
+    "adm1",
+    "iwa",
+    "wastewater",
+    "wrrf",
+    "activated-sludge",
+    "biokinetics",
+    "petersen-matrix",
+    "modelscript"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "author": "Mohamad Omar Nachawati <omar@modelscript.org>",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "lint": "eslint src/ --ext .ts --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "language"
+  }
+}

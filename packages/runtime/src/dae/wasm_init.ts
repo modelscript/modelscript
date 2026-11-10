@@ -13,11 +13,13 @@
 
 import { type DomainBox, Interval, solveSBB } from "../analysis/wasm_interval.js";
 import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "../autodiff/wasm_tape.js";
+import { luFactorFlat, luSolveFlat } from "../solvers/wasm_gaussian.js";
 import {
   BinOp,
   DAEBuilder,
   EqKind,
   ExprKind,
+  StmtKind,
   VarType,
   Variability,
   differentiateArenaExpressionWrt,
@@ -60,6 +62,10 @@ export interface InitBLTResult {
   knowns: Set<string>;
   /** Set of unknown variable names (to be solved). */
   unknowns: Set<string>;
+  /** Total initial equations considered. */
+  equationCount?: number;
+  /** Number of equations matched into blocks. */
+  matchedEquationCount?: number;
 }
 
 /** Result of initial equation solving natively on the arena. */
@@ -225,11 +231,14 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       break;
     case ExprKind.Unary:
     case ExprKind.Negate:
-    case ExprKind.Der:
     case ExprKind.Pre: {
-      const operand =
-        kind === ExprKind.Der || kind === ExprKind.Pre ? arena.getExprData1(exprId) : arena.getExprLeft(exprId);
-      if (kind === ExprKind.Der && operand >= 0) {
+      const operand = kind === ExprKind.Pre ? arena.getExprData1(exprId) : arena.getExprLeft(exprId);
+      collectExprVarNames(operand, arena, names);
+      break;
+    }
+    case ExprKind.Der: {
+      const operand = arena.getExprData1(exprId);
+      if (operand >= 0) {
         const opKind = arena.getExprKind(operand);
         if (opKind === ExprKind.Name) {
           const varName = arena.interner.resolve(arena.getExprData1(operand));
@@ -239,7 +248,6 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
           if (subName) names.add(`der(${subName})`);
         }
       }
-      collectExprVarNames(operand, arena, names);
       break;
     }
     case ExprKind.Binary: {
@@ -263,6 +271,7 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
           const subName = resolveConstSubscriptName(argExprId, arena);
           if (subName) names.add(`der(${subName})`);
         }
+        break;
       }
 
       for (let i = 0; i < argCount; i++) {
@@ -618,6 +627,35 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     collectExprVarNames(cr, dae, initReferenced);
   }
 
+  // Statements from initial algorithm sections (MLS §8.6.1)
+  if (dae.initialAlgorithmSections && dae.initialAlgorithmSections.length > 0) {
+    for (const sec of dae.initialAlgorithmSections) {
+      for (let s = sec.start; s < sec.start + sec.count; s++) {
+        if (dae.getStmtKind(s) === StmtKind.Assignment) {
+          const lhs = dae.getStmtData1(s);
+          const rhs = dae.getStmtLeft(s);
+          if (lhs >= 0 && rhs >= 0) {
+            initEquations.push({ lhs, rhs, source: "initial" });
+            collectExprVarNames(lhs, dae, initReferenced);
+            collectExprVarNames(rhs, dae, initReferenced);
+          }
+        }
+      }
+    }
+  } else if (dae.stmtCount > 0) {
+    for (let s = 0; s < dae.stmtCount; s++) {
+      if (dae.getStmtKind(s) === StmtKind.Assignment) {
+        const lhs = dae.getStmtData1(s);
+        const rhs = dae.getStmtLeft(s);
+        if (lhs >= 0 && rhs >= 0) {
+          initEquations.push({ lhs, rhs, source: "initial" });
+          collectExprVarNames(lhs, dae, initReferenced);
+          collectExprVarNames(rhs, dae, initReferenced);
+        }
+      }
+    }
+  }
+
   for (let i = 0; i < dae.eqCount; i++) {
     if (dae.isEqRemoved(i)) continue;
     const kind = dae.getEqKind(i);
@@ -785,7 +823,7 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
   }
 
   if (initEquations.length === 0) {
-    return { blocks: [], knowns, unknowns: new Set() };
+    return { blocks: [], knowns, unknowns: new Set(), equationCount: 0, matchedEquationCount: 0 };
   }
 
   // 3. Determine unknowns: all referenced vars that are not known
@@ -843,6 +881,7 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     if (dae.getExprKind(eq.lhs) === ExprKind.Name && dae.getExprKind(eq.rhs) === ExprKind.Name) {
       const lName = dae.interner.resolve(dae.getExprData1(eq.lhs)) ?? "";
       const rName = dae.interner.resolve(dae.getExprData1(eq.rhs)) ?? "";
+      if (lName === rName) continue;
       const pairKey = lName < rName ? `${lName}==${rName}` : `${rName}==${lName}`;
       if (seenSimplePairs.has(pairKey)) continue;
       seenSimplePairs.add(pairKey);
@@ -853,32 +892,26 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
 
   // If there are more unknowns than initialization equations (e.g. states without explicit
   // `fixed = true` and without corresponding `initial equation`s), fix state variables at
-  // their `start` values unless they have an explicit `fixed = false` attribute.
-  // Prioritize fixing states that are NOT referenced (directly or via `der(x)`) in initial equations.
+  // their `start` values per MLS §8.6.1.
+  // CRITICAL: NEVER fix states whose derivative or value is explicitly constrained in initial equations!
   if (unknowns.size > initEquations.length) {
-    for (const allowInitConstrained of [false, true]) {
-      for (const ref of allDerRefs) {
-        if (unknowns.size <= initEquations.length) break;
-        if (ref.startsWith("der(") && ref.endsWith(")")) {
-          const stateName = ref.slice(4, -1);
-          if (!allowInitConstrained && (initReferenced.has(stateName) || initReferenced.has(ref))) {
-            continue;
-          }
-          if (unknowns.has(stateName)) {
-            const vIdx = dae.getVarIdxByName(stateName);
-            const hasExplicitFixedAttr = vIdx >= 0 && dae.getVarAttrExprId(vIdx, "fixed") !== undefined;
-            if (!hasExplicitFixedAttr) {
-              unknowns.delete(stateName);
-              knowns.add(stateName);
-            }
-          }
+    for (const ref of allDerRefs) {
+      if (unknowns.size <= initEquations.length) break;
+      if (ref.startsWith("der(") && ref.endsWith(")")) {
+        const stateName = ref.slice(4, -1);
+        if (initReferenced.has(stateName) || initReferenced.has(ref)) {
+          continue;
+        }
+        if (unknowns.has(stateName)) {
+          unknowns.delete(stateName);
+          knowns.add(stateName);
         }
       }
     }
   }
 
   if (unknowns.size === 0) {
-    return { blocks: [], knowns, unknowns };
+    return { blocks: [], knowns, unknowns, equationCount: initEquations.length, matchedEquationCount: 0 };
   }
 
   // 4. Build bipartite graph: equation index → set of unknown variable names
@@ -1026,7 +1059,13 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     }
   }
 
-  return { blocks, knowns, unknowns };
+  return {
+    blocks,
+    knowns,
+    unknowns,
+    equationCount: initEquations.length,
+    matchedEquationCount: matchVarToEq.size,
+  };
 }
 
 function augmentInit(
@@ -1108,52 +1147,21 @@ export function _depsExcluding(deps: Set<string>, exclude: string): boolean {
 // ─────────────────────────────────────────────────────────────────────────
 
 function solveLU(A: number[][], b: number[], n: number): number[] {
-  const M = A.map((row) => [...row]);
-  const rhs = [...b];
-
-  for (let k = 0; k < n; k++) {
-    let maxVal = Math.abs(M[k]?.[k] ?? 0);
-    let maxRow = k;
-    for (let i = k + 1; i < n; i++) {
-      const val = Math.abs(M[i]?.[k] ?? 0);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = i;
-      }
-    }
-    if (maxRow !== k) {
-      [M[k], M[maxRow]] = [M[maxRow] ?? [], M[k] ?? []];
-      [rhs[k], rhs[maxRow]] = [rhs[maxRow] ?? 0, rhs[k] ?? 0];
-    }
-    const pivot = M[k]?.[k] ?? 0;
-    if (Math.abs(pivot) < 1e-30) continue;
-
-    for (let i = k + 1; i < n; i++) {
-      const row = M[i];
-      const pivotRow = M[k];
-      if (!row || !pivotRow) continue;
-      const factor = (row[k] ?? 0) / pivot;
-      row[k] = factor;
-      for (let j = k + 1; j < n; j++) {
-        row[j] = (row[j] ?? 0) - factor * (pivotRow[j] ?? 0);
-      }
-      rhs[i] = (rhs[i] ?? 0) - factor * (rhs[k] ?? 0);
-    }
-  }
-
-  const x = new Array(n).fill(0) as number[];
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = rhs[i] ?? 0;
-    const row = M[i];
+  const flatA = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    const row = A[i];
     if (row) {
-      for (let j = i + 1; j < n; j++) {
-        sum -= (row[j] ?? 0) * (x[j] ?? 0);
+      const offset = i * n;
+      for (let j = 0; j < n; j++) {
+        flatA[offset + j] = row[j] ?? 0;
       }
-      const diag = row[i] ?? 1;
-      x[i] = Math.abs(diag) > 1e-30 ? sum / diag : 0;
     }
   }
-  return x;
+  const fact = luFactorFlat(flatA, n);
+  const rhs = new Float64Array(n);
+  for (let i = 0; i < n; i++) rhs[i] = b[i] ?? 0;
+  luSolveFlat(fact, rhs);
+  return Array.from(rhs);
 }
 
 function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<number>): void {
@@ -1321,79 +1329,53 @@ function runOperatorHomotopy(
   unknownList: number[],
   nSolve: number,
   tol: number,
+  bounds?: VariableBoundsAndNominal[],
 ): boolean {
   let lambda = 0.0;
-  let lambdaStep = 0.1;
+  let lambdaStep = 0.25;
   const maxTotalIter = 100;
   let totalIter = 0;
 
   try {
     arena.homotopyLambda = 0.0;
+    // Step 0: solve simplified system at lambda = 0
+    let convergedAtLambda = runNewton(
+      arena,
+      result,
+      residualExprIds,
+      jacobianExprIds,
+      sparsityPattern,
+      unknownList,
+      nSolve,
+      25,
+      tol * 10,
+      bounds,
+    );
+
     while (lambda < 1.0 && totalIter < maxTotalIter) {
       const targetLambda = Math.min(lambda + lambdaStep, 1.0);
       arena.homotopyLambda = targetLambda;
+      totalIter++;
 
-      let convergedAtLambda = false;
-      const maxNewtonIter = 15;
-
-      for (let iter = 0; iter < maxNewtonIter && totalIter < maxTotalIter; iter++) {
-        totalIter++;
-        result.iterations++;
-
-        const R = new Array(nSolve).fill(0) as number[];
-        for (let i = 0; i < nSolve; i++) {
-          const exprId = residualExprIds[i] ?? -1;
-          if (exprId !== -1) {
-            R[i] = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
-          }
-        }
-
-        let norm = 0;
-        for (let i = 0; i < nSolve; i++) norm += Math.abs(R[i] ?? 0);
-        result.residualNorm = norm;
-
-        if (norm < tol) {
-          convergedAtLambda = true;
-          break;
-        }
-
-        const J: number[][] = [];
-        for (let i = 0; i < nSolve; i++) {
-          const row = new Array(nSolve).fill(0) as number[];
-          const pattern = sparsityPattern[i] as Set<number>;
-          const jRow = jacobianExprIds[i];
-          if (jRow) {
-            for (const j of pattern) {
-              const jExprId = jRow[j] ?? -1;
-              row[j] = evaluateInitJacobianEntry(
-                arena,
-                residualExprIds[i] ?? -1,
-                jExprId,
-                unknownList[j] ?? -1,
-                R[i] ?? 0,
-                result.valuesByStringId,
-              );
-            }
-          }
-          J.push(row);
-        }
-
-        const negR = R.map((r) => -r);
-        const dz = solveLU(J, negR, nSolve);
-        for (let i = 0; i < nSolve; i++) {
-          const zj = unknownList[i] ?? -1;
-          if (zj !== -1) {
-            result.valuesByStringId[zj] = (result.valuesByStringId[zj] ?? 0) + 0.8 * (dz[i] ?? 0);
-          }
-        }
-      }
+      convergedAtLambda = runNewton(
+        arena,
+        result,
+        residualExprIds,
+        jacobianExprIds,
+        sparsityPattern,
+        unknownList,
+        nSolve,
+        20,
+        tol,
+        bounds,
+      );
 
       if (convergedAtLambda) {
         lambda = targetLambda;
         lambdaStep = Math.min(lambdaStep * 1.5, 0.5);
       } else {
         lambdaStep *= 0.5;
-        if (lambdaStep < 1e-5) break;
+        if (lambdaStep < 1e-4) break;
       }
     }
   } finally {
@@ -1532,25 +1514,16 @@ export function solveImplicitBlock(
   // Extract variable bounds and nominal values for numerical conditioning
   const varBounds = extractVariableBoundsAndNominal(arena, unknownList, valuesByStringId);
 
-  // Tier 1: Sparse Damped Newton with Armijo Line Search, Nominal Scaling & Box Bounds
-  let converged = runNewton(
-    arena,
-    result,
-    residualExprIds,
-    jacobianExprIds,
-    sparsityPattern,
-    unknownList,
-    nSolve,
-    50,
-    tol,
-    varBounds,
+  // Check if system explicitly uses homotopy(actual, simplified) per MLS §3.7.2
+  const hasHomotopy = block.equations.some(
+    (eq) => containsHomotopyCall(arena, eq.lhs) || containsHomotopyCall(arena, eq.rhs),
   );
 
-  // Tier 2: Operator Homotopy Continuation (if equation explicitly uses homotopy(actual, simplified))
-  if (
-    !converged &&
-    block.equations.some((eq) => containsHomotopyCall(arena, eq.lhs) || containsHomotopyCall(arena, eq.rhs))
-  ) {
+  let converged = false;
+  if (hasHomotopy) {
+    // Modelica Language Specification MLS §3.7.2:
+    // When homotopy(actual, simplified) is present, initialize starting from the
+    // simplified model (lambda = 0) and continue toward the actual model (lambda = 1).
     converged = runOperatorHomotopy(
       arena,
       result,
@@ -1560,6 +1533,7 @@ export function solveImplicitBlock(
       unknownList,
       nSolve,
       tol,
+      varBounds,
     );
     if (converged) {
       runNewton(
@@ -1570,11 +1544,27 @@ export function solveImplicitBlock(
         sparsityPattern,
         unknownList,
         nSolve,
-        5,
+        10,
         tol,
         varBounds,
       );
     }
+  }
+
+  if (!converged) {
+    // Tier 1 default: Sparse Damped Newton with Armijo Line Search, Nominal Scaling & Box Bounds
+    converged = runNewton(
+      arena,
+      result,
+      residualExprIds,
+      jacobianExprIds,
+      sparsityPattern,
+      unknownList,
+      nSolve,
+      50,
+      tol,
+      varBounds,
+    );
   }
 
   // Tier 3: Adaptive Pseudo-Arc-Length Homotopy Continuation (Keller's Method for Limit Points)
@@ -1701,24 +1691,79 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
     }
   }
 
+  // Transitive propagation across bindings and simple equality equations u = v
+  let changed = true;
+  let pass = 0;
+  while (changed && pass < 10) {
+    changed = false;
+    pass++;
+
+    // 1. Variable expressions (bindings: vs.re = p.vr, etc.)
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      const exprId = arena.getVarExpression(i);
+      if (exprId !== undefined && exprId >= 0 && arena.getExprKind(exprId) === ExprKind.Name) {
+        const uId = arena.getVarNameId(i);
+        const vId = arena.getExprData1(exprId);
+        const uVal = result.valuesByStringId[uId] ?? 0;
+        const vVal = result.valuesByStringId[vId] ?? 0;
+        if (uVal !== 0 && vVal === 0) {
+          result.valuesByStringId[vId] = uVal;
+          changed = true;
+        } else if (vVal !== 0 && uVal === 0) {
+          result.valuesByStringId[uId] = vVal;
+          changed = true;
+        }
+      }
+    }
+
+    // 2. Simple equality equations u = v
+    for (let i = 0; i < arena.eqCount; i++) {
+      if (arena.isEqRemoved(i)) continue;
+      if (arena.getEqKind(i) === EqKind.Simple) {
+        const lhs = arena.getEqLhs(i);
+        const rhs = arena.getEqRhs(i);
+        if (arena.getExprKind(lhs) === ExprKind.Name && arena.getExprKind(rhs) === ExprKind.Name) {
+          const uId = arena.getExprData1(lhs);
+          const vId = arena.getExprData1(rhs);
+          const uVal = result.valuesByStringId[uId] ?? 0;
+          const vVal = result.valuesByStringId[vId] ?? 0;
+          if (uVal !== 0 && vVal === 0) {
+            result.valuesByStringId[vId] = uVal;
+            changed = true;
+          } else if (vVal !== 0 && uVal === 0) {
+            result.valuesByStringId[uId] = vVal;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
   // 0. Attempt block-by-block BLT initialization first
   try {
     const initBlt = buildInitBLT(arena);
     if (initBlt.blocks.length > 0) {
       let allConverged = true;
+      let matchedCount = 0;
       for (const block of initBlt.blocks) {
         if (block.type === "explicit") {
+          matchedCount++;
           const targetId = arena.interner.intern(block.target);
           result.valuesByStringId[targetId] = evaluateArenaRuntime(arena, block.expr, result.valuesByStringId);
         } else if (block.type === "implicit") {
+          matchedCount += block.unknowns.length;
           const blockRes = solveImplicitBlock(arena, block, result.valuesByStringId, 1e-10);
           result.iterations += blockRes.iterations;
           result.residualNorm = Math.max(result.residualNorm, blockRes.residualNorm);
-          if (!blockRes.converged) allConverged = false;
+          if (!blockRes.converged) {
+            allConverged = false;
+          }
         }
       }
-      if (allConverged || initBlt.unknowns.size > 32) {
-        result.converged = allConverged;
+      const allEqsMatched = (initBlt.matchedEquationCount ?? matchedCount) >= (initBlt.equationCount ?? 0);
+      if (allConverged && (matchedCount >= initBlt.unknowns.size || allEqsMatched)) {
+        result.converged = true;
         return result;
       }
     } else if (initBlt.unknowns.size === 0) {
@@ -2109,6 +2154,7 @@ function runNewton(
   bounds?: VariableBoundsAndNominal[],
 ): boolean {
   const varBounds = bounds ?? extractVariableBoundsAndNominal(arena, unknownList, result.valuesByStringId);
+  let lmLambda = 1e-3;
 
   for (let iter = 0; iter < maxIter; iter++) {
     result.iterations = iter + 1;
@@ -2130,16 +2176,16 @@ function runNewton(
       return true;
     }
 
-    // 1. Evaluate Jacobian
-    const J: number[][] = [];
+    // 1 & 2. Evaluate Jacobian directly into row-major flat Float64Array with nominal scaling
+    const flatJ = new Float64Array(nSolve * nSolve);
     for (let i = 0; i < nSolve; i++) {
-      const row = new Array(nSolve).fill(0) as number[];
       const pattern = sparsityPattern[i] as Set<number>;
       const jRow = jacobianExprIds[i];
+      const rowOffset = i * nSolve;
       if (jRow) {
         for (const j of pattern) {
           const jExprId = jRow[j] ?? -1;
-          row[j] = evaluateInitJacobianEntry(
+          const val = evaluateInitJacobianEntry(
             arena,
             residualExprIds[i] ?? -1,
             jExprId,
@@ -2147,38 +2193,30 @@ function runNewton(
             R[i] ?? 0,
             result.valuesByStringId,
           );
+          const nom = varBounds[j]?.nominal ?? 1.0;
+          flatJ[rowOffset + j] = val * nom;
         }
       }
-      J.push(row);
+      if (nSolve === 1 && Math.abs(flatJ[rowOffset + i] ?? 0) < 1e-12) {
+        flatJ[rowOffset + i] = (flatJ[rowOffset + i] ?? 0) + 1e-8;
+      }
     }
 
-    // 2. Scale columns of J by nominal values to balance matrix condition number: J_scaled[i][j] = J[i][j] * nominal[j]
-    const Jscaled: number[][] = [];
+    const du = new Float64Array(nSolve);
     for (let i = 0; i < nSolve; i++) {
-      const row = new Array(nSolve).fill(0) as number[];
-      for (let j = 0; j < nSolve; j++) {
-        const nom = varBounds[j]?.nominal ?? 1.0;
-        row[j] = (J[i]?.[j] ?? 0) * nom;
-      }
-      // Damping regularization for vanishing pivots
-      if (Math.abs(row[i] ?? 0) < 1e-12) {
-        row[i] = (row[i] ?? 0) + 1e-8;
-      }
-      Jscaled.push(row);
+      du[i] = -(R[i] ?? 0);
     }
-
-    const negR = R.map((r) => -r);
-    const du = solveLU(Jscaled, negR, nSolve);
+    const fact = luFactorFlat(new Float64Array(flatJ), nSolve);
+    luSolveFlat(fact, du);
 
     // Unscale search direction: dz[j] = du[j] * nominal[j]
-    const dz = new Array(nSolve).fill(0) as number[];
+    const dz = new Float64Array(nSolve);
     for (let j = 0; j < nSolve; j++) {
       const nom = varBounds[j]?.nominal ?? 1.0;
       dz[j] = (du[j] ?? 0) * nom;
     }
 
     // 3. Armijo Backtracking Line Search with Box Bounds Projection
-    let alpha = 1.0;
     const minAlpha = 1e-4;
     const c1 = 1e-4;
     const currentNorm = norm;
@@ -2190,36 +2228,86 @@ function runNewton(
       origZ[i] = zj !== -1 ? (result.valuesByStringId[zj] ?? 0) : 0;
     }
 
-    while (alpha >= minAlpha) {
-      for (let i = 0; i < nSolve; i++) {
-        const zj = unknownList[i] ?? -1;
-        if (zj !== -1) {
-          const rawNext = (origZ[i] ?? 0) + alpha * (dz[i] ?? 0);
-          const b = varBounds[i];
-          const clampedNext = b ? Math.max(b.min, Math.min(b.max, rawNext)) : rawNext;
-          result.valuesByStringId[zj] = clampedNext;
-        }
-      }
-
-      let trialNorm = 0;
-      let valid = true;
-      for (let i = 0; i < nSolve; i++) {
-        const exprId = residualExprIds[i] ?? -1;
-        if (exprId !== -1) {
-          const resVal = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
-          if (!isFinite(resVal) || isNaN(resVal)) {
-            valid = false;
-            break;
+    const tryLineSearch = (stepDz: Float64Array): boolean => {
+      let a = 1.0;
+      while (a >= minAlpha) {
+        for (let i = 0; i < nSolve; i++) {
+          const zj = unknownList[i] ?? -1;
+          if (zj !== -1) {
+            const rawNext = (origZ[i] ?? 0) + a * (stepDz[i] ?? 0);
+            const b = varBounds[i];
+            const clampedNext = b ? Math.max(b.min, Math.min(b.max, rawNext)) : rawNext;
+            result.valuesByStringId[zj] = clampedNext;
           }
-          trialNorm += Math.abs(resVal);
+        }
+
+        let trialNorm = 0;
+        let valid = true;
+        for (let i = 0; i < nSolve; i++) {
+          const exprId = residualExprIds[i] ?? -1;
+          if (exprId !== -1) {
+            const resVal = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
+            if (!isFinite(resVal) || isNaN(resVal)) {
+              valid = false;
+              break;
+            }
+            trialNorm += Math.abs(resVal);
+          }
+        }
+
+        if (valid && (trialNorm <= currentNorm * (1 - c1 * a) || trialNorm < tol)) {
+          return true;
+        }
+        a *= 0.5;
+      }
+      return false;
+    };
+
+    stepAccepted = tryLineSearch(dz);
+
+    // 4. Levenberg-Marquardt Regularization Fallback if standard Newton step was rejected
+    if (!stepAccepted && nSolve > 1) {
+      const JTJ = new Float64Array(nSolve * nSolve);
+      const JTR = new Float64Array(nSolve);
+      for (let k = 0; k < nSolve; k++) {
+        const pattern = sparsityPattern[k] as Set<number>;
+        const kOffset = k * nSolve;
+        const r_k = R[k] ?? 0;
+        for (const i of pattern) {
+          const J_ki = flatJ[kOffset + i] ?? 0;
+          if (J_ki === 0) continue;
+          JTR[i] = (JTR[i] ?? 0) + J_ki * r_k;
+          const iOffset = i * nSolve;
+          for (const j of pattern) {
+            JTJ[iOffset + j] = (JTJ[iOffset + j] ?? 0) + J_ki * (flatJ[kOffset + j] ?? 0);
+          }
         }
       }
 
-      if (valid && (trialNorm <= currentNorm * (1 - c1 * alpha) || trialNorm < tol)) {
-        stepAccepted = true;
-        break;
+      for (let lmTry = 0; lmTry < 6 && !stepAccepted; lmTry++) {
+        const A = new Float64Array(JTJ);
+        for (let i = 0; i < nSolve; i++) {
+          const diag = JTJ[i * nSolve + i] ?? 0;
+          A[i * nSolve + i] = diag + lmLambda * Math.max(diag, 1.0);
+        }
+        const lmDu = new Float64Array(nSolve);
+        for (let i = 0; i < nSolve; i++) lmDu[i] = -JTR[i]!;
+        const lmFact = luFactorFlat(A, nSolve);
+        luSolveFlat(lmFact, lmDu);
+
+        const lmDz = new Float64Array(nSolve);
+        for (let j = 0; j < nSolve; j++) {
+          const nom = varBounds[j]?.nominal ?? 1.0;
+          lmDz[j] = (lmDu[j] ?? 0) * nom;
+        }
+
+        if (tryLineSearch(lmDz)) {
+          stepAccepted = true;
+          lmLambda = Math.max(lmLambda * 0.2, 1e-9);
+        } else {
+          lmLambda *= 5.0;
+        }
       }
-      alpha *= 0.5;
     }
 
     if (!stepAccepted) {

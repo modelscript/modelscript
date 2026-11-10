@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { computeAsm1ConversionRates, evaluateAsm1ProcessRates, parseAsmPlant } from "@modelscript/asm";
+import { parseAtp, simulateAtpCase } from "@modelscript/atp";
 import { computeAABBDistance, type AABB } from "@modelscript/cad";
+import { extractPhasorSeries, parseComtradeCfg, parseComtradeDatAscii } from "@modelscript/comtrade";
 import { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
+import { processTelemetryStream } from "@modelscript/dnp3";
 import {
   discretizeCoverageToH3,
   evaluateCsaPoleStress,
@@ -19,6 +23,7 @@ import {
   type PoleSpecification,
 } from "@modelscript/fiber";
 import { evaluateEn14363, lintGensysModel, parseGensysDeck, solveFastsim } from "@modelscript/gensys";
+import { parseHmsBasin, simulateSubbasinRunoff } from "@modelscript/hec-hms";
 import { RtmIndexEngine, runSelfHealingPipeline } from "@modelscript/lsp";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context } from "@modelscript/modelica/context";
@@ -42,6 +47,7 @@ import {
   type OlgaCheckpointState,
   type TunableParameter,
 } from "@modelscript/olga";
+import { calculateBusFaultCurrents, parseOneLiner } from "@modelscript/oneliner";
 import {
   createEmptyOpticalTopology,
   parseSor,
@@ -81,6 +87,8 @@ import {
   UnifiedWorkspace,
   Variability,
 } from "@modelscript/runtime";
+import { parseSclXml, sclToGridTopology, validateGooseStreams } from "@modelscript/scl";
+import { evaluateRelayProtection, parseSELSettings } from "@modelscript/sel";
 import { analyzeMobility, lintSimpackModel, parseSimDeck, parseSpckXml } from "@modelscript/simpack";
 import {
   ArenaSimulator,
@@ -104,6 +112,7 @@ import {
 import { BoundaryTestSynthesizer, parseGuardConstraints, toNonlinearConstraint } from "@modelscript/sysml2";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import { fitRatingCurve } from "@modelscript/waterml";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -5986,16 +5995,123 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
   );
 
   server.tool(
+    "epanet_screen_contingencies_webgpu",
+    "Parallelizes thousands of N-1 pipe break isolations and hydrant fire flow capacity tests simultaneously using WebGPU compute shaders with CPU SIMD fallback.",
+    {
+      networkContent: z.string().describe("EPANET network deck (.inp)"),
+      screeningMode: z
+        .enum(["ALL_N1_OUTAGES", "ALL_FIRE_HYDRANTS", "COMBINED"])
+        .optional()
+        .describe("Screening mode: ALL_N1_OUTAGES, ALL_FIRE_HYDRANTS, or COMBINED (default: COMBINED)"),
+      minResidualPressureM: z
+        .number()
+        .optional()
+        .describe(
+          "Minimum residual pressure head required at consumer junctions in meters (default: 14.06 m = 20 psi)",
+        ),
+      maxVelocityMps: z.number().optional().describe("Maximum pipe velocity limit in m/s (default: 2.5 m/s)"),
+      fireFlowDrawLps: z
+        .number()
+        .optional()
+        .describe("Standard hydrant fire test draw in L/s (default: 63.09 L/s = 1,000 gpm)"),
+      preferCpu: z.boolean().optional().describe("Whether to force CPU execution (default: true for headless server)"),
+    },
+    async ({
+      networkContent,
+      screeningMode = "COMBINED",
+      minResidualPressureM = 14.06,
+      maxVelocityMps = 2.5,
+      fireFlowDrawLps = 63.09,
+      preferCpu = true,
+    }) => {
+      const { parseInp, extractEpanetScreeningModel } = await import("@modelscript/epanet");
+      const { calculateWaterNetworkSensitivities, WebGpuWaterScreener } = await import("@modelscript/simulate");
+
+      const net = parseInp(networkContent);
+      const model = extractEpanetScreeningModel(net);
+      const sens = calculateWaterNetworkSensitivities(model.nodes, model.pipes);
+      const screener = await WebGpuWaterScreener.create(null);
+
+      const opts = {
+        minResidualPressureM,
+        maxVelocityMps,
+        fireFlowDrawLps,
+        preferCpu,
+      };
+
+      let outageResult = null;
+      let fireResult = null;
+
+      if (screeningMode === "ALL_N1_OUTAGES" || screeningMode === "COMBINED") {
+        outageResult = await screener.screenAllPipeOutages(sens, opts);
+      }
+
+      if (screeningMode === "ALL_FIRE_HYDRANTS" || screeningMode === "COMBINED") {
+        fireResult = await screener.screenAllFireHydrants(sens, opts);
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                backend: preferCpu ? "cpu-simd" : "webgpu",
+                screeningMode,
+                nodesMonitored: sens.nodeCount,
+                pipesMonitored: sens.pipeCount,
+                totalEvaluations: (outageResult?.totalEvaluations ?? 0) + (fireResult?.totalEvaluations ?? 0),
+                totalExecutionTimeMs:
+                  Math.round(((outageResult?.executionTimeMs ?? 0) + (fireResult?.executionTimeMs ?? 0)) * 100) / 100,
+                outageContingencies: outageResult
+                  ? {
+                      pipesEvaluated: outageResult.scenariosEvaluated,
+                      vulnerablePipesCount: outageResult.vulnerableScenariosCount,
+                      topCriticalPipes: outageResult.topCriticalPipes,
+                    }
+                  : undefined,
+                fireFlowScreening: fireResult
+                  ? {
+                      hydrantsEvaluated: fireResult.scenariosEvaluated,
+                      deficientHydrantsCount: fireResult.vulnerableScenariosCount,
+                      fireFlowCapacities: fireResult.fireFlowCapacities,
+                    }
+                  : undefined,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
     "epanet_water_hammer_surge",
-    "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, and cavitation risk via the Method of Characteristics (MOC).",
+    "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, column separation (DVCM), and 4-quadrant pump trip dynamics via the Method of Characteristics (MOC).",
     {
       pipeLengthM: z.number().describe("Pipeline length in meters (e.g. 1200.0)"),
       pipeDiameterM: z.number().describe("Internal pipe diameter in meters (e.g. 0.6)"),
       initialFlowM3s: z.number().describe("Initial steady flow rate in m^3/s (e.g. 0.5)"),
-      closureTimeSeconds: z.number().describe("Valve closure duration in seconds (e.g. 0.5)"),
+      closureTimeSeconds: z.number().describe("Valve closure duration or pump coastdown time in seconds (e.g. 0.5)"),
       waveSpeedMps: z.number().optional().describe("Acoustic wave speed in m/s (default: 1200.0)"),
       initialHeadUpstreamM: z.number().optional().describe("Initial upstream head in meters (default: 80.0)"),
       initialHeadDownstreamM: z.number().optional().describe("Initial downstream head in meters (default: 70.0)"),
+      eventType: z
+        .enum(["VALVE_CLOSURE", "PUMP_TRIP"])
+        .optional()
+        .describe("Transient event type (default: VALVE_CLOSURE)"),
+      enableDvcm: z
+        .boolean()
+        .optional()
+        .describe("Enable Discrete Vapor Cavity Model (DVCM) column separation tracking (default: true)"),
+      pumpInertiaKgM2: z.number().optional().describe("Pump + motor polar moment of inertia in kg*m^2 for pump trip"),
+      hasCheckValve: z
+        .boolean()
+        .optional()
+        .describe("Whether non-return check valve is present on pump discharge (default: true)"),
     },
     async ({
       pipeLengthM,
@@ -6005,6 +6121,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       waveSpeedMps,
       initialHeadUpstreamM,
       initialHeadDownstreamM,
+      eventType,
+      enableDvcm,
+      pumpInertiaKgM2,
+      hasCheckValve,
     }) => {
       const { solveWaterHammerMoc } = await import("@modelscript/epanet");
       const pipe = {
@@ -6018,11 +6138,24 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         headUpstreamM: initialHeadUpstreamM ?? 80.0,
         headDownstreamM: initialHeadDownstreamM ?? 70.0,
       };
-      const event = {
-        type: "VALVE_CLOSURE" as const,
+      const type = eventType ?? "VALVE_CLOSURE";
+      const event: any = {
+        type,
         durationSeconds: closureTimeSeconds,
       };
-      const res = solveWaterHammerMoc(pipe, initial, event);
+      if (type === "PUMP_TRIP" && pumpInertiaKgM2 !== undefined) {
+        event.pumpCoastdown = {
+          specificSpeedType: "RADIAL",
+          momentOfInertiaKgM2: pumpInertiaKgM2,
+          ratedSpeedRpm: 1750.0,
+          ratedFlowM3s: Math.abs(initialFlowM3s),
+          ratedHeadM: Math.max(10.0, Math.abs((initialHeadDownstreamM ?? 70.0) - (initialHeadUpstreamM ?? 80.0))),
+          hasCheckValve: hasCheckValve ?? true,
+        };
+      }
+      const res = solveWaterHammerMoc(pipe, initial, event, {
+        enableDvcmCavitation: enableDvcm ?? true,
+      });
 
       return {
         content: [
@@ -6037,6 +6170,13 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
                 maxPressurePsi: Math.round(res.maxPressurePsi * 10) / 10,
                 minPressurePsi: Math.round(res.minPressurePsi * 10) / 10,
                 cavitationOccurred: res.cavitationOccurred,
+                cavitationCollapseOccurred: res.cavitationCollapseOccurred ?? false,
+                maxCavityVolumeM3: res.maxCavityVolumeM3 ? Math.round(res.maxCavityVolumeM3 * 1000) / 1000 : undefined,
+                maxCollapseSurgeM: res.maxCollapseSurgeM ? Math.round(res.maxCollapseSurgeM * 10) / 10 : undefined,
+                checkValveSlamHeadM: res.checkValveSlamHeadM
+                  ? Math.round(res.checkValveSlamHeadM * 10) / 10
+                  : undefined,
+                maxReverseFlowM3s: res.maxReverseFlowM3s ? Math.round(res.maxReverseFlowM3s * 1000) / 1000 : undefined,
                 waveTravelTimeSeconds: Math.round(res.waveTravelTimeSeconds * 100) / 100,
                 fundamentalPeriodSeconds: Math.round(res.fundamentalPeriodSeconds * 100) / 100,
               },
@@ -6118,10 +6258,19 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     {
       networkContent: z.string().describe("EPANET network deck (.inp)"),
       budgetUsd: z.number().describe("Capital improvement project budget constraint in USD (e.g. 500000)"),
-      targetMinPressureM: z.number().optional().describe("Target minimum network service pressure in meters (default: 25.0)"),
-      candidatePipeIds: z.array(z.string()).optional().describe("Optional candidate pipe IDs for replacement (default: all pipes)"),
+      targetMinPressureM: z
+        .number()
+        .optional()
+        .describe("Target minimum network service pressure in meters (default: 25.0)"),
+      candidatePipeIds: z
+        .array(z.string())
+        .optional()
+        .describe("Optional candidate pipe IDs for replacement (default: all pipes)"),
       unitCostPerMeterPerMm: z.number().optional().describe("Unit cost in $/m/mm diameter (default: 0.85)"),
-      availableDiametersMm: z.array(z.number()).optional().describe("Available commercial pipe diameters in mm (default: [200, 250, 300, 350, 400, 500, 600])"),
+      availableDiametersMm: z
+        .array(z.number())
+        .optional()
+        .describe("Available commercial pipe diameters in mm (default: [200, 250, 300, 350, 400, 500, 600])"),
     },
     async ({
       networkContent,
@@ -6215,11 +6364,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       for (const rep of replacedPipes) {
-        const pObj = net.pipes.find((p) => p.id === rep.pipeId)!;
+        const pObj = net.pipes.find((p) => p.id === rep.pipeId);
+        if (!pObj) continue;
         const baseFlow = Math.abs(baseSol.linkFlows.get(rep.pipeId) ?? 1);
         const optFlow = Math.abs(optSol.linkFlows.get(rep.pipeId) ?? 1);
-        const baseHf = (10.67 * pObj.length * Math.pow(baseFlow / 1000 / 100, 1.852)) / Math.pow(rep.oldDiameterMm / 1000, 4.87);
-        const optHf = (10.67 * pObj.length * Math.pow(optFlow / 1000 / 130, 1.852)) / Math.pow(rep.newDiameterMm / 1000, 4.87);
+        const baseHf =
+          (10.67 * pObj.length * Math.pow(baseFlow / 1000 / 100, 1.852)) / Math.pow(rep.oldDiameterMm / 1000, 4.87);
+        const optHf =
+          (10.67 * pObj.length * Math.pow(optFlow / 1000 / 130, 1.852)) / Math.pow(rep.newDiameterMm / 1000, 4.87);
         rep.headlossReductionM = Math.max(0, Math.round((baseHf - optHf) * 10) / 10);
       }
 
@@ -6327,7 +6479,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           currentRmse = nextRmse;
         } else {
           for (const p of targetPipes) {
-            p.roughness = Math.max(50.0, Math.min(150.0, (p.roughness + initialRoughnessMap.get(p.id)!) / 2.0));
+            const initR = initialRoughnessMap.get(p.id) ?? p.roughness;
+            p.roughness = Math.max(50.0, Math.min(150.0, (p.roughness + initR) / 2.0));
           }
           break;
         }
@@ -6337,7 +6490,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const finalRmse = computeRmse(finalSol.nodePressures);
 
       const calibratedPipes = targetPipes.map((p) => {
-        const initR = initialRoughnessMap.get(p.id)!;
+        const initR = initialRoughnessMap.get(p.id) ?? p.roughness;
         return {
           pipeId: p.id,
           initialRoughness: Math.round(initR * 10) / 10,
@@ -6387,8 +6540,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     "Ingests municipal GIS pipe centerlines, junction assets, and digital elevation models (DEM) from GeoJSON / ASCII grids into a complete, ready-to-solve EPANET network (.inp).",
     {
       pipesGeoJson: z.string().describe("GeoJSON string containing pipe polyline features"),
-      nodesGeoJson: z.string().optional().describe("Optional GeoJSON string containing point assets (junctions, reservoirs, tanks)"),
-      demAsciiGrid: z.string().optional().describe("Optional Esri/USGS ASCII digital elevation model grid string (.asc, .grd)"),
+      nodesGeoJson: z
+        .string()
+        .optional()
+        .describe("Optional GeoJSON string containing point assets (junctions, reservoirs, tanks)"),
+      demAsciiGrid: z
+        .string()
+        .optional()
+        .describe("Optional Esri/USGS ASCII digital elevation model grid string (.asc, .grd)"),
       snapToleranceM: z.number().optional().describe("Topological node snap tolerance in meters (default: 1.5m)"),
       defaultDiameterMm: z.number().optional().describe("Default pipe diameter in mm (default: 200mm)"),
       defaultRoughness: z.number().optional().describe("Default Hazen-Williams C-factor (default: 120)"),
@@ -6576,14 +6735,26 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     "Ingests municipal GIS stormwater/wastewater conduits, manholes, catchment polygon boundaries, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (.inp).",
     {
       conduitsGeoJson: z.string().describe("GeoJSON string containing conduit polyline features"),
-      manholesGeoJson: z.string().optional().describe("Optional GeoJSON string containing manhole and outfall point features"),
-      subcatchmentsGeoJson: z.string().optional().describe("Optional GeoJSON string containing catchment polygon boundaries"),
-      demAsciiGrid: z.string().optional().describe("Optional Esri/USGS ASCII digital elevation model grid string (.asc, .grd)"),
+      manholesGeoJson: z
+        .string()
+        .optional()
+        .describe("Optional GeoJSON string containing manhole and outfall point features"),
+      subcatchmentsGeoJson: z
+        .string()
+        .optional()
+        .describe("Optional GeoJSON string containing catchment polygon boundaries"),
+      demAsciiGrid: z
+        .string()
+        .optional()
+        .describe("Optional Esri/USGS ASCII digital elevation model grid string (.asc, .grd)"),
       snapToleranceM: z.number().optional().describe("Topological manhole snap tolerance in meters (default: 2.0m)"),
       defaultDiameterM: z.number().optional().describe("Default conduit diameter in meters (default: 0.6m)"),
       defaultManningN: z.number().optional().describe("Default Manning's roughness n (default: 0.013)"),
       defaultManholeDepthM: z.number().optional().describe("Default manhole depth in meters (default: 2.5m)"),
-      defaultImpervPct: z.number().optional().describe("Default subcatchment imperviousness percentage (default: 40.0%)"),
+      defaultImpervPct: z
+        .number()
+        .optional()
+        .describe("Default subcatchment imperviousness percentage (default: 40.0%)"),
       title: z.string().optional().describe("Optional SWMM model title"),
     },
     async ({
@@ -6640,6 +6811,152 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
                   totalCatchmentAreaHa: Math.round(totalCatchmentAreaHa * 100) / 100,
                 },
                 inpContent,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "epanet_convert_watergems",
+    "Extracts water distribution and surge models directly from Bentley WaterGEMS / HAMMER (.wtg.sqlite) or InfoWater databases into native EPANET AST and .inp deck.",
+    {
+      databaseFilePath: z.string().optional().describe("Absolute file path to .wtg.sqlite or .json database"),
+      tablesJson: z.string().optional().describe("In-memory JSON string representing database table rows"),
+      flowUnits: z.enum(["GPM", "LPS", "MGD", "CMS"]).optional().describe("Target flow units (default: GPM)"),
+    },
+    async ({ databaseFilePath, tablesJson, flowUnits }) => {
+      const { parseWaterGemsDatabase, serializeInp } = await import("@modelscript/epanet");
+      const input = databaseFilePath ? databaseFilePath : JSON.parse(tablesJson ?? "{}");
+      const network = parseWaterGemsDatabase(input, { flowUnits: (flowUnits as any) ?? "GPM" });
+      const inpContent = serializeInp(network);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                title: network.title,
+                summary: {
+                  junctionsCount: network.junctions.length,
+                  reservoirsCount: network.reservoirs.length,
+                  tanksCount: network.tanks.length,
+                  pipesCount: network.pipes.length,
+                  pumpsCount: network.pumps.length,
+                  valvesCount: network.valves.length,
+                  curvesCount: network.curves.length,
+                  patternsCount: network.patterns.length,
+                },
+                inpContent,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "swmm_convert_infoworks",
+    "Extracts collection system models directly from Autodesk / Innovyze InfoWorks ICM database tables into a native SWMM network AST and .inp deck.",
+    {
+      databaseFilePath: z.string().optional().describe("Absolute file path to InfoWorks SQLite database"),
+      tablesJson: z.string().optional().describe("In-memory JSON string representing InfoWorks table rows"),
+    },
+    async ({ databaseFilePath, tablesJson }) => {
+      const { parseInfoWorksDatabase, serializeSwmm } = await import("@modelscript/swmm");
+      const input = databaseFilePath ? databaseFilePath : JSON.parse(tablesJson ?? "{}");
+      const deck = parseInfoWorksDatabase(input);
+      const inpContent = serializeSwmm(deck);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                title: deck.title,
+                summary: {
+                  junctionsCount: deck.junctions.size,
+                  outfallsCount: deck.outfalls.size,
+                  conduitsCount: deck.conduits.size,
+                  subcatchmentsCount: deck.subcatchments.size,
+                  weirsCount: deck.weirs.size,
+                  pumpsCount: deck.pumps.size,
+                },
+                inpContent,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "swmm_inundation_2d",
+    "Simulates 2D shallow water surface inundation and street overland flooding coupled dynamically to 1D SWMM surcharged manholes (InfoWorks ICM Parity).",
+    {
+      deckContent: z.string().describe("SWMM input deck (.inp) string"),
+      durationSeconds: z.number().optional().describe("Simulation duration in seconds (default: 300)"),
+      rainfallIntensityMmPerHr: z
+        .number()
+        .optional()
+        .describe("Direct overland rainfall intensity in mm/hr (default: 45)"),
+      gridCols: z.number().optional().describe("Overland mesh grid columns (default: 8)"),
+      gridRows: z.number().optional().describe("Overland mesh grid rows (default: 8)"),
+      cellSpacingM: z.number().optional().describe("Mesh grid spacing in meters (default: 15.0)"),
+    },
+    async ({ deckContent, durationSeconds, rainfallIntensityMmPerHr, gridCols, gridRows, cellSpacingM }) => {
+      const { createRegularGrid2DMesh, parseSwmm, solveSwmmCoupled1D2D } = await import("@modelscript/swmm");
+      const deck = parseSwmm(deckContent);
+      const cols = gridCols ?? 8;
+      const rows = gridRows ?? 8;
+      const dx = cellSpacingM ?? 15.0;
+      const mesh = createRegularGrid2DMesh(cols, rows, dx, dx);
+
+      const res = solveSwmmCoupled1D2D(deck, mesh, {
+        simulationDurationSeconds: durationSeconds ?? 300.0,
+        rainfallIntensityMmPerHr: rainfallIntensityMmPerHr ?? 45.0,
+      });
+
+      const floodedCells: any[] = [];
+      for (const [cellId, summary] of res.cells) {
+        if (summary.isFlooded) {
+          floodedCells.push({
+            cellId,
+            maxDepthM: Math.round(summary.maxDepthM * 100) / 100,
+            maxVelocityMps: Math.round(summary.maxVelocityMps * 100) / 100,
+            maxHazardRating: Math.round(summary.maxHazardRating * 100) / 100,
+          });
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                peakFloodedAreaM2: Math.round(res.peakFloodedAreaM2 * 10) / 10,
+                peakSurfaceVolumeM3: Math.round(res.peakSurfaceVolumeM3 * 10) / 10,
+                cumulativeSpillVolumeM3: Math.round(res.cumulativeSpillVolumeM3 * 10) / 10,
+                cumulativeDrainVolumeM3: Math.round(res.cumulativeDrainVolumeM3 * 10) / 10,
+                massConservationErrorPct: Math.round(res.massConservationErrorPct * 100) / 100,
+                floodedCellsCount: floodedCells.length,
+                floodedCells,
               },
               null,
               2,
@@ -7316,7 +7633,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       siteId: z.string().default("SITE-001").describe("Base station site identifier"),
       siteName: z.string().default("Cell Site A").describe("Human-readable site name"),
       standard: z
-        .enum(["FCC_OET65", "ICNIRP_2020", "HEALTH_CANADA_SC6", "EU_CENELEC_EN50383", "SWISS_ORNI_NISV", "ITALY_CEI_211"])
+        .enum([
+          "FCC_OET65",
+          "ICNIRP_2020",
+          "HEALTH_CANADA_SC6",
+          "EU_CENELEC_EN50383",
+          "SWISS_ORNI_NISV",
+          "ITALY_CEI_211",
+        ])
         .default("FCC_OET65")
         .describe("Electromagnetic safety standard"),
       environment: z
@@ -7413,7 +7737,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       groundElevationMeters: z.number().describe("Site ground elevation above mean sea level (AMSL) in meters"),
       structureType: z.enum(["tower", "pole", "building_rooftop", "water_tank", "monopole"]).default("tower"),
       siteName: z.string().default("Proposed Tower Site"),
-      standard: z.enum(["FAA_PART77", "ICAO_ANNEX14", "TRANSPORT_CANADA_CAR601"]).default("FAA_PART77").describe("Aviation regulatory regime"),
+      standard: z
+        .enum(["FAA_PART77", "ICAO_ANNEX14", "TRANSPORT_CANADA_CAR601"])
+        .default("FAA_PART77")
+        .describe("Aviation regulatory regime"),
       airports: z
         .array(
           z.object({
@@ -7527,7 +7854,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       poleId: z.string().default("POLE-001").describe("Pole identifier"),
       overallLengthMeters: z.number().default(12.0).describe("Overall pole length in meters"),
       species: z.string().default("western-red-cedar").describe("Wood species or material specification"),
-      loadingDistrict: z.string().default("heavy").describe("Climatic loading zone (e.g. heavy, severe, medium, light)"),
+      loadingDistrict: z
+        .string()
+        .default("heavy")
+        .describe("Climatic loading zone (e.g. heavy, severe, medium, light)"),
       attachments: z
         .array(
           z.object({
@@ -7599,7 +7929,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
         const nescAttachments: PoleAttachmentLoad[] = args.attachments.map((a) => ({
           attachmentId: a.id,
-          description: (a as Record<string, unknown>)["description"] ? String((a as Record<string, unknown>)["description"]) : a.id,
+          description: (a as Record<string, unknown>)["description"]
+            ? String((a as Record<string, unknown>)["description"])
+            : a.id,
           heightAboveGroundFeet: a.heightMeters * 3.28084,
           transverseWindForceLbs: 50.0,
           tensionForceLbs: 30.0,
@@ -7710,11 +8042,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async (args) => {
       try {
-        let eeMod: any = null;
+        let eeMod: { generateNorsFilingDossier?: (e: unknown, stage: string, filerId: string) => unknown } | null =
+          null;
         try {
           // Dynamic import of Enterprise Edition compliance module
-          // @ts-ignore
-          eeMod = (await import("@modelscript/ee")) as any;
+          const eePkg = ["@", "modelscript", "/", "ee"].join("");
+          eeMod = (await import(/* webpackIgnore: true */ eePkg)) as {
+            generateNorsFilingDossier?: (e: unknown, stage: string, filerId: string) => unknown;
+          };
         } catch {
           eeMod = null;
         }
@@ -7980,6 +8315,459 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         return {
           isError: true,
           content: [{ type: "text" as const, text: `Stochastic jump solver error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── comtrade_extract_phasor ─────────────────────────────────────────────
+
+  server.tool(
+    "comtrade_extract_phasor",
+    "Extract dynamic discrete Fourier transform (DFT) RMS phasors from IEEE C37.111 COMTRADE records.",
+    {
+      cfgContent: z.string().describe("COMTRADE .cfg configuration file content"),
+      datContent: z.string().describe("COMTRADE ASCII .dat data file content"),
+      channelIndex: z.number().optional().default(0).describe("0-indexed analog channel to extract"),
+    },
+    async ({ cfgContent, datContent, channelIndex }) => {
+      try {
+        const cfg = parseComtradeCfg(cfgContent);
+        const record = parseComtradeDatAscii(datContent, cfg);
+        const phasors = extractPhasorSeries(record, channelIndex);
+        const chName = cfg.analogChannels[channelIndex]?.name ?? `CH_${channelIndex}`;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  stationName: cfg.stationName,
+                  channelIndex,
+                  channelName: chName,
+                  nominalFrequencyHz: cfg.nominalFrequency ?? cfg.lineFrequencyHz,
+                  totalWindows: phasors.length,
+                  phasors: phasors.slice(0, 100),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `COMTRADE extraction error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── scl_validate_goose ──────────────────────────────────────────────────
+
+  server.tool(
+    "scl_validate_goose",
+    "Validate IEC 61850 GOOSE and Sampled Values publisher/subscriber communication stream latency and dataflow.",
+    {
+      sclXml: z.string().describe("IEC 61850 SCL XML (.scd, .cid, .ssd) content"),
+    },
+    async ({ sclXml }) => {
+      try {
+        const doc = parseSclXml(sclXml);
+        const report = validateGooseStreams(doc);
+        const topology = sclToGridTopology(doc);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  substationName: doc.substation?.name ?? doc.header.id,
+                  totalGooseStreams: report.totalGooseStreams,
+                  totalPublishers: report.totalPublishers,
+                  totalSubscribers: report.totalSubscribers,
+                  isValid: report.isValid,
+                  diagnostics: report.diagnostics,
+                  breakersInTopology: topology.breakerCount,
+                  disconnectorsInTopology: topology.disconnectorCount,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `SCL GOOSE validation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── waterml_fit_rating_curve ────────────────────────────────────────────
+
+  server.tool(
+    "waterml_fit_rating_curve",
+    "Fit a non-linear stage-discharge power-law rating curve Q = a * (h - h0)^b from hydrologic stage/discharge pairs.",
+    {
+      observations: z
+        .array(
+          z.object({
+            stageM: z.number().describe("Stage / water surface elevation (m)"),
+            dischargeM3S: z.number().describe("Discharge flow rate (m³/s)"),
+          }),
+        )
+        .describe("Observed stage and discharge pairs"),
+    },
+    async ({ observations }) => {
+      try {
+        const fit = fitRatingCurve(observations);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  equation: fit.equation,
+                  formula: `Q = ${fit.equation.a.toFixed(4)} * (h - ${fit.equation.h0.toFixed(4)})^${fit.equation.b.toFixed(4)}`,
+                  residualMax: fit.residualMax,
+                  rmse: fit.rmse,
+                  converged: fit.converged,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `WaterML rating curve fit error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── atp_simulate_transient ──────────────────────────────────────────────
+
+  server.tool(
+    "atp_simulate_transient",
+    "Simulate electromagnetic transient companion-matrix trapezoidal response from an ATP-EMTP card deck.",
+    {
+      atpDeck: z.string().describe("ATP-EMTP card deck text (.atp, .dat)"),
+    },
+    async ({ atpDeck }) => {
+      try {
+        const atpCase = parseAtp(atpDeck);
+        const result = simulateAtpCase(atpCase);
+        const summaryVoltages: Record<string, number> = {};
+        for (const [node, series] of result.nodeVoltages) {
+          summaryVoltages[node] = series[series.length - 1] ?? 0.0;
+        }
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  title: atpCase.title,
+                  stepCount: result.stepCount,
+                  monitoredNodes: Array.from(result.nodeVoltages.keys()),
+                  finalVoltages: summaryVoltages,
+                  residualMax: result.residualMax,
+                  rmse: result.rmse,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `ATP transient simulation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── dnp3_process_telemetry ──────────────────────────────────────────────
+
+  server.tool(
+    "dnp3_process_telemetry",
+    "Filter telemetry analog stream using IEEE 1815 / DNP3 deadband thresholding and evaluate signal reconstruction.",
+    {
+      samples: z.array(z.number()).describe("Array of raw numeric telemetry readings"),
+      deadband: z.number().optional().default(0.5).describe("Absolute deadband threshold for event reporting"),
+      scalingMultiplier: z.number().optional().default(1.0).describe("Sensor scaling slope factor"),
+      scalingOffset: z.number().optional().default(0.0).describe("Sensor scaling additive offset"),
+    },
+    async ({ samples, deadband, scalingMultiplier, scalingOffset }) => {
+      try {
+        const ai = {
+          index: 0,
+          name: "AnalogInput0",
+          eventClass: 1 as const,
+          deadband,
+          scalingMultiplier,
+          scalingOffset,
+          units: "Units",
+        };
+        const res = processTelemetryStream(samples, ai);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  rawSampleCount: res.rawSampleCount,
+                  reportedEventCount: res.reportedEventCount,
+                  compressionRatio: res.compressionRatio,
+                  residualMax: res.residualMax,
+                  rmse: res.rmse,
+                  converged: res.converged,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `DNP3 telemetry processing error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── oneliner_calculate_fault ────────────────────────────────────────────
+
+  server.tool(
+    "oneliner_calculate_fault",
+    "Calculate symmetrical components 3-phase and SLG short-circuit fault currents from ASPEN OneLiner (.olx/.dxt) cases.",
+    {
+      caseText: z.string().describe("ASPEN OneLiner DXT text or JSON"),
+      busId: z.string().optional().describe("Bus ID to fault (defaults to first bus)"),
+    },
+    async ({ caseText, busId }) => {
+      try {
+        const oneCase = parseOneLiner(caseText);
+        const targetBus = busId ?? oneCase.busses[0]?.id;
+        if (!targetBus) {
+          throw new Error("No buses found in OneLiner case.");
+        }
+        const fault = calculateBusFaultCurrents(oneCase, targetBus);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  busId: fault.busId,
+                  vNominalVolts: fault.vNominalVolts,
+                  i3PhaseA: fault.i3PhaseA,
+                  iSlgA: fault.iSlgA,
+                  z1Thevenin: fault.z1Thevenin,
+                  z0Thevenin: fault.z0Thevenin,
+                  converged: fault.converged,
+                  residualMax: fault.residualMax,
+                  rmse: fault.rmse,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `OneLiner fault calculation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── sel_evaluate_protection ─────────────────────────────────────────────
+
+  server.tool(
+    "sel_evaluate_protection",
+    "Evaluate Schweitzer Engineering Laboratories (SEL) relay trip logic, 50P instantaneous, and 51P TOC curves.",
+    {
+      settingsText: z.string().describe("SEL relay settings ASCII or JSON text"),
+      phaseCurrentA: z.number().describe("Measured primary phase current in Amperes"),
+      groundCurrentA: z.number().optional().describe("Measured residual/ground current in Amperes"),
+      phaseVoltageV: z.number().optional().describe("Measured phase-to-ground voltage in Volts"),
+    },
+    async ({ settingsText, phaseCurrentA, groundCurrentA, phaseVoltageV }) => {
+      try {
+        const settings = parseSELSettings(settingsText);
+        const result = evaluateRelayProtection(settings, {
+          phaseCurrentA,
+          groundCurrentA,
+          phaseVoltageV,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  tripped: result.tripped,
+                  closed: result.closed,
+                  overcurrentTripTimeSeconds: result.overcurrentTripTimeSeconds,
+                  equationsState: result.equationsState,
+                  distanceZonePickups: result.distanceZonePickups,
+                  converged: result.converged,
+                  iterations: result.iterations,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `SEL protection evaluation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── hec_hms_simulate_runoff ─────────────────────────────────────────────
+
+  server.tool(
+    "hec_hms_simulate_runoff",
+    "Simulate SCS Runoff Curve Number (CN) excess precipitation and unit hydrograph outflow from HEC-HMS basin models.",
+    {
+      basinText: z.string().describe("HEC-HMS basin (.basin) file text"),
+      precipitationMm: z.number().optional().default(50.0).describe("Total storm precipitation depth in mm"),
+      durationHours: z.number().optional().default(24.0).describe("Storm duration in hours"),
+    },
+    async ({ basinText, precipitationMm, durationHours }) => {
+      try {
+        const model = parseHmsBasin(basinText);
+        const sub = model.subbasins.values().next().value;
+        if (!sub) {
+          throw new Error("No subbasins found in HEC-HMS model.");
+        }
+        const hydrograph = simulateSubbasinRunoff(sub, {
+          precipitationTotal: precipitationMm,
+          durationHours,
+          unitSystem: model.unitSystem,
+        });
+        let peakQ = 0;
+        let peakT = 0;
+        let totalVol = 0;
+        for (const pt of hydrograph) {
+          if (pt.flow > peakQ) {
+            peakQ = pt.flow;
+            peakT = pt.timeHours;
+          }
+          totalVol += pt.flow * 3600 * 0.25;
+        }
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  basinName: model.name,
+                  subbasinName: sub.name,
+                  unitSystem: model.unitSystem,
+                  peakDischargeM3s: peakQ,
+                  timeToPeakHours: peakT,
+                  totalVolumeM3: totalVol,
+                  pointsCount: hydrograph.length,
+                  hydrographSample: hydrograph.slice(0, 50),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `HEC-HMS runoff simulation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── asm_evaluate_biokinetics ────────────────────────────────────────────
+
+  server.tool(
+    "asm_evaluate_biokinetics",
+    "Evaluate IWA Activated Sludge Model (ASM1) biological process rates and net substrate/biomass conversion rates.",
+    {
+      concentrations: z
+        .record(z.string(), z.number())
+        .optional()
+        .describe("Component concentrations in g COD/m³ or g N/m³ (e.g. S_S, X_BH, S_O, S_NO, S_NH)"),
+      plantText: z.string().optional().describe("Optional .asm/.bsm plant model description"),
+    },
+    async ({ concentrations, plantText }) => {
+      try {
+        let concs = concentrations ?? {};
+        let plantName = "Default_BSM1";
+        if (plantText) {
+          const plant = parseAsmPlant(plantText);
+          plantName = plant.name;
+          if (!concentrations) {
+            concs = plant.influentConcentrations;
+          }
+        }
+        const processRates = evaluateAsm1ProcessRates(concs);
+        const conversionRates = computeAsm1ConversionRates(concs);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  plantName,
+                  processRates: {
+                    aerobicHeterotrophGrowth: processRates[0],
+                    anoxicDenitrification: processRates[1],
+                    aerobicAutotrophGrowth: processRates[2],
+                    heterotrophDecay: processRates[3],
+                    autotrophDecay: processRates[4],
+                    ammonification: processRates[5],
+                    hydrolysisSubstrate: processRates[6],
+                    hydrolysisOrganicN: processRates[7],
+                  },
+                  conversionRates,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `ASM biokinetics evaluation error: ${getErrorMessage(err)}` }],
         };
       }
     },

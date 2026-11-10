@@ -7,6 +7,7 @@ import {
   evaluateConstantArenaExpression,
   ExprKind,
   StmtKind,
+  VarAttrKind,
   Variability,
 } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "./errors.js";
@@ -2146,6 +2147,51 @@ export class ModelicaPortBalancer {
             }
           }
         }
+        // Modelica Language Specification (MLS §5.6.1):
+        // "If a variable is in a connection set, the start-value of the connection set
+        //  is chosen from the variables in the set with an explicit start value."
+        let explicitStartVar: number | undefined;
+        for (const vIdx of group) {
+          if (
+            dae.isVarFixed(vIdx) &&
+            (dae.getVarAttrExprId(vIdx, "start") !== undefined || dae.getVarStartValue(vIdx) !== 0)
+          ) {
+            explicitStartVar = vIdx;
+            break;
+          }
+        }
+        if (explicitStartVar === undefined) {
+          for (const vIdx of group) {
+            if (dae.getVarAttrExprId(vIdx, "start") !== undefined || dae.getVarStartValue(vIdx) !== 0) {
+              explicitStartVar = vIdx;
+              break;
+            }
+          }
+        }
+        if (explicitStartVar !== undefined) {
+          const chosenVal = dae.getVarStartValue(explicitStartVar);
+          const chosenAttr = dae.getVarAttrExprId(explicitStartVar, "start");
+          const isFixed = dae.isVarFixed(explicitStartVar);
+          const fixedAttr = dae.getVarAttrExprId(explicitStartVar, "fixed");
+          for (const vIdx of group) {
+            if (vIdx !== explicitStartVar) {
+              const hasAttr = dae.getVarAttrExprId(vIdx, "start") !== undefined;
+              const curVal = dae.getVarStartValue(vIdx);
+              if (!hasAttr && curVal === 0) {
+                dae.setVarStartValue(vIdx, chosenVal);
+                if (chosenAttr !== undefined) {
+                  dae.setVarAttrExpr(vIdx, VarAttrKind.Start, chosenAttr);
+                }
+              }
+              if (isFixed && !dae.isVarFixed(vIdx)) {
+                dae.setVarFixed(vIdx, true);
+                if (fixedAttr !== undefined) {
+                  dae.setVarAttrExpr(vIdx, VarAttrKind.Fixed, fixedAttr);
+                }
+              }
+            }
+          }
+        }
         let potRoot = root;
         let orderedGroup = group;
         const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
@@ -2280,8 +2326,7 @@ export class ModelicaPortBalancer {
         const hasOutside =
           groupHasOutsideVar ||
           ((options?.isOldFrontend || options?.omcCompatibility) &&
-            (minDots < maxDots ||
-              group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx))));
+            (minDots < maxDots || group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx))));
         const isWorldGroup =
           options?.omcCompatibility &&
           ((group.length > 2 && group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))) ||
@@ -2402,34 +2447,81 @@ export class ModelicaPortBalancer {
                 }
                 list.push(ep);
               }
+              // MLS §9.2 2-connector flow alias substitution for intermediate outside ports:
+              // If an intermediate outside variable is connected in a 2-endpoint component
+              // to an external port, alias it directly: intVar = scale * extVar.
+              // This substitutes intVar in the internal component sum and eliminates the 2-endpoint equation.
+              const intAliasMap = new Map<number, { extVar: number; scale: number }>();
+              const eliminatedComps = new Set<number[]>();
+
               for (const comp of epComps.values()) {
+                if (comp.length === 2) {
+                  const ep0 = comp[0]!;
+                  const ep1 = comp[1]!;
+                  const v0 = ep0 >> 1;
+                  const v1 = ep1 >> 1;
+                  const is0Int = isIntermediateOutside(v0);
+                  const is1Int = isIntermediateOutside(v1);
+                  if (is0Int !== is1Int) {
+                    const intEp = is0Int ? ep0 : ep1;
+                    const extEp = is0Int ? ep1 : ep0;
+                    const intVar = intEp >> 1;
+                    const extVar = extEp >> 1;
+                    const signInt = (intEp & 1) === 1 ? -1 : 1;
+                    const signExt = (extEp & 1) === 1 ? -1 : 1;
+                    const scale = -(signExt / signInt);
+                    intAliasMap.set(intVar, { extVar, scale });
+                    eliminatedComps.add(comp);
+                  }
+                }
+              }
+
+              for (const comp of epComps.values()) {
+                if (eliminatedComps.has(comp)) continue;
                 if (comp.length <= 1) continue;
                 if (options?.omcCompatibility) {
                   comp.sort((a, b) => dae.getVarName(a >> 1).localeCompare(dae.getVarName(b >> 1)));
                 }
-                const firstEp = comp[0]!;
-                const firstVar = firstEp >> 1;
-                const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVar));
-                let compSumExpr = (firstEp & 1) === 1 ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
-                for (let i = 1; i < comp.length; i++) {
+                let compSumExpr = -1;
+                let firstVar = -1;
+                let compEqIdx = 99999;
+
+                for (let i = 0; i < comp.length; i++) {
                   const ep = comp[i]!;
                   const vIdx = ep >> 1;
-                  const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                  const term = (ep & 1) === 1 ? dae.addExpression(ExprKind.Negate, 0, vExpr) : vExpr;
-                  compSumExpr = dae.addBinaryExpr(BinOp.Add, compSumExpr, term);
-                }
-                let compEqIdx = 99999;
-                for (const ep of comp) {
-                  const rank = epMinEqIdx.get(ep) ?? varConnectEqIdx.get(ep >> 1);
+                  const rawSign = (ep & 1) === 1 ? -1 : 1;
+                  let finalVar = vIdx;
+                  let finalSign = rawSign;
+
+                  if (intAliasMap.has(vIdx)) {
+                    const alias = intAliasMap.get(vIdx)!;
+                    finalVar = alias.extVar;
+                    finalSign = rawSign * alias.scale;
+                  }
+
+                  if (firstVar === -1) firstVar = finalVar;
+
+                  const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(finalVar));
+                  const term = finalSign === -1 ? dae.addExpression(ExprKind.Negate, 0, vExpr) : vExpr;
+                  compSumExpr = compSumExpr === -1 ? term : dae.addBinaryExpr(BinOp.Add, compSumExpr, term);
+
+                  const rank = epMinEqIdx.get(ep) ?? varConnectEqIdx.get(vIdx);
                   if (rank !== undefined && rank < compEqIdx) compEqIdx = rank;
                 }
-                flowSumEqs.push({
-                  kind: EqKind.Simple,
-                  lhs: compSumExpr,
-                  rhs: zeroExpr,
-                  str: dae.getVarName(firstVar),
-                  eqIdx: compEqIdx,
-                });
+
+                if (compSumExpr !== -1 && firstVar !== -1) {
+                  flowSumEqs.push({
+                    kind: EqKind.Simple,
+                    lhs: compSumExpr,
+                    rhs: zeroExpr,
+                    str: dae.getVarName(firstVar),
+                    eqIdx: compEqIdx,
+                  });
+                }
+              }
+
+              for (const intVar of intAliasMap.keys()) {
+                dae.removeVariable(intVar);
               }
               for (const vIdx of activeOutsideVars) {
                 if (group.every((v) => !dae.getVarName(v).includes("."))) continue;
@@ -3136,6 +3228,13 @@ export class ModelicaPortBalancer {
           const rhsExpr = dae.addArrayCtorExpr(zeros);
           dae.addEquation(EqKind.Simple, callExpr, rhsExpr);
         }
+      }
+    }
+
+    // 7. Retire processed connect equations
+    for (let i = 0; i < dae.eqCount; i++) {
+      if (dae.getEqKind(i) === EqKind.Connect) {
+        dae.removeEquation(i);
       }
     }
   }

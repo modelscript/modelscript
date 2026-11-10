@@ -11,12 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  parsePhreeqc,
-  solvePhreeqcSpeciation,
-  lowerPhreeqcToDae,
-  type PhreeqcDocument,
-} from "../src/index.js";
+import { lowerPhreeqcToDae, parsePhreeqc, solvePhreeqcSpeciation, type PhreeqcDocument } from "../src/index.js";
 
 export const KARST_AQUIFER_PHREEQC_BENCHMARK = `TITLE Limestone Aquifer Speciation & Calcite Kinetics
 # Standard karst groundwater geochemical deck
@@ -108,7 +103,7 @@ export function runPhreeqcBenchmark(pqiStr = KARST_AQUIFER_PHREEQC_BENCHMARK): P
   assert.equal(varCount, eqCount);
 
   return {
-    title: doc.title,
+    title: doc.title ?? "Calcite Dissolution Equilibrium",
     solutionsCount: doc.solutions.size,
     equilibriumPhasesCount: doc.equilibriumPhases.length,
     reactionsCount: doc.reactions.size,

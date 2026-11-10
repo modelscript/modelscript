@@ -13,18 +13,27 @@
  */
 
 import {
+  SparseTripletBuilder,
   computeAmdOrdering,
   getDefaultWasmExports,
-  type SparseCCSMatrix,
-  type SparseLUFactors,
-  SparseTripletBuilder,
   sparseLuAnalyze,
   sparseLuRefactorize,
   sparseLuSolve,
+  type SparseCCSMatrix,
+  type SparseLUFactors,
 } from "@modelscript/runtime";
 import { extractEmtNetlistFromXml } from "../netlist/emt-netlist.js";
-import type { EmtNetlist } from "../types.js";
+import {
+  EmtdcHostBridge,
+  type EmtdcRegisteredUdm,
+  type EmtdcWasmMachinaDllRunner,
+} from "../script/emtdc-abi-bridge.js";
+import type { EmtCustomFortranBlock, EmtNetlist } from "../types.js";
+import { OemLicenseError, OemLicensePreflightGuard, type OemLicensePreflightGuardOptions } from "./license-guard.js";
+import { createUniversalLineModel, stepUlmLine, type UniversalLineModelData } from "./universal-line-model.js";
 import { synthesizeFdLineModel } from "./vector-fitting.js";
+
+export { OemLicenseError, OemLicensePreflightGuard, type OemLicensePreflightGuardOptions, type UniversalLineModelData };
 
 export interface PscadSnapshot {
   formatVersion: "1.0";
@@ -88,6 +97,17 @@ export interface EmtSolverOptions {
   onStep?:
     | ((t: number, stepIdx: number, busVoltages: Map<string, { a: number; b: number; c: number }>) => void)
     | undefined;
+  /**
+   * Whether to strictly enforce hardware dongle / DRM license checks on OEM black-box binary DLLs.
+   * If true, any OEM binary block requiring CodeMeter or Sentinel HASP licensing will be validated
+   * pre-flight; if unlicensed or no dongle is present, simulation immediately throws OemLicenseError.
+   * Default: false.
+   */
+  strictDrmLicense?: boolean | undefined;
+  /**
+   * Optional custom DRM license options or DongleManager instance to verify against.
+   */
+  drmLicenseOptions?: import("@modelscript/exchange").DrmLicenseOptions | undefined;
 }
 
 export interface EmtSolverMetrics {
@@ -166,6 +186,18 @@ interface BergeronLineState {
   imkBufA: Float64Array;
   imkBufB: Float64Array;
   imkBufC: Float64Array;
+  /** Whether multi-conductor Clarke modal transformation is active for this 3-phase line. */
+  hasModal: boolean;
+  delaySteps0: number;
+  fracDelay0: number;
+  gBerg0: number;
+  hLoss0: number;
+  delaySteps1: number;
+  fracDelay1: number;
+  gBerg1: number;
+  hLoss1: number;
+  gSelf: number;
+  gMutual: number;
   /** Whether frequency-dependent ULM / J. Marti recursive convolution is active for this line. */
   isFdpm: boolean;
   d0: number;
@@ -271,11 +303,16 @@ interface LegacyLineLike {
   r0PerKm?: number | undefined;
   l0PerKm?: number | undefined;
   c0PerKm?: number | undefined;
+  r0TotalOhm?: number | undefined;
+  l0TotalHenry?: number | undefined;
+  c0TotalFarad?: number | undefined;
+  hasModal?: boolean | undefined;
   towerHeightM?: number | undefined;
   phaseSpacingM?: number | undefined;
   conductorRadiusM?: number | undefined;
   soilResistivityOhmM?: number | undefined;
-  modelType?: "bergeron" | "pi" | "fdpm" | undefined;
+  modelType?: "bergeron" | "pi" | "fdpm" | "ulm" | undefined;
+  ulmData?: UniversalLineModelData | undefined;
   poles?: number[] | undefined;
   residues?: number[] | undefined;
   d0?: number | undefined;
@@ -369,18 +406,8 @@ interface EmtWasmExports {
     maxPolesY: number,
     maxPolesH: number,
   ) => number;
-  emt_add_fd_line_y_pole?: (
-    solverPtr: number,
-    fdLineIdx: number,
-    poleRad: number,
-    residueSiemens: number,
-  ) => number;
-  emt_add_fd_line_h_pole?: (
-    solverPtr: number,
-    fdLineIdx: number,
-    poleRad: number,
-    residueDimless: number,
-  ) => number;
+  emt_add_fd_line_y_pole?: (solverPtr: number, fdLineIdx: number, poleRad: number, residueSiemens: number) => number;
+  emt_add_fd_line_h_pole?: (solverPtr: number, fdLineIdx: number, poleRad: number, residueDimless: number) => number;
   emt_add_fault?: (
     solverPtr: number,
     nodeA: number,
@@ -452,6 +479,10 @@ interface SurgeArresterState {
   vRefVolts: number;
   rClampOhm: number;
   energyJoules: number;
+  /** Precomputed Thévenin driving-point impedance per phase (Ohm). */
+  zThPhase: [number, number, number];
+  /** Precomputed Thévenin response vector G3^-1 * e_uv per phase. */
+  xThPhase: [Float64Array, Float64Array, Float64Array];
 }
 
 interface FmuState {
@@ -503,6 +534,7 @@ export class EmtSolver {
   private readonly busIdxMap = new Map<string, number>();
   private readonly companionBranches: CompanionBranch[] = [];
   private readonly bergeronLines: BergeronLineState[] = [];
+  private readonly ulmLines: UniversalLineModelData[] = [];
   private readonly syncGenerators: SyncGenState[] = [];
   private readonly switchStates: SwitchState[] = [];
   private readonly fmuStates: FmuState[] = [];
@@ -524,6 +556,18 @@ export class EmtSolver {
   private iB = new Map<string, Float64Array>();
   private iC = new Map<string, Float64Array>();
   private controlSignals = new Map<string, Float64Array>();
+  private emtdcHostBridge: EmtdcHostBridge | null = null;
+  private readonly licenseGuard: OemLicensePreflightGuard;
+  private readonly customBlockStates: Array<{
+    block: EmtCustomFortranBlock;
+    udm: EmtdcRegisteredUdm;
+    runner?: EmtdcWasmMachinaDllRunner | undefined;
+    busIdx: number;
+    ia?: Float64Array | undefined;
+    ib?: Float64Array | undefined;
+    ic?: Float64Array | undefined;
+    signalTrajs: Map<string, Float64Array>;
+  }> = [];
 
   // Coupled 3N x 3N phase-domain nodal conductance matrix & RHS vector
   private G3!: Float64Array;
@@ -572,6 +616,11 @@ export class EmtSolver {
       netlist.sources?.[0]?.rSourceOhm !== undefined && netlist.sources[0].rSourceOhm > 0
         ? netlist.sources[0].rSourceOhm
         : 1.5;
+
+    this.licenseGuard = new OemLicensePreflightGuard({
+      strictDrmLicense: options.strictDrmLicense,
+      drmOptions: options.drmLicenseOptions,
+    });
 
     this.initializeTopology();
 
@@ -750,6 +799,29 @@ export class EmtSolver {
       const cTotal = ln.cTotalFarad ?? (lengthKm > 0 ? (ln.cPerKm ?? 1.1e-8) * lengthKm : 0.0);
       const modelType = ln.modelType ?? (lengthKm > 0 && cTotal > 0 ? "bergeron" : "pi");
 
+      if (modelType === "ulm" && fromIdx >= 0 && toIdx >= 0) {
+        const ulm =
+          ln.ulmData ??
+          createUniversalLineModel({
+            id: ln.id,
+            fromBus,
+            toBus,
+            fromIdx,
+            toIdx,
+            lengthKm: lengthKm > 0 ? lengthKm : 100.0,
+            dtSec: this.timeStepSec,
+            rPerKm: ln.rPerKm ?? (lengthKm > 0 ? rTotal / lengthKm : 0.03),
+            lPerKm: ln.lPerKm ?? (lengthKm > 0 ? lTotal / lengthKm : 0.001),
+            cPerKm: ln.cPerKm ?? (lengthKm > 0 ? cTotal / lengthKm : 1.1e-8),
+            r0PerKm: ln.r0PerKm,
+            l0PerKm: ln.l0PerKm,
+            c0PerKm: ln.c0PerKm,
+          });
+        this.ulmLines.push(ulm);
+        this.registerBranchBuffers(ln.id);
+        return;
+      }
+
       const tau = lTotal > 0 && cTotal > 0 ? Math.sqrt(lTotal * cTotal) : 0;
       if (modelType !== "pi" && tau >= this.timeStepSec && fromIdx >= 0 && toIdx >= 0) {
         const zChar = Math.sqrt(lTotal / cTotal);
@@ -760,7 +832,54 @@ export class EmtSolver {
         const exactSteps = tau / this.timeStepSec;
         const delaySteps = Math.max(1, Math.floor(exactSteps));
         const fracDelay = Math.max(0, Math.min(1, exactSteps - delaySteps));
-        const bufLen = delaySteps + 3;
+
+        const hasModal = Boolean(
+          ln.hasModal ||
+          ln.r0PerKm !== undefined ||
+          ln.l0PerKm !== undefined ||
+          ln.c0PerKm !== undefined ||
+          ln.r0TotalOhm !== undefined ||
+          ln.l0TotalHenry !== undefined ||
+          ln.c0TotalFarad !== undefined,
+        );
+
+        let delaySteps0 = delaySteps;
+        let fracDelay0 = fracDelay;
+        let gBerg0 = gBerg;
+        let hLoss0 = hLoss;
+        let delaySteps1 = delaySteps;
+        let fracDelay1 = fracDelay;
+        let gBerg1 = gBerg;
+        let hLoss1 = hLoss;
+        let gSelf = gBerg;
+        let gMutual = 0.0;
+
+        if (hasModal) {
+          const r0Total = ln.r0TotalOhm ?? (lengthKm > 0 && ln.r0PerKm ? ln.r0PerKm * lengthKm : 3.0 * rTotal);
+          const l0Total = ln.l0TotalHenry ?? (lengthKm > 0 && ln.l0PerKm ? ln.l0PerKm * lengthKm : 3.0 * lTotal);
+          const c0Total = ln.c0TotalFarad ?? (lengthKm > 0 && ln.c0PerKm ? ln.c0PerKm * lengthKm : 0.65 * cTotal);
+
+          const tau0 = l0Total > 0 && c0Total > 0 ? Math.sqrt(l0Total * c0Total) : tau;
+          const zChar0 = Math.sqrt(l0Total / c0Total);
+          const rQuarter0 = 0.25 * Math.max(0, r0Total);
+          const zBerg0 = Math.max(1e-3, zChar0 + rQuarter0);
+          gBerg0 = 1.0 / zBerg0;
+          hLoss0 = Math.max(-0.999, Math.min(1.0, (zChar0 - rQuarter0) / zBerg0));
+          const exactSteps0 = tau0 / this.timeStepSec;
+          delaySteps0 = Math.max(1, Math.floor(exactSteps0));
+          fracDelay0 = Math.max(0, Math.min(1, exactSteps0 - delaySteps0));
+
+          delaySteps1 = delaySteps;
+          fracDelay1 = fracDelay;
+          gBerg1 = gBerg;
+          hLoss1 = hLoss;
+
+          gSelf = (1.0 / 3.0) * gBerg0 + (2.0 / 3.0) * gBerg1;
+          gMutual = (1.0 / 3.0) * (gBerg0 - gBerg1);
+        }
+
+        const maxDelay = Math.max(delaySteps, delaySteps0, delaySteps1);
+        const bufLen = maxDelay + 3;
         const { ia, ib, ic } = this.registerBranchBuffers(ln.id);
 
         const isFdpm = modelType === "fdpm";
@@ -787,11 +906,7 @@ export class EmtSolver {
           : null;
 
         const rawPoles =
-          isFdpm && ln.poles && ln.poles.length > 0
-            ? ln.poles
-            : fdSynth
-              ? Array.from(fdSynth.hPoles)
-              : [];
+          isFdpm && ln.poles && ln.poles.length > 0 ? ln.poles : fdSynth ? Array.from(fdSynth.hPoles) : [];
         const nPoles = rawPoles.length;
         const expDecays = new Float64Array(nPoles);
         const convGains = new Float64Array(nPoles);
@@ -860,6 +975,17 @@ export class EmtSolver {
           imkBufA: new Float64Array(bufLen),
           imkBufB: new Float64Array(bufLen),
           imkBufC: new Float64Array(bufLen),
+          hasModal,
+          delaySteps0,
+          fracDelay0,
+          gBerg0,
+          hLoss0,
+          delaySteps1,
+          fracDelay1,
+          gBerg1,
+          hLoss1,
+          gSelf,
+          gMutual,
           isFdpm,
           d0,
           gInf: fdSynth ? fdSynth.gInf : gBerg,
@@ -957,13 +1083,17 @@ export class EmtSolver {
       const toIdx = toBus === "0" || toBus === "GND" ? -1 : (this.busIdxMap.get(toBus) ?? -1);
       if (fromIdx === -1 && toIdx === -1) continue;
       const vRefVolts = (arr.vRefKv ?? 400.0) * 1e3;
+      const rClampOhm = arr.rClampOhm ?? 0.5;
+      const n3 = this.nPhaseNodes;
       this.surgeArresters.push({
         id: arr.id,
         fromIdx,
         toIdx,
         vRefVolts,
-        rClampOhm: 0.5,
+        rClampOhm,
         energyJoules: 0.0,
+        zThPhase: [50.0, 50.0, 50.0],
+        xThPhase: [new Float64Array(n3), new Float64Array(n3), new Float64Array(n3)],
       });
     }
 
@@ -990,7 +1120,16 @@ export class EmtSolver {
       const toIdx = sw.toBus === "0" || sw.toBus === "GND" ? -1 : (this.busIdxMap.get(sw.toBus) ?? -1);
       const { ia, ib, ic } = this.registerBranchBuffers(sw.id);
       const initClosed = Boolean(sw.initialClosed);
-      this.switchStates.push({ sw, fromIdx, toIdx, currentClosed: initClosed, phaseClosed: [initClosed, initClosed, initClosed], ia, ib, ic });
+      this.switchStates.push({
+        sw,
+        fromIdx,
+        toIdx,
+        currentClosed: initClosed,
+        phaseClosed: [initClosed, initClosed, initClosed],
+        ia,
+        ib,
+        ic,
+      });
     }
     for (const brk of netlistExt.breakers ?? []) {
       const fromIdx = brk.from === "0" || brk.from === "GND" ? -1 : (this.busIdxMap.get(brk.from) ?? -1);
@@ -1126,9 +1265,90 @@ export class EmtSolver {
       if (!this.busSources.has(i) && !hasSyncGen) {
         const hasBranch =
           this.companionBranches.some((b) => b.fromIdx === i || b.toIdx === i) ||
-          this.bergeronLines.some((l) => l.fromIdx === i || l.toIdx === i);
+          this.bergeronLines.some((l) => l.fromIdx === i || l.toIdx === i) ||
+          this.ulmLines.some((l) => l.fromIdx === i || l.toIdx === i);
         const gStab = hasBranch ? 1e-5 : 1e-4;
         this.busSources.set(i, [{ vPeak: 0.0, freqRad: 0, phaseRad: 0.0, gSrc: gStab }]);
+      }
+    }
+
+    // Register EMTDC Fortran / C / Binary UDM blocks
+    if (this.netlist.customFortranBlocks && this.netlist.customFortranBlocks.length > 0) {
+      this.emtdcHostBridge = new EmtdcHostBridge({
+        timeStepSec: this.timeStepSec,
+        maxNodes: Math.max(1024, this.nBuses + 1),
+      });
+
+      for (const block of this.netlist.customFortranBlocks) {
+        let udm: EmtdcRegisteredUdm;
+        let runner: EmtdcWasmMachinaDllRunner | undefined;
+        if (block.binaryBuffer) {
+          const drmOptions =
+            this.options.drmLicenseOptions ??
+            (this.options.strictDrmLicense || block.requireHardwareDongle
+              ? {
+                  mode: "strict" as const,
+                  allowedFirmCodes: block.drmFirmCode !== undefined ? [block.drmFirmCode] : undefined,
+                  allowedProductCodes: block.drmProductCode !== undefined ? [block.drmProductCode] : undefined,
+                }
+              : undefined);
+          const res = this.emtdcHostBridge.registerBinaryDll({
+            id: block.id,
+            binaryBuffer: block.binaryBuffer,
+            dsdynSymbol: block.dsdynSymbol,
+            dsoutSymbol: block.dsoutSymbol,
+            portNames: (block.referencedPorts ?? []).concat(block.assignedPorts ?? []),
+            numRealStates: block.numRealStates,
+            numIntStates: block.numIntStates,
+            drmOptions,
+          });
+          udm = res.udm;
+          runner = res.runner;
+        } else if (block.step) {
+          udm = this.emtdcHostBridge.registerCustomFortranBlock(block);
+        } else {
+          udm = this.emtdcHostBridge.registerUdm({
+            id: block.id,
+            subroutineName: block.name,
+            numRealStates: block.numRealStates,
+            numIntStates: block.numIntStates,
+          });
+        }
+
+        const busId =
+          block.connectedBus ??
+          block.outputs?.find((o) => this.busIdxMap.has(o.targetId ?? ""))?.targetId ??
+          block.inputs?.find((i) => this.busIdxMap.has(i.sourceId ?? ""))?.sourceId;
+        const busIdx = busId ? (this.busIdxMap.get(busId) ?? -1) : -1;
+
+        let ia: Float64Array | undefined;
+        let ib: Float64Array | undefined;
+        let ic: Float64Array | undefined;
+        if (busIdx >= 0) {
+          const buffers = this.registerBranchBuffers(block.id);
+          ia = buffers.ia;
+          ib = buffers.ib;
+          ic = buffers.ic;
+        }
+
+        const signalTrajs = new Map<string, Float64Array>();
+        const allPorts = (block.assignedPorts ?? []).concat(block.referencedPorts ?? []);
+        for (const port of allPorts) {
+          const traj = new Float64Array(this.nSteps);
+          signalTrajs.set(port, traj);
+          this.controlSignals.set(`${block.id}_${port}`, traj);
+        }
+
+        this.customBlockStates.push({
+          block,
+          udm,
+          runner,
+          busIdx,
+          ia,
+          ib,
+          ic,
+          signalTrajs,
+        });
       }
     }
   }
@@ -1273,6 +1493,34 @@ export class EmtSolver {
   }
 
   /**
+   * Precomputes Thévenin driving-point impedances zTh and response vectors xTh = G3^-1 * e_uv
+   * for all registered Metal Oxide Surge Arresters (MOVs) whenever G3 is factorized.
+   */
+  private updateSurgeArresterTheveninVectors(): void {
+    if (this.surgeArresters.length === 0) return;
+    const n3 = this.nPhaseNodes;
+    const e = new Float64Array(n3);
+
+    for (const arr of this.surgeArresters) {
+      for (let p = 0; p < 3; p++) {
+        const u = arr.fromIdx >= 0 ? 3 * arr.fromIdx + p : -1;
+        const v = arr.toIdx >= 0 ? 3 * arr.toIdx + p : -1;
+        if (u < 0 && v < 0) continue;
+
+        e.fill(0);
+        if (u >= 0) e[u] = 1.0;
+        if (v >= 0) e[v] = -1.0;
+
+        const x = arr.xThPhase[p]!;
+        this.solveFromLU3Phase(this.LU3, this.piv3, e, x);
+
+        const zTh = (u >= 0 ? x[u]! : 0.0) - (v >= 0 ? x[v]! : 0.0);
+        arr.zThPhase[p] = Math.max(1e-4, zTh);
+      }
+    }
+  }
+
+  /**
    * Stamps a scalar conductance g between two scalar phase-node indices (p1, p2 in 0..3N-1).
    */
   private stampNodeAdmittance(p1: number, p2: number, g: number): void {
@@ -1312,6 +1560,29 @@ export class EmtSolver {
             this.stampEntry(pi1, pj2, -gMut);
             this.stampEntry(pj2, pi1, -gMut);
           }
+        }
+      }
+    }
+  }
+
+  /**
+   * Stamps a 3-phase Universal Line Model (ULM) high-frequency terminal admittance matrix G_eq (3x3)
+   * into the diagonal blocks of terminal bus K (fromIdx) and terminal bus M (toIdx).
+   */
+  private stampUlmModel(ulm: UniversalLineModelData): void {
+    if (ulm.fromIdx >= 0) {
+      const baseK = 3 * ulm.fromIdx;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          this.stampEntry(baseK + r, baseK + c, ulm.gEq[r * 3 + c]!);
+        }
+      }
+    }
+    if (ulm.toIdx >= 0) {
+      const baseM = 3 * ulm.toIdx;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          this.stampEntry(baseM + r, baseM + c, ulm.gEq[r * 3 + c]!);
         }
       }
     }
@@ -1604,29 +1875,84 @@ export class EmtSolver {
     const c1 = 0.5 * (1.0 + hLoss);
     const c2 = 0.5 * (1.0 - hLoss);
 
-    const vkDelA = this.readDelayed(bl.vkBufA, ptr, bufLen, delaySteps, fracDelay);
-    const vkDelB = this.readDelayed(bl.vkBufB, ptr, bufLen, delaySteps, fracDelay);
-    const vkDelC = this.readDelayed(bl.vkBufC, ptr, bufLen, delaySteps, fracDelay);
+    let rawKmA: number;
+    let rawKmB: number;
+    let rawKmC: number;
+    let rawMkA: number;
+    let rawMkB: number;
+    let rawMkC: number;
 
-    const vmDelA = this.readDelayed(bl.vmBufA, ptr, bufLen, delaySteps, fracDelay);
-    const vmDelB = this.readDelayed(bl.vmBufB, ptr, bufLen, delaySteps, fracDelay);
-    const vmDelC = this.readDelayed(bl.vmBufC, ptr, bufLen, delaySteps, fracDelay);
+    if (bl.hasModal) {
+      // 1. Retrieve delayed Mode 0 (Ground return mode with slower velocity tau0)
+      const vkDel0 = this.readDelayed(bl.vkBufA, ptr, bufLen, bl.delaySteps0, bl.fracDelay0);
+      const vmDel0 = this.readDelayed(bl.vmBufA, ptr, bufLen, bl.delaySteps0, bl.fracDelay0);
+      const ikmDel0 = this.readDelayed(bl.ikmBufA, ptr, bufLen, bl.delaySteps0, bl.fracDelay0);
+      const imkDel0 = this.readDelayed(bl.imkBufA, ptr, bufLen, bl.delaySteps0, bl.fracDelay0);
 
-    const ikmDelA = this.readDelayed(bl.ikmBufA, ptr, bufLen, delaySteps, fracDelay);
-    const ikmDelB = this.readDelayed(bl.ikmBufB, ptr, bufLen, delaySteps, fracDelay);
-    const ikmDelC = this.readDelayed(bl.ikmBufC, ptr, bufLen, delaySteps, fracDelay);
+      const c1_0 = 0.5 * (1.0 + bl.hLoss0);
+      const c2_0 = 0.5 * (1.0 - bl.hLoss0);
+      const rawKm0 =
+        -c1_0 * (bl.gBerg0 * vmDel0 + bl.hLoss0 * imkDel0) - c2_0 * (bl.gBerg0 * vkDel0 + bl.hLoss0 * ikmDel0);
+      const rawMk0 =
+        -c1_0 * (bl.gBerg0 * vkDel0 + bl.hLoss0 * ikmDel0) - c2_0 * (bl.gBerg0 * vmDel0 + bl.hLoss0 * imkDel0);
 
-    const imkDelA = this.readDelayed(bl.imkBufA, ptr, bufLen, delaySteps, fracDelay);
-    const imkDelB = this.readDelayed(bl.imkBufB, ptr, bufLen, delaySteps, fracDelay);
-    const imkDelC = this.readDelayed(bl.imkBufC, ptr, bufLen, delaySteps, fracDelay);
+      // 2. Retrieve delayed Modes 1 & 2 (Aerial modes with velocity ~ c)
+      const vkDel1 = this.readDelayed(bl.vkBufB, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+      const vmDel1 = this.readDelayed(bl.vmBufB, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+      const ikmDel1 = this.readDelayed(bl.ikmBufB, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+      const imkDel1 = this.readDelayed(bl.imkBufB, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
 
-    const rawKmA = -c1 * (gBerg * vmDelA + hLoss * imkDelA) - c2 * (gBerg * vkDelA + hLoss * ikmDelA);
-    const rawKmB = -c1 * (gBerg * vmDelB + hLoss * imkDelB) - c2 * (gBerg * vkDelB + hLoss * ikmDelB);
-    const rawKmC = -c1 * (gBerg * vmDelC + hLoss * imkDelC) - c2 * (gBerg * vkDelC + hLoss * ikmDelC);
+      const c1_1 = 0.5 * (1.0 + bl.hLoss1);
+      const c2_1 = 0.5 * (1.0 - bl.hLoss1);
+      const rawKm1 =
+        -c1_1 * (bl.gBerg1 * vmDel1 + bl.hLoss1 * imkDel1) - c2_1 * (bl.gBerg1 * vkDel1 + bl.hLoss1 * ikmDel1);
+      const rawMk1 =
+        -c1_1 * (bl.gBerg1 * vkDel1 + bl.hLoss1 * ikmDel1) - c2_1 * (bl.gBerg1 * vmDel1 + bl.hLoss1 * imkDel1);
 
-    const rawMkA = -c1 * (gBerg * vkDelA + hLoss * ikmDelA) - c2 * (gBerg * vmDelA + hLoss * imkDelA);
-    const rawMkB = -c1 * (gBerg * vkDelB + hLoss * ikmDelB) - c2 * (gBerg * vmDelB + hLoss * imkDelB);
-    const rawMkC = -c1 * (gBerg * vkDelC + hLoss * ikmDelC) - c2 * (gBerg * vmDelC + hLoss * imkDelC);
+      const vkDel2 = this.readDelayed(bl.vkBufC, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+      const vmDel2 = this.readDelayed(bl.vmBufC, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+      const ikmDel2 = this.readDelayed(bl.ikmBufC, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+      const imkDel2 = this.readDelayed(bl.imkBufC, ptr, bufLen, bl.delaySteps1, bl.fracDelay1);
+
+      const rawKm2 =
+        -c1_1 * (bl.gBerg1 * vmDel2 + bl.hLoss1 * imkDel2) - c2_1 * (bl.gBerg1 * vkDel2 + bl.hLoss1 * ikmDel2);
+      const rawMk2 =
+        -c1_1 * (bl.gBerg1 * vkDel2 + bl.hLoss1 * ikmDel2) - c2_1 * (bl.gBerg1 * vmDel2 + bl.hLoss1 * imkDel2);
+
+      // 3. Inverse Clarke Transformation T: Modal (0, 1, 2) -> Phase (A, B, C)
+      const SQRT3_HALF = 0.5 * Math.sqrt(3.0);
+      rawKmA = rawKm0 + rawKm1;
+      rawKmB = rawKm0 - 0.5 * rawKm1 + SQRT3_HALF * rawKm2;
+      rawKmC = rawKm0 - 0.5 * rawKm1 - SQRT3_HALF * rawKm2;
+
+      rawMkA = rawMk0 + rawMk1;
+      rawMkB = rawMk0 - 0.5 * rawMk1 + SQRT3_HALF * rawMk2;
+      rawMkC = rawMk0 - 0.5 * rawMk1 - SQRT3_HALF * rawMk2;
+    } else {
+      const vkDelA = this.readDelayed(bl.vkBufA, ptr, bufLen, delaySteps, fracDelay);
+      const vkDelB = this.readDelayed(bl.vkBufB, ptr, bufLen, delaySteps, fracDelay);
+      const vkDelC = this.readDelayed(bl.vkBufC, ptr, bufLen, delaySteps, fracDelay);
+
+      const vmDelA = this.readDelayed(bl.vmBufA, ptr, bufLen, delaySteps, fracDelay);
+      const vmDelB = this.readDelayed(bl.vmBufB, ptr, bufLen, delaySteps, fracDelay);
+      const vmDelC = this.readDelayed(bl.vmBufC, ptr, bufLen, delaySteps, fracDelay);
+
+      const ikmDelA = this.readDelayed(bl.ikmBufA, ptr, bufLen, delaySteps, fracDelay);
+      const ikmDelB = this.readDelayed(bl.ikmBufB, ptr, bufLen, delaySteps, fracDelay);
+      const ikmDelC = this.readDelayed(bl.ikmBufC, ptr, bufLen, delaySteps, fracDelay);
+
+      const imkDelA = this.readDelayed(bl.imkBufA, ptr, bufLen, delaySteps, fracDelay);
+      const imkDelB = this.readDelayed(bl.imkBufB, ptr, bufLen, delaySteps, fracDelay);
+      const imkDelC = this.readDelayed(bl.imkBufC, ptr, bufLen, delaySteps, fracDelay);
+
+      rawKmA = -c1 * (gBerg * vmDelA + hLoss * imkDelA) - c2 * (gBerg * vkDelA + hLoss * ikmDelA);
+      rawKmB = -c1 * (gBerg * vmDelB + hLoss * imkDelB) - c2 * (gBerg * vkDelB + hLoss * ikmDelB);
+      rawKmC = -c1 * (gBerg * vmDelC + hLoss * imkDelC) - c2 * (gBerg * vkDelC + hLoss * ikmDelC);
+
+      rawMkA = -c1 * (gBerg * vkDelA + hLoss * ikmDelA) - c2 * (gBerg * vmDelA + hLoss * imkDelA);
+      rawMkB = -c1 * (gBerg * vkDelB + hLoss * ikmDelB) - c2 * (gBerg * vmDelB + hLoss * imkDelB);
+      rawMkC = -c1 * (gBerg * vkDelC + hLoss * ikmDelC) - c2 * (gBerg * vmDelC + hLoss * imkDelC);
+    }
 
     if (!bl.isFdpm || bl.expDecays.length === 0) {
       return {
@@ -1734,14 +2060,34 @@ export class EmtSolver {
       }
     }
     for (const bl of this.bergeronLines) {
-      for (let p = 0; p < 3; p++) {
-        if (bl.fromIdx >= 0) {
-          this.stampDiagonal(3 * bl.fromIdx + p, bl.gBerg);
+      if (bl.hasModal) {
+        for (let p = 0; p < 3; p++) {
+          if (bl.fromIdx >= 0) {
+            this.stampDiagonal(3 * bl.fromIdx + p, bl.gSelf);
+            for (let q = 0; q < 3; q++) {
+              if (p !== q) this.stampEntry(3 * bl.fromIdx + p, 3 * bl.fromIdx + q, bl.gMutual);
+            }
+          }
+          if (bl.toIdx >= 0) {
+            this.stampDiagonal(3 * bl.toIdx + p, bl.gSelf);
+            for (let q = 0; q < 3; q++) {
+              if (p !== q) this.stampEntry(3 * bl.toIdx + p, 3 * bl.toIdx + q, bl.gMutual);
+            }
+          }
         }
-        if (bl.toIdx >= 0) {
-          this.stampDiagonal(3 * bl.toIdx + p, bl.gBerg);
+      } else {
+        for (let p = 0; p < 3; p++) {
+          if (bl.fromIdx >= 0) {
+            this.stampDiagonal(3 * bl.fromIdx + p, bl.gBerg);
+          }
+          if (bl.toIdx >= 0) {
+            this.stampDiagonal(3 * bl.toIdx + p, bl.gBerg);
+          }
         }
       }
+    }
+    for (const ulm of this.ulmLines) {
+      this.stampUlmModel(ulm);
     }
     for (const swState of this.switchStates) {
       const initClosed = Boolean(swState.sw.initialClosed);
@@ -1765,6 +2111,7 @@ export class EmtSolver {
 
     this.factorize3Phase(this.G3, this.LU3, this.piv3);
     this.luValid = true;
+    this.updateSurgeArresterTheveninVectors();
 
     for (let step = -preSteps; step < 0; step++) {
       const t = step * this.timeStepSec;
@@ -1817,12 +2164,102 @@ export class EmtSolver {
           this.J3[3 * bl.toIdx + 2] = this.J3[3 * bl.toIdx + 2]! - iHistMkC;
         }
       }
+      for (const ulm of this.ulmLines) {
+        const { iHistKmA, iHistKmB, iHistKmC, iHistMkA, iHistMkB, iHistMkC } = stepUlmLine(
+          ulm,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          false,
+        );
+        if (ulm.fromIdx >= 0) {
+          this.J3[3 * ulm.fromIdx + 0] = this.J3[3 * ulm.fromIdx + 0]! - iHistKmA;
+          this.J3[3 * ulm.fromIdx + 1] = this.J3[3 * ulm.fromIdx + 1]! - iHistKmB;
+          this.J3[3 * ulm.fromIdx + 2] = this.J3[3 * ulm.fromIdx + 2]! - iHistKmC;
+        }
+        if (ulm.toIdx >= 0) {
+          this.J3[3 * ulm.toIdx + 0] = this.J3[3 * ulm.toIdx + 0]! - iHistMkA;
+          this.J3[3 * ulm.toIdx + 1] = this.J3[3 * ulm.toIdx + 1]! - iHistMkB;
+          this.J3[3 * ulm.toIdx + 2] = this.J3[3 * ulm.toIdx + 2]! - iHistMkC;
+        }
+      }
+
+      // EMTDC Fortran / Binary UDM DSDYN pre-network steady-state step
+      if (this.emtdcHostBridge && this.customBlockStates.length > 0) {
+        for (const cbs of this.customBlockStates) {
+          if (cbs.busIdx >= 0) {
+            const va = this.vaStep[cbs.busIdx] ?? 0.0;
+            const vb = this.vbStep[cbs.busIdx] ?? 0.0;
+            const vc = this.vcStep[cbs.busIdx] ?? 0.0;
+            cbs.udm.ports["VA"] = va;
+            cbs.udm.ports["VB"] = vb;
+            cbs.udm.ports["VC"] = vc;
+            cbs.udm.ports["va"] = va;
+            cbs.udm.ports["vb"] = vb;
+            cbs.udm.ports["vc"] = vc;
+            this.emtdcHostBridge.state.VDC[cbs.busIdx + 1] = Math.sqrt((2.0 / 3.0) * (va * va + vb * vb + vc * vc));
+          }
+        }
+        this.emtdcHostBridge.stepDsdyn(t, step === -preSteps, false);
+        for (const cbs of this.customBlockStates) {
+          if (cbs.busIdx >= 0) {
+            const iaInj = cbs.udm.ports["IA_INJ"] ?? cbs.udm.ports["IA"] ?? cbs.udm.ports["ia"] ?? 0.0;
+            const ibInj = cbs.udm.ports["IB_INJ"] ?? cbs.udm.ports["IB"] ?? cbs.udm.ports["ib"] ?? 0.0;
+            const icInj = cbs.udm.ports["IC_INJ"] ?? cbs.udm.ports["IC"] ?? cbs.udm.ports["ic"] ?? 0.0;
+            const ccin = this.emtdcHostBridge.state.CCIN[cbs.busIdx + 1] ?? 0.0;
+            this.J3[3 * cbs.busIdx + 0] = this.J3[3 * cbs.busIdx + 0]! + iaInj + ccin;
+            this.J3[3 * cbs.busIdx + 1] = this.J3[3 * cbs.busIdx + 1]! + ibInj;
+            this.J3[3 * cbs.busIdx + 2] = this.J3[3 * cbs.busIdx + 2]! + icInj;
+          }
+        }
+      }
 
       this.solveFromLU3Phase(this.LU3, this.piv3, this.J3, this.v3Step);
+
+      // Apply Thévenin compensation for surge arresters during steady-state pre-solve
+      for (const arr of this.surgeArresters) {
+        for (let p = 0; p < 3; p++) {
+          const u = arr.fromIdx >= 0 ? 3 * arr.fromIdx + p : -1;
+          const v = arr.toIdx >= 0 ? 3 * arr.toIdx + p : -1;
+          const vOpen = (u >= 0 ? this.v3Step[u]! : 0.0) - (v >= 0 ? this.v3Step[v]! : 0.0);
+          const vMag = Math.abs(vOpen);
+          if (vMag > arr.vRefVolts) {
+            const zTh = arr.zThPhase[p]!;
+            const iCorr = Math.sign(vOpen) * ((vMag - arr.vRefVolts) / (zTh + arr.rClampOhm));
+            const xTh = arr.xThPhase[p]!;
+            for (let j = 0; j < this.nPhaseNodes; j++) {
+              this.v3Step[j] = this.v3Step[j]! - xTh[j]! * iCorr;
+            }
+          }
+        }
+      }
+
       for (let i = 0; i < n; i++) {
         this.vaStep[i] = this.v3Step[3 * i + 0]!;
         this.vbStep[i] = this.v3Step[3 * i + 1]!;
         this.vcStep[i] = this.v3Step[3 * i + 2]!;
+      }
+
+      // EMTDC Fortran / Binary UDM DSOUT post-network steady-state step
+      if (this.emtdcHostBridge && this.customBlockStates.length > 0) {
+        for (const cbs of this.customBlockStates) {
+          if (cbs.busIdx >= 0) {
+            const va = this.vaStep[cbs.busIdx]!;
+            const vb = this.vbStep[cbs.busIdx]!;
+            const vc = this.vcStep[cbs.busIdx]!;
+            cbs.udm.ports["VA"] = va;
+            cbs.udm.ports["VB"] = vb;
+            cbs.udm.ports["VC"] = vc;
+            cbs.udm.ports["va"] = va;
+            cbs.udm.ports["vb"] = vb;
+            cbs.udm.ports["vc"] = vc;
+            this.emtdcHostBridge.state.VDC[cbs.busIdx + 1] = Math.sqrt((2.0 / 3.0) * (va * va + vb * vb + vc * vc));
+          }
+        }
+        this.emtdcHostBridge.stepDsout();
       }
 
       for (const br of this.companionBranches) {
@@ -1858,19 +2295,58 @@ export class EmtSolver {
         const vmA = bl.toIdx >= 0 ? this.vaStep[bl.toIdx]! : 0.0;
         const vmB = bl.toIdx >= 0 ? this.vbStep[bl.toIdx]! : 0.0;
         const vmC = bl.toIdx >= 0 ? this.vcStep[bl.toIdx]! : 0.0;
-        bl.vkBufA[ptr] = vkA;
-        bl.vkBufB[ptr] = vkB;
-        bl.vkBufC[ptr] = vkC;
-        bl.vmBufA[ptr] = vmA;
-        bl.vmBufB[ptr] = vmB;
-        bl.vmBufC[ptr] = vmC;
-        bl.ikmBufA[ptr] = gBerg * vkA + iHistKmA;
-        bl.ikmBufB[ptr] = gBerg * vkB + iHistKmB;
-        bl.ikmBufC[ptr] = gBerg * vkC + iHistKmC;
-        bl.imkBufA[ptr] = gBerg * vmA + iHistMkA;
-        bl.imkBufB[ptr] = gBerg * vmB + iHistMkB;
-        bl.imkBufC[ptr] = gBerg * vmC + iHistMkC;
+
+        if (bl.hasModal) {
+          const ONE_OVER_3 = 1.0 / 3.0;
+          const ONE_OVER_SQRT3 = 1.0 / Math.sqrt(3.0);
+          const ikmA = bl.gSelf * vkA + bl.gMutual * (vkB + vkC) + iHistKmA;
+          const ikmB = bl.gSelf * vkB + bl.gMutual * (vkA + vkC) + iHistKmB;
+          const ikmC = bl.gSelf * vkC + bl.gMutual * (vkA + vkB) + iHistKmC;
+
+          const imkA = bl.gSelf * vmA + bl.gMutual * (vmB + vmC) + iHistMkA;
+          const imkB = bl.gSelf * vmB + bl.gMutual * (vmA + vmC) + iHistMkB;
+          const imkC = bl.gSelf * vmC + bl.gMutual * (vmA + vmB) + iHistMkC;
+
+          bl.vkBufA[ptr] = ONE_OVER_3 * (vkA + vkB + vkC);
+          bl.vkBufB[ptr] = ONE_OVER_3 * (2.0 * vkA - vkB - vkC);
+          bl.vkBufC[ptr] = ONE_OVER_SQRT3 * (vkB - vkC);
+
+          bl.vmBufA[ptr] = ONE_OVER_3 * (vmA + vmB + vmC);
+          bl.vmBufB[ptr] = ONE_OVER_3 * (2.0 * vmA - vmB - vmC);
+          bl.vmBufC[ptr] = ONE_OVER_SQRT3 * (vmB - vmC);
+
+          bl.ikmBufA[ptr] = ONE_OVER_3 * (ikmA + ikmB + ikmC);
+          bl.ikmBufB[ptr] = ONE_OVER_3 * (2.0 * ikmA - ikmB - ikmC);
+          bl.ikmBufC[ptr] = ONE_OVER_SQRT3 * (ikmB - ikmC);
+
+          bl.imkBufA[ptr] = ONE_OVER_3 * (imkA + imkB + imkC);
+          bl.imkBufB[ptr] = ONE_OVER_3 * (2.0 * imkA - imkB - imkC);
+          bl.imkBufC[ptr] = ONE_OVER_SQRT3 * (imkB - imkC);
+        } else {
+          bl.vkBufA[ptr] = vkA;
+          bl.vkBufB[ptr] = vkB;
+          bl.vkBufC[ptr] = vkC;
+          bl.vmBufA[ptr] = vmA;
+          bl.vmBufB[ptr] = vmB;
+          bl.vmBufC[ptr] = vmC;
+          bl.ikmBufA[ptr] = gBerg * vkA + iHistKmA;
+          bl.ikmBufB[ptr] = gBerg * vkB + iHistKmB;
+          bl.ikmBufC[ptr] = gBerg * vkC + iHistKmC;
+          bl.imkBufA[ptr] = gBerg * vmA + iHistMkA;
+          bl.imkBufB[ptr] = gBerg * vmB + iHistMkB;
+          bl.imkBufC[ptr] = gBerg * vmC + iHistMkC;
+        }
         bl.ptr = (ptr + 1) % bufLen;
+      }
+
+      for (const ulm of this.ulmLines) {
+        const vkA = ulm.fromIdx >= 0 ? this.vaStep[ulm.fromIdx]! : 0.0;
+        const vkB = ulm.fromIdx >= 0 ? this.vbStep[ulm.fromIdx]! : 0.0;
+        const vkC = ulm.fromIdx >= 0 ? this.vcStep[ulm.fromIdx]! : 0.0;
+        const vmA = ulm.toIdx >= 0 ? this.vaStep[ulm.toIdx]! : 0.0;
+        const vmB = ulm.toIdx >= 0 ? this.vbStep[ulm.toIdx]! : 0.0;
+        const vmC = ulm.toIdx >= 0 ? this.vcStep[ulm.toIdx]! : 0.0;
+        stepUlmLine(ulm, vkA, vkB, vkC, vmA, vmB, vmC, true);
       }
     }
   }
@@ -2014,6 +2490,14 @@ export class EmtSolver {
    * Executes the full time-domain simulation loop.
    */
   public solve(): EmtSolverResult {
+    // Pre-flight validation of OEM black-box DLL licenses and hardware security dongles
+    this.licenseGuard.verifyOrThrow(
+      this.customBlockStates.map((cbs) => ({
+        block: cbs.block,
+        runner: cbs.runner,
+      })),
+    );
+
     if (this.useWasm && this.syncGenerators.length === 0) {
       const wasmRes = this.solveWithWasm();
       if (wasmRes) return wasmRes;
@@ -2229,16 +2713,37 @@ export class EmtSolver {
           }
         }
 
-        // Bergeron / ULM distributed traveling-wave lines (decoupled Norton shunt gBerg at both terminals)
+        // Bergeron / ULM distributed traveling-wave lines (coupled Norton shunt for modal lines)
         for (const bl of this.bergeronLines) {
-          for (let p = 0; p < 3; p++) {
-            if (bl.fromIdx >= 0) {
-              this.stampDiagonal(3 * bl.fromIdx + p, bl.gBerg);
+          if (bl.hasModal) {
+            for (let p = 0; p < 3; p++) {
+              if (bl.fromIdx >= 0) {
+                this.stampDiagonal(3 * bl.fromIdx + p, bl.gSelf);
+                for (let q = 0; q < 3; q++) {
+                  if (p !== q) this.stampEntry(3 * bl.fromIdx + p, 3 * bl.fromIdx + q, bl.gMutual);
+                }
+              }
+              if (bl.toIdx >= 0) {
+                this.stampDiagonal(3 * bl.toIdx + p, bl.gSelf);
+                for (let q = 0; q < 3; q++) {
+                  if (p !== q) this.stampEntry(3 * bl.toIdx + p, 3 * bl.toIdx + q, bl.gMutual);
+                }
+              }
             }
-            if (bl.toIdx >= 0) {
-              this.stampDiagonal(3 * bl.toIdx + p, bl.gBerg);
+          } else {
+            for (let p = 0; p < 3; p++) {
+              if (bl.fromIdx >= 0) {
+                this.stampDiagonal(3 * bl.fromIdx + p, bl.gBerg);
+              }
+              if (bl.toIdx >= 0) {
+                this.stampDiagonal(3 * bl.toIdx + p, bl.gBerg);
+              }
             }
           }
+        }
+
+        for (const ulm of this.ulmLines) {
+          this.stampUlmModel(ulm);
         }
 
         // Switches (per-phase independent conductances for pole scatter)
@@ -2292,6 +2797,7 @@ export class EmtSolver {
         this.factorize3Phase(this.G3, this.LU3, this.piv3);
         this.luFactorizationCount += 3;
         this.luValid = !anyFaultActive; // Keep cached if no dynamic fault active
+        this.updateSurgeArresterTheveninVectors();
       }
 
       // 4. Assemble 3-phase injection currents J3
@@ -2381,6 +2887,29 @@ export class EmtSolver {
         }
       }
 
+      for (const ulm of this.ulmLines) {
+        const { iHistKmA, iHistKmB, iHistKmC, iHistMkA, iHistMkB, iHistMkC } = stepUlmLine(
+          ulm,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          false,
+        );
+        if (ulm.fromIdx >= 0) {
+          this.J3[3 * ulm.fromIdx + 0] = this.J3[3 * ulm.fromIdx + 0]! - iHistKmA;
+          this.J3[3 * ulm.fromIdx + 1] = this.J3[3 * ulm.fromIdx + 1]! - iHistKmB;
+          this.J3[3 * ulm.fromIdx + 2] = this.J3[3 * ulm.fromIdx + 2]! - iHistKmC;
+        }
+        if (ulm.toIdx >= 0) {
+          this.J3[3 * ulm.toIdx + 0] = this.J3[3 * ulm.toIdx + 0]! - iHistMkA;
+          this.J3[3 * ulm.toIdx + 1] = this.J3[3 * ulm.toIdx + 1]! - iHistMkB;
+          this.J3[3 * ulm.toIdx + 2] = this.J3[3 * ulm.toIdx + 2]! - iHistMkC;
+        }
+      }
+
       // FMU / IBR Converter current injections into J3 (coupled to grid nodal equations)
       const tauLvrtPre = 0.008;
       const alphaLvrtPre = 1.0 - Math.exp(-this.timeStepSec / tauLvrtPre);
@@ -2410,8 +2939,69 @@ export class EmtSolver {
         this.J3[3 * busIdx + 2] = this.J3[3 * busIdx + 2]! + icIbr;
       }
 
+      // EMTDC Fortran / C Binary DLL User-Defined Models (DSDYN pre-network solve)
+      if (this.emtdcHostBridge && this.customBlockStates.length > 0) {
+        for (const cbs of this.customBlockStates) {
+          if (cbs.busIdx >= 0) {
+            const va = k > 0 ? this.vaStep[cbs.busIdx]! : 0.0;
+            const vb = k > 0 ? this.vbStep[cbs.busIdx]! : 0.0;
+            const vc = k > 0 ? this.vcStep[cbs.busIdx]! : 0.0;
+            cbs.udm.ports["VA"] = va;
+            cbs.udm.ports["VB"] = vb;
+            cbs.udm.ports["VC"] = vc;
+            cbs.udm.ports["va"] = va;
+            cbs.udm.ports["vb"] = vb;
+            cbs.udm.ports["vc"] = vc;
+            this.emtdcHostBridge.state.VDC[cbs.busIdx + 1] = Math.sqrt((2.0 / 3.0) * (va * va + vb * vb + vc * vc));
+          }
+        }
+        this.emtdcHostBridge.stepDsdyn(t, k === 0, k === this.nSteps - 1);
+        for (const cbs of this.customBlockStates) {
+          if (cbs.busIdx >= 0) {
+            const iaInj = cbs.udm.ports["IA_INJ"] ?? cbs.udm.ports["IA"] ?? cbs.udm.ports["ia"] ?? 0.0;
+            const ibInj = cbs.udm.ports["IB_INJ"] ?? cbs.udm.ports["IB"] ?? cbs.udm.ports["ib"] ?? 0.0;
+            const icInj = cbs.udm.ports["IC_INJ"] ?? cbs.udm.ports["IC"] ?? cbs.udm.ports["ic"] ?? 0.0;
+            const ccin = this.emtdcHostBridge.state.CCIN[cbs.busIdx + 1] ?? 0.0;
+            this.J3[3 * cbs.busIdx + 0] = this.J3[3 * cbs.busIdx + 0]! + iaInj + ccin;
+            this.J3[3 * cbs.busIdx + 1] = this.J3[3 * cbs.busIdx + 1]! + ibInj;
+            this.J3[3 * cbs.busIdx + 2] = this.J3[3 * cbs.busIdx + 2]! + icInj;
+          }
+        }
+      }
+
       // 5. Solve coupled 3N x 3N linear system via forward/backward substitution
       this.solveFromLU3Phase(this.LU3, this.piv3, this.J3, this.v3Step);
+
+      // 5b. Non-linear Thévenin Norton Compensation for Surge Arresters (MOVs)
+      if (this.surgeArresters.length > 0) {
+        for (let iter = 0; iter < 3; iter++) {
+          let maxCorr = 0.0;
+          for (const arr of this.surgeArresters) {
+            for (let p = 0; p < 3; p++) {
+              const u = arr.fromIdx >= 0 ? 3 * arr.fromIdx + p : -1;
+              const v = arr.toIdx >= 0 ? 3 * arr.toIdx + p : -1;
+              const vOpen = (u >= 0 ? this.v3Step[u]! : 0.0) - (v >= 0 ? this.v3Step[v]! : 0.0);
+              const vMag = Math.abs(vOpen);
+              if (vMag > arr.vRefVolts) {
+                const zTh = arr.zThPhase[p]!;
+                const iCorr = Math.sign(vOpen) * ((vMag - arr.vRefVolts) / (zTh + arr.rClampOhm));
+                if (Math.abs(iCorr) > 1e-4) {
+                  maxCorr = Math.max(maxCorr, Math.abs(iCorr));
+                  const xTh = arr.xThPhase[p]!;
+                  for (let j = 0; j < this.nPhaseNodes; j++) {
+                    this.v3Step[j] = this.v3Step[j]! - xTh[j]! * iCorr;
+                  }
+                  if (iter === 0) {
+                    const vClamped = vOpen - zTh * iCorr;
+                    arr.energyJoules += Math.abs(vClamped * iCorr) * this.timeStepSec;
+                  }
+                }
+              }
+            }
+          }
+          if (maxCorr < 1e-3) break;
+        }
+      }
 
       for (let i = 0; i < n; i++) {
         let va = this.v3Step[3 * i + 0]!;
@@ -2522,31 +3112,91 @@ export class EmtSolver {
         const vmB = bl.toIdx >= 0 ? this.vbStep[bl.toIdx]! : 0.0;
         const vmC = bl.toIdx >= 0 ? this.vcStep[bl.toIdx]! : 0.0;
 
-        const ikmA = gBerg * vkA + iHistKmA;
-        const ikmB = gBerg * vkB + iHistKmB;
-        const ikmC = gBerg * vkC + iHistKmC;
+        let ikmA: number;
+        let ikmB: number;
+        let ikmC: number;
+        let imkA: number;
+        let imkB: number;
+        let imkC: number;
 
-        const imkA = gBerg * vmA + iHistMkA;
-        const imkB = gBerg * vmB + iHistMkB;
-        const imkC = gBerg * vmC + iHistMkC;
+        if (bl.hasModal) {
+          const ONE_OVER_3 = 1.0 / 3.0;
+          const ONE_OVER_SQRT3 = 1.0 / Math.sqrt(3.0);
+
+          ikmA = bl.gSelf * vkA + bl.gMutual * (vkB + vkC) + iHistKmA;
+          ikmB = bl.gSelf * vkB + bl.gMutual * (vkA + vkC) + iHistKmB;
+          ikmC = bl.gSelf * vkC + bl.gMutual * (vkA + vkB) + iHistKmC;
+
+          imkA = bl.gSelf * vmA + bl.gMutual * (vmB + vmC) + iHistMkA;
+          imkB = bl.gSelf * vmB + bl.gMutual * (vmA + vmC) + iHistMkB;
+          imkC = bl.gSelf * vmC + bl.gMutual * (vmA + vmB) + iHistMkC;
+
+          bl.vkBufA[ptr] = ONE_OVER_3 * (vkA + vkB + vkC);
+          bl.vkBufB[ptr] = ONE_OVER_3 * (2.0 * vkA - vkB - vkC);
+          bl.vkBufC[ptr] = ONE_OVER_SQRT3 * (vkB - vkC);
+
+          bl.vmBufA[ptr] = ONE_OVER_3 * (vmA + vmB + vmC);
+          bl.vmBufB[ptr] = ONE_OVER_3 * (2.0 * vmA - vmB - vmC);
+          bl.vmBufC[ptr] = ONE_OVER_SQRT3 * (vmB - vmC);
+
+          bl.ikmBufA[ptr] = ONE_OVER_3 * (ikmA + ikmB + ikmC);
+          bl.ikmBufB[ptr] = ONE_OVER_3 * (2.0 * ikmA - ikmB - ikmC);
+          bl.ikmBufC[ptr] = ONE_OVER_SQRT3 * (ikmB - ikmC);
+
+          bl.imkBufA[ptr] = ONE_OVER_3 * (imkA + imkB + imkC);
+          bl.imkBufB[ptr] = ONE_OVER_3 * (2.0 * imkA - imkB - imkC);
+          bl.imkBufC[ptr] = ONE_OVER_SQRT3 * (imkB - imkC);
+        } else {
+          ikmA = gBerg * vkA + iHistKmA;
+          ikmB = gBerg * vkB + iHistKmB;
+          ikmC = gBerg * vkC + iHistKmC;
+
+          imkA = gBerg * vmA + iHistMkA;
+          imkB = gBerg * vmB + iHistMkB;
+          imkC = gBerg * vmC + iHistMkC;
+
+          bl.vkBufA[ptr] = vkA;
+          bl.vkBufB[ptr] = vkB;
+          bl.vkBufC[ptr] = vkC;
+          bl.vmBufA[ptr] = vmA;
+          bl.vmBufB[ptr] = vmB;
+          bl.vmBufC[ptr] = vmC;
+
+          bl.ikmBufA[ptr] = ikmA;
+          bl.ikmBufB[ptr] = ikmB;
+          bl.ikmBufC[ptr] = ikmC;
+          bl.imkBufA[ptr] = imkA;
+          bl.imkBufB[ptr] = imkB;
+          bl.imkBufC[ptr] = imkC;
+        }
 
         bl.ia[k] = ikmA;
         bl.ib[k] = ikmB;
         bl.ic[k] = ikmC;
-
-        bl.vkBufA[ptr] = vkA;
-        bl.vkBufB[ptr] = vkB;
-        bl.vkBufC[ptr] = vkC;
-        bl.vmBufA[ptr] = vmA;
-        bl.vmBufB[ptr] = vmB;
-        bl.vmBufC[ptr] = vmC;
-        bl.ikmBufA[ptr] = ikmA;
-        bl.ikmBufB[ptr] = ikmB;
-        bl.ikmBufC[ptr] = ikmC;
-        bl.imkBufA[ptr] = imkA;
-        bl.imkBufB[ptr] = imkB;
-        bl.imkBufC[ptr] = imkC;
         bl.ptr = (ptr + 1) % bufLen;
+      }
+
+      // 6b2. Update Universal Line Model (ULM) distributed line ring buffers and terminal currents
+      for (const ulm of this.ulmLines) {
+        const vkA = ulm.fromIdx >= 0 ? this.vaStep[ulm.fromIdx]! : 0.0;
+        const vkB = ulm.fromIdx >= 0 ? this.vbStep[ulm.fromIdx]! : 0.0;
+        const vkC = ulm.fromIdx >= 0 ? this.vcStep[ulm.fromIdx]! : 0.0;
+        const vmA = ulm.toIdx >= 0 ? this.vaStep[ulm.toIdx]! : 0.0;
+        const vmB = ulm.toIdx >= 0 ? this.vbStep[ulm.toIdx]! : 0.0;
+        const vmC = ulm.toIdx >= 0 ? this.vcStep[ulm.toIdx]! : 0.0;
+
+        const curA = ulm.gEq[0]! * vkA + ulm.gEq[1]! * vkB + ulm.gEq[2]! * vkC + ulm.iHistK[0]!;
+        const curB = ulm.gEq[3]! * vkA + ulm.gEq[4]! * vkB + ulm.gEq[5]! * vkC + ulm.iHistK[1]!;
+        const curC = ulm.gEq[6]! * vkA + ulm.gEq[7]! * vkB + ulm.gEq[8]! * vkC + ulm.iHistK[2]!;
+
+        const curBufs = this.branchPhaseCurrents.get(ulm.id);
+        if (curBufs) {
+          curBufs.a[k] = curA;
+          curBufs.b[k] = curB;
+          curBufs.c[k] = curC;
+        }
+
+        stepUlmLine(ulm, vkA, vkB, vkC, vmA, vmB, vmC, true);
       }
 
       // 6c. Update Park dq0 synchronous generator states (rotor swing equation d(delta)/dt, d(omega)/dt)
@@ -2613,8 +3263,16 @@ export class EmtSolver {
             ? Math.max(swState.sw.rClosedOhm || 1e-3, 1e-4)
             : Math.max(swState.sw.rOpenOhm || 1e6, 1e3);
           const gSw = 1.0 / rSw;
-          const vFrom = fromIdx >= 0 ? (p === 0 ? this.vaStep[fromIdx]! : p === 1 ? this.vbStep[fromIdx]! : this.vcStep[fromIdx]!) : 0;
-          const vTo = toIdx >= 0 ? (p === 0 ? this.vaStep[toIdx]! : p === 1 ? this.vbStep[toIdx]! : this.vcStep[toIdx]!) : 0;
+          const vFrom =
+            fromIdx >= 0
+              ? p === 0
+                ? this.vaStep[fromIdx]!
+                : p === 1
+                  ? this.vbStep[fromIdx]!
+                  : this.vcStep[fromIdx]!
+              : 0;
+          const vTo =
+            toIdx >= 0 ? (p === 0 ? this.vaStep[toIdx]! : p === 1 ? this.vbStep[toIdx]! : this.vcStep[toIdx]!) : 0;
           currentArrays[p]![k] = gSw * (vFrom - vTo);
         }
       }
@@ -2765,6 +3423,38 @@ export class EmtSolver {
         ms.lowerSumTraj[k] = sumLower;
         ms.spreadPctTraj[k] = vDcKv > 0 ? ((vMax - vMin) / (vDcKv / nSm)) * 100.0 : 0.0;
       }
+
+      // EMTDC Fortran / C Binary DLL User-Defined Models (DSOUT post-network solve)
+      if (this.emtdcHostBridge && this.customBlockStates.length > 0) {
+        for (const cbs of this.customBlockStates) {
+          if (cbs.busIdx >= 0) {
+            const va = this.vaStep[cbs.busIdx]!;
+            const vb = this.vbStep[cbs.busIdx]!;
+            const vc = this.vcStep[cbs.busIdx]!;
+            cbs.udm.ports["VA"] = va;
+            cbs.udm.ports["VB"] = vb;
+            cbs.udm.ports["VC"] = vc;
+            cbs.udm.ports["va"] = va;
+            cbs.udm.ports["vb"] = vb;
+            cbs.udm.ports["vc"] = vc;
+            this.emtdcHostBridge.state.VDC[cbs.busIdx + 1] = Math.sqrt((2.0 / 3.0) * (va * va + vb * vb + vc * vc));
+          }
+        }
+        this.emtdcHostBridge.stepDsout();
+        for (const cbs of this.customBlockStates) {
+          const iaInj = cbs.udm.ports["IA_INJ"] ?? cbs.udm.ports["IA"] ?? cbs.udm.ports["ia"] ?? 0.0;
+          const ibInj = cbs.udm.ports["IB_INJ"] ?? cbs.udm.ports["IB"] ?? cbs.udm.ports["ib"] ?? 0.0;
+          const icInj = cbs.udm.ports["IC_INJ"] ?? cbs.udm.ports["IC"] ?? cbs.udm.ports["ic"] ?? 0.0;
+          if (cbs.ia && cbs.ib && cbs.ic) {
+            cbs.ia[k] = iaInj;
+            cbs.ib[k] = ibInj;
+            cbs.ic[k] = icInj;
+          }
+          for (const [port, traj] of cbs.signalTrajs) {
+            traj[k] = cbs.udm.ports[port] ?? 0.0;
+          }
+        }
+      }
     }
 
     for (const b of this.busList) {
@@ -2801,6 +3491,18 @@ export class EmtSolver {
         executionTimeMs,
       },
     };
+  }
+
+  public getEmtdcHostBridge(): EmtdcHostBridge | null {
+    return this.emtdcHostBridge;
+  }
+
+  public getLicenseGuard(): OemLicensePreflightGuard {
+    return this.licenseGuard;
+  }
+
+  public getUlmLines(): readonly UniversalLineModelData[] {
+    return this.ulmLines;
   }
 }
 
@@ -2907,4 +3609,3 @@ export async function runEmtSimulationFromXmlAsync(
   const transferables = extractEmtTransferableBuffers(result);
   return { netlist, result, transferables };
 }
-

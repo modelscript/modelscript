@@ -11,18 +11,21 @@
  * - `msx swmm route-flow <file>`
  */
 
+import { diffSwmmNetworks } from "@modelscript/diagram/water-network-diff";
 import {
   buildSwmmFromGis,
   computeSwmmWaterQuality,
+  createRegularGrid2DMesh,
   lintSwmm,
   lowerSwmmToDae,
+  parseInfoWorksDatabase,
   parseSwmm,
   routeNetworkFlow,
   serializeSwmm,
   simulateSwmmRtc,
+  solveSwmmCoupled1D2D,
   swmmToModelica,
 } from "@modelscript/swmm";
-import { diffSwmmNetworks } from "@modelscript/diagram/water-network-diff";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -33,9 +36,23 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality, diff, from-gis)",
+        description:
+          "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality, diff, from-gis, convert, inundate-2d)",
         type: "string",
-        choices: ["inspect", "summary", "lint", "to-dae", "to-modelica", "route-flow", "rtc", "quality", "diff", "from-gis"],
+        choices: [
+          "inspect",
+          "summary",
+          "lint",
+          "to-dae",
+          "to-modelica",
+          "route-flow",
+          "rtc",
+          "quality",
+          "diff",
+          "from-gis",
+          "convert",
+          "inundate-2d",
+        ],
         demandOption: true,
       })
       .positional("files", {
@@ -93,6 +110,40 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
     if (files.length === 0) {
       console.error("[swmm] No SWMM network file(s) specified.");
       process.exit(1);
+    }
+
+    if (action === "convert") {
+      const dbInput = files[0]!;
+      const dbPath = path.resolve(process.cwd(), dbInput);
+      if (!fs.existsSync(dbPath)) {
+        console.error(`Error: InfoWorks ICM file not found: ${dbInput}`);
+        process.exit(1);
+      }
+
+      console.log(`Converting InfoWorks ICM / InfoWater database: ${dbInput}...`);
+      let deck;
+      if (dbInput.endsWith(".json")) {
+        const jsonContent = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
+        deck = parseInfoWorksDatabase(jsonContent);
+      } else {
+        deck = parseInfoWorksDatabase(dbPath);
+      }
+
+      const inp = serializeSwmm(deck);
+      if (out) {
+        fs.writeFileSync(path.resolve(process.cwd(), out), inp, "utf-8");
+        console.log(`Successfully converted and exported SWMM .inp to ${out}`);
+      } else {
+        console.log(inp);
+      }
+      console.log(`\nConversion Summary:`);
+      console.log(`  Junctions:     ${deck.junctions.size}`);
+      console.log(`  Outfalls:      ${deck.outfalls.size}`);
+      console.log(`  Conduits:      ${deck.conduits.size}`);
+      console.log(`  Subcatchments: ${deck.subcatchments.size}`);
+      console.log(`  Weirs:         ${deck.weirs.size}`);
+      console.log(`  Pumps:         ${deck.pumps.size}`);
+      return;
     }
 
     if (action === "from-gis") {
@@ -198,15 +249,22 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
       console.log(`Base:   ${baseInput}`);
       console.log(`Target: ${targetInput}`);
       console.log(`\nDelta Summary:`);
-      console.log(`  Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified, ${diff.stats.unchangedNodes} unchanged`);
-      console.log(`  Links: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified, ${diff.stats.unchangedLinks} unchanged`);
+      console.log(
+        `  Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified, ${diff.stats.unchangedNodes} unchanged`,
+      );
+      console.log(
+        `  Links: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified, ${diff.stats.unchangedLinks} unchanged`,
+      );
 
       if (diff.stats.modifiedLinks > 0) {
         console.log(`\nModified Conduits:`);
         for (const [id, link] of diff.links) {
           if (link.status === "modified") {
             const deltas = link.propertyDeltas
-              .map((d) => `${d.property}: ${d.baseValue} -> ${d.targetValue} (${(d.delta ?? 0) >= 0 ? "+" : ""}${d.delta})`)
+              .map(
+                (d) =>
+                  `${d.property}: ${d.baseValue} -> ${d.targetValue} (${(d.delta ?? 0) >= 0 ? "+" : ""}${d.delta})`,
+              )
               .join(", ");
             console.log(`  - Conduit '${id}': ${deltas}`);
           }
@@ -328,6 +386,21 @@ export const SwmmCommand: CommandModule<Record<string, unknown>, Record<string, 
           for (const [pol, mass] of Object.entries(qual.totalExportedMassKg)) {
             console.log(`    - ${pol.padEnd(8, " ")}: ${mass.toFixed(2)} kg`);
           }
+          break;
+        }
+
+        case "inundate-2d": {
+          console.log(`\n=== 2D Surface Inundation & Overland Flood Simulation for ${file} (InfoWorks ICM Parity) ===`);
+          const mesh = createRegularGrid2DMesh(10, 10, 20.0, 20.0);
+          const result = solveSwmmCoupled1D2D(deck, mesh, {
+            simulationDurationSeconds: 300.0,
+            rainfallIntensityMmPerHr: 45.0,
+          });
+          console.log(`Peak Inundated Surface Area: ${result.peakFloodedAreaM2.toFixed(1)} m²`);
+          console.log(`Peak Surface Ponded Volume:   ${result.peakSurfaceVolumeM3.toFixed(1)} m³`);
+          console.log(`Cumulative Manhole Overflow:  ${result.cumulativeSpillVolumeM3.toFixed(2)} m³`);
+          console.log(`Cumulative Reverse Drainage:  ${result.cumulativeDrainVolumeM3.toFixed(2)} m³`);
+          console.log(`Mass Balance Continuity Error: ${result.massConservationErrorPct.toFixed(2)}%`);
           break;
         }
       }

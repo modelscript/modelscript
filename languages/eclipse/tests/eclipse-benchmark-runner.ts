@@ -6,10 +6,10 @@
  * 3D TPFA Solvers & Direct Linear Memory DAE Arena Lowering.
  */
 
-import { parseEclipse } from "../src/parser/eclipse-parser.js";
-import { solveReservoirDepletion, type ReservoirDepletionResult } from "../src/solvers/reservoir-solver.js";
 import { lowerEclipseToDae } from "../src/dae/eclipse-to-dae.js";
 import { lintEclipse } from "../src/lints/index.js";
+import { parseEclipse } from "../src/parser/eclipse-parser.js";
+import { solveReservoirDepletion, type ReservoirSimulationResult } from "../src/solvers/reservoir-solver.js";
 
 export interface EclipseBenchmarkResult {
   name: string;
@@ -158,7 +158,7 @@ export function runEclipseBenchmark(): EclipseBenchmarkResult {
 
   // 3. Reservoir Depletion Solver (365 days)
   const tSim0 = performance.now();
-  const simRes: ReservoirDepletionResult = solveReservoirDepletion(deck, {
+  const simRes: ReservoirSimulationResult = solveReservoirDepletion(deck, {
     totalDays: 365.0,
     stepDays: 30.0,
   });

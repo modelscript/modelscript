@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "plugins": ["@nx/js"],
+  "parallel": 16,
   "namedInputs": {
     "default": [
       "{projectRoot}/**/*",
@@ -83,8 +84,7 @@
         "{projectRoot}/.tsbuildinfo",
         "{projectRoot}/*.tsbuildinfo",
         "{projectRoot}/docs/.vitepress/dist"
-      ],
-      "maxParallel": 8
+      ]
     },
     "test": {
       "cache": true,
@@ -95,14 +95,12 @@
     "lint": {
       "cache": true,
       "dependsOn": ["^build"],
-      "inputs": ["default", "^production"],
-      "maxParallel": 4
+      "inputs": ["default", "^production"]
     },
     "typecheck": {
       "cache": true,
       "dependsOn": ["^build"],
-      "inputs": ["default", "^production"],
-      "maxParallel": 4
+      "inputs": ["default", "^production"]
     }
   },
   "release": {

@@ -7,6 +7,7 @@ export interface IpoptResult {
   status: string;
   objectiveValue: number;
   variables: Record<string, number[]>;
+  backend?: "wasm-ipopt" | "ts-augmented-lagrangian" | "ts-lbfgsb" | "trivial" | undefined;
 }
 
 export class IpoptSolver {
@@ -14,10 +15,12 @@ export class IpoptSolver {
 
   constructor(
     public modelDllPath: string,
-    wasmModule?: ConstructorParameters<typeof CoinorWasmSolver>[0],
+    wasmSolverOrModule?: CoinorWasmSolver | ConstructorParameters<typeof CoinorWasmSolver>[0],
   ) {
-    if (wasmModule) {
-      this.wasmSolver = new CoinorWasmSolver(wasmModule);
+    if (wasmSolverOrModule instanceof CoinorWasmSolver) {
+      this.wasmSolver = wasmSolverOrModule;
+    } else if (wasmSolverOrModule) {
+      this.wasmSolver = new CoinorWasmSolver(wasmSolverOrModule);
     }
   }
 
@@ -36,7 +39,9 @@ export class IpoptSolver {
     nnzJacobian = 0,
     options?: IpoptWasmOptions,
   ): Promise<IpoptResult> {
-    if (this.wasmSolver && evalObjective && evalGradient && evalConstraints && evalJacobian) {
+    if (this.wasmSolver && evalObjective && evalGradient) {
+      const safeEvalConstraints = evalConstraints ?? ((_x: number[]) => []);
+      const safeEvalJacobian = evalJacobian ?? ((_x: number[]) => []);
       const res: IpoptWasmResult = this.wasmSolver.ipopt(
         nVars,
         nConstraints,
@@ -47,8 +52,8 @@ export class IpoptSolver {
         conUB,
         evalObjective,
         evalGradient,
-        evalConstraints,
-        evalJacobian,
+        safeEvalConstraints,
+        safeEvalJacobian,
         nnzJacobian,
         options,
       );
@@ -56,6 +61,7 @@ export class IpoptSolver {
         status: res.status === 0 ? "SUCCESS" : `IPOPT_STATUS_${res.status}`,
         objectiveValue: res.objectiveValue,
         variables: { solution: res.solution },
+        backend: "wasm-ipopt",
       };
     }
 
@@ -171,6 +177,7 @@ export class IpoptSolver {
             solution: xFinal,
             multipliers: Array.from(lambda),
           },
+          backend: "ts-augmented-lagrangian",
         };
       }
 
@@ -195,6 +202,7 @@ export class IpoptSolver {
         status: res.converged ? "SUCCESS" : "MAX_ITERATIONS_REACHED",
         objectiveValue: res.cost,
         variables: { solution: Array.from(res.x) },
+        backend: "ts-lbfgsb",
       };
     }
 
@@ -203,6 +211,7 @@ export class IpoptSolver {
         status: "SUCCESS",
         objectiveValue: 0.0,
         variables: { solution: [] },
+        backend: "trivial",
       };
     }
 

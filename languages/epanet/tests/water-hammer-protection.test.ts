@@ -2,10 +2,7 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import {
-  solveWaterHammerMoc,
-  type WaterHammerPipeParams,
-} from "../src/index.js";
+import { solveWaterHammerMoc, type WaterHammerPipeParams } from "../src/index.js";
 
 describe("EPANET MOC Surge Protection Devices", () => {
   const pipe: WaterHammerPipeParams = {
@@ -134,6 +131,140 @@ describe("EPANET MOC Surge Protection Devices", () => {
     assert.ok(
       withPrv.maxHeadM <= setPressureM + 15.0,
       `PRV should clamp peak head near set threshold: ${withPrv.maxHeadM.toFixed(1)}m <= ${setPressureM + 15}m`,
+    );
+  });
+
+  it("5. Discrete Vapor Cavity Model (DVCM) tracks column separation and collapse shockwave (HAMMER Parity)", () => {
+    // Pipeline on a steep hill where sudden downstream valve closure sends negative reflection
+    const uphillPipe: WaterHammerPipeParams = {
+      id: "High_Ridge_Pumping_Line",
+      lengthM: 800.0,
+      diameterM: 0.3,
+      waveSpeedMps: 1000.0,
+      darcyRoughness: 0.02,
+      elevationUpstreamM: 10.0,
+      elevationDownstreamM: 60.0, // High crest
+    };
+
+    const uphillInitial = {
+      flowM3s: 0.15,
+      headUpstreamM: 95.0,
+      headDownstreamM: 85.0,
+    };
+
+    // Fast valve closure causing deep low-pressure depression wave
+    const tripEvent = {
+      type: "VALVE_CLOSURE" as const,
+      durationSeconds: 0.05,
+    };
+
+    const dvcmResult = solveWaterHammerMoc(uphillPipe, uphillInitial, tripEvent, {
+      simulationDurationSeconds: 4.0,
+      spatialReaches: 16,
+      vaporPressureHeadM: -10.0,
+      enableDvcmCavitation: true,
+      dvcmWeightingFactor: 0.5,
+    });
+
+    assert.strictEqual(dvcmResult.cavitationOccurred, true, "Cavitation must occur during low-pressure depression");
+    assert.ok(
+      (dvcmResult.maxCavityVolumeM3 ?? 0) > 0.0,
+      `Vapor cavity volume must be tracked: got ${dvcmResult.maxCavityVolumeM3} m^3`,
+    );
+    assert.strictEqual(dvcmResult.cavitationCollapseOccurred, true, "Cavitation cavity must collapse");
+    assert.ok(
+      (dvcmResult.maxCollapseSurgeM ?? 0) > uphillInitial.headDownstreamM,
+      `Collapse surge spike must exceed initial downstream head: got ${dvcmResult.maxCollapseSurgeM}m`,
+    );
+  });
+
+  it("6. Four-Quadrant Suter Pump Coastdown simulates flow reversal and check valve slam (HAMMER Parity)", () => {
+    // Pumping uphill from wet well into high-pressure discharge reservoir
+    const uphillPumpPipe: WaterHammerPipeParams = {
+      id: "Pump_Station_Discharge_Line",
+      lengthM: 600.0,
+      diameterM: 0.4,
+      waveSpeedMps: 1200.0,
+      darcyRoughness: 0.02,
+      elevationUpstreamM: 10.0,
+      elevationDownstreamM: 50.0,
+    };
+
+    const uphillPumpInitial = {
+      flowM3s: 0.25,
+      headUpstreamM: 90.0, // Initial discharge head into pipeline (suction = 10m + pump head = 80m)
+      headDownstreamM: 80.0, // High discharge reservoir head
+    };
+
+    const pumpTripEvent = {
+      type: "PUMP_TRIP" as const,
+      durationSeconds: 5.0,
+      pumpCoastdown: {
+        specificSpeedType: "RADIAL" as const,
+        momentOfInertiaKgM2: 25.0, // Typical pump + motor polar moment of inertia
+        ratedSpeedRpm: 1750.0,
+        ratedFlowM3s: 0.25,
+        ratedHeadM: 80.0,
+        ratedEfficiency: 0.82,
+        hasCheckValve: true, // Non-return check valve
+      },
+    };
+
+    const pumpResult = solveWaterHammerMoc(uphillPumpPipe, uphillPumpInitial, pumpTripEvent, {
+      simulationDurationSeconds: 4.0,
+      spatialReaches: 12,
+      suctionHeadM: 10.0,
+    });
+
+    // Check valve slam head should be registered
+    assert.ok(
+      pumpResult.checkValveSlamHeadM !== undefined,
+      "Check valve slam head should be captured upon flow reversal",
+    );
+
+    // Verify time series captures pump telemetry
+    const initialStep = pumpResult.timeSeries[0]!;
+    assert.strictEqual(initialStep.pumpQuadrant, "NORMAL");
+    assert.ok(
+      (initialStep.pumpSpeedRpm ?? 0) > 1700.0,
+      `Initial pump speed should match rated rpm: got ${initialStep.pumpSpeedRpm}`,
+    );
+
+    // Verify deceleration
+    const laterStep = pumpResult.timeSeries[pumpResult.timeSeries.length - 1]!;
+    assert.ok(
+      (laterStep.pumpSpeedRpm ?? 0) < (initialStep.pumpSpeedRpm ?? 0),
+      "Pump rotational speed must decelerate following power failure",
+    );
+
+    // Verify that check valve prevented severe reverse flow
+    const hasNegativeFlow = pumpResult.timeSeries.some((ts) => ts.flowUpstreamM3s < -0.05);
+    assert.strictEqual(hasNegativeFlow, false, "Check valve must prevent large reverse flow");
+
+    // Also test pump WITHOUT check valve entering turbine runaway
+    const runawayEvent = {
+      type: "PUMP_TRIP" as const,
+      durationSeconds: 6.0,
+      pumpCoastdown: {
+        specificSpeedType: "RADIAL" as const,
+        momentOfInertiaKgM2: 15.0,
+        ratedSpeedRpm: 1750.0,
+        ratedFlowM3s: 0.25,
+        ratedHeadM: 70.0,
+        ratedEfficiency: 0.82,
+        hasCheckValve: false, // Uncontrolled reverse runaway
+      },
+    };
+
+    const runawayResult = solveWaterHammerMoc(uphillPumpPipe, uphillPumpInitial, runawayEvent, {
+      simulationDurationSeconds: 5.0,
+      spatialReaches: 10,
+      suctionHeadM: 10.0,
+    });
+
+    assert.ok(
+      (runawayResult.maxReverseFlowM3s ?? 0) > 0.05,
+      `Unprotected pump trip must experience reverse flow: got ${runawayResult.maxReverseFlowM3s} m^3/s`,
     );
   });
 });

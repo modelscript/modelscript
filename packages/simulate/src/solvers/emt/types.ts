@@ -14,6 +14,8 @@ export interface EmtSolverOptions {
   threePhase?: boolean; // Enable full 3-phase (abc) unbalanced MANA network formulation
   maxNonlinearIterations?: number; // Within-step Newton-Raphson / fixed-point iterations for non-linear elements (default: 1)
   nonlinearToleranceVolts?: number; // Voltage convergence tolerance |v^(m) - v^(m-1)| in Volts (default: 1.0 V)
+  /** Execution backend: 'ts' (TypeScript), 'wasm' (native WebAssembly kernel), or 'auto' (default: 'auto'). */
+  backend?: "ts" | "wasm" | "auto" | undefined;
 }
 
 export interface ThreePhaseWaveform {
@@ -42,6 +44,7 @@ export interface EmtSimulationResult {
     factorizationCount: number;
     subsystemCount?: number | undefined;
     totalNonlinearIterations?: number | undefined;
+    backend?: "ts" | "wasm" | undefined;
   };
 }
 

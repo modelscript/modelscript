@@ -89,6 +89,7 @@ describe("Water Utilities MCP Tools Integration Suite", () => {
     assert.ok(tools["water_audit_awwa_m36"], "water_audit_awwa_m36 should be registered");
     assert.ok(tools["swmm_flood_routing"], "swmm_flood_routing should be registered");
     assert.ok(tools["swmm_simulate_rtc"], "swmm_simulate_rtc should be registered");
+    assert.ok(tools["epanet_screen_contingencies_webgpu"], "epanet_screen_contingencies_webgpu should be registered");
   });
 
   it("epanet_solve_hydraulics solves steady-state and EPS simulations", async () => {
@@ -374,5 +375,122 @@ NODATA_value -9999
     assert.ok(data.inpContent.includes("[CONDUITS]"));
     assert.ok(data.inpContent.includes("[SUBCATCHMENTS]"));
     assert.ok(data.inpContent.includes("BASIN_1"));
+  });
+
+  it("epanet_water_hammer_surge simulates 4-quadrant pump trip and DVCM cavitation", async () => {
+    const tool = tools["epanet_water_hammer_surge"]!;
+    const res = await tool.handler({
+      pipeLengthM: 600.0,
+      pipeDiameterM: 0.4,
+      initialFlowM3s: 0.25,
+      closureTimeSeconds: 4.0,
+      initialHeadUpstreamM: 90.0,
+      initialHeadDownstreamM: 80.0,
+      eventType: "PUMP_TRIP",
+      enableDvcm: true,
+      pumpInertiaKgM2: 25.0,
+      hasCheckValve: true,
+    });
+
+    const data = JSON.parse(res.content[0]?.text ?? "{}");
+    assert.strictEqual(data.success, true);
+    assert.ok(data.joukowskySurgeM > 0);
+    assert.ok(data.checkValveSlamHeadM !== undefined || data.maxHeadM > 80.0);
+  });
+
+  it("epanet_convert_watergems extracts Bentley WaterGEMS and InfoWater models", async () => {
+    const tool = tools["epanet_convert_watergems"]!;
+    const tablesJson = JSON.stringify({
+      HMIJunction: [{ ID: "J1", Elevation: 25.0, Demand: 15.0 }],
+      HMIReservoir: [{ ID: "R1", Head: 100.0 }],
+      HMIPipe: [
+        {
+          ID: "P1",
+          StartNodeID: "R1",
+          StopNodeID: "J1",
+          Length: 500.0,
+          Diameter: 12.0,
+          Roughness: 120.0,
+          HasCheckValve: 1,
+        },
+      ],
+    });
+
+    const res = await tool.handler({ tablesJson, flowUnits: "GPM" });
+    const data = JSON.parse(res.content[0]?.text ?? "{}");
+    assert.strictEqual(data.success, true);
+    assert.strictEqual(data.summary.junctionsCount, 1);
+    assert.strictEqual(data.summary.reservoirsCount, 1);
+    assert.strictEqual(data.summary.pipesCount, 1);
+    assert.ok(data.inpContent.includes("J1"));
+    assert.ok(data.inpContent.includes("CV"));
+  });
+
+  it("swmm_convert_infoworks extracts InfoWorks ICM collection models", async () => {
+    const tool = tools["swmm_convert_infoworks"]!;
+    const tablesJson = JSON.stringify({
+      hw_node: [
+        { node_id: "MH1", ground_level: 20.0, chamber_floor: 17.5, node_type: "MANHOLE" },
+        { node_id: "OUT1", ground_level: 15.0, chamber_floor: 14.5, node_type: "OUTFALL" },
+      ],
+      hw_conduit: [
+        {
+          conduit_id: "C1",
+          us_node_id: "MH1",
+          ds_node_id: "OUT1",
+          length: 150.0,
+          conduit_width: 0.75,
+          roughness: 0.013,
+        },
+      ],
+      hw_subcatchment: [{ subcatchment_id: "BASIN_A", outlet_node_id: "MH1", total_area: 2.5, impervious_percent: 60 }],
+    });
+
+    const res = await tool.handler({ tablesJson });
+    const data = JSON.parse(res.content[0]?.text ?? "{}");
+    assert.strictEqual(data.success, true);
+    assert.strictEqual(data.summary.junctionsCount, 1);
+    assert.strictEqual(data.summary.outfallsCount, 1);
+    assert.strictEqual(data.summary.conduitsCount, 1);
+    assert.strictEqual(data.summary.subcatchmentsCount, 1);
+    assert.ok(data.inpContent.includes("MH1"));
+    assert.ok(data.inpContent.includes("BASIN_A"));
+  });
+
+  it("swmm_inundation_2d executes 2D shallow water surface flood mapping", async () => {
+    const tool = tools["swmm_inundation_2d"]!;
+    const res = await tool.handler({
+      deckContent: SAMPLE_SWMM_INP,
+      durationSeconds: 60.0,
+      gridCols: 6,
+      gridRows: 6,
+      cellSpacingM: 15.0,
+    });
+
+    const data = JSON.parse(res.content[0]?.text ?? "{}");
+    assert.strictEqual(data.success, true);
+    assert.ok(data.peakFloodedAreaM2 >= 0);
+    assert.ok(data.peakSurfaceVolumeM3 >= 0);
+    assert.strictEqual(typeof data.massConservationErrorPct, "number");
+  });
+
+  it("epanet_screen_contingencies_webgpu screens all N-1 pipe break outages and fire flows", async () => {
+    const tool = tools["epanet_screen_contingencies_webgpu"]!;
+    const res = await tool.handler({
+      networkContent: SAMPLE_EPANET_INP,
+      screeningMode: "COMBINED",
+      preferCpu: true,
+    });
+
+    const data = JSON.parse(res.content[0]?.text ?? "{}");
+    assert.strictEqual(data.success, true);
+    assert.strictEqual(data.nodesMonitored, 4);
+    assert.strictEqual(data.pipesMonitored, 3);
+    assert.ok(data.outageContingencies);
+    assert.strictEqual(data.outageContingencies.pipesEvaluated, 3);
+    assert.ok(data.outageContingencies.topCriticalPipes.length > 0);
+    assert.ok(data.fireFlowScreening);
+    assert.strictEqual(data.fireFlowScreening.hydrantsEvaluated, 3);
+    assert.ok(data.fireFlowScreening.fireFlowCapacities.length > 0);
   });
 });

@@ -395,6 +395,53 @@
     "subcommands": []
   },
   {
+    "name": "asm",
+    "specs": [
+      "asm <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (.asm, .bsm, .wrrf)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, simulate-biokinetics, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "simulate-biokinetics",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "ASM file(s) (.asm, .bsm, .wrrf, .json)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "days",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation horizon in days",
+        "default": 10
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "aspen",
     "specs": [
       "aspen <action> [files..]"
@@ -441,6 +488,46 @@
         ],
         "type": "string",
         "description": "Target feed stream ID for flash VLE calculation"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "atp",
+    "specs": [
+      "atp <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate, and convert ATP-EMTP transient card decks (.atp, .dat)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, simulate, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "simulate",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "ATP-EMTP file(s) (.atp, .dat)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
       }
     ],
     "subcommands": []
@@ -498,6 +585,101 @@
         "type": "number",
         "description": "Simulation timestep for Virtual RTE [s]",
         "default": 0.01
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "benchmark",
+    "specs": [
+      "benchmark [suite]"
+    ],
+    "aliases": [],
+    "describe": "Run industrial SOTA verification and scalability benchmarks for PSS/E and PSCAD",
+    "positionals": [
+      {
+        "name": "suite",
+        "aliases": [],
+        "type": "string",
+        "description": "Benchmark target suite (psse, pscad, all)",
+        "choices": [
+          "psse",
+          "pscad",
+          "all"
+        ],
+        "default": "all"
+      }
+    ],
+    "options": [
+      {
+        "name": "model",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "Benchmark model name (PSSE: activsg2000, mmwg70k, pegase9241, all; PSCAD: cigre-b4, wind100, ehv-corridor, all)"
+      },
+      {
+        "name": "contingencies",
+        "aliases": [
+          "c"
+        ],
+        "type": "number",
+        "description": "Number of N-1 contingencies to screen in ACCC benchmarks"
+      },
+      {
+        "name": "durationMs",
+        "aliases": [
+          "tstop"
+        ],
+        "type": "number",
+        "description": "Simulation duration in milliseconds for EMT benchmarks"
+      },
+      {
+        "name": "timeStepUs",
+        "aliases": [
+          "dt"
+        ],
+        "type": "number",
+        "description": "Simulation time step in microseconds for EMT benchmarks"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path for PSS/E Tabulated CSV reports"
+      },
+      {
+        "name": "html",
+        "aliases": [],
+        "type": "string",
+        "description": "Export self-contained interactive HTML benchmark dashboard"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "string",
+        "description": "Export machine-readable benchmark metrics in JSON format"
+      },
+      {
+        "name": "export-raw",
+        "aliases": [],
+        "type": "string",
+        "description": "Export case to Siemens PSS/E .raw format (for activsg2000)"
+      },
+      {
+        "name": "export-comtrade",
+        "aliases": [],
+        "type": "string",
+        "description": "Export trajectory to IEEE C37.111 COMTRADE (.cff) container (for PSCAD)"
+      },
+      {
+        "name": "export-psout",
+        "aliases": [],
+        "type": "string",
+        "description": "Export trajectory to native PSCAD v5 (*.psout) binary (for PSCAD)"
       }
     ],
     "subcommands": []
@@ -1076,6 +1258,56 @@
         "type": "boolean",
         "description": "profile memory usage across phases and report as JSON to stderr",
         "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "comtrade",
+    "specs": [
+      "comtrade <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, analyze, and convert COMTRADE fault recordings (.cfg, .dat, .cff)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, extract-phasor, to-dae, to-cff)",
+        "choices": [
+          "lint",
+          "summary",
+          "extract-phasor",
+          "to-dae",
+          "to-cff"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "COMTRADE file(s) (.cfg, .dat, .cff)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "channel",
+        "aliases": [
+          "c"
+        ],
+        "type": "number",
+        "description": "Analog channel index for phasor extraction",
+        "default": 0
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
       }
     ],
     "subcommands": []
@@ -1914,6 +2146,53 @@
     "subcommands": []
   },
   {
+    "name": "dnp3",
+    "specs": [
+      "dnp3 <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 device profiles (.dnp3, .xml, .json)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, process-telemetry, to-xml, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "process-telemetry",
+          "to-xml",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "DNP3 file(s) (.dnp3, .xml, .json)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
+      },
+      {
+        "name": "deadband",
+        "aliases": [],
+        "type": "number",
+        "description": "Deadband threshold for telemetry filtering"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "domain",
     "specs": [
       "domain <lang> <action> [files..]",
@@ -2301,7 +2580,7 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | diff | to-modelica | to-dae",
+        "description": "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | diff | from-gis | convert | screen-contingencies | to-modelica | to-dae",
         "choices": [
           "inspect",
           "lint",
@@ -2314,6 +2593,8 @@
           "quality",
           "diff",
           "from-gis",
+          "convert",
+          "screen-contingencies",
           "to-modelica",
           "to-dae"
         ]
@@ -2327,6 +2608,46 @@
       }
     ],
     "options": [
+      {
+        "name": "screening-mode",
+        "aliases": [],
+        "type": "string",
+        "description": "Parallel screening mode: ALL_N1_OUTAGES | ALL_FIRE_HYDRANTS | COMBINED",
+        "choices": [
+          "ALL_N1_OUTAGES",
+          "ALL_FIRE_HYDRANTS",
+          "COMBINED"
+        ],
+        "default": "COMBINED"
+      },
+      {
+        "name": "residual-pressure",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum residual pressure in meters (default: 14.06m = 20 psi)",
+        "default": 14.06
+      },
+      {
+        "name": "max-velocity",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum pipe velocity limit in m/s (default: 2.5)",
+        "default": 2.5
+      },
+      {
+        "name": "fire-flow",
+        "aliases": [],
+        "type": "number",
+        "description": "Standard test fire flow in L/s (default: 63.09 L/s = 1000 gpm)",
+        "default": 63.09
+      },
+      {
+        "name": "prefer-cpu",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Prefer CPU SIMD execution over WebGPU (default: true)",
+        "default": true
+      },
       {
         "name": "out",
         "aliases": [
@@ -3735,6 +4056,54 @@
           "json"
         ],
         "default": "terminal"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "hec-hms",
+    "specs": [
+      "hec-hms <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate runoff, and convert HEC-HMS hydrologic basin models (.basin, .hms)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, simulate-runoff, to-ras, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "simulate-runoff",
+          "to-ras",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "HEC-HMS basin file(s) (.basin, .hms)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "rain",
+        "aliases": [],
+        "type": "number",
+        "description": "Design storm precipitation depth in millimeters",
+        "default": 50
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
       }
     ],
     "subcommands": []
@@ -5283,6 +5652,69 @@
     "subcommands": []
   },
   {
+    "name": "matpower",
+    "specs": [
+      "matpower <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve, and convert MATPOWER power network cases (.m)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, solve, to-psse, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "solve",
+          "to-psse",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "MATPOWER case file(s) (.m)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "formulation",
+        "aliases": [],
+        "type": "string",
+        "description": "OPF formulation for solve action: 'dc' or 'ac'",
+        "choices": [
+          "dc",
+          "ac"
+        ],
+        "default": "dc"
+      },
+      {
+        "name": "tier",
+        "aliases": [],
+        "type": "string",
+        "description": "Solver tier for solve action: 'direct' (Tier 2) or 'ampl' (Tier 1)",
+        "choices": [
+          "direct",
+          "ampl"
+        ],
+        "default": "direct"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "mc",
     "specs": [
       "mc <name> <paths..>"
@@ -5978,6 +6410,55 @@
     "subcommands": []
   },
   {
+    "name": "oneliner",
+    "specs": [
+      "oneliner <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (.olx, .dxt)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, solve-fault, to-dxt, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "solve-fault",
+          "to-dxt",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "OneLiner file(s) (.olx, .dxt, .json)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "bus",
+        "aliases": [
+          "b"
+        ],
+        "type": "string",
+        "description": "Bus ID or number to fault"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "openadr",
     "specs": [
       "openadr <action> [files..]"
@@ -6237,6 +6718,110 @@
       }
     ],
     "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "opf",
+    "specs": [
+      "opf <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Optimal Power Flow: solve DC/AC OPF, export to AMPL or ExaGO, and compute LMPs",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (solve, to-ampl, to-exago)",
+        "choices": [
+          "solve",
+          "to-ampl",
+          "to-exago"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Power network case file(s) (.m, .raw, .json)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "tier",
+        "aliases": [],
+        "type": "string",
+        "description": "Solver tier: 'direct' (Tier 2 Zero-GC CLP/Simplex/IPOPT) or 'ampl' (Tier 1 algebraic)",
+        "choices": [
+          "direct",
+          "ampl"
+        ],
+        "default": "direct"
+      },
+      {
+        "name": "formulation",
+        "aliases": [],
+        "type": "string",
+        "description": "OPF formulation: 'dc' (linearized active power) or 'ac' (full nonlinear)",
+        "choices": [
+          "dc",
+          "ac"
+        ],
+        "default": "dc"
+      },
+      {
+        "name": "solver",
+        "aliases": [],
+        "type": "string",
+        "description": "Optimizer name ('simplex', 'clp', 'cbc', 'ipopt', 'highs')"
+      },
+      {
+        "name": "thermal-limits",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enforce transmission branch thermal flow limits (rateA)",
+        "default": true
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Result presentation format",
+        "choices": [
+          "report",
+          "table",
+          "json"
+        ],
+        "default": "report"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path or directory"
+      },
+      {
+        "name": "app",
+        "aliases": [],
+        "type": "string",
+        "description": "ExaGO optimization application",
+        "choices": [
+          "scopflow",
+          "opflow"
+        ],
+        "default": "scopflow"
+      },
+      {
+        "name": "mpi-ranks",
+        "aliases": [],
+        "type": "number",
+        "description": "MPI rank count for ExaGO execution script",
+        "default": 4
+      }
+    ],
     "subcommands": []
   },
   {
@@ -6693,6 +7278,9 @@
           "harmonics",
           "qdsl",
           "opf",
+          "cable",
+          "reliability",
+          "scl",
           "gridcode",
           "to-psse",
           "to-modelica"
@@ -7080,6 +7668,9 @@
           "harmonics",
           "qdsl",
           "opf",
+          "cable",
+          "reliability",
+          "scl",
           "gridcode",
           "to-psse",
           "to-modelica"
@@ -7256,7 +7847,8 @@
           "to-modelica",
           "export-ssp",
           "to-ssp",
-          "psout"
+          "psout",
+          "benchmark"
         ]
       },
       {
@@ -8372,6 +8964,106 @@
         ],
         "type": "number",
         "description": "Simulation duration in seconds (default: 10.0)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "scl",
+    "specs": [
+      "scl <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (.scd, .cid, .ssd)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, validate-goose, to-sld, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "validate-goose",
+          "to-sld",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "IEC 61850 SCL file(s) (.scd, .cid, .icd, .ssd, .xml)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "sel",
+    "specs": [
+      "sel <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, evaluate protection, and convert SEL relay settings (.rcf, .rdb, .sel, .txt)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, evaluate-protection, to-ascii, to-json, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "evaluate-protection",
+          "to-ascii",
+          "to-json",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "SEL settings file(s) (.rcf, .rdb, .sel, .txt, .json)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "current",
+        "aliases": [
+          "i"
+        ],
+        "type": "number",
+        "description": "Phase current in amperes to evaluate",
+        "default": 20
+      },
+      {
+        "name": "impedance",
+        "aliases": [
+          "z"
+        ],
+        "type": "number",
+        "description": "Fault loop impedance in ohms to evaluate distance reach"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
       }
     ],
     "subcommands": []
@@ -9534,7 +10226,7 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality, diff, from-gis)",
+        "description": "Action to perform (inspect, lint, to-dae, to-modelica, route-flow, rtc, quality, diff, from-gis, convert, inundate-2d)",
         "choices": [
           "inspect",
           "summary",
@@ -9545,7 +10237,9 @@
           "rtc",
           "quality",
           "diff",
-          "from-gis"
+          "from-gis",
+          "convert",
+          "inundate-2d"
         ]
       },
       {
@@ -10789,6 +11483,48 @@
         ],
         "type": "string",
         "description": "Output file path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "waterml",
+    "specs": [
+      "waterml <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, fit rating curves, and convert OGC WaterML timeseries (.waterml, .wml2, .xml, .json)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, fit-rating, to-hec-ras, to-epanet, to-dae)",
+        "choices": [
+          "lint",
+          "summary",
+          "fit-rating",
+          "to-hec-ras",
+          "to-epanet",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "WaterML file(s) (.waterml, .wml2, .xml, .json)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output destination path"
       }
     ],
     "subcommands": []

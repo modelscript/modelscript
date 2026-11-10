@@ -2,11 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  parseOpenScenario,
-  serializeOpenScenario,
-  type OpenScenarioDocument,
-} from "../src/index.js";
+import { parseOpenScenario, serializeOpenScenario } from "../src/index.js";
 
 const TEST_SCENARIO_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <OpenSCENARIO>

@@ -18,4 +18,6 @@ export * from "./multi-rate-cosim.js";
 export * from "./phasor-init.js";
 export * from "./types.js";
 export * from "./wasm-emt-bridge.js";
+export * from "./webgpu-sparse-emt-solver.js";
 export * from "./wgsl/mmc-valve-kernel.wgsl.js";
+export * from "./wgsl/sparse-emt-solver.wgsl.js";

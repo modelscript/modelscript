@@ -39,6 +39,10 @@ export interface QSSOptions {
    * whose derivative $f_j(t, q)$ depends on state $q_i$. If omitted, probed automatically at $t_0$.
    */
   dependencies?: number[][] | undefined;
+  /** Alias for `dependencies`. */
+  dependencyGraph?: number[][] | undefined;
+  /** Whether to dynamically re-probe or augment the dependency graph on zero-crossing events / mode switches. */
+  reprobeOnEvents?: boolean | undefined;
   /** Optional zero-crossing event functions $g_k(t, x)$. */
   eventFunctions?: QSSEventFunction[] | undefined;
   /** Event crossing directions (`1` rising, `-1` falling, `0` both). */
@@ -227,10 +231,23 @@ export function qssSolve(
   const nextEventTime = new Float64Array(n).fill(Infinity);
 
   // Probe sparsity and diagonal Jacobian
-  const { dependents, diagJac, nfev: initNfev } = probeSparsityGraph(f, t0, y0);
-  if (options?.dependencies) {
-    for (let i = 0; i < Math.min(n, options.dependencies.length); i++) {
-      dependents[i] = [...options.dependencies[i]!];
+  const providedDeps = options?.dependencies ?? options?.dependencyGraph;
+  let dependents: number[][];
+  let diagJac: Float64Array;
+  let initNfev = 0;
+
+  if (providedDeps && !isLiqss) {
+    dependents = Array.from({ length: n }, (_, i) => (i < providedDeps.length ? [...providedDeps[i]!] : [i]));
+    diagJac = new Float64Array(n);
+  } else {
+    const probed = probeSparsityGraph(f, t0, y0);
+    dependents = probed.dependents;
+    diagJac = probed.diagJac;
+    initNfev = probed.nfev;
+    if (providedDeps) {
+      for (let i = 0; i < Math.min(n, providedDeps.length); i++) {
+        dependents[i] = [...providedDeps[i]!];
+      }
     }
   }
   let nfev = initNfev;
@@ -480,6 +497,22 @@ export function qssSolve(
             tq[i] = tEvent;
             updateQuantum(i);
           }
+
+          if (options?.reprobeOnEvents) {
+            const reprobed = probeSparsityGraph(f, tEvent, yUpdated);
+            for (let i = 0; i < n; i++) {
+              const depSet = new Set(dependents[i]);
+              for (const dep of reprobed.dependents[i] ?? []) {
+                depSet.add(dep);
+              }
+              dependents[i] = Array.from(depSet);
+              if (isLiqss) {
+                diagJac[i] = reprobed.diagJac[i]!;
+              }
+            }
+            nfev += reprobed.nfev;
+          }
+
           bootstrapAllTaylorCoefficients(tEvent);
           for (let i = 0; i < n; i++) {
             scheduleNextCrossing(i, tEvent, true);

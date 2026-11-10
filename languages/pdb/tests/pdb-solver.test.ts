@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parsePdb, solveProteinBiophysics, computeDihedralAngle } from "../src/index.js";
+import { computeDihedralAngle, solveProteinBiophysics } from "../src/index.js";
 import { ALPHA_HELIX_PDB_BENCHMARK } from "./pdb-benchmark-runner.js";
 
 test("PDB Solver: computes 3D dihedral angles and GNM fluctuations", () => {

@@ -22,6 +22,7 @@ import {
   VarType,
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
+import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "../builtins.js";
 import { ModelicaPortBalancer } from "../connections.js";
 import { AnnotationEvaluator } from "../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../errors.js";
@@ -74,6 +75,7 @@ import {
   extractEnumLiteralsFromCst,
   getSymbolQualifiedName,
   lowerCSTExpression,
+  SCALAR_VECTORIZABLE_FUNCTIONS,
   stripComments,
   stripCommentsAndStrings,
 } from "./expressions/index.js";
@@ -842,6 +844,18 @@ export class ModelicaFlattener {
             if (target) {
               for (const pkgChild of this.db.childrenOf(target.id)) {
                 if (pkgChild.kind !== "Reference" && pkgChild.kind !== "Import") {
+                  // MLS §13.2.1.1: An imported name cannot hide a built-in operator or type keyword.
+                  if (
+                    BUILTIN_FUNCTIONS.has(pkgChild.name) ||
+                    BUILTIN_VARIABLES.has(pkgChild.name) ||
+                    SCALAR_VECTORIZABLE_FUNCTIONS.has(pkgChild.name) ||
+                    pkgChild.name === "Real" ||
+                    pkgChild.name === "Integer" ||
+                    pkgChild.name === "Boolean" ||
+                    pkgChild.name === "String"
+                  ) {
+                    continue;
+                  }
                   result.set(pkgChild.name, `${pkgName}.${pkgChild.name}`);
                 }
               }
@@ -1157,7 +1171,7 @@ export class ModelicaFlattener {
     visited.add(classId);
 
     const sym = this.db.symbol(classId);
-    if (this.options.intEnumConversion || (sym && (sym.kind === "Record" || this.isRecordSym(sym)))) {
+    if (this.options.intEnumConversion) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
@@ -1182,7 +1196,6 @@ export class ModelicaFlattener {
     const text = stripCommentsAndStrings(rawText);
 
     if (
-      /\b(?:class|model|block|package)\s+[a-zA-Z_]\w*\s*=\s*/.test(text) ||
       /\bconnector\s+[a-zA-Z_]\w*\s*=\s*(?!(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
         text,
       ) ||
@@ -1330,11 +1343,14 @@ export class ModelicaFlattener {
           }
         }
       }
-      if (child.kind === "Record" || this.isRecordSym(child)) {
-        this._unsupportedWasmCache.set(classId, true);
-        return true;
-      }
-      if (child.kind === "Class" || child.kind === "Model" || child.kind === "Block" || child.kind === "Connector") {
+      if (
+        child.kind === "Class" ||
+        child.kind === "Model" ||
+        child.kind === "Block" ||
+        child.kind === "Connector" ||
+        child.kind === "Record" ||
+        this.isRecordSym(child)
+      ) {
         if (this.classHasUnsupportedWasmFeatures(child.id, visited)) {
           this._unsupportedWasmCache.set(classId, true);
           return true;

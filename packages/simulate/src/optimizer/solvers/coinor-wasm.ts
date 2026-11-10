@@ -188,7 +188,7 @@ export class CoinorWasmSolver {
         this.writeF64(vPtr, evalJacobian(this.readF64(xW, nVars)));
         return 1;
       },
-      "iiiiiiiiiii",
+      "iiiiiiiiii",
     );
     this.registeredFunctions.push(evalJacGPtr);
 
@@ -420,7 +420,7 @@ export class CoinorWasmSolver {
         this.writeF64(vPtr, evalJacobian(this.readF64(xW, nVars)));
         return 1;
       },
-      "iiiiiiiiiii",
+      "iiiiiiiiii",
     );
     this.registeredFunctions.push(evalJacGPtr);
 
@@ -679,8 +679,20 @@ export async function loadCoinorWasm(wasmUrl?: string): Promise<CoinorWasmSolver
   if (isNode) {
     const { fileURLToPath } = await import("node:url");
     const { dirname, join } = await import("node:path");
+    const { existsSync } = await import("node:fs");
     const currentDir = dirname(fileURLToPath(import.meta.url));
-    const wasmDir = join(currentDir, "..", "..", "wasm");
+    const candidateDirs = [
+      join(currentDir, "..", "..", "..", "wasm"),
+      join(currentDir, "..", "..", "wasm"),
+      join(currentDir, "wasm"),
+    ];
+    let wasmDir = candidateDirs[0]!;
+    for (const dir of candidateDirs) {
+      if (existsSync(join(dir, "coinor.js"))) {
+        wasmDir = dir;
+        break;
+      }
+    }
     const jsGlue = join(wasmDir, "coinor.js");
 
     const factory = await import(jsGlue);

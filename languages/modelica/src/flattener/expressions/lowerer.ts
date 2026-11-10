@@ -4727,6 +4727,12 @@ function lowerPreBinaryCSTExpression(
         if (dispatched !== null) return dispatched;
       }
     }
+    if ((cleanFnName === "abs" || cleanFnName === "'abs'") && argExprIds.length === 1) {
+      if (db && flattener) {
+        const dispatched = dispatchUnaryOperator("'abs'", argExprIds[0]!, argNodes[0], dae, db, flattener);
+        if (dispatched !== null) return dispatched;
+      }
+    }
 
     // 2. String(c, ...) operator
     if (cleanFnName === "String" && argExprIds.length >= 1) {
@@ -4966,11 +4972,21 @@ function lowerPreBinaryCSTExpression(
     );
 
     let matchingFnSym: any = null;
+    const isBuiltinOp =
+      !cleanFnName.includes(".") &&
+      (SCALAR_VECTORIZABLE_FUNCTIONS.has(cleanFnName) || BUILTIN_FUNCTIONS.has(cleanFnName));
     let fnDae =
-      hasParentRedecl || (fnName.startsWith(".") && !cleanFnName.includes("."))
+      isBuiltinOp || hasParentRedecl || (fnName.startsWith(".") && !cleanFnName.includes("."))
         ? undefined
         : (dae.getFunction(fnName) ?? (cleanFnName ? dae.getFunction(cleanFnName) : undefined));
-    if (!fnDae && !hasParentRedecl && cleanFnName && !cleanFnName.includes(".") && !fnName.startsWith(".")) {
+    if (
+      !fnDae &&
+      !isBuiltinOp &&
+      !hasParentRedecl &&
+      cleanFnName &&
+      !cleanFnName.includes(".") &&
+      !fnName.startsWith(".")
+    ) {
       fnDae = dae.getFunction(cleanFnName);
     }
     if (dae.classKind === "function" && getFlatteningState(dae).functionParameterNames?.has(cleanFnName)) {
@@ -5624,7 +5640,14 @@ function lowerPreBinaryCSTExpression(
             if (!specializedQualifiedName) {
               dae.addFunction(cleanFnName, fn);
               dae.addFunction(fnName, fn);
-              if (parts.length === 1 && fnBase) dae.addFunction(fnBase, fn);
+              if (
+                parts.length === 1 &&
+                fnBase &&
+                !SCALAR_VECTORIZABLE_FUNCTIONS.has(fnBase) &&
+                !BUILTIN_FUNCTIONS.has(fnBase)
+              ) {
+                dae.addFunction(fnBase, fn);
+              }
             }
             let rootDae: any = (flattener as any)?.currentRootDae ?? dae;
             while (rootDae.parentDae) rootDae = rootDae.parentDae;
@@ -7289,7 +7312,13 @@ function lowerPreBinaryCSTExpression(
       }
       if (rank === 1) {
         const elems = getArrayCtorElements(item, dae);
-        if (blockLen > 1 || (blocks.length === 1 && blocks[0]?.length === 1) || anySingleScalarBlock || blocks.length > 1) {
+        if (elems.length === 0) return [];
+        if (
+          blockLen > 1 ||
+          (blocks.length === 1 && blocks[0]?.length === 1) ||
+          anySingleScalarBlock ||
+          blocks.length > 1
+        ) {
           return elems.map((e) => [e]);
         }
         return [elems];

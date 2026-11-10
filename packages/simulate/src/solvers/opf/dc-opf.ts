@@ -14,6 +14,7 @@
  *   - Transmission branch shadow prices / congestion rents
  */
 
+import { solveDirectDcOpf } from "./direct-dc-opf.js";
 import { formatOpfReport } from "./format-report.js";
 import type {
   GenericPowerCase,
@@ -78,6 +79,15 @@ function invertDense(A: Float64Array, n: number): Float64Array | null {
  * Executes a DC Optimal Power Flow calculation.
  */
 export function solveDcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}): OpfSolution {
+  if (options.tier === "direct") {
+    return solveDirectDcOpf(powerCase, options);
+  }
+  if (options.tier === "ampl" || (options.customAmplConstraints && options.customAmplConstraints.length > 0)) {
+    throw new Error(
+      "Tier 'ampl' or custom AMPL constraints require asynchronous execution. Please use solveDcOpfAsync() or solveAmplOpf().",
+    );
+  }
+
   const sbase = powerCase.header.sbase > 0 ? powerCase.header.sbase : 100.0;
   const enforceLimits = options.enforceThermalLimits !== false;
   const caseTitle = options.caseTitle || powerCase.title1 || "POWER NETWORK CASE";
@@ -489,4 +499,20 @@ export function solveDcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
 
   solution.reportText = formatOpfReport(solution, caseTitle);
   return solution;
+}
+
+/**
+ * Asynchronously executes a DC Optimal Power Flow calculation, routing to
+ * either Tier 1 (AMPL with custom constraints/MPEC/SOS2) or Tier 2 (Direct Zero-GC simplex / interior-point).
+ */
+export async function solveDcOpfAsync(powerCase: GenericPowerCase, options: OpfOptions = {}): Promise<OpfSolution> {
+  if (options.tier === "ampl" || (options.customAmplConstraints && options.customAmplConstraints.length > 0)) {
+    const amplPkg = "@modelscript/ampl";
+    const { solveAmplOpf } = (await import(amplPkg)) as any;
+    return solveAmplOpf(powerCase, { ...options, formulation: "dc" });
+  }
+  if (options.tier === "direct") {
+    return solveDirectDcOpf(powerCase, options);
+  }
+  return solveDcOpf(powerCase, options);
 }

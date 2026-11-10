@@ -173,6 +173,64 @@ test("EPANET CLI Commands (msx epanet inspect, lint, solve, to-modelica, to-dae)
     }
   });
 
+  await t.test("msx epanet convert", async () => {
+    const tableDumpFile = path.join(tmpDir, "watergems_model.json");
+    const outInpFile = path.join(tmpDir, "converted_watergems.inp");
+
+    fs.writeFileSync(
+      tableDumpFile,
+      JSON.stringify({
+        HMIJunction: [{ ID: "J_WG1", Elevation: 45.0, Demand: 12.0 }],
+        HMIReservoir: [{ ID: "R_WG1", Head: 120.0 }],
+        HMIPipe: [{ ID: "P_WG1", StartNodeID: "R_WG1", StopNodeID: "J_WG1", Length: 800.0, Diameter: 10.0 }],
+      }),
+      "utf-8",
+    );
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => logs.push(args.join(" "));
+
+    try {
+      await (EpanetCommand.handler as any)({
+        action: "convert",
+        files: [tableDumpFile],
+        out: outInpFile,
+      });
+
+      assert.ok(fs.existsSync(outInpFile));
+      const inp = fs.readFileSync(outInpFile, "utf-8");
+      assert.ok(inp.includes("J_WG1"));
+      assert.ok(inp.includes("R_WG1"));
+      assert.ok(inp.includes("P_WG1"));
+      assert.ok(logs.some((l) => l.includes("Conversion Summary:")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx epanet screen-contingencies", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => logs.push(args.join(" "));
+
+    try {
+      await (EpanetCommand.handler as any)({
+        action: "screen-contingencies",
+        files: [inpFile],
+        "screening-mode": "COMBINED",
+        "prefer-cpu": true,
+      });
+
+      assert.ok(logs.some((l) => l.includes("Batched Hydraulic Screening")));
+      assert.ok(logs.some((l) => l.includes("N-1 Pipe Outage Screening")));
+      assert.ok(logs.some((l) => l.includes("Fire Flow Capacity Screening")));
+      assert.ok(logs.some((l) => l.includes("Top Critical Pipes")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
   // Cleanup
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

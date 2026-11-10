@@ -977,3 +977,127 @@ export function fea_analyze_tet_mesh_quality(
   return numInverted;
 }
 
+/**
+ * Assembles global CSR stiffness matrix values and enforces Dirichlet boundary constraints
+ * directly in linear memory with zero heap allocations.
+ *
+ * For each element `e`:
+ *   Iterates its (npe * 3) x (npe * 3) element matrix (KeEff) and accumulates entries
+ *   into CSR values at the precomputed column indices in `elementCsrMapPtr`.
+ *
+ * If `fixedMask[row]` or `fixedMask[col]` is non-zero (Dirichlet boundary constraint):
+ *   - If row == col, sets values[p] = 1.0.
+ *   - If row is free and col is fixed with prescribed displacement:
+ *     accumulates prescribed boundary correction into prescribedCorr[row] -= keVal * prescribedDisp[col].
+ *   - Otherwise, the off-diagonal constrained interaction is zeroed/omitted.
+ *
+ * Finally:
+ *   - Ensures all fixed DOFs have values[diagIndices[dof]] = 1.0.
+ *   - Computes the Jacobi preconditioner inverse diagonal: diagInvOut[dof] = 1.0 / A_ii.
+ */
+export function fea_assemble_csr_values(
+  numElements: i32,
+  npe: i32,
+  numDofs: i32,
+  nnz: i32,
+  elementsPtr: usize,
+  elementCsrMapPtr: usize,
+  keAllPtr: usize,
+  fixedMaskPtr: usize,
+  prescribedDispPtr: usize,
+  hasPrescribed: i32,
+  prescribedCorrPtr: usize,
+  diagIndicesPtr: usize,
+  valuesOutPtr: usize,
+  diagInvOutPtr: usize
+): void {
+  // 1. Zero out CSR values array
+  for (let i: i32 = 0; i < nnz; i++) {
+    store<f64>(valuesOutPtr + ((i as usize) << 3), 0.0);
+  }
+
+  // 2. Zero out prescribed correction vector if prescribed displacements are present
+  if (hasPrescribed != 0 && prescribedCorrPtr != 0) {
+    for (let i: i32 = 0; i < numDofs; i++) {
+      store<f64>(prescribedCorrPtr + ((i as usize) << 3), 0.0);
+    }
+  }
+
+  const edof = npe * 3;
+  const edofSq = edof * edof;
+
+  // 3. Quad-loop element assembly directly in linear memory
+  for (let e: i32 = 0; e < numElements; e++) {
+    const eBase = (e * npe) as usize;
+    const mapBase = (e * edofSq) as usize;
+
+    for (let i: i32 = 0; i < npe; i++) {
+      const ni = load<i32>(elementsPtr + ((eBase + (i as usize)) << 2));
+      for (let di: i32 = 0; di < 3; di++) {
+        const row = ni * 3 + di;
+        const isRowFixed = load<u8>(fixedMaskPtr + (row as usize)) != 0;
+        const locRow = i * 3 + di;
+
+        for (let j: i32 = 0; j < npe; j++) {
+          const nj = load<i32>(elementsPtr + ((eBase + (j as usize)) << 2));
+          for (let dj: i32 = 0; dj < 3; dj++) {
+            const col = nj * 3 + dj;
+            const isColFixed = load<u8>(fixedMaskPtr + (col as usize)) != 0;
+            const locCol = j * 3 + dj;
+
+            const k = (locRow * edof + locCol) as usize;
+            const p = load<i32>(elementCsrMapPtr + ((mapBase + k) << 2));
+            if (p >= 0) {
+              const pOff = (p as usize) << 3;
+              const keVal = load<f64>(keAllPtr + ((mapBase + k) << 3));
+
+              if (isRowFixed || isColFixed) {
+                if (row == col) {
+                  store<f64>(valuesOutPtr + pOff, 1.0);
+                } else if (!isRowFixed && isColFixed && hasPrescribed != 0 && prescribedDispPtr != 0 && prescribedCorrPtr != 0) {
+                  const uBar = load<f64>(prescribedDispPtr + ((col as usize) << 3));
+                  if (uBar != 0.0) {
+                    const rowOff = (row as usize) << 3;
+                    store<f64>(
+                      prescribedCorrPtr + rowOff,
+                      load<f64>(prescribedCorrPtr + rowOff) - keVal * uBar
+                    );
+                  }
+                }
+              } else {
+                store<f64>(
+                  valuesOutPtr + pOff,
+                  load<f64>(valuesOutPtr + pOff) + keVal
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Ensure fixed DOFs have exactly 1.0 on diagonal
+  for (let dof: i32 = 0; dof < numDofs; dof++) {
+    if (load<u8>(fixedMaskPtr + (dof as usize)) != 0) {
+      const p = load<i32>(diagIndicesPtr + ((dof as usize) << 2));
+      if (p >= 0) {
+        store<f64>(valuesOutPtr + ((p as usize) << 3), 1.0);
+      }
+    }
+  }
+
+  // 5. Precompute Jacobi preconditioner: diagInv[i] = 1.0 / A[i, i]
+  for (let i: i32 = 0; i < numDofs; i++) {
+    const p = load<i32>(diagIndicesPtr + ((i as usize) << 2));
+    let diag: f64 = 1.0;
+    if (p >= 0) {
+      const v = load<f64>(valuesOutPtr + ((p as usize) << 3));
+      if (Math.abs(v) > 1e-18) {
+        diag = v;
+      }
+    }
+    store<f64>(diagInvOutPtr + ((i as usize) << 3), 1.0 / diag);
+  }
+}
+

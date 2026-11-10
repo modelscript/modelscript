@@ -756,6 +756,19 @@ export class SysML2CstFlattener {
       }
     }
 
+    // Robust fallback: if naked differential equations der(x) == ... are located directly inside
+    // a part def or error recovery node, extract state names via regex scan over component text.
+    if (compNode.text && compNode.text.includes("der(")) {
+      const derRegex = /\bder\s*\(\s*([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*\)/g;
+      let match: RegExpExecArray | null;
+      while ((match = derRegex.exec(compNode.text)) !== null) {
+        const fullArg = match[1]!;
+        const dotIdx = fullArg.indexOf(".");
+        const baseName = dotIdx === -1 ? fullArg : fullArg.slice(0, dotIdx);
+        derStateNames.add(baseName);
+      }
+    }
+
     // 1. Process Inheritance (:>)
     const subclassificationNodes = findCstChildren(compNode, "OwnedSubclassification");
     for (const sc of subclassificationNodes) {

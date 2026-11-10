@@ -132,11 +132,87 @@ const componentHiddenCache = new WeakMap<object, Map<SymbolId, boolean>>();
 function findFirstExpressionCst(n: any): any {
   if (!n) return null;
   if (n.type === "expression") return n;
-  for (const c of n.children || []) {
+  const count = n.childCount ?? n.children?.length ?? 0;
+  for (let i = 0; i < count; i++) {
+    const c = n.child ? n.child(i) : n.children[i];
+    if (!c) continue;
     const res = findFirstExpressionCst(c);
     if (res) return res;
   }
   return null;
+}
+
+const EXPR_CST_NODE_TYPES = new Set([
+  "expression",
+  "if_expression",
+  "simple_expression",
+  "logical_expression",
+  "logical_term",
+  "logical_factor",
+  "relation",
+  "arithmetic_expression",
+  "term",
+  "factor",
+  "primary",
+  "component_reference",
+  "unsigned_number",
+  "unsigned_integer",
+  "STRING",
+  "false",
+  "true",
+]);
+
+export function findBindingExprFromCst(bindNode: any): any {
+  if (!bindNode) return null;
+  if (EXPR_CST_NODE_TYPES.has(bindNode.type)) {
+    let cur = bindNode;
+    while (
+      cur.parent &&
+      cur.parent.startIndex === cur.startIndex &&
+      cur.parent.endIndex === cur.endIndex &&
+      EXPR_CST_NODE_TYPES.has(cur.parent.type)
+    ) {
+      cur = cur.parent;
+    }
+    return cur;
+  }
+  let modNode: any = null;
+  if (bindNode.type === "modification" || bindNode.type === "modification_expression") {
+    modNode = bindNode;
+  } else {
+    const findMod = (n: any): any => {
+      if (!n) return null;
+      if (n.type === "modification" || n.type === "modification_expression") return n;
+      const count = n.childCount ?? n.children?.length ?? 0;
+      for (let i = 0; i < count; i++) {
+        const c = n.child ? n.child(i) : n.children[i];
+        if (!c) continue;
+        if (c.type === "modification" || c.type === "modification_expression") return c;
+        if (
+          c.type === "declaration" ||
+          c.type === "component_declaration" ||
+          c.type === "component_list" ||
+          c.type === "component_clause"
+        ) {
+          const res = findMod(c);
+          if (res) return res;
+        }
+      }
+      return null;
+    };
+    modNode = findMod(bindNode);
+  }
+  if (modNode) {
+    return findFirstExpressionCst(modNode) ?? modNode;
+  }
+  if (
+    bindNode.type === "component_declaration" ||
+    bindNode.type === "declaration" ||
+    bindNode.type === "component_clause"
+  ) {
+    return null;
+  }
+  return findFirstExpressionCst(bindNode) ?? bindNode;
 }
 
 const STANDALONE_EXPR_CACHE_LIMIT = 512;
@@ -5159,7 +5235,9 @@ export function instantiateElements(
           );
           const recordBindingSource =
             matchingParentArg?.value ?? matchingClassArg?.value ?? compInst.modification?.bindingExpression;
-          const cleanRecordBindText = recordBindingSource?.text ? recordBindingSource.text.trim().replace(/^=/, "").trim() : "";
+          const cleanRecordBindText = recordBindingSource?.text
+            ? recordBindingSource.text.trim().replace(/^=/, "").trim()
+            : "";
           const isSelfRecordVarRef =
             Boolean(cleanRecordBindText) &&
             /^[a-zA-Z_]\w*(?:\[[^\]]+\])?(?:\.[a-zA-Z_]\w*(?:\[[^\]]+\])?)*$/.test(cleanRecordBindText);
@@ -6129,7 +6207,11 @@ export function instantiateElements(
                 const modScopeSym = modScopeId != null ? flattener.db.symbol(modScopeId) : null;
                 let exprCst =
                   recordBindingSource?.cstBytes && modScopeSym
-                    ? flattener.db.cstNodeRange(recordBindingSource.cstBytes[0], recordBindingSource.cstBytes[1], modScopeSym)
+                    ? flattener.db.cstNodeRange(
+                        recordBindingSource.cstBytes[0],
+                        recordBindingSource.cstBytes[1],
+                        modScopeSym,
+                      )
                     : null;
                 if (!exprCst) {
                   const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
@@ -6178,7 +6260,11 @@ export function instantiateElements(
                         }
                         if (k === ExprKind.Name) {
                           const nm = dae.interner.resolve(dae.getExprData1(id)) || "";
-                          if (nm === "Modelica.ComplexMath.j" || nm === "ComplexMath.j" || nm.endsWith(".ComplexMath.j")) {
+                          if (
+                            nm === "Modelica.ComplexMath.j" ||
+                            nm === "ComplexMath.j" ||
+                            nm.endsWith(".ComplexMath.j")
+                          ) {
                             return [dae.addRealLiteral(0.0), dae.addRealLiteral(1.0)];
                           }
                           return [dae.addNameExpr(`${nm}.re`), dae.addNameExpr(`${nm}.im`)];
@@ -6269,8 +6355,7 @@ export function instantiateElements(
                         if (k === ExprKind.Call) {
                           const fnName = dae.interner.resolve(dae.getExprData1(id)) || "";
                           const argCount = dae.getExprRight(id);
-                          const getArg = (idx: number) =>
-                            idx === 0 ? dae.getExprLeft(id) : dae.getExprLeft(id + idx);
+                          const getArg = (idx: number) => (idx === 0 ? dae.getExprLeft(id) : dae.getExprLeft(id + idx));
                           if (fnName === "Complex" || fnName === "Complex.'constructor'.fromReal") {
                             if (argCount >= 2) return [getArg(0), getArg(1)];
                             if (argCount === 1) return [getArg(0), dae.addRealLiteral(0.0)];
@@ -6973,15 +7058,6 @@ export function instantiateElements(
          * to `varIdx`, slicing array-valued bindings and attributes by `idxTuple` when scalarizing arrays.
          */
         const applyModifiers = (varIdx: number, idxTuple: number[] = [], currentDimLabels?: (string[] | null)[]) => {
-          const findBindingExprNode = (n: any): any => {
-            if (!n) return null;
-            if (n.type === "expression") return n;
-            for (const c of n.children || []) {
-              const res = findBindingExprNode(c);
-              if (res) return res;
-            }
-            return null;
-          };
           const prevBindingCompName = flattener.currentBindingCompName;
           flattener.currentBindingCompName = compInst.name;
           try {
@@ -7056,10 +7132,7 @@ export function instantiateElements(
                           scopeSym ?? undefined,
                         ) as any;
                         if (modCst) {
-                          const exprCst =
-                            modCst.type === "modification" || modCst.type === "modification_expression"
-                              ? (findBindingExprNode(modCst) ?? modCst)
-                              : modCst;
+                          const exprCst = findBindingExprFromCst(modCst);
                           argExprId = flattener.lowerExpr(exprCst, dae, prefix);
                           if (fType === VarType.Real && !isRealExpr(argExprId, dae)) {
                             argExprId = castToRealExpr(argExprId, dae);
@@ -7263,7 +7336,7 @@ export function instantiateElements(
               }
 
               // Try lowering from CST node if available
-              const findBindingExprNode = findFirstExpressionCst;
+              const findBindingExprNode = findBindingExprFromCst;
 
               const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
               const exprCst = findBindingExprNode(modChild ?? elemCst);
@@ -7334,18 +7407,22 @@ export function instantiateElements(
                     const evalScope = elemOwnerId ?? flattener.currentClassId;
                     const resolveName = evalScope
                       ? (flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", evalScope) ??
-                         flattener.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", evalScope))
+                        flattener.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", evalScope))
                       : null;
                     if (resolveName) {
                       rhsTypeSym = resolveName(rhsTypePath);
                     }
                     if (!rhsTypeSym) {
-                      const fqnCandidates = flattener.db.byName(rhsTypePath).filter((s) => s.kind === "Class" || s.kind === "Type");
+                      const fqnCandidates = flattener.db
+                        .byName(rhsTypePath)
+                        .filter((s) => s.kind === "Class" || s.kind === "Type");
                       if (fqnCandidates.length > 0) rhsTypeSym = fqnCandidates[0];
                     }
                     if (!rhsTypeSym) {
                       const rhsShortName = rhsTypePath.split(".").pop()!;
-                      const rhsTypeSyms = flattener.db.byName(rhsShortName).filter((s) => s.kind === "Class" || s.kind === "Type");
+                      const rhsTypeSyms = flattener.db
+                        .byName(rhsShortName)
+                        .filter((s) => s.kind === "Class" || s.kind === "Type");
                       rhsTypeSym = rhsTypeSyms.find((s) => s.kind === "Class") ?? rhsTypeSyms[0];
                     }
                   }
@@ -7474,10 +7551,7 @@ export function instantiateElements(
                     const prevClassId = flattener.currentClassId;
                     if (scopeClassId) flattener.currentClassId = scopeClassId;
                     try {
-                      let innerCst =
-                        bindCst.type === "modification" || bindCst.type === "modification_expression"
-                          ? (findBindingExprNode(bindCst) ?? bindCst)
-                          : bindCst;
+                      let innerCst = findBindingExprFromCst(bindCst);
                       let scalarFactorExprId: number | null = null;
                       if (idxTuple.length > 0) {
                         if (innerCst && innerCst.children?.some((k: any) => k.text === "*")) {
@@ -7552,10 +7626,7 @@ export function instantiateElements(
                         }
                       }
                       if (!innerCst && idxTuple.length > 0) {
-                        const rawBindCst =
-                          bindCst.type === "modification" || bindCst.type === "modification_expression"
-                            ? (findBindingExprNode(bindCst) ?? bindCst)
-                            : bindCst;
+                        const rawBindCst = findBindingExprFromCst(bindCst);
                         const loweredBindId = flattener.lowerExpr(rawBindCst, dae, bindingPrefix);
                         if (loweredBindId >= 0) {
                           const isConstOrFinalParamTree = (id: number): boolean => {
@@ -9140,7 +9211,10 @@ export function instantiateElements(
                   if (scopeClassId) flattener.currentClassId = scopeClassId;
                   let loweredId = -1;
                   try {
-                    loweredId = flattener.lowerExpr(bindCst, dae, bindingPrefix);
+                    const exprCst = findBindingExprFromCst(bindCst);
+                    if (exprCst) {
+                      loweredId = flattener.lowerExpr(exprCst, dae, bindingPrefix);
+                    }
                   } finally {
                     flattener.currentClassId = prevClassId;
                   }
@@ -10184,7 +10258,7 @@ export function instantiateElements(
                 docUri,
               );
               if (bindCst && bindCst.type !== "expression") {
-                const found = findBindingExprNode(bindCst);
+                const found = findBindingExprFromCst(bindCst);
                 if (found) bindCst = found;
               }
               if (bindCst && bindCst.text?.trim() === bText) {

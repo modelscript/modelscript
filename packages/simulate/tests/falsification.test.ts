@@ -42,27 +42,73 @@ const nominalEval = runner.evaluateTrajectory(nominalParams);
 console.log(`Nominal trajectory min robustness: ${nominalEval.robustness.toFixed(4)}`);
 assert(nominalEval.robustness > 0, "Nominal vehicle configuration must satisfy requirement");
 
-// 2. Run active falsification search to discover violating parameters
-console.log("Starting active adversarial search for counterexamples...");
-const falsification = runner.falsify({
+// 2. Gradient Verification: Compare Continuous Adjoint vs Central Finite Differences
+console.log("\nVerifying Adjoint vs Finite-Difference Sensitivity Gradients:");
+const gradFD = runner.computeRobustnessGradientFD(nominalParams, 1e-4);
+const gradAdj = runner.computeRobustnessGradientAdjoint(nominalParams, 1e-4, nominalEval);
+
+console.log(
+  `  FD Gradient:      m: ${gradFD.m?.toExponential(4)}, u: ${gradFD.u?.toExponential(4)}, c: ${gradFD.c?.toExponential(4)}`,
+);
+console.log(
+  `  Adjoint Gradient: m: ${gradAdj.m?.toExponential(4)}, u: ${gradAdj.u?.toExponential(4)}, c: ${gradAdj.c?.toExponential(4)}`,
+);
+
+// Physical sign consistency
+assert(gradAdj.u! < 0, "Increasing engine force u must decrease margin to speed limit (negative gradient)");
+assert(gradAdj.m! > 0, "Increasing mass m must increase margin to speed limit (positive gradient)");
+assert(gradAdj.c! > 0, "Increasing drag c must increase margin to speed limit (positive gradient)");
+
+// Directional cosine alignment between FD and Adjoint
+let dot = 0;
+let normFD = 0;
+let normAdj = 0;
+for (const p of ["m", "u", "c"]) {
+  const g1 = gradFD[p]!;
+  const g2 = gradAdj[p]!;
+  dot += g1 * g2;
+  normFD += g1 * g1;
+  normAdj += g2 * g2;
+}
+const cosSim = dot / (Math.sqrt(normFD) * Math.sqrt(normAdj));
+console.log(`  Cosine similarity between FD and Adjoint: ${cosSim.toFixed(5)}`);
+assert(cosSim > 0.95, `Adjoint gradient must align closely with finite-difference gradient (got cosSim=${cosSim})`);
+
+// 3. Run active falsification search to discover violating parameters using Adjoint mode
+console.log("\nStarting active adversarial search using Continuous Adjoint Mode...");
+const falsificationAdj = runner.falsify({
   maxIterations: 20,
   learningRate: 0.15,
+  gradientMode: "adjoint",
 });
 
-console.log(`  ✓ Falsification completed in ${falsification.evaluations} trajectory evaluations`);
-console.log(`  ✓ Is Falsified: ${falsification.isFalsified}`);
-assert.strictEqual(falsification.isFalsified, true, "Adjoint-guided search must find a counterexample");
-assert(falsification.minRobustness < 0, "Falsifying parameters must produce negative robustness");
-assert(falsification.counterexampleParams !== undefined, "Counterexample parameters must be returned");
+console.log(`  ✓ Adjoint falsification completed in ${falsificationAdj.evaluations} evaluations`);
+console.log(`  ✓ Is Falsified: ${falsificationAdj.isFalsified}`);
+assert.strictEqual(falsificationAdj.isFalsified, true, "Adjoint-guided search must find a counterexample");
+assert(falsificationAdj.minRobustness < 0, "Falsifying parameters must produce negative robustness");
+assert(falsificationAdj.counterexampleParams !== undefined, "Counterexample parameters must be returned");
 
-console.log(`  ✓ Worst-case robustness degree: ${falsification.minRobustness.toFixed(4)}`);
-console.log(`  ✓ Violation timestamp: t = ${falsification.violationTime?.toFixed(4)}s`);
+console.log(`  ✓ Worst-case robustness degree: ${falsificationAdj.minRobustness.toFixed(4)}`);
+console.log(`  ✓ Violation timestamp: t = ${falsificationAdj.violationTime?.toFixed(4)}s`);
 console.log("  ✓ Counterexample parameters found:");
-for (const [k, v] of Object.entries(falsification.counterexampleParams)) {
+for (const [k, v] of Object.entries(falsificationAdj.counterexampleParams)) {
   console.log(`      ${k} = ${v.toFixed(2)}`);
 }
 
+// 4. Compare with FD mode evaluation efficiency
+console.log("\nStarting active adversarial search using Finite-Difference Mode...");
+const falsificationFD = runner.falsify({
+  maxIterations: 20,
+  learningRate: 0.15,
+  gradientMode: "fd",
+});
+console.log(`  ✓ FD falsification completed in ${falsificationFD.evaluations} evaluations`);
+assert(
+  falsificationAdj.evaluations < falsificationFD.evaluations,
+  "Adjoint mode must require significantly fewer evaluations than FD mode",
+);
+
 // Check that traction u increased and/or mass m decreased (physical consistency)
-assert(falsification.counterexampleParams["u"]! > nominalParams.u, "Adversary should increase engine force u");
+assert(falsificationAdj.counterexampleParams["u"]! > nominalParams.u, "Adversary should increase engine force u");
 
 console.log("Adjoint-Guided Requirement Falsification Engine verified successfully!");

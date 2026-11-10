@@ -553,6 +553,7 @@ export class WebGPUAdjointRunner {
     this.device!.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
     // If the DAE contains ops not directly lowered to register WGSL, pre-upload exact adjoint results
+    let executedOnCpu = !compiled.supported;
     let fallbackComputed: { losses: Float64Array; gradients: Float64Array[] } | null = null;
     if (!compiled.supported) {
       fallbackComputed = this.computeCpuBatchedAdjoint(options);
@@ -653,6 +654,7 @@ export class WebGPUAdjointRunner {
         (allZero && batchSize > 0 && typeof (navigator as { gpu?: GPU | undefined } | undefined)?.gpu === "undefined");
 
       if (isMockDevice && batchSize > 0) {
+        executedOnCpu = true;
         const exact = fallbackComputed ?? this.computeCpuBatchedAdjoint(options);
         for (let b = 0; b < batchSize; b++) {
           losses[b] = exact.losses[b]!;
@@ -673,7 +675,7 @@ export class WebGPUAdjointRunner {
     return {
       losses,
       gradients,
-      device: "webgpu",
+      device: executedOnCpu ? "cpu-fallback" : "webgpu",
       elapsedMs: Date.now() - startTs,
     };
   }

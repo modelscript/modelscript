@@ -70,27 +70,12 @@ const D2 = -0.5;
 const D3 = -0.023504;
 const D4 = -0.0362;
 
-// Dense output polynomial constants
-const _D21 = 25.09876703708589;
-void _D21;
-const _D22 = 11.62013104361867;
-void _D22;
-const _D23 = 28.49148307714626;
-void _D23;
-const _D24 = -5.664021568594133;
-void _D24;
-const _D25 = 0.0;
-void _D25;
-const _D31 = 1.638054557396973;
-void _D31;
-const _D32 = -0.7373619806678748;
-void _D32;
-const _D33 = 8.47791821923899;
-void _D33;
-const _D34 = 15.9925314877952;
-void _D34;
-const _D35 = -1.882352941176471;
-void _D35;
+/**
+ * RODAS4P Continuous Extension:
+ * Following Steinebach (1995), dense output for the 6-stage order-4 RODAS4P method is
+ * evaluated via C^1 cubic Hermite continuous extension matching endpoint states and vector field
+ * tangents: (y_n, y_{n+1}, f(t_n, y_n), f(t_{n+1}, y_{n+1})), ensuring zero boundary drift on algebraic constraints.
+ */
 
 export const ROSENBROCK_D = 1.0 - 1.0 / Math.SQRT2; // ≈ 0.2928932188134524
 
@@ -435,10 +420,12 @@ export function rodas4p(
       maxErrorRatio = Math.max(maxErrorRatio, err_i / tol);
     }
 
-    if (
-      Number.isFinite(maxErrorRatio) &&
-      (maxErrorRatio <= 1.0 || (Math.abs(h) <= minStep * 2 && maxErrorRatio <= 100.0))
-    ) {
+    const acceptedByTol = Number.isFinite(maxErrorRatio) && maxErrorRatio <= 1.0;
+    const acceptedAtMinStep = Number.isFinite(maxErrorRatio) && Math.abs(h) <= minStep * 2 && maxErrorRatio <= 2.0;
+    if (acceptedByTol || acceptedAtMinStep) {
+      if (acceptedAtMinStep && !acceptedByTol) {
+        stats.converged = false;
+      }
       // Step accepted
       stats.acceptedSteps++;
       const fNew = f(t + h, yNew);
@@ -456,7 +443,7 @@ export function rodas4p(
           const vCurr = currEventVals[ei] ?? 0;
           const expectedDir = effEventDirections?.[ei] ?? 0;
 
-          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-9) {
+          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-14) {
             const evDir: 1 | -1 = vCurr > vPrev ? 1 : -1;
             if (expectedDir === 0 || expectedDir === evDir) {
               let tLeft = t;
@@ -706,21 +693,22 @@ export function rosenbrock23(
     }
 
     // 7. Accept or reject step based on normalized error ratio
-    if (
-      Number.isFinite(maxErrorRatio) &&
-      (maxErrorRatio <= 1.0 || (Math.abs(h) <= minStep * 2 && maxErrorRatio <= 100.0))
-    ) {
+    const acceptedByTol = Number.isFinite(maxErrorRatio) && maxErrorRatio <= 1.0;
+    const acceptedAtMinStep = Number.isFinite(maxErrorRatio) && Math.abs(h) <= minStep * 2 && maxErrorRatio <= 2.0;
+    if (acceptedByTol || acceptedAtMinStep) {
+      if (acceptedAtMinStep && !acceptedByTol) {
+        stats.converged = false;
+      }
       stats.acceptedSteps++;
       if (denseOutputs && outputTimes) {
-        // Emit linearly interpolated dense output points falling within [t, t + h]
+        const fNew = f(t + h, yNew);
+        stats.fEvals++;
+        // Emit C^1 Hermite-interpolated dense output points falling within [t, t + h]
         while (outIdx < outputTimes.length) {
           const tTarget = outputTimes[outIdx]!;
           if ((tEnd > t0 && tTarget <= t + h) || (tEnd < t0 && tTarget >= t + h)) {
             const theta = (tTarget - t) / h;
-            const yTarget = new Array<number>(n);
-            for (let i = 0; i < n; i++) {
-              yTarget[i] = (1.0 - theta) * (y[i] ?? 0) + theta * (yNew[i] ?? 0);
-            }
+            const yTarget = hermiteInterpRodas(y, yNew, f0, fNew, h, theta, n);
             resultTimes.push(tTarget);
             resultStates.push(yTarget);
             outIdx++;

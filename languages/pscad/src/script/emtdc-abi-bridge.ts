@@ -20,10 +20,13 @@ import {
   AArch64Cpu,
   CPU_TYPE_ARM64,
   CRuntimeManager,
+  type DrmAccessEvent,
+  type DrmLicenseOptions,
   ElfLoader,
   type GuestMemorySpace,
   MachoLoader,
   PeLoader,
+  registerDrmShims,
   X86Cpu,
 } from "@modelscript/exchange";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
@@ -188,7 +191,7 @@ export class EmtdcHostBridge {
       numRealStates: Math.max(16, block.numRealStates),
       numIntStates: Math.max(8, block.numIntStates),
       dsdyn: (state, ports) => {
-        block.step({
+        block.step?.({
           inputs: ports,
           outputs: ports,
           storf: state.STORF,
@@ -251,8 +254,11 @@ export class EmtdcHostBridge {
     initialPorts?: Record<string, number> | undefined;
     numRealStates?: number | undefined;
     numIntStates?: number | undefined;
+    drmOptions?: DrmLicenseOptions | undefined;
   }): { udm: EmtdcRegisteredUdm; runner: EmtdcWasmMachinaDllRunner } {
-    const runner = new EmtdcWasmMachinaDllRunner(config.binaryBuffer);
+    const runner = new EmtdcWasmMachinaDllRunner(config.binaryBuffer, {
+      drmOptions: config.drmOptions,
+    });
     const portNames = config.portNames ?? (config.initialPorts ? Object.keys(config.initialPorts) : ["in0", "out0"]);
     const initialPorts: Record<string, number> = {};
     for (const p of portNames) {
@@ -311,6 +317,9 @@ export class EmtdcWasmMachinaDllRunner {
   public readonly cruntime: CRuntimeManager;
   public readonly cpu: X86Cpu | AArch64Cpu;
   public readonly messages: string[] = [];
+  public hasLicenseFailure = false;
+  public dllMainFailed = false;
+  public readonly drmEvents: DrmAccessEvent[] = [];
 
   private readonly exportAddresses = new Map<string, bigint>();
   private readonly storfGuestPtr: bigint;
@@ -318,13 +327,36 @@ export class EmtdcWasmMachinaDllRunner {
   private readonly portsGuestPtr: bigint;
   private activeState: EmtdcCommonBlockState | null = null;
 
-  constructor(binaryBuffer: Uint8Array, options?: { preferredBase?: bigint | undefined }) {
+  constructor(
+    binaryBuffer: Uint8Array,
+    options?: {
+      preferredBase?: bigint | undefined;
+      drmOptions?: DrmLicenseOptions | undefined;
+    },
+  ) {
+    const initDrm = (cruntime: CRuntimeManager) => {
+      if (options?.drmOptions) {
+        const drmOpts: DrmLicenseOptions = {
+          ...options.drmOptions,
+          onLicenseAccess: (evt) => {
+            this.drmEvents.push(evt);
+            if (evt.status === "denied") {
+              this.hasLicenseFailure = true;
+            }
+            options?.drmOptions?.onLicenseAccess?.(evt);
+          },
+        };
+        registerDrmShims(cruntime, drmOpts);
+      }
+    };
+
     if (binaryBuffer.length >= 2 && binaryBuffer[0] === 0x4d && binaryBuffer[1] === 0x5a) {
       this.format = "pe";
       const peLoader = new PeLoader(binaryBuffer);
       this.loader = peLoader;
       this.memory = peLoader.mapImageToMemory(options?.preferredBase);
       this.cruntime = new CRuntimeManager(this.memory);
+      initDrm(this.cruntime);
       this.registerEmtdcHostShims();
       this.cpu = new X86Cpu(this.memory, peLoader.header.is64Bit, this.cruntime, "win64");
       this.hookPeImports(peLoader);
@@ -333,7 +365,10 @@ export class EmtdcWasmMachinaDllRunner {
       }
       if (peLoader.header.entryPointRva > 0) {
         const dllMainAddr = this.memory.baseAddress + BigInt(peLoader.header.entryPointRva);
-        this.cpu.callFunction(dllMainAddr, [this.memory.baseAddress, 1n, 0n]);
+        const res = this.cpu.callFunction(dllMainAddr, [this.memory.baseAddress, 1n, 0n]);
+        if (res === 0n) {
+          this.dllMainFailed = true;
+        }
       }
     } else if (
       binaryBuffer.length >= 4 &&
@@ -347,6 +382,7 @@ export class EmtdcWasmMachinaDllRunner {
       this.loader = elfLoader;
       this.memory = elfLoader.mapImageToMemory(options?.preferredBase);
       this.cruntime = new CRuntimeManager(this.memory);
+      initDrm(this.cruntime);
       this.registerEmtdcHostShims();
       if (elfLoader.header.machine === 0xb7) {
         this.cpu = new AArch64Cpu(this.memory, this.cruntime);
@@ -375,6 +411,7 @@ export class EmtdcWasmMachinaDllRunner {
       this.loader = machoLoader;
       this.memory = machoLoader.mapImageToMemory(options?.preferredBase);
       this.cruntime = new CRuntimeManager(this.memory);
+      initDrm(this.cruntime);
       this.registerEmtdcHostShims();
       if (machoLoader.header.cputype === CPU_TYPE_ARM64) {
         this.cpu = new AArch64Cpu(this.memory, this.cruntime);

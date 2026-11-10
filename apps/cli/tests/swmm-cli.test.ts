@@ -167,6 +167,65 @@ test("SWMM CLI Commands (msx swmm inspect, lint, to-dae, to-modelica, route-flow
     }
   });
 
+  await t.test("msx swmm convert", async () => {
+    const tableDumpFile = path.join(tmpDir, "infoworks_model.json");
+    const outInpFile = path.join(tmpDir, "converted_infoworks.inp");
+
+    fs.writeFileSync(
+      tableDumpFile,
+      JSON.stringify({
+        hw_node: [
+          { node_id: "MH_IW1", ground_level: 15.0, chamber_floor: 12.0, node_type: "MANHOLE" },
+          { node_id: "OUT_IW1", ground_level: 10.0, chamber_floor: 8.5, node_type: "OUTFALL" },
+        ],
+        hw_conduit: [
+          { conduit_id: "COND_IW1", us_node_id: "MH_IW1", ds_node_id: "OUT_IW1", length: 100.0, conduit_width: 0.75 },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => logs.push(args.join(" "));
+
+    try {
+      await (SwmmCommand.handler as any)({
+        action: "convert",
+        files: [tableDumpFile],
+        out: outInpFile,
+      });
+
+      assert.ok(fs.existsSync(outInpFile));
+      const inp = fs.readFileSync(outInpFile, "utf-8");
+      assert.ok(inp.includes("MH_IW1"));
+      assert.ok(inp.includes("OUT_IW1"));
+      assert.ok(inp.includes("COND_IW1"));
+      assert.ok(logs.some((l) => l.includes("Conversion Summary:")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx swmm inundate-2d", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => logs.push(args.join(" "));
+
+    try {
+      await (SwmmCommand.handler as any)({
+        action: "inundate-2d",
+        files: [swmmFile],
+      });
+
+      assert.ok(logs.some((l) => l.includes("2D Surface Inundation & Overland Flood Simulation")));
+      assert.ok(logs.some((l) => l.includes("Peak Inundated Surface Area:")));
+      assert.ok(logs.some((l) => l.includes("Cumulative Manhole Overflow:")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
   // Cleanup
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

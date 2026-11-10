@@ -43,6 +43,10 @@
       "types": "./dist/solvers/powerflow/index.d.ts",
       "default": "./dist/solvers/powerflow/index.js"
     },
+    "./water": {
+      "types": "./dist/solvers/water/index.d.ts",
+      "default": "./dist/solvers/water/index.js"
+    },
     "./meshing": {
       "types": "./dist/meshing/index.d.ts",
       "default": "./dist/meshing/index.js"

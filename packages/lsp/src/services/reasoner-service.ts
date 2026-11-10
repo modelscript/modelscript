@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { getBfoIofCoreAxioms } from "@modelscript/runtime";
 import { OntologyBuilder, TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { Connection } from "vscode-languageserver/browser.js";

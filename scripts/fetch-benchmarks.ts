@@ -26,7 +26,6 @@ import {
   getBenchmarkCatalog,
   getBenchmarksByDomain,
   getBenchmarksByTier,
-  getBenchmarksForLanguage,
   type BenchmarkEntry,
   type BenchmarkTier,
   type StdlibDomain,
@@ -879,12 +878,18 @@ Bank Sta=10,30
     case "optical": {
       fs.writeFileSync(
         path.join(extractDir, "roadm_backbone.json"),
-        JSON.stringify({
-          "network-name": "OpenROADM-Test",
-          nodes: [{ "node-id": "RDM-1", "node-type": "rdm", degrees: [{ "degree-number": 1, "max-wavelengths": 96 }] }],
-          links: [],
-          channels: [],
-        }, null, 2),
+        JSON.stringify(
+          {
+            "network-name": "OpenROADM-Test",
+            nodes: [
+              { "node-id": "RDM-1", "node-type": "rdm", degrees: [{ "degree-number": 1, "max-wavelengths": 96 }] },
+            ],
+            links: [],
+            channels: [],
+          },
+          null,
+          2,
+        ),
       );
       break;
     }
@@ -1336,13 +1341,13 @@ if (process.argv[1] === __filename) {
     if (arg === "--all") {
       options.all = true;
     } else if (arg.startsWith("--lang=")) {
-      options.lang = arg.split("=")[1].split(",").map((s) => s.trim());
+      options.lang = (arg.split("=")[1] ?? "").split(",").map((s) => s.trim());
     } else if (arg.startsWith("--tier=")) {
-      options.tier = arg.split("=")[1].trim() as BenchmarkTier;
+      options.tier = (arg.split("=")[1] ?? "").trim() as BenchmarkTier;
     } else if (arg.startsWith("--domain=")) {
-      options.domain = arg.split("=")[1].trim() as StdlibDomain;
+      options.domain = (arg.split("=")[1] ?? "").trim() as StdlibDomain;
     } else if (arg.startsWith("--outDir=")) {
-      options.outDir = arg.split("=")[1].trim();
+      options.outDir = (arg.split("=")[1] ?? "").trim();
     } else if (arg === "--verify") {
       options.verify = true;
     } else if (arg === "--force") {

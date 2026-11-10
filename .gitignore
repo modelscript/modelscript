@@ -92,6 +92,7 @@ yarn-error.log*
 *.db*
 /data/
 /results/
+/reports/
 uploads/
 apps/api/data/
 apps/api/apps/

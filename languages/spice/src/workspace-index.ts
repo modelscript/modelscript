@@ -8,60 +8,15 @@
  * inclusions (.INCLUDE, .LIB) across the workspace for instant lookup and LSP navigation.
  */
 
-import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
+import { BaseWorkspaceIndex, type SymbolEntry, type SymbolId, type SymbolIndex } from "@modelscript/runtime";
 import { parseSpice } from "./parser/spice-parser.js";
 import type { SpiceCircuit } from "./types.js";
 
-export class SpiceWorkspaceIndex implements IWorkspaceIndex {
-  private _version = 1;
-  private fileIndices = new Map<string, SymbolIndex>();
-  private fileCircuits = new Map<string, SpiceCircuit>();
-  private fileBaseIds = new Map<string, number>();
-  private nextFileSlot = 1;
+export class SpiceWorkspaceIndex extends BaseWorkspaceIndex<SpiceCircuit> {
+  public readonly languageName = "spice";
 
-  get version(): number {
-    return this._version;
-  }
-
-  get fileCount(): number {
-    return this.fileIndices.size;
-  }
-
-  public has(uri: string): boolean {
-    return this.fileIndices.has(uri);
-  }
-
-  public getFileIndex(uri: string): SymbolIndex | undefined {
-    return this.fileIndices.get(uri);
-  }
-
-  public getDocument(uri: string): SpiceCircuit | undefined {
-    return this.fileCircuits.get(uri);
-  }
-
-  public register(uri: string): void {
-    if (!this.fileIndices.has(uri)) {
-      this.fileIndices.set(uri, {
-        symbols: new Map(),
-        byName: new Map(),
-        childrenOf: new Map(),
-      });
-    }
-  }
-
-  public reindexDocument(uri: string, loader?: () => string | { sourceText?: string; text?: string } | null): void {
-    this._version++;
-    if (loader) {
-      try {
-        const res = loader();
-        const text = typeof res === "string" ? res : (res?.sourceText ?? res?.text);
-        if (typeof text === "string") {
-          this.indexFile(uri, text);
-        }
-      } catch {
-        // Ignore loader errors during incremental reindexing
-      }
-    }
+  public get fileCircuits(): Map<string, SpiceCircuit> {
+    return this.fileDecks;
   }
 
   public indexFile(uri: string, text: string): SymbolIndex {

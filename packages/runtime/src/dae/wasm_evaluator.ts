@@ -3355,7 +3355,8 @@ export function evaluateArenaExpression(
 
       // 4d. Dispatch to built-in math, integer division (`div`/`rem`/`mod`), type conversion,
       // `homotopy` continuation blending, `smooth`, array built-ins, or user-defined `functionLookup`.
-      const mathRes = evaluateBuiltinMathFunction(funcName, args as ArenaValue[]);
+      const cleanMathName = funcName.replace(/^(Modelica\.)?Math\./, "");
+      const mathRes = evaluateBuiltinMathFunction(cleanMathName, args as ArenaValue[]);
       if (mathRes !== undefined) return mathRes;
       if (funcName === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
         return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;

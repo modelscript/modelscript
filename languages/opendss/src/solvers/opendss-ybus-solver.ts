@@ -25,8 +25,8 @@ import {
   type SparseCCSMatrix,
   type SparseLU,
 } from "@modelscript/runtime";
-import { synthesizeLineGeometry } from "../physics/carson-kron.js";
 import { getLengthScale } from "../parser/opendss-parser.js";
+import { synthesizeLineGeometry } from "../physics/carson-kron.js";
 import type { DssDeck } from "../types.js";
 import type {
   BusPowerFlowResult,
@@ -529,8 +529,9 @@ export function buildOpenDssYbus(deck: DssDeck, _options: AdmittancePowerFlowOpt
     const nodesSec = xfmr.phaseNodes?.[1] ?? [1, 2, 3].slice(0, nPhases);
     const nPh = Math.min(nodesPri.length, nodesSec.length);
     for (let p = 0; p < nPh; p++) {
-      const ph1 = nodesPri[p]!;
-      const ph2 = nodesSec[p]!;
+      const ph1 = nodesPri[p];
+      const ph2 = nodesSec[p];
+      if (ph1 === undefined || ph2 === undefined) continue;
       const idx1 = nodeMap.get(makeNodeKey(b1, ph1));
       const idx2 = nodeMap.get(makeNodeKey(b2, ph2));
       if (idx1 === undefined || idx2 === undefined) continue;
@@ -845,8 +846,8 @@ function solveAdmittanceSinglePass(deck: DssDeck, options: AdmittancePowerFlowOp
     const lc = line.lineCode ? deck.lineCodes.get(line.lineCode) : undefined;
     const lenScale = getLengthScale(line.units, lc?.units);
     const len = Math.max(1e-6, line.length * lenScale);
-    const r1 = line.r1 ?? lc?.r1 ?? (lc?.rmatrix ? lc.rmatrix[0]?.[0] : 0.1);
-    const x1 = line.x1 ?? lc?.x1 ?? (lc?.xmatrix ? lc.xmatrix[0]?.[0] : 0.4);
+    const r1 = line.r1 ?? lc?.r1 ?? lc?.rmatrix?.[0]?.[0] ?? 0.1;
+    const x1 = line.x1 ?? lc?.x1 ?? lc?.xmatrix?.[0]?.[0] ?? 0.4;
     const rTot = r1 * len;
     const xTot = x1 * len;
     const zSq = rTot * rTot + xTot * xTot;

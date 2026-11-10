@@ -5,9 +5,24 @@
  */
 
 export interface GenericPowerCase {
-  header: { sbase: number; basfrq?: number; rev?: number };
+  header: { sbase: number; basfrq?: number; rev?: number; xfrrat?: number; nxfrat?: number };
   title1?: string;
-  buses: Map<number, { i: number; name: string; baseKv: number; ide: number; vm: number; va: number }>;
+  title2?: string;
+  buses: Map<
+    number,
+    {
+      i: number;
+      name: string;
+      baseKv: number;
+      ide: number;
+      vm: number;
+      va: number;
+      vMin?: number | undefined;
+      vMax?: number | undefined;
+      vmin?: number | undefined;
+      vmax?: number | undefined;
+    }
+  >;
   loads: Array<{ i: number; pl: number; ql: number; status?: number }>;
   generators: Array<{
     i: number;
@@ -19,6 +34,9 @@ export interface GenericPowerCase {
     qb?: number;
     qt?: number;
     stat?: number;
+    rampAgc?: number | undefined;
+    ramp10?: number | undefined;
+    ramp30?: number | undefined;
   }>;
   branches: Array<{
     i: number;
@@ -28,7 +46,13 @@ export interface GenericPowerCase {
     x: number;
     b?: number;
     rateA?: number;
+    rateB?: number | undefined;
+    rateC?: number | undefined;
     ratea?: number;
+    ratio?: number | undefined;
+    angle?: number | undefined;
+    angmin?: number | undefined;
+    angmax?: number | undefined;
     st?: number;
   }>;
   transformers?: Array<{
@@ -38,8 +62,40 @@ export interface GenericPowerCase {
     r12: number;
     x12: number;
     rata1?: number;
+    rateB?: number | undefined;
+    rateC?: number | undefined;
+    ratio?: number | undefined;
+    angle?: number | undefined;
     stat?: number;
   }>;
+  /** DC transmission lines (mpc.dcline in MATPOWER). */
+  dclines?:
+    | Array<{
+        fBus: number;
+        tBus: number;
+        status: number;
+        pf: number;
+        pt: number;
+        qf: number;
+        qt: number;
+        vf: number;
+        vt: number;
+        pmin: number;
+        pmax: number;
+        qminF: number;
+        qmaxF: number;
+        qminT: number;
+        qmaxT: number;
+        loss0?: number | undefined;
+        loss1?: number | undefined;
+      }>
+    | undefined;
+  fixedShunts?: Array<unknown> | undefined;
+  switchedShunts?: Array<unknown> | undefined;
+  twoTerminalDc?: Array<unknown> | undefined;
+  vscDc?: Array<unknown> | undefined;
+  /** Inter-area power interchange and price reference buses. */
+  areas?: Array<{ i: number; priceRefBus?: number | undefined }> | undefined;
   /** Generator economic cost curves keyed by `${busNumber}_${genId}` or `${busNumber}`. */
   generatorCosts?: Map<string, GeneratorCostCurve> | undefined;
 }
@@ -51,11 +107,17 @@ export interface GeneratorCostCurve {
   c1: number;
   /** Quadratic cost coefficient ($/MW^2-hr). */
   c2?: number | undefined;
+  /** Multi-breakpoint piecewise linear cost curve points [MW, $/hr]. */
+  pwlPoints?: Array<{ p: number; f: number }> | undefined;
 }
 
 export interface OpfOptions {
   /** Mathematical formulation: 'dc' (linearized) or 'ac' (nonlinear). Default: 'dc'. */
   formulation?: "dc" | "ac" | undefined;
+  /** Execution tier: 'direct' (linear-memory zero-GC solver) or 'ampl' (algebraic compiler IR). Default: 'direct'. */
+  tier?: "direct" | "ampl" | undefined;
+  /** Solver engine to target ('auto', 'ipopt', 'clp', 'cbc', 'highs', 'gurobi', 'knitro'). */
+  solver?: "auto" | "ipopt" | "clp" | "cbc" | "highs" | "gurobi" | "knitro" | undefined;
   /** Optimization objective: 'cost' (economic dispatch) or 'loss' (loss minimization). Default: 'cost'. */
   objective?: "cost" | "loss" | undefined;
   /** Enforce branch thermal power flow limits (default: true). */
@@ -68,8 +130,14 @@ export interface OpfOptions {
   voltageMax?: number | undefined;
   /** Convergence tolerance for KKT optimality (default: 1e-6). */
   tolerance?: number | undefined;
+  /** Maximum iterations for interior point / L-BFGS solver (default: 200). */
+  maxIterations?: number | undefined;
   /** Custom generator cost curves keyed by `${busNum}_${genId}` or `${busNum}`. */
   generatorCosts?: Map<string, GeneratorCostCurve> | undefined;
+  /** Default linear generator marginal cost ($/MWh) when not specified in case or generatorCosts (default: deterministic heuristic). */
+  defaultLinearCost?: number | undefined;
+  /** Custom user-defined AMPL constraints to inject when running tier='ampl'. */
+  customAmplConstraints?: string[] | undefined;
   /** Title of the case or report. */
   caseTitle?: string | undefined;
 }
@@ -202,5 +270,112 @@ export interface MultiPeriodOpfSolution {
   timeHorizon: number;
   periods: PeriodOpfResult[];
   bessTrajectories: Map<string, BessPeriodResult[]>;
+  reportText: string;
+}
+
+export interface GeneratorCommitmentProfile {
+  busNumber: number;
+  genId: string;
+  pMinMw: number;
+  pMaxMw: number;
+  marginalCost: number; // $/MWh
+  noLoadCost: number; // $/hr (c0)
+  startupCost: number; // $
+  shutdownCost: number; // $
+  minUpTimeHours: number;
+  minDownTimeHours: number;
+  rampUpLimitMwPerHour: number;
+  rampDownLimitMwPerHour: number;
+}
+
+export interface UnitCommitmentOptions extends MultiPeriodOpfOptions {
+  /** Unit commitment generator parameters keyed by `${busNum}_${genId}` or `${busNum}`. */
+  unitParameters?: Map<string, Partial<GeneratorCommitmentProfile>> | undefined;
+  /** System spinning reserve requirement as a fraction of hourly load (e.g. 0.10 for 10%). Default: 0.10. */
+  spinningReservePercent?: number | undefined;
+  /** Default startup cost if unspecified ($). Default: 100. */
+  defaultStartupCost?: number | undefined;
+  /** Default shutdown cost if unspecified ($). Default: 50. */
+  defaultShutdownCost?: number | undefined;
+  /** Default minimum up-time in hours (default: 2). */
+  defaultMinUpTimeHours?: number | undefined;
+  /** Default minimum down-time in hours (default: 2). */
+  defaultMinDownTimeHours?: number | undefined;
+  /** Initial commitment state at t=0: boolean array or map. Default: all units on. */
+  initialCommitment?: Map<string, boolean> | boolean[] | undefined;
+}
+
+export interface GeneratorPeriodSchedule {
+  busNumber: number;
+  genId: string;
+  isCommitted: boolean; // u(t)
+  isStartingUp: boolean; // v(t)
+  isShuttingDown: boolean; // w(t)
+  pgMw: number;
+  fuelCost: number;
+  startupCost: number;
+  shutdownCost: number;
+  totalCost: number;
+}
+
+export interface UnitCommitmentPeriodResult {
+  timeStep: number;
+  hour: number;
+  demandMw: number;
+  generationMw: number;
+  spinningReserveMw: number;
+  hourlyCost: number;
+  generators: GeneratorPeriodSchedule[];
+  bess?: BessPeriodResult[] | undefined;
+}
+
+export interface UnitCommitmentSolution {
+  status: "OPTIMAL" | "INFEASIBLE" | "SUBOPTIMAL";
+  totalCost: number;
+  totalEnergyCost: number;
+  totalStartupCost: number;
+  totalShutdownCost: number;
+  totalGenMwh: number;
+  totalDemandMwh: number;
+  timeHorizon: number;
+  periods: UnitCommitmentPeriodResult[];
+  generatorSchedules: Map<string, GeneratorPeriodSchedule[]>;
+  reportText: string;
+}
+
+export interface ScopfContingency {
+  id: string;
+  fromBus: number;
+  toBus: number;
+  ckt?: string | undefined;
+}
+
+export interface BindingContingencyConstraint {
+  contingencyId: string;
+  outagedBranch: string;
+  monitoredBranch: string;
+  postContingencyFlowMw: number;
+  emergencyRatingMw: number;
+  loadingPercent: number;
+  shadowPrice: number;
+}
+
+export interface ScopfOptions extends OpfOptions {
+  /** Explicit contingency definitions. If omitted or empty, all non-islanding branches are screened (N-1). */
+  contingencies?: ScopfContingency[] | undefined;
+  /** Multiplier for emergency post-contingency rating over continuous rateA (e.g. 1.15 for 115%). Default: 1.10. */
+  emergencyRatingFactor?: number | undefined;
+  /** Maximum number of cutting-plane constraint generation iterations (default: 8). */
+  maxScopfIterations?: number | undefined;
+  /** Violation tolerance threshold in MW to add cutting plane (default: 0.1). */
+  violationToleranceMw?: number | undefined;
+}
+
+export interface ScopfSolution {
+  status: "OPTIMAL" | "INFEASIBLE" | "SUBOPTIMAL";
+  baseSolution: OpfSolution;
+  contingenciesEvaluated: number;
+  iterations: number;
+  bindingContingencies: BindingContingencyConstraint[];
   reportText: string;
 }

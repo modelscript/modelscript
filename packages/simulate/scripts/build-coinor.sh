@@ -19,7 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
-SRC_DIR="$PACKAGE_DIR/src/compiler/modelica"
+SRC_DIR="$PACKAGE_DIR/src/optimizer/solvers"
 BUILD_DIR="$PACKAGE_DIR/.build/coinor"
 WASM_DIR="$PACKAGE_DIR/wasm"
 

@@ -102,4 +102,33 @@ console.log("=== Testing Quantized State System (QSS1, QSS2, QSS3, LIQSS2) Integ
   console.log("✓ simulateArena with solver='qss2', vectorCausalize=true, microModelica=true passed");
 }
 
+// 4. Precomputed dependencyGraph and dynamic reprobeOnEvents on hybrid mode transitions
+{
+  // 2D switching oscillator:
+  // Mode 0: dx/dt = v, dv/dt = -x (standard harmonic)
+  // At x = 0 (falling), mode toggles and damps velocity: v -> -0.5 * v
+  let mode = 0;
+  const f = (_t: number, y: number[]) => {
+    return mode === 0 ? [y[1] ?? 0, -(y[0] ?? 0)] : [y[1] ?? 0, -2 * (y[0] ?? 0) - (y[1] ?? 0)];
+  };
+  const eventFunctions = [(_t: number, y: number[]) => y[0] ?? 0];
+  const eventDirections: (1 | -1 | 0)[] = [-1]; // falling
+  const eventCallback = (_t: number, y: number[], _eventIdx: number, _dir: 1 | -1) => {
+    mode = 1;
+    return [y[0]!, -0.5 * (y[1] ?? 0)];
+  };
+
+  const res = qss2(f, 0, [1, 0], 3.0, [0, 1.0, 2.0, 3.0], {
+    dependencyGraph: [[1], [0]],
+    reprobeOnEvents: true,
+    eventFunctions,
+    eventDirections,
+    eventCallback,
+  });
+
+  assert.ok(res.times.length === 4);
+  assert.ok(res.stats.converged);
+  console.log("✓ QSS2 with dependencyGraph and reprobeOnEvents passed");
+}
+
 console.log("All QSS1/QSS2/QSS3/LIQSS2 unit and arena integration tests passed!");

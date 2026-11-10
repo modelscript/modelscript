@@ -1,18 +1,21 @@
-import * as path from "node:path";
-import * as fs from "node:fs";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import { initBltWasm } from "@modelscript/runtime";
+import { simulateArena } from "@modelscript/simulate";
 import { spawnSync } from "node:child_process";
-import { NodeFileSystem } from "./node-filesystem.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
-import {
-  initBltWasm,
-  printArenaDAE,
-} from "@modelscript/runtime";
-import { simulateArena } from "@modelscript/simulate";
+import { NodeFileSystem } from "./node-filesystem.js";
 
 const cacheDir = path.resolve(import.meta.dirname, "../../../.cache/openipsl-omc");
 
-function getOmcSim(modelName: string, stopTime = 10, intervals = 500): {
+function getOmcSim(
+  modelName: string,
+  stopTime = 10,
+  intervals = 500,
+): {
   durationMs: number;
   headers: string[];
   rows: number[][];
@@ -94,7 +97,6 @@ async function main() {
     const t1 = performance.now();
     console.log(`MS Flatten: ${(t1 - t0).toFixed(1)} ms (vars=${dae.varCount}, eqs=${dae.eqCount})`);
 
-
     const t2 = performance.now();
     const res = simulateArena(dae, {
       startTime: 0,
@@ -114,7 +116,9 @@ async function main() {
       const stateName = res.states[sIdx]!;
       const omcCol = omc.headers.indexOf(stateName);
       if (omcCol < 0) {
-        console.log(`  [${stateName}] (not in OMC headers) t=0: ${res.y[0]?.[sIdx]} | end: ${res.y[res.y.length - 1]?.[sIdx]}`);
+        console.log(
+          `  [${stateName}] (not in OMC headers) t=0: ${res.y[0]?.[sIdx]} | end: ${res.y[res.y.length - 1]?.[sIdx]}`,
+        );
         continue;
       }
 

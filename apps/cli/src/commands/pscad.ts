@@ -53,6 +53,7 @@ const PSCAD_ACTIONS = [
   "export-ssp",
   "to-ssp",
   "psout",
+  "benchmark",
 ] as const;
 
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
@@ -113,6 +114,18 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     const files = (args["files"] as string[]) ?? [];
     if (!args["out"] && resolveOutputPath(args)) {
       args["out"] = resolveOutputPath(args);
+    }
+
+    if (action === "benchmark") {
+      console.log(`[pscad] Running industrial SOTA electromagnetic transient benchmark...`);
+      const modelArg = (args["model"] as string | undefined) ?? "cigre-b4";
+      const { BenchmarkCommand } = await import("./benchmark.js");
+      await BenchmarkCommand.handler!({
+        ...args,
+        suite: "pscad",
+        model: modelArg,
+      } as any);
+      return;
     }
 
     if (files.length === 0) {

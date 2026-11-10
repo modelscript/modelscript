@@ -206,9 +206,12 @@ export class DaeAdjointSolver {
     this.sim.evaluateDerivativeEquations(valuesByStringId);
 
     // Initial state and derivative vectors
-    let currX = new Float64Array(nStates);
-    let currDx = new Float64Array(nStates);
-    let currY = new Float64Array(nAlg);
+    const prevX = new Float64Array(nStates);
+    const prevDx = new Float64Array(nStates);
+    const prevY = new Float64Array(nAlg);
+    const currX = new Float64Array(nStates);
+    const currDx = new Float64Array(nStates);
+    const currY = new Float64Array(nAlg);
 
     for (let i = 0; i < nStates; i++) {
       currX[i] = valuesByStringId[this.stateNameIds[i]!] ?? 0;
@@ -240,9 +243,9 @@ export class DaeAdjointSolver {
         const h = Math.min(step, stopTime - currentTime);
         const tNext = currentTime + h;
 
-        const prevX = new Float64Array(currX);
-        const prevDx = new Float64Array(currDx);
-        const prevY = new Float64Array(currY);
+        prevX.set(currX);
+        prevDx.set(currDx);
+        prevY.set(currY);
 
         // Perform forward step (TR-BDF2 for stiff systems, or RK4)
         if (options.forwardIntegrator === "tr-bdf2") {
@@ -255,10 +258,6 @@ export class DaeAdjointSolver {
         valuesByStringId[timeId] = currentTime;
         this.sim.evaluateBlocks(valuesByStringId);
         this.sim.evaluateDerivativeEquations(valuesByStringId);
-
-        currX = new Float64Array(nStates);
-        currDx = new Float64Array(nStates);
-        currY = new Float64Array(nAlg);
 
         for (let i = 0; i < nStates; i++) {
           currX[i] = valuesByStringId[this.stateNameIds[i]!] ?? 0;

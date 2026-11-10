@@ -13,11 +13,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  emtResultToComtrade,
-  writeComtradeCff,
-  type SimulationResultLike,
-} from "../comtrade/comtrade-writer.js";
+import { emtResultToComtrade, writeComtradeCff, type SimulationResultLike } from "../comtrade/comtrade-writer.js";
 import { writePscadPsout } from "../psout/psout-writer.js";
 import { EmtSolver, type EmtSolverResult } from "../solver/emt-solver.js";
 import type { SsovHistogramBin } from "../solver/parametric-sweep.js";
@@ -111,8 +107,14 @@ export function create500kVEhvTransmissionCase(): EmtNetlist {
 
   const buses = new Map<string, EmtBus>([
     ["SEND_BUS", { id: "SEND_BUS", name: "SEND_BUS", baseKv, phaseCount: 3, connectedBranchIds: ["BRK_EHV"] }],
-    ["LINE_SEND", { id: "LINE_SEND", name: "LINE_SEND", baseKv, phaseCount: 3, connectedBranchIds: ["BRK_EHV", "LINE_EHV"] }],
-    ["LINE_REC", { id: "LINE_REC", name: "LINE_REC", baseKv, phaseCount: 3, connectedBranchIds: ["LINE_EHV", "SHUNT_TERM"] }],
+    [
+      "LINE_SEND",
+      { id: "LINE_SEND", name: "LINE_SEND", baseKv, phaseCount: 3, connectedBranchIds: ["BRK_EHV", "LINE_EHV"] },
+    ],
+    [
+      "LINE_REC",
+      { id: "LINE_REC", name: "LINE_REC", baseKv, phaseCount: 3, connectedBranchIds: ["LINE_EHV", "SHUNT_TERM"] },
+    ],
   ]);
 
   const sources: EmtSource[] = [
@@ -159,10 +161,24 @@ export function create500kVEhvTransmissionCase(): EmtNetlist {
       fromBus: "LINE_SEND",
       toBus: "LINE_REC",
       lengthKm: 250.0,
-      rPerKm: 0.025, // 0.025 Ohm/km
-      lPerKm: 0.95e-3, // 0.95 mH/km
-      cPerKm: 12.5e-9, // 12.5 nF/km (Zc = 275.7 Ohm, tau = 862.5 us)
+      rPerKm: 0.025, // 0.025 Ohm/km positive sequence
+      lPerKm: 0.95e-3, // 0.95 mH/km positive sequence (Zc1 = 275.7 Ohm, tau1 = 862.5 us)
+      cPerKm: 12.5e-9, // 12.5 nF/km positive sequence
+      r0PerKm: 0.15, // Higher zero-sequence ground-return resistance
+      l0PerKm: 2.1e-3, // Higher ground loop inductance (Zc0 = 518.9 Ohm, tau0 = 1279.8 us)
+      c0PerKm: 7.8e-9, // Zero-sequence capacitance to ground
+      hasModal: true, // Clarke modal transformation enabled (Ground mode 0 vs Aerial modes 1, 2)
       modelType: "bergeron" as const,
+    },
+  ];
+
+  const surgeArresters = [
+    {
+      id: "SA_REC",
+      fromBus: "LINE_REC",
+      toBus: "GND",
+      vRefKv: 650.0, // 650 kV reference clamping voltage (~1.59 p.u. of 408.25 kV)
+      rClampOhm: 0.5,
     },
   ];
 
@@ -173,6 +189,7 @@ export function create500kVEhvTransmissionCase(): EmtNetlist {
     branches,
     transformers: [],
     transmissionLines,
+    surgeArresters,
     fmuInstances: [],
   };
 }
@@ -237,11 +254,7 @@ export function generatePmrTasks(options: {
  */
 export function executePmrRun(netlist: EmtNetlist, task: PmrTask): PmrRunRecord {
   const t0 = performance.now();
-  const minPoleTime = Math.min(
-    task.poleClosingTimesSec.a,
-    task.poleClosingTimesSec.b,
-    task.poleClosingTimesSec.c,
-  );
+  const minPoleTime = Math.min(task.poleClosingTimesSec.a, task.poleClosingTimesSec.b, task.poleClosingTimesSec.c);
 
   // Clone branches and set switch closing time with 3-pole independent scatter
   const clonedBranches = (netlist.branches ?? []).map((br: any) => {
@@ -343,11 +356,7 @@ export function executePmrRunWithTrajectory(
   task: PmrTask,
 ): { record: PmrRunRecord; trajectory: EmtSolverResult } {
   const t0 = performance.now();
-  const minPoleTime = Math.min(
-    task.poleClosingTimesSec.a,
-    task.poleClosingTimesSec.b,
-    task.poleClosingTimesSec.c,
-  );
+  const minPoleTime = Math.min(task.poleClosingTimesSec.a, task.poleClosingTimesSec.b, task.poleClosingTimesSec.c);
 
   const clonedBranches = (netlist.branches ?? []).map((br: any) => {
     if (br.id === task.breakerId) {
@@ -494,8 +503,7 @@ export function computePmrStatistics(
     });
   }
 
-  const throughputRunsPerSec =
-    wallClockTimeMs > 0 ? Number(((totalRuns / wallClockTimeMs) * 1000.0).toFixed(2)) : 0.0;
+  const throughputRunsPerSec = wallClockTimeMs > 0 ? Number(((totalRuns / wallClockTimeMs) * 1000.0).toFixed(2)) : 0.0;
   const totalStepsSolved = totalRuns * totalStepsPerRun;
   const throughputStepsPerSec =
     wallClockTimeMs > 0 ? Number(((totalStepsSolved / wallClockTimeMs) * 1000.0).toFixed(0)) : 0;
@@ -509,9 +517,10 @@ export function computePmrStatistics(
   }
 
   const cdaChatterEliminationRate =
-    totalRuns > 0 ? Number(((runs.filter((r) => r.chatterDampedSteps > 0).length / totalRuns) * 100.0).toFixed(1)) : 100.0;
-  const numericalConvergenceRate =
-    totalRuns > 0 ? Number(((validRuns.length / totalRuns) * 100.0).toFixed(1)) : 0.0;
+    totalRuns > 0
+      ? Number(((runs.filter((r) => r.chatterDampedSteps > 0).length / totalRuns) * 100.0).toFixed(1))
+      : 100.0;
+  const numericalConvergenceRate = totalRuns > 0 ? Number(((validRuns.length / totalRuns) * 100.0).toFixed(1)) : 0.0;
 
   return {
     caseName,
@@ -635,4 +644,3 @@ export function exportRunToPsout(
     writeTimeMs: performance.now() - t0,
   };
 }
-

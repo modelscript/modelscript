@@ -21,9 +21,6 @@ import { fileURLToPath } from "node:url";
 import { lowerSbmlToDae, parseSbml, simulateSbmlReactions } from "../src/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../../..");
-const cacheDir = path.resolve(repoRoot, ".cache/benchmarks/sbml/sbml-semantic-cases");
 
 interface BenchmarkResult {
   caseId: string;
@@ -153,16 +150,21 @@ export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJs
 // CLI entrypoint
 if (process.argv[1] === __filename) {
   const args = process.argv.slice(2);
-  let tolerance: number | undefined;
-  let reportJson: string | undefined;
+  const options: { tolerance?: number; reportJson?: string } = {};
 
   for (const arg of args) {
     if (arg.startsWith("--tolerance=")) {
-      tolerance = parseFloat(arg.split("=")[1]);
+      const val = arg.split("=")[1];
+      if (val !== undefined) {
+        options.tolerance = parseFloat(val);
+      }
     } else if (arg.startsWith("--report-json=")) {
-      reportJson = arg.split("=")[1].trim();
+      const val = arg.split("=")[1];
+      if (val !== undefined) {
+        options.reportJson = val.trim();
+      }
     }
   }
 
-  runSbmlBenchmarks({ tolerance, reportJson });
+  runSbmlBenchmarks(options);
 }

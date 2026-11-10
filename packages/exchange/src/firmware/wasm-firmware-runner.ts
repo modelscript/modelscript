@@ -35,7 +35,6 @@ export function createEmulatedCigreInverterFirmware(): {
   let iMax = 1.3;
   let vRef = 1.0;
   let pRef = 1.0;
-  let qRef = 0.0;
   let intQ = 0.0;
   let prevTime = 0.0;
 
@@ -79,7 +78,7 @@ export function createEmulatedCigreInverterFirmware(): {
       let idCmd = (inVal.pRefPu ?? pRef) / Math.max(0.2, vMag);
 
       // Current limit prioritization (Q-priority during severe voltage dips)
-      const isRideThrough = vMag < 0.88 || vMag > 1.10;
+      const isRideThrough = vMag < 0.88 || vMag > 1.1;
       let currentLimitReached = false;
 
       if (isRideThrough) {
@@ -138,22 +137,30 @@ export class CigreWasmFirmwareRunner {
   private emulatedBackend: ReturnType<typeof createEmulatedCigreInverterFirmware> | null = null;
   private cachedInfo: CigreModelInfo;
 
-  constructor(wasmModuleOrBytes?: WebAssembly.Module | Uint8Array | undefined, options: WasmFirmwareRunnerOptions = {}) {
+  constructor(
+    wasmModuleOrBytes?: WebAssembly.Module | Uint8Array | undefined,
+    options: WasmFirmwareRunnerOptions = {},
+  ) {
     const pages = options.initialMemoryPages ?? 16;
     this.memory = new WebAssembly.Memory({ initial: pages, maximum: 64 });
 
-    const inOffset = CIGRE_WASM_MEMORY_LAYOUT.INPUT_OFFSET_BYTES / 8;
-    const outOffset = CIGRE_WASM_MEMORY_LAYOUT.OUTPUT_OFFSET_BYTES / 8;
-
-    this.inputBuffer = new Float64Array(this.memory.buffer, CIGRE_WASM_MEMORY_LAYOUT.INPUT_OFFSET_BYTES, CIGRE_WASM_MEMORY_LAYOUT.INPUT_SIZE_DOUBLES);
-    this.outputBuffer = new Float64Array(this.memory.buffer, CIGRE_WASM_MEMORY_LAYOUT.OUTPUT_OFFSET_BYTES, CIGRE_WASM_MEMORY_LAYOUT.OUTPUT_SIZE_DOUBLES);
+    this.inputBuffer = new Float64Array(
+      this.memory.buffer,
+      CIGRE_WASM_MEMORY_LAYOUT.INPUT_OFFSET_BYTES,
+      CIGRE_WASM_MEMORY_LAYOUT.INPUT_SIZE_DOUBLES,
+    );
+    this.outputBuffer = new Float64Array(
+      this.memory.buffer,
+      CIGRE_WASM_MEMORY_LAYOUT.OUTPUT_OFFSET_BYTES,
+      CIGRE_WASM_MEMORY_LAYOUT.OUTPUT_SIZE_DOUBLES,
+    );
 
     if (wasmModuleOrBytes) {
       try {
         const module =
           wasmModuleOrBytes instanceof WebAssembly.Module
             ? wasmModuleOrBytes
-            : new WebAssembly.Module(wasmModuleOrBytes);
+            : new WebAssembly.Module(wasmModuleOrBytes as unknown as BufferSource);
 
         const instance = new WebAssembly.Instance(module, {
           env: {

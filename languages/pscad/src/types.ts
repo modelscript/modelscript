@@ -254,7 +254,12 @@ export interface EmtTransmissionLine {
   l0PerKm?: number | undefined;
   /** Zero-sequence shunt capacitance in F/km (computed from Maxwell potential matrix or specified). */
   c0PerKm?: number | undefined;
-  modelType: "bergeron" | "pi" | "fdpm";
+  r0TotalOhm?: number | undefined;
+  l0TotalHenry?: number | undefined;
+  c0TotalFarad?: number | undefined;
+  hasModal?: boolean | undefined;
+  modelType: "bergeron" | "pi" | "fdpm" | "ulm";
+  ulmData?: import("./solver/universal-line-model.js").UniversalLineModelData | undefined;
   isCable?: boolean | undefined;
   coreRadiusM?: number | undefined;
   insulationRadiusM?: number | undefined;
@@ -331,6 +336,7 @@ export interface EmtSurgeArrester {
   fromBus: string;
   toBus: string;
   vRefKv: number;
+  rClampOhm?: number | undefined;
 }
 
 export interface EmtSynchronousMachine {
@@ -490,7 +496,20 @@ export interface EmtCustomFortranBlock {
   numIntStates: number;
   inputs?: { portName: string; sourceId?: string | undefined }[] | undefined;
   outputs?: { portName: string; targetId?: string | undefined }[] | undefined;
-  step: (ctx: import("@modelscript/fortran").FortranExecutionContext) => void;
+  step?: ((ctx: import("@modelscript/fortran").FortranExecutionContext) => void) | undefined;
+  /** Compiled vendor Windows PE .dll, Linux ELF .so, or macOS .dylib binary buffer. */
+  binaryBuffer?: Uint8Array | undefined;
+  dsdynSymbol?: string | undefined;
+  dsoutSymbol?: string | undefined;
+  connectedBus?: string | undefined;
+  /** DRM vendor protection type: CodeMeter CmStick or Sentinel HASP. */
+  drmType?: "codemeter" | "sentinel" | undefined;
+  /** Required CodeMeter Firm Code or Sentinel Vendor Code. */
+  drmFirmCode?: number | undefined;
+  /** Required CodeMeter Product Code or Sentinel Feature ID. */
+  drmProductCode?: number | undefined;
+  /** Whether this OEM block requires physical USB hardware dongle presence. */
+  requireHardwareDongle?: boolean | undefined;
 }
 
 // ==========================================

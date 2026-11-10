@@ -1,16 +1,18 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { fork } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { solvePowerFlow } from "../src/solver/ac-powerflow.js";
-import { screenContingencies, type CandidateContingency } from "../src/solver/contingency-screener.js";
 import {
-  generate70kEasternInterconnectionCase,
-  exportAcccToCsv,
   compareAcccReports,
+  exportAcccToCsv,
+  generate70kEasternInterconnectionCase,
   type AcccRecord,
 } from "../src/benchmarking/accc-benchmarker.js";
+import { solvePowerFlow } from "../src/solver/ac-powerflow.js";
+import { screenContingencies, type CandidateContingency } from "../src/solver/contingency-screener.js";
 import type { BranchRecord } from "../src/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,71 +27,74 @@ if (isWorker) {
     branchMap.set(`${br.j}_${br.i}_${br.ckt}`, br);
   }
 
-  process.on("message", (msg: { taskId: number; ctgId: string; tripBranches: Array<{ i: number; j: number; ckt: string }> }) => {
-    const modifiedBranches: BranchRecord[] = [];
-    for (const tb of msg.tripBranches) {
-      const br = branchMap.get(`${tb.i}_${tb.j}_${tb.ckt}`);
-      if (br) {
-        br.st = 0;
-        modifiedBranches.push(br);
-      }
-    }
-
-    const t0 = Date.now();
-    const sol = solvePowerFlow(psCase, { algorithm: "newton_raphson", maxIterations: 10, tolerance: 1e-4 });
-    const dur = Date.now() - t0;
-
-    for (const br of modifiedBranches) {
-      br.st = 1;
-    }
-
-    let maxLoading = 0.0;
-    let worstBranchKey = "NONE";
-    let worstFlowMva = 0.0;
-    let worstRatingMva = 100.0;
-
-    for (const br of sol.branches) {
-      const rate = br.rateMva ?? 100.0;
-      if (rate > 0) {
-        const loading = (br.mvaFlow / rate) * 100.0;
-        if (loading > maxLoading) {
-          maxLoading = loading;
-          worstBranchKey = `${br.fromBus}-${br.toBus} CKT ${br.ckt}`;
-          worstFlowMva = br.mvaFlow;
-          worstRatingMva = rate;
+  process.on(
+    "message",
+    (msg: { taskId: number; ctgId: string; tripBranches: Array<{ i: number; j: number; ckt: string }> }) => {
+      const modifiedBranches: BranchRecord[] = [];
+      for (const tb of msg.tripBranches) {
+        const br = branchMap.get(`${tb.i}_${tb.j}_${tb.ckt}`);
+        if (br) {
+          br.st = 0;
+          modifiedBranches.push(br);
         }
       }
-    }
 
-    let minVoltage = 2.0;
-    let lowestBus = 0;
-    let lowVoltageViolations = 0;
-    for (const b of sol.buses) {
-      if (b.vm > 0.1 && b.vm < minVoltage) {
-        minVoltage = b.vm;
-        lowestBus = b.busNumber;
-      }
-      if (b.vm < 0.90 && b.vm > 0.1) {
-        lowVoltageViolations++;
-      }
-    }
+      const t0 = Date.now();
+      const sol = solvePowerFlow(psCase, { algorithm: "newton_raphson", maxIterations: 10, tolerance: 1e-4 });
+      const dur = Date.now() - t0;
 
-    process.send?.({
-      taskId: msg.taskId,
-      ctgId: msg.ctgId,
-      status: sol.converged ? "CONVERGED" : "DIVERGED",
-      iterations: sol.iterations,
-      dur,
-      maxLoadingPercent: maxLoading,
-      worstBranch: worstBranchKey,
-      flowMva: worstFlowMva,
-      ratingMva: worstRatingMva,
-      lowestVoltagePu: minVoltage < 2.0 ? minVoltage : 1.0,
-      lowestVoltageBus: lowestBus,
-      voltageViolationsCount: lowVoltageViolations,
-      severityIndex: sol.converged ? Math.pow(maxLoading / 100.0, 4) : 9999.0,
-    });
-  });
+      for (const br of modifiedBranches) {
+        br.st = 1;
+      }
+
+      let maxLoading = 0.0;
+      let worstBranchKey = "NONE";
+      let worstFlowMva = 0.0;
+      let worstRatingMva = 100.0;
+
+      for (const br of sol.branches) {
+        const rate = br.rateMva ?? 100.0;
+        if (rate > 0) {
+          const loading = (br.mvaFlow / rate) * 100.0;
+          if (loading > maxLoading) {
+            maxLoading = loading;
+            worstBranchKey = `${br.fromBus}-${br.toBus} CKT ${br.ckt}`;
+            worstFlowMva = br.mvaFlow;
+            worstRatingMva = rate;
+          }
+        }
+      }
+
+      let minVoltage = 2.0;
+      let lowestBus = 0;
+      let lowVoltageViolations = 0;
+      for (const b of sol.buses) {
+        if (b.vm > 0.1 && b.vm < minVoltage) {
+          minVoltage = b.vm;
+          lowestBus = b.busNumber;
+        }
+        if (b.vm < 0.9 && b.vm > 0.1) {
+          lowVoltageViolations++;
+        }
+      }
+
+      process.send?.({
+        taskId: msg.taskId,
+        ctgId: msg.ctgId,
+        status: sol.converged ? "CONVERGED" : "DIVERGED",
+        iterations: sol.iterations,
+        dur,
+        maxLoadingPercent: maxLoading,
+        worstBranch: worstBranchKey,
+        flowMva: worstFlowMva,
+        ratingMva: worstRatingMva,
+        lowestVoltagePu: minVoltage < 2.0 ? minVoltage : 1.0,
+        lowestVoltageBus: lowestBus,
+        voltageViolationsCount: lowVoltageViolations,
+        severityIndex: sol.converged ? Math.pow(maxLoading / 100.0, 4) : 9999.0,
+      });
+    },
+  );
 
   process.send?.({ ready: true });
 } else {
@@ -124,12 +129,16 @@ if (isWorker) {
     console.log("[1/4] Generating 70,000-Bus MMWG Eastern Interconnection Network...");
     const tGen0 = Date.now();
     const psCase = generate70kEasternInterconnectionCase();
-    console.log(`  -> Network Generated in: ${Date.now() - tGen0} ms (${psCase.buses.size.toLocaleString()} buses, ${psCase.branches.length.toLocaleString()} branches)`);
+    console.log(
+      `  -> Network Generated in: ${Date.now() - tGen0} ms (${psCase.buses.size.toLocaleString()} buses, ${psCase.branches.length.toLocaleString()} branches)`,
+    );
 
     console.log("\n[2/4] Solving Base Case Full AC Newton-Raphson...");
     const tBase0 = Date.now();
     const baseSol = solvePowerFlow(psCase, { algorithm: "newton_raphson", maxIterations: 10, tolerance: 1e-4 });
-    console.log(`  -> Base Case Solved in: ${Date.now() - tBase0} ms (Converged: ${baseSol.converged}, Iter: ${baseSol.iterations}, Losses: ${baseSol.totalLossMw.toFixed(1)} MW)`);
+    console.log(
+      `  -> Base Case Solved in: ${Date.now() - tBase0} ms (Converged: ${baseSol.converged}, Iter: ${baseSol.iterations}, Losses: ${baseSol.totalLossMw.toFixed(1)} MW)`,
+    );
 
     // Formulate Contingencies
     const tieLines = psCase.branches.filter((br) => br.i % 1000 === 1 && br.j % 1000 === 1);
@@ -226,7 +235,9 @@ if (isWorker) {
             if (completed % 25 === 0 || completed === taskList.length) {
               const elapsedSec = (Date.now() - tStart) / 1000;
               const rate = completed / Math.max(0.001, elapsedSec);
-              process.stdout.write(`\r  [${label}] Solved: ${completed}/${taskList.length} (${((completed / taskList.length) * 100).toFixed(1)}%) | Rate: ${rate.toFixed(1)} solves/s | Elapsed: ${elapsedSec.toFixed(1)}s`);
+              process.stdout.write(
+                `\r  [${label}] Solved: ${completed}/${taskList.length} (${((completed / taskList.length) * 100).toFixed(1)}%) | Rate: ${rate.toFixed(1)} solves/s | Elapsed: ${elapsedSec.toFixed(1)}s`,
+              );
             }
 
             if (taskIdx < taskList.length) {
@@ -285,7 +296,7 @@ if (isWorker) {
       const topCtgIds = new Set(candidatesToSolve.map((c) => c.id));
       const topCtgs = contingencies.filter((c) => topCtgIds.has(c.id));
 
-      console.log(`  -> Linear screening evaluated ${linearCandidates.length} cases in ${(Date.now() - tTwoStage0)} ms.`);
+      console.log(`  -> Linear screening evaluated ${linearCandidates.length} cases in ${Date.now() - tTwoStage0} ms.`);
       console.log(`  -> Selected ${topCtgs.length} flagged candidates for Parallel Full AC confirmation.`);
 
       const acConfirmed = await solveBatchParallel(topCtgs, "Two-Stage AC Confirmation");
@@ -353,12 +364,20 @@ if (isWorker) {
       fs.writeFileSync(jsonPath, JSON.stringify(summary, null, 2), "utf-8");
 
       console.log(` • Total Contingencies Evaluated:   ${summary.totalContingencies}`);
-      console.log(` • Two-Stage ACCC Wall-Clock:        ${summary.twoStageDurationSec.toFixed(2)} s (${summary.twoStageThroughputSolvesPerSec.toFixed(1)} solves/s)`);
-      console.log(` • Brute-Force Full AC Wall-Clock:   ${summary.fullAcDurationSec.toFixed(2)} s (${summary.fullAcThroughputSolvesPerSec.toFixed(1)} solves/s)`);
+      console.log(
+        ` • Two-Stage ACCC Wall-Clock:        ${summary.twoStageDurationSec.toFixed(2)} s (${summary.twoStageThroughputSolvesPerSec.toFixed(1)} solves/s)`,
+      );
+      console.log(
+        ` • Brute-Force Full AC Wall-Clock:   ${summary.fullAcDurationSec.toFixed(2)} s (${summary.fullAcThroughputSolvesPerSec.toFixed(1)} solves/s)`,
+      );
       console.log(` • Measured Two-Stage Speedup:       ${summary.speedupFactor}x faster`);
-      console.log(` • Critical False Negatives:         ${summary.criticalFalseNegatives} ${summary.perfectSafetyParity ? "✔ (PERFECT 100% SAFETY PARITY)" : "⚠ WARNING"}`);
+      console.log(
+        ` • Critical False Negatives:         ${summary.criticalFalseNegatives} ${summary.perfectSafetyParity ? "✔ (PERFECT 100% SAFETY PARITY)" : "⚠ WARNING"}`,
+      );
       console.log(` • Conservative False Positives:     ${summary.falsePositives}`);
-      console.log(` • Low-Voltage Violations (V < 0.9): ${summary.totalLowVoltageViolationsFound} buses affected (Min V = ${summary.minimumGridVoltagePu.toFixed(3)} pu)`);
+      console.log(
+        ` • Low-Voltage Violations (V < 0.9): ${summary.totalLowVoltageViolationsFound} buses affected (Min V = ${summary.minimumGridVoltagePu.toFixed(3)} pu)`,
+      );
       console.log(` • Saved Comparison Summary JSON:    [${path.basename(jsonPath)}](${jsonPath})`);
       console.log("=========================================================================\n");
     }

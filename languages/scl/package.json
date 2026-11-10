@@ -1,0 +1,45 @@
+{
+  "name": "@modelscript/scl",
+  "version": "0.1.0",
+  "description": "IEC 61850 Substation Configuration Language (SCL) parser, GOOSE validator, SLD topology projection, and linear-memory DAE arena automation lowering",
+  "keywords": [
+    "iec61850",
+    "scl",
+    "scd",
+    "cid",
+    "icd",
+    "ssd",
+    "substation",
+    "goose",
+    "sampled-values",
+    "modelscript",
+    "power-grid"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "author": "Mohamad Omar Nachawati <omar@modelscript.org>",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "lint": "eslint src/ --ext .ts --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "language"
+  }
+}

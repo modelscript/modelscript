@@ -7,11 +7,6 @@
  */
 
 import {
-  presolveAmplProblem,
-  unrollPostsolve,
-  type PresolveResult,
-} from "../presolve/ampl-presolver.js";
-import {
   besselJ0,
   besselJ1,
   besselY0,
@@ -24,6 +19,7 @@ import {
   normal01,
   normalPdf,
 } from "../instantiator/special-functions.js";
+import { presolveAmplProblem, unrollPostsolve, type PresolveResult } from "../presolve/ampl-presolver.js";
 import type {
   AmplSolverOptions,
   AmplSolverResult,
@@ -68,19 +64,11 @@ export function buildLpProblem(problem: InstantiatedProblem): LpProblemData {
     }
   }
 
-  const varLB: number[] = problem.variables.map((v) =>
-    Number.isFinite(v.lb) ? v.lb : -1e20,
-  );
-  const varUB: number[] = problem.variables.map((v) =>
-    Number.isFinite(v.ub) ? v.ub : 1e20,
-  );
+  const varLB: number[] = problem.variables.map((v) => (Number.isFinite(v.lb) ? v.lb : -1e20));
+  const varUB: number[] = problem.variables.map((v) => (Number.isFinite(v.ub) ? v.ub : 1e20));
 
-  const conLB: number[] = problem.constraints.map((c) =>
-    Number.isFinite(c.lb) ? c.lb : -1e20,
-  );
-  const conUB: number[] = problem.constraints.map((c) =>
-    Number.isFinite(c.ub) ? c.ub : 1e20,
-  );
+  const conLB: number[] = problem.constraints.map((c) => (Number.isFinite(c.lb) ? c.lb : -1e20));
+  const conUB: number[] = problem.constraints.map((c) => (Number.isFinite(c.ub) ? c.ub : 1e20));
 
   // Group terms by variable (column) to build CSC
   const colEntries: { row: number; val: number }[][] = Array.from({ length: nVars }, () => []);
@@ -107,9 +95,7 @@ export function buildLpProblem(problem: InstantiatedProblem): LpProblemData {
     colPointers.push(values.length);
   }
 
-  const isInteger = problem.variables.map(
-    (v) => v.type === "integer" || v.type === "binary" || v.type === "semiint",
-  );
+  const isInteger = problem.variables.map((v) => v.type === "integer" || v.type === "binary" || v.type === "semiint");
   const hasInt = isInteger.some(Boolean);
 
   return {
@@ -128,10 +114,7 @@ export function buildLpProblem(problem: InstantiatedProblem): LpProblemData {
 /**
  * High-level AMPL solver function.
  */
-export async function solveAmpl(
-  problem: InstantiatedProblem,
-  options?: AmplSolverOptions,
-): Promise<AmplSolverResult> {
+export async function solveAmpl(problem: InstantiatedProblem, options?: AmplSolverOptions): Promise<AmplSolverResult> {
   const startTime = Date.now();
 
   // Dispatch to native in-memory FFI solvers (Gurobi, MOSEK, HiGHS)
@@ -248,7 +231,7 @@ async function solveCoreProblem(
 
   const isLinear = problem.problemClass === "LP" || problem.problemClass === "MILP";
 
-  if (isLinear && options?.solver !== "pure-js") {
+  if (isLinear && (options?.solver === "clp" || options?.solver === "cbc")) {
     try {
       const { loadCoinorWasm } = await import("@modelscript/simulate/optimizer");
       const coinor = await loadCoinorWasm();
@@ -839,7 +822,7 @@ function solveSimplexTableau(lp: LpProblemData): SimplexResult {
     for (let j = 0; j < n; j++) tab[i]![j] = r.coeffs[j]! * mult;
     tab[i]![totalCols - 1] = rhs;
 
-    const effectiveKind = mult === 1 ? r.kind : (r.kind === "<=" ? ">=" : r.kind === ">=" ? "<=" : "=");
+    const effectiveKind = mult === 1 ? r.kind : r.kind === "<=" ? ">=" : r.kind === ">=" ? "<=" : "=";
     if (effectiveKind === "<=") {
       tab[i]![curSlack] = 1;
       basicVars[i] = curSlack++;
@@ -1062,10 +1045,7 @@ function solveBranchAndBound(
 /**
  * Nonlinear solver fallback for continuous/MPEC problems (e.g. Rosenbrock, Markowitz portfolio).
  */
-function solveNonlinearSimple(
-  problem: InstantiatedProblem,
-  startTime: number,
-): AmplSolverResult {
+function solveNonlinearSimple(problem: InstantiatedProblem, startTime: number): AmplSolverResult {
   const n = problem.variables.length;
   let x = problem.variables.map((v) => {
     if (v.initVal) return v.initVal;
@@ -1086,7 +1066,6 @@ function solveNonlinearSimple(
       }
     }
   }
-
 
   const evalMerit = (vec: number[], penalty: number): number => {
     let merit = evalFlatExpr(problem.objective.expr, vec, problem.variables);
@@ -1186,7 +1165,7 @@ function evalTree(tree: any, vec: number[], variables: InstantiatedVar[]): numbe
         ? tree.name
         : `${tree.name}[${tree.indices.map((i: any) => i.value ?? i.name).join(",")}]`;
     const idx = variables.findIndex((v) => v.name === name);
-    return idx >= 0 ? vec[idx] ?? 0 : 0;
+    return idx >= 0 ? (vec[idx] ?? 0) : 0;
   }
   if (tree.kind === "unary") {
     const val = evalTree(tree.expr, vec, variables);

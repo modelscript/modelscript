@@ -22,6 +22,7 @@
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/easy5": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/fea": "*",
     "@modelscript/gensys": "*",
     "@modelscript/gtsuite": "*",

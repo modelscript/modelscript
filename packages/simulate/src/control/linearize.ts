@@ -354,9 +354,9 @@ export function solveDenseLinearSystem(
   n: number,
   m: number,
   regularization: number = 1e-12,
-): { X: Float64Array; minPivotRatio: number } {
+): { X: Float64Array; minPivotRatio: number; regularized: boolean } {
   if (n === 0) {
-    return { X: new Float64Array(0), minPivotRatio: 1.0 };
+    return { X: new Float64Array(0), minPivotRatio: 1.0, regularized: false };
   }
 
   const lu = new Float64Array(A);
@@ -366,6 +366,7 @@ export function solveDenseLinearSystem(
 
   let maxPivot = 0;
   let minPivot = Infinity;
+  let regularized = false;
 
   for (let k = 0; k < n; k++) {
     let maxRow = k;
@@ -394,15 +395,18 @@ export function solveDenseLinearSystem(
       }
     }
 
+    const rawPivot = Math.abs(lu[k * n + k]!);
+    if (rawPivot < minPivot) minPivot = rawPivot;
+
     let pivot = lu[k * n + k]!;
     if (Math.abs(pivot) < regularization) {
       pivot = pivot >= 0 ? regularization : -regularization;
       lu[k * n + k] = pivot;
+      regularized = true;
     }
 
     const absPiv = Math.abs(pivot);
     if (absPiv > maxPivot) maxPivot = absPiv;
-    if (absPiv < minPivot) minPivot = absPiv;
 
     for (let i = k + 1; i < n; i++) {
       const factor = lu[i * n + k]! / pivot;
@@ -429,7 +433,7 @@ export function solveDenseLinearSystem(
   }
 
   const minPivotRatio = maxPivot > 0 ? minPivot / maxPivot : 0;
-  return { X, minPivotRatio };
+  return { X, minPivotRatio, regularized };
 }
 
 /**

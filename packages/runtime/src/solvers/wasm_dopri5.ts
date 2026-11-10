@@ -203,15 +203,21 @@ export function dopri5(
   k[0] = k1;
 
   const computeEventValuesWithProbe = (currentTime: number, currentState: number[]) => {
-    if (!eventFunctions) return [];
-    return eventFunctions.map((g, gIdx) => {
-      const gVal = g(currentTime, currentState);
+    if (!eventFunctions || eventFunctions.length === 0) return [];
+    const rawVals = eventFunctions.map((g) => g(currentTime, currentState));
+    let cachedDydt: number[] | null = null;
+    let cachedProbe: number[] | null = null;
+    const out = rawVals.map((gVal, gIdx) => {
       if (Math.abs(gVal) < 1e-10) {
-        const dydt = f(currentTime, currentState);
-        const probe = currentState.map((yi, si) => yi + 1e-8 * (dydt[si] ?? 0));
-        const gProbe = g(currentTime + 1e-8, probe);
-        if (Math.abs(gProbe) > 1e-14) {
-          return gProbe > 0 ? 1e-10 : -1e-10;
+        if (!cachedDydt) {
+          cachedDydt = f(currentTime, currentState);
+          cachedProbe = currentState.map((yi, si) => yi + 1e-8 * (cachedDydt![si] ?? 0));
+        }
+        const g = eventFunctions[gIdx]!;
+        const gProbe = g(currentTime + 1e-8, cachedProbe!);
+        const dg = gProbe - gVal;
+        if (Math.abs(dg) > 1e-14) {
+          return dg > 0 ? 1e-10 : -1e-10;
         }
         const reqDir = eventDirections?.[gIdx] ?? 0;
         if (reqDir < 0) return -1e-10;
@@ -220,6 +226,10 @@ export function dopri5(
       }
       return gVal;
     });
+    if (cachedProbe) {
+      f(currentTime, currentState);
+    }
+    return out;
   };
 
   let prevEventValues: number[] | null = null;
@@ -392,7 +402,19 @@ export function dopri5(
             result.fEvals++;
             k[0] = k1;
 
+            const preCrossingValues = prevEventValues;
             prevEventValues = computeEventValuesWithProbe(t, y);
+            for (let kIdx = 0; kIdx < prevEventValues.length; kIdx++) {
+              const pv = prevEventValues[kIdx] ?? 0;
+              const oldPrev = preCrossingValues[kIdx] ?? 0;
+              const stepCurr = newEventValues[kIdx] ?? 0;
+              if (kIdx === ei || (oldPrev * stepCurr < 0 && Math.abs(pv) < 1e-5)) {
+                if (Math.abs(pv) < 1e-4) {
+                  const targetDir = kIdx === ei ? dir : stepCurr < 0 ? -1 : 1;
+                  prevEventValues[kIdx] = targetDir * Math.max(Math.abs(pv), 1e-10);
+                }
+              }
+            }
 
             const t0Out = outputTimes[0] ?? 0;
             const t1Out = outputTimes[1] ?? 0;
@@ -692,7 +714,19 @@ export async function dopri5Async(
             result.fEvals++;
             k[0] = k1;
 
+            const preCrossingValues = prevEventValues;
             prevEventValues = await computeEventValuesWithProbeAsync(t, y);
+            for (let kIdx = 0; kIdx < prevEventValues.length; kIdx++) {
+              const pv = prevEventValues[kIdx] ?? 0;
+              const oldPrev = preCrossingValues[kIdx] ?? 0;
+              const stepCurr = newEventValues[kIdx] ?? 0;
+              if (kIdx === ei || (oldPrev * stepCurr < 0 && Math.abs(pv) < 1e-5)) {
+                if (Math.abs(pv) < 1e-4) {
+                  const targetDir = kIdx === ei ? dir : stepCurr < 0 ? -1 : 1;
+                  prevEventValues[kIdx] = targetDir * Math.max(Math.abs(pv), 1e-10);
+                }
+              }
+            }
             const t0Out = outputTimes[0] ?? 0;
             const t1Out = outputTimes[1] ?? 0;
             const dtOut = outputTimes.length > 1 ? t1Out - t0Out : maxStep;
@@ -872,7 +906,7 @@ function bisectEvent(
     }
   }
 
-  return (lo + hi) / 2;
+  return hi;
 }
 
 async function estimateInitialStepAsync(
@@ -937,5 +971,5 @@ async function bisectEventAsync(
       gLo = gMid;
     }
   }
-  return (lo + hi) / 2;
+  return hi;
 }

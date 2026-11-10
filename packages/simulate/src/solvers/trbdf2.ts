@@ -345,10 +345,12 @@ export function trbdf2(
       maxErrorRatio = Math.max(maxErrorRatio, err_i / tol);
     }
 
-    if (
-      Number.isFinite(maxErrorRatio) &&
-      (maxErrorRatio <= 1.0 || (Math.abs(h) <= minStep * 2 && maxErrorRatio <= 100.0))
-    ) {
+    const acceptedByTol = Number.isFinite(maxErrorRatio) && maxErrorRatio <= 1.0;
+    const acceptedAtMinStep = Number.isFinite(maxErrorRatio) && Math.abs(h) <= minStep * 2 && maxErrorRatio <= 2.0;
+    if (acceptedByTol || acceptedAtMinStep) {
+      if (acceptedAtMinStep && !acceptedByTol) {
+        stats.converged = false;
+      }
       // Step accepted
       stats.acceptedSteps++;
 
@@ -364,7 +366,7 @@ export function trbdf2(
           const vCurr = currEventVals[ei] ?? 0;
           const expectedDir = effEventDirections?.[ei] ?? 0;
 
-          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-9) {
+          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-14) {
             const evDir: 1 | -1 = vCurr > vPrev ? 1 : -1;
             if (expectedDir === 0 || expectedDir === evDir) {
               let tLeft = t;

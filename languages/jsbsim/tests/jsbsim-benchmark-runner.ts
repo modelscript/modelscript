@@ -8,18 +8,15 @@
  */
 
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   linearizeFlightDynamics,
   lowerJsbsimToDae,
   parseJsbsim,
   solveFlightDynamics,
   trimFlightCondition,
-  type JsbsimLinearizationResult,
-  type JsbsimSimulationResult,
-  type JsbsimTrimResult,
+  type LongitudinalLinearizationResult as JsbsimLinearizationResult,
+  type FlightSimulationResult as JsbsimSimulationResult,
+  type FlightTrimResult as JsbsimTrimResult,
 } from "../src/index.js";
 
 export const C172_FULL_AERO_DECK = `<?xml version="1.0"?>
@@ -129,7 +126,10 @@ export function runJsbsimBenchmark(xml = C172_FULL_AERO_DECK): JsbsimBenchmarkRe
 
   // 2. Longitudinal modal analysis
   const lin: JsbsimLinearizationResult = linearizeFlightDynamics(doc, { speedFps: 180.0, altitudeFt: 5000.0 });
-  assert.ok(lin.shortPeriod.naturalFrequencyRadSec > 1.0, `Short-period omega ${lin.shortPeriod.naturalFrequencyRadSec}`);
+  assert.ok(
+    lin.shortPeriod.naturalFrequencyRadSec > 1.0,
+    `Short-period omega ${lin.shortPeriod.naturalFrequencyRadSec}`,
+  );
   assert.ok(lin.shortPeriod.dampingRatio > 0.3, `Short-period damping ${lin.shortPeriod.dampingRatio}`);
   assert.ok(lin.phugoid.naturalFrequencyRadSec < 0.5, `Phugoid omega ${lin.phugoid.naturalFrequencyRadSec}`);
 

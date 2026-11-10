@@ -13,9 +13,11 @@ import {
   varTypeName,
 } from "@modelscript/runtime";
 import { Cst } from "../../../src-gen/bindings.js";
+import { BUILTIN_FUNCTIONS } from "../../builtins.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated } from "../../queries.js";
 import { stripComments } from "../expressions/cst-utils.js";
+import { SCALAR_VECTORIZABLE_FUNCTIONS } from "../expressions/functions.js";
 import {
   castToRealExpr,
   escapeRegExp,
@@ -904,7 +906,13 @@ export function flattenFunction(
         parentDae.addFunction(cleanFnName, cachedFn);
         parentDae.addFunction(fnName, cachedFn);
         const naturalParentId = fnParentId ?? db.symbol(fnSymId)?.parentId;
-        if (baseName && !cleanFnName.includes("$") && (!enclosingScopeId || enclosingScopeId === naturalParentId)) {
+        const isBuiltinName = SCALAR_VECTORIZABLE_FUNCTIONS.has(baseName) || BUILTIN_FUNCTIONS.has(baseName);
+        if (
+          baseName &&
+          !isBuiltinName &&
+          !cleanFnName.includes("$") &&
+          (!enclosingScopeId || enclosingScopeId === naturalParentId)
+        ) {
           parentDae.addFunction(baseName, cachedFn);
         }
         let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
@@ -974,21 +982,31 @@ export function flattenFunction(
   try {
     const parts = cleanFnName.split(".");
     const baseName = parts[parts.length - 1]!;
+    const isBuiltinName = SCALAR_VECTORIZABLE_FUNCTIONS.has(baseName) || BUILTIN_FUNCTIONS.has(baseName);
 
     if (parentDae) {
       parentDae.addFunction(cleanFnName, fn);
       parentDae.addFunction(fnName, fn);
       const naturalParentId = fnParentId ?? db.symbol(fnSymId)?.parentId;
-      if (baseName && !cleanFnName.includes("$") && (!enclosingScopeId || enclosingScopeId === naturalParentId)) {
+      if (
+        baseName &&
+        !isBuiltinName &&
+        !cleanFnName.includes("$") &&
+        (!enclosingScopeId || enclosingScopeId === naturalParentId)
+      ) {
         parentDae.addFunction(baseName, fn);
       }
     }
     fn.addFunction(cleanFnName, fn);
     fn.addFunction(fnName, fn);
-    if (baseName && !cleanFnName.includes("$")) fn.addFunction(baseName, fn);
+    if (baseName && !isBuiltinName && !cleanFnName.includes("$")) fn.addFunction(baseName, fn);
 
     const fnImports = flattener.collectClassImports(fnSymId);
-    flattener.currentImports = new Map([...flattener.currentImports, ...fnImports]);
+    flattener.currentImports = new Map(
+      enclosingScopeId && enclosingScopeId !== fnParentId
+        ? [...flattener.collectClassImports(enclosingScopeId), ...fnImports]
+        : fnImports,
+    );
 
     const cst = db.cstNode(fnSymId) as any;
     if (cst) {

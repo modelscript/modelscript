@@ -2,7 +2,10 @@
 
 export * from "./analysis/control-intervals.js";
 export * from "./analysis/interval-report.js";
+export * from "./benchmarking/cigre-b4-hvdc.js";
+export * from "./benchmarking/ehv-corridor.js";
 export * from "./benchmarking/pmr-benchmarker.js";
+export * from "./benchmarking/wind-collector-100.js";
 export * from "./catalog/master-library-schemas.js";
 export * from "./comtrade/comtrade-reader.js";
 export * from "./comtrade/comtrade-types.js";

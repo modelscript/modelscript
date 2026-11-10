@@ -12,6 +12,7 @@
  */
 
 import { solveLinearSystemSparse } from "../sparse-solver-bridge.js";
+import { solveDirectAcOpf } from "./direct-ac-opf.js";
 import { formatOpfReport } from "./format-report.js";
 import type {
   GenericPowerCase,
@@ -26,6 +27,17 @@ import type {
  * Executes a full Nonlinear AC Optimal Power Flow (AC-OPF) calculation.
  */
 export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}): OpfSolution {
+  if (options.tier === "direct") {
+    throw new Error(
+      "Tier 'direct' for AC-OPF requires asynchronous execution with IpoptSolver. Please use solveDirectAcOpf() or solveAcOpfAsync().",
+    );
+  }
+  if (options.tier === "ampl" || (options.customAmplConstraints && options.customAmplConstraints.length > 0)) {
+    throw new Error(
+      "Tier 'ampl' or custom AMPL constraints require asynchronous execution. Please use solveAcOpfAsync() or solveAmplOpf().",
+    );
+  }
+
   const sbase = powerCase.header.sbase > 0 ? powerCase.header.sbase : 100.0;
   const enforceLimits = options.enforceThermalLimits !== false;
   const vMinSetting = options.voltageMin ?? 0.95;
@@ -506,4 +518,20 @@ export function solveAcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
 
   solution.reportText = formatOpfReport(solution, caseTitle);
   return solution;
+}
+
+/**
+ * Asynchronously executes an AC Optimal Power Flow calculation, routing to
+ * either Tier 1 (AMPL with custom constraints/MPEC/SOS2) or Tier 2 (Direct Zero-GC IPOPT/L-BFGS-B).
+ */
+export async function solveAcOpfAsync(powerCase: GenericPowerCase, options: OpfOptions = {}): Promise<OpfSolution> {
+  if (options.tier === "ampl" || (options.customAmplConstraints && options.customAmplConstraints.length > 0)) {
+    const amplPkg = "@modelscript/ampl";
+    const { solveAmplOpf } = (await import(amplPkg)) as any;
+    return solveAmplOpf(powerCase, { ...options, formulation: "ac" });
+  }
+  if (options.tier === "direct") {
+    return solveDirectAcOpf(powerCase, options);
+  }
+  return solveAcOpf(powerCase, options);
 }

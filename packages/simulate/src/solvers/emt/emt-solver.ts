@@ -10,6 +10,7 @@
  * - Norton Equivalent Predictor for Black-Box FMI 2.0/3.0 Co-Simulation FMUs
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import {
   buildCompanionSystem,
   stampShuntConductance,
@@ -72,6 +73,7 @@ import type {
   ThreePhaseWaveform,
   TransformerWindingState,
 } from "./types.js";
+import { WasmEmtBridge } from "./wasm-emt-bridge.js";
 
 /**
  * Complete network topology, apparatus parameters, protection/switching schedules,
@@ -428,6 +430,7 @@ export class EmtSolver {
       threePhase: this.isThreePhase,
       maxNonlinearIterations: Math.max(1, Math.round(options.maxNonlinearIterations ?? 1)),
       nonlinearToleranceVolts: Math.max(1e-6, options.nonlinearToleranceVolts ?? 1.0),
+      backend: options.backend ?? "auto",
     };
 
     const dt = this.options.timeStepSec;
@@ -974,6 +977,11 @@ export class EmtSolver {
    * saturable cores and MOV arresters, and computes sliding-window symmetrical components.
    */
   public solve(): EmtSimulationResult {
+    if (this.options.backend === "wasm") {
+      const wasmRes = this.solveWasm();
+      if (wasmRes) return wasmRes;
+    }
+
     const startTime = Date.now();
     const dt = this.options.timeStepSec;
     const totalSteps = Math.ceil(this.options.durationSec / dt);
@@ -1924,100 +1932,7 @@ export class EmtSolver {
     // 4. Compute Symmetrical Components (V0, V1, V2) via 1-cycle sliding fundamental DFT when in 3-phase mode
     let sequenceVoltages: Map<string, SequenceWaveform> | undefined;
     if (this.isThreePhase && busPhaseVoltages) {
-      sequenceVoltages = new Map<string, SequenceWaveform>();
-      const cycleSteps = Math.max(4, Math.round(1.0 / (this.options.nominalFrequencyHz * dt)));
-      const omega = 2 * Math.PI * this.options.nominalFrequencyHz;
-      // Fortescue operator a = exp(j * 2*pi/3) = -0.5 + j * sqrt(3)/2, a^2 = -0.5 - j * sqrt(3)/2
-      const aRe = -0.5;
-      const aIm = 0.5 * Math.sqrt(3);
-      const a2Re = -0.5;
-      const a2Im = -0.5 * Math.sqrt(3);
-
-      for (const busName of this.busNames) {
-        const wf = busPhaseVoltages.get(busName)!;
-        const v0 = new Float64Array(totalSteps);
-        const v1 = new Float64Array(totalSteps);
-        const v2 = new Float64Array(totalSteps);
-
-        let sumAr = 0,
-          sumAi = 0;
-        let sumBr = 0,
-          sumBi = 0;
-        let sumCr = 0,
-          sumCi = 0;
-
-        const cosBuf = new Float64Array(cycleSteps);
-        const sinBuf = new Float64Array(cycleSteps);
-        for (let k = 0; k < cycleSteps; k++) {
-          cosBuf[k] = Math.cos(omega * k * dt);
-          sinBuf[k] = Math.sin(omega * k * dt);
-        }
-
-        for (let step = 0; step < totalSteps; step++) {
-          const bufIdx = step % cycleSteps;
-          const c = Math.cos(omega * step * dt);
-          const s = Math.sin(omega * step * dt);
-
-          if (step >= cycleSteps) {
-            const oldStep = step - cycleSteps;
-            const oldC = Math.cos(omega * oldStep * dt);
-            const oldS = Math.sin(omega * oldStep * dt);
-            sumAr -= wf.a[oldStep]! * oldC;
-            sumAi += wf.a[oldStep]! * oldS;
-            sumBr -= wf.b[oldStep]! * oldC;
-            sumBi += wf.b[oldStep]! * oldS;
-            sumCr -= wf.c[oldStep]! * oldC;
-            sumCi += wf.c[oldStep]! * oldS;
-          }
-
-          sumAr += wf.a[step]! * c;
-          sumAi -= wf.a[step]! * s;
-          sumBr += wf.b[step]! * c;
-          sumBi -= wf.b[step]! * s;
-          sumCr += wf.c[step]! * c;
-          sumCi -= wf.c[step]! * s;
-          void bufIdx;
-
-          const winCount = Math.min(step + 1, cycleSteps);
-          const scale = 2.0 / winCount;
-          const VaRe = sumAr * scale,
-            VaIm = sumAi * scale;
-          const VbRe = sumBr * scale,
-            VbIm = sumBi * scale;
-          const VcRe = sumCr * scale,
-            VcIm = sumCi * scale;
-
-          // V0 = (Va + Vb + Vc) / 3
-          const V0Re = (VaRe + VbRe + VcRe) / 3;
-          const V0Im = (VaIm + VbIm + VcIm) / 3;
-
-          // a * Vb and a^2 * Vb
-          const aVbRe = aRe * VbRe - aIm * VbIm;
-          const aVbIm = aRe * VbIm + aIm * VbRe;
-          const a2VbRe = a2Re * VbRe - a2Im * VbIm;
-          const a2VbIm = a2Re * VbIm + a2Im * VbRe;
-
-          // a * Vc and a^2 * Vc
-          const aVcRe = aRe * VcRe - aIm * VcIm;
-          const aVcIm = aRe * VcIm + aIm * VcRe;
-          const a2VcRe = a2Re * VcRe - a2Im * VcIm;
-          const a2VcIm = a2Re * VcIm + a2Im * VcRe;
-
-          // V1 = (Va + a*Vb + a^2*Vc) / 3
-          const V1Re = (VaRe + aVbRe + a2VcRe) / 3;
-          const V1Im = (VaIm + aVbIm + a2VcIm) / 3;
-
-          // V2 = (Va + a^2*Vb + a*Vc) / 3
-          const V2Re = (VaRe + a2VbRe + aVcRe) / 3;
-          const V2Im = (VaIm + a2VbIm + aVcIm) / 3;
-
-          v0[step] = Math.hypot(V0Re, V0Im);
-          v1[step] = Math.hypot(V1Re, V1Im);
-          v2[step] = Math.hypot(V2Re, V2Im);
-        }
-
-        sequenceVoltages.set(busName, { v0, v1, v2 });
-      }
+      sequenceVoltages = this.computeSequenceVoltages(busPhaseVoltages, totalSteps, dt);
     }
 
     const wallClockTimeMs = Date.now() - startTime;
@@ -2036,6 +1951,337 @@ export class EmtSolver {
         factorizationCount,
         subsystemCount: companionSys.subsystemCount,
         totalNonlinearIterations,
+        backend: "ts",
+      },
+    };
+  }
+
+  private computeSequenceVoltages(
+    busPhaseVoltages: Map<string, ThreePhaseWaveform>,
+    totalSteps: number,
+    dt: number,
+  ): Map<string, SequenceWaveform> {
+    const sequenceVoltages = new Map<string, SequenceWaveform>();
+    const cycleSteps = Math.max(4, Math.round(1.0 / (this.options.nominalFrequencyHz * dt)));
+    const omega = 2 * Math.PI * this.options.nominalFrequencyHz;
+    // Fortescue operator a = exp(j * 2*pi/3) = -0.5 + j * sqrt(3)/2, a^2 = -0.5 - j * sqrt(3)/2
+    const aRe = -0.5;
+    const aIm = 0.5 * Math.sqrt(3);
+    const a2Re = -0.5;
+    const a2Im = -0.5 * Math.sqrt(3);
+
+    for (const busName of this.busNames) {
+      const wf = busPhaseVoltages.get(busName)!;
+      const v0 = new Float64Array(totalSteps);
+      const v1 = new Float64Array(totalSteps);
+      const v2 = new Float64Array(totalSteps);
+
+      let sumAr = 0,
+        sumAi = 0;
+      let sumBr = 0,
+        sumBi = 0;
+      let sumCr = 0,
+        sumCi = 0;
+
+      const cosBuf = new Float64Array(cycleSteps);
+      const sinBuf = new Float64Array(cycleSteps);
+      for (let k = 0; k < cycleSteps; k++) {
+        cosBuf[k] = Math.cos(omega * k * dt);
+        sinBuf[k] = Math.sin(omega * k * dt);
+      }
+
+      for (let step = 0; step < totalSteps; step++) {
+        const bufIdx = step % cycleSteps;
+        const c = Math.cos(omega * step * dt);
+        const s = Math.sin(omega * step * dt);
+
+        if (step >= cycleSteps) {
+          const oldStep = step - cycleSteps;
+          const oldC = Math.cos(omega * oldStep * dt);
+          const oldS = Math.sin(omega * oldStep * dt);
+          sumAr -= wf.a[oldStep]! * oldC;
+          sumAi += wf.a[oldStep]! * oldS;
+          sumBr -= wf.b[oldStep]! * oldC;
+          sumBi += wf.b[oldStep]! * oldS;
+          sumCr -= wf.c[oldStep]! * oldC;
+          sumCi += wf.c[oldStep]! * oldS;
+        }
+
+        sumAr += wf.a[step]! * c;
+        sumAi -= wf.a[step]! * s;
+        sumBr += wf.b[step]! * c;
+        sumBi -= wf.b[step]! * s;
+        sumCr += wf.c[step]! * c;
+        sumCi -= wf.c[step]! * s;
+        void bufIdx;
+
+        const winCount = Math.min(step + 1, cycleSteps);
+        const scale = 2.0 / winCount;
+        const VaRe = sumAr * scale,
+          VaIm = sumAi * scale;
+        const VbRe = sumBr * scale,
+          VbIm = sumBi * scale;
+        const VcRe = sumCr * scale,
+          VcIm = sumCi * scale;
+
+        // V0 = (Va + Vb + Vc) / 3
+        const V0Re = (VaRe + VbRe + VcRe) / 3;
+        const V0Im = (VaIm + VbIm + VcIm) / 3;
+
+        // a * Vb and a^2 * Vb
+        const aVbRe = aRe * VbRe - aIm * VbIm;
+        const aVbIm = aRe * VbIm + aIm * VbRe;
+        const a2VbRe = a2Re * VbRe - a2Im * VbIm;
+        const a2VbIm = a2Re * VbIm + a2Im * VbRe;
+
+        // a * Vc and a^2 * Vc
+        const aVcRe = aRe * VcRe - aIm * VcIm;
+        const aVcIm = aRe * VcIm + aIm * VcRe;
+        const a2VcRe = a2Re * VcRe - a2Im * VcIm;
+        const a2VcIm = a2Re * VcIm + a2Im * VcRe;
+
+        // V1 = (Va + a*Vb + a^2*Vc) / 3
+        const V1Re = (VaRe + aVbRe + a2VcRe) / 3;
+        const V1Im = (VaIm + aVbIm + a2VcIm) / 3;
+
+        // V2 = (Va + a^2*Vb + a*Vc) / 3
+        const V2Re = (VaRe + a2VbRe + aVcRe) / 3;
+        const V2Im = (VaIm + a2VbIm + aVcIm) / 3;
+
+        v0[step] = Math.hypot(V0Re, V0Im);
+        v1[step] = Math.hypot(V1Re, V1Im);
+        v2[step] = Math.hypot(V2Re, V2Im);
+      }
+
+      sequenceVoltages.set(busName, { v0, v1, v2 });
+    }
+    return sequenceVoltages;
+  }
+
+  /**
+   * Executes the full EMT simulation using the high-performance native WebAssembly kernel.
+   */
+  private solveWasm(): EmtSimulationResult | null {
+    const exports = getDefaultWasmExports() as { memory: WebAssembly.Memory; emt_create?: unknown } | null;
+    if (!exports || typeof exports.emt_create !== "function") {
+      return null;
+    }
+
+    const startTime = Date.now();
+    const dt = this.options.timeStepSec;
+    const totalSteps = Math.ceil(this.options.durationSec / dt);
+
+    const bridge = new WasmEmtBridge(
+      this.nNodes,
+      dt,
+      Math.max(this.rlcStates.length + this.xfmrWindings.length * 2, 16),
+      Math.max(this.sources.length, 4),
+    );
+
+    // 1. Sources
+    for (const src of this.sources) {
+      bridge.addSource({
+        node: src.node,
+        vPeakKv: src.vPeakKv,
+        freqHz: src.omega > 0 ? src.omega / (2 * Math.PI) : 0,
+        phaseRad: src.phase,
+        gSource: src.gSource,
+        isDc: src.omega === 0,
+      });
+    }
+
+    // 2. RLC branches
+    for (const br of this.rlcStates) {
+      bridge.addBranch(br.fromNode, br.toNode, br.r, br.l, br.c);
+    }
+
+    // 3. Bergeron transmission lines
+    for (const line of this.lineStates) {
+      bridge.addBergeronLine(line.fromNode, line.toNode, line.zc, line.tauSec, line.rTotal);
+    }
+
+    // 4. Transformer windings
+    for (const w of this.xfmrWindings) {
+      bridge.addTransformerWinding(w.pPosNode, w.pNegNode, w.sPosNode, w.sNegNode, w.gLeakage, w.alphaL, w.turnsRatio);
+    }
+
+    // 5. Faults
+    for (const f of this.faultStates) {
+      bridge.addFault(f.nodeA, f.nodeB, f.startSec, f.endSec, f.gFault > 0 ? 1.0 / f.gFault : 1e-3);
+    }
+
+    // 6. Breakers
+    for (const b of this.breakerPoles) {
+      bridge.addBreaker(b.fromNode, b.toNode, {
+        rClosedOhm: b.gClosed > 0 ? 1.0 / b.gClosed : 1e-3,
+        rOpenOhm: b.gOpen > 0 ? 1.0 / b.gOpen : 1e9,
+        closedInitially: b.isClosed,
+        openTimeSec: b.openTimeSec,
+        closeTimeSec: b.closeTimeSec,
+        choppingCurrentAmp: b.choppingCurrentAmp,
+      });
+    }
+
+    // 7. Saturable cores
+    for (const sat of this.satXfmrStates) {
+      bridge.addSaturableCore(sat.config.primaryNode, sat.config.lUnsatH, sat.config.lSatH, sat.config.kneeFluxWb, 0.0);
+    }
+
+    // 8. Surge arresters
+    for (const arr of this.arresterStates) {
+      bridge.addSurgeArrester(arr.node, -1, arr.vRefVolts);
+    }
+
+    // 9. Synchronous machines
+    for (const sm of this.syncMachineStates) {
+      bridge.addSynchronousMachine({
+        nodeA: sm.nodes[0] ?? -1,
+        nodeB: sm.nodes[1] ?? -1,
+        nodeC: sm.nodes[2] ?? -1,
+        sBaseMva: sm.config.ratedMva,
+        vBaseKvLL: sm.config.ratedKv,
+        freqHz: sm.config.nominalFreqHz,
+        xd: sm.config.xdPu,
+        xq: sm.config.xqPu,
+        xdPrime: sm.config.xdPrimePu,
+        xqPrime: sm.config.xqPrimePu,
+        xdSub: sm.config.xdDoublePrimePu,
+        td0Prime: sm.config.td0PrimeSec,
+        tq0Prime: sm.config.tq0PrimeSec,
+        td0Sub: sm.config.td0DoublePrimeSec,
+        tq0Sub: sm.config.tq0DoublePrimeSec,
+        hInertia: sm.config.inertiaConstantH,
+        dampingD: sm.config.dampingD,
+        pmPu: sm.config.mechanicalPowerPu,
+        efPu: sm.config.fieldVoltagePu,
+      });
+    }
+
+    // 10. Induction machines
+    for (const im of this.indMachineStates) {
+      bridge.addInductionMachine({
+        nodeA: im.nodes[0] ?? -1,
+        nodeB: im.nodes[1] ?? -1,
+        nodeC: im.nodes[2] ?? -1,
+        sBaseMva: im.config.ratedMva,
+        vBaseKvLL: im.config.ratedKv,
+        freqHz: im.config.nominalFreqHz,
+        rsPu: im.config.rsPu,
+        xsPu: im.config.xsPu,
+        xmPu: im.config.xmPu,
+        rrPu: im.config.rrPu,
+        xrPu: im.config.xrPu,
+        hInertia: im.config.inertiaConstantH,
+        dampingD: im.config.dampingD,
+        tmLoadPu: im.config.mechanicalTorquePu,
+        isDfig: im.config.machineType === "dfig",
+        crowbarThresholdPu: im.config.crowbarTriggerCurrentPu ?? 2.0,
+      });
+    }
+
+    // 11. Converter bridges
+    for (const conv of this.converterStates) {
+      const mode =
+        conv.config.topology === "lcc_6pulse"
+          ? "lcc_6pulse"
+          : conv.config.topology === "mmc_thevenin"
+            ? "mmc_thevenin"
+            : "vsc_pwm";
+      bridge.addConverterBridge({
+        nodeA: conv.nodes[0] ?? -1,
+        nodeB: conv.nodes[1] ?? -1,
+        nodeC: conv.nodes[2] ?? -1,
+        nodeDcPos: -1,
+        nodeDcNeg: -1,
+        mode,
+        freqHz: conv.config.nominalFreqHz,
+        modulationIndex: conv.config.modulationIndex ?? 0.85,
+        firingAngleDeg: conv.config.firingAngleDeg ?? 15.0,
+        nSubmodulesPerArm: conv.config.numSubmodulesPerArm ?? 20,
+        cSubmoduleFarad: conv.config.submoduleCapacitanceF ?? 0.01,
+        vSmInitVolts: conv.config.nominalDcKv
+          ? (conv.config.nominalDcKv * 1e3) / (conv.config.numSubmodulesPerArm ?? 20)
+          : 2000.0,
+        lArmHenry: conv.config.armInductanceH ?? 0.05,
+        rArmOhm: conv.config.armResistanceOhm ?? 0.5,
+      });
+    }
+
+    // 12. FD lines
+    for (const fd of this.fdLineStates) {
+      bridge.addFrequencyDependentLine({
+        fromNode: fd.config.fromNode,
+        toNode: fd.config.toNode,
+        gInf: fd.gc,
+        tauSec: fd.config.tauSec,
+        yPoles: fd.config.yPoles,
+        hPoles: fd.config.hPoles,
+      });
+    }
+
+    bridge.setNonlinearIterationOptions(this.options.maxNonlinearIterations, this.options.nonlinearToleranceVolts);
+
+    const ok = bridge.buildAndFactorize();
+    if (!ok) {
+      return null;
+    }
+
+    const wasmRes = bridge.solve(totalSteps);
+
+    const busVoltages = new Map<string, Float64Array>();
+    const busPhaseVoltages = this.isThreePhase ? new Map<string, ThreePhaseWaveform>() : undefined;
+
+    for (let b = 0; b < this.nBuses; b++) {
+      const busName = this.busNames[b]!;
+      if (this.isThreePhase) {
+        const vA = wasmRes.voltages[b * 3 + 0] ?? new Float64Array(totalSteps);
+        const vB = wasmRes.voltages[b * 3 + 1] ?? new Float64Array(totalSteps);
+        const vC = wasmRes.voltages[b * 3 + 2] ?? new Float64Array(totalSteps);
+        busPhaseVoltages!.set(busName, { a: vA, b: vB, c: vC });
+        busVoltages.set(busName, vA);
+      } else {
+        const v0 = wasmRes.voltages[b] ?? new Float64Array(totalSteps);
+        busVoltages.set(busName, v0);
+      }
+    }
+
+    const branchCurrents = new Map<string, Float64Array>();
+    const branchPhaseCurrents = this.isThreePhase ? new Map<string, ThreePhaseWaveform>() : undefined;
+
+    for (let i = 0; i < this.rlcStates.length; i++) {
+      const rlc = this.rlcStates[i]!;
+      const iBr = new Float64Array(totalSteps);
+      const fromNode = rlc.fromNode;
+      const toNode = rlc.toNode;
+      const r = rlc.r;
+      for (let s = 0; s < totalSteps; s++) {
+        const vF = fromNode >= 0 ? (wasmRes.voltages[fromNode]?.[s] ?? 0) : 0;
+        const vT = toNode >= 0 ? (wasmRes.voltages[toNode]?.[s] ?? 0) : 0;
+        iBr[s] = r > 0 ? (vF - vT) / r : 0;
+      }
+      branchCurrents.set(rlc.id, iBr);
+    }
+
+    let sequenceVoltages: Map<string, SequenceWaveform> | undefined;
+    if (this.isThreePhase && busPhaseVoltages) {
+      sequenceVoltages = this.computeSequenceVoltages(busPhaseVoltages, totalSteps, dt);
+    }
+
+    return {
+      time: wasmRes.timePoints,
+      busVoltages,
+      busPhaseVoltages,
+      sequenceVoltages,
+      branchCurrents,
+      branchPhaseCurrents,
+      controlSignals: new Map<string, Float64Array>(),
+      metrics: {
+        totalSteps: wasmRes.stepCount,
+        wallClockTimeMs: Date.now() - startTime,
+        factorizationCount: wasmRes.factorizationCount,
+        subsystemCount: 1,
+        totalNonlinearIterations: wasmRes.totalNonlinearIterations,
+        backend: "wasm",
       },
     };
   }

@@ -8,20 +8,14 @@
  */
 
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   cartesianToKeplerian,
-  computeOrbitAcceleration,
   interpolateOemState,
-  keplerianToCartesian,
   lowerCcsdsToDae,
   parseCcsds,
   propagateOrbit,
-  type CcsdsKeplerianElements,
   type CcsdsOemDocument,
-  type CcsdsStateVector,
+  type StateVector,
 } from "../src/index.js";
 
 export const ISS_OEM_BENCHMARK = `CCSDS_OEM_VERS = 2.0
@@ -60,7 +54,7 @@ export function runCcsdsBenchmark(oemText = ISS_OEM_BENCHMARK): CcsdsBenchmarkRe
 
   // Initial state from OEM
   const st0 = doc.points[0]!;
-  const sv0: CcsdsStateVector = {
+  const sv0: StateVector = {
     x: st0.x,
     y: st0.y,
     z: st0.z,
@@ -92,7 +86,7 @@ export function runCcsdsBenchmark(oemText = ISS_OEM_BENCHMARK): CcsdsBenchmarkRe
 
   assert.ok(traj.length > 50, `Expected > 50 trajectory steps, got ${traj.length}`);
   const stFinal = traj[traj.length - 1]!;
-  const svFinal: CcsdsStateVector = {
+  const svFinal: StateVector = {
     x: stFinal.x,
     y: stFinal.y,
     z: stFinal.z,

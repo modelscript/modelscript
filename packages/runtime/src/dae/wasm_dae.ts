@@ -1940,14 +1940,20 @@ export class WasmDaeBridge implements IDaeBuilder {
     }
     if (attrName === "start") {
       this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
-      if (this.getExprKind(exprId) === ExprKind.RealLiteral) {
-        this.setVarStartValue(varIdx, this.getExprRealValue(exprId));
-      } else if (
-        this.getExprKind(exprId) === ExprKind.IntLiteral ||
-        this.getExprKind(exprId) === ExprKind.BoolLiteral ||
-        this.getExprKind(exprId) === ExprKind.EnumLiteral
-      ) {
-        this.setVarStartValue(varIdx, this.getExprData1(exprId));
+      const hasConstOrParamBinding =
+        this.varExpressions.has(varIdx) &&
+        (this.getVarVariability(varIdx) === Variability.Constant ||
+          (this.getVarVariability(varIdx) === Variability.Parameter && this.isVarFixed(varIdx)));
+      if (!hasConstOrParamBinding) {
+        if (this.getExprKind(exprId) === ExprKind.RealLiteral) {
+          this.setVarStartValue(varIdx, this.getExprRealValue(exprId));
+        } else if (
+          this.getExprKind(exprId) === ExprKind.IntLiteral ||
+          this.getExprKind(exprId) === ExprKind.BoolLiteral ||
+          this.getExprKind(exprId) === ExprKind.EnumLiteral
+        ) {
+          this.setVarStartValue(varIdx, this.getExprData1(exprId));
+        }
       }
     }
   }
@@ -2491,6 +2497,9 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   isEqInitial(eqId: number): boolean {
     const kind = this.getEqKind(eqId);
+    if (kind === EqKind.Connect) {
+      return false;
+    }
     if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor || kind === EqKind.InitialFunctionCall) {
       return true;
     }
@@ -2860,7 +2869,11 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   addName(varId: number): number {
     if (this.exports?.dae_addName) {
-      return this.exports.dae_addName(this.ptr, varId);
+      const exprId = this.exports.dae_addName(this.ptr, varId);
+      if (exprId >= 0) {
+        this.nameExprIndices.push(exprId);
+      }
+      return exprId;
     }
     return this.addExpression(ExprKind.Name, varId, 0, 0);
   }
@@ -5324,14 +5337,7 @@ end ModelScript;
  * @param dae - Target `WasmDaeBridge` (`DAEBuilder`) arena.
  */
 export function eliminateArenaAliases(dae: WasmDaeBridge): void {
-  if (
-    typeof dae.exports?.dae_eliminateAliases === "function" &&
-    (!dae.stateMachines || dae.stateMachines.length === 0)
-  ) {
-    dae.exports.dae_eliminateAliases(dae.ptr);
-    return;
-  }
-
+  // Use TypeScript implementation to properly eliminate Simple flow aliases
   const aliasMap = new Map<number, number>();
 
   function find(id: number): number {
@@ -5368,7 +5374,9 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     const name = dae.interner.resolve(nameId) || "";
     let score = 0;
     if (vIdx >= 0) {
-      if (dae.getVarVariability(vIdx) === Variability.Continuous) score += 1000;
+      const vari = dae.getVarVariability(vIdx);
+      if (vari === Variability.Constant) score += 2000;
+      else if (vari === Variability.Parameter) score += 1000;
     }
     const lastDot = name.lastIndexOf(".");
     const parentPrefix = lastDot > 0 ? name.slice(0, lastDot) : "";
@@ -5410,7 +5418,7 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
         const name2 = dae.getExprData1(rhs);
         const vIdx1 = dae.lookupVariable(name1);
         const vIdx2 = dae.lookupVariable(name2);
-        if ((vIdx1 >= 0 && dae.isVarFlow(vIdx1)) || (vIdx2 >= 0 && dae.isVarFlow(vIdx2))) {
+        if (kind === EqKind.Connect && ((vIdx1 >= 0 && dae.isVarFlow(vIdx1)) || (vIdx2 >= 0 && dae.isVarFlow(vIdx2)))) {
           continue;
         }
         if (vIdx1 >= 0 && vIdx2 >= 0 && dae.getVarType(vIdx1) !== dae.getVarType(vIdx2)) {
@@ -5430,12 +5438,23 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     const vRoot = dae.lookupVariable(rootNameId);
     if (vElim < 0 || vRoot < 0 || vElim === vRoot) continue;
 
+    const vElimVar = dae.getVarVariability(vElim);
+    const vRootVar = dae.getVarVariability(vRoot);
+
     if (dae.isVarFixed(vElim) && !dae.isVarFixed(vRoot)) {
-      dae.setVarFixed(vRoot, true);
-      const fixedAttr = dae.getVarAttrExprId(vElim, "fixed");
-      if (fixedAttr !== undefined) {
-        dae.setVarAttrExpr(vRoot, VarAttrKind.Fixed, fixedAttr);
+      if (vElimVar === vRootVar) {
+        dae.setVarFixed(vRoot, true);
+        const fixedAttr = dae.getVarAttrExprId(vElim, "fixed");
+        if (fixedAttr !== undefined) {
+          dae.setVarAttrExpr(vRoot, VarAttrKind.Fixed, fixedAttr);
+        }
       }
+    }
+
+    const elimExpr = dae.getVarExpression(vElim);
+    const rootExpr = dae.getVarExpression(vRoot);
+    if ((rootExpr === undefined || rootExpr < 0) && elimExpr !== undefined && elimExpr >= 0) {
+      dae.setVarExpression(vRoot, elimExpr);
     }
 
     const elimStartVal = dae.getVarStartValue(vElim);
@@ -5495,6 +5514,17 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
   };
   for (const sm of dae.stateMachines) {
     updateStateMachineAliases(sm);
+  }
+
+  // Clear self-referential binding expressions (x = x) introduced by alias substitution
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const exprId = dae.getVarExpression(i);
+    if (exprId !== undefined && exprId >= 0 && dae.getExprKind(exprId) === ExprKind.Name) {
+      if (dae.getExprData1(exprId) === dae.getVarNameId(i)) {
+        dae.removeVarAttr(i, "binding");
+      }
+    }
   }
 
   // Remove trivial self-equations (x = x) introduced by alias substitution in non-initial equations

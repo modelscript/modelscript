@@ -748,6 +748,102 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "benchmark [suite]",
+      "Run industrial SOTA verification and scalability benchmarks for PSS/E and PSCAD",
+      () => import("./commands/benchmark.js"),
+      "BenchmarkCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "opf <action> [files..]",
+      "Optimal Power Flow: solve DC/AC OPF, export to AMPL or ExaGO, and compute LMPs",
+      () => import("./commands/opf.js"),
+      "OpfCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "matpower <action> [files..]",
+      "Inspect, lint, solve, and convert MATPOWER power network cases (.m)",
+      () => import("./commands/matpower.js"),
+      "MatpowerCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "comtrade <action> [files..]",
+      "Inspect, lint, analyze, and convert COMTRADE fault recordings (.cfg, .dat, .cff)",
+      () => import("./commands/comtrade.js"),
+      "ComtradeCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "scl <action> [files..]",
+      "Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (.scd, .cid, .ssd)",
+      () => import("./commands/scl.js"),
+      "SclCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "waterml <action> [files..]",
+      "Inspect, lint, fit rating curves, and convert OGC WaterML timeseries (.waterml, .wml2, .xml, .json)",
+      () => import("./commands/waterml.js"),
+      "WatermlCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "atp <action> [files..]",
+      "Inspect, lint, simulate, and convert ATP-EMTP transient card decks (.atp, .dat)",
+      () => import("./commands/atp.js"),
+      "AtpCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "dnp3 <action> [files..]",
+      "Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 device profiles (.dnp3, .xml, .json)",
+      () => import("./commands/dnp3.js"),
+      "Dnp3Command",
+    ),
+  )
+  .command(
+    lazy(
+      "oneliner <action> [files..]",
+      "Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (.olx, .dxt)",
+      () => import("./commands/oneliner.js"),
+      "OnelinerCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "sel <action> [files..]",
+      "Inspect, lint, evaluate protection, and convert SEL relay settings (.rcf, .rdb, .sel, .txt)",
+      () => import("./commands/sel.js"),
+      "SelCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "hec-hms <action> [files..]",
+      "Inspect, lint, simulate runoff, and convert HEC-HMS hydrologic basin models (.basin, .hms)",
+      () => import("./commands/hec-hms.js"),
+      "HecHmsCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "asm <action> [files..]",
+      "Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (.asm, .bsm, .wrrf)",
+      () => import("./commands/asm.js"),
+      "AsmCommand",
+    ),
+  )
+  .command(
+    lazy(
       "pslf <action> [files..]",
       "Inspect, lint, solve, and convert GE PSLF transmission cases (.epc, .dyd)",
       () => import("./commands/pslf.js"),

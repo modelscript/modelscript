@@ -3,6 +3,7 @@
 import { analysis, buildParser, choice, domain, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 

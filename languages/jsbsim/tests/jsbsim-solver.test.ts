@@ -2,14 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  evaluateAeroExpr,
-  evaluateAeroTable,
-  linearizeFlightDynamics,
-  parseJsbsim,
-  solveFlightDynamics,
-  trimFlightCondition,
-} from "../src/index.js";
+import { linearizeFlightDynamics, parseJsbsim, solveFlightDynamics, trimFlightCondition } from "../src/index.js";
 
 const TEST_XML = `<?xml version="1.0"?>
 <fdm_config name="c172_test" version="2.0">

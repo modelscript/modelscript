@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { diffEpanetNetworks, renderEpanetDiffSvg } from "@modelscript/diagram/water-network-diff";
 import {
   buildEpanetFromGis,
   epanetToModelica,
+  extractEpanetScreeningModel,
   lintEpanet,
   lowerEpanetToDae,
   parseInp,
+  parseWaterGemsDatabase,
   performAwwaM36WaterAudit,
   serializeInp,
   solveExtendedPeriod,
@@ -14,7 +17,7 @@ import {
   solveWaterHammerMoc,
   solveWaterQuality,
 } from "@modelscript/epanet";
-import { diffEpanetNetworks, renderEpanetDiffSvg } from "@modelscript/diagram/water-network-diff";
+import { calculateWaterNetworkSensitivities, WebGpuWaterScreener } from "@modelscript/simulate";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -27,7 +30,7 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
       .positional("action", {
         type: "string",
         describe:
-          "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | diff | to-modelica | to-dae",
+          "Action to perform: inspect | lint | solve | eps | pdd | surge | audit | ops | quality | diff | from-gis | convert | screen-contingencies | to-modelica | to-dae",
         choices: [
           "inspect",
           "lint",
@@ -40,6 +43,8 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
           "quality",
           "diff",
           "from-gis",
+          "convert",
+          "screen-contingencies",
           "to-modelica",
           "to-dae",
         ],
@@ -49,6 +54,33 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
         array: true,
         describe: "Input EPANET network files (.inp) or GeoJSON pipes for from-gis",
       })
+      .option("screening-mode", {
+        type: "string",
+        choices: ["ALL_N1_OUTAGES", "ALL_FIRE_HYDRANTS", "COMBINED"],
+        default: "COMBINED",
+        describe: "Parallel screening mode: ALL_N1_OUTAGES | ALL_FIRE_HYDRANTS | COMBINED",
+      })
+      .option("residual-pressure", {
+        type: "number",
+        default: 14.06,
+        describe: "Minimum residual pressure in meters (default: 14.06m = 20 psi)",
+      })
+      .option("max-velocity", {
+        type: "number",
+        default: 2.5,
+        describe: "Maximum pipe velocity limit in m/s (default: 2.5)",
+      })
+      .option("fire-flow", {
+        type: "number",
+        default: 63.09,
+        describe: "Standard test fire flow in L/s (default: 63.09 L/s = 1000 gpm)",
+      })
+      .option("prefer-cpu", {
+        type: "boolean",
+        default: true,
+        describe: "Prefer CPU SIMD execution over WebGPU (default: true)",
+      })
+
       .option("out", {
         alias: ["o", "output"],
         type: "string",
@@ -101,6 +133,40 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
     if (files.length === 0) {
       console.error("Error: No input files provided.");
       process.exit(1);
+    }
+
+    if (action === "convert") {
+      const dbInput = files[0]!;
+      const dbPath = path.resolve(process.cwd(), dbInput);
+      if (!fs.existsSync(dbPath)) {
+        console.error(`Error: Database file not found: ${dbInput}`);
+        process.exit(1);
+      }
+
+      console.log(`Converting Bentley WaterGEMS / HAMMER / InfoWater model: ${dbInput}...`);
+      let net;
+      if (dbInput.endsWith(".json")) {
+        const jsonContent = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
+        net = parseWaterGemsDatabase(jsonContent);
+      } else {
+        net = parseWaterGemsDatabase(dbPath);
+      }
+
+      const inp = serializeInp(net);
+      if (outFile) {
+        fs.writeFileSync(path.resolve(process.cwd(), outFile), inp, "utf-8");
+        console.log(`Successfully converted and exported EPANET .inp to ${outFile}`);
+      } else {
+        console.log(inp);
+      }
+      console.log(`\nConversion Summary:`);
+      console.log(`  Junctions:  ${net.junctions.length}`);
+      console.log(`  Pipes:      ${net.pipes.length}`);
+      console.log(`  Pumps:      ${net.pumps.length}`);
+      console.log(`  Valves:     ${net.valves.length}`);
+      console.log(`  Reservoirs: ${net.reservoirs.length}`);
+      console.log(`  Tanks:      ${net.tanks.length}`);
+      return;
     }
 
     if (action === "from-gis") {
@@ -192,10 +258,16 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
       console.log(`Base:   ${baseInput}`);
       console.log(`Target: ${targetInput}`);
       console.log(`\nDelta Summary:`);
-      console.log(`  Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified, ${diff.stats.unchangedNodes} unchanged`);
-      console.log(`  Links: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified, ${diff.stats.unchangedLinks} unchanged`);
+      console.log(
+        `  Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified, ${diff.stats.unchangedNodes} unchanged`,
+      );
+      console.log(
+        `  Links: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified, ${diff.stats.unchangedLinks} unchanged`,
+      );
       if (diff.stats.maxPressureDeltaM !== 0 || diff.stats.maxVelocityDeltaMs !== 0) {
-        console.log(`  Hydraulic Impact: Max ΔP = ${diff.stats.maxPressureDeltaM.toFixed(2)} m, Max ΔV = ${diff.stats.maxVelocityDeltaMs.toFixed(2)} m/s`);
+        console.log(
+          `  Hydraulic Impact: Max ΔP = ${diff.stats.maxPressureDeltaM.toFixed(2)} m, Max ΔV = ${diff.stats.maxVelocityDeltaMs.toFixed(2)} m/s`,
+        );
       }
 
       if (diff.stats.modifiedLinks > 0) {
@@ -203,7 +275,10 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
         for (const [id, link] of diff.links) {
           if (link.status === "modified") {
             const deltas = link.propertyDeltas
-              .map((d) => `${d.property}: ${d.baseValue} -> ${d.targetValue} (${(d.delta ?? 0) >= 0 ? "+" : ""}${d.delta})`)
+              .map(
+                (d) =>
+                  `${d.property}: ${d.baseValue} -> ${d.targetValue} (${(d.delta ?? 0) >= 0 ? "+" : ""}${d.delta})`,
+              )
               .join(", ");
             console.log(`  - Pipe '${id}': ${deltas}`);
           }
@@ -424,6 +499,60 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
             console.log(`Critical Nodes Below 0.2 mg/L: ${qual.criticalNodes.join(", ")}`);
           }
           console.log(`Summary:               ${qual.summary}`);
+          break;
+        }
+
+        case "screen-contingencies": {
+          const model = extractEpanetScreeningModel(net);
+          const sens = calculateWaterNetworkSensitivities(model.nodes, model.pipes);
+          const screener = await WebGpuWaterScreener.create(null);
+          const mode = (argv["screening-mode"] as string) ?? "COMBINED";
+          const minResidualPressureM = Number(argv["residual-pressure"] ?? 14.06);
+          const maxVelocityMps = Number(argv["max-velocity"] ?? 2.5);
+          const fireFlowDrawLps = Number(argv["fire-flow"] ?? 63.09);
+          const preferCpu = argv["prefer-cpu"] !== false;
+
+          console.log(`\n=== Batched Hydraulic Screening for ${net.title ?? path.basename(file)} ===`);
+          console.log(`Backend:           ${preferCpu ? "CPU SIMD Fallback" : "WebGPU Compute Shaders"}`);
+          console.log(`Nodes Monitored:   ${sens.nodeCount}`);
+          console.log(`Pipes Monitored:   ${sens.pipeCount}`);
+
+          if (mode === "ALL_N1_OUTAGES" || mode === "COMBINED") {
+            const outageRes = await screener.screenAllPipeOutages(sens, {
+              minResidualPressureM,
+              maxVelocityMps,
+              preferCpu,
+            });
+            console.log(
+              `\n--- N-1 Pipe Outage Screening (${outageRes.scenariosEvaluated} pipes evaluated in ${outageRes.executionTimeMs.toFixed(2)} ms) ---`,
+            );
+            console.log(
+              `Vulnerable Scenarios: ${outageRes.vulnerableScenariosCount} / ${outageRes.scenariosEvaluated}`,
+            );
+            console.log(`Top Critical Pipes (Single Points of Failure):`);
+            for (const p of outageRes.topCriticalPipes ?? []) {
+              console.log(
+                `  [Rank ${p.pipeIndex + 1}] Pipe ${p.pipeId}: Deficit ${p.unsuppliedDemandLps.toFixed(1)} L/s, Min P = ${p.minPressureM.toFixed(1)} m, Score = ${p.criticalityScore}`,
+              );
+            }
+          }
+
+          if (mode === "ALL_FIRE_HYDRANTS" || mode === "COMBINED") {
+            const fireRes = await screener.screenAllFireHydrants(sens, {
+              minResidualPressureM,
+              fireFlowDrawLps,
+              preferCpu,
+            });
+            console.log(
+              `\n--- Fire Flow Capacity Screening (${fireRes.scenariosEvaluated} junctions evaluated in ${fireRes.executionTimeMs.toFixed(2)} ms) ---`,
+            );
+            console.log(`Deficient Hydrants: ${fireRes.vulnerableScenariosCount} / ${fireRes.scenariosEvaluated}`);
+            for (const h of fireRes.fireFlowCapacities?.slice(0, 10) ?? []) {
+              console.log(
+                `  Junction ${h.nodeId}: Available Fire Flow = ${h.availableFireFlowLps.toFixed(1)} L/s, Res P = ${h.residualPressureM.toFixed(1)} m [${h.nfpaClass}]`,
+              );
+            }
+          }
           break;
         }
 

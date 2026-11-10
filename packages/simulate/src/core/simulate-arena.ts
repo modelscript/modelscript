@@ -11,6 +11,7 @@ import {
   Variability,
   causalizeVectorArena,
   convertArenaToMicroModelica,
+  eliminateArenaAliases,
   eliminateVectorArenaAliases,
   evalTable1DValue,
   evalTimeTableTmax,
@@ -18,6 +19,7 @@ import {
   evalTimeTableValue,
   evaluateArenaExpression,
   expandSetBasedConnectionsArena,
+  foldArenaConstants,
   getOrCreateCachedTable,
   hasArrayEquations,
   isolateSymbolicallyArena,
@@ -322,6 +324,8 @@ export class ArenaSimulator {
         this.arena,
         true,
       );
+      foldArenaConstants(this.arena);
+      eliminateArenaAliases(this.arena);
     }
 
     const simArena = this.arena as SimDAEBuilder;
@@ -913,6 +917,9 @@ export class ArenaSimulator {
           }
         }
         const varNameId = this.arena.getVarNameId(i);
+        if (this.arena.getExprKind(exprId) === ExprKind.Name && this.arena.getExprData1(exprId) === varNameId) {
+          continue;
+        }
         const hasEq = existingBindingEqs.has(varNameId);
         if (!hasEq) {
           const lhsExprId = this.arena.addExpression(ExprKind.Name, varNameId);
@@ -2333,22 +2340,23 @@ export class ArenaSimulator {
               if (this.eliminatedDerVars.has(varIdx)) return;
 
               this.stateVars.add(varIdx);
+              this.parameterVars.delete(varIdx);
               // O(1): look up derivative variable, or create it if it doesn't exist
               const derName = `der(${name})`;
               let derVarIdx = this.arena.getVarIdxByName(derName);
               if (derVarIdx === -1) {
                 const baseVarType = this.arena.getVarType(varIdx);
-                const baseVarVariability = this.arena.getVarVariability(varIdx);
-                // The derivative variable inherits continuous variability and base causality/type.
+                // The derivative variable always has continuous variability and inherits base causality/type.
                 derVarIdx = this.arena.addVariable(
                   derName,
                   baseVarType,
-                  baseVarVariability,
+                  Variability.Continuous,
                   this.arena.getVarCausality(varIdx),
                   0.0,
                 );
               }
               this.derivativeVars.add(derVarIdx);
+              this.parameterVars.delete(derVarIdx);
             }
           }
         }
@@ -3461,7 +3469,7 @@ export class ArenaSimulator {
     const deltaX = new Float64Array(k);
     const xTrial = new Float64Array(k);
 
-    const tearTol = k > 8 ? 1e-4 : 1e-6;
+    const tearTol = 1e-10;
     let currentMaxR = evalResiduals(xTear, R);
     if (currentMaxR < tearTol) {
       for (let i = 0; i < k; i++) {
@@ -3626,7 +3634,7 @@ export class ArenaSimulator {
       }
     }
 
-    if (bestMaxR < (k > 8 ? 1e-3 : 1e-6)) {
+    if (bestMaxR < 1e-6) {
       evalResiduals(bestXTear, R);
       for (let i = 0; i < k; i++) {
         this.algWarmStart.set(plan.tearingVarNameIds[i]!, bestXTear[i]!);
@@ -3650,11 +3658,7 @@ export class ArenaSimulator {
     if (m === 0) return;
 
     const sysBlock = block as SystemExecutionBlock;
-    if (
-      !sysBlock._isLinearSystem &&
-      (!sysBlock._compiledJacobian || m > 24) &&
-      this.trySolveTornBlock(sysBlock, valuesByStringId)
-    ) {
+    if (this.trySolveTornBlock(sysBlock, valuesByStringId)) {
       return;
     }
 
@@ -3786,7 +3790,8 @@ export class ArenaSimulator {
         for (let i = 0; i < m; i++) bestX[i] = x[i] as number;
       }
 
-      if (maxR < NEWTON_TOL) {
+      const isSystemConverged = hasBoolVars ? maxContR < NEWTON_TOL && maxBoolR < 0.5 : maxR < NEWTON_TOL;
+      if (isSystemConverged) {
         converged = true;
         break;
       }
@@ -3856,13 +3861,22 @@ export class ArenaSimulator {
               }
             }
           } else {
+            let anyBoolChanged = false;
             for (let i = 0; i < m; i++) {
               if (cachedIsBoolVar[i] === 1) {
                 const raw = (x[i] as number) + (negR[i] as number);
                 const nx = Math.abs(raw) >= 0.5 ? 1 : 0;
-                x[i] = nx;
-                valuesByStringId[varNameIds[i] as number] = nx;
+                if (nx !== (x[i] as number)) {
+                  anyBoolChanged = true;
+                  x[i] = nx;
+                  valuesByStringId[varNameIds[i] as number] = nx;
+                }
               }
+            }
+            if (!anyBoolChanged && maxContR < NEWTON_TOL) {
+              converged = true;
+              for (let i = 0; i < m; i++) bestX[i] = x[i] as number;
+              break;
             }
           }
         } else {
@@ -4767,7 +4781,9 @@ export class ArenaSimulator {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
     const solver = options?.solver ?? "rk4";
-    const solverKind = solver === "rk4" ? 1 : 0;
+    const solverKind = solver === "tsit5" || solver === "dopri5" ? 2 : solver === "rk4" ? 1 : 0;
+    const atol = options?.atol ?? 1e-7;
+    const rtol = options?.rtol ?? 1e-7;
 
     const flatBc = this.prepareFlatBytecode();
     if (!flatBc || flatBc.hasSystemBlocks) {
@@ -4820,9 +4836,9 @@ export class ArenaSimulator {
     const trajBytes = Math.max(totalRows * numOuts * 8, 8);
     const trajOutPtr = wasmExports.atomicChunkAlloc(trajBytes);
 
-    // 4. Allocate RK4 scratch buffer if RK4
-    const rk4ScratchBytes = solverKind === 1 ? Math.max(5 * n * 8, 8) : 8;
-    const rk4ScratchPtr = wasmExports.atomicChunkAlloc(rk4ScratchBytes);
+    // 4. Allocate scratch buffer: RK4 needs 5*n*8, Tsit5 needs 10*n*8
+    const scratchBytes = solverKind === 2 ? Math.max(10 * n * 8, 8) : solverKind === 1 ? Math.max(5 * n * 8, 8) : 8;
+    const rk4ScratchPtr = wasmExports.atomicChunkAlloc(scratchBytes);
 
     try {
       // 5. Execute in-WASM simulation loop
@@ -4844,6 +4860,8 @@ export class ArenaSimulator {
         solverKind,
         trajOutPtr,
         rk4ScratchPtr,
+        atol,
+        rtol,
       );
 
       // 6. Extract trajectory
@@ -4888,11 +4906,14 @@ export class ArenaSimulator {
     }
   }
 
+  private blockEvalCount = 0;
+
   /**
    * Evaluates all topological BLT execution blocks (`single` assignments and `system` algebraic loops)
    * in causal order, updating `valuesByStringId` in-place via the JIT-compiled closure when available.
    */
   public evaluateBlocks(valuesByStringId: Float64Array): void {
+    this.blockEvalCount++;
     if (this.compiledBlocks) {
       this.compiledBlocks(valuesByStringId);
       return;
@@ -5061,6 +5082,34 @@ export class ArenaSimulator {
   ): ((t: number, y: number[]) => number)[] {
     if (this.eventIndicators.length === 0) return [];
     const n = stateStringIds.length;
+    let lastEvalT = NaN;
+    let lastEvalGen = -1;
+    const lastEvalY = new Float64Array(n);
+    lastEvalY.fill(NaN);
+
+    const syncEnv = (t: number, y: number[]): void => {
+      let same = t === lastEvalT && lastEvalGen === this.blockEvalCount;
+      if (same) {
+        for (let i = 0; i < n; i++) {
+          if ((y[i] ?? 0) !== lastEvalY[i]) {
+            same = false;
+            break;
+          }
+        }
+      }
+      if (!same) {
+        lastEvalT = t;
+        valuesByStringId[timeId] = t;
+        for (let i = 0; i < n; i++) {
+          const v = y[i] ?? 0;
+          lastEvalY[i] = v;
+          valuesByStringId[stateStringIds[i] ?? -1] = v;
+        }
+        this.evaluateBlocks(valuesByStringId);
+        this.evaluateDerivativeEquations(valuesByStringId);
+        lastEvalGen = this.blockEvalCount;
+      }
+    };
 
     return this.eventIndicators.map((ei) => {
       const kind = this.arena.getExprKind(ei.exprId);
@@ -5072,16 +5121,15 @@ export class ArenaSimulator {
       const sampleIntervalExprId = isSampleCall ? this.arena.getExprLeft(ei.exprId + 1) : -1;
 
       return (t: number, y: number[]): number => {
-        valuesByStringId[timeId] = t;
-        for (let i = 0; i < n; i++) {
-          valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
-        }
+        syncEnv(t, y);
         if (isSampleCall) {
           const start = evaluateArenaRuntime(this.arena, sampleStartExprId, valuesByStringId);
           const interval = evaluateArenaRuntime(this.arena, sampleIntervalExprId, valuesByStringId);
           if (interval <= 0) return -1;
-          const u = (t - start) / interval;
-          return u < 0 ? u : Math.sin(Math.PI * u);
+          if (t < start) return t - start;
+          const phase = (t - start) % interval;
+          const half = 0.5 * interval;
+          return phase < half ? phase : phase - interval;
         }
         return evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId, this.preValuesByStringId);
       };
@@ -5104,7 +5152,7 @@ export class ArenaSimulator {
     onEventCompleted?: (t: number) => void,
   ): (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[] {
     const n = stateStringIds.length;
-    return (t: number, y: number[], eventIdx: number): number[] => {
+    return (t: number, y: number[], eventIdx: number, dir: 1 | -1): number[] => {
       // Write state at event time
       valuesByStringId[timeId] = t;
       for (let i = 0; i < n; i++) {
@@ -5118,59 +5166,88 @@ export class ArenaSimulator {
       }
       this.executeStateMachines(valuesByStringId);
 
-      // Project state onto the zero-crossing surface BEFORE evaluating when-clauses.
-      // The bisection locates events to ~1e-12 precision, but the residual non-zero
-      // value can cause strict inequalities (e.g. h < 0) to evaluate to false.
-      //
-      // We nudge the projected value slightly PAST the surface in the crossing
-      // direction so that both strict (h < 0) and non-strict (h <= 0) conditions
-      // evaluate to true at the event instant. The nudge magnitude (1e-10) is
-      // large enough to flip the boolean but small enough to be physically
-      // negligible (well within solver tolerance).
+      // Discrete event limit handling:
+      // When a zero-crossing indicator triggers, the solver root-finder has located
+      // the event boundary to ~1e-12 precision. Due to floating-point truncation,
+      // strict inequalities (e.g. h < 0) evaluated at the exact root could be +1e-14 (evaluating to false).
+      // We evaluate boolean combinations (and, or, not) faithfully while resolving relational atomic
+      // conditions at the zero-crossing boundary (|lhs - rhs| <= 1e-7) using the crossing direction `dir`.
       let triggeredClauseIndices: number[] | undefined;
-      if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
-        const ei = this.eventIndicators[eventIdx];
-        if (ei) {
-          triggeredClauseIndices = ei.clauseIndices;
-          const eiKind = this.arena.getExprKind(ei.exprId);
-
-          let targetStateNameId = -1;
-          let rhsVal = 0;
-
-          if (eiKind === ExprKind.Name) {
-            targetStateNameId = this.arena.getExprData1(ei.exprId);
-            rhsVal = 0; // It was simplified from `x - 0`
-          } else if (eiKind === ExprKind.Binary) {
-            const op = this.arena.getExprData1(ei.exprId) as BinOp;
-            if (op === BinOp.Sub) {
-              const lhsId = this.arena.getExprLeft(ei.exprId);
-              if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
-                targetStateNameId = this.arena.getExprData1(lhsId);
-                rhsVal = evaluateArenaRuntime(this.arena, this.arena.getExprRight(ei.exprId), valuesByStringId);
-              }
-            }
-          }
-
-          if (targetStateNameId !== -1) {
-            for (let i = 0; i < n; i++) {
-              if (stateStringIds[i] === targetStateNameId) {
-                // Nudge past the surface
-                let nudge = 0;
-                if (ei.direction === -1) {
-                  nudge = -1e-10;
-                } else if (ei.direction === 1) {
-                  nudge = 1e-10;
-                } else {
-                  const gCurrent = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
-                  nudge = gCurrent >= 0 ? -1e-10 : 1e-10;
-                }
-                valuesByStringId[targetStateNameId] = rhsVal + nudge;
-                break;
-              }
-            }
+      const triggeredClauseSet = new Set<number>();
+      const triggeredEi = eventIdx >= 0 && eventIdx < this.eventIndicators.length ? this.eventIndicators[eventIdx] : undefined;
+      if (triggeredEi) {
+        triggeredClauseIndices = triggeredEi.clauseIndices;
+        if (triggeredClauseIndices) {
+          for (const cIdx of triggeredClauseIndices) {
+            triggeredClauseSet.add(cIdx);
           }
         }
       }
+
+      const evalConditionAtEventRoot = (condExprId: number): number => {
+        if (condExprId < 0) return 0;
+        const kind = this.arena.getExprKind(condExprId);
+        if (kind === ExprKind.Unary) {
+          const op = this.arena.getExprData1(condExprId) as UnaryOp;
+          if (op === UnaryOp.Not) {
+            return evalConditionAtEventRoot(this.arena.getExprLeft(condExprId)) === 0 ? 1 : 0;
+          }
+        }
+        if (kind === ExprKind.Binary) {
+          const op = this.arena.getExprData1(condExprId) as BinOp;
+          if (op === BinOp.And) {
+            return evalConditionAtEventRoot(this.arena.getExprLeft(condExprId)) !== 0 &&
+              evalConditionAtEventRoot(this.arena.getExprRight(condExprId)) !== 0
+              ? 1
+              : 0;
+          }
+          if (op === BinOp.Or) {
+            return evalConditionAtEventRoot(this.arena.getExprLeft(condExprId)) !== 0 ||
+              evalConditionAtEventRoot(this.arena.getExprRight(condExprId)) !== 0
+              ? 1
+              : 0;
+          }
+          if (
+            op === BinOp.Lt ||
+            op === BinOp.Lte ||
+            op === BinOp.Gt ||
+            op === BinOp.Gte ||
+            op === BinOp.Eq ||
+            op === BinOp.Neq
+          ) {
+            const lhsVal = evaluateArenaRuntime(
+              this.arena,
+              this.arena.getExprLeft(condExprId),
+              valuesByStringId,
+              this.preValuesByStringId,
+            );
+            const rhsVal = evaluateArenaRuntime(
+              this.arena,
+              this.arena.getExprRight(condExprId),
+              valuesByStringId,
+              this.preValuesByStringId,
+            );
+            const diff = lhsVal - rhsVal;
+            if (Math.abs(diff) <= 1e-7) {
+              const effDiff = dir < 0 ? -1e-10 : 1e-10;
+              if (op === BinOp.Lt || op === BinOp.Lte) return effDiff < 0 ? 1 : 0;
+              if (op === BinOp.Gt || op === BinOp.Gte) return effDiff > 0 ? 1 : 0;
+              if (op === BinOp.Eq) return 1;
+              if (op === BinOp.Neq) return 0;
+            }
+            return evaluateArenaRuntime(this.arena, condExprId, valuesByStringId, this.preValuesByStringId) !== 0
+              ? 1
+              : 0;
+          }
+        }
+        if (kind === ExprKind.Call) {
+          const fnName = this.arena.interner.resolve(this.arena.getExprData1(condExprId));
+          if (fnName === "sample" && triggeredEi && this.areArenaExprsEqual(condExprId, triggeredEi.exprId)) {
+            return 1;
+          }
+        }
+        return evaluateArenaRuntime(this.arena, condExprId, valuesByStringId, this.preValuesByStringId) !== 0 ? 1 : 0;
+      };
 
       // Reset wasActive flags ONLY for clauses participating in the triggered zero-crossing
       if (Array.isArray(triggeredClauseIndices) && triggeredClauseIndices.length > 0) {
@@ -5191,14 +5268,18 @@ export class ArenaSimulator {
           this.preValuesByStringId.set(valuesByStringId);
         }
         let anyFired = false;
-        for (const clause of this.whenClauses) {
+        for (let cIdx = 0; cIdx < this.whenClauses.length; cIdx++) {
+          const clause = this.whenClauses[cIdx]!;
           const groupId = clause.groupId;
-          const condVal = evaluateArenaRuntime(
+          let condVal = evaluateArenaRuntime(
             this.arena,
             clause.conditionExprId,
             valuesByStringId,
             this.preValuesByStringId,
           );
+          if (iter === 0 && condVal === 0 && triggeredClauseSet.has(cIdx)) {
+            condVal = evalConditionAtEventRoot(clause.conditionExprId);
+          }
           const isActive = condVal !== 0;
 
           if (groupId !== undefined && firedGroups.has(groupId)) {
@@ -5729,6 +5810,48 @@ export class ArenaSimulator {
     this.evaluateDerivativeEquations(valuesByStringId);
   }
 
+  private alignTrajectoryToOutputTimes(
+    sourceTimes: number[],
+    sourceStates: number[][],
+    targetTimes: number[],
+    numVars: number,
+  ): { times: number[]; states: number[][] } {
+    if (sourceTimes.length === 0 || sourceStates.length === 0) {
+      return { times: targetTimes, states: targetTimes.map(() => new Array(numVars).fill(0)) };
+    }
+    if (
+      sourceTimes.length === targetTimes.length &&
+      sourceTimes.every((t, idx) => Math.abs(t - (targetTimes[idx] ?? 0)) < 1e-14)
+    ) {
+      return { times: targetTimes, states: sourceStates };
+    }
+    const aligned: number[][] = new Array(targetTimes.length);
+    let j = 0;
+    for (let s = 0; s < targetTimes.length; s++) {
+      const tTarget = targetTimes[s]!;
+      while (j + 1 < sourceTimes.length && (sourceTimes[j + 1] ?? 0) < tTarget) {
+        j++;
+      }
+      if (j + 1 >= sourceTimes.length || Math.abs((sourceTimes[j] ?? 0) - tTarget) < 1e-14) {
+        aligned[s] = [
+          ...(sourceStates[j] ?? sourceStates[sourceStates.length - 1] ?? new Array<number>(numVars).fill(0)),
+        ];
+      } else {
+        const t0Seg = sourceTimes[j]!;
+        const t1Seg = sourceTimes[j + 1]!;
+        const alpha = t1Seg > t0Seg ? (tTarget - t0Seg) / (t1Seg - t0Seg) : 0;
+        const s0 = sourceStates[j]!;
+        const s1 = sourceStates[j + 1]!;
+        const row = new Array<number>(numVars);
+        for (let i = 0; i < numVars; i++) {
+          row[i] = (1 - alpha) * (s0[i] ?? 0) + alpha * (s1[i] ?? 0);
+        }
+        aligned[s] = row;
+      }
+    }
+    return { times: targetTimes, states: aligned };
+  }
+
   /**
    * Run simulation using an adaptive or Quantized-State solver (Dopri5, Tsit5, BDF, Rodas4P, TRBDF2, QSS1/2/3, LIQSS2).
    * Bridges the arena evaluation into the standalone solver modules.
@@ -5850,7 +5973,7 @@ export class ArenaSimulator {
           atol,
           rtol,
           initialStep: step,
-          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+          maxStep: Math.abs(stopTime - startTime),
           eventDirections: eventDirs,
           ...(adJacobian ? { jacobian: adJacobian } : {}),
         },
@@ -5858,11 +5981,48 @@ export class ArenaSimulator {
         eventCb,
       );
     } else if (solver === "tsit5") {
+      // In-WASM fast path if no events or complex features
+      if (
+        eventFns.length === 0 &&
+        (!options?.stlMonitors || options.stlMonitors.length === 0) &&
+        !options?.intervalBarrierCheck &&
+        this.whenClauses.length === 0 &&
+        this.stateMachineRuntimes.length === 0 &&
+        this.fmuMappings.length === 0 &&
+        this.arena.algorithmSections.length === 0 &&
+        this.frictionStateMappings.length === 0 &&
+        this.assertions.length === 0 &&
+        this.canRunWasmSimulationLoop()
+      ) {
+        const wasmRes = this.runWasmSimulationLoop(
+          steps,
+          step,
+          valuesByStringId,
+          stateStringIds,
+          derivStringIds,
+          timeId,
+          { ...options, solver: "tsit5" },
+        );
+        return {
+          t: wasmRes.t,
+          y: wasmRes.y,
+          terminatedEarly: wasmRes.terminatedEarly,
+          safetyViolations: wasmRes.safetyViolations,
+          intervalIssues: wasmRes.intervalIssues,
+          stats: {
+            steps: steps,
+            acceptedSteps: steps,
+            rejectedSteps: 0,
+            fEvals: steps * 6,
+            converged: true,
+          },
+        };
+      }
       rawResult = tsit5(rhsFn, startTime, y0, stopTime, outputTimes, {
         atol,
         rtol,
         initialStep: step,
-        maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+        maxStep: Math.abs(stopTime - startTime),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
         eventDirections: eventDirs,
@@ -5872,7 +6032,7 @@ export class ArenaSimulator {
         atol,
         rtol,
         initialStep: step,
-        maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+        maxStep: Math.abs(stopTime - startTime),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
         eventDirections: eventDirs,
@@ -5882,7 +6042,7 @@ export class ArenaSimulator {
         atol,
         rtol,
         initialStep: step,
-        maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+        maxStep: Math.abs(stopTime - startTime),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
         eventDirections: eventDirs,
@@ -5902,9 +6062,10 @@ export class ArenaSimulator {
           initialStepSize: step,
         },
       );
+      const aligned = this.alignTrajectoryToOutputTimes(res.times, res.states, outputTimes, n);
       rawResult = {
-        times: res.times,
-        states: res.states,
+        times: aligned.times,
+        states: aligned.states,
         converged: res.stats.converged ?? true,
         rejectedSteps: res.stats.rejectedSteps,
       };
@@ -5928,9 +6089,10 @@ export class ArenaSimulator {
           dt: step,
         },
       );
+      const aligned = this.alignTrajectoryToOutputTimes(res.times, res.states, outputTimes, n);
       rawResult = {
-        times: res.times,
-        states: res.states,
+        times: aligned.times,
+        states: aligned.states,
         converged: res.stats.converged ?? true,
         rejectedSteps: res.stats.rejectedSteps,
       };
@@ -5948,9 +6110,10 @@ export class ArenaSimulator {
           initialStep: step,
         },
       );
+      const aligned = this.alignTrajectoryToOutputTimes(res.times, res.states, outputTimes, n);
       rawResult = {
-        times: res.times,
-        states: res.states,
+        times: aligned.times,
+        states: aligned.states,
         converged: res.stats.converged ?? true,
         rejectedSteps: res.stats.rejectedSteps,
       };
@@ -5967,9 +6130,10 @@ export class ArenaSimulator {
           initialStep: step,
         },
       );
+      const aligned = this.alignTrajectoryToOutputTimes(res.times, res.states, outputTimes, n);
       rawResult = {
-        times: res.times,
-        states: res.states,
+        times: aligned.times,
+        states: aligned.states,
         converged: res.stats.converged ?? true,
         rejectedSteps: res.stats.rejectedSteps,
       };
@@ -5983,6 +6147,44 @@ export class ArenaSimulator {
         eventDirections: eventDirs,
       });
     } else if (solver === "auto") {
+      // In-WASM fast path if no events or complex features
+      if (
+        eventFns.length === 0 &&
+        (!options?.stlMonitors || options.stlMonitors.length === 0) &&
+        !options?.intervalBarrierCheck &&
+        this.whenClauses.length === 0 &&
+        this.stateMachineRuntimes.length === 0 &&
+        this.fmuMappings.length === 0 &&
+        this.arena.algorithmSections.length === 0 &&
+        this.frictionStateMappings.length === 0 &&
+        this.assertions.length === 0 &&
+        this.canRunWasmSimulationLoop()
+      ) {
+        const wasmRes = this.runWasmSimulationLoop(
+          steps,
+          step,
+          valuesByStringId,
+          stateStringIds,
+          derivStringIds,
+          timeId,
+          { ...options, solver: "tsit5" },
+        );
+        return {
+          t: wasmRes.t,
+          y: wasmRes.y,
+          terminatedEarly: wasmRes.terminatedEarly,
+          safetyViolations: wasmRes.safetyViolations,
+          intervalIssues: wasmRes.intervalIssues,
+          stats: {
+            steps: steps,
+            acceptedSteps: steps,
+            rejectedSteps: 0,
+            fEvals: steps * 6,
+            converged: true,
+          },
+        };
+      }
+      const adaptiveMaxStep = eventFns.length > 0 ? step : Math.abs(stopTime - startTime);
       rawResult = dopri5(
         rhsFn,
         startTime,
@@ -5993,7 +6195,7 @@ export class ArenaSimulator {
           atol,
           rtol,
           initialStep: step,
-          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+          maxStep: adaptiveMaxStep,
         },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
@@ -6008,7 +6210,8 @@ export class ArenaSimulator {
         if (res.converged === false) return true;
         const lastT = res.times[res.times.length - 1] ?? startTime;
         if (lastT < stopTime - 1e-6) return true;
-        if ((res.rejectedSteps ?? 0) > 50) return true;
+        const totalSteps = res.times.length;
+        if ((res.rejectedSteps ?? 0) > Math.max(100, totalSteps * 0.5)) return true;
         for (const row of res.states) {
           for (const v of row) {
             if (!isFinite(v)) return true;
@@ -6022,7 +6225,7 @@ export class ArenaSimulator {
           atol,
           rtol,
           initialStep: step,
-          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+          maxStep: adaptiveMaxStep,
           eventFunctions: eventFns.length > 0 ? eventFns : undefined,
           eventCallback: eventCb,
           eventDirections: eventDirs,
@@ -6044,6 +6247,7 @@ export class ArenaSimulator {
       }
     } else {
       // dopri5
+      const adaptiveMaxStep = eventFns.length > 0 ? step : Math.abs(stopTime - startTime);
       rawResult = dopri5(
         rhsFn,
         startTime,
@@ -6054,7 +6258,7 @@ export class ArenaSimulator {
           atol,
           rtol,
           initialStep: step,
-          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+          maxStep: adaptiveMaxStep,
         },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,

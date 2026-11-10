@@ -17,7 +17,12 @@ export {
 export { solvePddHydraulics, type EpanetPddResult } from "./pdd-solver.js";
 
 export {
+  classifyPumpQuadrant,
+  evaluateSuterCurves,
   solveWaterHammerMoc,
+  type FourQuadrantPumpConfig,
+  type PumpQuadrant,
+  type PumpSpecificSpeedType,
   type TransientEventType,
   type WaterHammerEvent,
   type WaterHammerOptions,
@@ -50,3 +55,10 @@ export {
   type WaterQualityParameter,
   type WaterQualityResult,
 } from "./water-quality-solver.js";
+
+export {
+  extractEpanetScreeningModel,
+  type EpanetScreeningModel,
+  type EpanetScreeningNode,
+  type EpanetScreeningPipe,
+} from "./screening-bridge.js";

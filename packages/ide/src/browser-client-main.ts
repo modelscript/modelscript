@@ -19,6 +19,7 @@ import { TreeViewController } from "./controllers/tree-view-controller.js";
 import { CosimViewProvider } from "./cosim-panel.js";
 import { activeDebugSession } from "./debug-adapter.js";
 import { DiagramEditorProvider } from "./diagram-editor-provider.js";
+import { HardwareDongleStatusBar } from "./hardware-dongle-status-bar.js";
 import { InpEditorProvider } from "./inp-editor-provider.js";
 import { registerLLMProvider } from "./llm-provider.js";
 import { registerMCPTools } from "./mcp-bridge.js";
@@ -158,7 +159,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 7. AI & Chat Integration
   try {
-    if (typeof (vscode.lm as unknown as { registerChatModelProvider?: unknown })?.registerChatModelProvider === "function") {
+    if (
+      typeof (vscode.lm as unknown as { registerChatModelProvider?: unknown })?.registerChatModelProvider === "function"
+    ) {
       registerLLMProvider(context);
     }
   } catch {
@@ -214,6 +217,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // 10. Status Bar Items
   const cloudStatusBar = new CloudStatusBar();
   context.subscriptions.push(cloudStatusBar);
+
+  const dongleStatusBar = new HardwareDongleStatusBar();
+  context.subscriptions.push(dongleStatusBar);
 
   const shareStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   shareStatusBar.text = "$(sparkle) Share to Feed";

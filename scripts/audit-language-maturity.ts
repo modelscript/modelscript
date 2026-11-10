@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { REPO_ROOT } from "./lib/workspaces.js";
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export type MaturityTier = "stable" | "beta" | "preview";
 
@@ -134,7 +133,9 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     const codeMatches = content.match(/\b([A-Z]{1,6}\d{3,5})\b/g);
     if (codeMatches) {
       for (const c of codeMatches) {
-        if (!["UTF8", "IEEE", "ISO", "RFC", "HTTP", "JSON", "ASCII", "STEP", "HTML", "C3D8R", "NACA", "GRI30"].includes(c)) {
+        if (
+          !["UTF8", "IEEE", "ISO", "RFC", "HTTP", "JSON", "ASCII", "STEP", "HTML", "C3D8R", "NACA", "GRI30"].includes(c)
+        ) {
           testedErrorCodes.add(c);
         }
       }
@@ -151,8 +152,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     fs.existsSync(path.join(langDir, "grammar.dsl")) ||
     fs.existsSync(path.join(langDir, "src-gen"));
   const hasParserTests =
-    testFiles.some((f) => f.includes("parser") || f.includes("grammar")) ||
-    /parse|Parser|AST|CST/i.test(combinedTests);
+    testFiles.some((f) => f.includes("parser") || f.includes("grammar")) || /parse|Parser|AST|CST/i.test(combinedTests);
 
   // Pillar 2: Diagnostics & Linter
   const hasLinter =
@@ -184,7 +184,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
         f.includes("curves") ||
         f.includes("compiler") ||
         f.includes("clothoid") ||
-        f.includes("geometry")
+        f.includes("geometry"),
     ) ||
     /simulate|solve|benchmark|parity|simulate.*DesignDay|run.*Benchmark/i.test(combinedTests) ||
     fs.existsSync(path.join(testsDir, `${slug}-benchmark-runner.ts`)) ||
@@ -217,8 +217,9 @@ export function auditLanguage(slug: string): LanguageAuditResult {
       fs.existsSync(path.join(srcDir, "triplestore.ts")) ||
       Boolean(pkg.dependencies?.["@modelscript/runtime"]);
     hasDomainLoweringTests =
-      testFiles.some((f) => f.includes("ontology") || f.includes("projection") || f.includes("sparql") || f.includes("dae")) ||
-      /ontology|triplestore|projection|sparql|query/i.test(combinedTests);
+      testFiles.some(
+        (f) => f.includes("ontology") || f.includes("projection") || f.includes("sparql") || f.includes("dae"),
+      ) || /ontology|triplestore|projection|sparql|query/i.test(combinedTests);
   } else if (domainKind === "container") {
     hasDomainLowering = true;
     hasDomainLoweringTests = true;
@@ -265,8 +266,10 @@ export function auditLanguage(slug: string): LanguageAuditResult {
   if (!hasBenchmark) gaps.push("Missing reference benchmark suite");
   if (!hasLinterTests) gaps.push("Missing negative linter / diagnostic tests");
   if (!hasLspTests) gaps.push("Missing Language Server Protocol (LSP) tests");
-  if (testFileCount < 5 && !isFoundational) gaps.push(`Test file count (${testFileCount}) below Beta threshold (min 5 required)`);
-  if (testFileCount < 8 && !isFoundational) gaps.push(`Test file count (${testFileCount}) below hardened Stable threshold (>=8)`);
+  if (testFileCount < 5 && !isFoundational)
+    gaps.push(`Test file count (${testFileCount}) below Beta threshold (min 5 required)`);
+  if (testFileCount < 8 && !isFoundational)
+    gaps.push(`Test file count (${testFileCount}) below hardened Stable threshold (>=8)`);
 
   let auditedTier: MaturityTier = "preview";
 
@@ -281,12 +284,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     usesRuntimeArena
   ) {
     auditedTier = "stable";
-  } else if (
-    testFileCount >= 5 &&
-    hasDomainLoweringTests &&
-    hasBenchmark &&
-    usesRuntimeArena
-  ) {
+  } else if (testFileCount >= 5 && hasDomainLoweringTests && hasBenchmark && usesRuntimeArena) {
     auditedTier = "beta";
   } else {
     auditedTier = "preview";
@@ -362,12 +360,20 @@ function run(): void {
   };
 
   console.log(`Audited ${results.length} Polyglot Languages against 6-Pillar Robustness Criteria:\n`);
-  console.log(`  - Tier 2 (Stable):  ${tierSummary.stable.length.toString().padStart(2)} languages (${((tierSummary.stable.length / results.length) * 100).toFixed(1)}%)`);
-  console.log(`  - Tier 1 (Beta):    ${tierSummary.beta.length.toString().padStart(2)} languages (${((tierSummary.beta.length / results.length) * 100).toFixed(1)}%)`);
-  console.log(`  - Tier 0 (Preview): ${tierSummary.preview.length.toString().padStart(2)} languages (${((tierSummary.preview.length / results.length) * 100).toFixed(1)}%)\n`);
+  console.log(
+    `  - Tier 2 (Stable):  ${tierSummary.stable.length.toString().padStart(2)} languages (${((tierSummary.stable.length / results.length) * 100).toFixed(1)}%)`,
+  );
+  console.log(
+    `  - Tier 1 (Beta):    ${tierSummary.beta.length.toString().padStart(2)} languages (${((tierSummary.beta.length / results.length) * 100).toFixed(1)}%)`,
+  );
+  console.log(
+    `  - Tier 0 (Preview): ${tierSummary.preview.length.toString().padStart(2)} languages (${((tierSummary.preview.length / results.length) * 100).toFixed(1)}%)\n`,
+  );
 
   console.log("--------------------------------------------------------------------------------------------------");
-  console.log("| Language       | Domain    | Files | Tests | Lower | Bench | Lint | LSP | Declared | Audited | Status   |");
+  console.log(
+    "| Language       | Domain    | Files | Tests | Lower | Bench | Lint | LSP | Declared | Audited | Status   |",
+  );
   console.log("--------------------------------------------------------------------------------------------------");
 
   for (const r of results) {
@@ -390,7 +396,7 @@ function run(): void {
     const statusCol = status.padEnd(8);
 
     console.log(
-      `| ${slug} | ${domain} | ${files} | ${tests} | ${lower} | ${bench} | ${lint} | ${lsp} | ${declared} | ${audited} | ${statusCol} |`
+      `| ${slug} | ${domain} | ${files} | ${tests} | ${lower} | ${bench} | ${lint} | ${lsp} | ${declared} | ${audited} | ${statusCol} |`,
     );
   }
   console.log("--------------------------------------------------------------------------------------------------\n");
@@ -398,7 +404,7 @@ function run(): void {
   const demotions = results.filter(
     (r) =>
       (r.scorecard.currentDeclaredTier === "stable" && r.scorecard.auditedTier !== "stable") ||
-      (r.scorecard.currentDeclaredTier === "beta" && r.scorecard.auditedTier === "preview")
+      (r.scorecard.currentDeclaredTier === "beta" && r.scorecard.auditedTier === "preview"),
   );
 
   if (demotions.length > 0) {
@@ -443,27 +449,35 @@ function run(): void {
     const linterPath = path.join(REPO_ROOT, "scripts", "lint-package-manifests.ts");
     let linterSrc = fs.readFileSync(linterPath, "utf-8");
 
-    const stableEntries = Array.from(newStable).map((s) => `  "${s}",`).join("\n");
-    const betaEntries = Array.from(newBeta).map((s) => `  "${s}",`).join("\n");
+    const stableEntries = Array.from(newStable)
+      .map((s) => `  "${s}",`)
+      .join("\n");
+    const betaEntries = Array.from(newBeta)
+      .map((s) => `  "${s}",`)
+      .join("\n");
 
     linterSrc = linterSrc.replace(
       /const STABLE_LANGUAGES = new Set\(\[[\s\S]*?\]\);/,
-      `const STABLE_LANGUAGES = new Set([\n${stableEntries}\n]);`
+      `const STABLE_LANGUAGES = new Set([\n${stableEntries}\n]);`,
     );
 
     linterSrc = linterSrc.replace(
       /const BETA_LANGUAGES = new Set<string>\(\[[\s\S]*?\]\);|const BETA_LANGUAGES = new Set\(\[[\s\S]*?\]\);/,
-      `const BETA_LANGUAGES = new Set([\n${betaEntries}\n]);`
+      `const BETA_LANGUAGES = new Set([\n${betaEntries}\n]);`,
     );
 
     fs.writeFileSync(linterPath, linterSrc, "utf-8");
 
     console.log(`✓ Updated ${updatedManifests} package manifest(s).`);
-    console.log(`✓ Synchronized STABLE_LANGUAGES (${newStable.size}) and BETA_LANGUAGES (${newBeta.size}) in scripts/lint-package-manifests.ts.`);
+    console.log(
+      `✓ Synchronized STABLE_LANGUAGES (${newStable.size}) and BETA_LANGUAGES (${newBeta.size}) in scripts/lint-package-manifests.ts.`,
+    );
   }
 
   if (isStrict && demotions.length > 0) {
-    console.error(`ERROR: ${demotions.length} packages fail the strict 6-pillar maturity gates. Run with --apply to synchronize.`);
+    console.error(
+      `ERROR: ${demotions.length} packages fail the strict 6-pillar maturity gates. Run with --apply to synchronize.`,
+    );
     process.exit(1);
   }
 }

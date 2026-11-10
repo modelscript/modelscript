@@ -206,3 +206,81 @@ test("ExaGO Deck Exporter: Generates turnkey MATPOWER, .cont, .ini, and Slurm sc
   assert.ok(!standaloneDeck.slurmScript.includes("#SBATCH"));
   assert.ok(standaloneDeck.slurmScript.includes('mpiexec -n "${MPI_RANKS}"'));
 });
+
+test("MATPOWER (.m): Parses and serializes extended fields (dcline, angle, rateB, rateC, pwlPoints)", () => {
+  const EXTENDED_MATPOWER = `function mpc = case_extended
+%% MATPOWER Extended Test Case
+mpc.version = '2';
+mpc.baseMVA = 100.0;
+
+%% bus data
+mpc.bus = [
+  1  3  0.0   0.0  0 0 1 1.0 0.0 230.0 1 1.1 0.9;
+  2  2  50.0  20.0 0 0 1 1.0 0.0 230.0 1 1.1 0.9;
+];
+
+%% generator data
+mpc.gen = [
+  1  60.0 10.0 40.0 -40.0 1.0 100.0 1 100.0 10.0;
+];
+
+%% branch data
+%  fbus tbus r    x    b    rateA rateB rateC ratio angle status angmin angmax
+mpc.branch = [
+  1    2    0.01 0.05 0.02 120.0 140.0 160.0 0.00  0.00  1      -30.0  30.0;
+  1    2    0.00 0.04 0.00 100.0 110.0 120.0 1.05  4.50  1      -30.0  30.0;
+];
+
+%% dcline data
+%  fbus tbus status Pf   Pt   Qf   Qt   Vf  Vt  Pmin Pmax QminF QmaxF QminT QmaxT loss0 loss1
+mpc.dcline = [
+  1    2    1      20.0 19.5 5.0  4.0  1.0 1.0 0.0  50.0 -20.0 20.0  -20.0 20.0  0.50  0.0100;
+];
+
+%% generator cost data (multi-point piecewise linear)
+%  1 startup shutdown n  p1   f1     p2   f2     p3   f3
+mpc.gencost = [
+  1 0.0     0.0      3  0.0  100.0  50.0 1200.0 100.0 2600.0;
+];
+`;
+
+  const pCase = parseMatpower(EXTENDED_MATPOWER);
+  assert.equal(pCase.dclines?.length, 1);
+  const dc = pCase.dclines![0]!;
+  assert.equal(dc.fBus, 1);
+  assert.equal(dc.tBus, 2);
+  assert.equal(dc.pf, 20.0);
+  assert.equal(dc.loss0, 0.5);
+
+  assert.equal(pCase.branches.length, 1);
+  const br = pCase.branches[0]!;
+  assert.equal(br.rateA, 120.0);
+  assert.equal(br.rateB, 140.0);
+  assert.equal(br.rateC, 160.0);
+  assert.equal(br.angmin, -30.0);
+  assert.equal(br.angmax, 30.0);
+
+  assert.equal(pCase.transformers?.length, 1);
+  const xf = pCase.transformers![0]!;
+  assert.equal(xf.rata1, 100.0);
+  assert.equal(xf.rateB, 110.0);
+  assert.equal(xf.rateC, 120.0);
+  assert.equal(xf.ratio, 1.05);
+  assert.equal(xf.angle, 4.5);
+
+  const cost = pCase.generatorCosts?.get("1_1");
+  assert.ok(cost);
+  assert.ok(cost.pwlPoints);
+  assert.equal(cost.pwlPoints.length, 3);
+  assert.equal(cost.pwlPoints[0]!.p, 0.0);
+  assert.equal(cost.pwlPoints[1]!.p, 50.0);
+  assert.equal(cost.pwlPoints[2]!.p, 100.0);
+
+  // Roundtrip serialization
+  const roundtrip = serializeMatpower(pCase, "case_extended_roundtrip");
+  assert.ok(roundtrip.includes("mpc.dcline = ["));
+  assert.ok(roundtrip.includes("1\t2\t1\t20.00\t19.50"));
+  assert.ok(roundtrip.includes("120.0\t140.0\t160.0\t0.0000\t0.00"));
+  assert.ok(roundtrip.includes("100.0\t110.0\t120.0\t1.0500\t4.50"));
+  assert.ok(roundtrip.includes("1\t0.0\t0.0\t3\t0.00\t100.00\t50.00\t1200.00\t100.00\t2600.00;"));
+});

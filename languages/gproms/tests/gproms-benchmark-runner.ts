@@ -12,11 +12,11 @@
 
 import assert from "node:assert/strict";
 import {
+  lowerGpromsToDae,
   parseGproms,
   solveGpromsProcess,
-  lowerGpromsToDae,
   type GpromsDocument,
-  type ProcessSimulationResult,
+  type GpromsSimulationResult,
 } from "../src/index.js";
 
 export const AXIAL_DISPERSION_PFR_BENCHMARK = `
@@ -83,7 +83,7 @@ export function runGpromsBenchmark(src = AXIAL_DISPERSION_PFR_BENCHMARK): Gproms
   const model = Array.from(doc.models.values())[0]!;
   const proc = Array.from(doc.processes.values())[0]!;
 
-  const sim: ProcessSimulationResult = solveGpromsProcess(doc, { duration: 8.0, timeStep: 0.005 });
+  const sim: GpromsSimulationResult = solveGpromsProcess(doc, { duration: 8.0, timeStep: 0.005 });
   const profile = sim.finalSpatialProfiles["C"];
   assert.ok(profile);
   assert.equal(profile.length, 11);

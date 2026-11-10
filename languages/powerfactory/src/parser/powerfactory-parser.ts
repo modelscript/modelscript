@@ -103,7 +103,7 @@ export function parsePowerFactoryXml(xmlText: string, targetModel?: PowerFactory
   const model = targetModel ?? createEmptyPowerFactoryModel();
 
   const dataObjectRegex =
-    /<(DataObject|Elm[A-Za-z0-9_]+|Typ[A-Za-z0-9_]+|Sta[A-Za-z0-9_]+|Set[A-Za-z0-9_]+|Int[A-Za-z0-9_]+)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+    /<(DataObject|Elm[A-Za-z0-9_]+|Typ[A-Za-z0-9_]+|Sta[A-Za-z0-9_]+|Set[A-Za-z0-9_]+|Int[A-Za-z0-9_]+)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = dataObjectRegex.exec(xmlText)) !== null) {
@@ -116,7 +116,8 @@ export function parsePowerFactoryXml(xmlText: string, targetModel?: PowerFactory
 
     const className = rawTag === "DataObject" ? attrs["class"] || "" : rawTag;
 
-    const locName = attrs["loc_name"] || attrs["name"] || attrs["id"] || `obj_${Math.random().toString(36).slice(2, 8)}`;
+    const locName =
+      attrs["loc_name"] || attrs["name"] || attrs["id"] || `obj_${Math.random().toString(36).slice(2, 8)}`;
     const id = attrs["id"] || attrs["ref"] || locName;
 
     switch (className) {

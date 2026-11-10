@@ -128,26 +128,8 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
     });
   }
 
-  const branches: Array<{
-    i: number;
-    j: number;
-    ckt: string;
-    r: number;
-    x: number;
-    b?: number;
-    rateA?: number;
-    st?: number;
-  }> = [];
-
-  const transformers: Array<{
-    i: number;
-    j: number;
-    ckt: string;
-    r12: number;
-    x12: number;
-    rata1?: number;
-    stat?: number;
-  }> = [];
+  const branches: GenericPowerCase["branches"] = [];
+  const transformers: NonNullable<GenericPowerCase["transformers"]> = [];
 
   for (const row of branchRows) {
     if (row.length < 4) continue;
@@ -157,8 +139,13 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
     const x = row[3]!;
     const b = row[4] ?? 0.0;
     const rateA = row[5] ?? 9999.0;
+    const rateB = row[6] !== undefined && row[6] > 0 ? row[6] : undefined;
+    const rateC = row[7] !== undefined && row[7] > 0 ? row[7] : undefined;
     const ratio = row[8] ?? 0.0;
+    const angle = row[9] ?? 0.0;
     const status = Math.round(row[10] ?? 1);
+    const angmin = row[11] !== undefined ? row[11] : undefined;
+    const angmax = row[12] !== undefined ? row[12] : undefined;
 
     if (ratio > 0.0 && Math.abs(ratio - 1.0) > 1e-4) {
       // Off-nominal transformer
@@ -169,6 +156,10 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
         r12: r,
         x12: x,
         rata1: rateA > 0 ? rateA : 9999.0,
+        rateB,
+        rateC,
+        ratio,
+        angle: Math.abs(angle) > 1e-4 ? angle : undefined,
         stat: status,
       });
     } else {
@@ -181,12 +172,44 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
         x,
         b,
         rateA: rateA > 0 ? rateA : 9999.0,
+        rateB,
+        rateC,
+        ratio: ratio > 0 ? ratio : undefined,
+        angle: Math.abs(angle) > 1e-4 ? angle : undefined,
+        angmin,
+        angmax,
         st: status,
       });
     }
   }
 
-  // 4. Extract gencost matrix if present
+  // 4. Extract dcline matrix if present
+  const dclineRows = extractMatrix("dcline");
+  const dclines: GenericPowerCase["dclines"] = [];
+  for (const row of dclineRows) {
+    if (row.length < 11) continue;
+    dclines.push({
+      fBus: Math.round(row[0]!),
+      tBus: Math.round(row[1]!),
+      status: Math.round(row[2] ?? 1),
+      pf: row[3] ?? 0,
+      pt: row[4] ?? 0,
+      qf: row[5] ?? 0,
+      qt: row[6] ?? 0,
+      vf: row[7] ?? 1.0,
+      vt: row[8] ?? 1.0,
+      pmin: row[9] ?? 0,
+      pmax: row[10] ?? 9999,
+      qminF: row[11] ?? -999,
+      qmaxF: row[12] ?? 999,
+      qminT: row[13] ?? -999,
+      qmaxT: row[14] ?? 999,
+      loss0: row[15] ?? 0,
+      loss1: row[16] ?? 0,
+    });
+  }
+
+  // 5. Extract gencost matrix if present
   const gencostRows = extractMatrix("gencost");
   const generatorCosts = new Map<string, GeneratorCostCurve>();
 
@@ -200,6 +223,7 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
     let c2 = 0.0;
     let c1 = 20.0;
     let c0 = 0.0;
+    let pwlPoints: Array<{ p: number; f: number }> | undefined;
 
     if (model === 2) {
       if (n === 3 && row.length >= 7) {
@@ -220,10 +244,16 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
         c0 = row[4 + n - 1] ?? 0.0;
       }
     } else if (model === 1 && n >= 2 && row.length >= 4 + 2 * n) {
-      const p1 = row[4]!;
-      const f1 = row[5]!;
-      const pn = row[4 + 2 * n - 2]!;
-      const fn = row[4 + 2 * n - 1]!;
+      pwlPoints = [];
+      for (let ptIdx = 0; ptIdx < n; ptIdx++) {
+        const pVal = row[4 + 2 * ptIdx]!;
+        const fVal = row[4 + 2 * ptIdx + 1]!;
+        pwlPoints.push({ p: pVal, f: fVal });
+      }
+      const p1 = pwlPoints[0]!.p;
+      const f1 = pwlPoints[0]!.f;
+      const pn = pwlPoints[pwlPoints.length - 1]!.p;
+      const fn = pwlPoints[pwlPoints.length - 1]!.f;
       if (Math.abs(pn - p1) > 1e-6) {
         c1 = (fn - f1) / (pn - p1);
         c0 = f1 - c1 * p1;
@@ -234,7 +264,7 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
       c2 = 0.0;
     }
 
-    const costCurve: GeneratorCostCurve = { c0, c1, c2 };
+    const costCurve: GeneratorCostCurve = { c0, c1, c2, pwlPoints };
     generatorCosts.set(`${g.i}_${g.id}`, costCurve);
     if (!generatorCosts.has(String(g.i))) {
       generatorCosts.set(String(g.i), costCurve);
@@ -249,6 +279,7 @@ export function parseMatpower(matpowerSource: string): GenericPowerCase {
     generators,
     branches,
     transformers,
+    dclines: dclines.length > 0 ? dclines : undefined,
     generatorCosts: generatorCosts.size > 0 ? generatorCosts : undefined,
   };
 }
@@ -307,26 +338,50 @@ export function serializeMatpower(powerCase: GenericPowerCase, caseName = "case_
 
   // Branch Matrix
   lines.push(`%% branch data`);
-  lines.push(`%  fbus tbus r       x       b       rateA   rateB rateC ratio angle status`);
+  lines.push(`%  fbus tbus r       x       b       rateA   rateB   rateC   ratio   angle   status  angmin  angmax`);
   lines.push(`mpc.branch = [`);
   for (const br of powerCase.branches) {
     const rateA = br.rateA ?? br.ratea ?? 9999.0;
+    const rateB = br.rateB ?? 0;
+    const rateC = br.rateC ?? 0;
+    const ratio = br.ratio ?? 0;
+    const angle = br.angle ?? 0;
     const st = br.st ?? 1;
+    const angmin = br.angmin ?? -360.0;
+    const angmax = br.angmax ?? 360.0;
     lines.push(
-      `  ${br.i}\t${br.j}\t${br.r.toFixed(5)}\t${br.x.toFixed(5)}\t${(br.b ?? 0).toFixed(5)}\t${rateA.toFixed(1)}\t0\t0\t0\t0\t${st};`,
+      `  ${br.i}\t${br.j}\t${br.r.toFixed(5)}\t${br.x.toFixed(5)}\t${(br.b ?? 0).toFixed(5)}\t${rateA.toFixed(1)}\t${rateB.toFixed(1)}\t${rateC.toFixed(1)}\t${ratio.toFixed(4)}\t${angle.toFixed(2)}\t${st}\t${angmin.toFixed(1)}\t${angmax.toFixed(1)};`,
     );
   }
   if (powerCase.transformers) {
     for (const xf of powerCase.transformers) {
       const rateA = xf.rata1 ?? 9999.0;
+      const rateB = xf.rateB ?? 0;
+      const rateC = xf.rateC ?? 0;
+      const ratio = xf.ratio ?? 1.0;
+      const angle = xf.angle ?? 0;
       const st = xf.stat ?? 1;
       lines.push(
-        `  ${xf.i}\t${xf.j}\t${xf.r12.toFixed(5)}\t${xf.x12.toFixed(5)}\t0\t${rateA.toFixed(1)}\t0\t0\t1.0\t0\t${st};`,
+        `  ${xf.i}\t${xf.j}\t${xf.r12.toFixed(5)}\t${xf.x12.toFixed(5)}\t0\t${rateA.toFixed(1)}\t${rateB.toFixed(1)}\t${rateC.toFixed(1)}\t${ratio.toFixed(4)}\t${angle.toFixed(2)}\t${st}\t-360.0\t360.0;`,
       );
     }
   }
   lines.push(`];`);
   lines.push(``);
+
+  // DC Line Matrix (dcline)
+  if (powerCase.dclines && powerCase.dclines.length > 0) {
+    lines.push(`%% dcline data`);
+    lines.push(`%  fbus tbus status Pf    Pt    Qf    Qt    Vf   Vt   Pmin  Pmax  QminF QmaxF QminT QmaxT loss0 loss1`);
+    lines.push(`mpc.dcline = [`);
+    for (const dc of powerCase.dclines) {
+      lines.push(
+        `  ${dc.fBus}\t${dc.tBus}\t${dc.status}\t${dc.pf.toFixed(2)}\t${dc.pt.toFixed(2)}\t${dc.qf.toFixed(2)}\t${dc.qt.toFixed(2)}\t${dc.vf.toFixed(4)}\t${dc.vt.toFixed(4)}\t${dc.pmin.toFixed(2)}\t${dc.pmax.toFixed(2)}\t${dc.qminF.toFixed(2)}\t${dc.qmaxF.toFixed(2)}\t${dc.qminT.toFixed(2)}\t${dc.qmaxT.toFixed(2)}\t${(dc.loss0 ?? 0).toFixed(2)}\t${(dc.loss1 ?? 0).toFixed(4)};`,
+      );
+    }
+    lines.push(`];`);
+    lines.push(``);
+  }
 
   // Generator Cost Matrix (gencost)
   if (powerCase.generatorCosts && powerCase.generatorCosts.size > 0) {
@@ -337,10 +392,16 @@ export function serializeMatpower(powerCase: GenericPowerCase, caseName = "case_
       const cleanId = g.id.trim() || "1";
       const cost = powerCase.generatorCosts.get(`${g.i}_${cleanId}`) ??
         powerCase.generatorCosts.get(String(g.i)) ?? { c0: 0.0, c1: 20.0, c2: 0.0 };
-      const c2 = cost.c2 ?? 0.0;
-      const c1 = cost.c1;
-      const c0 = cost.c0 ?? 0.0;
-      lines.push(`  2\t0.0\t0.0\t3\t${c2.toFixed(6)}\t${c1.toFixed(4)}\t${c0.toFixed(2)};`);
+      if (cost.pwlPoints && cost.pwlPoints.length >= 2) {
+        const pts = cost.pwlPoints;
+        const ptStr = pts.map((p) => `${p.p.toFixed(2)}\t${p.f.toFixed(2)}`).join("\t");
+        lines.push(`  1\t0.0\t0.0\t${pts.length}\t${ptStr};`);
+      } else {
+        const c2 = cost.c2 ?? 0.0;
+        const c1 = cost.c1;
+        const c0 = cost.c0 ?? 0.0;
+        lines.push(`  2\t0.0\t0.0\t3\t${c2.toFixed(6)}\t${c1.toFixed(4)}\t${c0.toFixed(2)};`);
+      }
     }
     lines.push(`];`);
     lines.push(``);
