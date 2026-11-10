@@ -35,8 +35,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "express-rate-limit": "^8.3.2",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.3",
     "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
@@ -46,7 +46,7 @@
     "@types/supertest": "^7.2.0",
     "rimraf": "^6.1.0",
     "supertest": "^7.2.2",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "modelscript": {
     "tier": "stable",
