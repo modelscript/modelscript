@@ -3,7 +3,7 @@
 
 # @modelscript/mcp
 
-Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **92 specialized engineering tools** across **81 engineering languages**, covering multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, nonlinear bifurcation & stochastic jump dynamics, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 & OpenDSS grid analysis, EPANET & SWMM municipal water/stormwater compliance, Optical DWDM / 3GPP RAN / Fiber OSP telecommunications, ECAD DFM & BOM supply-chain auditing, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, ISO 23952 QIF metrology, NIST OSCAL cybersecurity compliance, IEC 62714 AutomationML virtual commissioning, and radiology/biomechanics/surgical CAS verification to AI coding agents.
+Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **92 specialized engineering tools** across **90 engineering languages**, covering multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, nonlinear bifurcation & stochastic jump dynamics, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 & OpenDSS grid analysis, EPANET & SWMM municipal water/stormwater compliance, Optical DWDM / 3GPP RAN / Fiber OSP telecommunications, ECAD DFM & BOM supply-chain auditing, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, ISO 23952 QIF metrology, NIST OSCAL cybersecurity compliance, IEC 62714 AutomationML virtual commissioning, and radiology/biomechanics/surgical CAS verification to AI coding agents.
 
 ---
 
@@ -32,15 +32,15 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **92 special
 
 ### 2. Multi-Physics Simulation, DoE, Sensitivity, Bifurcation & Stochastic Jumps (7 Tools)
 
-| Tool                                   | Description                                                                                                                                      |
-| :------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `modelica_lint`                        | Run static compiler diagnostics and semantic lint queries over loaded libraries.                                                                 |
-| `modelica_simulate`                    | Flatten and numerically simulate a Modelica model (`rk4`, `dopri5`, `bdf`, `auto`) using the arena simulation pipeline (`CSV` or `JSON` output). |
-| `hybrid_simulate`                      | Flatten and simulate a hybrid SysML v2 / Modelica cyber-physical system with discrete events and state transitions.                              |
-| `modelica_doe`                         | Execute a Design of Experiments (DoE) parameter sweep (`runArenaDoE`) for response surface analysis or ROM training.                             |
-| `modelica_sensitivity`                 | Run One-At-a-Time (OAT) sensitivity analysis (`runSensitivityAnalysisArena`) and report normalized sensitivity coefficients.                     |
+| Tool                                   | Description                                                                                                                                                           |
+| :------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modelica_lint`                        | Run static compiler diagnostics and semantic lint queries over loaded libraries.                                                                                      |
+| `modelica_simulate`                    | Flatten and numerically simulate a Modelica model (`rk4`, `dopri5`, `bdf`, `auto`) using the arena simulation pipeline (`CSV` or `JSON` output).                      |
+| `hybrid_simulate`                      | Flatten and simulate a hybrid SysML v2 / Modelica cyber-physical system with discrete events and state transitions.                                                   |
+| `modelica_doe`                         | Execute a Design of Experiments (DoE) parameter sweep (`runArenaDoE`) for response surface analysis or ROM training.                                                  |
+| `modelica_sensitivity`                 | Run One-At-a-Time (OAT) sensitivity analysis (`runSensitivityAnalysisArena`) and report normalized sensitivity coefficients.                                          |
 | `modelscript_bifurcation_continuation` | Trace nonlinear steady-state equilibrium curves $F(x, p) = 0$ via Pseudo-Arclength Continuation (PALC) and detect Fold (LP), Hopf (HB), and Branch (BP) bifurcations. |
-| `modelscript_stochastic_jump`          | Execute discrete-state stochastic chemical/epidemiological jump simulations using Gillespie Direct SSA, First-Reaction SSA, or Adaptive Tau-Leaping. |
+| `modelscript_stochastic_jump`          | Execute discrete-state stochastic chemical/epidemiological jump simulations using Gillespie Direct SSA, First-Reaction SSA, or Adaptive Tau-Leaping.                  |
 
 ### 3. OWL 2 Ontology Reasoning & Fault Propagation (5 Tools)
 
@@ -143,47 +143,47 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **92 special
 
 ### 13. OpenDSS Unbalanced Distribution Grids & DER Hosting Capacity (7 Tools)
 
-| Tool                         | Description                                                                                                                                                                         |
-| :--------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `opendss_solve_powerflow`    | Solve multi-phase unbalanced distribution AC power flow using a sparse $\mathbf{Y}_{\text{bus}}$ nodal admittance matrix with `RegControl` tap changers and `CapControl` banks.    |
-| `opendss_solve_faults`       | Compute short-circuit fault currents (3-phase symmetrical, single line-to-ground SLG, line-to-line LL) and Thévenin equivalent impedances.                                          |
-| `opendss_evaluate_harmonics` | Compute frequency-dependent harmonic voltage propagation and Total Harmonic Distortion ($\text{THD}\%$) across a user-specified harmonic spectrum.                                  |
-| `opendss_analyze_reliability`| Evaluate predictive distribution feeder reliability indices (IEEE 1366: SAIFI, SAIDI, CAIDI, ASAI, EEN) and identify critical risk branches.                                        |
-| `opendss_solve_gic`          | Analyze geomagnetically induced currents (GIC) from space weather events across substation earth grounds and identify transformer half-cycle saturation risks.                      |
-| `opendss_hosting_capacity`   | Calculate distribution feeder maximum DER hosting capacity limited by ANSI C84.1 voltage rise and line thermal capacity, with optional IEEE 1547 smart inverter Volt-VAR mitigation. |
-| `opendss_simulate_flisr`     | Simulate automated Fault Location, Isolation, and Service Restoration (FLISR) distribution grid self-healing and calculate customer interruption hours saved.                        |
+| Tool                          | Description                                                                                                                                                                          |
+| :---------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opendss_solve_powerflow`     | Solve multi-phase unbalanced distribution AC power flow using a sparse $\mathbf{Y}_{\text{bus}}$ nodal admittance matrix with `RegControl` tap changers and `CapControl` banks.      |
+| `opendss_solve_faults`        | Compute short-circuit fault currents (3-phase symmetrical, single line-to-ground SLG, line-to-line LL) and Thévenin equivalent impedances.                                           |
+| `opendss_evaluate_harmonics`  | Compute frequency-dependent harmonic voltage propagation and Total Harmonic Distortion ($\text{THD}\%$) across a user-specified harmonic spectrum.                                   |
+| `opendss_analyze_reliability` | Evaluate predictive distribution feeder reliability indices (IEEE 1366: SAIFI, SAIDI, CAIDI, ASAI, EEN) and identify critical risk branches.                                         |
+| `opendss_solve_gic`           | Analyze geomagnetically induced currents (GIC) from space weather events across substation earth grounds and identify transformer half-cycle saturation risks.                       |
+| `opendss_hosting_capacity`    | Calculate distribution feeder maximum DER hosting capacity limited by ANSI C84.1 voltage rise and line thermal capacity, with optional IEEE 1547 smart inverter Volt-VAR mitigation. |
+| `opendss_simulate_flisr`      | Simulate automated Fault Location, Isolation, and Service Restoration (FLISR) distribution grid self-healing and calculate customer interruption hours saved.                        |
 
 ### 14. Municipal Water Distribution (`EPANET`), Stormwater (`SWMM`) & ECAD/BOM (14 Tools)
 
-| Tool                                 | Description                                                                                                                                                                |
-| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `epanet_solve_hydraulics`            | Solve steady-state or extended-period hydraulics for a US EPA EPANET water distribution network (`.inp`).                                                                  |
-| `epanet_fire_flow_analysis`          | Perform fire-flow capacity analysis at a municipal hydrant node, evaluating available GPM at $20\text{ psi}$ residual pressure.                                            |
-| `epanet_outage_contingency`          | Simulate N-1 pipe break isolation and unsupplied customer demand under Pressure-Dependent Demand (PDD).                                                                    |
-| `epanet_water_hammer_surge`          | Simulate acoustic pressure wave propagation, Joukowsky surge spikes, and cavitation risk via the Method of Characteristics (MOC).                                          |
-| `water_audit_awwa_m36`               | Perform standard AWWA M36 Water Audit calculating CARL, UARL, Infrastructure Leakage Index (ILI), and non-revenue water financial losses.                                  |
-| `epanet_optimize_cip`                | Optimize multi-year Capital Improvement Planning (CIP) pipe replacement and upsizing to maximize hydraulic performance under budget constraints.                           |
-| `epanet_calibrate_scada`             | Calibrate EPANET pipe Hazen-Williams roughness $C$-factors against SCADA telemetry pressure observations.                                                                  |
-| `epanet_gis_to_model`                | Ingest municipal GIS pipe centerlines, junction assets, and DEM rasters from GeoJSON / ASCII grids into a ready-to-solve EPANET network (`.inp`).                          |
-| `swmm_flood_routing`                 | Simulate 1D Saint-Venant dynamic wave routing in an urban stormwater or combined sewer network (`.inp`), reporting peak flows and node flooding.                           |
-| `swmm_simulate_rtc`                  | Simulate Real-Time Control (RTC) gate/weir/pump modulation for urban Combined Sewer Overflow (CSO) mitigation.                                                             |
-| `swmm_gis_to_model`                  | Ingest municipal GIS stormwater/wastewater conduits, manholes, catchment polygons, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (`.inp`).       |
-| `ecad_dfm_audit`                     | Run Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) design rule checks on PCB layout data.                                                                      |
-| `ecad_generate_manufacturing_bundle` | Generate verified PCB manufacturing bundles (IPC-2581C, ODB++ v8.1, RS-274X Gerbers, and Centroid PnP) from PCB layout.                                                    |
-| `supply_chain_scrub_bom`             | Scrub a Bill of Materials across multi-tier distributors (Nexar, Digi-Key, Mouser) to evaluate pricing, stock availability, lead times, and obsolescence risks.            |
+| Tool                                 | Description                                                                                                                                                          |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `epanet_solve_hydraulics`            | Solve steady-state or extended-period hydraulics for a US EPA EPANET water distribution network (`.inp`).                                                            |
+| `epanet_fire_flow_analysis`          | Perform fire-flow capacity analysis at a municipal hydrant node, evaluating available GPM at $20\text{ psi}$ residual pressure.                                      |
+| `epanet_outage_contingency`          | Simulate N-1 pipe break isolation and unsupplied customer demand under Pressure-Dependent Demand (PDD).                                                              |
+| `epanet_water_hammer_surge`          | Simulate acoustic pressure wave propagation, Joukowsky surge spikes, and cavitation risk via the Method of Characteristics (MOC).                                    |
+| `water_audit_awwa_m36`               | Perform standard AWWA M36 Water Audit calculating CARL, UARL, Infrastructure Leakage Index (ILI), and non-revenue water financial losses.                            |
+| `epanet_optimize_cip`                | Optimize multi-year Capital Improvement Planning (CIP) pipe replacement and upsizing to maximize hydraulic performance under budget constraints.                     |
+| `epanet_calibrate_scada`             | Calibrate EPANET pipe Hazen-Williams roughness $C$-factors against SCADA telemetry pressure observations.                                                            |
+| `epanet_gis_to_model`                | Ingest municipal GIS pipe centerlines, junction assets, and DEM rasters from GeoJSON / ASCII grids into a ready-to-solve EPANET network (`.inp`).                    |
+| `swmm_flood_routing`                 | Simulate 1D Saint-Venant dynamic wave routing in an urban stormwater or combined sewer network (`.inp`), reporting peak flows and node flooding.                     |
+| `swmm_simulate_rtc`                  | Simulate Real-Time Control (RTC) gate/weir/pump modulation for urban Combined Sewer Overflow (CSO) mitigation.                                                       |
+| `swmm_gis_to_model`                  | Ingest municipal GIS stormwater/wastewater conduits, manholes, catchment polygons, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (`.inp`). |
+| `ecad_dfm_audit`                     | Run Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) design rule checks on PCB layout data.                                                                |
+| `ecad_generate_manufacturing_bundle` | Generate verified PCB manufacturing bundles (IPC-2581C, ODB++ v8.1, RS-274X Gerbers, and Centroid PnP) from PCB layout.                                              |
+| `supply_chain_scrub_bom`             | Scrub a Bill of Materials across multi-tier distributors (Nexar, Digi-Key, Mouser) to evaluate pricing, stock availability, lead times, and obsolescence risks.      |
 
 ### 15. Telecommunications, Optical DWDM, 3GPP RAN & Fiber Outside Plant (9 Tools)
 
-| Tool                           | Description                                                                                                                                                                                  |
-| :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `optical_inspect_otdr`         | Inspect a Telcordia GR-196/SR-4731 `.sor` Optical Time-Domain Reflectometer (OTDR) binary file to extract fiber span attenuation, event loss, reflectance, and splice integrity.             |
-| `optical_solve_transmission`   | Solve multi-span optical DWDM transmission performance using the Enhanced Gaussian Noise (EGN) nonlinear model, computing GSNR, ASE noise, NLI power, and chromatic dispersion accumulation. |
-| `ran_solve_microwave_budget`   | Solve line-of-sight microwave link budget, Free Space Path Loss (FSPL), ITU-R P.530 rain fade, Fresnel clearance, and annual availability percentage ("five-nines" verification).            |
-| `fiber_locate_otdr_fault`      | Pinpoint the exact physical GIS GPS latitude/longitude of an optical fiber break measured by OTDR, correcting for cable helix excess length and vault slack loops.                           |
-| `ran_evaluate_mpe_safety`      | Evaluate FCC OET-65, Health Canada Safety Code 6, ICNIRP 2020, EU CENELEC, Swiss NISV, and Italian CEI 211 RF Maximum Permissible Exposure (MPE) exclusion zones and TER ($\le 1.0$).        |
-| `ran_evaluate_faa_obstruction` | Evaluate FAA 14 CFR Part 77, ICAO Annex 14 Volume I, and Transport Canada CAR 601.23 airspace obstruction notice criteria and runway slope penetrations for telecom towers.                  |
-| `fiber_evaluate_pole_loading`  | Evaluate utility pole structural loading pursuant to US NESC Rule 250/260, Canadian CSA C22.3 No. 1, or Eurocode EN 50341 / EN 1991-1-4 (bending moment & ice/wind capacity utilization).    |
-| `fiber_generate_bdc_fabric`    | Generate FCC Broadband Data Collection (BDC) and NTIA BEAD compliant spatial datasets discretized into Uber H3 Resolution 8 or 9 hexagonal bins.                                             |
+| Tool                           | Description                                                                                                                                                                                   |
+| :----------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `optical_inspect_otdr`         | Inspect a Telcordia GR-196/SR-4731 `.sor` Optical Time-Domain Reflectometer (OTDR) binary file to extract fiber span attenuation, event loss, reflectance, and splice integrity.              |
+| `optical_solve_transmission`   | Solve multi-span optical DWDM transmission performance using the Enhanced Gaussian Noise (EGN) nonlinear model, computing GSNR, ASE noise, NLI power, and chromatic dispersion accumulation.  |
+| `ran_solve_microwave_budget`   | Solve line-of-sight microwave link budget, Free Space Path Loss (FSPL), ITU-R P.530 rain fade, Fresnel clearance, and annual availability percentage ("five-nines" verification).             |
+| `fiber_locate_otdr_fault`      | Pinpoint the exact physical GIS GPS latitude/longitude of an optical fiber break measured by OTDR, correcting for cable helix excess length and vault slack loops.                            |
+| `ran_evaluate_mpe_safety`      | Evaluate FCC OET-65, Health Canada Safety Code 6, ICNIRP 2020, EU CENELEC, Swiss NISV, and Italian CEI 211 RF Maximum Permissible Exposure (MPE) exclusion zones and TER ($\le 1.0$).         |
+| `ran_evaluate_faa_obstruction` | Evaluate FAA 14 CFR Part 77, ICAO Annex 14 Volume I, and Transport Canada CAR 601.23 airspace obstruction notice criteria and runway slope penetrations for telecom towers.                   |
+| `fiber_evaluate_pole_loading`  | Evaluate utility pole structural loading pursuant to US NESC Rule 250/260, Canadian CSA C22.3 No. 1, or Eurocode EN 50341 / EN 1991-1-4 (bending moment & ice/wind capacity utilization).     |
+| `fiber_generate_bdc_fabric`    | Generate FCC Broadband Data Collection (BDC) and NTIA BEAD compliant spatial datasets discretized into Uber H3 Resolution 8 or 9 hexagonal bins.                                              |
 | `telecom_evaluate_nors_outage` | Evaluate whether a telecom network outage meets mandatory FCC Part 4 (`47 CFR § 4.9`) NORS reporting thresholds ($900\text{k}$ user-minutes or 911/PSAP impact) and generate filing dossiers. |
 
 ---

@@ -9,11 +9,12 @@ import {
   SyncIcon,
   XCircleIcon,
 } from "@primer/octicons-react";
-import { Button, Label, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import styledImport from "styled-components";
 import Box from "../../../../components/Box";
+import { SimSpinner } from "./SimSpinner";
 
 const styled: typeof styledImport =
   (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
@@ -23,77 +24,41 @@ const TelemetryBar = styled.div`
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 14px 18px;
-  border-radius: 12px;
-  background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.03)));
-  border: 1px solid var(--ms-border, var(--color-border));
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  gap: 12px;
+  padding: 0 0 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--ms-border, var(--color-border));
 `;
 
 const StatusPill = styled.div<{ $status: "idle" | "running" | "success" | "error" }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 9999px;
   font-size: 12px;
-  font-weight: 600;
-  background: ${({ $status }) => {
-    switch ($status) {
-      case "running":
-        return "var(--ms-brand-soft, rgba(6, 182, 212, 0.15))";
-      case "success":
-        return "rgba(16, 185, 129, 0.15)";
-      case "error":
-        return "rgba(239, 68, 68, 0.15)";
-      default:
-        return "var(--color-canvas-subtle, rgba(255, 255, 255, 0.06))";
-    }
-  }};
+  font-weight: 500;
   color: ${({ $status }) => {
     switch ($status) {
       case "running":
         return "var(--ms-brand, #06b6d4)";
       case "success":
-        return "#10b981";
+        return "var(--color-success-fg, #10b981)";
       case "error":
-        return "#ef4444";
+        return "var(--color-danger-fg, #ef4444)";
       default:
         return "var(--color-text-muted)";
     }
   }};
-  border: 1px solid
-    ${({ $status }) => {
-      switch ($status) {
-        case "running":
-          return "var(--ms-brand, #06b6d4)";
-        case "success":
-          return "#10b981";
-        case "error":
-          return "#ef4444";
-        default:
-          return "var(--color-border)";
-      }
-    }};
 `;
 
 const RunButton = styled(Button)`
-  background: var(--gradient-cta, var(--ms-brand, #06b6d4));
+  background: var(--ms-brand, #0e7490);
   color: #fff !important;
   font-weight: 600;
   border: none;
-  box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
-  transition: all 0.2s ease;
+  box-shadow: none;
 
-  &:hover {
-    box-shadow: 0 0 18px rgba(6, 182, 212, 0.6);
-    transform: translateY(-1px);
-  }
-
-  &:active {
-    transform: translateY(0);
+  &:hover:not(:disabled) {
+    filter: brightness(1.1);
   }
 `;
 
@@ -152,7 +117,7 @@ export const SimulationTelemetryHeader: React.FC<SimulationTelemetryHeaderProps>
 
         <StatusPill $status={statusKind}>
           {isSimulating ? (
-            <Spinner size="small" />
+            <SimSpinner size={12} />
           ) : statusKind === "success" ? (
             <CheckIcon size={12} />
           ) : statusKind === "error" ? (
@@ -163,15 +128,12 @@ export const SimulationTelemetryHeader: React.FC<SimulationTelemetryHeaderProps>
           {statusText}
         </StatusPill>
 
-        <Label variant="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
-          {solver} solver
-        </Label>
-
-        {hasOverrides && (
-          <Label variant="accent" style={{ fontSize: 11 }}>
-            Parameters modified
-          </Label>
-        )}
+        <Text
+          style={{ fontSize: 12, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.4 }}
+        >
+          {solver}
+          {hasOverrides ? " · modified" : ""}
+        </Text>
       </Box>
 
       <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">

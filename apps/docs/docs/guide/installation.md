@@ -51,7 +51,7 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 81 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 90 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 

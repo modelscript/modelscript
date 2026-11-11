@@ -1422,6 +1422,10 @@ export function evaluateCoordinatorScenario(
     [],
   ];
 
+  // Make sure the (guarded) shared SysML parser is initialised and registered with the
+  // requirement binder before it parses for the first time.
+  getWasmRuntime("sysml");
+
   // Parse SysML v2 requirements and Modelica twin annotations using runtime binder
   const sysmlReqs = parseSysmlRequirements(codes[0]);
   const modelicaPaneIdx = scenario.panes.findIndex((p) => p.lang === "modelica");

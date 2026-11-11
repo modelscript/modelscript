@@ -7,8 +7,16 @@ import MsIcon from "./MsIcon.vue";
 const { ansatzOrigin } = useAnsatzOrigin();
 
 const pillars: { icon: IconName; title: string; body: string }[] = [
-  { icon: "code", title: "Open-core architecture", body: "AGPL-3.0 core compiler & solvers, with OEM & Enterprise editions." },
-  { icon: "cpu", title: "Offline & air-gapped ready", body: "Run locally in WASM/CLI or deploy offline Ed25519-licensed appliances." },
+  {
+    icon: "code",
+    title: "Open-core architecture",
+    body: "AGPL-3.0 core compiler & solvers, with OEM & Enterprise editions.",
+  },
+  {
+    icon: "cpu",
+    title: "Offline & air-gapped ready",
+    body: "Run locally in WASM/CLI or deploy offline Ed25519-licensed appliances.",
+  },
   { icon: "layers", title: "Standards first", body: "FMI, SSP, SysML v2, STEP, and ReqIF interchange." },
 ];
 </script>
@@ -30,24 +38,30 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
       <div class="ms-cta">
         <div>
           <h2>Start building your digital thread today</h2>
-          <p>Free AGPL-3.0 Community Edition. Try it in the browser in seconds, install the CLI, or explore Enterprise plans.</p>
+          <p>
+            Free AGPL-3.0 Community Edition. Try it in the browser in seconds, install the CLI, or explore Enterprise
+            plans.
+          </p>
         </div>
-        <div class="ms-cta-actions">
-          <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
-            Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
-          </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/pricing">
-            <MsIcon name="shield" :size="16" /> Plans &amp; Pricing
-          </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/morsel`" target="_blank" rel="noopener noreferrer">
-            <MsIcon name="play" :size="16" /> Try Morsel
-          </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/studio`" target="_blank" rel="noopener noreferrer">
-            <MsIcon name="layers" :size="16" /> Launch Studio
-          </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener">
-            <MsIcon name="github" :size="16" /> GitHub
-          </a>
+        <div class="cta-right">
+          <div class="ms-cta-actions">
+            <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
+              Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
+            </a>
+            <a
+              class="ms-btn ms-btn-lg ms-btn-ghost"
+              :href="`${ansatzOrigin}/morsel`"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MsIcon name="play" :size="16" /> Try Morsel
+            </a>
+          </div>
+          <nav class="cta-links" aria-label="More ways to get started">
+            <a :href="`${ansatzOrigin}/studio`" target="_blank" rel="noopener noreferrer">Launch Studio</a>
+            <a href="/pricing">Plans &amp; Pricing</a>
+            <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">GitHub</a>
+          </nav>
         </div>
       </div>
     </div>
@@ -102,8 +116,7 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
   color: var(--vp-c-brand-1);
   background:
     radial-gradient(circle at 25% 20%, rgba(34, 211, 238, 0.24), transparent 68%),
-    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.18), transparent 68%),
-    var(--vp-c-brand-soft);
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.18), transparent 68%), var(--vp-c-brand-soft);
   border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 34%, transparent);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.16),
@@ -122,6 +135,44 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
   font-size: 0.9rem;
   line-height: 1.5;
   color: var(--vp-c-text-2);
+}
+
+.cta-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cta-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-size: 0.9rem;
+}
+
+.cta-links a {
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.cta-links a:hover,
+.cta-links a:focus-visible {
+  color: var(--vp-c-brand-1);
+  border-bottom-color: currentColor;
+}
+
+@media (max-width: 1000px) {
+  .pillars {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pillar:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 768px) {

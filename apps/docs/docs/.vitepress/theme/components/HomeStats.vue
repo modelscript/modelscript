@@ -49,9 +49,9 @@ const stats = computed<StatItem[]>(() => [
   },
   {
     value: "100k+",
-    badge: "Industrial",
+    badge: "Design target",
     label: "Coupled DAE Scale",
-    description: "Struct-of-Arrays linear memory and sparse BLT scale to 100,000+ coupled DAE equations without memory exhaustion.",
+    description: "Struct-of-Arrays linear memory and sparse BLT are designed for 100,000+ coupled DAE equations.",
     icon: "activity",
     link: "/architecture/dae-arena",
     actionText: "Arena",
@@ -60,16 +60,16 @@ const stats = computed<StatItem[]>(() => [
     metaRight: "Zero-GC arena",
   },
   {
-    value: "100%",
+    value: "Offline",
     badge: "Sovereign",
-    label: "Air-Gapped & Offline",
-    description: "Runs entirely on-device, in air-gapped enclaves, or local Slurm HPC. Zero cloud telemetry.",
+    label: "Air-Gapped Capable",
+    description: "Runs on-device, in air-gapped enclaves, or on local Slurm HPC — no cloud service required.",
     icon: "terminal",
     link: "/ansatz/overview",
     actionText: "Deploy",
     accent: "amber",
     metaLeft: "Browser · CLI · Slurm",
-    metaRight: "NERC CIP ready",
+    metaRight: "Self-hostable",
   },
 ]);
 </script>
@@ -234,7 +234,9 @@ const stats = computed<StatItem[]>(() => [
   background: var(--bento-glow);
   filter: blur(28px);
   opacity: 0.5;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
   pointer-events: none;
 }
 
@@ -275,7 +277,9 @@ const stats = computed<StatItem[]>(() => [
   font-family: var(--ms-font-mono, monospace);
   font-weight: 550;
   color: var(--vp-c-text-3);
-  transition: color 0.2s ease, transform 0.2s ease;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .bento-arrow {

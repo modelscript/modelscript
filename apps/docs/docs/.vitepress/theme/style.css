@@ -1046,3 +1046,15 @@ a:hover .sx-glow {
   );
   border: 1px solid color-mix(in srgb, var(--tone-p) 30%, transparent);
 }
+
+/* Respect reduced-motion preferences across all landing-page sections */
+@media (prefers-reduced-motion: reduce) {
+  .VPHome *,
+  .VPHome *::before,
+  .VPHome *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

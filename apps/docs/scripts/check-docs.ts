@@ -8,6 +8,7 @@
 //  3. Hand-written action / option tables only list things the CLI accepts.
 //  4. No unsubstantiated marketing words ("seamless", "sub-millisecond", …).
 //  5. Rule codes cited on a language page (`M7101`) exist in that language's rule catalog.
+//  6. Hard-coded language / tier counts ("90 formats", "25 Stable & 65 Beta") match the catalogue.
 //
 // CLI facts come from data/cli.generated.json (scripts/gen-cli-data.ts), which
 // is itself generated from the yargs command modules.
@@ -253,6 +254,59 @@ for (const file of themeFiles) {
         checkInvocation(rel, i + 1, m[1] ?? "", m[2], text.slice(m.index ?? 0, (m.index ?? 0) + 1 + tail.length));
       }
     });
+}
+
+// ── Language-count claims ──────────────────────────────────────────────
+// Prose such as "90 engineering formats" or "(25 Stable & 65 Beta)" is
+// hard-coded in markdown, the hero frontmatter and theme components. It must
+// match the generated language catalogue so it cannot silently go stale.
+
+const languagesJson = path.join(themeRoot, "data/languages.generated.json");
+const languageCatalog = JSON.parse(fs.readFileSync(languagesJson, "utf8")) as { tier: string }[];
+const languageTotal = languageCatalog.length;
+const tierTotals = new Map<string, number>();
+for (const l of languageCatalog) tierTotals.set(l.tier, (tierTotals.get(l.tier) ?? 0) + 1);
+
+// "<N> [engineering|polyglot|supported|registered|…] languages|formats"
+const countClaim =
+  /\b(\d{2,3})\+?[\s-]+(?:(?:engineering|polyglot|supported|registered|open|domain|ModelScript|scientific|language|format)\s+){0,3}(?:languages?|formats?|format parsers|language parsers)\b/gi;
+// "25 Stable & 65 Beta" / "25 stable, 65 beta"
+const tierClaim = /\b(\d{1,3})\s+(Stable|Beta|Preview)\b/gi;
+
+function checkLanguageCounts(rel: string, line: number, text: string): void {
+  for (const m of text.matchAll(countClaim)) {
+    const n = Number(m[1]);
+    // Only numbers close to the real total are language-count claims; other
+    // figures ("12 file formats", "8 domain clusters") are unrelated.
+    if (n !== languageTotal && n >= languageTotal - 15 && n <= languageTotal + 15) {
+      problems.push({
+        file: rel,
+        line,
+        message: `language count '${m[0]}' is stale; the catalogue has ${languageTotal} languages`,
+      });
+    }
+  }
+  for (const m of text.matchAll(tierClaim)) {
+    const expected = tierTotals.get((m[2] ?? "").toLowerCase());
+    if (expected !== undefined && Number(m[1]) !== expected && Number(m[1]) >= 10) {
+      problems.push({
+        file: rel,
+        line,
+        message: `tier count '${m[0]}' is stale; the catalogue has ${expected} ${m[2]?.toLowerCase() ?? ""}`,
+      });
+    }
+  }
+}
+
+// The linter-rules page counts languages that ship a lint catalogue (a subset
+// of all languages), so its figure is intentionally different.
+const languageCountExempt = new Set(["reference/linter-rules.md"]);
+for (const file of [...walk(docsRoot), ...themeFiles]) {
+  const rel = path.relative(docsRoot, file);
+  if (languageCountExempt.has(rel)) continue;
+  fs.readFileSync(file, "utf8")
+    .split("\n")
+    .forEach((text, i) => checkLanguageCounts(rel, i + 1, text));
 }
 
 if (problems.length) {

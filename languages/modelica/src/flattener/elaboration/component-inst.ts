@@ -5355,7 +5355,17 @@ export function instantiateElements(
             isParamRecord &&
             cleanRecordBindText &&
             !isSelfRecordVarRef &&
-            recordCtorArgs.length === 0 &&
+            // OMC keeps `Complex S = Complex(p0, q0)` as a whole-record equation instead of scalarizing
+            // the constructor call into field bindings (only field modifications become bindings).
+            (recordCtorArgs.length === 0 ||
+              (Boolean(flattener.options.omcCompatibility) &&
+                isOpRec &&
+                /^[A-Za-z_][\w.]*\s*\(/.test(cleanRecordBindText) &&
+                // Constant-literal arguments (`Complex(0, 0)`) are evaluated and scalarized by OMC; only
+                // calls that reference other variables/parameters stay as a record equation.
+                /[A-Za-z_]/.test(
+                  cleanRecordBindText.replace(/^[A-Za-z_][\w.]*\s*\(/, "").replace(/\d+\.?\d*(?:[eE][+-]?\d+)?/g, ""),
+                ))) &&
             !resolvedPkgRecordConst &&
             !isRecordVarRef &&
             dae.classKind !== "function" &&
@@ -6468,6 +6478,13 @@ export function instantiateElements(
                           const fnName = dae.interner.resolve(dae.getExprData1(id)) || "";
                           const argCount = dae.getExprRight(id);
                           const getArg = (idx: number) => (idx === 0 ? dae.getExprLeft(id) : dae.getExprLeft(id + idx));
+                          // OMC does not scalarize function-call bindings of Complex parameters into field
+                          // bindings (`Complex S = Complex(p0, q0)`, fromPolar, conj, '/', '*', ...): they stay
+                          // as a whole-record equation with `fixed = false` fields. Only field modifications
+                          // (`Complex S(re = p0, im = -q0)`) become field bindings, and those don't come here.
+                          if (flattener.options.omcCompatibility) {
+                            return null;
+                          }
                           if (fnName === "Complex" || fnName === "Complex.'constructor'.fromReal") {
                             if (argCount >= 2) return [getArg(0), getArg(1)];
                             if (argCount === 1) return [getArg(0), dae.addRealLiteral(0.0)];
@@ -8716,9 +8733,9 @@ export function instantiateElements(
                             (arg.value as any)?.evaluationScopeId ??
                             (arg as any).evaluationScopeId ??
                             (arg as any).ownerClassId;
-                          const docUri = evalScopeSymId
-                            ? flattener.db.symbol(evalScopeSymId)?.documentUri
-                            : targetSym?.documentUri;
+                          // Resolve the CST range against the symbol that DEFINED the modifier (its
+                          // resource), not the element it modifies: they may live in different files.
+                          const docUri = evalScopeSymId ? flattener.db.symbol(evalScopeSymId) : undefined;
                           let attrCst = arg.value?.cstBytes
                             ? flattener.db.cstNodeRange(
                                 arg.value.cstBytes[0],
@@ -8794,9 +8811,9 @@ export function instantiateElements(
                             (arg.value as any)?.evaluationScopeId ??
                             (arg as any).evaluationScopeId ??
                             (arg as any).ownerClassId;
-                          const docUri = evalScopeSymId
-                            ? flattener.db.symbol(evalScopeSymId)?.documentUri
-                            : targetSym?.documentUri;
+                          // Resolve the CST range against the symbol that DEFINED the modifier (its
+                          // resource), not the element it modifies: they may live in different files.
+                          const docUri = evalScopeSymId ? flattener.db.symbol(evalScopeSymId) : undefined;
                           const attrCst = flattener.db.cstNodeRange(
                             arg.value.cstBytes[0],
                             arg.value.cstBytes[1],
@@ -10362,8 +10379,8 @@ export function instantiateElements(
             let exprCst = findBindingExprNode(modChild ?? elemCst);
             if (!exprCst && (effectiveBinding as any)?.cstBytes) {
               const docUri = (effectiveBinding as any).evaluationScopeId
-                ? flattener.db.symbol((effectiveBinding as any).evaluationScopeId)?.documentUri
-                : flattener.db.symbol(elemId)?.documentUri;
+                ? flattener.db.symbol((effectiveBinding as any).evaluationScopeId)
+                : flattener.db.symbol(elemId);
               let bindCst = flattener.db.cstNodeRange(
                 (effectiveBinding as any).cstBytes[0],
                 (effectiveBinding as any).cstBytes[1],

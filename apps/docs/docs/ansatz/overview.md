@@ -14,7 +14,7 @@ description: "Ansatz (ansatz.social) is a federated engineering network and clou
 While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
 
 1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, SBML, and ModelScript libraries with SPDX license auditing and polyglot standard library discovery (`msx stdlib`).
-2. **Federated Engineering Feeds ("Morsels"):** W3C ActivityPub-powered social collaboration where engineers share executable simulation runs across 81 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+2. **Federated Engineering Feeds ("Morsels"):** W3C ActivityPub-powered social collaboration where engineers share executable simulation runs across 90 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
 3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification morsels.
 4. **Personal Activity Git Vault:** Every user account is backed by a cryptographically signed, user-owned Git repository vault that versions posts, model snapshots, citations, and annotations for complete data sovereignty and offline Git portability.
 5. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.
@@ -40,7 +40,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 │   • packages/runtime: SoA DAE arena, BLT, Salsa query engine           │
 │   • packages/simulate: SUNDIALS CVODE/IDA, WebGPU solver               │
 │   • packages/dsl: WASM GLR parser compiler, TGG graph rewriting        │
-│   • languages/*: 81 engineering & scientific domain language parsers   │
+│   • languages/*: 90 engineering & scientific domain language parsers   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 

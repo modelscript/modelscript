@@ -76,7 +76,7 @@ const rowB = LANGUAGES.slice(half);
 
 .track {
   display: flex;
-  gap: 10px;
+  gap: 0;
   width: max-content;
   animation: scroll 70s linear infinite;
 }
@@ -86,7 +86,8 @@ const rowB = LANGUAGES.slice(half);
   animation-duration: 80s;
 }
 
-.marquee:hover .track {
+.marquee:hover .track,
+.marquee:focus-within .track {
   animation-play-state: paused;
 }
 
@@ -103,6 +104,7 @@ const rowB = LANGUAGES.slice(half);
   color: var(--vp-c-text-1);
   white-space: nowrap;
   text-decoration: none;
+  margin-right: 10px;
   transition:
     border-color 0.2s,
     color 0.2s;
@@ -160,6 +162,7 @@ const rowB = LANGUAGES.slice(half);
     flex-wrap: wrap;
     width: auto;
     justify-content: center;
+    row-gap: 10px;
   }
 
   .chip[aria-hidden="true"] {
@@ -167,4 +170,3 @@ const rowB = LANGUAGES.slice(half);
   }
 }
 </style>
-

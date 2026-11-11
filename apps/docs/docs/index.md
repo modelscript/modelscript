@@ -7,7 +7,7 @@ titleTemplate: false
 hero:
   name: "ModelScript"
   text: "One web-native compiler for every engineering model"
-  tagline: "Build a computable digital thread across 81 engineering formats. Link requirements and architecture to multi-physics models and 3D CAD — powering simulation, formal verification, and optimization."
+  tagline: "Build a computable digital thread across 90 engineering formats. Link requirements, architecture, multi-physics models and 3D CAD — with simulation, formal verification, optimization and AI-agent tooling (MCP) built in."
   image:
     src: /ms-logo.png
     alt: ModelScript 3D turbine engine
@@ -17,12 +17,14 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: Try Morsel
-      link: /morsel
-      target: _self
+      link: https://ansatz.social/morsel
+      target: _blank
+      rel: noopener noreferrer
     - theme: alt
       text: Launch Studio
-      link: /studio
-      target: _self
+      link: https://ansatz.social/studio
+      target: _blank
+      rel: noopener noreferrer
 ---
 
 <HomeStats />

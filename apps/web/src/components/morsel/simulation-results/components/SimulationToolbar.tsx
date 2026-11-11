@@ -1,16 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  CheckIcon,
-  CopyIcon,
-  CrossReferenceIcon,
-  DownloadIcon,
-  GraphIcon,
-  PinIcon,
-  XIcon,
-  ZapIcon,
-} from "@primer/octicons-react";
-import React from "react";
+import { CheckIcon, CopyIcon, DownloadIcon, PinIcon, XIcon } from "@primer/octicons-react";
+import React, { useEffect, useRef, useState } from "react";
 
 export interface SimulationToolbarProps {
   xAxisVar: string;
@@ -34,6 +25,38 @@ export interface SimulationToolbarProps {
   copied: boolean;
 }
 
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  height: 26,
+  padding: "0 10px",
+  fontSize: 12,
+  fontWeight: active ? 600 : 500,
+  borderRadius: 6,
+  border: "none",
+  cursor: "pointer",
+  userSelect: "none",
+  background: active ? "var(--ms-brand-soft, rgba(6, 182, 212, 0.14))" : "transparent",
+  color: active ? "var(--ms-brand, #0e7490)" : "var(--color-fg-muted, #6b7280)",
+  transition: "background 0.12s ease, color 0.12s ease",
+});
+
+const menuItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  padding: "6px 10px",
+  fontSize: 12,
+  border: "none",
+  background: "transparent",
+  color: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+  borderRadius: 4,
+};
+
 export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
   xAxisVar,
   onXAxisVarChange,
@@ -55,285 +78,139 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
   onCopyClipboard,
   copied,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+
+  const run = (fn: () => void) => () => {
+    fn();
+    setMenuOpen(false);
+  };
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: "12px",
-        borderBottom: "1px solid var(--color-border-muted)",
-        paddingBottom: "12px",
-      }}
-    >
-      <h2 style={{ margin: 0, fontSize: "16px", fontWeight: "bold" }}>Simulation Results</h2>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+        <select
+          value={xAxisVar}
+          onChange={(e) => onXAxisVarChange(e.target.value)}
+          aria-label="X-axis variable"
+          title="X-axis variable (choose a state for a phase portrait)"
+          style={{
+            height: 26,
+            fontSize: 12,
+            padding: "0 6px",
+            marginRight: 6,
+            borderRadius: 6,
+            border: "1px solid var(--color-border-muted)",
+            background: "transparent",
+            color: "inherit",
+            maxWidth: 180,
+          }}
+        >
+          <option value="time">x: time</option>
+          {allVars.map((v) => (
+            <option key={v} value={v}>
+              x: {v}
+            </option>
+          ))}
+        </select>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", fontSize: "12px" }}>
-        {/* X-Axis Selector for Phase Portrait */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span style={{ fontWeight: 500, color: "var(--color-fg-muted)" }}>X-Axis:</span>
-          <select
-            value={xAxisVar}
-            onChange={(e) => onXAxisVarChange(e.target.value)}
+        <button
+          type="button"
+          style={chipStyle(isNormalized)}
+          onClick={() => onToggleNormalized(!isNormalized)}
+          title="Normalize curves to 0–100%"
+        >
+          Normalize
+        </button>
+        <button type="button" style={chipStyle(isLogScale)} onClick={() => onToggleLogScale(!isLogScale)}>
+          Log
+        </button>
+        <button
+          type="button"
+          style={chipStyle(cursorMode)}
+          onClick={onToggleCursorMode}
+          title="Dual-cursor measurement (click plot to place C1 / C2)"
+        >
+          Cursors
+        </button>
+        <button
+          type="button"
+          style={chipStyle(showStats)}
+          onClick={onToggleShowStats}
+          title="Min / max / peak-to-peak / mean / final"
+        >
+          Stats
+        </button>
+        {isComparingBaseline ? (
+          <button
+            type="button"
+            style={chipStyle(true)}
+            onClick={onClearBaseline}
+            title="Clear pinned baseline (dashed lines)"
+          >
+            Baseline <XIcon size={12} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={chipStyle(false)}
+            onClick={onPinBaseline}
+            title="Pin this run as a baseline for comparison"
+          >
+            <PinIcon size={12} /> Pin run
+          </button>
+        )}
+      </div>
+
+      <div ref={menuRef} style={{ position: "relative" }}>
+        <button
+          type="button"
+          style={{ ...chipStyle(menuOpen), border: "1px solid var(--color-border-muted)" }}
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          <DownloadIcon size={12} /> Export
+        </button>
+        {menuOpen && (
+          <div
+            role="menu"
             style={{
-              fontSize: "12px",
-              padding: "3px 8px",
-              borderRadius: "4px",
+              position: "absolute",
+              right: 0,
+              top: 32,
+              zIndex: 20,
+              minWidth: 160,
+              padding: 4,
+              borderRadius: 8,
+              background: "var(--color-canvas-default, #fff)",
               border: "1px solid var(--color-border-default)",
-              background: "var(--color-canvas-default)",
-              color: "inherit",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
             }}
-            title="Select X-Axis variable for time-series or state-space phase portrait"
           >
-            <option value="time">Time (s)</option>
-            {allVars.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Normalize Mode Checkbox */}
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-          title="Normalize all variable curves to 0-100% to compare different units and magnitudes"
-        >
-          <input
-            type="checkbox"
-            checked={isNormalized}
-            onChange={(e) => onToggleNormalized(e.target.checked)}
-            style={{ accentColor: "var(--color-accent-fg, #0969da)" }}
-          />
-          <span>Normalize (0-100%)</span>
-        </label>
-
-        {/* Logarithmic Scale Checkbox */}
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={isLogScale}
-            onChange={(e) => onToggleLogScale(e.target.checked)}
-            style={{ accentColor: "var(--color-accent-fg, #0969da)" }}
-          />
-          <span>Log Scale</span>
-        </label>
-
-        {/* Action Buttons */}
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          {/* Baseline Comparison (Run A vs Run B) */}
-          {!isComparingBaseline ? (
-            <button
-              onClick={onPinBaseline}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 500,
-                transition: "all 0.15s ease",
-              }}
-              title="Pin current simulation trajectory as Run A baseline"
-            >
-              <PinIcon size={12} /> Pin Baseline
+            <button type="button" role="menuitem" style={menuItemStyle} onClick={run(onExportCsv)}>
+              CSV
             </button>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              <span
-                style={{
-                  fontSize: "11px",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  background: "rgba(6, 182, 212, 0.15)",
-                  border: "1px solid var(--color-accent-cyan, #06b6d4)",
-                  color: "var(--color-accent-cyan, #06b6d4)",
-                  fontWeight: 600,
-                }}
-                title="Comparing against pinned baseline (dashed lines)"
-              >
-                Comparing Run A
-              </span>
-              <button
-                onClick={onClearBaseline}
-                style={{
-                  fontSize: "11px",
-                  padding: "2px 5px",
-                  borderRadius: "4px",
-                  border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                  background: "transparent",
-                  color: "var(--color-fg-muted)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-                title="Clear pinned baseline comparison"
-              >
-                <XIcon size={12} />
-              </button>
-            </div>
-          )}
-          <button
-            onClick={onToggleCursorMode}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "4px",
-              border: cursorMode
-                ? "1px solid var(--color-accent-cyan, #06b6d4)"
-                : "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-              background: cursorMode
-                ? "rgba(6, 182, 212, 0.15)"
-                : "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-              color: cursorMode
-                ? "var(--color-accent-cyan, #06b6d4)"
-                : "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-              cursor: "pointer",
-              fontWeight: cursorMode ? 600 : 500,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              transition: "all 0.15s ease",
-            }}
-            title="Toggle interactive dual-cursor measurement (click plot to place C1 / C2)"
-          >
-            <CrossReferenceIcon size={12} /> Cursors
-          </button>
-          <button
-            onClick={onToggleShowStats}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "4px",
-              border: showStats
-                ? "1px solid var(--color-accent-emphasis, #0969da)"
-                : "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-              background: showStats
-                ? "rgba(9, 105, 218, 0.15)"
-                : "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-              color: showStats
-                ? "var(--color-accent-fg, #0969da)"
-                : "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-              cursor: "pointer",
-              fontWeight: showStats ? 600 : 500,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              transition: "all 0.15s ease",
-            }}
-            title="Toggle numerical statistical summary (Min, Max, Pk-Pk, Mean, Final)"
-          >
-            <GraphIcon size={12} /> Stats
-          </button>
-          <button
-            onClick={onExportCsv}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "4px",
-              border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-              background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-              color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              fontWeight: 500,
-              transition: "all 0.15s ease",
-            }}
-            title="Download simulated data as CSV"
-          >
-            <DownloadIcon size={12} /> CSV
-          </button>
-          <button
-            onClick={onExportJson}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "4px",
-              border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-              background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-              color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              fontWeight: 500,
-              transition: "all 0.15s ease",
-            }}
-            title="Download simulated data as JSON"
-          >
-            <DownloadIcon size={12} /> JSON
-          </button>
-          <button
-            onClick={onExportParquet}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "4px",
-              border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-              background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-              color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              fontWeight: 500,
-              transition: "all 0.15s ease",
-            }}
-            title="Download simulated data as Apache Parquet (binary columnar format)"
-          >
-            <ZapIcon size={12} /> Parquet
-          </button>
-          <button
-            onClick={onCopyClipboard}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "4px",
-              border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-              background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-              color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              fontWeight: 500,
-              transition: "all 0.15s ease",
-            }}
-            title="Copy tab-delimited simulation data to clipboard"
-          >
-            {copied ? (
-              <>
-                <CheckIcon size={12} /> Copied!
-              </>
-            ) : (
-              <>
-                <CopyIcon size={12} /> Copy
-              </>
-            )}
-          </button>
-        </div>
+            <button type="button" role="menuitem" style={menuItemStyle} onClick={run(onExportJson)}>
+              JSON
+            </button>
+            <button type="button" role="menuitem" style={menuItemStyle} onClick={run(onExportParquet)}>
+              Parquet
+            </button>
+            <button type="button" role="menuitem" style={menuItemStyle} onClick={() => onCopyClipboard()}>
+              {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />} {copied ? "Copied" : "Copy as TSV"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

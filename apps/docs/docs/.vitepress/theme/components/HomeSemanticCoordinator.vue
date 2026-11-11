@@ -29,12 +29,7 @@ const tabRefs = ref<HTMLButtonElement[]>([]);
 const showHypergraphDetails = ref(false);
 
 // Per-pane active tab: 'code' | 'visual' | 'csg'
-const paneViewModes = ref<[PaneViewMode, PaneViewMode, PaneViewMode, PaneViewMode]>([
-  "code",
-  "code",
-  "code",
-  "code",
-]);
+const paneViewModes = ref<[PaneViewMode, PaneViewMode, PaneViewMode, PaneViewMode]>(["code", "code", "code", "code"]);
 
 // Interactive 3D Orbit Camera state per pane (yaw, pitch in degrees)
 const paneCameras = reactive<
@@ -85,9 +80,7 @@ const isModified = computed(() => {
   return paneCodes.value.some((c, idx) => c !== defaults[idx]);
 });
 
-const allVisualActive = computed(() =>
-  paneViewModes.value.every((m) => m !== "code"),
-);
+const allVisualActive = computed(() => paneViewModes.value.every((m) => m !== "code"));
 
 const highlightedPanes = computed<[string[], string[], string[], string[]]>(() => {
   const p = currentScenario.value.panes;
@@ -132,17 +125,13 @@ function getPaneVisualLabel(pane: CoordinatorPaneSpec): string {
 }
 
 function setPaneViewMode(paneIdx: number, mode: PaneViewMode): void {
-  const next: [PaneViewMode, PaneViewMode, PaneViewMode, PaneViewMode] = [
-    ...paneViewModes.value,
-  ];
+  const next: [PaneViewMode, PaneViewMode, PaneViewMode, PaneViewMode] = [...paneViewModes.value];
   next[paneIdx] = mode;
   paneViewModes.value = next;
 }
 
 function toggleAllPanesVisual(toVisual: boolean): void {
-  paneViewModes.value = toVisual
-    ? ["visual", "visual", "visual", "visual"]
-    : ["code", "code", "code", "code"];
+  paneViewModes.value = toVisual ? ["visual", "visual", "visual", "visual"] : ["code", "code", "code", "code"];
 }
 
 function setCameraPreset(paneIdx: number, preset: "iso" | "top" | "front"): void {
@@ -262,7 +251,10 @@ function stressToColor(stressMpa: number, maxAllowableMpa: number): { fill: stri
   return { fill: "rgba(239, 68, 68, 0.88)", stroke: "#dc2626" };
 }
 
-function projectScadMesh(vis: Scad3DVisualData, paneIdx: number): {
+function projectScadMesh(
+  vis: Scad3DVisualData,
+  paneIdx: number,
+): {
   polygons: ProjectedPolygon[];
   portPins: {
     portName: string;
@@ -334,7 +326,10 @@ function projectScadMesh(vis: Scad3DVisualData, paneIdx: number): {
   return { polygons, portPins };
 }
 
-function projectFeaMesh(vis: Fea3DVisualData, paneIdx: number): {
+function projectFeaMesh(
+  vis: Fea3DVisualData,
+  paneIdx: number,
+): {
   undeformedPolys: string[];
   deformedPolys: ProjectedPolygon[];
   pins: { x: number; y: number }[];
@@ -450,15 +445,15 @@ function setMonacoContainerRef(idx: number, el: Element | null): void {
   monacoContainers.value[idx] = el as HTMLElement | null;
 }
 
-function syncMonacoPanes(skipPaneIdx?: number): void {
+function syncMonacoPanes(): void {
   suppressMonacoOnChange = true;
   try {
     for (let i = 0; i < 4; i++) {
       const inst = monacoInstances[i];
       if (!inst) continue;
-      if (i !== skipPaneIdx) {
-        inst.setValue(paneCodes.value[i]!);
-      }
+      // `setValue` applies minimal edits and is a no-op when the text already matches,
+      // so syncing the edited pane too is safe and keeps editor and state identical.
+      inst.setValue(paneCodes.value[i]!);
       inst.setDiagnostics(evalResult.value.paneDiagnostics[i] ?? []);
     }
   } finally {
@@ -466,30 +461,94 @@ function syncMonacoPanes(skipPaneIdx?: number): void {
   }
 }
 
+/**
+ * Merge engine-normalized text back into a pane without clobbering what the user typed.
+ * Lines the user changed since the last evaluation (`baseline` -> `user`) always win;
+ * every other line adopts the engine's derived value. Structural edits (line count
+ * changes) keep the user's text verbatim and are re-normalized on the next value edit.
+ */
+function mergeUserLines(baseline: string, user: string, engine: string): string {
+  if (user === engine) return user;
+  const b = baseline.split("\n");
+  const u = user.split("\n");
+  const e = engine.split("\n");
+  if (b.length !== u.length || u.length !== e.length) return user;
+  return u.map((line, i) => (line !== b[i] ? line : e[i]!)).join("\n");
+}
+
+/** Last committed (evaluated + merged) text of each pane; the diff base for `mergeUserLines`. */
+let baselineCodes: [string, string, string, string] = [...paneCodes.value];
+let evalTimer: ReturnType<typeof setTimeout> | null = null;
+const EVAL_DEBOUNCE_MS = 160;
+
+function cancelPendingEvaluation(): void {
+  if (evalTimer !== null) {
+    clearTimeout(evalTimer);
+    evalTimer = null;
+  }
+}
+
+/** Set when the engine cannot evaluate the current text; cleared on the next successful run. */
+const evalError = ref<string | null>(null);
+
 function runCoordinatorEvaluation(editedIdx: number): void {
+  cancelPendingEvaluation();
   lastEditedPaneIdx.value = editedIdx;
-  const res = evaluateCoordinatorScenario(
-    currentScenario.value.id,
-    paneCodes.value,
-    editedIdx,
-  );
-  evalResult.value = res;
-  paneCodes.value = [...res.updatedCodes];
-  scenarioCodeCache.set(currentScenario.value.id, [...res.updatedCodes]);
-  syncMonacoPanes(editedIdx);
+  const scenarioId = currentScenario.value.id;
+  const user: [string, string, string, string] = [...paneCodes.value];
+
+  try {
+    const first = evaluateCoordinatorScenario(scenarioId, user, editedIdx);
+    const merged = first.updatedCodes.map((eng, i) => mergeUserLines(baselineCodes[i]!, user[i]!, eng)) as [
+      string,
+      string,
+      string,
+      string,
+    ];
+
+    // Re-evaluate against the merged text so diagnostics/visuals match exactly what is on screen.
+    const changed = merged.some((c, i) => c !== user[i]);
+    evalResult.value = changed ? evaluateCoordinatorScenario(scenarioId, merged, editedIdx) : first;
+    evalError.value = null;
+
+    paneCodes.value = merged;
+    baselineCodes = [...merged];
+    scenarioCodeCache.set(scenarioId, [...merged]);
+    syncMonacoPanes();
+  } catch (err) {
+    // Keep exactly what the user typed and the last good analysis; never lose an edit.
+    evalError.value =
+      err instanceof RangeError
+        ? "A value is out of range for the live solver — adjust it to see updated results."
+        : `Couldn't evaluate this input yet: ${err instanceof Error ? err.message : String(err)}`;
+    baselineCodes = [...user];
+    scenarioCodeCache.set(scenarioId, [...user]);
+  }
 }
 
 function onPaneEdited(paneIdx: number, nextCode: string): void {
   if (suppressMonacoOnChange) return;
+  // State follows the editor on every keystroke; only the (expensive) evaluation is debounced.
   const updated: [string, string, string, string] = [...paneCodes.value];
   updated[paneIdx] = nextCode;
   paneCodes.value = updated;
+  lastEditedPaneIdx.value = paneIdx;
   activePresetId.value = "custom";
   scenarioPresetCache.set(currentScenario.value.id, "custom");
-  runCoordinatorEvaluation(paneIdx);
+  cancelPendingEvaluation();
+  evalTimer = setTimeout(() => {
+    evalTimer = null;
+    runCoordinatorEvaluation(paneIdx);
+  }, EVAL_DEBOUNCE_MS);
+}
+
+/** Commit any edit still waiting on the debounce timer so it is never lost on a context switch. */
+function flushPendingEvaluation(): void {
+  if (evalTimer !== null) runCoordinatorEvaluation(lastEditedPaneIdx.value);
 }
 
 function applyPreset(presetId: string): void {
+  flushPendingEvaluation();
   const s = currentScenario.value;
   const preset = s.presets.find((p) => p.id === presetId);
   if (!preset) return;
@@ -502,9 +561,10 @@ function applyPreset(presetId: string): void {
     s.panes[3].defaultCode,
   ];
   const { codes, editedPaneIndex } = preset.apply(defaults);
+  // Diff against the pristine defaults so the lines the preset changed are treated as user input.
+  baselineCodes = [...defaults];
   paneCodes.value = [...codes];
   runCoordinatorEvaluation(editedPaneIndex);
-  syncMonacoPanes();
 }
 
 function resetScenario(): void {
@@ -512,6 +572,7 @@ function resetScenario(): void {
 }
 
 function selectScenario(idx: number): void {
+  flushPendingEvaluation();
   activeScenarioIdx.value = idx;
   const s = COORDINATOR_SCENARIOS[idx]!;
   const cachedCodes = scenarioCodeCache.get(s.id);
@@ -523,20 +584,27 @@ function selectScenario(idx: number): void {
     setPaneViewMode(2, "visual");
   }
 
-  if (cachedCodes) {
-    paneCodes.value = [...cachedCodes];
-  } else {
-    paneCodes.value = [
-      s.panes[0].defaultCode,
-      s.panes[1].defaultCode,
-      s.panes[2].defaultCode,
-      s.panes[3].defaultCode,
-    ];
-  }
+  const defaultCodes: [string, string, string, string] = [
+    s.panes[0].defaultCode,
+    s.panes[1].defaultCode,
+    s.panes[2].defaultCode,
+    s.panes[3].defaultCode,
+  ];
+  let startCodes: [string, string, string, string] = cachedCodes ? [...cachedCodes] : [...defaultCodes];
 
-  const res = evaluateCoordinatorScenario(s.id, paneCodes.value, 0);
+  let res: CoordinatorEvaluationResult;
+  try {
+    res = evaluateCoordinatorScenario(s.id, startCodes, 0);
+    evalError.value = null;
+  } catch {
+    startCodes = [...defaultCodes];
+    res = evaluateCoordinatorScenario(s.id, startCodes, 0);
+    evalError.value = "Your previous edits for this scenario could not be evaluated, so it was reset to defaults.";
+  }
   evalResult.value = res;
   paneCodes.value = [...res.updatedCodes];
+  baselineCodes = [...res.updatedCodes];
+  lastEditedPaneIdx.value = 0;
 
   suppressMonacoOnChange = true;
   try {
@@ -584,8 +652,7 @@ async function activateMonacoEditors(focusPaneIdx: number = 0): Promise<void> {
 
   try {
     const { mountWorkflowMonacoPane } = await import("../util/workflow-monaco");
-    const isDark =
-      typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
     const s = currentScenario.value;
 
     for (let i = 0; i < 4; i++) {
@@ -641,6 +708,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  cancelPendingEvaluation();
   themeObserver?.disconnect();
   for (const inst of monacoInstances) {
     inst?.dispose();
@@ -672,7 +740,11 @@ onBeforeUnmount(() => {
           v-for="(s, idx) in COORDINATOR_SCENARIOS"
           :key="s.id"
           :id="`coord-tab-${s.id}`"
-          :ref="(el) => { if (el) tabRefs[idx] = el as HTMLButtonElement }"
+          :ref="
+            (el) => {
+              if (el) tabRefs[idx] = el as HTMLButtonElement;
+            }
+          "
           type="button"
           role="tab"
           class="scenario-tab"
@@ -716,23 +788,25 @@ onBeforeUnmount(() => {
                 <MsIcon :name="currentScenario.icon" :size="16" :duotone="true" />
                 {{ currentScenario.domain }}
               </span>
-              <span class="hypergraph-pill">
-                4-Way <code>DigitalThreadHypergraph</code>
-              </span>
-              <span
-                class="verdict-pill"
-                :class="evalResult.isSat ? 'verdict-sat' : 'verdict-unsat'"
-                role="status"
-              >
+              <span class="hypergraph-pill"> 4-Way <code>DigitalThreadHypergraph</code> </span>
+              <span class="verdict-pill" :class="evalResult.isSat ? 'verdict-sat' : 'verdict-unsat'" role="status">
                 <span class="verdict-dot" />
-                {{ evalResult.isSat ? "NELSON-OPPEN: SAT (ALL 4 ORACLES VERIFIED)" : `NELSON-OPPEN: UNSAT (${evalResult.conflicts.length} CONFLICT${evalResult.conflicts.length === 1 ? "" : "S"})` }}
+                {{
+                  evalResult.isSat
+                    ? "NELSON-OPPEN: SAT (ALL 4 ORACLES VERIFIED)"
+                    : `NELSON-OPPEN: UNSAT (${evalResult.conflicts.length} CONFLICT${evalResult.conflicts.length === 1 ? "" : "S"})`
+                }}
               </span>
             </div>
             <h3 class="card-title">{{ currentScenario.title }}</h3>
           </div>
 
           <div class="header-actions">
-            <div class="global-view-toggle" role="group" aria-label="Switch all 4 editors between Code and Visual Diagram/3D/CAE views">
+            <div
+              class="global-view-toggle"
+              role="group"
+              aria-label="Switch all 4 editors between Code and Visual Diagram/3D/CAE views"
+            >
               <button
                 type="button"
                 class="gvt-btn"
@@ -762,18 +836,18 @@ onBeforeUnmount(() => {
               <MsIcon name="code" :size="14" />
               <span>Activate 4-Pane Live Monaco</span>
             </button>
-            <button
-              v-if="isModified"
-              type="button"
-              class="reset-btn"
-              @click="resetScenario"
-            >
+            <button v-if="isModified" type="button" class="reset-btn" @click="resetScenario">
               Restore SAT Baseline
             </button>
           </div>
         </div>
 
         <p class="card-description">{{ currentScenario.description }}</p>
+
+        <div v-if="evalError" class="eval-error" role="alert">
+          <MsIcon name="shield" :size="14" />
+          <span>{{ evalError }}</span>
+        </div>
 
         <!-- Interactive What-If / Cross-Domain Perturbation Bar -->
         <div class="presets-toolbar" role="region" aria-label="Cross-domain perturbation scenarios">
@@ -810,7 +884,11 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Nelson-Oppen Shared Equality & FQN Binding Bus Strip -->
-        <div class="equality-bus-panel" role="region" aria-label="Nelson-Oppen Shared Equalities and Per-Language FQN Bindings">
+        <div
+          class="equality-bus-panel"
+          role="region"
+          aria-label="Nelson-Oppen Shared Equalities and Per-Language FQN Bindings"
+        >
           <div class="bus-header">
             <div class="bus-title-group">
               <span class="bus-badge">Nelson-Oppen FQN &amp; Port Bus</span>
@@ -845,34 +923,39 @@ onBeforeUnmount(() => {
                   {{ link.status }}
                 </span>
               </div>
-              <div class="var-canonical-row" :title="`Canonical Digital Thread Hub FQN: ${link.canonicalFqn}`">
-                <span class="canonical-tag">Hub FQN</span>
-                <code class="var-symbol">{{ link.canonicalFqn }}</code>
-              </div>
-              <div class="var-mech-row" :title="`In-code cross-language binding construct: ${link.bindingMechanism}`">
-                <span class="mech-label">Bind:</span>
-                <code class="var-mech-code">{{ link.bindingMechanism }}</code>
-              </div>
               <div class="var-values-row">
                 <span class="var-actual">{{ link.valueFormatted }}</span>
-                <span class="var-bound">Contract: <code>{{ link.boundsFormatted }}</code></span>
-              </div>
-              <div class="var-domain-fqns" aria-label="Per-language FQN resolution table">
-                <div
-                  v-for="db in link.domainBindings"
-                  :key="db.fqn"
-                  class="domain-fqn-row"
-                  :title="`${db.domainLabel} binding syntax: ${db.bindingSyntax}`"
+                <span class="var-bound"
+                  >Contract: <code>{{ link.boundsFormatted }}</code></span
                 >
-                  <span class="dfqn-lang">{{ db.domainLabel }}</span>
-                  <code class="dfqn-path">{{ db.fqn }}</code>
-                  <span class="dfqn-val">{{ db.valueText }}</span>
-                </div>
               </div>
               <div class="var-footer-row">
                 <code class="oracle-tag">{{ link.oracleName }}</code>
                 <span class="margin-text">{{ link.marginText }}</span>
               </div>
+              <details class="var-details">
+                <summary>Bindings</summary>
+                <div class="var-canonical-row" :title="`Canonical Digital Thread Hub FQN: ${link.canonicalFqn}`">
+                  <span class="canonical-tag">Hub FQN</span>
+                  <code class="var-symbol">{{ link.canonicalFqn }}</code>
+                </div>
+                <div class="var-mech-row" :title="`In-code cross-language binding construct: ${link.bindingMechanism}`">
+                  <span class="mech-label">Bind:</span>
+                  <code class="var-mech-code">{{ link.bindingMechanism }}</code>
+                </div>
+                <div class="var-domain-fqns" aria-label="Per-language FQN resolution table">
+                  <div
+                    v-for="db in link.domainBindings"
+                    :key="db.fqn"
+                    class="domain-fqn-row"
+                    :title="`${db.domainLabel} binding syntax: ${db.bindingSyntax}`"
+                  >
+                    <span class="dfqn-lang">{{ db.domainLabel }}</span>
+                    <code class="dfqn-path">{{ db.fqn }}</code>
+                    <span class="dfqn-val">{{ db.valueText }}</span>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -881,14 +964,22 @@ onBeforeUnmount(() => {
             <div class="drawer-head">
               <strong>Explicit Digital Thread Link, CAD↔CAE Port &amp; Symbolic Equation Manifest</strong>
               <span>
-                Every cross-language link, 3D mesh import (<code>*INCLUDE</code> / <code>geometry</code>), boundary patch binding (<code>tag_port(...)</code> ↔ <code>*BOUNDARY</code> / <code>*CLOAD</code> / <code>boundaryField</code>), and equation is parsed directly from the 4 source files above — zero hardcoded formulas or hidden links.
+                Every cross-language link, 3D mesh import (<code>*INCLUDE</code> / <code>geometry</code>), boundary
+                patch binding (<code>tag_port(...)</code> ↔ <code>*BOUNDARY</code> / <code>*CLOAD</code> /
+                <code>boundaryField</code>), and equation is parsed directly from the 4 source files above — zero
+                hardcoded formulas or hidden links.
               </span>
             </div>
 
             <!-- CAD tag_port <-> CAE Boundary Patch Verification Table -->
             <div v-if="evalResult.parsedMetadata.portBindings.length > 0" class="manifest-subsection">
               <div class="manifest-sub-title">
-                <span>3D CAD <code>tag_port(...)</code> ↔ CAE Boundary Patch Bindings (<code>{{ evalResult.parsedMetadata.meshSourceSummary }}</code>)</span>
+                <span
+                  >3D CAD <code>tag_port(...)</code> ↔ CAE Boundary Patch Bindings (<code>{{
+                    evalResult.parsedMetadata.meshSourceSummary
+                  }}</code
+                  >)</span
+                >
               </div>
               <div class="port-manifest-grid">
                 <div
@@ -918,7 +1009,10 @@ onBeforeUnmount(() => {
             <!-- Evaluated Symbolic Equations Table -->
             <div v-if="evalResult.parsedMetadata.evaluatedEquations.length > 0" class="manifest-subsection">
               <div class="manifest-sub-title">
-                <span>Live Evaluated Symbolic Equations (<code>evaluateScad</code> &amp; <code>evaluateCfdExpression</code>)</span>
+                <span
+                  >Live Evaluated Symbolic Equations (<code>evaluateScad</code> &amp;
+                  <code>evaluateCfdExpression</code>)</span
+                >
               </div>
               <div class="eq-manifest-list">
                 <div
@@ -936,7 +1030,10 @@ onBeforeUnmount(() => {
             <!-- Parsed Source Directives List -->
             <div class="manifest-subsection">
               <div class="manifest-sub-title">
-                <span>Parsed Cross-Language Directives ({{ evalResult.parsedMetadata.directiveLinks.length }} active links)</span>
+                <span
+                  >Parsed Cross-Language Directives ({{ evalResult.parsedMetadata.directiveLinks.length }} active
+                  links)</span
+                >
               </div>
               <div class="directive-manifest-grid">
                 <div
@@ -973,7 +1070,10 @@ onBeforeUnmount(() => {
                 <span class="pane-index-badge">0{{ pIdx + 1 }}</span>
                 <span class="pane-fmt-tag">{{ pane.formatLabel }}</span>
                 <span class="pane-file-name">{{ pane.fileName }}</span>
-                <code class="pane-namespace-fqn" :title="`Root Namespace FQN: ${pane.namespaceFqn} (${pane.fqnSyntaxNote})`">
+                <code
+                  class="pane-namespace-fqn"
+                  :title="`Root Namespace FQN: ${pane.namespaceFqn} (${pane.fqnSyntaxNote})`"
+                >
                   {{ pane.namespaceFqn }}
                 </code>
               </div>
@@ -1044,10 +1144,12 @@ onBeforeUnmount(() => {
                 @keydown.enter.prevent="activateMonacoEditors(pIdx)"
                 @keydown.space.prevent="activateMonacoEditors(pIdx)"
               >
-                <div class="line-numbers" aria-hidden="true">
-                  <span v-for="(_, lineIdx) in highlightedPanes[pIdx]" :key="lineIdx">{{ lineIdx + 1 }}</span>
+                <div class="pane-code semantic-code">
+                  <div v-for="(lineHtml, lineIdx) in highlightedPanes[pIdx]" :key="lineIdx" class="code-line">
+                    <span class="line-num" aria-hidden="true">{{ lineIdx + 1 }}</span>
+                    <span class="line-text" v-html="lineHtml || '&nbsp;'" />
+                  </div>
                 </div>
-                <pre class="pane-code semantic-code"><code v-html="highlightedPanes[pIdx].join('\n')" /></pre>
 
                 <div class="editor-activation-overlay">
                   <div class="overlay-glass-pill">
@@ -1074,14 +1176,24 @@ onBeforeUnmount(() => {
               <template v-if="evalResult.paneVisuals[pIdx]?.kind === 'sysml-bdd'">
                 <div class="visual-stage sysml-bdd-stage">
                   <div class="visual-overlay-bar">
-                    <span class="vo-chip">SysML v2 BDD · <code>«package» {{ asSysmlVis(evalResult.paneVisuals[pIdx]).packageName }}</code></span>
+                    <span class="vo-chip"
+                      >SysML v2 BDD ·
+                      <code>«package» {{ asSysmlVis(evalResult.paneVisuals[pIdx]).packageName }}</code></span
+                    >
                     <span class="vo-hint">Live CST Requirement &amp; Subject Graph</span>
                   </div>
-                  <svg viewBox="0 0 420 205" class="pane-svg-canvas" role="img" :aria-label="`SysML v2 BDD diagram for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 420 205"
+                    class="pane-svg-canvas"
+                    role="img"
+                    :aria-label="`SysML v2 BDD diagram for ${pane.fileName}`"
+                  >
                     <!-- Part Def Block -->
                     <rect x="12" y="18" width="176" height="172" rx="8" class="svg-box-part" />
                     <text x="22" y="35" class="svg-stereo">«part def»</text>
-                    <text x="22" y="51" class="svg-block-title">{{ asSysmlVis(evalResult.paneVisuals[pIdx]).partName }}</text>
+                    <text x="22" y="51" class="svg-block-title">
+                      {{ asSysmlVis(evalResult.paneVisuals[pIdx]).partName }}
+                    </text>
                     <line x1="12" y1="59" x2="188" y2="59" class="svg-divider" />
                     <g
                       v-for="(attr, aIdx) in asSysmlVis(evalResult.paneVisuals[pIdx]).partAttributes"
@@ -1094,14 +1206,24 @@ onBeforeUnmount(() => {
                     </g>
 
                     <!-- Subject Binding Arrow -->
-                    <line x1="232" y1="54" x2="190" y2="54" stroke="#818cf8" stroke-width="1.8" stroke-dasharray="4 2" />
+                    <line
+                      x1="232"
+                      y1="54"
+                      x2="190"
+                      y2="54"
+                      stroke="#818cf8"
+                      stroke-width="1.8"
+                      stroke-dasharray="4 2"
+                    />
                     <polygon points="190,54 197,50 197,58" fill="#818cf8" />
                     <text x="211" y="47" text-anchor="middle" class="svg-edge-label">«subject»</text>
 
                     <!-- Requirement Def Block -->
                     <rect x="232" y="18" width="176" height="172" rx="8" class="svg-box-req" />
                     <text x="242" y="35" class="svg-stereo">«requirement def»</text>
-                    <text x="242" y="51" class="svg-block-title">{{ asSysmlVis(evalResult.paneVisuals[pIdx]).requirementId }}</text>
+                    <text x="242" y="51" class="svg-block-title">
+                      {{ asSysmlVis(evalResult.paneVisuals[pIdx]).requirementId }}
+                    </text>
                     <line x1="232" y1="59" x2="408" y2="59" class="svg-divider" />
                     <g
                       v-for="(c, cIdx) in asSysmlVis(evalResult.paneVisuals[pIdx]).constraints"
@@ -1137,10 +1259,22 @@ onBeforeUnmount(() => {
               <template v-else-if="evalResult.paneVisuals[pIdx]?.kind === 'modelica-dae'">
                 <div class="visual-stage modelica-dae-stage">
                   <div class="visual-overlay-bar">
-                    <span class="vo-chip">1D DAE Schematic · <code>{{ asModelicaVis(evalResult.paneVisuals[pIdx]).withinPkg }}.{{ asModelicaVis(evalResult.paneVisuals[pIdx]).modelName }}</code></span>
+                    <span class="vo-chip"
+                      >1D DAE Schematic ·
+                      <code
+                        >{{ asModelicaVis(evalResult.paneVisuals[pIdx]).withinPkg }}.{{
+                          asModelicaVis(evalResult.paneVisuals[pIdx]).modelName
+                        }}</code
+                      ></span
+                    >
                     <span class="vo-hint">Evaluated via <code>evaluateCfdExpression</code></span>
                   </div>
-                  <svg viewBox="0 0 420 205" class="pane-svg-canvas" role="img" :aria-label="`Modelica 1D DAE schematic for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 420 205"
+                    class="pane-svg-canvas"
+                    role="img"
+                    :aria-label="`Modelica 1D DAE schematic for ${pane.fileName}`"
+                  >
                     <!-- Parameter Blocks on Left -->
                     <g
                       v-for="(param, pIndex) in asModelicaVis(evalResult.paneVisuals[pIdx]).parameters"
@@ -1157,7 +1291,9 @@ onBeforeUnmount(() => {
                         :stroke="param.twinFqn ? '#38bdf8' : '#475569'"
                       />
                       <text x="8" y="14" class="svg-attr-name">{{ param.name }}</text>
-                      <text x="126" y="14" text-anchor="end" class="svg-attr-val">{{ param.value }} {{ param.unit }}</text>
+                      <text x="126" y="14" text-anchor="end" class="svg-attr-val">
+                        {{ param.value }} {{ param.unit }}
+                      </text>
                       <text x="8" y="27" class="svg-attr-hint">
                         {{ param.twinFqn ? `twin: ${param.twinFqn.split("::").pop()}` : "parameter Real" }}
                       </text>
@@ -1165,7 +1301,16 @@ onBeforeUnmount(() => {
                     </g>
 
                     <!-- Central Symbolic Equation Operator Block -->
-                    <rect x="168" y="54" width="124" height="96" rx="10" fill="rgba(15, 23, 42, 0.95)" stroke="#38bdf8" stroke-width="1.8" />
+                    <rect
+                      x="168"
+                      y="54"
+                      width="124"
+                      height="96"
+                      rx="10"
+                      fill="rgba(15, 23, 42, 0.95)"
+                      stroke="#38bdf8"
+                      stroke-width="1.8"
+                    />
                     <text x="230" y="74" text-anchor="middle" class="svg-stereo">«equation»</text>
                     <text x="230" y="92" text-anchor="middle" class="svg-block-title">
                       {{ asModelicaVis(evalResult.paneVisuals[pIdx]).equations[0]?.lhs }}
@@ -1179,7 +1324,16 @@ onBeforeUnmount(() => {
                     <!-- Output Signal & Twin Port on Right -->
                     <line x1="292" y1="102" x2="316" y2="102" stroke="#10b981" stroke-width="2.2" />
                     <polygon points="316,102 309,98 309,106" fill="#10b981" />
-                    <rect x="316" y="64" width="92" height="76" rx="8" fill="rgba(16, 185, 129, 0.14)" stroke="#10b981" stroke-width="1.6" />
+                    <rect
+                      x="316"
+                      y="64"
+                      width="92"
+                      height="76"
+                      rx="8"
+                      fill="rgba(16, 185, 129, 0.14)"
+                      stroke="#10b981"
+                      stroke-width="1.6"
+                    />
                     <text x="362" y="83" text-anchor="middle" class="svg-stereo">output Real</text>
                     <text x="362" y="104" text-anchor="middle" class="svg-out-big">
                       {{ asModelicaVis(evalResult.paneVisuals[pIdx]).equations[0]?.resultText }}
@@ -1194,8 +1348,13 @@ onBeforeUnmount(() => {
                 <!-- 3A. CSG Tree View -->
                 <div v-if="paneViewModes[pIdx] === 'csg'" class="visual-stage csg-tree-stage">
                   <div class="visual-overlay-bar">
-                    <span class="vo-chip">OpenSCAD CSG AST · <code>module {{ asScadVis(evalResult.paneVisuals[pIdx]).moduleName }}()</code></span>
-                    <span class="vo-hint">{{ asScadVis(evalResult.paneVisuals[pIdx]).triangles.length }} tessellated triangles</span>
+                    <span class="vo-chip"
+                      >OpenSCAD CSG AST ·
+                      <code>module {{ asScadVis(evalResult.paneVisuals[pIdx]).moduleName }}()</code></span
+                    >
+                    <span class="vo-hint"
+                      >{{ asScadVis(evalResult.paneVisuals[pIdx]).triangles.length }} tessellated triangles</span
+                    >
                   </div>
                   <div class="csg-tree-list">
                     <div
@@ -1207,7 +1366,11 @@ onBeforeUnmount(() => {
                       <span class="csg-branch-glyph">├─</span>
                       <code class="csg-node-label" :class="`csg-kind-${node.kind}`">{{ node.label }}</code>
                       <span class="csg-node-detail">{{ node.detail }}</span>
-                      <span v-if="node.tag" class="csg-port-pill" :style="{ borderColor: getPortTagColor(node.tag).stroke }">
+                      <span
+                        v-if="node.tag"
+                        class="csg-port-pill"
+                        :style="{ borderColor: getPortTagColor(node.tag).stroke }"
+                      >
                         port: {{ node.tag }}
                       </span>
                     </div>
@@ -1224,7 +1387,8 @@ onBeforeUnmount(() => {
                 >
                   <div class="visual-overlay-bar">
                     <span class="vo-chip">
-                      3D Manifold Mesh · <code>{{ asScadVis(evalResult.paneVisuals[pIdx]).triangles.length }} tris</code> ·
+                      3D Manifold Mesh ·
+                      <code>{{ asScadVis(evalResult.paneVisuals[pIdx]).triangles.length }} tris</code> ·
                       <code>Vol={{ (asScadVis(evalResult.paneVisuals[pIdx]).volumeMm3 / 1000).toFixed(1) }} cm³</code>
                     </span>
                     <div class="cam-preset-btns" @pointerdown.stop>
@@ -1234,7 +1398,12 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
 
-                  <svg viewBox="0 0 380 205" class="pane-svg-canvas interactive-3d-svg" role="img" :aria-label="`3D OpenSCAD mesh for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 380 205"
+                    class="pane-svg-canvas interactive-3d-svg"
+                    role="img"
+                    :aria-label="`3D OpenSCAD mesh for ${pane.fileName}`"
+                  >
                     <!-- 3D Projected Triangles from evaluateScad(code).mesh -->
                     <polygon
                       v-for="(poly, idx) in projectScadMesh(asScadVis(evalResult.paneVisuals[pIdx]), pIdx).polygons"
@@ -1292,7 +1461,8 @@ onBeforeUnmount(() => {
                 >
                   <div class="visual-overlay-bar">
                     <span class="vo-chip">
-                      <code>Tet4Mesher</code> ({{ asFeaVis(evalResult.paneVisuals[pIdx]).numNodes }} nodes / {{ asFeaVis(evalResult.paneVisuals[pIdx]).numElements }} C3D4) ·
+                      <code>Tet4Mesher</code> ({{ asFeaVis(evalResult.paneVisuals[pIdx]).numNodes }} nodes /
+                      {{ asFeaVis(evalResult.paneVisuals[pIdx]).numElements }} C3D4) ·
                       <code>σ_vm = {{ asFeaVis(evalResult.paneVisuals[pIdx]).maxVonMisesMpa.toFixed(1) }} MPa</code>
                     </span>
                     <div class="cam-preset-btns" @pointerdown.stop>
@@ -1309,11 +1479,17 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
 
-                  <svg viewBox="0 0 380 205" class="pane-svg-canvas interactive-3d-svg" role="img" :aria-label="`3D CalculiX FEA stress contour for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 380 205"
+                    class="pane-svg-canvas interactive-3d-svg"
+                    role="img"
+                    :aria-label="`3D CalculiX FEA stress contour for ${pane.fileName}`"
+                  >
                     <!-- Undeformed Wireframe Overlay -->
                     <g v-if="feaShowWireframe">
                       <polygon
-                        v-for="(pts, uIdx) in projectFeaMesh(asFeaVis(evalResult.paneVisuals[pIdx]), pIdx).undeformedPolys"
+                        v-for="(pts, uIdx) in projectFeaMesh(asFeaVis(evalResult.paneVisuals[pIdx]), pIdx)
+                          .undeformedPolys"
                         :key="`u-${uIdx}`"
                         :points="pts"
                         fill="none"
@@ -1360,9 +1536,19 @@ onBeforeUnmount(() => {
                   </svg>
 
                   <div class="visual-bottom-legend" @pointerdown.stop>
-                    <span class="vbl-item"><span class="vbl-dot" style="background: #818cf8" /><code>fixed_root</code> (6-DOF)</span>
-                    <span class="vbl-item"><span class="vbl-dot" style="background: #f43f5e" /><code>clevis_lug</code> ({{ (asFeaVis(evalResult.paneVisuals[pIdx]).appliedLoadN / 1000).toFixed(1) }} kN)</span>
-                    <span class="vbl-item"><code>U3_MAX = {{ asFeaVis(evalResult.paneVisuals[pIdx]).maxDeflectionMm.toFixed(2) }} mm</code> (18× scale)</span>
+                    <span class="vbl-item"
+                      ><span class="vbl-dot" style="background: #818cf8" /><code>fixed_root</code> (6-DOF)</span
+                    >
+                    <span class="vbl-item"
+                      ><span class="vbl-dot" style="background: #f43f5e" /><code>clevis_lug</code> ({{
+                        (asFeaVis(evalResult.paneVisuals[pIdx]).appliedLoadN / 1000).toFixed(1)
+                      }}
+                      kN)</span
+                    >
+                    <span class="vbl-item"
+                      ><code>U3_MAX = {{ asFeaVis(evalResult.paneVisuals[pIdx]).maxDeflectionMm.toFixed(2) }} mm</code>
+                      (18× scale)</span
+                    >
                   </div>
                 </div>
               </template>
@@ -1372,7 +1558,9 @@ onBeforeUnmount(() => {
                 <div class="visual-stage cfd-3d-stage">
                   <div class="visual-overlay-bar">
                     <span class="vo-chip">
-                      <code>WebGPULbmRunner</code> ({{ asCfdVis(evalResult.paneVisuals[pIdx]).nx }}×{{ asCfdVis(evalResult.paneVisuals[pIdx]).ny }}×{{ asCfdVis(evalResult.paneVisuals[pIdx]).nz }} D3Q19) ·
+                      <code>WebGPULbmRunner</code> ({{ asCfdVis(evalResult.paneVisuals[pIdx]).nx }}×{{
+                        asCfdVis(evalResult.paneVisuals[pIdx]).ny
+                      }}×{{ asCfdVis(evalResult.paneVisuals[pIdx]).nz }} D3Q19) ·
                       <code>T_max={{ asCfdVis(evalResult.paneVisuals[pIdx]).maxSurfaceTempK.toFixed(1) }} K</code>
                     </span>
                     <div class="cam-preset-btns">
@@ -1403,9 +1591,23 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
 
-                  <svg viewBox="0 0 400 205" class="pane-svg-canvas" role="img" :aria-label="`OpenFOAM D3Q19 LBM CFD field for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 400 205"
+                    class="pane-svg-canvas"
+                    role="img"
+                    :aria-label="`OpenFOAM D3Q19 LBM CFD field for ${pane.fileName}`"
+                  >
                     <!-- Inlet Patch Bar (coolant_inlet) -->
-                    <rect x="16" y="22" width="12" height="140" rx="3" fill="rgba(56, 189, 248, 0.28)" stroke="#38bdf8" stroke-width="1.5" />
+                    <rect
+                      x="16"
+                      y="22"
+                      width="12"
+                      height="140"
+                      rx="3"
+                      fill="rgba(56, 189, 248, 0.28)"
+                      stroke="#38bdf8"
+                      stroke-width="1.5"
+                    />
                     <text x="22" y="16" text-anchor="middle" class="svg-pin-label" fill="#38bdf8">coolant_inlet</text>
 
                     <!-- 20x10 D3Q19 Lattice Voxel Slice + Velocity Stream Vectors -->
@@ -1451,11 +1653,23 @@ onBeforeUnmount(() => {
                       stroke-dasharray="5 3"
                     />
                     <text x="197" y="16" text-anchor="middle" class="svg-pin-label" fill="#34d399">
-                      fluid_core ← ColdPlateChannels.scad (D_h={{ asCfdVis(evalResult.paneVisuals[pIdx]).hydraulicDiaMm.toFixed(2) }} mm, Q={{ asCfdVis(evalResult.paneVisuals[pIdx]).wallHeatLoadW.toFixed(0) }} W)
+                      fluid_core ← ColdPlateChannels.scad (D_h={{
+                        asCfdVis(evalResult.paneVisuals[pIdx]).hydraulicDiaMm.toFixed(2)
+                      }}
+                      mm, Q={{ asCfdVis(evalResult.paneVisuals[pIdx]).wallHeatLoadW.toFixed(0) }} W)
                     </text>
 
                     <!-- Outlet Patch Bar (coolant_outlet) -->
-                    <rect x="366" y="22" width="12" height="140" rx="3" fill="rgba(245, 158, 11, 0.28)" stroke="#fbbf24" stroke-width="1.5" />
+                    <rect
+                      x="366"
+                      y="22"
+                      width="12"
+                      height="140"
+                      rx="3"
+                      fill="rgba(245, 158, 11, 0.28)"
+                      stroke="#fbbf24"
+                      stroke-width="1.5"
+                    />
                     <text x="372" y="16" text-anchor="middle" class="svg-pin-label" fill="#fbbf24">coolant_outlet</text>
 
                     <!-- Patch Binding Footnotes -->
@@ -1484,17 +1698,40 @@ onBeforeUnmount(() => {
               <template v-else-if="evalResult.paneVisuals[pIdx]?.kind === 'urdf-3d'">
                 <div class="visual-stage urdf-3d-stage">
                   <div class="visual-overlay-bar">
-                    <span class="vo-chip">URDF Kinematic Tree · <code>robot="{{ asUrdfVis(evalResult.paneVisuals[pIdx]).robotName }}"</code></span>
+                    <span class="vo-chip"
+                      >URDF Kinematic Tree ·
+                      <code>robot="{{ asUrdfVis(evalResult.paneVisuals[pIdx]).robotName }}"</code></span
+                    >
                     <span class="vo-hint">Parsed via <code>parseUrdf</code></span>
                   </div>
-                  <svg viewBox="0 0 400 205" class="pane-svg-canvas" role="img" :aria-label="`URDF kinematic chain for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 400 205"
+                    class="pane-svg-canvas"
+                    role="img"
+                    :aria-label="`URDF kinematic chain for ${pane.fileName}`"
+                  >
                     <!-- Base Column Link -->
-                    <rect x="48" y="128" width="54" height="52" rx="6" fill="rgba(71, 85, 105, 0.65)" stroke="#94a3b8" stroke-width="1.6" />
+                    <rect
+                      x="48"
+                      y="128"
+                      width="54"
+                      height="52"
+                      rx="6"
+                      fill="rgba(71, 85, 105, 0.65)"
+                      stroke="#94a3b8"
+                      stroke-width="1.6"
+                    />
                     <text x="75" y="152" text-anchor="middle" class="svg-attr-name">base_column</text>
                     <text x="75" y="166" text-anchor="middle" class="svg-attr-hint">fixed base</text>
 
                     <!-- Revolute Joint shoulder_pitch + Limit Arc -->
-                    <path d="M 45 118 A 34 34 0 0 1 105 118" fill="none" stroke="rgba(245, 158, 11, 0.55)" stroke-width="2" stroke-dasharray="3 2" />
+                    <path
+                      d="M 45 118 A 34 34 0 0 1 105 118"
+                      fill="none"
+                      stroke="rgba(245, 158, 11, 0.55)"
+                      stroke-width="2"
+                      stroke-dasharray="3 2"
+                    />
                     <circle
                       cx="75"
                       cy="118"
@@ -1517,7 +1754,15 @@ onBeforeUnmount(() => {
 
                     <!-- Upper Arm Link Beam -->
                     <line x1="88" y1="110" x2="238" y2="54" stroke="#f59e0b" stroke-width="11" stroke-linecap="round" />
-                    <line x1="88" y1="110" x2="238" y2="54" stroke="#fde68a" stroke-width="2.5" stroke-linecap="round" />
+                    <line
+                      x1="88"
+                      y1="110"
+                      x2="238"
+                      y2="54"
+                      stroke="#fde68a"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                    />
 
                     <!-- CoM Inertia Marker on upper_arm -->
                     <circle cx="163" cy="82" r="9" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
@@ -1532,13 +1777,23 @@ onBeforeUnmount(() => {
                     </text>
 
                     <!-- Joint Telemetry Card -->
-                    <rect x="258" y="92" width="130" height="90" rx="8" fill="rgba(15, 23, 42, 0.92)" stroke="#475569" />
+                    <rect
+                      x="258"
+                      y="92"
+                      width="130"
+                      height="90"
+                      rx="8"
+                      fill="rgba(15, 23, 42, 0.92)"
+                      stroke="#475569"
+                    />
                     <text x="268" y="110" class="svg-stereo">joint: shoulder_pitch</text>
                     <text x="268" y="126" class="svg-req-expr">
-                      range: [{{ asUrdfVis(evalResult.paneVisuals[pIdx]).joints[0]?.lowerRad }}, {{ asUrdfVis(evalResult.paneVisuals[pIdx]).joints[0]?.upperRad }}] rad
+                      range: [{{ asUrdfVis(evalResult.paneVisuals[pIdx]).joints[0]?.lowerRad }},
+                      {{ asUrdfVis(evalResult.paneVisuals[pIdx]).joints[0]?.upperRad }}] rad
                     </text>
                     <text x="268" y="142" class="svg-req-expr">
-                      effort limit: {{ asUrdfVis(evalResult.paneVisuals[pIdx]).joints[0]?.effortLimitNm.toFixed(1) }} N·m
+                      effort limit:
+                      {{ asUrdfVis(evalResult.paneVisuals[pIdx]).joints[0]?.effortLimitNm.toFixed(1) }} N·m
                     </text>
                     <text
                       x="268"
@@ -1562,7 +1817,8 @@ onBeforeUnmount(() => {
                 <div class="visual-stage step-gdt-stage">
                   <div class="visual-overlay-bar">
                     <span class="vo-chip">
-                      ISO 10303-242 PMI · <code>{{ asStepVis(evalResult.paneVisuals[pIdx]).entityCount }} entities</code> ·
+                      ISO 10303-242 PMI ·
+                      <code>{{ asStepVis(evalResult.paneVisuals[pIdx]).entityCount }} entities</code> ·
                       <code>ToleranceStackVerifier</code>
                     </span>
                     <span
@@ -1572,20 +1828,39 @@ onBeforeUnmount(() => {
                       {{ asStepVis(evalResult.paneVisuals[pIdx]).isSat ? "FIT SAT" : "FIT CONFLICT" }}
                     </span>
                   </div>
-                  <svg viewBox="0 0 410 205" class="pane-svg-canvas" role="img" :aria-label="`STEP AP242 coaxial bearing fit and tolerance stack for ${pane.fileName}`">
+                  <svg
+                    viewBox="0 0 410 205"
+                    class="pane-svg-canvas"
+                    role="img"
+                    :aria-label="`STEP AP242 coaxial bearing fit and tolerance stack for ${pane.fileName}`"
+                  >
                     <!-- Left: Coaxial Bore (#10/#11/#12) & Shaft (#20/#21/#22) Cross-Section -->
                     <circle cx="88" cy="106" r="64" fill="rgba(168, 85, 247, 0.12)" stroke="#a855f7" stroke-width="2" />
-                    <circle cx="88" cy="106" r="46" fill="rgba(15, 23, 42, 0.95)" stroke="#38bdf8" stroke-width="2" stroke-dasharray="4 2" />
+                    <circle
+                      cx="88"
+                      cy="106"
+                      r="46"
+                      fill="rgba(15, 23, 42, 0.95)"
+                      stroke="#38bdf8"
+                      stroke-width="2"
+                      stroke-dasharray="4 2"
+                    />
                     <circle
                       cx="88"
                       cy="106"
                       r="36"
-                      :fill="asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm < 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.22)'"
+                      :fill="
+                        asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm < 0
+                          ? 'rgba(239, 68, 68, 0.35)'
+                          : 'rgba(16, 185, 129, 0.22)'
+                      "
                       :stroke="asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm < 0 ? '#ef4444' : '#10b981'"
                       stroke-width="2"
                     />
                     <text x="88" y="34" text-anchor="middle" class="svg-pin-label" fill="#c084fc">
-                      #10 Bore Ø{{ asStepVis(evalResult.paneVisuals[pIdx]).boreNominalMm.toFixed(3) }} ±{{ asStepVis(evalResult.paneVisuals[pIdx]).boreTolMm.toFixed(3) }}
+                      #10 Bore Ø{{ asStepVis(evalResult.paneVisuals[pIdx]).boreNominalMm.toFixed(3) }} ±{{
+                        asStepVis(evalResult.paneVisuals[pIdx]).boreTolMm.toFixed(3)
+                      }}
                     </text>
                     <text x="88" y="109" text-anchor="middle" class="svg-pin-label" fill="#34d399">
                       #20 Shaft Ø{{ asStepVis(evalResult.paneVisuals[pIdx]).shaftNominalMm.toFixed(3) }}
@@ -1595,11 +1870,27 @@ onBeforeUnmount(() => {
                     </text>
 
                     <!-- Right: #30 Clearance Stack Interval Chart (Worst-Case & 3-Sigma RSS vs Contract) -->
-                    <rect x="174" y="24" width="222" height="162" rx="8" fill="rgba(15, 23, 42, 0.9)" stroke="#334155" />
+                    <rect
+                      x="174"
+                      y="24"
+                      width="222"
+                      height="162"
+                      rx="8"
+                      fill="rgba(15, 23, 42, 0.9)"
+                      stroke="#334155"
+                    />
                     <text x="184" y="43" class="svg-stereo">#30 EVALUATED_CLEARANCE_ENVELOPE</text>
 
                     <!-- Allowed Contract Window [0.015, 0.080] mm -->
-                    <rect x="210" y="56" width="140" height="84" fill="rgba(16, 185, 129, 0.09)" stroke="rgba(16, 185, 129, 0.4)" stroke-dasharray="3 2" />
+                    <rect
+                      x="210"
+                      y="56"
+                      width="140"
+                      height="84"
+                      fill="rgba(16, 185, 129, 0.09)"
+                      stroke="rgba(16, 185, 129, 0.4)"
+                      stroke-dasharray="3 2"
+                    />
                     <text x="210" y="152" text-anchor="middle" class="svg-attr-hint">
                       min {{ asStepVis(evalResult.paneVisuals[pIdx]).allowableMinMm.toFixed(3) }}
                     </text>
@@ -1610,34 +1901,72 @@ onBeforeUnmount(() => {
                     <!-- Worst-Case Bar -->
                     <text x="184" y="76" class="svg-attr-name">Worst-Case:</text>
                     <rect
-                      :x="Math.max(182, Math.min(375, 210 + ((asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm - 0.015) / 0.065) * 140))"
+                      :x="
+                        Math.max(
+                          182,
+                          Math.min(
+                            375,
+                            210 + ((asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm - 0.015) / 0.065) * 140,
+                          ),
+                        )
+                      "
                       y="82"
-                      :width="Math.max(12, Math.min(200, ((asStepVis(evalResult.paneVisuals[pIdx]).wcMaxMm - asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm) / 0.065) * 140))"
+                      :width="
+                        Math.max(
+                          12,
+                          Math.min(
+                            200,
+                            ((asStepVis(evalResult.paneVisuals[pIdx]).wcMaxMm -
+                              asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm) /
+                              0.065) *
+                              140,
+                          ),
+                        )
+                      "
                       height="16"
                       rx="4"
                       :fill="asStepVis(evalResult.paneVisuals[pIdx]).isSat ? '#10b981' : '#ef4444'"
                     />
                     <text x="388" y="76" text-anchor="end" class="svg-attr-val">
-                      [{{ asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm.toFixed(3) }}, {{ asStepVis(evalResult.paneVisuals[pIdx]).wcMaxMm.toFixed(3) }}] mm
+                      [{{ asStepVis(evalResult.paneVisuals[pIdx]).wcMinMm.toFixed(3) }},
+                      {{ asStepVis(evalResult.paneVisuals[pIdx]).wcMaxMm.toFixed(3) }}] mm
                     </text>
 
                     <!-- 3-Sigma RSS Statistical Bar -->
                     <text x="184" y="114" class="svg-attr-name">3σ RSS Stack:</text>
                     <rect
-                      :x="Math.max(182, Math.min(375, 210 + ((asStepVis(evalResult.paneVisuals[pIdx]).rssMinMm - 0.015) / 0.065) * 140))"
+                      :x="
+                        Math.max(
+                          182,
+                          Math.min(
+                            375,
+                            210 + ((asStepVis(evalResult.paneVisuals[pIdx]).rssMinMm - 0.015) / 0.065) * 140,
+                          ),
+                        )
+                      "
                       y="120"
-                      :width="Math.max(12, Math.min(200, ((asStepVis(evalResult.paneVisuals[pIdx]).rssMaxMm - asStepVis(evalResult.paneVisuals[pIdx]).rssMinMm) / 0.065) * 140))"
+                      :width="
+                        Math.max(
+                          12,
+                          Math.min(
+                            200,
+                            ((asStepVis(evalResult.paneVisuals[pIdx]).rssMaxMm -
+                              asStepVis(evalResult.paneVisuals[pIdx]).rssMinMm) /
+                              0.065) *
+                              140,
+                          ),
+                        )
+                      "
                       height="14"
                       rx="4"
                       fill="#38bdf8"
                     />
                     <text x="388" y="114" text-anchor="end" class="svg-attr-val">
-                      [{{ asStepVis(evalResult.paneVisuals[pIdx]).rssMinMm.toFixed(3) }}, {{ asStepVis(evalResult.paneVisuals[pIdx]).rssMaxMm.toFixed(3) }}] mm
+                      [{{ asStepVis(evalResult.paneVisuals[pIdx]).rssMinMm.toFixed(3) }},
+                      {{ asStepVis(evalResult.paneVisuals[pIdx]).rssMaxMm.toFixed(3) }}] mm
                     </text>
 
-                    <text x="184" y="174" class="svg-attr-hint">
-                      Bound to SysML2::REQ_HARMONIC_03
-                    </text>
+                    <text x="184" y="174" class="svg-attr-hint">Bound to SysML2::REQ_HARMONIC_03</text>
                   </svg>
                 </div>
               </template>
@@ -1663,11 +1992,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="conflict-list">
-            <div
-              v-for="(c, cIdx) in evalResult.conflicts"
-              :key="cIdx"
-              class="conflict-item"
-            >
+            <div v-for="(c, cIdx) in evalResult.conflicts" :key="cIdx" class="conflict-item">
               <div class="conflict-item-main">
                 <code class="conflict-oracle">{{ c.theoryName }}</code>
                 <span class="conflict-explanation">{{ c.explanation }}</span>
@@ -1720,7 +2045,7 @@ onBeforeUnmount(() => {
 /* Scenario Selector Tabs */
 .scenario-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -2200,7 +2525,7 @@ onBeforeUnmount(() => {
 /* 4 Variable Link Cards */
 .variable-links-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2600,7 +2925,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-width: 0;
+  width: 100%;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .coord-pane:hover {
@@ -2739,7 +3068,26 @@ onBeforeUnmount(() => {
   min-height: 245px;
   max-height: 295px;
   display: flex;
-  overflow: auto;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--vp-c-text-3) 30%, transparent) transparent;
+}
+
+.editor-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.editor-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vp-c-text-3) 35%, transparent);
+  border-radius: 3px;
+}
+
+.editor-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .static-semantic-view {
@@ -2747,10 +3095,30 @@ onBeforeUnmount(() => {
   user-select: text;
 }
 
-.line-numbers {
+.pane-code {
+  margin: 0;
+  padding: 12px 14px 44px 0;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+  overflow-x: hidden;
+  overflow-y: visible;
+  flex: 1;
+  min-width: 0;
+}
+
+.code-line {
   display: flex;
-  flex-direction: column;
-  padding: 12px 8px 12px 12px;
+  align-items: stretch;
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.line-num {
+  flex-shrink: 0;
+  width: 32px;
+  padding: 0 8px 0 10px;
   font-family: var(--vp-font-family-mono);
   font-size: 11.5px;
   line-height: 1.6;
@@ -2760,22 +3128,17 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-.pane-code {
-  margin: 0;
-  padding: 12px 14px 12px 6px;
+.line-text {
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+  padding-right: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   font-family: var(--vp-font-family-mono);
   font-size: 12px;
   line-height: 1.6;
-  color: var(--vp-c-text-1);
-  overflow-x: auto;
-  flex: 1;
-}
-
-.pane-code code {
-  font-family: inherit;
-  background: transparent;
-  padding: 0;
-  white-space: pre;
 }
 
 /* Visual Diagram / 3D CAD / 3D CAE Stage inside Pane */
@@ -3194,6 +3557,7 @@ onBeforeUnmount(() => {
 
 .monaco-editor-body {
   height: 245px;
+  overflow: hidden;
 }
 
 .monaco-mount-node {
@@ -3397,13 +3761,82 @@ onBeforeUnmount(() => {
   color: var(--active-accent);
 }
 
+.eval-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--vp-c-text-1);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.variable-links-grid > *,
+.four-pane-grid > *,
+.directive-manifest-grid > *,
+.port-manifest-grid > * {
+  min-width: 0;
+}
+
+.var-link-card code {
+  overflow-wrap: anywhere;
+}
+
+.var-details {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--vp-c-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.var-details > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  list-style: none;
+  user-select: none;
+}
+
+.var-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.var-details > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 5px;
+  transition: transform 0.15s ease;
+}
+
+.var-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.var-details > summary:hover,
+.var-details > summary:focus-visible {
+  color: var(--vp-c-brand-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .var-details > summary::before {
+    transition: none;
+  }
+}
+
 @media (max-width: 1024px) {
   .scenario-tabs {
     grid-template-columns: 1fr;
   }
   .variable-links-grid,
   .directive-manifest-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .four-pane-grid {
     grid-template-columns: 1fr;

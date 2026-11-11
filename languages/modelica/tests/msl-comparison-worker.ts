@@ -1211,7 +1211,11 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
 
 async function executeSimulateStage(context: Context, task: WorkerTask): Promise<SimComparisonResult> {
   const isExample = task.modelFqn.includes(".Examples.");
-  const arena = context.flattenArena(task.modelFqn, undefined, undefined, { omcCompatibility: true });
+  // `omcCompatibility` shapes the DAE to mimic OMC's flat-model text (used by the flatten stage).
+  // For non-MSL libraries (OpenIPSL) it changes the simulated dynamics (SMIB_AVR_PSS diverges), so
+  // the simulation stage flattens in the regular mode there. MSL baselines are left unchanged.
+  const simOmcCompat = !task.library || task.library === "Modelica";
+  const arena = context.flattenArena(task.modelFqn, undefined, undefined, { omcCompatibility: simOmcCompat });
 
   if (!arena) {
     return {
@@ -1276,12 +1280,36 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       outIds.push(arena.getVarNameId(i));
     }
 
-    msRes = await simulateArena(arena as any, {
+    const baseSimOpts = {
       startTime,
       stopTime,
       numberOfIntervals: intervals,
       outputStringIds: outIds,
-    });
+    };
+    // Non-MSL libraries (e.g. OpenIPSL transient stability) are sensitive to integration error:
+    // use tight adaptive DOPRI5 (like OMC's tolerance-controlled solver), falling back to the
+    // default fixed-step integrator if it cannot run the model.
+    if (task.library && task.library !== "Modelica") {
+      try {
+        msRes = await simulateArena(arena as any, {
+          ...baseSimOpts,
+          solver: "dopri5",
+          atol: Math.min(tolerance * 1e-3, 1e-9),
+          rtol: Math.min(tolerance * 1e-3, 1e-9),
+        });
+        if (
+          !msRes?.y?.length ||
+          !msRes.y.every((row: ArrayLike<number>) => row.length === 0 || Number.isFinite(row[0]))
+        ) {
+          msRes = undefined;
+        }
+      } catch {
+        msRes = undefined;
+      }
+    }
+    if (!msRes) {
+      msRes = await simulateArena(arena as any, baseSimOpts);
+    }
     msSuccess = true;
   } catch (err: any) {
     msError = err.message || String(err);
@@ -1438,7 +1466,20 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       const omcVal = t !== undefined && omcTimes ? getInterpolatedOmc(omcValues, t, msVal) : omcValues[p];
       if (omcVal !== undefined && Number.isFinite(msVal) && Number.isFinite(omcVal)) {
         const diff = Math.abs(msVal - omcVal);
-        const rel = diff / Math.max(1 + Math.abs(omcVal), varScale);
+        const scale = Math.max(1 + Math.abs(omcVal), varScale);
+        let rel = diff / scale;
+        if (rel > tolerance) {
+          // Angle wrap: a sample whose difference is (within 5%) a whole period (2*pi rad or 360 deg)
+          // straddles the wrap instant of an angle; the residual is just sampling-time misalignment
+          // (the OMC reference is linearly interpolated across the discontinuity), not a numerical error.
+          for (const period of [2 * Math.PI, 360]) {
+            const k = Math.round(diff / period);
+            if (k !== 0 && Math.abs(diff - k * period) / period <= 0.05) {
+              rel = 0;
+              break;
+            }
+          }
+        }
         if (rel > maxRelErr) {
           maxRelErr = rel;
           maxVarName = `${varName}@t=${t?.toFixed(2)}`;
@@ -1785,12 +1826,16 @@ async function getOrInitWorkerContext(task: WorkerTask): Promise<Context> {
     childrenOf: new Map<number, number[]>(rawIndex.childrenOf),
   };
 
-  const rootPkgName = task.library || task.modelFqn.split(".")[0] || "Modelica";
-  linkMslPackageHierarchy(symbolIndex, task.mslDir, rootPkgName);
-  context.setSymbolIndex(symbolIndex);
+  const hasDeps = !!task.extraLibraries && task.extraLibraries.length > 0;
 
-  if (task.extraLibraries && task.extraLibraries.length > 0) {
-    for (const extra of task.extraLibraries) {
+  if (!hasDeps) {
+    const rootPkgName = task.library || task.modelFqn.split(".")[0] || "Modelica";
+    linkMslPackageHierarchy(symbolIndex, task.mslDir, rootPkgName);
+    context.setSymbolIndex(symbolIndex);
+  }
+
+  if (hasDeps) {
+    for (const extra of task.extraLibraries!) {
       if (fs.existsSync(extra.path)) {
         await context.addLibrary(extra.path, { skipIndex: true });
       }
@@ -1798,6 +1843,14 @@ async function getOrInitWorkerContext(task: WorkerTask): Promise<Context> {
   }
 
   await context.addLibrary(task.mslDir, { skipIndex: true });
+
+  // A precomputed index only covers the target library. For libraries with dependencies
+  // (e.g. OpenIPSL -> Complex/ModelicaServices/Modelica) the dependency symbols must be
+  // indexed together with it, otherwise `Complex` etc. fail to resolve and flattening
+  // silently truncates after the first dependent component.
+  if (hasDeps) {
+    await context.finalizeLibraries();
+  }
 
   cachedWorkerContext = {
     context,

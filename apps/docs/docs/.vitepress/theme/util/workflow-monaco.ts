@@ -18,9 +18,7 @@
  *    updates splice only the modified characters without full-document replacement or flashing.
  */
 
-import {
-  parseModelicaCst,
-} from "../../../../../../packages/runtime/src/interop/cst-polyglot-adapters";
+import { parseModelicaCst } from "../../../../../../packages/runtime/src/interop/cst-polyglot-adapters";
 import {
   buildSemanticSymbolMap,
   computeMinimalTextEdits,
@@ -128,14 +126,8 @@ async function loadMonaco(): Promise<typeof import("monaco-editor")> {
   }
   if (!monacoModulePromise) {
     monacoModulePromise = (async () => {
-      const modelicaWasmUrl = new URL(
-        "../../../../../../languages/modelica/dist/parser.wasm",
-        import.meta.url,
-      ).href;
-      const sysml2WasmUrl = new URL(
-        "../../../../../../languages/sysml2/dist/parser.wasm",
-        import.meta.url,
-      ).href;
+      const modelicaWasmUrl = new URL("../../../../../../languages/modelica/dist/parser.wasm", import.meta.url).href;
+      const sysml2WasmUrl = new URL("../../../../../../languages/sysml2/dist/parser.wasm", import.meta.url).href;
 
       const [workerMod, monaco] = await Promise.all([
         import("monaco-editor/esm/vs/editor/editor.worker?worker").catch(() => null),
@@ -168,9 +160,7 @@ async function loadMonaco(): Promise<typeof import("monaco-editor")> {
           const reason = event.reason;
           if (
             reason &&
-            (reason.name === "Canceled" ||
-              reason.message === "Canceled" ||
-              reason.name === "CancellationError")
+            (reason.name === "Canceled" || reason.message === "Canceled" || reason.name === "CancellationError")
           ) {
             event.preventDefault();
           }
@@ -185,9 +175,7 @@ async function loadMonaco(): Promise<typeof import("monaco-editor")> {
   return monaco;
 }
 
-function registerWorkflowLanguagesAndThemes(
-  monaco: typeof import("monaco-editor"),
-): void {
+function registerWorkflowLanguagesAndThemes(monaco: typeof import("monaco-editor")): void {
   if (providersRegistered) return;
   providersRegistered = true;
 
@@ -322,7 +310,10 @@ function registerWorkflowLanguagesAndThemes(
     wordPattern: /[A-Za-z_:][\w:.-]*/g,
   });
   monaco.languages.setLanguageConfiguration("msx-ieee2800", {
-    brackets: [["[", "]"], ["(", ")"]],
+    brackets: [
+      ["[", "]"],
+      ["(", ")"],
+    ],
     autoClosingPairs: [
       { open: "[", close: "]" },
       { open: "(", close: ")" },
@@ -547,12 +538,7 @@ function registerWorkflowLanguagesAndThemes(
         if (contents.length === 0) return null;
         return {
           range: hit
-            ? new monaco.Range(
-                targetLine + 1,
-                hit.startCol + 1,
-                targetLine + 1,
-                hit.startCol + hit.length + 1,
-              )
+            ? new monaco.Range(targetLine + 1, hit.startCol + 1, targetLine + 1, hit.startCol + hit.length + 1)
             : new monaco.Range(
                 position.lineNumber,
                 Math.max(1, position.column - 1),
@@ -569,19 +555,11 @@ function registerWorkflowLanguagesAndThemes(
       triggerCharacters: [".", "<", " ", '"', "=", ":", "("],
       provideCompletionItems: (model, position) => {
         const word = model.getWordUntilPosition(position);
-        const range = new monaco.Range(
-          position.lineNumber,
-          word.startColumn,
-          position.lineNumber,
-          word.endColumn,
-        );
-        const linePrefix = model
-          .getLineContent(position.lineNumber)
-          .slice(0, position.column - 1);
+        const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+        const linePrefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
         const code = model.getValue();
         const K = monaco.languages.CompletionItemKind;
-        const InsertAsSnippet =
-          monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+        const InsertAsSnippet = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
         const suggestions: import("monaco-editor").languages.CompletionItem[] = [];
 
         if (dialect === "modelica") {
@@ -601,16 +579,12 @@ function registerWorkflowLanguagesAndThemes(
             // 2. Declarative TGG rule target pattern bindings for this component's type
             const shortType = comp?.typeSpecifier.split(".").pop() ?? "";
             const tggMeta =
-              (comp ? tggComponentMeta.get(comp.typeSpecifier) : undefined) ??
-              tggComponentMeta.get(shortType);
+              (comp ? tggComponentMeta.get(comp.typeSpecifier) : undefined) ?? tggComponentMeta.get(shortType);
             if (tggMeta) {
               for (const modName of tggMeta.modifiers) {
                 const b = tggMeta.boundsByProp[modName];
                 const boundNote = b ? ` [${b.min ?? "-∞"}, ${b.max ?? "∞"}]` : "";
-                memberMap.set(
-                  modName,
-                  `TGG ${tggMeta.ruleName} parameter${boundNote}`,
-                );
+                memberMap.set(modName, `TGG ${tggMeta.ruleName} parameter${boundNote}`);
               }
             }
 
@@ -701,8 +675,7 @@ function registerWorkflowLanguagesAndThemes(
             },
             {
               label: "Parts.Body",
-              insert:
-                "Parts.Body ${1:link_name}(m = ${2:2.5}, I_11 = ${3:0.25}, I_22 = ${3:0.25}, I_33 = ${3:0.25});",
+              insert: "Parts.Body ${1:link_name}(m = ${2:2.5}, I_11 = ${3:0.25}, I_22 = ${3:0.25}, I_33 = ${3:0.25});",
               detail: "Modelica.Mechanics.MultiBody.Parts.Body",
             },
             {
@@ -728,12 +701,7 @@ function registerWorkflowLanguagesAndThemes(
             });
           }
           // Native WASM LspFacade LR state-table expected tokens + @modelscript/dsl grammar vocabulary
-          const wasmIntel = queryWasmLspIntelligence(
-            code,
-            "modelica",
-            position.lineNumber - 1,
-            position.column - 1,
-          );
+          const wasmIntel = queryWasmLspIntelligence(code, "modelica", position.lineNumber - 1, position.column - 1);
           const seenKw = new Set<string>();
           for (const expected of wasmIntel.expectedTokens) {
             seenKw.add(expected);
@@ -825,12 +793,7 @@ function registerWorkflowLanguagesAndThemes(
               range,
             });
           }
-          const wasmIntel = queryWasmLspIntelligence(
-            code,
-            "sysml",
-            position.lineNumber - 1,
-            position.column - 1,
-          );
+          const wasmIntel = queryWasmLspIntelligence(code, "sysml", position.lineNumber - 1, position.column - 1);
           const seenSysmlKw = new Set<string>();
           for (const expected of wasmIntel.expectedTokens) {
             seenSysmlKw.add(expected);
@@ -868,8 +831,7 @@ function registerWorkflowLanguagesAndThemes(
             },
             {
               label: "Line (Simulink)",
-              insert:
-                '<Line><P Name="Src">${1:DamperError}#out:1</P><P Name="Dst">${2:LeadLag}#in:1</P></Line>',
+              insert: '<Line><P Name="Src">${1:DamperError}#out:1</P><P Name="Dst">${2:LeadLag}#in:1</P></Line>',
               detail: "Simulink signal routing line",
             },
             {
@@ -956,9 +918,7 @@ function registerWorkflowLanguagesAndThemes(
       monaco.languages.registerSignatureHelpProvider(langId, {
         signatureHelpTriggerCharacters: ["(", ","],
         provideSignatureHelp: (model, position) => {
-          const linePrefix = model
-            .getLineContent(position.lineNumber)
-            .slice(0, position.column - 1);
+          const linePrefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
           const callMatch = /\b([A-Za-z_][\w.]*)\s*\(([^)]*)$/.exec(linePrefix);
           if (!callMatch) return null;
           const rawCallee = callMatch[1]!;
@@ -970,8 +930,7 @@ function registerWorkflowLanguagesAndThemes(
           if (shortFn === "connect") {
             sig = {
               label: "connect(connectorA, connectorB)",
-              documentation:
-                "Bijective TGG connection equation linking two causal or acausal ports.",
+              documentation: "Bijective TGG connection equation linking two causal or acausal ports.",
               parameters: [
                 {
                   label: "connectorA",
@@ -997,10 +956,7 @@ function registerWorkflowLanguagesAndThemes(
           } else {
             const cst = parseModelicaCst(model.getValue());
             const compByName = cst.components.find(
-              (c) =>
-                c.name === rawCallee ||
-                c.typeSpecifier === rawCallee ||
-                c.typeSpecifier.endsWith(`.${shortFn}`),
+              (c) => c.name === rawCallee || c.typeSpecifier === rawCallee || c.typeSpecifier.endsWith(`.${shortFn}`),
             );
             const tggMeta =
               tggComponentMeta.get(rawCallee) ??
@@ -1053,12 +1009,7 @@ function registerWorkflowLanguagesAndThemes(
       provideDefinition: (model, position) => {
         const code = model.getValue();
         if (dialect === "modelica" || dialect === "sysml") {
-          const wasmIntel = queryWasmLspIntelligence(
-            code,
-            dialect,
-            position.lineNumber - 1,
-            position.column - 1,
-          );
+          const wasmIntel = queryWasmLspIntelligence(code, dialect, position.lineNumber - 1, position.column - 1);
           if (wasmIntel.definitionRange) {
             const d = wasmIntel.definitionRange;
             return {
@@ -1089,12 +1040,7 @@ function registerWorkflowLanguagesAndThemes(
       provideDocumentHighlights: (model, position) => {
         const code = model.getValue();
         if (dialect === "modelica" || dialect === "sysml") {
-          const wasmIntel = queryWasmLspIntelligence(
-            code,
-            dialect,
-            position.lineNumber - 1,
-            position.column - 1,
-          );
+          const wasmIntel = queryWasmLspIntelligence(code, dialect, position.lineNumber - 1, position.column - 1);
           if (wasmIntel.referenceRanges.length > 0) {
             return wasmIntel.referenceRanges.map((r) => ({
               range: new monaco.Range(r.startLine, r.startCol, r.endLine, r.endCol),
@@ -1170,13 +1116,8 @@ function registerWorkflowLanguagesAndThemes(
                 currentVal < minBound
                   ? Math.max(minBound, minBound <= 0.01 ? 0.5 : minBound)
                   : Math.min(maxBound, maxBound);
-              const clampedStr = Number.isInteger(clampedVal)
-                ? `${clampedVal}.0`
-                : String(clampedVal);
-              const fixedLine = lineContent.replace(
-                /-?\d+(?:\.\d+)?/,
-                clampedStr,
-              );
+              const clampedStr = Number.isInteger(clampedVal) ? `${clampedVal}.0` : String(clampedVal);
+              const fixedLine = lineContent.replace(/-?\d+(?:\.\d+)?/, clampedStr);
               if (fixedLine !== lineContent) {
                 actions.push({
                   title: `Clamp '${propName}' to feasible tggReconcilePhysics envelope [${minBound}, ${maxBound}] (${clampedStr})`,
@@ -1215,9 +1156,7 @@ function registerWorkflowLanguagesAndThemes(
  * tokens, auto-complete, signature help, hover tooltips, quick-fix code actions,
  * live compiler/TGG envelope markers, and surgical narrow delta updates.
  */
-export async function mountWorkflowMonacoPane(
-  options: MountWorkflowMonacoOptions,
-): Promise<WorkflowMonacoInstance> {
+export async function mountWorkflowMonacoPane(options: MountWorkflowMonacoOptions): Promise<WorkflowMonacoInstance> {
   const monaco = await loadMonaco();
   const monacoLangId = mapLangToMonacoId(options.lang);
   const model = monaco.editor.createModel(options.initialCode, monacoLangId);
@@ -1238,9 +1177,10 @@ export async function mountWorkflowMonacoPane(
     renderLineHighlight: "line",
     fontSize: 12.5,
     lineHeight: 20,
-    fontFamily:
-      "var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
+    fontFamily: "var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
     padding: { top: 12, bottom: 12 },
+    wordWrap: "on",
+    wrappingStrategy: "advanced",
     scrollbar: {
       verticalScrollbarSize: 6,
       horizontalScrollbarSize: 6,
@@ -1279,12 +1219,11 @@ export async function mountWorkflowMonacoPane(
 
       suppressChange = true;
       try {
-        const operations: import("monaco-editor").editor.IIdentifiedSingleEditOperation[] =
-          minimalEdits.map((e) => ({
-            range: new monaco.Range(e.startLine, e.startCol, e.endLine, e.endCol),
-            text: e.text,
-            forceMoveMarkers: true,
-          }));
+        const operations: import("monaco-editor").editor.IIdentifiedSingleEditOperation[] = minimalEdits.map((e) => ({
+          range: new monaco.Range(e.startLine, e.startCol, e.endLine, e.endCol),
+          text: e.text,
+          forceMoveMarkers: true,
+        }));
         model.applyEdits(operations);
       } finally {
         suppressChange = false;

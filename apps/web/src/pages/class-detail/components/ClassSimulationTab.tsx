@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, PlayIcon, PulseIcon } from "@primer/octicons-react";
-import { Button, Heading, Spinner, Text } from "@primer/react";
+import { Button, Heading, Text } from "@primer/react";
 import React, { Suspense } from "react";
 import styledImport from "styled-components";
 import Box from "../../../components/Box";
 import { useTheme } from "../../../theme";
 import { useClassSimulation } from "../hooks/useClassSimulation";
 import type { ClassDetail } from "../types";
-import { SimulationControlsDeck } from "./simulation/SimulationControlsDeck";
+import { SimSpinner } from "./simulation/SimSpinner";
+import { SimulationExperimentBar, SimulationParametersPanel } from "./simulation/SimulationControlsDeck";
 import { SimulationTelemetryHeader } from "./simulation/SimulationTelemetryHeader";
 
 const styled: typeof styledImport =
@@ -24,27 +25,42 @@ const Container = styled.div`
   width: 100%;
 `;
 
-const MainGrid = styled.div`
-  display: grid;
-  grid-template-columns: 360px 1fr;
-  gap: 20px;
-  align-items: start;
+const Stack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   width: 100%;
-
-  @media (max-width: 1024px) {
-    grid-template-columns: 1fr;
-  }
+  min-width: 0;
 `;
 
 const CanvasCard = styled.div`
-  background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.03)));
-  border: 1px solid var(--ms-border, var(--color-border));
-  border-radius: 12px;
-  padding: 16px;
-  min-height: 480px;
+  min-width: 0;
+  min-height: 420px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--ms-border, var(--color-border));
+  background: var(--color-canvas-default, transparent);
+`;
+
+const RerunOverlay = styled.div`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  background: var(--color-canvas-default, #0d1117);
+  border: 1px solid var(--ms-border, var(--color-border));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 `;
 
 const EmptyStateWrap = styled.div`
@@ -121,25 +137,12 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
         onOpenCloudStudies={onOpenCloudStudies}
       />
 
-      {/* ── Main Dual-Pane Workspace ── */}
-      <MainGrid>
-        {/* Left Column: Parameter & Experiment Deck */}
-        <SimulationControlsDeck
-          experimentConfig={experimentConfig}
-          onExperimentConfigChange={setExperimentConfig}
-          parameters={parameters}
-          parameterOverrides={parameterOverrides}
-          onParameterChange={handleParameterChange}
-          onResetParameter={handleResetParameter}
-          autoRunOnScrub={autoRunOnScrub}
-          onToggleAutoRunOnScrub={setAutoRunOnScrub}
-        />
-
-        {/* Right Column: High-Fidelity Simulation Trajectory Canvas */}
+      {/* ── Vertical stack: plot → solver settings → parameters ── */}
+      <Stack>
         <CanvasCard>
           {isSimulating && !chartData ? (
             <EmptyStateWrap>
-              <Spinner size="large" />
+              <SimSpinner size={36} />
               <Heading as="h4" style={{ margin: 0, fontSize: 16 }}>
                 Simulating {className.split(".").pop()}…
               </Heading>
@@ -147,13 +150,13 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
                 Compiling DAE in WebAssembly and solving with {experimentConfig.solver.toUpperCase()} integrator.
               </Text>
             </EmptyStateWrap>
-          ) : simulationError && !chartData ? (
+          ) : simulationError && (!chartData || availableStates.length === 0) ? (
             <EmptyStateWrap>
               <AlertIcon size={40} fill="var(--color-danger-fg, #ef4444)" />
               <Heading as="h4" style={{ margin: 0, fontSize: 16, color: "var(--color-danger-fg, #ef4444)" }}>
                 Simulation Failed
               </Heading>
-              <Text style={{ color: "var(--color-text-muted)", fontSize: 13, maxWidth: 440 }}>{simulationError}</Text>
+              <Text style={{ color: "var(--color-text-muted)", fontSize: 13, maxWidth: 520 }}>{simulationError}</Text>
               <Box display="flex" gap="10px" mt={2}>
                 <Button size="small" onClick={() => runSimulation()}>
                   Retry Simulation
@@ -169,19 +172,27 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
             <Suspense
               fallback={
                 <EmptyStateWrap>
-                  <Spinner size="medium" />
+                  <SimSpinner size={28} />
                   <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Rendering Trajectory…</Text>
                 </EmptyStateWrap>
               }
             >
-              <SimulationResults
-                localData={chartData}
-                simulationVariables={availableStates}
-                modelName={className}
-                error={simulationError}
-                onRetry={() => runSimulation()}
-                colorMode={colorMode}
-              />
+              <div style={{ position: "relative" }}>
+                <SimulationResults
+                  localData={chartData}
+                  simulationVariables={availableStates}
+                  modelName={className}
+                  error={simulationError}
+                  onRetry={() => runSimulation()}
+                  colorMode={colorMode}
+                />
+                {isSimulating && (
+                  <RerunOverlay>
+                    <SimSpinner size={18} />
+                    <span>Re-simulating…</span>
+                  </RerunOverlay>
+                )}
+              </div>
             </Suspense>
           ) : (
             <EmptyStateWrap>
@@ -204,7 +215,18 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
             </EmptyStateWrap>
           )}
         </CanvasCard>
-      </MainGrid>
+
+        <SimulationExperimentBar experimentConfig={experimentConfig} onExperimentConfigChange={setExperimentConfig} />
+
+        <SimulationParametersPanel
+          parameters={parameters}
+          parameterOverrides={parameterOverrides}
+          onParameterChange={handleParameterChange}
+          onResetParameter={handleResetParameter}
+          autoRunOnScrub={autoRunOnScrub}
+          onToggleAutoRunOnScrub={setAutoRunOnScrub}
+        />
+      </Stack>
     </Container>
   );
 };

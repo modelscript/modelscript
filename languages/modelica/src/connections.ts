@@ -2447,37 +2447,11 @@ export class ModelicaPortBalancer {
                 }
                 list.push(ep);
               }
-              // MLS §9.2 2-connector flow alias substitution for intermediate outside ports:
-              // If an intermediate outside variable is connected in a 2-endpoint component
-              // to an external port, alias it directly: intVar = scale * extVar.
-              // This substitutes intVar in the internal component sum and eliminates the 2-endpoint equation.
-              const intAliasMap = new Map<number, { extVar: number; scale: number }>();
-              const eliminatedComps = new Set<number[]>();
+              // Note: an intermediate outside port connected 2-to-1 with an external port is NOT
+              // alias-substituted/removed: the variable is still referenced elsewhere (e.g. power
+              // equations, outputs), and OpenModelica keeps it plus the 2-endpoint equation.
 
               for (const comp of epComps.values()) {
-                if (comp.length === 2) {
-                  const ep0 = comp[0]!;
-                  const ep1 = comp[1]!;
-                  const v0 = ep0 >> 1;
-                  const v1 = ep1 >> 1;
-                  const is0Int = isIntermediateOutside(v0);
-                  const is1Int = isIntermediateOutside(v1);
-                  if (is0Int !== is1Int) {
-                    const intEp = is0Int ? ep0 : ep1;
-                    const extEp = is0Int ? ep1 : ep0;
-                    const intVar = intEp >> 1;
-                    const extVar = extEp >> 1;
-                    const signInt = (intEp & 1) === 1 ? -1 : 1;
-                    const signExt = (extEp & 1) === 1 ? -1 : 1;
-                    const scale = -(signExt / signInt);
-                    intAliasMap.set(intVar, { extVar, scale });
-                    eliminatedComps.add(comp);
-                  }
-                }
-              }
-
-              for (const comp of epComps.values()) {
-                if (eliminatedComps.has(comp)) continue;
                 if (comp.length <= 1) continue;
                 if (options?.omcCompatibility) {
                   comp.sort((a, b) => dae.getVarName(a >> 1).localeCompare(dae.getVarName(b >> 1)));
@@ -2490,14 +2464,8 @@ export class ModelicaPortBalancer {
                   const ep = comp[i]!;
                   const vIdx = ep >> 1;
                   const rawSign = (ep & 1) === 1 ? -1 : 1;
-                  let finalVar = vIdx;
-                  let finalSign = rawSign;
-
-                  if (intAliasMap.has(vIdx)) {
-                    const alias = intAliasMap.get(vIdx)!;
-                    finalVar = alias.extVar;
-                    finalSign = rawSign * alias.scale;
-                  }
+                  const finalVar = vIdx;
+                  const finalSign = rawSign;
 
                   if (firstVar === -1) firstVar = finalVar;
 
@@ -2520,9 +2488,6 @@ export class ModelicaPortBalancer {
                 }
               }
 
-              for (const intVar of intAliasMap.keys()) {
-                dae.removeVariable(intVar);
-              }
               for (const vIdx of activeOutsideVars) {
                 if (group.every((v) => !dae.getVarName(v).includes("."))) continue;
                 const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));

@@ -43,12 +43,37 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   colors,
   onChartClick,
 }) => {
+  const displayData = React.useMemo(() => {
+    const MAX_POINTS = 1500;
+    let src = mergedChartData;
+    if (src.length > MAX_POINTS) {
+      const stride = Math.ceil(src.length / MAX_POINTS);
+      const out = src.filter((_, i) => i % stride === 0);
+      const last = src[src.length - 1]!;
+      if (out[out.length - 1] !== last) out.push(last);
+      src = out;
+    }
+    // Replace NaN/±Infinity (e.g. diverged runs) with null: non-finite values break recharts' axis domains
+    // and can trigger an infinite update loop.
+    return src.map((row) => {
+      let clean: Record<string, number | string | null> | null = null;
+      for (const k in row) {
+        const v = row[k];
+        if (typeof v === "number" && !Number.isFinite(v)) {
+          clean ??= { ...row };
+          clean[k] = null;
+        }
+      }
+      return (clean ?? row) as typeof row;
+    });
+  }, [mergedChartData]);
+
   return (
     <div style={{ flex: 1, minHeight: 0, minWidth: 0, position: "relative" }}>
       <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
-            data={mergedChartData}
+            data={displayData}
             onClick={onChartClick}
             margin={{
               top: 10,

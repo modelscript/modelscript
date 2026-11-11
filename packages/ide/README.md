@@ -3,7 +3,7 @@
 
 # @modelscript/ide-client
 
-ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) — polyglot Language Server Protocol (`vscode-languageclient`) integration across all 81 languages, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 24 custom editors, and 20+ specialized engineering webview panels.
+ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) — polyglot Language Server Protocol (`vscode-languageclient`) integration across all 90 languages, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 24 custom editors, and 20+ specialized engineering webview panels.
 
 ---
 

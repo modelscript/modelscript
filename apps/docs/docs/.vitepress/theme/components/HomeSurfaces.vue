@@ -52,8 +52,9 @@ const surfaces = computed<Surface[]>(() => [
     tone: ["cyan", "amber"],
     title: "VS Code extension",
     body: `Language server for ${LANGUAGE_COUNT} formats on Visual Studio Marketplace & Open VSX Registry.`,
-    cta: "Download extension",
-    link: "#vscode",
+    cta: "Get the extension",
+    link: "https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript",
+    target: "_blank",
   },
   {
     id: "cli",

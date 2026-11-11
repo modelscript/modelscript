@@ -61,7 +61,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic aliases) organized across **81 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic aliases) organized across **90 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -112,7 +112,7 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 | [`fmu`](./commands.md#fmu)                   | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
 | [`import-fmu`](./commands.md#import-fmu)     | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
 | [`cosim`](./commands.md#cosim)               | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
-| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 81 languages. |
+| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 90 languages. |
 | [`align`](./commands.md#align)               | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
 | [`sysml`](./commands.md#sysml)               | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
 | [`oslc`](./commands.md#oslc)                 | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
@@ -186,7 +186,7 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 | [`logout`](./commands.md#login-logout-whoami)       | —                | Remove stored authentication tokens from `~/.ansatzrc` / `~/.modelscriptrc`.                                   |
 | [`whoami`](./commands.md#login-logout-whoami)       | —                | Display the currently authenticated user, organization roles, and active registry endpoint.                    |
 | [`install`](./commands.md#install)                  | `i`, `add`       | Resolve, verify, and install versioned dependencies from the Ansatz Package Registry into `modelica_modules/`. |
-| [`stdlib`](./commands.md#stdlib)                    | —                | Browse, search, and bootstrap official standard libraries across all 81 engineering languages.                 |
+| [`stdlib`](./commands.md#stdlib)                    | —                | Browse, search, and bootstrap official standard libraries across all 90 engineering languages.                 |
 | [`pack`](./commands.md#pack-publish-unpublish)      | —                | Create a deterministic, SHA-256 content-addressed `.zip` package archive from the workspace.                   |
 | [`publish`](./commands.md#pack-publish-unpublish)   | —                | Sign (Ed25519) and publish a package archive to the Ansatz Package Registry.                                   |
 | [`unpublish`](./commands.md#pack-publish-unpublish) | —                | Retract or deprecate a published package version from the Ansatz Package Registry.                             |

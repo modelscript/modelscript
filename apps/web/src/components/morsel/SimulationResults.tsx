@@ -750,7 +750,7 @@ export function SimulationResults({
   }
 
   return (
-    <div style={{ padding: "20px 24px", height: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 }}>
       {/* Top Header & Toolbar */}
       <SimulationToolbar
         xAxisVar={xAxisVar}
@@ -837,7 +837,12 @@ export function SimulationResults({
 
       {/* Main Plot Area */}
       <div
-        style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}
+        style={{
+          height: "clamp(360px, 58vh, 680px)",
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
         onMouseMove={handlePlotMouseMove}
         onMouseLeave={handlePlotMouseLeave}
       >

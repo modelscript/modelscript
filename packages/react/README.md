@@ -20,7 +20,7 @@ ModelScript React SDK & Engineering UI Widgets (`@modelscript/react`) — drop-i
 | `BlackboxInspector`     | `src/components/BlackboxInspector.tsx`     | Interactive inspector for compiled `.fmu`, `.dll`, `.so`, `.dylib`, and `.wasm` binaries—displaying architectures, GUIDs, and causal variable tables. |
 | `StepResponseTestbench` | `src/components/StepResponseTestbench.tsx` | Closed-loop step-response oscilloscope and parameter tuner for testing black-box FMUs and compiled DAE models in real time.                           |
 | `LintDiagnosticsTable`  | `src/components/LintDiagnosticsTable.tsx`  | Sortable, filterable compiler & pre-flight diagnostic table with severity badges, error codes (`Mxxxx`), and source line jump links.                  |
-| `ModelDropZone`         | `src/components/ModelDropZone.tsx`         | Drag-and-drop file ingestion widget supporting all 81 ModelScript engineering dialects and binary FMU/SSP archives.                                   |
+| `ModelDropZone`         | `src/components/ModelDropZone.tsx`         | Drag-and-drop file ingestion widget supporting all 90 ModelScript engineering dialects and binary FMU/SSP archives.                                   |
 | `WorkerProgressBar`     | `src/components/WorkerProgressBar.tsx`     | Real-time progress indicator for long-running background WebWorker compilation, meshing, and simulation sweeps.                                       |
 
 ### 3. WebAssembly Compiler, Linter & Worker Hooks (`src/hooks/`, `src/worker/`)

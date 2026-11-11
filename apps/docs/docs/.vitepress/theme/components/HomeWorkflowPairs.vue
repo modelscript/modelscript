@@ -819,10 +819,16 @@ onBeforeUnmount(() => {
                 @keydown.enter.prevent="activateMonacoEditors('source')"
                 @keydown.space.prevent="activateMonacoEditors('source')"
               >
-                <div class="line-numbers" aria-hidden="true">
-                  <span v-for="(_, idx) in highlightedSourceLines" :key="idx">{{ idx + 1 }}</span>
+                <div class="pane-code semantic-code">
+                  <div
+                    v-for="(lineHtml, idx) in highlightedSourceLines"
+                    :key="idx"
+                    class="code-line"
+                  >
+                    <span class="line-num" aria-hidden="true">{{ idx + 1 }}</span>
+                    <span class="line-text" v-html="lineHtml || '&nbsp;'" />
+                  </div>
                 </div>
-                <pre class="pane-code semantic-code"><code v-html="highlightedSourceLines.join('\n')" /></pre>
 
                 <!-- Translucent Interactive Activation Overlay -->
                 <div class="editor-activation-overlay">
@@ -905,10 +911,16 @@ onBeforeUnmount(() => {
                 @keydown.enter.prevent="activateMonacoEditors('target')"
                 @keydown.space.prevent="activateMonacoEditors('target')"
               >
-                <div class="line-numbers" aria-hidden="true">
-                  <span v-for="(_, idx) in highlightedTargetLines" :key="idx">{{ idx + 1 }}</span>
+                <div class="pane-code semantic-code">
+                  <div
+                    v-for="(lineHtml, idx) in highlightedTargetLines"
+                    :key="idx"
+                    class="code-line"
+                  >
+                    <span class="line-num" aria-hidden="true">{{ idx + 1 }}</span>
+                    <span class="line-text" v-html="lineHtml || '&nbsp;'" />
+                  </div>
                 </div>
-                <pre class="pane-code semantic-code"><code v-html="highlightedTargetLines.join('\n')" /></pre>
 
                 <!-- Translucent Interactive Activation Overlay -->
                 <div class="editor-activation-overlay">
@@ -1290,7 +1302,7 @@ onBeforeUnmount(() => {
 
 .projection-grid {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 16px;
   align-items: stretch;
   margin-bottom: 10px;
@@ -1300,9 +1312,11 @@ onBeforeUnmount(() => {
   background: var(--vp-c-bg-alt);
   border: 1px solid var(--vp-c-border);
   border-radius: 12px;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -1421,21 +1435,61 @@ onBeforeUnmount(() => {
 
 .editor-body {
   display: flex;
+  flex-direction: column;
   flex: 1;
   position: relative;
   min-height: 196px;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--vp-c-text-3) 30%, transparent) transparent;
+}
+
+.editor-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.editor-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vp-c-text-3) 35%, transparent);
+  border-radius: 3px;
+}
+
+.editor-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .static-semantic-view {
   cursor: pointer;
   border-radius: 0 0 11px 11px;
-  overflow: hidden;
 }
 
-.line-numbers {
+.pane-code {
+  margin: 0;
+  padding: 14px 16px 46px 0;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vp-c-text-1);
+  overflow-x: hidden;
+  overflow-y: visible;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+}
+
+.code-line {
   display: flex;
-  flex-direction: column;
-  padding: 14px 8px 14px 12px;
+  align-items: stretch;
+  min-width: 0;
+  line-height: 1.55;
+}
+
+.line-num {
+  flex-shrink: 0;
+  width: 38px;
+  padding: 0 10px 0 12px;
   font-family: var(--vp-font-family-mono);
   font-size: 12px;
   line-height: 1.55;
@@ -1447,16 +1501,17 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--vp-c-bg-soft) 50%, transparent);
 }
 
-.pane-code {
-  margin: 0;
-  padding: 14px 16px 46px 16px;
+.line-text {
+  flex: 1;
+  min-width: 0;
+  padding-left: 12px;
+  padding-right: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   font-family: var(--vp-font-family-mono);
   font-size: 12.5px;
   line-height: 1.55;
-  color: var(--vp-c-text-1);
-  overflow-x: auto;
-  flex: 1;
-  background: transparent;
 }
 
 /* Prong 1 Pre-Computed Syntax + Semantic Token Colors (Light & Dark Mode) */
@@ -1675,6 +1730,7 @@ onBeforeUnmount(() => {
   min-height: 205px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .monaco-mount-node {

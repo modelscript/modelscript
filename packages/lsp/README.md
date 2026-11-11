@@ -3,15 +3,15 @@
 
 # @modelscript/lsp
 
-ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 81 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
+ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 90 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
 
 ---
 
 ## Architecture & Capabilities
 
-### 1. Unified Polyglot Language Support (All 81 Languages)
+### 1. Unified Polyglot Language Support (All 90 Languages)
 
-A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **81 ModelScript engineering languages and formats** in a shared workspace:
+A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **90 ModelScript engineering languages and formats** in a shared workspace:
 
 - **Native & Core Systems Engineering (9)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), AMPL (`.mod`, `.dat`, `.nl`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), NIST OSCAL (`.oscal`, `.oscal.json`, `.oscal.xml`), OWL 2 Ontologies (`.owl`, `.ofn`), CSV Telemetry (`.csv`).
 - **Electrical Power Grids, RF, Telecommunications & Electronics (15)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), Siemens PTI PSS/E (`.raw`, `.dyr`), ENTSO-E CIM / CGMES (`.cgmes`, `.cim`, `.xml`), EPRI OpenDSS (`.dss`), DIgSILENT PowerFactory (`.dz`, `.pfd`, `.dsl`), GE PSLF (`.epc`, `.dyd`), OCPP (`.ocpp`, `.cpo`), OpenADR (`.oadr`), SPICE (`.cir`, `.sp`, `.spice`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`), Optical Transport (`.sor`), RAN & Microwave (`.adf`, `.pat`, `.msi`), Fiber Outside Plant (`.geojson`, `.kml`).

@@ -894,6 +894,42 @@ export class ArenaSimulator {
    * Identifies parameter and constant variables in the arena, evaluates their binding expressions
    * or start attributes, and populates `this.parameterVars` and `this.parameters`.
    */
+  /**
+   * Maps requested output name ids to the slot that actually holds the solved value.
+   *
+   * `eliminateArenaAliases` removes alias variables (e.g. every connector `vr` that is merely
+   * `a.vr = b.vr`) and rewrites all equations to their alias root, so the solver never writes the
+   * eliminated name's slot and it would be reported as constant zero. Reading the root's slot
+   * reproduces the value the alias is equal to.
+   */
+  private resolveOutIds(ids: number[]): number[] {
+    const arena = this.arena as any;
+    if (typeof arena.getAlias !== "function") return ids;
+    let out: number[] | null = null;
+    for (let k = 0; k < ids.length; k++) {
+      const id = ids[k]!;
+      const v = arena.lookupVariable(id);
+      if (v === undefined || v < 0 || !arena.isVarRemoved(v)) continue;
+      let target = arena.getAlias(v);
+      for (let hop = 0; target && hop < 64; hop++) {
+        const tv = arena.lookupVariable(target);
+        if (tv === undefined || tv < 0) {
+          target = 0;
+          break;
+        }
+        if (!arena.isVarRemoved(tv)) break;
+        const next = arena.getAlias(tv);
+        if (!next || next === target) break;
+        target = next;
+      }
+      if (target) {
+        if (!out) out = ids.slice();
+        out[k] = target;
+      }
+    }
+    return out ?? ids;
+  }
+
   private resolveParameters(preOverrides?: Map<string, number> | null) {
     const exprReferencesContinuous = (exprId: number): boolean => {
       if (exprId < 0) return false;
@@ -5201,7 +5237,7 @@ export class ArenaSimulator {
       }
     }
 
-    const outIds = options?.outputStringIds ?? stateStringIds;
+    const outIds = this.resolveOutIds(options?.outputStringIds ?? stateStringIds);
     const numOuts = outIds.length;
     const totalRows = steps + 1;
 
@@ -6012,7 +6048,7 @@ export class ArenaSimulator {
       }
 
       // Record output
-      const outIds = options?.outputStringIds ?? stateStringIds;
+      const outIds = this.resolveOutIds(options?.outputStringIds ?? stateStringIds);
       const currentState = new Float64Array(outIds.length);
       for (let i = 0; i < outIds.length; i++) {
         currentState[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
@@ -6340,7 +6376,7 @@ export class ArenaSimulator {
       y0[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
     }
 
-    const outIds = options?.outputStringIds ?? stateStringIds;
+    const outIds = this.resolveOutIds(options?.outputStringIds ?? stateStringIds);
     const stateIdToIdx = new Map<number, number>();
     for (let i = 0; i < n; i++) {
       const sid = stateStringIds[i];
@@ -7155,7 +7191,7 @@ export class ArenaSimulator {
     this.preValuesByStringId.set(valuesByStringId);
     const t = valuesByStringId[timeId] ?? 0;
     const n = stateStringIds.length;
-    const outIds = options?.outputStringIds ?? stateStringIds;
+    const outIds = this.resolveOutIds(options?.outputStringIds ?? stateStringIds);
     const outN = outIds.length;
 
     if (n === 0) {
@@ -7502,7 +7538,7 @@ export class ArenaSimulator {
       }
 
       // Record output
-      const outIds = options?.outputStringIds ?? stateStringIds;
+      const outIds = this.resolveOutIds(options?.outputStringIds ?? stateStringIds);
       const currentState = new Float64Array(outIds.length);
       for (let i = 0; i < outIds.length; i++) {
         currentState[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;

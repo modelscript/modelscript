@@ -1,107 +1,262 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { SearchIcon, SlidersIcon, SyncIcon, XIcon, ZapIcon } from "@primer/octicons-react";
-import { IconButton, Label, Text, TextInput } from "@primer/react";
+import { GearIcon, SearchIcon, SyncIcon, XIcon } from "@primer/octicons-react";
+import { IconButton, Text, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
 import styledImport from "styled-components";
-import Box from "../../../../components/Box";
 import type { ExperimentConfig, SimulationParamItem } from "../../hooks/useClassSimulation";
 
 const styled: typeof styledImport =
   (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
-const DeckWrap = styled.div`
+/* ───────────────────────── Shared primitives ───────────────────────── */
+
+const Panel = styled.section`
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: 100%;
-`;
-
-const SectionCard = styled.div`
-  background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.03)));
-  border: 1px solid var(--ms-border, var(--color-border));
+  gap: 14px;
+  padding: 14px 16px;
   border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  border: 1px solid var(--ms-border, var(--color-border));
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.02));
 `;
 
-const SectionTitle = styled.div`
+const PanelHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 10px;
+`;
+
+const PanelTitle = styled.h3`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--color-text-heading);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
 `;
 
-const FieldRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+const CountBadge = styled.span`
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0;
+  color: var(--color-text-muted);
+  background: var(--color-border-muted, rgba(127, 127, 127, 0.15));
+`;
+
+const controlBase = `
   font-size: 12px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-canvas-default, #1e293b);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-text-muted);
+  }
+  &:focus-visible {
+    border-color: var(--ms-brand, #06b6d4);
+    box-shadow: 0 0 0 3px var(--ms-brand-soft, rgba(6, 182, 212, 0.18));
+  }
 `;
 
 const SelectInput = styled.select`
-  font-size: 12px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-canvas-default, #1e293b);
-  color: var(--color-text-primary);
-  outline: none;
-  &:focus {
-    border-color: var(--ms-brand, #06b6d4);
-  }
+  ${controlBase}
+  cursor: pointer;
+  min-width: 0;
 `;
 
 const NumberInput = styled.input`
-  font-size: 12px;
-  padding: 4px 8px;
-  width: 72px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-canvas-default, #1e293b);
-  color: var(--color-text-primary);
+  ${controlBase}
+  width: 88px;
   text-align: right;
-  outline: none;
-  font-family: monospace;
-  &:focus {
-    border-color: var(--ms-brand, #06b6d4);
-  }
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 `;
 
-const SliderTrack = styled.input`
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-border);
-  accent-color: var(--ms-brand, #06b6d4);
-  cursor: pointer;
-  margin: 0 8px;
+/* ───────────────────────── Experiment bar ───────────────────────── */
+
+const ExperimentGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 20px;
 `;
 
-const ParamRow = styled.div<{ $modified: boolean }>`
+const Field = styled.label`
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: ${({ $modified }) =>
-    $modified
-      ? "var(--ms-brand-soft, rgba(6, 182, 212, 0.08))"
-      : "var(--color-canvas-subtle, rgba(255, 255, 255, 0.02))"};
-  border: 1px solid
-    ${({ $modified }) =>
-      $modified ? "var(--ms-brand, #06b6d4)" : "var(--color-border-muted, rgba(255, 255, 255, 0.06))"};
-  transition: all 0.15s ease;
+  min-width: 0;
+
+  > span {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+  }
+  > ${SelectInput}, > ${NumberInput} {
+    width: 100%;
+    text-align: left;
+  }
 `;
 
-export interface SimulationControlsDeckProps {
+export interface SimulationExperimentBarProps {
   experimentConfig: ExperimentConfig;
   onExperimentConfigChange: (config: ExperimentConfig) => void;
+}
+
+export const SimulationExperimentBar: React.FC<SimulationExperimentBarProps> = ({
+  experimentConfig,
+  onExperimentConfigChange,
+}) => (
+  <Panel aria-label="Solver settings">
+    <PanelHeader>
+      <PanelTitle>
+        <GearIcon size={13} />
+        Solver settings
+      </PanelTitle>
+    </PanelHeader>
+    <ExperimentGrid>
+      <Field>
+        <span>Stop time (s)</span>
+        <NumberInput
+          type="number"
+          step="any"
+          value={experimentConfig.stopTime}
+          onChange={(e) => {
+            const val = Number(e.target.value);
+            if (!isNaN(val) && val > 0) {
+              onExperimentConfigChange({ ...experimentConfig, stopTime: val });
+            }
+          }}
+        />
+      </Field>
+
+      <Field>
+        <span>Output points</span>
+        <SelectInput
+          value={experimentConfig.numberOfIntervals}
+          onChange={(e) => onExperimentConfigChange({ ...experimentConfig, numberOfIntervals: Number(e.target.value) })}
+        >
+          <option value="100">100</option>
+          <option value="250">250</option>
+          <option value="500">500</option>
+          <option value="1000">1,000</option>
+          <option value="2500">2,500</option>
+        </SelectInput>
+      </Field>
+
+      <Field>
+        <span>Solver</span>
+        <SelectInput
+          value={experimentConfig.solver}
+          onChange={(e) => onExperimentConfigChange({ ...experimentConfig, solver: e.target.value as any })}
+        >
+          <option value="dopri5">DOPRI5 (adaptive)</option>
+          <option value="rk4">RK4</option>
+          <option value="cvode">CVODE (stiff)</option>
+          <option value="euler">Euler</option>
+        </SelectInput>
+      </Field>
+    </ExperimentGrid>
+  </Panel>
+);
+
+/* ───────────────────────── Parameters panel ───────────────────────── */
+
+const SliderTrack = styled.input`
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  accent-color: var(--ms-brand, #06b6d4);
+  cursor: pointer;
+  margin: 0;
+`;
+
+const ParamGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding: 2px;
+`;
+
+const ParamCard = styled.div<{ $modified: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  min-width: 0;
+  background: ${({ $modified }) =>
+    $modified ? "var(--ms-brand-soft, rgba(6, 182, 212, 0.08))" : "var(--color-canvas-default, transparent)"};
+  border: 1px solid
+    ${({ $modified }) => ($modified ? "var(--ms-brand, #06b6d4)" : "var(--color-border-muted, rgba(127,127,127,0.2))")};
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: ${({ $modified }) => ($modified ? "var(--ms-brand, #06b6d4)" : "var(--color-text-muted)")};
+  }
+`;
+
+const ParamTop = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+`;
+
+const ParamName = styled.span`
+  font-weight: 600;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+`;
+
+const UnitTag = styled.span`
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  background: var(--color-border-muted, rgba(127, 127, 127, 0.15));
+`;
+
+const SliderRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+`;
+
+const AutoRun = styled.label`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  user-select: none;
+`;
+
+export interface SimulationParametersPanelProps {
   parameters: SimulationParamItem[];
   parameterOverrides: Map<string, number>;
   onParameterChange: (name: string, value: number) => void;
@@ -110,9 +265,7 @@ export interface SimulationControlsDeckProps {
   onToggleAutoRunOnScrub: (v: boolean) => void;
 }
 
-export const SimulationControlsDeck: React.FC<SimulationControlsDeckProps> = ({
-  experimentConfig,
-  onExperimentConfigChange,
+export const SimulationParametersPanel: React.FC<SimulationParametersPanelProps> = ({
   parameters,
   parameterOverrides,
   onParameterChange,
@@ -133,171 +286,115 @@ export const SimulationControlsDeck: React.FC<SimulationControlsDeckProps> = ({
     );
   }, [parameters, paramSearch]);
 
+  if (parameters.length === 0) return null;
+
   return (
-    <DeckWrap>
-      {/* ── 1. Experiment Setup ── */}
-      <SectionCard>
-        <SectionTitle>
-          <Box display="flex" alignItems="center" gap="6px">
-            <ZapIcon size={14} style={{ color: "var(--ms-brand, #06b6d4)" }} />
-            <span>Experiment Setup</span>
-          </Box>
-        </SectionTitle>
-
-        <FieldRow>
-          <Text style={{ color: "var(--color-text-muted)" }}>Stop Time (s):</Text>
-          <NumberInput
-            type="number"
-            step="any"
-            value={experimentConfig.stopTime}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (!isNaN(val) && val > 0) {
-                onExperimentConfigChange({ ...experimentConfig, stopTime: val });
+    <Panel aria-label="Model parameters">
+      <PanelHeader>
+        <PanelTitle>
+          Parameters
+          <CountBadge>{parameters.length}</CountBadge>
+        </PanelTitle>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {parameters.length > 5 && (
+            <TextInput
+              leadingVisual={SearchIcon}
+              trailingAction={
+                paramSearch ? (
+                  <TextInput.Action onClick={() => setParamSearch("")} icon={XIcon} aria-label="Clear filter" />
+                ) : undefined
               }
-            }}
-          />
-        </FieldRow>
-
-        <FieldRow>
-          <Text style={{ color: "var(--color-text-muted)" }}>Intervals (Steps):</Text>
-          <SelectInput
-            value={experimentConfig.numberOfIntervals}
-            onChange={(e) =>
-              onExperimentConfigChange({ ...experimentConfig, numberOfIntervals: Number(e.target.value) })
-            }
-          >
-            <option value="100">100 (Coarse / Ultra-Fast)</option>
-            <option value="250">250 (Standard)</option>
-            <option value="500">500 (Detailed)</option>
-            <option value="1000">1000 (High-Resolution)</option>
-            <option value="2500">2500 (Dense)</option>
-          </SelectInput>
-        </FieldRow>
-
-        <FieldRow>
-          <Text style={{ color: "var(--color-text-muted)" }}>Integrator Solver:</Text>
-          <SelectInput
-            value={experimentConfig.solver}
-            onChange={(e) => onExperimentConfigChange({ ...experimentConfig, solver: e.target.value as any })}
-          >
-            <option value="dopri5">DOPRI5 (Dormand-Prince Adaptive)</option>
-            <option value="rk4">RK4 (Runge-Kutta 4th Order)</option>
-            <option value="cvode">CVODE (Stiff BDF / Sundials)</option>
-            <option value="euler">Euler (1st Order Explicit)</option>
-          </SelectInput>
-        </FieldRow>
-      </SectionCard>
-
-      {/* ── 2. Parameter Scrubbers ── */}
-      <SectionCard>
-        <SectionTitle>
-          <Box display="flex" alignItems="center" gap="6px">
-            <SlidersIcon size={14} style={{ color: "var(--ms-brand, #06b6d4)" }} />
-            <span>Tunable Parameters ({parameters.length})</span>
-          </Box>
-          <label
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", fontWeight: 500 }}
-          >
+              placeholder="Search parameters…"
+              value={paramSearch}
+              onChange={(e) => setParamSearch(e.target.value)}
+              size="small"
+              style={{ minWidth: 220 }}
+            />
+          )}
+          <AutoRun>
             <input
               type="checkbox"
               checked={autoRunOnScrub}
               onChange={(e) => onToggleAutoRunOnScrub(e.target.checked)}
             />
-            Auto-solve on scrub
-          </label>
-        </SectionTitle>
+            Auto-run on change
+          </AutoRun>
+        </div>
+      </PanelHeader>
 
-        {parameters.length > 5 && (
-          <TextInput
-            leadingVisual={SearchIcon}
-            trailingAction={
-              paramSearch ? (
-                <TextInput.Action onClick={() => setParamSearch("")} icon={XIcon} aria-label="Clear filter" />
-              ) : undefined
-            }
-            placeholder="Search parameters…"
-            value={paramSearch}
-            onChange={(e) => setParamSearch(e.target.value)}
-            size="small"
-            block
-            style={{ fontSize: 11, padding: "2px 8px" }}
-          />
-        )}
+      <ParamGrid>
+        {filteredParams.map((p) => {
+          const isModified = parameterOverrides.has(p.name);
+          const minVal = p.min !== undefined ? p.min : p.defaultValue > 0 ? 0 : p.defaultValue * 3;
+          const maxVal =
+            p.max !== undefined ? p.max : p.defaultValue > 0 ? p.defaultValue * 3 : p.defaultValue < 0 ? 0 : 10;
+          const stepVal = maxVal !== minVal ? Math.abs((maxVal - minVal) / 100) : 0.01;
 
-        {parameters.length === 0 ? (
-          <Text style={{ color: "var(--color-text-muted)", fontSize: 12, fontStyle: "italic", padding: "8px 0" }}>
-            No top-level tunable parameters declared on this model.
-          </Text>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 380, overflowY: "auto" }}>
-            {filteredParams.map((p) => {
-              const isModified = parameterOverrides.has(p.name);
-              const minVal = p.min !== undefined ? p.min : p.defaultValue > 0 ? 0 : p.defaultValue * 3;
-              const maxVal =
-                p.max !== undefined ? p.max : p.defaultValue > 0 ? p.defaultValue * 3 : p.defaultValue < 0 ? 0 : 10;
-              const stepVal = maxVal !== minVal ? Math.abs((maxVal - minVal) / 100) : 0.01;
+          return (
+            <ParamCard key={p.name} $modified={isModified}>
+              <ParamTop>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <ParamName title={p.name}>{p.name}</ParamName>
+                  {p.unit && <UnitTag>{p.unit}</UnitTag>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                  <NumberInput
+                    type="number"
+                    step="any"
+                    value={p.currentValue}
+                    style={{ width: 84, height: 26 }}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (!isNaN(val)) onParameterChange(p.name, val);
+                    }}
+                  />
+                  <IconButton
+                    icon={SyncIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={`Reset ${p.name} to default (${p.defaultValue})`}
+                    title={`Reset to default (${p.defaultValue})`}
+                    onClick={() => onResetParameter(p.name)}
+                    style={{
+                      color: "var(--ms-brand, #06b6d4)",
+                      visibility: isModified ? "visible" : "hidden",
+                    }}
+                  />
+                </div>
+              </ParamTop>
 
-              return (
-                <ParamRow key={p.name} $modified={isModified}>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box display="flex" alignItems="center" gap="6px">
-                      <span style={{ fontWeight: 600, fontSize: 12 }}>{p.name}</span>
-                      {p.unit && (
-                        <Label variant="secondary" style={{ fontSize: 10 }}>
-                          {p.unit}
-                        </Label>
-                      )}
-                    </Box>
-                    <Box display="flex" alignItems="center" gap="6px">
-                      <NumberInput
-                        type="number"
-                        step="any"
-                        value={p.currentValue}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          if (!isNaN(val)) onParameterChange(p.name, val);
-                        }}
-                      />
-                      {isModified && (
-                        <IconButton
-                          icon={SyncIcon}
-                          size="small"
-                          aria-label={`Reset ${p.name} to default (${p.defaultValue})`}
-                          title={`Reset to default (${p.defaultValue})`}
-                          onClick={() => onResetParameter(p.name)}
-                          style={{ color: "var(--ms-brand, #06b6d4)" }}
-                        />
-                      )}
-                    </Box>
-                  </Box>
+              <SliderRow>
+                <span>{Number(minVal.toFixed(2))}</span>
+                <SliderTrack
+                  type="range"
+                  min={minVal}
+                  max={maxVal}
+                  step={stepVal}
+                  value={p.currentValue}
+                  onChange={(e) => onParameterChange(p.name, Number(e.target.value))}
+                />
+                <span>{Number(maxVal.toFixed(2))}</span>
+              </SliderRow>
 
-                  <Box display="flex" alignItems="center">
-                    <span style={{ fontSize: 10, color: "var(--color-text-muted)", minWidth: 28 }}>
-                      {Number(minVal.toFixed(2))}
-                    </span>
-                    <SliderTrack
-                      type="range"
-                      min={minVal}
-                      max={maxVal}
-                      step={stepVal}
-                      value={p.currentValue}
-                      onChange={(e) => onParameterChange(p.name, Number(e.target.value))}
-                    />
-                    <span style={{ fontSize: 10, color: "var(--color-text-muted)", minWidth: 28, textAlign: "right" }}>
-                      {Number(maxVal.toFixed(2))}
-                    </span>
-                  </Box>
-
-                  {p.description && (
-                    <Text style={{ fontSize: 10, color: "var(--color-text-muted)" }}>{p.description}</Text>
-                  )}
-                </ParamRow>
-              );
-            })}
-          </div>
-        )}
-      </SectionCard>
-    </DeckWrap>
+              {p.description && (
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: "var(--color-text-muted)",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                  title={p.description}
+                >
+                  {p.description}
+                </Text>
+              )}
+            </ParamCard>
+          );
+        })}
+      </ParamGrid>
+    </Panel>
   );
 };

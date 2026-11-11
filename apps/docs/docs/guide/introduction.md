@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 81 engineering languages.
+description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 90 engineering languages.
 ---
 
 # Introduction
@@ -11,7 +11,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **81 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **90 engineering languages and file formats** spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -41,7 +41,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **1,260+ static lint rules** across **81 languages** evaluated on every keystroke and CI push  |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,260+ static lint rules** across **90 languages** evaluated on every keystroke and CI push  |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -50,7 +50,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 81 Languages (24 Stable & 57 Beta)
+### 1. Code-First Engineering Across 90 Languages (25 Stable & 65 Beta)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 

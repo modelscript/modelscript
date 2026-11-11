@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ClassDetail } from "../../../api";
-import { didClose, didOpen, simulate, type SimulateResult } from "../../../components/morsel/util/lsp-bridge";
+import {
+  didClose,
+  didOpen,
+  getMountedLibraries,
+  installDependency,
+  simulate,
+  type SimulateResult,
+} from "../../../components/morsel/util/lsp-bridge";
 import { extractParametersFromCode, type ParameterRibbonItem } from "../../../util/modelica-params";
 
 export interface ExperimentConfig {
@@ -64,6 +71,31 @@ export interface UseClassSimulationOptions {
 
 let docCounter = 1;
 
+const mountedLibraryPromises = new Map<string, Promise<boolean>>();
+
+/** Mounts `name@version` (the server resolves its dependencies) once per session. Resolves false on failure. */
+function ensureLibraryMounted(name: string, version: string): Promise<boolean> {
+  if (!name || !version) return Promise.resolve(false);
+  const key = `${name}@${version}`;
+  let p = mountedLibraryPromises.get(key);
+  if (!p) {
+    p = (async () => {
+      try {
+        const { mounted } = await getMountedLibraries();
+        if (mounted.some((m) => m.name === name && m.version === version)) return true;
+        await installDependency(name, version);
+        return true;
+      } catch (err) {
+        console.warn(`[useClassSimulation] Failed to mount ${key}:`, err);
+        mountedLibraryPromises.delete(key);
+        return false;
+      }
+    })();
+    mountedLibraryPromises.set(key, p);
+  }
+  return p;
+}
+
 export function useClassSimulation({ libraryName, version, className, cls, active }: UseClassSimulationOptions) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -111,7 +143,8 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
     }
 
     // B. Augment from cls.components where variability === 'parameter'
-    for (const c of cls.components || []) {
+    for (const comp of cls.components || []) {
+      const c = comp as typeof comp & { default_value?: string | null; unit?: string | null };
       if (c.variability === "parameter" || (!c.variability && c.default_value && !c.causality)) {
         const numVal = c.default_value ? Number(c.default_value) : NaN;
         if (!isNaN(numVal) && !paramMap.has(c.component_name)) {
@@ -120,8 +153,8 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
             type: c.type_name || "Real",
             defaultValue: numVal,
             currentValue: numVal,
-            unit: c.unit,
-            description: c.description,
+            unit: c.unit ?? undefined,
+            description: c.description ?? undefined,
           });
         }
       }
@@ -197,12 +230,20 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
           isDocOpenRef.current = true;
         }
 
+        // The model's source references types from its owning library (and that library's dependencies);
+        // without the library mounted in the LSP worker nothing resolves and the flattened DAE is empty.
+        const libraryMounted = await ensureLibraryMounted(libraryName, version);
+
         const effectiveOverrides = customOverrides ?? parameterOverrides;
         const effectiveExp = customExp ?? experimentConfig;
         const overridesObj = Object.fromEntries(effectiveOverrides);
 
         const shortName = className.split(".").pop() || className;
-        const targetClass = sourceCode.includes(`model ${shortName}`) ? shortName : className;
+        const targetClass = libraryMounted
+          ? className
+          : sourceCode.includes(`model ${shortName}`)
+            ? shortName
+            : className;
 
         const res: SimulateResult = await simulate(documentUri, {
           className: targetClass,
@@ -223,18 +264,30 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
           setChartData(null);
         } else if (res.t && res.y && res.states) {
           const states = res.states;
-          setAvailableStates(states);
+          // Some solvers return variable-major (y[var][time]); detect and read accordingly.
+          const transposed =
+            states.length > 0 &&
+            res.t.length !== states.length &&
+            res.y.length === states.length &&
+            (res.y[0]?.length ?? 0) === res.t.length;
+          const at = (i: number, s: number): number => (transposed ? res.y[s]?.[i] : res.y[i]?.[s]) ?? NaN;
 
           const formatted: Record<string, number | string>[] = res.t.map((tVal, i) => {
             const row: Record<string, number | string> = { time: tVal };
             states.forEach((sName, sIdx) => {
-              row[sName] = res.y[i]?.[sIdx] ?? 0;
+              const v = at(i, sIdx);
+              row[sName] = Number.isFinite(v) ? v : 0;
             });
             return row;
           });
 
+          setAvailableStates(states);
           setChartData(formatted);
-          setSimulationError(null);
+          if (states.length === 0) {
+            setSimulationError("The solver finished but returned no plottable variables for this model.");
+          } else {
+            setSimulationError(null);
+          }
           setHasRunOnce(true);
         } else {
           setSimulationError("No trajectory returned from simulation solver.");
@@ -242,6 +295,7 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
       } catch (err: unknown) {
         setSimulationError(err instanceof Error ? err.message : String(err));
       } finally {
+        setHasRunOnce(true);
         setIsSimulating(false);
       }
     },
@@ -250,12 +304,11 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
 
   // Auto-run once when tab becomes active
   useEffect(() => {
-    if (active && !hasRunOnce && !isSimulating) {
-      const timer = setTimeout(() => {
-        void runSimulation();
-      }, 80);
-      return () => clearTimeout(timer);
-    }
+    if (!active || hasRunOnce || isSimulating) return undefined;
+    const timer = setTimeout(() => {
+      void runSimulation();
+    }, 80);
+    return () => clearTimeout(timer);
   }, [active, hasRunOnce, isSimulating, runSimulation]);
 
   // Debounced auto-re-simulate when parameter overrides change (if autoRunOnScrub is enabled)

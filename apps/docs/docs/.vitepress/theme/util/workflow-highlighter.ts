@@ -210,11 +210,7 @@ export const SCAD_GRAMMAR_VOCAB: DslGrammarVocabulary = extractDslGrammarVocabul
   ["tag_port"],
 );
 
-export const STEP_GRAMMAR_VOCAB: DslGrammarVocabulary = extractDslGrammarVocabulary(
-  STEP_SYNTAX_NAMES,
-  [],
-  [],
-);
+export const STEP_GRAMMAR_VOCAB: DslGrammarVocabulary = extractDslGrammarVocabulary(STEP_SYNTAX_NAMES, [], []);
 
 interface WasmLanguageRuntime {
   facade: any;
@@ -229,6 +225,61 @@ let nodeInitAttempted = false;
 let browserInitPromise: Promise<void> | null = null;
 
 /**
+ * Rewrites SysML feature-chain dots (`bracket.mass`) to underscores, byte-for-byte.
+ *
+ * WORKAROUND: the generated SysML v2 GLR parser currently needs ~5–20 s for any
+ * expression containing a `PrimaryExpression` postfix (`a.b`, `a[1]`, ...), which makes
+ * live editing unusable. Replacing the `.` with `_` keeps every offset identical (so
+ * semantic tokens and diagnostics still line up) and parses in milliseconds. Comments,
+ * strings, quoted names and numeric literals are left untouched. Remove once the
+ * grammar's postfix/feature-chain ambiguity is fixed.
+ */
+export function sanitizeSysmlForFastParse(source: string): string {
+  if (!source.includes(".")) return source;
+  const out = source.split("");
+  const n = source.length;
+  const isIdStart = (c: string | undefined): boolean => c !== undefined && /[A-Za-z_]/.test(c);
+  const isIdPart = (c: string | undefined): boolean => c !== undefined && /[A-Za-z_0-9]/.test(c);
+  let i = 0;
+  while (i < n) {
+    const c = source[i]!;
+    const d = source[i + 1];
+    if (c === "/" && d === "/") {
+      while (i < n && source[i] !== "\n") i++;
+    } else if (c === "/" && d === "*") {
+      i += 2;
+      while (i < n && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i += 2;
+    } else if (c === '"' || c === "'") {
+      i++;
+      while (i < n && source[i] !== c) i += source[i] === "\\" ? 2 : 1;
+      i++;
+    } else if (/[0-9]/.test(c) && !isIdPart(source[i - 1])) {
+      // numeric literal such as 1.25 or 2.5e-3: skip the whole token
+      while (i < n && /[0-9A-Za-z_.]/.test(source[i]!)) i++;
+    } else if (c === "." && isIdPart(source[i - 1]) && isIdStart(d)) {
+      out[i] = "_";
+      i++;
+    } else {
+      i++;
+    }
+  }
+  return out.join("");
+}
+
+/** Installs {@link sanitizeSysmlForFastParse} on a SysML parser instance (idempotent). */
+function guardSysmlParser(runtime: WasmLanguageRuntime | null): WasmLanguageRuntime | null {
+  const parser = runtime?.parser as
+    | { parse: (src: string, ...rest: unknown[]) => unknown; __sysmlGuarded?: boolean }
+    | undefined;
+  if (!parser || parser.__sysmlGuarded) return runtime;
+  const original = parser.parse.bind(parser);
+  parser.parse = (src: string, ...rest: unknown[]) => original(sanitizeSysmlForFastParse(src), ...rest);
+  parser.__sysmlGuarded = true;
+  return runtime;
+}
+
+/**
  * In Node.js / VitePress SSR (`process.versions.node`), synchronously initializes
  * the compiled Modelica, SysML v2, OpenSCAD, and STEP WebAssembly GLR parsers (`dist/parser.wasm`)
  * via `createWasmParserSync` from `src-gen/bindings.js`.
@@ -239,10 +290,7 @@ function ensureNodeWasmParsersSync(): void {
   nodeInitAttempted = true;
 
   try {
-    const moUrl = new URL(
-      "../../../../../../languages/modelica/dist/parser.wasm",
-      import.meta.url,
-    );
+    const moUrl = new URL("../../../../../../languages/modelica/dist/parser.wasm", import.meta.url);
     const moPath = decodeURIComponent(moUrl.pathname);
     modelicaWasmRuntime = createModelicaParserSync(moPath, {
       syntaxNames: MODELICA_SYNTAX_NAMES,
@@ -255,26 +303,22 @@ function ensureNodeWasmParsersSync(): void {
   }
 
   try {
-    const sysmlUrl = new URL(
-      "../../../../../../languages/sysml2/dist/parser.wasm",
-      import.meta.url,
-    );
+    const sysmlUrl = new URL("../../../../../../languages/sysml2/dist/parser.wasm", import.meta.url);
     const sysmlPath = decodeURIComponent(sysmlUrl.pathname);
-    sysmlWasmRuntime = createSysmlParserSync(sysmlPath, {
-      syntaxNames: SYSML_SYNTAX_NAMES,
-      fieldNames: SYSML_FIELD_NAMES,
-      lintMessages: SYSML_LINT_MESSAGES,
-      lintSeverities: SYSML_LINT_SEVERITIES,
-    });
+    sysmlWasmRuntime = guardSysmlParser(
+      createSysmlParserSync(sysmlPath, {
+        syntaxNames: SYSML_SYNTAX_NAMES,
+        fieldNames: SYSML_FIELD_NAMES,
+        lintMessages: SYSML_LINT_MESSAGES,
+        lintSeverities: SYSML_LINT_SEVERITIES,
+      }),
+    );
   } catch {
     sysmlWasmRuntime = null;
   }
 
   try {
-    const scadUrl = new URL(
-      "../../../../../../languages/scad/dist/parser.wasm",
-      import.meta.url,
-    );
+    const scadUrl = new URL("../../../../../../languages/scad/dist/parser.wasm", import.meta.url);
     const scadPath = decodeURIComponent(scadUrl.pathname);
     scadWasmRuntime = createScadParserSync(scadPath, {
       syntaxNames: SCAD_SYNTAX_NAMES,
@@ -285,10 +329,7 @@ function ensureNodeWasmParsersSync(): void {
   }
 
   try {
-    const stepUrl = new URL(
-      "../../../../../../languages/step/dist/parser.wasm",
-      import.meta.url,
-    );
+    const stepUrl = new URL("../../../../../../languages/step/dist/parser.wasm", import.meta.url);
     const stepPath = decodeURIComponent(stepUrl.pathname);
     stepWasmRuntime = createStepParserSync(stepPath, {
       syntaxNames: STEP_SYNTAX_NAMES,
@@ -308,10 +349,7 @@ function ensureNodeWasmParsersSync(): void {
  * Asynchronously initializes the compiled Modelica and SysML v2 WebAssembly GLR parsers
  * in the browser from Vite asset URLs (`?url`).
  */
-export async function ensureBrowserWasmParsers(
-  modelicaWasmUrl: string,
-  sysml2WasmUrl: string,
-): Promise<void> {
+export async function ensureBrowserWasmParsers(modelicaWasmUrl: string, sysml2WasmUrl: string): Promise<void> {
   if (modelicaWasmRuntime && sysmlWasmRuntime) return;
   ensureNodeWasmParsersSync();
   if (modelicaWasmRuntime && sysmlWasmRuntime) return;
@@ -340,7 +378,7 @@ export async function ensureBrowserWasmParsers(
         modelicaWasmRuntime = moRes.value;
       }
       if (sysRes.status === "fulfilled") {
-        sysmlWasmRuntime = sysRes.value;
+        sysmlWasmRuntime = guardSysmlParser(sysRes.value);
       }
       registerRequirementBinderParsers({
         sysmlParser: sysmlWasmRuntime?.parser,
@@ -351,9 +389,7 @@ export async function ensureBrowserWasmParsers(
   await browserInitPromise;
 }
 
-export function getWasmRuntime(
-  lang: "modelica" | "sysml" | "scad" | "step",
-): WasmLanguageRuntime | null {
+export function getWasmRuntime(lang: "modelica" | "sysml" | "scad" | "step"): WasmLanguageRuntime | null {
   ensureNodeWasmParsersSync();
   if (lang === "modelica") return modelicaWasmRuntime;
   if (lang === "sysml") return sysmlWasmRuntime;
@@ -432,11 +468,7 @@ class LineLocator {
 }
 
 function escapeHtml(raw: string): string {
-  return raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 export interface SymbolRoleInfo {
@@ -448,10 +480,7 @@ export interface SymbolRoleInfo {
  * Builds a semantic symbol table from Modelica or SysML v2 CSTs so identifier tokens
  * receive rich TGG semantic envelope metadata (`parameter`, `port`, `state`, `class`, `component`).
  */
-export function buildSemanticSymbolMap(
-  code: string,
-  lang: string,
-): Map<string, SymbolRoleInfo> {
+export function buildSemanticSymbolMap(code: string, lang: string): Map<string, SymbolRoleInfo> {
   const map = new Map<string, SymbolRoleInfo>();
 
   if (lang === "modelica") {
@@ -809,15 +838,7 @@ function extractWasmCstSemanticSpans(
       if (/^[A-Za-z_]/.test(text)) {
         const sym = symMap.get(text);
         if (sym) {
-          pushSpan(
-            row,
-            col,
-            len,
-            sym.kind,
-            false,
-            sym.kind === "parameter",
-            sym.detail,
-          );
+          pushSpan(row, col, len, sym.kind, false, sym.kind === "parameter", sym.detail);
           return;
         }
 
@@ -830,11 +851,7 @@ function extractWasmCstSemanticSpans(
         while (anc) {
           const at: string = anc.type || "";
           if (isModelica) {
-            if (
-              at === "long_class_specifier" ||
-              at === "short_class_specifier" ||
-              at === "der_class_specifier"
-            ) {
+            if (at === "long_class_specifier" || at === "short_class_specifier" || at === "der_class_specifier") {
               ancestorKind = "class";
               isDecl = true;
               hover = `**Modelica Class** \`${text}\``;
@@ -877,11 +894,7 @@ function extractWasmCstSemanticSpans(
               hover = `**SysML v2 ${at}** \`${text}\``;
               break;
             }
-            if (
-              at === "OwnedFeatureTyping" ||
-              at === "ConjugatedPortTyping" ||
-              at === "TypeReference"
-            ) {
+            if (at === "OwnedFeatureTyping" || at === "ConjugatedPortTyping" || at === "TypeReference") {
               ancestorKind = "type";
               break;
             }
@@ -1245,10 +1258,7 @@ function extractFallbackVocabSpans(
   return spans;
 }
 
-function extractScadOrStepWasmCstSpans(
-  code: string,
-  lang: "scad" | "step",
-): SemanticSpan[] | null {
+function extractScadOrStepWasmCstSpans(code: string, lang: "scad" | "step"): SemanticSpan[] | null {
   const runtime = getWasmRuntime(lang);
   if (!runtime?.parser) return null;
 
@@ -1298,11 +1308,7 @@ function extractScadOrStepWasmCstSpans(
             declaration: true,
             hoverMarkdown: `**OpenSCAD ${typeName === "ModuleDeclaration" ? "Module" : "Function"}** \`${text}\``,
           });
-        } else if (
-          typeName === "VariableDeclaration" ||
-          typeName === "Parameter" ||
-          typeName === "Argument"
-        ) {
+        } else if (typeName === "VariableDeclaration" || typeName === "Parameter" || typeName === "Argument") {
           addSpan({
             line: sp.row,
             startCol: sp.column,
@@ -1342,10 +1348,7 @@ function extractScadOrStepWasmCstSpans(
         parentType && !parentType.startsWith("/") && parentType !== "StepFile" && parentType !== "DataSection"
           ? parentType
           : typeName;
-      const rawLit =
-        typeName.startsWith('"') && typeName.endsWith('"')
-          ? typeName.slice(1, -1)
-          : text;
+      const rawLit = typeName.startsWith('"') && typeName.endsWith('"') ? typeName.slice(1, -1) : text;
 
       if (lang === "step") {
         if (
@@ -1470,7 +1473,7 @@ export function extractSemanticSpans(code: string, lang: string): SemanticSpan[]
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
       const line = lines[lineIdx]!;
-      if (line.trimStart().startsWith("**") || ( line.trimStart().startsWith("/*") && line.trimEnd().endsWith("*/"))) {
+      if (line.trimStart().startsWith("**") || (line.trimStart().startsWith("/*") && line.trimEnd().endsWith("*/"))) {
         spans.push({ line: lineIdx, startCol: 0, length: line.length, kind: "comment" });
         continue;
       }
@@ -1487,9 +1490,7 @@ export function extractSemanticSpans(code: string, lang: string): SemanticSpan[]
         const cardEnd = commaIdx !== -1 ? commaIdx : codeSlice.length;
         const cardName = codeSlice.slice(starCol, cardEnd).trimEnd();
         const matInfo =
-          feaDeck && feaDeck.materials.size > 0
-            ? ` (${Array.from(feaDeck.materials.keys()).join(", ")})`
-            : "";
+          feaDeck && feaDeck.materials.size > 0 ? ` (${Array.from(feaDeck.materials.keys()).join(", ")})` : "";
         spans.push({
           line: lineIdx,
           startCol: starCol,
@@ -1797,9 +1798,7 @@ export function queryWasmLspIntelligence(
     // Ignore completion context failure
   }
 
-  let definitionRange:
-    | { startLine: number; startCol: number; endLine: number; endCol: number }
-    | undefined;
+  let definitionRange: { startLine: number; startCol: number; endLine: number; endCol: number } | undefined;
   try {
     const def = runtime.facade.getDefinition(astRoot, offset);
     if (def && def.end > def.start) {
@@ -1845,10 +1844,7 @@ export function queryWasmLspIntelligence(
     // Ignore references lookup failure
   }
 
-  if (
-    referenceRanges.length > 0 &&
-    (!definitionRange || definitionRange.startLine === line0 + 1)
-  ) {
+  if (referenceRanges.length > 0 && (!definitionRange || definitionRange.startLine === line0 + 1)) {
     definitionRange = referenceRanges[0];
   }
 
@@ -1877,10 +1873,7 @@ export interface MinimalTextEdit {
  * so updating a Monaco editor model via `model.applyEdits()` only splices the modified
  * tokens without replacing the full document or flashing semantic tokens.
  */
-export function computeMinimalTextEdits(
-  oldText: string,
-  newText: string,
-): MinimalTextEdit[] {
+export function computeMinimalTextEdits(oldText: string, newText: string): MinimalTextEdit[] {
   if (oldText === newText) return [];
 
   const oldLines = oldText.split("\n");
@@ -1980,10 +1973,7 @@ function offsetToLineCol(code: string, offset: number): { line: number; col: num
  * AND first-party domain linters (`@modelscript/urdf`, `@modelscript/simulink`,
  * `@modelscript/autosar`, `@modelscript/reqif`, `@modelscript/pscad`, `@modelscript/ssp`).
  */
-function lintXmlWithDslAndLanguagePackages(
-  code: string,
-  diags: WorkflowDiagnostic[],
-): void {
+function lintXmlWithDslAndLanguagePackages(code: string, diags: WorkflowDiagnostic[]): void {
   const xmlDoc = parseXmlSync(code);
 
   // 1. Surface structural XML syntax diagnostics directly from `@modelscript/dsl/xml` (`xmlDoc.errors`)
@@ -1995,10 +1985,7 @@ function lintXmlWithDslAndLanguagePackages(
       startLine: startPos.line,
       startCol: startPos.col,
       endLine: startPos.line,
-      endCol: Math.max(
-        startPos.col + 2,
-        endPos.line === startPos.line ? endPos.col : startPos.col + 8,
-      ),
+      endCol: Math.max(startPos.col + 2, endPos.line === startPos.line ? endPos.col : startPos.col + 8),
       severity: "error",
       code: err.code ?? "XML-1001",
       message: err.message ?? "XML syntax error in document.",
@@ -2185,10 +2172,7 @@ interface WasmSyntaxNode {
  * and `LspFacade.getDiagnostics(astRoot, 0, 0, code)` to surface real GLR syntax errors
  * and compiled `CompilerLint` diagnostics (`M2002`, `M2005`, `M3001`, `M5001`, `M5005`, etc.).
  */
-function lintModelicaWithWasmLspFacade(
-  code: string,
-  diags: WorkflowDiagnostic[],
-): void {
+function lintModelicaWithWasmLspFacade(code: string, diags: WorkflowDiagnostic[]): void {
   const runtime = getWasmRuntime("modelica");
   const prepared = prepareModelicaSourceForWasm(code);
 
@@ -2242,11 +2226,11 @@ function lintModelicaWithWasmLspFacade(
           lines[prevLineIdx]!.trim().length > 0 &&
           !lines[prevLineIdx]!.trim().endsWith(";") &&
           (wd.expectedTokens?.some((t) => t.includes(";")) ||
-            !lines[prevLineIdx]!.trim().startsWith("model ") &&
-            !lines[prevLineIdx]!.trim().startsWith("block ") &&
-            !lines[prevLineIdx]!.trim().startsWith("equation") &&
-            !lines[prevLineIdx]!.trim().startsWith("initial equation") &&
-            !lines[prevLineIdx]!.trim().startsWith("algorithm"))
+            (!lines[prevLineIdx]!.trim().startsWith("model ") &&
+              !lines[prevLineIdx]!.trim().startsWith("block ") &&
+              !lines[prevLineIdx]!.trim().startsWith("equation") &&
+              !lines[prevLineIdx]!.trim().startsWith("initial equation") &&
+              !lines[prevLineIdx]!.trim().startsWith("algorithm")))
         ) {
           codeStr = "M1002";
           startLine = prevLineIdx + 1;
@@ -2303,12 +2287,7 @@ function lintModelicaWithWasmLspFacade(
             if (ch === "(" || ch === "{" || ch === "[") parenDepth++;
             else if (ch === ")" || ch === "}" || ch === "]") parenDepth = Math.max(0, parenDepth - 1);
           }
-          if (
-            prevDepth === 0 &&
-            parenDepth === 0 &&
-            !cleanLine.endsWith(";") &&
-            !cleanLine.startsWith("end ")
-          ) {
+          if (prevDepth === 0 && parenDepth === 0 && !cleanLine.endsWith(";") && !cleanLine.startsWith("end ")) {
             if (!diags.some((d) => d.code === "M1002" && d.startLine === userLine)) {
               diags.push({
                 startLine: userLine,
@@ -2337,10 +2316,7 @@ function lintModelicaWithWasmLspFacade(
  * (including LR state-table `expectedTokens`) and inspects the SysML v2 GLR CST (`tree.rootNode`)
  * for incomplete `require_constraint` expressions or GLR-recovered missing semicolons.
  */
-function lintSysmlWithWasmLspFacade(
-  code: string,
-  diags: WorkflowDiagnostic[],
-): void {
+function lintSysmlWithWasmLspFacade(code: string, diags: WorkflowDiagnostic[]): void {
   const runtime = getWasmRuntime("sysml");
   const lines = code.split("\n");
 
@@ -2379,10 +2355,7 @@ function lintSysmlWithWasmLspFacade(
         startCol = (lines[startLine - 1]?.search(/\S/) ?? 0) + 1;
         endCol = (lines[startLine - 1]?.length ?? 1) + 1;
         msg = `Missing ';' after '${prevLine.slice(0, 32)}' (${wd.message}).`;
-      } else if (
-        lineText.includes("require constraint") ||
-        (prevLine && prevLine.includes("require constraint"))
-      ) {
+      } else if (lineText.includes("require constraint") || (prevLine && prevLine.includes("require constraint"))) {
         codeStr = "SYSML-1003";
       } else if (
         wd.expectedTokens?.some((t) => t.includes(";")) ||
@@ -2466,11 +2439,9 @@ function lintIeeeReportSyntax(code: string, diags: WorkflowDiagnostic[]): void {
     const line = lines[i]!;
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const isHeader =
-      /^IEEE\s+2800-2022\s+Interconnection\s+Verification\s+Report\s+for\s+'[^']+'\s*:/.test(trimmed);
+    const isHeader = /^IEEE\s+2800-2022\s+Interconnection\s+Verification\s+Report\s+for\s+'[^']+'\s*:/.test(trimmed);
     const isOverall = /^Overall\s+Result:\s*\[(PASS|FAIL)\]$/.test(trimmed);
-    const isClause =
-      /^(?:•|-|\*)\s*\[(PASS|FAIL)\]\s*Clause\s+\d+(?:\.\d+)+.*\[Limit:[^\]]+\]$/.test(trimmed);
+    const isClause = /^(?:•|-|\*)\s*\[(PASS|FAIL)\]\s*Clause\s+\d+(?:\.\d+)+.*\[Limit:[^\]]+\]$/.test(trimmed);
     if (!isHeader && !isOverall && !isClause) {
       const firstCol = line.search(/\S/) + 1;
       diags.push({
@@ -2495,10 +2466,7 @@ const RULES_BY_PAIR: Record<string, TGGRuleOptions[]> = {
   "sysml-ssp": fmi3TggRules,
 };
 
-const TGG_RULE_DIAGNOSTIC_META: Record<
-  string,
-  { code: string; severity: "error" | "warning" }
-> = {
+const TGG_RULE_DIAGNOSTIC_META: Record<string, { code: string; severity: "error" | "warning" }> = {
   ReqIfContractToSysmlConstraint: { code: "TGG-PHYS-01", severity: "error" },
   SimulinkDiscreteFilterToDiscreteTransferFunction: { code: "TGG-PHYS-02", severity: "error" },
   UrdfLinkToMultiBodyBody: { code: "TGG-PHYS-04", severity: "error" },
@@ -2537,10 +2505,7 @@ export function getTggTargetComponentMetadata(): Map<string, TggTargetComponentM
         for (const c of evaluated.constraints) {
           if (c.kind === "reconcilePhysics") {
             const [, rawTgt, bounds] = c.args;
-            const tgtVar =
-              typeof rawTgt === "string" && rawTgt.startsWith("__var_")
-                ? rawTgt.slice(6)
-                : String(rawTgt);
+            const tgtVar = typeof rawTgt === "string" && rawTgt.startsWith("__var_") ? rawTgt.slice(6) : String(rawTgt);
             for (const [propKey, val] of Object.entries(pattern.bindings)) {
               if (val === `__var_${tgtVar}` && bounds && typeof bounds === "object") {
                 boundsByProp[propKey] = bounds as { min?: number; max?: number };
@@ -2588,10 +2553,7 @@ function byteSpanToRange(
  * so declarative `TGGRuleOptions` can be unified via `matchNodePattern`
  * and `solveWhereConstraints`.
  */
-function extractPolyglotCandidates(
-  code: string,
-  kind: "xml" | "modelica" | "sysml" | "ieee2800",
-): PolyglotCandidate[] {
+function extractPolyglotCandidates(code: string, kind: "xml" | "modelica" | "sysml" | "ieee2800"): PolyglotCandidate[] {
   const candidates: PolyglotCandidate[] = [];
   const defaultRange = { startLine: 1, startCol: 1, endLine: 1, endCol: 10 };
 
@@ -2751,10 +2713,7 @@ function extractPolyglotCandidates(
             kind: isState ? "StateVariableDecl" : "VariableDecl",
             name: comp.name,
             causality: comp.causality,
-            variability:
-              comp.causality === "parameter" || comp.variability === "constant"
-                ? "fixed"
-                : "continuous",
+            variability: comp.causality === "parameter" || comp.variability === "constant" ? "fixed" : "continuous",
             start: Number(rawStart),
             description: comp.description ?? "",
           },
@@ -2880,10 +2839,8 @@ function lintViaDeclarativeTggRules(
         const [rawSrc, rawTgt, bounds] = c.args;
         if (!bounds || typeof bounds !== "object") continue;
 
-        const srcVar =
-          typeof rawSrc === "string" && rawSrc.startsWith("__var_") ? rawSrc.slice(6) : String(rawSrc);
-        const tgtVar =
-          typeof rawTgt === "string" && rawTgt.startsWith("__var_") ? rawTgt.slice(6) : String(rawTgt);
+        const srcVar = typeof rawSrc === "string" && rawSrc.startsWith("__var_") ? rawSrc.slice(6) : String(rawSrc);
+        const tgtVar = typeof rawTgt === "string" && rawTgt.startsWith("__var_") ? rawTgt.slice(6) : String(rawTgt);
 
         const rawVal = match.env[srcVar] ?? match.env[tgtVar];
         const numVal = Number(rawVal);
@@ -2911,11 +2868,7 @@ function lintViaDeclarativeTggRules(
  * language-package linters + declarative TGG physical feasibility envelope (`tggReconcilePhysics`)
  * checks on either the source or target pane of a workflow pair.
  */
-export function lintWorkflowCode(
-  pairId: string,
-  side: "source" | "target",
-  code: string,
-): WorkflowDiagnostic[] {
+export function lintWorkflowCode(pairId: string, side: "source" | "target", code: string): WorkflowDiagnostic[] {
   const diags: WorkflowDiagnostic[] = [];
   const trimmed = code.trim();
   if (!trimmed) {
@@ -2931,14 +2884,11 @@ export function lintWorkflowCode(
     return diags;
   }
 
-  const isXml =
-    (side === "source" && pairId !== "sysml-ssp") ||
-    (side === "target" && pairId === "sysml-ssp");
+  const isXml = (side === "source" && pairId !== "sysml-ssp") || (side === "target" && pairId === "sysml-ssp");
   const isModelica =
     (side === "target" && (pairId === "simulink-modelica" || pairId === "urdf-modelica")) ||
     (side === "source" && pairId === "sysml-ssp");
-  const isSysml =
-    side === "target" && (pairId === "reqif-sysml" || pairId === "autosar-sysml");
+  const isSysml = side === "target" && (pairId === "reqif-sysml" || pairId === "autosar-sysml");
   const isIeeeReport = side === "target" && pairId === "pscad-ieee";
 
   // 1. XML Syntax & First-Party Domain Linter Checks (`@modelscript/dsl/xml` + `languages/*`)
