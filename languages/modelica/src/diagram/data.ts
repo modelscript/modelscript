@@ -2897,6 +2897,24 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
         candidates.push(nodePath.join(cwd, "scripts", relativePath));
         candidates.push(nodePath.join(cwd, ".cache", "test-openipsl", libraryName, relativePath));
         candidates.push(nodePath.join(cwd, "data", libraryName, relativePath));
+        candidates.push(
+          nodePath.join(cwd, "data", "libraries", libraryName, "3.1.0", "extracted", libraryName, relativePath),
+        );
+        candidates.push(nodePath.join(cwd, "data", "libraries", libraryName, relativePath));
+        // Search across any version directory under data/libraries/<libraryName>/*/extracted/<libraryName>/
+        const libDataDir = nodePath.join(cwd, "data", "libraries", libraryName);
+        if (nodeFs.existsSync(libDataDir)) {
+          try {
+            const versionEntries = nodeFs.readdirSync(libDataDir, { withFileTypes: true });
+            for (const vEntry of versionEntries) {
+              if (vEntry.isDirectory()) {
+                candidates.push(nodePath.join(libDataDir, vEntry.name, "extracted", libraryName, relativePath));
+                candidates.push(nodePath.join(libDataDir, vEntry.name, libraryName, relativePath));
+                candidates.push(nodePath.join(libDataDir, vEntry.name, relativePath));
+              }
+            }
+          } catch {}
+        }
       }
       const home = (globalThis as any).process?.env?.HOME;
       if (home) {

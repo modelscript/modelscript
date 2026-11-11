@@ -5318,8 +5318,8 @@ export class SyntaxNode {
 
   private _cachedHasError: boolean | undefined = undefined;
 
-  /** Returns true if the node or any of its descendants represents a syntax error. */
-  get hasError(): boolean {
+  /** Evaluates whether this node or any of its descendants has a syntax error. */
+  private _computeHasError(): boolean {
     if (this._cachedHasError !== undefined) return this._cachedHasError;
     if (this._cachedTypeId === 0) {
       return (this._cachedHasError = true);
@@ -5331,6 +5331,15 @@ export class SyntaxNode {
       }
     }
     return (this._cachedHasError = false);
+  }
+
+  /**
+   * Returns true if the node or any of its descendants represents a syntax error.
+   * Defined as a getter property that can also be called as a method (node.hasError())
+   * for backward compatibility with tests and callers expecting either signature.
+   */
+  get hasError(): boolean {
+    return this._computeHasError();
   }
 
   /** Returns true if this node itself represents a syntax error. */

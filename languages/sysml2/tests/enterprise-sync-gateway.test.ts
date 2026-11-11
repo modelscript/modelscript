@@ -69,7 +69,9 @@ describe("SysML v2 Enterprise Sync Gateway: Teamwork Cloud & OpenMBEE MMS (Phase
     // Verify it parses cleanly with WASM GLR parser
     const parser = await getSysmlParser();
     const tree = parser.parse(result.sysmlSource);
-    assert.strictEqual(tree.rootNode.hasError(), false, "TWC imported source must parse with 0 errors");
+    const hasErr =
+      typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError);
+    assert.strictEqual(hasErr, false, "TWC imported source must parse with 0 errors");
   });
 
   it("pushes local changes as an atomic revision commit to Teamwork Cloud", async () => {

@@ -203,7 +203,9 @@ test("QUDV Physical Dimensions Calculus", async (t) => {
     `;
 
     const tree = parser.parse(droneModel);
-    assert.strictEqual(tree.rootNode.hasError(), false, "droneModel should parse with zero syntax errors");
+    const hasErr =
+      typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError);
+    assert.strictEqual(hasErr, false, "droneModel should parse with zero syntax errors");
 
     const uri = "file:///workspace/DroneReachabilitySystem.sysml";
     ws.register(uri, () => tree.rootNode as any);

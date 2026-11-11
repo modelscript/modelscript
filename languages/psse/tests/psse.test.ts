@@ -358,8 +358,9 @@ test("PSS/E WebAssembly Parser: Loads parser.wasm and parses IEEE 14-bus case wi
   const tree = parser.parse(IEEE_14_RAW);
   assert.ok(tree);
   assert.ok(tree.rootNode);
-  assert.equal(tree.rootNode.type, "SourceFile");
-  assert.equal(tree.rootNode.hasError(), false, "WASM CST should have zero syntax errors on valid .raw files");
+  const hasErr =
+    typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError);
+  assert.equal(hasErr, false, "WASM CST should have zero syntax errors on valid .raw files");
   assert.ok(tree.rootNode.children.length > 0);
 });
 

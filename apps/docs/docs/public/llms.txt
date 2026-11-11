@@ -168,7 +168,7 @@
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1127 diagnostics across 80 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1153 diagnostics across 83 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

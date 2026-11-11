@@ -19,6 +19,7 @@ const bdfTestDsl = language({
     Number: ($: any) => semanticToken("number", /[0-9]+/),
   },
   extras: ($: any) => [/\s+/],
+  simulation: true,
 });
 
 describe("Stiff DAE BDF Integrator (Orders 1, 2, 3)", () => {

@@ -50,15 +50,21 @@ export {
  * Checks whether the Schlumberger OLGA native executable is installed and reachable.
  */
 export async function isOlgaEngineAvailable(executablePath?: string): Promise<boolean> {
-  const binary = executablePath ?? process.env["OLGA_BIN"] ?? (process.platform === "win32" ? "olga.exe" : "olga");
+  if (typeof process === "undefined" || (process as { browser?: boolean }).browser || !process.versions?.node) {
+    return false;
+  }
+  const binary = executablePath ?? process.env?.["OLGA_BIN"] ?? (process.platform === "win32" ? "olga.exe" : "olga");
   return new Promise<boolean>((resolve) => {
     try {
+      if (typeof spawn !== "function") {
+        return resolve(false);
+      }
       const child = spawn(binary, ["--version"], {
         shell: true,
         stdio: "ignore",
       });
       child.on("error", () => resolve(false));
-      child.on("close", (code) => resolve(code === 0 || code === 1));
+      child.on("close", (code: number | null) => resolve(code === 0 || code === 1));
     } catch {
       resolve(false);
     }

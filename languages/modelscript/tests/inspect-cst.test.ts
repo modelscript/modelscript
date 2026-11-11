@@ -24,7 +24,8 @@ let highR =
 
   const tree = parser.parse(code);
   const root = tree.rootNode;
-  assert.equal(root.hasError(), false);
+  const hasErr = typeof root.hasError === "function" ? root.hasError() : Boolean(root.hasError);
+  assert.equal(hasErr, false);
 
   const nodeTypes: string[] = [];
   function collectTypes(node: any) {

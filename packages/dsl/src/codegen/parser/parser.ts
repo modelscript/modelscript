@@ -1137,6 +1137,8 @@ export function generateParserTables(
     (originalGrammar as any).solvers ||
     originalGrammar.classes ||
     originalGrammar.functions ||
+    originalGrammar.simplification ||
+    originalGrammar.analysis ||
     (originalGrammar.runtimeFiles &&
       originalGrammar.runtimeFiles.some((f: any) => f.filename && f.filename.includes("flattener"))),
   );

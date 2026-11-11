@@ -627,6 +627,30 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
     params.set("replyToPostId", String(options.replyToPostId));
   }
 
+  // Derive target Morsel view from previewMode:
+  // - "simulation": split view (code + simulation plot) with auto-simulate
+  // - "diagram": split view (code + diagram schematic)
+  // - "code": code view
+  const previewMode =
+    parsedViewConfig.previewMode ||
+    (typeof parsedViewConfig.metadata === "object" && parsedViewConfig.metadata !== null
+      ? parsedViewConfig.metadata["previewMode"]
+      : undefined);
+
+  if (previewMode === "simulation") {
+    params.set("view", "split");
+    params.set("subview", "simulation");
+    params.set("autoSimulate", "1");
+  } else if (previewMode === "code") {
+    params.set("view", "code");
+  } else if (
+    previewMode === "diagram" ||
+    (!previewMode && (parsedViewConfig.nodeCount > 0 || parsedViewConfig.diagramSvg))
+  ) {
+    params.set("view", "split");
+    params.set("subview", "diagram");
+  }
+
   let hash = "";
   if (typeof code === "string" && code.trim().length > 0) {
     const dependencies =

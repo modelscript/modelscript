@@ -44,10 +44,12 @@ tag_port("motor_flange", "mechanical_flange")
 
   for (let i = 0; i < root.childCount; i++) {
     const c = root.child(i);
-    console.log(`  Statement [${i}]: hasError=${c.hasError()}, text=${JSON.stringify(c.text.trim().split("\n")[0])}`);
+    const hasErr = typeof c.hasError === "function" ? c.hasError() : Boolean(c.hasError);
+    console.log(`  Statement [${i}]: hasError=${hasErr}, text=${JSON.stringify(c.text.trim().split("\n")[0])}`);
   }
 
-  if (root.hasError && root.hasError()) {
+  const rootHasErr = typeof root.hasError === "function" ? root.hasError() : Boolean(root.hasError);
+  if (rootHasErr) {
     throw new Error("Grammar test failed: AST contains syntax errors");
   }
 

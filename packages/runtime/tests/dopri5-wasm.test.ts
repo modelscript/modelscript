@@ -19,6 +19,7 @@ const dopri5TestDsl = language({
     Number: ($: any) => semanticToken("number", /[0-9]+/),
   },
   extras: ($: any) => [/\s+/],
+  simulation: true,
 });
 
 describe("WASM Hermite Interpolation & DOPRI5 Adaptive Step Integrator", () => {

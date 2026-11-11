@@ -37,5 +37,28 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     assert.match(content, /node-url-shim/);
     assert.match(content, /\^node:url\$/);
     assert.match(content, /\^url\$/);
+    assert.match(content, /node-shims/);
+    assert.match(content, /\^node:child_process\$/);
+    assert.match(content, /\^child_process\$/);
+    assert.match(content, /\^node:fs\$/);
+    assert.match(content, /\^fs\$/);
+    assert.match(content, /\^node:os\$/);
+    assert.match(content, /\^os\$/);
+    assert.match(content, /\^node:path\$/);
+    assert.match(content, /\^path\$/);
+  });
+
+  it("node-shims provides browser-safe stubs without throwing on access", async () => {
+    const nodeShims = await import("../src/util/node-shims.js");
+    assert.strictEqual(typeof nodeShims.spawn, "function");
+    assert.strictEqual(typeof nodeShims.execSync, "function");
+    assert.strictEqual(typeof nodeShims.existsSync, "function");
+    assert.strictEqual(typeof nodeShims.readFileSync, "function");
+    assert.strictEqual(typeof nodeShims.join, "function");
+    assert.strictEqual(typeof nodeShims.resolve, "function");
+    assert.strictEqual(nodeShims.existsSync("/any/path"), false);
+    assert.strictEqual(nodeShims.join("a", "b"), "a/b");
+    const child = nodeShims.spawn("olga");
+    assert.strictEqual(typeof child.on, "function");
   });
 });

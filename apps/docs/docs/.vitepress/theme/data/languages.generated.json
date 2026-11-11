@@ -935,7 +935,7 @@
     "group": "power",
     "pkgName": "@modelscript/powerfactory",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx powerfactory",
     "actions": [
       "inspect",
@@ -1721,7 +1721,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/fiber",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx fiber",
     "actions": [
       "locate",
@@ -1735,7 +1735,7 @@
     ],
     "capabilities": {
       "parse": true,
-      "lint": false,
+      "lint": true,
       "dae": true,
       "simulate": true,
       "projections": [
@@ -1743,7 +1743,7 @@
         "OWL2"
       ]
     },
-    "ruleCount": 0
+    "ruleCount": 6
   },
   {
     "slug": "urdf",

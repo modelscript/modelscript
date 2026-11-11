@@ -31,7 +31,9 @@ async function main() {
   `;
 
   const tree = parser.parse(model);
-  assert.strictEqual(tree.rootNode.hasError(), false, "Model should parse cleanly");
+  const hasErr =
+    typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError);
+  assert.strictEqual(hasErr, false, "Model should parse cleanly");
 
   const workspaceIndex = createSysML2WorkspaceIndex();
   workspaceIndex.register("file:///vehicle.sysml", () => tree.rootNode as any);

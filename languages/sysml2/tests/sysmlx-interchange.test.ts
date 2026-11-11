@@ -133,13 +133,17 @@ describe("OMG SysML v2 Standard Model Interchange (.sysmlx / .kermlx) (Phase 6)"
     const tree = parser.parse(reconstructedSysml);
     assert.ok(tree, "Parser must successfully parse reconstructed SysML v2");
     assert.ok(tree.rootNode, "Root node must be present");
-    assert.strictEqual(tree.rootNode.hasError(), false, "Reconstructed SysML v2 text must have zero parse errors");
+    const hasErr1 =
+      typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError);
+    assert.strictEqual(hasErr1, false, "Reconstructed SysML v2 text must have zero parse errors");
 
     // Second round-trip: export reconstructed -> sysmlx -> import -> parse
     const doc2 = await SysML2ModelInterchange.exportToSysmlx(reconstructedSysml);
     const reconstructedSysml2 = SysML2ModelInterchange.importFromSysmlx(doc2);
     const tree2 = parser.parse(reconstructedSysml2);
-    assert.strictEqual(tree2.rootNode.hasError(), false, "Second round-trip must have zero parse errors");
+    const hasErr2 =
+      typeof tree2.rootNode.hasError === "function" ? tree2.rootNode.hasError() : Boolean(tree2.rootNode.hasError);
+    assert.strictEqual(hasErr2, false, "Second round-trip must have zero parse errors");
   });
 
   it("imports synthetic third-party OMG .sysmlx document from Cameo/Papyrus", async () => {
@@ -213,6 +217,8 @@ describe("OMG SysML v2 Standard Model Interchange (.sysmlx / .kermlx) (Phase 6)"
 
     // Verify it parses cleanly with our GLR parser
     const tree = parser.parse(sysmlCode);
-    assert.strictEqual(tree.rootNode.hasError(), false, "Third-party imported model must parse cleanly");
+    const hasErr =
+      typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError);
+    assert.strictEqual(hasErr, false, "Third-party imported model must parse cleanly");
   });
 });
