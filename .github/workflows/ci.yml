@@ -269,6 +269,33 @@ jobs:
         run: npm ci
       - name: Build DSL Templates
         run: npm run build:templates --workspace=@modelscript/dsl
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-benchmarks-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-benchmarks-
+            ${{ runner.os }}-nx-build-${{ github.sha }}
+            ${{ runner.os }}-nx-build-
+            ${{ runner.os }}-nx-
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/asc-tests
+            languages/*/.cache
+            languages/*/dist/*.wasm
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+            Linux-wasm-
+      - name: Build Prerequisites
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate
       - name: Cache Benchmarks
         uses: actions/cache@v4
         with:
