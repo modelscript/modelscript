@@ -176,9 +176,16 @@ export class DaeBltReachabilityEngine {
     }
 
     const timeHorizon = this.options.timeHorizon ?? 1.0;
+    const verifyStartMs = Date.now();
+    const budgetMs = this.options.budgetMs;
+    let blockBudgetExceeded = false;
 
     // Process blocks in topological order
     for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
+      if (budgetMs !== undefined && blockIdx > 0 && Date.now() - verifyStartMs > budgetMs) {
+        blockBudgetExceeded = true;
+        break;
+      }
       const block = blocks[blockIdx]!;
       const isLoop = block.vars.length > 1;
       if (isLoop) algebraicLoopsCount++;
@@ -286,7 +293,7 @@ export class DaeBltReachabilityEngine {
       | undefined;
     let continuousReachResult: NonlinearZonotopeReachResult | undefined;
 
-    if (hasDifferentialStates) {
+    if (hasDifferentialStates && !blockBudgetExceeded) {
       const compileRes = compileArenaToDae(this.arena, { isolateImplicitDer: true, enablePantelides: true });
       if (compileRes.ok && compileRes.compiled.dae.numDiffStates > 0) {
         const compiled = compileRes.compiled;
@@ -495,6 +502,12 @@ export class DaeBltReachabilityEngine {
               witness: { time: 0, state: {} },
               detail: "Definite singularity or invariant breach detected in BLT reachability evaluation.",
             };
+    } else if (blockBudgetExceeded) {
+      verdict = {
+        kind: "unknown",
+        reason: "budget",
+        detail: "BLT block verification exceeded time budget.",
+      };
     } else if (continuousSolverVerdict?.kind === "unknown") {
       verdict = continuousSolverVerdict;
     } else if (hasPossibleErrors || singularLoopsCount > 0) {

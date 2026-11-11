@@ -33,14 +33,17 @@ import {
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import { ensureMinimapHud, isMinimapOpen, toggleMinimapHud, updateMinimapHud } from "./minimap.js";
 import {
+  collectCommittedExistingWires,
   computeFilletedOrthogonalPath,
   computeJumpoverPath,
   computeOrthogonalRoute,
   computeSmoothBezierPath,
+  extractEdgePruneOptions,
   getNodeBBox,
   getPortOutwardNormal,
   healOrthogonalVertices,
   portOrthogonalRouter,
+  pruneIntermediateVertices,
   pruneOrthogonalLoops,
   regularizeOrthogonalPolyline,
   resolveNodePortWorldPoint,
@@ -57,6 +60,7 @@ import {
 import type { CoordinateSystem, ReactiveAnimationBinding } from "./protocol.js";
 import {
   alignNodeSelectionBox,
+  ensurePatchedSegmentsTool,
   ensurePatchedVerticesTool,
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
@@ -169,7 +173,9 @@ export interface Cell {
   getTargetPoint(): PointLike;
   getVertices(): PointLike[];
   setVertices(vertices: PointLike[], options?: { ignoreSnap?: boolean | undefined }): void;
+  getRouter?: (() => { name?: string } | string | null | undefined) | undefined;
   setRouter?: ((router: unknown) => void) | undefined;
+  removeRouter?: (() => void) | undefined;
   setConnector?: ((connector: unknown) => void) | undefined;
   setLabels?: ((labels: unknown[]) => void) | undefined;
   findView?: ((graph: Graph) => CellView | null | undefined) | undefined;
@@ -476,6 +482,8 @@ export interface DiagramRendererOptions {
   isDark?: boolean | undefined;
   /** Whether edges can connect directly to node bodies in addition to port magnets. */
   allowNodeConnection?: boolean | undefined;
+  /** Whether edges can connect directly to existing edge wires to create T-junctions (default: true). */
+  allowEdgeConnection?: boolean | undefined;
   /** Coordinate snap raster in pixels (default 20, or 18 for PSCAD). */
   snapGrid?: number | undefined;
   /** Default connector style for newly created and unspecified edges (e.g. "normal" or { name: "rounded", args: { radius: 8 } }). */
@@ -618,12 +626,25 @@ function computeParallelEdgeIndices(
 ): { parallelIndex: number; parallelCount: number } {
   if (typeof graph.getEdges !== "function") return { parallelIndex: 0, parallelCount: 1 };
   const allEdges = graph.getEdges();
+  const curRawSrc = currentEdge.getSource?.() as { cell?: string; port?: string } | undefined;
+  const curRawTgt = currentEdge.getTarget?.() as { cell?: string; port?: string } | undefined;
+  const curSrcPort = currentEdge.getSourcePortId?.() ?? curRawSrc?.port;
+  const curTgtPort = currentEdge.getTargetPortId?.() ?? curRawTgt?.port;
+  const curSrcKey = curSrcPort ? `${sourceCellId}.${curSrcPort}` : sourceCellId;
+  const curTgtKey = curTgtPort ? `${targetCellId}.${curTgtPort}` : targetCellId;
+
   const parallelEdges = allEdges.filter((e) => {
-    const rawSrc = e.getSource?.() as { cell?: string } | undefined;
-    const rawTgt = e.getTarget?.() as { cell?: string } | undefined;
+    if (!e || e.id === "__wire_tool_preview__") return false;
+    const rawSrc = e.getSource?.() as { cell?: string; port?: string } | undefined;
+    const rawTgt = e.getTarget?.() as { cell?: string; port?: string } | undefined;
     const s = e.getSourceCell?.()?.id ?? rawSrc?.cell;
     const t = e.getTargetCell?.()?.id ?? rawTgt?.cell;
-    return (s === sourceCellId && t === targetCellId) || (s === targetCellId && t === sourceCellId);
+    if (!s || !t) return false;
+    const sPort = e.getSourcePortId?.() ?? rawSrc?.port;
+    const tPort = e.getTargetPortId?.() ?? rawTgt?.port;
+    const eSrcKey = sPort ? `${s}.${sPort}` : s;
+    const eTgtKey = tPort ? `${t}.${tPort}` : t;
+    return (eSrcKey === curSrcKey && eTgtKey === curTgtKey) || (eSrcKey === curTgtKey && eTgtKey === curSrcKey);
   });
   if (parallelEdges.length > 1) {
     const idx = parallelEdges.findIndex((e) => e.id === currentEdge.id);
@@ -675,6 +696,8 @@ export function rerouteEdgeOrthogonal(
     String(target?.cell ?? ""),
   );
 
+  const existingWires = collectCommittedExistingWires(g, edge.id);
+
   const rawRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
     sourceSide,
     targetSide,
@@ -682,6 +705,7 @@ export function rerouteEdgeOrthogonal(
     targetBox,
     parallelIndex,
     parallelCount,
+    existingWires,
   });
   const intermediateVertices = simplifyCollinearPoints(rawRoute);
   edge.setVertices(intermediateVertices, { ignoreSnap: true });
@@ -736,8 +760,14 @@ function getConnectedEdges(
           : [];
     const sourcePoint = resolveNodePortWorldPoint(sourceCell, source?.port, edge.getSourcePoint());
     const targetPoint = resolveNodePortWorldPoint(targetCell, target?.port, edge.getTargetPoint());
-    const rawPts = [sourcePoint, ...vertices, targetPoint].filter((p): p is PointLike => Boolean(p));
-    const regularized = regularizeOrthogonalPolyline(rawPts, 2, 1.0);
+    const healed = sourcePoint && targetPoint ? healOrthogonalVertices(sourcePoint, targetPoint, vertices) : vertices;
+    const pruneOpts =
+      sourcePoint && targetPoint ? extractEdgePruneOptions(g as never, edge as never, sourcePoint, targetPoint) : {};
+    const fullPoly =
+      sourcePoint && targetPoint
+        ? pruneOrthogonalLoops([sourcePoint, ...healed, targetPoint], pruneOpts)
+        : [sourcePoint, ...vertices, targetPoint].filter((p): p is PointLike => Boolean(p));
+    const regularized = regularizeOrthogonalPolyline(fullPoly, 2, 1.0);
     const points = regularized.map((p: PointLike) => ({
       x: Math.round(p.x),
       y: Math.round(-p.y),
@@ -752,8 +782,7 @@ function getConnectedEdges(
   });
 }
 
-/**
-export { ensurePatchedVerticesTool };
+export { ensurePatchedSegmentsTool, ensurePatchedVerticesTool };
 
 /**
  * Initializes (or reconfigures) the AntV X6 graph canvas, plugins, interaction handlers,
@@ -761,6 +790,7 @@ export { ensurePatchedVerticesTool };
  */
 export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph | null {
   ensurePatchedVerticesTool(x6);
+  ensurePatchedSegmentsTool(x6);
   ensureDiagramStyles();
   let container = targetContainer ?? currentOptions?.container;
   if (!container && typeof document !== "undefined") {
@@ -860,7 +890,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       allowMulti: () => !isCurrentDiagramReadOnly,
       allowLoop: () => !isCurrentDiagramReadOnly,
       allowNode: () => !isCurrentDiagramReadOnly && (currentOptions?.allowNodeConnection ?? true),
-      allowEdge: false,
+      allowEdge: () => !isCurrentDiagramReadOnly && (currentOptions?.allowEdgeConnection ?? true),
       allowPort: () => !isCurrentDiagramReadOnly,
       highlight: true,
       highlighting: {
@@ -1878,19 +1908,55 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
             : activeWireState.sourceCell.id;
         const tgtStr = portId !== undefined ? `${cell.id}.${portId}` : cell.id;
 
+        const wireSrcPt = activeWireState.sourcePoint;
+        const wireTgtPt = portPoint;
+        const wireSourceSide = getPortOutwardNormal(
+          activeWireState.sourceCell,
+          activeWireState.sourcePortId,
+          wireSrcPt,
+        )?.side;
+        const wireTargetSide = getPortOutwardNormal(cell, portId, wireTgtPt)?.side;
+        const wireSourceBox = getNodeBBox(activeWireState.sourceCell) ?? undefined;
+        const wireTargetBox = getNodeBBox(cell) ?? undefined;
+
+        let screenWaypoints: PointLike[] = [];
+        if (activeWireState.waypoints.length === 0) {
+          const obstacles: RectLike[] = [];
+          for (const node of g.getNodes()) {
+            if (node.id === activeWireState.sourceCell.id || node.id === cell.id) continue;
+            if (isEphemeralDiagramNode(node.id)) continue;
+            const bbox = getNodeBBox(node);
+            if (bbox) obstacles.push(bbox);
+          }
+          const existingWires = collectCommittedExistingWires(g, null);
+          screenWaypoints = computeOrthogonalRoute(wireSrcPt, wireTgtPt, obstacles, {
+            sourceSide: wireSourceSide,
+            targetSide: wireTargetSide,
+            sourceBox: wireSourceBox,
+            targetBox: wireTargetBox,
+            existingWires,
+          });
+        } else {
+          screenWaypoints = healOrthogonalVertices(wireSrcPt, wireTgtPt, activeWireState.waypoints);
+        }
+
         const roundedSrc = {
-          x: Math.round(activeWireState.sourcePoint.x),
-          y: Math.round(-activeWireState.sourcePoint.y),
+          x: Math.round(wireSrcPt.x),
+          y: Math.round(-wireSrcPt.y),
         };
         const roundedTgt = {
-          x: Math.round(portPoint.x),
-          y: Math.round(-portPoint.y),
+          x: Math.round(wireTgtPt.x),
+          y: Math.round(-wireTgtPt.y),
         };
-        const roundedWaypoints = activeWireState.waypoints.map((w) => ({
-          x: Math.round(w.x),
-          y: Math.round(-w.y),
-        }));
-        const points = [roundedSrc, ...roundedWaypoints, roundedTgt];
+        const roundedHealed = healOrthogonalVertices(
+          roundedSrc,
+          roundedTgt,
+          screenWaypoints.map((w) => ({
+            x: Math.round(w.x),
+            y: Math.round(-w.y),
+          })),
+        );
+        const points = simplifyCollinearPoints([roundedSrc, ...roundedHealed, roundedTgt], 0.05);
 
         cancelWireToolInProgress();
 
@@ -2294,6 +2360,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         String(target.cell),
       );
 
+      const existingWires = collectCommittedExistingWires(g, edge.id);
+
       const directRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
         sourceSide,
         targetSide,
@@ -2301,18 +2369,24 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         targetBox,
         parallelIndex,
         parallelCount,
+        existingWires,
       });
 
       const edgeView = g.findViewByCell(edge);
       const viewRoute =
         edgeView?.routePoints && edgeView.routePoints.length > 0
-          ? pruneOrthogonalLoops(healOrthogonalVertices(sourcePoint, targetPoint, edgeView.routePoints), {
-              obstacles,
-              sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
-              targetNormal: targetSide ? sideToNormal(targetSide) : null,
-              sourceBox: sourceBox ?? null,
-              targetBox: targetBox ?? null,
-            })
+          ? pruneIntermediateVertices(
+              sourcePoint,
+              targetPoint,
+              healOrthogonalVertices(sourcePoint, targetPoint, edgeView.routePoints),
+              {
+                obstacles,
+                sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
+                targetNormal: targetSide ? sideToNormal(targetSide) : null,
+                sourceBox: sourceBox ?? null,
+                targetBox: targetBox ?? null,
+              },
+            )
           : [];
 
       // If viewRoute has strictly fewer bends than directRoute, use viewRoute; otherwise use directRoute
@@ -2322,44 +2396,44 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         intermediateVertices = directRoute;
       }
     } else if (vertices.length > 0 && sourcePoint && targetPoint) {
-      intermediateVertices = pruneOrthogonalLoops(healOrthogonalVertices(sourcePoint, targetPoint, vertices), {
-        sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
-        targetNormal: targetSide ? sideToNormal(targetSide) : null,
-        sourceBox: sourceBox ?? null,
-        targetBox: targetBox ?? null,
-      });
+      const pruneOpts = extractEdgePruneOptions(g as never, edge as never, sourcePoint, targetPoint);
+      intermediateVertices = pruneIntermediateVertices(
+        sourcePoint,
+        targetPoint,
+        healOrthogonalVertices(sourcePoint, targetPoint, vertices),
+        pruneOpts,
+      );
     }
 
+    const edgePruneOpts =
+      sourcePoint && targetPoint ? extractEdgePruneOptions(g as never, edge as never, sourcePoint, targetPoint) : {};
     const simplifiedVertices =
       sourcePoint && targetPoint
-        ? pruneOrthogonalLoops(
+        ? pruneIntermediateVertices(
+            sourcePoint,
+            targetPoint,
             healOrthogonalVertices(sourcePoint, targetPoint, simplifyCollinearPoints(intermediateVertices, 0.05)),
-            {
-              sourceNormal: sourceSide ? sideToNormal(sourceSide) : null,
-              targetNormal: targetSide ? sideToNormal(targetSide) : null,
-              sourceBox: sourceBox ?? null,
-              targetBox: targetBox ?? null,
-            },
+            edgePruneOpts,
           )
         : simplifyCollinearPoints(intermediateVertices, 0.05);
 
     if (typeof edge.setVertices === "function") {
       edge.setVertices(simplifiedVertices, { ignoreSnap: true });
     }
+    // Commit this edge's geometry so subsequent connections on other ports never dynamically reroute it
+    edge.removeRouter?.();
 
     const roundedSrc = { x: Math.round(sourcePoint.x), y: Math.round(-sourcePoint.y) };
     const roundedTgt = { x: Math.round(targetPoint.x), y: Math.round(-targetPoint.y) };
-    const roundedIntermediate = pruneOrthogonalLoops(
-      healOrthogonalVertices(
-        roundedSrc,
-        roundedTgt,
-        simplifiedVertices.map((p: { x: number; y: number }) => ({
-          x: Math.round(p.x),
-          y: Math.round(-p.y),
-        })),
-      ),
+    const roundedHealed = healOrthogonalVertices(
+      roundedSrc,
+      roundedTgt,
+      simplifiedVertices.map((p: { x: number; y: number }) => ({
+        x: Math.round(p.x),
+        y: Math.round(-p.y),
+      })),
     );
-    const points = [roundedSrc, ...roundedIntermediate, roundedTgt];
+    const points = simplifyCollinearPoints([roundedSrc, ...roundedHealed, roundedTgt], 0.05);
 
     if (isNew) {
       enqueueDiagramAction(
@@ -2454,15 +2528,17 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
             const fullPolyline = [srcPt, ...curVertices, tgtPt];
             const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
             const healed = healOrthogonalVertices(srcPt, tgtPt, regularized.slice(1, -1));
+            const pruneOpts = extractEdgePruneOptions(g as never, edge as never, srcPt, tgtPt);
+            const pruned = pruneIntermediateVertices(srcPt, tgtPt, healed, pruneOpts);
             const changed =
-              healed.length !== curVertices.length ||
-              healed.some(
+              pruned.length !== curVertices.length ||
+              pruned.some(
                 (nv: PointLike, idx: number) =>
                   Math.abs(nv.x - (curVertices[idx]?.x ?? 0)) > 0.5 ||
                   Math.abs(nv.y - (curVertices[idx]?.y ?? 0)) > 0.5,
               );
             if (changed) {
-              edge.setVertices(healed, { ignoreSnap: true });
+              edge.setVertices(pruned, { ignoreSnap: true });
             }
           }
 
@@ -2471,7 +2547,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const finalTgtPt = edge.getTargetPoint();
           const roundedSrc = { x: Math.round(finalSrcPt.x), y: Math.round(-finalSrcPt.y) };
           const roundedTgt = { x: Math.round(finalTgtPt.x), y: Math.round(-finalTgtPt.y) };
-          const roundedVerts = healOrthogonalVertices(
+          const roundedHealed = healOrthogonalVertices(
             roundedSrc,
             roundedTgt,
             finalVertices.map((p: PointLike) => ({
@@ -2479,7 +2555,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
               y: Math.round(-p.y),
             })),
           );
-          const points = [roundedSrc, ...roundedVerts, roundedTgt];
+          const points = simplifyCollinearPoints([roundedSrc, ...roundedHealed, roundedTgt], 0.05);
           const srcStr = source?.cell
             ? source.port
               ? `${source.cell}.${source.port}`
@@ -4843,18 +4919,16 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
           continue;
         }
 
-        if (edgeData.vertices) {
-          const curVerts = cell.getVertices() || [];
-          const vertsChanged =
-            curVerts.length !== edgeData.vertices.length ||
-            curVerts.some(
-              (v: PointLike, idx: number) =>
-                Math.abs(v.x - (edgeData.vertices![idx]?.x ?? 0)) > 0.5 ||
-                Math.abs(v.y - (edgeData.vertices![idx]?.y ?? 0)) > 0.5,
-            );
-          if (vertsChanged) {
-            cell.setVertices(edgeData.vertices, { ignoreSnap: true });
-          }
+        const nextVerts = edgeData.vertices ?? [];
+        const curVerts = cell.getVertices() || [];
+        const vertsChanged =
+          curVerts.length !== nextVerts.length ||
+          curVerts.some(
+            (v: PointLike, idx: number) =>
+              Math.abs(v.x - (nextVerts[idx]?.x ?? 0)) > 0.5 || Math.abs(v.y - (nextVerts[idx]?.y ?? 0)) > 0.5,
+          );
+        if (vertsChanged) {
+          cell.setVertices(nextVerts, { ignoreSnap: true });
         }
         if (edgeData.source && typeof edgeData.source === "object") {
           const curSrc = cell.getSource();
@@ -4870,6 +4944,8 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         }
         if (edgeData.router) {
           cell.setRouter?.(edgeData.router);
+        } else {
+          cell.removeRouter?.();
         }
         if (edgeData.connector) {
           cell.setConnector?.(edgeData.connector);

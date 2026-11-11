@@ -147,6 +147,7 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
             },
             initializationOptions: {
               extensionUri: origin.replace(/\/$/, "") + basePath,
+              registryUrl: origin.replace(/\/$/, ""),
               useLocalMsl: true,
               lazyLoadParsers: true,
               initialLanguageId: initialLanguageId ?? "modelica",

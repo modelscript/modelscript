@@ -229,4 +229,81 @@ describe("Unified Libraries Panel & URL-Driven Stdlib/Package Preloading", () =>
     );
     assert.ok((globalThis as any).savedLoaderCtx, "savedLoaderCtx should now be bound");
   });
+
+  it("modelscript/installPackage mounts curated fallback packages deterministically and updates getMountedLibraries", async () => {
+    mountedLibraryMetadata.clear();
+    loadingLibraryState.clear();
+    delete (globalThis as any).savedLoaderCtx;
+
+    const requests: Record<string, (params: any) => Promise<any> | any> = {};
+    const mockConnection: any = {
+      console: { info: () => {}, warn: () => {}, error: () => {} },
+      onNotification: () => {},
+      onRequest: (method: string, handler: (params: any) => Promise<any> | any) => {
+        requests[method] = handler;
+      },
+      sendNotification: () => {},
+    };
+    const mockWsIndex: any = {
+      fileLoaders: new Map<string, () => any>(),
+      fileSymbols: new Map<string, Set<number>>(),
+      register(uri: string, loader: () => any) {
+        this.fileLoaders.set(uri, loader);
+      },
+      ensureIndexed() {},
+      clear(uri: string) {
+        this.fileLoaders.delete(uri);
+        this.fileSymbols.delete(uri);
+      },
+    };
+    const mockDocManager: any = { documentTrees: new Map() };
+    const mockWorkspaceManager: any = {
+      getWorkspaceIndex: () => mockWsIndex,
+      unifiedWorkspace: { toUnifiedPartial: () => null },
+    };
+    const mockDocuments: any = { all: () => [], get: () => undefined };
+    const parserService = new ParserService(mockConnection, mockDocManager, mockWorkspaceManager, mockDocuments);
+    const loaderCtx = parserService.getOrCreateLoaderContext();
+    loaderCtx.globalWorkspaceIndex = mockWsIndex;
+    loaderCtx.registryUrl = "http://127.0.0.1:1"; // unreachable offline endpoint -> exercises curated fallback
+
+    registerMiscEndpoints({
+      connection: mockConnection,
+      parserService,
+      workspaceManager: mockWorkspaceManager,
+      documentManager: mockDocManager,
+      documents: mockDocuments,
+      validationService: { validateTextDocument: () => {} } as any,
+      settings: {} as any,
+    } as any);
+
+    assert.ok(requests["modelscript/installPackage"], "installPackage request handler should be registered");
+    assert.ok(requests["modelscript/getMountedLibraries"], "getMountedLibraries request handler should be registered");
+    assert.ok(requests["modelscript/uninstallPackage"], "uninstallPackage request handler should be registered");
+
+    const installRes = await requests["modelscript/installPackage"]!({
+      name: "PlanarMechanics",
+      version: "1.6.1",
+    });
+    assert.equal(installRes.ok, true);
+    assert.equal(installRes.version, "1.6.1");
+
+    const mountedAfterInstall = await requests["modelscript/getMountedLibraries"]!({});
+    const planarEntry = mountedAfterInstall.mounted.find((m: any) => m.name === "PlanarMechanics");
+    assert.ok(planarEntry, "PlanarMechanics should be listed in getMountedLibraries");
+    assert.equal(planarEntry.version, "1.6.1");
+    assert.equal(planarEntry.explicitlyInstalled, true);
+
+    const uninstallRes = await requests["modelscript/uninstallPackage"]!({ name: "PlanarMechanics" });
+    assert.equal(uninstallRes.ok, true);
+    const mountedAfterUninstall = await requests["modelscript/getMountedLibraries"]!({});
+    assert.equal(
+      mountedAfterUninstall.mounted.some((m: any) => m.name === "PlanarMechanics"),
+      false,
+      "PlanarMechanics should be removed after uninstallPackage",
+    );
+
+    mountedLibraryMetadata.clear();
+    loadingLibraryState.clear();
+  });
 });

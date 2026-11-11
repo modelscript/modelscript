@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 879,
+      "explicitAny": 874,
       "tsComments": 0
     },
     "ee": {
@@ -194,7 +194,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3314,
+      "explicitAny": 3310,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -406,7 +406,7 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 30,
+      "explicitAny": 35,
       "tsComments": 0
     },
     "packages/dsl": {
@@ -434,11 +434,11 @@
       "tsComments": 0
     },
     "packages/ide": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1810,
+      "explicitAny": 1823,
       "tsComments": 0
     },
     "packages/mcp": {

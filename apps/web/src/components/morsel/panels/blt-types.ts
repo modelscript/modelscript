@@ -42,6 +42,7 @@ export interface BltBlock {
 export interface BltDiagnostics {
   equationCount: number;
   unknownCount: number;
+  stateCount: number;
   parameterCount: number;
   degreesOfFreedom: number;
   isBalanced: boolean;
@@ -62,14 +63,19 @@ export interface BltDagEdge {
 
 export interface BltModelAnalysis {
   className: string;
+  sourceKind?: "flattened" | "source" | undefined;
   equations: BltEquation[];
   variables: BltVariable[];
+  stateVariables: BltVariable[];
   blocks: BltBlock[];
   incidence: Record<string, DependencyKind>; // `${eqId}:${varId}` -> kind
   matchedEqToVar: number[]; // eqId -> varId (-1 if unmatched)
   matchedVarToEq: number[]; // varId -> eqId (-1 if unmatched)
+  eqToBlock: number[]; // eqId -> blockIdx (-1 if unmatched)
+  varToBlock: number[]; // varId -> blockIdx (-1 if unmatched)
   permutedEqOrder: number[]; // eq indices ordered in BLT canonical sequence
   permutedVarOrder: number[]; // var indices ordered in BLT canonical sequence
   diagnostics: BltDiagnostics;
   dagEdges: BltDagEdge[];
+  dagLevels: number[][]; // topological wave-front levels of block indices
 }

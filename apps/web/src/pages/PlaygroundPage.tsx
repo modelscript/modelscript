@@ -1044,6 +1044,35 @@ export const PlaygroundPage: React.FC = () => {
     window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
   };
 
+  const handleClassLoaded = (loadedCode: string, loadedClassName: string, loadedDialect: string) => {
+    const nextTitle = loadedClassName.split(".").pop() || loadedClassName || currentTitle;
+    const nextLang = loadedDialect || currentLang;
+    baselineCodeRef.current = loadedCode;
+    setIsDirty(false);
+    setProjectFiles(null);
+    setActiveFile(null);
+    if (nextLang !== currentLang) {
+      setCurrentLang(nextLang);
+    }
+    setCurrentCode(loadedCode);
+    setCurrentTitle(nextTitle);
+    setPayload((prev) => ({
+      ...(prev || { v: 1 }),
+      lang: nextLang,
+      code: loadedCode,
+      title: nextTitle,
+    }));
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: nextLang,
+      code: loadedCode,
+      title: nextTitle,
+      view: payload?.view,
+      ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
+    });
+    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+  };
+
   const handleCodeChange = (nextCode: string) => {
     if (nextCode !== currentCode && nextCode !== baselineCodeRef.current) {
       setIsDirty(true);
@@ -1413,6 +1442,7 @@ export const PlaygroundPage: React.FC = () => {
               externalParams={payload?.params}
               simulateTriggerCount={simulateTriggerCount}
               onCodeChange={handleCodeChange}
+              onClassLoaded={handleClassLoaded}
               onActiveViewChange={handleActiveViewChange}
               onParametersChange={handleParametersChange}
               onSimulationStatus={(status: { status?: string } | string | null | undefined) => {

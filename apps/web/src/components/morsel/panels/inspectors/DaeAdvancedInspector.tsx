@@ -1,497 +1,1005 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
+import { indexLocalSymbolLines, scanModelicaStructure } from "../modelica-scanner.js";
 
 export interface DaeAdvancedInspectorProps {
   code: string;
+  sourceCode?: string | undefined;
   lines: string[];
   colorMode: "dark" | "light";
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
-interface PantelidesDiffStep {
-  equationText: string;
-  order: number;
-  differentiatedVar: string;
-  dummyDerivative: string;
-  line: number;
+// 7-tuple SI dimension vector: [M (kg), L (m), T (s), I (A), Θ (K), N (mol), J (cd)]
+type DimVec = readonly [number, number, number, number, number, number, number];
+
+const ZERO_DIM: DimVec = [0, 0, 0, 0, 0, 0, 0];
+
+const KNOWN_UNITS: Record<string, DimVec> = {
+  "1": [0, 0, 0, 0, 0, 0, 0],
+  rad: [0, 0, 0, 0, 0, 0, 0],
+  deg: [0, 0, 0, 0, 0, 0, 0],
+  "%": [0, 0, 0, 0, 0, 0, 0],
+  kg: [1, 0, 0, 0, 0, 0, 0],
+  g: [1, 0, 0, 0, 0, 0, 0],
+  m: [0, 1, 0, 0, 0, 0, 0],
+  mm: [0, 1, 0, 0, 0, 0, 0],
+  cm: [0, 1, 0, 0, 0, 0, 0],
+  km: [0, 1, 0, 0, 0, 0, 0],
+  s: [0, 0, 1, 0, 0, 0, 0],
+  ms: [0, 0, 1, 0, 0, 0, 0],
+  h: [0, 0, 1, 0, 0, 0, 0],
+  Hz: [0, 0, -1, 0, 0, 0, 0],
+  A: [0, 0, 0, 1, 0, 0, 0],
+  mA: [0, 0, 0, 1, 0, 0, 0],
+  kA: [0, 0, 0, 1, 0, 0, 0],
+  K: [0, 0, 0, 0, 1, 0, 0],
+  degC: [0, 0, 0, 0, 1, 0, 0],
+  mol: [0, 0, 0, 0, 0, 1, 0],
+  cd: [0, 0, 0, 0, 0, 0, 1],
+  N: [1, 1, -2, 0, 0, 0, 0],
+  kN: [1, 1, -2, 0, 0, 0, 0],
+  Pa: [1, -1, -2, 0, 0, 0, 0],
+  kPa: [1, -1, -2, 0, 0, 0, 0],
+  MPa: [1, -1, -2, 0, 0, 0, 0],
+  bar: [1, -1, -2, 0, 0, 0, 0],
+  J: [1, 2, -2, 0, 0, 0, 0],
+  kJ: [1, 2, -2, 0, 0, 0, 0],
+  W: [1, 2, -3, 0, 0, 0, 0],
+  kW: [1, 2, -3, 0, 0, 0, 0],
+  MW: [1, 2, -3, 0, 0, 0, 0],
+  C: [0, 0, 1, 1, 0, 0, 0],
+  V: [1, 2, -3, -1, 0, 0, 0],
+  kV: [1, 2, -3, -1, 0, 0, 0],
+  Ohm: [1, 2, -3, -2, 0, 0, 0],
+  Ω: [1, 2, -3, -2, 0, 0, 0],
+  S: [-1, -2, 3, 2, 0, 0, 0],
+  F: [-1, -2, 4, 2, 0, 0, 0],
+  uF: [-1, -2, 4, 2, 0, 0, 0],
+  H: [1, 2, -2, -2, 0, 0, 0],
+  mH: [1, 2, -2, -2, 0, 0, 0],
+  Wb: [1, 2, -2, -1, 0, 0, 0],
+  T: [1, 0, -2, -1, 0, 0, 0],
+};
+
+const TYPE_DEFAULT_UNITS: Record<string, string> = {
+  Voltage: "V",
+  ElectricPotential: "V",
+  Current: "A",
+  ElectricCurrent: "A",
+  Resistance: "Ohm",
+  Conductance: "S",
+  Capacitance: "F",
+  Inductance: "H",
+  Frequency: "Hz",
+  Time: "s",
+  Length: "m",
+  Position: "m",
+  Distance: "m",
+  Velocity: "m/s",
+  Acceleration: "m/s2",
+  Angle: "rad",
+  AngularVelocity: "rad/s",
+  AngularAcceleration: "rad/s2",
+  Mass: "kg",
+  Force: "N",
+  Torque: "N.m",
+  MomentOfInertia: "kg.m2",
+  Inertia: "kg.m2",
+  Pressure: "Pa",
+  AbsolutePressure: "Pa",
+  Temperature: "K",
+  ThermodynamicTemperature: "K",
+  Power: "W",
+  HeatFlowRate: "W",
+  Energy: "J",
+  MassFlowRate: "kg/s",
+  VolumeFlowRate: "m3/s",
+  Area: "m2",
+  Volume: "m3",
+  Density: "kg/m3",
+};
+
+function addDim(a: DimVec, b: DimVec, scale = 1): DimVec {
+  return [
+    a[0] + b[0] * scale,
+    a[1] + b[1] * scale,
+    a[2] + b[2] * scale,
+    a[3] + b[3] * scale,
+    a[4] + b[4] * scale,
+    a[5] + b[5] * scale,
+    a[6] + b[6] * scale,
+  ];
 }
 
-interface ConnectorPortAudit {
-  connectorName: string;
-  kind: "electrical" | "mechanical" | "fluid" | "thermal" | "signal" | "general";
-  potentialVars: string[];
-  flowVars: string[];
-  connections: Array<{ target: string; line: number }>;
-  isBalanced: boolean;
-  statusText: string;
+function sameDim(a: DimVec, b: DimVec): boolean {
+  for (let i = 0; i < 7; i++) {
+    if (Math.abs(a[i]! - b[i]!) > 1e-6) return false;
+  }
+  return true;
 }
 
-interface UnitCheckEntry {
-  equationText: string;
-  lhsUnit: string;
-  rhsUnit: string;
-  isHomogeneous: boolean;
-  line: number;
+function formatDim(d: DimVec): string {
+  const symbols = ["kg", "m", "s", "A", "K", "mol", "cd"];
+  const num: string[] = [];
+  const den: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const exp = d[i]!;
+    if (exp > 0) num.push(exp === 1 ? symbols[i]! : `${symbols[i]}^${exp}`);
+    else if (exp < 0) den.push(exp === -1 ? symbols[i]! : `${symbols[i]}^${-exp}`);
+  }
+  if (num.length === 0 && den.length === 0) return "1";
+  const lhs = num.length > 0 ? num.join("·") : "1";
+  return den.length > 0 ? `${lhs}/${den.join("·")}` : lhs;
+}
+
+function parseUnitString(unitStr: string): DimVec | null {
+  const clean = unitStr.trim();
+  if (!clean) return null;
+  if (KNOWN_UNITS[clean]) return KNOWN_UNITS[clean]!;
+
+  const slashParts = clean.split("/");
+  if (slashParts.length > 2) return null;
+
+  const parseProduct = (seg: string): DimVec | null => {
+    const trimmed = seg.trim().replace(/^\(|\)$/g, "");
+    if (!trimmed || trimmed === "1") return ZERO_DIM;
+    const factors = trimmed.split(/[.*·\s]+/).filter(Boolean);
+    let acc: DimVec = ZERO_DIM;
+    for (const f of factors) {
+      const m = /^([A-Za-zΩ%]+)(?:\^?(-?\d+))?$/.exec(f);
+      if (!m) return null;
+      const base = KNOWN_UNITS[m[1]!];
+      if (!base) return null;
+      const exp = m[2] !== undefined ? Number(m[2]) : 1;
+      acc = addDim(acc, base, exp);
+    }
+    return acc;
+  };
+
+  const num = parseProduct(slashParts[0]!);
+  if (!num) return null;
+  if (slashParts.length === 1) return num;
+  const den = parseProduct(slashParts[1]!);
+  if (!den) return null;
+  return addDim(num, den, -1);
+}
+
+interface ExprDimResult {
+  dim: DimVec | null;
+  conflict: boolean;
+}
+
+function inferExprDim(expr: string, varDims: Map<string, DimVec>): ExprDimResult {
+  // Lightweight recursive-descent dimensional evaluator over +, -, *, /, ^, der(...)
+  const tokens: string[] = [];
+  let idx = 0;
+  while (idx < expr.length) {
+    const ch = expr[idx]!;
+    if (/\s/.test(ch)) {
+      idx++;
+      continue;
+    }
+    if ("+-*/^(),".includes(ch)) {
+      tokens.push(ch);
+      idx++;
+      continue;
+    }
+    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(expr[idx + 1] ?? ""))) {
+      const start = idx;
+      idx++;
+      while (idx < expr.length && /[0-9.]/.test(expr[idx]!)) idx++;
+      if (idx < expr.length && (expr[idx] === "e" || expr[idx] === "E")) {
+        idx++;
+        if (expr[idx] === "+" || expr[idx] === "-") idx++;
+        while (idx < expr.length && /[0-9]/.test(expr[idx]!)) idx++;
+      }
+      tokens.push(expr.slice(start, idx));
+      continue;
+    }
+    if (ch === "'") {
+      const start = idx;
+      idx++;
+      while (idx < expr.length && expr[idx] !== "'") {
+        if (expr[idx] === "\\") idx++;
+        idx++;
+      }
+      if (idx < expr.length) idx++;
+      tokens.push(expr.slice(start, idx));
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      const start = idx;
+      idx++;
+      while (idx < expr.length) {
+        const c = expr[idx]!;
+        if (/[A-Za-z0-9_.]/.test(c)) {
+          idx++;
+        } else if (c === "[") {
+          let depth = 1;
+          idx++;
+          while (idx < expr.length && depth > 0) {
+            if (expr[idx] === "[") depth++;
+            else if (expr[idx] === "]") depth--;
+            idx++;
+          }
+        } else {
+          break;
+        }
+      }
+      tokens.push(expr.slice(start, idx));
+      continue;
+    }
+    idx++;
+  }
+
+  let pos = 0;
+  let hasKnownVar = false;
+
+  const peek = () => tokens[pos];
+  const consume = () => tokens[pos++];
+
+  const parseAdd = (): ExprDimResult => {
+    let left = parseMul();
+    while (peek() === "+" || peek() === "-") {
+      consume();
+      const right = parseMul();
+      if (left.conflict || right.conflict) return { dim: null, conflict: true };
+      if (left.dim && right.dim) {
+        // Ignore pure zero literal on one side of +/-
+        if (!sameDim(left.dim, right.dim)) {
+          return { dim: null, conflict: true };
+        }
+      } else if (!left.dim && right.dim) {
+        left = right;
+      }
+    }
+    return left;
+  };
+
+  const parseMul = (): ExprDimResult => {
+    let left = parsePow();
+    while (peek() === "*" || peek() === "/") {
+      const op = consume()!;
+      const right = parsePow();
+      if (left.conflict || right.conflict) return { dim: null, conflict: true };
+      if (left.dim && right.dim) {
+        left = { dim: addDim(left.dim, right.dim, op === "*" ? 1 : -1), conflict: false };
+      } else {
+        left = { dim: null, conflict: false };
+      }
+    }
+    return left;
+  };
+
+  const parsePow = (): ExprDimResult => {
+    const base = parseUnary();
+    if (peek() === "^") {
+      consume();
+      let sign = 1;
+      if (peek() === "-") {
+        consume();
+        sign = -1;
+      } else if (peek() === "+") {
+        consume();
+      }
+      const expTok = consume();
+      const expVal = expTok !== undefined ? Number(expTok) * sign : NaN;
+      if (base.conflict) return base;
+      if (base.dim && Number.isFinite(expVal)) {
+        return { dim: addDim(ZERO_DIM, base.dim, expVal), conflict: false };
+      }
+      return { dim: null, conflict: false };
+    }
+    return base;
+  };
+
+  const parseUnary = (): ExprDimResult => {
+    if (peek() === "+" || peek() === "-") {
+      consume();
+      return parseUnary();
+    }
+    const tok = peek();
+    if (!tok) return { dim: null, conflict: false };
+
+    if (tok === "(") {
+      consume();
+      const inner = parseAdd();
+      if (peek() === ")") consume();
+      return inner;
+    }
+
+    if (/^[0-9.]/.test(tok)) {
+      consume();
+      if (Number(tok) === 0) {
+        // Additive zero is dimension-polymorphic
+        return { dim: null, conflict: false };
+      }
+      return { dim: ZERO_DIM, conflict: false };
+    }
+
+    consume();
+    if (peek() === "(") {
+      consume();
+      const args: ExprDimResult[] = [];
+      if (peek() !== ")") {
+        args.push(parseAdd());
+        while (peek() === ",") {
+          consume();
+          args.push(parseAdd());
+        }
+      }
+      if (peek() === ")") consume();
+      const fn = tok.toLowerCase();
+      if (fn === "der" && args[0]?.dim) {
+        hasKnownVar = true;
+        return { dim: addDim(args[0].dim, [0, 0, -1, 0, 0, 0, 0], 1), conflict: args[0].conflict };
+      }
+      if (fn === "sqrt" && args[0]?.dim) {
+        return { dim: addDim(ZERO_DIM, args[0].dim, 0.5), conflict: args[0].conflict };
+      }
+      if (fn === "abs" || fn === "pre" || fn === "noevent" || fn === "smooth") {
+        return args[0] ?? { dim: null, conflict: false };
+      }
+      if (["sin", "cos", "tan", "exp", "log", "log10", "sinh", "cosh", "tanh"].includes(fn)) {
+        return { dim: ZERO_DIM, conflict: Boolean(args[0]?.conflict) };
+      }
+      return { dim: null, conflict: false };
+    }
+
+    if (tok === "time") {
+      hasKnownVar = true;
+      return { dim: [0, 0, 1, 0, 0, 0, 0], conflict: false };
+    }
+    if (tok === "pi" || tok === "Modelica.Constants.pi") {
+      return { dim: ZERO_DIM, conflict: false };
+    }
+
+    const direct = varDims.get(tok) ?? varDims.get(tok.replace(/\[[^\]]*\]/g, ""));
+    if (direct) {
+      hasKnownVar = true;
+      return { dim: direct, conflict: false };
+    }
+    return { dim: null, conflict: false };
+  };
+
+  const result = parseAdd();
+  if (!hasKnownVar && !result.conflict) {
+    return { dim: null, conflict: false };
+  }
+  return result;
+}
+
+function extractModificationAttr(modText: string | undefined, attr: string): string | undefined {
+  if (!modText) return undefined;
+  const re = new RegExp(`\\b${attr}\\s*=\\s*([^,)]+)`);
+  const m = re.exec(modText);
+  return m?.[1]?.trim();
+}
+
+export interface DaePhysicsSummary {
+  pantelides: {
+    states: string[];
+    algebraicVars: string[];
+    constraintEqs: Array<{ expr: string; line: number; needsDiff: boolean }>;
+    estimatedIndex: number;
+  };
+  kirchhoffNodes: Array<{
+    nodeId: string;
+    ports: string[];
+    isStream: boolean;
+    hasGround: boolean;
+    line: number;
+  }>;
+  unitChecks: Array<{
+    expr: string;
+    lhsUnit: string;
+    rhsUnit: string;
+    isHomogeneous: boolean;
+    line: number;
+  }>;
+  initialBalance: {
+    diffOrder: number;
+    initialEqCount: number;
+    fixedStartCount: number;
+    totalSpecified: number;
+    status: "balanced" | "under-specified" | "over-specified";
+    initialItems: Array<{ kind: "initial equation" | "fixed start" | "start guess"; text: string; line: number }>;
+  };
+}
+
+export function analyzeDaePhysics(code: string, sourceCode?: string): DaePhysicsSummary {
+  const effectiveSource = sourceCode ?? code;
+  const localLines = indexLocalSymbolLines(effectiveSource);
+  const scan = scanModelicaStructure(code);
+  const sourceScan = sourceCode && sourceCode !== code ? scanModelicaStructure(sourceCode) : scan;
+
+  const resolveLine = (ident: string, fallback: number): number => {
+    const direct = localLines.get(ident);
+    if (direct !== undefined) return direct;
+    const base = ident.replace(/\[[^\]]*\]/g, "");
+    return localLines.get(base) ?? fallback;
+  };
+
+  // 1. Pantelides DAE Index & Algebraic Constraint Analysis
+  const stateSet = new Set<string>();
+  const derRe = /\bder\s*\(\s*([A-Za-z_][A-Za-z0-9_.[\]]*|'[^']+')\s*\)/g;
+  for (const eq of scan.equations) {
+    if (eq.kind === "connect" || eq.isAlgorithm) continue;
+    let m: RegExpExecArray | null;
+    derRe.lastIndex = 0;
+    while ((m = derRe.exec(eq.text)) !== null) {
+      stateSet.add(m[1]!.trim());
+    }
+  }
+  const states = Array.from(stateSet);
+
+  const algebraicVars: string[] = [];
+  const varDims = new Map<string, DimVec>();
+
+  for (const decl of scan.declarations) {
+    const shortType = decl.typeName.split(".").pop() ?? decl.typeName;
+    const unitStr = decl.unit ?? TYPE_DEFAULT_UNITS[shortType];
+    if (unitStr) {
+      const dim = parseUnitString(unitStr);
+      if (dim) varDims.set(decl.name, dim);
+    }
+
+    const isParamOrConst =
+      decl.variability === "parameter" || decl.variability === "constant" || decl.variability === "component";
+    const isScalarContinuous =
+      !isParamOrConst &&
+      decl.variability !== "discrete" &&
+      (decl.isScalarType || shortType === "Real" || Boolean(TYPE_DEFAULT_UNITS[shortType]));
+
+    if (isScalarContinuous && !stateSet.has(decl.name)) {
+      algebraicVars.push(decl.name);
+    }
+  }
+
+  for (const decl of sourceScan.declarations) {
+    if (!varDims.has(decl.name)) {
+      const shortType = decl.typeName.split(".").pop() ?? decl.typeName;
+      const unitStr = decl.unit ?? TYPE_DEFAULT_UNITS[shortType];
+      if (unitStr) {
+        const dim = parseUnitString(unitStr);
+        if (dim) varDims.set(decl.name, dim);
+      }
+    }
+  }
+
+  const algSet = new Set(algebraicVars);
+  const constraintEqs: Array<{ expr: string; line: number; needsDiff: boolean }> = [];
+
+  for (const eq of scan.equations) {
+    if (eq.kind === "connect" || eq.isAlgorithm) continue;
+    if (/\bder\s*\(/.test(eq.text)) continue;
+
+    // Tokenize identifiers in this algebraic equation
+    const idents = eq.text.match(/'[^']+'|[A-Za-z_][A-Za-z0-9_.]*(?:\[[^\]]+\])?/g) ?? [];
+    let touchesState = false;
+    let touchesAlgebraic = false;
+    for (const id of idents) {
+      if (stateSet.has(id)) touchesState = true;
+      if (algSet.has(id)) touchesAlgebraic = true;
+    }
+    // Pure state holonomic/kinematic constraint (no algebraic unknown to solve for!) requires Pantelides differentiation
+    const needsDiff = touchesState && !touchesAlgebraic;
+    constraintEqs.push({
+      expr: eq.text,
+      line: eq.line,
+      needsDiff,
+    });
+  }
+
+  const highIndexCount = constraintEqs.filter((c) => c.needsDiff).length;
+  const estimatedIndex = highIndexCount > 0 ? 2 : constraintEqs.length > 0 ? 1 : 0;
+
+  // 2. Kirchhoff Equipotential Junction Synthesis via Union-Find on connect(a, b)
+  const connectSources = sourceScan.equations.some((e) => e.kind === "connect") ? sourceScan : scan;
+  const streamSymbols = new Set<string>();
+  for (const decl of [...sourceScan.declarations, ...scan.declarations]) {
+    if (decl.isStream) streamSymbols.add(decl.name);
+  }
+
+  const parent = new Map<string, string>();
+  const portLine = new Map<string, number>();
+  const find = (x: string): string => {
+    let cur = x;
+    while (parent.get(cur) && parent.get(cur) !== cur) {
+      cur = parent.get(cur)!;
+    }
+    let walk = x;
+    while (parent.get(walk) && parent.get(walk) !== cur) {
+      const next = parent.get(walk)!;
+      parent.set(walk, cur);
+      walk = next;
+    }
+    return cur;
+  };
+  const union = (a: string, b: string) => {
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  };
+
+  for (const eq of connectSources.equations) {
+    if (eq.kind !== "connect") continue;
+    const cm = /^connect\s*\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)$/.exec(eq.text.replace(/;\s*$/, "").trim());
+    if (!cm) continue;
+    const a = cm[1]!.trim();
+    const b = cm[2]!.trim();
+    if (!portLine.has(a)) portLine.set(a, eq.line);
+    if (!portLine.has(b)) portLine.set(b, eq.line);
+    union(a, b);
+  }
+
+  const groups = new Map<string, { ports: string[]; line: number }>();
+  for (const port of parent.keys()) {
+    const root = find(port);
+    const existing = groups.get(root);
+    const ln = portLine.get(port) ?? 1;
+    if (existing) {
+      existing.ports.push(port);
+      if (ln < existing.line) existing.line = ln;
+    } else {
+      groups.set(root, { ports: [port], line: ln });
+    }
+  }
+
+  const kirchhoffNodes = Array.from(groups.values()).map((g, idx) => {
+    const hasGround = g.ports.some((p) => /(?:^|\.)(?:ground|gnd|earth|ref)(?:\.|$)/i.test(p) || /\.g$/i.test(p));
+    const isStream = g.ports.some((p) => {
+      const prefix = p.split(".")[0]!;
+      return streamSymbols.has(p) || streamSymbols.has(prefix);
+    });
+    return {
+      nodeId: `Junction_${idx + 1}`,
+      ports: g.ports,
+      isStream,
+      hasGround,
+      line: g.line,
+    };
+  });
+
+  // 3. Dimensional Homogeneity Checker
+  const unitChecks: DaePhysicsSummary["unitChecks"] = [];
+  for (const eq of scan.equations) {
+    if (eq.kind === "connect" || eq.isAlgorithm || !eq.lhs || !eq.rhs) continue;
+    const lhsRes = inferExprDim(eq.lhs, varDims);
+    const rhsRes = inferExprDim(eq.rhs, varDims);
+    if (!lhsRes.dim && !rhsRes.dim && !lhsRes.conflict && !rhsRes.conflict) {
+      continue;
+    }
+    const isHomogeneous =
+      !lhsRes.conflict && !rhsRes.conflict && (lhsRes.dim && rhsRes.dim ? sameDim(lhsRes.dim, rhsRes.dim) : true);
+    unitChecks.push({
+      expr: eq.text,
+      lhsUnit: lhsRes.conflict ? "inconsistent sum" : lhsRes.dim ? formatDim(lhsRes.dim) : "inferred",
+      rhsUnit: rhsRes.conflict ? "inconsistent sum" : rhsRes.dim ? formatDim(rhsRes.dim) : "inferred",
+      isHomogeneous,
+      line: eq.line,
+    });
+  }
+
+  // 4. Initial Condition Balance (initial equations + fixed=true start attributes)
+  const initialItems: DaePhysicsSummary["initialBalance"]["initialItems"] = [];
+  let initialEqCount = 0;
+  let fixedStartCount = 0;
+
+  const initScan = scan.initialEquations.length > 0 ? scan : sourceScan;
+  for (const eq of initScan.initialEquations) {
+    initialEqCount++;
+    initialItems.push({
+      kind: "initial equation",
+      text: eq.text,
+      line: eq.line,
+    });
+  }
+
+  const seenStartDecl = new Set<string>();
+  for (const decl of [...scan.declarations, ...sourceScan.declarations]) {
+    if (seenStartDecl.has(decl.name)) continue;
+    const startVal = decl.startValue ?? extractModificationAttr(decl.modifiersText, "start");
+    const fixedVal =
+      decl.fixed !== undefined ? String(decl.fixed) : extractModificationAttr(decl.modifiersText, "fixed");
+    if (startVal !== undefined || fixedVal !== undefined) {
+      seenStartDecl.add(decl.name);
+      const isFixed = fixedVal === "true";
+      if (isFixed && (stateSet.has(decl.name) || states.length > 0)) {
+        fixedStartCount++;
+      }
+      initialItems.push({
+        kind: isFixed ? "fixed start" : "start guess",
+        text: `${decl.name}(start=${startVal ?? "0"}${fixedVal ? `, fixed=${fixedVal}` : ""})`,
+        line: resolveLine(decl.name, decl.line),
+      });
+    }
+  }
+
+  const diffOrder = states.length;
+  const totalSpecified = initialEqCount + fixedStartCount;
+  const status: DaePhysicsSummary["initialBalance"]["status"] =
+    totalSpecified > diffOrder
+      ? "over-specified"
+      : totalSpecified === diffOrder || diffOrder === 0
+        ? "balanced"
+        : "under-specified";
+
+  return {
+    pantelides: { states, algebraicVars, constraintEqs, estimatedIndex },
+    kirchhoffNodes,
+    unitChecks,
+    initialBalance: {
+      diffOrder,
+      initialEqCount,
+      fixedStartCount,
+      totalSpecified,
+      status,
+      initialItems,
+    },
+  };
 }
 
 export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
-  code: _code,
-  lines,
+  code,
+  sourceCode,
   colorMode,
   onRevealLine,
 }) => {
-  const [subTab, setSubTab] = useState<"pantelides" | "kirchhoff" | "units" | "initial">("pantelides");
   const isDark = colorMode === "dark";
-  const borderCol = "var(--color-border-default, rgba(148, 163, 184, 0.18))";
-  const cardBg = "var(--color-bg-card, rgba(22, 27, 34, 0.6))";
-  const textPrimary = "var(--color-fg-default, #c9d1d9)";
-  const textMuted = "var(--color-fg-muted, #8b949e)";
+  const [subView, setSubView] = useState<"pantelides" | "kirchhoff" | "units" | "initial">("pantelides");
 
-  // 1. Pantelides Algorithm & Index Reduction Analysis
-  const pantelidesData = useMemo(() => {
-    const diffSteps: PantelidesDiffStep[] = [];
-    const stateVars = new Set<string>();
-    const algebraicConstraints: Array<{ eq: string; line: number }> = [];
+  const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
+  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const textPrimary = isDark ? "#e6edf3" : "#1f2328";
+  const textMuted = isDark ? "#8b949e" : "#59636e";
 
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!.trim();
-      if (!l || l.startsWith("//")) continue;
-
-      const derMatches = l.matchAll(/\bder\s*\(\s*([A-Za-z0-9_.]+)\s*\)/g);
-      for (const m of derMatches) {
-        if (m[1]) stateVars.add(m[1]);
-      }
-
-      if (l.includes("=") && !l.startsWith("der(") && !l.startsWith("parameter") && !l.startsWith("constant")) {
-        const clean = l.replace(/;\s*$/, "");
-        if (!clean.startsWith("connect(") && !clean.startsWith("annotation")) {
-          // Check if equation binds two state variables without derivatives -> High Index constraint!
-          let stateCount = 0;
-          let foundState = "";
-          for (const s of stateVars) {
-            const re = new RegExp(`\\b${s}\\b`);
-            if (re.test(clean)) {
-              stateCount++;
-              foundState = s;
-            }
-          }
-          if (stateCount >= 2 || (clean.includes("x^2") && clean.includes("y^2"))) {
-            algebraicConstraints.push({ eq: clean, line: i + 1 });
-            diffSteps.push({
-              equationText: clean,
-              order: 1,
-              differentiatedVar: foundState || "state_constraint",
-              dummyDerivative: `der(${foundState || "state_constraint"})`,
-              line: i + 1,
-            });
-          }
-        }
-      }
-    }
-
-    const estimatedIndex = diffSteps.length > 0 ? 2 : stateVars.size > 0 ? 1 : 0;
-    return {
-      index: estimatedIndex,
-      isHighIndex: estimatedIndex >= 2,
-      stateCount: stateVars.size,
-      diffSteps,
-      algebraicConstraints,
-    };
-  }, [lines]);
-
-  // 2. Connector & Kirchhoff Balance Audit
-  const connectorAudit = useMemo<ConnectorPortAudit[]>(() => {
-    const connects: Array<{ src: string; tgt: string; line: number }> = [];
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!.trim();
-      const m = /connect\s*\(\s*([A-Za-z0-9_.]+)\s*,\s*([A-Za-z0-9_.]+)\s*\)/.exec(l);
-      if (m) {
-        connects.push({ src: m[1]!, tgt: m[2]!, line: i + 1 });
-      }
-    }
-
-    // Group connects by root component
-    const portMap = new Map<string, ConnectorPortAudit>();
-
-    for (const c of connects) {
-      const srcPrefix = c.src.split(".")[0] || c.src;
-
-      const isElectrical = /pin|plug|terminal|p\b|n\b|pos|neg/i.test(c.src) || /pin|plug|terminal|p\b|n\b|pos|neg/i.test(c.tgt);
-      const isMechanical = /flange|spline|support/i.test(c.src) || /flange|spline|support/i.test(c.tgt);
-      const isFluid = /port|pipe|inlet|outlet|stream/i.test(c.src) || /port|pipe|inlet|outlet|stream/i.test(c.tgt);
-      const isThermal = /heatPort|thermal/i.test(c.src);
-
-      const kind: ConnectorPortAudit["kind"] = isElectrical
-        ? "electrical"
-        : isMechanical
-          ? "mechanical"
-          : isFluid
-            ? "fluid"
-            : isThermal
-              ? "thermal"
-              : "general";
-
-      const potentialVars = isElectrical
-        ? ["v (Voltage)"]
-        : isMechanical
-          ? ["s / phi (Position/Angle)"]
-          : isFluid
-            ? ["p (Pressure)"]
-            : isThermal
-              ? ["T (Temperature)"]
-              : ["potential"];
-
-      const flowVars = isElectrical
-        ? ["i (Current, sum=0)"]
-        : isMechanical
-          ? ["f / tau (Force/Torque, sum=0)"]
-          : isFluid
-            ? ["m_flow (Mass Flow, sum=0)"]
-            : isThermal
-              ? ["Q_flow (Heat Flow, sum=0)"]
-              : ["flow (sum=0)"];
-
-      if (!portMap.has(srcPrefix)) {
-        portMap.set(srcPrefix, {
-          connectorName: srcPrefix,
-          kind,
-          potentialVars,
-          flowVars,
-          connections: [],
-          isBalanced: true,
-          statusText: "Plug-compatible Kirchhoff junction",
-        });
-      }
-      portMap.get(srcPrefix)!.connections.push({ target: c.tgt, line: c.line });
-    }
-
-    return Array.from(portMap.values());
-  }, [lines]);
-
-  // 3. Unit & Dimensional Consistency Analyzer
-  const unitChecks = useMemo<UnitCheckEntry[]>(() => {
-    const checks: UnitCheckEntry[] = [];
-    const varUnits = new Map<string, string>();
-
-    // Scan variable definitions for unit="...", Voltage, Current, Resistance, etc.
-    for (const l of lines) {
-      const unitM = /\b([A-Za-z0-9_]+)\s*\([^)]*unit\s*=\s*["']([^"']+)["']/i.exec(l);
-      if (unitM) varUnits.set(unitM[1]!, unitM[2]!);
-      if (/\bVoltage\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "V");
-      if (/\bCurrent\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "A");
-      if (/\bResistance\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "Ohm");
-      if (/\bInductance\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "H");
-      if (/\bCapacitance\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "F");
-      if (/\bPressure\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "Pa");
-      if (/\bMassFlowRate\s+([A-Za-z0-9_]+)/i.test(l)) varUnits.set(RegExp.$1, "kg/s");
-    }
-
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!.trim();
-      if (l.includes("=") && !l.startsWith("//") && !l.startsWith("parameter") && !l.startsWith("connect")) {
-        const clean = l.replace(/;\s*$/, "");
-        const parts = clean.split("=");
-        if (parts.length === 2) {
-          const lhs = parts[0]!.trim();
-          const lhsUnit = varUnits.get(lhs) || (lhs.startsWith("v") ? "V" : lhs.startsWith("i") ? "A" : "—");
-          const rhsUnit = lhsUnit; // Homogeneous target
-          checks.push({
-            equationText: clean,
-            lhsUnit,
-            rhsUnit,
-            isHomogeneous: true,
-            line: i + 1,
-          });
-        }
-      }
-    }
-
-    return checks;
-  }, [lines]);
-
-  // 4. Initial Condition ($x_0$) Balance
-  const initialBalance = useMemo(() => {
-    let startCount = 0;
-    let fixedCount = 0;
-    const initialEqs: Array<{ eq: string; line: number }> = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!.trim();
-      if (/\bstart\s*=\s*([0-9.eE+-]+)/i.test(l)) startCount++;
-      if (/\bfixed\s*=\s*true/i.test(l)) fixedCount++;
-      if (l.startsWith("initial equation")) {
-        // Collect following lines until equation/algorithm/end
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextL = lines[j]!.trim();
-          if (nextL.startsWith("equation") || nextL.startsWith("algorithm") || nextL.startsWith("end")) break;
-          if (nextL.includes("=") && !nextL.startsWith("//")) {
-            initialEqs.push({ eq: nextL.replace(/;\s*$/, ""), line: j + 1 });
-          }
-        }
-      }
-    }
-
-    return {
-      startCount,
-      fixedCount,
-      initialEqs,
-      isBalanced: initialEqs.length === pantelidesData.stateCount || fixedCount >= pantelidesData.stateCount,
-    };
-  }, [lines, pantelidesData.stateCount]);
+  const summary = useMemo(() => analyzeDaePhysics(code, sourceCode), [code, sourceCode]);
+  const { pantelides, kirchhoffNodes, unitChecks, initialBalance } = summary;
+  const unitMismatchCount = unitChecks.filter((u) => !u.isHomogeneous).length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, color: textPrimary, fontSize: 13 }}>
-      {/* Sub-tab navigation */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          paddingBottom: 10,
-          borderBottom: `1px solid ${borderCol}`,
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "#bc8cff" }}>DAE Structural & Physics Integrity Inspector</span>
-        </div>
-
-        <div
-          style={{
-            display: "inline-flex",
-            borderRadius: 6,
-            border: `1px solid ${borderCol}`,
-            overflow: "hidden",
-            backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
-          }}
-        >
-          {[
-            { id: "pantelides", label: `Pantelides Index (${pantelidesData.index})` },
-            { id: "kirchhoff", label: `Kirchhoff Balance (${connectorAudit.length})` },
-            { id: "units", label: `Unit Homogeneity (${unitChecks.length})` },
-            { id: "initial", label: `Initial Conditions (${pantelidesData.stateCount})` },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setSubTab(tab.id as any)}
-              style={{
-                padding: "5px 11px",
-                fontSize: 12,
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: subTab === tab.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                color: subTab === tab.id ? "#ffffff" : textMuted,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── View 1: Pantelides Index Reduction ── */}
-      {subTab === "pantelides" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Sub-navigation */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {[
+          { id: "pantelides", label: `🔬 Pantelides Index (${pantelides.estimatedIndex})` },
+          { id: "kirchhoff", label: `🔌 Kirchhoff & Stream Nodes (${kirchhoffNodes.length})` },
+          {
+            id: "units",
+            label: `📏 Dimensional SI Units (${unitMismatchCount > 0 ? `${unitMismatchCount} mismatch` : `${unitChecks.length} checked`})`,
+          },
+          {
+            id: "initial",
+            label: `⏱️ Initial System (t₀: ${initialBalance.totalSpecified}/${initialBalance.diffOrder})`,
+          },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setSubView(t.id as typeof subView)}
             style={{
-              padding: 14,
-              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
               border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              borderLeft: `4px solid ${pantelidesData.isHighIndex ? "#d29922" : "#3fb950"}`,
+              cursor: "pointer",
+              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
+              color: subView === t.id ? "#ffffff" : textPrimary,
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 14 }}>
-              Differential Index:{" "}
-              <span style={{ color: pantelidesData.isHighIndex ? "#d29922" : "#3fb950" }}>
-                Index {pantelidesData.index} ({pantelidesData.isHighIndex ? "High-Index DAE" : "Index-1 Standard Form"})
-              </span>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subView === "pantelides" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+            <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+              <div style={{ fontSize: 11, color: textMuted, fontWeight: 600 }}>DIFFERENTIAL INDEX</div>
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  color: pantelides.estimatedIndex > 1 ? "#f0883e" : "#3fb950",
+                  fontFamily: "monospace",
+                }}
+              >
+                Index-{pantelides.estimatedIndex} DAE
+              </div>
+              <div style={{ fontSize: 11, color: textMuted }}>
+                {pantelides.estimatedIndex > 1
+                  ? "Holonomic state constraint requires Pantelides differentiation"
+                  : pantelides.estimatedIndex === 1
+                    ? "Semi-explicit ODE + algebraic equations"
+                    : "Pure explicit ODE / algebraic system"}
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: textMuted, marginTop: 4 }}>
-              {pantelidesData.isHighIndex
-                ? "Algebraic constraints between state variables detect high index (Index > 1). ModelScript applies Pantelides graph differentiation and Mattsson-Söderlind dummy derivative selection to avoid numerical drift."
-                : "Differential index is 1. All continuous states are directly solvable via BDF, CVODE, or Runge-Kutta numerical integrators with no secondary index reduction required."}
+            <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+              <div style={{ fontSize: 11, color: textMuted, fontWeight: 600 }}>DIFFERENTIATED STATES (ẋ)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#58a6ff", fontFamily: "monospace" }}>
+                {pantelides.states.length}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: textMuted,
+                  fontFamily: "monospace",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {pantelides.states.join(", ") || "None"}
+              </div>
+            </div>
+            <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+              <div style={{ fontSize: 11, color: textMuted, fontWeight: 600 }}>ALGEBRAIC UNKNOWNS</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#a371f7", fontFamily: "monospace" }}>
+                {pantelides.algebraicVars.length}
+              </div>
+              <div style={{ fontSize: 11, color: textMuted }}>Zero-derivative continuous variables</div>
             </div>
           </div>
 
-          <div
-            style={{
-              borderRadius: 8,
-              border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ padding: "10px 14px", fontWeight: 600, borderBottom: `1px solid ${borderCol}` }}>
-              Continuous State Variables & Differentiated Constraints
+          <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+              Algebraic Equations & Pantelides Constraint Graph ({pantelides.constraintEqs.length})
             </div>
-            {pantelidesData.diffSteps.length === 0 ? (
-              <div style={{ padding: 14, color: textMuted, fontSize: 12 }}>
-                ✓ No high-index constraints detected. All {pantelidesData.stateCount} continuous states have direct $\dot{x}$ ODE formulations.
+            {pantelides.constraintEqs.length === 0 ? (
+              <div style={{ fontSize: 12, color: textMuted }}>
+                All active continuous equations contain explicit state derivatives — Index-0 ODE structure.
               </div>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: `1px solid ${borderCol}`, color: textMuted }}>
-                    <th style={{ padding: "8px 12px" }}>Constraint Equation</th>
-                    <th style={{ padding: "8px 12px" }}>Diff Order</th>
-                    <th style={{ padding: "8px 12px" }}>Dummy Derivative Target</th>
-                    <th style={{ padding: "8px 12px" }}>Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pantelidesData.diffSteps.map((step, idx) => (
-                    <tr
-                      key={idx}
-                      onClick={() => onRevealLine?.(step.line)}
-                      style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
-                    >
-                      <td style={{ padding: "7px 12px", fontFamily: "monospace", color: "#58a6ff" }}>
-                        {step.equationText}
-                      </td>
-                      <td style={{ padding: "7px 12px" }}>Order {step.order}</td>
-                      <td style={{ padding: "7px 12px", fontFamily: "monospace", color: "#3fb950" }}>
-                        {step.dummyDerivative}
-                      </td>
-                      <td style={{ padding: "7px 12px", color: textMuted }}>{step.line}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pantelides.constraintEqs.map((c, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => onRevealLine?.(c.line)}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 6,
+                      border: `1px solid ${borderCol}`,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      cursor: "pointer",
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    <span style={{ color: textPrimary, overflow: "hidden", textOverflow: "ellipsis" }}>{c.expr}</span>
+                    <span style={{ color: c.needsDiff ? "#f0883e" : "#3fb950", fontWeight: 600, flexShrink: 0 }}>
+                      {c.needsDiff ? `Differentiate d/dt (L${c.line})` : `Index-1 Algebraic (L${c.line})`}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* ── View 2: Kirchhoff Balance Audit ── */}
-      {subTab === "kirchhoff" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 12, color: textMuted }}>
-            Conservation law audit across all physical connector interfaces. Flow variables (current, mass flow, force)
-            must sum to zero at junctions; potential variables (voltage, pressure, velocity) are equalized.
+      {subView === "kirchhoff" && (
+        <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 10 }}>
+            Physical Connector Equipotential & Zero-Sum Flow Sets (∑ iₖ = 0, v₁ = v₂ = …)
           </div>
+          {kirchhoffNodes.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No acausal <code>connect(a, b)</code> clauses detected in the model source.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {kirchhoffNodes.map((n, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onRevealLine?.(n.line)}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 6,
+                    border: `1px solid ${borderCol}`,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontFamily: "monospace", color: "#58a6ff" }}>
+                      {n.nodeId} ({n.ports.length} connected ports)
+                    </span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {n.hasGround && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            padding: "2px 6px",
+                            borderRadius: 99,
+                            backgroundColor: "rgba(63,185,80,0.16)",
+                            color: "#3fb950",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⏚ Reference Ground
+                        </span>
+                      )}
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "2px 6px",
+                          borderRadius: 99,
+                          backgroundColor: n.isStream ? "rgba(163,113,247,0.18)" : "rgba(88,166,255,0.15)",
+                          color: n.isStream ? "#a371f7" : "#58a6ff",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {n.isStream ? "inStream() Enthalpy Mixing" : "Kirchhoff KCL + KVL"}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, fontFamily: "monospace", color: textMuted }}>
+                    Ports: {n.ports.join(" ⟷ ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-            {connectorAudit.map((audit, idx) => (
-              <div
-                key={idx}
-                style={{
-                  borderRadius: 8,
-                  border: `1px solid ${borderCol}`,
-                  backgroundColor: cardBg,
-                  padding: 14,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontWeight: 700, fontSize: 13, color: "#58a6ff" }}>{audit.connectorName}</span>
-                  <span
-                    style={{
-                      padding: "2px 8px",
-                      borderRadius: 10,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      backgroundColor: "rgba(63, 185, 80, 0.15)",
-                      color: "#3fb950",
-                    }}
-                  >
-                    ✓ {audit.kind.toUpperCase()}
+      {subView === "units" && (
+        <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            SI Dimensional Homogeneity Audit ([M, L, T, I, Θ, N, J])
+          </div>
+          {unitChecks.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No explicit SI <code>unit=&quot;...&quot;</code> attributes or standard physical quantity types found on
+              active equations. Declare <code>Real v(unit=&quot;V&quot;)</code> or MSL physical types to audit
+              dimensional balance.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {unitChecks.map((u, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onRevealLine?.(u.line)}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    border: `1px solid ${u.isHomogeneous ? borderCol : "rgba(248,81,73,0.45)"}`,
+                    backgroundColor: u.isHomogeneous ? "transparent" : "rgba(248,81,73,0.06)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 10,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", color: textPrimary }}>{u.expr}</span>
+                  <span style={{ color: u.isHomogeneous ? "#3fb950" : "#f85149", fontWeight: 600, flexShrink: 0 }}>
+                    [{u.lhsUnit}] {u.isHomogeneous ? "≡" : "≠"} [{u.rhsUnit}] {u.isHomogeneous ? "✓" : "⚠"}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: textMuted, marginBottom: 4 }}>
-                  Potential: <span style={{ color: textPrimary }}>{audit.potentialVars.join(", ")}</span>
-                </div>
-                <div style={{ fontSize: 11, color: textMuted, marginBottom: 8 }}>
-                  Flow Conservation: <span style={{ color: "#3fb950", fontWeight: 600 }}>{audit.flowVars.join(", ")}</span>
-                </div>
-                <div style={{ fontSize: 11, color: textMuted }}>
-                  Connections: {audit.connections.length} links (
-                  {audit.connections.map((c) => c.target).join(", ")})
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── View 3: Unit Homogeneity ── */}
-      {subTab === "units" && (
+      {subView === "initial" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 12, color: textMuted }}>
-            Static dimensional analysis verification. Assures every term in algebraic and differential equations shares
-            consistent SI base dimensions ($[M], [L], [T], [I], [\Theta], [N], [J]$).
+          <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+              Consistent Initialization System Balance (t = t₀)
+            </div>
+            <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: textMuted }}>State DOF Required</div>
+                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace" }}>{initialBalance.diffOrder}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: textMuted }}>Initial Equations</div>
+                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace", color: "#58a6ff" }}>
+                  {initialBalance.initialEqCount}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: textMuted }}>Fixed Start Attributes</div>
+                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace", color: "#a371f7" }}>
+                  {initialBalance.fixedStartCount}
+                </div>
+              </div>
+              <div
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  backgroundColor:
+                    initialBalance.status === "balanced"
+                      ? "rgba(63,185,80,0.14)"
+                      : initialBalance.status === "over-specified"
+                        ? "rgba(248,81,73,0.14)"
+                        : "rgba(210,153,34,0.14)",
+                  color:
+                    initialBalance.status === "balanced"
+                      ? "#3fb950"
+                      : initialBalance.status === "over-specified"
+                        ? "#f85149"
+                        : "#d29922",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {initialBalance.status === "balanced"
+                  ? "✓ Fully Determined Initial System"
+                  : initialBalance.status === "over-specified"
+                    ? `⚠ Over-Specified (+${initialBalance.totalSpecified - initialBalance.diffOrder} redundant initial conditions)`
+                    : `ℹ ${initialBalance.diffOrder - initialBalance.totalSpecified} state(s) use default start=0 fallback`}
+              </div>
+            </div>
           </div>
 
-          <div style={{ borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: `1px solid ${borderCol}`, color: textMuted }}>
-                  <th style={{ padding: "8px 12px" }}>Equation</th>
-                  <th style={{ padding: "8px 12px" }}>LHS Unit</th>
-                  <th style={{ padding: "8px 12px" }}>RHS Unit</th>
-                  <th style={{ padding: "8px 12px" }}>Status</th>
-                  <th style={{ padding: "8px 12px" }}>Line</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unitChecks.map((u, idx) => (
-                  <tr
+          <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+              Declared Initial Equations & State Start Attributes ({initialBalance.initialItems.length})
+            </div>
+            {initialBalance.initialItems.length === 0 ? (
+              <div style={{ fontSize: 12, color: textMuted }}>
+                No explicit <code>initial equation</code> clauses or <code>start=...</code> modifiers declared; states
+                default to <code>x(t₀) = 0.0</code>.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {initialBalance.initialItems.map((item, idx) => (
+                  <div
                     key={idx}
-                    onClick={() => onRevealLine?.(u.line)}
-                    style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
+                    onClick={() => onRevealLine?.(item.line)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      border: `1px solid ${borderCol}`,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontFamily: "monospace",
+                    }}
                   >
-                    <td style={{ padding: "7px 12px", fontFamily: "monospace", color: "#58a6ff" }}>{u.equationText}</td>
-                    <td style={{ padding: "7px 12px", fontFamily: "monospace" }}>{u.lhsUnit}</td>
-                    <td style={{ padding: "7px 12px", fontFamily: "monospace" }}>{u.rhsUnit}</td>
-                    <td style={{ padding: "7px 12px" }}>
-                      <span style={{ color: "#3fb950", fontWeight: 600 }}>✓ Homogeneous</span>
-                    </td>
-                    <td style={{ padding: "7px 12px", color: textMuted }}>{u.line}</td>
-                  </tr>
+                    <span style={{ color: textPrimary }}>{item.text}</span>
+                    <span
+                      style={{
+                        color:
+                          item.kind === "initial equation"
+                            ? "#58a6ff"
+                            : item.kind === "fixed start"
+                              ? "#3fb950"
+                              : textMuted,
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.kind} (L{item.line})
+                    </span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── View 4: Initial Conditions Balance ── */}
-      {subTab === "initial" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 8,
-              border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>
-                Initial Value Problem (IVP) Balance:{" "}
-                <span style={{ color: initialBalance.isBalanced ? "#3fb950" : "#d29922" }}>
-                  {initialBalance.isBalanced ? "✓ Well-Posed Initial System" : "⚠ Degrees of Freedom in $x(t_0)$"}
-                </span>
               </div>
-              <div style={{ fontSize: 11, color: textMuted, marginTop: 4 }}>
-                {pantelidesData.stateCount} continuous states require {pantelidesData.stateCount} independent initial conditions.
-              </div>
-            </div>
-            <div style={{ textAlign: "right", fontFamily: "monospace" }}>
-              <div>{initialBalance.startCount} start values specified</div>
-              <div style={{ color: "#3fb950", fontWeight: 600 }}>{initialBalance.fixedCount} fixed=true constraints</div>
-            </div>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 };
-
-export default DaeAdvancedInspector;

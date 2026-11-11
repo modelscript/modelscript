@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
 
@@ -9,146 +10,345 @@ export interface AutomationControlInspectorProps {
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
-interface SfcStep {
+export interface SfcStep {
   name: string;
   isInitial: boolean;
   actions: string[];
-  transitions: Array<{ targetStep: string; condition: string; line: number }>;
   line: number;
 }
 
+export interface SfcTransition {
+  from: string;
+  to: string;
+  condition: string;
+  line: number;
+}
+
+export interface AutomationSummary {
+  steps: SfcStep[];
+  transitions: SfcTransition[];
+  tasks: Array<{ name: string; intervalMs: number; priority: number; wcetMs: number; line: number }>;
+  interlocks: Array<{ symbol: string; expression: string; line: number }>;
+}
+
+function parseIecDurationMs(raw: string): number {
+  const m = /(?:T|TIME)#([0-9.]+)(ms|s|m|us)/i.exec(raw);
+  if (!m) return 10;
+  const val = Number(m[1]);
+  const unit = m[2]!.toLowerCase();
+  if (unit === "us") return val / 1000;
+  if (unit === "ms") return val;
+  if (unit === "s") return val * 1000;
+  if (unit === "m") return val * 60000;
+  return 10;
+}
+
+export function analyzeAutomationSfc(_code: string, lines: string[]): AutomationSummary {
+  const stepMap = new Map<string, SfcStep>();
+  const transitions: SfcTransition[] = [];
+  const tasks: AutomationSummary["tasks"] = [];
+  const interlocks: AutomationSummary["interlocks"] = [];
+
+  let activeStep: SfcStep | null = null;
+  let logicOpCount = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i]!.trim();
+    if (!t || t.startsWith("//") || t.startsWith("(*") || t.startsWith("<!--")) continue;
+
+    // ST SFC steps: INITIAL_STEP Init: ... END_STEP or STEP Run: ... END_STEP
+    const stStep = /^(INITIAL_STEP|STEP)\s+([A-Za-z_]\w*)\s*:?/.exec(t);
+    if (stStep) {
+      const s: SfcStep = {
+        name: stStep[2]!,
+        isInitial: stStep[1] === "INITIAL_STEP",
+        actions: [],
+        line: i + 1,
+      };
+      stepMap.set(s.name, s);
+      activeStep = s;
+      continue;
+    }
+    if (/^END_STEP\b/i.test(t)) {
+      activeStep = null;
+      continue;
+    }
+
+    // PLCopen XML <step name="..." initialStep="true">
+    const xmlStep = /<step\b[^>]*\bname=["']([^"']+)["']([^>]*)>/i.exec(t);
+    if (xmlStep) {
+      const name = xmlStep[1]!;
+      const isInitial = /\binitialStep=["']true["']/i.test(xmlStep[2]!);
+      const s: SfcStep = { name, isInitial, actions: [], line: i + 1 };
+      stepMap.set(name, s);
+      activeStep = s;
+      continue;
+    }
+    if (/<\/step>/i.test(t)) {
+      activeStep = null;
+      continue;
+    }
+
+    // Actions inside active step
+    if (activeStep) {
+      const xmlAct = /<actionBlock\b|<reference\b[^>]*\bname=["']([^"']+)["']/i.exec(t);
+      if (xmlAct?.[1]) {
+        activeStep.actions.push(xmlAct[1]);
+        continue;
+      }
+      const stAct = /^([A-Za-z_]\w*)\s*\(\s*([NP01SLD]|DS|SD|SL)\s*\)\s*;/.exec(t);
+      if (stAct) {
+        activeStep.actions.push(`${stAct[1]}(${stAct[2]})`);
+        continue;
+      }
+      const assignAct = /^([A-Za-z_]\w*)\s*:=\s*([^;]+);/.exec(t);
+      if (assignAct) {
+        activeStep.actions.push(`${assignAct[1]} := ${assignAct[2]!.trim()}`);
+        logicOpCount++;
+        continue;
+      }
+    }
+
+    // ST TRANSITION FROM StepA TO StepB := Cond;
+    const stTrans =
+      /^TRANSITION\b(?:\s+[A-Za-z_]\w*)?\s+FROM\s+([A-Za-z_]\w*)\s+TO\s+([A-Za-z_]\w*)\s*:=\s*([^;]+)/i.exec(t);
+    if (stTrans) {
+      transitions.push({
+        from: stTrans[1]!,
+        to: stTrans[2]!,
+        condition: stTrans[3]!.trim(),
+        line: i + 1,
+      });
+      continue;
+    }
+
+    // Task configuration (ST TASK MainTask(INTERVAL := T#10ms, PRIORITY := 1); or XML <task name="..." interval="...">)
+    const stTask = /^TASK\s+([A-Za-z_]\w*)\s*\(([^)]+)\)/i.exec(t);
+    if (stTask) {
+      const intervalMs = parseIecDurationMs(stTask[2]!);
+      const prio = Number(/\bPRIORITY\s*:=\s*(\d+)/i.exec(stTask[2]!)?.[1] ?? 1);
+      tasks.push({ name: stTask[1]!, intervalMs, priority: prio, wcetMs: 0, line: i + 1 });
+      continue;
+    }
+    const xmlTask = /<task\b[^>]*\bname=["']([^"']+)["']([^>]*)>/i.exec(t);
+    if (xmlTask) {
+      const intervalMs = parseIecDurationMs(xmlTask[2]!);
+      const prio = Number(/\bpriority=["'](\d+)["']/i.exec(xmlTask[2]!)?.[1] ?? 1);
+      tasks.push({ name: xmlTask[1]!, intervalMs, priority: prio, wcetMs: 0, line: i + 1 });
+      continue;
+    }
+
+    // Count general ST statements & detect safety interlock guards
+    if (t.includes(":=") || /^IF\b/i.test(t) || /^ELSIF\b/i.test(t)) {
+      logicOpCount++;
+      if (/\b(estop|e_stop|emergency|fault|interlock|safety|guard|overtemp|trip)\b/i.test(t)) {
+        const sym = /^([A-Za-z_]\w*)\s*:=/.exec(t)?.[1] ?? "SafetyGuard";
+        interlocks.push({ symbol: sym, expression: t.replace(/;\s*$/, "").slice(0, 80), line: i + 1 });
+      }
+    }
+  }
+
+  const steps = Array.from(stepMap.values());
+  const estimatedWcetMs = Number(
+    Math.max(0.05, (logicOpCount + steps.length * 3 + transitions.length * 2) * 0.018).toFixed(2),
+  );
+  for (const task of tasks) {
+    task.wcetMs = estimatedWcetMs;
+  }
+  if (tasks.length === 0 && (steps.length > 0 || logicOpCount > 0)) {
+    tasks.push({
+      name: "DefaultScanTask",
+      intervalMs: 10,
+      priority: 1,
+      wcetMs: estimatedWcetMs,
+      line: 1,
+    });
+  }
+
+  return { steps, transitions, tasks, interlocks };
+}
+
 export const AutomationControlInspector: React.FC<AutomationControlInspectorProps> = ({
+  code,
   lines,
   colorMode,
   onRevealLine,
 }) => {
-  const [subTab, setSubTab] = useState<"sfc" | "schedule" | "safety">("sfc");
   const isDark = colorMode === "dark";
-  const borderCol = "var(--color-border-default, rgba(148, 163, 184, 0.18))";
-  const cardBg = "var(--color-bg-card, rgba(22, 27, 34, 0.6))";
-  const textPrimary = "var(--color-fg-default, #c9d1d9)";
-  const textMuted = "var(--color-fg-muted, #8b949e)";
+  const [subView, setSubView] = useState<"sfc" | "schedule" | "safety">("sfc");
 
-  const steps = useMemo<SfcStep[]>(() => {
-    const list: SfcStep[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!.trim();
-      const stepMatch = /\b(?:INITIAL_STEP|STEP)\s+([A-Za-z0-9_]+)/i.exec(l);
-      if (stepMatch) {
-        const isInit = l.toUpperCase().includes("INITIAL_STEP");
-        list.push({
-          name: stepMatch[1]!,
-          isInitial: isInit,
-          actions: ["Motor_Run", "Lamp_On"],
-          transitions: [{ targetStep: "Step_Next", condition: "sensor_in AND NOT error_flg", line: i + 2 }],
-          line: i + 1,
-        });
-      }
-    }
+  const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
+  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const textPrimary = isDark ? "#e6edf3" : "#1f2328";
+  const textMuted = isDark ? "#8b949e" : "#59636e";
 
-    if (list.length === 0) {
-      list.push(
-        { name: "Step_Idle", isInitial: true, actions: ["ResetAlarms"], transitions: [{ targetStep: "Step_Running", condition: "start_button", line: 4 }], line: 1 },
-        { name: "Step_Running", isInitial: false, actions: ["EnableSpindle", "FeedCoolant"], transitions: [{ targetStep: "Step_Stopping", condition: "stop_request OR part_done", line: 9 }], line: 6 },
-        { name: "Step_Stopping", isInitial: false, actions: ["BrakeActuation"], transitions: [{ targetStep: "Step_Idle", condition: "speed == 0", line: 14 }], line: 11 },
-      );
-    }
-    return list;
-  }, [lines]);
+  const { steps, transitions, tasks, interlocks } = useMemo(() => analyzeAutomationSfc(code, lines), [code, lines]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, color: textPrimary, fontSize: 13 }}>
-      {/* Sub-navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${borderCol}` }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#3fb950" }}>
-          IEC 61131-3 & Industrial Automation Inspector
-        </div>
-
-        <div style={{ display: "inline-flex", borderRadius: 6, border: `1px solid ${borderCol}`, overflow: "hidden", backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)" }}>
-          {[
-            { id: "sfc", label: `SFC State Machine (${steps.length} Steps)` },
-            { id: "schedule", label: "Cyclic Task WCET Budget" },
-            { id: "safety", label: "Functional Safety (SIL/PL)" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setSubTab(tab.id as any)}
-              style={{
-                padding: "5px 11px",
-                fontSize: 12,
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: subTab === tab.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                color: subTab === tab.id ? "#ffffff" : textMuted,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {[
+          { id: "sfc", label: `⚙️ SFC State Graph (${steps.length} steps)` },
+          { id: "schedule", label: `⏱️ Scan Cycle & WCET (${tasks.length} tasks)` },
+          { id: "safety", label: `🛡️ Safety Interlocks (${interlocks.length})` },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setSubView(t.id as typeof subView)}
+            style={{
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: `1px solid ${borderCol}`,
+              cursor: "pointer",
+              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
+              color: subView === t.id ? "#ffffff" : textPrimary,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* ── View 1: SFC State Machine ── */}
-      {subTab === "sfc" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-          {steps.map((st, idx) => (
-            <div
-              key={idx}
-              onClick={() => onRevealLine?.(st.line, st.name)}
-              style={{
-                padding: 14,
-                borderRadius: 8,
-                border: `1px solid ${st.isInitial ? "rgba(63, 185, 80, 0.4)" : borderCol}`,
-                backgroundColor: cardBg,
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontWeight: 700, color: "#58a6ff" }}>{st.name}</span>
-                {st.isInitial && (
-                  <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, backgroundColor: "rgba(63, 185, 80, 0.15)", color: "#3fb950", fontWeight: 700 }}>
-                    Initial Step
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 11, color: textMuted, marginBottom: 4 }}>
-                Actions: <span style={{ color: textPrimary }}>{st.actions.join(", ")}</span>
-              </div>
-              <div style={{ fontSize: 11, color: textMuted }}>
-                Transition: {st.transitions.map((t) => `${t.condition} → ${t.targetStep}`).join(" | ")}
-              </div>
+      {subView === "sfc" && (
+        <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            IEC 61131-3 Sequential Function Chart (SFC) Steps & Transitions
+          </div>
+          {steps.length === 0 && transitions.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No SFC <code>INITIAL_STEP</code> / <code>STEP</code> blocks found in this POU (pure Structured Text / FBD
+              logic). Switch to <strong>Scan Cycle &amp; WCET</strong> or <strong>Safety Interlocks</strong> to inspect
+              timing and guards.
             </div>
-          ))}
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {steps.map((s) => (
+                <div
+                  key={s.name}
+                  onClick={() => onRevealLine?.(s.line, s.name)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: `1px solid ${s.isInitial ? "#3fb950" : borderCol}`,
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <div>
+                    <span style={{ fontWeight: 700, color: s.isInitial ? "#3fb950" : "#58a6ff" }}>
+                      {s.isInitial ? `[INITIAL] ${s.name}` : s.name}
+                    </span>
+                    <span style={{ color: textMuted, marginLeft: 10 }}>Actions: {s.actions.join(", ") || "Idle"}</span>
+                  </div>
+                  <span style={{ color: textMuted }}>L{s.line}</span>
+                </div>
+              ))}
+              {transitions.map((tr, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onRevealLine?.(tr.line, tr.from)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: `1px dashed ${borderCol}`,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                    color: textMuted,
+                  }}
+                >
+                  {tr.from} ──[ <strong style={{ color: "#d29922" }}>{tr.condition}</strong> ]──▶ {tr.to} (L{tr.line})
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── View 2: Cyclic Task Schedule ── */}
-      {subTab === "schedule" && (
+      {subView === "schedule" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#3fb950" }}>
-            ✓ Cyclic Scan Budget: 1.2 ms WCET / 10.0 ms Cycle (12% CPU Utilization)
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            Cyclic PLC Task Deadlines & Estimated WCET Utilization
           </div>
-          <div style={{ fontSize: 11, color: textMuted, marginTop: 4 }}>
-            Zero jitter deadline overruns detected across periodic PLC tasks. Real-time deterministic execution verified.
-          </div>
+          {tasks.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>No cyclic PLC tasks or executable statements parsed.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tasks.map((task, idx) => {
+                const utilPct = Number(((task.wcetMs / Math.max(task.intervalMs, 0.001)) * 100).toFixed(1));
+                const ok = utilPct <= 80;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => onRevealLine?.(task.line, task.name)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${borderCol}`,
+                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 11,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: "#58a6ff" }}>
+                      {task.name} (Priority {task.priority})
+                    </span>
+                    <span>
+                      WCET ≈ {task.wcetMs} ms / Period {task.intervalMs} ms
+                    </span>
+                    <span style={{ color: ok ? "#3fb950" : "#f85149", fontWeight: 700 }}>
+                      {utilPct}% {ok ? "✓ Schedulable" : "⚠ Overrun Risk"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── View 3: Functional Safety ── */}
-      {subTab === "safety" && (
+      {subView === "safety" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#58a6ff" }}>
-            ISO 13849-1 / IEC 62061: PL e / SIL 3 Safety Architecture
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            Safety Interlock & Fault-Guard Statements (IEC 61508 / ISO 13849)
           </div>
-          <div style={{ fontSize: 11, color: textMuted, marginTop: 4 }}>
-            Emergency Stop and Light Curtain interlocks satisfy Category 4 dual-channel redundant architecture with diagnostic coverage &gt; 99%.
-          </div>
+          {interlocks.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No explicit E-Stop, fault, or safety-guard boolean expressions detected in the active POU.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {interlocks.map((il, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onRevealLine?.(il.line, il.symbol)}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    border: `1px solid ${borderCol}`,
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <span style={{ color: textPrimary }}>{il.expression}</span>
+                  <span style={{ color: "#3fb950", fontWeight: 600 }}>L{il.line}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
-
-export default AutomationControlInspector;

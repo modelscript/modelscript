@@ -138,6 +138,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
       className: string;
     }): { content: string | null; uri?: string | undefined; error?: string | undefined } => {
       try {
+        if (!params?.className || params.className.startsWith("__")) {
+          return { content: null, error: `Invalid class name: ${params?.className ?? ""}` };
+        }
         const unifiedIndex = context.workspaceManager.unifiedWorkspace.getIndex();
         const parts = params.className.split(".");
         let entries = unifiedIndex.byName.get(parts[parts.length - 1]!);
@@ -168,6 +171,24 @@ export function registerClassQueryEndpoints(context: LspContext) {
           uri =
             (moIdx as any)?.getFileUriForFQN?.(params.className) ||
             (sysmlIdx as any)?.getFileUriForFQN?.(params.className);
+        }
+
+        if (!entry && uri) {
+          const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+          try {
+            moIdx?.ensureIndexed?.(uri);
+            context.workspaceManager.globalWorkspaceIndex?.ensureIndexed?.(uri);
+          } catch {}
+          const uIndex = context.workspaceManager.unifiedWorkspace.getIndex();
+          const targetName = parts[parts.length - 1]!;
+          const candIds = uIndex.byName.get(targetName) ?? [];
+          for (const cid of candIds) {
+            const ce = uIndex.symbols.get(cid);
+            if (ce && (ce.resourceId === uri || getCompositeName(ce, uIndex) === params.className)) {
+              entry = ce;
+              break;
+            }
+          }
         }
 
         if (uri?.startsWith("builtin://") && entry) {
@@ -201,15 +222,35 @@ export function registerClassQueryEndpoints(context: LspContext) {
           return { content: synth, uri };
         }
 
-        if (uri && context.state.sharedContext) {
+        let text: string | undefined = uri ? context.documents?.get?.(uri)?.getText?.() : undefined;
+        if (!text && uri && context.state.sharedContext) {
           let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
-          let text = context.state.sharedContext.fs.read(fsPath);
+          text = context.state.sharedContext.fs.read(fsPath);
           if (!text && uri.startsWith("modelica:")) {
             const stripped = uri.replace(/^modelica:\/?\/?/, "/");
             text = context.state.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
           }
-          return { content: text || null, uri };
         }
+        if (text) {
+          if (
+            entry &&
+            typeof entry.startOffset === "number" &&
+            typeof entry.endOffset === "number" &&
+            entry.endOffset > entry.startOffset &&
+            (entry.startOffset > 0 || entry.endOffset < text.length)
+          ) {
+            const snippet = text.substring(entry.startOffset, entry.endOffset).trim();
+            if (snippet) {
+              const parentFqn = params.className.includes(".")
+                ? params.className.substring(0, params.className.lastIndexOf("."))
+                : "";
+              const withinPrefix = parentFqn && !snippet.startsWith("within") ? `within ${parentFqn};\n\n` : "";
+              return { content: withinPrefix + snippet, uri };
+            }
+          }
+          return { content: text, uri };
+        }
+        return { content: null, uri };
 
         return { content: null, uri, error: `Class not found: ${params.className}` };
       } catch (e) {
@@ -588,10 +629,12 @@ export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/parse",
     (params: { code: string }): { classes: { name: string; kind: string }[]; syntaxErrors: string[] } => {
-      let ctx: Context | undefined;
-      for (const c of context.workspaceManager.documentContexts.values()) {
-        ctx = c;
-        break;
+      let ctx: Context | undefined = context.state?.sharedContext ?? context.parserService?.sharedContext;
+      if (!ctx) {
+        for (const c of context.workspaceManager.documentContexts.values()) {
+          ctx = c;
+          break;
+        }
       }
       if (!ctx) return { classes: [], syntaxErrors: ["No Modelica context available."] };
 

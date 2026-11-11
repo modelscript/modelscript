@@ -190,6 +190,64 @@ test("GenericDSLDiagramBackend & Diagram Dispatch", async (t) => {
     assert.strictEqual(res.edits[1].newText, "");
   });
 
+  await t.test(
+    "should safely disconnect and reconnect specific ports without prefix or multi-port collisions",
+    async () => {
+      const testDoc =
+        [
+          "connect(R1.n, C1.p) annotation(Line(points={{10, 20}, {30, 40}}));",
+          "connect(R1.p, C1.n);",
+          "connect(R10.n, C10.p);",
+        ].join("\n") + "\n";
+
+      const backend = new GenericDSLDiagramBackend({
+        getDocumentText: () => testDoc,
+        layoutStorage,
+      });
+
+      // 1. Disconnecting R1.n -> C1.p must delete line 0 and NOT line 1 or line 2
+      const discRes = await backend.applyEdits({
+        uri: dummyDocUri,
+        seq: 45,
+        actions: [
+          {
+            type: "disconnect",
+            source: "R1",
+            target: "C1",
+            sourcePort: "n",
+            targetPort: "p",
+          },
+        ],
+      });
+      assert.strictEqual(discRes.edits.length, 1);
+      assert.strictEqual(discRes.edits[0].range.start.line, 0);
+
+      // 2. Reconnecting R1.p -> C1.n to R1.p -> L1.p with points must replace line 1 and update annotation
+      const reconRes = await backend.applyEdits({
+        uri: dummyDocUri,
+        seq: 46,
+        actions: [
+          {
+            type: "reconnect",
+            oldSource: "R1",
+            oldTarget: "C1",
+            oldSourcePort: "p",
+            oldTargetPort: "n",
+            newSource: "R1",
+            newTarget: "L1",
+            newSourcePort: "p",
+            newTargetPort: "p",
+            points: [{ x: 50, y: 60 }],
+          },
+        ],
+      });
+      assert.strictEqual(reconRes.edits.length, 1);
+      assert.strictEqual(reconRes.edits[0].range.start.line, 1);
+      assert.ok(reconRes.edits[0].newText.includes("connect(R1.p, L1.p)"));
+      assert.ok(reconRes.edits[0].newText.includes("points={{50, 60}}"));
+    },
+  );
+
   await t.test("should support multi-edge templates and section-aware insertion for existing sections", async () => {
     const testDoc = [
       "package Demo {",

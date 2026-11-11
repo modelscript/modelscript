@@ -894,6 +894,44 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       }
     }
   }
+  const componentBoxes = nodes
+    .filter((n) => !n.id.startsWith("solder_dot_") && !n.id.startsWith("wire_crossing_"))
+    .map((n) => {
+      const angle = n.angle ?? 0;
+      const w = n.width ?? 0;
+      const h = n.height ?? 0;
+      if (!angle) {
+        return { x: n.x ?? 0, y: n.y ?? 0, width: w, height: h };
+      }
+      const rad = (Math.abs(angle) * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      const rotW = w * cos + h * sin;
+      const rotH = w * sin + h * cos;
+      const cx = (n.x ?? 0) + w / 2;
+      const cy = (n.y ?? 0) + h / 2;
+      return { x: cx - rotW / 2, y: cy - rotH / 2, width: rotW, height: rotH };
+    });
+
+  const segmentImpalesAnyComponent = (a: { x: number; y: number }, b: { x: number; y: number }): boolean => {
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y);
+    const maxY = Math.max(a.y, b.y);
+    const shrink = 2;
+    for (const box of componentBoxes) {
+      if (box.width <= shrink * 2 || box.height <= shrink * 2) continue;
+      const bx0 = box.x + shrink;
+      const bx1 = box.x + box.width - shrink;
+      const by0 = box.y + shrink;
+      const by1 = box.y + box.height - shrink;
+      if (maxX > bx0 && minX < bx1 && maxY > by0 && minY < by1) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   for (const edge of edges) {
     const srcNode = nodes.find((n) => n.id === edge.source.cell);
     const srcPortItems = Array.isArray(srcNode?.ports) ? srcNode.ports : (srcNode?.ports as any)?.items;
@@ -916,6 +954,25 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const pN = explicitPts && explicitPts.length >= 2 ? explicitPts[explicitPts.length - 1]! : null;
     const healSrc = srcPt && (!p0 || Math.hypot(srcPt.x - p0.x, srcPt.y - p0.y) <= 4) ? srcPt : (p0 ?? srcPt);
     const healTgt = tgtPt && (!pN || Math.hypot(tgtPt.x - pN.x, tgtPt.y - pN.y) <= 4) ? tgtPt : (pN ?? tgtPt);
+
+    // If an explicit 2-point Line(points={{x1,y1},{x2,y2}}) is a clean, non-degenerate, axis-aligned wire
+    // matching its ports and not impaling any component interior, lock it as author-committed geometry
+    // (router: undefined) so adding other connections or components never dynamically reroutes it.
+    if (
+      explicitPts &&
+      explicitPts.length === 2 &&
+      p0 &&
+      pN &&
+      healSrc &&
+      healTgt &&
+      Math.hypot(p0.x - pN.x, p0.y - pN.y) > 1 &&
+      (!srcPt || Math.hypot(srcPt.x - p0.x, srcPt.y - p0.y) <= 6) &&
+      (!tgtPt || Math.hypot(tgtPt.x - pN.x, tgtPt.y - pN.y) <= 6) &&
+      (Math.abs(healSrc.x - healTgt.x) <= 2 || Math.abs(healSrc.y - healTgt.y) <= 2) &&
+      !segmentImpalesAnyComponent(healSrc, healTgt)
+    ) {
+      delete edge.router;
+    }
 
     if (healSrc && healTgt && edge.vertices && edge.vertices.length > 0 && edge.connector !== "smooth") {
       edge.vertices = healOrthogonalVertices(healSrc, healTgt, edge.vertices);
@@ -952,25 +1009,6 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     }
   }
   if (validEdgePaths.length > 0) {
-    const componentBoxes = nodes
-      .filter((n) => !n.id.startsWith("solder_dot_") && !n.id.startsWith("wire_crossing_"))
-      .map((n) => {
-        const angle = n.angle ?? 0;
-        const w = n.width ?? 0;
-        const h = n.height ?? 0;
-        if (!angle) {
-          return { x: n.x ?? 0, y: n.y ?? 0, width: w, height: h };
-        }
-        const rad = (Math.abs(angle) * Math.PI) / 180;
-        const cos = Math.abs(Math.cos(rad));
-        const sin = Math.abs(Math.sin(rad));
-        const rotW = w * cos + h * sin;
-        const rotH = w * sin + h * cos;
-        const cx = (n.x ?? 0) + w / 2;
-        const cy = (n.y ?? 0) + h / 2;
-        return { x: cx - rotW / 2, y: cy - rotH / 2, width: rotW, height: rotH };
-      });
-
     const precomputedDots = computeSolderDots(validEdgePaths, {
       cellSize: 40,
       tolerance: 3.0,

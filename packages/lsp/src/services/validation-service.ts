@@ -3602,11 +3602,22 @@ export class ValidationService {
    */
   private postValidatePolyglotDrift(effectiveUri: string, _langId: string, diagnostics: Diagnostic[]): void {
     try {
+      const isExternalLibraryUri = (u: string): boolean =>
+        u.startsWith("modelica:") ||
+        u.startsWith("sysml2://stdlib/") ||
+        u.startsWith("library-bundle:") ||
+        u.includes("/modelscript_registry/") ||
+        u.startsWith("/lib/") ||
+        u.startsWith("/packages/") ||
+        u.startsWith("file:///lib/") ||
+        u.startsWith("file:///packages/");
+
       const sources: PolyglotModelSource[] = [];
       const seenUris = new Set<string>();
       const pushFileSymbols = (pId: string, fUri: string, fIdx: any) => {
         if (!fIdx?.symbols || seenUris.has(fUri)) return;
         seenUris.add(fUri);
+        if (fUri !== effectiveUri && isExternalLibraryUri(fUri)) return;
         for (const sym of fIdx.symbols.values()) {
           const val =
             sym.metadata?.value ??

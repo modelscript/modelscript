@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  extractEdgePruneOptions,
+  healOrthogonalVertices,
+  pruneIntermediateVertices,
+  type PointLike,
+} from "./port-router.js";
+
 export interface RectLike {
   x: number;
   y: number;
@@ -163,7 +170,10 @@ export function getEdgeToolConfig(
         snapRadius: 10,
         removeRedundancies: true,
         stopPropagation: true,
-        processHandle: (handle: { delegateEvents?: (events: Record<string, unknown>) => void; emit?: (evt: string, args: unknown) => void }) => {
+        processHandle: (handle: {
+          delegateEvents?: (events: Record<string, unknown>) => void;
+          emit?: (evt: string, args: unknown) => void;
+        }) => {
           if (handle && typeof handle.delegateEvents === "function") {
             handle.delegateEvents({
               mousedown: "onMouseDown",
@@ -242,27 +252,27 @@ export function ensurePatchedVerticesTool(x6Instance?: unknown): void {
       }
     | undefined;
 
-interface VerticesToolContext {
-  cellView: {
-    cell?: {
-      getVertices?(): Array<{ x: number; y: number }>;
-      startBatch?(name: string, options?: Record<string, unknown>): void;
-      insertVertex?(vertex: { x: number; y: number }, index: number, options?: Record<string, unknown>): void;
-      stopBatch?(name: string, options?: Record<string, unknown>): void;
+  interface VerticesToolContext {
+    cellView: {
+      cell?: {
+        getVertices?(): Array<{ x: number; y: number }>;
+        startBatch?(name: string, options?: Record<string, unknown>): void;
+        insertVertex?(vertex: { x: number; y: number }, index: number, options?: Record<string, unknown>): void;
+        stopBatch?(name: string, options?: Record<string, unknown>): void;
+      };
+      getVertexIndex?(x: number, y: number): number;
     };
-    getVertexIndex?(x: number, y: number): number;
-  };
-  cid?: string;
-  graph?: {
-    snapToGrid?(x: number, y: number): { toJSON?(): { x: number; y: number } };
-  };
-  handles?: Array<{ onMouseDown?(evt: unknown): void } | undefined>;
-  allowAddVertex?(evt: unknown): boolean;
-  normalizeEvent?(evt: unknown): { clientX: number; clientY: number };
-  snapVertex?(vertex: { x: number; y: number }, index: number): void;
-  render?(): void;
-  eventData?(evt: unknown, data: Record<string, unknown>): void;
-}
+    cid?: string;
+    graph?: {
+      snapToGrid?(x: number, y: number): { toJSON?(): { x: number; y: number } };
+    };
+    handles?: Array<{ onMouseDown?(evt: unknown): void } | undefined>;
+    allowAddVertex?(evt: unknown): boolean;
+    normalizeEvent?(evt: unknown): { clientX: number; clientY: number };
+    snapVertex?(vertex: { x: number; y: number }, index: number): void;
+    render?(): void;
+    eventData?(evt: unknown, data: Record<string, unknown>): void;
+  }
 
   if (!VerticesClass || VerticesClass.__modelscript_patched) return;
 
@@ -272,7 +282,10 @@ interface VerticesToolContext {
     const evtObj = evt as { stopPropagation?: () => void; preventDefault?: () => void } | null;
     if (evtObj && typeof evtObj.stopPropagation === "function") evtObj.stopPropagation();
     if (evtObj && typeof evtObj.preventDefault === "function") evtObj.preventDefault();
-    const e = typeof this.normalizeEvent === "function" ? this.normalizeEvent(evt) : (evt as { clientX: number; clientY: number });
+    const e =
+      typeof this.normalizeEvent === "function"
+        ? this.normalizeEvent(evt)
+        : (evt as { clientX: number; clientY: number });
     const vertex = this.graph?.snapToGrid?.(e.clientX, e.clientY)?.toJSON?.() || { x: e.clientX, y: e.clientY };
 
     // Prevent duplicate vertex proliferation if clicking near an existing vertex (<= 8px)
@@ -349,3 +362,82 @@ interface VerticesToolContext {
   VerticesClass.__modelscript_patched = true;
 }
 
+/**
+ * Patches the AntV X6 Segments edge tool for schematic orthogonal drafting:
+ * 1. Prevents ripping port anchors off component nodes when dragging terminal wire segments.
+ * 2. Maintains strict orthogonal 90-degree corners and heals any micro-slants after dragging.
+ */
+export function ensurePatchedSegmentsTool(x6Instance?: unknown): void {
+  const x6Mod =
+    x6Instance ||
+    (typeof globalThis !== "undefined" ? (globalThis as Record<string, unknown>)["x6"] : undefined) ||
+    (typeof window !== "undefined" ? (window as unknown as Record<string, unknown>)["x6"] : undefined);
+  if (!x6Mod || typeof x6Mod !== "object") return;
+
+  const anyX6 = x6Mod as {
+    Registry?: { EdgeTool?: { presets?: { segments?: unknown }; registry?: { get?(name: string): unknown } } };
+    edgeToolPresets?: { segments?: unknown };
+  };
+
+  const SegmentsClass = (anyX6.Registry?.EdgeTool?.presets?.segments ||
+    anyX6.Registry?.EdgeTool?.registry?.get?.("segments") ||
+    anyX6.edgeToolPresets?.segments) as
+    | {
+        prototype: {
+          onHandleChanging?(args: { handle: unknown; e: unknown }): void;
+          onHandleChanged?(args: { e: unknown }): void;
+        };
+        __modelscript_patched?: boolean;
+      }
+    | undefined;
+
+  if (!SegmentsClass || SegmentsClass.__modelscript_patched) return;
+
+  const origOnHandleChanging = SegmentsClass.prototype.onHandleChanging;
+  if (typeof origOnHandleChanging === "function") {
+    SegmentsClass.prototype.onHandleChanging = function (args: { handle: unknown; e: unknown }) {
+      origOnHandleChanging.call(this, args);
+
+      const cell = (this as any).cellView?.cell;
+      if (cell) {
+        const rawSrc = typeof cell.getSource === "function" ? cell.getSource() : cell.source;
+        const rawTgt = typeof cell.getTarget === "function" ? cell.getTarget() : cell.target;
+        if (rawSrc?.port && typeof cell.prop === "function") {
+          const currentAnchor = cell.prop(["source", "anchor"]);
+          if (currentAnchor) {
+            cell.removeProp?.(["source", "anchor"]);
+          }
+        }
+        if (rawTgt?.port && typeof cell.prop === "function") {
+          const currentAnchor = cell.prop(["target", "anchor"]);
+          if (currentAnchor) {
+            cell.removeProp?.(["target", "anchor"]);
+          }
+        }
+      }
+    };
+  }
+
+  const origOnHandleChanged = SegmentsClass.prototype.onHandleChanged;
+  if (typeof origOnHandleChanged === "function") {
+    SegmentsClass.prototype.onHandleChanged = function (args: { e: unknown }) {
+      origOnHandleChanged.call(this, args);
+
+      const edge = (this as any).cellView?.cell;
+      const edgeView = (this as any).cellView;
+      if (edge && edgeView) {
+        const srcPt = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : edgeView.sourceAnchor;
+        const tgtPt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : edgeView.targetAnchor;
+        const verts: PointLike[] = typeof edge.getVertices === "function" ? edge.getVertices() || [] : [];
+        if (srcPt && tgtPt && verts.length > 0) {
+          const healed = healOrthogonalVertices(srcPt, tgtPt, verts);
+          const pruneOpts = extractEdgePruneOptions(edgeView.graph, edge, srcPt, tgtPt);
+          const prunedVerts = pruneIntermediateVertices(srcPt, tgtPt, healed, pruneOpts);
+          edge.setVertices?.(prunedVerts, { ignoreSnap: true, ui: true });
+        }
+      }
+    };
+  }
+
+  SegmentsClass.__modelscript_patched = true;
+}

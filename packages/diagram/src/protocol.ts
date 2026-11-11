@@ -440,7 +440,14 @@ export type DiagramEditAction =
       targetPort?: string | undefined;
       section?: string | undefined;
     }
-  | { type: "disconnect"; source: string; target: string; edgeType?: string | undefined }
+  | {
+      type: "disconnect";
+      source: string;
+      target: string;
+      sourcePort?: string | undefined;
+      targetPort?: string | undefined;
+      edgeType?: string | undefined;
+    }
   | { type: "move"; items: PlacementItem[] }
   | { type: "resize"; item: PlacementItem }
   | { type: "rotate"; item: PlacementItem }
@@ -542,6 +549,8 @@ export interface DiagramGetDataParams {
 // applyEdits
 export interface DiagramApplyEditsParams {
   uri: string;
+  /** Optional target class name for multi-class documents */
+  className?: string | undefined;
   /** Monotonically increasing sequence number from the client */
   seq: number;
   /** Batch of actions to apply atomically */

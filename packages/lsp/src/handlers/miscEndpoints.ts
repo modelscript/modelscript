@@ -10,7 +10,13 @@ import { LspContext, type ModelScriptLspSettings } from "../lsp-context.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getTraceabilityMatrix } from "../requirements.js";
-import { getCompositeName } from "../utils/hierarchy-utils.js";
+import {
+  getCompositeName,
+  loadingLibraryState,
+  mountedLibraryMetadata,
+  type LoadingLibraryInfo,
+  type MountedLibraryInfo,
+} from "../utils/hierarchy-utils.js";
 import {
   ensureLibraryVersionMounted,
   importLibraryZip,
@@ -166,64 +172,118 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 
-  // Handler for installing a single dependency from the registry (triggered by web IDE install button)
-  context.connection.onNotification(
-    "modelscript/installDependency",
-    async (params: { name: string; version: string }) => {
-      const loaderCtx = getLoaderCtx();
-      if (!loaderCtx) {
-        context.connection.console.warn("[lsp] installDependency: loader context not ready.");
-        return;
+  const snapshotMountedLibraries = (): MountedLibraryInfo[] => {
+    const list: MountedLibraryInfo[] = [];
+    const seen = new Set<string>();
+    for (const info of mountedLibraryMetadata.values()) {
+      list.push({ ...info });
+      seen.add(info.name.toLowerCase());
+    }
+    const msl = mountedLibraryMetadata.get("Modelica");
+    if (msl) {
+      if (!seen.has("complex")) {
+        list.push({
+          name: "Complex",
+          version: msl.version,
+          language: "modelica",
+          description: "Bundled with Modelica Standard Library",
+        });
       }
-      context.connection.console.info(`[lsp] Installing dependency ${params.name}@${params.version} from registry...`);
+      if (!seen.has("modelicaservices")) {
+        list.push({
+          name: "ModelicaServices",
+          version: msl.version,
+          language: "modelica",
+          description: "Bundled with Modelica Standard Library",
+        });
+      }
+    }
+    return list;
+  };
+
+  const performInstallPackage = async (params: {
+    name: string;
+    version: string;
+  }): Promise<{ ok: boolean; name: string; version: string; mounted: MountedLibraryInfo[]; error?: string }> => {
+    const loaderCtx = getLoaderCtx();
+    if (!loaderCtx) {
+      context.connection.console.warn("[lsp] installDependency: loader context not ready.");
+      return {
+        ok: false,
+        name: params.name,
+        version: params.version,
+        mounted: snapshotMountedLibraries(),
+        error: "Language server loader context is not ready yet.",
+      };
+    }
+    context.connection.console.info(`[lsp] Installing dependency ${params.name}@${params.version} from registry...`);
+    context.connection.sendNotification("modelscript/status", {
+      state: "loading",
+      message: `Loading ${params.name}@${params.version}...`,
+    });
+    try {
+      await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase(), true);
+      context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
+
       context.connection.sendNotification("modelscript/status", {
         state: "loading",
-        message: `Loading ${params.name}@${params.version}...`,
+        message: `Indexing ${params.name}...`,
       });
-      try {
-        await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase());
-        context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
-
-        context.connection.sendNotification("modelscript/status", {
-          state: "loading",
-          message: `Indexing ${params.name}...`,
-        });
-        const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
-        await moIdx?.indexRemainingInBackground?.(100, (indexed: number, total: number) => {
-          if (indexed % 100 === 0) {
-            context.connection.sendNotification("modelscript/status", {
-              state: "loading",
-              message: `Indexing ${params.name} (${indexed}/${total})...`,
-            });
-          }
-        });
-
-        // Re-validate all open documents
-        for (const doc of context.documents.all()) {
-          context.validationService.validateTextDocument(doc);
+      const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+      await moIdx?.indexRemainingInBackground?.(100, (indexed: number, total: number) => {
+        if (indexed % 100 === 0) {
+          context.connection.sendNotification("modelscript/status", {
+            state: "loading",
+            message: `Indexing ${params.name} (${indexed}/${total})...`,
+          });
         }
-        // Notify client that the project tree changed (refreshes Libraries panel)
-        context.connection.sendNotification("modelscript/projectTreeChanged");
-        context.connection.sendNotification("modelscript/status", {
-          state: "ready",
-          message: `Loaded ${params.name}@${params.version}`,
-        });
-      } catch (e) {
-        context.connection.console.error(`[lsp] Failed to install ${params.name}@${params.version}: ${e}`);
-        context.connection.sendNotification("modelscript/status", {
-          state: "error",
-          message: `Failed to load ${params.name}`,
-        });
-      }
-    },
-  );
+      });
 
-  // Handler for uninstalling/unmounting a library package (standard or custom) from the workspace
-  context.connection.onNotification("modelscript/uninstallDependency", (params: { name: string }) => {
+      // Re-validate all open documents
+      for (const doc of context.documents.all()) {
+        context.validationService.validateTextDocument(doc);
+      }
+      // Notify client that the project tree changed (refreshes Libraries panel)
+      context.connection.sendNotification("modelscript/projectTreeChanged");
+      context.connection.sendNotification("modelscript/status", {
+        state: "ready",
+        message: `Loaded ${params.name}@${params.version}`,
+      });
+      return {
+        ok: true,
+        name: params.name,
+        version: params.version,
+        mounted: snapshotMountedLibraries(),
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      context.connection.console.error(`[lsp] Failed to install ${params.name}@${params.version}: ${errMsg}`);
+      context.connection.sendNotification("modelscript/status", {
+        state: "error",
+        message: `Failed to load ${params.name}`,
+      });
+      return {
+        ok: false,
+        name: params.name,
+        version: params.version,
+        mounted: snapshotMountedLibraries(),
+        error: errMsg,
+      };
+    }
+  };
+
+  const performUninstallPackage = (params: {
+    name: string;
+  }): { ok: boolean; evicted: number; mounted: MountedLibraryInfo[]; error?: string } => {
     const loaderCtx = getLoaderCtx();
     if (!loaderCtx) {
       context.connection.console.warn("[lsp] uninstallDependency: loader context not ready.");
-      return;
+      return {
+        ok: false,
+        evicted: 0,
+        mounted: snapshotMountedLibraries(),
+        error: "Language server loader context is not ready yet.",
+      };
     }
     try {
       const evicted = unloadLibraryPackage(params.name, loaderCtx);
@@ -236,40 +296,107 @@ export function registerMiscEndpoints(context: LspContext) {
         state: "ready",
         message: `Removed ${params.name}`,
       });
+      return { ok: true, evicted, mounted: snapshotMountedLibraries() };
     } catch (e) {
-      context.connection.console.error(`[lsp] Failed to uninstall ${params.name}: ${e}`);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      context.connection.console.error(`[lsp] Failed to uninstall ${params.name}: ${errMsg}`);
+      return { ok: false, evicted: 0, mounted: snapshotMountedLibraries(), error: errMsg };
     }
+  };
+
+  const performImportLibraryZip = async (params: {
+    name?: string | undefined;
+    version?: string | undefined;
+    zipBase64?: string | undefined;
+    url?: string | undefined;
+  }): Promise<{
+    ok: boolean;
+    name: string;
+    version: string;
+    fileCount: number;
+    mounted: MountedLibraryInfo[];
+    error?: string;
+  }> => {
+    const loaderCtx = getLoaderCtx();
+    if (!loaderCtx) {
+      context.connection.console.warn("[lsp] importLibraryZip: loader context not ready.");
+      return {
+        ok: false,
+        name: params.name || "ImportedLibrary",
+        version: params.version || "1.0.0",
+        fileCount: 0,
+        mounted: snapshotMountedLibraries(),
+        error: "Language server loader context is not ready yet.",
+      };
+    }
+    try {
+      const result = await importLibraryZip(params, loaderCtx);
+      context.connection.console.info(
+        `[lsp] Imported .zip library ${result.name}@${result.version} (${result.fileCount} files)`,
+      );
+      for (const doc of context.documents.all()) {
+        context.validationService.validateTextDocument(doc);
+      }
+      context.connection.sendNotification("modelscript/projectTreeChanged");
+      context.connection.sendNotification("modelscript/status", {
+        state: "ready",
+        message: `Mounted ${result.name}@${result.version}`,
+      });
+      return {
+        ok: true,
+        name: result.name,
+        version: result.version,
+        fileCount: result.fileCount,
+        mounted: snapshotMountedLibraries(),
+      };
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      context.connection.console.error(`[lsp] Failed to import library zip: ${errMsg}`);
+      context.connection.sendNotification("modelscript/status", {
+        state: "error",
+        message: `Failed to import .zip library`,
+      });
+      return {
+        ok: false,
+        name: params.name || "ImportedLibrary",
+        version: params.version || "1.0.0",
+        fileCount: 0,
+        mounted: snapshotMountedLibraries(),
+        error: errMsg,
+      };
+    }
+  };
+
+  // Query currently mounted libraries & background loading state
+  context.connection.onRequest(
+    "modelscript/getMountedLibraries",
+    (): { mounted: MountedLibraryInfo[]; loading: LoadingLibraryInfo[] } => ({
+      mounted: snapshotMountedLibraries(),
+      loading: [...loadingLibraryState.values()],
+    }),
+  );
+
+  // Request-based package lifecycle endpoints (awaited by Morsel & VS Code Package Hub)
+  context.connection.onRequest("modelscript/installPackage", performInstallPackage);
+  context.connection.onRequest("modelscript/uninstallPackage", performUninstallPackage);
+  context.connection.onRequest("modelscript/importLibraryZipReq", performImportLibraryZip);
+
+  // Backwards-compatible notification handlers
+  context.connection.onNotification(
+    "modelscript/installDependency",
+    async (params: { name: string; version: string }) => {
+      await performInstallPackage(params);
+    },
+  );
+
+  context.connection.onNotification("modelscript/uninstallDependency", (params: { name: string }) => {
+    performUninstallPackage(params);
   });
 
-  // Handler for importing a library from a .zip archive (base64 or URL)
   context.connection.onNotification(
     "modelscript/importLibraryZip",
     async (params: { name?: string; version?: string; zipBase64?: string; url?: string }) => {
-      const loaderCtx = getLoaderCtx();
-      if (!loaderCtx) {
-        context.connection.console.warn("[lsp] importLibraryZip: loader context not ready.");
-        return;
-      }
-      try {
-        const result = await importLibraryZip(params, loaderCtx);
-        context.connection.console.info(
-          `[lsp] Imported .zip library ${result.name}@${result.version} (${result.fileCount} files)`,
-        );
-        for (const doc of context.documents.all()) {
-          context.validationService.validateTextDocument(doc);
-        }
-        context.connection.sendNotification("modelscript/projectTreeChanged");
-        context.connection.sendNotification("modelscript/status", {
-          state: "ready",
-          message: `Mounted ${result.name}@${result.version}`,
-        });
-      } catch (e) {
-        context.connection.console.error(`[lsp] Failed to import library zip: ${e}`);
-        context.connection.sendNotification("modelscript/status", {
-          state: "error",
-          message: `Failed to import .zip library`,
-        });
-      }
+      await performImportLibraryZip(params);
     },
   );
 

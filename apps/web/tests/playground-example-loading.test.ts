@@ -105,4 +105,61 @@ end RLC;`;
       "TemplateGalleryModal.tsx must support double-click on template card to select and close",
     );
   });
+
+  it("verifies Tree.tsx double-click loads simulation models while ignoring package/library container nodes", () => {
+    const treePath = path.resolve(import.meta.dirname, "../src/components/morsel/Tree.tsx");
+    const content = fs.readFileSync(treePath, "utf-8");
+
+    assert.ok(
+      content.includes("if (e.detail >= 2) return;"),
+      "Tree.tsx onClick must ignore second click of double-click so double-clicking does not double-fire or collapse",
+    );
+    assert.ok(
+      content.includes('node.classKind === "package"') &&
+        content.includes('node.id.startsWith("__LIB__:")') &&
+        content.includes("if (isNonLoadableContainer) return;"),
+      "Tree.tsx onDoubleClick must not attempt to load package or __LIB__: root containers into the editor",
+    );
+  });
+
+  it("verifies Morsel.tsx loadClass works even before Monaco mounts (Diagram view) and avoids false-positive dirty freezes", () => {
+    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const modalsPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselModals.tsx");
+    const pagePath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
+    const morselContent = fs.readFileSync(morselPath, "utf-8");
+    const modalsContent = fs.readFileSync(modalsPath, "utf-8");
+    const pageContent = fs.readFileSync(pagePath, "utf-8");
+
+    // Must NOT gate loadClass on editorRef.current being mounted
+    assert.ok(
+      !morselContent.includes("if (fetchedContent && editorRef.current)"),
+      "loadClass in Morsel.tsx must not drop fetched model source when Monaco editorRef.current is null in Diagram view",
+    );
+    assert.ok(
+      morselContent.includes("setLoadedCodeOverride(fetchedContent);") &&
+        morselContent.includes(
+          "if (editorRef.current) {\n          editorRef.current.setValue(fetchedContent);\n        }",
+        ),
+      "loadClass in Morsel.tsx must persist loadedCodeOverride and conditionally update Monaco if mounted",
+    );
+
+    // Dirty check must not treat unmounted editor (undefined) as dirty or fall through when pendingSelection matches
+    assert.ok(
+      morselContent.includes("currentEditorVal !== undefined && !isDefaultOrEmpty") &&
+        !morselContent.includes("pendingSelection !== className"),
+      "handleTreeSelect in Morsel.tsx must not trigger false-positive dirty dialog when editor is unmounted or bypass an open dirty dialog on second click",
+    );
+
+    // Closing dirty dialog must reset pendingSelection
+    assert.ok(
+      modalsContent.includes("setDirtyDialogOpen(false);\n            setPendingSelection(null);"),
+      "MorselModals.tsx must clear pendingSelection when closing Unsaved Changes dialog",
+    );
+
+    // PlaygroundPage must handle onClassLoaded so freshly loaded library examples update title & baseline without false dirty state
+    assert.ok(
+      pageContent.includes("const handleClassLoaded =") && pageContent.includes("onClassLoaded={handleClassLoaded}"),
+      "PlaygroundPage.tsx must wire onClassLoaded to update baselineCodeRef and title cleanly",
+    );
+  });
 });

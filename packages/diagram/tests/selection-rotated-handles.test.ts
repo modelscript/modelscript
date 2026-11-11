@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
   alignNodeSelectionBox,
+  ensurePatchedSegmentsTool,
   ensurePatchedVerticesTool,
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
@@ -420,5 +421,70 @@ describe("Diagram Selection Handles and Box Rotation", () => {
     assert.strictEqual(startedBatchName, "add-vertex");
     assert.strictEqual(stoppedBatchName, "add-vertex", "Must stop batch to prevent freezing diagram canvas");
   });
-});
 
+  it("ensurePatchedSegmentsTool preserves pinned port anchors and heals orthogonal vertices after segment drag", () => {
+    let removedPropPath: string[] | null = null;
+    let setVerticesCalledWith: any = null;
+
+    const mockEdge: any = {
+      getSource: () => ({ cell: "nodeA", port: "p" }),
+      getTarget: () => ({ cell: "nodeB", port: "p" }),
+      prop: (path: string[]) => {
+        if (path[0] === "source" && path[1] === "anchor") return { x: 40, y: 20 };
+        return null;
+      },
+      removeProp: (path: string[]) => {
+        removedPropPath = path;
+      },
+      getSourcePoint: () => ({ x: 0, y: 0 }),
+      getTargetPoint: () => ({ x: 100, y: 100 }),
+      getVertices: () => [
+        { x: 50, y: 0.2 }, // slight non-orthogonal float drift
+        { x: 50, y: 99.8 },
+      ],
+      setVertices: (v: any) => {
+        setVerticesCalledWith = v;
+      },
+    };
+
+    class MockSegmentsTool {
+      cellView = {
+        cell: mockEdge,
+        sourceAnchor: { x: 0, y: 0 },
+        targetAnchor: { x: 100, y: 100 },
+      };
+      onHandleChanging() {}
+      onHandleChanged() {}
+    }
+
+    const mockX6 = {
+      Registry: {
+        EdgeTool: {
+          presets: {
+            segments: MockSegmentsTool,
+          },
+        },
+      },
+    };
+
+    ensurePatchedSegmentsTool(mockX6);
+
+    const instance = new MockSegmentsTool() as any;
+
+    // 1. Simulating onHandleChanging: must strip source anchor so connection stays pinned to port
+    instance.onHandleChanging({ handle: {}, e: {} });
+    assert.deepStrictEqual(removedPropPath, ["source", "anchor"], "Must remove transient port anchor from cell");
+
+    // 2. Simulating onHandleChanged: must heal vertices into strict Manhattan coordinates
+    instance.onHandleChanged({ e: {} });
+    assert.ok(setVerticesCalledWith, "setVertices must be called with healed vertices");
+    assert.deepStrictEqual(
+      setVerticesCalledWith,
+      [
+        { x: 50, y: 0 },
+        { x: 50, y: 100 },
+      ],
+      "Must heal and regularize vertices to strict Manhattan coordinates",
+    );
+  });
+});

@@ -87,6 +87,8 @@ export interface RouterOptions {
   targetBox?: RectLike | undefined;
   /** Minimum outward port lead-out stub length in diagram units (default: `10`). */
   stubLength?: number | undefined;
+  /** Existing wire paths in diagram coordinates used to penalize wire crossings and overlaps. */
+  existingWires?: PointLike[][] | undefined;
 }
 
 /**
@@ -249,6 +251,26 @@ export function getNodeBBox(node: RouterNodeLike | null | undefined): RectLike |
  * Resolves the world-space coordinates of a port on a node, accounting for node position,
  * rotation, and horizontal/vertical flip state.
  */
+function parsePortCoord(val: unknown, dimension: number): number | null {
+  if (typeof val === "number" && !Number.isNaN(val)) {
+    return val;
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (trimmed.endsWith("%")) {
+      const pct = parseFloat(trimmed.slice(0, -1));
+      if (!Number.isNaN(pct)) {
+        return (pct / 100) * dimension;
+      }
+    }
+    const num = parseFloat(trimmed);
+    if (!Number.isNaN(num)) {
+      return num;
+    }
+  }
+  return null;
+}
+
 export function resolveNodePortWorldPoint(
   node: RouterNodeLike | null | undefined,
   portId?: string,
@@ -298,11 +320,14 @@ export function resolveNodePortWorldPoint(
       }
     }
 
-    if (unrotW > 0 && unrotH > 0 && args && typeof args.x === "number" && typeof args.y === "number") {
+    const parsedX = parsePortCoord(args?.x, unrotW);
+    const parsedY = parsePortCoord(args?.y, unrotH);
+
+    if (unrotW > 0 && unrotH > 0 && parsedX !== null && parsedY !== null) {
       const cx = nodeX + unrotW / 2;
       const cy = nodeY + unrotH / 2;
-      let dx = args.x - unrotW / 2;
-      let dy = args.y - unrotH / 2;
+      let dx = parsedX - unrotW / 2;
+      let dy = parsedY - unrotH / 2;
 
       const data = typeof (node as any).getData === "function" ? (node as any).getData() : (node as any).data;
       const flipX = Boolean(data?.["flipX"]);
@@ -411,14 +436,17 @@ export function getPortOutwardNormal(
       (matchedPort as any)?.position?.args ??
       (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
 
-    if (bbox && args && typeof args.x === "number" && typeof args.y === "number") {
-      const size = typeof node.getSize === "function" ? node.getSize() : null;
-      const unrotW = size?.width && size.width > 0 ? size.width : bbox.width;
-      const unrotH = size?.height && size.height > 0 ? size.height : bbox.height;
+    const size = typeof node.getSize === "function" ? node.getSize() : null;
+    const unrotW = size?.width && size.width > 0 ? size.width : (bbox?.width ?? 0);
+    const unrotH = size?.height && size.height > 0 ? size.height : (bbox?.height ?? 0);
+    const parsedX = parsePortCoord(args?.x, unrotW);
+    const parsedY = parsePortCoord(args?.y, unrotH);
+
+    if (bbox && parsedX !== null && parsedY !== null && unrotW > 0 && unrotH > 0) {
       const halfW = Math.max(1, unrotW / 2);
       const halfH = Math.max(1, unrotH / 2);
-      const localNx = (args.x - unrotW / 2) / halfW;
-      const localNy = (args.y - unrotH / 2) / halfH;
+      const localNx = (parsedX - unrotW / 2) / halfW;
+      const localNy = (parsedY - unrotH / 2) / halfH;
       return rotateNormal(localNx, localNy);
     }
   }
@@ -580,6 +608,88 @@ export function segmentIntersectsRect(p1: PointLike, p2: PointLike, rect: RectLi
   }
 
   return true;
+}
+
+/**
+ * Evaluates wire crossings and collinear overlaps between an orthogonal candidate path
+ * and an array of existing diagram wires.
+ */
+export function countPolylineWireCrossings(
+  candidate: PointLike[],
+  existingWires?: PointLike[][] | null,
+): { crossings: number; overlaps: number } {
+  if (!existingWires || existingWires.length === 0 || candidate.length < 2) {
+    return { crossings: 0, overlaps: 0 };
+  }
+
+  let crossings = 0;
+  let overlaps = 0;
+
+  for (let i = 0; i < candidate.length - 1; i++) {
+    const p1 = candidate[i]!;
+    const p2 = candidate[i + 1]!;
+    const candH = Math.abs(p1.y - p2.y) <= 0.5;
+    const candV = Math.abs(p1.x - p2.x) <= 0.5;
+    if (!candH && !candV) continue;
+
+    const cMinX = Math.min(p1.x, p2.x);
+    const cMaxX = Math.max(p1.x, p2.x);
+    const cMinY = Math.min(p1.y, p2.y);
+    const cMaxY = Math.max(p1.y, p2.y);
+
+    for (const wire of existingWires) {
+      if (!wire || wire.length < 2) continue;
+      for (let j = 0; j < wire.length - 1; j++) {
+        const w1 = wire[j]!;
+        const w2 = wire[j + 1]!;
+        const wireH = Math.abs(w1.y - w2.y) <= 0.5;
+        const wireV = Math.abs(w1.x - w2.x) <= 0.5;
+        if (!wireH && !wireV) continue;
+
+        const wMinX = Math.min(w1.x, w2.x);
+        const wMaxX = Math.max(w1.x, w2.x);
+        const wMinY = Math.min(w1.y, w2.y);
+        const wMaxY = Math.max(w1.y, w2.y);
+
+        if (candH && wireV) {
+          // Candidate is horizontal at y = p1.y, Wire is vertical at x = w1.x
+          const x = w1.x;
+          const y = p1.y;
+          // Must be strictly interior to avoid counting shared port connections as crossings
+          if (x > cMinX + 3 && x < cMaxX - 3 && y > wMinY + 3 && y < wMaxY - 3) {
+            crossings++;
+          }
+        } else if (candV && wireH) {
+          // Candidate is vertical at x = p1.x, Wire is horizontal at y = w1.y
+          const x = p1.x;
+          const y = w1.y;
+          if (y > cMinY + 3 && y < cMaxY - 3 && x > wMinX + 3 && x < wMaxX - 3) {
+            crossings++;
+          }
+        } else if (candH && wireH) {
+          // Both horizontal: check for collinear overlap
+          if (Math.abs(p1.y - w1.y) <= 1.0) {
+            const overlapMin = Math.max(cMinX, wMinX);
+            const overlapMax = Math.min(cMaxX, wMaxX);
+            if (overlapMax - overlapMin > 4) {
+              overlaps++;
+            }
+          }
+        } else if (candV && wireV) {
+          // Both vertical: check for collinear overlap
+          if (Math.abs(p1.x - w1.x) <= 1.0) {
+            const overlapMin = Math.max(cMinY, wMinY);
+            const overlapMax = Math.min(cMaxY, wMaxY);
+            if (overlapMax - overlapMin > 4) {
+              overlaps++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { crossings, overlaps };
 }
 
 /**
@@ -991,6 +1101,80 @@ export function pruneOrthogonalLoops(points: PointLike[], options: PruneOptions 
 }
 
 /**
+ * Prunes redundant loops from intermediate edge vertices while protecting terminal port normals,
+ * endpoint component boxes, and graph obstacles. Always operates on the full polyline
+ * `[source, ...vertices, target]` and returns only intermediate bends.
+ */
+export function pruneIntermediateVertices(
+  source: PointLike,
+  target: PointLike,
+  vertices: PointLike[],
+  options: PruneOptions | RectLike[] = {},
+): PointLike[] {
+  if (!vertices || vertices.length === 0) return [];
+  const full = pruneOrthogonalLoops([source, ...vertices, target], options);
+  return full.length > 2 ? full.slice(1, -1) : [];
+}
+
+/**
+ * Extracts obstacle bounding boxes, source/target boxes, and port outward normals from a live graph edge
+ * so loop-pruning helpers never collapse valid C-bends or U-detours across components.
+ */
+export function extractEdgePruneOptions(
+  graph: RouterGraphLike | null | undefined,
+  edge: RouterEdgeLike | null | undefined,
+  sourcePoint: PointLike,
+  targetPoint: PointLike,
+): PruneOptions {
+  if (!graph || !edge) return {};
+
+  const rawSource = typeof edge.getSource === "function" ? edge.getSource() : edge.source;
+  const rawTarget = typeof edge.getTarget === "function" ? edge.getTarget() : edge.target;
+  const sourceCell =
+    edge.getSourceCell?.() ??
+    (rawSource?.cell && typeof graph.getCellById === "function" ? graph.getCellById(rawSource.cell) : null);
+  const targetCell =
+    edge.getTargetCell?.() ??
+    (rawTarget?.cell && typeof graph.getCellById === "function" ? graph.getCellById(rawTarget.cell) : null);
+
+  const sourcePortId = (typeof edge.getSourcePortId === "function" ? edge.getSourcePortId() : null) ?? rawSource?.port;
+  const targetPortId = (typeof edge.getTargetPortId === "function" ? edge.getTargetPortId() : null) ?? rawTarget?.port;
+
+  const sourceNormal = sourceCell ? getPortOutwardNormal(sourceCell, sourcePortId, sourcePoint) : null;
+  const targetNormal = targetCell ? getPortOutwardNormal(targetCell, targetPortId, targetPoint) : null;
+  const sourceBox = sourceCell ? getNodeBBox(sourceCell) : null;
+  const targetBox = targetCell ? getNodeBBox(targetCell) : null;
+
+  const obstacles: RectLike[] = [];
+  if (typeof graph.getNodes === "function") {
+    for (const node of graph.getNodes()) {
+      if (!node.id || node.id === sourceCell?.id || node.id === targetCell?.id) continue;
+      if (
+        node.id.startsWith("solder_dot_") ||
+        node.id.startsWith("__seq_stem_") ||
+        node.id.startsWith("__alignment_guide_") ||
+        node.id === "__diagram_background__" ||
+        node.id === "__diagram_axes__"
+      ) {
+        continue;
+      }
+      const bbox = getNodeBBox(node);
+      if (bbox) {
+        obstacles.push(bbox);
+      }
+    }
+  }
+
+  return {
+    obstacles,
+    sourceNormal,
+    targetNormal,
+    sourceBox,
+    targetBox,
+  };
+}
+
+/**
  * Pushes coincident trunk segments on peer edges sharing the same electrical net so shared
  * schematic buses (such as ground rails) slide together as a unified corridor.
  */
@@ -1125,7 +1309,26 @@ export function translateConnectedEdgeStubs(
   options?: { forceReroute?: boolean; minStub?: number },
 ): void {
   if (dx === 0 && dy === 0 && !options?.forceReroute) return;
-  const connectedEdges = typeof g?.getConnectedEdges === "function" ? g.getConnectedEdges(node) : [];
+  const connectedEdges =
+    typeof g?.getConnectedEdges === "function"
+      ? g.getConnectedEdges(node)
+      : typeof g?.getEdges === "function"
+        ? g.getEdges().filter((e: any) => {
+            const sId =
+              typeof e.getSourceCellId === "function"
+                ? e.getSourceCellId()
+                : typeof e.getSource === "function"
+                  ? e.getSource()?.cell
+                  : e.source?.cell;
+            const tId =
+              typeof e.getTargetCellId === "function"
+                ? e.getTargetCellId()
+                : typeof e.getTarget === "function"
+                  ? e.getTarget()?.cell
+                  : e.target?.cell;
+            return sId === node.id || tId === node.id;
+          })
+        : [];
   if (!connectedEdges || connectedEdges.length === 0) return;
 
   const minStub = options?.minStub ?? 10;
@@ -1133,10 +1336,30 @@ export function translateConnectedEdgeStubs(
   for (const edge of connectedEdges) {
     const vertices: PointLike[] = typeof edge.getVertices === "function" ? edge.getVertices() || [] : [];
 
-    const sourceId = typeof edge.getSourceCellId === "function" ? edge.getSourceCellId() : edge.source?.cell;
-    const targetId = typeof edge.getTargetCellId === "function" ? edge.getTargetCellId() : edge.target?.cell;
-    const sourcePortId = typeof edge.getSourcePortId === "function" ? edge.getSourcePortId() : edge.source?.port;
-    const targetPortId = typeof edge.getTargetPortId === "function" ? edge.getTargetPortId() : edge.target?.port;
+    const sourceId =
+      typeof edge.getSourceCellId === "function"
+        ? edge.getSourceCellId()
+        : typeof edge.getSource === "function"
+          ? edge.getSource()?.cell
+          : edge.source?.cell;
+    const targetId =
+      typeof edge.getTargetCellId === "function"
+        ? edge.getTargetCellId()
+        : typeof edge.getTarget === "function"
+          ? edge.getTarget()?.cell
+          : edge.target?.cell;
+    const sourcePortId =
+      typeof edge.getSourcePortId === "function"
+        ? edge.getSourcePortId()
+        : typeof edge.getSource === "function"
+          ? edge.getSource()?.port
+          : edge.source?.port;
+    const targetPortId =
+      typeof edge.getTargetPortId === "function"
+        ? edge.getTargetPortId()
+        : typeof edge.getTarget === "function"
+          ? edge.getTarget()?.port
+          : edge.target?.port;
 
     const isSource = sourceId === node.id;
     const isTarget = targetId === node.id;
@@ -1539,8 +1762,10 @@ export function translateConnectedEdgeStubs(
         canCollapse = (alignedH && attachedIsHorizontal) || (alignedV && !attachedIsHorizontal);
       }
 
+      const collidesWithOtherObstacle = getOtherObstacles().some((r) => segmentIntersectsRect(srcPt, tgtPt, r, 4));
       if (
         canCollapse &&
+        !collidesWithOtherObstacle &&
         !doesPolylineViolatePortOrBox(srcPt, tgtPt, [], srcNormal, tgtNormal, srcBox, tgtBox, {
           allowTangential: true,
           boxInset: 3,
@@ -1571,6 +1796,29 @@ export function translateConnectedEdgeStubs(
         stubLength: minStub,
       });
       modified = true;
+    } else if (srcPt && tgtPt) {
+      // Third-Party Obstacle Auto-Reroute:
+      // If the translated wire impales an unrelated component that the node was dragged across,
+      // re-route cleanly around the obstacle.
+      const fullPolyline = [srcPt, ...newVertices, tgtPt];
+      const otherObs = getOtherObstacles();
+      let intersectsOther = false;
+      for (let i = 0; i < fullPolyline.length - 1; i++) {
+        if (otherObs.some((r) => segmentIntersectsRect(fullPolyline[i]!, fullPolyline[i + 1]!, r, 4))) {
+          intersectsOther = true;
+          break;
+        }
+      }
+      if (intersectsOther) {
+        newVertices = computeOrthogonalRoute(srcPt, tgtPt, otherObs, {
+          sourceSide: srcNormal?.side,
+          targetSide: tgtNormal?.side,
+          sourceBox: srcBox ?? undefined,
+          targetBox: tgtBox ?? undefined,
+          stubLength: minStub,
+        });
+        modified = true;
+      }
     }
 
     if (modified && typeof edge.setVertices === "function") {
@@ -2009,6 +2257,7 @@ export function findInternalChannelRoute(
   obstacles: RectLike[],
   padding = 10,
   bendPenalty = 35,
+  existingWires?: PointLike[][],
 ): PointLike[] | null {
   if (obstacles.length === 0) return null;
 
@@ -2022,24 +2271,32 @@ export function findInternalChannelRoute(
     ys.add(obs.y + obs.height + padding);
   }
 
-  // Add midpoints between obstacles if they form a corridor
-  const sortedObsByX = [...obstacles].sort((a, b) => a.x - b.x);
-  for (let i = 0; i < sortedObsByX.length - 1; i++) {
-    const o1 = sortedObsByX[i]!;
-    const o2 = sortedObsByX[i + 1]!;
-    const gap = o2.x - (o1.x + o1.width);
-    if (gap > padding * 2) {
-      xs.add(Math.round((o1.x + o1.width + o2.x) / 2));
-    }
-  }
+  // Add midpoints between obstacles that form horizontal or vertical corridors
+  for (let i = 0; i < obstacles.length; i++) {
+    const o1 = obstacles[i]!;
+    for (let j = i + 1; j < obstacles.length; j++) {
+      const o2 = obstacles[j]!;
+      // Check if they share an overlapping Y band (corridor between X coordinates)
+      const yOverlap = Math.min(o1.y + o1.height, o2.y + o2.height) - Math.max(o1.y, o2.y);
+      if (yOverlap > 0) {
+        const left = o1.x < o2.x ? o1 : o2;
+        const right = o1.x < o2.x ? o2 : o1;
+        const gapX = right.x - (left.x + left.width);
+        if (gapX > padding * 2 && gapX < 350) {
+          xs.add(Math.round((left.x + left.width + right.x) / 2));
+        }
+      }
 
-  const sortedObsByY = [...obstacles].sort((a, b) => a.y - b.y);
-  for (let i = 0; i < sortedObsByY.length - 1; i++) {
-    const o1 = sortedObsByY[i]!;
-    const o2 = sortedObsByY[i + 1]!;
-    const gap = o2.y - (o1.y + o1.height);
-    if (gap > padding * 2) {
-      ys.add(Math.round((o1.y + o1.height + o2.y) / 2));
+      // Check if they share an overlapping X band (corridor between Y coordinates)
+      const xOverlap = Math.min(o1.x + o1.width, o2.x + o2.width) - Math.max(o1.x, o2.x);
+      if (xOverlap > 0) {
+        const top = o1.y < o2.y ? o1 : o2;
+        const bottom = o1.y < o2.y ? o2 : o1;
+        const gapY = bottom.y - (top.y + top.height);
+        if (gapY > padding * 2 && gapY < 350) {
+          ys.add(Math.round((top.y + top.height + bottom.y) / 2));
+        }
+      }
     }
   }
 
@@ -2062,7 +2319,9 @@ export function findInternalChannelRoute(
     return !obstacles.some((r) => segmentIntersectsRect(p1, p2, r, padding - 2));
   };
 
-  while (open.size > 0) {
+  let iterations = 0;
+  const maxIterations = 5000;
+  while (open.size > 0 && iterations++ < maxIterations) {
     const curr = open.pop()!;
     if (curr.x === target.x && curr.y === target.y) {
       const path: PointLike[] = [];
@@ -2073,7 +2332,8 @@ export function findInternalChannelRoute(
       }
       path.reverse();
 
-      return simplifyCollinearPoints(path, 0.001);
+      const simplified = simplifyCollinearPoints(path, 0.001);
+      return pruneOrthogonalLoops(simplified, { obstacles });
     }
 
     const stateKey = `${curr.x},${curr.y},${curr.dir}`;
@@ -2087,9 +2347,17 @@ export function findInternalChannelRoute(
       if (!isSegmentValid(curr, nextP)) continue;
       const dist = Math.abs(nx - curr.x);
       const isBend = curr.dir === "v";
-      const nextCost = curr.cost + dist;
+      const bendCost = isBend ? bendPenalty : 0;
+      let wireCost = 0;
+      if (existingWires && existingWires.length > 0) {
+        const stats = countPolylineWireCrossings([curr, nextP], existingWires);
+        wireCost = stats.overlaps * 500 + stats.crossings * 50;
+      }
+      const nextCost = curr.cost + dist + bendCost + wireCost;
       const nextBends = curr.bends + (isBend ? 1 : 0);
-      const h = Math.abs(target.x - nx) + Math.abs(target.y - curr.y) + nextBends * bendPenalty;
+      const remainingDist = Math.abs(target.x - nx) + Math.abs(target.y - curr.y);
+      const minRemainingBends = nx !== target.x && curr.y !== target.y ? 1 : 0;
+      const h = remainingDist + minRemainingBends * bendPenalty;
       open.push({
         x: nx,
         y: curr.y,
@@ -2108,9 +2376,17 @@ export function findInternalChannelRoute(
       if (!isSegmentValid(curr, nextP)) continue;
       const dist = Math.abs(ny - curr.y);
       const isBend = curr.dir === "h";
-      const nextCost = curr.cost + dist;
+      const bendCost = isBend ? bendPenalty : 0;
+      let wireCost = 0;
+      if (existingWires && existingWires.length > 0) {
+        const stats = countPolylineWireCrossings([curr, nextP], existingWires);
+        wireCost = stats.overlaps * 500 + stats.crossings * 50;
+      }
+      const nextCost = curr.cost + dist + bendCost + wireCost;
       const nextBends = curr.bends + (isBend ? 1 : 0);
-      const h = Math.abs(target.x - curr.x) + Math.abs(target.y - ny) + nextBends * bendPenalty;
+      const remainingDist = Math.abs(target.x - curr.x) + Math.abs(target.y - ny);
+      const minRemainingBends = curr.x !== target.x && ny !== target.y ? 1 : 0;
+      const h = remainingDist + minRemainingBends * bendPenalty;
       open.push({
         x: curr.x,
         y: ny,
@@ -2166,10 +2442,6 @@ function computeOrthogonalRouteCore(
     obstacles.some((r) => segmentIntersectsRect(p1A, p2A, r, padding)) ||
     obstacles.some((r) => segmentIntersectsRect(p2A, target, r, padding));
 
-  if (!collidesA) {
-    return routeA;
-  }
-
   // Option 2: Vertical first -> (source.x, midY) -> (target.x, midY)
   const p1B: PointLike = { x: source.x, y: midY };
   const p2B: PointLike = { x: target.x, y: midY };
@@ -2179,13 +2451,28 @@ function computeOrthogonalRouteCore(
     obstacles.some((r) => segmentIntersectsRect(p1B, p2B, r, padding)) ||
     obstacles.some((r) => segmentIntersectsRect(p2B, target, r, padding));
 
+  if (!collidesA && !collidesB) {
+    if (options.existingWires && options.existingWires.length > 0) {
+      const statsA = countPolylineWireCrossings([source, ...routeA, target], options.existingWires);
+      const statsB = countPolylineWireCrossings([source, ...routeB, target], options.existingWires);
+      const costA = statsA.overlaps * 1000 + statsA.crossings * 100;
+      const costB = statsB.overlaps * 1000 + statsB.crossings * 100;
+      if (costB < costA) return routeB;
+    }
+    return routeA;
+  }
+
+  if (!collidesA) {
+    return routeA;
+  }
+
   if (!collidesB) {
     return routeB;
   }
 
   // Option 2.5: Internal Channel Corridor Routing via A*
   // Attempt to find a path weaving through inter-block corridors before outer perimeter detours
-  const internalRoute = findInternalChannelRoute(source, target, obstacles, padding, 35);
+  const internalRoute = findInternalChannelRoute(source, target, obstacles, padding, 35, options.existingWires);
   if (internalRoute && internalRoute.length >= 2) {
     return internalRoute.slice(1, -1);
   }
@@ -2279,7 +2566,16 @@ function computeOrthogonalRouteCore(
   }
 
   if (candidateRoutes.length > 0) {
-    candidateRoutes.sort((a, b) => a.length - b.length);
+    candidateRoutes.sort((a, b) => {
+      if (options.existingWires && options.existingWires.length > 0) {
+        const statsA = countPolylineWireCrossings([source, ...a.route, target], options.existingWires);
+        const statsB = countPolylineWireCrossings([source, ...b.route, target], options.existingWires);
+        const costA = statsA.overlaps * 1000 + statsA.crossings * 100;
+        const costB = statsB.overlaps * 1000 + statsB.crossings * 100;
+        if (costA !== costB) return costA - costB;
+      }
+      return a.length - b.length;
+    });
     return candidateRoutes[0]!.route;
   }
 
@@ -2369,7 +2665,18 @@ export function computeOrthogonalRoute(
       if (isCandidateValid(hv)) lCandidates.push(hv);
       if (isCandidateValid(vh)) lCandidates.push(vh);
       if (lCandidates.length > 0) {
-        lCandidates.sort((a, b) => pathLength(a) - pathLength(b));
+        if (options.existingWires && options.existingWires.length > 0) {
+          lCandidates.sort((a, b) => {
+            const statsA = countPolylineWireCrossings([source, ...a, target], options.existingWires);
+            const statsB = countPolylineWireCrossings([source, ...b, target], options.existingWires);
+            const costA = statsA.overlaps * 1000 + statsA.crossings * 100;
+            const costB = statsB.overlaps * 1000 + statsB.crossings * 100;
+            if (costA !== costB) return costA - costB;
+            return pathLength(a) - pathLength(b);
+          });
+        } else {
+          lCandidates.sort((a, b) => pathLength(a) - pathLength(b));
+        }
         return lCandidates[0]!;
       }
     }
@@ -2443,6 +2750,13 @@ export function computeOrthogonalRoute(
 
     stubCandidates.sort((a, b) => {
       if (a.length !== b.length) return a.length - b.length;
+      if (options.existingWires && options.existingWires.length > 0) {
+        const statsA = countPolylineWireCrossings([source, ...a, target], options.existingWires);
+        const statsB = countPolylineWireCrossings([source, ...b, target], options.existingWires);
+        const costA = statsA.overlaps * 1000 + statsA.crossings * 100;
+        const costB = statsB.overlaps * 1000 + statsB.crossings * 100;
+        if (costA !== costB) return costA - costB;
+      }
       const lenA = pathLength(a);
       const lenB = pathLength(b);
       if (Math.abs(lenA - lenB) > 0.05) return lenA - lenB;
@@ -2464,6 +2778,80 @@ export function computeOrthogonalRoute(
 }
 
 /**
+ * Collects genuine, committed existing wire polylines on the graph while excluding:
+ *  - `excludeEdgeId` and ephemeral preview edges (`__wire_tool_preview__`)
+ *  - Unbound live interactive drag edges (`!sourceCellId || !targetCellId`)
+ *  - Unrouted 0-vertex chords that cut diagonally or impale a component's interior before routing
+ */
+export function collectCommittedExistingWires(graph: any, excludeEdgeId?: string | null): PointLike[][] {
+  const wires: PointLike[][] = [];
+  if (!graph || typeof graph.getEdges !== "function") return wires;
+
+  const allNodeBoxes: RectLike[] = [];
+  if (typeof graph.getNodes === "function") {
+    for (const node of graph.getNodes()) {
+      if (
+        !node?.id ||
+        node.id.startsWith("solder_dot_") ||
+        node.id.startsWith("__seq_stem_") ||
+        node.id.startsWith("__alignment_guide_") ||
+        node.id === "__diagram_background__" ||
+        node.id === "__diagram_axes__"
+      ) {
+        continue;
+      }
+      const bbox = getNodeBBox(node);
+      if (bbox) allNodeBoxes.push(bbox);
+    }
+  }
+
+  for (const e of graph.getEdges()) {
+    if (!e || e.id === excludeEdgeId || e.id === "__wire_tool_preview__") continue;
+
+    const eRawSrc = typeof e.getSource === "function" ? e.getSource() : e.source;
+    const eRawTgt = typeof e.getTarget === "function" ? e.getTarget() : e.target;
+    const sCellId =
+      (typeof e.getSourceCellId === "function" ? e.getSourceCellId() : null) ??
+      e.getSourceCell?.()?.id ??
+      eRawSrc?.cell;
+    const tCellId =
+      (typeof e.getTargetCellId === "function" ? e.getTargetCellId() : null) ??
+      e.getTargetCell?.()?.id ??
+      eRawTgt?.cell;
+
+    // Exclude unbound interactive drag edges in flight
+    if (!sCellId || !tCellId) continue;
+
+    const sPt = typeof e.getSourcePoint === "function" ? e.getSourcePoint() : null;
+    const tPt = typeof e.getTargetPoint === "function" ? e.getTargetPoint() : null;
+    if (!sPt || !tPt) continue;
+
+    const v = typeof e.getVertices === "function" ? e.getVertices() : [];
+    if (v && v.length > 0) {
+      wires.push([sPt, ...v, tPt]);
+      continue;
+    }
+
+    const eView = typeof graph.findViewByCell === "function" ? graph.findViewByCell(e) : null;
+    if (Array.isArray(eView?.routePoints) && eView.routePoints.length > 0) {
+      wires.push([sPt, ...eView.routePoints, tPt]);
+      continue;
+    }
+
+    // 0-vertex edge with no computed routePoints yet: only include if it is a genuine straight,
+    // non-impaling connection rather than an unrouted straight chord across component bodies.
+    const isAxisAligned = Math.abs(sPt.x - tPt.x) < 1 || Math.abs(sPt.y - tPt.y) < 1;
+    if (!isAxisAligned) continue;
+    const impalesAnyNode = allNodeBoxes.some((box) => segmentIntersectsRect(sPt, tPt, box, -1));
+    if (!impalesAnyNode) {
+      wires.push([sPt, tPt]);
+    }
+  }
+
+  return wires;
+}
+
+/**
  * AntV X6 custom router adapter with obstacle avoidance, port outward normals, and parallel edge staggering.
  */
 export function portOrthogonalRouter(
@@ -2471,12 +2859,15 @@ export function portOrthogonalRouter(
   args: RouterOptions & Record<string, unknown> = {},
   edgeView?: RouterEdgeViewLike,
 ): PointLike[] {
-  // If manual vertices are explicitly specified, preserve them while healing any terminal/interior orthogonality drift
+  // If manual vertices are explicitly specified, preserve them while healing any terminal/interior orthogonality drift.
+  // Never run obstacle-free loop pruning on explicit vertices (which would collapse intentional C-bends around components).
   if (vertices && vertices.length > 0) {
     if (edgeView?.sourcePoint && edgeView?.targetPoint) {
-      return pruneOrthogonalLoops(healOrthogonalVertices(edgeView.sourcePoint, edgeView.targetPoint, vertices));
+      const healed = healOrthogonalVertices(edgeView.sourcePoint, edgeView.targetPoint, vertices);
+      const simplifiedFull = simplifyCollinearPoints([edgeView.sourcePoint, ...healed, edgeView.targetPoint], 0.05);
+      return simplifiedFull.length > 2 ? simplifiedFull.slice(1, -1) : [];
     }
-    return pruneOrthogonalLoops(vertices);
+    return simplifyCollinearPoints(vertices, 0.05);
   }
 
   if (!edgeView) return [];
@@ -2488,6 +2879,7 @@ export function portOrthogonalRouter(
   // Extract obstacle rectangles, port normals, and parallel edges from graph cells
   const graph = edgeView.graph;
   const obstacles: RectLike[] = [];
+  let existingWires: PointLike[][] = [];
   let parallelIndex = 0;
   let parallelCount = 1;
   let sourceSide: PortSide | undefined;
@@ -2500,13 +2892,19 @@ export function portOrthogonalRouter(
       typeof edgeView.cell?.getSource === "function" ? edgeView.cell.getSource() : edgeView.cell?.source;
     const rawTarget =
       typeof edgeView.cell?.getTarget === "function" ? edgeView.cell.getTarget() : edgeView.cell?.target;
+    const rawSourceCellId =
+      (typeof edgeView.cell?.getSourceCellId === "function" ? edgeView.cell.getSourceCellId() : undefined) ??
+      rawSource?.cell;
+    const rawTargetCellId =
+      (typeof edgeView.cell?.getTargetCellId === "function" ? edgeView.cell.getTargetCellId() : undefined) ??
+      rawTarget?.cell;
 
     const sourceCell =
       edgeView.cell?.getSourceCell?.() ??
-      (rawSource?.cell && typeof graph.getCellById === "function" ? graph.getCellById(rawSource.cell) : null);
+      (rawSourceCellId && typeof graph.getCellById === "function" ? graph.getCellById(rawSourceCellId) : null);
     const targetCell =
       edgeView.cell?.getTargetCell?.() ??
-      (rawTarget?.cell && typeof graph.getCellById === "function" ? graph.getCellById(rawTarget.cell) : null);
+      (rawTargetCellId && typeof graph.getCellById === "function" ? graph.getCellById(rawTargetCellId) : null);
 
     const sourcePortId =
       (typeof edgeView.cell?.getSourcePortId === "function" ? edgeView.cell.getSourcePortId() : null) ??
@@ -2556,18 +2954,38 @@ export function portOrthogonalRouter(
       }
     }
 
-    if (sourceCell && targetCell && typeof graph.getEdges === "function") {
+    existingWires = collectCommittedExistingWires(graph, edgeView.cell?.id);
+
+    if (typeof graph.getEdges === "function") {
       const allEdges = graph.getEdges();
-      const parallelEdges = allEdges.filter((e: RouterEdgeLike) => {
-        const s = e.getSourceCell?.()?.id;
-        const t = e.getTargetCell?.()?.id;
-        return (s === sourceCell.id && t === targetCell.id) || (s === targetCell.id && t === sourceCell.id);
-      });
-      if (parallelEdges.length > 1) {
-        parallelCount = parallelEdges.length;
-        const idx = parallelEdges.findIndex((e: RouterEdgeLike) => e.id === edgeView.cell?.id);
-        if (idx !== -1) {
-          parallelIndex = idx;
+      if (sourceCell && targetCell) {
+        const curSrcKey = sourcePortId ? `${sourceCell.id}.${sourcePortId}` : sourceCell.id;
+        const curTgtKey = targetPortId ? `${targetCell.id}.${targetPortId}` : targetCell.id;
+        const parallelEdges = allEdges.filter((e: RouterEdgeLike) => {
+          if (!e || e.id === "__wire_tool_preview__") return false;
+          const eRawSrc = typeof e.getSource === "function" ? e.getSource() : e.source;
+          const eRawTgt = typeof e.getTarget === "function" ? e.getTarget() : e.target;
+          const sCell =
+            (typeof e.getSourceCellId === "function" ? e.getSourceCellId() : undefined) ??
+            e.getSourceCell?.()?.id ??
+            eRawSrc?.cell;
+          const tCell =
+            (typeof e.getTargetCellId === "function" ? e.getTargetCellId() : undefined) ??
+            e.getTargetCell?.()?.id ??
+            eRawTgt?.cell;
+          if (!sCell || !tCell) return false;
+          const sPort = (typeof e.getSourcePortId === "function" ? e.getSourcePortId() : null) ?? eRawSrc?.port;
+          const tPort = (typeof e.getTargetPortId === "function" ? e.getTargetPortId() : null) ?? eRawTgt?.port;
+          const eSrcKey = sPort ? `${sCell}.${sPort}` : sCell;
+          const eTgtKey = tPort ? `${tCell}.${tPort}` : tCell;
+          return (eSrcKey === curSrcKey && eTgtKey === curTgtKey) || (eSrcKey === curTgtKey && eTgtKey === curSrcKey);
+        });
+        if (parallelEdges.length > 1) {
+          parallelCount = parallelEdges.length;
+          const idx = parallelEdges.findIndex((e: RouterEdgeLike) => e.id === edgeView.cell?.id);
+          if (idx !== -1) {
+            parallelIndex = idx;
+          }
         }
       }
     }
@@ -2581,6 +2999,7 @@ export function portOrthogonalRouter(
     ...args,
     parallelIndex,
     parallelCount,
+    existingWires: args.existingWires ?? existingWires,
   };
 
   const rawRoute = computeOrthogonalRoute(source, target, obstacles, routerArgs);

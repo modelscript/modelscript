@@ -10,11 +10,14 @@ import {
   computePortStub,
   computeSmoothBezierPath,
   computeStemLines,
+  countPolylineWireCrossings,
+  extractEdgePruneOptions,
   findInternalChannelRoute,
   getNodeBBox,
   getPortOutwardNormal,
   healOrthogonalVertices,
   portOrthogonalRouter,
+  pruneIntermediateVertices,
   pruneOrthogonalLoops,
   regularizeOrthogonalPolyline,
   resolveNodePortWorldPoint,
@@ -998,6 +1001,86 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     assert.deepStrictEqual(lToCVerts, [{ x: 20, y: -40 }]);
   });
 
+  it("translateConnectedEdgeStubs automatically reroutes when a wire is dragged into a third-party obstacle", () => {
+    // Node A at x=0, y=-60 (size 40x40). Port p at (40, 20), right normal
+    // Node B at x=200, y=0 (size 40x40). Port p at (200, 20), left normal
+    // Intermediate obstacle node at x=90, y=0 (size 40x40).
+    let aY = -60;
+    const nodeA: any = {
+      id: "nodeA",
+      getPosition: () => ({ x: 0, y: aY }),
+      getSize: () => ({ width: 40, height: 40 }),
+      getBBox: () => ({ x: 0, y: aY, width: 40, height: 40 }),
+      getPortProp: () => ({ side: "right", args: { x: 40, y: 20 } }),
+    };
+
+    const nodeB: any = {
+      id: "nodeB",
+      getPosition: () => ({ x: 200, y: 0 }),
+      getSize: () => ({ width: 40, height: 40 }),
+      getBBox: () => ({ x: 200, y: 0, width: 40, height: 40 }),
+      getPortProp: () => ({ side: "left", args: { x: 0, y: 20 } }),
+    };
+
+    const nodeObstacle: any = {
+      id: "nodeObs",
+      getPosition: () => ({ x: 90, y: 0 }),
+      getSize: () => ({ width: 40, height: 40 }),
+      getBBox: () => ({ x: 90, y: 0, width: 40, height: 40 }),
+    };
+
+    let edgeVerts: PointLike[] = [
+      { x: 50, y: -40 },
+      { x: 50, y: 20 },
+      { x: 190, y: 20 },
+    ];
+    const edge: any = {
+      id: "edgeAB",
+      isEdge: () => true,
+      getSourceCellId: () => "nodeA",
+      getTargetCellId: () => "nodeB",
+      getSource: () => ({ cell: "nodeA", port: "p" }),
+      getTarget: () => ({ cell: "nodeB", port: "p" }),
+      getSourceCell: () => nodeA,
+      getTargetCell: () => nodeB,
+      getSourcePortId: () => "p",
+      getTargetPortId: () => "p",
+      getSourcePoint: () => ({ x: 40, y: aY + 20 }),
+      getTargetPoint: () => ({ x: 200, y: 20 }),
+      getVertices: () => edgeVerts,
+      setVertices: (v: PointLike[]) => {
+        edgeVerts = v;
+      },
+    };
+
+    const mockGraph: any = {
+      getConnectedEdges: () => [edge],
+      getEdges: () => [edge],
+      getCellById: (id: string) => {
+        if (id === "nodeA") return nodeA;
+        if (id === "nodeB") return nodeB;
+        if (id === "nodeObs") return nodeObstacle;
+        return null;
+      },
+      getNodes: () => [nodeA, nodeB, nodeObstacle],
+    };
+
+    // Drag nodeA down by dy=+60 so it aligns horizontally with nodeB at y=0.
+    // If third-party obstacles were ignored, it would collapse into a straight line slicing through nodeObstacle!
+    aY = 0;
+    translateConnectedEdgeStubs(mockGraph as any, nodeA as any, 0, 60);
+
+    // Must have routed around nodeObstacle (not a straight line through x=90..130 at y=20)
+    assert.ok(edgeVerts.length > 0, "Must not collapse into straight line across obstacle");
+    const fullPoly = [{ x: 40, y: 20 }, ...edgeVerts, { x: 200, y: 20 }];
+    for (let i = 0; i < fullPoly.length - 1; i++) {
+      assert.ok(
+        !segmentIntersectsRect(fullPoly[i]!, fullPoly[i + 1]!, { x: 90, y: 0, width: 40, height: 40 }, 4),
+        "Route must not intersect the third-party obstacle",
+      );
+    }
+  });
+
   it("pruneOrthogonalLoops eliminates redundant loops/reversals while preserving obstacle detours", () => {
     // 1. Redundant 5-bend S-hook/loop is pruned into fewer segments
     const convolutedPath: PointLike[] = [
@@ -1108,5 +1191,310 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     assert.strictEqual(route1.length, 2);
     // Parallel index 0 vs 1 should have different trunk X coordinates to prevent wire overlap
     assert.notStrictEqual(route0[0]!.x, route1[0]!.x, "Parallel edges must not share the exact same trunk coordinate");
+  });
+
+  it("resolveNodePortWorldPoint and getPortOutwardNormal support percentage coordinate strings", () => {
+    const node: any = {
+      id: "comp1",
+      x: 100,
+      y: 200,
+      width: 80,
+      height: 60,
+      getPosition: () => ({ x: 100, y: 200 }),
+      getSize: () => ({ width: 80, height: 60 }),
+      getBBox: () => ({ x: 100, y: 200, width: 80, height: 60 }),
+      getPorts: () => [
+        { id: "p_right", args: { x: "100%", y: "50%" } },
+        { id: "p_top", args: { x: "50%", y: "0%" } },
+        { id: "p_left", args: { x: "0%", y: "50%" } },
+        { id: "p_bottom", args: { x: "50%", y: "100%" } },
+      ],
+      getPortProp: (portId: string) => {
+        if (portId === "p_right") return { args: { x: "100%", y: "50%" } };
+        if (portId === "p_top") return { args: { x: "50%", y: "0%" } };
+        if (portId === "p_left") return { args: { x: "0%", y: "50%" } };
+        if (portId === "p_bottom") return { args: { x: "50%", y: "100%" } };
+        return null;
+      },
+    };
+
+    // Right port: x = 100 + 80 = 180, y = 200 + 30 = 230, normal side = right
+    const ptRight = resolveNodePortWorldPoint(node, "p_right");
+    assert.deepStrictEqual(ptRight, { x: 180, y: 230 });
+    const normRight = getPortOutwardNormal(node, "p_right");
+    assert.strictEqual(normRight?.side, "right");
+
+    // Top port: x = 100 + 40 = 140, y = 200 + 0 = 200, normal side = top
+    const ptTop = resolveNodePortWorldPoint(node, "p_top");
+    assert.deepStrictEqual(ptTop, { x: 140, y: 200 });
+    const normTop = getPortOutwardNormal(node, "p_top");
+    assert.strictEqual(normTop?.side, "top");
+
+    // Left port: x = 100, y = 230, normal side = left
+    const ptLeft = resolveNodePortWorldPoint(node, "p_left");
+    assert.deepStrictEqual(ptLeft, { x: 100, y: 230 });
+    const normLeft = getPortOutwardNormal(node, "p_left");
+    assert.strictEqual(normLeft?.side, "left");
+
+    // Bottom port: x = 140, y = 260, normal side = bottom
+    const ptBottom = resolveNodePortWorldPoint(node, "p_bottom");
+    assert.deepStrictEqual(ptBottom, { x: 140, y: 260 });
+    const normBottom = getPortOutwardNormal(node, "p_bottom");
+    assert.strictEqual(normBottom?.side, "bottom");
+  });
+
+  it("countPolylineWireCrossings detects Manhattan segment intersections and collinear overlaps", () => {
+    const existing: PointLike[][] = [
+      // Vertical wire at x=50, y from 0 to 100
+      [
+        { x: 50, y: 0 },
+        { x: 50, y: 100 },
+      ],
+      // Horizontal wire at y=200, x from 20 to 120
+      [
+        { x: 20, y: 200 },
+        { x: 120, y: 200 },
+      ],
+    ];
+
+    // Horizontal candidate crossing the vertical wire at (50, 40)
+    const candCrossing: PointLike[] = [
+      { x: 10, y: 40 },
+      { x: 90, y: 40 },
+    ];
+    const statsCrossing = countPolylineWireCrossings(candCrossing, existing);
+    assert.strictEqual(statsCrossing.crossings, 1, "Must detect 1 crossing");
+    assert.strictEqual(statsCrossing.overlaps, 0, "No collinear overlap");
+
+    // Horizontal candidate that does not cross either wire
+    const candClear: PointLike[] = [
+      { x: 60, y: 40 },
+      { x: 90, y: 40 },
+    ];
+    const statsClear = countPolylineWireCrossings(candClear, existing);
+    assert.strictEqual(statsClear.crossings, 0, "Must detect 0 crossings");
+    assert.strictEqual(statsClear.overlaps, 0, "Must detect 0 overlaps");
+
+    // Collinear horizontal wire overlapping with the wire at y=200
+    const candOverlap: PointLike[] = [
+      { x: 50, y: 200 },
+      { x: 150, y: 200 },
+    ];
+    const statsOverlap = countPolylineWireCrossings(candOverlap, existing);
+    assert.strictEqual(statsOverlap.overlaps, 1, "Must detect collinear overlap");
+  });
+
+  it("computeOrthogonalRoute chooses crossing-free candidate when existingWires are provided", () => {
+    // Source at (0, 0), Target at (100, 100)
+    // Candidate 1 (HV): (0, 0) -> (100, 0) -> (100, 100)
+    // Candidate 2 (VH): (0, 0) -> (0, 100) -> (100, 100)
+    // Vertical existing wire at x=50 from y=-20 to y=40 blocks Candidate 1's horizontal leg
+    const existing: PointLike[][] = [
+      [
+        { x: 50, y: -20 },
+        { x: 50, y: 40 },
+      ],
+    ];
+
+    const route = computeOrthogonalRoute({ x: 0, y: 0 }, { x: 100, y: 100 }, [], {
+      existingWires: existing,
+    });
+
+    // Without existingWires, default routeA would be [{ x: 50, y: 0 }, { x: 50, y: 100 }]
+    // which overlaps with the vertical wire at x=50.
+    // With existingWires, routeB [{ x: 0, y: 50 }, { x: 100, y: 50 }] is chosen to avoid the overlap.
+    assert.deepStrictEqual(
+      route,
+      [
+        { x: 0, y: 50 },
+        { x: 100, y: 50 },
+      ],
+      "Must choose crossing- and overlap-free routeB over routeA",
+    );
+  });
+
+  it("computeOrthogonalRoute with port outward normals chooses candidate with lowest wire crossings", () => {
+    // Source port at (0, 0) facing right; target port at (100, 100) facing top
+    // Existing wire crosses the top corridor at y=0 (x=50, y from -20 to 30)
+    const existing: PointLike[][] = [
+      [
+        { x: 50, y: -20 },
+        { x: 50, y: 30 },
+      ],
+    ];
+
+    const route = computeOrthogonalRoute({ x: 0, y: 0 }, { x: 100, y: 100 }, [], {
+      sourceSide: "right",
+      targetSide: "top",
+      existingWires: existing,
+    });
+
+    // The route must not cross the vertical wire at x=50, y in [-20, 30]
+    for (let i = 0; i < route.length - 1; i++) {
+      assert.strictEqual(
+        countPolylineWireCrossings([route[i]!, route[i + 1]!], existing).crossings,
+        0,
+        "Intermediate route segment must not cross existing wire",
+      );
+    }
+  });
+
+  it("findInternalChannelRoute selects wire-free corridor when multiple corridors exist", () => {
+    // Two corridors at y=100 and y=200 between three stacked blocks
+    const obstacles: RectLike[] = [
+      { x: 50, y: 0, width: 100, height: 80 },
+      { x: 50, y: 120, width: 100, height: 60 },
+      { x: 50, y: 220, width: 100, height: 80 },
+    ];
+    const source: PointLike = { x: 20, y: 150 };
+    const target: PointLike = { x: 180, y: 150 };
+
+    // Place an existing wire completely blocking the top corridor at y=100
+    const existing: PointLike[][] = [
+      [
+        { x: 100, y: 85 },
+        { x: 100, y: 115 },
+      ],
+    ];
+
+    const route = findInternalChannelRoute(source, target, obstacles, 10, 35, existing);
+    assert.ok(route, "Expected to find internal channel route");
+    // Verify that the route avoided the top corridor wire
+    const stats = countPolylineWireCrossings(route, existing);
+    assert.strictEqual(stats.crossings, 0, "Channel route must not cross existing wire in blocked corridor");
+    assert.strictEqual(stats.overlaps, 0, "Channel route must not overlap existing wire in blocked corridor");
+  });
+
+  it("preserves C-bend feedback detour around CriticalDamping1 & CriticalDamping2 without collapsing or rerouting existing wire", () => {
+    // Exact geometry from Untitled feedback model:
+    // CriticalDamping2 centered at (-85, 6) => bbox x: -95..-75, y: -4..16; u=(-97, 6) left, y=(-73, 6) right
+    // CriticalDamping1 centered at (-13, 6) => bbox x: -23..-3,  y: -4..16; u=(-25, 6) left, y=(-1, 6)  right
+    const boxCD2: RectLike = { x: -95, y: -4, width: 20, height: 20 };
+    const boxCD1: RectLike = { x: -23, y: -4, width: 20, height: 20 };
+    const obstacles: RectLike[] = [boxCD2, boxCD1];
+
+    const makeBlockNode = (id: string, box: RectLike, uPt: PointLike, yPt: PointLike) => ({
+      id,
+      isNode: () => true,
+      getPosition: () => ({ x: box.x, y: box.y }),
+      getSize: () => ({ width: box.width, height: box.height }),
+      getAngle: () => 0,
+      getData: () => ({}),
+      getPorts: () => [{ id: "u" }, { id: "y" }],
+      getPortProp: (portId: string, prop?: string) => {
+        const local = portId === "u" ? { x: uPt.x - box.x, y: uPt.y - box.y } : { x: yPt.x - box.x, y: yPt.y - box.y };
+        if (prop === "args") return local;
+        if (prop === "group") return portId === "u" ? "left" : "right";
+        return { args: local };
+      },
+    });
+
+    const nodeCD2 = makeBlockNode("CriticalDamping2", boxCD2, { x: -97, y: 6 }, { x: -73, y: 6 });
+    const nodeCD1 = makeBlockNode("CriticalDamping1", boxCD1, { x: -25, y: 6 }, { x: -1, y: 6 });
+
+    // Existing straight connection: CriticalDamping1.u (-25, 6) <-> CriticalDamping2.y (-73, 6)
+    const existingEdgeVerts: PointLike[] = [];
+    const edgeForward: any = {
+      id: "edge_forward",
+      isEdge: () => true,
+      getSourceCellId: () => "CriticalDamping1",
+      getTargetCellId: () => "CriticalDamping2",
+      getSourcePortId: () => "u",
+      getTargetPortId: () => "y",
+      getSourcePoint: () => ({ x: -25, y: 6 }),
+      getTargetPoint: () => ({ x: -73, y: 6 }),
+      getVertices: () => existingEdgeVerts,
+    };
+
+    // Second feedback connection: CriticalDamping1.y (-1, 6) -> CriticalDamping2.u (-97, 6)
+    const srcFeedback: PointLike = { x: -1, y: 6 };
+    const tgtFeedback: PointLike = { x: -97, y: 6 };
+    const edgeFeedback: any = {
+      id: "edge_feedback",
+      isEdge: () => true,
+      getSourceCellId: () => "CriticalDamping1",
+      getTargetCellId: () => "CriticalDamping2",
+      getSourcePortId: () => "y",
+      getTargetPortId: () => "u",
+      getSourcePoint: () => srcFeedback,
+      getTargetPoint: () => tgtFeedback,
+      getVertices: () => [],
+    };
+
+    const mockGraph: any = {
+      getNodes: () => [nodeCD2, nodeCD1],
+      getEdges: () => [edgeForward, edgeFeedback],
+      getCellById: (id: string) => (id === "CriticalDamping1" ? nodeCD1 : id === "CriticalDamping2" ? nodeCD2 : null),
+    };
+
+    const rawDetour = computeOrthogonalRoute(srcFeedback, tgtFeedback, obstacles, {
+      padding: 10,
+      sourceSide: "right",
+      targetSide: "left",
+      sourceBox: boxCD1,
+      targetBox: boxCD2,
+      existingWires: [
+        [
+          { x: -25, y: 6 },
+          { x: -73, y: 6 },
+        ],
+      ],
+    });
+
+    assert.ok(rawDetour.length >= 4, `Expected 4-bend C-detour around both blocks, got ${JSON.stringify(rawDetour)}`);
+
+    // Pruning intermediate vertices with full obstacle + port-normal awareness MUST preserve the C-detour
+    const pruneOpts = extractEdgePruneOptions(mockGraph, edgeFeedback, srcFeedback, tgtFeedback);
+    const pruned = pruneIntermediateVertices(srcFeedback, tgtFeedback, rawDetour, pruneOpts);
+    assert.ok(
+      pruned.length >= 4,
+      `pruneIntermediateVertices must never collapse C-bend around obstacles into 0 vertices, got ${JSON.stringify(pruned)}`,
+    );
+
+    // Every segment of [srcFeedback, ...pruned, tgtFeedback] must avoid impaling either component interior
+    const fullFeedbackPath = [srcFeedback, ...pruned, tgtFeedback];
+    for (let i = 0; i < fullFeedbackPath.length - 1; i++) {
+      assert.strictEqual(
+        segmentIntersectsRect(fullFeedbackPath[i]!, fullFeedbackPath[i + 1]!, boxCD1, -1),
+        false,
+        `Segment ${i} impaled CriticalDamping1`,
+      );
+      assert.strictEqual(
+        segmentIntersectsRect(fullFeedbackPath[i]!, fullFeedbackPath[i + 1]!, boxCD2, -1),
+        false,
+        `Segment ${i} impaled CriticalDamping2`,
+      );
+    }
+
+    // Calling portOrthogonalRouter on explicit manual/saved C-bend vertices must ALSO preserve all 4 bends
+    const routerPreserved = portOrthogonalRouter(
+      pruned,
+      { padding: 10 },
+      {
+        cell: edgeFeedback,
+        sourcePoint: srcFeedback,
+        targetPoint: tgtFeedback,
+        graph: mockGraph,
+      },
+    );
+    assert.strictEqual(routerPreserved.length, pruned.length, "portOrthogonalRouter must preserve explicit C-bend");
+
+    // Existing forward connection must remain straight (0 bends) even if routed alongside edgeFeedback,
+    // because edgeFeedback uses ports (y -> u) rather than duplicate parallel ports (u -> y)!
+    const forwardRouted = portOrthogonalRouter(
+      [],
+      { padding: 10 },
+      {
+        cell: edgeForward,
+        sourcePoint: { x: -25, y: 6 },
+        targetPoint: { x: -73, y: 6 },
+        graph: mockGraph,
+      },
+    );
+    assert.deepStrictEqual(
+      forwardRouted,
+      [],
+      "Existing straight connection on distinct ports (u->y vs y->u) must stay straight with 0 bends",
+    );
   });
 });

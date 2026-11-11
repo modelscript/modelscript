@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
 
@@ -9,14 +10,232 @@ export interface RequirementsOntologyInspectorProps {
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
-interface RequirementItem {
+export interface RequirementRow {
   id: string;
-  name: string;
-  text: string;
+  title: string;
   satisfiedBy: string[];
   verifiedBy: string[];
-  status: "Verified" | "Satisfied" | "Open";
   line: number;
+}
+
+export interface OwlSummary {
+  classes: Array<{ name: string; line: number }>;
+  properties: Array<{ name: string; kind: string; line: number }>;
+  subClassAxioms: Array<{ sub: string; sup: string; line: number }>;
+  disjointPairs: Array<{ a: string; b: string; line: number }>;
+  unsatisfiableClasses: string[];
+}
+
+export interface OscalSummary {
+  controls: Array<{ id: string; title: string; status: string; line: number }>;
+  components: Array<{ name: string; type: string; line: number }>;
+}
+
+export function analyzeRequirementsOntology(code: string, lines: string[]) {
+  const reqMap = new Map<string, RequirementRow>();
+  const classes: OwlSummary["classes"] = [];
+  const properties: OwlSummary["properties"] = [];
+  const subClassAxioms: OwlSummary["subClassAxioms"] = [];
+  const disjointPairs: OwlSummary["disjointPairs"] = [];
+  const controls: OscalSummary["controls"] = [];
+  const components: OscalSummary["components"] = [];
+
+  const seenClasses = new Set<string>();
+
+  // ReqIF XML extraction
+  if (code.includes("<REQ-IF") || code.includes("<SPEC-OBJECT")) {
+    const specRe = /<SPEC-OBJECT\b([^>]*)>([\s\S]*?)<\/SPEC-OBJECT>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = specRe.exec(code)) !== null) {
+      const attrs = m[1]!;
+      const body = m[2]!;
+      const id = /IDENTIFIER=["']([^"']+)["']/i.exec(attrs)?.[1] ?? `REQ_${reqMap.size + 1}`;
+      const title =
+        /LONG-NAME=["']([^"']+)["']/i.exec(attrs)?.[1] ?? /THE-VALUE=["']([^"']+)["']/i.exec(body)?.[1] ?? id;
+      const line = code.slice(0, m.index).split("\n").length;
+      reqMap.set(id, { id, title, satisfiedBy: [], verifiedBy: [], line });
+    }
+    const relRe = /<SPEC-RELATION\b([^>]*)>([\s\S]*?)<\/SPEC-RELATION>/gi;
+    while ((m = relRe.exec(code)) !== null) {
+      const body = m[2]!;
+      const src = /<SOURCE>[\s\S]*?>([^<\s]+)<\//i.exec(body)?.[1];
+      const tgt = /<TARGET>[\s\S]*?>([^<\s]+)<\//i.exec(body)?.[1];
+      if (tgt && reqMap.has(tgt) && src) {
+        reqMap.get(tgt)!.satisfiedBy.push(src);
+      } else if (src && reqMap.has(src) && tgt) {
+        reqMap.get(src)!.verifiedBy.push(tgt);
+      }
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i]!.trim();
+    if (!t || t.startsWith("//") || t.startsWith("#")) continue;
+
+    // SysML v2 requirements, satisfy, verify
+    const reqM = /^requirement\s+(?:def\s+)?(?:<([^>]+)>\s*)?([A-Za-z0-9_'"-]+)/.exec(t);
+    if (reqM) {
+      const id = (reqM[1] ?? reqM[2])!.replace(/^['"]|['"]$/g, "");
+      const title = reqM[2]!.replace(/^['"]|['"]$/g, "");
+      if (!reqMap.has(id)) {
+        reqMap.set(id, { id, title, satisfiedBy: [], verifiedBy: [], line: i + 1 });
+      }
+    }
+
+    const satM = /\bsatisfy\s+(?:requirement\s+)?([A-Za-z0-9_.]+)\s+by\s+([A-Za-z0-9_.]+)/.exec(t);
+    if (satM) {
+      const reqKey = satM[1]!.split(".").pop()!;
+      const target =
+        reqMap.get(reqKey) ?? Array.from(reqMap.values()).find((r) => r.title === reqKey || r.id === reqKey);
+      if (target) {
+        target.satisfiedBy.push(satM[2]!);
+      } else {
+        reqMap.set(reqKey, { id: reqKey, title: reqKey, satisfiedBy: [satM[2]!], verifiedBy: [], line: i + 1 });
+      }
+    }
+
+    const verM = /\bverify\s+(?:requirement\s+)?([A-Za-z0-9_.]+)\s+by\s+([A-Za-z0-9_.]+)/.exec(t);
+    if (verM) {
+      const reqKey = verM[1]!.split(".").pop()!;
+      const target =
+        reqMap.get(reqKey) ?? Array.from(reqMap.values()).find((r) => r.title === reqKey || r.id === reqKey);
+      if (target) {
+        target.verifiedBy.push(verM[2]!);
+      } else {
+        reqMap.set(reqKey, { id: reqKey, title: reqKey, satisfiedBy: [], verifiedBy: [verM[2]!], line: i + 1 });
+      }
+    }
+
+    // OWL2 Functional / Manchester / RDF-XML / Turtle axioms
+    const owlDeclClass =
+      /Declaration\s*\(\s*Class\s*\(\s*:?([A-Za-z0-9_#-]+)\s*\)\s*\)|<owl:Class\b[^>]*?(?:rdf:about|rdf:ID)=["'][^"']*?([A-Za-z0-9_-]+)["']|^:?([A-Za-z0-9_-]+)\s+a\s+owl:Class\b|^Class:\s*:?([A-Za-z0-9_-]+)/.exec(
+        t,
+      );
+    if (owlDeclClass) {
+      const cls = (owlDeclClass[1] ?? owlDeclClass[2] ?? owlDeclClass[3] ?? owlDeclClass[4])!;
+      if (!seenClasses.has(cls)) {
+        seenClasses.add(cls);
+        classes.push({ name: cls, line: i + 1 });
+      }
+    }
+
+    const owlProp =
+      /Declaration\s*\(\s*(ObjectProperty|DataProperty)\s*\(\s*:?([A-Za-z0-9_#-]+)\s*\)\s*\)|<owl:(ObjectProperty|DatatypeProperty)\b[^>]*?(?:rdf:about|rdf:ID)=["'][^"']*?([A-Za-z0-9_-]+)["']/.exec(
+        t,
+      );
+    if (owlProp) {
+      properties.push({
+        kind: owlProp[1] ?? owlProp[3] ?? "ObjectProperty",
+        name: (owlProp[2] ?? owlProp[4])!,
+        line: i + 1,
+      });
+    }
+
+    const subCls =
+      /SubClassOf\s*\(\s*:?([A-Za-z0-9_-]+)\s+:?([A-Za-z0-9_-]+)\s*\)|^:?([A-Za-z0-9_-]+)\s+rdfs:subClassOf\s+:?([A-Za-z0-9_-]+)/.exec(
+        t,
+      );
+    if (subCls) {
+      const sub = (subCls[1] ?? subCls[3])!;
+      const sup = (subCls[2] ?? subCls[4])!;
+      subClassAxioms.push({ sub, sup, line: i + 1 });
+      if (!seenClasses.has(sub)) {
+        seenClasses.add(sub);
+        classes.push({ name: sub, line: i + 1 });
+      }
+      if (!seenClasses.has(sup)) {
+        seenClasses.add(sup);
+        classes.push({ name: sup, line: i + 1 });
+      }
+    }
+
+    const disj =
+      /DisjointClasses\s*\(\s*:?([A-Za-z0-9_-]+)\s+:?([A-Za-z0-9_-]+)\s*\)|^:?([A-Za-z0-9_-]+)\s+owl:disjointWith\s+:?([A-Za-z0-9_-]+)/.exec(
+        t,
+      );
+    if (disj) {
+      disjointPairs.push({
+        a: (disj[1] ?? disj[3])!,
+        b: (disj[2] ?? disj[4])!,
+        line: i + 1,
+      });
+    }
+
+    // OSCAL JSON / YAML / XML controls & components
+    const ctrlM =
+      /"control-id"\s*:\s*"([^"]+)"|control-id:\s*["']?([A-Za-z0-9.-]+)|<control\b[^>]*\bid=["']([^"']+)["']/i.exec(t);
+    if (ctrlM) {
+      const cid = (ctrlM[1] ?? ctrlM[2] ?? ctrlM[3])!;
+      controls.push({
+        id: cid.toUpperCase(),
+        title: `Security Control ${cid.toUpperCase()}`,
+        status: "Implemented",
+        line: i + 1,
+      });
+    }
+
+    const compM = /"component-type"\s*:\s*"([^"]+)"|<component\b[^>]*\btype=["']([^"']+)["']/i.exec(t);
+    if (compM) {
+      components.push({
+        name: `Component_${components.length + 1}`,
+        type: (compM[1] ?? compM[2])!,
+        line: i + 1,
+      });
+    }
+  }
+
+  // Transitive SubClassOf closure for OWL2 disjointness satisfiability check
+  const ancestors = new Map<string, Set<string>>();
+  for (const c of seenClasses) {
+    ancestors.set(c, new Set([c]));
+  }
+  for (const ax of subClassAxioms) {
+    if (!ancestors.has(ax.sub)) ancestors.set(ax.sub, new Set([ax.sub]));
+    ancestors.get(ax.sub)!.add(ax.sup);
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [, set] of ancestors) {
+      for (const sup of Array.from(set)) {
+        const supAnc = ancestors.get(sup);
+        if (supAnc) {
+          for (const g of supAnc) {
+            if (!set.has(g)) {
+              set.add(g);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const unsatisfiableClasses: string[] = [];
+  for (const [cls, anc] of ancestors) {
+    for (const dp of disjointPairs) {
+      if (anc.has(dp.a) && anc.has(dp.b)) {
+        unsatisfiableClasses.push(cls);
+        break;
+      }
+    }
+  }
+
+  const requirements = Array.from(reqMap.values());
+  return {
+    requirements,
+    owl: {
+      classes,
+      properties,
+      subClassAxioms,
+      disjointPairs,
+      unsatisfiableClasses,
+    },
+    oscal: {
+      controls,
+      components,
+    },
+  };
 }
 
 export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspectorProps> = ({
@@ -25,218 +244,181 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
   colorMode,
   onRevealLine,
 }) => {
-  const isOwl2 = code.includes("owl:") || code.includes("SubClassOf") || code.includes("Declaration(Class(");
-  const [subTab, setSubTab] = useState<"rtm" | "owl" | "compliance">(isOwl2 ? "owl" : "rtm");
-
   const isDark = colorMode === "dark";
-  const borderCol = "var(--color-border-default, rgba(148, 163, 184, 0.18))";
-  const cardBg = "var(--color-bg-card, rgba(22, 27, 34, 0.6))";
-  const textPrimary = "var(--color-fg-default, #c9d1d9)";
-  const textMuted = "var(--color-fg-muted, #8b949e)";
+  const [subView, setSubView] = useState<"matrix" | "owl" | "compliance">("matrix");
 
-  // Parse SysML v2 / ReqIF requirements
-  const { reqs, coveragePercent } = useMemo(() => {
-    const list: RequirementItem[] = [];
-    const satisfyMap = new Map<string, string[]>();
-    const verifyMap = new Map<string, string[]>();
+  const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
+  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const textPrimary = isDark ? "#e6edf3" : "#1f2328";
+  const textMuted = isDark ? "#8b949e" : "#59636e";
 
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!.trim();
-      const satMatch = /\bsatisfy\s+(?:requirement\s+)?([A-Za-z0-9_.:]+)\s+by\s+([A-Za-z0-9_.:]+)/.exec(l);
-      if (satMatch) {
-        const rName = satMatch[1]!.split(".").pop()!;
-        const arr = satisfyMap.get(rName) || [];
-        arr.push(satMatch[2]!);
-        satisfyMap.set(rName, arr);
-      }
-      const verMatch = /\bverify\s+(?:requirement\s+)?([A-Za-z0-9_.:]+)\s+by\s+([A-Za-z0-9_.:]+)/.exec(l);
-      if (verMatch) {
-        const rName = verMatch[1]!.split(".").pop()!;
-        const arr = verifyMap.get(rName) || [];
-        arr.push(verMatch[2]!);
-        verifyMap.set(rName, arr);
-      }
-    }
-
-    const reqRegex = /\brequirement\s+(?:def\s+)?(?:<([^>]+)>\s*)?([A-Za-z0-9_]+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = reqRegex.exec(code)) !== null) {
-      const explicitId = m[1];
-      const name = m[2]!;
-      const id = explicitId || `REQ-${String(list.length + 1).padStart(2, "0")}`;
-      const sat = satisfyMap.get(name) || (explicitId ? satisfyMap.get(explicitId) : undefined) || [];
-      const ver = verifyMap.get(name) || (explicitId ? verifyMap.get(explicitId) : undefined) || [];
-      const status: RequirementItem["status"] = sat.length > 0 && ver.length > 0 ? "Verified" : sat.length > 0 ? "Satisfied" : "Open";
-      const line = code.slice(0, m.index).split("\n").length;
-      list.push({
-        id,
-        name,
-        text: `Specification requirement for ${name}`,
-        satisfiedBy: sat,
-        verifiedBy: ver,
-        status,
-        line,
-      });
-    }
-
-    if (list.length === 0) {
-      list.push(
-        { id: "REQ-01", name: "MaxWeight", text: "Total vehicle dry mass shall not exceed 1250 kg", satisfiedBy: ["ChassisFrame", "BatteryPack"], verifiedBy: ["MassAuditTest"], status: "Verified", line: 1 },
-        { id: "REQ-02", name: "PeakPower", text: "Electric powertrain shall deliver >= 180 kW peak output", satisfiedBy: ["Inverter_DualMotor"], verifiedBy: ["DynoSimulation"], status: "Verified", line: 5 },
-        { id: "REQ-03", name: "ThermalSafety", text: "Battery cell surface temperature shall remain < 45°C during discharge", satisfiedBy: ["GlycolCoolingLoop"], verifiedBy: [], status: "Satisfied", line: 10 },
-        { id: "REQ-04", name: "BrakingDistance", text: "Stopping distance from 100 km/h shall be <= 35 meters", satisfiedBy: [], verifiedBy: [], status: "Open", line: 15 },
-      );
-    }
-
-    const verifiedCount = list.filter((r) => r.status === "Verified").length;
-    const coverage = Math.round((verifiedCount / list.length) * 100);
-
-    return { reqs: list, coveragePercent: coverage };
-  }, [code, lines]);
+  const { requirements, owl, oscal } = useMemo(() => analyzeRequirementsOntology(code, lines), [code, lines]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, color: textPrimary, fontSize: 13 }}>
-      {/* Sub-navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${borderCol}` }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#3fb950" }}>
-          Requirements Traceability & Ontology Auditor
-        </div>
-
-        <div style={{ display: "inline-flex", borderRadius: 6, border: `1px solid ${borderCol}`, overflow: "hidden", backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)" }}>
-          {[
-            { id: "rtm", label: `Traceability Matrix (${coveragePercent}% Verified)` },
-            { id: "owl", label: "OWL2 DL Classification" },
-            { id: "compliance", label: "OSCAL Security Controls" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setSubTab(tab.id as any)}
-              style={{
-                padding: "5px 11px",
-                fontSize: 12,
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: subTab === tab.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                color: subTab === tab.id ? "#ffffff" : textMuted,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── View 1: 2D Requirements Traceability Matrix ── */}
-      {subTab === "rtm" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {[
+          { id: "matrix", label: `🎯 Traceability Matrix (${requirements.length} reqs)` },
+          { id: "owl", label: `🧠 OWL2 Description Logic (${owl.classes.length} classes)` },
+          { id: "compliance", label: `🛡️ OSCAL Controls (${oscal.controls.length})` },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setSubView(t.id as typeof subView)}
             style={{
-              padding: 14,
-              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
               border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              cursor: "pointer",
+              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
+              color: subView === t.id ? "#ffffff" : textPrimary,
             }}
           >
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>
-                Verification Coverage:{" "}
-                <span style={{ color: coveragePercent >= 80 ? "#3fb950" : "#d29922" }}>
-                  {coveragePercent}% Verified
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: textMuted, marginTop: 4 }}>
-                {reqs.filter((r) => r.status === "Open").length} orphan requirements lack verification links.
-              </div>
-            </div>
-            <div style={{ width: 140, height: 8, borderRadius: 4, backgroundColor: "rgba(0,0,0,0.3)", overflow: "hidden" }}>
-              <div style={{ width: `${coveragePercent}%`, height: "100%", backgroundColor: coveragePercent >= 80 ? "#3fb950" : "#d29922" }} />
-            </div>
-          </div>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-          <div style={{ borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      {subView === "matrix" && (
+        <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            Requirement → Design Element (satisfy) → Test Case (verify) Traceability Matrix
+          </div>
+          {requirements.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No SysML v2 <code>requirement</code> blocks or ReqIF <code>&lt;SPEC-OBJECT&gt;</code> entries declared in
+              this buffer.
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "monospace" }}>
               <thead>
-                <tr style={{ textAlign: "left", borderBottom: `1px solid ${borderCol}`, color: textMuted }}>
-                  <th style={{ padding: "8px 12px" }}>Req ID</th>
-                  <th style={{ padding: "8px 12px" }}>Requirement Name</th>
-                  <th style={{ padding: "8px 12px" }}>Satisfied By (Architecture)</th>
-                  <th style={{ padding: "8px 12px" }}>Verified By (Test Suite)</th>
-                  <th style={{ padding: "8px 12px" }}>Status</th>
+                <tr style={{ borderBottom: `1px solid ${borderCol}`, color: textMuted, textAlign: "left" }}>
+                  <th style={{ padding: "6px 8px" }}>ID / Name</th>
+                  <th style={{ padding: "6px 8px" }}>Satisfied By</th>
+                  <th style={{ padding: "6px 8px" }}>Verified By</th>
+                  <th style={{ padding: "6px 8px" }}>Coverage</th>
                 </tr>
               </thead>
               <tbody>
-                {reqs.map((r, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => onRevealLine?.(r.line, r.id)}
-                    style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
-                  >
-                    <td style={{ padding: "7px 12px", fontFamily: "monospace", color: "#58a6ff", fontWeight: 700 }}>{r.id}</td>
-                    <td style={{ padding: "7px 12px", fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ padding: "7px 12px", color: textPrimary }}>{r.satisfiedBy.join(", ") || "—"}</td>
-                    <td style={{ padding: "7px 12px", color: "#3fb950" }}>{r.verifiedBy.join(", ") || "—"}</td>
-                    <td style={{ padding: "7px 12px" }}>
-                      <span
+                {requirements.map((r, idx) => {
+                  const full = r.satisfiedBy.length > 0 && r.verifiedBy.length > 0;
+                  const partial = r.satisfiedBy.length > 0 || r.verifiedBy.length > 0;
+                  return (
+                    <tr
+                      key={idx}
+                      onClick={() => onRevealLine?.(r.line, r.id)}
+                      style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
+                    >
+                      <td style={{ padding: "6px 8px", fontWeight: 700, color: "#58a6ff" }}>
+                        {r.id !== r.title ? `${r.id} (${r.title})` : r.id}
+                      </td>
+                      <td style={{ padding: "6px 8px", color: r.satisfiedBy.length ? "#3fb950" : "#f85149" }}>
+                        {r.satisfiedBy.join(", ") || "⚠ Unsatisfied"}
+                      </td>
+                      <td style={{ padding: "6px 8px", color: r.verifiedBy.length ? "#3fb950" : "#d29922" }}>
+                        {r.verifiedBy.join(", ") || "⚠ Unverified"}
+                      </td>
+                      <td
                         style={{
-                          padding: "2px 6px",
-                          borderRadius: 4,
-                          fontSize: 11,
+                          padding: "6px 8px",
                           fontWeight: 700,
-                          backgroundColor:
-                            r.status === "Verified"
-                              ? "rgba(63, 185, 80, 0.2)"
-                              : r.status === "Satisfied"
-                                ? "rgba(210, 153, 34, 0.2)"
-                                : "rgba(248, 81, 73, 0.2)",
-                          color:
-                            r.status === "Verified"
-                              ? "#3fb950"
-                              : r.status === "Satisfied"
-                                ? "#d29922"
-                                : "#f85149",
+                          color: full ? "#3fb950" : partial ? "#d29922" : "#f85149",
                         }}
                       >
-                        {r.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                        {full ? "100% Closed" : partial ? "50% Partial" : "0% Orphan"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
       )}
 
-      {/* ── View 2: OWL2 Description Logic Classification ── */}
-      {subTab === "owl" && (
+      {subView === "owl" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#3fb950" }}>
-            ✓ OWL2 DL Reasoner: Ontology is Satisfiable and Consistent
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            OWL2 TBox Hierarchy & Disjointness Consistency Check
           </div>
-          <div style={{ fontSize: 11, color: textMuted, marginTop: 4 }}>
-            Zero unsatisfiable concepts (owl:Nothing). Subsumption taxonomy classified via Tableau reasoning algorithm.
-          </div>
+          {owl.classes.length === 0 && owl.subClassAxioms.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No OWL2 classes, properties, or <code>SubClassOf</code> / <code>DisjointClasses</code> axioms found.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: owl.unsatisfiableClasses.length === 0 ? "#3fb950" : "#f85149",
+                }}
+              >
+                {owl.unsatisfiableClasses.length === 0
+                  ? `✓ Consistent TBox (${owl.classes.length} classes, ${owl.properties.length} properties, ${owl.subClassAxioms.length} SubClassOf, ${owl.disjointPairs.length} DisjointClasses)`
+                  : `⚠ Unsatisfiable classes detected via SubClassOf ∩ DisjointClasses: ${owl.unsatisfiableClasses.join(", ")}`}
+              </div>
+              {owl.subClassAxioms.map((ax, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onRevealLine?.(ax.line, ax.sub)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: `1px solid ${borderCol}`,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <span style={{ color: "#58a6ff", fontWeight: 700 }}>{ax.sub}</span> ⊑{" "}
+                  <span style={{ color: "#a371f7", fontWeight: 700 }}>{ax.sup}</span> (L{ax.line})
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── View 3: OSCAL Security Controls ── */}
-      {subTab === "compliance" && (
+      {subView === "compliance" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: "#58a6ff" }}>
-            NIST SP 800-53 Rev. 5 Security Control Allocation
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+            OSCAL NIST SP 800-53 Security Control & Component Inventory
           </div>
-          <div style={{ fontSize: 11, color: textMuted }}>
-            Access Control (AC), Audit (AU), and System Integrity (SI) controls satisfied by active system model components.
-          </div>
+          {oscal.controls.length === 0 && oscal.components.length === 0 ? (
+            <div style={{ fontSize: 12, color: textMuted }}>
+              No OSCAL <code>control-id</code> or system security plan component definitions detected.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {oscal.controls.map((c, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => onRevealLine?.(c.line, c.id)}
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    border: `1px solid ${borderCol}`,
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <span style={{ color: "#58a6ff", fontWeight: 700 }}>{c.id}</span>
+                  <span style={{ color: "#3fb950", fontWeight: 600 }}>
+                    {c.status} (L{c.line})
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
-
-export default RequirementsOntologyInspector;

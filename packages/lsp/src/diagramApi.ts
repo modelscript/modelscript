@@ -162,6 +162,35 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     }
   }
 
+  private resolveTargetInstance(
+    uri: string,
+    className: string | undefined,
+    instances: any[] | undefined,
+    docText: string,
+  ): any | null {
+    if (className) {
+      const simpleName = className.split(".").pop()!;
+      const matched =
+        instances?.find(
+          (inst: any) =>
+            inst?.compositeName === className ||
+            inst?.name === className ||
+            inst?.compositeName?.endsWith(`.${className}`) ||
+            inst?.name === simpleName,
+        ) ?? this.deps.resolveClassInstance(uri, className);
+      if (matched) return matched;
+    }
+
+    const primary = instances?.[0] ?? this.deps.resolveClassInstance(uri);
+    if (primary) return primary;
+
+    const ops = getModelicaDiagramOps();
+    if (typeof ops.buildFallbackClassInstance === "function") {
+      return ops.buildFallbackClassInstance(docText, className);
+    }
+    return null;
+  }
+
   async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
     let instances = this.deps.getDocumentInstances(params.uri);
     let docText = this.deps.getDocumentText(params.uri);
@@ -173,7 +202,12 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       docText = this.deps.getDocumentText(params.uri);
     }
 
-    if (!instances?.[0]) {
+    if (!docText) {
+      return { seq: params.seq, edits: [], renderHint: "none" };
+    }
+
+    let targetInstance = this.resolveTargetInstance(params.uri, params.className, instances, docText);
+    if (!targetInstance) {
       const currentText = docText ?? "";
       const strippedText = currentText.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "").trim();
       const addActions = params.actions.filter((a) => a.type === "addComponent");
@@ -238,11 +272,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       }
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
-    if (docText === undefined) {
-      return { seq: params.seq, edits: [], renderHint: "none" };
-    }
 
-    let result = processDiagramEditBatch(params, instances[0], docText);
+    let result = processDiagramEditBatch(params, targetInstance, docText);
 
     // If no edits could be produced (e.g. stale AST where component ranges no longer match),
     // flush validation once to synchronize AST and retry.
@@ -263,8 +294,11 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       await this.deps.flushValidation(params.uri);
       const freshInstances = this.deps.getDocumentInstances(params.uri);
       const freshDocText = this.deps.getDocumentText(params.uri);
-      if (freshInstances?.[0] && freshDocText) {
-        result = processDiagramEditBatch(params, freshInstances[0], freshDocText);
+      if (freshDocText) {
+        const freshTarget = this.resolveTargetInstance(params.uri, params.className, freshInstances, freshDocText);
+        if (freshTarget) {
+          result = processDiagramEditBatch(params, freshTarget, freshDocText);
+        }
       }
     }
 
@@ -2484,13 +2518,12 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                     ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
                     : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
 
-                  const layoutRegex = /(@layout\([^)]*\)|annotation\(Placement\([^)]*\)\))/;
-                  const match = layoutRegex.exec(line);
-                  if (match) {
+                  const span = findInlinePlacementSpan(line);
+                  if (span) {
                     allEdits.push({
                       range: {
-                        start: { line: i, character: match.index },
-                        end: { line: i, character: match.index + match[0].length },
+                        start: { line: i, character: span.start },
+                        end: { line: i, character: span.end },
                       },
                       newText: placementStr,
                     });
@@ -2536,13 +2569,12 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                   ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
                   : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
 
-                const layoutRegex = /(@layout\([^)]*\)|annotation\(Placement\([^)]*\)\))/;
-                const match = layoutRegex.exec(line);
-                if (match) {
+                const span = findInlinePlacementSpan(line);
+                if (span) {
                   allEdits.push({
                     range: {
-                      start: { line: i, character: match.index },
-                      end: { line: i, character: match.index + match[0].length },
+                      start: { line: i, character: span.start },
+                      end: { line: i, character: span.end },
                     },
                     newText: placementStr,
                   });
@@ -2610,8 +2642,19 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "disconnect": {
           if (docText !== undefined) {
+            const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const srcPattern = action.sourcePort
+              ? `${esc(action.source)}\\.${esc(action.sourcePort)}`
+              : esc(action.source);
+            const tgtPattern = action.targetPort
+              ? `${esc(action.target)}\\.${esc(action.targetPort)}`
+              : esc(action.target);
+            const edgeRegex = new RegExp(
+              `\\b${srcPattern}\\b.*\\b${tgtPattern}\\b|\\b${tgtPattern}\\b.*\\b${srcPattern}\\b`,
+            );
+
             for (let i = 0; i < lines.length; i++) {
-              if (maskedLines[i]!.includes(action.source) && maskedLines[i]!.includes(action.target)) {
+              if (edgeRegex.test(maskedLines[i]!)) {
                 let endLine = i;
                 if (maskedLines[i]!.includes("(") && !maskedLines[i]!.trimEnd().endsWith(";")) {
                   let parenDepth = 0;
@@ -2645,9 +2688,20 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         case "reconnect": {
           if (docText !== undefined) {
             let replaced = false;
+            const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const oldSrcPattern = action.oldSourcePort
+              ? `${esc(action.oldSource)}\\.${esc(action.oldSourcePort)}`
+              : esc(action.oldSource);
+            const oldTgtPattern = action.oldTargetPort
+              ? `${esc(action.oldTarget)}\\.${esc(action.oldTargetPort)}`
+              : esc(action.oldTarget);
+            const oldEdgeRegex = new RegExp(
+              `\\b${oldSrcPattern}\\b.*\\b${oldTgtPattern}\\b|\\b${oldTgtPattern}\\b.*\\b${oldSrcPattern}\\b`,
+            );
+
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i]!;
-              if (maskedLines[i]!.includes(action.oldSource) && maskedLines[i]!.includes(action.oldTarget)) {
+              if (oldEdgeRegex.test(maskedLines[i]!)) {
                 let endLine = i;
                 if (maskedLines[i]!.includes("(") && !maskedLines[i]!.trimEnd().endsWith(";")) {
                   let parenDepth = 0;
@@ -2689,7 +2743,23 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                 } else {
                   const src = action.newSourcePort ? `${action.newSource}.${action.newSourcePort}` : action.newSource;
                   const tgt = action.newTargetPort ? `${action.newTarget}.${action.newTargetPort}` : action.newTarget;
-                  newEdgeText = `connect(${src}, ${tgt});`;
+                  const fullOldStatement = lines.slice(i, endLine + 1).join("\n");
+                  const annotMatch = fullOldStatement.match(/(\s*annotation\s*\(.*\)\s*;?)/s);
+                  const existingAnnot = annotMatch ? annotMatch[1] : ";";
+
+                  if (action.points && action.points.length > 0) {
+                    const ptsStr = action.points.map((p: any) => `{${p.x}, ${p.y}}`).join(", ");
+                    if (existingAnnot && existingAnnot.includes("points")) {
+                      const updatedAnnot = replaceBalancedBracesField(existingAnnot, "points", ptsStr);
+                      newEdgeText = `connect(${src}, ${tgt})${updatedAnnot}`;
+                    } else if (existingAnnot && existingAnnot.startsWith("annotation")) {
+                      newEdgeText = `connect(${src}, ${tgt}) ${existingAnnot.trim()}`;
+                    } else {
+                      newEdgeText = `connect(${src}, ${tgt}) annotation(Line(points={${ptsStr}}));`;
+                    }
+                  } else {
+                    newEdgeText = `connect(${src}, ${tgt})${existingAnnot && existingAnnot.startsWith("annotation") ? ` ${existingAnnot.trim()}` : ";"}`;
+                  }
                 }
 
                 const indent = line.match(/^\s*/)?.[0] ?? "";
@@ -3372,138 +3442,410 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
   };
 }
 
-// ── Modelica Batch Processor (preserved for backward compat) ──
+function findBalancedCloseSimple(text: string, openIndex: number): number {
+  const openCh = text[openIndex];
+  const closeCh = openCh === "(" ? ")" : openCh === "{" ? "}" : openCh === "[" ? "]" : "";
+  if (!closeCh) return -1;
+  let depth = 0;
+  let inQuote: string | null = null;
+  for (let i = openIndex; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuote) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === inQuote) inQuote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      continue;
+    }
+    if (ch === openCh) depth++;
+    else if (ch === closeCh) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function findInlinePlacementSpan(line: string): { start: number; end: number } | null {
+  const layoutMatch = /@layout\s*\(/.exec(line);
+  if (layoutMatch && layoutMatch.index !== undefined) {
+    const openIdx = layoutMatch.index + layoutMatch[0].length - 1;
+    const closeIdx = findBalancedCloseSimple(line, openIdx);
+    if (closeIdx !== -1) {
+      return { start: layoutMatch.index, end: closeIdx + 1 };
+    }
+  }
+
+  const annotPlacementMatch = /\bannotation\s*\(\s*Placement\s*\(/.exec(line);
+  if (annotPlacementMatch && annotPlacementMatch.index !== undefined) {
+    const firstParenOffset = line.indexOf("(", annotPlacementMatch.index);
+    if (firstParenOffset !== -1) {
+      const closeIdx = findBalancedCloseSimple(line, firstParenOffset);
+      if (closeIdx !== -1) {
+        return { start: annotPlacementMatch.index, end: closeIdx + 1 };
+      }
+    }
+  }
+
+  return null;
+}
+
+function replaceBalancedBracesField(text: string, fieldName: string, newInner: string): string {
+  const escField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const fieldMatch = new RegExp(`\\b${escField}\\s*=\\s*\\{`).exec(text);
+  if (!fieldMatch || fieldMatch.index === undefined) return text;
+  const openBraceIdx = fieldMatch.index + fieldMatch[0].length - 1;
+  const closeBraceIdx = findBalancedCloseSimple(text, openBraceIdx);
+  if (closeBraceIdx === -1) return text;
+  return `${text.slice(0, openBraceIdx + 1)}${newInner}${text.slice(closeBraceIdx)}`;
+}
+
+function applyTextEditsInMemory(baseText: string, edits: TextEdit[]): string {
+  if (edits.length === 0) return baseText;
+
+  const lineStarts = [0];
+  for (let i = 0; i < baseText.length; i++) {
+    if (baseText[i] === "\n") lineStarts.push(i + 1);
+  }
+  const toOffset = (line: number, character: number): number => {
+    if (line < 0) return 0;
+    if (line >= lineStarts.length) return baseText.length;
+    return Math.min(baseText.length, lineStarts[line]! + Math.max(0, character));
+  };
+
+  const indexed = edits.map((edit, idx) => ({
+    idx,
+    start: toOffset(edit.range.start.line, edit.range.start.character),
+    end: toOffset(edit.range.end.line, edit.range.end.character),
+    newText: edit.newText,
+  }));
+
+  // Apply from bottom to top; for identical offsets, reverse original order so sequential inserts preserve order
+  indexed.sort((a, b) => {
+    if (a.start !== b.start) return b.start - a.start;
+    if (a.end !== b.end) return b.end - a.end;
+    return b.idx - a.idx;
+  });
+
+  let result = baseText;
+  for (const item of indexed) {
+    result = result.slice(0, item.start) + item.newText + result.slice(item.end);
+  }
+  return result;
+}
+
+function computeDelimiterImbalance(maskedText: string): { paren: number; brace: number; bracket: number } {
+  let paren = 0;
+  let brace = 0;
+  let bracket = 0;
+  for (let i = 0; i < maskedText.length; i++) {
+    const ch = maskedText[i];
+    if (ch === "(") paren++;
+    else if (ch === ")") paren--;
+    else if (ch === "{") brace++;
+    else if (ch === "}") brace--;
+    else if (ch === "[") bracket++;
+    else if (ch === "]") bracket--;
+  }
+  return { paren, brace, bracket };
+}
+
+function validatePostEditBalance(
+  beforeText: string,
+  edits: TextEdit[],
+  targetClassName: string | undefined,
+  ops: any,
+): boolean {
+  if (edits.length === 0) return true;
+  const afterText = applyTextEditsInMemory(beforeText, edits);
+  const maskFn =
+    typeof ops?.maskModelicaCommentsAndStrings === "function" ? ops.maskModelicaCommentsAndStrings : (s: string) => s;
+
+  const beforeImp = computeDelimiterImbalance(maskFn(beforeText));
+  const afterImp = computeDelimiterImbalance(maskFn(afterText));
+
+  // Diagram-generated edits must never increase net delimiter imbalance
+  if (
+    Math.abs(afterImp.paren) > Math.abs(beforeImp.paren) ||
+    Math.abs(afterImp.brace) > Math.abs(beforeImp.brace) ||
+    Math.abs(afterImp.bracket) > Math.abs(beforeImp.bracket)
+  ) {
+    return false;
+  }
+
+  // If the enclosing class structure was scannable before, it must remain scannable after
+  if (typeof ops?.scanModelicaClassLayout === "function") {
+    const beforeLayout = ops.scanModelicaClassLayout(beforeText, targetClassName);
+    if (beforeLayout) {
+      const afterLayout = ops.scanModelicaClassLayout(afterText, beforeLayout.className);
+      if (!afterLayout) return false;
+    }
+  }
+
+  return true;
+}
+
+// ── Modelica Batch Processor ──
 
 export function processDiagramEditBatch(
   request: DiagramApplyEditsParams,
-
   classInstance: any,
   docText: string,
 ): DiagramApplyEditsResult {
   const ops = getModelicaDiagramOps();
-  const allEdits: TextEdit[] = [];
+  const sortFn: (edits: TextEdit[]) => TextEdit[] = ops.deduplicateAndSort ?? deduplicateAndSort;
   let needsRender: "none" | "immediate" | "debounced" = "none";
   const createdComponentNames = new Set<string>();
 
+  const targetClassName: string | undefined =
+    request.className || classInstance?.compositeName || classInstance?.name || undefined;
+
+  // Preserve Diagram coordinateSystem metadata across lightweight fallback class refreshes
+  const preservedDiagramAnnotation =
+    typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
+
+  const attachPreservedDiagram = (inst: any): any => {
+    if (!inst || !preservedDiagramAnnotation) return inst;
+    const origAnnot = typeof inst.annotation === "function" ? inst.annotation.bind(inst) : null;
+    if (origAnnot && origAnnot("Diagram")) return inst;
+    return {
+      ...inst,
+      annotation: (key: string) => {
+        const own = origAnnot ? origAnnot(key) : null;
+        if (own) return own;
+        return key === "Diagram" ? preservedDiagramAnnotation : null;
+      },
+    };
+  };
+
+  let initialInstance = classInstance;
+  if (!initialInstance && typeof ops.buildFallbackClassInstance === "function") {
+    initialInstance = ops.buildFallbackClassInstance(docText, targetClassName);
+  }
+
+  // Record renderHint across all requested actions
   for (const action of request.actions) {
     switch (action.type) {
-      case "move":
-        if (ops.computePlacementEdits)
-          allEdits.push(...ops.computePlacementEdits(docText, classInstance, action.items));
-        if (needsRender === "none") needsRender = "none"; // spatial
-        break;
-      case "resize":
-      case "rotate":
-        if (ops.computePlacementEdits)
-          allEdits.push(...ops.computePlacementEdits(docText, classInstance, [action.item]));
-        if (needsRender === "none") needsRender = "none"; // spatial
-        break;
-      case "moveEdge":
-        {
-          const lines = docText.split("\n");
-          if (ops.computeEdgePointEdits)
-            allEdits.push(...ops.computeEdgePointEdits(lines, classInstance, action.edges));
-        }
-        if (needsRender === "none") needsRender = "none"; // spatial
-        break;
       case "connect":
-        if (ops.computeConnectInsert)
-          allEdits.push(
-            ...ops.computeConnectInsert(
-              docText,
-              classInstance,
-              action.source,
-              action.target,
-              action.points,
-              action.color,
-            ),
-          );
-        needsRender = "immediate";
-        break;
       case "disconnect":
-        if (ops.computeConnectRemove)
-          allEdits.push(...ops.computeConnectRemove(docText, classInstance, action.source, action.target));
-        needsRender = "immediate";
-        break;
       case "reconnect":
-        if (ops.computeConnectRemove)
-          allEdits.push(...ops.computeConnectRemove(docText, classInstance, action.oldSource, action.oldTarget));
-        if (ops.computeConnectInsert)
-          allEdits.push(
-            ...ops.computeConnectInsert(
-              docText,
-              classInstance,
-              action.newSource,
-              action.newTarget,
-              action.points,
-              action.color,
-            ),
-          );
-        needsRender = "immediate";
-        break;
-      case "addComponent": {
-        const rawClass = action.className ?? "";
-        if (
-          !rawClass ||
-          rawClass.startsWith("__LOADING__:") ||
-          rawClass.startsWith("__ONTOLOGY__:") ||
-          (rawClass.startsWith("__LIB__:") && !rawClass.includes("/") && !rawClass.includes("."))
-        ) {
-          break;
-        }
-        const cleanClass = rawClass.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
-        const baseName = (cleanClass.split(".").pop() || "comp").replace(/[^A-Za-z0-9_]/g, "") || "comp";
-        let uniqueName = action.name || baseName + "1";
-        let counter = 1;
-
-        const existingNames = new Set(Array.from(classInstance.components || []).map((c: any) => c.name));
-        for (const n of createdComponentNames) existingNames.add(n);
-        if (!action.name) {
-          while (existingNames.has(uniqueName)) {
-            counter++;
-            uniqueName = baseName + counter;
-          }
-        }
-        createdComponentNames.add(uniqueName);
-        if (ops.computeComponentInsert) {
-          allEdits.push(
-            ...ops.computeComponentInsert(classInstance, cleanClass, uniqueName, action.x, action.y, docText),
-          );
-        }
-        needsRender = "immediate";
-        break;
-      }
+      case "addComponent":
       case "deleteComponents":
-        if (ops.computeComponentsDelete)
-          allEdits.push(...ops.computeComponentsDelete(docText, classInstance, action.names));
         needsRender = "immediate";
         break;
       case "updateName":
-        if (ops.computeNameEdit) allEdits.push(...ops.computeNameEdit(classInstance, action.oldName, action.newName));
-        needsRender = "debounced";
-        break;
       case "updateDescription":
-        if (ops.computeDescriptionEdit)
-          allEdits.push(...ops.computeDescriptionEdit(docText, classInstance, action.name, action.description));
-        needsRender = "debounced";
+        if (needsRender !== "immediate") needsRender = "debounced";
         break;
       case "updateParameter":
-        if (ops.computeParameterEdit)
-          allEdits.push(...ops.computeParameterEdit(classInstance, action.name, action.parameter, action.value));
+      case "updateProperty":
         if (needsRender === "none") needsRender = "debounced";
         break;
-      case "updateProperty":
-        if (ops.computeParameterEdit)
-          allEdits.push(...ops.computeParameterEdit(classInstance, action.name, action.key, String(action.value)));
-        if (needsRender === "none") needsRender = "debounced";
+      default:
         break;
     }
   }
 
-  const sortFn = ops.deduplicateAndSort ?? deduplicateAndSort;
+  // Expand `reconnect` into sequential `[disconnect, connect]` steps so removing the old
+  // connection and inserting the new connection never emit conflicting edits or duplicate `equation`.
+  type StepAction = Exclude<DiagramApplyEditsParams["actions"][number], { type: "reconnect" }>;
+  const expandedActions: StepAction[] = [];
+  for (const action of request.actions) {
+    if (action.type === "reconnect") {
+      expandedActions.push({
+        type: "disconnect",
+        source: action.oldSource,
+        target: action.oldTarget,
+      });
+      expandedActions.push({
+        type: "connect",
+        source: action.newSource,
+        target: action.newTarget,
+        ...(action.points ? { points: action.points } : {}),
+        ...(action.color ? { color: action.color } : {}),
+      });
+    } else {
+      expandedActions.push(action);
+    }
+  }
+
+  const runSingleAction = (action: StepAction, currentText: string, currentInstance: any): TextEdit[] => {
+    const execWithInstance = (ci: any): TextEdit[] => {
+      if (!ci) return [];
+      switch (action.type) {
+        case "move":
+          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, action.items) : [];
+        case "resize":
+        case "rotate":
+          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, [action.item]) : [];
+        case "moveEdge": {
+          const lines = currentText.split("\n");
+          return ops.computeEdgePointEdits ? ops.computeEdgePointEdits(lines, ci, action.edges) : [];
+        }
+        case "connect":
+          return ops.computeConnectInsert
+            ? ops.computeConnectInsert(currentText, ci, action.source, action.target, action.points, action.color)
+            : [];
+        case "disconnect":
+          return ops.computeConnectRemove
+            ? ops.computeConnectRemove(currentText, ci, action.source, action.target)
+            : [];
+        case "addComponent": {
+          const baseName = action.className.split(".").pop() || "comp";
+          let uniqueName = action.name || baseName + "1";
+          let counter = 1;
+
+          const existingNames = new Set<string>(Array.from(ci.components || []).map((c: any) => c.name));
+          if (typeof ops.scanModelicaClassLayout === "function") {
+            const scanned = ops.scanModelicaClassLayout(currentText, targetClassName || ci.name);
+            for (const c of scanned?.components ?? []) {
+              existingNames.add(c.name);
+            }
+          }
+          for (const n of createdComponentNames) existingNames.add(n);
+          if (!action.name) {
+            while (existingNames.has(uniqueName)) {
+              counter++;
+              uniqueName = baseName + counter;
+            }
+          }
+          createdComponentNames.add(uniqueName);
+          return ops.computeComponentInsert
+            ? ops.computeComponentInsert(ci, action.className, uniqueName, action.x, action.y, currentText)
+            : [];
+        }
+        case "deleteComponents":
+          return ops.computeComponentsDelete ? ops.computeComponentsDelete(currentText, ci, action.names) : [];
+        case "updateName":
+          return ops.computeNameEdit ? ops.computeNameEdit(ci, action.oldName, action.newName, currentText) : [];
+        case "updateDescription":
+          return ops.computeDescriptionEdit
+            ? ops.computeDescriptionEdit(currentText, ci, action.name, action.description)
+            : [];
+        case "updateParameter":
+          return ops.computeParameterEdit
+            ? ops.computeParameterEdit(ci, action.name, action.parameter, action.value, currentText)
+            : [];
+        case "updateProperty":
+          return ops.computeParameterEdit
+            ? ops.computeParameterEdit(ci, action.name, action.key, String(action.value), currentText)
+            : [];
+        default:
+          return [];
+      }
+    };
+
+    let edits = execWithInstance(currentInstance);
+    // If CST-backed edit returned empty or invalid on a syntax-errored AST, retry with scanner fallback instance
+    if (
+      (edits.length === 0 || !validatePostEditBalance(currentText, sortFn([...edits]), targetClassName, ops)) &&
+      typeof ops.buildFallbackClassInstance === "function"
+    ) {
+      const fallbackCi = attachPreservedDiagram(
+        ops.buildFallbackClassInstance(currentText, targetClassName || currentInstance?.name),
+      );
+      if (fallbackCi && fallbackCi !== currentInstance) {
+        const retryEdits = execWithInstance(fallbackCi);
+        if (
+          retryEdits.length > 0 &&
+          validatePostEditBalance(currentText, sortFn([...retryEdits]), targetClassName, ops)
+        ) {
+          edits = retryEdits;
+        }
+      }
+    }
+
+    return sortFn(edits);
+  };
+
+  // Auto-heal stranded top-level class `annotation(...);` clauses placed above components/equations
+  const healedBaseText =
+    typeof ops.healStrandedClassAnnotationsInText === "function"
+      ? ops.healStrandedClassAnnotationsInText(docText, targetClassName || initialInstance?.name)
+      : docText;
+  const didHealStrandedAnnotation = healedBaseText !== docText;
+
+  // Fast surgical path: single action and no stranded class annotation relocation needed
+  if (!didHealStrandedAnnotation && expandedActions.length === 1) {
+    const singleEdits = runSingleAction(expandedActions[0]!, docText, initialInstance);
+    if (validatePostEditBalance(docText, singleEdits, targetClassName, ops)) {
+      return {
+        seq: request.seq,
+        edits: singleEdits,
+        renderHint: needsRender,
+      };
+    }
+    return {
+      seq: request.seq,
+      edits: [],
+      renderHint: "none",
+    };
+  }
+
+  // Sequential multi-step path: apply each step onto `workingText` and refresh `workingInstance`
+  // so subsequent actions in the same batch see accurate line numbers, new `equation` sections,
+  // renamed endpoints, and healed class annotations with zero overlapping or dropped edits.
+  let workingText = healedBaseText;
+  let workingInstance =
+    didHealStrandedAnnotation && typeof ops.buildFallbackClassInstance === "function"
+      ? attachPreservedDiagram(
+          ops.buildFallbackClassInstance(workingText, targetClassName || initialInstance?.name) ?? initialInstance,
+        )
+      : initialInstance;
+
+  for (const stepAction of expandedActions) {
+    const stepEdits = runSingleAction(stepAction, workingText, workingInstance);
+    if (stepEdits.length > 0) {
+      workingText = applyTextEditsInMemory(workingText, stepEdits);
+      if (typeof ops.buildFallbackClassInstance === "function") {
+        const refreshed = ops.buildFallbackClassInstance(workingText, targetClassName || workingInstance?.name);
+        if (refreshed) {
+          workingInstance = attachPreservedDiagram(refreshed);
+        }
+      }
+    }
+  }
+
+  if (workingText === docText) {
+    return {
+      seq: request.seq,
+      edits: [],
+      renderHint: needsRender,
+    };
+  }
+
+  const finalEdits: TextEdit[] =
+    typeof ops.computeMinimalNonOverlappingEdits === "function"
+      ? ops.computeMinimalNonOverlappingEdits(docText, workingText)
+      : [
+          {
+            range: {
+              start: { line: 0, character: 0 },
+              end: {
+                line: Math.max(0, docText.split("\n").length - 1),
+                character: docText.split("\n").pop()?.length ?? 0,
+              },
+            },
+            newText: workingText,
+          },
+        ];
+
+  if (!validatePostEditBalance(docText, finalEdits, targetClassName, ops)) {
+    return {
+      seq: request.seq,
+      edits: [],
+      renderHint: "none",
+    };
+  }
+
   return {
     seq: request.seq,
-    edits: sortFn(allEdits),
+    edits: finalEdits,
     renderHint: needsRender,
   };
 }

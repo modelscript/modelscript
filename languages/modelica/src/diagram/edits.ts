@@ -11,6 +11,26 @@ import { Position, Range, TextEdit } from "vscode-languageserver";
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
 import { Cst } from "../../src-gen/bindings.js";
 import { inferModelicaDomainColor } from "./data.js";
+import {
+  buildFallbackClassInstance,
+  computeMinimalNonOverlappingEdits,
+  findBalancedClose,
+  healStrandedClassAnnotationsInText,
+  maskModelicaCommentsAndStrings,
+  offsetToPosition,
+  scanModelicaClassLayout,
+  type ScannedComponentDecl,
+  type ScannedConnectStmt,
+} from "./scanner.js";
+
+export {
+  buildFallbackClassInstance,
+  computeMinimalNonOverlappingEdits,
+  findBalancedClose,
+  healStrandedClassAnnotationsInText,
+  maskModelicaCommentsAndStrings,
+  scanModelicaClassLayout,
+};
 
 function findDescendantModification(node: any, name: string): any {
   if (!node) return null;
@@ -325,75 +345,53 @@ export function computePlacementEdits(
   return deduplicateAndSort(edits);
 }
 
-function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance, item: PlacementItem): TextEdit | null {
-  const component = Array.from(classInstance.components).find((c: any) => c.name === item.name);
-  if (!component) return null;
+function applyScannedPlacementEdit(
+  docText: string,
+  lineStarts: number[],
+  maskedText: string,
+  scannedComp: ScannedComponentDecl,
+  newPlacement: string,
+): TextEdit {
+  if (scannedComp.annotationOpenParenOffset !== null && scannedComp.annotationCloseParenOffset !== null) {
+    const annInnerStart = scannedComp.annotationOpenParenOffset + 1;
+    const annClose = scannedComp.annotationCloseParenOffset;
+    const maskedInner = maskedText.slice(annInnerStart, annClose);
+    const plMatch = maskedInner.match(/\bPlacement\s*\(/);
+    if (plMatch && plMatch.index !== undefined) {
+      const plStartOff = annInnerStart + plMatch.index;
+      const plOpenParen = plStartOff + plMatch[0].length - 1;
+      const plCloseParen = findBalancedClose(maskedText, plOpenParen, annClose);
+      if (plCloseParen !== -1) {
+        return TextEdit.replace(
+          Range.create(offsetToPosition(lineStarts, plStartOff), offsetToPosition(lineStarts, plCloseParen + 1)),
+          newPlacement,
+        );
+      }
+    }
+    const rawInner = docText.slice(annInnerStart, annClose);
+    const insertText = rawInner.trim().length > 0 ? `${newPlacement}, ` : newPlacement;
+    return TextEdit.insert(offsetToPosition(lineStarts, annInnerStart), insertText);
+  }
 
+  return TextEdit.insert(offsetToPosition(lineStarts, scannedComp.declEndOffset), ` annotation(${newPlacement})`);
+}
+
+function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance, item: PlacementItem): TextEdit | null {
   const originX = Math.round(item.x + item.width / 2);
   const originY = Math.round(-(item.y + item.height / 2));
   const w = Math.round(item.width);
   const h = Math.round(item.height);
   const r = Math.round(-(item.rotation ?? 0));
-
-  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-  const compRange = getNodeRange(abstractNode);
-  if (!compRange) return null;
-
-  let startLine = compRange.startLine;
-  let startCol = compRange.startCol;
-  let endLine = compRange.endLine;
-  let endCol = compRange.endCol;
-
-  let text = getTextInRange(lines, startLine, startCol, endLine, endCol);
-
-  // Validate extracted text contains the component name (guards against stale AST / line shifts)
-  let lineDelta = 0;
-  if (!text.includes(item.name)) {
-    const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const nameRegex = new RegExp(`\\b${escName}\\b`);
-    let foundLine = -1;
-    const minLine = Math.max(0, startLine - 15);
-    const maxLine = Math.min(lines.length - 1, startLine + 15);
-    for (let l = minLine; l <= maxLine; l++) {
-      if (nameRegex.test(lines[l]!)) {
-        foundLine = l;
-        break;
-      }
-    }
-    if (foundLine === -1) {
-      for (let l = 0; l < lines.length; l++) {
-        if (nameRegex.test(lines[l]!)) {
-          foundLine = l;
-          break;
-        }
-      }
-    }
-    if (foundLine !== -1) {
-      lineDelta = foundLine - startLine;
-      startLine += lineDelta;
-      endLine += lineDelta;
-      text = getTextInRange(lines, startLine, startCol, endLine, endCol);
-      if (!text.includes(item.name)) {
-        startLine = foundLine;
-        endLine = foundLine;
-        startCol = 0;
-        endCol = lines[foundLine]!.length;
-        text = lines[foundLine]!;
-      }
-    }
-  }
-
-  if (!text.includes(item.name)) return null;
-
-  const range = Range.create(startLine, startCol, endLine, endCol);
-
   const rotationPart = r !== 0 ? `, rotation=${r}` : "";
+
+  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === item.name);
 
   // Detect flip from explicit item override or original extent in the source text
   let flipX = false;
   let flipY = false;
 
-  const placement: any = (component as any).annotation("Placement");
+  const placement: any =
+    typeof (component as any)?.annotation === "function" ? (component as any).annotation("Placement") : null;
   const extent = placement?.transformation?.extent;
   if (extent && extent.length >= 2) {
     const [[x1, y1], [x2, y2]] = extent;
@@ -410,106 +408,107 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const newTransformationCore = `origin={${originX},${originY}}, extent={{${ex1},${ey1}},{${ex2},${ey2}}}${rotationPart}`;
   const newPlacement = `Placement(transformation(${newTransformationCore}))`;
 
-  const annotationClause = getAnnotationClauseNode(abstractNode);
-  const annRangeInfo = getNodeRange(annotationClause);
+  const abstractNode = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
+  const compRange = getNodeRange(abstractNode);
 
-  if (annRangeInfo) {
-    if (annotationClause) {
-      const placementNode = findDescendantModification(annotationClause, "Placement");
-      if (placementNode && placementNode.startPosition) {
-        const patchRes = CstUnparser.patchAndUnparse({
-          target: placementNode,
-          replaceText: newPlacement,
-        });
-        return TextEdit.replace(
-          Range.create(
-            patchRes.edit.range.start.line + lineDelta,
-            patchRes.edit.range.start.character,
-            patchRes.edit.range.end.line + lineDelta,
-            patchRes.edit.range.end.character,
-          ),
-          patchRes.edit.newText,
-        );
-      }
+  if (compRange) {
+    const { startLine, startCol, endLine, endCol } = compRange;
+    const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
+    const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const hasExactIdentifier = new RegExp(`\\b${escName}\\b`).test(maskModelicaCommentsAndStrings(text));
 
-      const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
-      if (classModNode && classModNode.children && classModNode.children.length > 0) {
-        const patchRes = CstUnparser.patchAndUnparse({
-          target: classModNode,
-          insertChildren: [
-            {
-              content: newPlacement,
-              position: "start",
-              separator: ", ",
-            },
-          ],
-        });
-        return TextEdit.replace(
-          Range.create(
-            patchRes.edit.range.start.line + lineDelta,
-            patchRes.edit.range.start.character,
-            patchRes.edit.range.end.line + lineDelta,
-            patchRes.edit.range.end.character,
-          ),
-          patchRes.edit.newText,
-        );
-      }
-    }
+    if (hasExactIdentifier) {
+      const annotationClause = getAnnotationClauseNode(abstractNode);
+      const annRangeInfo = getNodeRange(annotationClause);
 
-    const annStartLine = annRangeInfo.startLine + lineDelta;
-    const annEndLine = annRangeInfo.endLine + lineDelta;
-    const annRange = Range.create(annStartLine, annRangeInfo.startCol, annEndLine, annRangeInfo.endCol);
-    const annText = getTextInRange(lines, annStartLine, annRangeInfo.startCol, annEndLine, annRangeInfo.endCol);
+      if (annRangeInfo) {
+        if (annotationClause) {
+          const placementNode = findDescendantModification(annotationClause, "Placement");
+          if (placementNode && placementNode.startPosition) {
+            const patchRes = CstUnparser.patchAndUnparse({
+              target: placementNode,
+              replaceText: newPlacement,
+            });
+            const actualSlice = getTextInRange(
+              lines,
+              patchRes.edit.range.start.line,
+              patchRes.edit.range.start.character,
+              patchRes.edit.range.end.line,
+              patchRes.edit.range.end.character,
+            );
+            if (
+              actualSlice.trimStart().startsWith("Placement") ||
+              (typeof placementNode.text === "string" &&
+                placementNode.text.startsWith("Placement") &&
+                actualSlice.includes("lacement("))
+            ) {
+              return TextEdit.replace(
+                Range.create(
+                  patchRes.edit.range.start.line,
+                  patchRes.edit.range.start.character,
+                  patchRes.edit.range.end.line,
+                  patchRes.edit.range.end.character,
+                ),
+                patchRes.edit.newText,
+              );
+            }
+          }
 
-    const annotationMatch = annText.match(/annotation\s*\(/);
-    if (annotationMatch) {
-      const annStart = annotationMatch.index ?? 0;
-      const annContentStart = annStart + annotationMatch[0].length;
-      const annEndIndex = findMatchingParen(annText, annContentStart);
-
-      if (annEndIndex !== -1) {
-        let annotationContent = annText.substring(annContentStart, annEndIndex);
-
-        const placementMatch = annotationContent.match(/Placement\s*\(/);
-        if (placementMatch) {
-          const pStart = placementMatch.index ?? 0;
-          const pInner = pStart + placementMatch[0].length;
-          const pEnd = findMatchingParen(annotationContent, pInner);
-          if (pEnd !== -1) {
-            const before = annotationContent.substring(0, pStart);
-            const after = annotationContent.substring(pEnd + 1);
-            if (before.trimEnd().endsWith(",")) {
-              annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-            } else if (after.trimStart().startsWith(",")) {
-              annotationContent = before + after.trimStart().slice(1).trimStart();
-            } else {
-              annotationContent = before + after;
+          const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
+          if (classModNode && classModNode.children && classModNode.children.length > 0) {
+            const cmRange = getNodeRange(classModNode);
+            const cmSlice = cmRange
+              ? getTextInRange(lines, cmRange.startLine, cmRange.startCol, cmRange.endLine, cmRange.endCol)
+              : "";
+            if (cmSlice.startsWith("(") && !/\bPlacement\s*\(/.test(maskModelicaCommentsAndStrings(cmSlice))) {
+              const patchRes = CstUnparser.patchAndUnparse({
+                target: classModNode,
+                insertChildren: [
+                  {
+                    content: newPlacement,
+                    position: "start",
+                    separator: ", ",
+                  },
+                ],
+              });
+              return TextEdit.replace(
+                Range.create(
+                  patchRes.edit.range.start.line,
+                  patchRes.edit.range.start.character,
+                  patchRes.edit.range.end.line,
+                  patchRes.edit.range.end.character,
+                ),
+                patchRes.edit.newText,
+              );
             }
           }
         }
-
-        const trimmed = annotationContent.trim();
-        const separator = trimmed.length > 0 ? ", " : "";
-        const newText =
-          annText.substring(0, annContentStart) + newPlacement + separator + trimmed + annText.substring(annEndIndex);
-        if (newText !== annText) {
-          return TextEdit.replace(annRange, newText);
-        }
       }
     }
-  } else {
-    // No annotation clause exists, insert a new one before the semi-colon
-    const semiIndex = findStatementSemicolon(text);
-    if (semiIndex !== -1) {
-      const insert = ` annotation(${newPlacement})`;
-      const newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
-      return TextEdit.replace(range, newText);
-    } else {
-      const insert = ` annotation(${newPlacement})`;
-      const newText = text + insert;
-      return TextEdit.replace(range, newText);
-    }
   }
+
+  // Scanner-backed resolution: handles multi-line declarations, shifted lines, comments/strings, and syntax errors cleanly
+  const docText = lines.join("\n");
+  const layout = scanModelicaClassLayout(docText, classInstance?.name);
+  const scannedComp = layout?.components.find((c) => c.name === item.name);
+  if (layout && scannedComp) {
+    return applyScannedPlacementEdit(docText, layout.lineStarts, layout.maskedText, scannedComp, newPlacement);
+  }
+
+  // Last-resort fallback for synthetic unit-test mock nodes without full Modelica class wrapper
+  if (compRange) {
+    const { startLine, startCol, endLine, endCol } = compRange;
+    const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
+    if (!text.includes(item.name)) return null;
+    const range = Range.create(startLine, startCol, endLine, endCol);
+    const semiIndex = findStatementSemicolon(text);
+    const insert = ` annotation(${newPlacement})`;
+    if (semiIndex !== -1) {
+      return TextEdit.replace(range, text.slice(0, semiIndex) + insert + text.slice(semiIndex));
+    }
+    return TextEdit.replace(range, text + insert);
+  }
+
   return null;
 }
 
@@ -523,58 +522,42 @@ function getPlacementEditIfMissing(
   classInstance: ModelicaClassInstance,
   item: PlacementItem,
 ): TextEdit | null {
-  const component = Array.from(classInstance.components).find((c: any) => c.name === item.name);
-  if (!component) return null;
-
-  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-  const compRange = getNodeRange(abstractNode);
-  if (!compRange) return null;
-
-  // Direct CST check: check if annotation clause has Placement modification
-  const annotationClause = getAnnotationClauseNode(abstractNode);
-  if (annotationClause) {
-    const placementNode = findDescendantModification(annotationClause, "Placement");
-    if (placementNode) return null;
+  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === item.name);
+  if (component) {
+    const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+    const annotationClause = getAnnotationClauseNode(abstractNode);
+    if (annotationClause) {
+      const placementNode = findDescendantModification(annotationClause, "Placement");
+      if (placementNode) return null;
+    }
+    const compRange = getNodeRange(abstractNode);
+    if (compRange) {
+      const text = getTextInRange(lines, compRange.startLine, compRange.startCol, compRange.endLine, compRange.endCol);
+      if (/\bPlacement\s*\(/.test(maskModelicaCommentsAndStrings(text))) return null;
+    }
   }
 
-  const { startLine, startCol, endLine, endCol } = compRange;
-  const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
-
-  // If the component already has a Placement annotation, skip — no edit needed
-  if (/Placement\s*\(/.test(text)) return null;
+  const docText = lines.join("\n");
+  const layout = scanModelicaClassLayout(docText, classInstance?.name);
+  const scannedComp = layout?.components.find((c) => c.name === item.name);
+  if (
+    layout &&
+    scannedComp &&
+    scannedComp.annotationOpenParenOffset !== null &&
+    scannedComp.annotationCloseParenOffset !== null
+  ) {
+    const maskedInner = layout.maskedText.slice(
+      scannedComp.annotationOpenParenOffset + 1,
+      scannedComp.annotationCloseParenOffset,
+    );
+    if (/\bPlacement\s*\(/.test(maskedInner)) return null;
+  }
 
   // Component lacks Placement — add one using the current diagram position
   return getPlacementEdit(lines, classInstance, item);
 }
 
 // ── Add connect equation ──
-
-function computeEquationSectionInsertEdit(
-  lines: string[],
-  eqRange: { startLine: number; startCol: number; endLine: number; endCol: number },
-  connectEq: string,
-): TextEdit {
-  if (eqRange.endCol === 0 && eqRange.endLine > eqRange.startLine) {
-    return TextEdit.insert({ line: eqRange.endLine, character: 0 }, connectEq);
-  }
-
-  const expanded =
-    eqRange.endLine === eqRange.startLine && (lines[eqRange.startLine] ?? "").trim().startsWith("equation")
-      ? eqRange
-      : expandConnectStatementRange(lines, eqRange);
-
-  const lastLine = expanded.endLine;
-  const lineText = lines[lastLine] ?? "";
-  const afterEnd = lineText.substring(expanded.endCol);
-  const semiMatch = afterEnd.match(/^\s*;/);
-  const effectiveEndCol = semiMatch ? expanded.endCol + semiMatch[0].length : expanded.endCol;
-  const remaining = lineText.substring(effectiveEndCol).trim();
-
-  if (remaining === "" || remaining.startsWith("//")) {
-    return TextEdit.insert({ line: lastLine + 1, character: 0 }, connectEq);
-  }
-  return TextEdit.insert({ line: lastLine, character: effectiveEndCol }, `\n${connectEq.trimEnd()}`);
-}
 
 function findInsertLineBeforeClassAnnotation(lines: string[], endRow: number, modelStartLine: number): number {
   let insertLine = endRow;
@@ -615,126 +598,70 @@ export function computeConnectInsert(
       : ` annotation(Line(color=${colorStr}))`;
   const connectEq = `  connect(${source}, ${target})${annotation};\n`;
 
-  const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;
+  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
   const classRange = getNodeRange(astNode);
-  const modelStartLine = classRange ? classRange.startLine : 0;
-  const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
+  const modelStartLine = classRange ? classRange.startLine : undefined;
 
-  if (astNode) {
-    const classSpecifier =
-      astNode.classOrInheritanceModification?.classSpecifier ||
-      astNode.classSpecifier ||
-      (Cst.ClassDefinition.is(astNode) ? Cst.ClassDefinition.classSpecifier(astNode) : null) ||
-      astNode.children?.find?.((c: any) => Cst.ClassSpecifier.is(c) || Cst.LongClassSpecifier.is(c));
+  const layout = scanModelicaClassLayout(docText, classInstance?.name, modelStartLine);
+  if (layout) {
+    // 1. Check for an existing regular (non-initial) `equation` section
+    const eqSections = layout.sections.filter((s) => s.kind === "equation");
+    const targetEqSec = eqSections.length > 0 ? eqSections[eqSections.length - 1]! : null;
 
-    const sections: any[] = classSpecifier?.sections ?? [];
-
-    let lastEquationSection: any = null;
-    let baseEquationSection: any = null;
-
-    const isInitialSection = (sec: any): boolean => {
-      if (sec.initial === true || sec.type === "initial_equation_section") return true;
-      const startRow = sec.startPosition?.row;
-      if (typeof startRow === "number" && lines[startRow]) {
-        return lines[startRow]!.trim().startsWith("initial");
+    if (targetEqSec) {
+      const bodyMasked = layout.maskedText.slice(targetEqSec.headerEndOffset, targetEqSec.endOffset);
+      let lastNonWsRel = bodyMasked.length - 1;
+      while (lastNonWsRel >= 0 && bodyMasked[lastNonWsRel]! <= " ") {
+        lastNonWsRel--;
       }
-      return false;
-    };
 
-    for (const section of sections) {
-      if (section.equations !== undefined && !isInitialSection(section)) {
-        lastEquationSection = section;
-        if (!baseEquationSection) {
-          baseEquationSection = section;
+      if (lastNonWsRel < 0) {
+        // Empty `equation` section
+        const endBoundPos = offsetToPosition(layout.lineStarts, targetEqSec.endOffset);
+        if (targetEqSec.startLine < endBoundPos.line) {
+          return [TextEdit.insert({ line: targetEqSec.startLine + 1, character: 0 }, connectEq)];
         }
+        return [TextEdit.insert(endBoundPos, `\n${connectEq}`)];
       }
+
+      const lastCodeEndOffset = targetEqSec.headerEndOffset + lastNonWsRel + 1;
+      const lastCodePos = offsetToPosition(layout.lineStarts, lastCodeEndOffset);
+      const restOfLine = layout.maskedText.slice(lastCodeEndOffset).split("\n", 1)[0]!.trim();
+
+      if (restOfLine === "") {
+        return [TextEdit.insert({ line: lastCodePos.line + 1, character: 0 }, connectEq)];
+      }
+      return [TextEdit.insert(lastCodePos, `\n${connectEq.trimEnd()}`)];
     }
 
-    let targetSection = lastEquationSection || baseEquationSection;
-
-    // If not found in classSpecifier.sections, search direct non-nested children of astNode
-    if (!targetSection) {
-      const searchQueue: any[] = [...(astNode.children || [])];
-      while (searchQueue.length > 0) {
-        const child = searchQueue.shift();
-        if (!child) continue;
-        // Do NOT recurse into nested class definitions
-        if (Cst.ClassDefinition.is(child) || child.type === "class_definition" || child.type === "ClassDefinition") {
-          continue;
-        }
-
-        if (
-          (Cst.EquationSection.is(child) || child.type === "equation_section" || child.type === "EquationSection") &&
-          !isInitialSection(child)
-        ) {
-          targetSection = child;
-          break;
-        }
-        if (
-          Cst.ClassSpecifier.is(child) ||
-          Cst.LongClassSpecifier.is(child) ||
-          child.type === "composition" ||
-          child.type === "ClassSpecifier"
-        ) {
-          searchQueue.push(...(child.children || []));
-        }
+    // 2. No regular `equation` section exists: insert BEFORE `external`, non-stranded class `annotation(...)`, or `end <ClassName>;`
+    let boundaryOffset = layout.endKeywordOffset;
+    for (const sec of layout.sections) {
+      if (sec.kind === "external" && sec.keywordOffset < boundaryOffset) {
+        boundaryOffset = sec.keywordOffset;
+      }
+    }
+    for (const ca of layout.classAnnotations) {
+      if (!ca.isStrandedBeforeBodyElements && ca.keywordOffset < boundaryOffset) {
+        boundaryOffset = ca.keywordOffset;
       }
     }
 
-    if (targetSection) {
-      const targetRange = getNodeRange(targetSection);
-      if (targetRange) {
-        return [computeEquationSectionInsertEdit(lines, targetRange, connectEq)];
-      }
+    const boundPos = offsetToPosition(layout.lineStarts, boundaryOffset);
+    const beforeOnLine = (lines[boundPos.line] ?? "").slice(0, boundPos.character).trim();
+    if (beforeOnLine === "" && boundPos.line > layout.startLine) {
+      return [TextEdit.insert({ line: boundPos.line, character: 0 }, `equation\n${connectEq}`)];
     }
-
-    // No equation section exists. Insert before class-level annotation or 'end'.
-    const classEndPos = classSpecifier?.endPosition ?? astNode.endPosition;
-    if (classEndPos) {
-      const insertLine = findInsertLineBeforeClassAnnotation(lines, classEndPos.row, modelStartLine);
-      return [TextEdit.insert({ line: insertLine, character: 0 }, `equation\n${connectEq}`)];
-    }
+    return [TextEdit.insert(boundPos, `\nequation\n${connectEq}`)];
   }
 
-  // Fallback to basic keyword scan if CST is completely unavailable (e.g., highly malformed text)
-  let equationLine = -1;
-  for (let i = modelStartLine; i <= modelEndLine; i++) {
-    if (lines[i]!.trim() === "equation" || lines[i]!.trim().startsWith("equation ")) {
-      equationLine = i;
-      break;
-    }
-  }
-
-  if (equationLine !== -1) {
-    const keywords = ["public", "protected", "initial equation", "algorithm", "annotation", "end"];
-    let insertLine = -1;
-    let parenBalance = 0;
-    for (let i = equationLine + 1; i <= modelEndLine; i++) {
-      const line = lines[i]!.trim();
-      if (
-        parenBalance === 0 &&
-        keywords.some((kw) => line === kw || line.startsWith(`${kw} `) || line.startsWith(`${kw}(`))
-      ) {
-        insertLine = i;
-        break;
-      }
-      for (let k = 0; k < line.length; k++) {
-        if (line[k] === "(" || line[k] === "{") parenBalance++;
-        else if (line[k] === ")" || line[k] === "}") {
-          if (parenBalance > 0) parenBalance--;
-        }
-      }
-    }
-    if (insertLine !== -1) {
-      return [TextEdit.insert({ line: insertLine, character: 0 }, connectEq)];
-    }
-  }
-
-  for (let i = modelEndLine; i >= modelStartLine; i--) {
+  // Fallback when document has no parseable class header at all
+  const fallbackStart = classRange ? classRange.startLine : 0;
+  const fallbackEnd = classRange ? classRange.endLine : lines.length - 1;
+  for (let i = fallbackEnd; i >= fallbackStart; i--) {
     if (lines[i]!.trim().startsWith("end")) {
-      const insertLine = findInsertLineBeforeClassAnnotation(lines, i, modelStartLine);
-      const insertText = equationLine === -1 ? `equation\n${connectEq}` : connectEq;
-      return [TextEdit.insert({ line: insertLine, character: 0 }, insertText)];
+      const insertLine = findInsertLineBeforeClassAnnotation(lines, i, fallbackStart);
+      return [TextEdit.insert({ line: insertLine, character: 0 }, `equation\n${connectEq}`)];
     }
   }
 
@@ -765,6 +692,33 @@ function getConnectEndpoints(ce: any): { source: string; target: string } {
   return { source, target };
 }
 
+function findBestConnectMatch<T>(
+  items: T[],
+  getEndpointsFn: (item: T) => { source: string; target: string },
+  source: string,
+  target: string,
+  used?: Set<T>,
+): T | undefined {
+  const exact = items.find((item) => {
+    if (used?.has(item)) return false;
+    const { source: c1, target: c2 } = getEndpointsFn(item);
+    return c1 === source && c2 === target;
+  });
+  if (exact) return exact;
+  return items.find((item) => {
+    if (used?.has(item)) return false;
+    const { source: c1, target: c2 } = getEndpointsFn(item);
+    return c1 === target && c2 === source;
+  });
+}
+
+function verifyConnectSliceMatches(slice: string, source: string, target: string): boolean {
+  const masked = maskModelicaCommentsAndStrings(slice);
+  if (!/\bconnect\s*\(/.test(masked)) return false;
+  const norm = slice.replace(/\s*\.\s*/g, ".");
+  return norm.includes(source) && norm.includes(target);
+}
+
 export function computeConnectRemove(
   docText: string,
   classInstance: ModelicaClassInstance,
@@ -773,17 +727,38 @@ export function computeConnectRemove(
 ): TextEdit[] {
   const lines = docText.split("\n");
 
-  const connectEq: any = Array.from(classInstance.connectEquations).find((ce: any) => {
-    const { source: c1, target: c2 } = getConnectEndpoints(ce);
-    return (c1 === source && c2 === target) || (c1 === target && c2 === source);
-  });
+  const connectEqs = Array.from(classInstance?.connectEquations ?? []);
+  const connectEq: any = findBestConnectMatch(connectEqs, getConnectEndpoints, source, target);
 
-  const eqNode = getConnectEquationStatementNode(connectEq);
-  const rawRange = getNodeRange(eqNode);
-  if (!rawRange) return [];
-  const eqRange = expandConnectStatementRange(lines, rawRange);
+  if (connectEq) {
+    const eqNode = getConnectEquationStatementNode(connectEq);
+    const rawRange = getNodeRange(eqNode);
+    if (rawRange) {
+      const eqRange = expandConnectStatementRange(lines, rawRange);
+      const slice = getTextInRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol);
+      if (verifyConnectSliceMatches(slice, source, target)) {
+        return [makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol)];
+      }
+    }
+  }
 
-  return [makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol)];
+  // Scanner fallback (handles stale CST offsets or syntax errors)
+  const layout = scanModelicaClassLayout(docText, classInstance?.name);
+  if (layout) {
+    const scannedConn = findBestConnectMatch(
+      layout.connects,
+      (c) => ({ source: c.source, target: c.target }),
+      source,
+      target,
+    );
+    if (scannedConn) {
+      const sPos = offsetToPosition(layout.lineStarts, scannedConn.startOffset);
+      const ePos = offsetToPosition(layout.lineStarts, scannedConn.statementEndOffset);
+      return [makeDeleteRange(lines, sPos.line, sPos.character, ePos.line, ePos.character)];
+    }
+  }
+
+  return [];
 }
 
 // ── Remove component(s) and their connect equations ──
@@ -797,9 +772,58 @@ export function computeComponentsDelete(
   const edits: TextEdit[] = [];
   const nameSet = new Set(names);
 
-  // Remove connect equations involving these components
+  const layout = scanModelicaClassLayout(docText, classInstance?.name);
+  if (layout) {
+    for (const conn of layout.connects) {
+      const involvesComponent = [...nameSet].some(
+        (name) =>
+          conn.source === name ||
+          conn.source.startsWith(`${name}.`) ||
+          conn.target === name ||
+          conn.target.startsWith(`${name}.`),
+      );
+      if (involvesComponent) {
+        const sPos = offsetToPosition(layout.lineStarts, conn.startOffset);
+        const ePos = offsetToPosition(layout.lineStarts, conn.statementEndOffset);
+        edits.push(makeDeleteRange(lines, sPos.line, sPos.character, ePos.line, ePos.character));
+      }
+    }
 
-  Array.from(classInstance.connectEquations).forEach((ce: any) => {
+    for (const name of names) {
+      const comp = layout.components.find((c) => c.name === name);
+      if (!comp) continue;
+      if (comp.isSoleDeclarator) {
+        const sPos = offsetToPosition(layout.lineStarts, comp.clauseStartOffset);
+        const ePos = offsetToPosition(layout.lineStarts, comp.clauseEndOffset);
+        edits.push(makeDeleteRange(lines, sPos.line, sPos.character, ePos.line, ePos.character));
+      } else {
+        // Multi-declarator clause (e.g. `Resistor R1, R2;`): remove only this declarator + adjacent comma!
+        let delStart = comp.identStartOffset;
+        let delEnd = comp.declEndOffset;
+        const after = layout.maskedText.slice(delEnd, comp.clauseEndOffset);
+        const trailingComma = after.match(/^\s*,\s*/);
+        if (trailingComma) {
+          delEnd += trailingComma[0].length;
+        } else {
+          const before = layout.maskedText.slice(comp.clauseStartOffset, delStart);
+          const leadingComma = before.match(/\s*,\s*$/);
+          if (leadingComma) {
+            delStart -= leadingComma[0].length;
+          }
+        }
+        const sPos = offsetToPosition(layout.lineStarts, delStart);
+        const ePos = offsetToPosition(layout.lineStarts, delEnd);
+        edits.push(TextEdit.del(Range.create(sPos, ePos)));
+      }
+    }
+
+    if (edits.length > 0) {
+      return deduplicateAndSort(edits);
+    }
+  }
+
+  // Fallback for synthetic mock ASTs without full Modelica class wrapper
+  Array.from(classInstance?.connectEquations ?? []).forEach((ce: any) => {
     const { source: c1, target: c2 } = getConnectEndpoints(ce);
     const involvesComponent = [...nameSet].some(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
@@ -812,9 +836,8 @@ export function computeComponentsDelete(
     }
   });
 
-  // Remove component declarations
   for (const name of names) {
-    const component = Array.from(classInstance.components).find((c: any) => c.name === name);
+    const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === name);
     if (!component) continue;
 
     const compNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
@@ -830,6 +853,42 @@ export function computeComponentsDelete(
 
 // ── Update edge points (Line annotation on connect equations) ──
 
+function applyScannedConnectPointEdit(
+  docText: string,
+  lineStarts: number[],
+  maskedText: string,
+  scannedConn: ScannedConnectStmt,
+  newPointsCore: string,
+  colorCore: string,
+  defaultLineAnnotation: string,
+): TextEdit {
+  if (scannedConn.annotationOpenParenOffset !== null && scannedConn.annotationCloseParenOffset !== null) {
+    const annInnerStart = scannedConn.annotationOpenParenOffset + 1;
+    const annClose = scannedConn.annotationCloseParenOffset;
+    const maskedInner = maskedText.slice(annInnerStart, annClose);
+    const lnMatch = maskedInner.match(/\bLine\s*\(/);
+    if (lnMatch && lnMatch.index !== undefined) {
+      const lnStartOff = annInnerStart + lnMatch.index;
+      const lnOpenParen = lnStartOff + lnMatch[0].length - 1;
+      const lnCloseParen = findBalancedClose(maskedText, lnOpenParen, annClose);
+      if (lnCloseParen !== -1) {
+        const existingLine = docText.slice(lnStartOff, lnCloseParen + 1);
+        const updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
+        return TextEdit.replace(
+          Range.create(offsetToPosition(lineStarts, lnStartOff), offsetToPosition(lineStarts, lnCloseParen + 1)),
+          updatedLine,
+        );
+      }
+    }
+    const rawInner = docText.slice(annInnerStart, annClose);
+    const insertText = rawInner.trim().length > 0 ? `, ${defaultLineAnnotation}` : defaultLineAnnotation;
+    return TextEdit.insert(offsetToPosition(lineStarts, annClose), insertText);
+  }
+
+  const insertOffset = scannedConn.closeConnectParenOffset + 1;
+  return TextEdit.insert(offsetToPosition(lineStarts, insertOffset), ` annotation(${defaultLineAnnotation})`);
+}
+
 export function computeEdgePointEdits(
   lines: string[],
   classInstance: ModelicaClassInstance,
@@ -837,216 +896,271 @@ export function computeEdgePointEdits(
 ): TextEdit[] {
   const edits: TextEdit[] = [];
   const seen = new Set<string>();
+  const usedCstConnects = new Set<any>();
+  const usedScannedConnects = new Set<ScannedConnectStmt>();
+
+  const docText = lines.join("\n");
+  let cachedLayout: ReturnType<typeof scanModelicaClassLayout> | undefined;
+  const getLayout = () => {
+    if (cachedLayout === undefined) {
+      cachedLayout = scanModelicaClassLayout(docText, classInstance?.name);
+    }
+    return cachedLayout;
+  };
+
+  const connectEqs = Array.from(classInstance?.connectEquations ?? []);
 
   for (const edge of edges) {
-    const connectEq: any = Array.from(classInstance.connectEquations).find((ce: any) => {
-      const { source: c1, target: c2 } = getConnectEndpoints(ce);
-      return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
-    });
-
-    const eqNode = getConnectEquationStatementNode(connectEq);
-    const rawRange = getNodeRange(eqNode);
-    if (!rawRange) continue;
-    const eqRange = expandConnectStatementRange(lines, rawRange);
-
-    const { startLine, startCol, endLine, endCol } = eqRange;
-
-    const key = `${startLine}:${startCol}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const range = Range.create(startLine, startCol, endLine, endCol);
-    const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
-
-    // Validate it's actually a connect equation using CST / semantic info first
-    const isConnect =
-      Cst.ConnectEquation.is(eqNode) ||
-      eqNode.type === "connect_equation" ||
-      (eqNode.type === "some_equation" &&
-        (eqNode.children?.some((c: any) => Cst.ConnectEquation.is(c) || c.type === "connect_equation") ||
-          eqNode.connectEquation != null)) ||
-      Boolean(connectEq?.lhs && connectEq?.rhs) ||
-      Boolean(connectEq?.componentReference1 && connectEq?.componentReference2);
-
-    if (!isConnect && !text.match(/^\s*connect\s*\(/)) continue;
-
     const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
     const newPointsCore = `points=${pointsStr}`;
     const inferredColor = inferModelicaDomainColor(edge.source, edge.target, classInstance);
     const colorCore = `color={${inferredColor[0]}, ${inferredColor[1]}, ${inferredColor[2]}}`;
     const defaultLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
 
-    let newText = text;
+    const connectEq: any = findBestConnectMatch(
+      connectEqs,
+      getConnectEndpoints,
+      edge.source,
+      edge.target,
+      usedCstConnects,
+    );
+    if (connectEq) {
+      usedCstConnects.add(connectEq);
+    }
 
-    const annotationClause = getAnnotationClauseNode(eqNode);
-    const annRangeInfo = getNodeRange(annotationClause);
+    const eqNode = getConnectEquationStatementNode(connectEq);
+    const rawRange = getNodeRange(eqNode);
+    let handledViaCst = false;
 
-    if (annRangeInfo) {
-      if (annotationClause) {
-        const lineNode = findDescendantModification(annotationClause, "Line");
-        if (lineNode && lineNode.startPosition) {
-          const lineNodeRange = getNodeRange(lineNode);
-          const existingLineText =
-            lineNode.text ||
-            (lineNodeRange
-              ? getTextInRange(
-                  lines,
-                  lineNodeRange.startLine,
-                  lineNodeRange.startCol,
-                  lineNodeRange.endLine,
-                  lineNodeRange.endCol,
-                )
-              : null);
-          const updatedLineAnnotation = updateLineAnnotationText(existingLineText, newPointsCore, colorCore);
-          const patchRes = CstUnparser.patchAndUnparse({
-            target: lineNode,
-            replaceText: updatedLineAnnotation,
-          });
-          edits.push(
-            TextEdit.replace(
-              Range.create(
-                patchRes.edit.range.start.line,
-                patchRes.edit.range.start.character,
-                patchRes.edit.range.end.line,
-                patchRes.edit.range.end.character,
-              ),
-              patchRes.edit.newText,
-            ),
-          );
-          continue;
-        }
+    if (rawRange) {
+      const eqRange = expandConnectStatementRange(lines, rawRange);
+      const { startLine, startCol, endLine, endCol } = eqRange;
+      const key = `${startLine}:${startCol}`;
+      const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
 
-        const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
-        if (classModNode && classModNode.children && classModNode.children.length > 0) {
-          const patchRes = CstUnparser.patchAndUnparse({
-            target: classModNode,
-            insertChildren: [
-              {
-                content: defaultLineAnnotation,
-                position: "end",
-                separator: ", ",
-              },
-            ],
-          });
-          edits.push(
-            TextEdit.replace(
-              Range.create(
-                patchRes.edit.range.start.line,
-                patchRes.edit.range.start.character,
-                patchRes.edit.range.end.line,
-                patchRes.edit.range.end.character,
-              ),
-              patchRes.edit.newText,
-            ),
-          );
-          continue;
-        }
-      }
+      if (!seen.has(key) && verifyConnectSliceMatches(text, edge.source, edge.target)) {
+        seen.add(key);
+        const range = Range.create(startLine, startCol, endLine, endCol);
+        let newText = text;
 
-      const annRange = Range.create(
-        annRangeInfo.startLine,
-        annRangeInfo.startCol,
-        annRangeInfo.endLine,
-        annRangeInfo.endCol,
-      );
-      const annText = getTextInRange(
-        lines,
-        annRangeInfo.startLine,
-        annRangeInfo.startCol,
-        annRangeInfo.endLine,
-        annRangeInfo.endCol,
-      );
+        const annotationClause = getAnnotationClauseNode(eqNode);
+        const annRangeInfo = getNodeRange(annotationClause);
 
-      const annotationMatch = annText.match(/annotation\s*\(/);
-      if (annotationMatch) {
-        const annStartIndex = annotationMatch.index ?? 0;
-        const annContentStart = annStartIndex + annotationMatch[0].length;
-        const annEndIndex = findMatchingParen(annText, annContentStart);
-        if (annEndIndex !== -1) {
-          let annotationContent = annText.substring(annContentStart, annEndIndex);
-          let updatedLine = defaultLineAnnotation;
+        if (annRangeInfo) {
+          if (annotationClause) {
+            const lineNode = findDescendantModification(annotationClause, "Line");
+            if (lineNode && lineNode.startPosition) {
+              const lineNodeRange = getNodeRange(lineNode);
+              const sliceInDoc = lineNodeRange
+                ? getTextInRange(
+                    lines,
+                    lineNodeRange.startLine,
+                    lineNodeRange.startCol,
+                    lineNodeRange.endLine,
+                    lineNodeRange.endCol,
+                  )
+                : "";
+              if (sliceInDoc.trimStart().startsWith("Line")) {
+                const existingLineText = sliceInDoc || lineNode.text || null;
+                const updatedLineAnnotation = updateLineAnnotationText(existingLineText, newPointsCore, colorCore);
+                const patchRes = CstUnparser.patchAndUnparse({
+                  target: lineNode,
+                  replaceText: updatedLineAnnotation,
+                });
+                edits.push(
+                  TextEdit.replace(
+                    Range.create(
+                      patchRes.edit.range.start.line,
+                      patchRes.edit.range.start.character,
+                      patchRes.edit.range.end.line,
+                      patchRes.edit.range.end.character,
+                    ),
+                    patchRes.edit.newText,
+                  ),
+                );
+                handledViaCst = true;
+              }
+            }
 
-          const lineMatch = annotationContent.match(/Line\s*\(/);
-          if (lineMatch) {
-            const lineStart = lineMatch.index ?? 0;
-            const lineInner = lineStart + lineMatch[0].length;
-            const lineEnd = findMatchingParen(annotationContent, lineInner);
-            if (lineEnd !== -1) {
-              const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
-              updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
-              const before = annotationContent.substring(0, lineStart);
-              const after = annotationContent.substring(lineEnd + 1);
-              if (before.trimEnd().endsWith(",")) {
-                annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-              } else if (after.trimStart().startsWith(",")) {
-                annotationContent = before + after.trimStart().slice(1).trimStart();
-              } else {
-                annotationContent = before + after;
+            if (!handledViaCst) {
+              const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
+              if (classModNode && classModNode.children && classModNode.children.length > 0) {
+                const cmRange = getNodeRange(classModNode);
+                const cmSlice = cmRange
+                  ? getTextInRange(lines, cmRange.startLine, cmRange.startCol, cmRange.endLine, cmRange.endCol)
+                  : "";
+                if (cmSlice.startsWith("(") && !/\bLine\s*\(/.test(maskModelicaCommentsAndStrings(cmSlice))) {
+                  const patchRes = CstUnparser.patchAndUnparse({
+                    target: classModNode,
+                    insertChildren: [
+                      {
+                        content: defaultLineAnnotation,
+                        position: "end",
+                        separator: ", ",
+                      },
+                    ],
+                  });
+                  edits.push(
+                    TextEdit.replace(
+                      Range.create(
+                        patchRes.edit.range.start.line,
+                        patchRes.edit.range.start.character,
+                        patchRes.edit.range.end.line,
+                        patchRes.edit.range.end.character,
+                      ),
+                      patchRes.edit.newText,
+                    ),
+                  );
+                  handledViaCst = true;
+                }
               }
             }
           }
 
-          const trimmed = annotationContent.trim();
-          const separator = trimmed.length > 0 ? ", " : "";
-          newText =
-            annText.substring(0, annContentStart) + trimmed + separator + updatedLine + annText.substring(annEndIndex);
-          if (newText !== annText) {
-            edits.push(TextEdit.replace(annRange, newText));
-            continue;
-          }
-        }
-      }
-    } else if (/annotation\s*\(/.test(text)) {
-      // The CST node was `connect_equation` without `.parent`, so `annotationClause` was not a child,
-      // but `expandConnectStatementRange` captured the sibling `annotation(...)` in `text`.
-      const annotationMatch = text.match(/annotation\s*\(/);
-      if (annotationMatch) {
-        const annStartIndex = annotationMatch.index ?? 0;
-        const annContentStart = annStartIndex + annotationMatch[0].length;
-        const annEndIndex = findMatchingParen(text, annContentStart);
-        if (annEndIndex !== -1) {
-          let annotationContent = text.substring(annContentStart, annEndIndex);
-          let updatedLine = defaultLineAnnotation;
+          if (!handledViaCst) {
+            const annRange = Range.create(
+              annRangeInfo.startLine,
+              annRangeInfo.startCol,
+              annRangeInfo.endLine,
+              annRangeInfo.endCol,
+            );
+            const annText = getTextInRange(
+              lines,
+              annRangeInfo.startLine,
+              annRangeInfo.startCol,
+              annRangeInfo.endLine,
+              annRangeInfo.endCol,
+            );
+            const annMasked = maskModelicaCommentsAndStrings(annText);
+            const annotationMatch = annMasked.match(/\bannotation\s*\(/);
+            if (annotationMatch && annotationMatch.index !== undefined) {
+              const annStartIndex = annotationMatch.index;
+              const annContentStart = annStartIndex + annotationMatch[0].length;
+              const annEndIndex = findMatchingParen(annText, annContentStart);
+              if (annEndIndex !== -1) {
+                let annotationContent = annText.substring(annContentStart, annEndIndex);
+                const contentMasked = maskModelicaCommentsAndStrings(annotationContent);
+                let updatedLine = defaultLineAnnotation;
 
-          const lineMatch = annotationContent.match(/Line\s*\(/);
-          if (lineMatch) {
-            const lineStart = lineMatch.index ?? 0;
-            const lineInner = lineStart + lineMatch[0].length;
-            const lineEnd = findMatchingParen(annotationContent, lineInner);
-            if (lineEnd !== -1) {
-              const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
-              updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
-              const before = annotationContent.substring(0, lineStart);
-              const after = annotationContent.substring(lineEnd + 1);
-              if (before.trimEnd().endsWith(",")) {
-                annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-              } else if (after.trimStart().startsWith(",")) {
-                annotationContent = before + after.trimStart().slice(1).trimStart();
-              } else {
-                annotationContent = before + after;
+                const lineMatch = contentMasked.match(/\bLine\s*\(/);
+                if (lineMatch && lineMatch.index !== undefined) {
+                  const lineStart = lineMatch.index;
+                  const lineInner = lineStart + lineMatch[0].length;
+                  const lineEnd = findMatchingParen(annotationContent, lineInner);
+                  if (lineEnd !== -1) {
+                    const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
+                    updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
+                    const before = annotationContent.substring(0, lineStart);
+                    const after = annotationContent.substring(lineEnd + 1);
+                    if (before.trimEnd().endsWith(",")) {
+                      annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+                    } else if (after.trimStart().startsWith(",")) {
+                      annotationContent = before + after.trimStart().slice(1).trimStart();
+                    } else {
+                      annotationContent = before + after;
+                    }
+                  }
+                }
+
+                const trimmed = annotationContent.trim();
+                const separator = trimmed.length > 0 ? ", " : "";
+                newText =
+                  annText.substring(0, annContentStart) +
+                  trimmed +
+                  separator +
+                  updatedLine +
+                  annText.substring(annEndIndex);
+                if (newText !== annText) {
+                  edits.push(TextEdit.replace(annRange, newText));
+                }
+                handledViaCst = true;
               }
             }
           }
+        } else if (/\bannotation\s*\(/.test(maskModelicaCommentsAndStrings(text))) {
+          const textMasked = maskModelicaCommentsAndStrings(text);
+          const annotationMatch = textMasked.match(/\bannotation\s*\(/);
+          if (annotationMatch && annotationMatch.index !== undefined) {
+            const annStartIndex = annotationMatch.index;
+            const annContentStart = annStartIndex + annotationMatch[0].length;
+            const annEndIndex = findMatchingParen(text, annContentStart);
+            if (annEndIndex !== -1) {
+              let annotationContent = text.substring(annContentStart, annEndIndex);
+              const contentMasked = maskModelicaCommentsAndStrings(annotationContent);
+              let updatedLine = defaultLineAnnotation;
 
-          const trimmed = annotationContent.trim();
-          const separator = trimmed.length > 0 ? ", " : "";
-          newText =
-            text.substring(0, annContentStart) + trimmed + separator + updatedLine + text.substring(annEndIndex);
+              const lineMatch = contentMasked.match(/\bLine\s*\(/);
+              if (lineMatch && lineMatch.index !== undefined) {
+                const lineStart = lineMatch.index;
+                const lineInner = lineStart + lineMatch[0].length;
+                const lineEnd = findMatchingParen(annotationContent, lineInner);
+                if (lineEnd !== -1) {
+                  const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
+                  updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
+                  const before = annotationContent.substring(0, lineStart);
+                  const after = annotationContent.substring(lineEnd + 1);
+                  if (before.trimEnd().endsWith(",")) {
+                    annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+                  } else if (after.trimStart().startsWith(",")) {
+                    annotationContent = before + after.trimStart().slice(1).trimStart();
+                  } else {
+                    annotationContent = before + after;
+                  }
+                }
+              }
+
+              const trimmed = annotationContent.trim();
+              const separator = trimmed.length > 0 ? ", " : "";
+              newText =
+                text.substring(0, annContentStart) + trimmed + separator + updatedLine + text.substring(annEndIndex);
+              if (newText !== text) {
+                edits.push(TextEdit.replace(range, newText));
+              }
+              handledViaCst = true;
+            }
+          }
+        } else {
+          const semiIndex = findStatementSemicolon(text);
+          const insert = ` annotation(${defaultLineAnnotation})`;
+          newText = semiIndex !== -1 ? text.slice(0, semiIndex) + insert + text.slice(semiIndex) : text + insert;
+          if (newText !== text) {
+            edits.push(TextEdit.replace(range, newText));
+          }
+          handledViaCst = true;
         }
-      }
-    } else {
-      // No annotation: insert before semicolon (or append if semicolon is outside the CST node)
-      const semiIndex = text.lastIndexOf(";");
-      const insert = ` annotation(${defaultLineAnnotation})`;
-      if (semiIndex !== -1) {
-        newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
-      } else {
-        newText = text + insert;
       }
     }
 
-    if (newText !== text) {
-      edits.push(TextEdit.replace(range, newText));
+    if (!handledViaCst) {
+      const layout = getLayout();
+      if (layout) {
+        const scannedConn = findBestConnectMatch(
+          layout.connects,
+          (c) => ({ source: c.source, target: c.target }),
+          edge.source,
+          edge.target,
+          usedScannedConnects,
+        );
+        if (scannedConn) {
+          usedScannedConnects.add(scannedConn);
+          const pos = offsetToPosition(layout.lineStarts, scannedConn.startOffset);
+          const key = `${pos.line}:${pos.character}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            edits.push(
+              applyScannedConnectPointEdit(
+                docText,
+                layout.lineStarts,
+                layout.maskedText,
+                scannedConn,
+                newPointsCore,
+                colorCore,
+                defaultLineAnnotation,
+              ),
+            );
+          }
+        }
+      }
     }
   }
 
@@ -1238,17 +1352,21 @@ export function applyEditsToText(text: string, edits: TextEdit[]): string {
 }
 
 export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
-  // Sort by position (ascending)
-  edits.sort((a, b) => {
+  const indexed = edits.map((edit, idx) => ({ edit, idx }));
+  // Sort by position (ascending) with original-index tie-breaker for stability
+  indexed.sort((aWrap, bWrap) => {
+    const a = aWrap.edit;
+    const b = bWrap.edit;
     if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
     if (a.range.start.character !== b.range.start.character) return a.range.start.character - b.range.start.character;
     if (a.range.end.line !== b.range.end.line) return a.range.end.line - b.range.end.line;
-    return a.range.end.character - b.range.end.character;
+    if (a.range.end.character !== b.range.end.character) return a.range.end.character - b.range.end.character;
+    return aWrap.idx - bWrap.idx;
   });
 
   // Remove overlapping edits (comparing against last accepted edit)
   const accepted: TextEdit[] = [];
-  for (const edit of edits) {
+  for (const { edit } of indexed) {
     if (accepted.length === 0) {
       accepted.push(edit);
       continue;
@@ -1289,8 +1407,59 @@ export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
 
 // ── Component Property edits (Name, Description, Parameters) ──
 
-export function computeNameEdit(classInstance: ModelicaClassInstance, oldName: string, newName: string): TextEdit[] {
-  const component = Array.from(classInstance.components).find((c: any) => c.name === oldName);
+export function computeNameEdit(
+  classInstance: ModelicaClassInstance,
+  oldName: string,
+  newName: string,
+  docText?: string,
+): TextEdit[] {
+  if (!oldName || !newName || oldName === newName) return [];
+
+  const effectiveDocText =
+    docText ?? ((classInstance as any)?.cstNode?.tree as { sourceCode?: string } | undefined)?.sourceCode ?? undefined;
+
+  if (effectiveDocText) {
+    const layout = scanModelicaClassLayout(effectiveDocText, classInstance?.name);
+    const scannedComp = layout?.components.find((c) => c.name === oldName);
+    if (layout && scannedComp) {
+      const edits: TextEdit[] = [
+        TextEdit.replace(
+          Range.create(
+            offsetToPosition(layout.lineStarts, scannedComp.identStartOffset),
+            offsetToPosition(layout.lineStarts, scannedComp.identEndOffset),
+          ),
+          newName,
+        ),
+      ];
+
+      // Also update all connect(oldName.port, ...) / connect(oldName, ...) references in the class!
+      const replaceEndpointPrefix = (refStart: number, refEnd: number) => {
+        const rawRef = effectiveDocText.slice(refStart, refEnd);
+        const escOld = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const m = rawRef.match(new RegExp(`^(${escOld})(?=\\s*(?:\\.|\\[|$))`));
+        if (m) {
+          edits.push(
+            TextEdit.replace(
+              Range.create(
+                offsetToPosition(layout.lineStarts, refStart),
+                offsetToPosition(layout.lineStarts, refStart + m[1]!.length),
+              ),
+              newName,
+            ),
+          );
+        }
+      };
+
+      for (const conn of layout.connects) {
+        replaceEndpointPrefix(conn.lhsStartOffset, conn.lhsEndOffset);
+        replaceEndpointPrefix(conn.rhsStartOffset, conn.rhsEndOffset);
+      }
+
+      return deduplicateAndSort(edits);
+    }
+  }
+
+  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === oldName);
   if (!component) return [];
 
   const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
@@ -1339,55 +1508,102 @@ export function computeDescriptionEdit(
   componentName: string,
   newDescription: string,
 ): TextEdit[] {
-  const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
-  if (!component) return [];
-
-  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-  const descriptionNode = findDescriptionStringNode(abstractNode);
   const escapedDescription = newDescription.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === componentName);
 
-  const descRange = getNodeRange(descriptionNode);
-  if (descRange) {
-    if (newDescription === "") {
+  if (component) {
+    const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+    const descriptionNode = findDescriptionStringNode(abstractNode);
+    const descRange = getNodeRange(descriptionNode);
+
+    if (descRange) {
       const lines = docText.split("\n");
-      const descStartLine = descRange.startLine;
-      const descStartCol = descRange.startCol;
-      const descEndLine = descRange.endLine;
-      const descEndCol = descRange.endCol;
-      const lineContent = lines[descStartLine]!;
-      let col = descStartCol - 1;
-      while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
-        col--;
+      const curSlice = getTextInRange(
+        lines,
+        descRange.startLine,
+        descRange.startCol,
+        descRange.endLine,
+        descRange.endCol,
+      );
+      if (curSlice.startsWith('"')) {
+        if (newDescription === "") {
+          const lineContent = lines[descRange.startLine]!;
+          let col = descRange.startCol - 1;
+          while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
+            col--;
+          }
+          const removeStartCol = col + 1;
+          return [
+            TextEdit.replace(
+              Range.create(descRange.startLine, removeStartCol, descRange.endLine, descRange.endCol),
+              "",
+            ),
+          ];
+        }
+        return [
+          TextEdit.replace(
+            Range.create(descRange.startLine, descRange.startCol, descRange.endLine, descRange.endCol),
+            `"${escapedDescription}"`,
+          ),
+        ];
       }
-      const removeStartCol = col + 1;
-      return [TextEdit.replace(Range.create(descStartLine, removeStartCol, descEndLine, descEndCol), "")];
     }
-    return [
-      TextEdit.replace(
-        Range.create(descRange.startLine, descRange.startCol, descRange.endLine, descRange.endCol),
-        `"${escapedDescription}"`, // no leading space when replacing
-      ),
-    ];
-  } else {
+  }
+
+  // Scanner-backed resolution (handles newly inserted description, multi-line modifiers, or syntax errors)
+  const layout = scanModelicaClassLayout(docText, classInstance?.name);
+  const scannedComp = layout?.components.find((c) => c.name === componentName);
+  if (layout && scannedComp) {
+    if (scannedComp.descriptionStartOffset !== null && scannedComp.descriptionEndOffset !== null) {
+      if (newDescription === "") {
+        let delStart = scannedComp.descriptionStartOffset;
+        while (
+          delStart > scannedComp.identEndOffset &&
+          (docText[delStart - 1] === " " || docText[delStart - 1] === "\t")
+        ) {
+          delStart--;
+        }
+        return [
+          TextEdit.del(
+            Range.create(
+              offsetToPosition(layout.lineStarts, delStart),
+              offsetToPosition(layout.lineStarts, scannedComp.descriptionEndOffset),
+            ),
+          ),
+        ];
+      }
+      return [
+        TextEdit.replace(
+          Range.create(
+            offsetToPosition(layout.lineStarts, scannedComp.descriptionStartOffset),
+            offsetToPosition(layout.lineStarts, scannedComp.descriptionEndOffset),
+          ),
+          `"${escapedDescription}"`,
+        ),
+      ];
+    }
     if (newDescription === "") return [];
+    const insertOff = scannedComp.modEndOffset ?? scannedComp.subscriptsEndOffset ?? scannedComp.identEndOffset;
+    return [TextEdit.insert(offsetToPosition(layout.lineStarts, insertOff), ` "${escapedDescription}"`)];
+  }
+
+  // Fallback for synthetic mock AST nodes without class wrapper
+  if (component && newDescription !== "") {
+    const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
     const declNode = getDeclarationNode(abstractNode);
     const modificationNode = getModificationNode(declNode ?? abstractNode);
     const subscriptsNode = getSubscriptsNode(declNode ?? abstractNode);
     const identNode = getDeclarationIdentNode(declNode ?? abstractNode);
-
-    let pos: { row: number; column: number } | null = null;
     const modRange = getNodeRange(modificationNode);
     const subRange = getNodeRange(subscriptsNode);
     const idRange = getNodeRange(identNode);
-
-    if (modRange) {
-      pos = { row: modRange.endLine, column: modRange.endCol };
-    } else if (subRange) {
-      pos = { row: subRange.endLine, column: subRange.endCol };
-    } else if (idRange) {
-      pos = { row: idRange.endLine, column: idRange.endCol };
-    }
-
+    const pos = modRange
+      ? { row: modRange.endLine, column: modRange.endCol }
+      : subRange
+        ? { row: subRange.endLine, column: subRange.endCol }
+        : idRange
+          ? { row: idRange.endLine, column: idRange.endCol }
+          : null;
     if (pos) {
       return [TextEdit.insert({ line: pos.row, character: pos.column }, ` "${escapedDescription}"`)];
     }
@@ -1466,19 +1682,168 @@ function getAllArgumentNodes(classModOrArgList: any): any[] {
   return results;
 }
 
-export function computeParameterEdit(
+function splitTopLevelModificationSegments(
+  docText: string,
+  maskedText: string,
+  startOffset: number,
+  endOffset: number,
+): Array<{ rawStart: number; rawEnd: number; trimmedStart: number; trimmedEnd: number }> {
+  const segments: Array<{ rawStart: number; rawEnd: number; trimmedStart: number; trimmedEnd: number }> = [];
+  let segStart = startOffset;
+  let depth = 0;
+
+  const pushSeg = (s: number, e: number) => {
+    let ts = s;
+    let te = e;
+    while (ts < te && docText[ts]! <= " ") ts++;
+    while (te > ts && docText[te - 1]! <= " ") te--;
+    if (ts < te) {
+      segments.push({ rawStart: s, rawEnd: e, trimmedStart: ts, trimmedEnd: te });
+    }
+  };
+
+  for (let i = startOffset; i < endOffset; i++) {
+    const ch = maskedText[i];
+    if (ch === "(" || ch === "{" || ch === "[") depth++;
+    else if (ch === ")" || ch === "}" || ch === "]") {
+      if (depth > 0) depth--;
+    } else if (ch === "," && depth === 0) {
+      pushSeg(segStart, i);
+      segStart = i + 1;
+    }
+  }
+  pushSeg(segStart, endOffset);
+  return segments;
+}
+
+function computeScannedParameterEdit(
+  docText: string,
   classInstance: ModelicaClassInstance,
   componentName: string,
   parameterName: string,
   newValue: string,
 ): TextEdit[] {
-  const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
-  if (!component) return [];
+  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
+  const classRange = getNodeRange(astNode);
+  const layout = scanModelicaClassLayout(docText, classInstance?.name, classRange?.startLine);
+  if (!layout) return [];
+
+  const scannedComp = layout.components.find((c) => c.name === componentName);
+  if (!scannedComp) return [];
+
+  const shouldRemove = newValue === "";
+  const { lineStarts, maskedText } = layout;
+
+  if (scannedComp.modOpenParenOffset !== null && scannedComp.modCloseParenOffset !== null) {
+    const innerStart = scannedComp.modOpenParenOffset + 1;
+    const innerEnd = scannedComp.modCloseParenOffset;
+    const segments = splitTopLevelModificationSegments(docText, maskedText, innerStart, innerEnd);
+    const escParam = parameterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const argHeadRegex = new RegExp(`^(?:(?:each|final|redeclare|replaceable)\\s+)*${escParam}\\s*(?:=|\\(|$)`);
+
+    const argIndex = segments.findIndex((seg) => argHeadRegex.test(maskedText.slice(seg.trimmedStart, seg.trimmedEnd)));
+
+    if (argIndex !== -1) {
+      const seg = segments[argIndex]!;
+      if (shouldRemove) {
+        if (segments.length <= 1) {
+          const startPos = offsetToPosition(lineStarts, scannedComp.modOpenParenOffset);
+          const endPos = offsetToPosition(lineStarts, scannedComp.modEndOffset ?? scannedComp.modCloseParenOffset + 1);
+          return [TextEdit.replace(Range.create(startPos, endPos), "")];
+        }
+        if (argIndex < segments.length - 1) {
+          const nextSeg = segments[argIndex + 1]!;
+          const startPos = offsetToPosition(lineStarts, seg.trimmedStart);
+          const endPos = offsetToPosition(lineStarts, nextSeg.trimmedStart);
+          return [TextEdit.replace(Range.create(startPos, endPos), "")];
+        }
+        const prevSeg = segments[argIndex - 1]!;
+        const startPos = offsetToPosition(lineStarts, prevSeg.trimmedEnd);
+        const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
+        return [TextEdit.replace(Range.create(startPos, endPos), "")];
+      }
+
+      // Find top-level `=` inside this argument segment
+      let depth = 0;
+      let eqOffset = -1;
+      for (let i = seg.trimmedStart; i < seg.trimmedEnd; i++) {
+        const ch = maskedText[i];
+        if (ch === "(" || ch === "{" || ch === "[") depth++;
+        else if (ch === ")" || ch === "}" || ch === "]") {
+          if (depth > 0) depth--;
+        } else if (ch === "=" && depth === 0 && maskedText[i + 1] !== "=" && maskedText[i - 1] !== ":") {
+          eqOffset = i;
+          break;
+        }
+      }
+
+      if (eqOffset !== -1) {
+        const afterEq = docText.slice(eqOffset + 1, seg.trimmedEnd);
+        const hasSpace = /^\s+/.test(afterEq);
+        const startPos = offsetToPosition(lineStarts, eqOffset);
+        const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
+        return [TextEdit.replace(Range.create(startPos, endPos), `${hasSpace ? "= " : "="}${newValue}`)];
+      }
+
+      const startPos = offsetToPosition(lineStarts, seg.trimmedStart);
+      const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
+      return [TextEdit.replace(Range.create(startPos, endPos), `${parameterName} = ${newValue}`)];
+    }
+
+    if (shouldRemove) return [];
+    const closePos = offsetToPosition(lineStarts, innerEnd);
+    const hasArgs = segments.length > 0;
+    return [TextEdit.insert(closePos, `${hasArgs ? ", " : ""}${parameterName} = ${newValue}`)];
+  }
+
+  if (shouldRemove) return [];
+  const insertOffset = scannedComp.subscriptsEndOffset ?? scannedComp.identEndOffset;
+  const insertPos = offsetToPosition(lineStarts, insertOffset);
+  return [TextEdit.insert(insertPos, `(${parameterName}=${newValue})`)];
+}
+
+export function computeParameterEdit(
+  classInstance: ModelicaClassInstance,
+  componentName: string,
+  parameterName: string,
+  newValue: string,
+  docText?: string,
+): TextEdit[] {
+  const docLines = docText !== undefined ? docText.split("\n") : null;
+  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === componentName);
+  if (!component) {
+    return docText !== undefined
+      ? computeScannedParameterEdit(docText, classInstance, componentName, parameterName, newValue)
+      : [];
+  }
 
   const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-  if (!abstractNode) return [];
+  if (!abstractNode) {
+    return docText !== undefined
+      ? computeScannedParameterEdit(docText, classInstance, componentName, parameterName, newValue)
+      : [];
+  }
 
   const declNode = getDeclarationNode(abstractNode) ?? abstractNode;
+
+  // When docText is provided, verify the component CST node still aligns with docText
+  if (docLines) {
+    const declRange = getNodeRange(declNode);
+    if (declRange) {
+      const actualSlice = getTextInRange(
+        docLines,
+        declRange.startLine,
+        declRange.startCol,
+        declRange.endLine,
+        declRange.endCol,
+      );
+      const escComp = componentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!new RegExp(`\\b${escComp}\\b`).test(actualSlice)) {
+        return computeScannedParameterEdit(docText!, classInstance, componentName, parameterName, newValue);
+      }
+    }
+  }
+
   const shouldRemove = newValue === "";
 
   // 1. Check for real CST structure (nodes with children / startPosition)
@@ -1693,6 +2058,10 @@ export function computeParameterEdit(
     return [TextEdit.insert({ line: pos.row, character: pos.column }, `(${parameterName}=${newValue})`)];
   }
 
+  if (docText !== undefined) {
+    return computeScannedParameterEdit(docText, classInstance, componentName, parameterName, newValue);
+  }
+
   return [];
 }
 
@@ -1706,7 +2075,7 @@ export function computeComponentInsert(
   y: number,
   docText: string,
 ): TextEdit[] {
-  const diagram: any = classInstance.annotation("Diagram");
+  const diagram: any = typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
   const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
   const extent = diagram?.coordinateSystem?.extent;
 
@@ -1725,82 +2094,59 @@ export function computeComponentInsert(
   const componentDecl = `  ${className} ${componentName} ${annotation};\n`;
 
   const lines = docText.split("\n");
-
-  const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;
+  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
   const classRange = getNodeRange(astNode);
   const modelStartLine = classRange ? classRange.startLine : 0;
-  const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
 
-  let insertLine = -1;
+  // Canonical Modelica composition section ordering via comment/string-masked balanced scanner:
+  // Always insert public component declarations strictly BEFORE:
+  //   protected / initial equation / equation / initial algorithm / algorithm / external /
+  //   trailing class-level annotation(...) / end <ClassName>;
+  const layout = scanModelicaClassLayout(docText, classInstance?.name, classRange?.startLine);
+  if (layout) {
+    let boundaryOffset = layout.endKeywordOffset;
 
-  if (astNode) {
-    const classSpecifier =
-      astNode.classSpecifier ??
-      astNode.children?.find((c: any) => c.type === "class_specifier" || c.type === "composition") ??
-      astNode;
-    const composition =
-      classSpecifier.composition ??
-      classSpecifier.children?.find((c: any) => c.type === "composition") ??
-      classSpecifier;
-    const sections = composition.children || composition.sections || [];
-
-    for (const section of sections) {
-      const type = section.type || "";
-      if (
-        Cst.EquationSection.is(section) ||
-        type === "equation_section" ||
-        type === "EquationSection" ||
-        Cst.AlgorithmSection.is(section) ||
-        type === "algorithm_section" ||
-        type === "AlgorithmSection" ||
-        type.includes("protected") ||
-        section.isProtected === true
-      ) {
-        const r = getNodeRange(section);
-        if (r && r.startLine >= modelStartLine) {
-          insertLine = r.startLine;
-          break;
-        }
+    for (const sec of layout.sections) {
+      if (sec.kind !== "public" && sec.keywordOffset < boundaryOffset) {
+        boundaryOffset = sec.keywordOffset;
       }
     }
+
+    for (const ca of layout.classAnnotations) {
+      if (!ca.isStrandedBeforeBodyElements && ca.keywordOffset < boundaryOffset) {
+        boundaryOffset = ca.keywordOffset;
+      }
+    }
+
+    const boundPos = offsetToPosition(layout.lineStarts, boundaryOffset);
+    const boundLineText = lines[boundPos.line] ?? "";
+    const prefixBeforeBound = boundLineText.slice(0, boundPos.character).trim();
+
+    if (prefixBeforeBound.length > 0) {
+      // Single-line header+boundary (e.g. `model M end M;` or `model M annotation(...); end M;`)
+      return [TextEdit.insert(boundPos, "\n" + componentDecl)];
+    }
+
+    // Pure zero-length insert at column 0 of the boundary line so multiple component inserts
+    // in the same batch never overwrite or cancel each other out.
+    return [TextEdit.insert(Position.create(boundPos.line, 0), componentDecl)];
   }
 
-  if (insertLine === -1) {
-    const keywords = ["protected", "initial equation", "initial algorithm", "equation", "algorithm", "end"];
-    for (let i = modelStartLine; i <= modelEndLine; i++) {
-      const line = lines[i]!.trim();
-      if (keywords.some((kw) => line.startsWith(kw))) {
-        insertLine = i;
-        break;
-      }
-    }
-  }
-
-  if (insertLine !== -1) {
-    if (insertLine > modelStartLine && lines[insertLine - 1]!.trim() === "") {
-      // Replace the empty line before the section
-      return [TextEdit.replace(Range.create(insertLine - 1, 0, insertLine, 0), componentDecl)];
-    } else {
-      return [TextEdit.insert({ line: insertLine, character: 0 }, componentDecl)];
-    }
-  } else {
-    // Fallback: find the last "end" within this model's range
-    const modelLines = lines.slice(modelStartLine, modelEndLine + 1);
-    const modelText = modelLines.join("\n");
-    const lastEndIndex = modelText.lastIndexOf("end");
-    if (lastEndIndex !== -1) {
-      const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
-      const endLineNumber = modelStartLine + linesBeforeEnd;
-      const endLineContent = lines[endLineNumber]!;
-      const endCol = endLineContent.lastIndexOf("end");
-      const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
-
-      if (beforeEnd !== "") {
-        // Single-line model: insert at the "end" keyword column with newlines
-        return [TextEdit.insert({ line: endLineNumber, character: endCol }, "\n" + componentDecl)];
-      } else {
-        return [TextEdit.insert({ line: endLineNumber, character: 0 }, componentDecl)];
-      }
+  // Fallback when source lacks a balanced `model ... end ...` wrapper
+  const modelEndLine = classRange ? Math.min(lines.length - 1, classRange.endLine) : lines.length - 1;
+  const boundaryKeywords = [
+    "protected",
+    "initial equation",
+    "initial algorithm",
+    "equation",
+    "algorithm",
+    "external",
+    "end",
+  ];
+  for (let i = modelStartLine + 1; i <= modelEndLine; i++) {
+    const trimmed = lines[i]!.trim();
+    if (boundaryKeywords.some((kw) => trimmed === kw || trimmed.startsWith(`${kw} `) || trimmed.startsWith(`${kw};`))) {
+      return [TextEdit.insert(Position.create(i, 0), componentDecl)];
     }
   }
 
@@ -1826,10 +2172,8 @@ export function computeCoordinateSystemEdits(
   options: CoordinateSystemEditOptions,
 ): TextEdit[] {
   const lines = docText.split("\n");
-  const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;
+  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
   const classRange = getNodeRange(astNode);
-  const modelStartLine = classRange ? classRange.startLine : 0;
-  const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
 
   // Build the new coordinateSystem(...) arguments string
   const formatCoordSys = (existing?: {
@@ -1865,102 +2209,69 @@ export function computeCoordinateSystemEdits(
   };
 
   const existingDiagram: any =
-    typeof classInstance.annotation === "function" ? classInstance.annotation("Diagram") : null;
+    typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
   const existingCoordSys = existingDiagram?.coordinateSystem;
   const newCoordSysCall = formatCoordSys(existingCoordSys);
 
-  const modelLines = lines.slice(modelStartLine, modelEndLine + 1);
-  const modelText = modelLines.join("\n");
+  const layout = scanModelicaClassLayout(docText, classInstance?.name, classRange?.startLine);
+  if (layout) {
+    const { lineStarts, maskedText, classAnnotations } = layout;
 
-  const lastEndIdx = modelText.lastIndexOf("end");
-  const searchArea = lastEndIdx !== -1 ? modelText.substring(0, lastEndIdx) : modelText;
+    // 1. Inspect ONLY standalone class-level annotation(...) clauses (never component or connect annotations,
+    //    and never comments/strings) for an existing `Diagram(...)` modification.
+    for (let idx = classAnnotations.length - 1; idx >= 0; idx--) {
+      const ca = classAnnotations[idx]!;
+      const annInnerStart = ca.openParenOffset + 1;
+      const annClose = ca.closeParenOffset;
+      const maskedAnnInner = maskedText.slice(annInnerStart, annClose);
+      const diagramMatch = maskedAnnInner.match(/\bDiagram\s*\(/);
+      if (!diagramMatch || diagramMatch.index === undefined) continue;
 
-  // 1. Look for existing Diagram(...)
-  const diagramRegex = /Diagram\s*\(/;
-  const diagramMatch = searchArea.match(diagramRegex);
+      const diagOpenOffset = annInnerStart + diagramMatch.index + diagramMatch[0].length - 1;
+      const diagCloseOffset = findBalancedClose(maskedText, diagOpenOffset, annClose);
+      if (diagCloseOffset === -1) continue;
 
-  if (diagramMatch && diagramMatch.index !== undefined) {
-    const diagStart = diagramMatch.index;
-    const diagOpenParen = diagStart + diagramMatch[0].length - 1;
-    const diagEnd = findMatchingParen(searchArea, diagOpenParen);
-    if (diagEnd !== -1) {
-      const diagContent = searchArea.substring(diagOpenParen + 1, diagEnd);
-      const coordSysRegex = /coordinateSystem\s*\(/;
-      const csMatch = diagContent.match(coordSysRegex);
+      const diagInnerStart = diagOpenOffset + 1;
+      const maskedDiagInner = maskedText.slice(diagInnerStart, diagCloseOffset);
+      const csMatch = maskedDiagInner.match(/\bcoordinateSystem\s*\(/);
       if (csMatch && csMatch.index !== undefined) {
-        const csStart = csMatch.index;
-        const csOpenParen = csStart + csMatch[0].length - 1;
-        const csEnd = findMatchingParen(diagContent, csOpenParen);
-        if (csEnd !== -1) {
-          // Replace coordinateSystem(...) call
-          const absCsStart = diagOpenParen + 1 + csStart;
-          const absCsEnd = diagOpenParen + 1 + csEnd;
-
-          const beforeText = modelText.substring(0, absCsStart);
-          const startLineOffset = beforeText.split("\n").length - 1;
-          const startCol = beforeText.length - beforeText.lastIndexOf("\n") - 1;
-
-          const toEndText = modelText.substring(0, absCsEnd + 1);
-          const endLineOffset = toEndText.split("\n").length - 1;
-          const endCol = toEndText.length - toEndText.lastIndexOf("\n") - 1;
-
-          return [
-            TextEdit.replace(
-              Range.create(modelStartLine + startLineOffset, startCol, modelStartLine + endLineOffset, endCol),
-              newCoordSysCall,
-            ),
-          ];
+        const csStartOffset = diagInnerStart + csMatch.index;
+        const csOpenOffset = csStartOffset + csMatch[0].length - 1;
+        const csCloseOffset = findBalancedClose(maskedText, csOpenOffset, diagCloseOffset);
+        if (csCloseOffset !== -1) {
+          const startPos = offsetToPosition(lineStarts, csStartOffset);
+          const endPos = offsetToPosition(lineStarts, csCloseOffset + 1);
+          return [TextEdit.replace(Range.create(startPos, endPos), newCoordSysCall)];
         }
-      } else {
-        // Diagram exists without coordinateSystem. Insert it as first element.
-        const absInsertPos = diagOpenParen + 1;
-        const beforeText = modelText.substring(0, absInsertPos);
-        const startLineOffset = beforeText.split("\n").length - 1;
-        const startCol = beforeText.length - beforeText.lastIndexOf("\n") - 1;
-
-        const prefix = diagContent.trim().length > 0 ? `${newCoordSysCall}, ` : newCoordSysCall;
-        return [TextEdit.insert(Position.create(modelStartLine + startLineOffset, startCol), prefix)];
       }
+
+      // Diagram(...) exists without coordinateSystem(...) — insert as first argument
+      const insertPos = offsetToPosition(lineStarts, diagInnerStart);
+      const hasDiagArgs = docText.slice(diagInnerStart, diagCloseOffset).trim().length > 0;
+      const prefix = hasDiagArgs ? `${newCoordSysCall}, ` : newCoordSysCall;
+      return [TextEdit.insert(insertPos, prefix)];
     }
-  }
 
-  // 2. Check if there is an existing class-level annotation clause without Diagram(...)
-  const annMatches = [...searchArea.matchAll(/annotation\s*\(/g)];
-  if (annMatches.length > 0) {
-    const lastAnn = annMatches[annMatches.length - 1]!;
-    const annIdx = lastAnn.index!;
-    const annOpenParen = annIdx + lastAnn[0].length - 1;
-    const annEnd = findMatchingParen(searchArea, annOpenParen);
-    if (annEnd !== -1) {
-      const afterAnn = searchArea.substring(annEnd + 1).trim();
-      if (afterAnn === "" || afterAnn === ";") {
-        const annContent = searchArea.substring(annOpenParen + 1, annEnd);
-        const absInsertPos = annOpenParen + 1;
-        const beforeText = modelText.substring(0, absInsertPos);
-        const startLineOffset = beforeText.split("\n").length - 1;
-        const startCol = beforeText.length - beforeText.lastIndexOf("\n") - 1;
-
-        const toInsert = annContent.trim().length > 0 ? `Diagram(${newCoordSysCall}), ` : `Diagram(${newCoordSysCall})`;
-        return [TextEdit.insert(Position.create(modelStartLine + startLineOffset, startCol), toInsert)];
-      }
+    // 2. If a standalone class-level annotation(...) exists without Diagram(...), insert Diagram(...) into it
+    if (classAnnotations.length > 0) {
+      const targetAnn =
+        [...classAnnotations].reverse().find((ca) => !ca.isStrandedBeforeBodyElements) ??
+        classAnnotations[classAnnotations.length - 1]!;
+      const annInnerStart = targetAnn.openParenOffset + 1;
+      const hasAnnArgs = docText.slice(annInnerStart, targetAnn.closeParenOffset).trim().length > 0;
+      const insertPos = offsetToPosition(lineStarts, annInnerStart);
+      const toInsert = hasAnnArgs ? `Diagram(${newCoordSysCall}), ` : `Diagram(${newCoordSysCall})`;
+      return [TextEdit.insert(insertPos, toInsert)];
     }
-  }
 
-  // 3. Fallback: Insert a new class-level annotation before 'end <ClassName>;'
-  if (lastEndIdx !== -1) {
-    const beforeEnd = modelText.substring(0, lastEndIdx);
-    const linesBefore = beforeEnd.split("\n").length - 1;
-    const endLineNumber = modelStartLine + linesBefore;
-    const endLineContent = lines[endLineNumber]!;
-    const endCol = endLineContent.lastIndexOf("end");
-    const indentation = "  ";
-    const newClause = `${indentation}annotation(Diagram(${newCoordSysCall}));\n`;
-
-    if (endLineContent.substring(0, endCol).trim() === "") {
-      return [TextEdit.insert(Position.create(endLineNumber, 0), newClause)];
-    } else {
-      return [TextEdit.insert(Position.create(endLineNumber, endCol), `\n${newClause}`)];
+    // 3. No class-level annotation exists yet — insert right before `end <ClassName>;`
+    const endPos = offsetToPosition(lineStarts, layout.endKeywordOffset);
+    const endLineContent = lines[endPos.line] ?? "";
+    const newClause = `  annotation(Diagram(${newCoordSysCall}));\n`;
+    if (endLineContent.slice(0, endPos.character).trim() === "") {
+      return [TextEdit.insert(Position.create(endPos.line, 0), newClause)];
     }
+    return [TextEdit.insert(endPos, `\n${newClause}`)];
   }
 
   return [];

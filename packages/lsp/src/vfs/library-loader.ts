@@ -1349,10 +1349,15 @@ export async function ensureLibraryVersionMounted(
   dep: { name: string; version: string },
   ctx: LoaderContext,
   serverDistBase?: string,
+  explicitlyInstalled = false,
 ): Promise<boolean> {
   const normName = normalizeLibraryName(dep.name);
   const current = mountedLibraryMetadata.get(normName);
   if (current && current.version === dep.version) {
+    if (explicitlyInstalled && !current.explicitlyInstalled) {
+      mountedLibraryMetadata.set(normName, { ...current, explicitlyInstalled: true });
+      ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+    }
     return false;
   }
 
@@ -1387,8 +1392,53 @@ export async function ensureLibraryVersionMounted(
         ctx.logger.warn(`[deps] Registry load failed for SysML, falling back to local SysML: ${regErr}`);
         await loadSysML2StandardLibrary(effectiveDistBase, ctx);
       } else {
-        throw regErr;
+        const curated = findCuratedPackageFallback(dep.name);
+        if (curated) {
+          const targetVer = dep.version || curated.version;
+          let polyglotOk = false;
+          if (effectiveDistBase) {
+            try {
+              polyglotOk = await mountPolyglotLibrary(effectiveDistBase, ctx, {
+                packageName: curated.packageName,
+                version: targetVer,
+                filename: curated.filename,
+                language: curated.language,
+              });
+            } catch {
+              polyglotOk = false;
+            }
+          }
+          if (!polyglotOk) {
+            ctx.logger.log(
+              `[deps] Mounting curated fallback bundle for ${curated.packageName}@${targetVer} (${Object.keys(curated.files).length} files)`,
+            );
+            if (curated.icons) {
+              for (const [cls, svg] of Object.entries(curated.icons)) {
+                iconCache.set(`${curated.packageName}@${targetVer}:${cls}`, svg);
+                iconCache.set(cls, svg);
+              }
+            }
+            await loadRegistryPackage(
+              {
+                name: curated.packageName,
+                version: targetVer,
+                files: curated.files,
+                modelscript: { languages: [curated.language] },
+              },
+              ctx,
+            );
+          }
+        } else {
+          throw regErr;
+        }
       }
+    }
+  }
+
+  if (explicitlyInstalled) {
+    const mounted = mountedLibraryMetadata.get(normName);
+    if (mounted) {
+      mountedLibraryMetadata.set(normName, { ...mounted, explicitlyInstalled: true });
     }
   }
   return true;
@@ -1481,6 +1531,11 @@ export async function importLibraryZip(
     },
     ctx,
   );
+  const normFinal = normalizeLibraryName(finalName);
+  const mounted = mountedLibraryMetadata.get(normFinal);
+  if (mounted) {
+    mountedLibraryMetadata.set(normFinal, { ...mounted, explicitlyInstalled: true });
+  }
 
   return { name: finalName, version: detectedVersion, fileCount: Object.keys(files).length };
 }

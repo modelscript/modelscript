@@ -312,7 +312,9 @@ export interface MorselVisualizerPaneProps {
   hideCenterFloatingToolbar?: boolean | undefined;
   showAnalysisView?: boolean | undefined;
   setShowAnalysisView?: ((v: boolean) => void) | undefined;
+  documentUri?: string | undefined;
   loadingProgress?: number | undefined;
+  onLoadStarterExample?: ((code: string, title?: string) => void) | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -384,7 +386,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   hideCenterFloatingToolbar = false,
   showAnalysisView: controlledShowAnalysisView,
   setShowAnalysisView: controlledSetShowAnalysisView,
+  documentUri,
   loadingProgress,
+  onLoadStarterExample,
 }) => {
   const { hasCapability } = useCapabilities();
   const _isCaeComputeEnabled = useFeatureFlag("cae_cloud_solver");
@@ -2279,7 +2283,17 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         type="button"
                         onClick={() => {
                           setIsEmptyStateDismissed(true);
-                          if (editorRef.current) {
+                          if (onLoadStarterExample) {
+                            onLoadStarterExample(ex.code, ex.title);
+                          } else if (editorRef.current) {
+                            editorRef.current.setValue(ex.code);
+                          }
+                        }}
+                        onDoubleClick={() => {
+                          setIsEmptyStateDismissed(true);
+                          if (onLoadStarterExample) {
+                            onLoadStarterExample(ex.code, ex.title);
+                          } else if (editorRef.current) {
                             editorRef.current.setValue(ex.code);
                           }
                         }}
@@ -2714,6 +2728,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             dialect={dialect}
             code={editorValue}
             colorMode={colorMode}
+            isVisible={showAnalysisView}
+            documentUri={documentUri}
+            activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
             onRevealLine={onRevealLine}
             onCodeChange={(nextCode) => {
               const targetEditor = editorRef.current ?? editor;

@@ -1,27 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable react-refresh/only-export-components */
 
 import { parseUrdf } from "@modelscript/urdf";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BltVisualizer } from "./BltVisualizer.js";
 import { analyzeModelBlt } from "./blt-analysis.js";
 import {
-  DaeAdvancedInspector,
-  PowerGridInspector,
-  MultibodyInspector,
-  ThermoFluidInspector,
-  CaeContinuumInspector,
-  RequirementsOntologyInspector,
-  BiochemInspector,
   AutomationControlInspector,
+  BiochemInspector,
+  CaeContinuumInspector,
+  DaeAdvancedInspector,
+  MultibodyInspector,
   OpenChannelHydraulicsInspector,
+  PowerGridInspector,
+  RequirementsOntologyInspector,
+  ThermoFluidInspector,
   TransitCockpitInspector,
 } from "./inspectors/index.js";
+import { indexLocalSymbolLines, scanModelicaStructure } from "./modelica-scanner.js";
 const ReqifViewer = React.lazy(() => import("../../artifacts/ReqifViewer").then((m) => ({ default: m.ReqifViewer })));
 
 export interface PolyglotDomainPanelProps {
   dialect: string;
   code: string;
   colorMode: "dark" | "light";
+  isVisible?: boolean | undefined;
+  documentUri?: string | undefined;
+  activeClassName?: string | undefined;
   documentSymbols?: any[] | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
   onCodeChange?: ((newCode: string) => void) | undefined;
@@ -1481,12 +1486,15 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
 
 function analyzeGeneralModel(
   dialect: string,
-  _code: string,
+  code: string,
   lines: string[],
   documentSymbols?: any[],
+  activeClassName?: string,
 ): DomainAnalysisResult {
   const componentRows: Record<string, any>[] = [];
   const equationRows: Record<string, any>[] = [];
+  const isModelicaFamily = ["modelica", "modelscript", "mo", "msx", ""].includes(dialect);
+  const scan = scanModelicaStructure(code, activeClassName);
 
   if (documentSymbols && documentSymbols.length > 0) {
     const flattenSymbols = (syms: any[]): any[] => {
@@ -1525,7 +1533,6 @@ function analyzeGeneralModel(
         rawDetail.replace(/^(?:parameter|constant|discrete|input|output)\s+/i, "").trim() ||
         sym.containerName ||
         "Variable";
-      // Skip top-level module/class definitions without detail
       if ((sym.kind === 5 || sym.kind === 1 || sym.kind === 2) && !rawDetail) {
         continue;
       }
@@ -1540,58 +1547,73 @@ function analyzeGeneralModel(
   }
 
   if (componentRows.length === 0) {
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i]!.trim();
-      if (!trimmed || trimmed.startsWith("//")) continue;
-      const paramOrVar =
-        /^(?:(parameter|constant|discrete|input|output)\s+)?(Real|Integer|Boolean|String|[A-Z][A-Za-z0-9_.]+)\s+([A-Za-z0-9_]+)(?:\(([^)]*)\))?(?:\s*=\s*([^;]+))?/.exec(
+    if (scan.declarations.length > 0 || isModelicaFamily) {
+      for (const decl of scan.declarations) {
+        const qualifier =
+          decl.variability !== "continuous"
+            ? decl.variability
+            : decl.isStream
+              ? "stream"
+              : decl.isFlow
+                ? "flow"
+                : "component";
+        const dimSuffix = decl.arrayDims.length > 0 ? `[${decl.arrayDims.join(",")}]` : "";
+        componentRows.push({
+          name: `${decl.name}${dimSuffix}`,
+          variability: qualifier,
+          typeName: decl.typeName,
+          valueOrMod:
+            decl.bindingExpr ?? (decl.modifiersText ? decl.modifiersText : decl.unit ? `unit="${decl.unit}"` : "—"),
+          line: decl.line,
+        });
+      }
+    } else {
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i]!.trim();
+        if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+        const kv = /^(?:let|const|var|param|set)\s+([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_]\w*))?(?:\s*:?=\s*([^;]+))?/.exec(
           trimmed,
         );
-      if (
-        paramOrVar &&
-        ![
-          "model",
-          "class",
-          "package",
-          "block",
-          "connector",
-          "record",
-          "function",
-          "end",
-          "equation",
-          "algorithm",
-          "connect",
-        ].includes(paramOrVar[2]!)
-      ) {
-        componentRows.push({
-          name: paramOrVar[3]!,
-          variability: paramOrVar[1] || "component",
-          typeName: paramOrVar[2]!,
-          valueOrMod: paramOrVar[5]?.trim() || paramOrVar[4]?.trim() || "—",
-          line: i + 1,
-        });
-        continue;
+        if (kv) {
+          componentRows.push({
+            name: kv[1]!,
+            variability: "parameter",
+            typeName: kv[2] || "Scalar",
+            valueOrMod: kv[3]?.trim() || "—",
+            line: i + 1,
+          });
+        }
       }
     }
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i]!.trim();
-    if (!trimmed || trimmed.startsWith("//")) continue;
-    if (
-      trimmed.startsWith("connect(") ||
-      trimmed.startsWith("der(") ||
-      (trimmed.includes("=") &&
-        !trimmed.startsWith("annotation") &&
-        !trimmed.startsWith("parameter") &&
-        !trimmed.startsWith("constant"))
-    ) {
-      if (componentRows.some((r) => r.line === i + 1)) continue;
+  if (scan.equations.length > 0 || scan.initialEquations.length > 0 || isModelicaFamily) {
+    for (const eq of scan.equations) {
+      const kind = eq.isAlgorithm ? "Algorithm" : eq.kind;
       equationRows.push({
-        kind: trimmed.startsWith("connect(") ? "connect" : trimmed.startsWith("der(") ? "ODE" : "Relation",
-        expression: trimmed.replace(/;\s*$/, "").slice(0, 80),
-        line: i + 1,
+        kind,
+        expression: eq.text.slice(0, 96),
+        line: eq.line,
       });
+    }
+    for (const eq of scan.initialEquations) {
+      equationRows.push({
+        kind: "Initial",
+        expression: eq.text.slice(0, 96),
+        line: eq.line,
+      });
+    }
+  } else {
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+      if (trimmed.includes("=") && !componentRows.some((r) => r["line"] === i + 1)) {
+        equationRows.push({
+          kind: "Relation",
+          expression: trimmed.replace(/;\s*$/, "").slice(0, 96),
+          line: i + 1,
+        });
+      }
     }
   }
 
@@ -1638,9 +1660,9 @@ function analyzeGeneralModel(
   };
 }
 
-function analyzePlcopenAndAutomation(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
-  const varRows: TableRow[] = [];
-  const logicRows: TableRow[] = [];
+function analyzePlcopenAndAutomation(dialect: string, _code: string, lines: string[]): DomainAnalysisResult {
+  const varRows: Record<string, any>[] = [];
+  const logicRows: Record<string, any>[] = [];
   let pouCount = 0;
   let inputCount = 0;
   let outputCount = 0;
@@ -1795,112 +1817,336 @@ function analyzePlcopenAndAutomation(dialect: string, code: string, lines: strin
   };
 }
 
+const KNOWN_INSPECTOR_DIALECTS = new Set([
+  "modelica",
+  "modelscript",
+  "mo",
+  "msx",
+  "psse",
+  "opendss",
+  "pscad",
+  "spice",
+  "verilog-a",
+  "touchstone",
+  "ibis",
+  "ocpp",
+  "cpo",
+  "openadr",
+  "oadr",
+  "gensys",
+  "simpack",
+  "adams",
+  "urdf",
+  "sima",
+  "jsbsim",
+  "opendrive",
+  "openscenario",
+  "gtfs",
+  "olga",
+  "lps",
+  "gtsuite",
+  "easy5",
+  "rocets",
+  "relap5",
+  "aspen",
+  "epanet",
+  "swmm",
+  "hec-ras",
+  "hecras",
+  "ras",
+  "tough",
+  "modflow",
+  "landgem",
+  "biogas",
+  "lfg",
+  "eclipse",
+  "energyplus",
+  "fea",
+  "cfd",
+  "step",
+  "scad",
+  "qif",
+  "sysml2",
+  "reqif",
+  "reqifz",
+  "oscal",
+  "owl2",
+  "sbml",
+  "cantera",
+  "smiles",
+  "antimony",
+  "bngl",
+  "plcopen",
+  "automationml",
+  "aml",
+]);
+
+const EMPTY_LINES: string[] = [];
+
+const EMPTY_ANALYSIS: DomainAnalysisResult = {
+  domainGroup: "general",
+  domainLabel: "Model Inspector",
+  kpis: [],
+  sections: [],
+};
+
+export function computeInspectorSubTabs(
+  dialect: string,
+  code: string,
+  hasBltData: boolean,
+): Array<{ id: string; label: string }> {
+  const d = dialect.trim().toLowerCase();
+  const allowContentSniff = !KNOWN_INSPECTOR_DIALECTS.has(d);
+  const isAcausalDae =
+    ["modelica", "modelscript", "mo", "msx"].includes(d) ||
+    ((d === "spice" || d === "verilog-a") && code.includes("="));
+
+  const tabs: Array<{ id: string; label: string }> = [];
+
+  if (isAcausalDae && hasBltData) {
+    tabs.push({ id: "blt", label: "⚡ BLT Causal Architecture" });
+  }
+
+  if (
+    isAcausalDae &&
+    (/\bder\s*\(/.test(code) ||
+      /\bconnect\s*\(/.test(code) ||
+      /\bunit\s*=/.test(code) ||
+      /\binitial\s+equation\b/.test(code))
+  ) {
+    tabs.push({ id: "dae_physics", label: "🔬 Pantelides & Kirchhoff" });
+  }
+
+  if (
+    ["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis", "ocpp", "cpo", "openadr", "oadr"].includes(
+      d,
+    ) ||
+    (allowContentSniff && (code.includes("BUS DATA") || code.includes("BRANCH DATA")))
+  ) {
+    tabs.push({ id: "power_grid", label: "⚡ Power Grid & Y-Bus" });
+  }
+
+  if (
+    ["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario"].includes(d) ||
+    (allowContentSniff && (code.includes("<robot") || code.includes("<joint") || code.includes("PART/")))
+  ) {
+    tabs.push({ id: "multibody", label: "🤖 Multibody & Mobility" });
+  }
+
+  if (
+    [
+      "olga",
+      "lps",
+      "gtsuite",
+      "easy5",
+      "rocets",
+      "relap5",
+      "aspen",
+      "epanet",
+      "swmm",
+      "hec-ras",
+      "hecras",
+      "ras",
+      "tough",
+      "modflow",
+      "landgem",
+      "biogas",
+      "lfg",
+      "eclipse",
+      "energyplus",
+    ].includes(d) ||
+    (allowContentSniff && (code.includes("[PIPES]") || code.includes("HYDRAULIC")))
+  ) {
+    tabs.push({ id: "thermo_fluid", label: "🌊 Hydraulics & HGL" });
+  }
+
+  if (
+    ["fea", "cfd", "step", "scad", "qif"].includes(d) ||
+    (allowContentSniff &&
+      (code.trimStart().startsWith("ISO-10303-21;") || code.includes("*ELEMENT") || code.includes("MARKER_")))
+  ) {
+    tabs.push({ id: "cae", label: "📐 CAD B-Rep & FEA" });
+  }
+
+  if (
+    ["sysml2", "reqif", "oscal", "owl2"].includes(d) ||
+    (allowContentSniff && (code.includes("<REQ-IF") || code.includes("requirement def") || code.includes("owl:")))
+  ) {
+    tabs.push({ id: "requirements", label: "🎯 Requirements & DL" });
+  }
+
+  if (
+    ["sbml", "cantera", "smiles", "antimony", "bngl"].includes(d) ||
+    (allowContentSniff && (code.includes("<sbml") || code.includes("<listOfReactions")))
+  ) {
+    tabs.push({ id: "biochem", label: "🧬 Stoichiometry & Pathways" });
+  }
+
+  if (
+    ["plcopen", "automationml", "aml"].includes(d) ||
+    (allowContentSniff && (code.includes("PROGRAM ") || code.includes("INITIAL_STEP")))
+  ) {
+    tabs.push({ id: "automation", label: "⚙️ SFC State Machine & WCET" });
+  }
+
+  if (
+    ["hec-ras", "hecras", "ras"].includes(d) ||
+    (allowContentSniff && (code.includes("Type RM") || code.includes("Node RM") || code.includes("Cross Section")))
+  ) {
+    tabs.push({ id: "hec_ras_hydraulics", label: "🏞️ River Basin & WSP" });
+  }
+
+  if (
+    d === "gtfs" ||
+    (allowContentSniff && (code.includes("stop_times") || code.includes("trip_id") || code.includes("agency_id")))
+  ) {
+    tabs.push({ id: "transit_cockpit", label: "🚎 Transit Cockpit & Marey" });
+  }
+
+  tabs.push({ id: "entities", label: "📋 Declared Entities & Parameters" });
+  return tabs;
+}
+
 export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   dialect,
   code,
   colorMode,
+  isVisible = true,
+  documentUri,
+  activeClassName,
   documentSymbols,
   onRevealLine,
   onCodeChange,
 }) => {
   const [filterText, setFilterText] = useState("");
+  const [bltSourceMode, setBltSourceMode] = useState<"flattened" | "source">("flattened");
+  const [flattenedCode, setFlattenedCode] = useState<string | null>(null);
+  const [isFlattening, setIsFlattening] = useState(false);
+  const [asyncSymbols, setAsyncSymbols] = useState<any[] | null>(null);
+
   const isDark = colorMode === "dark";
-  const isReqIf = dialect.toLowerCase() === "reqif" || dialect.toLowerCase() === "reqifz" || code.includes("<REQ-IF");
-
-  const isAcausalDae =
-    ["modelica", "modelscript", "mo", "msx"].includes(dialect.toLowerCase()) ||
-    ((dialect.toLowerCase() === "spice" || dialect.toLowerCase() === "verilog-a") && code.includes("="));
-
-  const bltAnalysis = useMemo(() => {
-    if (!isAcausalDae) return null;
-    const lns = code.split(/\r?\n/);
-    return analyzeModelBlt(code, lns);
-  }, [code, isAcausalDae]);
-
-  const hasBltData = Boolean(bltAnalysis && (bltAnalysis.equations.length > 0 || bltAnalysis.variables.length > 0));
   const d = dialect.toLowerCase();
-  const lines = useMemo(() => code.split(/\r?\n/), [code]);
+  const isReqIf = d === "reqif" || d === "reqifz" || (isVisible && code.includes("<REQ-IF"));
 
-  // Dynamically compute which specialized inspector views are appropriate for this specific model
+  const isModelicaFamily = ["modelica", "modelscript", "mo", "msx"].includes(d);
+  const isAcausalDae = isModelicaFamily || ((d === "spice" || d === "verilog-a") && code.includes("="));
+
+  useEffect(() => {
+    if (!isVisible || !documentUri || typeof window === "undefined") {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const bridge = await import("../util/lsp-bridge.js");
+        if (cancelled) return;
+
+        if (!documentSymbols) {
+          bridge
+            .getDocumentSymbols(documentUri)
+            .then((syms) => {
+              if (!cancelled && Array.isArray(syms)) {
+                setAsyncSymbols(syms);
+              }
+            })
+            .catch(() => {
+              // Ignore symbol fetch error; local scanner covers symbols cleanly
+            });
+        }
+
+        if (isModelicaFamily) {
+          const targetClass = activeClassName || bridge.extractPrimaryModelicaClassName(code);
+          if (!targetClass) {
+            if (!cancelled) setFlattenedCode(null);
+            return;
+          }
+          setIsFlattening(true);
+          const res = await bridge.flatten(targetClass, documentUri);
+          if (!cancelled) {
+            setFlattenedCode(res?.text && res.text.trim().length > 0 ? res.text : null);
+            setIsFlattening(false);
+          }
+        } else {
+          setFlattenedCode(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setFlattenedCode(null);
+          setIsFlattening(false);
+        }
+      }
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isVisible, documentUri, isModelicaFamily, activeClassName, code, documentSymbols]);
+
+  const lines = useMemo(() => {
+    if (!isVisible) return EMPTY_LINES;
+    return code.split(/\r?\n/);
+  }, [code, isVisible]);
+
+  const localLineMap = useMemo(() => {
+    if (!isVisible || !isAcausalDae) return undefined;
+    return indexLocalSymbolLines(code);
+  }, [code, isVisible, isAcausalDae]);
+
+  const sourceBltAnalysis = useMemo(() => {
+    if (!isVisible || !isAcausalDae) return null;
+    return analyzeModelBlt(code, lines, activeClassName, {
+      sourceKind: "source",
+    });
+  }, [code, lines, isVisible, isAcausalDae, activeClassName]);
+
+  const flattenedBltAnalysis = useMemo(() => {
+    if (!isVisible || !isAcausalDae || !flattenedCode) return null;
+    const flatLines = flattenedCode.split(/\r?\n/);
+    return analyzeModelBlt(flattenedCode, flatLines, activeClassName, {
+      ...(localLineMap ? { localLineMap } : {}),
+      sourceKind: "flattened",
+    });
+  }, [flattenedCode, localLineMap, isVisible, isAcausalDae, activeClassName]);
+
+  const hasFlattenedDae = Boolean(
+    flattenedBltAnalysis && (flattenedBltAnalysis.equations.length > 0 || flattenedBltAnalysis.variables.length > 0),
+  );
+  const effectiveSourceMode: "flattened" | "source" =
+    bltSourceMode === "flattened" && hasFlattenedDae ? "flattened" : "source";
+  const bltAnalysis = effectiveSourceMode === "flattened" ? flattenedBltAnalysis : sourceBltAnalysis;
+
+  const hasBltData = Boolean(
+    (bltAnalysis && (bltAnalysis.equations.length > 0 || bltAnalysis.variables.length > 0)) ||
+    hasFlattenedDae ||
+    (isModelicaFamily && (isFlattening || /\bconnect\s*\(/.test(code))),
+  );
+
   const availableSubTabs = useMemo(() => {
-    const tabs: Array<{ id: string; label: string }> = [];
+    if (!isVisible) return [{ id: "entities", label: "📋 Declared Entities & Parameters" }];
+    return computeInspectorSubTabs(d, code, hasBltData);
+  }, [d, isVisible, hasBltData, code]);
 
-    // 1. BLT Causal Architecture: only for acausal DAE models with equations
-    if (isAcausalDae && hasBltData) {
-      tabs.push({ id: "blt", label: "⚡ BLT Causal Architecture" });
-    }
-
-    // 2. DAE Physics & Pantelides: for DAE models with continuous derivatives, connectors, units
-    if (isAcausalDae && (code.includes("der(") || code.includes("connect(") || code.includes("unit=") || code.includes("initial equation"))) {
-      tabs.push({ id: "dae_physics", label: "🔬 Pantelides & Kirchhoff" });
-    }
-
-    // 3. Electrical Power Grid: for power transmission/distribution/netlists
-    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis", "ocpp", "cpo", "openadr", "oadr"].includes(d) || code.includes("BUS DATA") || code.includes("BRANCH DATA")) {
-      tabs.push({ id: "power_grid", label: "⚡ Power Grid & Y-Bus" });
-    }
-
-    // 4. Multibody Kinematics: for mechanism models
-    if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario", "gtfs"].includes(d) || code.includes("<robot") || code.includes("<joint") || code.includes("PART/") || code.includes("stop_id")) {
-      tabs.push({ id: "multibody", label: "🤖 Multibody & Mobility" });
-    }
-
-    // 5. Thermo-Fluid Hydraulics: for pipe networks, wells, process flows
-    if (["olga", "lps", "gtsuite", "easy5", "rocets", "relap5", "aspen", "epanet", "swmm", "hec-ras", "hecras", "ras", "tough", "modflow", "landgem", "biogas", "lfg", "eclipse", "energyplus"].includes(d) || code.includes("PIPE") || code.includes("HYDRAULIC")) {
-      tabs.push({ id: "thermo_fluid", label: "🌊 Hydraulics & HGL" });
-    }
-
-    // 6. CAD / CAE Continuum: for STEP, FEA, CFD
-    if (["fea", "cfd", "step", "scad", "qif"].includes(d) || code.trimStart().startsWith("ISO-10303-21;") || code.includes("*ELEMENT") || code.includes("MARKER_")) {
-      tabs.push({ id: "cae", label: "📐 CAD B-Rep & FEA" });
-    }
-
-    // 7. Requirements & Ontologies: for SysML v2, ReqIF, OWL2
-    if (["sysml2", "reqif", "oscal", "owl2"].includes(d) || code.includes("<REQ-IF") || code.includes("requirement def") || code.includes("owl:")) {
-      tabs.push({ id: "requirements", label: "🎯 Requirements & DL" });
-    }
-
-    // 8. Biochemistry & Metabolic Networks: for SBML, Cantera, SMILES
-    if (["sbml", "cantera", "smiles", "antimony", "bngl"].includes(d) || code.includes("<sbml") || code.includes("reaction")) {
-      tabs.push({ id: "biochem", label: "🧬 Stoichiometry & Pathways" });
-    }
-
-    // 9. Industrial Automation & Control: for PLCOpen, AutomationML
-    if (["plcopen", "automationml", "aml"].includes(d) || code.includes("PROGRAM ") || code.includes("INITIAL_STEP")) {
-      tabs.push({ id: "automation", label: "⚙️ SFC State Machine & WCET" });
-    }
-
-    // 10. River Basin & Open-Channel Hydraulics: for HEC-RAS
-    if (["hec-ras", "hecras", "ras"].includes(d) || code.includes("Type RM") || code.includes("Node RM") || code.includes("Cross Section")) {
-      tabs.push({ id: "hec_ras_hydraulics", label: "🏞️ River Basin & WSP" });
-    }
-
-    // 11. Transit Electrification & Schedules: for GTFS
-    if (d === "gtfs" || code.includes("stop_times") || code.includes("trip_id") || code.includes("agency_id")) {
-      tabs.push({ id: "transit_cockpit", label: "🚎 Transit Cockpit & Marey" });
-    }
-
-    // Always include entity & parameter inspector table
-    tabs.push({ id: "entities", label: "📋 Declared Entities & Parameters" });
-
-    return tabs;
-  }, [d, isAcausalDae, hasBltData, code]);
-
-  const defaultSubTab = isAcausalDae && hasBltData
-    ? "blt"
-    : ["hec-ras", "hecras", "ras"].includes(d)
-    ? "hec_ras_hydraulics"
-    : d === "gtfs"
-    ? "transit_cockpit"
-    : "entities";
+  const defaultSubTab =
+    isAcausalDae && hasBltData
+      ? "blt"
+      : ["hec-ras", "hecras", "ras"].includes(d)
+        ? "hec_ras_hydraulics"
+        : d === "gtfs"
+          ? "transit_cockpit"
+          : "entities";
   const [activeSubTab, setActiveSubTab] = useState<string>(defaultSubTab);
   const effectiveSubTab = availableSubTabs.some((t) => t.id === activeSubTab)
     ? activeSubTab
-    : (availableSubTabs.some((t) => t.id === defaultSubTab) ? defaultSubTab : (availableSubTabs[0]?.id || "entities"));
+    : availableSubTabs.some((t) => t.id === defaultSubTab)
+      ? defaultSubTab
+      : availableSubTabs[0]?.id || "entities";
+
+  const effectiveSymbols = documentSymbols ?? asyncSymbols ?? undefined;
 
   const analysis = useMemo<DomainAnalysisResult>(() => {
-    const lines = code.split(/\r?\n/);
-    const d = dialect.toLowerCase();
+    if (!isVisible) return EMPTY_ANALYSIS;
 
     if (d === "plcopen" || d === "automationml" || d === "aml") {
       return analyzePlcopenAndAutomation(d, code, lines);
@@ -1911,7 +2157,21 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     if (["gensys", "simpack", "adams", "urdf", "sima", "jsbsim", "opendrive", "openscenario", "gtfs"].includes(d)) {
       return analyzeMultibody(d, code, lines);
     }
-    if (["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis", "ocpp", "cpo", "openadr", "oadr"].includes(d)) {
+    if (
+      [
+        "psse",
+        "opendss",
+        "pscad",
+        "spice",
+        "verilog-a",
+        "touchstone",
+        "ibis",
+        "ocpp",
+        "cpo",
+        "openadr",
+        "oadr",
+      ].includes(d)
+    ) {
       return analyzePowerAndCircuits(d, code, lines);
     }
     if (
@@ -1943,8 +2203,12 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     if (["fea", "cfd", "step", "scad"].includes(d) || code.trimStart().startsWith("ISO-10303-21;")) {
       return analyzeCae(d, code, lines);
     }
-    return analyzeGeneralModel(d, code, lines, documentSymbols);
-  }, [dialect, code, documentSymbols]);
+    return analyzeGeneralModel(d, code, lines, effectiveSymbols, activeClassName);
+  }, [d, code, lines, effectiveSymbols, activeClassName, isVisible]);
+
+  if (!isVisible) {
+    return null;
+  }
 
   if (isReqIf) {
     return (
@@ -1997,7 +2261,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {availableSubTabs.length > 1 && (
             <div
               style={{
@@ -2031,28 +2295,44 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
             </div>
           )}
 
-          <input
-            type="search"
-            placeholder="Filter entities, IDs, or parameters…"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            style={{
-              padding: "5px 10px",
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              color: textPrimary,
-              fontSize: 12,
-              minWidth: 210,
-            }}
-          />
+          {effectiveSubTab === "entities" && (
+            <input
+              type="search"
+              placeholder="Filter entities, IDs, or parameters…"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 6,
+                border: `1px solid ${borderCol}`,
+                backgroundColor: cardBg,
+                color: textPrimary,
+                fontSize: 12,
+                minWidth: 210,
+              }}
+            />
+          )}
         </div>
       </div>
 
       {effectiveSubTab === "blt" && bltAnalysis ? (
-        <BltVisualizer analysis={bltAnalysis} colorMode={colorMode} onRevealLine={onRevealLine} />
+        <BltVisualizer
+          analysis={bltAnalysis}
+          colorMode={colorMode}
+          onRevealLine={onRevealLine}
+          sourceMode={effectiveSourceMode}
+          hasFlattenedDae={hasFlattenedDae}
+          isFlattening={isFlattening}
+          onSourceModeChange={setBltSourceMode}
+        />
       ) : effectiveSubTab === "dae_physics" ? (
-        <DaeAdvancedInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+        <DaeAdvancedInspector
+          code={flattenedCode && effectiveSourceMode === "flattened" ? flattenedCode : code}
+          sourceCode={code}
+          lines={lines}
+          colorMode={colorMode}
+          onRevealLine={onRevealLine}
+        />
       ) : effectiveSubTab === "power_grid" ? (
         <PowerGridInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "multibody" ? (
@@ -2074,208 +2354,210 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
       ) : (
         <>
           {/* KPI Cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          gap: 12,
-        }}
-      >
-        {analysis.kpis.map((kpi, idx) => (
           <div
-            key={idx}
             style={{
-              padding: "12px 14px",
-              borderRadius: 8,
-              border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              borderLeft: `3px solid ${kpi.accent || "#58a6ff"}`,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: 12,
             }}
           >
-            <div style={{ fontSize: 11, color: textMuted, textTransform: "uppercase", fontWeight: 600 }}>
-              {kpi.label}
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4, fontFamily: "monospace" }}>{kpi.value}</div>
-            {kpi.sublabel && <div style={{ fontSize: 11, color: textMuted, marginTop: 2 }}>{kpi.sublabel}</div>}
-          </div>
-        ))}
-      </div>
-
-      {/* Kinematic Chain Preview for Multibody */}
-      {analysis.kinematicChain && analysis.kinematicChain.length > 0 && (
-        <div
-          style={{
-            padding: 14,
-            borderRadius: 8,
-            border: `1px solid ${borderCol}`,
-            backgroundColor: cardBg,
-          }}
-        >
-          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
-            Kinematic Chain Topology Preview (Parent → Joint [DOF] → Child)
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            {analysis.kinematicChain.map((link, idx) => (
-              <button
+            {analysis.kpis.map((kpi, idx) => (
+              <div
                 key={idx}
-                type="button"
-                onClick={() => onRevealLine?.(link.line, link.joint)}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 10px",
-                  borderRadius: 6,
+                  padding: "12px 14px",
+                  borderRadius: 8,
                   border: `1px solid ${borderCol}`,
-                  backgroundColor: "var(--color-bg-primary)",
-                  color: textPrimary,
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontFamily: "monospace",
+                  backgroundColor: cardBg,
+                  borderLeft: `3px solid ${kpi.accent || "#58a6ff"}`,
                 }}
               >
-                <span style={{ color: "#58a6ff", fontWeight: 600 }}>{link.parent}</span>
-                <span style={{ color: textMuted }}>─[</span>
-                <span style={{ color: "#3fb950" }}>
-                  {link.joint}:{link.type} ({link.dof}DOF)
-                </span>
-                <span style={{ color: textMuted }}>]→</span>
-                <span style={{ color: "#d29922", fontWeight: 600 }}>{link.child}</span>
-              </button>
+                <div style={{ fontSize: 11, color: textMuted, textTransform: "uppercase", fontWeight: 600 }}>
+                  {kpi.label}
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4, fontFamily: "monospace" }}>{kpi.value}</div>
+                {kpi.sublabel && <div style={{ fontSize: 11, color: textMuted, marginTop: 2 }}>{kpi.sublabel}</div>}
+              </div>
             ))}
           </div>
-        </div>
-      )}
 
-      {/* Domain Tables */}
-      {analysis.sections.map((section, sIdx) => {
-        const filteredRows = normalizedFilter
-          ? section.rows.filter((r) => Object.values(r).some((v) => String(v).toLowerCase().includes(normalizedFilter)))
-          : section.rows;
-
-        return (
-          <div
-            key={sIdx}
-            style={{
-              borderRadius: 8,
-              border: `1px solid ${borderCol}`,
-              overflow: "hidden",
-              backgroundColor: cardBg,
-            }}
-          >
+          {/* Kinematic Chain Preview for Multibody */}
+          {analysis.kinematicChain && analysis.kinematicChain.length > 0 && (
             <div
               style={{
-                padding: "10px 14px",
-                borderBottom: `1px solid ${borderCol}`,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+                padding: 14,
+                borderRadius: 8,
+                border: `1px solid ${borderCol}`,
+                backgroundColor: cardBg,
               }}
             >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{section.title}</div>
-                {section.subtitle && <div style={{ fontSize: 11, color: textMuted }}>{section.subtitle}</div>}
+              <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
+                Kinematic Chain Topology Preview (Parent → Joint [DOF] → Child)
               </div>
-              <span
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                {analysis.kinematicChain.map((link, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => onRevealLine?.(link.line, link.joint)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      border: `1px solid ${borderCol}`,
+                      backgroundColor: "var(--color-bg-primary)",
+                      color: textPrimary,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    <span style={{ color: "#58a6ff", fontWeight: 600 }}>{link.parent}</span>
+                    <span style={{ color: textMuted }}>─[</span>
+                    <span style={{ color: "#3fb950" }}>
+                      {link.joint}:{link.type} ({link.dof}DOF)
+                    </span>
+                    <span style={{ color: textMuted }}>]→</span>
+                    <span style={{ color: "#d29922", fontWeight: 600 }}>{link.child}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Domain Tables */}
+          {analysis.sections.map((section, sIdx) => {
+            const filteredRows = normalizedFilter
+              ? section.rows.filter((r) =>
+                  Object.values(r).some((v) => String(v).toLowerCase().includes(normalizedFilter)),
+                )
+              : section.rows;
+
+            return (
+              <div
+                key={sIdx}
                 style={{
-                  fontSize: 11,
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
-                  color: "var(--ms-brand, var(--color-accent-fg))",
-                  fontWeight: 600,
+                  borderRadius: 8,
+                  border: `1px solid ${borderCol}`,
+                  overflow: "hidden",
+                  backgroundColor: cardBg,
                 }}
               >
-                {filteredRows.length} {filteredRows.length === 1 ? "entry" : "entries"}
-              </span>
-            </div>
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderBottom: `1px solid ${borderCol}`,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{section.title}</div>
+                    {section.subtitle && <div style={{ fontSize: 11, color: textMuted }}>{section.subtitle}</div>}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      borderRadius: 10,
+                      backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
+                      color: "var(--ms-brand, var(--color-accent-fg))",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {filteredRows.length} {filteredRows.length === 1 ? "entry" : "entries"}
+                  </span>
+                </div>
 
-            {filteredRows.length === 0 ? (
-              <div style={{ padding: 16, fontSize: 12, color: textMuted, textAlign: "center" }}>
-                No matching entries in this section.
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr
-                      style={{
-                        textAlign: "left",
-                        borderBottom: `1px solid ${borderCol}`,
-                        backgroundColor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
-                      }}
-                    >
-                      {section.columns.map((col) => (
-                        <th
-                          key={col.key}
+                {filteredRows.length === 0 ? (
+                  <div style={{ padding: 16, fontSize: 12, color: textMuted, textAlign: "center" }}>
+                    No matching entries in this section.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr
                           style={{
-                            padding: "8px 12px",
-                            fontWeight: 600,
-                            color: textMuted,
-                            whiteSpace: "nowrap",
+                            textAlign: "left",
+                            borderBottom: `1px solid ${borderCol}`,
+                            backgroundColor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
                           }}
                         >
-                          {col.header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.map((row, rIdx) => (
-                      <tr
-                        key={rIdx}
-                        onClick={() => {
-                          if (typeof row["line"] === "number") {
-                            onRevealLine?.(row["line"], String(row["name"] ?? row["id"] ?? ""));
-                          }
-                        }}
-                        style={{
-                          borderBottom: rIdx < filteredRows.length - 1 ? `1px solid ${borderCol}` : "none",
-                          cursor: typeof row["line"] === "number" ? "pointer" : "default",
-                          backgroundColor: "var(--color-bg-primary)",
-                        }}
-                      >
-                        {section.columns.map((col) => {
-                          const val = row[col.key] ?? "—";
-                          return (
-                            <td
+                          {section.columns.map((col) => (
+                            <th
                               key={col.key}
                               style={{
-                                padding: "7px 12px",
-                                fontFamily: col.mono ? "monospace" : "inherit",
-                                maxWidth: 360,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
+                                padding: "8px 12px",
+                                fontWeight: 600,
+                                color: textMuted,
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {col.badge ? (
-                                <span
+                              {col.header}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.map((row, rIdx) => (
+                          <tr
+                            key={rIdx}
+                            onClick={() => {
+                              if (typeof row["line"] === "number") {
+                                onRevealLine?.(row["line"], String(row["name"] ?? row["id"] ?? ""));
+                              }
+                            }}
+                            style={{
+                              borderBottom: rIdx < filteredRows.length - 1 ? `1px solid ${borderCol}` : "none",
+                              cursor: typeof row["line"] === "number" ? "pointer" : "default",
+                              backgroundColor: "var(--color-bg-primary)",
+                            }}
+                          >
+                            {section.columns.map((col) => {
+                              const val = row[col.key] ?? "—";
+                              return (
+                                <td
+                                  key={col.key}
                                   style={{
-                                    padding: "2px 6px",
-                                    borderRadius: 4,
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+                                    padding: "7px 12px",
+                                    fontFamily: col.mono ? "monospace" : "inherit",
+                                    maxWidth: 360,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
                                   }}
                                 >
-                                  {String(val)}
-                                </span>
-                              ) : (
-                                String(val)
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                                  {col.badge ? (
+                                    <span
+                                      style={{
+                                        padding: "2px 6px",
+                                        borderRadius: 4,
+                                        fontSize: 11,
+                                        fontWeight: 600,
+                                        backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+                                      }}
+                                    >
+                                      {String(val)}
+                                    </span>
+                                  ) : (
+                                    String(val)
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
         </>
       )}
     </div>

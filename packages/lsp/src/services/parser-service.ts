@@ -342,11 +342,16 @@ export class ParserService {
           return wsText.substring(startOffset, endOffset);
         }
 
+        const MAX_LAZY_LIB_TREES = 512;
         const lazyLibTrees =
           this.documentManager?.lazyLibTrees ??
           (this.workspaceManager as any)?.documentManager?.lazyLibTrees ??
           (this.documentManager as any)?.documentManager?.lazyLibTrees;
         let lazyCache = lazyLibTrees?.get(uri);
+        if (lazyCache && lazyLibTrees) {
+          lazyLibTrees.delete(uri);
+          lazyLibTrees.set(uri, lazyCache);
+        }
         if (!lazyCache && this.sharedContext) {
           try {
             const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
@@ -362,18 +367,12 @@ export class ParserService {
             }
             if (text) {
               lazyCache = { tree: null, text };
-              lazyLibTrees?.set(uri, lazyCache);
-              if (lazyLibTrees && lazyLibTrees.size > 50) {
-                const oldest = lazyLibTrees.keys().next().value;
-                if (oldest !== undefined) {
-                  const oldCache = lazyLibTrees.get(oldest);
-                  if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
-                    try {
-                      oldCache.tree.delete();
-                    } catch {
-                      /* ignore */
-                    }
-                  }
+              if (lazyLibTrees) {
+                lazyLibTrees.delete(uri);
+                lazyLibTrees.set(uri, lazyCache);
+                while (lazyLibTrees.size > MAX_LAZY_LIB_TREES) {
+                  const oldest = lazyLibTrees.keys().next().value;
+                  if (oldest === undefined) break;
                   lazyLibTrees.delete(oldest);
                 }
               }
@@ -412,11 +411,16 @@ export class ParserService {
           return root ?? null;
         }
 
+        const MAX_LAZY_LIB_TREES = 512;
         const lazyLibTrees =
           this.documentManager?.lazyLibTrees ??
           (this.workspaceManager as any)?.documentManager?.lazyLibTrees ??
           (this.documentManager as any)?.documentManager?.lazyLibTrees;
         let lazyCache = lazyLibTrees?.get(uri);
+        if (lazyCache && lazyCache.tree && lazyLibTrees) {
+          lazyLibTrees.delete(uri);
+          lazyLibTrees.set(uri, lazyCache);
+        }
         if ((!lazyCache || !lazyCache.tree) && this.sharedContext) {
           try {
             let text = lazyCache?.text;
@@ -439,19 +443,13 @@ export class ParserService {
                 (uri.includes(".") ? `.${uri.split(".").pop()}` : ".mo");
               const tree = this.sharedContext.parse(ext, text);
               lazyCache = { tree, text };
-              this.documentManager.lazyLibTrees.set(uri, lazyCache);
-              if (this.documentManager.lazyLibTrees.size > 50) {
-                const oldest = this.documentManager.lazyLibTrees.keys().next().value;
-                if (oldest !== undefined) {
-                  const oldCache = this.documentManager.lazyLibTrees.get(oldest);
-                  if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
-                    try {
-                      oldCache.tree.delete();
-                    } catch {
-                      /* ignore */
-                    }
-                  }
-                  this.documentManager.lazyLibTrees.delete(oldest);
+              if (lazyLibTrees) {
+                lazyLibTrees.delete(uri);
+                lazyLibTrees.set(uri, lazyCache);
+                while (lazyLibTrees.size > MAX_LAZY_LIB_TREES) {
+                  const oldest = lazyLibTrees.keys().next().value;
+                  if (oldest === undefined) break;
+                  lazyLibTrees.delete(oldest);
                 }
               }
             } else {
@@ -729,7 +727,7 @@ export class ParserService {
           return (this.parser as any)?.parse(input, ...rest);
         return null;
       },
-      flattenArena: (name: string, classId?: any, _uri?: string, options?: any) => {
+      flattenArena: (name: string, classId?: any, uri?: string, options?: any) => {
         const engine =
           this.workspaceManager.globalModelicaQueryEngine ?? this.workspaceManager.getQueryEngine("modelica");
         if (!engine) return null;
@@ -738,14 +736,48 @@ export class ParserService {
           targetId = undefined;
         }
         if (targetId === undefined) {
-          const candidates = (engine as any).index?.byName?.get(name);
+          const candidates: any[] | undefined = (engine as any).index?.byName?.get(name);
           if (candidates && candidates.length > 0) {
-            targetId = candidates[0];
+            if (uri) {
+              const norm = (u: string | undefined) => (u ? u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "");
+              const targetNorm = norm(uri);
+              const matched = candidates.find(
+                (id: any) => norm(engine.index?.symbols?.get(id)?.resourceId) === targetNorm,
+              );
+              targetId = matched !== undefined ? matched : candidates[0];
+            } else {
+              targetId = candidates[0];
+            }
           }
         }
         if (targetId === undefined) return null;
-        const queryDB = engine.toQueryDB();
-        const flattener = new ArenaQueryFlattener(queryDB, options);
+        const rawDB = engine.toQueryDB();
+        const deadlineMs = typeof options?.deadlineMs === "number" ? options.deadlineMs : undefined;
+        if (deadlineMs !== undefined) {
+          if (Date.now() > deadlineMs) return null;
+          const BUDGET_SENTINEL = new Error("DaeFlattenBudgetExceeded");
+          let qCalls = 0;
+          const budgetedDB = new Proxy(rawDB, {
+            get(target, prop: string) {
+              const val = (target as any)[prop];
+              if (typeof val !== "function") return val;
+              return (...args: any[]) => {
+                if ((++qCalls & 127) === 0 && Date.now() > deadlineMs) {
+                  throw BUDGET_SENTINEL;
+                }
+                return val.apply(target, args);
+              };
+            },
+          });
+          try {
+            const flattener = new ArenaQueryFlattener(budgetedDB, options);
+            return flattener.flatten(targetId, null, options);
+          } catch (err) {
+            if (err === BUDGET_SENTINEL) return null;
+            throw err;
+          }
+        }
+        const flattener = new ArenaQueryFlattener(rawDB, options);
         return flattener.flatten(targetId, null, options);
       },
     };

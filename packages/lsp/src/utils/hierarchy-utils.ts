@@ -136,6 +136,7 @@ export interface MountedLibraryInfo {
   version: string;
   description?: string | undefined;
   language?: string | undefined;
+  explicitlyInstalled?: boolean | undefined;
 }
 
 export interface LoadingLibraryInfo {
